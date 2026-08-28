@@ -2903,11 +2903,33 @@ typedef void (*pmix_info_cbfunc_t)(pmix_status_t status,
  * status - PMIX_SUCCESS if a credential could be assigned as requested, or
  *          else an appropriate error code indicating the problem
  *
- * credential - pointer to an allocated pmix_byte_object_t containing the
- *              credential (as a opaque blob) and its size. Ownership of
- *              the credential is transferred to the receiving function - thus,
+ * credential - pointer to a pmix_byte_object_t containing the credential
+ *              (as a opaque blob) and its size. Ownership of the credential
+ *              is transferred to the receiving function - thus,
  *              responsibility for releasing the memory lies outside the
  *              PMIx library.
+ *
+ *              What transfers is the credential itself - the payload the
+ *              byte object points at, which the receiver releases when it
+ *              is done with it. The byte object carrying it does not: it
+ *              belongs to the caller of this function and may be transient,
+ *              so the receiver must read the payload pointer and size out
+ *              of it rather than retain the object, and must not destruct
+ *              or free the object itself.
+ *
+ *              The transfer describes the direction in which the library
+ *              returns a credential to its caller - e.g., the callback
+ *              passed to PMIx_Get_credential_nb. The same signature is used
+ *              in the opposite direction when a PMIx server passes a
+ *              request up to its host, and there the ownership runs the
+ *              other way: the host retains the credential it provides and
+ *              may release it as soon as the callback returns, exactly as
+ *              it may with any other data it returns through a completion
+ *              callback. The library cannot release it in that direction -
+ *              the signature carries no release function to report
+ *              completion with, and nothing tells the library whether the
+ *              payload was ever allocated - so it is instead required to be
+ *              finished with the data before it returns.
  *
  * info - an array of pmix_info_t structures provided by the system to pass
  *        any additional information about the credential - e.g., the identity

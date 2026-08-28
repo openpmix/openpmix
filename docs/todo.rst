@@ -256,6 +256,17 @@ each time somebody asks.
           not survive being checked, and the repair was a
           stage-then-commit split of the one handler.
 
+          The credential entry closed the same day, and for a related
+          reason: what had been put to the Standard is answered by the
+          call's own shape — the host gets no callback saying the library
+          is done, and the library cannot tell a stack frame from a
+          ``malloc``, so the host keeps its data and the library must be
+          finished with it by the time it returns.  Being finished never
+          required copying it; the server now packs the reply before it
+          returns.  Reading the question that way also exposed the
+          client-side half, where the library *does* transfer the
+          credential and was freeing it anyway.
+
           One entry was opened and closed within the same day —
           the ordering of a registration's acknowledgement against the
           cached events replayed behind it — because the push-back that
@@ -432,22 +443,66 @@ Who owns a credential the host hands up
 ``pmix_credential_cbfunc_t`` is documented in ``include/pmix_common.h.in``
 as transferring ownership of the credential to the receiving function —
 "responsibility for releasing the memory lies outside the PMIx library."
-That text is written for the *client* side, where the receiving function
-is the application's callback.  Read literally it also governs the
-server-side up-call, where the receiving function is
-``pmix_server_cred_cbfunc``: the host's ``pmix_byte_object_t`` would then
-be ours to free.  It does not free it — it makes a copy and leaves the
-original alone — so under that reading every ``PMIx_Get_credential``
-leaks the host's credential, and under the opposite reading freeing it
-would be a double free in the host.
+This entry used to read that sentence as also governing the server-side
+up-call, where the receiving function is ``pmix_server_cred_cbfunc``, and
+asked whether the host's ``pmix_byte_object_t`` was therefore ours to
+free.  **That is closed**, and it closed on the shape of the call rather
+than on the Standard's word.
 
-Deciding this needs the Standard's word rather than this file's, and the
-wrong guess is much more expensive in one direction than the other, so
-the copy stays.  If the transfer reading is confirmed, the fix is to take
-the host's object rather than copy it (``psec`` mechanisms allocate a
-fresh one per request), not to add a ``free`` beside the copy.  The same
-question applies to the info array on the same callback, which the same
-paragraph describes as owned by the PMIx library.
+The host hands its data down and is given no callback telling it when the
+library is finished; the library, for its part, cannot tell whether what
+it was handed was ever ``malloc``'d.  Ownership stays with the host, and
+the only contract binding the library is the narrower one: be done with
+the data by the time the up-call returns, so the host may dispose of it
+on the next line.  That is what
+:ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>` already told
+hosts — data returned through a completion callback is the host's to
+release once the callback returns — read from the library's side.
+
+Being *done with it* never required copying it.  Both
+``pmix_server_cred_cbfunc`` and ``pmix_server_validate_cbfunc`` now pack
+the whole reply where they stand, on whatever thread the host called
+them from, and thread-shift only the finished buffer; packing writes into
+a buffer of our own and reads the peer's ``bfrops`` module, neither of
+which is progress-thread state.  ``_queue_sec_reply`` does the queueing,
+which is the part that genuinely has to be on the progress thread, since
+``PMIX_SERVER_QUEUE_REPLY`` writes ``peer->send_msg``, the peer's send
+queue, and the send event.  The credential copy, the info-array copy, and
+the ``infocopy`` bookkeeping that went with them are gone.  The
+regression case in ``test/unit/server_control.c`` is unchanged and still
+passes: its host stub destructs and overwrites both the credential and
+the info array the instant the callback returns, which a reply packed
+after the return cannot survive.
+
+The client side is closed too, and it is where the sentence in the header
+was aimed all along — but it says less than it appears to.  What
+transfers is the *credential*: the payload the byte object points at, and
+its size.  The byte object carrying it does not transfer; it stays the
+library's, and may be a stack frame.  So the receiver takes the pointer
+out of it and releases that when done, and the library's obligation is
+the negative one — do not destruct the object once the callback has been
+given it, because the payload is no longer ours.  ``getcbfunc()`` in
+``src/common/pmix_security.c`` destructed exactly there, freeing the
+payload out from under the application: a receiver that kept it read
+freed memory, and one that released it, as the header requires, double
+freed.  The two arms that answer from a local ``psec`` mechanism did the
+same to the payload the mechanism had just allocated.  Each of them now
+destructs only on the arm where there was no ``cbfunc`` to hand the
+payload to.
+
+One asymmetry had to be dealt with rather than documented away.  The same
+signature runs in both directions, so a server whose host implements
+``get_credential`` used to have the host's borrowed payload passed
+straight through to the caller of ``PMIx_Get_credential_nb``, who is told
+it owns what it receives.  ``cred_relay()`` now interposes on that path
+and copies, so the caller answers to one contract rather than two.  With
+the transfer uniform, ``mycdcb()`` takes the payload instead of copying
+it and ``PMIx_Get_credential`` hands that same allocation to its caller,
+retiring both of the copies the blocking form used to make.
+
+Covered by ``test/unit/common_api.c``, which reads the credential after
+the callback that delivered it has returned and then releases it — a
+use-after-free and a double free, respectively, against the old code.
 
 A pruned deregistration is not propagated
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
