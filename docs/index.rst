@@ -61,6 +61,7 @@ Table of contents
    developers/index
    contributing
    todo
+   review-notes
    code-of-conduct
    license
    security
