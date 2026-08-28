@@ -498,6 +498,109 @@ static void test_out_parameters(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* PMIx_Get_credential: the payload is the caller's, the object is not */
+/* ------------------------------------------------------------------ */
+/* A singleton has no server, so both forms are answered by a local psec
+ * mechanism - which is the same code path a client or tool takes when it
+ * is not connected, and the one that hands the credential back through
+ * pmix_credential_cbfunc_t.
+ *
+ * What that callback transfers is the credential itself: the payload the
+ * byte object points at. The object carrying it belongs to the library
+ * and may be a stack frame, so a receiver reads the pointer out of it
+ * and releases the payload when it is done. The library used to destruct
+ * the object the moment the callback returned, which freed the payload
+ * out from under the receiver: reading it afterwards is a use-after-free
+ * and releasing it, as the contract requires, is a double free. Both are
+ * what this case does deliberately, so a re-broken library trips ASan
+ * here rather than in somebody's application. */
+static char *credpayload = NULL;
+static size_t credsize = 0;
+static pmix_status_t credstatus = PMIX_ERR_NOT_SUPPORTED;
+static volatile int credfired = 0;
+
+static void credcb(pmix_status_t status, pmix_byte_object_t *cred,
+                   pmix_info_t info[], size_t ninfo, void *cbdata)
+{
+    (void) info;
+    (void) ninfo;
+    (void) cbdata;
+
+    credstatus = status;
+    if (PMIX_SUCCESS == status && NULL != cred && NULL != cred->bytes) {
+        /* take the payload out of the object - the object itself is the
+         * library's and must not be retained or released here */
+        credpayload = cred->bytes;
+        credsize = cred->size;
+    }
+    credfired++;
+}
+
+static void test_credential_ownership(void)
+{
+    pmix_status_t rc;
+    pmix_byte_object_t cred;
+    pmix_listener_protocol_t proto;
+    size_t n;
+    int nonzero;
+
+    fprintf(stdout, "\n-- PMIx_Get_credential ownership --\n");
+
+    /* psec/native builds its credential out of the connection it is
+     * speaking over, and a singleton has none - its peer's protocol is
+     * PMIX_PROTOCOL_UNDEF, which the module declines. Claim the tcp
+     * protocol for the length of the case so the mechanism produces a
+     * credential and the ownership of it can be examined. */
+    proto = pmix_globals.mypeer->protocol;
+    pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
+
+    /* the blocking form fills the caller's own object */
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+    rc = PMIx_Get_credential(NULL, 0, &cred);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "  skip  : no local credential mechanism (%s)\n",
+                PMIx_Error_string(rc));
+        pmix_globals.mypeer->protocol = proto;
+        return;
+    }
+    check(NULL != cred.bytes && 0 < cred.size, "blocking form returns a credential");
+    /* the caller owns the payload and releases it */
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    /* and the non-blocking form transfers it to the callback */
+    credpayload = NULL;
+    credsize = 0;
+    credfired = 0;
+    rc = PMIx_Get_credential_nb(NULL, 0, credcb, NULL);
+    pmix_globals.mypeer->protocol = proto;
+    check(PMIX_SUCCESS == rc, "non-blocking request accepted");
+    if (PMIX_SUCCESS != rc) {
+        return;
+    }
+    check(1 == credfired, "the local mechanism answered before returning");
+    check(PMIX_SUCCESS == credstatus, "the callback was given a success");
+    check(NULL != credpayload && 0 < credsize, "the callback was given a credential");
+    if (NULL == credpayload) {
+        return;
+    }
+
+    /* the payload is ours now: it has to still be readable here, after
+     * the library has returned from the callback that handed it over */
+    nonzero = 0;
+    for (n = 0; n < credsize; n++) {
+        if (0 != credpayload[n]) {
+            nonzero = 1;
+            break;
+        }
+    }
+    check(1 == nonzero, "the credential survives the callback's return");
+
+    /* and it is ours to release - the library must not have done so */
+    free(credpayload);
+    credpayload = NULL;
+}
+
+/* ------------------------------------------------------------------ */
 /* PMIx_Register_attributes: a function name that is not there         */
 /* ------------------------------------------------------------------ */
 static void test_register_attributes(void)
@@ -586,6 +689,7 @@ int main(int argc, char **argv)
     test_iof_flags();
     test_iof_xml_escaping();
     test_out_parameters();
+    test_credential_ownership();
     test_register_attributes();
 
     rc = PMIx_Finalize(NULL, 0);

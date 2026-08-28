@@ -444,6 +444,27 @@ the mandatory `pmix_event_t ev` and a `pmix_lock_t`.
   of the caller's cbfunc leak it whenever `cbfunc == NULL` (or when the
   substituted blocking cbfunc ignores the release-fn). Handle the NULL
   case explicitly.
+- **A credential goes *out* of `pmix_security.c` owned and comes *in*
+  borrowed — and what is owned is the payload, not the box.**
+  `pmix_credential_cbfunc_t` transfers the credential itself: the bytes
+  the `pmix_byte_object_t` points at, and their size. The object carrying
+  them stays the library's and may be a stack frame, so the receiver
+  reads the pointer out of it and never destructs it. That makes the rule
+  here a negative one: where the library hands a credential to its caller
+  — the callback given to `PMIx_Get_credential_nb` — the frame that holds
+  the object must **not** `PMIX_BYTE_OBJECT_DESTRUCT` it afterwards,
+  because the payload is no longer ours. `getcbfunc()` did exactly that
+  and left the caller reading freed memory, or double-freeing if it
+  followed the documented contract. The destruct belongs only on the arm
+  where there was no `cbfunc` to hand the payload to, which is why every
+  such site here is an if/else rather than an unconditional cleanup.
+  Where a *host* hands a credential up to a server through the same
+  signature it is only borrowed — the host may reclaim it as soon as the
+  call returns — so `cred_relay()` interposes on that path and copies the
+  payload before the caller sees it, rather than passing the host's
+  memory through and making the caller answer to two contracts at once.
+  The accompanying info array is owned by the library in *both*
+  directions and is released here once the callback returns.
 
 ## Recurring pitfalls specific to this directory
 
