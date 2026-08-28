@@ -73,7 +73,11 @@ The non-blocking form replaces ``credential`` with a callback:
 
 * ``cbfunc``: Callback function of type :ref:`pmix_credential_cbfunc_t <man5-pmix_credential_cbfunc_t>` invoked with
   the final status, the returned credential, and any accompanying information once
-  the request completes.
+  the request completes. On success the callback takes ownership of the
+  credential itself |mdash| the payload the byte object points at, which it
+  releases when done |mdash| but not of the byte object carrying it, which
+  remains the library's and may be transient. A failing status carries no
+  credential, so there is nothing to release in that case.
 * ``cbdata``: Opaque pointer that is passed, unmodified, to ``cbfunc``.
 
 

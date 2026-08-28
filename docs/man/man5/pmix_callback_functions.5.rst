@@ -192,12 +192,28 @@ pmix_credential_cbfunc_t
 
 Returns a requested security credential obtained via
 :ref:`PMIx_Get_credential(3) <man3-PMIx_Get_credential>`. On success,
-``credential`` points to an allocated ``pmix_byte_object_t`` holding the opaque
-credential blob; ownership of the credential is transferred to the recipient,
-which is responsible for releasing that memory. The ``info`` array (``ninfo``
-elements) conveys any additional system-provided metadata about the credential,
-such as the identity of the issuing agent; that array is owned by the library
-and must not be altered or released by the recipient.
+``credential`` points to a ``pmix_byte_object_t`` holding the opaque credential
+blob; ownership of the credential is transferred to the recipient, which is
+responsible for releasing that memory.
+
+What transfers is the credential itself |mdash| the payload the byte object
+points at, which the recipient releases (with ``free``) when done with it. The
+byte object carrying it does **not** transfer: it belongs to the caller of the
+callback and may be transient, so the recipient must take the payload pointer
+and size out of it rather than retain the object, and must not destruct or free
+the object itself. The ``info`` array (``ninfo`` elements) conveys any
+additional system-provided metadata about the credential, such as the identity
+of the issuing agent; that array is owned by the library and must not be altered
+or released by the recipient.
+
+The transfer describes the direction in which the library returns a credential
+to its caller. The same signature is used in the opposite direction, where a
+PMIx server passes a ``get_credential`` request up to its host environment (see
+:ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>`), and there the
+ownership runs the other way: the host retains the credential it provides and
+may release it as soon as the callback returns. The library therefore copies
+nothing and keeps nothing |mdash| it packs the reply to the requesting client
+before returning from the up-call.
 
 
 .. _man5-pmix_validation_cbfunc_t:
