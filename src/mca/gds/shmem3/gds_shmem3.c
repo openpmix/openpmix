@@ -643,6 +643,27 @@ get_shmem3_id_name(
     }
 }
 
+/* Report a segment's utilization. Takes the segment and its allocator
+ * rather than a (job, id) pair because the session's segment belongs to
+ * the session object, which has no job to be asked about. */
+static void
+emit_segment_usage_stats(
+    const pmix_shmem_t *shmem3,
+    pmix_tma_t *tma,
+    const char *smname
+) {
+    const size_t shmem3_size = shmem3->size;
+    const size_t bytes_used = (size_t)((uintptr_t)tma_get_curraddr(tma)
+                            - (uintptr_t)shmem3->data_address);
+    const float utilization = (bytes_used / (float)shmem3_size) * 100.0;
+
+    PMIX_GDS_SHMEM3_VOUT(
+        "%s memory statistics: "
+        "segment size=%zd, bytes used=%zd, utilization=%.2f %%",
+        smname, shmem3_size, bytes_used, utilization
+    );
+}
+
 static void
 emit_shmem3_usage_stats(
     pmix_gds_shmem3_job_t *job,
@@ -659,18 +680,10 @@ emit_shmem3_usage_stats(
         return;
     }
 
-    pmix_tma_t *tma = get_tma_by_shmem3_id(job, shmem3_id);
-    const char *smname = get_shmem3_id_name(shmem3_id);
-
-    const size_t shmem3_size = shmem3->size;
-    const size_t bytes_used = (size_t)((uintptr_t)tma_get_curraddr(tma)
-                            - (uintptr_t)shmem3->data_address);
-    const float utilization = (bytes_used / (float)shmem3_size) * 100.0;
-
-    PMIX_GDS_SHMEM3_VOUT(
-        "%s memory statistics: "
-        "segment size=%zd, bytes used=%zd, utilization=%.2f %%",
-        smname, shmem3_size, bytes_used, utilization
+    emit_segment_usage_stats(
+        shmem3,
+        get_tma_by_shmem3_id(job, shmem3_id),
+        get_shmem3_id_name(shmem3_id)
     );
 }
 
@@ -698,10 +711,12 @@ job_destruct(
     PMIX_LIST_DESTRUCT(&job->modex_prior);
     PMIX_LIST_DESTRUCT(&job->tombstones);
 
+    /* The session's segment is deliberately not in here: it belongs to
+     * the session object, which more than one job may hold, and is given
+     * back by session_destruct() when the last of them lets go. */
     static const pmix_gds_shmem3_job_shmem3_id_t shmem3_ids[] = {
         PMIX_GDS_SHMEM3_JOB_ID,
         PMIX_GDS_SHMEM3_MODEX_ID,
-        PMIX_GDS_SHMEM3_SESSION_ID,
         PMIX_GDS_SHMEM3_INVALID_ID
     };
     for (int i = 0; shmem3_ids[i] != PMIX_GDS_SHMEM3_INVALID_ID; ++i) {
@@ -710,11 +725,11 @@ job_destruct(
         pmix_shmem_t *shmem3;
         rc = pmix_gds_shmem3_get_job_shmem3_by_id(job, sid, &shmem3);
         if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
-            /* Only one id can fail here - SESSION, on a job whose
-             * construction did not get as far as its session object.
-             * Skip that segment; returning abandoned the rest of the
-             * teardown, which is where the arena reservation and the
-             * session reference are given back. */
+            /* Neither of the two ids above can fail this lookup - both
+             * handles are allocated by job_construct(). Checked anyway,
+             * and skipped rather than returned on, because abandoning
+             * the loop would also abandon the arena reservation and the
+             * session reference given back below. */
             PMIX_ERROR_LOG(rc);
             continue;
         }
@@ -734,10 +749,11 @@ job_destruct(
 
     /* The arena goes last: releasing it unmaps everything inside it, so
      * every segment that was carved from it has to have let go first.
-     * The session segment is deliberately NOT in there - a session
-     * outlives the job that first described it, and unmapping a shared
-     * session's segment along with this job's arena would pull it out
-     * from under whoever still holds a reference. */
+     * The session segment is never carved from it - see the refusal in
+     * shmem3_segment_create_and_attach() - because a session outlives
+     * the job that first described it, and unmapping a shared session's
+     * segment along with this job's arena would pull it out from under
+     * whoever still holds a reference. */
     if (0 != job->arena_size) {
         pmix_vmem_release(job->arena_base, job->arena_size);
         job->arena_base = 0;
@@ -989,8 +1005,26 @@ static void
 session_destruct(
     pmix_gds_shmem3_session_t *s
 ) {
-    // job_destruct took care of our shmem3.
-    s->shmem3 = NULL;
+    /* The segment is the session's own. This used to be job_destruct()'s
+     * job, which works only while every session has exactly one job: the
+     * first job to be destructed would unmap the segment and free the
+     * handle while every other holder's reference still said the object
+     * - and the smdata pointing into that mapping - was alive. A
+     * reference counts the object; only releasing here makes it count
+     * the mapping too. */
+    if (NULL != s->shmem3) {
+        if (NULL != s->smdata && (s->shmem3_status & PMIX_GDS_SHMEM3_MINE)) {
+            // Emit usage status before we destroy the segment.
+            emit_segment_usage_stats(
+                s->shmem3, &s->smdata->tma,
+                get_shmem3_id_name(PMIX_GDS_SHMEM3_SESSION_ID)
+            );
+            // Points to a pmix_gds_shmem3_alloc_ctx_t.
+            PMIX_RELEASE(s->smdata->tma.data_context);
+        }
+        PMIX_RELEASE(s->shmem3);
+        s->shmem3 = NULL;
+    }
     // Invalidate the shmem3 flags.
     s->shmem3_status = 0;
     s->smdata = NULL;
@@ -1856,10 +1890,29 @@ shmem3_segment_create_and_attach(
         real_segsize
     );
     uintptr_t arena_addr = 0;
-    const bool from_arena =
-        (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id)
-            ? arena_alloc_modex(job, mapped_size, &arena_addr)
-            : arena_alloc_static(job, mapped_size, &arena_addr);
+    bool from_arena;
+    switch (shmem3_id) {
+        case PMIX_GDS_SHMEM3_SESSION_ID:
+            /* Never out of this job's arena. The session's segment is
+             * released with the session object, which can outlive this
+             * job and be held by other jobs, while job_destruct() unmaps
+             * the arena wholesale - so a session placed inside it would
+             * go away under a live holder.
+             *
+             * This is stated rather than left to fall out. The static
+             * region is currently sized for exactly one segment and the
+             * job's own fills it, so the request below would fail today
+             * regardless; that is arithmetic, not a guarantee, and the
+             * teardown depends on the guarantee. */
+            from_arena = false;
+            break;
+        case PMIX_GDS_SHMEM3_MODEX_ID:
+            from_arena = arena_alloc_modex(job, mapped_size, &arena_addr);
+            break;
+        default:
+            from_arena = arena_alloc_static(job, mapped_size, &arena_addr);
+            break;
+    }
 
     if (from_arena) {
         PMIX_GDS_SHMEM3_VOUT(
