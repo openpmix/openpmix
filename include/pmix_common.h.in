@@ -1082,8 +1082,12 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_REGISTER_CLEANUP_DIR           "pmix.reg.cleanupdir"   // (char*) comma-delimited list of directories to
                                                                     //         be removed upon process termination
 #define PMIX_CLEANUP_RECURSIVE              "pmix.clnup.recurse"    // (bool) recursively cleanup all subdirectories under the
-                                                                    //        specified one(s)
-#define PMIX_CLEANUP_EMPTY                  "pmix.clnup.empty"      // (bool) only remove empty subdirectories
+                                                                    //        specified one(s) - i.e., remove all files and then
+                                                                    //        the directories that contained them. Mutually
+                                                                    //        exclusive with PMIX_CLEANUP_EMPTY
+#define PMIX_CLEANUP_EMPTY                  "pmix.clnup.empty"      // (bool) remove all empty directories under the specified
+                                                                    //        one(s), leaving every file in place. Mutually
+                                                                    //        exclusive with PMIX_CLEANUP_RECURSIVE
 #define PMIX_CLEANUP_IGNORE                 "pmix.clnup.ignore"     // (char*) comma-delimited list of filenames that are not
                                                                     //         to be removed
 #define PMIX_CLEANUP_LEAVE_TOPDIR           "pmix.clnup.lvtop"      // (bool) when recursively cleaning subdirs, do not remove

@@ -531,7 +531,6 @@ static pmix_status_t epi_cache_dirs(pmix_list_t *list, const char *paths)
     return PMIX_SUCCESS;
 }
 
-
 pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                                    pmix_info_cbfunc_t cbfunc,
                                    void *cbdata)
@@ -543,7 +542,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_peer_t *pr;
     pmix_proc_t proc;
     size_t n;
-    bool recurse = false, leave_topdir = false;
+    bool recurse = false, empty = false, leave_topdir = false;
     pmix_list_t cachedirs, cachefiles, ignorefiles, epicache, upgrades;
     pmix_srvr_epi_caddy_t *epicd = NULL;
     pmix_srvr_epi_upgrade_t *upg;
@@ -751,6 +750,14 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_CLEANUP_RECURSIVE)) {
             recurse = PMIX_INFO_TRUE(&cd->info[n]);
             ++cnt;
+        } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_CLEANUP_EMPTY)) {
+            /* counted like the rest of the family: the count is what
+             * decides whether this is a request we answer ourselves, and
+             * leaving this key out of it sent a request carrying nothing
+             * but cleanup directives up to the host as well, to be
+             * registered a second time */
+            empty = PMIX_INFO_TRUE(&cd->info[n]);
+            ++cnt;
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_CLEANUP_IGNORE)) {
             if (PMIX_STRING != cd->info[n].value.type || NULL == cd->info[n].value.data.string) {
                 /* return an error */
@@ -781,6 +788,18 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
          * believes untouched becomes recursive, and deletes a subtree at
          * termination. The allocation arms had the same shape. So: build
          * everything first, and commit only once nothing can fail. */
+
+        /* PMIX_CLEANUP_RECURSIVE and PMIX_CLEANUP_EMPTY are mutually
+         * exclusive: the first removes every file and then the
+         * directories that held them, the second removes only the
+         * directories that are already empty and leaves every file
+         * alone. A request asking for both has not said what it wants,
+         * and guessing either way destroys or spares data the client did
+         * not ask us to destroy or spare */
+        if (recurse && empty) {
+            rc = PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES;
+            goto exit;
+        }
 
         /* the ignores, which are what the two loops below conflict
          * against - a directive naming a path this request is also asking
@@ -833,6 +852,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                      * registered for cleanup, so the question of whether
                      * it may be has been answered */
                     if ((!cdir2->recurse && recurse) ||
+                        (!cdir2->empty && empty && !cdir2->recurse) ||
                         (!cdir2->leave_topdir && leave_topdir)) {
                         upg = PMIX_NEW(pmix_srvr_epi_upgrade_t);
                         if (NULL == upg) {
@@ -864,6 +884,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                     goto exit;
                 }
                 cdirptr->recurse = recurse;
+                cdirptr->empty = empty;
                 cdirptr->leave_topdir = leave_topdir;
                 pmix_list_append(&epicd->newdirs, &cdirptr->super);
             }
@@ -896,7 +917,15 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
          * request either applied or not applied */
         PMIX_LIST_FOREACH (upg, &upgrades, pmix_srvr_epi_upgrade_t) {
             if (recurse) {
+                /* the two modes cannot both be set on an entry, and
+                 * recursive is the more permissive of them - it removes
+                 * everything the empty mode would have and the files as
+                 * well - so it is the one the precedence rule keeps */
                 upg->dir->recurse = true;
+                upg->dir->empty = false;
+            }
+            if (empty && !upg->dir->recurse) {
+                upg->dir->empty = true;
             }
             if (leave_topdir) {
                 upg->dir->leave_topdir = true;
