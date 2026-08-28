@@ -229,7 +229,27 @@ int pmix_pfexec_register(void)
  */
 int pmix_pfexec_base_open(void)
 {
-    memset(&pmix_pfexec_globals, 0, sizeof(pmix_pfexec_globals_t));
+    /* Do NOT clear this struct wholesale. pmix_pfexec_register() has
+     * already run - it is called from pmix_register_params(), inside
+     * pmix_rte_init(), because only a launcher opens this framework and
+     * registering from here left the parameters with no registrar at all
+     * - so the MCA-supplied values are already sitting in these fields by
+     * the time we get here. A memset over the struct threw all three of
+     * them away a few hundred microseconds after they arrived:
+     * timeout_before_sigkill went back to 0, costing the kill sequence
+     * the SIGTERM grace period it exists to give, and poll_interval /
+     * poll_max_interval went to 0, which pfexec_poll_arm() then repaired
+     * to the compile-time floor - so the reaping poll ran at a fixed
+     * 50 ms with no backoff and both parameters were inert.
+     *
+     * Initialize the fields this call actually owns instead. The three
+     * poll-state fields belong here rather than to the parameters, and
+     * pmix_pfexec_base_close() has already cleared them if we are being
+     * re-opened. */
+    pmix_pfexec_globals.poll_ev = NULL;
+    pmix_pfexec_globals.poll_active = false;
+    pmix_pfexec_globals.poll_delay = 0;
+    pmix_pfexec_globals.selected = false;
 
     /* setup the list of children */
     PMIX_CONSTRUCT(&pmix_pfexec_globals.children, pmix_list_t);
@@ -343,7 +363,16 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
     /* add the nspace to the server global list */
     nptr = PMIX_NEW(pmix_namespace_t);
+    if (NULL == nptr) {
+        rc = PMIX_ERR_NOMEM;
+        goto complete;
+    }
     nptr->nspace = strdup(nspace);
+    if (NULL == nptr->nspace) {
+        PMIX_RELEASE(nptr);
+        rc = PMIX_ERR_NOMEM;
+        goto complete;
+    }
     pmix_list_append(&pmix_globals.nspaces, &nptr->super);
 
     /* locally cache any job info that will later need to
@@ -429,6 +458,10 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
         for (n = 0; n < app->maxprocs; n++) {
             /* create a tracker for this child */
             child = PMIX_NEW(pmix_pfexec_child_t);
+            if (NULL == child) {
+                rc = PMIX_ERR_NOMEM;
+                goto complete;
+            }
             PMIX_LOAD_PROCID(&child->proc, nspace, rank);
             ++rank;
             pmix_list_append(&pmix_pfexec_globals.children, &child->super);
@@ -456,6 +489,12 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                 goto complete;
             }
             info->pname.nspace = strdup(child->proc.nspace);
+            if (NULL == info->pname.nspace) {
+                PMIX_RELEASE(info);
+                rc = PMIX_ERR_NOMEM;
+                child_delist(child);
+                goto complete;
+            }
             info->pname.rank = child->proc.rank;
             info->uid = pmix_globals.uid;
             info->gid = pmix_globals.gid;
@@ -463,6 +502,11 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
             /* setup the environment */
             env = PMIx_Argv_copy(app->env);
+            if (NULL == env && NULL != app->env) {
+                rc = PMIX_ERR_NOMEM;
+                child_delist(child);
+                goto complete;
+            }
 
             /* we only support the start of tools and servers, not apps,
              * so we don't register this nspace or child. However, we do
@@ -582,13 +626,13 @@ static pmix_status_t sigproc(pid_t pd, int signum)
     if (0 != kill(pid, signum)) {
         if (ESRCH != errno) {
             pmix_output_verbose(2, pmix_client_globals.spawn_output,
-                                 "%s pfexec:linux:SENT SIGNAL %d TO PID %d GOT ERRNO %d",
+                                 "%s pfexec: sent signal %d to pid %d, got errno %d",
                                  PMIX_NAME_PRINT(&pmix_globals.myid), signum, (int) pid, errno);
             return errno;
         }
     }
     pmix_output_verbose(2, pmix_client_globals.spawn_output,
-                         "%s pfexec:linux:SENT SIGNAL %d TO PID %d SUCCESS",
+                         "%s pfexec: sent signal %d to pid %d - success",
                          PMIX_NAME_PRINT(&pmix_globals.myid), signum, (int) pid);
     return 0;
 }
@@ -916,6 +960,10 @@ static pmix_status_t register_nspace(char *nspace, pmix_setup_caddy_t *fcd)
             return PMIX_ERR_NOMEM;
         }
         nptr->nspace = strdup(nspace);
+        if (NULL == nptr->nspace) {
+            PMIX_RELEASE(nptr);
+            return PMIX_ERR_NOMEM;
+        }
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
     nptr->nlocalprocs = nprocs;
@@ -1025,9 +1073,18 @@ static pmix_status_t register_nspace(char *nspace, pmix_setup_caddy_t *fcd)
         }
     }
 
-    /* convert the full list of job info into an array */
+    /* convert the full list of job info into an array. Everything the
+     * spawned job is ever told is in here, so a conversion that failed
+     * must not be passed off as a registration: PMIx_Info_list_convert
+     * leaves the array empty rather than untouched, so continuing would
+     * quietly register a namespace with no job info at all */
     PMIX_INFO_LIST_CONVERT(rc, jinfo, &darray);
     PMIX_INFO_LIST_RELEASE(jinfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        return rc;
+    }
 
     info = (pmix_info_t *) darray.array;
     ninfo = darray.size;
@@ -1046,10 +1103,17 @@ static pmix_status_t register_nspace(char *nspace, pmix_setup_caddy_t *fcd)
     return rc;
 }
 
-static void set_handler_linux(int sig)
+static void set_handler_default(int sig)
 {
     struct sigaction act;
 
+    /* struct sigaction carries members beyond the three set below on
+     * several platforms (sa_restorer on Linux, sa_sigaction where it is
+     * not a union with sa_handler), and this is handed to the kernel -
+     * so start from a defined state rather than from whatever is on the
+     * stack. It is also called from the post-fork window, where
+     * memset/sigemptyset/sigaction are all async-signal-safe. */
+    memset(&act, 0, sizeof(act));
     act.sa_handler = SIG_DFL;
     act.sa_flags = 0;
     sigemptyset(&act.sa_mask);
@@ -1087,6 +1151,17 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
     int errval;
     sigset_t sigs;
     long fd, fdmax = sysconf(_SC_OPEN_MAX);
+
+    /* sysconf answers -1 for a limit it cannot determine - which is what
+     * an unlimited RLIMIT_NOFILE produces - and that would make the
+     * close loop below run zero times, handing the exec'd child every
+     * descriptor this process holds: the server's listener, its
+     * connected peers, its session files. Fall back to a bound that at
+     * least covers the descriptors a PMIx server realistically has open
+     * rather than closing nothing at all. */
+    if (0 > fdmax) {
+        fdmax = 1024;
+    }
 
 #if HAVE_SETPGID
     /* Set a new process group for this child, so that any
@@ -1133,11 +1208,11 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
        reset via fork() or exec().  Hence, the launched process
        could be unkillable (for example). */
 
-    set_handler_linux(SIGTERM);
-    set_handler_linux(SIGINT);
-    set_handler_linux(SIGHUP);
-    set_handler_linux(SIGPIPE);
-    set_handler_linux(SIGCHLD);
+    set_handler_default(SIGTERM);
+    set_handler_default(SIGINT);
+    set_handler_default(SIGHUP);
+    set_handler_default(SIGPIPE);
+    set_handler_default(SIGCHLD);
 
     /* Unblock all signals, for many of the same reasons that we
        set the default handlers, above.  This is noticeable on

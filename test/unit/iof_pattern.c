@@ -188,6 +188,37 @@ int main(int argc, char **argv)
         free(result);
     }
 
+    /* The width %R is padded to comes from the job size, and it is the
+     * LAST rank that sets it - ranks run 0..nprocs-1. Measuring the count
+     * instead was right everywhere except at an exact power of ten, where
+     * it padded one digit too wide: a 10-rank job wrote rank.00..rank.09.
+     * The boundaries on both sides of each power of ten are what pin it. */
+    {
+        struct {
+            pmix_rank_t nprocs;
+            int digits;
+        } widths[] = {
+            {0, 1},    /* no ranks at all - still a usable width */
+            {1, 1},    /* rank 0 */
+            {9, 1},    /* ranks 0-8 */
+            {10, 1},   /* ranks 0-9   - the power-of-ten case */
+            {11, 2},   /* ranks 0-10 */
+            {99, 2},
+            {100, 2},  /* ranks 0-99  - and again */
+            {101, 3},
+            {1000, 3}, /* ranks 0-999 - and again */
+            {1001, 4}
+        };
+        size_t w;
+        char label[128];
+
+        for (w = 0; w < sizeof(widths) / sizeof(widths[0]); w++) {
+            snprintf(label, sizeof(label), "%u ranks pad to %d digit(s)",
+                     (unsigned) widths[w].nprocs, widths[w].digits);
+            report(label, widths[w].digits == pmix_iof_rank_digits(widths[w].nprocs));
+        }
+    }
+
     free(pmix_globals.hostname);
     pmix_globals.hostname = NULL;
 

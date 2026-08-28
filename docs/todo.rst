@@ -399,15 +399,14 @@ Figures are against the commit that recorded each review, measured
 2026-08-26 and ``src/hwloc`` until 2026-08-27; the per-file re-reviews
 closed both.
 
-#. ``src/common`` — reviewed 2026-08-02, and no longer the modest churn
-   it was listed as.  ``pmix_iof.c`` has 1215 changed lines since: the
-   tool being given the library's stdin forwarding instead of its own,
-   the hold on a spawned job's early output, and the SIGCONT handler
-   that moved here out of ``src/tool``.  ``pmix_pfexec.c`` has 335, most
-   recently the removal of the library's signal traps and the per-holder
-   reference on a pfexec child.  The other fifteen files are close to
-   what the review read, so a re-review is really a re-review of those
-   two.
+#. ``src/common`` — reviewed 2026-08-02.  The two files that had moved
+   furthest since, ``pmix_iof.c`` (1215 changed lines: the tool being
+   given the library's stdin forwarding instead of its own, the hold on a
+   spawned job's early output, and the SIGCONT handler that moved here
+   out of ``src/tool``) and ``pmix_pfexec.c`` (335, most recently the
+   removal of the library's signal traps and the per-holder reference on
+   a pfexec child), were **re-reviewed on 2026-08-27**.  The other
+   fifteen files are close to what the 2026-08-02 review read.
 
 Lower priority, with current guides and churn that is mostly the reviews'
 own work coming back through: ``src/event`` (+414/-29 since 2026-08-01,
@@ -588,6 +587,25 @@ one setting or two.
 
 The ``ompi`` component's guide records the precedence as it stands.
 
+A blocking ``PMIx_IOF_pull`` hands back no handle
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found re-reviewing ``src/common/pmix_iof.c`` (2026-08-27).
+
+``PMIx_IOF_pull``'s registration id reaches the caller through
+``regcbfunc``, and passing a NULL ``regcbfunc`` is what selects the
+*blocking* form.  So a caller who registers synchronously is never told
+the id, and ``PMIx_IOF_deregister``, whose first parameter is that id,
+can never be called for it.  The registration lives in
+``pmix_globals.iof_requests`` for the life of the process.
+
+Closing it means either adding an ``OUT`` parameter to a released API —
+which the backward-compatibility rules forbid outright — or defining an
+attribute that carries the id back in the caller's ``directives`` array,
+which is the mechanism the Standard prefers but which is a Standard
+change, not a library one.  Recorded rather than repaired for that
+reason.
+
 Deferred work
 -------------
 
@@ -613,6 +631,44 @@ cover the whole of what the entry described.
   ``refcb()`` entry in ``src/client/AGENTS.md`` for why all-or-nothing is
   the only answer an application can act on.  Recorded here because it is
   the one behavior change in that group of fixes.
+
+A write event's libevent record is allocated where failure cannot be reported
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found re-reviewing ``src/common/pmix_iof.c`` (2026-08-27).
+
+``pmix_iof_write_event_t.ev`` is a ``pmix_event_t *`` that
+``iof_write_event_construct()`` ``malloc``\ s.  A PMIx class constructor
+returns ``void``, so an allocation failure there is invisible to
+``PMIX_NEW``'s caller, and the NULL then reached ``pmix_event_set()``.
+``PMIX_IOF_SINK_DEFINE`` and ``PMIX_IOF_SINK_ACTIVATE`` now screen it, so
+the failure degrades to output that is queued and never written rather
+than to a segfault in libevent.
+
+The real fix is to embed the event by value, as ``pmix_iof_read_event_t``
+already does, which removes the allocation and the ``free`` with it.
+That changes the layout of a type declared in an installed header and
+touches every user of the two macros — ``pmix_pfexec.c``, the server,
+the client and the tool — so it is a change of its own, not a review
+tidy-up.
+
+``sigproc()`` returns a raw ``errno`` into a ``pmix_status_t``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found re-reviewing ``src/common/pmix_pfexec.c`` (2026-08-27).
+
+``sigproc()`` answers ``0`` or the ``errno`` from a failed ``kill(2)``,
+and both ``kill_stage2``/``kill_stage3`` and
+``pmix_pfexec_base_signal_proc`` store that straight into
+``scd->lock->status``.  PMIx statuses are negative; an ``EPERM`` arrives
+at a caller as the positive value ``1``, which is neither
+``PMIX_SUCCESS`` nor any defined error.
+
+It is recorded rather than fixed because **nothing reads it**.  The one
+caller of ``PMIX_PFEXEC_KILL`` (``PMIx_tool_finalize``) waits on the lock
+and discards ``lock.status``, and ``PMIX_PFEXEC_SIGNAL`` has no caller at
+all.  Convert it at the same time as the first consumer appears, so that
+the conversion and a test for it land together.
 
 ``PMIX_GET_POINTER_VALUES`` is honored by three shortcuts and nothing else
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
