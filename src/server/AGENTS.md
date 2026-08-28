@@ -2918,11 +2918,20 @@ misbehave by design).
   list that lives as long as the namespace or peer and that
   `dirpath_destroy` walks once per file; and an ignore naming a path
   already registered for cleanup was dropped, so the epilog deleted a
-  file the client had asked it to leave alone. Note that `ignores` is
-  read *only* by `dirpath_destroy` (`src/include/pmix_globals.c`), which
-  consults it for the directory itself and again for each file inside
-  it — so an entry there is meaningful whether or not the same path is
-  also on `cleanup_files`.
+  file the client had asked it to leave alone.
+
+  Recording the ignore was only half of that, and the other half was in
+  `pmix_execute_epilog` (`src/include/pmix_globals.c`). `ignores` was
+  consulted *only* by `dirpath_destroy`, for the directory it is
+  descending and for each file inside it; the `cleanup_files` loop
+  unlinked every path on its list without asking. So the ignore that now
+  gets recorded still had no effect on the case it was written for, and
+  the file was deleted anyway. Both readers go through
+  `epilog_ignored()` now. Which list wins is settled by the handler
+  refusing the opposite order with
+  `PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES`: the two lists are meant to
+  be exclusive, an ignore arriving second is the one way a path reaches
+  both, and the ignore is what the client asked for last.
 - **A job-control cleanup request is staged and then committed, and it
   has to stay that way.** The three epilog lists outlive the request —
   they live as long as the namespace or the peer — and nothing gives a
@@ -2946,7 +2955,27 @@ misbehave by design).
   on the epilog is *never* conflict-checked, because the question of
   whether that path may be registered for cleanup was answered when it
   was registered.
-
+- **A comma-delimited path list is expanded at registration, and must
+  not be expanded anywhere else.** `PMIX_REGISTER_CLEANUP`,
+  `PMIX_REGISTER_CLEANUP_DIR` and `PMIX_CLEANUP_IGNORE` are all
+  documented as comma-delimited lists, and the expansion used to happen
+  only in `pmix_execute_epilog` — so every comparison in between was
+  made against the unexpanded string, and three separate things silently
+  stopped working for a list of more than one path. `dirpath_destroy`
+  strcmp's an ignore against a filename it has just constructed, so an
+  ignore of `"/a,/b"` protected neither; it decides
+  `PMIX_CLEANUP_LEAVE_TOPDIR` by comparing the directory it is
+  descending against `cd->path`, which a list never equals, so the flag
+  was dropped; and neither the duplicate scan nor the conflict scan in
+  `pmix_server_job_ctrl` could see the paths inside one. A value naming
+  no path at all — `","` — was worse than any of them: `PMIx_Argv_split`
+  returns **NULL** rather than an empty array for a string with no
+  tokens, and the epilog indexed it, so a client could take the server
+  down at job termination with one directive. `epi_cache_files` /
+  `epi_cache_dirs` expand at registration and refuse a value that names
+  nothing; `pmix_server_job_ctrl` is the only thing in the tree that
+  builds an epilog entry, so after that no entry carries a comma and the
+  epilog has nothing left to split.
 - **Two things in `pmix_server_get.c` look like defects and are not.**
   `get_job_data` returns `PMIX_SUCCESS` with an empty buffer when the
   fetch finds nothing, and its callers pass that empty payload to the

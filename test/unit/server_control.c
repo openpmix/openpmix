@@ -113,6 +113,20 @@
  *      All three cases fail, rather than crash, against an unfixed
  *      library.
  *
+ *   job control: a comma-delimited path list, and what the epilog does
+ *      The three path attributes are documented as comma-delimited
+ *      lists, and the expansion used to happen only in
+ *      pmix_execute_epilog - so an ignore of "/a,/b" matched no filename
+ *      the epilog ever constructed, and a value of "," reached the
+ *      epilog as an entry whose own split returns NULL and was then
+ *      indexed. The last case here is the one the ignore list exists
+ *      for: real files on disk, one registered for cleanup and then
+ *      ignored, which the epilog deleted anyway because its
+ *      cleanup_files loop never consulted the ignores at all. These
+ *      cases fail rather than crash - the "," case drains the entry it
+ *      registered so that it reports as a failure instead of taking the
+ *      epilog below it down.
+ *
  */
 
 #include "src/include/pmix_config.h"
@@ -689,6 +703,29 @@ static size_t count_epilog_ignores(void)
     return n;
 }
 
+/* How many entries sit on our own namespace's epilog cleanup-file list. */
+static size_t count_epilog_files(void)
+{
+    pmix_epilog_t *epi = &pmix_globals.mypeer->nptr->epilog;
+    pmix_cleanup_file_t *cf;
+    size_t n = 0;
+
+    PMIX_LIST_FOREACH (cf, &epi->cleanup_files, pmix_cleanup_file_t) {
+        ++n;
+    }
+    return n;
+}
+
+static void drain_epilog_files(void)
+{
+    pmix_epilog_t *epi = &pmix_globals.mypeer->nptr->epilog;
+    pmix_list_item_t *item;
+
+    while (NULL != (item = pmix_list_remove_first(&epi->cleanup_files))) {
+        PMIX_RELEASE(item);
+    }
+}
+
 static void drain_epilog_ignores(void)
 {
     pmix_epilog_t *epi = &pmix_globals.mypeer->nptr->epilog;
@@ -832,6 +869,7 @@ int main(int argc, char **argv)
     static pmix_server_module_t mymodule = {0};
     pmix_status_t rc;
     pmix_info_t data, dirs[1], jc[2];
+    char cleanupval[600];
     pmix_cleanup_dir_t *cd;
     size_t ndirs;
     bool flag = true;
@@ -1183,6 +1221,91 @@ int main(int argc, char **argv)
 
         drain_epilog_dirs();
         drain_epilog_ignores();
+    }
+    /* --- the epilog must honor an ignore, and a comma-delimited list --- */
+    {
+        char tdir[] = "/tmp/pmix-ctlut-XXXXXX";
+        char *base, pgone[256], pkeep[256];
+        pmix_info_t at[2];
+        FILE *fp;
+        size_t nign;
+
+        drain_epilog_ignores();
+        drain_epilog_dirs();
+        drain_epilog_files();
+
+        /* PMIX_CLEANUP_IGNORE is documented as a comma-delimited list,
+         * and the expansion used to happen only inside the epilog - which
+         * compares an ignore against a filename it has constructed, so a
+         * list of more than one path matched nothing at all */
+        PMIX_INFO_LOAD(&at[0], PMIX_CLEANUP_IGNORE,
+                       CTLUT_DIR "/one," CTLUT_DIR "/two", PMIX_STRING);
+        rc = do_job_ctrl(at, 1);
+        report("a comma-delimited ignore is accepted", PMIX_OPERATION_SUCCEEDED == rc);
+        nign = count_epilog_ignores();
+        report("a comma-delimited ignore registers one entry per path", 2 == nign);
+        PMIX_INFO_DESTRUCT(&at[0]);
+        drain_epilog_ignores();
+
+        /* a value naming no path at all reached the epilog as an entry
+         * whose own split returned NULL and was then indexed */
+        PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP, ",", PMIX_STRING);
+        rc = do_job_ctrl(at, 1);
+        report("a cleanup value naming no path is refused", PMIX_ERR_BAD_PARAM == rc);
+        report("a cleanup value naming no path registered nothing",
+               0 == count_epilog_files());
+        PMIX_INFO_DESTRUCT(&at[0]);
+        /* an unfixed library accepted it, and the entry it left behind
+         * takes the epilog below down with a NULL dereference. Drain it
+         * so this case reports as a failure rather than a signal */
+        drain_epilog_files();
+
+        /* and the whole point of an ignore: the epilog must not delete
+         * the file. The ignores list was consulted only for the contents
+         * of a cleanup *directory* - the cleanup_files loop unlinked
+         * every path on it unconditionally, so an ignore naming a path
+         * already registered for cleanup was recorded and then ignored */
+        base = mkdtemp(tdir);
+        if (NULL == base) {
+            report("made a scratch directory for the epilog case", false);
+        } else {
+            snprintf(pgone, sizeof(pgone), "%s/gone", base);
+            snprintf(pkeep, sizeof(pkeep), "%s/keep", base);
+            fp = fopen(pgone, "w");
+            if (NULL != fp) {
+                fclose(fp);
+            }
+            fp = fopen(pkeep, "w");
+            if (NULL != fp) {
+                fclose(fp);
+            }
+            report("scratch files created",
+                   0 == access(pgone, F_OK) && 0 == access(pkeep, F_OK));
+
+            snprintf(cleanupval, sizeof(cleanupval), "%s,%s", pgone, pkeep);
+            PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP, cleanupval, PMIX_STRING);
+            rc = do_job_ctrl(at, 1);
+            report("both scratch files registered for cleanup",
+                   PMIX_OPERATION_SUCCEEDED == rc && 2 == count_epilog_files());
+            PMIX_INFO_DESTRUCT(&at[0]);
+
+            PMIX_INFO_LOAD(&at[0], PMIX_CLEANUP_IGNORE, pkeep, PMIX_STRING);
+            rc = do_job_ctrl(at, 1);
+            report("ignore of one of them accepted", PMIX_OPERATION_SUCCEEDED == rc);
+            PMIX_INFO_DESTRUCT(&at[0]);
+
+            pmix_execute_epilog(&pmix_globals.mypeer->nptr->epilog);
+            report("the epilog removed the file it was asked to remove",
+                   0 != access(pgone, F_OK));
+            report("the epilog kept the file it was asked to ignore",
+                   0 == access(pkeep, F_OK));
+
+            unlink(pgone);
+            unlink(pkeep);
+            rmdir(base);
+        }
+        drain_epilog_ignores();
+        drain_epilog_files();
     }
 
     /* --- a target count larger than the packed array ------------------ */
