@@ -230,6 +230,7 @@ int pmix_init_util(pmix_info_t info[], size_t ninfo, char *libdir)
 int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfunc_t cbfunc)
 {
     int ret, debug_level;
+    pmix_status_t kirc;
     char *error = NULL, *evar;
     size_t n, m;
     char hostname[PMIX_MAXHOSTNAMELEN] = {0};
@@ -382,6 +383,11 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
                           pmix_globals.event_eviction_time, _notification_eviction_cbfunc);
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_keyindex_t);
+    /* A keyindex is constructed empty; this is what builds it. The
+     * process-global one holds the reserved dictionary plus whatever the
+     * process registers afterwards, and lives on the ordinary heap, so
+     * exceeding this costs a rehash and nothing more. */
+    kirc = pmix_keyindex_init(&pmix_globals.keyindex, PMIX_KEYINDEX_GLOBAL_SIZE);
     // construct client globals structures
     PMIX_CONSTRUCT(&pmix_client_globals.groups, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.iof_stdout, pmix_iof_sink_t);
@@ -392,6 +398,11 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
      * correctly finalize */
     if (PMIX_SUCCESS != ret) {
         error = "notification hotel init";
+        goto return_error;
+    }
+    if (PMIX_SUCCESS != kirc) {
+        error = "keyindex init";
+        ret = kirc;
         goto return_error;
     }
 

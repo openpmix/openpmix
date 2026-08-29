@@ -47,7 +47,7 @@ PMIX_EXPORT size_t pmix_hash_sizeof_proc_storage(void);
 
 /* Bytes registering one previously unseen key adds to a key index: the
  * attribute record, the three copies made of the key string, and the
- * description vector. Pair with pmix_keyindex_sizeof_fixed_storage() for
+ * description vector. Pair with pmix_keyindex_sizeof_storage() for
  * the empty index itself. Reported rather than restated so a caller
  * reserving the space cannot drift from the code that spends it. */
 PMIX_EXPORT size_t pmix_hash_sizeof_key_entry(size_t keylen);
