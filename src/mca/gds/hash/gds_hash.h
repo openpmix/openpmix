@@ -50,21 +50,6 @@ typedef struct {
     uint32_t session;
     pmix_list_t sessioninfo;
     pmix_list_t nodeinfo;
-    /** Has this session's data been stored yet?
-     *
-     * A session's description belongs to the session, so the first
-     * source to give one wins - the host through
-     * PMIx_server_register_session, or the first job whose registration
-     * carried a PMIX_SESSION_INFO_ARRAY. Later sources are ignored
-     * rather than merged.
-     *
-     * This module could merge them; gds/shmem3 cannot, because its
-     * session data is in a segment local clients have mapped and a
-     * segment a client can see is never written again. Two components
-     * answering a host differently is worse than either answer, so both
-     * take the one that is available to both.
-     */
-    bool described;
 } pmix_session_t;
 PMIX_CLASS_DECLARATION(pmix_session_t);
 
