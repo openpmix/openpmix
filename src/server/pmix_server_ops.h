@@ -60,6 +60,7 @@ typedef struct {
     gid_t gid;
     void *server_object;
     int nlocalprocs;
+    uint32_t sessionid;
     pmix_info_t *info;
     size_t ninfo;
     pmix_resource_unit_t *units;

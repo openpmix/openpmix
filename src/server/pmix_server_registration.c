@@ -874,6 +874,184 @@ cleanup:
     PMIX_RELEASE(cd);
 }
 
+static void _register_session(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server _register_session %u",
+                        (unsigned) cd->sessionid);
+
+    /* Every active module is told, not the one some peer resolves to:
+     * which module will serve the jobs in this session is not known
+     * yet, and need not be the same for all of them. Same reasoning as
+     * PMIX_GDS_ADD_NSPACE. */
+    PMIX_GDS_ADD_SESSION(rc, cd->sessionid, cd->info, cd->ninfo);
+
+    if (NULL != cd->opcbfunc) {
+        cd->opcbfunc(rc, cd->cbdata);
+    }
+    PMIX_RELEASE(cd);
+}
+
+PMIX_EXPORT pmix_status_t PMIx_server_register_session(uint32_t sessionID,
+                                                       pmix_info_t info[], size_t ninfo,
+                                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_setup_caddy_t *cd;
+    pmix_lock_t mylock;
+    pmix_status_t rc;
+
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* UINT32_MAX is how the library spells "no session named" internally,
+     * so it cannot also be a session. Refuse it here rather than let it
+     * establish something no job can ever be matched against. */
+    if (UINT32_MAX == sessionID) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server register session %u", (unsigned) sessionID);
+
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->sessionid = sessionID;
+    /* pointers, not copies: the caller keeps these alive until the
+     * callback fires, which is the contract every PMIx API states */
+    cd->info = info;
+    cd->ninfo = ninfo;
+    cd->opcbfunc = cbfunc;
+    cd->cbdata = cbdata;
+
+    /* if the provided callback is NULL, then substitute
+     * our own internal cbfunc and block here */
+    if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_register_session")) {
+            /* We are ON the progress thread - the host called us from
+             * inside one of its own upcalls, so the loop that would run
+             * the event we are about to post is the one we are standing
+             * in. Complete asynchronously and report success: the
+             * session will be established exactly as it would have been,
+             * and every other PMIx operation is serialized through the
+             * same loop, so nothing can observe the difference. */
+            cd->opcbfunc = NULL;
+            PMIX_THREADSHIFT(cd, _register_session);
+            return PMIX_SUCCESS;
+        }
+        PMIX_CONSTRUCT_LOCK(&mylock);
+        cd->opcbfunc = pmix_server_lock_opcbfunc;
+        cd->cbdata = &mylock;
+        PMIX_THREADSHIFT(cd, _register_session);
+        PMIX_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+        PMIX_DESTRUCT_LOCK(&mylock);
+        return rc;
+    }
+
+    /* we have to push this into our event library to avoid
+     * potential threading issues */
+    PMIX_THREADSHIFT(cd, _register_session);
+    return PMIX_SUCCESS;
+}
+
+static void _deregister_session(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server _deregister_session %u",
+                        (unsigned) cd->sessionid);
+
+    /* Only the session's own data. The jobs in it are deregistered by
+     * their own nspaces - a module that dropped them here would tear
+     * down namespaces the host still believes it has registered. */
+    PMIX_GDS_DEL_SESSION(rc, cd->sessionid);
+
+    if (NULL != cd->opcbfunc) {
+        cd->opcbfunc(rc, cd->cbdata);
+    }
+    PMIX_RELEASE(cd);
+}
+
+PMIX_EXPORT void PMIx_server_deregister_session(uint32_t sessionID,
+                                                pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_setup_caddy_t *cd;
+    pmix_lock_t mylock;
+
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERR_INIT, cbdata);
+        }
+        return;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        /* this API reports no status, so the callback is the only way to
+         * say so - see the matching comment in PMIx_server_deregister_nspace */
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERR_NOT_AVAILABLE, cbdata);
+        }
+        return;
+    }
+
+    if (UINT32_MAX == sessionID) {
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERR_BAD_PARAM, cbdata);
+        }
+        return;
+    }
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server deregister session %u", (unsigned) sessionID);
+
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_ERR_NOMEM, cbdata);
+        }
+        return;
+    }
+    cd->sessionid = sessionID;
+    cd->opcbfunc = cbfunc;
+    cd->cbdata = cbdata;
+
+    if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_deregister_session")) {
+            /* see the matching comment in PMIx_server_deregister_nspace */
+            cd->opcbfunc = NULL;
+            PMIX_THREADSHIFT(cd, _deregister_session);
+            return;
+        }
+        PMIX_CONSTRUCT_LOCK(&mylock);
+        cd->opcbfunc = pmix_server_lock_opcbfunc;
+        cd->cbdata = &mylock;
+        PMIX_THREADSHIFT(cd, _deregister_session);
+        PMIX_WAIT_THREAD(&mylock);
+        PMIX_DESTRUCT_LOCK(&mylock);
+        return;
+    }
+
+    PMIX_THREADSHIFT(cd, _deregister_session);
+}
+
 PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace, pmix_op_cbfunc_t cbfunc,
                                                void *cbdata)
 {

@@ -191,6 +191,26 @@ PMIX_EXPORT pmix_status_t pmix_gds_base_proc_array_id(const pmix_info_t *array, 
  *
  * @return whatever the module's fetch returned
  */
+/**
+ * Wrap a host's (sessionID, info[], ninfo) into the
+ * PMIX_SESSION_INFO_ARRAY-shaped value both components already know how
+ * to process - element zero is the session id, the rest is the host's
+ * array. Lets add_session reuse the session-array parsing that job
+ * registration has always gone through, rather than growing a second
+ * one beside it.
+ *
+ * The host's entries are shallow copies: the caller owns them, and the
+ * parsing this feeds copies whatever it keeps. So release the wrapper
+ * with pmix_gds_base_release_session_info() and NEVER with
+ * PMIX_DATA_ARRAY_FREE, which would free the caller's values.
+ */
+PMIX_EXPORT pmix_status_t pmix_gds_base_wrap_session_info(uint32_t sessionID,
+                                                          pmix_info_t info[], size_t ninfo,
+                                                          pmix_value_t *val);
+
+/** Release a wrapper built by pmix_gds_base_wrap_session_info(). */
+PMIX_EXPORT void pmix_gds_base_release_session_info(pmix_value_t *val);
+
 PMIX_EXPORT pmix_status_t pmix_gds_base_fetch_kv_tsafe(struct pmix_peer_t *peer, pmix_cb_t *cb);
 
 END_C_DECLS

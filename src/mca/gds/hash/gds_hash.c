@@ -77,6 +77,54 @@ static pmix_status_t setup_fork(const pmix_proc_t *peer, char ***env);
 static pmix_status_t nspace_add(const char *nspace, uint32_t nlocalprocs, pmix_info_t info[],
                                 size_t ninfo);
 
+static pmix_status_t session_add(uint32_t sessionID, pmix_info_t info[], size_t ninfo)
+{
+    pmix_value_t val;
+    pmix_status_t rc;
+
+    /* Establish the tracker even when the host described nothing. A
+     * session that exists and carries no attributes is still a session,
+     * and a job naming it later has to find this one rather than create
+     * a second - which is the whole difference between a session the
+     * host declared and one inferred from a job. */
+    if (NULL == pmix_gds_hash_check_session(NULL, sessionID, true)) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (0 == ninfo || NULL == info) {
+        return PMIX_SUCCESS;
+    }
+
+    rc = pmix_gds_base_wrap_session_info(sessionID, info, ninfo, &val);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    /* NULL tracker: this session is being described in its own right,
+     * not on behalf of some job that mentioned it */
+    rc = pmix_gds_hash_process_session_array(&val, NULL);
+    pmix_gds_base_release_session_info(&val);
+    return rc;
+}
+
+static pmix_status_t session_del(uint32_t sessionID)
+{
+    pmix_session_t *sptr;
+
+    PMIX_LIST_FOREACH (sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
+        if (sptr->session == sessionID) {
+            /* Drop the list's reference only. Jobs still registered in
+             * this session hold their own, so the object survives until
+             * they are deregistered - which is what lets a host end a
+             * session and tear its jobs down in either order. */
+            pmix_list_remove_item(&pmix_mca_gds_hash_component.mysessions, &sptr->super);
+            PMIX_RELEASE(sptr);
+            return PMIX_SUCCESS;
+        }
+    }
+    /* Not an error. A host deregisters a session across every daemon,
+     * and this one may have had no job in it. */
+    return PMIX_SUCCESS;
+}
+
 static pmix_status_t nspace_del(const char *nspace);
 
 static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc, pmix_list_t *kvs, pmix_buffer_t *bo,
@@ -105,6 +153,8 @@ pmix_gds_base_module_t pmix_hash_module = {
     .setup_fork = setup_fork,
     .add_nspace = nspace_add,
     .del_nspace = nspace_del,
+    .add_session = session_add,
+    .del_session = session_del,
     .assemb_kvs_req = assemb_kvs_req,
     .accept_kvs_resp = accept_kvs_resp,
     .fetch_arrays = pmix_gds_hash_fetch_arrays,

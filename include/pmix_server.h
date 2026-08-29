@@ -698,6 +698,50 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const pmix_nspace_t nspace
 PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace,
                                                pmix_op_cbfunc_t cbfunc, void *cbdata);
 
+/* Register a session with the PMIx server library, providing any
+ * information (e.g., the nodes and other resources assigned to it)
+ * the host RM wishes the library to hold for it.
+ *
+ * A session is a set of resources assigned by the WLM and reserved
+ * for one or more users; the jobs executed within it come and go
+ * while the session itself persists. Sessions were historically
+ * established only by inference - a PMIX_SESSION_INFO_ARRAY riding
+ * along inside the info passed to PMIx_server_register_nspace - which
+ * gave a session no existence apart from some job in it, and so no way
+ * to be described before its first job or to survive after its last.
+ * That inference is still honored: a job naming a session the library
+ * has not been told about establishes it. This call is how a host says
+ * so directly, and is required if the session is to outlive the jobs
+ * in it.
+ *
+ * Registering a session that is already known updates nothing and
+ * returns success - a session's description belongs to the session,
+ * and the library has already given it to every client that asked.
+ *
+ * Passing NULL as the cbfunc to this call indicates that it shall be
+ * treated as a blocking operation, with the return status indicative
+ * of the overall operation's completion. */
+PMIX_EXPORT pmix_status_t PMIx_server_register_session(uint32_t sessionID,
+                                                       pmix_info_t info[], size_t ninfo,
+                                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+/* Deregister a session and purge all objects relating to it. This is
+ * the session-level counterpart of PMIx_server_deregister_nspace, and
+ * exists for the same reason: to give the host RM a way to tell a
+ * persistent PMIx server library to release the memory held for a
+ * session that has ended.
+ *
+ * It has to be said rather than inferred. The library cannot conclude
+ * that a session is over when the last job in it is deregistered - a
+ * session with no jobs running is an ordinary state, and another job
+ * may be about to be launched into it.
+ *
+ * Jobs still registered in the session are not deregistered by this
+ * call; the session's own data is released, and the host is expected
+ * to have deregistered, or to go on to deregister, the nspaces in it. */
+PMIX_EXPORT void PMIx_server_deregister_session(uint32_t sessionID,
+                                                pmix_op_cbfunc_t cbfunc, void *cbdata);
+
 /* Register a client process with the PMIx server library. The
  * expected user ID and group ID of the child process helps the
  * server library to properly authenticate clients as they connect

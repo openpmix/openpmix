@@ -711,15 +711,21 @@ reach a job replaces that default.
 
 Three consequences worth knowing:
 
-- **The list holds sessions weakly.** Every counted reference belongs to
-  a job; `session_destruct()` unlinks the entry. So the segment is given
-  back when the last job in the session deregisters, which is what makes
-  it reclaimable in a DVM that outlives its allocations. A strong entry
-  would keep every session ever described mapped until the module
-  finalized, which for such a launcher means never. What it costs is that
-  a session does **not** currently outlive the last job in it. Giving it a
-  longer life needs a host-facing "this session is over" call, which the
-  framework does not have — see [`../AGENTS.md`](../AGENTS.md).
+- **The list holds a reference, and only `del_session()` gives it back.**
+  So a session outlives the jobs in it, which is the whole point of a
+  session: the segment is unmapped when the list's reference and every
+  job's have all been released. The library never infers the end from
+  the last job leaving — a session with no jobs running is an ordinary
+  state — so `PMIx_server_deregister_session` is what ends it. See
+  "Sessions are said, not inferred" in [`../AGENTS.md`](../AGENTS.md).
+- **A session can be described before any job exists in it.**
+  `add_session` may arrive when there is no segment to write into yet:
+  the segment is placed in, and named after, a job. So the description
+  is held on the tracker (`sinfo`, a deep copy — the host may release
+  its array once the callback returns) and written into the segment by
+  the first job in the session. `described` says which half has
+  happened, and is what keeps a host registration and a job's own
+  session array from both writing.
 - **First writer wins.** `store_session_array()` skips a session segment
   that is already `READY_FOR_USE`, because local clients have it mapped
   and a segment a client can see is never written again. Two jobs that

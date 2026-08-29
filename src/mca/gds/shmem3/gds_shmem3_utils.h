@@ -62,6 +62,17 @@ pmix_gds_shmem3_get_job_tracker(
     pmix_gds_shmem3_job_t **job
 );
 
+/**
+ * Find the shared tracker for a session id, optionally creating and
+ * registering one. No job required: a host may establish a session
+ * before any job is running in it.
+ */
+PMIX_EXPORT pmix_gds_shmem3_session_t *
+pmix_gds_shmem3_find_session(
+    uint32_t sid,
+    bool create
+);
+
 PMIX_EXPORT pmix_gds_shmem3_session_t *
 pmix_gds_shmem3_get_session_tracker(
     pmix_gds_shmem3_job_t *job,
