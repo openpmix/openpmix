@@ -67,6 +67,60 @@ pmix_gds_shmem3_get_job_tracker(
  * registering one. No job required: a host may establish a session
  * before any job is running in it.
  */
+/**
+ * Publish a segment at the head of a chain.
+ *
+ * The node must be COMPLETE before this is called - every field set,
+ * including ->prior, which this fills in from the current head. The
+ * release-store is what makes those writes visible to a reader that
+ * acquire-loads the head, and is the only moment the chain changes.
+ *
+ * Progress thread only. A chain has one publisher.
+ */
+static inline void
+pmix_gds_shmem3_chain_publish(
+    pmix_gds_shmem3_chain_t *chain,
+    pmix_gds_shmem3_seg_t *seg
+) {
+    seg->prior = atomic_load_explicit(chain, memory_order_relaxed);
+    atomic_store_explicit(chain, seg, memory_order_release);
+}
+
+/**
+ * Enter a chain at its newest segment.
+ *
+ * Pairs with the release-store above: everything written into the node
+ * before it was published is visible here. Follow ->prior from the
+ * result; those pointers are immutable, so the rest of the walk needs
+ * nothing further.
+ *
+ * Safe from any thread.
+ */
+static inline pmix_gds_shmem3_seg_t *
+pmix_gds_shmem3_chain_head(
+    const pmix_gds_shmem3_chain_t *chain
+) {
+    return atomic_load_explicit(chain, memory_order_acquire);
+}
+
+/**
+ * Tear a whole chain down, newest first.
+ *
+ * Only safe where no reader can be walking it - a job tracker's
+ * destructor, which runs when the last reference to it has gone.
+ */
+PMIX_EXPORT void
+pmix_gds_shmem3_chain_destruct(
+    pmix_gds_shmem3_chain_t *chain
+);
+
+/** Give one chain node and its segment back. Same restriction as
+ *  pmix_gds_shmem3_chain_destruct(): no reader may be walking it. */
+PMIX_EXPORT void
+pmix_gds_shmem3_seg_release(
+    pmix_gds_shmem3_seg_t *seg
+);
+
 PMIX_EXPORT pmix_gds_shmem3_session_t *
 pmix_gds_shmem3_find_session(
     uint32_t sid,

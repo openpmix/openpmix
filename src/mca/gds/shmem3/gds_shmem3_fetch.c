@@ -710,7 +710,7 @@ modex_fetch(
     size_t nqual,
     pmix_list_t *kvs
 ) {
-    pmix_gds_shmem3_modex_seg_t *seg;
+    pmix_gds_shmem3_seg_t *seg;
     pmix_status_t rc = PMIX_ERR_NOT_FOUND;
     pmix_status_t r2;
     size_t mark;
@@ -742,13 +742,18 @@ modex_fetch(
             rc = PMIX_ERR_NOT_FOUND;
         }
     }
-    PMIX_LIST_FOREACH (seg, &job->modex_prior, pmix_gds_shmem3_modex_seg_t) {
-        if (NULL == seg->smmodex) {
+    /* Enter the chain once and follow ->prior. The head load is the
+     * only synchronization this needs: nodes are complete before they
+     * are published and never written again. */
+    for (seg = pmix_gds_shmem3_chain_head(&job->modex_prior);
+         NULL != seg; seg = seg->prior) {
+        pmix_gds_shmem3_shared_modex_data_t *const smmodex = seg->smdata;
+        if (NULL == smmodex) {
             continue;
         }
         mark = pmix_list_get_size(kvs);
-        r2 = pmix_hash_fetch(seg->smmodex->hashtab, rank, key, qualifiers,
-                             nqual, kvs, seg->smmodex->keyindex);
+        r2 = pmix_hash_fetch(smmodex->hashtab, rank, key, qualifiers,
+                             nqual, kvs, smmodex->keyindex);
         if (PMIX_ERR_NOMEM == r2) {
             return r2;
         }
@@ -846,7 +851,8 @@ shmem3_fetch_from_job(
      * any retired one survives - the two differ during the window in
      * which a delta is being stored, when the current generation has
      * been set aside and its replacement is not yet published. */
-    const bool have_modex = mdrfu || 0 < pmix_list_get_size(&job->modex_prior);
+    const bool have_modex =
+        mdrfu || NULL != pmix_gds_shmem3_chain_head(&job->modex_prior);
     /* Which store the lookup below is against. This cannot be inferred
      * from ht any more: the modex is a chain of generations rather than
      * one table, and its newest may be absent while older ones are not. */
