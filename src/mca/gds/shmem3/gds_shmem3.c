@@ -823,9 +823,9 @@ pmix_gds_shmem3_seg_release(
     if (NULL == seg) {
         return;
     }
-    /* Mirrors what release_modex_segment() does for the current
-     * generation - keep the two in step. Order matters: the allocator
-     * context is reached through smdata, so it goes first. */
+    /* Mirrors what job_destruct() does for the current generation -
+     * keep the two in step. Order matters: the allocator context is
+     * reached through smdata, so it goes first. */
     if (NULL != seg->shmem3) {
         if ((PMIX_GDS_SHMEM3_MINE & seg->status) && NULL != seg->smdata) {
             pmix_tma_t *tma = NULL;
@@ -911,73 +911,6 @@ retire_modex_segment(
     pmix_gds_shmem3_clearall_status(job, PMIX_GDS_SHMEM3_MODEX_ID);
     pmix_mutex_unlock(&job->datalock);
     return PMIX_SUCCESS;
-}
-
-/**
- * Let go of every retired modex generation.
- *
- * A cumulative contribution repeats everything its process has published,
- * so the generation carrying it stands on its own and nothing older can
- * still be the only copy of anything.
- */
-static void
-drop_modex_priors(
-    pmix_gds_shmem3_job_t *job
-) {
-    pmix_gds_shmem3_seg_t *seg;
-
-    /* Releasing a retired generation unmaps its segment, so a read that
-     * is walking the chain on another thread has to be finished first -
-     * see job->datalock. This is the one operation on a chain that a
-     * reader cannot be concurrent with, because it is the one that takes
-     * nodes away; publishing and walking need no lock at all. */
-    pmix_mutex_lock(&job->datalock);
-    seg = pmix_gds_shmem3_chain_head(&job->modex_prior);
-    atomic_store_explicit(&job->modex_prior, NULL, memory_order_release);
-    pmix_mutex_unlock(&job->datalock);
-
-    while (NULL != seg) {
-        pmix_gds_shmem3_seg_t *const prior = seg->prior;
-        pmix_gds_shmem3_seg_release(seg);
-        seg = prior;
-    }
-}
-
-/**
- * Let go of this job's current modex segment.
- *
- * Releasing our handle does not pull the segment out from under anyone:
- * the backing file carries a reference count, so a client that has it
- * mapped keeps a valid mapping and the file survives until the last
- * holder lets go. That is what makes handing one generation off and
- * starting the next safe.
- *
- * Mirrors what job_destruct() does for this segment; keep the two in
- * step. Order matters - the allocator context is reached through
- * job->smmodex, so it has to go before that pointer is cleared.
- */
-static void
-release_modex_segment(
-    pmix_gds_shmem3_job_t *job
-) {
-    if (!pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_MODEX_ID,
-                                    PMIX_GDS_SHMEM3_ATTACHED)) {
-        return;
-    }
-    if (pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_MODEX_ID,
-                                   PMIX_GDS_SHMEM3_MINE)) {
-        emit_shmem3_usage_stats(job, PMIX_GDS_SHMEM3_MODEX_ID);
-        PMIX_RELEASE(get_tma_by_shmem3_id(job, PMIX_GDS_SHMEM3_MODEX_ID)->data_context);
-    }
-    /* This one really does unmap the segment, and a read on another
-     * thread may be part way through the hash table inside it - see
-     * job->datalock. */
-    pmix_mutex_lock(&job->datalock);
-    PMIX_RELEASE(job->modex_shmem3);
-    job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
-    job->smmodex = NULL;
-    pmix_gds_shmem3_clearall_status(job, PMIX_GDS_SHMEM3_MODEX_ID);
-    pmix_mutex_unlock(&job->datalock);
 }
 
 /**
@@ -3279,18 +3212,21 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                 usb.seg_path, usb.nsid
             );
             if (PMIX_GDS_SHMEM3_MODEX_ID == usb.smid) {
-                if (usb.is_delta) {
-                    /* the arriving generation holds only what changed,
-                     * so ours is still the only copy of the rest - keep
-                     * it and read back through it */
-                    rc = retire_modex_segment(job);
-                    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                        PMIX_ERROR_LOG(rc);
-                        break;
-                    }
-                } else {
-                    release_modex_segment(job);
-                    drop_modex_priors(job);
+                /* Keep it, whatever arrived. A generation is never
+                 * unmapped, so the chain only ever grows and a read
+                 * walking it cannot have a segment taken away
+                 * underneath - which is what lets the walk run with no
+                 * lock at all. A cumulative contribution repeats
+                 * everything, so the generations behind it become
+                 * redundant rather than wrong: the walk stops at the
+                 * newest segment holding the key, and a key that was
+                 * deleted is shadowed by the PMIX_UNDEF entry the newer
+                 * generation carries. Redundant costs address space;
+                 * unmapping under a reader costs correctness. */
+                rc = retire_modex_segment(job);
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                    PMIX_ERROR_LOG(rc);
+                    break;
                 }
                 /* We are about to map a generation we have not held
                  * before, which is the same step the server counts on
@@ -3659,19 +3595,14 @@ server_store_modex_cb(pmix_proc_t *proc,
                 __func__, job->modex_generation, job->modex_generation + 1,
                 proc->nspace
             );
-            if (isdelta) {
-                /* keep it - it is still the only copy of everything the
-                 * arriving delta does not repeat */
-                rc = retire_modex_segment(job);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    return rc;
-                }
-            } else {
-                /* a cumulative contribution repeats everything, so it
-                 * supersedes this generation and every one behind it */
-                release_modex_segment(job);
-                drop_modex_priors(job);
+            /* Keep it, whatever arrived - see the matching comment in
+             * unpack_shmem3_seg_blob_and_attach_if_necessary(). A
+             * generation is never unmapped, so the chain only grows and
+             * a reader can walk it without a lock. */
+            rc = retire_modex_segment(job);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
             }
             advance_modex_generation(job);
         }

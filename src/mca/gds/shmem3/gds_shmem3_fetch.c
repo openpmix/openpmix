@@ -835,7 +835,7 @@ shmem3_fetch_from_job(
      * This used to hold job->smmodex->hashtab, computed from mdrfu alone -
      * which modex_fetch() has never trusted, because the two disagree
      * whenever the progress thread has just set the current generation
-     * aside (see release_modex_segment()) and a read arrives before its
+     * aside (see retire_modex_segment()) and a read arrives before its
      * replacement is published. That read would have dereferenced NULL. */
     // Every index in these tables was minted by the server against the
     // keyindex living in the same segment, never against this process's

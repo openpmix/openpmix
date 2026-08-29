@@ -779,12 +779,20 @@ followed without synchronization, so a node must outlive every walk.
 are for callers that know no reader can be walking — a job tracker's
 destructor, and `drop_modex_priors()` under `job->datalock`.
 
-**Removal is the one chain operation that still needs the lock.**
-Publishing and walking need none. `drop_modex_priors()` unmaps, so it
-takes `job->datalock`, unlinks the whole chain in one store, and frees
-outside the lock. If generations stop being unmapped — see
-`docs/todo.rst` — that last use goes with it and the read path becomes
-lock-free end to end, which is what the chain exists for.
+**Nothing removes from a chain, which is what makes walking it
+lock-free.** A generation is retired onto the chain and kept; the only
+thing that ever takes nodes away is `pmix_gds_shmem3_chain_destruct()`
+in the job tracker's destructor, which runs when the last reference to
+the tracker has gone and therefore has no reader to race.
+
+That is why the delta/cumulative distinction is gone from the store
+path. It used to decide whether the previous generation could be
+dropped — a cumulative contribution repeats everything, so the
+generations behind it were released and unmapped. They are now kept:
+redundant rather than wrong, since the walk stops at the newest segment
+holding the key and a deleted key is shadowed by the `PMIX_UNDEF` entry
+the newer generation carries. Redundant costs address space; unmapping
+under a reader costs correctness.
 
 ## Deletion: a tombstone, and why it is not in the segment
 
