@@ -254,6 +254,80 @@ static pmix_status_t build_modex(pmix_buffer_t *out, const char *nspace,
     return rc;
 }
 
+/* Same envelope as build_modex(), but each proc blob carries one
+ * key/value pair after the proc - which is what a real contribution
+ * looks like, and what a fetch needs in order to have anything to find.
+ * The blob format after the proc is pmix_kval_t until end of buffer;
+ * see server_store_modex_cb() in gds/shmem3. */
+static pmix_status_t build_modex_kv(pmix_buffer_t *out, const char *nspace,
+                                    pmix_rank_t *ranks, size_t nranks,
+                                    const char *key, uint32_t value,
+                                    uint8_t collect)
+{
+    pmix_buffer_t ranklevel, serverlevel, pbkt;
+    pmix_byte_object_t bo;
+    pmix_status_t rc;
+    pmix_proc_t proc;
+    pmix_kval_t kv;
+    pmix_value_t val;
+    bool compressed = false;
+    size_t n;
+
+    PMIX_CONSTRUCT(&ranklevel, pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &ranklevel, &collect, 1, PMIX_BYTE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_DESTRUCT(&ranklevel);
+        return rc;
+    }
+    for (n = 0; n < nranks; n++) {
+        PMIX_LOAD_PROCID(&proc, nspace, ranks[n]);
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, &proc, 1, PMIX_PROC);
+        if (PMIX_SUCCESS == rc) {
+            PMIX_VALUE_LOAD(&val, &value, PMIX_UINT32);
+            kv.key = (char *) key;
+            kv.value = &val;
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, &kv, 1, PMIX_KVAL);
+            PMIX_VALUE_DESTRUCT(&val);
+        }
+        if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&pbkt);
+            PMIX_DESTRUCT(&ranklevel);
+            return rc;
+        }
+        PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &ranklevel, &bo, 1, PMIX_BYTE_OBJECT);
+        PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+        PMIX_DESTRUCT(&pbkt);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&ranklevel);
+            return rc;
+        }
+    }
+
+    PMIX_CONSTRUCT(&serverlevel, pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &serverlevel, &compressed, 1, PMIX_BOOL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_DESTRUCT(&serverlevel);
+        PMIX_DESTRUCT(&ranklevel);
+        return rc;
+    }
+    PMIX_UNLOAD_BUFFER(&ranklevel, bo.bytes, bo.size);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &serverlevel, &bo, 1, PMIX_BYTE_OBJECT);
+    PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+    PMIX_DESTRUCT(&ranklevel);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_DESTRUCT(&serverlevel);
+        return rc;
+    }
+
+    PMIX_UNLOAD_BUFFER(&serverlevel, bo.bytes, bo.size);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, out, &bo, 1, PMIX_BYTE_OBJECT);
+    PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+    PMIX_DESTRUCT(&serverlevel);
+    return rc;
+}
+
 /* Same envelope, but the rank-level block carries procs from more than
  * one nspace - which is what a fence spanning two local nspaces
  * produces, and what the nspace filter has to sort out. */
@@ -1692,6 +1766,187 @@ static void test_session_registration(void)
     PMIX_INFO_DESTRUCT(&sinfo[1]);
 }
 
+/* shmem3's modex generations, in one process.
+ *
+ * Each modex gets a segment of its own, and whether the previous one can
+ * be dropped depends on what arrived: a cumulative contribution repeats
+ * everything, so it supersedes what came before; a delta repeats
+ * nothing, so the generation before it is still the only copy of what
+ * the delta left out and has to stay answerable.
+ *
+ * That chain had no in-process coverage at all - it lives in
+ * contrib/dockerswarm, which needs several nodes - so a change to how
+ * generations are held could only be checked by reading. This drives it
+ * with hand-built envelopes against a peer bound to shmem3, which is
+ * enough to reach every part except the client's attach.
+ *
+ * The load-bearing case is the last one: after a DELTA that carries only
+ * gen2, a fetch of gen1 must still find it. That value exists only in
+ * the retired generation, so finding it is proof the chain was walked
+ * rather than just the newest segment read.
+ */
+static void test_shmem3_modex_generations(void)
+{
+    pmix_gds_base_module_t *mod;
+    pmix_info_t *info, dir;
+    pmix_nspace_t ns;
+    pmix_peer_t *peer;
+    pmix_buffer_t *reply, buf;
+    pmix_server_trkr_t trk;
+    pmix_status_t rc;
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    pmix_rank_t remote[2] = {2, 3};
+    uint32_t nprocs = 4;
+    char *nodemap, *procmap;
+    pmix_list_t nslist;
+    pmix_nspace_caddy_t *nsc;
+    pmix_namespace_t *nsptr;
+
+    fprintf(stdout, "\n-- shmem3 modex generations --\n");
+
+    PMIX_INFO_LOAD(&dir, PMIX_GDS_MODULE, "shmem3", PMIX_STRING);
+    mod = pmix_gds_base_assign_module(&dir, 1);
+    PMIX_INFO_DESTRUCT(&dir);
+    if (NULL == mod || 0 != strcmp(mod->name, "shmem3")) {
+        fprintf(stdout, "    SKIP  shmem3 is not available in this build\n");
+        return;
+    }
+
+    /* Two nodes, so ranks 2 and 3 are genuinely remote and their data
+     * can only come from a modex. One node would make every rank local
+     * and the modex would never be consulted. */
+    if (0 > asprintf(&nodemap, "%s,gds-modexgen-node1", pmix_globals.hostname)) {
+        return;
+    }
+    procmap = strdup("0-1;2-3");
+
+    PMIX_INFO_CREATE(info, 3);
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_NODE_MAP, nodemap, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_PROC_MAP, procmap, PMIX_STRING);
+    PMIX_LOAD_NSPACE(ns, "gds-modexgen");
+    rc = PMIx_server_register_nspace(ns, 2, info, 3, NULL, NULL);
+    PMIX_INFO_FREE(info, 3);
+    free(nodemap);
+    free(procmap);
+    if (!registered(rc)) {
+        report("a two-node job registers", false);
+        return;
+    }
+    report("a two-node job registers", true);
+
+    peer = mkgdspeer("gds-modexgen", nprocs, mod);
+    reply = PMIX_NEW(pmix_buffer_t);
+    PMIX_GDS_REGISTER_JOB_INFO(rc, peer, reply);
+    PMIX_RELEASE(reply);
+    if (PMIX_SUCCESS != rc) {
+        report("its job segment builds", false);
+        PMIX_RELEASE(peer);
+        return;
+    }
+    report("its job segment builds", true);
+
+    memset(&trk, 0, sizeof(trk));
+    trk.collect_type = PMIX_COLLECT_YES;
+
+    /* mark_modex_complete packs a seg blob per namespace in this list -
+     * pmix_server_op_replies.c builds the same thing from the fence's
+     * participants. It is not optional: the implementation walks it. */
+    PMIX_CONSTRUCT(&nslist, pmix_list_t);
+    nsc = PMIX_NEW(pmix_nspace_caddy_t);
+    PMIX_LIST_FOREACH (nsptr, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(nsptr->nspace, "gds-modexgen")) {
+            PMIX_RETAIN(nsptr);
+            nsc->ns = nsptr;
+            break;
+        }
+    }
+    pmix_list_append(&nslist, &nsc->super);
+
+    /* generation 1, cumulative, carrying gen1 */
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex_kv(&buf, "gds-modexgen", remote, 2,
+                        "gds.modex.gen1", 111, PMIX_COLLECT_YES);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_GDS_STORE_MODEX(rc, peer, "gds-modexgen", &buf, &trk);
+    }
+    PMIX_DESTRUCT(&buf);
+    report("the first modex generation stores", PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "        (store_modex: %s)\n", PMIx_Error_string(rc));
+        PMIX_RELEASE(peer);
+        return;
+    }
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_GDS_MARK_MODEX_COMPLETE(rc, peer, &nslist, &buf);
+    PMIX_DESTRUCT(&buf);
+    report("the first generation is published", PMIX_SUCCESS == rc);
+
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-modexgen", 2);
+    cb.proc = &proc;
+    cb.key = "gds.modex.gen1";
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    report("a remote rank's key reads out of the modex segment",
+           PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs));
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    /* generation 2, DELTA, carrying only gen2 - so gen1 survives only in
+     * the generation retired behind it */
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex_kv(&buf, "gds-modexgen", remote, 2,
+                        "gds.modex.gen2", 222, PMIX_MODEX_DELTA);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_GDS_STORE_MODEX(rc, peer, "gds-modexgen", &buf, &trk);
+    }
+    PMIX_DESTRUCT(&buf);
+    report("a delta generation stores", PMIX_SUCCESS == rc);
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_GDS_MARK_MODEX_COMPLETE(rc, peer, &nslist, &buf);
+    PMIX_DESTRUCT(&buf);
+
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-modexgen", 2);
+    cb.proc = &proc;
+    cb.key = "gds.modex.gen2";
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    report("the newest generation answers for its own key",
+           PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs));
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    /* the case the chain exists for */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-modexgen", 2);
+    cb.proc = &proc;
+    cb.key = "gds.modex.gen1";
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    report("a retired generation still answers for a key the delta omitted",
+           PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs));
+    if (PMIX_SUCCESS != rc || 1 != pmix_list_get_size(&cb.kvs)) {
+        fprintf(stdout, "        (fetch: %s, %zu values)\n",
+                PMIx_Error_string(rc), pmix_list_get_size(&cb.kvs));
+    }
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    PMIX_LIST_DESTRUCT(&nslist);
+    PMIX_GDS_DEL_NSPACE(rc, "gds-modexgen");
+    report("deregistering releases every generation", PMIX_SUCCESS == rc);
+    PMIX_RELEASE(peer);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -1720,6 +1975,7 @@ int main(int argc, char **argv)
     test_realm_classifiers();
     test_shmem3_job_segment();
     test_shmem3_shared_session();
+    test_shmem3_modex_generations();
     test_session_registration();
 
     fprintf(stdout, "\n=== %d passed, %d failed ===\n", npass, nfail);
