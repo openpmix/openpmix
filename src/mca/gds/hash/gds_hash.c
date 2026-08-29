@@ -710,8 +710,26 @@ static pmix_status_t register_info(pmix_peer_t *peer,
         PMIX_BFROPS_PACK(rc, peer, reply, &kv, 1, PMIX_KVAL);
         PMIX_VALUE_DESTRUCT(&blob);
         PMIX_DESTRUCT(&buf);
+        if (PMIX_SUCCESS != rc) {
+            /* this reply is cached on the nspace and handed to every
+             * remaining local client, so a pack that fails here has to
+             * fail the registration rather than truncate the job
+             * description for all of them - see the note above */
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
     }
-    return rc;
+
+    /* Reaching here means the whole reply packed: every real failure
+     * above returns directly.
+     *
+     * rc, though, may still hold the PMIX_ERR_NOT_FOUND that the LAST
+     * rank's fetch reported, and returning that failed the entire
+     * registration - the caller logs it and the client is handed no job
+     * data at all. A rank with no per-rank data is ordinary, not an
+     * error: the loop runs to ns->nprocs, so any job whose size exceeds
+     * the ranks the host actually described ends on one. */
+    return PMIX_SUCCESS;
 }
 
 /* the purpose of this function is to pack the job-level
