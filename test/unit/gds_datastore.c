@@ -1941,6 +1941,42 @@ static void test_shmem3_modex_generations(void)
     cb.proc = NULL;
     PMIX_DESTRUCT(&cb);
 
+    /* generation 3, CUMULATIVE. This used to supersede every generation
+     * behind it - release the current one and drop the retired chain -
+     * so gen1 vanished here. Nothing is unmapped any more: a cumulative
+     * contribution makes the older generations redundant rather than
+     * wrong, and the walk simply stops at the newest segment holding the
+     * key. Keeping them is what lets a reader walk the chain with no
+     * lock, which is the whole reason for the change. */
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex_kv(&buf, "gds-modexgen", remote, 2,
+                        "gds.modex.gen3", 333, PMIX_COLLECT_YES);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_GDS_STORE_MODEX(rc, peer, "gds-modexgen", &buf, &trk);
+    }
+    PMIX_DESTRUCT(&buf);
+    report("a cumulative generation stores", PMIX_SUCCESS == rc);
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_GDS_MARK_MODEX_COMPLETE(rc, peer, &nslist, &buf);
+    PMIX_DESTRUCT(&buf);
+
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-modexgen", 2);
+    cb.proc = &proc;
+    cb.key = "gds.modex.gen1";
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    report("a cumulative generation does not take the chain away",
+           PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs));
+    if (PMIX_SUCCESS != rc || 1 != pmix_list_get_size(&cb.kvs)) {
+        fprintf(stdout, "        (fetch: %s, %zu values)\n",
+                PMIx_Error_string(rc), pmix_list_get_size(&cb.kvs));
+    }
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
     PMIX_LIST_DESTRUCT(&nslist);
     PMIX_GDS_DEL_NSPACE(rc, "gds-modexgen");
     report("deregistering releases every generation", PMIX_SUCCESS == rc);

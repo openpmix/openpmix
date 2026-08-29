@@ -479,13 +479,18 @@ typedef struct {
      *
      * This module is is_tsafe, so pmix_gds_shmem3_fetch() runs on the
      * APPLICATION's thread (see try_local_fetch() in
-     * src/client/pmix_client_get.c, which is on by default). Meanwhile the
-     * progress thread replaces the modex generation as each fence
-     * completes - release_modex_segment() unmaps the segment outright and
-     * retire_modex_segment() clears job->smmodex - and del_key() appends
-     * to the tombstone list. The reference the reader holds on this
-     * tracker keeps the JOB segment mapped, but it says nothing about
-     * either of those, so both need a lock.
+     * src/client/pmix_client_get.c, which is on by default). Two things
+     * the progress thread does still need to be kept away from it:
+     *
+     *   - retire_modex_segment() clears job->smmodex while publishing the
+     *     generation it replaces, and a read must not catch that
+     *     half-done;
+     *   - del_key() appends to the tombstone list, which a read walks.
+     *
+     * Nothing UNMAPS any more. A modex generation is retired onto the
+     * chain and kept, so the chain only ever grows and a walk cannot
+     * have a segment taken away underneath it - which is why walking
+     * needs no lock, and why the two items above are all that is left.
      *
      * NOT needed for anything in a shared segment: those are written once,
      * before any client can see them, and never again.
