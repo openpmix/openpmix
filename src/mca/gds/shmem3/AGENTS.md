@@ -750,6 +750,42 @@ client this is the first anyone hears of the session, and whether to map
 the segment *is* the question. An older peer skips the key and keeps its
 private tracker, which is the behavior it had before.
 
+## The segment chain
+
+Retired modex generations are held on a `pmix_gds_shmem3_chain_t` —
+newest first, entered at the head and followed through `->prior`. It is
+deliberately **not** a `pmix_list_t`, and the reason is the reader:
+
+- a node is filled in completely *before* it is published, is never
+  written again, and is never removed;
+- publishing is therefore one release-store of the head
+  (`pmix_gds_shmem3_chain_publish()`), and entering it is one
+  acquire-load (`pmix_gds_shmem3_chain_head()`);
+- so a reader that has the head walks a chain that cannot change beneath
+  it, on any thread, with no lock.
+
+A `pmix_list_t` cannot do that: it is doubly linked through a sentinel
+and carries a length counter, so a prepend is several stores and a
+walker can catch any of them. None of the list operations were wanted
+anyway — the chain is only ever prepended to and walked one way — which
+is why a node carries a bare `->prior` rather than deriving from
+`pmix_list_item_t`.
+
+A node is a plain allocation rather than a `pmix_object_t`. A refcount
+would suggest it can be released from more than one place, which is
+precisely what a lock-free chain must not permit: `->prior` pointers are
+followed without synchronization, so a node must outlive every walk.
+`pmix_gds_shmem3_seg_release()` and `pmix_gds_shmem3_chain_destruct()`
+are for callers that know no reader can be walking — a job tracker's
+destructor, and `drop_modex_priors()` under `job->datalock`.
+
+**Removal is the one chain operation that still needs the lock.**
+Publishing and walking need none. `drop_modex_priors()` unmaps, so it
+takes `job->datalock`, unlinks the whole chain in one store, and frees
+outside the lock. If generations stop being unmapped — see
+`docs/todo.rst` — that last use goes with it and the read path becomes
+lock-free end to end, which is what the chain exists for.
+
 ## Deletion: a tombstone, and why it is not in the segment
 
 This component cannot take a key out. The data is in a segment local

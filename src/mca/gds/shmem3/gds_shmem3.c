@@ -602,7 +602,7 @@ job_construct(
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
     job->modex_is_delta = false;
-    PMIX_CONSTRUCT(&job->modex_prior, pmix_list_t);
+    atomic_init(&job->modex_prior, NULL);
     PMIX_CONSTRUCT(&job->tombstones, pmix_list_t);
     PMIX_CONSTRUCT(&job->datalock, pmix_mutex_t);
     // Address-space arena
@@ -721,7 +721,7 @@ job_destruct(
     /* Retired modex generations. Each holds its own segment handle, and
      * the class destructor gives it back the same way the loop below
      * does for the current one. */
-    PMIX_LIST_DESTRUCT(&job->modex_prior);
+    pmix_gds_shmem3_chain_destruct(&job->modex_prior);
     PMIX_LIST_DESTRUCT(&job->tombstones);
 
     /* The session's segment is deliberately not in here: it belongs to
@@ -807,43 +807,66 @@ PMIX_CLASS_INSTANCE(
     tombstone_destruct
 );
 
-static void
-modex_seg_construct(
-    pmix_gds_shmem3_modex_seg_t *seg
+/* Give a chain node and its segment back.
+ *
+ * A chain node is a plain allocation rather than a pmix_object_t: it is
+ * never referenced by anything but the chain, and a refcount would
+ * suggest it can be released from more than one place - which is exactly
+ * what a lock-free chain must not permit. Only a caller that knows no
+ * reader can be walking it may call this; see
+ * pmix_gds_shmem3_chain_destruct().
+ */
+void
+pmix_gds_shmem3_seg_release(
+    pmix_gds_shmem3_seg_t *seg
 ) {
-    seg->status = 0;
-    seg->shmem3 = NULL;
-    seg->smmodex = NULL;
-    seg->generation = 0;
-}
-
-static void
-modex_seg_destruct(
-    pmix_gds_shmem3_modex_seg_t *seg
-) {
-    if (NULL == seg->shmem3) {
+    if (NULL == seg) {
         return;
     }
     /* Mirrors what release_modex_segment() does for the current
      * generation - keep the two in step. Order matters: the allocator
-     * context is reached through smmodex, so it goes first. */
-    if (PMIX_GDS_SHMEM3_MINE & seg->status) {
-        if (NULL != seg->smmodex) {
-            PMIX_RELEASE(seg->smmodex->tma.data_context);
+     * context is reached through smdata, so it goes first. */
+    if (NULL != seg->shmem3) {
+        if ((PMIX_GDS_SHMEM3_MINE & seg->status) && NULL != seg->smdata) {
+            pmix_tma_t *tma = NULL;
+            switch (seg->smid) {
+                case PMIX_GDS_SHMEM3_JOB_ID:
+                    tma = &((pmix_gds_shmem3_shared_job_data_t *)
+                            seg->smdata)->tma;
+                    break;
+                case PMIX_GDS_SHMEM3_SESSION_ID:
+                    tma = &((pmix_gds_shmem3_shared_session_data_t *)
+                            seg->smdata)->tma;
+                    break;
+                case PMIX_GDS_SHMEM3_MODEX_ID:
+                    tma = &((pmix_gds_shmem3_shared_modex_data_t *)
+                            seg->smdata)->tma;
+                    break;
+                default:
+                    break;
+            }
+            if (NULL != tma) {
+                PMIX_RELEASE(tma->data_context);
+            }
         }
+        PMIX_RELEASE(seg->shmem3);
     }
-    PMIX_RELEASE(seg->shmem3);
-    seg->shmem3 = NULL;
-    seg->smmodex = NULL;
-    seg->status = 0;
+    free(seg);
 }
 
-PMIX_CLASS_INSTANCE(
-    pmix_gds_shmem3_modex_seg_t,
-    pmix_list_item_t,
-    modex_seg_construct,
-    modex_seg_destruct
-);
+void
+pmix_gds_shmem3_chain_destruct(
+    pmix_gds_shmem3_chain_t *chain
+) {
+    pmix_gds_shmem3_seg_t *seg = pmix_gds_shmem3_chain_head(chain);
+
+    atomic_store_explicit(chain, NULL, memory_order_release);
+    while (NULL != seg) {
+        pmix_gds_shmem3_seg_t *const prior = seg->prior;
+        pmix_gds_shmem3_seg_release(seg);
+        seg = prior;
+    }
+}
 
 /**
  * Set the current modex generation aside instead of letting it go.
@@ -865,21 +888,24 @@ retire_modex_segment(
                                     PMIX_GDS_SHMEM3_ATTACHED)) {
         return PMIX_SUCCESS;
     }
-    pmix_gds_shmem3_modex_seg_t *seg = PMIX_NEW(pmix_gds_shmem3_modex_seg_t);
+    pmix_gds_shmem3_seg_t *seg = calloc(1, sizeof(*seg));
     if (PMIX_UNLIKELY(NULL == seg)) {
         return PMIX_ERR_NOMEM;
     }
-    /* A read may be walking this chain on another thread - see
-     * job->datalock. Nothing is unmapped here, but job->smmodex goes NULL
-     * and the list gains a member, and a reader must not see either
-     * half-done. */
-    pmix_mutex_lock(&job->datalock);
+    /* Fill the node in completely before publishing it - a reader that
+     * loads the head must never see a half-built one. */
+    seg->smid = PMIX_GDS_SHMEM3_MODEX_ID;
     seg->status = job->modex_shmem3_status;
     seg->shmem3 = job->modex_shmem3;
-    seg->smmodex = job->smmodex;
+    seg->smdata = job->smmodex;
     seg->generation = job->modex_generation;
-    pmix_list_prepend(&job->modex_prior, &seg->super);
 
+    /* The lock still covers the OTHER half of this: job->smmodex goes
+     * NULL and the status is cleared, which a read of the current
+     * generation must not catch half-done. Publishing the retired one is
+     * a single store and needs nothing. */
+    pmix_mutex_lock(&job->datalock);
+    pmix_gds_shmem3_chain_publish(&job->modex_prior, seg);
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
     pmix_gds_shmem3_clearall_status(job, PMIX_GDS_SHMEM3_MODEX_ID);
@@ -898,17 +924,23 @@ static void
 drop_modex_priors(
     pmix_gds_shmem3_job_t *job
 ) {
-    pmix_gds_shmem3_modex_seg_t *seg;
+    pmix_gds_shmem3_seg_t *seg;
 
     /* Releasing a retired generation unmaps its segment, so a read that
      * is walking the chain on another thread has to be finished first -
-     * see job->datalock. */
+     * see job->datalock. This is the one operation on a chain that a
+     * reader cannot be concurrent with, because it is the one that takes
+     * nodes away; publishing and walking need no lock at all. */
     pmix_mutex_lock(&job->datalock);
-    while (NULL != (seg = (pmix_gds_shmem3_modex_seg_t *)
-                          pmix_list_remove_first(&job->modex_prior))) {
-        PMIX_RELEASE(seg);
-    }
+    seg = pmix_gds_shmem3_chain_head(&job->modex_prior);
+    atomic_store_explicit(&job->modex_prior, NULL, memory_order_release);
     pmix_mutex_unlock(&job->datalock);
+
+    while (NULL != seg) {
+        pmix_gds_shmem3_seg_t *const prior = seg->prior;
+        pmix_gds_shmem3_seg_release(seg);
+        seg = prior;
+    }
 }
 
 /**
@@ -1870,8 +1902,9 @@ arena_alloc_modex(
     }
 
     note_slot_in_use(job, job->modex_shmem3, &inuse);
-    pmix_gds_shmem3_modex_seg_t *seg;
-    PMIX_LIST_FOREACH (seg, &job->modex_prior, pmix_gds_shmem3_modex_seg_t) {
+    for (pmix_gds_shmem3_seg_t *seg =
+             pmix_gds_shmem3_chain_head(&job->modex_prior);
+         NULL != seg; seg = seg->prior) {
         note_slot_in_use(job, seg->shmem3, &inuse);
     }
 
