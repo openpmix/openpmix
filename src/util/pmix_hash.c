@@ -918,7 +918,7 @@ void pmix_hash_keyindex_rebuild(pmix_keyindex_t *kidx)
     pmix_regattr_input_t *ptr;
     int id;
 
-    if (NULL == keyindex->lookup) {
+    if (NULL == keyindex->lookup || NULL == keyindex->table) {
         return;
     }
     pmix_hash_table_remove_all(keyindex->lookup);
@@ -937,6 +937,11 @@ void pmix_hash_register_key(uint32_t inid,
     pmix_regattr_input_t *p = NULL;
     pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
 
+    /* constructed but never sized - there is nowhere to put this. See
+     * keyindex_construct() and pmix_keyindex_init(). */
+    if (NULL == keyindex->table) {
+        return;
+    }
     if (UINT32_MAX == inid) {
         /* store the pointer in the array */
         pmix_pointer_array_set_item(keyindex->table, (int)keyindex->next_id, ptr);
@@ -1050,7 +1055,7 @@ static pmix_regattr_input_t* lookup_key(uint32_t inid,
         } else {
             /* no lookup side available - fall back on scanning the
              * table we do have */
-            for (id = 0; id < keyindex->table->size; id++) {
+            for (id = 0; NULL != keyindex->table && id < keyindex->table->size; id++) {
                 ptr = pmix_pointer_array_get_item(keyindex->table, id);
                 if (NULL != ptr && NULL != ptr->string) {
                     if (0 == strcmp(key, ptr->string)) {
@@ -1116,6 +1121,9 @@ static pmix_regattr_input_t* lookup_key(uint32_t inid,
      * non-reserved key, then it had to be registered or else the caller
      * would not have an index to pass us. Thus, the pointer is either
      * found or not - we don't register it if not found. */
+    if (NULL == keyindex->table) {
+        return NULL;
+    }
     ptr = pmix_pointer_array_get_item(keyindex->table, inid);
     return ptr;
 }

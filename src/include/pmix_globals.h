@@ -916,19 +916,17 @@ typedef struct {
     uint32_t next_id;
 } pmix_keyindex_t;
 
-/** Initial capacities a pmix_keyindex_t is constructed with.
+/** How the process-global keyindex is sized.
  *
- * Named rather than left as literals in keyindex_construct() because a
- * keyindex can be built inside a gds/shmem3 segment, and that segment's
- * size has to be estimated *before* anything is allocated in it. The
- * allocator behind it is a bump allocator with nowhere to grow, so an
- * estimate that disagrees with these does not run slow, it aborts the
- * server. Rather than restating them at the estimate, ask
- * pmix_keyindex_sizeof_fixed_storage() below. */
-#define PMIX_KEYINDEX_TABLE_SIZE  1024
+ * It holds the reserved dictionary - PMIX_INDEX_BOUNDARY entries - plus
+ * whatever non-reserved keys the process goes on to register. It lives
+ * on the ordinary heap, so exceeding this costs a rehash and nothing
+ * more.
+ *
+ * A keyindex built inside a gds/shmem3 segment is NOT sized from this;
+ * see pmix_keyindex_init(). */
+#define PMIX_KEYINDEX_GLOBAL_SIZE 1024
 #define PMIX_KEYINDEX_TABLE_BLOCK  128
-/* sized past the reserved dictionary so the common case never rehashes */
-#define PMIX_KEYINDEX_LOOKUP_SIZE 2048
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_keyindex_t);
 
 /** Bytes an *empty* pmix_keyindex_t occupies: the object plus the pointer
@@ -936,7 +934,33 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_keyindex_t);
  * Reported rather than restated so a caller reserving space for one cannot
  * drift from keyindex_construct(). See pmix_hash_sizeof_key_entry() for
  * what each registered key adds on top. */
-PMIX_EXPORT size_t pmix_keyindex_sizeof_fixed_storage(void);
+/** Size a keyindex for the number of keys it will hold.
+ *
+ * A keyindex is constructed EMPTY - both its children are NULL - and
+ * this is what builds them. Splitting the two is what lets a keyindex
+ * inside a gds/shmem3 segment be sized to that segment's own key count:
+ * such an index carries only the non-reserved keys (the reserved ones
+ * have ids every process agrees on), and an update segment typically has
+ * a handful or none.
+ *
+ * It used to be built at a fixed 1024/2048 whatever it would hold, which
+ * cost ~168 KB for an index holding one key - and, in the other
+ * direction, silently rehashed past ~2055 keys. A rehash on the heap is
+ * a slow path; inside a segment it allocates from a bump allocator with
+ * nowhere to grow, past what the caller reserved, so it aborts the
+ * server. Sizing it here removes both.
+ *
+ * Reserve space for one with pmix_keyindex_sizeof_storage(nkeys), and
+ * pass that same nkeys here.
+ */
+PMIX_EXPORT pmix_status_t pmix_keyindex_init(pmix_keyindex_t *ki, size_t nkeys);
+
+/** Storage a pmix_keyindex_init(ki, nkeys) will consume.
+ *
+ * A caller placing one in a gds/shmem3 segment has to reserve this
+ * before anything is allocated in it, and being short is an abort rather
+ * than a slow path - so ask rather than restate the arithmetic. */
+PMIX_EXPORT size_t pmix_keyindex_sizeof_storage(size_t nkeys);
 
 #define PMIX_KEYINDEX_STATIC_INIT                 \
 {                                                 \

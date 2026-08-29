@@ -100,6 +100,11 @@ PMIX_CLASS_DECLARATION(pmix_gds_shmem3_packed_local_job_info_t);
 typedef struct {
     size_t size;
     size_t num_ht_elements;
+    /* Upper bound on the distinct keys this modex will register. The
+     * segment's key index is sized from it, and must be sized from the
+     * SAME number the estimate reserved for - the allocator behind it
+     * cannot grow, so an index that rehashes runs off the end. */
+    size_t nkvals;
 } pmix_gds_shmem3_modex_info_t;
 
 static void
@@ -1123,7 +1128,8 @@ out:
 static pmix_status_t
 job_smdata_construct(
     pmix_gds_shmem3_job_t *job,
-    size_t htsize
+    size_t htsize,
+    size_t nkeys
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
     // Setup the shared information structure. It will be at the base address of
@@ -1175,6 +1181,15 @@ job_smdata_construct(
         PMIX_ERROR_LOG(rc);
         goto out;
     }
+    /* Sized to this segment's own key count, and it must be the same
+     * count the estimate reserved for: the allocator behind it cannot
+     * grow, so an index that rehashes here runs off the end of the
+     * segment. */
+    rc = pmix_keyindex_init(job->smdata->keyindex, nkeys);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
 
     pmix_gds_shmem3_vout_smdata(job);
 out:
@@ -1198,7 +1213,8 @@ out:
 static pmix_status_t
 modex_smdata_construct(
     pmix_gds_shmem3_job_t *job,
-    size_t htsize
+    size_t htsize,
+    size_t nkeys
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
     // Setup the shared information structure. It will be at the base address of
@@ -1234,6 +1250,13 @@ modex_smdata_construct(
     job->smmodex->keyindex = PMIX_NEW(pmix_keyindex_t, tma);
     if (!job->smmodex->keyindex) {
         rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    /* Sized to this segment's own key count - see the note in
+     * job_smdata_construct(). */
+    rc = pmix_keyindex_init(job->smmodex->keyindex, nkeys);
+    if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -2178,10 +2201,12 @@ prepare_shmem3_stores_for_local_job_data(
     // we add an additional storage space for each key/value pair.
     seg_size += nkvals * kvsize;
     /* The keyindex that translates the indices in that table lives in
-     * this segment too, and an empty one is already ~170 KB. On top of
-     * that each distinct key costs a record and three copies of its own
-     * string. Bound the entry count by nkvals - the real number of
-     * distinct keys is normally far smaller.
+     * this segment too, sized for the key count we pass to
+     * pmix_keyindex_init() below - the two have to agree, since the
+     * allocator cannot grow. On top of that each distinct key costs a
+     * record and three copies of its own string. Bound the entry count
+     * by nkvals - the real number of distinct keys is normally far
+     * smaller, which is why the index is sized rather than fixed.
      *
      * The key *lengths* are bounded by the data, not by PMIX_MAX_KEYLEN:
      * every one of these keys arrived in the buffer we just packed, so
@@ -2193,7 +2218,7 @@ prepare_shmem3_stores_for_local_job_data(
      * TMA behind the segment is a bump allocator with nowhere to grow,
      * so the server aborts partway through register_job_info() and
      * every client sits waiting for job data that will never arrive. */
-    seg_size += pmix_keyindex_sizeof_fixed_storage();
+    seg_size += pmix_keyindex_sizeof_storage(nkvals);
     seg_size += nkvals * pmix_hash_sizeof_key_entry(0);
     /* Three copies per registered key, plus the copy newkval() strdups
      * for every value that lands on a list rather than in the table. */
@@ -2236,7 +2261,7 @@ prepare_shmem3_stores_for_local_job_data(
      * describes that segment rather than making a second copy of it. */
     if (pmix_gds_shmem3_has_status(
             job, PMIX_GDS_SHMEM3_SESSION_ID, PMIX_GDS_SHMEM3_READY_FOR_USE)) {
-        return job_smdata_construct(job, htsize);
+        return job_smdata_construct(job, htsize, pji->nkvals);
     }
 
     /* Note that we recycle the segment size calculated above because we
@@ -2257,7 +2282,7 @@ prepare_shmem3_stores_for_local_job_data(
         return rc;
     }
     // Construct shared-memory data structures for job and session.
-    rc = job_smdata_construct(job, htsize);
+    rc = job_smdata_construct(job, htsize, pji->nkvals);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -3437,12 +3462,12 @@ get_modex_sizing_data(
     segment_size += pmix_hash_table_sizeof_storage(nhtelems);
     segment_size += nranks * pmix_hash_sizeof_proc_storage();
     /* The keyindex that translates the indices in that hash table lives
-     * in this segment too. An empty one is already ~170 KB - both its
-     * children are built at a fixed capacity whatever the key count turns
-     * out to be - and each distinct key then costs a record plus three
-     * copies of its own string. We cannot know the number of distinct
-     * keys without unpacking, so bound it by nkvals; the real count is
-     * normally far smaller.
+     * in this segment too, sized for the same nkvals we hand
+     * modex_smdata_construct() - the two have to agree, since the
+     * allocator cannot grow. Each distinct key then costs a record plus
+     * three copies of its own string. We cannot know the number of
+     * distinct keys without unpacking, so bound it by nkvals; the real
+     * count is normally far smaller.
      *
      * The key *lengths* are bounded by the blob, not by PMIX_MAX_KEYLEN.
      * Every key here arrived in the buffer being unpacked, so the key
@@ -3451,7 +3476,7 @@ get_modex_sizing_data(
      * fifty times the payload - by far the largest thing in this
      * estimate, and the reason a 1.3 MB modex was getting an 80 MB
      * segment. */
-    segment_size += pmix_keyindex_sizeof_fixed_storage();
+    segment_size += pmix_keyindex_sizeof_storage(nkvals);
     segment_size += nkvals * pmix_hash_sizeof_key_entry(0);
     // Three copies of every key string, against a payload already scaled
     // by the compression factor above.
@@ -3463,7 +3488,8 @@ get_modex_sizing_data(
 
     pmix_gds_shmem3_modex_info_t result = {
         .size = segment_size,
-        .num_ht_elements = nhtelems
+        .num_ht_elements = nhtelems,
+        .nkvals = nkvals
     };
     return result;
 }
@@ -3635,7 +3661,7 @@ server_store_modex_cb(pmix_proc_t *proc,
             return rc;
         }
 
-        rc = modex_smdata_construct(job, minfo.num_ht_elements);
+        rc = modex_smdata_construct(job, minfo.num_ht_elements, minfo.nkvals);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;

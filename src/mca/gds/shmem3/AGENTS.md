@@ -403,7 +403,8 @@ code it describes so the two cannot drift:
 |---|---|---|
 | `pmix_hash_table_sizeof_storage(n)` | the element array `init(ht, n)` allocates | `pmix_hash_table_init()` |
 | `pmix_hash_sizeof_proc_storage()` | one rank's per-proc object and its arrays | `pdcon()` |
-| `pmix_keyindex_sizeof_fixed_storage()` | an *empty* key index (~170 KB) | `keyindex_construct()` |
+| `pmix_keyindex_sizeof_storage(nkeys)` | a key index sized for `nkeys` | `pmix_keyindex_init()` |
+
 | `pmix_hash_sizeof_key_entry(len)` | one newly registered key | `lookup_key()` |
 
 Do not open-code any of these here. The estimate previously reserved
@@ -416,10 +417,16 @@ strings cannot total more than that buffer holds. Bound them by the
 payload, never by the maximum.
 
 **And whatever you put in a segment has to be in that segment's size
-estimate before it is put there.** A keyindex is not small — it
-constructs a 2048-slot lookup table and a 1024-slot pointer array
-regardless of how many keys it ends up holding, plus three copies of
-every key string. Adding one to the job segment without extending the
+estimate before it is put there.** A keyindex used to be built at a
+fixed capacity whatever it would hold — a 2048-entry lookup and a
+1024-slot pointer array, ~169 KB for an index holding one key. It is
+now sized by `pmix_keyindex_init(ki, nkeys)`, and **the `nkeys` passed
+there has to be the one the estimate reserved for**: the allocator
+cannot grow, so an index that rehashes runs off the end of the segment.
+That cut the floor to ~12 KB and fixed a latent overrun in the other
+direction — past ~2055 distinct keys the old fixed lookup rehashed
+inside the bump allocator, past what the estimate had covered. Three
+copies of every key string are still charged on top. Adding one to the job segment without extending the
 estimate in `prepare_shmem3_stores_for_local_job_data()` overran the
 bump allocator, so the server aborted partway through
 `register_job_info()` and every client waited forever for job data that

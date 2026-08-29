@@ -227,18 +227,16 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_nspace_caddy_t,
                                 pmix_list_item_t,
                                 ncdcon, ncddes);
 
+/* Constructs an EMPTY index - pmix_keyindex_init() builds the children,
+ * because only the caller knows how many keys this one will hold. That
+ * makes the constructed form identical to PMIX_KEYINDEX_STATIC_INIT,
+ * which is what pmix_globals.keyindex carries before pmix_init() runs;
+ * the two used to disagree, so a lookup was safe against one and a
+ * NULL dereference against the other. */
 static void keyindex_construct(pmix_keyindex_t *ki)
 {
-    pmix_tma_t *const tma = pmix_obj_get_tma(&ki->super);
-
-    ki->table = PMIX_NEW(pmix_pointer_array_t, tma);
-    pmix_pointer_array_init(ki->table, PMIX_KEYINDEX_TABLE_SIZE, INT_MAX,
-                            PMIX_KEYINDEX_TABLE_BLOCK);
-
-    /* the string -> entry side. Sized past the reserved dictionary so
-     * the common case never rehashes. */
-    ki->lookup = PMIX_NEW(pmix_hash_table_t, tma);
-    pmix_hash_table_init(ki->lookup, PMIX_KEYINDEX_LOOKUP_SIZE);
+    ki->table = NULL;
+    ki->lookup = NULL;
 
     /* Non-reserved keys are numbered from the top of the reserved range
      * upward, so an id says which half it came from. That matters for a
@@ -250,30 +248,71 @@ static void keyindex_construct(pmix_keyindex_t *ki)
     ki->next_id = PMIX_INDEX_BOUNDARY;
 }
 
-size_t pmix_keyindex_sizeof_fixed_storage(void)
+/* The pointer array allocates max(nkeys, block_size) slots, so a caller
+ * asking for fewer than a block still gets a block - and the estimate
+ * has to say the same thing. One place, used by both. */
+static inline size_t keyindex_table_slots(size_t nkeys)
 {
-    /* Mirror keyindex_construct() above: the object, its pointer array and
-     * that array's slots and free-bit map, its lookup table and that
-     * table's elements. Both children are built at a fixed capacity
-     * whatever the key count turns out to be, so this is the whole cost of
-     * an empty key index - and it is not small, which is exactly why a
-     * caller reserving space for one has to be told rather than guess. */
+    return (nkeys < PMIX_KEYINDEX_TABLE_BLOCK) ? PMIX_KEYINDEX_TABLE_BLOCK
+                                               : nkeys;
+}
+
+pmix_status_t pmix_keyindex_init(pmix_keyindex_t *ki, size_t nkeys)
+{
+    pmix_tma_t *const tma = pmix_obj_get_tma(&ki->super);
+    const size_t slots = keyindex_table_slots(nkeys);
+    int rc;
+
+    if (NULL != ki->table || NULL != ki->lookup) {
+        /* already built - sizing it twice would strand the first pair in
+         * a bump allocator that cannot take them back */
+        return PMIX_ERR_RESOURCE_BUSY;
+    }
+
+    ki->table = PMIX_NEW(pmix_pointer_array_t, tma);
+    if (NULL == ki->table) {
+        return PMIX_ERR_NOMEM;
+    }
+    rc = pmix_pointer_array_init(ki->table, (int) slots, INT_MAX,
+                                 PMIX_KEYINDEX_TABLE_BLOCK);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* the string -> entry side */
+    ki->lookup = PMIX_NEW(pmix_hash_table_t, tma);
+    if (NULL == ki->lookup) {
+        return PMIX_ERR_NOMEM;
+    }
+    return pmix_hash_table_init(ki->lookup, slots);
+}
+
+size_t pmix_keyindex_sizeof_storage(size_t nkeys)
+{
+    /* Mirror pmix_keyindex_init() above: the object, its pointer array
+     * and that array's slots and free-bit map, its lookup table and that
+     * table's elements. Keep the two in step - a caller reserving this
+     * out of a gds/shmem3 segment and then calling init() has no other
+     * way to learn the answer, and being short there is an abort rather
+     * than a slow path. */
     const size_t bits_per_word = 8 * sizeof(uint64_t);
+    const size_t slots = keyindex_table_slots(nkeys);
 
     return sizeof(pmix_keyindex_t)
            + sizeof(pmix_pointer_array_t)
-           + PMIX_KEYINDEX_TABLE_SIZE * sizeof(void *)
-           + ((PMIX_KEYINDEX_TABLE_SIZE + bits_per_word - 1) / bits_per_word)
-                 * sizeof(uint64_t)
+           + slots * sizeof(void *)
+           + ((slots + bits_per_word - 1) / bits_per_word) * sizeof(uint64_t)
            + sizeof(pmix_hash_table_t)
-           + pmix_hash_table_sizeof_storage(PMIX_KEYINDEX_LOOKUP_SIZE);
+           + pmix_hash_table_sizeof_storage(slots);
 }
 
 static void keyindex_destruct(pmix_keyindex_t *ki)
 {
     pmix_tma_t *const tma = pmix_obj_get_tma(&ki->super);
 
-    for (int i = 0; i < ki->table->size; i++) {
+    /* An index that was constructed but never sized has no children -
+     * see keyindex_construct(). */
+    for (int i = 0; NULL != ki->table && i < ki->table->size; i++) {
         pmix_regattr_input_t *p = (pmix_regattr_input_t *)pmix_pointer_array_get_item(ki->table, i);
         if (NULL != p) {
             if (NULL != p->name) {
