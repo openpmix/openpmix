@@ -77,7 +77,6 @@ static void scon(pmix_session_t *s)
     s->session = UINT32_MAX;
     PMIX_CONSTRUCT(&s->sessioninfo, pmix_list_t);
     PMIX_CONSTRUCT(&s->nodeinfo, pmix_list_t);
-    s->described = false;
 }
 static void sdes(pmix_session_t *s)
 {

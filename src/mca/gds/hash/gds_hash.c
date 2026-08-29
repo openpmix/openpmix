@@ -86,7 +86,12 @@ static pmix_status_t session_add(uint32_t sessionID, pmix_info_t info[], size_t 
      * session that exists and carries no attributes is still a session,
      * and a job naming it later has to find this one rather than create
      * a second - which is the whole difference between a session the
-     * host declared and one inferred from a job. */
+     * host declared and one inferred from a job.
+     *
+     * A registration for a session we already hold is an UPDATE, not a
+     * duplicate: a session's resources change under it - see the note in
+     * pmix_gds_hash_process_session_array() - so the keys it restates
+     * replace the ones we hold. */
     if (NULL == pmix_gds_hash_check_session(NULL, sessionID, true)) {
         return PMIX_ERR_NOMEM;
     }

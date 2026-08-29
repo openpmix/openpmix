@@ -590,33 +590,46 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* The session is described already, so this is a later source
-     * offering a second description of it - another job in the same
-     * session, or a host registration after one. Bind the job (done
-     * above) but keep the description that is there.
+    /* Transfer across the results, replacing any key the session already
+     * carries rather than appending beside it.
      *
-     * See the note on pmix_session_t.described for why this is dropped
-     * rather than merged. */
-    if (sptr->described) {
-        PMIX_LIST_DESTRUCT(&scache);
-        PMIX_LIST_DESTRUCT(&ncache);
-        return PMIX_SUCCESS;
-    }
-
-    /* transfer across the results */
-    kp2 = (pmix_kval_t*)pmix_list_remove_first(&scache);
-    while (NULL != kp2) {
+     * A session's description is not written once: its resources
+     * legitimately change under a live session - PMIX_SESSION_EXTEND
+     * grows one "in terms of time or resources", PMIX_SESSION_PREEMPT
+     * takes resources back, and a PMIX_EVENT_NODE_DOWN removes a node -
+     * so PMIX_UNIV_SIZE ("#slots in this session") and the session's
+     * node set are both values a host may restate. Appending left the
+     * old value on the list in front of the new one, and
+     * xfer_sessioninfo() returns the whole list, so a reader got both.
+     */
+    while (NULL != (kp2 = (pmix_kval_t*)pmix_list_remove_first(&scache))) {
+        pmix_kval_t *kold;
+        PMIX_LIST_FOREACH (kold, &sptr->sessioninfo, pmix_kval_t) {
+            if (PMIX_CHECK_KEY(kold, kp2->key)) {
+                pmix_list_remove_item(&sptr->sessioninfo, &kold->super);
+                PMIX_RELEASE(kold);
+                break;
+            }
+        }
         pmix_list_append(&sptr->sessioninfo, &kp2->super);
-        kp2 = (pmix_kval_t*)pmix_list_remove_first(&scache);
     }
     PMIX_LIST_DESTRUCT(&scache);
 
-    nd = (pmix_nodeinfo_t*)pmix_list_remove_first(&ncache);
-    while (NULL != nd) {
+    /* Node info likewise: a node the session already describes is
+     * replaced, so a shrink that restates the remaining nodes does not
+     * leave the departed one behind. */
+    while (NULL != (nd = (pmix_nodeinfo_t*)pmix_list_remove_first(&ncache))) {
+        pmix_nodeinfo_t *ndold;
+        PMIX_LIST_FOREACH (ndold, &sptr->nodeinfo, pmix_nodeinfo_t) {
+            if (nd->nodeid == ndold->nodeid ||
+                pmix_gds_hash_check_hostname(nd->hostname, ndold->hostname)) {
+                pmix_list_remove_item(&sptr->nodeinfo, &ndold->super);
+                PMIX_RELEASE(ndold);
+                break;
+            }
+        }
         pmix_list_append(&sptr->nodeinfo, &nd->super);
-        nd = (pmix_nodeinfo_t*)pmix_list_remove_first(&ncache);
     }
     PMIX_LIST_DESTRUCT(&ncache);
-    sptr->described = true;
     return PMIX_SUCCESS;
 }
