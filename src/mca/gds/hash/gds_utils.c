@@ -287,6 +287,13 @@ pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
             sptr = PMIX_NEW(pmix_session_t);
             sptr->session = sid;
             PMIX_RETAIN(sptr);
+            /* Give back the default session this replaces, exactly as the
+             * "found" branch above does. Without it the job's reference on
+             * the unnamed default is dropped on the floor rather than
+             * returned - and since every job that has not named a session
+             * shares that one object, its count only ever climbs, so it is
+             * never freed. */
+            PMIX_RELEASE(trk->session);
             trk->session = sptr;
             pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &sptr->super);
             return sptr;
