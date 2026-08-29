@@ -246,6 +246,27 @@ typedef struct {
      * pmix_mca_gds_shmem3_component.sessions.
      */
     uint32_t id;
+    /** The session's description, held until there is a segment to put
+     *  it in.
+     *
+     *  A host may register a session before any job is running in it,
+     *  and the segment cannot be built that early: it is placed in, and
+     *  named after, a job. So the description is kept here - a deep copy,
+     *  since the host is free to release its array once the registration
+     *  callback returns - and written into the segment when the first job
+     *  in the session builds it. NULL for a session nobody has described.
+     */
+    pmix_info_t *sinfo;
+    size_t nsinfo;
+    /** Has the session's data been written into the segment yet?
+     *
+     *  Distinct from PMIX_GDS_SHMEM3_READY_FOR_USE, which is only set
+     *  once the whole of a job's store completes. This says "the session
+     *  half is done", so that a host registration and a job's own
+     *  session array cannot both write - first writer wins, because a
+     *  segment a client can see is never written again.
+     */
+    bool described;
     /** Shared-memory object that maintains backing store for session data. */
     pmix_shmem_t *shmem3;
     /** Stores status for shmem3. */

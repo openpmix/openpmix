@@ -1247,7 +1247,7 @@ static void test_shmem3_job_segment(void)
     pmix_nspace_t ns;
     pmix_status_t rc;
     pmix_peer_t *peer;
-    pmix_buffer_t reply;
+    pmix_buffer_t *reply;
     pmix_cb_t cb;
     pmix_proc_t proc;
     uint32_t nprocs = 2, sid = 11, univ = 4;
@@ -1311,15 +1311,16 @@ static void test_shmem3_job_segment(void)
 
     /* Building the segments happens here, on the first peer to ask. */
     peer = mkgdspeer("gds-shmem3-job", nprocs, mod);
-    PMIX_CONSTRUCT(&reply, pmix_buffer_t);
-    PMIX_GDS_REGISTER_JOB_INFO(rc, peer, &reply);
+    /* heap, not stack - see the note on register_session_job() */
+    reply = PMIX_NEW(pmix_buffer_t);
+    PMIX_GDS_REGISTER_JOB_INFO(rc, peer, reply);
     report("shmem3 registers job info and describes its segments",
-           PMIX_SUCCESS == rc && 0 < reply.bytes_used);
+           PMIX_SUCCESS == rc && 0 < reply->bytes_used);
     if (PMIX_SUCCESS != rc) {
         fprintf(stdout, "        (register_job_info: %s)\n",
                 PMIx_Error_string(rc));
     }
-    PMIX_DESTRUCT(&reply);
+    PMIX_RELEASE(reply);
 
     /* Read a plain job-level key back out of the segment we just built,
      * through shmem3's own fetch. */
@@ -1400,9 +1401,16 @@ static bool buffer_mentions(pmix_buffer_t *b, const char *needle)
 
 /* Register a job in a named session and build its segments. Returns the
  * peer, with the register_job_info reply in *reply for the caller. */
+/* NOTE the heap reply. pmix_server_switchyard.c passes PMIX_NEW(pmix_buffer_t)
+ * here, and it has to: gds/hash may PMIX_RETAIN the reply into ns->jobbkt so
+ * it can hand the same packed job description to the job's other local
+ * clients. A stack buffer passed here is retained, destructed by the caller,
+ * and then released again when the namespace is torn down - which asserts on
+ * the object magic in a debug build and is silent corruption in an optimized
+ * one. Do not "simplify" this back to a stack buffer. */
 static pmix_peer_t *register_session_job(const char *nsname, uint32_t sid,
                                          pmix_gds_base_module_t *mod,
-                                         pmix_buffer_t *reply,
+                                         pmix_buffer_t **reply,
                                          pmix_status_t *rc)
 {
     pmix_info_t *info, *iptr;
@@ -1436,8 +1444,13 @@ static pmix_peer_t *register_session_job(const char *nsname, uint32_t sid,
     }
 
     peer = mkgdspeer(nsname, nprocs, mod);
-    PMIX_CONSTRUCT(reply, pmix_buffer_t);
-    PMIX_GDS_REGISTER_JOB_INFO(*rc, peer, reply);
+    *reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == *reply) {
+        *rc = PMIX_ERR_NOMEM;
+        PMIX_RELEASE(peer);
+        return NULL;
+    }
+    PMIX_GDS_REGISTER_JOB_INFO(*rc, peer, *reply);
     return peer;
 }
 
@@ -1458,7 +1471,7 @@ static void test_shmem3_shared_session(void)
     pmix_gds_base_module_t *mod;
     pmix_info_t dir;
     pmix_peer_t *peer_a, *peer_b;
-    pmix_buffer_t reply_a, reply_b;
+    pmix_buffer_t *reply_a, *reply_b;
     pmix_status_t rc_a, rc_b, rc;
     pmix_cb_t cb;
     pmix_proc_t proc;
@@ -1478,7 +1491,7 @@ static void test_shmem3_shared_session(void)
     if (NULL == peer_a || PMIX_SUCCESS != rc_a) {
         report("the first job in a session registers", false);
         if (NULL != peer_a) {
-            PMIX_DESTRUCT(&reply_a);
+            PMIX_RELEASE(reply_a);
             PMIX_RELEASE(peer_a);
         }
         return;
@@ -1488,10 +1501,10 @@ static void test_shmem3_shared_session(void)
     peer_b = register_session_job("gds-sesh-b", sid, mod, &reply_b, &rc_b);
     if (NULL == peer_b || PMIX_SUCCESS != rc_b) {
         report("the second job in the same session registers", false);
-        PMIX_DESTRUCT(&reply_a);
+        PMIX_RELEASE(reply_a);
         PMIX_RELEASE(peer_a);
         if (NULL != peer_b) {
-            PMIX_DESTRUCT(&reply_b);
+            PMIX_RELEASE(reply_b);
             PMIX_RELEASE(peer_b);
         }
         return;
@@ -1500,14 +1513,14 @@ static void test_shmem3_shared_session(void)
 
     /* The point of the case. */
     report("the second job is given the first job's session segment",
-           buffer_mentions(&reply_b, "gds-sesh-a"));
+           buffer_mentions(reply_b, "gds-sesh-a"));
     /* ...and the converse, so a pass cannot come from the two replies
      * simply naming everything. */
     report("the first job is not given the second job's segments",
-           !buffer_mentions(&reply_a, "gds-sesh-b"));
+           !buffer_mentions(reply_a, "gds-sesh-b"));
 
-    PMIX_DESTRUCT(&reply_a);
-    PMIX_DESTRUCT(&reply_b);
+    PMIX_RELEASE(reply_a);
+    PMIX_RELEASE(reply_b);
 
     /* Dropping the job that built the segment must not take it away from
      * the one still in the session: the segment belongs to the session
@@ -1542,6 +1555,143 @@ static void test_shmem3_shared_session(void)
     PMIX_RELEASE(peer_b);
 }
 
+/* Sessions are registered and deregistered, not inferred.
+ *
+ * The asymmetry this closes: nspaces have always been established and
+ * torn down explicitly, while a session existed only as a side effect of
+ * a PMIX_SESSION_INFO_ARRAY riding inside some job's registration. That
+ * gave a session no way to be described before its first job, and no way
+ * to survive its last - and a session with no jobs running in it is an
+ * ordinary state, not an ended one, so the library must not infer the
+ * end from the last job leaving. Only the host can say.
+ */
+static void test_session_registration(void)
+{
+    pmix_gds_base_module_t *mod;
+    pmix_info_t sinfo[2];
+    pmix_peer_t *peer;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    uint32_t univ = 8, maxprocs = 16;
+    const uint32_t sid = 4242;
+
+    fprintf(stdout, "\n-- session registration --\n");
+
+    /* whichever component is active here - hash everywhere, shmem3 where
+     * it builds - so this case covers both implementations */
+    mod = pmix_gds_base_assign_module(NULL, 0);
+    if (NULL == mod) {
+        fprintf(stdout, "    SKIP  no gds module available\n");
+        return;
+    }
+
+    /* A session can be described before any job exists in it. */
+    PMIX_INFO_LOAD(&sinfo[0], PMIX_UNIV_SIZE, &univ, PMIX_UINT32);
+    PMIX_INFO_LOAD(&sinfo[1], PMIX_MAX_PROCS, &maxprocs, PMIX_UINT32);
+    rc = PMIx_server_register_session(sid, sinfo, 2, NULL, NULL);
+    report("a session registers with no job in it", PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "        (register_session: %s)\n", PMIx_Error_string(rc));
+    }
+
+    /* UINT32_MAX is the library's own spelling of "no session named", so
+     * it cannot also be a session id. */
+    rc = PMIx_server_register_session(UINT32_MAX, sinfo, 2, NULL, NULL);
+    report("UINT32_MAX is refused as a session id", PMIX_ERR_BAD_PARAM == rc);
+
+    /* Re-registering is not an error and does not disturb what is held:
+     * a session's description belongs to the session, and by now it may
+     * already have been handed to clients. */
+    rc = PMIx_server_register_session(sid, sinfo, 2, NULL, NULL);
+    report("re-registering a known session succeeds", PMIX_SUCCESS == rc);
+
+    /* Now launch a job into it, the ordinary way. */
+    peer = register_session_job("gds-sesreg-a", sid, mod, &reply, &rc);
+    if (NULL == peer || PMIX_SUCCESS != rc) {
+        report("a job launches into a registered session", false);
+        if (NULL != peer) {
+            PMIX_RELEASE(reply);
+            PMIX_RELEASE(peer);
+        }
+        PMIX_INFO_DESTRUCT(&sinfo[0]);
+        PMIX_INFO_DESTRUCT(&sinfo[1]);
+        return;
+    }
+    report("a job launches into a registered session", true);
+    PMIX_RELEASE(reply);
+
+    /* The host's description reaches a client of that job. The whole-job
+     * fetch is what walks the session's data. */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-sesreg-a", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = NULL;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    report("the session's registered data reaches the job",
+           PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&cb.kvs));
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    /* The point of the whole exercise: the last job leaving does NOT end
+     * the session. Another job may be about to be launched into it. */
+    PMIX_GDS_DEL_NSPACE(rc, "gds-sesreg-a");
+    report("deregistering the only job succeeds", PMIX_SUCCESS == rc);
+    PMIX_RELEASE(peer);
+
+    /* So a job launched afterwards still finds the session, and still
+     * gets its data - without the host having to describe it again. */
+    peer = register_session_job("gds-sesreg-b", sid, mod, &reply, &rc);
+    if (NULL == peer || PMIX_SUCCESS != rc) {
+        report("a later job still finds the session", false);
+        if (NULL != peer) {
+            PMIX_RELEASE(reply);
+            PMIX_RELEASE(peer);
+        }
+        PMIX_INFO_DESTRUCT(&sinfo[0]);
+        PMIX_INFO_DESTRUCT(&sinfo[1]);
+        return;
+    }
+    PMIX_RELEASE(reply);
+
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-sesreg-b", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = NULL;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    report("a job launched after the session emptied still reads it",
+           PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&cb.kvs));
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    /* And the host ends it explicitly. */
+    PMIx_server_deregister_session(sid, NULL, NULL);
+    report("the host deregisters the session", true);
+
+    /* Deregistering a session this server never had is not an error - a
+     * host issues the call on every daemon. */
+    PMIx_server_deregister_session(99999, NULL, NULL);
+    report("deregistering an unknown session is not an error", true);
+
+    PMIX_GDS_DEL_NSPACE(rc, "gds-sesreg-b");
+    PMIX_RELEASE(peer);
+
+    /* A session registered after being deregistered is a new one, and
+     * takes a fresh description. */
+    rc = PMIx_server_register_session(sid, sinfo, 2, NULL, NULL);
+    report("the session id can be reused after deregistration",
+           PMIX_SUCCESS == rc);
+    PMIx_server_deregister_session(sid, NULL, NULL);
+
+    PMIX_INFO_DESTRUCT(&sinfo[0]);
+    PMIX_INFO_DESTRUCT(&sinfo[1]);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -1570,6 +1720,7 @@ int main(int argc, char **argv)
     test_realm_classifiers();
     test_shmem3_job_segment();
     test_shmem3_shared_session();
+    test_session_registration();
 
     fprintf(stdout, "\n=== %d passed, %d failed ===\n", npass, nfail);
 

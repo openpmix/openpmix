@@ -159,8 +159,22 @@ is once more than one job holds it".
 
 Both are now decided.  A tracker is registered the first time a job names
 a real session id, on the server as it builds its segments and on a
-client as it reads the session seg blob; the list holds it weakly, so the
-segment is given back when the last job in the session deregisters.
+client as it reads the session seg blob, and the component's list holds a
+reference until the host says the session is over.
+
+The lifetime took two goes, and the wrong one is worth recording.  It was
+first made *weak* — the last job out reclaimed the segment — on the
+reasoning that a persistent DVM would otherwise accumulate a session
+segment per allocation forever.  That is inferring the end of a session
+from the end of its last job, and a session with no jobs running in it is
+an ordinary state: another job may be about to be launched into it.  It
+also silently diverged from ``gds/hash``, whose ``nspace_del`` has always
+dropped the job and left the session standing.  The answer was not to
+pick a side but to add the signal that was missing —
+``PMIx_server_deregister_session`` and a ``del_session`` slot on the gds
+module — which is what landed.  Note that the sharing had already taken
+most of the accumulation away by itself: the growth is one segment per
+*session* rather than one per *job*.
 
 Three things about how it closed are worth keeping.
 

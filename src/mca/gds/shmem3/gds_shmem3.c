@@ -1005,6 +1005,9 @@ session_construct(
     pmix_gds_shmem3_session_t *s
 ) {
     s->id = UINT32_MAX;
+    s->sinfo = NULL;
+    s->nsinfo = 0;
+    s->described = false;
     s->shmem3 = PMIX_NEW(pmix_shmem_t);
     s->shmem3_status = 0;
     s->smdata = NULL;
@@ -1014,26 +1017,15 @@ static void
 session_destruct(
     pmix_gds_shmem3_session_t *s
 ) {
-    /* A shared session is registered on the component's list, which holds
-     * it weakly - the counted references all belong to the jobs in the
-     * session - so the last of those jobs to let go brings us here and
-     * the entry has to come off the list before it is freed.
+    /* Nothing unlinks here. The component's list holds a reference of
+     * its own, so a session on it cannot reach this destructor; only
+     * del_session() takes that reference back, and then the object lives
+     * on until the last job in the session has let go too.
      *
-     * Weakly, rather than with a reference of its own, is what makes the
-     * segment reclaimable. A strong entry would keep every session ever
-     * described mapped until the module finalized, which for a launcher
-     * whose DVM outlives the allocations running under it means never.
-     * The cost is that a session does not currently outlive the last job
-     * in it; giving it a longer life needs a host-facing "this session is
-     * over" call, which the gds framework does not have (see
-     * src/mca/gds/AGENTS.md).
-     *
-     * Only a named session is ever on the list. */
-    if (UINT32_MAX != s->id) {
-        pmix_list_remove_item(
-            &pmix_mca_gds_shmem3_component.sessions, &s->super
-        );
-    }
+     * That ordering is the point. A session is not over because its last
+     * job ended - a session with no jobs running is an ordinary state,
+     * and another job may be about to be launched into it - so only the
+     * host can say, through PMIx_server_deregister_session(). */
     /* The segment is the session's own. This used to be job_destruct()'s
      * job, which works only while every session has exactly one job: the
      * first job to be destructed would unmap the segment and free the
@@ -1054,6 +1046,12 @@ session_destruct(
         PMIX_RELEASE(s->shmem3);
         s->shmem3 = NULL;
     }
+    if (NULL != s->sinfo) {
+        PMIX_INFO_FREE(s->sinfo, s->nsinfo);
+        s->sinfo = NULL;
+        s->nsinfo = 0;
+    }
+    s->described = false;
     // Invalidate the shmem3 flags.
     s->shmem3_status = 0;
     s->smdata = NULL;
@@ -2083,15 +2081,12 @@ static void
 module_finalize(void)
 {
     PMIX_GDS_SHMEM3_VVOUT_HERE();
-    /* Jobs first. A job holds a counted reference on its session, and a
-     * session unlinks itself from the list below as it is destructed, so
-     * this loop is what empties that one. */
+    /* Jobs first: each holds a reference on its session, so this is what
+     * lets the session list's own references be the last ones out. */
     PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem3_component.jobs);
-    /* Deliberately not PMIX_LIST_DESTRUCT: the session list holds no
-     * references, so releasing its members here would be a second
-     * release of objects the jobs above already gave back. After that
-     * loop it is empty and this only tears down the list itself. */
-    PMIX_DESTRUCT(&pmix_mca_gds_shmem3_component.sessions);
+    /* Any session the host never deregistered. Finalize is the backstop
+     * for those, not the intended path - see del_session(). */
+    PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem3_component.sessions);
 }
 
 static pmix_status_t
@@ -2271,6 +2266,30 @@ prepare_shmem3_stores_for_local_job_data(
     rc = session_smdata_construct(job, pji->session_id);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* If the host described this session through
+     * PMIx_server_register_session, that description has been waiting for
+     * a segment to live in - a session can be registered before any job
+     * is running in it, and the segment is placed in, and named after, a
+     * job. This is the first job, so write it now; the job's own session
+     * array, if it carries one, then finds the session already described
+     * and leaves it alone. */
+    if (NULL != job->session->sinfo && !job->session->described) {
+        pmix_value_t sval;
+        rc = pmix_gds_base_wrap_session_info(
+            job->session->id, job->session->sinfo, job->session->nsinfo, &sval
+        );
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        rc = pmix_gds_shmem3_store_session_array(job, &sval);
+        pmix_gds_base_release_session_info(&sval);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+        }
     }
     return rc;
 }
@@ -3886,6 +3905,107 @@ client_recv_modex_complete(
     return client_connect_to_shmem3_from_buffi(buff);
 }
 
+static pmix_status_t
+server_add_session(
+    uint32_t sessionID,
+    pmix_info_t info[],
+    size_t ninfo
+) {
+    PMIX_GDS_SHMEM3_VVOUT_HERE();
+
+    /* Establish the tracker even with nothing to record: a session that
+     * exists and carries no attributes is still a session, and a job
+     * naming it later has to find this one rather than register a second
+     * beside it. */
+    pmix_gds_shmem3_session_t *sesh;
+    sesh = pmix_gds_shmem3_find_session(sessionID, true);
+    if (PMIX_UNLIKELY(NULL == sesh)) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (0 == ninfo || NULL == info) {
+        return PMIX_SUCCESS;
+    }
+
+    /* Already described - by an earlier registration, or by the first job
+     * in the session. First writer wins; see
+     * pmix_gds_shmem3_store_session_array(). */
+    if (sesh->described || NULL != sesh->sinfo) {
+        PMIX_GDS_SHMEM3_VOUT(
+            "%s: session %u is already described; keeping the first "
+            "description", __func__, (unsigned) sessionID
+        );
+        return PMIX_SUCCESS;
+    }
+
+    /* Hold it until there is a segment to put it in. That may be now -
+     * if a job in this session has already built one - or not until the
+     * first job arrives, which is the case this whole entry point exists
+     * to serve: a host describing a session before anything runs in it.
+     *
+     * Copied, not referenced: the host may release its array as soon as
+     * the registration callback returns, and the segment that will hold
+     * this may not exist for some time yet. */
+    PMIX_INFO_CREATE(sesh->sinfo, ninfo);
+    if (PMIX_UNLIKELY(NULL == sesh->sinfo)) {
+        return PMIX_ERR_NOMEM;
+    }
+    sesh->nsinfo = ninfo;
+    for (size_t n = 0; n < ninfo; n++) {
+        PMIX_INFO_XFER(&sesh->sinfo[n], &info[n]);
+    }
+
+    /* A job in this session has already built the segment, so write it
+     * now rather than waiting for a first job that has been and gone. */
+    if (NULL != sesh->smdata) {
+        pmix_gds_shmem3_job_t *job;
+        PMIX_LIST_FOREACH (job, &pmix_mca_gds_shmem3_component.jobs,
+                           pmix_gds_shmem3_job_t) {
+            if (job->session == sesh) {
+                pmix_value_t sval;
+                pmix_status_t rc = pmix_gds_base_wrap_session_info(
+                    sessionID, sesh->sinfo, sesh->nsinfo, &sval
+                );
+                if (PMIX_SUCCESS != rc) {
+                    return rc;
+                }
+                rc = pmix_gds_shmem3_store_session_array(job, &sval);
+                pmix_gds_base_release_session_info(&sval);
+                return rc;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t
+server_del_session(
+    uint32_t sessionID
+) {
+    pmix_gds_shmem3_session_t *sesh;
+
+    PMIX_GDS_SHMEM3_VVOUT_HERE();
+
+    PMIX_LIST_FOREACH (sesh, &pmix_mca_gds_shmem3_component.sessions,
+                       pmix_gds_shmem3_session_t) {
+        if (sesh->id != sessionID) {
+            continue;
+        }
+        /* Drop the list's reference only. Jobs still registered in this
+         * session hold their own, and their clients have the segment
+         * mapped, so the mapping survives until the last of them is
+         * deregistered - which lets a host end a session and tear its
+         * jobs down in either order. */
+        pmix_list_remove_item(
+            &pmix_mca_gds_shmem3_component.sessions, &sesh->super
+        );
+        PMIX_RELEASE(sesh);
+        return PMIX_SUCCESS;
+    }
+    /* Not an error. A host deregisters a session across every daemon,
+     * and this one may have had no job in it. */
+    return PMIX_SUCCESS;
+}
+
 pmix_gds_base_module_t pmix_shmem3_module = {
     .name = PMIX_GDS_SHMEM3_NAME,
     /* fetch() may be called from a thread other than the progress
@@ -3906,6 +4026,8 @@ pmix_gds_base_module_t pmix_shmem3_module = {
     .setup_fork = server_setup_fork,
     .add_nspace = server_add_nspace,
     .del_nspace = del_nspace,
+    .add_session = server_add_session,
+    .del_session = server_del_session,
     .del_key = del_key,
     .assemb_kvs_req = NULL,
     .accept_kvs_resp = NULL,

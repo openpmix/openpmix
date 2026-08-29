@@ -442,29 +442,60 @@ golden rule does not usually bite here.
 
 ### A note on what is *not* cleaned up
 
-Neither component ever removes a session tracker. A session legitimately
-outlives the jobs in it — that is what a session is — and there is no
-"session has ended" signal for either component to act on, so
-`pmix_mca_gds_hash_component.mysessions` only shrinks when the module
-finalizes. `del_nspace` drops the *job* and its reference to the session;
-the session itself stays.
+A session legitimately outlives the jobs in it — that is what a session
+is — so `del_nspace` drops the *job* and its reference to the session,
+and never the session itself. **The signal that a session has ended is
+`del_session`,** driven by `PMIx_server_deregister_session`; see
+"Sessions are said, not inferred" below.
 
-`pmix_mca_gds_shmem3_component.sessions` behaves differently, and
-deliberately. Jobs in one session share a single session object and a
-single segment there, and the list holds those objects **weakly** — every
-counted reference belongs to a job — so the segment is reclaimed when the
-last job in the session deregisters rather than lingering to finalize.
-That is a deliberate trade against `hash`'s behavior above: it means a
-`shmem3` session does not outlive the last job in it, which matters for a
-launcher whose DVM outlives the allocations running under it. See
-[`shmem3/AGENTS.md`](shmem3/AGENTS.md).
+`pmix_mca_gds_shmem3_component.sessions` works the same way, with one
+addition of its own: jobs in a session share a single session object
+*and a single shared-memory segment*, so the segment is given back when
+the session's last holder — the list's reference, plus one per job —
+lets go. See [`shmem3/AGENTS.md`](shmem3/AGENTS.md).
 
-Closing that needs a **`deregister_session` entry point** — a host-facing
-call that says a session is over, paired with a `del_session` slot on
-`pmix_gds_base_module_t` and a fan-out macro alongside
-`PMIX_GDS_ADD_NSPACE` / `PMIX_GDS_DEL_NSPACE`, since every active module
-was told about the session and every one has to be told it is finished.
-That is a public API addition and belongs in its own change, not here.
+## Sessions are said, not inferred
+
+Jobs have always been established and torn down explicitly. Sessions
+were not: one existed only as a side effect of a
+`PMIX_SESSION_INFO_ARRAY` riding inside some job's registration, which
+left a session with no way to be described before its first job and no
+way to survive its last.
+
+**The library must not infer that a session has ended from its last job
+being deregistered.** A session with no jobs running in it is an
+ordinary state, not a finished one — a persistent DVM holds an
+allocation across the gaps between the jobs run in it — so only the host
+knows, and it says so through `PMIx_server_deregister_session`.
+
+Two slots carry that, and both are **fan-outs** across
+`pmix_gds_globals.actives` rather than peer-resolved, for the same
+reason `add_nspace`/`del_nspace` are: which module will serve the jobs
+in a session is not known when the session is established, and need not
+be the same for all of them.
+
+| slot | macro | driven by |
+|------|-------|-----------|
+| `add_session` | `PMIX_GDS_ADD_SESSION` | `PMIx_server_register_session` |
+| `del_session` | `PMIX_GDS_DEL_SESSION` | `PMIx_server_deregister_session` |
+
+Both are optional; a module that keeps no session data leaves them NULL
+and the macro treats that as success.
+
+The inference path still works — a job naming a session the library has
+not been told about establishes it — because hosts that predate the API
+depend on it. What the explicit call adds is the two ends that
+inference cannot express. Consumers detect it through
+`PMIX_CAP_SESSION_REGISTRATION` in `pmix_version.h`.
+
+**A session's description is written once.** Both components take the
+first description offered — the host's registration, or the first job
+whose registration carried a session array — and ignore later ones
+rather than merging them. `hash` could merge; `shmem3` cannot, because
+its session data lives in a segment local clients have mapped and a
+segment a client can see is never written again. Two components
+answering a host differently is worse than either answer, so both take
+the behavior available to both.
 
 Component-internal symbols (`pmix_gds_hash_*`, and `pmix_gds_shmem3_*`
 other than the few marked `PMIX_EXPORT`) are hidden in a

@@ -454,8 +454,8 @@ store_proc_data(
     return rc;
 }
 
-static pmix_status_t
-store_session_array(
+pmix_status_t
+pmix_gds_shmem3_store_session_array(
     pmix_gds_shmem3_job_t *job,
     pmix_value_t *val
 ) {
@@ -496,19 +496,20 @@ store_session_array(
         return rc;
     }
 
-    /* A session segment that is already in use was filled in by the first
-     * job in this session to describe it, and this is a later one. Its
-     * contents are what every job in the session shares, so there is
-     * nothing to add - and nothing may be added: local clients have the
+    /* A session that has already been described was written by whoever
+     * described it first - the host through PMIx_server_register_session,
+     * or the first job in the session to carry a session array. There is
+     * nothing to add, and nothing may be added: local clients have the
      * segment mapped, and a segment a client can see is never written
      * again.
      *
-     * That makes this first-writer-wins if two jobs describe one session
-     * differently. They should not; a session's description belongs to
-     * the session. Reconciling them would need a second generation of the
-     * segment, the way the modex does, which is a great deal of machinery
-     * for a disagreement that indicates a host bug. */
-    if (pmix_gds_shmem3_has_status(
+     * So this is first-writer-wins. A session's description belongs to
+     * the session, and two sources describing it differently is a host
+     * bug; reconciling them would need a second generation of the
+     * segment, the way the modex has, which is a great deal of machinery
+     * for that. */
+    if (sesh->described ||
+        pmix_gds_shmem3_has_status(
             job, PMIX_GDS_SHMEM3_SESSION_ID, PMIX_GDS_SHMEM3_READY_FOR_USE)) {
         PMIX_GDS_SHMEM3_VOUT(
             "%s: session %u is already described; not storing again",
@@ -560,6 +561,9 @@ store_session_array(
     while ((ni = (pmix_gds_shmem3_nodeinfo_t *)pmix_list_remove_first(ncache))) {
         pmix_list_append(sesh->smdata->nodeinfo, &ni->super);
     }
+    /* The session's data is in its segment now, so no later source may
+     * write it - see the first-writer-wins note above. */
+    sesh->described = true;
 out:
     PMIX_LIST_DESTRUCT(ncache);
     return rc;
@@ -656,7 +660,7 @@ pmix_gds_shmem3_store_local_job_data_in_shmem3(
             }
         }
         else if (PMIX_CHECK_KEY(kvi, PMIX_SESSION_INFO_ARRAY)) {
-            rc = store_session_array(job, kvi->value);
+            rc = pmix_gds_shmem3_store_session_array(job, kvi->value);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;

@@ -472,6 +472,83 @@ typedef pmix_status_t (*pmix_gds_base_module_del_nspace_fn_t)(const char *nspace
     } while (0)
 
 /**
+ * Add a session and its associated data.
+ *
+ * Sessions, like nspaces, are fanned out to *every* active module
+ * rather than resolved from a peer: which module will serve the jobs
+ * in a session is not known when the session is established, and may
+ * differ between them.
+ *
+ * Optional. A module that keeps no session-level data leaves this NULL
+ * and the macro treats that as success.
+ *
+ * @param sessionID  the session being established
+ * @param info       session-level information, or NULL
+ * @param ninfo      number of elements in info
+ *
+ * @return PMIX_SUCCESS on success.
+ */
+typedef pmix_status_t (*pmix_gds_base_module_add_session_fn_t)(uint32_t sessionID,
+                                                               pmix_info_t info[],
+                                                               size_t ninfo);
+
+/* define a convenience macro for add_session - a fan-out, like add_nspace */
+#define PMIX_GDS_ADD_SESSION(s, sid, i, ni)                                                  \
+    do {                                                                                     \
+        pmix_gds_base_active_module_t *_g;                                                   \
+        pmix_status_t _s = PMIX_SUCCESS;                                                     \
+        (s) = PMIX_SUCCESS;                                                                  \
+        pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS ADD SESSION %u", __FILE__, \
+                            __LINE__, (unsigned) (sid));                                     \
+        PMIX_LIST_FOREACH (_g, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {   \
+            if (NULL == _g->module->add_session) {                                           \
+                continue;                                                                    \
+            }                                                                                \
+            _s = _g->module->add_session(sid, i, ni);                                        \
+            if (PMIX_SUCCESS != _s) {                                                        \
+                (s) = PMIX_ERROR;                                                            \
+            }                                                                                \
+        }                                                                                    \
+    } while (0)
+
+/**
+ * Delete a session and its associated data.
+ *
+ * This is said by the host, never inferred: a session with no jobs
+ * running in it is an ordinary state, not an ended one, so the last
+ * job leaving does not end the session. See
+ * PMIx_server_deregister_session.
+ *
+ * Jobs still registered in the session are not deleted here; a module
+ * releases the session's own data and lets those jobs go as their own
+ * nspaces are deregistered.
+ *
+ * @param sessionID  the session that has ended
+ *
+ * @return PMIX_SUCCESS on success.
+ */
+typedef pmix_status_t (*pmix_gds_base_module_del_session_fn_t)(uint32_t sessionID);
+
+/* define a convenience macro for del_session - a fan-out, like del_nspace */
+#define PMIX_GDS_DEL_SESSION(s, sid)                                                         \
+    do {                                                                                     \
+        pmix_gds_base_active_module_t *_g;                                                   \
+        pmix_status_t _s = PMIX_SUCCESS;                                                     \
+        (s) = PMIX_SUCCESS;                                                                  \
+        pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS DEL SESSION %u", __FILE__, \
+                            __LINE__, (unsigned) (sid));                                     \
+        PMIX_LIST_FOREACH (_g, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {   \
+            if (NULL == _g->module->del_session) {                                           \
+                continue;                                                                    \
+            }                                                                                \
+            _s = _g->module->del_session(sid);                                               \
+            if (PMIX_SUCCESS != _s) {                                                        \
+                (s) = PMIX_ERROR;                                                            \
+            }                                                                                \
+        }                                                                                    \
+    } while (0)
+
+/**
  * Note that a key has been removed, so this module stops answering for
  * it. Optional: a module whose own store already handled the removal -
  * gds/hash, which takes a delete through its store slot like any other
@@ -566,6 +643,13 @@ typedef struct {
     pmix_gds_base_module_fetch_array_fn_t           fetch_arrays;
     pmix_gds_base_module_mark_modex_complete_fn_t   mark_modex_complete;
     pmix_gds_base_module_recv_modex_complete_fn_t   recv_modex_complete;
+    /* Appended, never inserted: this struct is installed under
+     * $(pmixincludedir)/src/mca/gds and an out-of-tree component may
+     * initialize it positionally. New slots go here, and the framework
+     * version above is bumped so a component built against an older
+     * layout is refused rather than misread. */
+    pmix_gds_base_module_add_session_fn_t           add_session;
+    pmix_gds_base_module_del_session_fn_t           del_session;
 } pmix_gds_base_module_t;
 
 /* NOTE: there is no public GDS interface structure - all access is
@@ -580,7 +664,7 @@ typedef pmix_mca_base_component_t pmix_gds_base_component_t;
  * the same three by pasting its name, so the two cannot drift apart.
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
-#define PMIX_MCA_gds_MAJOR_VERSION   1
+#define PMIX_MCA_gds_MAJOR_VERSION   2
 #define PMIX_MCA_gds_MINOR_VERSION   0
 #define PMIX_MCA_gds_RELEASE_VERSION 0
 

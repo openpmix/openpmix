@@ -463,3 +463,51 @@ pmix_status_t pmix_gds_base_proc_array_id(const pmix_info_t *array, size_t size,
     /* the array does not say who it describes */
     return PMIX_ERR_TYPE_MISMATCH;
 }
+
+pmix_status_t pmix_gds_base_wrap_session_info(uint32_t sessionID,
+                                              pmix_info_t info[], size_t ninfo,
+                                              pmix_value_t *val)
+{
+    pmix_data_array_t *array = NULL;
+    pmix_info_t *iptr;
+
+    val->type = PMIX_DATA_ARRAY;
+    val->data.darray = NULL;
+
+    PMIX_DATA_ARRAY_CREATE(array, ninfo + 1, PMIX_INFO);
+    if (NULL == array || NULL == array->array) {
+        if (NULL != array) {
+            free(array);
+        }
+        return PMIX_ERR_NOMEM;
+    }
+    iptr = (pmix_info_t *) array->array;
+    /* the session id has to lead: it is what every consumer of this
+     * shape reads element zero for */
+    PMIX_INFO_LOAD(&iptr[0], PMIX_SESSION_ID, &sessionID, PMIX_UINT32);
+    if (0 < ninfo && NULL != info) {
+        memcpy(&iptr[1], info, ninfo * sizeof(pmix_info_t));
+    }
+    val->data.darray = array;
+    return PMIX_SUCCESS;
+}
+
+void pmix_gds_base_release_session_info(pmix_value_t *val)
+{
+    pmix_data_array_t *array = val->data.darray;
+    pmix_info_t *iptr;
+
+    if (NULL == array) {
+        return;
+    }
+    iptr = (pmix_info_t *) array->array;
+    if (NULL != iptr) {
+        /* Element zero is the only one we built. Everything past it is a
+         * shallow copy of the caller's array, so destructing it here
+         * would free values the caller still owns. */
+        PMIX_INFO_DESTRUCT(&iptr[0]);
+        free(iptr);
+    }
+    free(array);
+    val->data.darray = NULL;
+}

@@ -590,6 +590,19 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* The session is described already, so this is a later source
+     * offering a second description of it - another job in the same
+     * session, or a host registration after one. Bind the job (done
+     * above) but keep the description that is there.
+     *
+     * See the note on pmix_session_t.described for why this is dropped
+     * rather than merged. */
+    if (sptr->described) {
+        PMIX_LIST_DESTRUCT(&scache);
+        PMIX_LIST_DESTRUCT(&ncache);
+        return PMIX_SUCCESS;
+    }
+
     /* transfer across the results */
     kp2 = (pmix_kval_t*)pmix_list_remove_first(&scache);
     while (NULL != kp2) {
@@ -604,5 +617,6 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
         nd = (pmix_nodeinfo_t*)pmix_list_remove_first(&ncache);
     }
     PMIX_LIST_DESTRUCT(&ncache);
+    sptr->described = true;
     return PMIX_SUCCESS;
 }

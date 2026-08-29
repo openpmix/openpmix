@@ -25,6 +25,18 @@ BEGIN_C_DECLS
  * key and its qualifiers; pass NULL for the process-global one, or the
  * segment's own keyindex when storing into a shared-memory table whose
  * indices other processes will read. */
+/**
+ * Store a PMIX_SESSION_INFO_ARRAY-shaped value into the session segment
+ * the given job is bound to. Answers success without writing for a
+ * session that has already been described - see the note at the top of
+ * the implementation.
+ */
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem3_store_session_array(
+    pmix_gds_shmem3_job_t *job,
+    pmix_value_t *val
+);
+
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem3_store_qualified(
     pmix_hash_table_t *ht,

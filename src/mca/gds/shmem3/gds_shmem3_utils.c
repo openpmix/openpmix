@@ -136,6 +136,43 @@ out:
 }
 
 pmix_gds_shmem3_session_t *
+pmix_gds_shmem3_find_session(
+    uint32_t sid,
+    bool create
+) {
+    pmix_gds_shmem3_component_t *const comp = &pmix_mca_gds_shmem3_component;
+    pmix_gds_shmem3_session_t *si;
+
+    /* UINT32_MAX is how a job spells "no session named", never a session
+     * of its own - see the note on pmix_gds_shmem3_session_t.id. */
+    if (PMIX_UNLIKELY(UINT32_MAX == sid)) {
+        return NULL;
+    }
+
+    PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem3_session_t) {
+        if (si->id == sid) {
+            return si;
+        }
+    }
+
+    if (!create) {
+        return NULL;
+    }
+
+    si = PMIX_NEW(pmix_gds_shmem3_session_t);
+    if (PMIX_UNLIKELY(NULL == si)) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return NULL;
+    }
+    si->id = sid;
+    /* The list takes the reference PMIX_NEW just gave us, and holds it
+     * until del_session() - so a session outlives the jobs in it, which
+     * is the whole point of a session. Jobs take their own. */
+    pmix_list_append(&comp->sessions, &si->super);
+    return si;
+}
+
+pmix_gds_shmem3_session_t *
 pmix_gds_shmem3_get_session_tracker(
     pmix_gds_shmem3_job_t *job,
     uint32_t sid,
@@ -145,8 +182,6 @@ pmix_gds_shmem3_get_session_tracker(
     if (PMIX_UNLIKELY(!job)) {
         return NULL;
     }
-
-    pmix_gds_shmem3_component_t *const comp = &pmix_mca_gds_shmem3_component;
 
     /* A wildcard request asks for whatever this job already has, which is
      * the private object job_construct() gave it until something names a
@@ -177,30 +212,11 @@ pmix_gds_shmem3_get_session_tracker(
      * sessions whose segment already exists - and the caller that has to
      * be answered first is the one deciding whether to build that
      * segment. */
-    pmix_gds_shmem3_session_t *si;
-    PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem3_session_t) {
-        if (si->id == sid) {
-            goto share;
-        }
-    }
-
-    if (!create) {
+    pmix_gds_shmem3_session_t *si = pmix_gds_shmem3_find_session(sid, create);
+    if (NULL == si) {
         return NULL;
     }
 
-    si = PMIX_NEW(pmix_gds_shmem3_session_t);
-    if (PMIX_UNLIKELY(NULL == si)) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        return NULL;
-    }
-    si->id = sid;
-    /* Registered without taking a reference. Every counted reference on a
-     * session belongs to a job in it, so the segment is given back when
-     * the last of them lets go; session_destruct() unlinks this entry.
-     * See the note there for what that costs. */
-    pmix_list_append(&comp->sessions, &si->super);
-
-share:
     PMIX_RETAIN(si);
     if (NULL != job->session) {
         // Give back the unnamed default this replaces.
