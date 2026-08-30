@@ -15,7 +15,9 @@ governs any attempt to move it.
 
 For a code-oriented orientation aimed at contributors working *inside*
 the datastore, ``src/mca/gds/AGENTS.md`` covers the framework and each
-component directory carries its own.
+component directory carries its own. :doc:`shmem3` covers the
+shared-memory datastore itself — its segments, how they are updated, and
+why reading one takes no lock.
 
 
 The Problem
@@ -318,10 +320,11 @@ slot number**, plus a ``next_id`` counter. Retrieval reverses the
 substitution — ``make_copy`` rebuilds a ``pmix_kval_t`` from
 ``p->string`` — so the conversion is invisible from outside.
 
-There is exactly **one** key index per process,
-``pmix_globals.keyindex``. Every caller in the tree passes ``NULL`` for
-the ``kidx`` argument, and ``get_keyindex_ptr`` turns that ``NULL`` into
-the global.
+Every process has one global key index, ``pmix_globals.keyindex``, and
+a caller that passes ``NULL`` for the ``kidx`` argument gets it —
+``get_keyindex_ptr`` turns that ``NULL`` into the global. It is not the
+only one: ``gds/shmem3`` builds a *private* index inside each shared
+segment and passes that, for the reason developed below.
 
 Reserved and non-reserved keys
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -383,23 +386,16 @@ hash table stores ``pmix_dstor_t`` records keyed by integer, the server
 writes those integers, and every client reads them — so for the first
 time, an index really does cross a process boundary.
 
-What the job segment does today
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The approach that was tried first
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For *job-level* data, ``shmem3`` handles this by having the server
-dictate its numbering to its clients. ``register_job_info`` packs the
-server's dictionary into the reply, and the client rebuilds
-``pmix_globals.keyindex`` to match, appending any entries of its own that
-the server did not send. The code's own comment states the reason
-plainly:
+The original answer for *job-level* data was to have the server dictate
+its numbering to its clients: ``register_job_info`` packed the server's
+whole dictionary into the reply, and the client rebuilt
+``pmix_globals.keyindex`` to match, appending any entries of its own the
+server had not sent.
 
-.. code-block:: text
-
-   We can _never_ assume that the indices in our dictionary match the
-   ones in the server's dictionary. Even if the number of entries is the
-   same, there is no guarantee that they are in the same order.
-
-That works for job data because it happens once, during ``PMIx_Init``,
+That worked for job data because it happens once, during ``PMIx_Init``,
 before the application has published anything. It does not generalize to
 the modex:
 
@@ -411,6 +407,11 @@ the modex:
 * re-running the rebuild after a fence would renumber indices already
   recorded in the client's own local tables, silently invalidating its
   own stored data.
+
+It also made every read of shared data depend on a process-global
+structure that the progress thread rewrites — and the merge itself
+destructed and rebuilt ``pmix_globals.keyindex`` wholesale. That
+machinery has been removed; there is no key-index blob on the wire.
 
 The approach that does work
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -442,9 +443,16 @@ Three existing properties make this practical:
   allocates through the ``pmix_tma_t`` of the object it hangs off, and
   ``pmix_pointer_array_t`` is likewise — so it can be built inside a
   segment with no new machinery.
-* The segment index needs only the keys the modex actually carries, not
-  the whole reserved dictionary.
-* The job-data path above is untouched and keeps working as it does now.
+* The segment index needs only the keys whose numbering genuinely cannot
+  be agreed in advance — the *non-reserved* ones. A reserved
+  attribute's id comes from the generated dictionary and is pinned in
+  ``contrib/dictionary_ids.txt``, so it is the same in every process;
+  ``lookup_key`` resolves any id below ``PMIX_INDEX_BOUNDARY`` against
+  the process-global index instead, and nothing about it is carried in
+  the segment.
+* The job segment carries one of its own on exactly the same terms, so
+  no part of a shared read depends on two processes agreeing about
+  global indices.
 
 One rule follows from the client's mapping being read-only:
 **the retrieval path must never register a key.** The lookup used by
