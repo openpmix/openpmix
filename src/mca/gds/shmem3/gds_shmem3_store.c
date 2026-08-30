@@ -509,8 +509,7 @@ pmix_gds_shmem3_store_session_array(
      * segment, the way the modex has, which is a great deal of machinery
      * for that. */
     if (sesh->described ||
-        pmix_gds_shmem3_has_status(
-            job, PMIX_GDS_SHMEM3_SESSION_ID, PMIX_GDS_SHMEM3_READY_FOR_USE)) {
+        NULL != pmix_gds_shmem3_chain_head(&sesh->segments)) {
         PMIX_GDS_SHMEM3_VOUT(
             "%s: session %u is already described; not storing again",
             __func__, sid
@@ -700,6 +699,13 @@ pmix_gds_shmem3_store_local_job_data_in_shmem3(
             job, PMIX_GDS_SHMEM3_SESSION_ID,
             PMIX_GDS_SHMEM3_READY_FOR_USE
         );
+        /* The session's segment becomes readable here, whole - see
+         * pmix_gds_shmem3_publish_session_segment(). Until now it was
+         * described only by the build fields, which no reader touches. */
+        rc = pmix_gds_shmem3_publish_session_segment(job->session);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+        }
     }
     return rc;
 }
