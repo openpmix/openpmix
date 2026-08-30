@@ -1983,6 +1983,162 @@ static void test_shmem3_modex_generations(void)
     PMIX_RELEASE(peer);
 }
 
+/* A session's description changes under it.
+ *
+ * This is the case the whole session series exists for: a session's
+ * resources are not fixed. PMIX_SESSION_EXTEND grows one "in terms of
+ * time or resources", PMIX_SESSION_PREEMPT takes them back, a node goes
+ * down - so PMIX_UNIV_SIZE, defined as "#slots in this session", is a
+ * value a host restates.
+ *
+ * A published segment can never be rewritten - local clients have it
+ * mapped - so an update is a NEW segment carrying only what changed,
+ * published at the head of the session's chain. A read walks newest
+ * first, so the restated key answers from the update and everything the
+ * update did not mention still answers from the segments behind it.
+ */
+static void test_session_update(void)
+{
+    pmix_gds_base_module_t *mod;
+    pmix_info_t sinfo[2], upd[1];
+    pmix_peer_t *peer;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    pmix_kval_t *kv;
+    uint32_t univ = 8, grown = 64;
+    uint32_t got = 0;
+    const uint32_t sid = 909;
+    bool found_univ = false, found_max = false;
+
+    fprintf(stdout, "\n-- session update --\n");
+
+    mod = pmix_gds_base_assign_module(NULL, 0);
+    if (NULL == mod) {
+        fprintf(stdout, "    SKIP  no gds module available\n");
+        return;
+    }
+
+    /* describe the session, then launch a job into it */
+    PMIX_INFO_LOAD(&sinfo[0], PMIX_UNIV_SIZE, &univ, PMIX_UINT32);
+    /* A key from pmix_check_session_info()'s list, so that a KEYED get
+     * routes to the session realm - PMIX_MAX_PROCS is stored on the
+     * session but classified job-level, so asking for it by key never
+     * reaches here. */
+    PMIX_INFO_LOAD(&sinfo[1], PMIX_CLUSTER_ID, "gds-test-cluster",
+                   PMIX_STRING);
+    rc = PMIx_server_register_session(sid, sinfo, 2, NULL, NULL);
+    report("a session registers", PMIX_SUCCESS == rc);
+
+    peer = register_session_job("gds-sesupd", sid, mod, &reply, &rc);
+    if (NULL == peer || PMIX_SUCCESS != rc) {
+        report("a job launches into it", false);
+        PMIX_INFO_DESTRUCT(&sinfo[0]);
+        PMIX_INFO_DESTRUCT(&sinfo[1]);
+        return;
+    }
+    report("a job launches into it", true);
+    PMIX_RELEASE(reply);
+
+    /* the session grows */
+    PMIX_INFO_LOAD(&upd[0], PMIX_UNIV_SIZE, &grown, PMIX_UINT32);
+    rc = PMIx_server_register_session(sid, upd, 1, NULL, NULL);
+    report("the host restates the session's size", PMIX_SUCCESS == rc);
+
+    /* the restated key answers with the NEW value */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-sesupd", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = PMIX_UNIV_SIZE;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    if (PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs)) {
+        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+        PMIx_Value_get_number(kv->value, &got, PMIX_UINT32);
+    }
+    report("the updated value is what a read returns", grown == got);
+    if (grown != got) {
+        fprintf(stdout, "        (expected %u, got %u)\n",
+                (unsigned) grown, (unsigned) got);
+    }
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    /* a key the update did NOT mention still answers from behind it -
+     * this is what says the update carried only what changed rather
+     * than replacing the session wholesale */
+    bool kept = false;
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-sesupd", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = PMIX_CLUSTER_ID;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    if (PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs)) {
+        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+        kept = (PMIX_STRING == kv->value->type &&
+                NULL != kv->value->data.string &&
+                0 == strcmp(kv->value->data.string, "gds-test-cluster"));
+    }
+    report("a key the update did not restate survives", kept);
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    /* the whole-session form reports each key ONCE, with the newest
+     * value - the shadowed copy must not come back too */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-sesupd", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = NULL;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
+            if (NULL == kv->key) {
+                continue;
+            }
+            if (PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY) &&
+                PMIX_DATA_ARRAY == kv->value->type &&
+                NULL != kv->value->data.darray) {
+                pmix_info_t *ia =
+                    (pmix_info_t *) kv->value->data.darray->array;
+                size_t nia = kv->value->data.darray->size, u = 0, m = 0;
+                for (size_t i = 0; i < nia; i++) {
+                    if (PMIX_CHECK_KEY(&ia[i], PMIX_UNIV_SIZE)) {
+                        u++;
+                        PMIx_Value_get_number(&ia[i].value, &got,
+                                              PMIX_UINT32);
+                    }
+                    else if (PMIX_CHECK_KEY(&ia[i], PMIX_CLUSTER_ID)) {
+                        m++;
+                    }
+                }
+                found_univ = (1 == u && grown == got);
+                found_max = (1 == m);
+            }
+        }
+    }
+    report("the whole-session form reports the updated key once",
+           found_univ);
+    report("the whole-session form still carries the untouched key",
+           found_max);
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    PMIx_server_deregister_session(sid, NULL, NULL);
+    PMIX_GDS_DEL_NSPACE(rc, "gds-sesupd");
+    PMIX_RELEASE(peer);
+    PMIX_INFO_DESTRUCT(&sinfo[0]);
+    PMIX_INFO_DESTRUCT(&sinfo[1]);
+    PMIX_INFO_DESTRUCT(&upd[0]);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -2013,6 +2169,7 @@ int main(int argc, char **argv)
     test_shmem3_shared_session();
     test_shmem3_modex_generations();
     test_session_registration();
+    test_session_update();
 
     fprintf(stdout, "\n=== %d passed, %d failed ===\n", npass, nfail);
 

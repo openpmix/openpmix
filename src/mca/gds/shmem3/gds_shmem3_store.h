@@ -31,6 +31,15 @@ BEGIN_C_DECLS
  * session that has already been described - see the note at the top of
  * the implementation.
  */
+/** Write a session array into the session's build slot, with no
+ *  already-described guard - see the implementation. */
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem3_store_session_info(
+    pmix_gds_shmem3_job_t *job,
+    pmix_gds_shmem3_session_t *sesh,
+    pmix_value_t *val
+);
+
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem3_store_session_array(
     pmix_gds_shmem3_job_t *job,

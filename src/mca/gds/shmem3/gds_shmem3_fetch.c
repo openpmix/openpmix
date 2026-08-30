@@ -444,17 +444,80 @@ xfer_sessioninfo(
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_gds_shmem3_seg_t *const head =
         pmix_gds_shmem3_chain_head(&sesh->segments);
-    pmix_gds_shmem3_shared_session_data_t *smdata;
+    pmix_gds_shmem3_seg_t *seg;
 
     if (NULL == head) {
         /* nothing published for this session yet */
         return PMIX_ERR_NOT_FOUND;
     }
-    smdata = head->smdata;
-    pmix_list_t *const sessionlist = smdata->sessioninfo;
-    const uint32_t sid = smdata->id;
+    const uint32_t sid = sesh->id;
 
-    if (NULL == key) {
+    /* A keyed request is answered by the newest segment carrying the
+     * key: an update publishes only what changed, so everything it did
+     * not restate is still answered by the segments behind it. Stopping
+     * at the first hit is what makes the newer value win. */
+    if (NULL != key) {
+        for (seg = head; NULL != seg; seg = seg->prior) {
+            pmix_gds_shmem3_shared_session_data_t *const sd = seg->smdata;
+            pmix_kval_t *kvi;
+            if (NULL == sd) {
+                continue;
+            }
+            PMIX_LIST_FOREACH (kvi, sd->sessioninfo, pmix_kval_t) {
+                if (!PMIX_CHECK_KEY(kvi, key)) {
+                    continue;
+                }
+                pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
+                kv->key = strdup(kvi->key);
+                PMIX_VALUE_XFER(rc, kv->value, kvi->value);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_RELEASE(kv);
+                    return rc;
+                }
+                pmix_list_append(kvs, &kv->super);
+                return PMIX_SUCCESS;
+            }
+        }
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* The whole-session form. Collect newest-first and keep the first
+     * value seen for each key, which is the newest one: a key an update
+     * restated must not also be reported with the value it replaced. */
+    pmix_list_t merged;
+    PMIX_CONSTRUCT(&merged, pmix_list_t);
+    for (seg = head; NULL != seg; seg = seg->prior) {
+        pmix_gds_shmem3_shared_session_data_t *const sd = seg->smdata;
+        pmix_kval_t *kvi;
+        if (NULL == sd) {
+            continue;
+        }
+        PMIX_LIST_FOREACH (kvi, sd->sessioninfo, pmix_kval_t) {
+            pmix_kval_t *seen;
+            bool shadowed = false;
+            PMIX_LIST_FOREACH (seen, &merged, pmix_kval_t) {
+                if (PMIX_CHECK_KEY(seen, kvi->key)) {
+                    shadowed = true;
+                    break;
+                }
+            }
+            if (shadowed) {
+                continue;
+            }
+            pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
+            kv->key = strdup(kvi->key);
+            PMIX_VALUE_XFER(rc, kv->value, kvi->value);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(kv);
+                PMIX_LIST_DESTRUCT(&merged);
+                return rc;
+            }
+            pmix_list_append(&merged, &kv->super);
+        }
+    }
+    pmix_list_t *const sessionlist = &merged;
+
+    {
         if (PMIX_PEER_IS_EARLIER(peer, 4, 2, 0)) {
             // We can only transfer the data as independent values.
             pmix_kval_t *kvi;
@@ -464,6 +527,7 @@ xfer_sessioninfo(
                 PMIX_VALUE_XFER(rc, kv->value, kvi->value);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_RELEASE(kv);
+                    PMIX_LIST_DESTRUCT(&merged);
                     return rc;
                 }
                 pmix_list_append(kvs, &kv->super);
@@ -487,30 +551,18 @@ xfer_sessioninfo(
                 rc = PMIx_Value_xfer(&info[i].value, kvi->value);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_RELEASE(kv);
+                    PMIX_LIST_DESTRUCT(&merged);
                     return rc;
                 }
                 i++;
             }
             pmix_list_append(kvs, &kv->super);
         }
+        PMIX_LIST_DESTRUCT(&merged);
         return PMIX_SUCCESS;
     }
-    // Else we were given a specific key.
-    pmix_kval_t *kvi;
-    PMIX_LIST_FOREACH(kvi, sessionlist, pmix_kval_t) {
-        if (PMIX_CHECK_KEY(kvi, key)) {
-            pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
-            kv->key = strdup(kvi->key);
-            PMIX_VALUE_XFER(rc, kv->value, kvi->value);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_RELEASE(kv);
-                return rc;
-            }
-            pmix_list_append(kvs, &kv->super);
-            return PMIX_SUCCESS;
-        }
-    }
-    return PMIX_ERR_NOT_FOUND;
+    PMIX_LIST_DESTRUCT(&merged);
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
