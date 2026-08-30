@@ -787,10 +787,17 @@ rest of the walk is ordinary pointer chasing.
 The synchronization that *does* exist is exactly three things:
 
 #. **The component's ``joblock``.** It guards the *spine* of the job
-   list — finding a tracker and taking a reference to it — because a
-   reader that is not on the progress thread could otherwise have the
-   list mutated under it by ``del_nspace()``. It does **not** cover
-   reading a tracker's contents.
+   list, because a reader that is not on the progress thread could
+   otherwise have the list mutated under it — ``pmix_list_remove_item()``
+   is several stores, and a walker can catch any of them. It is held
+   across exactly two things and dropped: the walk itself, and the
+   ``PMIX_RETAIN`` that claims what the walk found, so a tracker cannot
+   be removed in the gap between finding it and owning it. It does
+   **not** cover reading a tracker's contents. Every site that appends
+   to or removes from the list takes it, and every one of them releases
+   its own reference *outside* the lock — if a reader holds one, that
+   release is not the last, and the destructor that detaches the
+   segments does not run until the reader is done.
 #. **The reference a reader holds on the job tracker.**
    ``pmix_gds_shmem3_acquire_job_tracker()`` takes it under the lock and
    the reader releases it when finished. A tracker owns the mappings of
@@ -808,6 +815,38 @@ unmapped under a reader, the current generation was moved between two
 fields in several stores, and the tombstone list was an ordinary
 ``pmix_list_t`` being appended to. Each was fixed in turn rather than
 locked around.
+
+The component's *sessions* list has no lock, and the reason is an
+invariant rather than an oversight: it is only ever walked from the
+progress thread.
+
+That is **not** because a session-realm get is served somewhere else. It
+is served right here, out of the session segments, by
+``fetch_sessioninfo()``. What differs is the thread it arrives on.
+``try_local_fetch()`` is a short circuit onto the caller's own thread,
+and declining it does not route the request away from ``shmem3`` — it
+means the ordinary ``PMIX_THREADSHIFT(cb, get_data)`` path runs instead
+and the same ``pmix_gds_shmem3_fetch()`` is called from the progress
+thread. A realm request is declined because resolving one is not a plain
+lookup: ``get_data()`` may first have to fetch another proc's session id
+and rebuild the info array around it, which is progress-thread work.
+
+Both ways into ``fetch_sessioninfo()`` are covered. A
+``PMIX_SESSION_INFO`` qualifier sets ``lg->sessioninfo`` and
+``lg->sessiondirective``; a session-classified key sets one of the three
+realm flags; and the whole-job read that also lands there has a ``NULL``
+key. Every one of those is in the decline list. Note this does not
+depend on the two sides classifying a key in the same order — they do
+not, ``process_request()`` tries node/app/session and
+``shmem3_fetch_from_job()`` tries session/node/app — because *all three*
+realm flags decline, so a key landing in any realm declines whichever
+one it landed in.
+
+``pmix_gds_shmem3_get_session_tracker()`` also *writes* ``job->session``
+on its way through, so an application thread arriving there would be a
+race on the tracker, not only on the list spine. Relaxing that gating
+means giving this list the same treatment ``joblock`` gives the other
+one.
 
 .. important::
 

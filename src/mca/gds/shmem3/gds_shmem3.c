@@ -1510,6 +1510,32 @@ addr_in_arena(
 }
 
 /**
+ * Take a job tracker off the component list and give up our reference.
+ *
+ * The removal has to be under joblock for the same reason del_nspace()
+ * does it that way: a reader on another thread can be walking this
+ * spine at any moment (pmix_gds_shmem3_acquire_job_tracker(), reached
+ * from a fetch on the application's thread), and pmix_list_remove_item()
+ * is several stores it could catch part way through.
+ *
+ * The release stays OUTSIDE the lock, and that is not a detail. If a
+ * reader already holds a reference, this is not the last one, and the
+ * destructor - which detaches the segments the reader is walking - does
+ * not run until that reader is done with it.
+ */
+static void
+drop_job_tracker(
+    pmix_gds_shmem3_job_t *job
+) {
+    pmix_gds_shmem3_component_t *const component = &pmix_mca_gds_shmem3_component;
+
+    pmix_mutex_lock(&component->joblock);
+    pmix_list_remove_item(&component->jobs, &job->super);
+    pmix_mutex_unlock(&component->joblock);
+    PMIX_RELEASE(job);
+}
+
+/**
  * Attaches to the given shared-memory segment.
  */
 static pmix_status_t
@@ -1612,10 +1638,7 @@ out:
         }
         else {
             // remove the job from the tracker
-            pmix_list_remove_item(
-                &pmix_mca_gds_shmem3_component.jobs, &job->super
-            );
-            PMIX_RELEASE(job);
+            drop_job_tracker(job);
         }
     }
     else {
@@ -2150,8 +2173,7 @@ out_release:
      * gets reused. */
     (void)pmix_shmem_segment_unlink(shmem3);
     (void)pmix_shmem_segment_detach(shmem3);
-    pmix_list_remove_item(&pmix_mca_gds_shmem3_component.jobs, &job->super);
-    PMIX_RELEASE(job);
+    drop_job_tracker(job);
     return rc;
 }
 
