@@ -549,6 +549,58 @@ typedef pmix_status_t (*pmix_gds_base_module_del_session_fn_t)(uint32_t sessionI
     } while (0)
 
 /**
+ * Pack whatever this peer needs in order to see data that has been
+ * added since it last looked - for gds/shmem3, the segments describing
+ * a session whose description has changed.
+ *
+ * Optional; a module with nothing to say packs nothing and the caller
+ * sends nothing. Resolved from the peer being told, because what it
+ * needs depends on the module IT is bound to.
+ *
+ * Packing nothing must be reported as PMIX_SUCCESS - "this peer is up
+ * to date" is not a failure.
+ *
+ * @param peer  the peer to be told
+ * @param buff  buffer to pack into
+ *
+ * @return PMIX_SUCCESS on success.
+ */
+typedef pmix_status_t (*pmix_gds_base_module_pack_update_fn_t)(struct pmix_peer_t *peer,
+                                                               pmix_buffer_t *buff);
+
+#define PMIX_GDS_PACK_UPDATE(s, p, b)                                       \
+    do {                                                                    \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);               \
+        if (NULL == _g->pack_update) {                                      \
+            (s) = PMIX_SUCCESS;                                             \
+        } else {                                                            \
+            (s) = _g->pack_update(p, b);                                    \
+        }                                                                   \
+    } while (0)
+
+/**
+ * Take delivery of what pack_update() produced.
+ *
+ * The client half of the above, resolved from the server peer that sent
+ * it - which is the peer carrying this client's assigned module.
+ *
+ * @param buff  the buffer that was sent
+ *
+ * @return PMIX_SUCCESS on success.
+ */
+typedef pmix_status_t (*pmix_gds_base_module_accept_update_fn_t)(pmix_buffer_t *buff);
+
+#define PMIX_GDS_ACCEPT_UPDATE(s, p, b)                                     \
+    do {                                                                    \
+        pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);               \
+        if (NULL == _g->accept_update) {                                    \
+            (s) = PMIX_SUCCESS;                                             \
+        } else {                                                            \
+            (s) = _g->accept_update(b);                                     \
+        }                                                                   \
+    } while (0)
+
+/**
  * Note that a key has been removed, so this module stops answering for
  * it. Optional: a module whose own store already handled the removal -
  * gds/hash, which takes a delete through its store slot like any other
@@ -650,6 +702,8 @@ typedef struct {
      * layout is refused rather than misread. */
     pmix_gds_base_module_add_session_fn_t           add_session;
     pmix_gds_base_module_del_session_fn_t           del_session;
+    pmix_gds_base_module_pack_update_fn_t           pack_update;
+    pmix_gds_base_module_accept_update_fn_t         accept_update;
 } pmix_gds_base_module_t;
 
 /* NOTE: there is no public GDS interface structure - all access is

@@ -323,6 +323,32 @@ static pmix_list_t pmix_client_held_deletes = PMIX_LIST_STATIC_INIT(pmix_client_
 
 /* A server telling us that a key has been deleted, so our own copy of it
  * goes too. See pmix_server_notify_deleted(). */
+/* A server telling us that a datastore segment we may be reading has
+ * been added to - a session whose description changed, say.
+ *
+ * The payload is opaque here: it was packed by the peer's gds module on
+ * the server side and is handed straight back to our own, because only
+ * the module knows what a new segment means for it. We are on the
+ * progress thread, which is where the module expects to be told.
+ */
+static void client_gds_update_handler(struct pmix_peer_t *pr,
+                                      pmix_ptl_hdr_t *hdr,
+                                      pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_status_t rc;
+
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr, cbdata);
+
+    /* a zero-byte buffer means the connection was lost */
+    if (NULL == buf || PMIX_BUFFER_IS_EMPTY(buf)) {
+        return;
+    }
+    PMIX_GDS_ACCEPT_UPDATE(rc, pmix_client_globals.myserver, buf);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+}
+
 static void client_data_delete_handler(struct pmix_peer_t *pr,
                                        pmix_ptl_hdr_t *hdr,
                                        pmix_buffer_t *buf, void *cbdata)
@@ -1258,6 +1284,11 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
     rcv->tag = PMIX_PTL_TAG_DATA_DELETE;
     rcv->cbfunc = client_data_delete_handler;
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
+    /* and the "a segment you are reading has been added to" recv */
+    rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
+    rcv->tag = PMIX_PTL_TAG_GDS_UPDATE;
+    rcv->cbfunc = client_gds_update_handler;
     pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
     /* create the default iof handler */
     iofreq = PMIX_NEW(pmix_iof_req_t);

@@ -995,6 +995,61 @@ void pmix_server_notify_deleted(const pmix_proc_t *proc,
     }
 }
 
+/* Tell our local clients that a datastore segment has been added to, so
+ * they can map it and see the new data.
+ *
+ * The payload is opaque here: each peer's own gds module packs what THAT
+ * peer needs, because only it knows what a new segment means for it and
+ * which module the peer is bound to. A module with nothing to say packs
+ * nothing and the peer is not written to at all.
+ *
+ * One-way, like the deletion notice above, and for the same reason:
+ * there is nothing for the client to answer, and a client that has gone
+ * away has no copy left to correct.
+ */
+void pmix_server_notify_gds_update(const char *nspace)
+{
+    pmix_peer_t *peer;
+    pmix_buffer_t *msg;
+    pmix_status_t rc;
+    int n;
+
+    for (n = 0; n < pmix_server_globals.clients.size; n++) {
+        peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
+        if (NULL == peer || peer->finalized || NULL == peer->nptr) {
+            continue;
+        }
+        if (NULL != nspace && 0 != strcmp(peer->nptr->nspace, nspace)) {
+            continue;
+        }
+        /* a peer that predates this cannot act on it - and has no
+         * receive posted for the tag either */
+        if (PMIX_PEER_IS_EARLIER(peer, 7, 0, 0)) {
+            continue;
+        }
+        msg = PMIX_NEW(pmix_buffer_t);
+        if (PMIX_UNLIKELY(NULL == msg)) {
+            return;
+        }
+        PMIX_GDS_PACK_UPDATE(rc, peer, msg);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            continue;
+        }
+        if (PMIX_BUFFER_IS_EMPTY(msg)) {
+            /* this peer's module had nothing to add */
+            PMIX_RELEASE(msg);
+            continue;
+        }
+        PMIX_PTL_SEND_ONEWAY(rc, peer, msg, PMIX_PTL_TAG_GDS_UPDATE);
+        if (PMIX_SUCCESS != rc) {
+            /* the peer is finalized - it has nothing left to update */
+            PMIX_RELEASE(msg);
+        }
+    }
+}
+
 /* Append this rank's unannounced deletions to its contribution.
  *
  * Each goes out as an entry whose value is PMIX_UNDEF, which every
