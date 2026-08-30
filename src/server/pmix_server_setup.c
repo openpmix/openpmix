@@ -807,6 +807,40 @@ static void _deregister_resources(int sd, short args, void *cbdata)
                         continue;
                     }
                     if (!empty) {
+                        /* The entry survives, pruned. The namespaces
+                         * already holding it have the UNPRUNED value, so
+                         * push the pruned one: a store replaces by key,
+                         * and gds/shmem3 publishes a segment that
+                         * shadows what it replaces. A deletion would be
+                         * wrong here - it would take from a namespace
+                         * more than the host asked to remove - which is
+                         * why this arm did nothing until there was an
+                         * update push to use. */
+                        pmix_namespace_t *nsp;
+                        pmix_info_t pruned;
+                        PMIX_INFO_CONSTRUCT(&pruned);
+                        PMIX_LOAD_KEY(pruned.key, kv->key);
+                        rc = PMIx_Value_xfer(&pruned.value, kv->value);
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_ERROR_LOG(rc);
+                            if (PMIX_SUCCESS == ret) {
+                                ret = rc;
+                            }
+                            PMIX_INFO_DESTRUCT(&pruned);
+                            continue;
+                        }
+                        PMIX_LIST_FOREACH (nsp, &pmix_globals.nspaces,
+                                           pmix_namespace_t) {
+                            pmix_status_t prc;
+                            PMIX_GDS_ADD_JOB_DATA(prc, nsp->nspace, &pruned, 1);
+                            if (PMIX_SUCCESS != prc) {
+                                PMIX_ERROR_LOG(prc);
+                                if (PMIX_SUCCESS == ret) {
+                                    ret = prc;
+                                }
+                            }
+                        }
+                        PMIX_INFO_DESTRUCT(&pruned);
                         continue;
                     }
                 }
@@ -814,14 +848,6 @@ static void _deregister_resources(int sd, short args, void *cbdata)
                 PMIX_RELEASE(kv);
                 retracted = true;
             }
-            /* Note what is deliberately not retracted: the arm above
-             * that *pruned* an entry rather than removing it. There the
-             * host asked for elements to be taken out of a value, so the
-             * correct propagation is the pruned value, not a deletion -
-             * pushing a removal would take from a namespace more than
-             * the host asked to remove. That needs an update push, which
-             * does not exist yet. */
-
         } else {
             PMIX_LIST_FOREACH_SAFE (kv, knext, &pmix_server_globals.gdata, pmix_kval_t) {
                 if (PMIX_CHECK_KEY(kv, cd->info[n].key)) {

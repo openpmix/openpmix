@@ -505,6 +505,13 @@ namespace, so resolving from `nptr->compat.gds` reaches one and misses
 the other — which is exactly what the first version of this did, and
 what `test/unit/gds_datastore`'s late-resource case caught.
 
+A **qualified** deregistration - one asking for part of a value to go -
+rides the same path. The entry survives pruned, and what the namespaces
+need is the pruned value, which is an ordinary addition: a store
+replaces by key, and shmem3 publishes a segment shadowing what it
+replaces. A deletion would be wrong there, since it would take from a
+namespace more than the host asked to remove.
+
 ## Telling clients that data has changed
 
 A client maps what a session said when it attached. When the description

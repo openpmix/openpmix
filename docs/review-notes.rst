@@ -127,8 +127,41 @@ an entry whose value is ``PMIX_UNDEF``, and both datastores act on one
 that arrives.  ``examples/delete_key.c`` is the case that proves it, and
 it only proves anything with one rank per node.
 
-The *qualified* form of this is still open — see
-:ref:`todo-qualified-dereg`.
+A qualified deregistration is propagated too
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The *qualified* form stood open after that, and closed on 2026-08-30.
+A deregistration carrying a data-array qualifier can ask for **part** of
+a value to go — this key, on that node, and only these elements of it.
+The entry survives, pruned, and every namespace already holding it holds
+the *unpruned* one.  Nothing correct could be done about that: pushing a
+deletion would take from a namespace more than the host asked to remove.
+So the arm did nothing, and the entry named two obstacles — "an update
+push which does not exist", and "deciding what a partial update looks
+like on the wire and in a shared segment neither datastore can rewrite
+in place".
+
+Both were gone by the time it was re-read, and neither was removed with
+this case in mind.  The update push is ``add_job_data``, built so that a
+resource registered *after* a job could reach it.  The shared-segment
+half is the job-data chain: an addition is a new segment at the head, and
+a read stops at the first segment carrying the key, so a pruned value
+shadows the one it replaces without anything being rewritten.  And the
+wire question turned out not to arise — the pruned value is an ordinary
+value, so a "partial update" is just a store, which replaces by key.
+
+The propagation is therefore three lines of intent and no new mechanism:
+copy the pruned entry and hand it to every namespace.  Worth keeping for
+the shape rather than the fix: **an entry can be closed by machinery
+built for something else**, and the way to notice is to re-read what it
+says it needs rather than what it concludes.  This one concluded
+"deliberate rather than missing", which reads as settled; what it
+actually recorded was two prerequisites, and both had quietly been met.
+
+``test/unit/gds_datastore`` covers it — register a node-scoped entry with
+two elements, launch a job into it, prune one element, and require the
+job to see the other survive and the pruned one gone.  Against the
+previous commit the job still reports all three.
 
 Smaller items carried forward (closed 2026-08-13)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
