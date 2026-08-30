@@ -537,6 +537,19 @@ typedef struct {
      * generation holds just what changed, so what came before it is
      * still the only copy of everything it did not repeat. A read walks
      * this after the current generation. */
+    /** Every published segment describing this job's own data, newest
+     *  first.
+     *
+     * Job data used to be one segment written once, which meant a host
+     * adding to it after the job was registered - PMIx_server_register_
+     * resources, say - could not reach the namespaces already running.
+     * A published segment can never be rewritten, so an addition is a
+     * new segment carrying only what is new, and a read walks
+     * newest-first.
+     *
+     * The fields above are the segment being BUILT, which no reader
+     * touches; publishing is what makes one readable. */
+    pmix_gds_shmem3_chain_t job_chain;
     /** Every published modex generation, newest first - see
      *  pmix_gds_shmem3_seg_t. The head is the current one.
      *
