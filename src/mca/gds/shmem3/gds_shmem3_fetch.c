@@ -557,10 +557,14 @@ static bool tombstoned(
 ) {
     pmix_gds_shmem3_tombstone_t *t;
 
-    if (NULL == key || 0 == pmix_list_get_size(&job->tombstones)) {
+    if (NULL == key) {
         return false;
     }
-    PMIX_LIST_FOREACH (t, &job->tombstones, pmix_gds_shmem3_tombstone_t) {
+    /* Entering the chain is one acquire-load; the ->prior pointers are
+     * immutable, so the rest of the walk needs nothing. Empty for every
+     * job nobody has deleted from, which is the ordinary case. */
+    for (t = atomic_load_explicit(&job->tombstones, memory_order_acquire);
+         NULL != t; t = t->prior) {
         if (t->rank != rank || NULL == t->key || 0 != strcmp(t->key, key)) {
             continue;
         }
@@ -585,7 +589,8 @@ static void drop_tombstoned(
     pmix_kval_t *kv, *nxt;
     size_t n = 0;
 
-    if (0 == pmix_list_get_size(&job->tombstones)) {
+    if (NULL == atomic_load_explicit(&job->tombstones,
+                                     memory_order_acquire)) {
         return;
     }
     /* Only what this generation contributed - entries before "mark"
@@ -1146,15 +1151,19 @@ doover:
  * means the progress thread can deregister the nspace underneath us and
  * the memory we are walking still stays put until we are done.
  *
- * What is IN the segments needs no further locking - a segment a client
- * can see is never written again. What needs it is the process-local
- * bookkeeping this walks alongside them: which modex generations are
- * currently mapped, and which keys the job has been told to stop
- * answering for. Both are rewritten by the progress thread as fences
- * complete and keys are retracted, and releasing a generation UNMAPS it.
- * job->datalock is what keeps a read and one of those apart; it is held
- * across the whole read, so nothing below has to re-establish that a
- * generation it decided to walk is still there.
+ * Nothing below takes a lock, and nothing below needs one. What is IN a
+ * segment is written once, before any client can see it, and never
+ * again; no segment is ever unmapped, so a mapping cannot be withdrawn
+ * mid-read; and the two things this walks alongside them - the modex
+ * generations and the tombstones - are chains whose nodes are complete
+ * before they are published, never rewritten, and never removed. So
+ * entering either is one acquire-load and the walk that follows needs
+ * no synchronization at all.
+ *
+ * That is the property this component exists for: a library pulling
+ * thousands of values through PMIx_Get during its init pays no lock on
+ * any of them. If you add state that a read consults, make it immutable
+ * or make it a chain - see the note on pmix_gds_shmem3_job_t.
  */
 pmix_status_t
 pmix_gds_shmem3_fetch(
@@ -1174,10 +1183,8 @@ pmix_gds_shmem3_fetch(
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         return rc;
     }
-    pmix_mutex_lock(&job->datalock);
     rc = shmem3_fetch_from_job(job, pr, proc, scope, copy, key,
                                qualifiers, nqual, kvs);
-    pmix_mutex_unlock(&job->datalock);
     PMIX_RELEASE(job);
     return rc;
 }

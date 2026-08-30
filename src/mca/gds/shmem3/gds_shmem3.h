@@ -359,13 +359,23 @@ typedef struct {
  * a tombstone against it always applies; modex data can legitimately
  * come back, so a tombstone only shadows generations up to the one it
  * was recorded at. */
-typedef struct {
-    pmix_list_item_t super;
+typedef struct pmix_gds_shmem3_tombstone_t {
+    /** The tombstone recorded before this one; NULL at the end.
+     *
+     * Same discipline as pmix_gds_shmem3_seg_t: a node is complete
+     * before it is published, is never written again, and is never
+     * removed until the job tracker is destroyed - so a reader that has
+     * acquire-loaded the head walks a chain that cannot change beneath
+     * it, and neither recording a deletion nor reading one needs a lock.
+     */
+    struct pmix_gds_shmem3_tombstone_t *prior;
     pmix_rank_t rank;
     char *key;
     uint32_t generation;
 } pmix_gds_shmem3_tombstone_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem3_tombstone_t);
+
+/** Head of a job's tombstone chain. */
+typedef _Atomic(pmix_gds_shmem3_tombstone_t *) pmix_gds_shmem3_tombstones_t;
 
 /* One segment in a chain of them, newest first.
  *
@@ -465,7 +475,7 @@ typedef struct {
      * each only has to advance whenever ITS process takes on a new
      * generation.
      */
-    uint32_t modex_generation;
+    pmix_atomic_uint32_t modex_generation;
     /** Shared-memory object that maintains backing store for smmodex data. */
     pmix_shmem_t *modex_shmem3;
     /** Points to shared job data located in a shared-memory segment. */
@@ -478,31 +488,32 @@ typedef struct {
      * told to each client in the segment blob so it can make the same
      * keep-or-drop decision this server made. */
     bool modex_is_delta;
-    /** Guards the process-local state a read walks: the modex generation
-     *  chain below and the tombstone list.
+    /* There is no lock here, and that is the design rather than an
+     * omission.
      *
      * This module is is_tsafe, so pmix_gds_shmem3_fetch() runs on the
      * APPLICATION's thread (see try_local_fetch() in
-     * src/client/pmix_client_get.c, which is on by default). Two things
-     * the progress thread does still need to be kept away from it:
+     * src/client/pmix_client_get.c, which is on by default) while the
+     * progress thread publishes new data. Everything such a read walks
+     * is therefore either immutable or a chain:
      *
-     *   - retire_modex_segment() clears job->smmodex while publishing the
-     *     generation it replaces, and a read must not catch that
-     *     half-done;
-     *   - del_key() appends to the tombstone list, which a read walks.
+     *   - what is IN a segment is written once, before any client can
+     *     see it, and never again;
+     *   - a segment is never unmapped, so a mapping cannot be taken away
+     *     mid-read;
+     *   - modex generations and tombstones are chains whose nodes are
+     *     complete before they are published, never rewritten, and never
+     *     removed - so entering one is a single acquire-load and the
+     *     rest of the walk needs nothing.
      *
-     * Nothing UNMAPS any more. A modex generation is retired onto the
-     * chain and kept, so the chain only ever grows and a walk cannot
-     * have a segment taken away underneath it - which is why walking
-     * needs no lock, and why the two items above are all that is left.
-     *
-     * NOT needed for anything in a shared segment: those are written once,
-     * before any client can see them, and never again.
+     * A lock used to stand here because none of those three were true.
+     * If you add state that a read consults, make it one of the three
+     * rather than reaching for a mutex: a lock on this path is paid by
+     * every PMIx_Get, which is what this component exists to make fast.
      */
-    pmix_mutex_t datalock;
     /** Keys this job has been told to stop answering for. Process-local;
      * see pmix_gds_shmem3_tombstone_t. */
-    pmix_list_t tombstones;
+    pmix_gds_shmem3_tombstones_t tombstones;
     /** Modex generations older than the current one, newest first.
      *
      * Non-empty only when a delta contribution has been stored: such a
