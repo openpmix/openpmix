@@ -612,6 +612,11 @@ PMIX_EXPORT void pmix_server_modex_resync(const pmix_proc_t *proc);
 /* Tell our local clients that a key has been deleted so their cached
  * copies go too. "skip" is the peer that asked for the deletion and has
  * already applied it, or NULL. */
+/** Tell our local clients in this nspace - or all of them, for NULL -
+ *  that a datastore segment has been added to. Each peer's own gds
+ *  module decides what, if anything, it needs to hear. */
+PMIX_EXPORT void pmix_server_notify_gds_update(const char *nspace);
+
 PMIX_EXPORT void pmix_server_notify_deleted(const pmix_proc_t *proc,
                                             pmix_scope_t scope,
                                             const char *key,

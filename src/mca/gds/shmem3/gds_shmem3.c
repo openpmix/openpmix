@@ -4332,7 +4332,24 @@ pmix_gds_shmem3_session_describe(
 
     rc = publish_session_update(sesh, job, changed, nchanged);
     free(changed);
-    return rc;
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* Clients already attached hold what the session said when they
+     * attached, so they have to be told - otherwise a job launched after
+     * this change sees the new value and one already running does not.
+     *
+     * Every local client is told, not just those in this session: a
+     * session spans namespaces, so there is no one nspace to name here.
+     * The cost of telling one whose session did not change is a pack it
+     * already holds and a walk that skips every segment - and a session
+     * changes when an allocation grows or shrinks, not in any loop.
+     * Both paths into this function end here, so a description arriving
+     * through a job registration reaches attached clients exactly as one
+     * from PMIx_server_register_session does. */
+    pmix_server_notify_gds_update(NULL);
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
@@ -4390,6 +4407,58 @@ server_del_session(
     return PMIX_SUCCESS;
 }
 
+/* Pack what this peer needs in order to see a session whose
+ * description has changed.
+ *
+ * The whole session chain, oldest first - the same thing
+ * register_job_info() hands a client that attaches now. It is packed
+ * whole rather than as "just the new one" because that makes it
+ * idempotent: the client skips every segment it already holds, so a
+ * notice arriving twice, or one arriving for a peer that has already
+ * caught up, costs a walk and nothing else.
+ *
+ * Nothing is packed when the peer's job has no session segments, which
+ * is the ordinary case for a job whose host never described a session.
+ */
+static pmix_status_t
+server_pack_update(
+    struct pmix_peer_t *pr,
+    pmix_buffer_t *buff
+) {
+    pmix_peer_t *peer = (pmix_peer_t *) pr;
+    pmix_gds_shmem3_job_t *job;
+    pmix_status_t rc;
+
+    if (NULL == peer || NULL == peer->nptr) {
+        return PMIX_SUCCESS;
+    }
+    rc = pmix_gds_shmem3_get_job_tracker(peer->nptr->nspace, false, &job);
+    if (PMIX_SUCCESS != rc) {
+        /* not a job we hold - nothing to say */
+        return PMIX_SUCCESS;
+    }
+    if (NULL == job->session ||
+        NULL == pmix_gds_shmem3_chain_head(&job->session->segments)) {
+        return PMIX_SUCCESS;
+    }
+    return pack_shmem3_seg_blob(
+        job, PMIX_GDS_SHMEM3_SESSION_ID, peer, buff
+    );
+}
+
+/* Take delivery of the above: attach whatever we do not already hold.
+ *
+ * The same unpacker the job-info reply and the modex-complete use, for
+ * the same reason - a seg blob is a seg blob, and the duplicate check
+ * inside it is what makes an update idempotent. */
+static pmix_status_t
+client_accept_update(
+    pmix_buffer_t *buff
+) {
+    PMIX_GDS_SHMEM3_VVOUT_HERE();
+    return client_connect_to_shmem3_from_buffi(buff);
+}
+
 pmix_gds_base_module_t pmix_shmem3_module = {
     .name = PMIX_GDS_SHMEM3_NAME,
     /* fetch() may be called from a thread other than the progress
@@ -4412,6 +4481,8 @@ pmix_gds_base_module_t pmix_shmem3_module = {
     .del_nspace = del_nspace,
     .add_session = server_add_session,
     .del_session = server_del_session,
+    .pack_update = server_pack_update,
+    .accept_update = client_accept_update,
     .del_key = del_key,
     .assemb_kvs_req = NULL,
     .accept_kvs_resp = NULL,

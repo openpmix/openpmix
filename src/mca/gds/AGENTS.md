@@ -488,6 +488,39 @@ depend on it. What the explicit call adds is the two ends that
 inference cannot express. Consumers detect it through
 `PMIX_CAP_SESSION_REGISTRATION` in `pmix_version.h`.
 
+## Telling clients that data has changed
+
+A client maps what a session said when it attached. When the description
+changes, a client already running has to be told, or a job launched
+after the change sees the new value and one already running does not.
+
+Two slots carry that, and they are **peer-resolved** rather than
+fanned out: what a peer needs depends on the module it is bound to.
+
+| slot | side | what it does |
+|------|------|--------------|
+| `pack_update` | server | pack what THIS peer needs to catch up |
+| `accept_update` | client | take delivery of it |
+
+`pmix_server_notify_gds_update()` walks the local clients, asks each
+peer's own module to pack, and sends whatever comes back on
+`PMIX_PTL_TAG_GDS_UPDATE`. A module with nothing to say packs nothing
+and the peer is not written to at all; both slots are optional.
+
+**Both modules implement them, and that is not optional in practice.**
+`hash` is the module every non-Linux developer runs, so leaving it
+unimplemented would mean session updates silently never reach a client
+there — the same divergence between the two components that the
+first-writer-wins rule was corrected for. `test/unit/session_update`
+is what catches it: it runs against whichever module is assigned, so it
+covers `shmem3` on Linux and `hash` everywhere.
+
+**What is packed is the whole description, not the delta.** Applying it
+twice, or to a peer that is already current, has to land on the same
+state - `shmem3` skips every segment it already holds, `hash` replaces
+by key - so a notice that arrives twice costs a walk and nothing else.
+That is what makes it safe to notify more peers than strictly need it.
+
 **A session's description is written once.** Both components take the
 first description offered — the host's registration, or the first job
 whose registration carried a session array — and ignore later ones

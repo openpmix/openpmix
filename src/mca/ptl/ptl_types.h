@@ -230,6 +230,15 @@ typedef uint32_t pmix_ptl_tag_t;
  * simply never receives one, where a shared tag would hand it a
  * message it would unpack as something else. */
 #define PMIX_PTL_TAG_DATA_DELETE 4
+/* A server telling its local clients that a datastore segment they may
+ * be reading has been added to - a session whose description changed,
+ * say - so they can map it and see the new data. The payload is opaque
+ * here: it is packed and unpacked by the peer's own gds module, since
+ * only that module knows what "a new segment" means for it.
+ *
+ * Its own tag, for the same reason as the two above: a peer too old to
+ * know about it simply never receives one. */
+#define PMIX_PTL_TAG_GDS_UPDATE 5
 
 /* define the start of dynamic tags that are
  * assigned for send/recv operations */

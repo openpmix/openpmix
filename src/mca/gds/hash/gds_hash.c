@@ -107,7 +107,14 @@ static pmix_status_t session_add(uint32_t sessionID, pmix_info_t info[], size_t 
      * not on behalf of some job that mentioned it */
     rc = pmix_gds_hash_process_session_array(&val, NULL);
     pmix_gds_base_release_session_info(&val);
-    return rc;
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    /* Clients already attached hold what the session said when they
+     * attached, so tell them - otherwise a job launched afterwards sees
+     * the change and one already running does not. */
+    pmix_server_notify_gds_update(NULL);
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t session_del(uint32_t sessionID)
@@ -127,6 +134,94 @@ static pmix_status_t session_del(uint32_t sessionID)
     }
     /* Not an error. A host deregisters a session across every daemon,
      * and this one may have had no job in it. */
+    return PMIX_SUCCESS;
+}
+
+/* Pack what this peer needs to see a session whose description has
+ * changed.
+ *
+ * The session's whole description, as the PMIX_SESSION_INFO_ARRAY the
+ * client already knows how to store - the same shape register_job_info()
+ * hands a client that attaches now. Whole rather than "just what
+ * changed", because storing it replaces by key: applying it twice, or
+ * to a client that is already current, lands on the same state.
+ *
+ * Nothing is packed for a job with no session, which is the ordinary
+ * case for a host that never described one.
+ */
+static pmix_status_t hash_pack_update(struct pmix_peer_t *pr,
+                                      pmix_buffer_t *buff)
+{
+    pmix_peer_t *peer = (pmix_peer_t *) pr;
+    pmix_list_t results;
+    pmix_kval_t *kvptr;
+    pmix_job_t *trk;
+    pmix_status_t rc;
+
+    if (NULL == peer || NULL == peer->nptr) {
+        return PMIX_SUCCESS;
+    }
+    trk = pmix_gds_hash_get_tracker(peer->nptr->nspace, false);
+    if (NULL == trk || NULL == trk->session) {
+        return PMIX_SUCCESS;
+    }
+
+    PMIX_CONSTRUCT(&results, pmix_list_t);
+    rc = pmix_gds_hash_xfer_sessioninfo(peer, trk->session, NULL, &results);
+    if (PMIX_SUCCESS != rc) {
+        /* nothing to say is not a failure */
+        PMIX_LIST_DESTRUCT(&results);
+        return PMIX_SUCCESS;
+    }
+    PMIX_LIST_FOREACH (kvptr, &results, pmix_kval_t) {
+        PMIX_BFROPS_PACK(rc, peer, buff, kvptr, 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+    }
+    PMIX_LIST_DESTRUCT(&results);
+    return rc;
+}
+
+/* Take delivery of the above.
+ *
+ * Straight into the same processing a session array takes when it
+ * arrives with job data, which replaces by key - so this brings the
+ * client's copy up to date rather than appending a second one beside
+ * it. The session belongs to this client's own job, which is the only
+ * one it holds. */
+static pmix_status_t hash_accept_update(pmix_buffer_t *buff)
+{
+    pmix_kval_t kv;
+    pmix_job_t *trk;
+    pmix_status_t rc;
+    int32_t cnt;
+
+    trk = pmix_gds_hash_get_tracker(pmix_globals.myid.nspace, false);
+    if (NULL == trk) {
+        return PMIX_SUCCESS;
+    }
+    cnt = 1;
+    PMIX_CONSTRUCT(&kv, pmix_kval_t);
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buff, &kv, &cnt,
+                       PMIX_KVAL);
+    while (PMIX_SUCCESS == rc) {
+        if (PMIX_CHECK_KEY(&kv, PMIX_SESSION_INFO_ARRAY)) {
+            rc = pmix_gds_hash_process_session_array(kv.value, trk);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kv);
+                return rc;
+            }
+        }
+        PMIX_DESTRUCT(&kv);
+        cnt = 1;
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buff, &kv, &cnt,
+                           PMIX_KVAL);
+    }
+    PMIX_DESTRUCT(&kv);
     return PMIX_SUCCESS;
 }
 
@@ -160,6 +255,8 @@ pmix_gds_base_module_t pmix_hash_module = {
     .del_nspace = nspace_del,
     .add_session = session_add,
     .del_session = session_del,
+    .pack_update = hash_pack_update,
+    .accept_update = hash_accept_update,
     .assemb_kvs_req = assemb_kvs_req,
     .accept_kvs_resp = accept_kvs_resp,
     .fetch_arrays = pmix_gds_hash_fetch_arrays,
