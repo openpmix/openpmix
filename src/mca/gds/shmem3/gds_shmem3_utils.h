@@ -121,6 +121,13 @@ pmix_gds_shmem3_seg_release(
     pmix_gds_shmem3_seg_t *seg
 );
 
+/** Publish the session segment just built, making it readable. Same
+ *  discipline as the modex: complete before published, never rewritten. */
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem3_publish_session_segment(
+    pmix_gds_shmem3_session_t *sesh
+);
+
 PMIX_EXPORT pmix_gds_shmem3_session_t *
 pmix_gds_shmem3_find_session(
     uint32_t sid,

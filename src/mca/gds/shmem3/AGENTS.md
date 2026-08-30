@@ -718,6 +718,14 @@ Three consequences worth knowing:
   the last job leaving — a session with no jobs running is an ordinary
   state — so `PMIx_server_deregister_session` is what ends it. See
   "Sessions are said, not inferred" in [`../AGENTS.md`](../AGENTS.md).
+- **A session's segments are a chain**, exactly like the modex's: the
+  build slot holds the one being written, and publishing it onto
+  `sesh->segments` is what makes it readable. A read consults only the
+  chain. That is what a session UPDATE needs - a segment a client has
+  mapped can never be rewritten, so a changed description has to be a
+  new segment - and it is why "has this session got a segment yet" is
+  asked of the chain rather than of the build slot, which is emptied on
+  publish.
 - **A session can be described before any job exists in it.**
   `add_session` may arrive when there is no segment to write into yet:
   the segment is placed in, and named after, a job. So the description

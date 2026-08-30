@@ -442,8 +442,17 @@ xfer_sessioninfo(
     pmix_list_t *kvs
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_list_t *const sessionlist = sesh->smdata->sessioninfo;
-    const uint32_t sid = sesh->smdata->id;
+    pmix_gds_shmem3_seg_t *const head =
+        pmix_gds_shmem3_chain_head(&sesh->segments);
+    pmix_gds_shmem3_shared_session_data_t *smdata;
+
+    if (NULL == head) {
+        /* nothing published for this session yet */
+        return PMIX_ERR_NOT_FOUND;
+    }
+    smdata = head->smdata;
+    pmix_list_t *const sessionlist = smdata->sessioninfo;
+    const uint32_t sid = smdata->id;
 
     if (NULL == key) {
         if (PMIX_PEER_IS_EARLIER(peer, 4, 2, 0)) {

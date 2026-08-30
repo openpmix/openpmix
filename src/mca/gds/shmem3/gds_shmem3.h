@@ -230,6 +230,61 @@ typedef struct {
     pmix_list_t *nodeinfo;
 } pmix_gds_shmem3_shared_session_data_t;
 
+/* One segment in a chain of them, newest first.
+ *
+ * A read enters at the head and follows ->prior until it finds what it
+ * wants or runs out, so a newer segment shadows an older one. That is
+ * how a modex generation carrying only what changed can be answered
+ * alongside the generations before it, which are still the only copy of
+ * what it did not repeat.
+ *
+ * Deliberately NOT a pmix_list_t, and the difference is the whole
+ * point. A read may run on the application's thread (see is_tsafe)
+ * while the progress thread publishes a new generation, and a
+ * pmix_list_t cannot be extended under such a reader: it is doubly
+ * linked through a sentinel and carries a length counter, so a prepend
+ * is several stores and a walker can catch any of them. This chain can
+ * be extended under a reader, because a node is filled in completely
+ * BEFORE it is published, is never written again, and is never removed
+ * - so publishing is one release-store of the head, and a reader that
+ * has acquire-loaded the head walks a chain that cannot change beneath
+ * it.
+ *
+ * None of the list operations are wanted here. It is only ever
+ * prepended to and walked in one direction, which is why this carries a
+ * bare ->prior rather than deriving from pmix_list_item_t.
+ */
+typedef struct pmix_gds_shmem3_seg_t {
+    /** The segment published before this one; NULL at the end of the
+     *  chain. Written once, before this node is published, and never
+     *  again - which is what lets it be followed without a lock. */
+    struct pmix_gds_shmem3_seg_t *prior;
+    /** Which kind of data this segment holds, so a walker knows what
+     *  ->smdata points at. */
+    pmix_gds_shmem3_job_shmem3_id_t smid;
+    pmix_gds_shmem3_status_t status;
+    pmix_shmem_t *shmem3;
+    /** The shared_*_data_t at the base of the segment, of the type
+     *  ->smid names. */
+    void *smdata;
+    /** which generation this was, so a tombstone recorded later can be
+     * told from one recorded before it - see pmix_gds_shmem3_tombstone_t */
+    uint32_t generation;
+    /** Did this generation carry only what changed? Per-generation, so
+     *  it belongs here rather than on the job: the blob describing this
+     *  segment to a client has to say what THIS one holds. */
+    bool is_delta;
+} pmix_gds_shmem3_seg_t;
+
+/** The head of a chain.
+ *
+ * Atomic so that publishing is a single store and entering the chain a
+ * single load. Use pmix_gds_shmem3_chain_publish() and
+ * pmix_gds_shmem3_chain_head() rather than touching it directly - they
+ * carry the release/acquire pairing the discipline above depends on.
+ */
+typedef _Atomic(pmix_gds_shmem3_seg_t *) pmix_gds_shmem3_chain_t;
+
 typedef struct {
     pmix_list_item_t super;
     /** Session ID, or UINT32_MAX for a job that has not named one.
@@ -267,12 +322,23 @@ typedef struct {
      *  segment a client can see is never written again.
      */
     bool described;
-    /** Shared-memory object that maintains backing store for session data. */
+    /** The segment being BUILT, and its status. No reader touches these:
+     *  a segment becomes readable by being published onto the chain
+     *  below, whole. Same split as the modex - see
+     *  pmix_gds_shmem3_job_t. */
     pmix_shmem_t *shmem3;
-    /** Stores status for shmem3. */
     pmix_gds_shmem3_status_t shmem3_status;
-    /** Session data stored in shared-memory. */
+    /** Session data stored in shared-memory, while it is being built. */
     pmix_gds_shmem3_shared_session_data_t *smdata;
+    /** Every published segment describing this session, newest first.
+     *
+     * A session's resources change under it - PMIX_SESSION_EXTEND grows
+     * one "in terms of time or resources", a node goes down - so its
+     * description is not written once. A segment a client has mapped can
+     * never be rewritten, so an update is a NEW segment carrying what
+     * changed, published here; a read walks newest-first and stops at
+     * the first segment answering for the key. */
+    pmix_gds_shmem3_chain_t segments;
 } pmix_gds_shmem3_session_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem3_session_t);
 
@@ -377,60 +443,7 @@ typedef struct pmix_gds_shmem3_tombstone_t {
 /** Head of a job's tombstone chain. */
 typedef _Atomic(pmix_gds_shmem3_tombstone_t *) pmix_gds_shmem3_tombstones_t;
 
-/* One segment in a chain of them, newest first.
- *
- * A read enters at the head and follows ->prior until it finds what it
- * wants or runs out, so a newer segment shadows an older one. That is
- * how a modex generation carrying only what changed can be answered
- * alongside the generations before it, which are still the only copy of
- * what it did not repeat.
- *
- * Deliberately NOT a pmix_list_t, and the difference is the whole
- * point. A read may run on the application's thread (see is_tsafe)
- * while the progress thread publishes a new generation, and a
- * pmix_list_t cannot be extended under such a reader: it is doubly
- * linked through a sentinel and carries a length counter, so a prepend
- * is several stores and a walker can catch any of them. This chain can
- * be extended under a reader, because a node is filled in completely
- * BEFORE it is published, is never written again, and is never removed
- * - so publishing is one release-store of the head, and a reader that
- * has acquire-loaded the head walks a chain that cannot change beneath
- * it.
- *
- * None of the list operations are wanted here. It is only ever
- * prepended to and walked in one direction, which is why this carries a
- * bare ->prior rather than deriving from pmix_list_item_t.
- */
-typedef struct pmix_gds_shmem3_seg_t {
-    /** The segment published before this one; NULL at the end of the
-     *  chain. Written once, before this node is published, and never
-     *  again - which is what lets it be followed without a lock. */
-    struct pmix_gds_shmem3_seg_t *prior;
-    /** Which kind of data this segment holds, so a walker knows what
-     *  ->smdata points at. */
-    pmix_gds_shmem3_job_shmem3_id_t smid;
-    pmix_gds_shmem3_status_t status;
-    pmix_shmem_t *shmem3;
-    /** The shared_*_data_t at the base of the segment, of the type
-     *  ->smid names. */
-    void *smdata;
-    /** which generation this was, so a tombstone recorded later can be
-     * told from one recorded before it - see pmix_gds_shmem3_tombstone_t */
-    uint32_t generation;
-    /** Did this generation carry only what changed? Per-generation, so
-     *  it belongs here rather than on the job: the blob describing this
-     *  segment to a client has to say what THIS one holds. */
-    bool is_delta;
-} pmix_gds_shmem3_seg_t;
 
-/** The head of a chain.
- *
- * Atomic so that publishing is a single store and entering the chain a
- * single load. Use pmix_gds_shmem3_chain_publish() and
- * pmix_gds_shmem3_chain_head() rather than touching it directly - they
- * carry the release/acquire pairing the discipline above depends on.
- */
-typedef _Atomic(pmix_gds_shmem3_seg_t *) pmix_gds_shmem3_chain_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem3_modex_seg_t);
 
 typedef struct {
