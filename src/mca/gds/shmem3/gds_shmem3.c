@@ -602,7 +602,7 @@ job_construct(
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
     job->modex_is_delta = false;
-    atomic_init(&job->modex_prior, NULL);
+    atomic_init(&job->modex_chain, NULL);
     PMIX_CONSTRUCT(&job->tombstones, pmix_list_t);
     PMIX_CONSTRUCT(&job->datalock, pmix_mutex_t);
     // Address-space arena
@@ -721,7 +721,7 @@ job_destruct(
     /* Retired modex generations. Each holds its own segment handle, and
      * the class destructor gives it back the same way the loop below
      * does for the current one. */
-    pmix_gds_shmem3_chain_destruct(&job->modex_prior);
+    pmix_gds_shmem3_chain_destruct(&job->modex_chain);
     PMIX_LIST_DESTRUCT(&job->tombstones);
 
     /* The session's segment is deliberately not in here: it belongs to
@@ -869,19 +869,21 @@ pmix_gds_shmem3_chain_destruct(
 }
 
 /**
- * Set the current modex generation aside instead of letting it go.
+ * Publish the generation just built, making it visible to readers.
  *
- * A delta contribution holds only what changed, so the generation before
- * it is still the only copy of everything the delta did not repeat. Move
- * it to the head of job->modex_prior - newest first, which is the order
- * a read walks - and leave this job ready to create the next one.
+ * Until this runs, the segment is described only by the build fields on
+ * the job tracker, which no reader touches - so a generation under
+ * construction cannot be read half-built. Publishing is a single
+ * release-store onto the chain, which is why this needs no lock: there
+ * is no window in which a reader sees anything partial.
  *
- * The backing file is reference counted, so a client still reading the
- * retired generation is undisturbed either way; what this changes is
- * that *we* keep our handle, and therefore keep answering out of it.
+ * The node takes ownership of the segment handle and the build slot gets
+ * a fresh one, so the two never both own it. The backing file is
+ * reference counted, so a client that has this generation mapped is
+ * undisturbed by anything that happens here.
  */
 static pmix_status_t
-retire_modex_segment(
+publish_modex_generation(
     pmix_gds_shmem3_job_t *job
 ) {
     if (!pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_MODEX_ID,
@@ -899,17 +901,15 @@ retire_modex_segment(
     seg->shmem3 = job->modex_shmem3;
     seg->smdata = job->smmodex;
     seg->generation = job->modex_generation;
+    seg->is_delta = job->modex_is_delta;
 
-    /* The lock still covers the OTHER half of this: job->smmodex goes
-     * NULL and the status is cleared, which a read of the current
-     * generation must not catch half-done. Publishing the retired one is
-     * a single store and needs nothing. */
-    pmix_mutex_lock(&job->datalock);
-    pmix_gds_shmem3_chain_publish(&job->modex_prior, seg);
+    pmix_gds_shmem3_chain_publish(&job->modex_chain, seg);
+
+    /* The build slot starts empty again. Nothing reads these, so there
+     * is no ordering requirement against the store above. */
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
     pmix_gds_shmem3_clearall_status(job, PMIX_GDS_SHMEM3_MODEX_ID);
-    pmix_mutex_unlock(&job->datalock);
     return PMIX_SUCCESS;
 }
 
@@ -1564,6 +1564,13 @@ init_client_side_sm_data(
     pmix_gds_shmem3_set_status(job, shmem3_id, PMIX_GDS_SHMEM3_READY_FOR_USE);
     // Note: don't update the TMA to point to its local function pointers
     // because clients should only be reading from the shared-memory segment.
+
+    /* A modex generation becomes visible to this process's readers here,
+     * whole - the same discipline the server follows. Until now it was
+     * described only by the build fields, which no reader consults. */
+    if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id) {
+        return publish_modex_generation(job);
+    }
     return PMIX_SUCCESS;
 }
 
@@ -1805,7 +1812,7 @@ note_slot_in_use(
  * true that at most one was live at a time, and this alternated between
  * two slots on that basis; it stopped being true when a contribution
  * became able to carry only what changed. A delta generation leaves
- * every generation before it mapped and answerable on job->modex_prior,
+ * every generation before it mapped and answerable on job->modex_chain,
  * so the slot each of those sits in is still in use, and writing over
  * one would take away data nothing else holds a copy of.
  *
@@ -1836,7 +1843,7 @@ arena_alloc_modex(
 
     note_slot_in_use(job, job->modex_shmem3, &inuse);
     for (pmix_gds_shmem3_seg_t *seg =
-             pmix_gds_shmem3_chain_head(&job->modex_prior);
+             pmix_gds_shmem3_chain_head(&job->modex_chain);
          NULL != seg; seg = seg->prior) {
         note_slot_in_use(job, seg->shmem3, &inuse);
     }
@@ -2300,13 +2307,31 @@ pack_shmem3_connection_info(
         peer->info->peerid, job->nspace_id
     );
 
+    /* The modex is described from the newest published generation, not
+     * from the build slot - see pack_shmem3_seg_blob(). Its delta-ness
+     * comes from the same node, because that is a property of the
+     * generation being described rather than of the job. */
     pmix_shmem_t *shmem3;
-    rc = pmix_gds_shmem3_get_job_shmem3_by_id(
-        job, shmem3_id, &shmem3
-    );
-    if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
+    bool is_delta = false;
+    if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id) {
+        pmix_gds_shmem3_seg_t *const head =
+            pmix_gds_shmem3_chain_head(&job->modex_chain);
+        if (PMIX_UNLIKELY(NULL == head)) {
+            rc = PMIX_ERR_NOT_FOUND;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        shmem3 = head->shmem3;
+        is_delta = head->is_delta;
+    }
+    else {
+        rc = pmix_gds_shmem3_get_job_shmem3_by_id(
+            job, shmem3_id, &shmem3
+        );
+        if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
     }
 
     pmix_kval_t kv;
@@ -2480,7 +2505,7 @@ pack_shmem3_connection_info(
             break;
         }
         kv.value->type = PMIX_STRING;
-        kv.value->data.string = strdup(job->modex_is_delta ? "1" : "0");
+        kv.value->data.string = strdup(is_delta ? "1" : "0");
         if (PMIX_UNLIKELY(NULL == kv.value->data.string)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -2836,12 +2861,20 @@ pack_shmem3_seg_blob(
     pmix_buffer_t *reply
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    // Only pack connection info that is ready for use. Otherwise,
-    // it's bogus data that we shouldn't be sharing it with our clients.
-    const bool ready_for_use = pmix_gds_shmem3_has_status(
-        job, shmem3_id, PMIX_GDS_SHMEM3_READY_FOR_USE
-    );
-    if (!ready_for_use) {
+    /* Only describe a segment that is ready for use - anything else is
+     * half-built and must not be shared with a client.
+     *
+     * For the modex that means the newest PUBLISHED generation: the
+     * build slot holds whatever is being assembled now, which is exactly
+     * what a client must not be pointed at. Publishing is what makes a
+     * generation describable, and it happens the moment it completes. */
+    if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id) {
+        if (NULL == pmix_gds_shmem3_chain_head(&job->modex_chain)) {
+            return rc;
+        }
+    }
+    else if (!pmix_gds_shmem3_has_status(job, shmem3_id,
+                                         PMIX_GDS_SHMEM3_READY_FOR_USE)) {
         return rc;
     }
 
@@ -3186,14 +3219,34 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                 break;
             }
         }
-        // Make sure we aren't already attached to the given shmem3.
-        if (pmix_gds_shmem3_has_status(job, usb.smid, PMIX_GDS_SHMEM3_ATTACHED)) {
-            pmix_shmem_t *cur = NULL;
+        /* Make sure we aren't already attached to the given shmem3.
+         *
+         * A published modex generation is on the chain rather than in
+         * the build slot, so ask the chain for it: the slot is empty
+         * between generations, and a blob we already acted on would
+         * otherwise look new and be mapped a second time. The same blob
+         * does arrive more than once - mark_modex_complete() sends one
+         * to every local peer. */
+        pmix_shmem_t *cur = NULL;
+        bool held = false;
+        if (PMIX_GDS_SHMEM3_MODEX_ID == usb.smid) {
+            pmix_gds_shmem3_seg_t *const head =
+                pmix_gds_shmem3_chain_head(&job->modex_chain);
+            if (NULL != head) {
+                cur = head->shmem3;
+                held = true;
+            }
+        }
+        else if (pmix_gds_shmem3_has_status(job, usb.smid,
+                                            PMIX_GDS_SHMEM3_ATTACHED)) {
             rc = pmix_gds_shmem3_get_job_shmem3_by_id(job, usb.smid, &cur);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
+            held = true;
+        }
+        if (held) {
             /* Same segment: nothing to do. The path is what tells the
              * generations apart - the server names each modex segment
              * after its generation, so a different path under the same
@@ -3212,22 +3265,17 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                 usb.seg_path, usb.nsid
             );
             if (PMIX_GDS_SHMEM3_MODEX_ID == usb.smid) {
-                /* Keep it, whatever arrived. A generation is never
-                 * unmapped, so the chain only ever grows and a read
-                 * walking it cannot have a segment taken away
-                 * underneath - which is what lets the walk run with no
-                 * lock at all. A cumulative contribution repeats
-                 * everything, so the generations behind it become
-                 * redundant rather than wrong: the walk stops at the
-                 * newest segment holding the key, and a key that was
-                 * deleted is shadowed by the PMIX_UNDEF entry the newer
-                 * generation carries. Redundant costs address space;
-                 * unmapping under a reader costs correctness. */
-                rc = retire_modex_segment(job);
-                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                    PMIX_ERROR_LOG(rc);
-                    break;
-                }
+                /* Nothing to set aside: the generation we hold was
+                 * published onto the chain as soon as it was attached,
+                 * and the build slot has been empty since. It stays on
+                 * the chain whatever arrives now - a generation is never
+                 * unmapped, so the chain only grows and a read walking
+                 * it cannot have a segment taken away underneath, which
+                 * is what lets the walk run with no lock. A cumulative
+                 * contribution makes the older generations redundant
+                 * rather than wrong: the walk stops at the newest
+                 * segment holding the key, and a deleted key is shadowed
+                 * by the PMIX_UNDEF entry the newer one carries. */
                 /* We are about to map a generation we have not held
                  * before, which is the same step the server counts on
                  * its side. Both have to count it: the number is what
@@ -3554,11 +3602,12 @@ server_store_modex_cb(pmix_proc_t *proc,
     }
 
     if (NULL == pbkt) {
-        // Segment is ready for use.
+        /* Every blob is stored, so this generation is whole - publish it.
+         * A reader sees it here for the first time, complete. */
         pmix_gds_shmem3_set_status(
             job, PMIX_GDS_SHMEM3_MODEX_ID, PMIX_GDS_SHMEM3_READY_FOR_USE
         );
-        return PMIX_SUCCESS;
+        return publish_modex_generation(job);
     }
 
     PMIX_GDS_SHMEM3_VOUT(
@@ -3570,40 +3619,29 @@ server_store_modex_cb(pmix_proc_t *proc,
     const bool attached = pmix_gds_shmem3_has_status(
         job, PMIX_GDS_SHMEM3_MODEX_ID, PMIX_GDS_SHMEM3_ATTACHED
     );
-    /* A blob arriving for a modex we already finished means a new one has
-     * begun - a second fence.
+    /* An empty build slot means this blob starts a generation - either
+     * the first, or a new one after the last was published.
      *
-     * Whether the finished generation can be dropped depends on what is
-     * arriving. A cumulative contribution repeats everything its
-     * processes have published, so it supersedes what came before and
-     * the older generations go. A delta repeats nothing, so they are
-     * kept and a read walks them (see modex_fetch in
-     * gds_shmem3_fetch.c). See openpmix#4087; examples/modex_twice.c is
-     * the canary. Either way the finished segment has been advertised
-     * and local clients have it mapped, so it must not be written again:
-     * storing into it can rehash the table and reallocate the key index
-     * underneath a reader, and the segment was sized for the first
-     * modex's data, so a larger second one overruns the allocator and
-     * aborts the server. Start a fresh segment instead. */
-    const bool complete = pmix_gds_shmem3_has_status(
-        job, PMIX_GDS_SHMEM3_MODEX_ID, PMIX_GDS_SHMEM3_READY_FOR_USE
-    );
-    if (!attached || complete) {
-        if (complete) {
+     * A finished segment has been advertised and local clients have it
+     * mapped, so it must never be written again: storing into it can
+     * rehash the table and reallocate the key index underneath a reader,
+     * and it was sized for the data that built it, so a larger second
+     * modex overruns the allocator and aborts the server. Every
+     * generation therefore gets a segment of its own, and they are read
+     * back through the chain - see modex_fetch() in gds_shmem3_fetch.c
+     * and openpmix#4087; examples/modex_twice.c is the canary. */
+    if (!attached) {
+        /* A generation we finished is already on the chain - it was
+         * published the moment it completed, and the build slot has been
+         * empty since. Its existence is what says this is not the first
+         * one, and therefore that the counter has to move: the number
+         * names the next backing file and dates a tombstone. */
+        if (NULL != pmix_gds_shmem3_chain_head(&job->modex_chain)) {
             PMIX_GDS_SHMEM3_VOUT(
                 "%s: modex generation %u complete; starting %u for namespace=%s",
                 __func__, job->modex_generation, job->modex_generation + 1,
                 proc->nspace
             );
-            /* Keep it, whatever arrived - see the matching comment in
-             * unpack_shmem3_seg_blob_and_attach_if_necessary(). A
-             * generation is never unmapped, so the chain only grows and
-             * a reader can walk it without a lock. */
-            rc = retire_modex_segment(job);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                return rc;
-            }
             advance_modex_generation(job);
         }
         /* what the clients have to be told about this generation */

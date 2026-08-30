@@ -407,6 +407,10 @@ typedef struct pmix_gds_shmem3_seg_t {
     /** which generation this was, so a tombstone recorded later can be
      * told from one recorded before it - see pmix_gds_shmem3_tombstone_t */
     uint32_t generation;
+    /** Did this generation carry only what changed? Per-generation, so
+     *  it belongs here rather than on the job: the blob describing this
+     *  segment to a client has to say what THIS one holds. */
+    bool is_delta;
 } pmix_gds_shmem3_seg_t;
 
 /** The head of a chain.
@@ -505,10 +509,16 @@ typedef struct {
      * generation holds just what changed, so what came before it is
      * still the only copy of everything it did not repeat. A read walks
      * this after the current generation. */
-    /** Retired modex generations, newest first - see
-     *  pmix_gds_shmem3_seg_t. Walked by modex_fetch() for the keys a
-     *  delta generation did not repeat. */
-    pmix_gds_shmem3_chain_t modex_prior;
+    /** Every published modex generation, newest first - see
+     *  pmix_gds_shmem3_seg_t. The head is the current one.
+     *
+     * A generation is published here the moment it is complete, and a
+     * read consults NOTHING else: the fields above are the generation
+     * being BUILT, which no reader may see. That is what removes the
+     * last mapping-related use of the lock - there is no window in which
+     * a reader could catch a generation half-built or half-retired,
+     * because a reader cannot see it until it is whole. */
+    pmix_gds_shmem3_chain_t modex_chain;
     /** Base of this job's reserved address-space arena, or 0 if it has
      *  none. See "The address-space arena" in AGENTS.md.
      *
@@ -531,7 +541,7 @@ typedef struct {
      * A modex generation gets a slot of its own and holds it for as long
      * as it is readable, which is NOT just until the next one arrives: a
      * delta generation carries only what changed, so the generations
-     * before it stay mapped and answerable on job->modex_prior. The
+     * before it stay mapped and answerable on job->modex_chain. The
      * slots therefore have to be allocated and freed, not alternated
      * between - see arena_alloc_modex(), which reads the occupancy off
      * the live segments rather than keeping a tally that could drift.
