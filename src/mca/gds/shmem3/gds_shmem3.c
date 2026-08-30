@@ -4058,6 +4058,91 @@ client_recv_modex_complete(
     return client_connect_to_shmem3_from_buffi(buff);
 }
 
+/* What does the session's chain currently answer for this key?
+ *
+ * Newest-first, stopping at the first segment carrying it, which is the
+ * same rule a read follows - so this compares against what a client
+ * would actually see rather than against any one segment. */
+static pmix_kval_t *
+session_current_value(
+    pmix_gds_shmem3_session_t *sesh,
+    const char *key
+) {
+    pmix_gds_shmem3_seg_t *seg;
+
+    for (seg = pmix_gds_shmem3_chain_head(&sesh->segments);
+         NULL != seg; seg = seg->prior) {
+        pmix_gds_shmem3_shared_session_data_t *const sd = seg->smdata;
+        pmix_kval_t *kvi;
+        if (NULL == sd) {
+            continue;
+        }
+        PMIX_LIST_FOREACH (kvi, sd->sessioninfo, pmix_kval_t) {
+            if (PMIX_CHECK_KEY(kvi, key)) {
+                return kvi;
+            }
+        }
+    }
+    return NULL;
+}
+
+/* Reduce a description to what has actually changed.
+ *
+ * A host describing a session mostly restates what we already hold -
+ * every job registration in a session carries the same session array,
+ * and a host may re-register a session without changing it. Publishing
+ * a segment for that would cost one per restatement to say nothing.
+ *
+ * So compare each entry against what the chain answers today and keep
+ * only the ones that differ or are new. Returns the number kept, with
+ * *out pointing at borrowed entries of the caller's array - no copy,
+ * because the segment build copies what it stores.
+ *
+ * A NULL-key entry, or the leading PMIX_SESSION_ID, is skipped: the id
+ * identifies the session rather than describing it.
+ */
+static size_t
+session_changed_entries(
+    pmix_gds_shmem3_session_t *sesh,
+    pmix_info_t info[],
+    size_t ninfo,
+    pmix_info_t **out
+) {
+    pmix_info_t *kept;
+    size_t nkept = 0;
+
+    *out = NULL;
+    if (0 == ninfo || NULL == info) {
+        return 0;
+    }
+    kept = (pmix_info_t *) calloc(ninfo, sizeof(pmix_info_t));
+    if (NULL == kept) {
+        return 0;
+    }
+    for (size_t n = 0; n < ninfo; n++) {
+        if (0 == strlen(info[n].key) ||
+            PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
+            continue;
+        }
+        pmix_kval_t *const cur = session_current_value(sesh, info[n].key);
+        if (NULL != cur &&
+            PMIX_EQUAL == PMIx_Value_compare(cur->value,
+                                             (pmix_value_t *) &info[n].value)) {
+            continue;
+        }
+        /* Shallow: the caller owns these, and the segment build copies
+         * whatever it stores into shared memory. */
+        memcpy(&kept[nkept], &info[n], sizeof(pmix_info_t));
+        nkept++;
+    }
+    if (0 == nkept) {
+        free(kept);
+        return 0;
+    }
+    *out = kept;
+    return nkept;
+}
+
 /* Publish a changed session description as a NEW segment.
  *
  * A session's resources change under it - PMIX_SESSION_EXTEND grows one
@@ -4165,6 +4250,91 @@ out:
     return rc;
 }
 
+/* Apply a session description from either source.
+ *
+ * There are two, and they are NOT distinguished here:
+ *
+ *   - PMIx_server_register_session, the host stating the session's
+ *     description directly;
+ *   - a PMIX_SESSION_INFO_ARRAY inside a job registration, which is how
+ *     every host described a session before that API existed and how
+ *     hosts that have not adopted it still do.
+ *
+ * Treating the second as "a job merely naming its session" and ignoring
+ * it would mean a host that never adopts the new call could never update
+ * a session at all - and those hosts will be around for a long time. So
+ * both go through here, and what decides whether anything happens is
+ * whether the description actually differs from what we already hold.
+ * A restatement of what the session already says costs nothing.
+ */
+pmix_status_t
+pmix_gds_shmem3_session_describe(
+    pmix_gds_shmem3_session_t *sesh,
+    pmix_gds_shmem3_job_t *job,
+    pmix_info_t info[],
+    size_t ninfo
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_info_t *changed = NULL;
+    size_t nchanged;
+
+    if (NULL == sesh || 0 == ninfo || NULL == info) {
+        return PMIX_SUCCESS;
+    }
+
+    /* Nothing published yet: hold the description for the first job in
+     * the session to build its segment from. Replace whatever was held,
+     * so a job arriving later builds one segment carrying the current
+     * description rather than replaying every step that got there. */
+    if (NULL == pmix_gds_shmem3_chain_head(&sesh->segments)) {
+        if (NULL != sesh->sinfo) {
+            PMIX_INFO_FREE(sesh->sinfo, sesh->nsinfo);
+            sesh->sinfo = NULL;
+            sesh->nsinfo = 0;
+        }
+        PMIX_INFO_CREATE(sesh->sinfo, ninfo);
+        if (PMIX_UNLIKELY(NULL == sesh->sinfo)) {
+            return PMIX_ERR_NOMEM;
+        }
+        sesh->nsinfo = ninfo;
+        for (size_t n = 0; n < ninfo; n++) {
+            PMIX_INFO_XFER(&sesh->sinfo[n], &info[n]);
+        }
+        return PMIX_SUCCESS;
+    }
+
+    /* Only what differs from what the chain answers today. */
+    nchanged = session_changed_entries(sesh, info, ninfo, &changed);
+    if (0 == nchanged) {
+        PMIX_GDS_SHMEM3_VOUT(
+            "%s: session %u restated nothing new; no segment published",
+            __func__, (unsigned) sesh->id
+        );
+        return PMIX_SUCCESS;
+    }
+
+    /* A segment is placed in, and named after, a job - any job in the
+     * session will do, since the segment belongs to the session. */
+    if (NULL == job) {
+        PMIX_LIST_FOREACH (job, &pmix_mca_gds_shmem3_component.jobs,
+                           pmix_gds_shmem3_job_t) {
+            if (job->session == sesh) {
+                break;
+            }
+        }
+    }
+    if (NULL == job || job->session != sesh) {
+        /* A published session with no job left in it. Nothing can be
+         * reading it either, so there is nobody to tell. */
+        free(changed);
+        return PMIX_SUCCESS;
+    }
+
+    rc = publish_session_update(sesh, job, changed, nchanged);
+    free(changed);
+    return rc;
+}
+
 static pmix_status_t
 server_add_session(
     uint32_t sessionID,
@@ -4186,52 +4356,9 @@ server_add_session(
         return PMIX_SUCCESS;
     }
 
-    /* This is the host stating the session's description, so it is the
-     * last word - a re-registration is an UPDATE, not a duplicate. A
-     * session's resources change under it; see publish_session_update().
-     *
-     * Hold a copy on the tracker whatever else happens: it is what the
-     * first job to arrive builds its segment from, and a host may
-     * describe a session long before anything runs in it. Copied rather
-     * than referenced, since the host may release its array as soon as
-     * the registration callback returns.
-     *
-     * A later registration replaces the held copy, so a job arriving
-     * afterwards builds one segment carrying the current description
-     * rather than replaying every step that got there. */
-    if (NULL != sesh->sinfo) {
-        PMIX_INFO_FREE(sesh->sinfo, sesh->nsinfo);
-        sesh->sinfo = NULL;
-        sesh->nsinfo = 0;
-    }
-    PMIX_INFO_CREATE(sesh->sinfo, ninfo);
-    if (PMIX_UNLIKELY(NULL == sesh->sinfo)) {
-        return PMIX_ERR_NOMEM;
-    }
-    sesh->nsinfo = ninfo;
-    for (size_t n = 0; n < ninfo; n++) {
-        PMIX_INFO_XFER(&sesh->sinfo[n], &info[n]);
-    }
-
-    /* Nothing published yet: the description waits on the tracker for
-     * the first job in the session to build from. */
-    if (NULL == pmix_gds_shmem3_chain_head(&sesh->segments)) {
-        return PMIX_SUCCESS;
-    }
-
-    /* Otherwise publish the change as a new segment. It needs a job in
-     * the session, because a segment is placed in and named after one;
-     * any of them will do, since the segment belongs to the session. */
-    pmix_gds_shmem3_job_t *job;
-    PMIX_LIST_FOREACH (job, &pmix_mca_gds_shmem3_component.jobs,
-                       pmix_gds_shmem3_job_t) {
-        if (job->session == sesh) {
-            return publish_session_update(sesh, job, info, ninfo);
-        }
-    }
-    /* A published session with no job left in it. The held copy above is
-     * what the next job will build from, so nothing is lost. */
-    return PMIX_SUCCESS;
+    /* The host stating the description. Same path as a job registration
+     * carrying one - see pmix_gds_shmem3_session_describe(). */
+    return pmix_gds_shmem3_session_describe(sesh, NULL, info, ninfo);
 }
 
 static pmix_status_t

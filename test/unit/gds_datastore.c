@@ -1983,6 +1983,156 @@ static void test_shmem3_modex_generations(void)
     PMIX_RELEASE(peer);
 }
 
+/* Register a job whose session array carries a caller-supplied set of
+ * keys - which is how a host that has not adopted
+ * PMIx_server_register_session describes a session, and the only way it
+ * can ever update one. */
+static pmix_peer_t *register_job_with_session_info(const char *nsname,
+                                                   uint32_t sid,
+                                                   pmix_info_t *sess,
+                                                   size_t nsess,
+                                                   pmix_gds_base_module_t *mod,
+                                                   pmix_buffer_t **reply,
+                                                   pmix_status_t *rc)
+{
+    pmix_info_t *info, *iptr;
+    pmix_data_array_t *array;
+    pmix_nspace_t ns;
+    pmix_peer_t *peer;
+    uint32_t nprocs = 2;
+    char *nodemap = strdup(pmix_globals.hostname);
+    char *procmap = strdup("0-1");
+
+    PMIX_INFO_CREATE(info, 4);
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_NODE_MAP, nodemap, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_PROC_MAP, procmap, PMIX_STRING);
+
+    /* session id first, then the caller's keys - the shape every host
+     * uses for a session array */
+    PMIX_INFO_CREATE(iptr, nsess + 1);
+    PMIX_INFO_LOAD(&iptr[0], PMIX_SESSION_ID, &sid, PMIX_UINT32);
+    for (size_t n = 0; n < nsess; n++) {
+        PMIX_INFO_XFER(&iptr[n + 1], &sess[n]);
+    }
+    PMIX_DATA_ARRAY_CREATE(array, nsess + 1, PMIX_INFO);
+    memcpy(array->array, iptr, (nsess + 1) * sizeof(pmix_info_t));
+    free(iptr);
+    PMIX_LOAD_KEY(info[3].key, PMIX_SESSION_INFO_ARRAY);
+    info[3].value.type = PMIX_DATA_ARRAY;
+    info[3].value.data.darray = array;
+
+    PMIX_LOAD_NSPACE(ns, nsname);
+    *rc = PMIx_server_register_nspace(ns, nprocs, info, 4, NULL, NULL);
+    PMIX_INFO_FREE(info, 4);
+    free(nodemap);
+    free(procmap);
+    if (!registered(*rc)) {
+        return NULL;
+    }
+    peer = mkgdspeer(nsname, nprocs, mod);
+    *reply = PMIX_NEW(pmix_buffer_t);
+    PMIX_GDS_REGISTER_JOB_INFO(*rc, peer, *reply);
+    return peer;
+}
+
+/* A host that never calls PMIx_server_register_session must still be
+ * able to update a session, because that API is new and hosts will take
+ * a long time to adopt it. Such a host describes a session only through
+ * the PMIX_SESSION_INFO_ARRAY in each job registration - so a second
+ * job carrying a CHANGED array has to take effect, while one carrying
+ * the same array must cost nothing.
+ */
+static void test_session_update_via_job(void)
+{
+    pmix_gds_base_module_t *mod;
+    pmix_info_t sess[1];
+    pmix_peer_t *p1, *p2, *p3;
+    pmix_buffer_t *r1, *r2, *r3;
+    pmix_status_t rc;
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    pmix_kval_t *kv;
+    uint32_t univ = 12, grown = 96, got = 0;
+    const uint32_t sid = 5150;
+
+    fprintf(stdout, "\n-- session update through a job registration --\n");
+
+    mod = pmix_gds_base_assign_module(NULL, 0);
+    if (NULL == mod) {
+        fprintf(stdout, "    SKIP  no gds module available\n");
+        return;
+    }
+
+    /* first job describes the session */
+    PMIX_INFO_LOAD(&sess[0], PMIX_UNIV_SIZE, &univ, PMIX_UINT32);
+    p1 = register_job_with_session_info("gds-sjob-a", sid, sess, 1,
+                                        mod, &r1, &rc);
+    PMIX_INFO_DESTRUCT(&sess[0]);
+    if (NULL == p1 || PMIX_SUCCESS != rc) {
+        report("a job describes its session", false);
+        return;
+    }
+    report("a job describes its session", true);
+    PMIX_RELEASE(r1);
+
+    /* a second job restating the SAME description changes nothing */
+    PMIX_INFO_LOAD(&sess[0], PMIX_UNIV_SIZE, &univ, PMIX_UINT32);
+    p2 = register_job_with_session_info("gds-sjob-b", sid, sess, 1,
+                                        mod, &r2, &rc);
+    PMIX_INFO_DESTRUCT(&sess[0]);
+    report("a second job restating the same description registers",
+           NULL != p2 && PMIX_SUCCESS == rc);
+    if (NULL != p2) {
+        PMIX_RELEASE(r2);
+    }
+
+    /* a third job says the session has GROWN - this is the case a host
+     * that never adopts register_session depends on */
+    PMIX_INFO_LOAD(&sess[0], PMIX_UNIV_SIZE, &grown, PMIX_UINT32);
+    p3 = register_job_with_session_info("gds-sjob-c", sid, sess, 1,
+                                        mod, &r3, &rc);
+    PMIX_INFO_DESTRUCT(&sess[0]);
+    if (NULL == p3 || PMIX_SUCCESS != rc) {
+        report("a job carrying a changed description registers", false);
+        return;
+    }
+    report("a job carrying a changed description registers", true);
+    PMIX_RELEASE(r3);
+
+    /* every job in the session now sees the new value, including the
+     * one that was registered before the change */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-sjob-a", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = PMIX_UNIV_SIZE;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, p1, &cb);
+    if (PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs)) {
+        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+        PMIx_Value_get_number(kv->value, &got, PMIX_UINT32);
+    }
+    report("a job registration can update a session", grown == got);
+    if (grown != got) {
+        fprintf(stdout, "        (expected %u, got %u)\n",
+                (unsigned) grown, (unsigned) got);
+    }
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    PMIx_server_deregister_session(sid, NULL, NULL);
+    PMIX_GDS_DEL_NSPACE(rc, "gds-sjob-a");
+    PMIX_GDS_DEL_NSPACE(rc, "gds-sjob-b");
+    PMIX_GDS_DEL_NSPACE(rc, "gds-sjob-c");
+    PMIX_RELEASE(p1);
+    if (NULL != p2) {
+        PMIX_RELEASE(p2);
+    }
+    PMIX_RELEASE(p3);
+}
+
 /* A session's description changes under it.
  *
  * This is the case the whole session series exists for: a session's
@@ -2170,6 +2320,7 @@ int main(int argc, char **argv)
     test_shmem3_modex_generations();
     test_session_registration();
     test_session_update();
+    test_session_update_via_job();
 
     fprintf(stdout, "\n=== %d passed, %d failed ===\n", npass, nfail);
 
