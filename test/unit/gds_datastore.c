@@ -2380,6 +2380,149 @@ static void test_register_resources_after_nspace(void)
     PMIX_RELEASE(peer);
 }
 
+/* A qualified deregistration prunes an entry rather than removing it.
+ *
+ * PMIx_server_deregister_resources with a data-array qualifier can ask
+ * for PART of a value to go - "this key, on that node, and only these
+ * elements of it". The entry survives, pruned. Every namespace already
+ * holding it holds the UNPRUNED value, and until there was an update
+ * push there was nothing correct to do about that: a deletion would
+ * take from the namespace more than the host asked to remove, so the
+ * arm did nothing and docs/todo.rst recorded it.
+ *
+ * The right propagation is the pruned value itself, which is an
+ * ordinary addition - a store replaces by key, and gds/shmem3 publishes
+ * a segment shadowing what it replaces.
+ */
+static void test_qualified_deregistration(void)
+{
+    pmix_gds_base_module_t *mod;
+    pmix_info_t res[1], *elems, *qual, *quald;
+    pmix_data_array_t *array, *qarray;
+    pmix_info_t *info;
+    pmix_nspace_t ns;
+    pmix_peer_t *peer;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    pmix_kval_t *kv;
+    uint32_t nprocs = 2, keepv = 11, dropv = 22;
+    size_t nleft = 0;
+    bool kept = false, dropped = false;
+    char *nodemap, *procmap;
+
+    fprintf(stdout, "\n-- qualified deregistration --\n");
+
+    mod = pmix_gds_base_assign_module(NULL, 0);
+    if (NULL == mod) {
+        fprintf(stdout, "    SKIP  no gds module available\n");
+        return;
+    }
+
+    /* A node-scoped entry with two describable elements. The node
+     * identifier selects the entry; the second qualifier selects one
+     * element inside it. */
+    PMIX_INFO_CREATE(elems, 3);
+    PMIX_INFO_LOAD(&elems[0], PMIX_HOSTNAME, pmix_globals.hostname,
+                   PMIX_STRING);
+    PMIX_INFO_LOAD(&elems[1], "gds.test.keep", &keepv, PMIX_UINT32);
+    PMIX_INFO_LOAD(&elems[2], "gds.test.drop", &dropv, PMIX_UINT32);
+    PMIX_DATA_ARRAY_CREATE(array, 3, PMIX_INFO);
+    memcpy(array->array, elems, 3 * sizeof(pmix_info_t));
+    free(elems);
+    PMIX_INFO_CONSTRUCT(&res[0]);
+    PMIX_LOAD_KEY(res[0].key, "gds.test.qual");
+    res[0].value.type = PMIX_DATA_ARRAY;
+    res[0].value.data.darray = array;
+
+    rc = PMIx_server_register_resources(res, 1, NULL, NULL);
+    report("a node-scoped resource registers",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+
+    /* register a job AFTER, so it gets the entry from the cache */
+    nodemap = strdup(pmix_globals.hostname);
+    procmap = strdup("0-1");
+    PMIX_INFO_CREATE(info, 3);
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_NODE_MAP, nodemap, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_PROC_MAP, procmap, PMIX_STRING);
+    PMIX_LOAD_NSPACE(ns, "gds-qualdereg");
+    rc = PMIx_server_register_nspace(ns, nprocs, info, 3, NULL, NULL);
+    PMIX_INFO_FREE(info, 3);
+    free(nodemap);
+    free(procmap);
+    if (!registered(rc)) {
+        report("a job registers into it", false);
+        PMIX_INFO_DESTRUCT(&res[0]);
+        return;
+    }
+    report("a job registers into it", true);
+
+    peer = mkgdspeer("gds-qualdereg", nprocs, mod);
+    reply = PMIX_NEW(pmix_buffer_t);
+    PMIX_GDS_REGISTER_JOB_INFO(rc, peer, reply);
+    PMIX_RELEASE(reply);
+
+    /* now prune ONE element out of it */
+    PMIX_INFO_CREATE(qual, 2);
+    PMIX_INFO_LOAD(&qual[0], PMIX_HOSTNAME, pmix_globals.hostname,
+                   PMIX_STRING);
+    PMIX_INFO_LOAD(&qual[1], "gds.test.drop", &dropv, PMIX_UINT32);
+    PMIX_DATA_ARRAY_CREATE(qarray, 2, PMIX_INFO);
+    memcpy(qarray->array, qual, 2 * sizeof(pmix_info_t));
+    free(qual);
+    PMIX_INFO_CREATE(quald, 1);
+    PMIX_LOAD_KEY(quald[0].key, "gds.test.qual");
+    quald[0].value.type = PMIX_DATA_ARRAY;
+    quald[0].value.data.darray = qarray;
+
+    rc = PMIx_server_deregister_resources(quald, 1, NULL, NULL);
+    report("a qualified deregistration is accepted",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+
+    /* the job must now see the PRUNED value: the kept element still
+     * there, the dropped one gone */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-qualdereg", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = "gds.test.qual";
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&cb.kvs)) {
+        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+        if (NULL != kv->value && PMIX_DATA_ARRAY == kv->value->type &&
+            NULL != kv->value->data.darray) {
+            pmix_info_t *got = (pmix_info_t *) kv->value->data.darray->array;
+            nleft = kv->value->data.darray->size;
+            for (size_t i = 0; i < nleft; i++) {
+                if (PMIX_CHECK_KEY(&got[i], "gds.test.keep")) {
+                    kept = true;
+                }
+                if (PMIX_CHECK_KEY(&got[i], "gds.test.drop")) {
+                    dropped = true;
+                }
+            }
+        }
+    }
+    report("the pruned entry reaches the job: kept element survives", kept);
+    report("the pruned entry reaches the job: dropped element is gone",
+           !dropped);
+    if (!kept || dropped) {
+        fprintf(stdout, "        (fetch %s, %zu elements, kept=%d dropped=%d)\n",
+                PMIx_Error_string(rc), nleft, (int) kept, (int) dropped);
+    }
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    PMIX_INFO_FREE(quald, 1);
+    PMIX_INFO_DESTRUCT(&res[0]);
+    PMIX_GDS_DEL_NSPACE(rc, "gds-qualdereg");
+    PMIX_RELEASE(peer);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -2413,6 +2556,7 @@ int main(int argc, char **argv)
     test_session_update();
     test_session_update_via_job();
     test_register_resources_after_nspace();
+    test_qualified_deregistration();
 
     fprintf(stdout, "\n=== %d passed, %d failed ===\n", npass, nfail);
 

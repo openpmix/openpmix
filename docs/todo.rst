@@ -46,9 +46,8 @@ Four kinds of entry appear here:
 At a glance
 -----------
 
-**Open decisions — 4**
+**Open decisions — 3**
 
-* :ref:`todo-qualified-dereg`
 * :ref:`todo-fabric-async`
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
@@ -90,29 +89,6 @@ Nothing outside ``src/`` has been reviewed at all.
 
 Open decisions
 --------------
-
-.. _todo-qualified-dereg:
-
-A qualified deregistration is not propagated
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The unqualified case is closed — ``PMIx_Put`` gained delete scopes,
-``gds`` gained a ``del_key`` slot, a deregistration takes the key back
-from every namespace that already holds it, and the server tells its
-local clients so their cached copies go too.  See :doc:`review-notes` for
-how it closed and for the two predictions it contradicted.
-
-What remains is the *qualified* form, and it is deliberate rather than
-missing.  A deregistration that prunes elements out of an entry instead of
-removing it is not propagated: the host asked for part of a value to go,
-so the right answer is the pruned value rather than a deletion, and that
-needs an update push which does not exist.  Building one means deciding
-what a partial update looks like on the wire and in a shared segment
-neither datastore can rewrite in place.
-
-See :ref:`Delta Exchange and Data Deletion <modex-delta>` in
-:doc:`how-things-work/modex`, tracked as `openpmix#4087
-<https://github.com/openpmix/openpmix/issues/4087>`_.
 
 .. _todo-fabric-async:
 
