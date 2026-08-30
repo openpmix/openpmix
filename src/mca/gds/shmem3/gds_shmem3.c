@@ -602,6 +602,7 @@ job_construct(
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
     job->modex_is_delta = false;
+    atomic_init(&job->job_chain, NULL);
     atomic_init(&job->modex_chain, NULL);
     atomic_init(&job->tombstones, NULL);
     // Address-space arena
@@ -720,6 +721,7 @@ job_destruct(
     /* Retired modex generations. Each holds its own segment handle, and
      * the class destructor gives it back the same way the loop below
      * does for the current one. */
+    pmix_gds_shmem3_chain_destruct(&job->job_chain);
     pmix_gds_shmem3_chain_destruct(&job->modex_chain);
     /* Nothing can still be reading these - we are the destructor, and a
      * reader holds a reference on this tracker. */
@@ -739,8 +741,11 @@ job_destruct(
     /* The session's segment is deliberately not in here: it belongs to
      * the session object, which more than one job may hold, and is given
      * back by session_destruct() when the last of them lets go. */
+    /* Neither the job's nor the session's segments are in here: both
+     * are held by chains, which give them back above. What is left is
+     * the modex BUILD slot - a generation that was being assembled when
+     * this job went away and was therefore never published. */
     static const pmix_gds_shmem3_job_shmem3_id_t shmem3_ids[] = {
-        PMIX_GDS_SHMEM3_JOB_ID,
         PMIX_GDS_SHMEM3_MODEX_ID,
         PMIX_GDS_SHMEM3_INVALID_ID
     };
@@ -893,6 +898,39 @@ publish_modex_generation(
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
     pmix_gds_shmem3_clearall_status(job, PMIX_GDS_SHMEM3_MODEX_ID);
+    return PMIX_SUCCESS;
+}
+
+/**
+ * Publish the job segment just built, making it readable.
+ *
+ * Same discipline as the modex and the session: until this runs the
+ * segment is described only by the build fields, which no reader
+ * touches, so a reader cannot see one half-built. Publishing is a
+ * single release-store and needs no lock.
+ */
+pmix_status_t
+pmix_gds_shmem3_publish_job_segment(
+    pmix_gds_shmem3_job_t *job
+) {
+    if (NULL == job->smdata) {
+        return PMIX_SUCCESS;
+    }
+    pmix_gds_shmem3_seg_t *seg = calloc(1, sizeof(*seg));
+    if (PMIX_UNLIKELY(NULL == seg)) {
+        return PMIX_ERR_NOMEM;
+    }
+    seg->smid = PMIX_GDS_SHMEM3_JOB_ID;
+    seg->status = job->shmem3_status;
+    seg->shmem3 = job->shmem3;
+    seg->smdata = job->smdata;
+
+    pmix_gds_shmem3_chain_publish(&job->job_chain, seg);
+
+    /* The build slot starts empty again; the node owns the segment. */
+    job->shmem3 = PMIX_NEW(pmix_shmem_t);
+    job->smdata = NULL;
+    job->shmem3_status = 0;
     return PMIX_SUCCESS;
 }
 
@@ -1602,6 +1640,9 @@ init_client_side_sm_data(
     }
     if (PMIX_GDS_SHMEM3_SESSION_ID == shmem3_id) {
         return pmix_gds_shmem3_publish_session_segment(job->session);
+    }
+    if (PMIX_GDS_SHMEM3_JOB_ID == shmem3_id) {
+        return pmix_gds_shmem3_publish_job_segment(job);
     }
     return PMIX_SUCCESS;
 }
@@ -3003,11 +3044,14 @@ pack_shmem3_seg_blob(
             peer, reply
         );
     }
-    if (!pmix_gds_shmem3_has_status(job, shmem3_id,
-                                    PMIX_GDS_SHMEM3_READY_FOR_USE)) {
-        return PMIX_SUCCESS;
-    }
-    return pack_one_seg_blob(job, shmem3_id, NULL, peer, reply);
+    /* The job's data is a chain too - a host adding to it after the job
+     * was registered publishes a segment carrying what is new - so ship
+     * all of it, oldest first. */
+    return pack_seg_chain(
+        job, shmem3_id,
+        pmix_gds_shmem3_chain_head(&job->job_chain),
+        peer, reply
+    );
 }
 
 /* Pack this job's tombstones for a connecting client - see
@@ -3330,11 +3374,13 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
          * to every local peer. */
         pmix_shmem_t *cur = NULL;
         bool held = false;
-        if (PMIX_GDS_SHMEM3_MODEX_ID == usb.smid ||
-            PMIX_GDS_SHMEM3_SESSION_ID == usb.smid) {
+        {
             pmix_gds_shmem3_seg_t *seg = NULL;
             if (PMIX_GDS_SHMEM3_MODEX_ID == usb.smid) {
                 seg = pmix_gds_shmem3_chain_head(&job->modex_chain);
+            }
+            else if (PMIX_GDS_SHMEM3_JOB_ID == usb.smid) {
+                seg = pmix_gds_shmem3_chain_head(&job->job_chain);
             }
             else if (NULL != job->session) {
                 seg = pmix_gds_shmem3_chain_head(&job->session->segments);
@@ -3354,15 +3400,6 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                     break;
                 }
             }
-        }
-        else if (pmix_gds_shmem3_has_status(job, usb.smid,
-                                            PMIX_GDS_SHMEM3_ATTACHED)) {
-            rc = pmix_gds_shmem3_get_job_shmem3_by_id(job, usb.smid, &cur);
-            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                PMIX_ERROR_LOG(rc);
-                break;
-            }
-            held = true;
         }
         if (held) {
             /* Same segment: nothing to do. The path is what tells the
@@ -3400,15 +3437,9 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                  * dates a tombstone, and one that never moves makes
                  * every tombstone shadow every generation. */
                 advance_modex_generation(job);
-            } else if (PMIX_GDS_SHMEM3_SESSION_ID != usb.smid) {
-                /* The modex and the session are the two that grow a
-                 * chain. Job data changing underneath us is not
-                 * something this path knows how to do safely, so say so
-                 * rather than map a second segment over the first. */
-                rc = PMIX_ERR_NOT_SUPPORTED;
-                PMIX_ERROR_LOG(rc);
-                break;
             }
+            /* Every kind grows a chain now, so there is no arm here
+               that has to refuse one. */
         }
         // Looks like we have to attach and initialize it.
         rc = shmem3_segment_attach_and_init(job, &usb);

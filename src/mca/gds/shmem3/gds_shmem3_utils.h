@@ -133,6 +133,12 @@ pmix_gds_shmem3_session_describe(
     size_t ninfo
 );
 
+/** Publish the job segment just built, making it readable. */
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem3_publish_job_segment(
+    pmix_gds_shmem3_job_t *job
+);
+
 /** Publish the session segment just built, making it readable. Same
  *  discipline as the modex: complete before published, never rewritten. */
 PMIX_EXPORT pmix_status_t

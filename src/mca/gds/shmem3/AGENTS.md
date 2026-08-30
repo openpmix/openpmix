@@ -819,6 +819,20 @@ and `pack_shmem3_connection_info()` describe the newest *published*
 generation, because the build slot holds whatever is being assembled
 now, which is exactly what a client must not be pointed at.
 
+**All three kinds of data are chains**, and they behave identically:
+
+| | published by | grows when |
+|---|---|---|
+| job | `register_job_info()` | a host adds to a registered job's data |
+| session | the first job in the session | the description changes |
+| modex | each collecting fence | every fence |
+
+In each case the build slot on the tracker holds the segment being
+written and no reader touches it; publishing onto the chain is what
+makes it readable; a read walks newest-first and stops at the first
+segment that answers. A keyed read stops at the first hit; a whole-realm
+read merges and drops what a newer segment already supplied.
+
 **Nothing removes from a chain, which is what makes walking it
 lock-free.** A generation is retired onto the chain and kept; the only
 thing that ever takes nodes away is `pmix_gds_shmem3_chain_destruct()`

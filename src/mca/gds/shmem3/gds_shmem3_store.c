@@ -716,9 +716,14 @@ pmix_gds_shmem3_store_local_job_data_in_shmem3(
             job, PMIX_GDS_SHMEM3_SESSION_ID,
             PMIX_GDS_SHMEM3_READY_FOR_USE
         );
-        /* The session's segment becomes readable here, whole - see
-         * pmix_gds_shmem3_publish_session_segment(). Until now it was
-         * described only by the build fields, which no reader touches. */
+        /* Both segments become readable here, whole. Until now they
+         * were described only by the build fields, which no reader
+         * touches. The job's goes first: a client told about the session
+         * before the job would find a job tracker with nothing in it. */
+        rc = pmix_gds_shmem3_publish_job_segment(job);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+        }
         rc = pmix_gds_shmem3_publish_session_segment(job->session);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
