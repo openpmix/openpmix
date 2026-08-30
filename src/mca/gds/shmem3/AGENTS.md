@@ -734,11 +734,28 @@ Three consequences worth knowing:
   the first job in the session. `described` says which half has
   happened, and is what keeps a host registration and a job's own
   session array from both writing.
-- **First writer wins.** `store_session_array()` skips a session segment
-  that is already `READY_FOR_USE`, because local clients have it mapped
-  and a segment a client can see is never written again. Two jobs that
-  describe one session differently is a host bug; reconciling them would
-  need a second generation of the segment the way the modex has.
+- **A session's description can be updated, and an update is a new
+  segment.** `PMIx_server_register_session` on a session that already
+  has one publishes a segment carrying only what the host restated; a
+  read walks newest-first, so the restated key answers from the update
+  and everything else still answers from the segments behind it. That is
+  what a session needs and a job does not: its resources change under it
+  (`PMIX_SESSION_EXTEND`, `PMIX_SESSION_PREEMPT`, a node going down), so
+  `PMIX_UNIV_SIZE` and the node set are values a host restates.
+
+  A **job** merely naming its session is not an update, and
+  `store_session_array()` still turns those away: every job in a session
+  carries the same session array in its registration, so treating each
+  as one would mint a segment per job launch to say what the session
+  already says. The distinction is the API - registering the session is
+  the host stating its description; registering a job is a job naming
+  the session it is in.
+
+  A client is handed the session's **whole chain**, oldest first, so it
+  rebuilds the same order and its head is the newest. The modex still
+  ships only its newest generation, which is what it has always done.
+
+
 - **The segment's backing path names the job that built it.** It is
   created by whichever job in the session registers first, and every
   later one is handed that same path in its seg blob. That is exactly

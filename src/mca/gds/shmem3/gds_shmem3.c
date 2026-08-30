@@ -919,8 +919,10 @@ pmix_gds_shmem3_publish_session_segment(
     seg->status = sesh->shmem3_status;
     seg->shmem3 = sesh->shmem3;
     seg->smdata = sesh->smdata;
+    seg->generation = sesh->generation;
 
     pmix_gds_shmem3_chain_publish(&sesh->segments, seg);
+    sesh->generation += 1;
 
     /* The build slot starts empty again; the node owns the segment now. */
     sesh->shmem3 = PMIX_NEW(pmix_shmem_t);
@@ -997,6 +999,7 @@ session_construct(
     s->sinfo = NULL;
     s->nsinfo = 0;
     s->described = false;
+    s->generation = 0;
     s->shmem3 = PMIX_NEW(pmix_shmem_t);
     s->shmem3_status = 0;
     s->smdata = NULL;
@@ -1359,12 +1362,17 @@ get_shmem3_backing_path(
  */
 static inline const char *
 get_shmem3_session_name(
-    uint32_t session_id
+    uint32_t session_id,
+    uint32_t generation
 ) {
     static char name[64] = {'\0'};
-    // Now that we have the base path, append unique name.
+    /* The generation has to be in the name, for the same reason it is in
+     * a modex segment's: the backing paths are built from it, so two
+     * segments describing one session would collide. It is also what a
+     * client tells the generations apart by. */
     size_t nw = snprintf(
-        name, sizeof(name), "session.%zx", (size_t)session_id
+        name, sizeof(name), "session.%zx.%u",
+        (size_t)session_id, (unsigned)generation
     );
     if (nw >= sizeof(name)) {
         return NULL;
@@ -2268,7 +2276,8 @@ prepare_shmem3_stores_for_local_job_data(
     /* Note that we recycle the segment size calculated above because we
      * know that it will be at least as big as we need for this session
      * information. */
-    const char *session_name = get_shmem3_session_name(pji->session_id);
+    const char *session_name =
+        get_shmem3_session_name(pji->session_id, 0);
     if (PMIX_UNLIKELY(!session_name)) {
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
@@ -2324,6 +2333,7 @@ static inline pmix_status_t
 pack_shmem3_connection_info(
     pmix_gds_shmem3_job_t *job,
     pmix_gds_shmem3_job_shmem3_id_t shmem3_id,
+    pmix_gds_shmem3_seg_t *which,
     pmix_peer_t *peer,
     pmix_buffer_t *buffer
 ) {
@@ -2341,12 +2351,14 @@ pack_shmem3_connection_info(
      * generation being described rather than of the job. */
     pmix_shmem_t *shmem3;
     bool is_delta = false;
-    if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id ||
-        PMIX_GDS_SHMEM3_SESSION_ID == shmem3_id) {
+    if (NULL != which) {
+        /* a named segment on a chain - see pack_shmem3_seg_blob() */
+        shmem3 = which->shmem3;
+        is_delta = which->is_delta;
+    }
+    else if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id) {
         pmix_gds_shmem3_seg_t *const head =
-            (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id)
-                ? pmix_gds_shmem3_chain_head(&job->modex_chain)
-                : pmix_gds_shmem3_chain_head(&job->session->segments);
+            pmix_gds_shmem3_chain_head(&job->modex_chain);
         if (PMIX_UNLIKELY(NULL == head)) {
             rc = PMIX_ERR_NOT_FOUND;
             PMIX_ERROR_LOG(rc);
@@ -2884,43 +2896,23 @@ out:
     return rc;
 }
 
-static inline pmix_status_t
-pack_shmem3_seg_blob(
+/* Pack one blob describing one segment. */
+static pmix_status_t
+pack_one_seg_blob(
     pmix_gds_shmem3_job_t *job,
     pmix_gds_shmem3_job_shmem3_id_t shmem3_id,
+    pmix_gds_shmem3_seg_t *which,
     struct pmix_peer_t *peer,
     pmix_buffer_t *reply
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    /* Only describe a segment that is ready for use - anything else is
-     * half-built and must not be shared with a client.
-     *
-     * For the modex that means the newest PUBLISHED generation: the
-     * build slot holds whatever is being assembled now, which is exactly
-     * what a client must not be pointed at. Publishing is what makes a
-     * generation describable, and it happens the moment it completes. */
-    if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id) {
-        if (NULL == pmix_gds_shmem3_chain_head(&job->modex_chain)) {
-            return rc;
-        }
-    }
-    else if (PMIX_GDS_SHMEM3_SESSION_ID == shmem3_id) {
-        if (NULL == job->session ||
-            NULL == pmix_gds_shmem3_chain_head(&job->session->segments)) {
-            return rc;
-        }
-    }
-    else if (!pmix_gds_shmem3_has_status(job, shmem3_id,
-                                         PMIX_GDS_SHMEM3_READY_FOR_USE)) {
-        return rc;
-    }
-
     pmix_buffer_t buff;
+
     do {
         PMIX_CONSTRUCT(&buff, pmix_buffer_t);
 
         rc = pack_shmem3_connection_info(
-            job, shmem3_id, peer, &buff
+            job, shmem3_id, which, peer, &buff
         );
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
@@ -2945,6 +2937,77 @@ pack_shmem3_seg_blob(
     PMIX_DESTRUCT(&buff);
 
     return rc;
+}
+
+/* Pack a whole chain, OLDEST first.
+ *
+ * Order is load-bearing: the client publishes each segment as it
+ * attaches it, so describing them oldest-first leaves its chain in the
+ * same order as ours - newest at the head, which is where a read starts.
+ * Recursive because the chain runs the other way and its depth is the
+ * number of updates, which is small. */
+static pmix_status_t
+pack_seg_chain(
+    pmix_gds_shmem3_job_t *job,
+    pmix_gds_shmem3_job_shmem3_id_t shmem3_id,
+    pmix_gds_shmem3_seg_t *seg,
+    struct pmix_peer_t *peer,
+    pmix_buffer_t *reply
+) {
+    pmix_status_t rc;
+
+    if (NULL == seg) {
+        return PMIX_SUCCESS;
+    }
+    rc = pack_seg_chain(job, shmem3_id, seg->prior, peer, reply);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    return pack_one_seg_blob(job, shmem3_id, seg, peer, reply);
+}
+
+static inline pmix_status_t
+pack_shmem3_seg_blob(
+    pmix_gds_shmem3_job_t *job,
+    pmix_gds_shmem3_job_shmem3_id_t shmem3_id,
+    struct pmix_peer_t *peer,
+    pmix_buffer_t *reply
+) {
+    /* Only describe a segment that is ready for use - anything else is
+     * half-built and must not be shared with a client.
+     *
+     * The modex and the session are chains: the build slot holds
+     * whatever is being assembled now, which is exactly what a client
+     * must not be pointed at, so what gets described is what has been
+     * published. A session ships its WHOLE chain, because an update
+     * carries only what changed and a client needs the segments behind
+     * it to answer for everything else. The modex ships only its newest,
+     * which is what it has always done - a client already holding older
+     * generations keeps them, and one attaching now is told about the
+     * rest at its next fence. */
+    if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id) {
+        pmix_gds_shmem3_seg_t *const head =
+            pmix_gds_shmem3_chain_head(&job->modex_chain);
+        if (NULL == head) {
+            return PMIX_SUCCESS;
+        }
+        return pack_one_seg_blob(job, shmem3_id, head, peer, reply);
+    }
+    if (PMIX_GDS_SHMEM3_SESSION_ID == shmem3_id) {
+        if (NULL == job->session) {
+            return PMIX_SUCCESS;
+        }
+        return pack_seg_chain(
+            job, shmem3_id,
+            pmix_gds_shmem3_chain_head(&job->session->segments),
+            peer, reply
+        );
+    }
+    if (!pmix_gds_shmem3_has_status(job, shmem3_id,
+                                    PMIX_GDS_SHMEM3_READY_FOR_USE)) {
+        return PMIX_SUCCESS;
+    }
+    return pack_one_seg_blob(job, shmem3_id, NULL, peer, reply);
 }
 
 /* Pack this job's tombstones for a connecting client - see
@@ -3269,16 +3332,27 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
         bool held = false;
         if (PMIX_GDS_SHMEM3_MODEX_ID == usb.smid ||
             PMIX_GDS_SHMEM3_SESSION_ID == usb.smid) {
-            pmix_gds_shmem3_seg_t *head = NULL;
+            pmix_gds_shmem3_seg_t *seg = NULL;
             if (PMIX_GDS_SHMEM3_MODEX_ID == usb.smid) {
-                head = pmix_gds_shmem3_chain_head(&job->modex_chain);
+                seg = pmix_gds_shmem3_chain_head(&job->modex_chain);
             }
             else if (NULL != job->session) {
-                head = pmix_gds_shmem3_chain_head(&job->session->segments);
+                seg = pmix_gds_shmem3_chain_head(&job->session->segments);
             }
-            if (NULL != head) {
-                cur = head->shmem3;
+            if (NULL != seg) {
+                cur = seg->shmem3;
                 held = true;
+            }
+            /* The WHOLE chain, not just its head: a session ships every
+             * segment it has, so a client rebuilding one walks past
+             * blobs it already holds. Matching only the head would map
+             * each of those a second time. */
+            for (; NULL != seg; seg = seg->prior) {
+                if (NULL != seg->shmem3 &&
+                    0 == strcmp(seg->shmem3->backing_path, usb.seg_path)) {
+                    cur = seg->shmem3;
+                    break;
+                }
             }
         }
         else if (pmix_gds_shmem3_has_status(job, usb.smid,
@@ -3326,11 +3400,11 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                  * dates a tombstone, and one that never moves makes
                  * every tombstone shadow every generation. */
                 advance_modex_generation(job);
-            } else {
-                /* Only the modex is republished today. Anything else
-                 * changing underneath us is not something this path
-                 * knows how to do safely, so say so rather than map a
-                 * second segment over the first. */
+            } else if (PMIX_GDS_SHMEM3_SESSION_ID != usb.smid) {
+                /* The modex and the session are the two that grow a
+                 * chain. Job data changing underneath us is not
+                 * something this path knows how to do safely, so say so
+                 * rather than map a second segment over the first. */
                 rc = PMIX_ERR_NOT_SUPPORTED;
                 PMIX_ERROR_LOG(rc);
                 break;
@@ -3984,6 +4058,113 @@ client_recv_modex_complete(
     return client_connect_to_shmem3_from_buffi(buff);
 }
 
+/* Publish a changed session description as a NEW segment.
+ *
+ * A session's resources change under it - PMIX_SESSION_EXTEND grows one
+ * "in terms of time or resources", PMIX_SESSION_PREEMPT takes resources
+ * back, a node goes down - so PMIX_UNIV_SIZE and the session's node set
+ * are values a host restates. The segment already published cannot be
+ * rewritten: local clients have it mapped, and a segment a client can
+ * see is never written again. So the change goes into a segment of its
+ * own at the head of the chain, and a read walking newest-first sees it
+ * before the value it replaces.
+ *
+ * Only the keys the host restated are in the new segment. Everything it
+ * did not mention is still answered by the segments behind it, which is
+ * what makes an update cheap: a session that gained a node ships a node
+ * array, not the whole session.
+ *
+ * Needs a job in the session, because a segment is placed in - and named
+ * after - one. A host that updates a session with nothing running in it
+ * has its description held on the tracker instead, and the first job to
+ * arrive builds from that.
+ */
+static pmix_status_t
+publish_session_update(
+    pmix_gds_shmem3_session_t *sesh,
+    pmix_gds_shmem3_job_t *job,
+    pmix_info_t info[],
+    size_t ninfo
+) {
+    pmix_status_t rc;
+    pmix_value_t sval;
+
+    rc = pmix_gds_base_wrap_session_info(sesh->id, info, ninfo, &sval);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    /* Size it for what this update carries rather than for the session.
+     * The floor is what an empty segment costs - its own header, a key
+     * index sized for these keys, and the two lists - so a small update
+     * is a small segment. */
+    size_t seg_size = sizeof(pmix_gds_shmem3_shared_session_data_t);
+    seg_size += pmix_keyindex_sizeof_storage(ninfo);
+    seg_size += 2 * sizeof(pmix_list_t);
+    seg_size += ninfo * (sizeof(pmix_kval_t) + sizeof(pmix_value_t)
+                         + PMIX_MAX_KEYLEN + 1);
+    /* node arrays are stored as whole nodeinfo objects, and a session
+     * that grew ships one per node - charge for them generously rather
+     * than walk the array here */
+    for (size_t n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO_ARRAY) &&
+            PMIX_DATA_ARRAY == info[n].value.type &&
+            NULL != info[n].value.data.darray) {
+            const size_t nsub = info[n].value.data.darray->size;
+            seg_size += sizeof(pmix_gds_shmem3_nodeinfo_t)
+                        + 2 * sizeof(pmix_list_t)
+                        + nsub * (sizeof(pmix_kval_t) + sizeof(pmix_value_t)
+                                  + PMIX_MAX_KEYLEN + 1);
+        }
+    }
+    seg_size *= 4;   // the same empirical fluff the other estimates carry
+    seg_size *= pmix_gds_shmem3_segment_size_multiplier;
+
+    const char *name = get_shmem3_session_name(sesh->id, sesh->generation);
+    if (PMIX_UNLIKELY(NULL == name)) {
+        rc = PMIX_ERROR;
+        goto out;
+    }
+    rc = shmem3_segment_create_and_attach(
+        job, PMIX_GDS_SHMEM3_SESSION_ID, name, seg_size
+    );
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+    rc = session_smdata_construct(job, sesh->id);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+    rc = pmix_gds_shmem3_store_session_info(job, sesh, &sval);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+    rc = pmix_gds_shmem3_publish_session_segment(sesh);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+    /* The cached job-info replies still describe the chain as it was,
+     * and they are what the next client to attach is handed. */
+    PMIX_LIST_FOREACH (job, &pmix_mca_gds_shmem3_component.jobs,
+                       pmix_gds_shmem3_job_t) {
+        if (job->session == sesh && NULL != job->conni) {
+            PMIX_RELEASE(job->conni);
+            job->conni = NULL;
+        }
+    }
+    PMIX_GDS_SHMEM3_VOUT(
+        "%s: session %u published update generation %u",
+        __func__, (unsigned) sesh->id, (unsigned)(sesh->generation - 1)
+    );
+out:
+    pmix_gds_base_release_session_info(&sval);
+    return rc;
+}
+
 static pmix_status_t
 server_add_session(
     uint32_t sessionID,
@@ -4005,25 +4186,24 @@ server_add_session(
         return PMIX_SUCCESS;
     }
 
-    /* Already described - by an earlier registration, or by the first job
-     * in the session. First writer wins; see
-     * pmix_gds_shmem3_store_session_array(). */
-    if (sesh->described || NULL != sesh->sinfo) {
-        PMIX_GDS_SHMEM3_VOUT(
-            "%s: session %u is already described; keeping the first "
-            "description", __func__, (unsigned) sessionID
-        );
-        return PMIX_SUCCESS;
-    }
-
-    /* Hold it until there is a segment to put it in. That may be now -
-     * if a job in this session has already built one - or not until the
-     * first job arrives, which is the case this whole entry point exists
-     * to serve: a host describing a session before anything runs in it.
+    /* This is the host stating the session's description, so it is the
+     * last word - a re-registration is an UPDATE, not a duplicate. A
+     * session's resources change under it; see publish_session_update().
      *
-     * Copied, not referenced: the host may release its array as soon as
-     * the registration callback returns, and the segment that will hold
-     * this may not exist for some time yet. */
+     * Hold a copy on the tracker whatever else happens: it is what the
+     * first job to arrive builds its segment from, and a host may
+     * describe a session long before anything runs in it. Copied rather
+     * than referenced, since the host may release its array as soon as
+     * the registration callback returns.
+     *
+     * A later registration replaces the held copy, so a job arriving
+     * afterwards builds one segment carrying the current description
+     * rather than replaying every step that got there. */
+    if (NULL != sesh->sinfo) {
+        PMIX_INFO_FREE(sesh->sinfo, sesh->nsinfo);
+        sesh->sinfo = NULL;
+        sesh->nsinfo = 0;
+    }
     PMIX_INFO_CREATE(sesh->sinfo, ninfo);
     if (PMIX_UNLIKELY(NULL == sesh->sinfo)) {
         return PMIX_ERR_NOMEM;
@@ -4033,26 +4213,24 @@ server_add_session(
         PMIX_INFO_XFER(&sesh->sinfo[n], &info[n]);
     }
 
-    /* A job in this session has already built the segment, so write it
-     * now rather than waiting for a first job that has been and gone. */
-    if (NULL != sesh->smdata) {
-        pmix_gds_shmem3_job_t *job;
-        PMIX_LIST_FOREACH (job, &pmix_mca_gds_shmem3_component.jobs,
-                           pmix_gds_shmem3_job_t) {
-            if (job->session == sesh) {
-                pmix_value_t sval;
-                pmix_status_t rc = pmix_gds_base_wrap_session_info(
-                    sessionID, sesh->sinfo, sesh->nsinfo, &sval
-                );
-                if (PMIX_SUCCESS != rc) {
-                    return rc;
-                }
-                rc = pmix_gds_shmem3_store_session_array(job, &sval);
-                pmix_gds_base_release_session_info(&sval);
-                return rc;
-            }
+    /* Nothing published yet: the description waits on the tracker for
+     * the first job in the session to build from. */
+    if (NULL == pmix_gds_shmem3_chain_head(&sesh->segments)) {
+        return PMIX_SUCCESS;
+    }
+
+    /* Otherwise publish the change as a new segment. It needs a job in
+     * the session, because a segment is placed in and named after one;
+     * any of them will do, since the segment belongs to the session. */
+    pmix_gds_shmem3_job_t *job;
+    PMIX_LIST_FOREACH (job, &pmix_mca_gds_shmem3_component.jobs,
+                       pmix_gds_shmem3_job_t) {
+        if (job->session == sesh) {
+            return publish_session_update(sesh, job, info, ninfo);
         }
     }
+    /* A published session with no job left in it. The held copy above is
+     * what the next job will build from, so nothing is lost. */
     return PMIX_SUCCESS;
 }
 

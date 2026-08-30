@@ -322,6 +322,10 @@ typedef struct {
      *  segment a client can see is never written again.
      */
     bool described;
+    /** How many segments this session has published. Names the next
+     *  one's backing file, so two describing one session cannot
+     *  collide. */
+    uint32_t generation;
     /** The segment being BUILT, and its status. No reader touches these:
      *  a segment becomes readable by being published onto the chain
      *  below, whole. Same split as the modex - see

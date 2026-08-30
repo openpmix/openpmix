@@ -496,18 +496,16 @@ pmix_gds_shmem3_store_session_array(
         return rc;
     }
 
-    /* A session that has already been described was written by whoever
-     * described it first - the host through PMIx_server_register_session,
-     * or the first job in the session to carry a session array. There is
-     * nothing to add, and nothing may be added: local clients have the
-     * segment mapped, and a segment a client can see is never written
-     * again.
+    /* A session already described has nothing to gain from a job merely
+     * mentioning it again. Every job in a session carries the same
+     * session array in its registration, so treating each as an update
+     * would mint a segment per job launch to say what the session
+     * already says.
      *
-     * So this is first-writer-wins. A session's description belongs to
-     * the session, and two sources describing it differently is a host
-     * bug; reconciling them would need a second generation of the
-     * segment, the way the modex has, which is a great deal of machinery
-     * for that. */
+     * An actual change comes through PMIx_server_register_session, which
+     * is the host stating the session's description rather than a job
+     * naming its session - see pmix_gds_shmem3_publish_session_update().
+     */
     if (sesh->described ||
         NULL != pmix_gds_shmem3_chain_head(&sesh->segments)) {
         PMIX_GDS_SHMEM3_VOUT(
@@ -516,6 +514,24 @@ pmix_gds_shmem3_store_session_array(
         );
         return PMIX_SUCCESS;
     }
+
+    return pmix_gds_shmem3_store_session_info(job, sesh, val);
+}
+
+/* Write a session array into the session's BUILD slot.
+ *
+ * Split out of the above so an update can reuse it: an update has just
+ * created a segment of its own and must not be turned away by the
+ * already-described guard, which is about a job repeating what the
+ * session already holds. */
+pmix_status_t
+pmix_gds_shmem3_store_session_info(
+    pmix_gds_shmem3_job_t *job,
+    pmix_gds_shmem3_session_t *sesh,
+    pmix_value_t *val
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_info_t *const info = (pmix_info_t *)val->data.darray->array;
 
     pmix_tma_t *const tma = pmix_gds_shmem3_get_session_tma(job);
     pmix_list_t *ncache = PMIX_NEW(pmix_list_t, tma);
