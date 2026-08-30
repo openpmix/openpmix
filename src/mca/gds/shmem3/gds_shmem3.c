@@ -30,6 +30,8 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
 
+#include "src/mca/bfrops/base/bfrop_base_tma.h"
+
 //
 // Notes for developers:
 // We cannot use PMIX_CONSTRUCT for data that are stored in shared memory
@@ -602,6 +604,7 @@ job_construct(
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
     job->modex_is_delta = false;
+    job->job_generation = 0;
     atomic_init(&job->job_chain, NULL);
     atomic_init(&job->modex_chain, NULL);
     atomic_init(&job->tombstones, NULL);
@@ -741,10 +744,30 @@ job_destruct(
     /* The session's segment is deliberately not in here: it belongs to
      * the session object, which more than one job may hold, and is given
      * back by session_destruct() when the last of them lets go. */
-    /* Neither the job's nor the session's segments are in here: both
-     * are held by chains, which give them back above. What is left is
-     * the modex BUILD slot - a generation that was being assembled when
-     * this job went away and was therefore never published. */
+    /* The job's BUILD slot. Its published segments are on the chain,
+     * which gave them back above; this is the handle the slot was left
+     * holding - either a segment that was being written when the job
+     * went away, or the empty one publishing hands back. Either way
+     * nothing ever saw it, so nothing can be reading it. */
+    if (NULL != job->shmem3) {
+        if (NULL != job->smdata &&
+            (job->shmem3_status & PMIX_GDS_SHMEM3_MINE)) {
+            emit_segment_usage_stats(
+                job->shmem3, &job->smdata->tma,
+                get_shmem3_id_name(PMIX_GDS_SHMEM3_JOB_ID)
+            );
+            PMIX_RELEASE(job->smdata->tma.data_context);
+        }
+        PMIX_RELEASE(job->shmem3);
+        job->shmem3 = NULL;
+        job->smdata = NULL;
+        job->shmem3_status = 0;
+    }
+
+    /* Neither the job's nor the session's published segments are in the
+     * loop below: both are held by chains, which gave them back above.
+     * What is left is the modex BUILD slot - a generation that was being
+     * assembled when this job went away and was never published. */
     static const pmix_gds_shmem3_job_shmem3_id_t shmem3_ids[] = {
         PMIX_GDS_SHMEM3_MODEX_ID,
         PMIX_GDS_SHMEM3_INVALID_ID
@@ -925,7 +948,9 @@ pmix_gds_shmem3_publish_job_segment(
     seg->shmem3 = job->shmem3;
     seg->smdata = job->smdata;
 
+    seg->generation = job->job_generation;
     pmix_gds_shmem3_chain_publish(&job->job_chain, seg);
+    job->job_generation += 1;
 
     /* The build slot starts empty again; the node owns the segment. */
     job->shmem3 = PMIX_NEW(pmix_shmem_t);
@@ -4490,6 +4515,117 @@ client_accept_update(
     return client_connect_to_shmem3_from_buffi(buff);
 }
 
+/* Add job-level data to a namespace that is already registered.
+ *
+ * The segment already published cannot be rewritten - local clients have
+ * it mapped - so the addition goes into a segment of its own at the head
+ * of the job's chain, carrying only what is being added. A read walks
+ * newest-first, so the new keys answer from here and everything else
+ * still answers from the segments behind.
+ *
+ * Named after the job's own generation, so successive additions do not
+ * collide, and the clients are told so a job already running sees it -
+ * which is the whole point: without this, a host adding a resource
+ * mid-run reaches only the namespaces registered afterwards.
+ */
+static pmix_status_t
+server_add_job_data(
+    const char *nspace,
+    pmix_info_t info[],
+    size_t ninfo
+) {
+    pmix_gds_shmem3_job_t *job;
+    pmix_status_t rc;
+    size_t seg_size;
+
+    if (NULL == nspace || 0 == ninfo || NULL == info) {
+        return PMIX_SUCCESS;
+    }
+    rc = pmix_gds_shmem3_get_job_tracker(nspace, false, &job);
+    if (PMIX_SUCCESS != rc) {
+        /* not a job we hold */
+        return PMIX_SUCCESS;
+    }
+    /* Nothing published yet: this job has not built its segments, so the
+     * addition will be picked up from the global cache when it does -
+     * hash_cache_job_info()'s gdata_added path. */
+    if (NULL == pmix_gds_shmem3_chain_head(&job->job_chain)) {
+        return PMIX_SUCCESS;
+    }
+
+    /* Size it for what is being added rather than for the job. */
+    seg_size = sizeof(pmix_gds_shmem3_shared_job_data_t);
+    seg_size += pmix_keyindex_sizeof_storage(ninfo);
+    seg_size += 2 * sizeof(pmix_list_t);
+    seg_size += pmix_hash_table_sizeof_storage(1);
+    seg_size += pmix_hash_sizeof_proc_storage();
+    seg_size += ninfo * (sizeof(pmix_kval_t) + sizeof(pmix_value_t)
+                         + pmix_hash_sizeof_key_entry(0)
+                         + 4 * (PMIX_MAX_KEYLEN + 1));
+    seg_size *= 4;   // the same empirical fluff the other estimates carry
+    seg_size *= pmix_gds_shmem3_segment_size_multiplier;
+
+    char segname[PMIX_PATH_MAX];
+    snprintf(segname, sizeof(segname), "jobdata.%u",
+             (unsigned) job->job_generation);
+    rc = shmem3_segment_create_and_attach(
+        job, PMIX_GDS_SHMEM3_JOB_ID, segname, seg_size
+    );
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    /* one hash-table element: everything here is job-level, so it all
+     * hangs off the single PMIX_RANK_WILDCARD entry */
+    rc = job_smdata_construct(job, 1, ninfo);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    pmix_tma_t *const tma = &job->smdata->tma;
+    for (size_t n = 0; n < ninfo; n++) {
+        pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
+        if (PMIX_UNLIKELY(NULL == kv)) {
+            return PMIX_ERR_NOMEM;
+        }
+        kv->key = pmix_tma_strdup(tma, info[n].key);
+        kv->value = pmix_tma_calloc(tma, 1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv->key || NULL == kv->value)) {
+            return PMIX_ERR_NOMEM;
+        }
+        rc = pmix_bfrops_base_tma_value_xfer(kv->value, &info[n].value, tma);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        rc = pmix_hash_store(job->smdata->local_hashtab, PMIX_RANK_WILDCARD,
+                             kv, NULL, 0, job->smdata->keyindex);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+
+    rc = pmix_gds_shmem3_publish_job_segment(job);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    /* the cached job-info reply describes the chain as it was */
+    if (NULL != job->conni) {
+        PMIX_RELEASE(job->conni);
+        job->conni = NULL;
+    }
+    PMIX_GDS_SHMEM3_VOUT(
+        "%s: namespace=%s published job data generation %u",
+        __func__, nspace, (unsigned)(job->job_generation - 1)
+    );
+    /* and tell the clients already reading it */
+    pmix_server_notify_gds_update(nspace);
+    return PMIX_SUCCESS;
+}
+
 pmix_gds_base_module_t pmix_shmem3_module = {
     .name = PMIX_GDS_SHMEM3_NAME,
     /* fetch() may be called from a thread other than the progress
@@ -4514,6 +4650,7 @@ pmix_gds_base_module_t pmix_shmem3_module = {
     .del_session = server_del_session,
     .pack_update = server_pack_update,
     .accept_update = client_accept_update,
+    .add_job_data = server_add_job_data,
     .del_key = del_key,
     .assemb_kvs_req = NULL,
     .accept_kvs_resp = NULL,
