@@ -1509,6 +1509,48 @@ addr_in_arena(
     return (addr - job->arena_base) <= (job->arena_size - size);
 }
 
+/* Which delivery a seg blob arrived on.
+ *
+ * This has to be carried rather than inferred, because it decides what a
+ * failed attach is allowed to do about itself and the two answers are
+ * opposites.
+ *
+ * At INIT the client is inside PMIx_Init reading the job-info reply. A
+ * segment it cannot map is answered by abandoning this module wholesale:
+ * PMIX_ERR_TAKE_NEXT_OPTION travels up to fallback_to_next_gds(), which
+ * re-points the peer at gds/hash and re-requests the job data in that
+ * module's format. Dropping the tracker is part of that - nothing will
+ * read it again.
+ *
+ * Afterwards there is no such move to make. A modex generation cannot be
+ * re-delivered in another module's format, and neither can an update to
+ * job or session data: both arrive on a one-way notification with no
+ * re-request behind it. So a failure has to cost only the segment that
+ * failed. Dropping the tracker there takes down the job and session
+ * segments this client has been reading happily since PMIx_Init, so
+ * pmix_gds_shmem3_fetch() then answers every lookup for its OWN
+ * namespace with PMIX_ERR_INVALID_NAMESPACE - there being no tracker to
+ * acquire. That is openpmix#4156, and it was fixed for the modex by
+ * testing the segment id. That test was a proxy for this distinction and
+ * only covered the case that had been noticed; a job or session segment
+ * arriving on an update took the other arm and dropped the tracker
+ * exactly as the modex used to.
+ *
+ * Be precise about what the APPLICATION sees, because it is not that: an
+ * ordinary PMIx_Get misses locally, goes up to the server, and is
+ * answered correctly, so the cost is a round trip per lookup for the
+ * rest of the run. It takes PMIX_OPTIONAL - which confines the request
+ * to this process - to see it at all, which is what
+ * test/unit/update_attach_fail asks with and why it had to.
+ */
+typedef enum {
+    /** The job-info reply, inside PMIx_Init. A failure may fall back. */
+    PMIX_GDS_SHMEM3_ATTACH_INIT = 0,
+    /** Anything described after that - a modex generation at a fence, or
+     *  an update to job or session data. A failure costs one segment. */
+    PMIX_GDS_SHMEM3_ATTACH_UPDATE
+} pmix_gds_shmem3_attach_ctx_t;
+
 /**
  * Take a job tracker off the component list and give up our reference.
  *
@@ -1542,7 +1584,8 @@ static pmix_status_t
 shmem3_attach(
     pmix_gds_shmem3_job_t *job,
     pmix_gds_shmem3_job_shmem3_id_t shmem3_id,
-    uintptr_t req_addr
+    uintptr_t req_addr,
+    pmix_gds_shmem3_attach_ctx_t ctx
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
@@ -1572,6 +1615,16 @@ shmem3_attach(
         // Testing only: pretend the fixed-address attach failed so the
         // client exercises the GDS fallback path. The shared "out" cleanup
         // below detaches the segment if the real attach actually succeeded.
+        rc = PMIX_ERR_NOT_AVAILABLE;
+    }
+    if (PMIX_UNLIKELY(pmix_gds_shmem3_force_update_attach_failure &&
+                      PMIX_GDS_SHMEM3_ATTACH_UPDATE == ctx &&
+                      PMIX_GDS_SHMEM3_MODEX_ID != shmem3_id)) {
+        /* Testing only: fail a job or session segment that arrives after
+         * PMIx_Init. Neither of the parameters above can reach that -
+         * force_client_attach_failure fails the init attach too, so the
+         * client leaves PMIx_Init on hash, and the modex one is scoped to
+         * the modex. */
         rc = PMIX_ERR_NOT_AVAILABLE;
     }
     if (PMIX_UNLIKELY(pmix_gds_shmem3_force_modex_attach_failure &&
@@ -1619,25 +1672,30 @@ shmem3_attach(
 out:
     if (PMIX_SUCCESS != rc) {
         (void)pmix_shmem_segment_detach(shmem3);
-        if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id) {
-            /* Only this segment is lost. The job and session segments
-             * this client has been reading since PMIx_Init are mapped
-             * and perfectly good, so keep the tracker: dropping it here
-             * took them down too, and left the client answering every
-             * job-level lookup for its OWN namespace with
-             * PMIX_ERR_INVALID_NAMESPACE - long after the fence that
-             * caused it. See openpmix#4156.
+        if (PMIX_GDS_SHMEM3_ATTACH_UPDATE == ctx) {
+            /* Only this segment is lost. Everything else this client has
+             * been reading since PMIx_Init is mapped and perfectly good,
+             * so keep the tracker: dropping it took those down too, and
+             * left the client answering every job-level lookup for its
+             * OWN namespace with PMIX_ERR_INVALID_NAMESPACE - long after
+             * the delivery that caused it. See openpmix#4156, which is
+             * this failure for the modex; a job or session segment
+             * arriving on an update reached it the same way, because the
+             * test here used to be on the segment id rather than on how
+             * the segment arrived.
              *
-             * What the client actually loses is the fast path to remote
-             * procs' data. The fetch side already copes: it gates every
-             * modex read on PMIX_GDS_SHMEM3_READY_FOR_USE, so a job
-             * without a modex segment simply misses, and the miss goes
-             * up to the server like any other. Clearing the status is
-             * what leaves a later generation free to attach cleanly. */
+             * What the client actually loses is the shared copy of what
+             * that one segment held. The fetch side already copes: a
+             * chain it was never added to simply does not answer for
+             * those keys, and the miss goes up to the server like any
+             * other. Clearing the status is what leaves a later
+             * generation - or a later update - free to attach cleanly. */
             pmix_gds_shmem3_clearall_status(job, shmem3_id);
         }
         else {
-            // remove the job from the tracker
+            /* Inside PMIx_Init. The caller is about to switch this peer
+             * to another module and re-request its job data, so nothing
+             * will read this tracker again. */
             drop_job_tracker(job);
         }
     }
@@ -1696,7 +1754,8 @@ init_client_side_sm_data(
 static pmix_status_t
 shmem3_segment_attach_and_init(
     pmix_gds_shmem3_job_t *job,
-    pmix_gds_shmem3_unpacked_seg_blob_t *seginfo
+    pmix_gds_shmem3_unpacked_seg_blob_t *seginfo,
+    pmix_gds_shmem3_attach_ctx_t ctx
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
@@ -1715,7 +1774,7 @@ shmem3_segment_attach_and_init(
     shmem3->size = seginfo->seg_size;
 
     const uintptr_t req_addr = (uintptr_t)seginfo->seg_hadr;
-    rc = shmem3_attach(job, seginfo->smid, req_addr);
+    rc = shmem3_attach(job, seginfo->smid, req_addr, ctx);
     if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
         return rc;
     }
@@ -3311,7 +3370,8 @@ server_register_job_info(
 
 static pmix_status_t
 unpack_shmem3_seg_blob_and_attach_if_necessary(
-    pmix_kval_t *kvbo
+    pmix_kval_t *kvbo,
+    pmix_gds_shmem3_attach_ctx_t ctx
 ) {
     PMIX_GDS_SHMEM3_VVOUT_HERE();
     pmix_status_t rc = PMIX_SUCCESS;
@@ -3487,26 +3547,28 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                that has to refuse one. */
         }
         // Looks like we have to attach and initialize it.
-        rc = shmem3_segment_attach_and_init(job, &usb);
+        rc = shmem3_segment_attach_and_init(job, &usb, ctx);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            /* A modex we could not map is a slower client, not a broken
-             * one, and there is no "next option" to take at fence time
-             * anyway: PMIX_GDS_RECV_MODEX_COMPLETE resolves one module,
-             * and the modex data it describes cannot be re-delivered in
-             * another module's format. Reporting the failure upward put
+            /* A segment we could not map after PMIx_Init makes for a
+             * slower client, not a broken one, and there is no "next
+             * option" to take by then anyway. PMIX_GDS_RECV_MODEX_COMPLETE
+             * resolves one module and the modex cannot be re-delivered in
+             * another's format; an update to job or session data arrives
+             * on a one-way notification with no re-request behind it at
+             * all. Reporting the failure upward put
              * PMIX_ERR_TAKE_NEXT_OPTION in the application's hands as the
              * return of PMIx_Fence, where it was either checked and
              * treated as a failed fence or - more often - not checked at
-             * all. Say what happened and let the fence succeed; the data
-             * is still reachable, one request to the server at a time.
+             * all. Say what happened and carry on; the data is still
+             * reachable, one request to the server at a time.
              * See openpmix#4156. */
             if (PMIX_ERR_TAKE_NEXT_OPTION == rc &&
-                PMIX_GDS_SHMEM3_MODEX_ID == usb.smid) {
+                PMIX_GDS_SHMEM3_ATTACH_UPDATE == ctx) {
                 PMIX_GDS_SHMEM3_VOUT(
-                    "%s: could not map the modex segment for namespace=%s; "
-                    "this process will fetch remote data from its server "
-                    "instead of reading it from shared memory",
-                    __func__, usb.nsid
+                    "%s: could not map the %s segment for namespace=%s; "
+                    "this process will fetch what it holds from its "
+                    "server instead of reading it from shared memory",
+                    __func__, get_shmem3_id_name(usb.smid), usb.nsid
                 );
                 rc = PMIX_SUCCESS;
                 break;
@@ -3557,7 +3619,8 @@ unpack_tombstone(
 
 static pmix_status_t
 client_connect_to_shmem3_from_buffi(
-    pmix_buffer_t *buff
+    pmix_buffer_t *buff,
+    pmix_gds_shmem3_attach_ctx_t ctx
 ) {
     PMIX_GDS_SHMEM3_VVOUT_HERE();
     pmix_status_t rc = PMIX_SUCCESS;
@@ -3576,7 +3639,7 @@ client_connect_to_shmem3_from_buffi(
         }
 
         if (PMIX_CHECK_KEY(&kval, SHMEM3_SEG_BLOB_KEY)) {
-            rc = unpack_shmem3_seg_blob_and_attach_if_necessary(&kval);
+            rc = unpack_shmem3_seg_blob_and_attach_if_necessary(&kval, ctx);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 break;
             }
@@ -3627,7 +3690,13 @@ store_job_info(
     );
     // Done. Before this point the server should have populated the
     // shared-memory segment with the relevant data.
-    return client_connect_to_shmem3_from_buffi(buff);
+    //
+    // This is the one delivery a failed attach can answer by falling
+    // back to another module, because PMIx_Init re-requests the job data
+    // and the server can re-register it in that module's format.
+    return client_connect_to_shmem3_from_buffi(
+        buff, PMIX_GDS_SHMEM3_ATTACH_INIT
+    );
 }
 
 /**
@@ -4131,7 +4200,9 @@ client_recv_modex_complete(
     pmix_buffer_t *buff
 ) {
     PMIX_GDS_SHMEM3_VVOUT_HERE();
-    return client_connect_to_shmem3_from_buffi(buff);
+    return client_connect_to_shmem3_from_buffi(
+        buff, PMIX_GDS_SHMEM3_ATTACH_UPDATE
+    );
 }
 
 /* What does the session's chain currently answer for this key?
@@ -4513,6 +4584,25 @@ server_pack_update(
         /* not a job we hold - nothing to say */
         return PMIX_SUCCESS;
     }
+    /* Only the session's chain, which is not the whole of what an
+     * update could carry: server_add_job_data() publishes a new JOB
+     * segment and then calls pmix_server_notify_gds_update() to tell
+     * the clients already reading it, and this does not describe that
+     * segment to them. The addition still REACHES such a client - the
+     * same data is stored in the server's own hash module, which
+     * answers the round trip a local miss turns into - so what is lost
+     * is the shared copy, not the answer.
+     *
+     * Not fixed here on purpose. gds/hash has the same gap on both
+     * halves (hash_pack_update() packs only session info, and
+     * hash_accept_update() ignores everything that is not a
+     * PMIX_SESSION_INFO_ARRAY), and a client that reads late job data
+     * out of its own store under one component but not the other is a
+     * worse state than one that reads it from the server under both.
+     * Fixing it means deciding what a job-data update carries - the
+     * addition, or the whole description - and doing it in both
+     * components at once.
+     */
     if (NULL == job->session ||
         NULL == pmix_gds_shmem3_chain_head(&job->session->segments)) {
         return PMIX_SUCCESS;
@@ -4532,7 +4622,9 @@ client_accept_update(
     pmix_buffer_t *buff
 ) {
     PMIX_GDS_SHMEM3_VVOUT_HERE();
-    return client_connect_to_shmem3_from_buffi(buff);
+    return client_connect_to_shmem3_from_buffi(
+        buff, PMIX_GDS_SHMEM3_ATTACH_UPDATE
+    );
 }
 
 /* Add job-level data to a namespace that is already registered.

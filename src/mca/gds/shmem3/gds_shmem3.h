@@ -148,6 +148,17 @@ PMIX_EXPORT extern bool pmix_gds_shmem3_offset_placement;
 PMIX_EXPORT extern bool pmix_gds_shmem3_force_modex_attach_failure;
 
 /**
+ * Testing-only MCA parameter. When true, a client's attach is forced to
+ * fail for a JOB or SESSION segment that arrives after PMIx_Init - an
+ * update, rather than the job-info reply. This is the case neither of
+ * the parameters above can reach: force_client_attach_failure fails the
+ * init attach too, so the client leaves PMIx_Init on hash and never
+ * takes delivery of an update on shmem3, and force_modex_attach_failure
+ * is scoped to the modex. Never set this in production.
+ */
+PMIX_EXPORT extern bool pmix_gds_shmem3_force_update_attach_failure;
+
+/**
  * IDs for pmix_shmem_ts in pmix_gds_shmem3_job_t.
  */
 typedef enum {

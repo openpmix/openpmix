@@ -81,6 +81,8 @@ bool pmix_gds_shmem3_force_client_attach_failure = false;
 
 bool pmix_gds_shmem3_force_modex_attach_failure = false;
 
+bool pmix_gds_shmem3_force_update_attach_failure = false;
+
 /* One gibibyte per slot. Nothing is committed, so the cost of being
  * generous is a virtual address range and a VMA; the cost of being
  * stingy is a modex that does not fit and has to be placed the old
@@ -138,6 +140,22 @@ gds_shmem3_component_register(void)
         "set this in production.",
         PMIX_MCA_BASE_VAR_TYPE_BOOL,
         &pmix_gds_shmem3_force_modex_attach_failure
+    );
+    if (varidx < 0) {
+        return PMIX_ERROR;
+    }
+
+    varidx = pmix_mca_base_component_var_register(
+        &pmix_mca_gds_shmem3_component.super,
+        "force_update_attach_failure",
+        "(Testing only) Force a client's attach of a JOB or SESSION "
+        "segment delivered AFTER PMIx_Init - an update - to fail. "
+        "Neither of the parameters above reaches that path: "
+        "force_client_attach_failure fails the init attach too, so the "
+        "client leaves PMIx_Init on hash, and force_modex_attach_failure "
+        "is scoped to the modex. Do not set this in production.",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_gds_shmem3_force_update_attach_failure
     );
     if (varidx < 0) {
         return PMIX_ERROR;
