@@ -735,25 +735,32 @@ Three consequences worth knowing:
   happened, and is what keeps a host registration and a job's own
   session array from both writing.
 - **A session's description can be updated, and an update is a new
-  segment.** `PMIx_server_register_session` on a session that already
-  has one publishes a segment carrying only what the host restated; a
-  read walks newest-first, so the restated key answers from the update
-  and everything else still answers from the segments behind it. That is
-  what a session needs and a job does not: its resources change under it
-  (`PMIX_SESSION_EXTEND`, `PMIX_SESSION_PREEMPT`, a node going down), so
-  `PMIX_UNIV_SIZE` and the node set are values a host restates.
+  segment.** A published segment can never be rewritten - local clients
+  have it mapped - so a change goes into a segment of its own at the
+  head of the session's chain, carrying only what changed. A read walks
+  newest-first, so the changed key answers from the update and
+  everything it did not mention still answers from behind it.
 
-  A **job** merely naming its session is not an update, and
-  `store_session_array()` still turns those away: every job in a session
-  carries the same session array in its registration, so treating each
-  as one would mint a segment per job launch to say what the session
-  already says. The distinction is the API - registering the session is
-  the host stating its description; registering a job is a job naming
-  the session it is in.
+  **Both sources of a description go through the same path**, and the
+  source is not what decides whether anything is published:
+
+  | source | what it is |
+  |---|---|
+  | `PMIx_server_register_session` | the host stating the description |
+  | `PMIX_SESSION_INFO_ARRAY` in a job registration | how every host did it before that API, and how hosts that have not adopted it still do |
+
+  Treating the second as "a job merely naming its session" and ignoring
+  it would mean a host that never adopts the new call could never update
+  a session at all — and those hosts will be around for a long time.
+  What keeps the cost down is the **comparison**, not the source:
+  `pmix_gds_shmem3_session_describe()` reduces a description to the
+  entries that differ from what the chain answers today, and publishes
+  nothing when nothing changed. Every job in a session carries the same
+  session array, so the ordinary case restates and costs nothing.
 
   A client is handed the session's **whole chain**, oldest first, so it
   rebuilds the same order and its head is the newest. The modex still
-  ships only its newest generation, which is what it has always done.
+  ships only its newest generation.
 
 
 - **The segment's backing path names the job that built it.** It is

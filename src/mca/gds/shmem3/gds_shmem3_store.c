@@ -496,23 +496,24 @@ pmix_gds_shmem3_store_session_array(
         return rc;
     }
 
-    /* A session already described has nothing to gain from a job merely
-     * mentioning it again. Every job in a session carries the same
-     * session array in its registration, so treating each as an update
-     * would mint a segment per job launch to say what the session
-     * already says.
+    /* A session that already has a published segment is being described
+     * again - by another job in the session, or by the same host that
+     * built it. Hand it to the common path, which publishes a segment
+     * only for what has actually CHANGED.
      *
-     * An actual change comes through PMIx_server_register_session, which
-     * is the host stating the session's description rather than a job
-     * naming its session - see pmix_gds_shmem3_publish_session_update().
-     */
+     * This is not a job "merely naming its session". Hosts that have not
+     * adopted PMIx_server_register_session describe a session only this
+     * way, so refusing here would mean they could never update one. What
+     * keeps the cost down is the comparison, not the source: every job
+     * in a session carries the same array, and restating what the
+     * session already says publishes nothing. */
     if (sesh->described ||
         NULL != pmix_gds_shmem3_chain_head(&sesh->segments)) {
-        PMIX_GDS_SHMEM3_VOUT(
-            "%s: session %u is already described; not storing again",
-            __func__, sid
+        return pmix_gds_shmem3_session_describe(
+            sesh, job,
+            (pmix_info_t *) val->data.darray->array,
+            val->data.darray->size
         );
-        return PMIX_SUCCESS;
     }
 
     return pmix_gds_shmem3_store_session_info(job, sesh, val);

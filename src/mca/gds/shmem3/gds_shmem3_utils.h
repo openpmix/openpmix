@@ -121,6 +121,18 @@ pmix_gds_shmem3_seg_release(
     pmix_gds_shmem3_seg_t *seg
 );
 
+/** Apply a session description from either source - the host's own
+ *  PMIx_server_register_session, or a PMIX_SESSION_INFO_ARRAY inside a
+ *  job registration. Publishes a segment only for what has changed.
+ *  Pass job=NULL to let it find one in the session. */
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem3_session_describe(
+    pmix_gds_shmem3_session_t *sesh,
+    pmix_gds_shmem3_job_t *job,
+    pmix_info_t info[],
+    size_t ninfo
+);
+
 /** Publish the session segment just built, making it readable. Same
  *  discipline as the modex: complete before published, never rewritten. */
 PMIX_EXPORT pmix_status_t
