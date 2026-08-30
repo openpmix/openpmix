@@ -135,6 +135,43 @@ out:
     return rc;
 }
 
+/* Note what is NOT here: a lock on the sessions list.
+ *
+ * The jobs list needs one because a reader can walk it from the
+ * application's thread (see the note on joblock). This list is walked
+ * from the progress thread only, and that is what stands in for the
+ * lock.
+ *
+ * Not because a session-realm get is served somewhere else - it is
+ * served right here, out of the session segments, by fetch_sessioninfo()
+ * in gds_shmem3_fetch.c. What differs is the THREAD it arrives on. A
+ * plain keyed get short-circuits onto the caller's own thread in
+ * try_local_fetch() (src/client/pmix_client_get.c); that short circuit
+ * is declined for anything carrying a realm - session, node or app -
+ * because resolving one is not a plain lookup. get_data() may first have
+ * to fetch the session id of some other proc and rebuild the info array
+ * around it, which is progress-thread work. Declining the short circuit
+ * means the ordinary thread-shifted path runs instead, so the very same
+ * fetch reaches here - from the progress thread.
+ *
+ * Both ways into fetch_sessioninfo() are covered, and neither depends on
+ * the two sides classifying a key in the same order (they do not:
+ * process_request() tries node, app, session; shmem3_fetch_from_job()
+ * tries session, node, app). It does not matter, because ALL THREE realm
+ * flags are in try_local_fetch()'s decline list, so a key that lands in
+ * any realm declines whichever one it landed in. A PMIX_SESSION_INFO
+ * qualifier sets lg->sessioninfo and lg->sessiondirective directly. The
+ * whole-job read that also calls fetch_sessioninfo() has a NULL key,
+ * which is declined too.
+ *
+ * Note as well that pmix_gds_shmem3_get_session_tracker() WRITES
+ * job->session on its way through here, so an application thread
+ * arriving would be a race on the tracker, not only on the list spine.
+ *
+ * If that gating is ever relaxed to let a session lookup run on the
+ * caller's thread, this list needs the same treatment joblock gives the
+ * other one.
+ */
 pmix_gds_shmem3_session_t *
 pmix_gds_shmem3_find_session(
     uint32_t sid,
