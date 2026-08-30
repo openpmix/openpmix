@@ -1001,8 +1001,6 @@ pmix_gds_shmem3_publish_session_segment(
  * number that names the next backing file, and both need one that dates
  * a tombstone. See pmix_gds_shmem3_job_t.modex_generation - a client
  * that never advanced it made every tombstone shadow every generation.
- *
- * Under the lock because a read on another thread compares against it.
  */
 static void
 advance_modex_generation(
