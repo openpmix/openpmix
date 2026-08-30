@@ -1,3 +1,43 @@
+## `build.sh` distcleans your in-tree build — check it afterwards
+
+`build.sh` requires an out-of-tree build, so the first time it runs
+against a tree that has an in-tree one it does `make distclean` at the
+repo root and then `./autogen.pl` (see the comment at the top of the
+script). Your `config.status` and every `Makefile` are gone afterwards.
+
+That is by design and is not the trap. The trap is how it presents: a
+subsequent `make` at the root prints *"No targets specified and no
+makefile found"*, which contains neither `error:` nor `warning:` — so a
+check of the shape
+
+```sh
+make -j8 2>&1 | grep -E "error:|warning:"
+```
+
+prints nothing and reads exactly like a clean build. Several
+"verified on both platforms" claims were made that way before anyone
+noticed the native tree had not been compiled for three commits.
+
+**Check the exit status, not the diagnostics**, and reconfigure after
+running `build.sh` if you still want a native build:
+
+```sh
+make -j8 >/tmp/build.log 2>&1; echo "exit=$?"
+```
+
+The invocation this tree is normally configured with is recorded in the
+`config.log` of a sibling build directory if you have one; on the
+maintainer's Mac it is
+
+```sh
+./configure --prefix=... \
+  --with-libevent=/Users/rhc/libevent/build/v2.1.12 \
+  --with-hwloc=/Users/rhc/hwloc/build/v2.12.2 \
+  --enable-devel-check \
+  'CFLAGS=-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk' \
+  'CPPFLAGS=-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk'
+```
+
 # AGENTS.md: The PMIx dockerswarm test harness
 
 This directory holds the multi-node test harness: a ten-container Docker
