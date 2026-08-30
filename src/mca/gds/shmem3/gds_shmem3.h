@@ -550,6 +550,9 @@ typedef struct {
      * The fields above are the segment being BUILT, which no reader
      * touches; publishing is what makes one readable. */
     pmix_gds_shmem3_chain_t job_chain;
+    /** How many job segments this job has published. Names the next
+     *  one's backing file, so two cannot collide. */
+    uint32_t job_generation;
     /** Every published modex generation, newest first - see
      *  pmix_gds_shmem3_seg_t. The head is the current one.
      *

@@ -601,6 +601,57 @@ typedef pmix_status_t (*pmix_gds_base_module_accept_update_fn_t)(pmix_buffer_t *
     } while (0)
 
 /**
+ * Add job-level data to a namespace that is already registered.
+ *
+ * The global resource cache (pmix_server_globals.gdata) is copied into a
+ * namespace's datastore once, when that namespace is first registered.
+ * A host adding to it afterwards - PMIx_server_register_resources on a
+ * running system - therefore governs only the namespaces registered
+ * after it, and every job already running keeps the description it was
+ * given. This is how that addition reaches them.
+ *
+ * A fan-out across every active module, like add_nspace and for the
+ * same reason: more than one module can be holding a namespace's job
+ * data at once. A server assigns ITSELF "hash", so its own copy lives
+ * there, while the segments its clients read are gds/shmem3's - both
+ * have to learn of the addition, and neither is "the" module for the
+ * namespace. Each module decides for itself whether it holds the
+ * namespace named.
+ *
+ * Optional. A module that holds no job data leaves it NULL and the
+ * macro treats that as success.
+ *
+ * @param nspace  the namespace being added to
+ * @param info    the job-level information to add
+ * @param ninfo   number of elements in info
+ *
+ * @return PMIX_SUCCESS on success.
+ */
+typedef pmix_status_t (*pmix_gds_base_module_add_job_data_fn_t)(const char *nspace,
+                                                                pmix_info_t info[],
+                                                                size_t ninfo);
+
+#define PMIX_GDS_ADD_JOB_DATA(s, n, i, ni)                                  \
+    do {                                                                    \
+        pmix_gds_base_active_module_t *_g;                                  \
+        pmix_status_t _s = PMIX_SUCCESS;                                    \
+        (s) = PMIX_SUCCESS;                                                 \
+        pmix_output_verbose(1, pmix_gds_base_output,                        \
+                            "[%s:%d] GDS ADD JOB DATA for %s",              \
+                            __FILE__, __LINE__, (n));                       \
+        PMIX_LIST_FOREACH (_g, &pmix_gds_globals.actives,                   \
+                           pmix_gds_base_active_module_t) {                 \
+            if (NULL == _g->module->add_job_data) {                         \
+                continue;                                                   \
+            }                                                               \
+            _s = _g->module->add_job_data((n), (i), (ni));                  \
+            if (PMIX_SUCCESS != _s) {                                       \
+                (s) = PMIX_ERROR;                                           \
+            }                                                               \
+        }                                                                   \
+    } while (0)
+
+/**
  * Note that a key has been removed, so this module stops answering for
  * it. Optional: a module whose own store already handled the removal -
  * gds/hash, which takes a delete through its store slot like any other
@@ -704,6 +755,7 @@ typedef struct {
     pmix_gds_base_module_del_session_fn_t           del_session;
     pmix_gds_base_module_pack_update_fn_t           pack_update;
     pmix_gds_base_module_accept_update_fn_t         accept_update;
+    pmix_gds_base_module_add_job_data_fn_t          add_job_data;
 } pmix_gds_base_module_t;
 
 /* NOTE: there is no public GDS interface structure - all access is

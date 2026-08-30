@@ -2289,6 +2289,97 @@ static void test_session_update(void)
     PMIX_INFO_DESTRUCT(&upd[0]);
 }
 
+/* A host adds a resource after the job is already registered.
+ *
+ * PMIx_server_register_resources puts job-level data in a global cache
+ * that is copied into a namespace's datastore ONCE, when that namespace
+ * is first registered - so a call afterwards used to govern only the
+ * namespaces registered later, and every job already running kept the
+ * description it was given. The deletion half of that was fixed by
+ * del_key and tombstones; this is the addition.
+ *
+ * The value is read back through the job's own peer, which is what says
+ * it reached the namespace's datastore rather than only the cache.
+ */
+static void test_register_resources_after_nspace(void)
+{
+    pmix_gds_base_module_t *mod;
+    pmix_info_t res[1], *info;
+    pmix_nspace_t ns;
+    pmix_peer_t *peer;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    pmix_kval_t *kv;
+    uint32_t nprocs = 2, added = 7, got = 0;
+    char *nodemap, *procmap;
+
+    fprintf(stdout, "\n-- resources added after registration --\n");
+
+    mod = pmix_gds_base_assign_module(NULL, 0);
+    if (NULL == mod) {
+        fprintf(stdout, "    SKIP  no gds module available\n");
+        return;
+    }
+
+    nodemap = strdup(pmix_globals.hostname);
+    procmap = strdup("0-1");
+    PMIX_INFO_CREATE(info, 3);
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_NODE_MAP, nodemap, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_PROC_MAP, procmap, PMIX_STRING);
+    PMIX_LOAD_NSPACE(ns, "gds-lateres");
+    rc = PMIx_server_register_nspace(ns, nprocs, info, 3, NULL, NULL);
+    PMIX_INFO_FREE(info, 3);
+    free(nodemap);
+    free(procmap);
+    if (!registered(rc)) {
+        report("a job registers", false);
+        return;
+    }
+    report("a job registers", true);
+
+    /* build its segments, as a first client connecting would */
+    peer = mkgdspeer("gds-lateres", nprocs, mod);
+    reply = PMIX_NEW(pmix_buffer_t);
+    PMIX_GDS_REGISTER_JOB_INFO(rc, peer, reply);
+    PMIX_RELEASE(reply);
+    report("its job data is published", PMIX_SUCCESS == rc);
+
+    /* now the host adds a resource - AFTER the namespace exists */
+    PMIX_INFO_LOAD(&res[0], "gds.test.lateres", &added, PMIX_UINT32);
+    rc = PMIx_server_register_resources(res, 1, NULL, NULL);
+    report("a resource registers after the job", PMIX_SUCCESS == rc ||
+           PMIX_OPERATION_SUCCEEDED == rc);
+
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-lateres", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = "gds.test.lateres";
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    if (PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs)) {
+        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+        PMIx_Value_get_number(kv->value, &got, PMIX_UINT32);
+    }
+    report("it reaches a namespace that was already registered",
+           added == got);
+    if (added != got) {
+        fprintf(stdout, "        (expected %u, got %u; fetch %s)\n",
+                (unsigned) added, (unsigned) got, PMIx_Error_string(rc));
+    }
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    PMIx_server_deregister_resources(res, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&res[0]);
+    PMIX_GDS_DEL_NSPACE(rc, "gds-lateres");
+    PMIX_RELEASE(peer);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -2321,6 +2412,7 @@ int main(int argc, char **argv)
     test_session_registration();
     test_session_update();
     test_session_update_via_job();
+    test_register_resources_after_nspace();
 
     fprintf(stdout, "\n=== %d passed, %d failed ===\n", npass, nfail);
 

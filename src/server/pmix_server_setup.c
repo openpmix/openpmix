@@ -190,6 +190,31 @@ static void _register_resources(int sd, short args, void *cbdata)
         }
     }
 
+    /* The cache above is copied into a namespace's datastore once, when
+     * that namespace is first registered, and nothing re-reads it - so
+     * everything just added governs only the namespaces registered after
+     * this call, and every job already running keeps the description it
+     * was given. That is the additive twin of what
+     * retract_from_namespaces() fixes for a removal, and it is what this
+     * closes: push the addition into the namespaces that already exist.
+     *
+     * A fan-out per namespace: a server assigns itself "hash", so its
+     * own copy of a namespace's job data lives there, while the segments
+     * its clients read are shmem3's. Both have to be told. */
+    if (0 < cd->ninfo) {
+        pmix_namespace_t *nsptr;
+        PMIX_LIST_FOREACH (nsptr, &pmix_globals.nspaces, pmix_namespace_t) {
+            pmix_status_t nrc;
+            PMIX_GDS_ADD_JOB_DATA(nrc, nsptr->nspace, cd->info, cd->ninfo);
+            if (PMIX_SUCCESS != nrc) {
+                PMIX_ERROR_LOG(nrc);
+                if (PMIX_SUCCESS == ret) {
+                    ret = nrc;
+                }
+            }
+        }
+    }
+
     /* if endpt data was provided, then we need to
      * store it in our hash table */
     if (0 < pmix_list_get_size(&endpts)) {

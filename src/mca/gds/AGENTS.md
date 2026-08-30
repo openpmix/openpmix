@@ -488,6 +488,23 @@ depend on it. What the explicit call adds is the two ends that
 inference cannot express. Consumers detect it through
 `PMIX_CAP_SESSION_REGISTRATION` in `pmix_version.h`.
 
+## Adding to a job that is already registered
+
+The global resource cache (`pmix_server_globals.gdata`) is copied into a
+namespace's datastore **once**, when that namespace is first registered.
+So `PMIx_server_register_resources` on a running system used to govern
+only the namespaces registered after it, and every job already running
+kept the description it was given. The removal half of that is
+`retract_from_namespaces()`; `add_job_data` is the addition.
+
+It is a **fan-out**, like `add_nspace`, and for a reason worth stating:
+more than one module holds a namespace's job data at once. A server
+assigns *itself* `hash`, so its own copy lives there, while the segments
+its clients read are `shmem3`'s. Neither is "the" module for the
+namespace, so resolving from `nptr->compat.gds` reaches one and misses
+the other — which is exactly what the first version of this did, and
+what `test/unit/gds_datastore`'s late-resource case caught.
+
 ## Telling clients that data has changed
 
 A client maps what a session said when it attached. When the description

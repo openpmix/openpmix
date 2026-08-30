@@ -225,6 +225,47 @@ static pmix_status_t hash_accept_update(pmix_buffer_t *buff)
     return PMIX_SUCCESS;
 }
 
+/* Add job-level data to a namespace that is already registered.
+ *
+ * The global cache is copied into a namespace's tables once, at
+ * registration; this is how an addition afterwards reaches one that is
+ * already running. Job-level values live under PMIX_RANK_WILDCARD on
+ * the internal table, which is where hash_cache_job_info() would have
+ * put them had they been there at the time.
+ */
+static pmix_status_t hash_add_job_data(const char *nspace,
+                                       pmix_info_t info[],
+                                       size_t ninfo)
+{
+    pmix_job_t *trk;
+    pmix_kval_t kv;
+    pmix_status_t rc = PMIX_SUCCESS;
+    size_t n;
+
+    if (NULL == nspace || 0 == ninfo || NULL == info) {
+        return PMIX_SUCCESS;
+    }
+    trk = pmix_gds_hash_get_tracker(nspace, false);
+    if (NULL == trk) {
+        return PMIX_SUCCESS;
+    }
+    for (n = 0; n < ninfo; n++) {
+        /* a borrowed view, as the other job-level stores here use:
+         * pmix_hash_store() copies what it keeps */
+        kv.key = info[n].key;
+        kv.value = &info[n].value;
+        rc = pmix_hash_store(&trk->internal, PMIX_RANK_WILDCARD, &kv,
+                             NULL, 0, NULL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+    /* and tell the clients already reading it */
+    pmix_server_notify_gds_update(nspace);
+    return PMIX_SUCCESS;
+}
+
 static pmix_status_t nspace_del(const char *nspace);
 
 static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc, pmix_list_t *kvs, pmix_buffer_t *bo,
@@ -257,6 +298,7 @@ pmix_gds_base_module_t pmix_hash_module = {
     .del_session = session_del,
     .pack_update = hash_pack_update,
     .accept_update = hash_accept_update,
+    .add_job_data = hash_add_job_data,
     .assemb_kvs_req = assemb_kvs_req,
     .accept_kvs_resp = accept_kvs_resp,
     .fetch_arrays = pmix_gds_hash_fetch_arrays,
