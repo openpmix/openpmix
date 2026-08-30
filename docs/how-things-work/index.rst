@@ -16,6 +16,7 @@ find information on that subject here.
    sets_groups/index.rst
    collectives/index.rst
    modex.rst
+   shmem3.rst
    inheritance/index.rst
    iof_inheritance.rst
    resolve.rst
