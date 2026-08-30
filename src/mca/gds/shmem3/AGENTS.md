@@ -779,6 +779,21 @@ followed without synchronization, so a node must outlive every walk.
 are for callers that know no reader can be walking — a job tracker's
 destructor, and `drop_modex_priors()` under `job->datalock`.
 
+**The head of the chain is the current generation.** There is no
+separate "current" for a reader to consult first: a generation is
+published onto the chain the moment it is complete, and until then it
+exists only in the build fields on the job tracker
+(`job->modex_shmem3`, `job->smmodex`, `job->modex_shmem3_status`),
+which no reader touches. So a read is one uniform walk, and there is no
+window in which it could catch a generation half-built or half-retired.
+
+That is also why the build fields are not the place to ask whether
+there is modex data, or which segment to describe to a client. Both
+questions are answered from the chain head — `pack_shmem3_seg_blob()`
+and `pack_shmem3_connection_info()` describe the newest *published*
+generation, because the build slot holds whatever is being assembled
+now, which is exactly what a client must not be pointed at.
+
 **Nothing removes from a chain, which is what makes walking it
 lock-free.** A generation is retired onto the chain and kept; the only
 thing that ever takes nodes away is `pmix_gds_shmem3_chain_destruct()`

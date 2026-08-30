@@ -699,7 +699,7 @@ static bool strip_undef(
  * dropped, or the caller gets that key twice with the stale value
  * second.
  *
- * job->modex_prior is empty unless a delta has been stored, so in the
+ * job->modex_chain is empty unless a delta has been stored, so in the
  * ordinary case this is the single lookup it has always been. */
 static pmix_status_t
 modex_fetch(
@@ -715,37 +715,12 @@ modex_fetch(
     pmix_status_t r2;
     size_t mark;
 
-    if (pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_MODEX_ID,
-                                   PMIX_GDS_SHMEM3_READY_FOR_USE)
-        && NULL != job->smmodex) {
-        mark = pmix_list_get_size(kvs);
-        rc = pmix_hash_fetch(job->smmodex->hashtab, rank, key, qualifiers,
-                             nqual, kvs, job->smmodex->keyindex);
-        if (PMIX_ERR_NOMEM == rc) {
-            return rc;
-        }
-        if (PMIX_SUCCESS == rc) {
-            drop_tombstoned(job, rank, kvs, job->modex_generation, mark);
-            if (NULL != key) {
-                /* A deletion carried in this generation is the last word
-                 * on the key: an older generation holding it describes a
-                 * value that has since been taken back. */
-                if (strip_undef(kvs, mark)) {
-                    return PMIX_ERR_NOT_FOUND;
-                }
-                /* everything this generation had may have just been
-                 * dropped - keep walking rather than reporting a hit */
-                if (pmix_list_get_size(kvs) > mark) {
-                    return rc;
-                }
-            }
-            rc = PMIX_ERR_NOT_FOUND;
-        }
-    }
-    /* Enter the chain once and follow ->prior. The head load is the
-     * only synchronization this needs: nodes are complete before they
-     * are published and never written again. */
-    for (seg = pmix_gds_shmem3_chain_head(&job->modex_prior);
+    /* Enter the chain once and follow ->prior. The head is the current
+     * generation - there is no separate "current" to consult first, and
+     * that is what makes this one uniform walk. The head load is the
+     * only synchronization it needs: nodes are complete before they are
+     * published and never written again. */
+    for (seg = pmix_gds_shmem3_chain_head(&job->modex_chain);
          NULL != seg; seg = seg->prior) {
         pmix_gds_shmem3_shared_modex_data_t *const smmodex = seg->smdata;
         if (NULL == smmodex) {
@@ -823,20 +798,10 @@ shmem3_fetch_from_job(
     }
     pmix_hash_table_t *const local_ht = job->smdata->local_hashtab;
 
-    // Modex data ready for use?
-    const bool mdrfu = pmix_gds_shmem3_has_status(
-        job, PMIX_GDS_SHMEM3_MODEX_ID, PMIX_GDS_SHMEM3_READY_FOR_USE
-    );
     /* Modex data are stored in PMIX_REMOTE, but there is no single table
      * to name here: the modex is a chain of generations, and modex_fetch()
      * walks it. Everything past "doover" therefore dispatches on the
-     * useremote flag, and "ht" is only ever read on the local side.
-     *
-     * This used to hold job->smmodex->hashtab, computed from mdrfu alone -
-     * which modex_fetch() has never trusted, because the two disagree
-     * whenever the progress thread has just set the current generation
-     * aside (see retire_modex_segment()) and a read arrives before its
-     * replacement is published. That read would have dereferenced NULL. */
+     * useremote flag, and "ht" is only ever read on the local side. */
     // Every index in these tables was minted by the server against the
     // keyindex living in the same segment, never against this process's
     // global one, so a read has to translate through that same table.
@@ -847,12 +812,12 @@ shmem3_fetch_from_job(
     // progress thread rewrites. The modex side of that lives in
     // modex_fetch(), which has to pair each generation's table with that
     // generation's index; only the job segment's is needed here.
-    /* There is modex data to read if the current generation is ready OR
-     * any retired one survives - the two differ during the window in
-     * which a delta is being stored, when the current generation has
-     * been set aside and its replacement is not yet published. */
+    /* There is modex data to read exactly when a generation has been
+     * published. The build slot says nothing about that: a generation
+     * under construction is not readable, and a published one has
+     * already left the slot. */
     const bool have_modex =
-        mdrfu || NULL != pmix_gds_shmem3_chain_head(&job->modex_prior);
+        NULL != pmix_gds_shmem3_chain_head(&job->modex_chain);
     /* Which store the lookup below is against. This cannot be inferred
      * from ht any more: the modex is a chain of generations rather than
      * one table, and its newest may be absent while older ones are not. */
