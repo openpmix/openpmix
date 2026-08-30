@@ -472,14 +472,38 @@ switches to ``hash`` and re-requests its job data with
 ``PMIX_GDS_FALLBACK_CMD``. A failed attach is therefore not fatal to
 ``PMIx_Init``.
 
-**That fallback exists only at init.** It works because ``PMIx_Init``
-re-requests job data and the server can re-register it in another
-module's format. Nothing equivalent is possible for a modex: a completed
-modex cannot be re-delivered in ``hash`` format without a new wire
-command. So a failed *modex* attach keeps the tracker (the job and
-session segments are perfectly good), clears only that segment's status,
-and the client simply misses on modex reads — which then go up to the
-server like any other miss.
+**That fallback exists only at init**, and the distinction is carried
+explicitly rather than inferred. ``PMIx_Init`` can fall back because it
+re-requests its job data and the server can re-register it in another
+module's format. Nothing that arrives *afterwards* can: a completed modex
+cannot be re-delivered in ``hash`` format without a new wire command, and
+an update to job or session data arrives on a one-way notification with
+no re-request behind it at all.
+
+So each of the three deliveries into
+``client_connect_to_shmem3_from_buffi()`` names which kind it is —
+``PMIX_GDS_SHMEM3_ATTACH_INIT`` for the job-info reply,
+``PMIX_GDS_SHMEM3_ATTACH_UPDATE`` for a modex generation or an update —
+and the failure path keys off that:
+
+* **INIT** drops the job tracker and lets ``PMIX_ERR_TAKE_NEXT_OPTION``
+  propagate, because nothing will read that tracker again.
+* **UPDATE** clears only the failed segment's status, keeps everything
+  the client has been reading since ``PMIx_Init``, and swallows the
+  status. The client misses on whatever that one segment held, and the
+  miss goes up to the server like any other.
+
+That test used to be on the *segment id* — sparing the modex and nothing
+else — so a session update that failed to map took the whole job tracker
+down with it, and with it the job and session segments the client had
+been reading since ``PMIx_Init``. That is openpmix#4156 reached by a
+different delivery.
+
+``test/unit/update_attach_fail`` holds it, and has to ask with
+``PMIX_OPTIONAL`` to do so: an ordinary ``PMIx_Get`` misses locally,
+goes up to the server and is answered correctly, so the only visible
+cost is a round trip per lookup — which is exactly how a defect like
+this survives.
 
 Clients are read-only, and the MMU enforces it
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1296,6 +1320,11 @@ MCA Parameters
      - **Testing only** — force only the *modex* attach to fail. This is
        the case the parameter above cannot reach, since that one leaves
        the client on ``hash`` before it ever reaches a fence.
+   * - ``gds_shmem3_force_update_attach_failure``
+     - ``false``
+     - **Testing only** — force a *job or session* segment delivered
+       after ``PMIx_Init`` to fail. Neither parameter above reaches that
+       path. Drives ``test/unit/update_attach_fail``.
    * - ``pmix_client_fast_get``
      - ``true``
      - Answer a keyed ``PMIx_Get`` on the caller's thread when the
@@ -1327,6 +1356,11 @@ so it is not even compiled there.
   job and session segments, read a job-level key and the whole job back
   out, deregister — printing ``SKIP`` where the component is not
   available.
+* ``test/unit/update_attach_fail`` and ``test/unit/session_update`` each
+  fork and exec themselves as a real client behind a real socket, which
+  is the only way to reach the delivery paths above from ``make check``:
+  the first asserts that a failed *update* attach costs only its own
+  segment, the second that a session update reaches a running client.
 * ``test/unit/get_api.c`` holds the ``PMIX_RANK_UNDEF`` behavior
   described in step 8f directly, from a real client.
 * ``test/unit/util/util_vmem.c`` pins the placement and scatter

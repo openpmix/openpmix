@@ -484,12 +484,47 @@ layout — never set it in production.
 
 **That fallback only exists at init.** It is reached because
 `PMIx_Init` re-requests its job data, and the *server* can re-register
-that data in another module's format. Nothing equivalent is possible for
-a modex: `PMIX_GDS_RECV_MODEX_COMPLETE` resolves a single module, and
-`PMIX_GDS_FALLBACK_CMD` re-sends job data only — a completed modex
-cannot be re-delivered in `hash` format without a new wire command. So
-the two attach failures are genuinely different problems, and the next
-section is about the other one.
+that data in another module's format. Nothing that arrives afterwards
+can: `PMIX_GDS_RECV_MODEX_COMPLETE` resolves a single module and a
+completed modex cannot be re-delivered in `hash` format without a new
+wire command, while an update to job or session data arrives on a
+one-way notification (`PMIX_PTL_TAG_GDS_UPDATE`) with no re-request
+behind it at all.
+
+**So which delivery a blob arrived on is carried, not inferred.** Each
+of the three entry points names it —
+`store_job_info()` says `PMIX_GDS_SHMEM3_ATTACH_INIT`,
+`client_recv_modex_complete()` and `client_accept_update()` say
+`PMIX_GDS_SHMEM3_ATTACH_UPDATE` — and it is threaded down through
+`client_connect_to_shmem3_from_buffi()` to `shmem3_attach()`, whose
+failure path is the only consumer:
+
+| | INIT | UPDATE |
+|---|---|---|
+| the job tracker | dropped — nothing will read it again | **kept** |
+| that segment's status | n/a | cleared, so a later one attaches cleanly |
+| `PMIX_ERR_TAKE_NEXT_OPTION` | propagates, driving the fallback | swallowed |
+
+That test used to be `PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id`, which is
+a *proxy* for this distinction covering only the case that had been
+noticed. A session update that failed to map therefore took the job
+tracker down with it — and with it the job and session segments the
+client had been reading since `PMIx_Init`. `pmix_gds_shmem3_fetch()`
+then answers every lookup for the client's OWN namespace with
+`PMIX_ERR_INVALID_NAMESPACE`, there being no tracker to acquire. That is
+openpmix#4156 exactly, reached by a different delivery.
+
+Be precise about what the application sees, because the fallbacks hide
+most of it: an ordinary `PMIx_Get` misses locally, goes up to the
+server, and is answered correctly, so the cost is a round trip per
+lookup for the rest of the run. `test/unit/update_attach_fail`
+therefore asks with `PMIX_OPTIONAL`, which is what confines the question
+to the client's own store - it fails there with `PMIX_ERR_NOT_FOUND`
+before the fix and succeeds after it. Verified by reverting the one line
+and re-running.
+
+So the attach failures are genuinely different problems, and the next
+section is about the remaining one.
 
 ### The address-space arena — why a fence-time attach must not need luck
 
@@ -606,6 +641,7 @@ terabytes of empty space.
 | `gds_shmem3_offset_placement` | bool (default `true`) | place segments a quarter of the way into the biggest hole instead of at its midpoint. |
 | `gds_shmem3_force_client_attach_failure` | bool (default `false`) | **testing only** — force *every* client attach to fail, so the init-time GDS fallback can be exercised. |
 | `gds_shmem3_force_modex_attach_failure` | bool (default `false`) | **testing only** — force only the *modex* attach to fail. This is the one `force_client_attach_failure` cannot reach: that one fails the init attach too, so the client leaves `PMIx_Init` on `hash` and never reaches a fence on `shmem3`. Drives `examples/modex_attach_fail.c`. |
+| `gds_shmem3_force_update_attach_failure` | bool (default `false`) | **testing only** — force a *job or session* segment delivered AFTER `PMIx_Init` to fail. Neither parameter above reaches that: one fails the init attach too, the other is scoped to the modex. Drives `test/unit/update_attach_fail`. |
 
 These are the *only* `gds` MCA parameters in the tree; the framework core
 registers none.
