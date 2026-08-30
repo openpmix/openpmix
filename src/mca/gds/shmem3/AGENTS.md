@@ -171,42 +171,35 @@ defaults **on** — so on a client, `pmix_gds_shmem3_fetch()` normally runs
 on whatever thread called `PMIx_Get`, while the progress thread carries
 on underneath it.
 
-Two things make that safe, and they are not the same thing:
+**There is no lock on that path, and that is the design.** A lock here is
+paid by every `PMIx_Get`, and a library pulling thousands of values
+during its init pays it thousands of times — which is precisely what this
+component exists to avoid. What makes it safe is that everything a read
+walks is one of three things:
 
-- **What is in a segment needs nothing.** It is written once, before any
-  client can see it, and never again. No lock, no copy, no barrier.
-- **The process-local bookkeeping alongside it needs a lock**, because
-  the progress thread rewrites it while a read is in flight. That is
-  `job->datalock`, held across the whole of `shmem3_fetch_from_job()`,
-  and taken by every writer of the two things a read walks:
+| what a read walks | why it needs nothing |
+|---|---|
+| the contents of a segment | written once, before any client can see it, and never again |
+| the segment itself | never unmapped — a mapping cannot be withdrawn mid-read |
+| the modex generations, the tombstones | chains: a node is complete before it is published, never rewritten, never removed |
 
-  | written by | what changes |
-  |---|---|
-  | `retire_modex_segment()` | `job->smmodex` goes NULL; the chain gains a member |
-  | `release_modex_segment()` | the current generation is **unmapped** |
-  | `drop_modex_priors()` | every retired generation is **unmapped** |
-  | `del_key()` | the tombstone list gains a member |
-  | `advance_modex_generation()` | the number a tombstone is dated against |
+Entering a chain is a single acquire-load paired with the release-store
+that published its head; the `->prior` pointers are immutable, so the
+rest of the walk is ordinary pointer chasing.
 
-The reference a reader holds on the job tracker is often mistaken for
-covering this. It does not: it keeps the *tracker* alive, and with it the
-job and session segments, which are released only by `job_destruct()`. A
-modex generation is released independently of the tracker's refcount, on
-the progress thread, as each fence completes. Before the lock existed, a
-`PMIx_Fence_nb` concurrent with a `PMIx_Get` of a remote rank's key could
-put an application thread inside `pmix_hash_fetch()` on a table that had
-just been `munmap`ped - and the ordinary single-threaded case was only
-safe by accident, because a blocking `PMIx_Fence` parks the app thread
-until the modex-complete has been processed.
+The reference a reader holds on the job tracker is the one piece of
+synchronization left, and it does exactly one job: it keeps the tracker —
+and therefore the mappings it owns — alive while `del_nspace()` may be
+running on the progress thread. It says nothing about the contents,
+because nothing about the contents changes.
 
-The lock protects nothing in shared memory, so it does not belong to a
-segment and does not appear in `PMIX_GDS_SHMEM3_LAYOUT_ID`:
-`pmix_gds_shmem3_job_t` is an ordinary heap object.
-
-**Do not take it while holding anything else.** `joblock` is released
-before it is acquired (see `pmix_gds_shmem3_acquire_job_tracker()`), and
-no writer holds it across a segment create or attach - those do file I/O
-and would block a reader for the duration.
+**A `job->datalock` used to stand here.** It was needed because none of
+the three rows above were true: a retired generation could be unmapped
+under a reader, the current generation was moved between two fields in
+several stores, and the tombstone list was an ordinary `pmix_list_t`
+being appended to. Each of those was fixed in turn rather than locked
+around. If you add state that a read consults, make it immutable or make
+it a chain — do not reach for a mutex.
 
 ## The shared-segment model
 
@@ -809,14 +802,22 @@ holding the key and a deleted key is shadowed by the `PMIX_UNDEF` entry
 the newer generation carries. Redundant costs address space; unmapping
 under a reader costs correctness.
 
-## Deletion: a tombstone, and why it is not in the segment
+## Deletion: a tombstone, and why it is not in the segment (yet)
 
 This component cannot take a key out. The data is in a segment local
 clients have mapped, and a segment a client can see is never written
 again — so `del_key` records that the key is gone and every read
 consults the record.
 
-**The record is process-local**, on `job->tombstones`. Putting it in
+**The record is process-local**, on `job->tombstones` — a chain, with
+the same discipline as the segment chain: a node is complete before it
+is published, never rewritten, never removed until the tracker dies. So
+recording a deletion and reading one both run without a lock. A key
+deleted again at a later generation publishes a *second* node rather
+than updating the first, because a published node is immutable;
+`tombstoned()` is satisfied by any matching entry, so the newer one says
+everything the updated one would have. A repeat that would not change
+the answer is skipped, which is what keeps the chain bounded. Putting it in
 shared memory would mean a new segment, mapped by every local client,
 for a few bytes per deleted key — and it would not save the step that
 matters, because a client attaching after the removal has to be told

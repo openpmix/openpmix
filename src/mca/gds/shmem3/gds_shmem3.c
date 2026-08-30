@@ -603,8 +603,7 @@ job_construct(
     job->smmodex = NULL;
     job->modex_is_delta = false;
     atomic_init(&job->modex_chain, NULL);
-    PMIX_CONSTRUCT(&job->tombstones, pmix_list_t);
-    PMIX_CONSTRUCT(&job->datalock, pmix_mutex_t);
+    atomic_init(&job->tombstones, NULL);
     // Address-space arena
     job->arena_base = 0;
     job->arena_size = 0;
@@ -722,7 +721,20 @@ job_destruct(
      * the class destructor gives it back the same way the loop below
      * does for the current one. */
     pmix_gds_shmem3_chain_destruct(&job->modex_chain);
-    PMIX_LIST_DESTRUCT(&job->tombstones);
+    /* Nothing can still be reading these - we are the destructor, and a
+     * reader holds a reference on this tracker. */
+    {
+        pmix_gds_shmem3_tombstone_t *t =
+            atomic_load_explicit(&job->tombstones, memory_order_acquire);
+        while (NULL != t) {
+            pmix_gds_shmem3_tombstone_t *const prior = t->prior;
+            if (NULL != t->key) {
+                free(t->key);
+            }
+            free(t);
+            t = prior;
+        }
+    }
 
     /* The session's segment is deliberately not in here: it belongs to
      * the session object, which more than one job may hold, and is given
@@ -776,36 +788,7 @@ job_destruct(
     if (job->session) {
         PMIX_RELEASE(job->session);
     }
-    /* Last: nothing can still be reading this tracker - a reader holds a
-     * reference and we are the destructor. */
-    PMIX_DESTRUCT(&job->datalock);
 }
-
-static void
-tombstone_construct(
-    pmix_gds_shmem3_tombstone_t *t
-) {
-    t->rank = PMIX_RANK_UNDEF;
-    t->key = NULL;
-    t->generation = 0;
-}
-
-static void
-tombstone_destruct(
-    pmix_gds_shmem3_tombstone_t *t
-) {
-    if (NULL != t->key) {
-        free(t->key);
-        t->key = NULL;
-    }
-}
-
-PMIX_CLASS_INSTANCE(
-    pmix_gds_shmem3_tombstone_t,
-    pmix_list_item_t,
-    tombstone_construct,
-    tombstone_destruct
-);
 
 /* Give a chain node and its segment back.
  *
@@ -927,9 +910,12 @@ static void
 advance_modex_generation(
     pmix_gds_shmem3_job_t *job
 ) {
-    pmix_mutex_lock(&job->datalock);
-    job->modex_generation++;
-    pmix_mutex_unlock(&job->datalock);
+    /* Atomic because a read on another thread compares a tombstone
+     * against it. A plain increment would be a torn read there; nothing
+     * else about it needs ordering, since a tombstone carries its own
+     * copy of the number it was recorded at. */
+    atomic_fetch_add_explicit(&job->modex_generation, 1,
+                              memory_order_relaxed);
 }
 
 PMIX_CLASS_INSTANCE(
@@ -2923,7 +2909,8 @@ pack_tombstones(
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_kval_t kv;
 
-    PMIX_LIST_FOREACH (t, &job->tombstones, pmix_gds_shmem3_tombstone_t) {
+    for (t = atomic_load_explicit(&job->tombstones, memory_order_acquire);
+         NULL != t; t = t->prior) {
         if (NULL == t->key) {
             continue;
         }
@@ -3542,34 +3529,41 @@ del_key(
     if (PMIX_SUCCESS != rc) {
         return PMIX_SUCCESS;
     }
-    /* A read consults this list on another thread, so hold the lock
-     * across both the search and the append - see job->datalock. */
-    pmix_mutex_lock(&job->datalock);
-    /* already recorded for this rank? then nothing to do - but refresh
-     * the generation, since a later removal shadows more than an
-     * earlier one did */
-    PMIX_LIST_FOREACH (t, &job->tombstones, pmix_gds_shmem3_tombstone_t) {
-        if (t->rank == proc->rank && NULL != t->key && 0 == strcmp(t->key, key)) {
-            t->generation = job->modex_generation;
-            pmix_mutex_unlock(&job->datalock);
+    const uint32_t generation =
+        atomic_load_explicit(&job->modex_generation, memory_order_relaxed);
+
+    /* Already shadowed at or past this generation? Then recording it
+     * again would not change any answer - tombstoned() is satisfied by
+     * ANY matching entry, so the one already there says everything a
+     * new one would. This is the only reason to look before publishing;
+     * it is a pure read, and it is what keeps a key deleted repeatedly
+     * from growing the chain without bound.
+     *
+     * Only the progress thread writes here, so no lock is needed to
+     * make the look-then-publish safe against another writer, and a
+     * reader cannot see a node before it is whole. */
+    for (t = atomic_load_explicit(&job->tombstones, memory_order_acquire);
+         NULL != t; t = t->prior) {
+        if (t->rank == proc->rank && NULL != t->key &&
+            0 == strcmp(t->key, key) && generation <= t->generation) {
             return PMIX_SUCCESS;
         }
     }
-    t = PMIX_NEW(pmix_gds_shmem3_tombstone_t);
+    t = calloc(1, sizeof(*t));
     if (PMIX_UNLIKELY(NULL == t)) {
-        pmix_mutex_unlock(&job->datalock);
         return PMIX_ERR_NOMEM;
     }
     t->rank = proc->rank;
     t->key = strdup(key);
     if (PMIX_UNLIKELY(NULL == t->key)) {
-        PMIX_RELEASE(t);
-        pmix_mutex_unlock(&job->datalock);
+        free(t);
         return PMIX_ERR_NOMEM;
     }
-    t->generation = job->modex_generation;
-    pmix_list_append(&job->tombstones, &t->super);
-    pmix_mutex_unlock(&job->datalock);
+    t->generation = generation;
+    /* Complete before it is published; the release-store is what makes
+     * that so for the reader that acquire-loads the head. */
+    t->prior = atomic_load_explicit(&job->tombstones, memory_order_relaxed);
+    atomic_store_explicit(&job->tombstones, t, memory_order_release);
 
     /* the cached job-info reply still says the key exists, and it is
      * what the next client to attach is handed - build a fresh one */
