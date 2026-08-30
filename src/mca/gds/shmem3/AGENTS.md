@@ -531,11 +531,11 @@ Four things about it are load-bearing:
   an alternation between two slots, on the assumption that only one
   generation was live at a time. That assumption died with openpmix#4087:
   a *delta* contribution repeats nothing, so every generation before it
-  stays mapped and answerable on `job->modex_prior`, and reusing the
+  stays mapped and answerable on `job->modex_chain`, and reusing the
   slot from two generations ago would erase data nothing else holds.
   `arena_alloc_modex()` therefore reads occupancy off the live segments
-  — the current one plus each retired one — and takes the lowest free
-  slot. Deriving it rather than keeping a tally means no path that
+  — the build slot plus every published generation — and takes the
+  lowest free slot. Deriving it rather than keeping a tally means no path that
   releases a generation can leave the accounting stale. A generation
   arriving when all slots are taken places itself outside the arena.
 - **The session segment is deliberately outside the arena**, and
@@ -645,30 +645,26 @@ second modex overran it and **aborted the server** — taking the daemon,
 and the job, with it. `examples/modex_twice.c` reproduces that from four
 nodes up.
 
-**Whether the finished generation can be dropped depends on what is
+**Whether a finished generation is still needed depends on what is
 arriving**, and the flag byte in the modex envelope is what says so (see
 openpmix#4087 and `docs/how-things-work/modex.rst`).
 
 A **cumulative** contribution repeats everything its processes have
-published, so the generation carrying it stands on its own: the previous
-one is released exactly as before, and every retired one behind it goes
-with it (`drop_modex_priors`). That is still the default, because
-`pmix_server_fence_delta_modex` defaults off.
+published, so the generation carrying it stands on its own. A **delta**
+contribution repeats nothing, so the generations before it are still
+the only copy of everything the delta left out and must stay mapped and
+answerable.
 
-A **delta** contribution repeats nothing, so the previous generation is
-still the only copy of everything the delta left out. It is *retired*
-onto `job->modex_prior` rather than released (`retire_modex_segment`),
-and `modex_fetch()` in `gds_shmem3_fetch.c` walks that list newest-first.
-A keyed lookup stops at the newest generation holding the key; a
-NULL-key lookup consults every generation and drops a copy of a key a
-newer one already supplied, or the caller sees it twice with the stale
-value second.
+Every generation is published onto `job->modex_chain` either way, and
+nothing is ever taken off it - see "The segment chain" below for why
+that is what makes the walk lock-free. `modex_fetch()` in
+`gds_shmem3_fetch.c` walks it newest-first: a keyed lookup stops at the
+newest generation holding the key, a NULL-key lookup consults every
+generation and drops a copy of a key a newer one already supplied, or
+the caller sees it twice with the stale value second.
 
-`job->modex_prior` is empty unless a delta has been stored, so the
-ordinary case is the single lookup it has always been. The chain grows
-only while deltas keep arriving and collapses on the next cumulative
-contribution - which the participant-set guard on the server side forces
-whenever a fence's membership changes.
+The chain holds only one generation until a second fence arrives, so
+the ordinary case is the single lookup it has always been.
 
 The client makes the same keep-or-drop decision, from a
 `SHMEM3_SEG_DELTA_KEY` field in the segment blob. Adding a field there
@@ -801,8 +797,9 @@ would suggest it can be released from more than one place, which is
 precisely what a lock-free chain must not permit: `->prior` pointers are
 followed without synchronization, so a node must outlive every walk.
 `pmix_gds_shmem3_seg_release()` and `pmix_gds_shmem3_chain_destruct()`
-are for callers that know no reader can be walking — a job tracker's
-destructor, and `drop_modex_priors()` under `job->datalock`.
+are for the one caller that knows no reader can be walking — a job
+tracker's destructor, which runs when the last reference to the tracker
+has gone.
 
 **The head of the chain is the current generation.** There is no
 separate "current" for a reader to consult first: a generation is
@@ -1005,9 +1002,9 @@ Recorded so the next review does not re-derive them.
   than the block it just freed. Both read like defects and are not.
 - **`modex_fetch()` reports `PMIX_ERR_NOT_FOUND` after a *successful*
   NULL-key read of the current generation** — it falls through to
-  `rc = PMIX_ERR_NOT_FOUND` on the way to walking the retired ones, and
-  when `job->modex_prior` is empty (the ordinary case) that is what it
-  returns. Harmless only because `shmem3_fetch_from_job()` ends with
+  `rc = PMIX_ERR_NOT_FOUND` on the way to walking the older ones, and
+  when the chain holds only the current generation (the ordinary case)
+  that is what it returns. Harmless only because `shmem3_fetch_from_job()` ends with
   `if (0 == pmix_list_get_size(kvs)) ... else rc = PMIX_SUCCESS;`, which
   overrides it. Fragile, but not currently wrong: if you ever make that
   final check narrower, fix this first.
