@@ -776,10 +776,10 @@ How Locks Are Avoided
 ---------------------
 
 ``pmix_shmem3_module.is_tsafe`` is ``true``, and that is not decorative.
-``try_local_fetch()`` tests it on every keyed ``PMIx_Get``, and
-``pmix_client_globals.fast_get`` defaults **on** — so on a client,
-``pmix_gds_shmem3_fetch()`` normally runs on whatever thread called
-``PMIx_Get``, while the progress thread carries on underneath it.
+``try_local_fetch()`` tests it on every keyed ``PMIx_Get`` — so on a
+client, ``pmix_gds_shmem3_fetch()`` normally runs on whatever thread
+called ``PMIx_Get``, while the progress thread carries on underneath
+it.
 
 There is no lock on that path, and that is the design. A lock here is
 paid by every ``PMIx_Get``, and a library pulling thousands of values
@@ -1007,7 +1007,9 @@ about **130 ns** of actual lookup underneath it.
 
 The gating is deliberately narrow. It declines if:
 
-* ``pmix_client_globals.fast_get`` is off (MCA ``pmix_client_fast_get``);
+* ``pmix_client_globals.fast_get`` is off — that is, the developer
+  switch ``PMIX_GET_ON_PROGRESS_THREAD`` is set in the environment (see
+  below);
 * the key is ``NULL`` — "everything this proc put" is an aggregate
   across scopes, not a lookup;
 * any realm redirection is in play (``nodeinfo``/``appinfo``/
@@ -1325,16 +1327,29 @@ MCA Parameters
      - **Testing only** — force a *job or session* segment delivered
        after ``PMIx_Init`` to fail. Neither parameter above reaches that
        path. Drives ``test/unit/update_attach_fail``.
-   * - ``pmix_client_fast_get``
-     - ``true``
-     - Answer a keyed ``PMIx_Get`` on the caller's thread when the
-       module is ``is_tsafe``. Turning it off routes every get through
-       the progress thread.
 
 ``pmix_hash_proc_alloc`` (``src/runtime/pmix_params.c``) is also
 relevant: it sets how many key slots each rank's pointer array starts
 with, and for ``shmem3`` that inflates the segment estimate for every
 rank in the job.
+
+One more switch belongs to this component's behavior without being an
+MCA parameter. Setting ``PMIX_GET_ON_PROGRESS_THREAD`` in the
+environment — to any value; only its presence is read — clears
+``pmix_client_globals.fast_get``, so ``try_local_fetch()`` declines
+every request and each ``PMIx_Get`` is thread-shifted the ordinary way.
+It is read once, in ``pmix_rte_init()``
+(``src/runtime/pmix_init.c``).
+
+It is deliberately **not** an MCA parameter, and so does not show up in
+``pmix_info``. An MCA parameter is a knob offered to a user, and no user
+has a reason to ask for a slower answer to the same question. This one
+is for a developer: it is how a datastore suspected of answering
+differently depending on which thread asked gets tested both ways, and
+how the test harness exercises the ordinary thread-shifted path on a
+build where ``shmem3`` would otherwise short circuit past it. The
+dockerswarm suite runs ``datatypes`` and ``modex_twice`` both ways for
+exactly that reason.
 
 
 Testing

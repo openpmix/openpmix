@@ -477,6 +477,20 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
         pmix_globals.debug_output = pmix_output_open(NULL);
         pmix_output_set_verbosity(pmix_globals.debug_output, debug_level);
     }
+    /* A get that only reads a datastore which says its fetch is thread
+     * safe is answered on the caller's own thread; see try_local_fetch()
+     * in src/client/pmix_client_get.c. Setting this in the environment -
+     * to anything, the value is not read - sends every get through the
+     * progress thread instead. That is a development switch, not a
+     * tuning one: there is no reason a user would want a slower answer,
+     * so it is deliberately not an MCA parameter, and so does not appear
+     * in pmix_info. It exists so a datastore suspected of answering
+     * differently depending on which thread asked can be tested both
+     * ways, and so the test harness can exercise the ordinary path on a
+     * build where shmem3 would otherwise short circuit past it. */
+    if (NULL != getenv("PMIX_GET_ON_PROGRESS_THREAD")) {
+        pmix_client_globals.fast_get = false;
+    }
     /* create our peer object */
     pmix_globals.mypeer = PMIX_NEW(pmix_peer_t);
     if (NULL == pmix_globals.mypeer) {

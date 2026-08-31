@@ -28,6 +28,9 @@ typedef struct {
                                   // (pmix_server_globals.iof/iof_residuals)
     bool fast_get;                // answer a get on the caller's thread when
                                   //   the datastore says that is safe
+                                  // (cleared by PMIX_GET_ON_PROGRESS_THREAD
+                                  //  in the environment - a development
+                                  //  switch, see pmix_rte_init)
     pmix_list_t pending_requests; // list of pmix_cb_t pending data requests
     pmix_pointer_array_t peers;   // array of pmix_peer_t cached for data ops
     pmix_list_t groups;           // list of groups this client is part of

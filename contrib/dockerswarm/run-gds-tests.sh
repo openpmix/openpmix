@@ -501,7 +501,7 @@ test_linux() {
     # get_timing and fence_timing are measurement tools, not tests - they
     # are built here so they are to hand, but nothing below runs them.
     # Timings do not belong in a pass/fail suite. Run get_timing directly,
-    # twice, with and without PMIX_MCA_pmix_client_fast_get=1; run
+    # twice, with and without PMIX_GET_ON_PROGRESS_THREAD set; run
     # fence_timing twice, once as-is and once with --pmixmca gds hash.
 
     if ! RUN 'command -v prterun >/dev/null'; then
@@ -577,14 +577,14 @@ test_linux() {
     for geom in $GEOMETRIES; do
         hosts="${geom%|*}"; np="${geom#*|}"
         run_across_nodes datatypes "$hosts" "$np" \
-            "PMIX_MCA_pmix_client_fast_get=0" "(no fast_get)" \
-            && ok "$np servers without fast_get: every rank read every peer"
+            "PMIX_GET_ON_PROGRESS_THREAD=1" "(get on progress thread)" \
+            && ok "$np servers, get on progress thread: every rank read every peer"
     done
     for geom in $GEOMETRIES; do
         hosts="${geom%|*}"; np="${geom#*|}"
         run_across_nodes modex_twice "$hosts" "$np" \
-            "PMIX_MCA_pmix_client_fast_get=0" "(no fast_get)" \
-            && ok "$np servers without fast_get: second fence visible, first kept"
+            "PMIX_GET_ON_PROGRESS_THREAD=1" "(get on progress thread)" \
+            && ok "$np servers, get on progress thread: second fence visible, first kept"
     done
 
     banner "put scopes across separate PMIx servers"
