@@ -1049,7 +1049,15 @@ shmem3_fetch_from_job(
             return rc;
         }
         // Finally, we need the job-level info for each rank in the job.
-        for (pmix_rank_t rank = 0; rank < job->nspace->nprocs; rank++) {
+        /* Read the bound ONCE. It lives on the shared namespace object
+         * and gds/hash assigns it from PMIX_JOB_SIZE on the progress
+         * thread, while this walk can be running on the application's -
+         * so re-reading it per iteration lets the range move underneath
+         * the loop. One read gives the loop a bound that does not change
+         * while it runs; which of the two values it gets is the ordinary
+         * "answered just before the update" question every reader has. */
+        const pmix_rank_t nranks = job->nspace->nprocs;
+        for (pmix_rank_t rank = 0; rank < nranks; rank++) {
             pmix_list_t rkvs;
             PMIX_CONSTRUCT(&rkvs, pmix_list_t);
             rc = job_fetch(job, rank, NULL, NULL, 0, &rkvs);
@@ -1142,7 +1150,9 @@ doover:
     // known ranks for this nspace as any one of them could
     // be the source.
     if (PMIX_RANK_UNDEF == proc->rank && (useremote ? have_modex : have_job)) {
-        for (pmix_rank_t rnk = 0; rnk < job->nspace->nprocs; rnk++) {
+        /* read once - see the note on the other sweep below */
+        const pmix_rank_t nranks = job->nspace->nprocs;
+        for (pmix_rank_t rnk = 0; rnk < nranks; rnk++) {
             rc = useremote
                      ? modex_fetch(job, rnk, key, qualifiers, nqual, kvs)
                      : job_fetch(job, rnk, key, qualifiers, nqual, kvs);

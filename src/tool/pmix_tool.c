@@ -381,9 +381,16 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
         return;
     }
 
-    /* decode it */
+    /* decode it - leave cb->status set to the store result so the caller
+     * sees a storage failure rather than having it masked as success.
+     * The client and server callbacks that do the same job say the same
+     * thing; this one overwrote the status unconditionally, so a tool
+     * completed PMIx_tool_init() believing it held job data it had
+     * failed to store. */
     PMIX_GDS_STORE_JOB_INFO(cb->status, pmix_client_globals.myserver, nspace, buf);
-    cb->status = PMIX_SUCCESS;
+
+    /* the unpack above allocated it, as it does for the other two */
+    free(nspace);
     PMIX_POST_OBJECT(cb);
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
