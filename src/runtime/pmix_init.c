@@ -129,7 +129,9 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .iof_stdin_resume_interval = 0,
     .iof_stdin_resume_max_interval = 0,
     .spawn_iof_flags = PMIX_IOF_FLAGS_STATIC_INIT,
-    .keyindex = PMIX_KEYINDEX_STATIC_INIT
+    .keyindex = PMIX_KEYINDEX_STATIC_INIT,
+    .dict_by_id = NULL,
+    .dict_by_name = NULL
 };
 
 static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel, int room_num, void *occupant)

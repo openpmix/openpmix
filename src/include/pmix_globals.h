@@ -1099,6 +1099,25 @@ typedef struct {
     int iof_stdin_resume_max_interval;
     pmix_iof_flags_t spawn_iof_flags;
     pmix_keyindex_t keyindex;
+    /* An IMMUTABLE view of the reserved half of the dictionary, built
+     * by pmix_init_registered_attrs() before the progress thread
+     * starts and never written again.
+     *
+     * It exists because the lock-free read path needs one. A gds module
+     * that reports is_tsafe answers a keyed get on the APPLICATION'S
+     * thread, and resolving a reserved key there used to read
+     * pmix_globals.keyindex - which the progress thread keeps writing,
+     * because a non-reserved key is registered into it the first time
+     * anyone stores one. Registering grows the pointer array (realloc,
+     * old block freed) and the lookup table (new table, old freed), so
+     * a reader could be walking storage that had just been handed back.
+     *
+     * The reserved entries are complete before any thread exists and
+     * never change afterwards, so a snapshot of them is safe to read
+     * without synchronization forever. These BORROW the entries owned
+     * by keyindex above - do not free them from here. */
+    pmix_pointer_array_t *dict_by_id;
+    pmix_hash_table_t *dict_by_name;
 } pmix_globals_t;
 
 /* provide access to a function to cleanup epilogs */

@@ -105,6 +105,55 @@ PMIX_EXPORT void pmix_init_registered_attrs(void)
             pmix_hash_register_key(p->index, p, &pmix_globals.keyindex);
         }
         pmix_globals.keyindex.next_id = PMIX_INDEX_BOUNDARY;
+
+        /* Publish an immutable view of what was just built.
+         *
+         * Everything above runs before the progress thread starts (see
+         * pmix_rte_init), and the reserved half of the index is never
+         * written again after this point - a key registered later is
+         * non-reserved and is numbered from the boundary up. So this
+         * snapshot can be read with no synchronization at all, which is
+         * what a gds module that reports is_tsafe needs: it answers a
+         * keyed get on the APPLICATION'S thread, and resolving a
+         * reserved key there must not touch a structure the progress
+         * thread still grows and frees.
+         *
+         * The entries are BORROWED - pmix_globals.keyindex owns them
+         * and its destructor frees them. */
+        pmix_globals.dict_by_id = PMIX_NEW(pmix_pointer_array_t);
+        pmix_globals.dict_by_name = PMIX_NEW(pmix_hash_table_t);
+        if (NULL != pmix_globals.dict_by_id && NULL != pmix_globals.dict_by_name &&
+            PMIX_SUCCESS == pmix_pointer_array_init(pmix_globals.dict_by_id,
+                                                    PMIX_INDEX_BOUNDARY,
+                                                    INT_MAX, 256) &&
+            PMIX_SUCCESS == pmix_hash_table_init(pmix_globals.dict_by_name,
+                                                 PMIX_INDEX_BOUNDARY)) {
+            pmix_pointer_array_set_size(pmix_globals.dict_by_id, PMIX_INDEX_BOUNDARY);
+            for (n = 0; n < (size_t) PMIX_INDEX_BOUNDARY; n++) {
+                p = (pmix_regattr_input_t *)
+                    pmix_pointer_array_get_item(pmix_globals.keyindex.table, (int) n);
+                if (NULL == p) {
+                    continue;
+                }
+                pmix_pointer_array_set_item(pmix_globals.dict_by_id, (int) n, p);
+                if (NULL != p->string) {
+                    pmix_hash_table_set_value_ptr(pmix_globals.dict_by_name, p->string,
+                                                  strlen(p->string), p);
+                }
+            }
+        } else {
+            /* without it the reserved half is simply not resolved from
+             * the lock-free path - a miss, which the caller handles -
+             * rather than resolved unsafely */
+            if (NULL != pmix_globals.dict_by_id) {
+                PMIX_RELEASE(pmix_globals.dict_by_id);
+                pmix_globals.dict_by_id = NULL;
+            }
+            if (NULL != pmix_globals.dict_by_name) {
+                PMIX_RELEASE(pmix_globals.dict_by_name);
+                pmix_globals.dict_by_name = NULL;
+            }
+        }
         initialized = true;
     }
 }

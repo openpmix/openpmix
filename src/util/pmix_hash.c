@@ -992,19 +992,33 @@ static pmix_regattr_input_t *resolve_reserved(uint32_t inid, const char *key)
 {
     pmix_regattr_input_t *ptr;
 
+    /* Read the IMMUTABLE view, never pmix_globals.keyindex.
+     *
+     * This runs on whatever thread called PMIx_Get - a gds module that
+     * reports is_tsafe answers a keyed get inline - while the progress
+     * thread is free to register a non-reserved key into the mutable
+     * index, which reallocs its pointer array and regrows its lookup
+     * table, freeing the old storage of each. Reading either from here
+     * is a use-after-free waiting for the two to coincide. The reserved
+     * entries are complete before the progress thread starts and never
+     * change afterwards, so the snapshot taken there answers this
+     * without synchronization. */
     if (UINT32_MAX != inid) {
         /* an id below the boundary is reserved by definition */
         if ((uint32_t) PMIX_INDEX_BOUNDARY <= inid) {
             return NULL;
         }
-        return pmix_pointer_array_get_item(pmix_globals.keyindex.table, (int) inid);
+        if (NULL == pmix_globals.dict_by_id) {
+            return NULL;
+        }
+        return pmix_pointer_array_get_item(pmix_globals.dict_by_id, (int) inid);
     }
 
-    if (NULL == key || 0 == strlen(key) || NULL == pmix_globals.keyindex.lookup) {
+    if (NULL == key || 0 == strlen(key) || NULL == pmix_globals.dict_by_name) {
         return NULL;
     }
     ptr = NULL;
-    if (PMIX_SUCCESS != pmix_hash_table_get_value_ptr(pmix_globals.keyindex.lookup,
+    if (PMIX_SUCCESS != pmix_hash_table_get_value_ptr(pmix_globals.dict_by_name,
                                                       key, strlen(key),
                                                       (void **) &ptr)) {
         return NULL;

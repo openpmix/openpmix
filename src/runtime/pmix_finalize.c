@@ -227,6 +227,16 @@ void pmix_rte_finalize(void)
     }
     PMIX_LIST_DESTRUCT(&pmix_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.groups);
+    /* Borrowed views of the reserved entries - release the containers,
+     * and leave the entries to the index that owns them, below. */
+    if (NULL != pmix_globals.dict_by_id) {
+        PMIX_RELEASE(pmix_globals.dict_by_id);
+        pmix_globals.dict_by_id = NULL;
+    }
+    if (NULL != pmix_globals.dict_by_name) {
+        PMIX_RELEASE(pmix_globals.dict_by_name);
+        pmix_globals.dict_by_name = NULL;
+    }
     PMIX_DESTRUCT(&pmix_globals.keyindex);
     free(pmix_globals.myidval.data.proc);
     pmix_globals.myidval.data.proc = NULL;
