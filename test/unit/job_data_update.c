@@ -46,6 +46,18 @@
  * from a client - "nothing was published" leaves no trace by design - so
  * what is checked is that the value is still right afterwards, which is
  * what a caller would notice if a restatement had gone wrong.
+ *
+ * The third phase covers the OTHER path a host might revise job data by.
+ * PMIx_server_register_resources() carries job-level information that
+ * governs every namespace on the server, and its fan-out reaches the
+ * ones already registered as well as the ones registered later. The man
+ * page marks it permitted but not recommended, precisely because it
+ * revises every job the server holds rather than the one the host meant
+ * - but "not recommended" is not "does not work", and a path a host is
+ * told it may take has to arrive. It goes through the same
+ * PMIX_GDS_ADD_JOB_DATA the recommended path does, so what this pins is
+ * that the fan-out into an already-registered namespace really does
+ * reach a client that is already running, in both gds modules.
  */
 
 #include "src/include/pmix_config.h"
@@ -67,6 +79,7 @@ extern char **environ;
 #define LATEKEY "sut.late.key"
 #define FIRST   11
 #define SECOND  22
+#define THIRD   33
 
 static int npass = 0, nfail = 0;
 
@@ -176,6 +189,22 @@ static int run_client(int readyfd, int gofd)
     }
     fprintf(stdout, "  client: value unchanged after a restatement\n");
 
+    /* phase 3: the host revises it again through register_resources */
+    c = 'r';
+    if (1 != write(readyfd, &c, 1) || 1 != read(gofd, &c, 1)) {
+        PMIx_Finalize(NULL, 0);
+        return 1;
+    }
+    if (0 != await_local(THIRD, &v)) {
+        fprintf(stderr, "  client: never saw the value revised by "
+                        "register_resources (last read %u, wanted %u)\n",
+                (unsigned) v, (unsigned) THIRD);
+        PMIx_Finalize(NULL, 0);
+        return 4;
+    }
+    fprintf(stdout, "  client: sees the value revised by register_resources "
+                    "%u\n", (unsigned) v);
+
     PMIx_Finalize(NULL, 0);
     return 0;
 }
@@ -252,6 +281,25 @@ static pmix_status_t revise(uint32_t value)
     PMIX_LOAD_NSPACE(ns, NSPACE);
     PMIX_INFO_LOAD(&upd, LATEKEY, &value, PMIX_UINT32);
     rc = PMIx_server_register_nspace(ns, -1, &upd, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&upd);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    return rc;
+}
+
+/* The other way in. This one names no namespace: the values are held as
+ * a cache that governs every job the server has, so the fan-out has to
+ * carry them into the namespaces already registered. That is why it is
+ * documented as permitted but not recommended - a host revising one
+ * job's data this way revises all of them. */
+static pmix_status_t revise_by_resources(uint32_t value)
+{
+    pmix_info_t upd;
+    pmix_status_t rc;
+
+    PMIX_INFO_LOAD(&upd, LATEKEY, &value, PMIX_UINT32);
+    rc = PMIx_server_register_resources(&upd, 1, NULL, NULL);
     PMIX_INFO_DESTRUCT(&upd);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         rc = PMIX_SUCCESS;
@@ -359,6 +407,18 @@ int main(int argc, char **argv)
     }
     rc = revise(SECOND);
     report("the host restates the same value", PMIX_SUCCESS == rc);
+    c = 'g';
+    if (1 != write(gopipe[1], &c, 1)) {
+        goto done;
+    }
+
+    /* phase 3: revise it through register_resources instead */
+    if (1 != read(readypipe[0], &c, 1)) {
+        fprintf(stderr, "the client never reported its third read\n");
+        goto done;
+    }
+    rc = revise_by_resources(THIRD);
+    report("the host revises it with register_resources", PMIX_SUCCESS == rc);
     c = 'g';
     if (1 != write(gopipe[1], &c, 1)) {
         goto done;
