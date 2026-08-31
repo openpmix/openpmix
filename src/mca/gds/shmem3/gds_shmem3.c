@@ -4584,25 +4584,23 @@ server_pack_update(
         /* not a job we hold - nothing to say */
         return PMIX_SUCCESS;
     }
-    /* Only the session's chain, which is not the whole of what an
-     * update could carry: server_add_job_data() publishes a new JOB
-     * segment and then calls pmix_server_notify_gds_update() to tell
-     * the clients already reading it, and this does not describe that
-     * segment to them. The addition still REACHES such a client - the
-     * same data is stored in the server's own hash module, which
-     * answers the round trip a local miss turns into - so what is lost
-     * is the shared copy, not the answer.
+    /* BOTH chains, because both can grow after a client has attached:
+     * server_add_job_data() publishes a new job segment when a host adds
+     * to a registered job, and a changed session description publishes a
+     * new session segment. This is the only thing that tells a client
+     * already running that either happened.
      *
-     * Not fixed here on purpose. gds/hash has the same gap on both
-     * halves (hash_pack_update() packs only session info, and
-     * hash_accept_update() ignores everything that is not a
-     * PMIX_SESSION_INFO_ARRAY), and a client that reads late job data
-     * out of its own store under one component but not the other is a
-     * worse state than one that reads it from the server under both.
-     * Fixing it means deciding what a job-data update carries - the
-     * addition, or the whole description - and doing it in both
-     * components at once.
+     * Whole and oldest-first, the way the job-info reply sends them,
+     * because that is what leaves the client's chain in our order -
+     * newest at the head, which is where a read starts. A client skips
+     * every segment it already holds by backing path, so this is
+     * idempotent and a client that missed an earlier notice catches up
+     * on the next one.
      */
+    rc = pack_shmem3_seg_blob(job, PMIX_GDS_SHMEM3_JOB_ID, peer, buff);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
     if (NULL == job->session ||
         NULL == pmix_gds_shmem3_chain_head(&job->session->segments)) {
         return PMIX_SUCCESS;
@@ -4627,6 +4625,115 @@ client_accept_update(
     );
 }
 
+/* What does this job's chain currently answer for this job-level key?
+ *
+ * Newest-first, stopping at the first segment carrying it - the same
+ * rule a read follows, so this compares against what a client would
+ * actually see rather than against any one segment.
+ *
+ * The caller must PMIX_RELEASE what comes back. Its session counterpart
+ * hands back a borrowed pointer because a session's entries sit on a
+ * plain list; job-level values live in a hash table, and fetching one
+ * copies it.
+ */
+static pmix_kval_t *
+job_current_value(
+    pmix_gds_shmem3_job_t *job,
+    const char *key
+) {
+    pmix_gds_shmem3_seg_t *seg;
+
+    for (seg = pmix_gds_shmem3_chain_head(&job->job_chain);
+         NULL != seg; seg = seg->prior) {
+        pmix_gds_shmem3_shared_job_data_t *const sd = seg->smdata;
+        pmix_list_t kvs;
+        pmix_kval_t *kv;
+
+        if (NULL == sd || NULL == sd->local_hashtab) {
+            continue;
+        }
+        PMIX_CONSTRUCT(&kvs, pmix_list_t);
+        if (PMIX_SUCCESS != pmix_hash_fetch(sd->local_hashtab,
+                                            PMIX_RANK_WILDCARD, key,
+                                            NULL, 0, &kvs, sd->keyindex)) {
+            PMIX_LIST_DESTRUCT(&kvs);
+            continue;
+        }
+        kv = (pmix_kval_t *) pmix_list_remove_first(&kvs);
+        PMIX_LIST_DESTRUCT(&kvs);
+        if (NULL != kv) {
+            return kv;
+        }
+    }
+    return NULL;
+}
+
+/* Reduce an addition to what has actually changed.
+ *
+ * A host updating a job's data may send only what changed, or restate
+ * the whole description with a few values different in it - the API
+ * forbids neither, and PMIx_server_register_nspace(3) says as much. Both
+ * have to cost the same, because what a restatement must not do is
+ * publish a segment per unchanged key: a published segment is never
+ * reclaimed (nothing is ever removed from the chain - that is what makes
+ * the walk lock-free), so a host that restates its job description
+ * periodically would grow this job's address-space footprint without
+ * bound and lengthen every read that walks past it.
+ *
+ * So compare each entry against what the chain answers today and keep
+ * only the ones that differ or are new. Returns the number kept, with
+ * *out pointing at borrowed entries of the caller's array - no copy,
+ * because the segment build copies what it stores.
+ *
+ * Exactly the rule session_changed_entries() applies to a session
+ * description, for the same reason.
+ */
+static size_t
+job_changed_entries(
+    pmix_gds_shmem3_job_t *job,
+    pmix_info_t info[],
+    size_t ninfo,
+    pmix_info_t **out
+) {
+    pmix_info_t *kept;
+    size_t nkept = 0;
+
+    *out = NULL;
+    if (0 == ninfo || NULL == info) {
+        return 0;
+    }
+    kept = (pmix_info_t *) calloc(ninfo, sizeof(pmix_info_t));
+    if (NULL == kept) {
+        return 0;
+    }
+    for (size_t n = 0; n < ninfo; n++) {
+        if (0 == strlen(info[n].key)) {
+            continue;
+        }
+        /* not const: PMIX_RELEASE() nulls what it is given */
+        pmix_kval_t *cur = job_current_value(job, info[n].key);
+        if (NULL != cur) {
+            const bool same =
+                (PMIX_EQUAL == PMIx_Value_compare(cur->value,
+                                    (pmix_value_t *) &info[n].value));
+            PMIX_RELEASE(cur);
+            if (same) {
+                continue;
+            }
+        }
+        /* Shallow: the caller owns these, and the segment build copies
+         * whatever it stores into shared memory. */
+        memcpy(&kept[nkept], &info[n], sizeof(pmix_info_t));
+        nkept++;
+    }
+    if (0 == nkept) {
+        free(kept);
+        return 0;
+    }
+    *out = kept;
+    return nkept;
+}
+
 /* Add job-level data to a namespace that is already registered.
  *
  * The segment already published cannot be rewritten - local clients have
@@ -4649,6 +4756,8 @@ server_add_job_data(
     pmix_gds_shmem3_job_t *job;
     pmix_status_t rc;
     size_t seg_size;
+    pmix_info_t *changed;
+    size_t nchanged;
 
     if (NULL == nspace || 0 == ninfo || NULL == info) {
         return PMIX_SUCCESS;
@@ -4665,15 +4774,33 @@ server_add_job_data(
         return PMIX_SUCCESS;
     }
 
+    /* Only what actually differs from what this job already answers.
+     *
+     * A host is free to send just the changed values or to restate the
+     * whole description, and this is what makes the two cost the same.
+     * It also decides whether anything is published at all: a
+     * restatement that changes nothing publishes nothing, which matters
+     * because a published segment is never taken back. */
+    changed = NULL;
+    nchanged = job_changed_entries(job, info, ninfo, &changed);
+    if (0 == nchanged) {
+        PMIX_GDS_SHMEM3_VOUT(
+            "%s: namespace=%s restated %zu job value%s, none of them "
+            "changed - nothing published", __func__, nspace, ninfo,
+            (1 == ninfo) ? "" : "s"
+        );
+        return PMIX_SUCCESS;
+    }
+
     /* Size it for what is being added rather than for the job. */
     seg_size = sizeof(pmix_gds_shmem3_shared_job_data_t);
-    seg_size += pmix_keyindex_sizeof_storage(ninfo);
+    seg_size += pmix_keyindex_sizeof_storage(nchanged);
     seg_size += 2 * sizeof(pmix_list_t);
     seg_size += pmix_hash_table_sizeof_storage(1);
     seg_size += pmix_hash_sizeof_proc_storage();
-    seg_size += ninfo * (sizeof(pmix_kval_t) + sizeof(pmix_value_t)
-                         + pmix_hash_sizeof_key_entry(0)
-                         + 4 * (PMIX_MAX_KEYLEN + 1));
+    seg_size += nchanged * (sizeof(pmix_kval_t) + sizeof(pmix_value_t)
+                            + pmix_hash_sizeof_key_entry(0)
+                            + 4 * (PMIX_MAX_KEYLEN + 1));
     seg_size *= 4;   // the same empirical fluff the other estimates carry
     seg_size *= pmix_gds_shmem3_segment_size_multiplier;
 
@@ -4689,35 +4816,41 @@ server_add_job_data(
     }
     /* one hash-table element: everything here is job-level, so it all
      * hangs off the single PMIX_RANK_WILDCARD entry */
-    rc = job_smdata_construct(job, 1, ninfo);
+    rc = job_smdata_construct(job, 1, nchanged);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
+        free(changed);
         return rc;
     }
 
     pmix_tma_t *const tma = &job->smdata->tma;
-    for (size_t n = 0; n < ninfo; n++) {
+    for (size_t n = 0; n < nchanged; n++) {
         pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
         if (PMIX_UNLIKELY(NULL == kv)) {
+            free(changed);
             return PMIX_ERR_NOMEM;
         }
-        kv->key = pmix_tma_strdup(tma, info[n].key);
+        kv->key = pmix_tma_strdup(tma, changed[n].key);
         kv->value = pmix_tma_calloc(tma, 1, sizeof(pmix_value_t));
         if (PMIX_UNLIKELY(NULL == kv->key || NULL == kv->value)) {
+            free(changed);
             return PMIX_ERR_NOMEM;
         }
-        rc = pmix_bfrops_base_tma_value_xfer(kv->value, &info[n].value, tma);
+        rc = pmix_bfrops_base_tma_value_xfer(kv->value, &changed[n].value, tma);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
+            free(changed);
             return rc;
         }
         rc = pmix_hash_store(job->smdata->local_hashtab, PMIX_RANK_WILDCARD,
                              kv, NULL, 0, job->smdata->keyindex);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
+            free(changed);
             return rc;
         }
     }
+    free(changed);
 
     rc = pmix_gds_shmem3_publish_job_segment(job);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {

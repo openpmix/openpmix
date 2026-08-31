@@ -64,6 +64,21 @@ typedef struct {
     pmix_list_t apps;
     pmix_list_t nodeinfo;
     pmix_session_t *session;
+    /* Job-level values added AFTER this namespace was registered, held
+     * so they can be pushed to clients that are already running.
+     *
+     * This is what gds/shmem3 gets for free from its segment chain: a
+     * client there is told which segments to map and skips the ones it
+     * holds, so the notice is a handful of descriptors however much data
+     * they describe. Here the data itself has to travel, so packing the
+     * whole job-level set on every notice would send the node map and
+     * proc map to every local client each time a session changed. This
+     * list is bounded by what a host has actually added instead.
+     *
+     * Cumulative and replaced by key, so it stays bounded by the number
+     * of distinct keys added and a client that missed one notice catches
+     * up on the next. Server-side only. */
+    pmix_list_t updates;
 } pmix_job_t;
 PMIX_CLASS_DECLARATION(pmix_job_t);
 
