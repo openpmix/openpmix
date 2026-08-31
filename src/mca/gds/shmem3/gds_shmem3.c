@@ -4567,6 +4567,25 @@ server_del_session(
  * Nothing is packed when the peer's job has no session segments, which
  * is the ordinary case for a job whose host never described a session.
  */
+/* How many segments a chain holds.
+ *
+ * Only ever asked of a chain this process publishes to, and only from
+ * the progress thread, so the walk cannot race a publisher. It starts
+ * from the same acquire-load a reader uses regardless - the head is
+ * atomic and the nodes behind it are immutable.
+ */
+static size_t
+chain_length(
+    pmix_gds_shmem3_chain_t *chain
+) {
+    size_t n = 0;
+    for (pmix_gds_shmem3_seg_t *seg = pmix_gds_shmem3_chain_head(chain);
+         NULL != seg; seg = seg->prior) {
+        n++;
+    }
+    return n;
+}
+
 static pmix_status_t
 server_pack_update(
     struct pmix_peer_t *pr,
@@ -4596,10 +4615,32 @@ server_pack_update(
      * every segment it already holds by backing path, so this is
      * idempotent and a client that missed an earlier notice catches up
      * on the next one.
-     */
-    rc = pack_shmem3_seg_blob(job, PMIX_GDS_SHMEM3_JOB_ID, peer, buff);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
+     *
+     * BUT SAY NOTHING WHEN THERE IS NOTHING TO SAY. PMIX_GDS_PACK_UPDATE
+     * is contracted to pack nothing when a module has nothing to add,
+     * and pmix_server_notify_gds_update() is built on that: a peer whose
+     * buffer comes back empty is skipped entirely, and gets no message.
+     *
+     * That matters well beyond wasted bytes, because a sweep is not only
+     * fired by a job-data update. Registering a SESSION fires one with a
+     * NULL namespace - every peer of every namespace on this server -
+     * and so does a session change. Packing this chain unconditionally
+     * therefore sent a message to every shmem3 client on the node every
+     * time any session was described, each one carrying descriptors for
+     * segments the client already had. A job being launched is exactly
+     * when sessions are described and clients are still arriving, which
+     * is where that lands.
+     *
+     * A client is handed the whole job chain as it stands in the
+     * job-info reply it receives during PMIx_Init, so a chain still one
+     * segment long holds nothing a client can be missing. More than one
+     * means server_add_job_data() published an update, which is the case
+     * this notice exists for. */
+    if (1 < chain_length(&job->job_chain)) {
+        rc = pack_shmem3_seg_blob(job, PMIX_GDS_SHMEM3_JOB_ID, peer, buff);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
     }
     if (NULL == job->session ||
         NULL == pmix_gds_shmem3_chain_head(&job->session->segments)) {
