@@ -61,6 +61,7 @@
  * the segment: the answer is what says whether to map the segment at
  * all. Appended, so an older peer simply skips it. */
 #define SHMEM3_SEG_SSID_KEY "PMIX_GDS_SHMEM3_SEG_SSID"
+#define SHMEM3_SEG_GEN_KEY  "PMIX_GDS_SHMEM3_SEG_GEN"
 /* A key this job has stopped answering for, as "<rank>:<key>". The
  * segments still contain it - they are never rewritten - so a client
  * attaching after the removal has to be told, or it would read what
@@ -140,6 +141,10 @@ typedef struct {
     bool is_delta;
     /** Session id from a SESSION blob; UINT32_MAX if none was sent. */
     uint32_t ssid;
+    /** Where this segment sits in its chain, as the SERVER ordered them.
+     *  UINT32_MAX means the server did not send one - an older peer -
+     *  in which case the client falls back to ordering by arrival. */
+    uint32_t generation;
     /** The job's address-space arena, if it has one. Carried on every
      *  seg blob rather than only the first, so a client that has not yet
      *  reserved it learns of it from whichever blob reaches it first. */
@@ -159,6 +164,7 @@ unpacked_seg_blob_construct(
     ub->seg_hadr = 0;
     ub->is_delta = false;
     ub->ssid = UINT32_MAX;
+    ub->generation = UINT32_MAX;
     ub->arena_base = 0;
     ub->arena_size = 0;
 }
@@ -2741,6 +2747,43 @@ pack_shmem3_connection_info(
             break;
         }
 
+        /* Where this segment sits in its chain, as WE ordered them.
+         *
+         * The client cannot work this out for itself. It publishes each
+         * segment it attaches at the head of its chain, so without a
+         * number its order is its ATTACH order - and those differ the
+         * moment one attach fails and is retried. A client that missed
+         * generation 2, took 3, and then took 2 on the next notice would
+         * end up with 2 in front of 3 and answer from the older of the
+         * two for every key both carry.
+         *
+         * Appended, like every other field here, so an older peer that
+         * does not read it is unaffected - see the note in
+         * unpack_shmem3_connection_info() on skipping what it has not
+         * been taught to hear. */
+        PMIX_DESTRUCT(&kv);
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM3_SEG_GEN_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == kv.value)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        kv.value->type = PMIX_STRING;
+        if (PMIX_UNLIKELY(-1 == pmix_asprintf(&kv.value->data.string, "%zu",
+                                              (size_t)(NULL == which ? 0
+                                                       : which->generation)))) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+
         /* The session id, on a session blob only. It says which session
          * tracker this segment belongs to, which a client cannot work out
          * from the segment because the answer decides whether to map it.
@@ -2911,6 +2954,15 @@ unpack_shmem3_connection_info(
                 PMIX_ERROR_LOG(rc);
                 break;
             }
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_GEN_KEY)) {
+            size_t st_gen = 0;
+            if (PMIX_SUCCESS != (rc = strtost(kv.value->data.string, 10, &st_gen))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kv);
+                break;
+            }
+            usb->generation = (uint32_t)st_gen;
         }
         else if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_SSID_KEY)) {
             /* Decimal, as SMID is; only a session blob carries it, and
@@ -3586,6 +3638,64 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
             /* Every kind grows a chain now, so there is no arm here
                that has to refuse one. */
         }
+
+        /* Refuse a segment OLDER than the one at the head of the chain
+         * it would join.
+         *
+         * A client publishes what it attaches at the head, so its chain
+         * is in ATTACH order - and a read stops at the newest segment
+         * holding a key. Those agree only while the client takes every
+         * segment in the order the server published them. One failed
+         * attach breaks that: a client that missed generation 2, took 3,
+         * and is offered 2 again on the next notice would put 2 in front
+         * of 3 and answer from the older of the two for every key both
+         * carry - a wrong answer produced by the retry that was supposed
+         * to repair things.
+         *
+         * The chain cannot take it in the right place instead: nodes are
+         * published at the head and never moved or removed, which is
+         * exactly what lets a reader walk it with no lock.
+         *
+         * So decline it and say the realm is incomplete, which sends
+         * every read of that realm to the server. Correct and slower,
+         * where publishing it is fast and wrong. A client stays that way
+         * until the server publishes a segment newer than everything it
+         * holds - a cumulative one would restore it outright, which is
+         * how the modex already recovers and is the shape a job or
+         * session ought to grow.
+         *
+         * A server that sends no generation (an older peer) leaves this
+         * at UINT32_MAX and gets the previous behavior. */
+        if (UINT32_MAX != usb.generation &&
+            PMIX_GDS_SHMEM3_MODEX_ID != usb.smid) {
+            pmix_gds_shmem3_chain_t *const chain =
+                (PMIX_GDS_SHMEM3_SESSION_ID == usb.smid && NULL != job->session)
+                    ? &job->session->segments : &job->job_chain;
+            pmix_gds_shmem3_seg_t *const head =
+                pmix_gds_shmem3_chain_head(chain);
+            if (NULL != head && UINT32_MAX != head->generation &&
+                usb.generation <= head->generation) {
+                PMIX_GDS_SHMEM3_VOUT(
+                    "%s: %s segment generation %u for namespace=%s is not "
+                    "newer than the %u already held; declining it rather "
+                    "than putting it in front of newer data",
+                    __func__, get_shmem3_id_name(usb.smid),
+                    (unsigned)usb.generation, usb.nsid,
+                    (unsigned)head->generation
+                );
+                if (PMIX_GDS_SHMEM3_SESSION_ID == usb.smid) {
+                    if (NULL != job->session) {
+                        job->session->chain_incomplete = true;
+                    }
+                } else {
+                    job->chain_incomplete = true;
+                }
+                shmem3_delivery_refused = true;
+                rc = PMIX_SUCCESS;
+                break;
+            }
+        }
+
         // Looks like we have to attach and initialize it.
         rc = shmem3_segment_attach_and_init(job, &usb, ctx);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
