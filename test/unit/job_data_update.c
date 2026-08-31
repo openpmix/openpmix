@@ -80,6 +80,7 @@ extern char **environ;
 #define FIRST   11
 #define SECOND  22
 #define THIRD   33
+#define FOURTH  44
 
 static int npass = 0, nfail = 0;
 
@@ -205,6 +206,44 @@ static int run_client(int readyfd, int gofd)
     fprintf(stdout, "  client: sees the value revised by register_resources "
                     "%u\n", (unsigned) v);
 
+    /* phase 4: the host restates the WHOLE description, one value
+     * changed. The change has to arrive, and the maps that rode along
+     * with it must not have become job-level values. */
+    c = 'r';
+    if (1 != write(readyfd, &c, 1) || 1 != read(gofd, &c, 1)) {
+        PMIx_Finalize(NULL, 0);
+        return 1;
+    }
+    if (0 != await_local(FOURTH, &v)) {
+        fprintf(stderr, "  client: never saw the value changed by a whole "
+                        "description restatement (last read %u, wanted %u)\n",
+                (unsigned) v, (unsigned) FOURTH);
+        PMIx_Finalize(NULL, 0);
+        return 5;
+    }
+    fprintf(stdout, "  client: sees the value changed by a restatement %u\n",
+            (unsigned) v);
+    {
+        pmix_proc_t p;
+        pmix_value_t *mv = NULL;
+        pmix_info_t opt;
+        pmix_status_t r;
+
+        PMIX_LOAD_PROCID(&p, NSPACE, PMIX_RANK_WILDCARD);
+        PMIX_INFO_LOAD(&opt, PMIX_OPTIONAL, NULL, PMIX_BOOL);
+        r = PMIx_Get(&p, PMIX_NODE_MAP, &opt, 1, &mv);
+        PMIX_INFO_DESTRUCT(&opt);
+        if (PMIX_SUCCESS == r && NULL != mv) {
+            PMIX_VALUE_RELEASE(mv);
+            fprintf(stderr, "  client: the restated node map was filed as a "
+                            "job-level value\n");
+            PMIx_Finalize(NULL, 0);
+            return 6;
+        }
+        fprintf(stdout, "  client: the restated node map was not filed as a "
+                        "job-level value\n");
+    }
+
     PMIx_Finalize(NULL, 0);
     return 0;
 }
@@ -268,6 +307,53 @@ static pmix_status_t register_job(void)
         usleep(50000);
     }
     return PMIX_SUCCESS;
+}
+
+/* Restate the WHOLE job description, with one value changed in it.
+ *
+ * This is the second shape an update may take, and it is the one that
+ * carries the entries a job description is mostly made of - the node
+ * and proc maps. Those are not job-level values: the registration path
+ * parses them into node and proc lists, so they never reach the table
+ * the "has this changed?" test consults. A collector that treated them
+ * as ordinary values would therefore find them changed on EVERY
+ * restatement, store them where no reader of their realm will look,
+ * and make gds/shmem3 publish a segment it can never reclaim - which
+ * is the opposite of what PMIx_server_register_nspace(3) promises a
+ * restatement costs.
+ *
+ * The client asserts both halves: the value that really changed
+ * arrives, and the node map that rode along with it did not become a
+ * job-level value.
+ */
+static pmix_status_t revise_whole_description(uint32_t value)
+{
+    pmix_info_t info[5];
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    char *noderegex = NULL, *ppnregex = NULL;
+    uint32_t nprocs = 1;
+    int i;
+
+    PMIx_generate_regex(pmix_globals.hostname, &noderegex);
+    PMIx_generate_ppn("0", &ppnregex);
+    PMIX_INFO_LOAD(&info[0], PMIX_NODE_MAP, noderegex, PMIX_REGEX);
+    PMIX_INFO_LOAD(&info[1], PMIX_PROC_MAP, ppnregex, PMIX_REGEX);
+    PMIX_INFO_LOAD(&info[2], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[3], PMIX_MAX_PROCS, &nprocs, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[4], LATEKEY, &value, PMIX_UINT32);
+
+    PMIX_LOAD_NSPACE(ns, NSPACE);
+    rc = PMIx_server_register_nspace(ns, -1, info, 5, NULL, NULL);
+    for (i = 0; i < 5; i++) {
+        PMIX_INFO_DESTRUCT(&info[i]);
+    }
+    free(noderegex);
+    free(ppnregex);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    return rc;
 }
 
 /* The update itself: a NEGATIVE nlocalprocs says "revise what you hold
@@ -419,6 +505,19 @@ int main(int argc, char **argv)
     }
     rc = revise_by_resources(THIRD);
     report("the host revises it with register_resources", PMIX_SUCCESS == rc);
+    c = 'g';
+    if (1 != write(gopipe[1], &c, 1)) {
+        goto done;
+    }
+
+    /* phase 4: restate the whole description with one value changed */
+    if (1 != read(readypipe[0], &c, 1)) {
+        fprintf(stderr, "the client never reported its fourth read\n");
+        goto done;
+    }
+    rc = revise_whole_description(FOURTH);
+    report("the host restates the whole description with one value changed",
+           PMIX_SUCCESS == rc);
     c = 'g';
     if (1 != write(gopipe[1], &c, 1)) {
         goto done;

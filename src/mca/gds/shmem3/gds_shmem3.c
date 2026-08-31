@@ -4681,7 +4681,8 @@ job_current_value(
  * bound and lengthen every read that walks past it.
  *
  * So compare each entry against what the chain answers today and keep
- * only the ones that differ or are new. Returns the number kept, with
+ * only the ones that differ or are new. SIZE_MAX means the allocation
+ * failed, which is not the same answer as zero. Returns the number kept, with
  * *out pointing at borrowed entries of the caller's array - no copy,
  * because the segment build copies what it stores.
  *
@@ -4704,7 +4705,15 @@ job_changed_entries(
     }
     kept = (pmix_info_t *) calloc(ninfo, sizeof(pmix_info_t));
     if (NULL == kept) {
-        return 0;
+        /* NOT 0 - that is this function's word for "restated, nothing
+         * changed", which the caller answers by publishing nothing and
+         * returning success. Reporting a failed allocation that way
+         * would drop the update silently while gds/hash, running in the
+         * same fan-out, stored it and told the clients: the two modules
+         * would then answer differently for the same namespace, which
+         * is the one outcome src/mca/gds/AGENTS.md says must not be
+         * reachable. */
+        return SIZE_MAX;
     }
     for (size_t n = 0; n < ninfo; n++) {
         if (0 == strlen(info[n].key)) {
@@ -4783,6 +4792,10 @@ server_add_job_data(
      * because a published segment is never taken back. */
     changed = NULL;
     nchanged = job_changed_entries(job, info, ninfo, &changed);
+    if (SIZE_MAX == nchanged) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return PMIX_ERR_NOMEM;
+    }
     if (0 == nchanged) {
         PMIX_GDS_SHMEM3_VOUT(
             "%s: namespace=%s restated %zu job value%s, none of them "
@@ -4792,15 +4805,56 @@ server_add_job_data(
         return PMIX_SUCCESS;
     }
 
+    /* Measure the payload before sizing the segment for it.
+     *
+     * Every term below this is a per-entry CONSTANT, and the values are
+     * copied into the segment twice - once by the value transfer and
+     * again by pmix_hash_store(), which makes its own copy. So an
+     * estimate built from the key count alone holds only while the
+     * values are small, and a host sending one large value - a topology
+     * XML, a fabric coordinate array, a regex for a big irregular
+     * cluster - runs the bump allocator off the end of the segment.
+     * That is not a soft failure: tma_alloc_request_will_overflow()
+     * aborts, and the process is the server every client on this node
+     * is talking to.
+     *
+     * The registration path measures its data for exactly this reason
+     * (see the note on pji->packed_size in
+     * prepare_shmem3_stores_for_local_job_data), and an update has to
+     * do the same or it is a smaller segment holding data of the same
+     * kind. */
+    size_t payload = 0;
+    {
+        pmix_buffer_t sizer;
+        PMIX_CONSTRUCT(&sizer, pmix_buffer_t);
+        for (size_t n = 0; n < nchanged; n++) {
+            pmix_status_t prc;
+            PMIX_BFROPS_PACK(prc, pmix_globals.mypeer, &sizer,
+                             &changed[n], 1, PMIX_INFO);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != prc)) {
+                PMIX_ERROR_LOG(prc);
+                PMIX_DESTRUCT(&sizer);
+                free(changed);
+                return prc;
+            }
+        }
+        payload = sizer.bytes_used;
+        PMIX_DESTRUCT(&sizer);
+    }
+
     /* Size it for what is being added rather than for the job. */
     seg_size = sizeof(pmix_gds_shmem3_shared_job_data_t);
     seg_size += pmix_keyindex_sizeof_storage(nchanged);
     seg_size += 2 * sizeof(pmix_list_t);
+    seg_size += sizeof(pmix_hash_table_t);
     seg_size += pmix_hash_table_sizeof_storage(1);
     seg_size += pmix_hash_sizeof_proc_storage();
     seg_size += nchanged * (sizeof(pmix_kval_t) + sizeof(pmix_value_t)
                             + pmix_hash_sizeof_key_entry(0)
                             + 4 * (PMIX_MAX_KEYLEN + 1));
+    /* Four copies of every key string and two of every value, on the
+     * same reasoning the registration estimate spells out. */
+    seg_size += 5 * payload;
     seg_size *= 4;   // the same empirical fluff the other estimates carry
     seg_size *= pmix_gds_shmem3_segment_size_multiplier;
 
@@ -4812,6 +4866,7 @@ server_add_job_data(
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
+        free(changed);
         return rc;
     }
     /* one hash-table element: everything here is job-level, so it all
