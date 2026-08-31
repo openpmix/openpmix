@@ -984,11 +984,14 @@ static inline bool is_private_keyindex(pmix_keyindex_t *kidx)
  * So a private index holds only the keys whose ids genuinely cannot be
  * agreed in advance: the non-reserved ones, minted per process in order
  * of first encounter. The two are told apart by the id itself, which is
- * below PMIX_INDEX_BOUNDARY for exactly the reserved half.
+ * below the boundary for exactly the reserved half - the boundary THAT
+ * INDEX was numbered against, which it carries, because the process
+ * reading a segment need not be the release that wrote it.
  *
  * Returns the global entry for a reserved key, or NULL to say "not
  * reserved - use the private index". */
-static pmix_regattr_input_t *resolve_reserved(uint32_t inid, const char *key)
+static pmix_regattr_input_t *resolve_reserved(uint32_t inid, const char *key,
+                                             uint32_t boundary)
 {
     pmix_regattr_input_t *ptr;
 
@@ -1005,7 +1008,12 @@ static pmix_regattr_input_t *resolve_reserved(uint32_t inid, const char *key)
      * without synchronization. */
     if (UINT32_MAX != inid) {
         /* an id below the boundary is reserved by definition */
-        if ((uint32_t) PMIX_INDEX_BOUNDARY <= inid) {
+        /* THE WRITER'S boundary, carried on the index, not this
+         * build's - see the note on pmix_keyindex_t.boundary. An older
+         * peer numbered its private keys from a lower one, and reading
+         * them against ours reports them as whatever attribute we have
+         * at that id. */
+        if (boundary <= inid) {
             return NULL;
         }
         if (NULL == pmix_globals.dict_by_id) {
@@ -1028,6 +1036,7 @@ static pmix_regattr_input_t *resolve_reserved(uint32_t inid, const char *key)
      * another process numbered the same key, so they are not an answer
      * here. */
     if (NULL != ptr && (uint32_t) PMIX_INDEX_BOUNDARY <= ptr->index) {
+        /* our own global index, so our own boundary is the right test */
         return NULL;
     }
     return ptr;
@@ -1043,11 +1052,11 @@ static pmix_regattr_input_t* lookup_key(uint32_t inid,
     pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
 
     if (is_private_keyindex(kidx)) {
-        ptr = resolve_reserved(inid, key);
+        ptr = resolve_reserved(inid, key, keyindex->boundary);
         if (NULL != ptr) {
             return ptr;
         }
-        if (UINT32_MAX != inid && (uint32_t) PMIX_INDEX_BOUNDARY > inid) {
+        if (UINT32_MAX != inid && keyindex->boundary > inid) {
             /* a reserved id this build does not know - a peer that has
              * attributes we do not. Nothing to translate it to, which is
              * the honest answer rather than a wrong one. */
