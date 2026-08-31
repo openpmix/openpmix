@@ -51,6 +51,45 @@ struct pmix_namespace_t;
 /* backdoor to base verbosity */
 PMIX_EXPORT extern int pmix_gds_base_output;
 
+/* Which realm answers a fetch.
+ *
+ * A request is answered out of exactly one of these, and WHICH ONE IS
+ * COMPUTED ONCE PER FETCH, by pmix_gds_base_request_realm() in
+ * src/mca/gds/base. Nothing else may work it out for itself.
+ *
+ * It used to be worked out twice - once by process_request() from the
+ * directives it had parsed, and again by each gds module from the key
+ * and the three realm qualifiers - and the two did not agree. They
+ * disagreed about PMIX_JOB_INFO, which the client honored by clearing
+ * the realm a key had selected and the modules had never heard of, so a
+ * request could be judged a plain job-level lookup by the client and
+ * answered from the session realm by the datastore. That is a wrong
+ * answer to the caller, and on a module that reports is_tsafe it is
+ * also a session read on the application's thread, which is the one
+ * thread the session structures are not protected against.
+ *
+ * PMIX_REALM_UNDEF means "not computed yet" - PMIX_GDS_FETCH_KV fills
+ * it in from the request and caches it on the caddy, so a caller that
+ * has already worked it out does not pay for it twice and one that has
+ * not cannot forget.
+ */
+typedef enum {
+    PMIX_REALM_UNDEF = 0,
+    PMIX_REALM_JOB,
+    PMIX_REALM_SESSION,
+    PMIX_REALM_NODE,
+    PMIX_REALM_APP
+} pmix_realm_t;
+
+/* Which realm answers this request. THE ONLY place that decides it;
+ * implemented in src/mca/gds/base/gds_base_fns.c and declared here
+ * because PMIX_GDS_FETCH_KV below is what guarantees it is asked once.
+ * Callers cache the answer on the pmix_cb_t they pass to that macro. */
+PMIX_EXPORT pmix_realm_t pmix_gds_base_request_realm(const char *key,
+                                                     const pmix_info_t info[],
+                                                     size_t ninfo);
+
+
 /**
  * Initialize the module. Returns an error if the module cannot
  * run, success if it can.
@@ -390,7 +429,8 @@ typedef pmix_status_t (*pmix_gds_base_module_fetch_fn_t)(struct pmix_peer_t *pee
                                                          const pmix_proc_t *proc,
                                                          pmix_scope_t scope, bool copy,
                                                          const char *key, pmix_info_t info[],
-                                                         size_t ninfo, pmix_list_t *kvs);
+                                                         size_t ninfo, pmix_realm_t realm,
+                                                         pmix_list_t *kvs);
 
 /* define a convenience macro for fetch key-val pairs based on peer,
  * passing a pmix_cb_t containing all the required info */
@@ -400,8 +440,16 @@ typedef pmix_status_t (*pmix_gds_base_module_fetch_fn_t)(struct pmix_peer_t *pee
         pmix_output_verbose(1, pmix_gds_base_output,                                           \
                             "[%s:%d] GDS FETCH KV WITH %s",                                    \
                             __FILE__,  __LINE__, _g->name);                                    \
+        /* Which realm answers this is computed ONCE per fetch and cached \
+         * here. A caller that already worked it out - the client parse - \
+         * has set it and this leaves it alone; one that has not cannot \
+         * forget, and the module is handed the answer rather than \
+         * deriving a second opinion from the same request. */           \
+        if (PMIX_REALM_UNDEF == (c)->realm) {                                                  \
+            (c)->realm = pmix_gds_base_request_realm((c)->key, (c)->info, (c)->ninfo);         \
+        }                                                                                      \
         (s) = _g->fetch((p), (c)->proc, (c)->scope, (c)->copy, (c)->key,                       \
-                        (c)->info, (c)->ninfo, &(c)->kvs);                                     \
+                        (c)->info, (c)->ninfo, (c)->realm, &(c)->kvs);                         \
     } while (0)
 
 /**

@@ -138,7 +138,7 @@ extern pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char
 extern pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *peer,
                                          const pmix_proc_t *proc, pmix_scope_t scope, bool copy,
                                          const char *key, pmix_info_t qualifiers[], size_t nqual,
-                                         pmix_list_t *kvs);
+                                         pmix_realm_t realm, pmix_list_t *kvs);
 
 extern pmix_status_t pmix_gds_hash_fetch_sessioninfo(pmix_peer_t *peer,
                                                      const char *key,

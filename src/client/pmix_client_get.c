@@ -52,6 +52,7 @@
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/gds.h"
+#include "src/mca/gds/base/base.h"
 #include "src/mca/pcompress/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
@@ -178,17 +179,6 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (NULL != key) {
-        /* see if they are asking about a specific type of info */
-        if (pmix_check_node_info(key)) {
-            lg->nodeinfo = true;
-        } else if (pmix_check_app_info(key)) {
-            lg->appinfo = true;
-        } else if (pmix_check_session_info(key)) {
-            lg->sessioninfo = true;
-        }
-    }
-
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_GET_POINTER_VALUES)) {
             /* they want a pointer to the answer */
@@ -220,35 +210,14 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GET_REFRESH_CACHE)) {
             /* immediately query the server */
             lg->refresh_cache = PMIX_INFO_TRUE(&info[n]);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_JOB_INFO)) {
-            /* regardless of the default setting, they want us
-             * to get it from the job realm */
-            lg->nodeinfo = false;
-            lg->appinfo = false;
-            lg->sessioninfo = false;
-            /* have to let the loop continue in case there are
-             * other relevant directives - e.g., refresh_cache */
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO)) {
-            /* regardless of the default setting, they want us
-             * to get it from the node realm */
+            /* only that the caller named it - which realm it selects is
+             * decided once, below, by pmix_gds_base_request_realm() */
             lg->nodedirective = true;
-            lg->nodeinfo = true;
-            lg->appinfo = false;
-            lg->sessioninfo = false;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_APP_INFO)) {
-            /* regardless of the default setting, they want us
-             * to get it from the app realm */
             lg->appdirective = true;
-            lg->appinfo = true;
-            lg->nodeinfo = false;
-            lg->sessioninfo = false;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_INFO)) {
-            /* regardless of the default setting, they want us
-             * to get it from the session realm */
             lg->sessiondirective = true;
-            lg->sessioninfo = true;
-            lg->nodeinfo = false;
-            lg->appinfo = false;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
             /* the qualifier comes straight from the caller, so verify it
              * really carries a string before handing it to strdup */
@@ -423,11 +392,21 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
      * request somewhere other than the proc's own data. A hostname or
      * nodeid names a node to resolve first. A cache refresh is a round
      * trip by definition. */
+    /* Which realm answers this - ONCE, here, for the whole fetch. The
+     * datastore is handed this answer rather than deriving its own, and
+     * the three flags below are set FROM it so nothing in this file
+     * derives a second one either. */
+    lg->realm = pmix_gds_base_request_realm(key, info, ninfo);
+    lg->sessioninfo = (PMIX_REALM_SESSION == lg->realm);
+    lg->nodeinfo = (PMIX_REALM_NODE == lg->realm);
+    lg->appinfo = (PMIX_REALM_APP == lg->realm);
+
     lg->plain = (NULL != key &&
                  !lg->refresh_cache &&
-                 !lg->nodeinfo && !lg->nodedirective &&
-                 !lg->appinfo && !lg->appdirective &&
-                 !lg->sessioninfo && !lg->sessiondirective &&
+                 PMIX_REALM_JOB == lg->realm &&
+                 !lg->nodedirective &&
+                 !lg->appdirective &&
+                 !lg->sessiondirective &&
                  NULL == lg->hostname &&
                  UINT32_MAX == lg->nodeid);
 
@@ -598,6 +577,9 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
         return PMIX_ERR_NOMEM;
     }
     cb->lg = lg;
+    /* already worked out in process_request() - hand it over so
+     * PMIX_GDS_FETCH_KV does not work it out again */
+    cb->realm = lg->realm;
     cb->key = (char*)key;
     cb->info = (pmix_info_t*)info;
     cb->ninfo = ninfo;
@@ -779,6 +761,9 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         return PMIX_ERR_NOMEM;
     }
     cb->lg = lg;
+    /* already worked out in process_request() - hand it over so
+     * PMIX_GDS_FETCH_KV does not work it out again */
+    cb->realm = lg->realm;
     cb->key = (char*)key;
     cb->info = (pmix_info_t*)info;
     cb->ninfo = ninfo;
