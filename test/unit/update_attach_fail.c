@@ -268,6 +268,7 @@ int main(int argc, char **argv)
     bool flag = true;
     uint32_t grown = SECOND;
     char c;
+    bool completed = false;
 
     setvbuf(stdout, NULL, _IOLBF, 0);
 
@@ -378,7 +379,19 @@ int main(int argc, char **argv)
         fprintf(stdout, "        (client died on a signal)\n");
     }
 
+    completed = true;
+
 done:
+    if (!completed) {
+        /* Every early exit above lands here, and most of them happen
+         * BEFORE the case has reported anything - so without this the
+         * program returns 0 having asserted nothing. That is not a
+         * hypothetical: the client exiting at its first failed check
+         * makes the parent's next read() fail, which jumps here, and
+         * the run then printed the mismatch and still exited zero. A
+         * test that cannot fail is worse than no test. */
+        report("the exchange ran to completion", false);
+    }
     /* the parent's copy of the child's environment - the child got its
      * own through execve */
     if (NULL != client_env) {
