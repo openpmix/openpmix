@@ -158,6 +158,19 @@ Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.
 
 
+.. note::
+
+   **This is not the recommended way to revise a running job's data.** The API
+   does not forbid it |mdash| values registered here are pushed into every
+   namespace the server already holds, so a call carrying only changed values
+   does reach jobs that are already running |mdash| but what it expresses is
+   "these resources exist", not "this job's description has changed". A host
+   that means the latter should say so with
+   :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`,
+   passing a negative ``nlocalprocs``; that call names the namespace it
+   revises, whereas this one applies to all of them.
+
+
 NOTES
 -----
 
