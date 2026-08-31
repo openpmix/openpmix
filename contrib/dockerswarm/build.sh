@@ -112,8 +112,33 @@ prep_srcdir() {
         echo ">>> make distclean (source tree had an in-tree build)"
         make -C "$root" distclean >/dev/null 2>&1 || true
     fi
+    stale=""
     if [ ! -x "$root/configure" ] || [ "$root/configure.ac" -nt "$root/configure" ]; then
-        echo ">>> autogen.pl"
+        stale="configure.ac"
+    else
+        # A Makefile.am that has outrun the Makefile.in generated from it
+        # is just as stale, and is the case a branch adding a test hits.
+        # An in-tree build regenerates it on the spot, which is why the
+        # contributor guide says editing a Makefile.am needs no autogen -
+        # but the swarm builds VPATH against a READ-ONLY mount of this
+        # tree, so automake cannot run from inside the container. It
+        # fails with "automake-X.Y is missing" and takes the whole build
+        # down at whichever directory is out of date.
+        #
+        # A Makefile.am with no Makefile.in beside it is NOT stale: the
+        # framework "base" directories are included into their parent's
+        # Makefile rather than generating one of their own.
+        while IFS= read -r am; do
+            if [ -f "${am%.am}.in" ] && [ "$am" -nt "${am%.am}.in" ]; then
+                stale="${am#"$root"/}"
+                break
+            fi
+        done <<EOF
+$(find "$root" -name Makefile.am -not -path "$root/.git/*")
+EOF
+    fi
+    if [ -n "$stale" ]; then
+        echo ">>> autogen.pl ($stale is newer than what it generates)"
         ( cd "$root" && ./autogen.pl )
     fi
 }
