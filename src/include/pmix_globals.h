@@ -790,9 +790,10 @@ typedef struct {
      * and a rebuild of the info array - so it goes the ordinary way.
      *
      * It describes the REQUEST only. Whether this process may take the
-     * short circuit at all - the module's is_tsafe, the fast_get
-     * parameter, whether we are connected - is a separate question that
-     * try_local_fetch() asks for itself.
+     * short circuit at all - the module's is_tsafe, whether the
+     * PMIX_GET_ON_PROGRESS_THREAD development switch is set, whether we
+     * are connected - is a separate question that try_local_fetch()
+     * asks for itself.
      *
      * Computed at the end of process_request(), from everything parsed
      * above it. ANY NEW FIELD HERE that changes WHERE the library looks,

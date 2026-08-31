@@ -152,21 +152,6 @@ pmix_status_t pmix_register_params(void)
         PMIX_MCA_BASE_VAR_TYPE_INT,
         &pmix_hash_proc_alloc);
 
-    /* On. It only engages for a module that says its fetch is thread
-     * safe, which today is gds/shmem3 alone, and only for a plain keyed
-     * lookup - everything else takes the ordinary path regardless. Set
-     * it false to send every get through the progress thread, which is
-     * what to reach for if a datastore is suspected of answering
-     * differently depending on which thread asked. */
-    pmix_client_globals.fast_get = true;
-    (void) pmix_mca_base_var_register(
-        "pmix", "pmix", "client", "fast_get",
-        "Answer PMIx_Get on the calling thread when the assigned datastore "
-        "reports that its fetch is thread safe, rather than handing the "
-        "request to the progress thread (default: true)",
-        PMIX_MCA_BASE_VAR_TYPE_BOOL,
-        &pmix_client_globals.fast_get);
-
     /****   CLIENT: VERBOSE OUTPUT PARAMS   ****/
     (void) pmix_mca_base_var_register("pmix", "pmix", "client", "get_verbose",
                                       "Verbosity for client get operations",

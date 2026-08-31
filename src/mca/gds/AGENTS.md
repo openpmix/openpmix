@@ -390,9 +390,11 @@ golden rule does not usually bite here.
   entry point without first thread-shifting, unless the module's `is_tsafe`
   says otherwise. `shmem3` does say otherwise, and that is not theoretical:
   `try_local_fetch()` in `src/client/pmix_client_get.c` consults
-  `PMIX_GDS_FETCH_IS_TSAFE` on every keyed `PMIx_Get` and
-  `pmix_client_globals.fast_get` is on by default, so on a client that
-  module's `fetch` runs on the application's own thread. A module that
+  `PMIX_GDS_FETCH_IS_TSAFE` on every keyed `PMIx_Get`, so on a client
+  that module's `fetch` runs on the application's own thread. (Setting
+  `PMIX_GET_ON_PROGRESS_THREAD` in the environment forces the ordinary
+  thread-shifted path instead - a development switch for testing a
+  datastore both ways, not an MCA parameter.) A module that
   sets `is_tsafe` owns the synchronization for any process-local state its
   `fetch` walks — see the `is_tsafe` section in
   [`shmem3/AGENTS.md`](shmem3/AGENTS.md).

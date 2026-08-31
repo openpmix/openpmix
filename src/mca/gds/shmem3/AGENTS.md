@@ -166,10 +166,18 @@ exists.
 
 `pmix_shmem3_module.is_tsafe` is `true`, and that is not decorative.
 `try_local_fetch()` in [`src/client/pmix_client_get.c`](../../../client/pmix_client_get.c)
-tests it on every keyed `PMIx_Get`, and `pmix_client_globals.fast_get`
-defaults **on** — so on a client, `pmix_gds_shmem3_fetch()` normally runs
-on whatever thread called `PMIx_Get`, while the progress thread carries
-on underneath it.
+tests it on every keyed `PMIx_Get` — so on a client,
+`pmix_gds_shmem3_fetch()` normally runs on whatever thread called
+`PMIx_Get`, while the progress thread carries on underneath it.
+
+To take that path away and send every `PMIx_Get` through the progress
+thread, set `PMIX_GET_ON_PROGRESS_THREAD` in the environment (any value;
+only its presence is read). It is read once in `pmix_rte_init()`, and it
+is an environment variable rather than an MCA parameter on purpose: a
+user has no reason to ask for a slower answer, so it is not offered in
+`pmix_info`. Reach for it when a datastore is suspected of answering
+differently depending on which thread asked, or to exercise the ordinary
+path on a build where this module would short circuit past it.
 
 **There is no lock on that path, and that is the design.** A lock here is
 paid by every `PMIx_Get`, and a library pulling thousands of values

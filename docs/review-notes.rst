@@ -370,8 +370,7 @@ of its findings generalize past the component.
 ``is_tsafe`` **is a claim about the reader's thread, not about the data.**
 ``shmem3`` sets it, and ``try_local_fetch()`` in
 ``src/client/pmix_client_get.c`` consults it on every keyed ``PMIx_Get``
-with ``pmix_client_globals.fast_get`` defaulting **on** — so the module's
-``fetch`` runs on the application's own thread.  The justification
+— so the module's ``fetch`` runs on the application's own thread.  The justification
 recorded in the guide was that a fetch holds a reference on the job
 tracker and reads only data that is never written again.  That is true of
 what is *in* a segment, and of the job segment, and says nothing about the
