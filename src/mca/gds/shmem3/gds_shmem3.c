@@ -3505,10 +3505,11 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
          * pmix_gds_shmem3_get_job_shmem3_by_id(), which abort()s, and a
          * missing nspace reaches strcmp() with NULL.
          *
-         * Skip such a blob rather than failing - it is the same forward
-         * compatibility the unrecognized-key arm of the unpacker keeps,
-         * one level up. A segment kind we have never heard of is one we
-         * have no use for by construction. */
+         * Skip such a blob rather than failing - the same forward
+         * compatibility the unrecognized-key arm one level up keeps, and
+         * the one the fields of this blob get in
+         * unpack_shmem3_connection_info(). A segment kind we have never
+         * heard of is one we have no use for by construction. */
         if (PMIX_GDS_SHMEM3_JOB_ID != usb.smid &&
             PMIX_GDS_SHMEM3_SESSION_ID != usb.smid &&
             PMIX_GDS_SHMEM3_MODEX_ID != usb.smid) {
@@ -3844,13 +3845,20 @@ client_connect_to_shmem3_from_buffi(
             }
         }
         else {
+            /* A key this build has not been taught to read. Skip it.
+             *
+             * Refusing the whole delivery instead makes every future
+             * addition a flag day - and, at PMIx_Init, fails the init
+             * outright rather than degrading. It is the same rule the
+             * inner unpacker keeps for the fields of a seg blob, which
+             * the note in unpack_shmem3_connection_info() spells out;
+             * the two ends of one stream disagreed about it, and the
+             * comment in this file claiming they agreed was reading the
+             * inner one. */
             PMIX_GDS_SHMEM3_VOUT(
-                "%s:ERROR unexpected key=%s", __func__,
+                "%s: ignoring unrecognized key=%s", __func__,
                 (NULL == kval.key) ? "(null)" : kval.key
             );
-            rc = PMIX_ERR_BAD_PARAM;
-            PMIX_ERROR_LOG(rc);
-            break;
         }
         PMIX_DESTRUCT(&kval);
     };
