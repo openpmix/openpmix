@@ -647,4 +647,17 @@ PMIX_EXPORT void pmix_server_grp_member_left(const char *grpid, const pmix_proc_
  * of pmix_pending_nspace_requests, called from the same two sites. */
 PMIX_EXPORT void pmix_server_grp_check_pending(void);
 
+/* Does this entry belong somewhere other than a job's own job-level
+ * table - a map, a realm array, a programming-model key, or a lone key
+ * naming the session, node or app realm?
+ *
+ * Both paths by which a host revises a running job ask this, because
+ * both hand what they collect to PMIX_GDS_ADD_JOB_DATA, which files
+ * job-level VALUES. An entry that belongs to another realm cannot be
+ * filed there: it would be stored under its own key where no reader of
+ * its realm looks, and - since the "has this changed?" test also asks
+ * the job-level table - would count as changed on every restatement.
+ * See the note on the definition. */
+PMIX_EXPORT bool pmix_server_job_update_is_elsewhere(const pmix_info_t *entry);
+
 #endif // PMIX_SERVER_OPS_H

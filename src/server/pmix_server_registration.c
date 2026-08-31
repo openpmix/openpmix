@@ -86,7 +86,7 @@
  * a restated description exactly as it found it - which is what this
  * API did with all of it before it could update anything.
  */
-static bool job_update_is_elsewhere(const pmix_info_t *entry)
+bool pmix_server_job_update_is_elsewhere(const pmix_info_t *entry)
 {
     if (PMIX_CHECK_KEY(entry, PMIX_NSPACE) ||
         PMIX_CHECK_KEY(entry, PMIX_SESSION_ID) ||
@@ -121,7 +121,7 @@ static bool add_job_update(pmix_info_t **array, size_t *n,
     if (0 == strlen(entry->key)) {
         return true;
     }
-    if (job_update_is_elsewhere(entry)) {
+    if (pmix_server_job_update_is_elsewhere(entry)) {
         return true;
     }
     for (i = 0; i < *n; i++) {
