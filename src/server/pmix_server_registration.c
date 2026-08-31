@@ -51,6 +51,41 @@
 #include "pmix_server_ops.h"
 #include "src/client/pmix_client_ops.h"
 
+/* Collect one job-level entry an update carried, for the single
+ * PMIX_GDS_ADD_JOB_DATA fan-out below.
+ *
+ * Borrowed views of the caller's array - the datastores copy whatever
+ * they keep, and this array does not outlive the call. Later entries
+ * replace earlier ones with the same key, so a host that names a key
+ * twice in one call gets the last word rather than two stores.
+ *
+ * Returns false only on allocation failure.
+ */
+static bool add_job_update(pmix_info_t **array, size_t *n,
+                           pmix_info_t *entry)
+{
+    pmix_info_t *tmp;
+    size_t i;
+
+    if (0 == strlen(entry->key)) {
+        return true;
+    }
+    for (i = 0; i < *n; i++) {
+        if (PMIX_CHECK_KEY(&(*array)[i], entry->key)) {
+            memcpy(&(*array)[i], entry, sizeof(pmix_info_t));
+            return true;
+        }
+    }
+    tmp = (pmix_info_t *) realloc(*array, (*n + 1) * sizeof(pmix_info_t));
+    if (NULL == tmp) {
+        return false;
+    }
+    *array = tmp;
+    memcpy(&(*array)[*n], entry, sizeof(pmix_info_t));
+    *n += 1;
+    return true;
+}
+
 static void _register_nspace(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
@@ -72,6 +107,8 @@ static void _register_nspace(int sd, short args, void *cbdata)
     bool prev_all_reg;
     pmix_rank_t rank;
     size_t idpos;
+    pmix_info_t *jupdates = NULL;
+    size_t njupdates = 0;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
@@ -198,7 +235,38 @@ static void _register_nspace(int sd, short args, void *cbdata)
                     }
                 } else if (PMIX_CHECK_KEY(&cd->info[i], PMIX_JOB_INFO_ARRAY)) {
                     if (nptr->job_info_recvd) {
-                        // already have the job-level info for this namespace
+                        /* We already hold this namespace's job-level
+                         * info, so this is a RESTATEMENT of it rather
+                         * than the first word - which is one of the two
+                         * shapes an update is allowed to take (see
+                         * PMIx_server_register_nspace(3)). Treat its
+                         * contents as job-level updates: the datastores
+                         * drop every entry that matches what they already
+                         * answer, so restating an unchanged description
+                         * reaches the end of this and does nothing.
+                         *
+                         * Dropping it here instead is what made this API
+                         * unable to update job data at all - the very
+                         * thing the negative nlocalprocs form exists
+                         * for. */
+                        if (PMIX_DATA_ARRAY == cd->info[i].value.type &&
+                            NULL != cd->info[i].value.data.darray &&
+                            NULL != cd->info[i].value.data.darray->array) {
+                            iptr = (pmix_info_t *) cd->info[i].value.data.darray->array;
+                            ninfo = cd->info[i].value.data.darray->size;
+                            for (m = 0; m < ninfo; m++) {
+                                /* the leading entry names the nspace this
+                                 * array describes; it is not a value */
+                                if (PMIX_CHECK_KEY(&iptr[m], PMIX_NSPACE)) {
+                                    continue;
+                                }
+                                if (!add_job_update(&jupdates, &njupdates,
+                                                    &iptr[m])) {
+                                    rc = PMIX_ERR_NOMEM;
+                                    goto release;
+                                }
+                            }
+                        }
                         continue;
                     }
                     // first entry is the nspace, followed by the job info
@@ -211,7 +279,35 @@ static void _register_nspace(int sd, short args, void *cbdata)
                      * so a second update carrying job info cached the whole
                      * array all over again */
                     nptr->job_info_recvd = true;
+                } else {
+                    /* A plain job-level key. This arm did not exist, so
+                     * every such entry was silently dropped - which is
+                     * why an update sent this way appeared to do nothing
+                     * whatever the host passed. */
+                    if (!add_job_update(&jupdates, &njupdates, &cd->info[i])) {
+                        rc = PMIX_ERR_NOMEM;
+                        goto release;
+                    }
                 }
+            }
+        }
+        /* Push whatever job-level values this update carried into EVERY
+         * module that holds this namespace, and let them tell the
+         * clients already reading it.
+         *
+         * A fan-out rather than a store through one module, for the
+         * reason PMIX_GDS_ADD_JOB_DATA exists: a server assigns itself
+         * hash, so its own copy of a namespace's job data lives there,
+         * while the segments its local clients read are shmem3's. The
+         * arms above reach only the first of those, so an update sent
+         * this way could never reach a client's own datastore. */
+        if (0 < njupdates) {
+            pmix_status_t urc;
+            PMIX_GDS_ADD_JOB_DATA(urc, cd->proc.nspace, jupdates, njupdates);
+            if (PMIX_SUCCESS != urc) {
+                PMIX_ERROR_LOG(urc);
+                rc = urc;
+                goto release;
             }
         }
         rc = PMIX_SUCCESS;
@@ -405,6 +501,11 @@ restore:
     nptr->all_registered = prev_all_reg;
 
 release:
+    /* borrowed views of cd->info, so the array goes and its entries do
+     * not. Every exit from the update branch above reaches here. */
+    if (NULL != jupdates) {
+        free(jupdates);
+    }
     cd->opcbfunc(rc, cd->cbdata);
     PMIX_RELEASE(cd);
 }

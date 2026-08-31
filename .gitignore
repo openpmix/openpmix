@@ -336,6 +336,7 @@ test/unit/tool_evcache
 test/unit/event_forward
 test/unit/session_update
 test/unit/update_attach_fail
+test/unit/job_data_update
 test/unit/pgpu_visible_devices
 test/unit/pnet_assigned_devices
 test/unit/pnet_envar_blob
