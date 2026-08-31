@@ -643,11 +643,29 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
         /* add it to the queue */
         pmix_list_append(&(queue->peer)->send_queue, &snd->super);
     }
-    /* ensure the send event is active */
+    /* Ensure the send event is active.
+     *
+     * Only claim it is if it really became so. A peer is on
+     * pmix_server_globals.clients and has its sd from the moment the
+     * connection is accepted, but its send_event is not assigned a base
+     * until the handshake completes - so a send posted in that window
+     * reaches here, passes the sd test above, and finds an event
+     * libevent will not take ("event_add: event has no event_base
+     * set"). Recording that as active is what makes the failure
+     * permanent rather than transient: the flag says an event will
+     * drain this peer, no event ever fires, and this message and every
+     * one queued behind it sit on send_msg for the life of the peer.
+     * A collective involving it then never completes and nothing says
+     * why.
+     *
+     * Leaving the flag false keeps the message queued and lets the next
+     * send - or the connection completing, which activates a pending
+     * one - try again against an event that by then has a base. */
     if (!(queue->peer)->send_ev_active) {
-        (queue->peer)->send_ev_active = true;
         PMIX_POST_OBJECT(queue->peer);
-        pmix_event_add(&(queue->peer)->send_event, 0);
+        if (0 == pmix_event_add(&(queue->peer)->send_event, 0)) {
+            (queue->peer)->send_ev_active = true;
+        }
     }
     PMIX_RELEASE(queue);
     PMIX_POST_OBJECT(snd);
@@ -749,11 +767,14 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
         /* add it to the queue */
         pmix_list_append(&ms->peer->send_queue, &snd->super);
     }
-    /* ensure the send event is active */
+    /* ensure the send event is active - see the note on the same
+     * sequence in pmix_ptl_base_send() for why the flag follows the
+     * event rather than leading it */
     if (!ms->peer->send_ev_active) {
-        ms->peer->send_ev_active = true;
         PMIX_POST_OBJECT(snd);
-        pmix_event_add(&ms->peer->send_event, 0);
+        if (0 == pmix_event_add(&ms->peer->send_event, 0)) {
+            ms->peer->send_ev_active = true;
+        }
     }
 
     /* cleanup */
