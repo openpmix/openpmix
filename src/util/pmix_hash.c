@@ -459,6 +459,37 @@ static pmix_status_t make_copy(pmix_regattr_input_t *p,
 
 // TODO(skg) We may have to provide a different fetch entry point with different
 // semantics for gds shmem to further reduce memory usage. For now this seems to
+/* Give back everything appended at or after "mark".
+ *
+ * A fetch either contributes its entries or contributes none. The
+ * caller's list is shared across a whole walk - gds/shmem3 fetches each
+ * segment of a chain onto the same list - so a fetch that gives up part
+ * way must take back what it put there, and only what it put there.
+ *
+ * Leaving them is not a leak; the list is destructed either way. It is
+ * worse than a leak. The caller filters what a fetch returns - dropping
+ * keys a tombstone says are deleted, and keys a newer segment already
+ * answered - and it runs those filters only when the fetch reports
+ * success. Entries left behind by a failure therefore skip both: a
+ * deleted key comes back, and a superseded value comes back beside the
+ * one that replaced it. The second is the worse of the two, because
+ * process_values() decides between "the value" and "an aggregate of
+ * everything" by counting the list - so a scalar get returns a data
+ * array instead.
+ */
+static void give_back(pmix_list_t *kvals, size_t mark)
+{
+    pmix_kval_t *kv;
+
+    while (pmix_list_get_size(kvals) > mark) {
+        kv = (pmix_kval_t *) pmix_list_remove_last(kvals);
+        if (NULL == kv) {
+            break;
+        }
+        PMIX_RELEASE(kv);
+    }
+}
+
 // work for our current use case.
 pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                               pmix_rank_t rank,
@@ -547,12 +578,20 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
         /* if the key is NULL, then the user wants -all- data
          * put by the specified rank */
         if (NULL == key) {
+            /* what this fetch adds, so it can take it back if it cannot
+             * finish - see give_back() */
+            const size_t mark = pmix_list_get_size(kvals);
             /* copy the data */
             for (n=0; n < proc_data->data->size; n++) {
                 hv = (pmix_dstor_t*)pmix_pointer_array_get_item(proc_data->data, n);
                 if (NULL != hv) {
                     p = pmix_hash_lookup_key(hv->index, NULL, keyindex);
                     if (NULL == p) {
+                        /* an id this build cannot translate - a peer
+                         * with attributes we do not have. Contribute
+                         * nothing rather than a prefix of what this
+                         * table holds. */
+                        give_back(kvals, mark);
                         return PMIX_ERR_NOT_FOUND;
                     }
                     pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
@@ -573,6 +612,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                     }
                     rc = make_copy(p, hv, kvals, proc_data, keyindex);
                     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                        give_back(kvals, mark);
                         return rc;
                     }
                 }
