@@ -404,6 +404,33 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         memcpy(&lg->p, &procs[0], sizeof(pmix_proc_t));
         PMIX_PROC_FREE(procs, nprocs);
     }
+
+    /* Settle whether this is a plain keyed lookup - see lg->plain.
+     *
+     * Everything it depends on has been parsed above, so this is the
+     * last thing done and it costs one store. It is HERE, rather than
+     * where it is consumed, for two reasons. The realm classification
+     * is already done - pmix_check_node_info() and its siblings ran at
+     * the top of this function - so consulting it again would be free
+     * only if it were not, in fact, another pass over the key. And a
+     * contributor adding a qualifier is editing the loop above, not
+     * try_local_fetch(), which is where this test used to live and why
+     * it was easy to add one without ever meeting the question.
+     *
+     * A NULL key asks for everything the proc put, which is an
+     * aggregate across scopes rather than a lookup. The realm flags -
+     * whether inferred from the key or stated by a directive - send the
+     * request somewhere other than the proc's own data. A hostname or
+     * nodeid names a node to resolve first. A cache refresh is a round
+     * trip by definition. */
+    lg->plain = (NULL != key &&
+                 !lg->refresh_cache &&
+                 !lg->nodeinfo && !lg->nodedirective &&
+                 !lg->appinfo && !lg->appdirective &&
+                 !lg->sessioninfo && !lg->sessiondirective &&
+                 NULL == lg->hostname &&
+                 UINT32_MAX == lg->nodeid);
+
     /* indicate that everything was okay */
     return PMIX_SUCCESS;
 }
@@ -436,18 +463,20 @@ static bool try_local_fetch(pmix_cb_t *cb, pmix_get_logic_t *lg)
 {
     pmix_status_t rc;
 
-    if (!pmix_client_globals.fast_get) {
+    /* Two separate questions, and keeping them apart is the point.
+     *
+     * Is the REQUEST answerable here? process_request() settled that
+     * when it parsed the request, and lg->plain carries the answer -
+     * see the note on that field. The list of things that disqualify a
+     * request used to be written out here, one function away from the
+     * parse that produces them, which is how a qualifier could be added
+     * without anyone meeting the question. */
+    if (!lg->plain) {
         return false;
     }
-    /* A NULL key is "everything this proc put", which is an aggregate
-     * across scopes rather than a lookup; the realm directives send the
-     * request somewhere other than the proc's own data, and resolving
-     * them takes further fetches and an info-array rebuild that belong
-     * on the progress thread. */
-    if (NULL == cb->key || lg->refresh_cache || lg->nodeinfo || lg->appinfo
-        || lg->sessioninfo || lg->nodedirective || lg->appdirective
-        || lg->sessiondirective || NULL != lg->hostname
-        || UINT32_MAX != lg->nodeid) {
+    /* And may THIS PROCESS take the short circuit at all? That is about
+     * our own state rather than the request, so it is asked here. */
+    if (!pmix_client_globals.fast_get) {
         return false;
     }
     if (pmix_client_globals.singleton
