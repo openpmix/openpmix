@@ -203,7 +203,17 @@ static void _register_nspace(int sd, short args, void *cbdata)
          * in our hash datastore until someone
          * requests it */
         gds = pmix_globals.mypeer->nptr->compat.gds;
-        if (NULL != gds && NULL != gds->store) {
+        /* Deliberately NOT gated on gds->store.
+         *
+         * Only two of the arms below call it; the rest collect job-level
+         * values for the fan-out afterwards, which does not use gds at
+         * all. Gating the whole walk on that slot meant a module that
+         * leaves it NULL - and gds/shmem3 does - collected nothing,
+         * fanned out nothing and returned PMIX_SUCCESS, so the host's
+         * update silently did nothing. That we are assigned "hash"
+         * today, and hash has a store, is a coincidence the neighbouring
+         * file already warns about relying on. */
+        {
             /* default the target to the job level. A PMIX_PROC_INFO_ARRAY
              * narrows it to the rank that array describes, but the other
              * arms below are job-level updates that carry no rank of their
@@ -213,6 +223,13 @@ static void _register_nspace(int sd, short args, void *cbdata)
             PMIX_LOAD_PROCID(&proc, cd->proc.nspace, PMIX_RANK_WILDCARD);
             for (i=0; i < cd->ninfo; i++) {
                 if (PMIX_CHECK_KEY(&cd->info[i], PMIX_PROC_INFO_ARRAY)) {
+                    /* this arm stores through the module - say so rather
+                     * than quietly dropping what the host sent */
+                    if (NULL == gds || NULL == gds->store) {
+                        rc = PMIX_ERR_NOT_SUPPORTED;
+                        PMIX_ERROR_LOG(rc);
+                        goto release;
+                    }
                     /* the type has to be checked before the darray member
                      * of the union is read: an entry carrying this key with
                      * any other type hands us whatever that member happens
@@ -270,6 +287,11 @@ static void _register_nspace(int sd, short args, void *cbdata)
                         }
                     }
                 } else if (PMIX_CHECK_KEY(&cd->info[i], PMIX_GROUP_CONTEXT_ID)) {
+                    if (NULL == gds || NULL == gds->store) {
+                        rc = PMIX_ERR_NOT_SUPPORTED;
+                        PMIX_ERROR_LOG(rc);
+                        goto release;
+                    }
                     PMIX_KVAL_NEW(kv, cd->info[i].key);
                     if (PMIX_UNLIKELY(NULL == kv)) {
                         rc = PMIX_ERR_NOMEM;
