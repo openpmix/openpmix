@@ -486,6 +486,117 @@ crashing the same way is one bug in what they all walk, not nine bugs in
 nine doorways — and a screen at the doorway costs a maintenance burden
 forever while the fix underneath costs nothing after the day it lands.
 
+2026-08-30 — writing the shmem3 document
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This was not a review pass.  The task was to write
+:doc:`how-things-work/shmem3` — the architecture of the shared-memory
+datastore, how its data is written and updated, why none of it takes a
+lock, and a step-by-step account of ``PMIx_Get``.  It turned up four
+defects, which is the first thing worth carrying: **having to state
+plainly what code does is a review technique.**  Prose has no ``else``
+branch to hide in.  Three of the four were found not by reading for
+faults but by trying to write a true sentence and discovering there
+wasn't one.
+
+**A test that cannot fail.**  The strongest lesson came from the
+verification rather than the code.  ``job_data_update`` was run against
+a deliberately broken build to confirm it *could* fail.  It printed
+exactly the right diagnosis — "never saw the updated value in its own
+store (last read 11, wanted 22)" — and then reported "2 passed, 0
+failed" and exited **0**.  The client had exited at its first failed
+check, which made the parent's next ``read()`` fail, which jumped to the
+cleanup label before the final ``report()``.  With ``npass`` and
+``nfail`` both zero, a run that asserted nothing was indistinguishable
+from a run that passed.  ``test/unit/session_update`` had carried the
+same hole since it was written, so it had been able to pass while
+asserting nothing for as long as it had been in ``make check``.
+
+Two rules come out of that, and neither is the obvious one.  The first
+is that **the A/B check is the exit status, not the output**: a harness
+that prints a complaint and exits zero has told you nothing, and reading
+the printed complaint is exactly how it fools you.  The second is that
+the fork-and-exec test shape has a structural hazard — the child's
+failure arrives as an *I/O error in the parent*, on the path that skips
+the reporting — so any test of that shape needs a sentinel set after the
+last assertion and checked at the cleanup label.  All three were fixed
+that way.
+
+**A decision made by a proxy mis-decides the first case that does not
+fit it.**  ``shmem3_attach()`` had to choose what a failed fixed-address
+map costs.  During ``PMIx_Init`` there is a move to make — fall back to
+``gds/hash`` and re-request the job data in that format — and dropping
+the job tracker is part of taking it.  Afterwards there is no such move.
+The code decided which case it was in by asking **which segment** had
+failed, sparing the modex alone: a true proxy when the modex was the
+only post-init delivery anyone had hit, and wrong the moment job and
+session updates started arriving the same way.  A session update that
+failed to map took down the tracker owning the segments the client had
+been reading since init.  The three entry points already knew which case
+they were; they now say so.  ``openpmix#4156`` reached by a different
+delivery.
+
+**An "else"-less dispatch silently drops the general case.**
+``PMIx_server_register_nspace()`` with a negative ``nlocalprocs`` is the
+documented way to revise a running job.  The branch handled three keys
+and had no arm for anything else, so a plain job-level key was read and
+discarded; a ``PMIX_JOB_INFO_ARRAY`` was skipped outright once the
+namespace had job info, which for a registered namespace is always; and
+the two arms that did store went through ``pmix_globals.mypeer``'s
+module — the server's own ``hash`` — reaching neither the segments a
+``shmem3`` client reads nor any client.  The API accepted the call,
+returned success, and did nothing observable.  It is now routed through
+``PMIX_GDS_ADD_JOB_DATA``, which is a fan-out precisely because more
+than one module holds a namespace's job data at once.
+
+**Fix a divergence in both components or in neither.**  A first pass at
+the job-data notification fixed ``shmem3``'s ``pack_update()`` alone.
+That was correct in isolation and was backed out: ``gds/hash`` had the
+same gap, and a client that reads late job data out of its own store
+under one module and not the other is a worse state than one that reads
+it from the server under both.  It landed once the rule an update obeys
+had been settled — an update carries either only the changed values or
+the whole description with something changed in it, and both cost the
+same, so each component drops every entry matching what it already
+answers.  For ``shmem3`` that is not an optimization: nothing is ever
+removed from its segment chain, so a segment published for an unchanged
+value is address space the job never gets back.
+
+**A knob that only makes things slower is not a user's to turn.**  The
+short circuit that answers a keyed ``PMIx_Get`` on the caller's thread
+was gated by an MCA parameter, ``pmix_client_fast_get``.  An MCA
+parameter is an offer to a user and appears in ``pmix_info``; no user
+has a reason to ask for a slower answer to the same question, and the
+name invites someone to turn it off in production on the theory that
+anything called "fast" is cutting a corner.  The mechanism was worth
+keeping — it is how a datastore suspected of answering differently
+depending on which thread asked gets tested both ways — so it became the
+``PMIX_GET_ON_PROGRESS_THREAD`` environment variable, documented where a
+developer looks rather than where a user does.  Worth recording as a
+question to ask of any new parameter: *what would a user be choosing
+between?*
+
+**Two claims of this pass's own were wrong, and both the same way.**
+The first declared the fence half of ``openpmix#4156`` still open, from
+reading ``shmem3_attach()``'s return value without following it one
+level up to the unpacker that already swallowed it.  The second said a
+failed update attach let ``PMIX_ERR_INVALID_NAMESPACE`` reach the
+application; that is what the *fetch* returns internally, and the
+application gets the right answer by way of a server round trip — the
+real cost is a round trip per lookup for the rest of the run, and seeing
+it at all takes ``PMIX_OPTIONAL``.  Both were a conclusion drawn from
+one frame of the stack.  **Read the caller before declaring a path
+unhandled, and follow the value out to where a user would see it before
+describing a symptom.**
+
+One documentation defect is recorded here because it had propagated:
+:doc:`how-things-work/modex` described a per-process key index that every
+caller passed ``NULL`` to, and a job-segment mechanism
+(``pack_server_keyindex_info()`` and its partners) that had been removed.
+``src/mca/gds/shmem3/AGENTS.md`` carried its own retired references.  A
+guide that outlives the code it describes is worse than no guide, because
+it is read as evidence.
+
 Review coverage as it stands
 ----------------------------
 
