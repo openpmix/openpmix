@@ -48,6 +48,10 @@ INPUT PARAMETERS
   count is required so that the server library can correctly determine when a
   collective operation is locally complete, even if the collective is called
   before all local processes have started.
+
+  A **negative** value has a distinct meaning: it declares the call to be an
+  *update* to a namespace the library already holds, rather than the
+  registration of a new one. See `Updating a registered namespace`_.
 * ``info``: Pointer to an array of :ref:`pmix_info_t(5) <man5-pmix_info_t>`
   structures conveying the session-, job-, application-, node-, and
   process-realm information for the namespace (see `DIRECTIVES`_). A ``NULL``
@@ -98,6 +102,52 @@ internal callback, posts the request, and waits for the progress thread to
 finish before returning. In this case the result is carried by the return value
 itself, and on success the function returns ``PMIX_OPERATION_SUCCEEDED`` to
 indicate that the operation completed inline and no callback will fire.
+
+
+Updating a registered namespace
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A job's description is not always fixed for the life of the job. Resources may
+be added to it, a value the host computed early may be refined, a node may be
+lost. **This API is the supported way to revise the job-level data of a
+namespace that is already registered**, and it is the method host environments
+should use.
+
+Pass a **negative** ``nlocalprocs``. The ``info`` array is then read as a
+revision of what the library holds for ``nspace`` rather than as a fresh
+registration, and no local process count is implied or changed.
+
+The array may take either of two shapes, and they are treated identically:
+
+* **only the values that changed**, or
+* **the whole description**, with some values in it different from before.
+
+Restating a value that has not changed is explicitly permitted and costs
+nothing: each datastore compares every entry against what it already answers
+for that key and discards the ones that match, so a host that periodically
+restates its full job description does not accumulate anything. Only entries
+that are new, or whose value differs, are stored and pushed to clients. This is
+not merely an optimization |mdash| the shared-memory datastore cannot reclaim
+what it has published, so a restatement that was treated as a change would grow
+a job's footprint for the life of the job.
+
+Values are applied at the **job level** (they are stored against
+``PMIX_RANK_WILDCARD``) and are pushed to every local client of that namespace
+that is already running, so a process that called
+:ref:`PMIx_Init(3) <man3-PMIx_Init>` before the update will see the revised
+value from its own datastore without having to ask the server for it.
+
+A ``PMIX_PROC_INFO_ARRAY`` in an update revises the data of the single process
+that array describes, and a ``PMIX_JOB_INFO_ARRAY`` is unwrapped and its
+contents applied as job-level values.
+
+.. note::
+
+   There is currently **no way to remove a key** through an update. An update
+   may add a key or change the value of an existing one; a key once registered
+   remains registered for the life of the namespace. Use
+   :ref:`PMIx_server_deregister_resources(3) <man3-PMIx_server_deregister_resources>`
+   for values that were registered as non-namespace resources.
 
 
 DIRECTIVES

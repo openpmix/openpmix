@@ -93,6 +93,23 @@ only within the storing process and is never shared with peers. To make data
 available to other processes, use :ref:`PMIx_Put(3) <man3-PMIx_Put>` followed by
 :ref:`PMIx_Commit(3) <man3-PMIx_Commit>` instead.
 
+.. warning::
+
+   **A host environment must not use this call to revise a job's data.** It is
+   sometimes reached for on a server because it appears to be a direct way to
+   put a value where clients will find it. It is not, and the reason is worth
+   being precise about: the value is stored in the calling process's own
+   datastore, which on a server is ``gds/hash``, while the data a local client
+   reads may live somewhere else entirely |mdash| the shared-memory segments of
+   ``gds/shmem3``, for instance. Nothing propagates the value to those, and no
+   client is told anything happened. The result is a server whose own answer to
+   a query differs from what its clients hold, with no error reported anywhere.
+
+   Job data is revised with
+   :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`,
+   passing a negative ``nlocalprocs``, which reaches every datastore holding
+   that namespace and pushes the change to the clients already running.
+
 
 .. include:: /man/no-blocking-in-progress-thread.rst
 
