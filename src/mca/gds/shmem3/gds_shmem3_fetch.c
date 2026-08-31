@@ -934,18 +934,23 @@ shmem3_fetch_from_job(
     const char *key,
     pmix_info_t qualifiers[],
     size_t nqual,
+    pmix_realm_t realm,
     pmix_list_t *kvs
 ) {
     PMIX_GDS_SHMEM3_VVOUT_HERE();
 
     pmix_peer_t *peer = (pmix_peer_t*)pr;
     pmix_status_t rc = PMIX_SUCCESS;
-    bool sessioninfo = false;
-    bool nodeinfo = false;
-    bool appinfo = false;
-    bool sidgiven = false;
-    bool nigiven = false;
-    bool apigiven = false;
+    /* Which realm answers this was decided before we were called - see
+     * pmix_gds_base_request_realm(). This module used to derive it again
+     * from the key and the three realm qualifiers, which is how it came
+     * to disagree with the client about PMIX_JOB_INFO: the client
+     * cleared the realm a key had selected, this end re-selected it, and
+     * a request the client had judged safe to answer on the application
+     * thread reached the session tracker there. */
+    const bool sessioninfo = (PMIX_REALM_SESSION == realm);
+    const bool nodeinfo = (PMIX_REALM_NODE == realm);
+    const bool appinfo = (PMIX_REALM_APP == realm);
 
     PMIX_HIDE_UNUSED_PARAMS(copy);
 
@@ -1063,34 +1068,6 @@ shmem3_fetch_from_job(
             PMIX_LIST_DESTRUCT(&rkvs);
         }
         return PMIX_SUCCESS;
-    }
-
-    for (size_t n = 0; n < nqual; n++) {
-        if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_SESSION_INFO)) {
-            sessioninfo = PMIX_INFO_TRUE(&qualifiers[n]);
-            sidgiven = true;
-        }
-        else if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_NODE_INFO)) {
-            nodeinfo = PMIX_INFO_TRUE(&qualifiers[n]);
-            nigiven = true;
-        }
-        else if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_APP_INFO)) {
-            appinfo = PMIX_INFO_TRUE(&qualifiers[n]);
-            apigiven = true;
-        }
-    }
-
-    // Check for node/app keys in the absence of corresponding qualifier.
-    if (NULL != key && !sidgiven && !nigiven && !apigiven) {
-        if (pmix_check_session_info(key)) {
-            sessioninfo = true;
-        }
-        else if (pmix_check_node_info(key)) {
-            nodeinfo = true;
-        }
-        else if (pmix_check_app_info(key)) {
-            appinfo = true;
-        }
     }
 
     if (sessioninfo) {
@@ -1323,6 +1300,7 @@ pmix_gds_shmem3_fetch(
     const char *key,
     pmix_info_t qualifiers[],
     size_t nqual,
+    pmix_realm_t realm,
     pmix_list_t *kvs
 ) {
     pmix_gds_shmem3_job_t *job = NULL;
@@ -1333,7 +1311,7 @@ pmix_gds_shmem3_fetch(
         return rc;
     }
     rc = shmem3_fetch_from_job(job, pr, proc, scope, copy, key,
-                               qualifiers, nqual, kvs);
+                               qualifiers, nqual, realm, kvs);
     PMIX_RELEASE(job);
     return rc;
 }

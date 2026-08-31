@@ -514,7 +514,7 @@ pmix_status_t pmix_gds_hash_fetch_appinfo(pmix_peer_t *peer,
 pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *pr,
                                   const pmix_proc_t *proc, pmix_scope_t scope, bool copy,
                                   const char *key, pmix_info_t qualifiers[], size_t nqual,
-                                  pmix_list_t *kvs)
+                                  pmix_realm_t realm, pmix_list_t *kvs)
 {
     pmix_peer_t *peer = (pmix_peer_t*)pr;
     pmix_job_t *trk;
@@ -528,9 +528,6 @@ pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *pr,
     bool sessioninfo = false;
     bool nodeinfo = false;
     bool appinfo = false;
-    bool sidgiven = false;
-    bool nigiven = false;
-    bool apigiven = false;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "%s pmix:gds:hash fetch %s for proc %s on scope %s on behalf of %s",
@@ -624,30 +621,13 @@ pmix_status_t pmix_gds_hash_fetch(struct pmix_peer_t *pr,
         return PMIX_SUCCESS;
     }
 
-    /* see if they are asking for session, node, or app-level info */
-    for (n = 0; n < nqual; n++) {
-        if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_SESSION_INFO)) {
-            sessioninfo = PMIX_INFO_TRUE(&qualifiers[n]);
-            sidgiven = true;
-        } else if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_NODE_INFO)) {
-            nodeinfo = PMIX_INFO_TRUE(&qualifiers[n]);
-            nigiven = true;
-        } else if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_APP_INFO)) {
-            appinfo = PMIX_INFO_TRUE(&qualifiers[n]);
-            apigiven = true;
-        }
-    }
-
-    /* check for session/node/app keys in the absence of corresponding qualifier */
-    if (NULL != key && !sidgiven && !nigiven && !apigiven) {
-        if (pmix_check_session_info(key)) {
-            sessioninfo = true;
-        } else if (pmix_check_node_info(key)) {
-            nodeinfo = true;
-        } else if (pmix_check_app_info(key)) {
-            appinfo = true;
-        }
-    }
+    /* Which realm answers this was decided before we were called - see
+     * pmix_gds_base_request_realm(). This module used to work it out
+     * again from the key and the three realm qualifiers, which is how
+     * it came to disagree with the client about PMIX_JOB_INFO. */
+    sessioninfo = (PMIX_REALM_SESSION == realm);
+    nodeinfo = (PMIX_REALM_NODE == realm);
+    appinfo = (PMIX_REALM_APP == realm);
 
     if (sessioninfo) {
         rc = pmix_gds_hash_fetch_sessioninfo(peer, key, trk, qualifiers, nqual, kvs);

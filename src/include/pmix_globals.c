@@ -556,6 +556,7 @@ static void lgcon(pmix_get_logic_t *p)
     p->immediate = false;
     p->refresh_cache = false;
     p->scope = PMIX_SCOPE_UNDEF;
+    p->realm = PMIX_REALM_UNDEF;
     p->sessioninfo = false;
     p->sessiondirective = false;
     p->sessionid = UINT32_MAX;
@@ -609,6 +610,9 @@ static void cbcon(pmix_cb_t *p)
     p->nvals = 0;
     PMIX_CONSTRUCT(&p->kvs, pmix_list_t);
     p->copy = false;
+    /* not computed yet - PMIX_GDS_FETCH_KV fills it in if the caller
+     * has not, so no caller can forget and no fetch computes it twice */
+    p->realm = PMIX_REALM_UNDEF;
     p->lg = NULL;
     p->timer_running = false;
     p->fabric = NULL;

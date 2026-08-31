@@ -54,6 +54,92 @@ static void fetch_shift(int sd, short args, void *cbdata)
     PMIX_WAKEUP_THREAD(&fc->lock);
 }
 
+/* Which realm answers this request. THE ONLY PLACE THIS IS DECIDED.
+ *
+ * Two things used to decide it independently: process_request() in
+ * src/client/pmix_client_get.c, from the directives it had parsed, and
+ * each gds module's fetch, from the key and the three realm
+ * qualifiers. They disagreed about PMIX_JOB_INFO - the client honored
+ * it by clearing the realm a key had selected, the modules had never
+ * heard of it - so a request could look like a plain job-level lookup
+ * to the client and be answered from the session realm by the
+ * datastore. Two consequences, one of which is a data race: the caller
+ * got an answer from a realm it had explicitly steered away from, and
+ * on an is_tsafe module the session structures were read from the
+ * application's thread, which is the one thread they are not protected
+ * against.
+ *
+ * The precedence, in one place so it cannot be read two ways:
+ *
+ *   1. A realm qualifier decides it. Later qualifiers override earlier
+ *      ones, and a qualifier set FALSE de-selects its realm without
+ *      handing the decision back to the key - "not the node realm" is
+ *      an answer, not an absence of one.
+ *   2. Failing that, the key decides it: a key that names a realm is
+ *      answered from that realm even though nothing said so.
+ *   3. Failing that, the job's own realm.
+ *
+ * A NULL key has no realm of its own - it is an aggregate of everything
+ * a proc put - and yields PMIX_REALM_JOB, which is where the whole-job
+ * walk starts. The callers that care about aggregates test for the NULL
+ * key themselves; this answers only "which realm".
+ */
+PMIX_EXPORT pmix_realm_t pmix_gds_base_request_realm(const char *key,
+                                                     const pmix_info_t info[],
+                                                     size_t ninfo)
+{
+    pmix_realm_t realm = PMIX_REALM_UNDEF;
+    bool given = false;
+    size_t n;
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_JOB_INFO)) {
+            realm = PMIX_REALM_JOB;
+            given = true;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_INFO)) {
+            realm = PMIX_INFO_TRUE(&info[n]) ? PMIX_REALM_SESSION : PMIX_REALM_JOB;
+            given = true;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO)) {
+            realm = PMIX_INFO_TRUE(&info[n]) ? PMIX_REALM_NODE : PMIX_REALM_JOB;
+            given = true;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_APP_INFO)) {
+            realm = PMIX_INFO_TRUE(&info[n]) ? PMIX_REALM_APP : PMIX_REALM_JOB;
+            given = true;
+        }
+    }
+    if (given) {
+        return realm;
+    }
+    if (NULL != key) {
+        if (pmix_check_session_info(key)) {
+            return PMIX_REALM_SESSION;
+        }
+        if (pmix_check_node_info(key)) {
+            return PMIX_REALM_NODE;
+        }
+        if (pmix_check_app_info(key)) {
+            return PMIX_REALM_APP;
+        }
+    }
+    return PMIX_REALM_JOB;
+}
+
+/* May this fetch run on the CALLER'S thread against an is_tsafe module?
+ *
+ * Only a keyed lookup that stays in the job's own realm. Resolving any
+ * other realm is further work - in gds/shmem3 it reaches the session
+ * tracker and the process-global sessions list, neither of which is
+ * synchronized against the progress thread - and a NULL key is an
+ * aggregate across scopes rather than a lookup.
+ *
+ * The realm is passed in rather than computed: by the time anyone asks
+ * this, it has already been worked out once for the fetch.
+ */
+static bool request_runs_inline(const char *key, pmix_realm_t realm)
+{
+    return (NULL != key && PMIX_REALM_JOB == realm);
+}
+
 pmix_status_t pmix_gds_base_fetch_kv_tsafe(struct pmix_peer_t *peer, pmix_cb_t *cb)
 {
     /* on the stack because we wait for it: PMIX_WAIT_THREAD holds this
@@ -63,10 +149,21 @@ pmix_status_t pmix_gds_base_fetch_kv_tsafe(struct pmix_peer_t *peer, pmix_cb_t *
     pmix_gds_fetch_caddy_t fc;
     pmix_status_t rc;
 
+    /* Work out the realm once, here, and leave it on the caddy: the
+     * fetch macro will not recompute what is already set, and the
+     * module is handed the answer rather than deriving its own. */
+    if (PMIX_REALM_UNDEF == cb->realm) {
+        cb->realm = pmix_gds_base_request_realm(cb->key, cb->info, cb->ninfo);
+    }
     PMIX_GDS_FETCH_IS_TSAFE(rc, peer);
-    if (PMIX_SUCCESS == rc || pmix_progress_thread_is_current()) {
-        /* the module may be read from anywhere, or we are already the
-         * thread that does every store */
+    if (PMIX_SUCCESS == rc && request_runs_inline(cb->key, cb->realm)) {
+        /* the module may be read from anywhere, and this request stays
+         * inside the job realm, where that is true */
+        PMIX_GDS_FETCH_KV(rc, peer, cb);
+        return rc;
+    }
+    if (pmix_progress_thread_is_current()) {
+        /* already the thread that does every store */
         PMIX_GDS_FETCH_KV(rc, peer, cb);
         return rc;
     }

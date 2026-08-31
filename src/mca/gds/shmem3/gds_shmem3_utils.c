@@ -145,32 +145,39 @@ out:
  * Not because a session-realm get is served somewhere else - it is
  * served right here, out of the session segments, by fetch_sessioninfo()
  * in gds_shmem3_fetch.c. What differs is the THREAD it arrives on. A
- * plain keyed get short-circuits onto the caller's own thread in
- * try_local_fetch() (src/client/pmix_client_get.c); that short circuit
- * is declined for anything carrying a realm - session, node or app -
- * because resolving one is not a plain lookup. get_data() may first have
- * to fetch the session id of some other proc and rebuild the info array
- * around it, which is progress-thread work. Declining the short circuit
- * means the ordinary thread-shifted path runs instead, so the very same
- * fetch reaches here - from the progress thread.
+ * request that stays inside the job realm may be answered on the
+ * caller's own thread, because this module reports is_tsafe; anything
+ * that reaches a realm is thread-shifted first, so the very same fetch
+ * reaches here from the progress thread.
  *
- * Both ways into fetch_sessioninfo() are covered, and neither depends on
- * the two sides classifying a key in the same order (they do not:
- * process_request() tries node, app, session; shmem3_fetch_from_job()
- * tries session, node, app). It does not matter, because ALL THREE realm
- * flags are in try_local_fetch()'s decline list, so a key that lands in
- * any realm declines whichever one it landed in. A PMIX_SESSION_INFO
- * qualifier sets lg->sessioninfo and lg->sessiondirective directly. The
- * whole-job read that also calls fetch_sessioninfo() has a NULL key,
- * which is declined too.
+ * WHAT DECIDES THAT is pmix_gds_base_request_is_plain() in
+ * src/mca/gds/base/gds_base_fns.c, and it is the only thing that
+ * decides it. Read its note before touching this. In particular it is
+ * NOT enough that try_local_fetch() (src/client/pmix_client_get.c)
+ * declines realm requests, and this comment used to say it was:
+ *
+ *   - try_local_fetch() is not the only door. pmix_gds_base_fetch_kv_tsafe()
+ *     runs a fetch inline on the caller's thread too, and consults no
+ *     pmix_get_logic_t at all - PMIx_Connect_nb uses it for a NULL-key
+ *     whole-job read, which calls fetch_sessioninfo() directly.
+ *   - the two ends classified a request differently. This end derives
+ *     the realm from the KEY; the client end derived it from the
+ *     directives it had parsed, and PMIX_JOB_INFO clears those. Such a
+ *     request looked plain to the client and landed here in the session
+ *     realm anyway.
+ *
+ * Both are now screened by the one predicate, which is made from the
+ * raw request so that neither end can re-derive it differently.
  *
  * Note as well that pmix_gds_shmem3_get_session_tracker() WRITES
- * job->session on its way through here, so an application thread
- * arriving would be a race on the tracker, not only on the list spine.
+ * job->session on its way through here, and xfer_sessioninfo() walks
+ * segments the progress thread may be replacing - so an application
+ * thread arriving is a use-after-free waiting to happen, not merely a
+ * torn read of the list spine.
  *
  * If that gating is ever relaxed to let a session lookup run on the
  * caller's thread, this list needs the same treatment joblock gives the
- * other one.
+ * other one, and job->session needs a reference held across the read.
  */
 pmix_gds_shmem3_session_t *
 pmix_gds_shmem3_find_session(

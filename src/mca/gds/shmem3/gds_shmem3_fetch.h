@@ -22,6 +22,7 @@ pmix_gds_shmem3_fetch(
     const char *key,
     pmix_info_t qualifiers[],
     size_t nqual,
+    pmix_realm_t realm,
     pmix_list_t *kvs
 );
 

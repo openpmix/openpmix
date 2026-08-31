@@ -769,6 +769,12 @@ typedef struct {
     bool immediate;
     bool refresh_cache;
     pmix_scope_t scope;
+    /* Which realm answers this request. Computed ONCE, by
+     * pmix_gds_base_request_realm(), at the end of process_request();
+     * the sessioninfo/nodeinfo/appinfo flags below are set FROM it
+     * rather than derived alongside it, so there is one answer and the
+     * rest of the client reads it. */
+    pmix_realm_t realm;
     bool sessioninfo;
     bool sessiondirective;
     uint32_t sessionid;
@@ -844,6 +850,11 @@ typedef struct {
     size_t nvals;
     pmix_list_t kvs;
     bool copy;
+    /* The realm this fetch is answered from, cached so it is computed
+     * once. PMIX_GDS_FETCH_KV fills it in when a caller has not; a
+     * caller that already knows (the client parse) sets it and the
+     * macro leaves it alone. */
+    pmix_realm_t realm;
     pmix_get_logic_t *lg;
     bool timer_running;
     pmix_fabric_t *fabric;
