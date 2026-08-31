@@ -255,6 +255,43 @@ static pmix_status_t hash_accept_update(pmix_buffer_t *buff)
     return PMIX_SUCCESS;
 }
 
+/* What a job-level value does BESIDES being stored.
+ *
+ * A few job-level keys are read back out of the namespace object rather
+ * than out of the datastore, and storing one without applying it leaves
+ * the library answering the new value from the store while every
+ * decision derived from it still uses the old one.
+ *
+ * PMIX_JOB_SIZE is the one that matters: nptr->nprocs is what bounds
+ * the per-rank walks in this module, and what pmix_server_fence.c
+ * compares against nlocalprocs to decide whether a job is entirely
+ * local. The two repair sites elsewhere in this file only fire when
+ * nprocs is still zero, so they cannot correct a value that is merely
+ * out of date.
+ *
+ * Shared so the registration that first stores a job description and
+ * the update that revises one cannot disagree about what a value means.
+ */
+static void apply_job_value_effects(pmix_namespace_t *nptr,
+                                    const pmix_info_t *info)
+{
+    if (PMIX_CHECK_KEY(info, PMIX_JOB_SIZE)) {
+        uint32_t sz = 0;
+        /* asked for rather than read out of the union: the value comes
+         * from a host, and one that sends the size as some other integer
+         * width would otherwise set nprocs from the wrong bytes */
+        if (PMIX_SUCCESS == PMIx_Value_get_number((pmix_value_t *)&info->value,
+                                                  &sz, PMIX_UINT32)) {
+            nptr->nprocs = sz;
+        }
+    } else if (PMIX_CHECK_KEY(info, PMIX_NUM_NODES) ||
+               PMIX_CHECK_KEY(info, PMIX_MAX_PROCS)) {
+        /* recorded by the caller that tracks which keys it was given */
+    } else {
+        pmix_iof_check_flags((pmix_info_t *)info, &nptr->iof_flags);
+    }
+}
+
 /* Does this job's internal table already answer "key" with this value? */
 static bool job_value_unchanged(pmix_job_t *trk, pmix_info_t *info)
 {
@@ -363,6 +400,10 @@ static pmix_status_t hash_add_job_data(const char *nspace,
             PMIX_ERROR_LOG(rc);
             return rc;
         }
+        /* and whatever this value means beyond being stored - a revised
+         * PMIX_JOB_SIZE has to reach nptr->nprocs, or the store answers
+         * the new size while every walk bounded by it uses the old one */
+        apply_job_value_effects(trk->nptr, &info[n]);
         nchanged++;
     }
     if (0 == nchanged) {
@@ -685,15 +726,13 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 /* if this is the job size, then store it in
                  * the nptr tracker and flag that we were given it */
                 if (PMIX_CHECK_KEY(&info[n], PMIX_JOB_SIZE)) {
-                    nptr->nprocs = info[n].value.data.uint32;
                     flags |= PMIX_HASH_JOB_SIZE;
                 } else if (PMIX_CHECK_KEY(&info[n], PMIX_NUM_NODES)) {
                     flags |= PMIX_HASH_NUM_NODES;
                 } else if (PMIX_CHECK_KEY(&info[n], PMIX_MAX_PROCS)) {
                     flags |= PMIX_HASH_MAX_PROCS;
-                } else {
-                    pmix_iof_check_flags(&info[n], &nptr->iof_flags);
                 }
+                apply_job_value_effects(nptr, &info[n]);
             }
         }
     }
