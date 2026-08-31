@@ -162,10 +162,26 @@ static pmix_status_t hash_pack_update(struct pmix_peer_t *pr,
         return PMIX_SUCCESS;
     }
     trk = pmix_gds_hash_get_tracker(peer->nptr->nspace, false);
-    if (NULL == trk || NULL == trk->session) {
+    if (NULL == trk) {
         return PMIX_SUCCESS;
     }
 
+    /* Job-level values added since this namespace was registered.
+     *
+     * These go first and unconditionally - a job need not be in a
+     * session at all, and the session walk below returns early when it
+     * is not, which would have dropped these with it. */
+    PMIX_LIST_FOREACH (kvptr, &trk->updates, pmix_kval_t) {
+        PMIX_BFROPS_PACK(rc, peer, buff, kvptr, 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+
+    if (NULL == trk->session) {
+        return PMIX_SUCCESS;
+    }
     PMIX_CONSTRUCT(&results, pmix_list_t);
     rc = pmix_gds_hash_xfer_sessioninfo(peer, trk->session, NULL, &results);
     if (PMIX_SUCCESS != rc) {
@@ -215,6 +231,20 @@ static pmix_status_t hash_accept_update(pmix_buffer_t *buff)
                 return rc;
             }
         }
+        else {
+            /* a job-level value the host added after we attached. It
+             * goes where hash_cache_job_info() would have put it had it
+             * been there at the time, and pmix_hash_store() replaces by
+             * key - so a notice that arrives twice, or one that restates
+             * what we already hold, lands on the same state. */
+            rc = pmix_hash_store(&trk->internal, PMIX_RANK_WILDCARD, &kv,
+                                 NULL, 0, NULL);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kv);
+                return rc;
+            }
+        }
         PMIX_DESTRUCT(&kv);
         cnt = 1;
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
@@ -225,6 +255,56 @@ static pmix_status_t hash_accept_update(pmix_buffer_t *buff)
     return PMIX_SUCCESS;
 }
 
+/* Does this job's internal table already answer "key" with this value? */
+static bool job_value_unchanged(pmix_job_t *trk, pmix_info_t *info)
+{
+    pmix_list_t kvs;
+    pmix_kval_t *cur;
+    bool same = false;
+
+    PMIX_CONSTRUCT(&kvs, pmix_list_t);
+    if (PMIX_SUCCESS == pmix_hash_fetch(&trk->internal, PMIX_RANK_WILDCARD,
+                                        info->key, NULL, 0, &kvs, NULL)) {
+        cur = (pmix_kval_t *) pmix_list_get_first(&kvs);
+        if (NULL != cur && NULL != cur->value) {
+            same = (PMIX_EQUAL == PMIx_Value_compare(cur->value,
+                                                     &info->value));
+        }
+    }
+    PMIX_LIST_DESTRUCT(&kvs);
+    return same;
+}
+
+/* Record a changed job-level value for the clients already running.
+ *
+ * Replaces by key rather than appending, so a host that keeps restating
+ * a value it keeps changing does not grow this list without bound - it
+ * is bounded by the number of distinct keys added, and each entry says
+ * what that key is NOW, which is all a client catching up needs.
+ */
+static pmix_status_t note_job_update(pmix_job_t *trk, pmix_info_t *info)
+{
+    pmix_kval_t *kv, *nxt;
+
+    PMIX_LIST_FOREACH_SAFE (kv, nxt, &trk->updates, pmix_kval_t) {
+        if (PMIX_CHECK_KEY(kv, info->key)) {
+            pmix_list_remove_item(&trk->updates, &kv->super);
+            PMIX_RELEASE(kv);
+            break;
+        }
+    }
+    PMIX_KVAL_NEW(kv, info->key);
+    if (NULL == kv) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (PMIX_SUCCESS != PMIx_Value_xfer(kv->value, &info->value)) {
+        PMIX_RELEASE(kv);
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_list_append(&trk->updates, &kv->super);
+    return PMIX_SUCCESS;
+}
+
 /* Add job-level data to a namespace that is already registered.
  *
  * The global cache is copied into a namespace's tables once, at
@@ -232,6 +312,14 @@ static pmix_status_t hash_accept_update(pmix_buffer_t *buff)
  * already running. Job-level values live under PMIX_RANK_WILDCARD on
  * the internal table, which is where hash_cache_job_info() would have
  * put them had they been there at the time.
+ *
+ * A host may send only what changed or restate the whole description
+ * with a few values different in it - see PMIx_server_register_nspace(3)
+ * - so unchanged entries are dropped here. That costs a lookup per entry
+ * and buys two things: a restatement notifies nobody, and what IS
+ * notified is only what a client does not already have. gds/shmem3
+ * applies the same rule, and has a harder reason to: a segment it
+ * publishes is never reclaimed.
  */
 static pmix_status_t hash_add_job_data(const char *nspace,
                                        pmix_info_t info[],
@@ -240,7 +328,7 @@ static pmix_status_t hash_add_job_data(const char *nspace,
     pmix_job_t *trk;
     pmix_kval_t kv;
     pmix_status_t rc = PMIX_SUCCESS;
-    size_t n;
+    size_t n, nchanged = 0;
 
     if (NULL == nspace || 0 == ninfo || NULL == info) {
         return PMIX_SUCCESS;
@@ -250,6 +338,10 @@ static pmix_status_t hash_add_job_data(const char *nspace,
         return PMIX_SUCCESS;
     }
     for (n = 0; n < ninfo; n++) {
+        if (0 == strlen(info[n].key) ||
+            job_value_unchanged(trk, &info[n])) {
+            continue;
+        }
         /* a borrowed view, as the other job-level stores here use:
          * pmix_hash_store() copies what it keeps */
         kv.key = info[n].key;
@@ -260,6 +352,16 @@ static pmix_status_t hash_add_job_data(const char *nspace,
             PMIX_ERROR_LOG(rc);
             return rc;
         }
+        rc = note_job_update(trk, &info[n]);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        nchanged++;
+    }
+    if (0 == nchanged) {
+        /* a restatement that changed nothing - nobody needs telling */
+        return PMIX_SUCCESS;
     }
     /* and tell the clients already reading it */
     pmix_server_notify_gds_update(nspace);

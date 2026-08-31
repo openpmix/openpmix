@@ -101,6 +101,7 @@ static void htcon(pmix_job_t *p)
     p->gdata_added = false;
     PMIX_CONSTRUCT(&p->apps, pmix_list_t);
     PMIX_CONSTRUCT(&p->nodeinfo, pmix_list_t);
+    PMIX_CONSTRUCT(&p->updates, pmix_list_t);
     p->session = NULL;
 }
 static void htdes(pmix_job_t *p)
@@ -119,6 +120,7 @@ static void htdes(pmix_job_t *p)
     PMIX_DESTRUCT(&p->local);
     PMIX_LIST_DESTRUCT(&p->apps);
     PMIX_LIST_DESTRUCT(&p->nodeinfo);
+    PMIX_LIST_DESTRUCT(&p->updates);
     if (NULL != p->session) {
         PMIX_RELEASE(p->session);
     }
