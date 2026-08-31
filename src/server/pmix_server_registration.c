@@ -61,6 +61,57 @@
  *
  * Returns false only on allocation failure.
  */
+/* Does this entry belong somewhere other than the job's own job-level
+ * table?
+ *
+ * The registration path does not store every entry of a job
+ * description as a job-level value. The maps are parsed into node and
+ * proc lists; the arrays are decoded into the node, app, session and
+ * proc realms; the programming-model keys go to pmdl; and a lone key
+ * that names a session, node or app realm is filed in that realm. None
+ * of those is reachable from an update, and - just as important - none
+ * of them can be FOUND by the "has this changed?" test the datastores
+ * apply, because that test asks the job's wildcard table, which is not
+ * where any of them lives.
+ *
+ * So collecting them is worse than leaving them alone. Each would count
+ * as changed on every restatement, be stored under its own key as an
+ * opaque job-level value where no reader of its realm will ever look,
+ * and - in gds/shmem3, whose chain gives nothing back - publish a
+ * segment the job never reclaims. A host restating its whole job
+ * description, which PMIx_server_register_nspace(3) says costs
+ * nothing, would pay for one on every call.
+ *
+ * An update therefore revises job-level VALUES, and leaves the rest of
+ * a restated description exactly as it found it - which is what this
+ * API did with all of it before it could update anything.
+ */
+static bool job_update_is_elsewhere(const pmix_info_t *entry)
+{
+    if (PMIX_CHECK_KEY(entry, PMIX_NSPACE) ||
+        PMIX_CHECK_KEY(entry, PMIX_SESSION_ID) ||
+        PMIX_CHECK_KEY(entry, PMIX_NODE_MAP) ||
+        PMIX_CHECK_KEY(entry, PMIX_PROC_MAP) ||
+        PMIX_CHECK_KEY(entry, PMIX_JOB_INFO_ARRAY) ||
+        PMIX_CHECK_KEY(entry, PMIX_APP_INFO_ARRAY) ||
+        PMIX_CHECK_KEY(entry, PMIX_NODE_INFO_ARRAY) ||
+        PMIX_CHECK_KEY(entry, PMIX_SESSION_INFO_ARRAY) ||
+        PMIX_CHECK_KEY(entry, PMIX_PROC_INFO_ARRAY) ||
+        PMIX_CHECK_KEY(entry, PMIX_QUALIFIED_VALUE) ||
+        PMIX_CHECK_KEY(entry, PMIX_MODEL_LIBRARY_NAME) ||
+        PMIX_CHECK_KEY(entry, PMIX_PROGRAMMING_MODEL) ||
+        PMIX_CHECK_KEY(entry, PMIX_MODEL_LIBRARY_VERSION) ||
+        PMIX_CHECK_KEY(entry, PMIX_PERSONALITY)) {
+        return true;
+    }
+    /* the three realm tests the registration path applies to a lone
+     * key, so that an update classifies a key exactly as the
+     * registration that first stored it did */
+    return pmix_check_session_info(entry->key) ||
+           pmix_check_node_info(entry->key) ||
+           pmix_check_app_info(entry->key);
+}
+
 static bool add_job_update(pmix_info_t **array, size_t *n,
                            pmix_info_t *entry)
 {
@@ -68,6 +119,9 @@ static bool add_job_update(pmix_info_t **array, size_t *n,
     size_t i;
 
     if (0 == strlen(entry->key)) {
+        return true;
+    }
+    if (job_update_is_elsewhere(entry)) {
         return true;
     }
     for (i = 0; i < *n; i++) {
@@ -255,11 +309,10 @@ static void _register_nspace(int sd, short args, void *cbdata)
                             iptr = (pmix_info_t *) cd->info[i].value.data.darray->array;
                             ninfo = cd->info[i].value.data.darray->size;
                             for (m = 0; m < ninfo; m++) {
-                                /* the leading entry names the nspace this
-                                 * array describes; it is not a value */
-                                if (PMIX_CHECK_KEY(&iptr[m], PMIX_NSPACE)) {
-                                    continue;
-                                }
+                                /* add_job_update() drops the leading
+                                 * nspace entry, and everything else this
+                                 * array may carry that is not a job-level
+                                 * value - see job_update_is_elsewhere() */
                                 if (!add_job_update(&jupdates, &njupdates,
                                                     &iptr[m])) {
                                     rc = PMIX_ERR_NOMEM;

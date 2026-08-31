@@ -284,15 +284,14 @@ static bool job_value_unchanged(pmix_job_t *trk, pmix_info_t *info)
  */
 static pmix_status_t note_job_update(pmix_job_t *trk, pmix_info_t *info)
 {
-    pmix_kval_t *kv, *nxt;
+    pmix_kval_t *kv, *old, *nxt;
 
-    PMIX_LIST_FOREACH_SAFE (kv, nxt, &trk->updates, pmix_kval_t) {
-        if (PMIX_CHECK_KEY(kv, info->key)) {
-            pmix_list_remove_item(&trk->updates, &kv->super);
-            PMIX_RELEASE(kv);
-            break;
-        }
-    }
+    /* Build the replacement BEFORE dropping what it replaces. The other
+     * order loses the record entirely if either step below fails - and
+     * the caller has already stored the new value by then, so the server
+     * would answer with it while the clients were never told. Same rule,
+     * and the same reason, as the copy-before-release in
+     * pmix_hash_store(). */
     PMIX_KVAL_NEW(kv, info->key);
     if (NULL == kv) {
         return PMIX_ERR_NOMEM;
@@ -300,6 +299,13 @@ static pmix_status_t note_job_update(pmix_job_t *trk, pmix_info_t *info)
     if (PMIX_SUCCESS != PMIx_Value_xfer(kv->value, &info->value)) {
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
+    }
+    PMIX_LIST_FOREACH_SAFE (old, nxt, &trk->updates, pmix_kval_t) {
+        if (PMIX_CHECK_KEY(old, info->key)) {
+            pmix_list_remove_item(&trk->updates, &old->super);
+            PMIX_RELEASE(old);
+            break;
+        }
     }
     pmix_list_append(&trk->updates, &kv->super);
     return PMIX_SUCCESS;
