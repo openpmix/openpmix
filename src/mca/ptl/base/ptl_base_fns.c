@@ -673,6 +673,14 @@ void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace, pmix_ran
     pmix_event_assign(&peer->send_event, pmix_globals.evbase, peer->sd, EV_WRITE | EV_PERSIST,
                       pmix_ptl_base_send_handler, peer);
     peer->send_ev_active = false;
+    /* A send may have been queued while this event had no base - see
+     * pmix_ptl_base_send(). It could not be activated then; activate it
+     * now, or it waits for a send that may never come. */
+    if (NULL != peer->send_msg) {
+        if (0 == pmix_event_add(&peer->send_event, 0)) {
+            peer->send_ev_active = true;
+        }
+    }
 }
 
 pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz)

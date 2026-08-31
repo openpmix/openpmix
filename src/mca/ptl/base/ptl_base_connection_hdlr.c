@@ -135,6 +135,14 @@ static void _cnct_complete(int sd, short args, void *cbdata)
     ch->peer->recv_ev_active = true;
     pmix_event_assign(&ch->peer->send_event, pmix_globals.evbase, ch->pnd->sd, EV_WRITE | EV_PERSIST,
                       pmix_ptl_base_send_handler, ch->peer);
+    /* A send may have been queued while this event had no base - see
+     * pmix_ptl_base_send(). It could not be activated then; activate it
+     * now, or it waits for a send that may never come. */
+    if (NULL != ch->peer->send_msg && !ch->peer->send_ev_active) {
+        if (0 == pmix_event_add(&ch->peer->send_event, 0)) {
+            ch->peer->send_ev_active = true;
+        }
+    }
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix:server client %s:%u has connected on socket %d",
                         ch->peer->info->pname.nspace, ch->peer->info->pname.rank, ch->peer->sd);
@@ -1055,6 +1063,14 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     peer->recv_ev_active = true;
     pmix_event_assign(&peer->send_event, pmix_globals.evbase, peer->sd, EV_WRITE | EV_PERSIST,
                       pmix_ptl_base_send_handler, peer);
+    /* A send may have been queued while this event had no base - see
+     * pmix_ptl_base_send(). It could not be activated then; activate it
+     * now, or it waits for a send that may never come. */
+    if (NULL != peer->send_msg && !peer->send_ev_active) {
+        if (0 == pmix_event_add(&peer->send_event, 0)) {
+            peer->send_ev_active = true;
+        }
+    }
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix:server tool %s:%d has connected on socket %d",
                         peer->info->pname.nspace, peer->info->pname.rank, peer->sd);
