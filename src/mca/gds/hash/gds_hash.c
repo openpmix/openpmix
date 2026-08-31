@@ -1970,6 +1970,120 @@ static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc,
     return rc;
 }
 
+/* Replace-by-key on one of the realm lists.
+ *
+ * Every realm keeps its values as a list of kvals, and a value arriving
+ * for a key already on it replaces it - an equal one is left alone so
+ * the list does not churn. Shared so the three realms cannot drift.
+ */
+static pmix_status_t realm_list_set(pmix_list_t *target, const char *key,
+                                    pmix_value_t *value)
+{
+    pmix_kval_t *kp2;
+    pmix_status_t rc;
+
+    PMIX_LIST_FOREACH (kp2, target, pmix_kval_t) {
+        if (PMIX_CHECK_KEY(kp2, key)) {
+            if (PMIX_EQUAL == PMIx_Value_compare(kp2->value, value)) {
+                return PMIX_SUCCESS;
+            }
+            pmix_list_remove_item(target, &kp2->super);
+            PMIX_RELEASE(kp2);
+            break;
+        }
+    }
+    kp2 = PMIX_NEW(pmix_kval_t);
+    if (NULL == kp2) {
+        return PMIX_ERR_NOMEM;
+    }
+    kp2->key = strdup(key);
+    if (NULL == kp2->key) {
+        PMIX_RELEASE(kp2);
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_VALUE_XFER(rc, kp2->value, value);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(kp2);
+        return rc;
+    }
+    pmix_list_append(target, &kp2->super);
+    return PMIX_SUCCESS;
+}
+
+/* File a LONE key - one that arrived on its own rather than inside a
+ * session, node or app array - in the realm its name says it belongs to.
+ *
+ * A key that names a realm is answered from that realm, whether or not
+ * anything said so (see pmix_gds_base_request_realm()). So it has to be
+ * STORED there too, or it is written where no reader of it will look.
+ *
+ * That was the gap behind a whole class of missing answers. The
+ * registration path applied this rule; accept_kvs_resp() did not, and
+ * routed by the WRAPPER the server happened to use instead - session,
+ * node and app arrays to their realms, and everything else to the job.
+ * A keyed PMIx_Get answered by the server returns its value BARE, with
+ * no wrapper, so a session-realm value came back, was filed at job
+ * level, and the fetch that immediately followed looked for it in the
+ * session realm and missed. The value was on the wire and in the
+ * process and still unreachable. Both paths now ask the same question
+ * of the same function and put the answer in the same place.
+ *
+ * Returns PMIX_ERR_TAKE_NEXT_OPTION for a key with no realm of its own,
+ * which the caller stores as job-level data.
+ */
+static pmix_status_t store_lone_realm_key(pmix_job_t *trk, uint32_t sid,
+                                          const char *key, pmix_value_t *value)
+{
+    pmix_session_t *s;
+    pmix_nodeinfo_t *nd;
+    pmix_apptrkr_t *apptr;
+
+    switch (pmix_gds_base_request_realm(key, NULL, 0)) {
+        case PMIX_REALM_SESSION:
+            /* a lone key must belong to this job's session */
+            s = pmix_gds_hash_check_session(trk, sid, true);
+            if (NULL == s) {
+                /* the job is already bound to some other session, so
+                 * there is nowhere to put this */
+                return PMIX_ERR_BAD_PARAM;
+            }
+            return realm_list_set(&s->sessioninfo, key, value);
+
+        case PMIX_REALM_NODE:
+            /* node-level info for just this node */
+            nd = pmix_gds_hash_check_nodename(&trk->nodeinfo, pmix_globals.hostname);
+            if (NULL == nd) {
+                nd = PMIX_NEW(pmix_nodeinfo_t);
+                if (NULL == nd) {
+                    return PMIX_ERR_NOMEM;
+                }
+                nd->hostname = strdup(pmix_globals.hostname);
+                pmix_set_aliases(&nd->aliases, nd->hostname);
+                pmix_list_append(&trk->nodeinfo, &nd->super);
+            }
+            return realm_list_set(&nd->info, key, value);
+
+        case PMIX_REALM_APP:
+            /* app-level info for a default app number - assume app=0 */
+            if (0 == pmix_list_get_size(&trk->apps)) {
+                apptr = PMIX_NEW(pmix_apptrkr_t);
+                if (NULL == apptr) {
+                    return PMIX_ERR_NOMEM;
+                }
+                pmix_list_append(&trk->apps, &apptr->super);
+            } else if (1 < pmix_list_get_size(&trk->apps)) {
+                return PMIX_ERR_BAD_PARAM;
+            } else {
+                apptr = (pmix_apptrkr_t *) pmix_list_get_first(&trk->apps);
+            }
+            return realm_list_set(&apptr->appinfo, key, value);
+
+        default:
+            /* no realm of its own - the caller files it as job data */
+            return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+}
+
 static pmix_status_t store_session_info(pmix_nspace_t nspace, pmix_kval_t *kv)
 {
     pmix_job_t *trk;
@@ -2061,7 +2175,22 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
             } else if (PMIX_CHECK_KEY(&kv, PMIX_APP_INFO_ARRAY)) {
                 rc = store_app_info(proct.nspace, &kv);
             } else {
-                rc = pmix_gds_hash_store(&proct, PMIX_INTERNAL, &kv);
+                /* A LONE key, which is what a keyed PMIx_Get is answered
+                 * with - no wrapper to route on. File it by what its name
+                 * says it is, exactly as the registration path does, or a
+                 * session-, node- or app-realm value lands at job level
+                 * and the fetch that follows looks for it in its realm
+                 * and misses. See store_lone_realm_key(). */
+                pmix_job_t *ltrk = pmix_gds_hash_get_tracker(proct.nspace, true);
+                if (NULL == ltrk) {
+                    rc = PMIX_ERR_NOMEM;
+                } else {
+                    rc = store_lone_realm_key(ltrk, UINT32_MAX, kv.key, kv.value);
+                    if (PMIX_ERR_TAKE_NEXT_OPTION == rc) {
+                        /* no realm of its own - job data */
+                        rc = pmix_gds_hash_store(&proct, PMIX_INTERNAL, &kv);
+                    }
+                }
             }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
