@@ -43,9 +43,18 @@
  * read its own job-level data WITHOUT asking anyone. Before the fix that
  * read fails, because there is no tracker left to read from.
  *
- * The stale session value is NOT a failure and is not asserted against.
- * A client that could not map the update is entitled to go on reading
- * what it mapped before - that is the degradation, and it is the point.
+ * AND WHAT IT MUST NOT READ. A client that could not map the update is
+ * NOT entitled to go on answering from what it mapped before. An update
+ * publishes a segment carrying the values that CHANGED, and a read
+ * stops at the newest segment holding the key - so a client missing
+ * that segment does not miss, it answers with the value the segment was
+ * published to REPLACE, and goes on doing so while every peer that
+ * mapped it reads the new one. That is a silent wrong answer and a
+ * divergence between processes on one node, so the realm declines
+ * locally while a delivery is known to be incomplete, and the ordinary
+ * PMIx_Get is answered by the server. Both halves are asserted here:
+ * the tracker survives (OPTIONAL still reads the client's own job
+ * data), and the revised value is what a plain get returns.
  *
  * ON gds/hash this runs and passes without exercising anything: the MCA
  * parameter belongs to shmem3 and hash has no segments to fail. That is
@@ -71,7 +80,7 @@ extern char **environ;
 #define NSPACE   "upd-fail"
 #define SESSION  8765
 #define FIRST    8
-#define SECOND   64
+#define UNIV_GROWN   64
 
 static int npass = 0, nfail = 0;
 
@@ -178,6 +187,41 @@ static int run_client(int readyfd, int gofd)
     fprintf(stdout, "  client: own job data still readable after the "
                     "failed update attach\n");
 
+    /* THE OTHER HALF. An ordinary PMIx_Get - no PMIX_OPTIONAL - must
+     * return the REVISED session value. The client could not map the
+     * segment carrying it, so it has to decline locally and let the
+     * server answer; if it answers from what it still holds, it returns
+     * the value that segment was published to replace and never asks
+     * anyone. That is the silent wrong answer this exists to prevent. */
+    {
+        pmix_proc_t sp;
+        pmix_value_t *sv = NULL;
+        uint32_t got = 0;
+        pmix_status_t r;
+
+        PMIX_LOAD_PROCID(&sp, myproc.nspace, PMIX_RANK_WILDCARD);
+        r = PMIx_Get(&sp, PMIX_UNIV_SIZE, NULL, 0, &sv);
+        if (PMIX_SUCCESS != r || NULL == sv) {
+            fprintf(stderr, "  client: universe size unreadable after the "
+                            "failed update attach: %s\n",
+                    PMIx_Error_string(r));
+            PMIx_Finalize(NULL, 0);
+            return 4;
+        }
+        r = PMIx_Value_get_number(sv, &got, PMIX_UINT32);
+        PMIX_VALUE_RELEASE(sv);
+        if (PMIX_SUCCESS != r || UNIV_GROWN != got) {
+            fprintf(stderr, "  client: universe size read back as %u, "
+                            "expected the revised %u - the client answered "
+                            "from the segment the update replaced\n",
+                    (unsigned) got, (unsigned) UNIV_GROWN);
+            PMIx_Finalize(NULL, 0);
+            return 5;
+        }
+        fprintf(stdout, "  client: reads the revised universe size %u\n",
+                (unsigned) got);
+    }
+
     PMIx_Finalize(NULL, 0);
     return 0;
 }
@@ -266,7 +310,7 @@ int main(int argc, char **argv)
     int readypipe[2], gopipe[2], status = 0;
     pid_t child;
     bool flag = true;
-    uint32_t grown = SECOND;
+    uint32_t grown = UNIV_GROWN;
     char c;
     bool completed = false;
 

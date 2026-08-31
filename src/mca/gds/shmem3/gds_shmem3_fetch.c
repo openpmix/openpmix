@@ -446,6 +446,13 @@ xfer_sessioninfo(
         pmix_gds_shmem3_chain_head(&sesh->segments);
     pmix_gds_shmem3_seg_t *seg;
 
+    /* A session segment was delivered and could not be mapped - decline
+     * rather than answer with the values it was published to replace.
+     * Same reasoning as job_fetch(); see the note on chain_incomplete. */
+    if (sesh->chain_incomplete) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+
     if (NULL == head) {
         /* nothing published for this session yet */
         return PMIX_ERR_NOT_FOUND;
@@ -792,6 +799,18 @@ static pmix_status_t job_fetch(
 ) {
     pmix_gds_shmem3_seg_t *seg;
     pmix_status_t rc = PMIX_ERR_NOT_FOUND;
+
+    /* A segment of this chain was delivered and could not be mapped, so
+     * what is left cannot be trusted to be current. Decline rather than
+     * answer: the walk below stops at the newest segment holding the
+     * key, and the segment we are missing is by construction newer than
+     * the ones we have - so answering would return the value that
+     * segment was published to REPLACE, with PMIX_SUCCESS, and no miss
+     * to send anyone to the server. Declining makes it a miss, and the
+     * server answers correctly. See the note on chain_incomplete. */
+    if (job->chain_incomplete) {
+        return PMIX_ERR_NOT_FOUND;
+    }
 
     for (seg = pmix_gds_shmem3_chain_head(&job->job_chain);
          NULL != seg; seg = seg->prior) {

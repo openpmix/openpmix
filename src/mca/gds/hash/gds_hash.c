@@ -381,6 +381,12 @@ static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc, pmix_list_t *kvs, p
 
 static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf);
 
+/* File a lone realm key where its realm keeps values - see the note on
+ * the definition. Used by both paths that take one: the registration
+ * that first stores a job description, and the reply to a keyed get. */
+static pmix_status_t store_lone_realm_key(pmix_job_t *trk, uint32_t sid,
+                                          const char *key, pmix_value_t *value);
+
 static pmix_status_t mark_modex_complete(struct pmix_peer_t *peer,
                                          pmix_list_t *nslist,
                                          pmix_buffer_t *buff);
@@ -474,9 +480,8 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
 {
     pmix_namespace_t *nptr = (pmix_namespace_t *) ns;
     pmix_job_t *trk;
-    pmix_session_t *s = NULL;
     pmix_hash_table_t *ht;
-    pmix_kval_t *kp2 = NULL, *kvptr, kv;
+    pmix_kval_t *kvptr, kv;
     pmix_value_t val;
     pmix_info_t *iptr;
     char **nodes = NULL, **procs = NULL;
@@ -485,8 +490,6 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
     pmix_status_t rc = PMIX_SUCCESS;
     size_t n, j, size, idpos;
     uint32_t flags = 0;
-    pmix_nodeinfo_t *nd;
-    pmix_apptrkr_t *apptr;
     bool found;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -516,7 +519,10 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 PMIX_ERROR_LOG(rc);
                 goto release;
             }
-            s = pmix_gds_hash_check_session(trk, sid, true);
+            /* called for the binding it performs - this job now belongs
+             * to that session. The tracker it returns is not needed
+             * here; a lone session key below finds it by the same id. */
+            (void) pmix_gds_hash_check_session(trk, sid, true);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_INFO_ARRAY)) {
             if (PMIX_SUCCESS != (rc = pmix_gds_hash_process_session_array(&info[n].value, trk))) {
                 PMIX_ERROR_LOG(rc);
@@ -647,100 +653,18 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                    PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
             pmix_pmdl.setup_nspace(trk->nptr, &info[n]);
-        } else if (pmix_check_session_info(info[n].key)) {
-            /* a lone key must belong to this job's session */
-            if (NULL == s) {
-                s = pmix_gds_hash_check_session(trk, sid, true);
-            }
-            if (NULL == s) {
-                /* the job is already bound to some other session, so
-                 * there is nowhere to put this */
-                rc = PMIX_ERR_BAD_PARAM;
+        } else if (PMIX_ERR_TAKE_NEXT_OPTION !=
+                   (rc = store_lone_realm_key(trk, sid, info[n].key,
+                                              &info[n].value))) {
+            /* A lone key naming a realm. The rule - this job's session,
+             * this node, the one app - lives in store_lone_realm_key()
+             * so that the other path taking one, the reply to a keyed
+             * get in accept_kvs_resp(), cannot file it somewhere else.
+             * TAKE_NEXT_OPTION means the key names no realm, and the
+             * arms below handle it as job data. */
+            if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 goto release;
-            }
-            /* ensure the value isn't already on the session info */
-            found = false;
-            PMIX_LIST_FOREACH (kp2, &s->sessioninfo, pmix_kval_t) {
-                if (PMIX_CHECK_KEY(kp2, info[n].key)) {
-                    if (PMIX_EQUAL == PMIx_Value_compare(kp2->value, &info[n].value)) {
-                        found = true;
-                    } else {
-                        pmix_list_remove_item(&s->sessioninfo, &kp2->super);
-                        PMIX_RELEASE(kp2);
-                    }
-                    break;
-                }
-            }
-            if (!found) {
-                /* add the provided value */
-                kp2 = PMIX_NEW(pmix_kval_t);
-                kp2->key = strdup(info[n].key);
-                PMIX_VALUE_XFER(rc, kp2->value, &info[n].value);
-                pmix_list_append(&s->sessioninfo, &kp2->super);
-            }
-        } else if (pmix_check_node_info(info[n].key)) {
-            /* they are passing us the node-level info for just this
-             * node - start by seeing if our node is on the list */
-            nd = pmix_gds_hash_check_nodename(&trk->nodeinfo, pmix_globals.hostname);
-            /* if not, then add it */
-            if (NULL == nd) {
-                nd = PMIX_NEW(pmix_nodeinfo_t);
-                nd->hostname = strdup(pmix_globals.hostname);
-                pmix_set_aliases(&nd->aliases, nd->hostname);
-                pmix_list_append(&trk->nodeinfo, &nd->super);
-            }
-            /* ensure the value isn't already on the node info */
-            found = false;
-            PMIX_LIST_FOREACH (kp2, &nd->info, pmix_kval_t) {
-                if (PMIX_CHECK_KEY(kp2, info[n].key)) {
-                    if (PMIX_EQUAL == PMIx_Value_compare(kp2->value, &info[n].value)) {
-                        found = true;
-                    } else {
-                        pmix_list_remove_item(&nd->info, &kp2->super);
-                        PMIX_RELEASE(kp2);
-                    }
-                    break;
-                }
-            }
-            if (!found) {
-                /* add the provided value */
-                kp2 = PMIX_NEW(pmix_kval_t);
-                kp2->key = strdup(info[n].key);
-                PMIX_VALUE_XFER(rc, kp2->value, &info[n].value);
-                pmix_list_append(&nd->info, &kp2->super);
-            }
-        } else if (pmix_check_app_info(info[n].key)) {
-            /* they are passing us app-level info for a default
-             * app number - have to assume it is app=0 */
-            if (0 == pmix_list_get_size(&trk->apps)) {
-                apptr = PMIX_NEW(pmix_apptrkr_t);
-                pmix_list_append(&trk->apps, &apptr->super);
-            } else if (1 < pmix_list_get_size(&trk->apps)) {
-                rc = PMIX_ERR_BAD_PARAM;
-                goto release;
-            } else {
-                apptr = (pmix_apptrkr_t *) pmix_list_get_first(&trk->apps);
-            }
-            /* ensure the value isn't already on the app info */
-            found = false;
-            PMIX_LIST_FOREACH (kp2, &apptr->appinfo, pmix_kval_t) {
-                if (PMIX_CHECK_KEY(kp2, info[n].key)) {
-                    if (PMIX_EQUAL == PMIx_Value_compare(kp2->value, &info[n].value)) {
-                        found = true;
-                    } else {
-                        pmix_list_remove_item(&apptr->appinfo, &kp2->super);
-                        PMIX_RELEASE(kp2);
-                    }
-                    break;
-                }
-            }
-            if (!found) {
-                /* add the provided value */
-                kp2 = PMIX_NEW(pmix_kval_t);
-                kp2->key = strdup(info[n].key);
-                PMIX_VALUE_XFER(rc, kp2->value, &info[n].value);
-                pmix_list_append(&apptr->appinfo, &kp2->super);
             }
         } else {
             if (PMIX_CHECK_KEY(&info[n], PMIX_QUALIFIED_VALUE)) {

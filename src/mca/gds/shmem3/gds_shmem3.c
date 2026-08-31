@@ -595,6 +595,7 @@ job_construct(
     // Session
     job->session = PMIX_NEW(pmix_gds_shmem3_session_t);
     // Job
+    job->chain_incomplete = false;
     job->shmem3_status = 0;
     job->shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smdata = NULL;
@@ -1064,6 +1065,7 @@ session_construct(
     s->shmem3 = PMIX_NEW(pmix_shmem_t);
     s->shmem3_status = 0;
     s->smdata = NULL;
+    s->chain_incomplete = false;
     atomic_init(&s->segments, NULL);
 }
 
@@ -1684,12 +1686,33 @@ out:
              * test here used to be on the segment id rather than on how
              * the segment arrived.
              *
-             * What the client actually loses is the shared copy of what
-             * that one segment held. The fetch side already copes: a
-             * chain it was never added to simply does not answer for
-             * those keys, and the miss goes up to the server like any
-             * other. Clearing the status is what leaves a later
-             * generation - or a later update - free to attach cleanly. */
+             * What the client loses is the shared copy of what that one
+             * segment held - and it must now DECLINE to answer for that
+             * realm locally, which is what the flag below arranges.
+             *
+             * It is tempting to think the loss takes care of itself,
+             * and this comment used to say so: a chain the segment was
+             * never added to does not answer for its keys, so the miss
+             * goes to the server like any other. That is true only of a
+             * key the segment INTRODUCED. An update mostly carries keys
+             * whose values CHANGED, and for those the older segment is
+             * still on the chain and still answers - job_fetch() stops
+             * at the newest segment holding the key. So the client did
+             * not miss; it returned the value the missed segment had
+             * been published to replace, with PMIX_SUCCESS, for the
+             * rest of the run, while every peer that mapped the segment
+             * read the new one. A silent wrong answer, and a divergence
+             * between processes on one node.
+             *
+             * Clearing the status is what leaves a later generation -
+             * or a later update - free to attach cleanly. */
+            if (PMIX_GDS_SHMEM3_SESSION_ID == shmem3_id) {
+                if (NULL != job->session) {
+                    job->session->chain_incomplete = true;
+                }
+            } else {
+                job->chain_incomplete = true;
+            }
             pmix_gds_shmem3_clearall_status(job, shmem3_id);
         }
         else {
@@ -3368,6 +3391,10 @@ server_register_job_info(
     return rc;
 }
 
+/* Did this delivery refuse a segment? See
+ * client_connect_to_shmem3_from_buffi(), which resets it. */
+static bool shmem3_delivery_refused = false;
+
 static pmix_status_t
 unpack_shmem3_seg_blob_and_attach_if_necessary(
     pmix_kval_t *kvbo,
@@ -3570,10 +3597,24 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
                     "server instead of reading it from shared memory",
                     __func__, get_shmem3_id_name(usb.smid), usb.nsid
                 );
+                shmem3_delivery_refused = true;
                 rc = PMIX_SUCCESS;
                 break;
             }
             break;
+        }
+        /* Attached. If nothing has been refused in this delivery, the
+         * client now holds everything the server described - the whole
+         * chain is sent on every notice and the client skips what it
+         * already has - so this realm may answer locally again. */
+        if (PMIX_GDS_SHMEM3_ATTACH_UPDATE == ctx && !shmem3_delivery_refused) {
+            if (PMIX_GDS_SHMEM3_SESSION_ID == usb.smid) {
+                if (NULL != job->session) {
+                    job->session->chain_incomplete = false;
+                }
+            } else if (PMIX_GDS_SHMEM3_MODEX_ID != usb.smid) {
+                job->chain_incomplete = false;
+            }
         }
     } while (false);
     PMIX_DESTRUCT(&usb);
@@ -3624,6 +3665,13 @@ client_connect_to_shmem3_from_buffi(
 ) {
     PMIX_GDS_SHMEM3_VVOUT_HERE();
     pmix_status_t rc = PMIX_SUCCESS;
+
+    /* Nothing refused YET in this delivery. A segment that is refused
+     * sets this, and it stays set for the rest of the delivery, so a
+     * segment attaching after one was refused does not get to say the
+     * chain is whole again. Progress-thread only: both callers -
+     * store_job_info() and client_accept_update() - run there. */
+    shmem3_delivery_refused = false;
 
     pmix_kval_t kval;
     while (true) {

@@ -505,6 +505,19 @@ goes up to the server and is answered correctly, so the only visible
 cost is a round trip per lookup — which is exactly how a defect like
 this survives.
 
+Keeping the tracker is only half of it, though, and the other half is
+not a slower answer but a **wrong** one. An update publishes a segment
+carrying the values that *changed*, and ``job_fetch()`` stops at the
+newest segment holding the key. A client that could not map that
+segment therefore does not miss: the older segment is still on its
+chain and still answers, with the value the new one was published to
+replace, ``PMIX_SUCCESS``, for the rest of the run — while every peer
+that did map it reads the new value. So a refused delivery marks that
+realm ``chain_incomplete`` and the realm declines locally until a
+delivery completes with nothing refused. Declining turns the silent
+wrong answer back into the miss the paragraph above describes, and the
+server answers it correctly.
+
 Clients are read-only, and the MMU enforces it
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
