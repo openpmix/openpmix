@@ -2090,7 +2090,8 @@ shmem3_segment_create_and_attach(
     pmix_gds_shmem3_job_t *job,
     pmix_gds_shmem3_job_shmem3_id_t shmem3_id,
     const char *segment_name,
-    size_t segment_size
+    size_t segment_size,
+    pmix_gds_shmem3_attach_ctx_t ctx
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
     // Pad given size to fill remaining space on the last page.
@@ -2264,17 +2265,34 @@ out:
     }
     return rc;
 out_release:
-    /* Mirror shmem3_attach()'s failure handling: detach and drop the job
-     * tracker entry.
-     *
-     * Take the backing file with it. pmix_shmem_segment_create() made it
-     * and shmem_destruct() only unlinks a segment it managed to ATTACH,
-     * so a failure between the two left the file in the session tmpdir
-     * for the life of the node - and the path is built from a pid, which
-     * gets reused. */
+    /* Take the backing file with the failed segment.
+     * pmix_shmem_segment_create() made it and shmem_destruct() only
+     * unlinks a segment it managed to ATTACH, so a failure between the
+     * two left the file in the session tmpdir for the life of the node -
+     * and the path is built from a pid, which gets reused. */
     (void)pmix_shmem_segment_unlink(shmem3);
     (void)pmix_shmem_segment_detach(shmem3);
-    drop_job_tracker(job);
+
+    /* WHETHER THE TRACKER GOES depends on which case this is, and the
+     * caller is the only one that knows - the same distinction, for the
+     * same reason, that shmem3_attach() was given.
+     *
+     * During registration nothing has read this job yet, so a tracker
+     * whose first segment could not be built has nothing to keep and
+     * dropping it is the cleanup.
+     *
+     * Afterwards it is the opposite. A modex generation, a session
+     * update and an addition to a registered job all build a segment on
+     * a job whose clients are attached and reading - so dropping the
+     * tracker would take away the job and session segments they have
+     * held since PMIx_Init, and pmix_gds_shmem3_fetch() would answer
+     * every lookup for their own namespace with
+     * PMIX_ERR_INVALID_NAMESPACE. That is openpmix#4156 again, from the
+     * server side and by way of a transient failure - no VM hole found,
+     * a full tmpdir - rather than a client that could not map. */
+    if (PMIX_GDS_SHMEM3_ATTACH_INIT == ctx) {
+        drop_job_tracker(job);
+    }
     return rc;
 }
 
@@ -2431,7 +2449,9 @@ prepare_shmem3_stores_for_local_job_data(
     // This will be the backing store for data associated with static, read-only
     // data shared between the server and its clients.
     rc = shmem3_segment_create_and_attach(
-        job, PMIX_GDS_SHMEM3_JOB_ID, "jobdata", seg_size
+        job, PMIX_GDS_SHMEM3_JOB_ID, "jobdata", seg_size,
+        /* registering: nothing has read this job yet */
+        PMIX_GDS_SHMEM3_ATTACH_INIT
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -2472,7 +2492,9 @@ prepare_shmem3_stores_for_local_job_data(
     }
 
     rc = shmem3_segment_create_and_attach(
-        job, PMIX_GDS_SHMEM3_SESSION_ID, session_name, seg_size
+        job, PMIX_GDS_SHMEM3_SESSION_ID, session_name, seg_size,
+        /* registering: nothing has read this job yet */
+        PMIX_GDS_SHMEM3_ATTACH_INIT
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -4097,7 +4119,10 @@ server_store_modex_cb(pmix_proc_t *proc,
         // Create and attach to the shared-memory
         // segment that will back these data.
         rc = shmem3_segment_create_and_attach(
-            job, PMIX_GDS_SHMEM3_MODEX_ID, segname, minfo.size
+            job, PMIX_GDS_SHMEM3_MODEX_ID, segname, minfo.size,
+            /* a live job - its clients are reading the segments this
+             * tracker owns */
+            PMIX_GDS_SHMEM3_ATTACH_UPDATE
         );
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -4529,7 +4554,10 @@ publish_session_update(
         goto out;
     }
     rc = shmem3_segment_create_and_attach(
-        job, PMIX_GDS_SHMEM3_SESSION_ID, name, seg_size
+        job, PMIX_GDS_SHMEM3_SESSION_ID, name, seg_size,
+        /* a live job - its clients are reading the segments this
+         * tracker owns */
+        PMIX_GDS_SHMEM3_ATTACH_UPDATE
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -5074,7 +5102,10 @@ server_add_job_data(
     snprintf(segname, sizeof(segname), "jobdata.%u",
              (unsigned) job->job_generation);
     rc = shmem3_segment_create_and_attach(
-        job, PMIX_GDS_SHMEM3_JOB_ID, segname, seg_size
+        job, PMIX_GDS_SHMEM3_JOB_ID, segname, seg_size,
+        /* a live job - its clients are reading the segments this
+         * tracker owns */
+        PMIX_GDS_SHMEM3_ATTACH_UPDATE
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
