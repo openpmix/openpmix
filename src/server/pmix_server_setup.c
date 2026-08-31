@@ -74,6 +74,11 @@ static void _register_resources(int sd, short args, void *cbdata)
     pmix_byte_object_t *pbo=NULL, bo;
     pmix_buffer_t jobinfo, bkt;
     int32_t cnt;
+    /* The entries that go into the global cache, and so the entries the
+     * fan-out below carries into the namespaces that already exist.
+     * Borrowed views of cd->info - the array goes, its entries do not. */
+    pmix_info_t *fanout = NULL;
+    size_t nfanout = 0;
     char *nspace;
     pmix_proc_t *proc;
     pmix_scope_t scope;
@@ -151,6 +156,22 @@ static void _register_resources(int sd, short args, void *cbdata)
             pbo = &cd->info[n].value.data.bo;
 
         } else {
+            /* Remember which entries these are. The fan-out below has to
+             * carry the SAME set into the namespaces that already exist
+             * as this cache carries into the ones registered later, or
+             * the two populations answer differently for one host call
+             * - forever. Borrowed views of cd->info, which outlives the
+             * call. */
+            pmix_info_t *ftmp = (pmix_info_t *)
+                realloc(fanout, (nfanout + 1) * sizeof(pmix_info_t));
+            if (NULL == ftmp) {
+                ret = PMIX_ERR_NOMEM;
+                goto release;
+            }
+            fanout = ftmp;
+            memcpy(&fanout[nfanout], &cd->info[n], sizeof(pmix_info_t));
+            nfanout++;
+
             /* add any provided data to our global cache for all nspaces */
             kv = PMIX_NEW(pmix_kval_t);
             if (NULL == kv) {
@@ -201,11 +222,11 @@ static void _register_resources(int sd, short args, void *cbdata)
      * A fan-out per namespace: a server assigns itself "hash", so its
      * own copy of a namespace's job data lives there, while the segments
      * its clients read are shmem3's. Both have to be told. */
-    if (0 < cd->ninfo) {
+    if (0 < nfanout) {
         pmix_namespace_t *nsptr;
         PMIX_LIST_FOREACH (nsptr, &pmix_globals.nspaces, pmix_namespace_t) {
             pmix_status_t nrc;
-            PMIX_GDS_ADD_JOB_DATA(nrc, nsptr->nspace, cd->info, cd->ninfo);
+            PMIX_GDS_ADD_JOB_DATA(nrc, nsptr->nspace, fanout, nfanout);
             if (PMIX_SUCCESS != nrc) {
                 PMIX_ERROR_LOG(nrc);
                 if (PMIX_SUCCESS == ret) {
@@ -378,6 +399,10 @@ release:
      * being dropped on the floor - on the normal path as well as this one */
     PMIX_LIST_DESTRUCT(&grpinfo);
     PMIX_LIST_DESTRUCT(&endpts);
+    /* borrowed views of cd->info, so only the array goes */
+    if (NULL != fanout) {
+        free(fanout);
+    }
     cd->opcbfunc(ret, cd->cbdata);
     PMIX_RELEASE(cd);
 }
