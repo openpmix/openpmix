@@ -199,6 +199,22 @@ static void _register_nspace(int sd, short args, void *cbdata)
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
     if (0 > cd->nlocalprocs) {
+        /* An update revises what we already hold. If we hold nothing
+         * for this namespace, there is nothing to revise, and the
+         * nptr created above is a namespace this server was never told
+         * about - left on pmix_globals.nspaces for the life of the
+         * process, describing nothing, while the host is told its
+         * update succeeded. A typo'd namespace is then indistinguishable
+         * from a namespace that was actually updated.
+         *
+         * Take it back off the list and say what is true. Not registered
+         * is exactly what PMIX_ERR_NOT_FOUND says. */
+        if (!nptr->job_info_recvd && SIZE_MAX == nptr->nlocalprocs) {
+            pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
+            PMIX_RELEASE(nptr);
+            rc = PMIX_ERR_NOT_FOUND;
+            goto release;
+        }
         /* this is just an update, so we store it
          * in our hash datastore until someone
          * requests it */

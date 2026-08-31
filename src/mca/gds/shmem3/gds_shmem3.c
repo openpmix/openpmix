@@ -1810,6 +1810,14 @@ shmem3_segment_attach_and_init(
     // Now we can safely initialize our shared data structures.
     rc = init_client_side_sm_data(job, seginfo->smid);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        /* Undo the attach. Leaving it mapped and marked ready leaves
+         * this handle claiming a segment nothing finished setting up -
+         * and pmix_shmem_segment_attach() refuses a handle that is
+         * already attached, so the NEXT delivery of this segment kind
+         * could never map either. One failed allocation would cost the
+         * rest of the run's deliveries rather than this one. */
+        (void)pmix_shmem_segment_detach(shmem3);
+        pmix_gds_shmem3_clearall_status(job, seginfo->smid);
         return rc;
     }
     /* We are a reader of this segment, so take write access away and let
