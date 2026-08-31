@@ -354,6 +354,10 @@ typedef struct {
      * changed, published here; a read walks newest-first and stops at
      * the first segment answering for the key. */
     pmix_gds_shmem3_chain_t segments;
+    /* As for a job's chain - see the note there. A session segment that
+     * could not be mapped leaves the session's older values answering
+     * in place of the ones that replaced them. */
+    bool chain_incomplete;
 } pmix_gds_shmem3_session_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem3_session_t);
 
@@ -560,6 +564,25 @@ typedef struct {
      *
      * The fields above are the segment being BUILT, which no reader
      * touches; publishing is what makes one readable. */
+    /* A segment of this realm was DELIVERED and could not be mapped.
+     *
+     * Set on a client when an update's fixed-address attach fails, and
+     * it makes every local read of this realm decline. That looks
+     * heavy-handed and is the only correct answer: an update publishes
+     * a segment carrying the values that CHANGED, a read walks the
+     * chain newest-first and stops at the first segment holding the
+     * key, so a client missing the newest segment does not miss - it
+     * answers, with the value that segment was published to replace,
+     * and goes on doing so for the life of the job while every peer
+     * that mapped it reads the new one. Declining turns that silent
+     * wrong answer back into a miss, which the server then answers
+     * correctly.
+     *
+     * Cleared when a delivery completes with nothing refused: the
+     * server sends the whole chain on every notice and the client skips
+     * what it already holds, so a clean delivery means the client is
+     * once again holding everything the server has. */
+    bool chain_incomplete;
     pmix_gds_shmem3_chain_t job_chain;
     /** How many job segments this job has published. Names the next
      *  one's backing file, so two cannot collide. */
