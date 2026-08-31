@@ -1893,15 +1893,28 @@ arena_reserve(
      * is the size we asked for: a segment maps a page of header ahead of
      * its data. Carving to the requested size instead left every segment
      * overlapping the next by that page. */
-    const size_t statics = pmix_shmem_utils_segment_footprint(job_segsize);
+    /* Room for the job's own segment AND for the ones a host publishes
+     * later by adding to a registered job. Sizing this for exactly one -
+     * which the job's own then filled - meant every later job segment
+     * was placed from the server's own address map and offered to
+     * clients at an address nothing had reserved. */
+    size_t job_slots = pmix_gds_shmem3_arena_job_slots;
+    if (0 == job_slots) {
+        job_slots = 1;
+    }
+    const size_t one_static = pmix_shmem_utils_segment_footprint(job_segsize);
+    if (one_static > SIZE_MAX / job_slots) {
+        return;
+    }
+    const size_t statics = one_static * job_slots;
     size_t slot = pmix_shmem_utils_pad_to_page(
         pmix_gds_shmem3_arena_slot_size
     );
     /* A job whose job-level data alone exceeds the configured slot is
      * one whose modex will not be small either. Do not hand it slots it
      * is guaranteed to overflow. */
-    if (slot < statics) {
-        slot = statics;
+    if (slot < one_static) {
+        slot = one_static;
     }
 
     /* One slot per modex generation that can be live at once. More than
@@ -2124,10 +2137,10 @@ shmem3_segment_create_and_attach(
              * go away under a live holder.
              *
              * This is stated rather than left to fall out. The static
-             * region is currently sized for exactly one segment and the
-             * job's own fills it, so the request below would fail today
-             * regardless; that is arithmetic, not a guarantee, and the
-             * teardown depends on the guarantee. */
+             * region now holds several job segments (see
+             * arena_job_slots), so a session segment WOULD fit in it -
+             * arithmetic no longer refuses what the teardown requires,
+             * and this arm is the only thing that does. */
             from_arena = false;
             break;
         case PMIX_GDS_SHMEM3_MODEX_ID:

@@ -132,6 +132,15 @@ PMIX_EXPORT extern size_t pmix_gds_shmem3_arena_slot_size;
 PMIX_EXPORT extern size_t pmix_gds_shmem3_arena_modex_slots;
 
 /**
+ * How many job segments a job's arena reserves room for. The job's own
+ * is the first; a host adding to a registered job publishes another
+ * each time, because a published segment is never rewritten. A segment
+ * past the last slot is placed independently, and a client may then
+ * fail to map it at the address the server chose - see openpmix#4156.
+ */
+PMIX_EXPORT extern size_t pmix_gds_shmem3_arena_job_slots;
+
+/**
  * Whether to keep away from the midpoint of the biggest hole when
  * choosing an address (see VMEM_HOLE_BIGGEST_OFFSET). On by default.
  */

@@ -96,6 +96,23 @@ size_t pmix_gds_shmem3_arena_slot_size = 1024UL * 1024UL * 1024UL;
  * space; past it, a generation is placed outside the arena. */
 size_t pmix_gds_shmem3_arena_modex_slots = 4;
 
+/* Room in the static region for the job's own segment plus seven more.
+ *
+ * A job segment is published whenever a host adds to a registered job -
+ * a new one each time, because a published segment is never rewritten.
+ * The static region used to hold exactly one, which was the job's own,
+ * so EVERY later job segment was placed from the server's own address
+ * map and offered to clients at an address nothing had reserved for
+ * them. That is the openpmix#4156 gamble, and a client full of MPI is
+ * the worst moment to take it.
+ *
+ * Eight is generous rather than measured: an update carries only what
+ * changed, so its segment is normally far smaller than the job's own,
+ * and the slots are address space rather than memory. Past the last
+ * one a segment is placed the old way, which is a fallback and not a
+ * failure. */
+size_t pmix_gds_shmem3_arena_job_slots = 8;
+
 bool pmix_gds_shmem3_offset_placement = true;
 
 static int
@@ -186,6 +203,21 @@ gds_shmem3_component_register(void)
         "slot taken is placed outside the arena. Capped at 32.",
         PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
         &pmix_gds_shmem3_arena_modex_slots
+    );
+    if (varidx < 0) {
+        return PMIX_ERROR;
+    }
+
+    varidx = pmix_mca_base_component_var_register(
+        &pmix_mca_gds_shmem3_component.super,
+        "arena_job_slots",
+        "How many job segments a job's arena reserves room for. The "
+        "job's own is the first; each addition a host makes to a "
+        "registered job publishes another. A segment past the last "
+        "slot is placed independently, which a client may then fail to "
+        "map at the required address.",
+        PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+        &pmix_gds_shmem3_arena_job_slots
     );
     if (varidx < 0) {
         return PMIX_ERROR;
