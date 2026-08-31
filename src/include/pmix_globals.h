@@ -779,6 +779,28 @@ typedef struct {
     bool appinfo;
     bool appdirective;
     uint32_t appnum;
+    /* Is this request a PLAIN KEYED LOOKUP - one key, out of the asking
+     * proc's own data, with nothing to resolve first?
+     *
+     * Only such a request can be answered on the caller's own thread,
+     * which is what try_local_fetch() in src/client/pmix_client_get.c
+     * uses this for. Anything that redirects the request to another
+     * realm, or asks for more than one value, needs work that belongs on
+     * the progress thread - resolving a realm can take further fetches
+     * and a rebuild of the info array - so it goes the ordinary way.
+     *
+     * It describes the REQUEST only. Whether this process may take the
+     * short circuit at all - the module's is_tsafe, the fast_get
+     * parameter, whether we are connected - is a separate question that
+     * try_local_fetch() asks for itself.
+     *
+     * Computed at the end of process_request(), from everything parsed
+     * above it. ANY NEW FIELD HERE that changes WHERE the library looks,
+     * or HOW MUCH it returns, has to be accounted for there - it is a
+     * dozen lines below where you will be adding the parse, deliberately,
+     * because the test used to live in another function entirely and was
+     * therefore easy to add a qualifier without noticing. */
+    bool plain;
 } pmix_get_logic_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_get_logic_t);
 

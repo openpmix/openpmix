@@ -566,6 +566,10 @@ static void lgcon(pmix_get_logic_t *p)
     p->appinfo = false;
     p->appdirective = false;
     p->appnum = UINT32_MAX;
+    /* false until process_request() has looked at the request and said
+     * otherwise: a caddy that never got that far must not be treated as
+     * answerable on the caller's thread */
+    p->plain = false;
 }
 static void lgdes(pmix_get_logic_t *p)
 {
