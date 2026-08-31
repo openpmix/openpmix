@@ -1322,6 +1322,13 @@ MCA Parameters
      - How many modex generations the arena can hold at once, capped at
        32. More than one is live only where deltas are in play; past the
        last slot a generation is placed outside the arena.
+   * - ``gds_shmem3_arena_job_slots``
+     - ``8``
+     - How many job segments the arena reserves room for. The job's own
+       is the first; each addition a host makes to a registered job
+       publishes another, since a published segment is never rewritten.
+       A segment past the last slot is placed independently, and a
+       client may then fail to map it where the server put it.
    * - ``gds_shmem3_offset_placement``
      - ``true``
      - Place segments a quarter of the way into the biggest hole rather
