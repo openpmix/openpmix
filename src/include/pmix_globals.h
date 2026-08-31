@@ -948,6 +948,26 @@ typedef struct {
     pmix_hash_table_t *lookup;
     /** Stores the next ID. */
     uint32_t next_id;
+    /** The reserved/non-reserved dividing line THIS index was numbered
+     *  against - the PMIX_INDEX_BOUNDARY of whatever built it.
+     *
+     *  Recorded rather than assumed because a reader may not be the
+     *  builder. A gds/shmem3 segment carries its own key index, and the
+     *  process that maps it can be a different PMIx release: the
+     *  boundary is one past the highest attribute id ever assigned, so
+     *  it GROWS with every release that adds an attribute. A reader
+     *  splitting the ids with its own boundary therefore reads an older
+     *  writer's private key - numbered from the older, lower boundary -
+     *  as a reserved one, and resolves it to whichever attribute its own
+     *  dictionary happens to hold at that id. The value is right and the
+     *  key it is reported under is not.
+     *
+     *  Reserved ids themselves need no such care: they are append-only
+     *  and never reused (contrib/dictionary_ids.txt), so an id below the
+     *  writer's boundary means the same attribute in every release that
+     *  has it, and one this build has never heard of resolves to nothing
+     *  rather than to something wrong. */
+    uint32_t boundary;
 } pmix_keyindex_t;
 
 /** How the process-global keyindex is sized.
@@ -1001,7 +1021,8 @@ PMIX_EXPORT size_t pmix_keyindex_sizeof_storage(size_t nkeys);
     .super = PMIX_OBJ_STATIC_INIT(pmix_object_t), \
     .table = NULL,                                \
     .lookup = NULL,                               \
-    .next_id = PMIX_INDEX_BOUNDARY                \
+    .next_id = PMIX_INDEX_BOUNDARY,               \
+    .boundary = PMIX_INDEX_BOUNDARY               \
 }
 
 /****    GLOBAL STORAGE    ****/

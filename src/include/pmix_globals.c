@@ -246,6 +246,9 @@ static void keyindex_construct(pmix_keyindex_t *ki)
      * comparing against PMIX_INDEX_BOUNDARY. Matches
      * PMIX_KEYINDEX_STATIC_INIT. */
     ki->next_id = PMIX_INDEX_BOUNDARY;
+    /* what THIS index's ids are numbered against - see the note on the
+     * field. A reader of a segment we built uses this, not its own. */
+    ki->boundary = PMIX_INDEX_BOUNDARY;
 }
 
 /* The pointer array allocates max(nkeys, block_size) slots, so a caller
