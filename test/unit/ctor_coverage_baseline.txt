@@ -10,7 +10,6 @@
 # one obliges you to delete its line and the list can only shrink.
 #
 # Format: <path> <type>.<member>
-examples/server.c myxfer_t.lock
 src/client/pmix_client.c pmix_held_delete_t.proc
 src/client/pmix_client.c pmix_held_delete_t.scope
 src/client/pmix_client_resolve.c pmix_resolve_caddy_t.status
@@ -59,5 +58,3 @@ src/runtime/pmix_progress_threads.c pmix_progress_tracker_t.engine
 src/server/pmix_server_classes.c pmix_server_trkr_t.type
 src/server/pmix_server_classes.c pmix_setup_caddy_t.sessionid
 src/util/pmix_show_help.c tuple_array_item_t.array
-test/server_callbacks.c pmix_test_info_t.namespace_published
-test/server_callbacks.c pmix_test_info_t.rank_published
