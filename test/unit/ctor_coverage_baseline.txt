@@ -1,0 +1,63 @@
+# Constructors that do not account for every member of their own class.
+#
+# This is a record of what was already here when the check was written, not a
+# list of things that are fine.  Each line is a member whose constructor never
+# mentions it: harmless where zero is the intended default, a latent bug where
+# it is not, and impossible to tell apart without reading each one.
+#
+# The check fails on anything NOT listed here, so new omissions are caught
+# immediately.  It also fails on a line that no longer occurs, so that fixing
+# one obliges you to delete its line and the list can only shrink.
+#
+# Format: <path> <type>.<member>
+examples/server.c myxfer_t.lock
+src/client/pmix_client.c pmix_held_delete_t.proc
+src/client/pmix_client.c pmix_held_delete_t.scope
+src/client/pmix_client_resolve.c pmix_resolve_caddy_t.status
+src/common/pmix_iof.c pmix_iof_read_event_t.name
+src/common/pmix_iof.c pmix_iof_residual_t.channel
+src/common/pmix_iof.c pmix_iof_residual_t.copystderr
+src/common/pmix_iof.c pmix_iof_residual_t.copystdout
+src/common/pmix_iof.c pmix_iof_residual_t.flags
+src/common/pmix_iof.c pmix_iof_residual_t.name
+src/common/pmix_iof.c pmix_iof_residual_t.stream
+src/common/pmix_iof.c pmix_iof_sink_t.name
+src/common/pmix_iof.c pmix_iof_sink_t.tag
+src/event/pmix_event_notification.c pmix_active_code_t.code
+src/event/pmix_event_notification.c pmix_event_chain_t.status
+src/event/pmix_event_notification.c pmix_event_hdlr_t.source
+src/event/pmix_event_registration.c pmix_rshift_caddy_t.active
+src/event/pmix_event_registration.c pmix_rshift_caddy_t.index
+src/event/pmix_event_registration.c pmix_rshift_caddy_t.status
+src/include/pmix_globals.c pmix_cb_t.errhandler_ref
+src/include/pmix_globals.c pmix_cb_t.pstatus
+src/include/pmix_globals.c pmix_notify_caddy_t.buf
+src/include/pmix_globals.c pmix_notify_caddy_t.cbdata
+src/include/pmix_globals.c pmix_notify_caddy_t.cbfunc
+src/include/pmix_globals.c pmix_notify_caddy_t.status
+src/include/pmix_globals.c pmix_peer_t.recv_event
+src/include/pmix_globals.c pmix_peer_t.send_event
+src/include/pmix_globals.c pmix_timer_t.tv
+src/mca/base/pmix_mca_base_components_open.c fc_pair_t.li
+src/mca/bfrops/base/bfrop_base_frame.c pmix_bfrop_type_info_t.odti_type
+src/mca/bfrops/base/bfrop_base_frame.c pmix_buffer_t.parent
+src/mca/plog/stdfd/plog_stdfd.c pmix_iof_deliver_t.source
+src/mca/pmdl/ompi/pmdl_ompi.c pmdl_nspace_t.nspace
+src/mca/psensor/file/psensor_file.c file_tracker_t.cdev
+src/mca/psensor/heartbeat/psensor_heartbeat.c pmix_heartbeat_trkr_t.cdev
+src/mca/pstat/base/pstat_base_frame.c pmix_pstat_op_t.tv
+src/mca/ptl/base/ptl_base_connection_hdlr.c cnct_hdlr_t.reply
+src/mca/ptl/base/ptl_base_connection_hdlr.c cnct_hdlr_t.status
+src/mca/ptl/base/ptl_base_frame.c pmix_ptl_queue_t.active
+src/mca/ptl/base/ptl_base_frame.c pmix_ptl_recv_t.sd
+src/mca/ptl/base/ptl_base_frame.c pmix_ptl_sr_t.active
+src/mca/ptl/base/ptl_base_frame.c pmix_ptl_sr_t.status
+src/runtime/pmix_info_support.c pmix_info_component_map_t.components
+src/runtime/pmix_info_support.c pmix_info_component_map_t.failed_components
+src/runtime/pmix_progress_threads.c pmix_progress_tracker_t.block
+src/runtime/pmix_progress_threads.c pmix_progress_tracker_t.engine
+src/server/pmix_server_classes.c pmix_server_trkr_t.type
+src/server/pmix_server_classes.c pmix_setup_caddy_t.sessionid
+src/util/pmix_show_help.c tuple_array_item_t.array
+test/server_callbacks.c pmix_test_info_t.namespace_published
+test/server_callbacks.c pmix_test_info_t.rank_published
