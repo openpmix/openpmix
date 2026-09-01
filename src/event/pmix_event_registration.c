@@ -31,6 +31,9 @@
 static void rscon(pmix_rshift_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
+    p->active = false;
+    p->status = PMIX_SUCCESS;
+    p->index = SIZE_MAX;
     p->firstoverall = false;
     p->enviro = false;
     p->list = NULL;

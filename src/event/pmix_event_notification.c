@@ -1874,6 +1874,7 @@ static void sevcon(pmix_event_hdlr_t *p)
     p->precedence = PMIX_EVENT_ORDER_NONE;
     p->oneshot = false;
     p->locator = NULL;
+    PMIX_LOAD_PROCID(&p->source, NULL, PMIX_RANK_UNDEF);
     p->rng.range = PMIX_RANGE_UNDEF;
     p->rng.procs = NULL;
     p->rng.nprocs = 0;
@@ -1915,6 +1916,7 @@ PMIX_CLASS_INSTANCE(pmix_event_hdlr_t, pmix_list_item_t, sevcon, sevdes);
 
 static void accon(pmix_active_code_t *p)
 {
+    p->code = PMIX_SUCCESS;
     p->nregs = 0;
     p->peer = NULL;
 }
@@ -1951,6 +1953,7 @@ PMIX_CLASS_INSTANCE(pmix_events_t,
 
 static void chcon(pmix_event_chain_t *p)
 {
+    p->status = PMIX_SUCCESS;
     p->timer_active = false;
     memset(p->source.nspace, 0, PMIX_MAX_NSLEN + 1);
     p->source.rank = PMIX_RANK_UNDEF;

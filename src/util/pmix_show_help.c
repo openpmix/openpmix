@@ -109,6 +109,7 @@ typedef struct {
 static void tacon(tuple_array_item_t *p)
 {
     p->project = NULL;
+    p->array = NULL;
 }
 static void tades(tuple_array_item_t *p)
 {

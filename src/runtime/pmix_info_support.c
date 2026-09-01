@@ -104,6 +104,11 @@ static void component_map_construct(pmix_info_component_map_t *map)
 {
     map->project = NULL;
     map->type = NULL;
+    /* the framework's own lists, borrowed when the map is filled in -
+     * see info_register_framework(), which is why the destructor below
+     * leaves them alone */
+    map->components = NULL;
+    map->failed_components = NULL;
 }
 static void component_map_destruct(pmix_info_component_map_t *map)
 {

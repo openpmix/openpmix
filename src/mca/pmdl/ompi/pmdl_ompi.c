@@ -80,6 +80,7 @@ typedef struct {
 } pmdl_nspace_t;
 static void nscon(pmdl_nspace_t *p)
 {
+    PMIX_LOAD_NSPACE(p->nspace, NULL);
     p->univ_size = UINT32_MAX;
     p->job_size = UINT32_MAX;
     p->local_size = UINT32_MAX;

@@ -65,16 +65,22 @@ static void tracker_constructor(pmix_progress_tracker_t *p)
     p->name = NULL;
     p->ev_base = NULL;
     p->ev_active = false;
+    /* both of these are filled in later - 'block' by pmix_event_assign
+     * once the event base exists, 'engine' by PMIX_CONSTRUCT when the
+     * thread is about to be started - and the flags beside them say
+     * whether that has happened yet */
+    memset(&p->block, 0, sizeof(p->block));
     p->block_assigned = false;
+    memset(&p->engine, 0, sizeof(p->engine));
     p->engine_constructed = false;
 }
 
 static void tracker_destructor(pmix_progress_tracker_t *p)
 {
-    /* PMIX_NEW does not zero the object, so 'block' holds garbage until
-     * pmix_event_assign has run. A tracker released before that point -
-     * an allocation failure in pmix_progress_thread_init - must not hand
-     * that garbage to libevent */
+    /* 'block' is not a libevent event until pmix_event_assign has run.
+     * A tracker released before that point - an allocation failure in
+     * pmix_progress_thread_init - must not hand the zeroed struct to
+     * libevent */
     if (p->block_assigned) {
         pmix_event_del(&p->block);
     }

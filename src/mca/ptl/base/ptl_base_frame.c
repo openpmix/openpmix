@@ -584,6 +584,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_send_t,
 static void rcon(pmix_ptl_recv_t *p)
 {
     p->peer = NULL;
+    p->sd = -1;
     memset(&p->hdr, 0, sizeof(pmix_ptl_hdr_t));
     p->hdr.tag = UINT32_MAX;
     p->hdr.nbytes = 0;
@@ -615,7 +616,9 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_posted_recv_t,
 
 static void srcon(pmix_ptl_sr_t *p)
 {
+    p->active = false;
     p->peer = NULL;
+    p->status = PMIX_SUCCESS;
     p->bfr = NULL;
     p->cbfunc = NULL;
     p->cbdata = NULL;
@@ -720,6 +723,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_listener_t,
 
 static void qcon(pmix_ptl_queue_t *p)
 {
+    p->active = false;
     p->peer = NULL;
     p->buf = NULL;
     p->tag = UINT32_MAX;

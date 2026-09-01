@@ -388,7 +388,12 @@ static void pcon(pmix_peer_t *p)
     p->proc_cnt = 0;
     p->index = 0;
     p->sd = -1;
+    /* the send/recv events are assigned to this peer's socket when the
+     * connection is established - until then they are simply unarmed,
+     * which is what a zeroed event is */
+    memset(&p->send_event, 0, sizeof(p->send_event));
     p->send_ev_active = false;
+    memset(&p->recv_event, 0, sizeof(p->recv_event));
     p->recv_ev_active = false;
     PMIX_CONSTRUCT(&p->send_queue, pmix_list_t);
     p->send_msg = NULL;
@@ -590,9 +595,11 @@ static void cbcon(pmix_cb_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
     p->status = PMIX_SUCCESS;
+    p->pstatus = PMIX_SUCCESS;
     p->checked = false;
     PMIX_CONSTRUCT(&p->data, pmix_buffer_t);
     p->cbfunc.ptlfn = NULL;
+    p->errhandler_ref = SIZE_MAX; // no handler
     p->cbdata = NULL;
     p->pname.nspace = NULL;
     p->pname.rank = PMIX_RANK_UNDEF;
@@ -738,6 +745,7 @@ static void ncon(pmix_notify_caddy_t *p)
     p->ts = tv.tv_sec;
 #endif
     p->room = -1;
+    p->status = PMIX_SUCCESS;
     memset(p->source.nspace, 0, PMIX_MAX_NSLEN + 1);
     p->source.rank = PMIX_RANK_UNDEF;
     p->range = PMIX_RANGE_UNDEF;
@@ -752,6 +760,9 @@ static void ncon(pmix_notify_caddy_t *p)
     p->nondefault = false;
     p->info = NULL;
     p->ninfo = 0;
+    p->buf = NULL;
+    p->cbfunc = NULL;
+    p->cbdata = NULL;
 }
 static void ndes(pmix_notify_caddy_t *p)
 {
@@ -1186,6 +1197,8 @@ int pmix_event_del_checked(struct event *ev)
 
 static void tcon(pmix_timer_t *p)
 {
+    p->tv.tv_sec = 0;
+    p->tv.tv_usec = 0;
     p->active = false;
     p->payload = NULL;
 }

@@ -77,6 +77,7 @@ typedef struct {
 static void rcon(pmix_resolve_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
+    p->status = PMIX_SUCCESS;
     p->nodename = NULL;
     PMIX_LOAD_NSPACE(p->nspace, NULL);
     p->procs = NULL;

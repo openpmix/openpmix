@@ -3519,6 +3519,8 @@ reactivate:
 /* class instances */
 static void iof_sink_construct(pmix_iof_sink_t *ptr)
 {
+    PMIX_LOAD_PROCID(&ptr->name, NULL, PMIX_RANK_UNDEF);
+    ptr->tag = PMIX_FWD_NO_CHANNELS;
     PMIX_CONSTRUCT(&ptr->wev, pmix_iof_write_event_t);
     ptr->xoff = false;
     ptr->exclusive = false;
@@ -3555,6 +3557,7 @@ static void iof_read_event_construct(pmix_iof_read_event_t *rev)
     rev->tv.tv_sec = 0;
     rev->tv.tv_usec = 0;
     rev->fd = -1;
+    PMIX_LOAD_PROCID(&rev->name, NULL, PMIX_RANK_UNDEF);
     rev->channel = PMIX_FWD_NO_CHANNELS;
     rev->active = false;
     rev->childproc = NULL;
@@ -3636,6 +3639,14 @@ PMIX_CLASS_INSTANCE(pmix_iof_write_output_t,
 
 static void iofrescon(pmix_iof_residual_t *p)
 {
+    PMIX_LOAD_PROCID(&p->name, NULL, PMIX_RANK_UNDEF);
+    p->channel = NULL;
+    /* every field of the flags is overwritten wholesale when the
+     * residual is filled in - see pmix_iof_write_output */
+    memset(&p->flags, 0, sizeof(p->flags));
+    p->stream = PMIX_FWD_NO_CHANNELS;
+    p->copystdout = false;
+    p->copystderr = false;
     PMIX_BYTE_OBJECT_CONSTRUCT(&p->bo);
 }
 static void iofresdes(pmix_iof_residual_t *p)
