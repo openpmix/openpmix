@@ -44,6 +44,7 @@
 #include "src/mca/pgpu/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/psensor/base/base.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
@@ -86,7 +87,7 @@
  * a restated description exactly as it found it - which is what this
  * API did with all of it before it could update anything.
  */
-static bool job_update_is_elsewhere(const pmix_info_t *entry)
+bool pmix_server_job_update_is_elsewhere(const pmix_info_t *entry)
 {
     if (PMIX_CHECK_KEY(entry, PMIX_NSPACE) ||
         PMIX_CHECK_KEY(entry, PMIX_SESSION_ID) ||
@@ -121,7 +122,7 @@ static bool add_job_update(pmix_info_t **array, size_t *n,
     if (0 == strlen(entry->key)) {
         return true;
     }
-    if (job_update_is_elsewhere(entry)) {
+    if (pmix_server_job_update_is_elsewhere(entry)) {
         return true;
     }
     for (i = 0; i < *n; i++) {
@@ -199,11 +200,37 @@ static void _register_nspace(int sd, short args, void *cbdata)
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
     if (0 > cd->nlocalprocs) {
+        /* An update revises what we already hold. If we hold nothing
+         * for this namespace, there is nothing to revise, and the
+         * nptr created above is a namespace this server was never told
+         * about - left on pmix_globals.nspaces for the life of the
+         * process, describing nothing, while the host is told its
+         * update succeeded. A typo'd namespace is then indistinguishable
+         * from a namespace that was actually updated.
+         *
+         * Take it back off the list and say what is true. Not registered
+         * is exactly what PMIX_ERR_NOT_FOUND says. */
+        if (!nptr->job_info_recvd && SIZE_MAX == nptr->nlocalprocs) {
+            pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
+            PMIX_RELEASE(nptr);
+            rc = PMIX_ERR_NOT_FOUND;
+            goto release;
+        }
         /* this is just an update, so we store it
          * in our hash datastore until someone
          * requests it */
         gds = pmix_globals.mypeer->nptr->compat.gds;
-        if (NULL != gds && NULL != gds->store) {
+        /* Deliberately NOT gated on gds->store.
+         *
+         * Only two of the arms below call it; the rest collect job-level
+         * values for the fan-out afterwards, which does not use gds at
+         * all. Gating the whole walk on that slot meant a module that
+         * leaves it NULL - and gds/shmem3 does - collected nothing,
+         * fanned out nothing and returned PMIX_SUCCESS, so the host's
+         * update silently did nothing. That we are assigned "hash"
+         * today, and hash has a store, is a coincidence the neighbouring
+         * file already warns about relying on. */
+        {
             /* default the target to the job level. A PMIX_PROC_INFO_ARRAY
              * narrows it to the rank that array describes, but the other
              * arms below are job-level updates that carry no rank of their
@@ -213,6 +240,13 @@ static void _register_nspace(int sd, short args, void *cbdata)
             PMIX_LOAD_PROCID(&proc, cd->proc.nspace, PMIX_RANK_WILDCARD);
             for (i=0; i < cd->ninfo; i++) {
                 if (PMIX_CHECK_KEY(&cd->info[i], PMIX_PROC_INFO_ARRAY)) {
+                    /* this arm stores through the module - say so rather
+                     * than quietly dropping what the host sent */
+                    if (NULL == gds || NULL == gds->store) {
+                        rc = PMIX_ERR_NOT_SUPPORTED;
+                        PMIX_ERROR_LOG(rc);
+                        goto release;
+                    }
                     /* the type has to be checked before the darray member
                      * of the union is read: an entry carrying this key with
                      * any other type hands us whatever that member happens
@@ -270,6 +304,11 @@ static void _register_nspace(int sd, short args, void *cbdata)
                         }
                     }
                 } else if (PMIX_CHECK_KEY(&cd->info[i], PMIX_GROUP_CONTEXT_ID)) {
+                    if (NULL == gds || NULL == gds->store) {
+                        rc = PMIX_ERR_NOT_SUPPORTED;
+                        PMIX_ERROR_LOG(rc);
+                        goto release;
+                    }
                     PMIX_KVAL_NEW(kv, cd->info[i].key);
                     if (PMIX_UNLIKELY(NULL == kv)) {
                         rc = PMIX_ERR_NOMEM;
@@ -896,6 +935,18 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                 }
                 /* honor any registered epilogs */
                 pmix_execute_epilog(&peer->epilog);
+                /* Push out anything still queued for this peer before its
+                 * socket goes away.  We are retiring a peer the host has
+                 * told us about, not reacting to one that vanished, so a
+                 * message sitting on its send queue is one we accepted the
+                 * obligation to deliver - typically the reply to the very
+                 * finalize that brought the host here, which reaches the
+                 * peer only when its send event next fires and so is still
+                 * unwritten at this point.  Dropping it leaves the peer
+                 * waiting on an answer that was packed and discarded, and
+                 * on the finalize path that wait is the full guard timer in
+                 * PMIx_Finalize/PMIx_tool_finalize. */
+                pmix_ptl_base_flush_sends(peer);
                 /* ensure we close the socket to this peer so we don't
                  * generate "connection lost" events should it be
                  * subsequently "killed" by the host */

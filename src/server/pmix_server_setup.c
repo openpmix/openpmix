@@ -162,7 +162,29 @@ static void _register_resources(int sd, short args, void *cbdata)
              * the two populations answer differently for one host call
              * - forever. Borrowed views of cd->info, which outlives the
              * call. */
-            pmix_info_t *ftmp = (pmix_info_t *)
+            pmix_info_t *ftmp;
+
+            /* ...but only what a job-level fan-out can actually file.
+             * The arms above sort out the group keys; they do not sort
+             * out a map, a realm array, or a lone key naming the
+             * session, node or app realm, and this else arm sweeps all
+             * of those in. PMIX_GDS_ADD_JOB_DATA files job-level
+             * VALUES, so handing it one of those stores it under its own
+             * key where no reader of its realm looks - and counts it as
+             * changed on every call, which in gds/shmem3 publishes a
+             * segment that is never reclaimed.
+             *
+             * The same classification PMIx_server_register_nspace()'s
+             * update path applies, asked of the same function, so the
+             * two ways a host may revise a running job agree about what
+             * a job-level value is. Such entries still reach the cache
+             * below, which is copied into a namespace by the
+             * registration path - and that one does know how to decode
+             * them. */
+            if (pmix_server_job_update_is_elsewhere(&cd->info[n])) {
+                goto cache_it;
+            }
+            ftmp = (pmix_info_t *)
                 realloc(fanout, (nfanout + 1) * sizeof(pmix_info_t));
             if (NULL == ftmp) {
                 ret = PMIX_ERR_NOMEM;
@@ -172,6 +194,7 @@ static void _register_resources(int sd, short args, void *cbdata)
             memcpy(&fanout[nfanout], &cd->info[n], sizeof(pmix_info_t));
             nfanout++;
 
+cache_it:
             /* add any provided data to our global cache for all nspaces */
             kv = PMIX_NEW(pmix_kval_t);
             if (NULL == kv) {

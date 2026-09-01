@@ -50,6 +50,18 @@
 
 #include "src/mca/ptl/base/base.h"
 
+/* How long pmix_ptl_base_flush_sends() is willing to wait on a peer that is
+ * not draining its socket: at most MAX_RETRIES waits of RETRY_USEC each.
+ * Small on purpose - the messages this path exists for are a few tens of
+ * bytes on a socket the peer is about to read to EOF, so a full kernel
+ * buffer here means the peer is wedged, not busy. */
+#define PMIX_PTL_FLUSH_MAX_RETRIES 10
+#define PMIX_PTL_FLUSH_RETRY_USEC  1000
+
+/* The aggregation window to use for a report that cannot aggregate: deliver
+ * on the next pass of the event loop rather than a second from now. */
+static struct timeval report_now = {0, 0};
+
 static void _notify_complete(pmix_status_t status, void *cbdata)
 {
     (void) status;
@@ -57,12 +69,47 @@ static void _notify_complete(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(chain);
 }
 
-static void lost_connection(pmix_peer_t *peer)
+/* My connection to the server I am a client of has dropped.
+ *
+ * It is possible that we have sendrecv's in progress where we are waiting
+ * for a response to arrive. Since we have lost connection to the server,
+ * that will never happen. Thus, to preclude any chance of hanging, cycle
+ * thru the list of posted recvs and complete any that are the return call
+ * from a sendrecv - i.e., any that are waiting on dynamic tags.
+ */
+static void lost_my_server(void)
 {
     pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
 
+    if (NULL == pmix_client_globals.myserver ||
+        NULL == pmix_client_globals.myserver->nptr) {
+        return;
+    }
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    /* must set the buffer type so it doesn't fail in unpack */
+    buf.type = pmix_client_globals.myserver->nptr->compat.type;
+    hdr.nbytes = 0; // initialize the hdr to something safe
+    PMIX_LIST_FOREACH (rcv, &pmix_ptl_base.posted_recvs, pmix_ptl_posted_recv_t) {
+        /* only the dynamic tags carry a sendrecv reply that somebody
+         * is blocked on. The reserved tags below PMIX_PTL_TAG_DYNAMIC
+         * hold persistent recvs - the notification, IOF and IOF flow
+         * control handlers - and nobody is waiting on those. Handing
+         * one of them this empty buffer would only make it fail to
+         * unpack a message that was never sent. */
+        if (PMIX_PTL_TAG_DYNAMIC <= rcv->tag && UINT_MAX != rcv->tag &&
+            NULL != rcv->cbfunc) {
+            /* construct and load the buffer */
+            hdr.tag = rcv->tag;
+            rcv->cbfunc(pmix_globals.mypeer, &hdr, &buf, rcv->cbdata);
+        }
+    }
+    PMIX_DESTRUCT(&buf);
+}
+
+static void lost_connection(pmix_peer_t *peer)
+{
     /* stop all events */
     if (peer->recv_ev_active) {
         pmix_event_del(&peer->recv_event);
@@ -116,9 +163,21 @@ static void lost_connection(pmix_peer_t *peer)
          * this peer's data is told. */
         pmix_server_purge_events(peer, NULL, PMIX_ERR_LOST_CONNECTION);
 
-        if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-            /* only connection I can lose is to my server, so mark it */
+        /* Ask which peer went away, not what I am. A launcher - prun, and
+         * anything else that passes PMIX_LAUNCHER to PMIx_tool_init - is a
+         * tool with an upstream server AND a server with downstream peers of
+         * its own, because PMIX_PROC_LAUNCHER carries PMIX_PROC_SERVER. So
+         * "am I a server" cannot distinguish the two directions, and testing
+         * it here got both of them wrong: losing a tool of my own would
+         * declare me disconnected from my server, while losing my server
+         * would leave every sendrecv I had outstanding on it unanswered -
+         * the finalize sync among them, so a launcher paid its full
+         * finalize guard timer on every departure whose reply went astray.
+         * That recovery lives in the client arm below, which a launcher
+         * never reaches. */
+        if (peer == pmix_client_globals.myserver) {
             pmix_atomic_unset_bool(&pmix_globals.connected);
+            lost_my_server();
         } else if (!PMIX_PEER_IS_TOOL(peer)) {
             /* cleanup any sensors that are monitoring them */
             pmix_psensor.stop(peer, NULL);
@@ -127,9 +186,20 @@ static void lost_connection(pmix_peer_t *peer)
             /* if this peer already called finalize, then
              * we are just seeing their connection go away
              * when they terminate - so do not generate
-             * an event. If an abnormal termination, then we do */
-            PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION, peer,
-                              PMIX_RANGE_PROC_LOCAL, _notify_complete);
+             * an event. If an abnormal termination, then we do.
+             *
+             * Which peer it was decides whether the aggregation window is
+             * worth waiting out.  Losing a client is precisely the cascade
+             * the window exists for: a job that dies drops all of its
+             * peers at once, and one event naming them all is the point.
+             * Losing my own server is not - I have exactly one, so that
+             * chain can never gain a second source and the window is a
+             * second of delay in exchange for nothing. */
+            PMIX_REPORT_EVENT_WINDOW(PMIX_ERR_LOST_CONNECTION, peer,
+                                     PMIX_RANGE_PROC_LOCAL, _notify_complete,
+                                     (peer == pmix_client_globals.myserver)
+                                         ? &report_now
+                                         : &pmix_globals.event_window);
         }
 
         /* if a local peer finalized cleanly and its socket has now dropped,
@@ -156,37 +226,20 @@ static void lost_connection(pmix_peer_t *peer)
         /* if this was the server to which I am connected,
          * then we need to exit */
         pmix_atomic_unset_bool(&pmix_globals.connected);
-        /* it is possible that we have sendrecv's in progress where
-         * we are waiting for a response to arrive. Since we have
-         * lost connection to the server, that will never happen.
-         * Thus, to preclude any chance of hanging, cycle thru
-         * the list of posted recvs and complete any that are
-         * the return call from a sendrecv - i.e., any that are
-         * waiting on dynamic tags */
-        PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-        /* must set the buffer type so it doesn't fail in unpack */
-        buf.type = pmix_client_globals.myserver->nptr->compat.type;
-        hdr.nbytes = 0; // initialize the hdr to something safe
-        PMIX_LIST_FOREACH (rcv, &pmix_ptl_base.posted_recvs, pmix_ptl_posted_recv_t) {
-            /* only the dynamic tags carry a sendrecv reply that somebody
-             * is blocked on. The reserved tags below PMIX_PTL_TAG_DYNAMIC
-             * hold persistent recvs - the notification, IOF and IOF flow
-             * control handlers - and nobody is waiting on those. Handing
-             * one of them this empty buffer would only make it fail to
-             * unpack a message that was never sent. */
-            if (PMIX_PTL_TAG_DYNAMIC <= rcv->tag && UINT_MAX != rcv->tag &&
-                NULL != rcv->cbfunc) {
-                /* construct and load the buffer */
-                hdr.tag = rcv->tag;
-                rcv->cbfunc(pmix_globals.mypeer, &hdr, &buf, rcv->cbdata);
-            }
-        }
-        PMIX_DESTRUCT(&buf);
-        /* if I called finalize, then don't generate an event */
+        lost_my_server();
+        /* if I called finalize, then don't generate an event.
+         *
+         * No aggregation window here: this report names my one and only
+         * server, so nothing can ever join it.  Waiting the window out is
+         * what made a tool whose whole job is to watch for this - pterm,
+         * which orders a DVM down and then waits for the connection to
+         * drop as proof it went - spend a full second of its ~1.02 s
+         * runtime waiting for an event that was ready immediately. */
         if (!pmix_globals.mypeer->finalized) {
-            PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION,
-                              pmix_client_globals.myserver,
-                              PMIX_RANGE_PROC_LOCAL, _notify_complete);
+            PMIX_REPORT_EVENT_WINDOW(PMIX_ERR_LOST_CONNECTION,
+                                     pmix_client_globals.myserver,
+                                     PMIX_RANGE_PROC_LOCAL, _notify_complete,
+                                     &report_now);
         }
     }
 }
@@ -260,6 +313,89 @@ retry:
             msg->sdbytes = ntohl(msg->hdr.nbytes) - rc;
         }
         return PMIX_ERR_RESOURCE_BUSY;
+    }
+}
+
+/* Write out everything already queued for this peer, right now.
+ *
+ * A peer's queued sends normally drain from its send_event, which cannot
+ * fire until the event base next polls. That is fine while the peer is
+ * alive, and wrong at the moment we are about to close its socket in an
+ * orderly teardown: the bytes sitting on send_msg are a reply we owe that
+ * peer, and closing the socket under them discards the reply with no notice
+ * to either side. The peer is then left waiting for an answer that was
+ * packed, queued and thrown away - which for the finalize reply means
+ * waiting out the client's or tool's finalize guard timer, seconds spent
+ * for nothing on every clean departure.
+ *
+ * Bounded and best-effort by design: the socket is non-blocking, so a peer
+ * that has stopped reading gets a short grace period and then loses the
+ * remainder. Truncating a message to a peer that is not draining it is much
+ * cheaper than letting that peer stall the progress thread, which is what
+ * an unbounded wait here would do.
+ */
+void pmix_ptl_base_flush_sends(pmix_peer_t *peer)
+{
+    pmix_ptl_send_t *msg;
+    pmix_status_t rc;
+    int retries;
+    fd_set wfds;
+    struct timeval tv;
+
+    if (NULL == peer || peer->sd < 0) {
+        return;
+    }
+
+    /* stop the send event: we are draining by hand, and leaving it armed
+     * would let it fire against a socket that is about to be closed */
+    if (peer->send_ev_active) {
+        pmix_event_del(&peer->send_event);
+        peer->send_ev_active = false;
+    }
+
+    while (1) {
+        if (NULL == peer->send_msg) {
+            peer->send_msg = (pmix_ptl_send_t *) pmix_list_remove_first(&peer->send_queue);
+            if (NULL == peer->send_msg) {
+                break;
+            }
+        }
+        msg = peer->send_msg;
+        retries = 0;
+        while (PMIX_SUCCESS != (rc = send_msg(peer->sd, msg))) {
+            if ((PMIX_ERR_RESOURCE_BUSY != rc && PMIX_ERR_WOULD_BLOCK != rc) ||
+                PMIX_PTL_FLUSH_MAX_RETRIES <= retries) {
+                /* the peer is unreachable, or is not reading fast enough to
+                 * be worth waiting on - drop this message and everything
+                 * queued behind it */
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "%s ptl:base:flush_sends giving up on sd %d: %s",
+                                    PMIX_NAME_PRINT(&pmix_globals.myid), peer->sd,
+                                    PMIx_Error_string(rc));
+                PMIX_RELEASE(msg);
+                peer->send_msg = NULL;
+                while (NULL != (msg = (pmix_ptl_send_t *)
+                                pmix_list_remove_first(&peer->send_queue))) {
+                    PMIX_RELEASE(msg);
+                }
+                return;
+            }
+            /* the kernel buffer is full - give it a moment to drain. select
+             * is used rather than poll because sys/select.h is what PMIx
+             * already requires of the platform */
+            ++retries;
+            FD_ZERO(&wfds);
+            FD_SET(peer->sd, &wfds);
+            tv.tv_sec = 0;
+            tv.tv_usec = PMIX_PTL_FLUSH_RETRY_USEC;
+            select(peer->sd + 1, NULL, &wfds, NULL, &tv);
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "%s ptl:base:flush_sends MSG SENT on sd %d tag %u",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), peer->sd,
+                            ntohl(msg->hdr.tag));
+        PMIX_RELEASE(msg);
+        peer->send_msg = NULL;
     }
 }
 

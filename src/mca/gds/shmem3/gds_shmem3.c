@@ -1810,6 +1810,14 @@ shmem3_segment_attach_and_init(
     // Now we can safely initialize our shared data structures.
     rc = init_client_side_sm_data(job, seginfo->smid);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        /* Undo the attach. Leaving it mapped and marked ready leaves
+         * this handle claiming a segment nothing finished setting up -
+         * and pmix_shmem_segment_attach() refuses a handle that is
+         * already attached, so the NEXT delivery of this segment kind
+         * could never map either. One failed allocation would cost the
+         * rest of the run's deliveries rather than this one. */
+        (void)pmix_shmem_segment_detach(shmem3);
+        pmix_gds_shmem3_clearall_status(job, seginfo->smid);
         return rc;
     }
     /* We are a reader of this segment, so take write access away and let
@@ -2090,7 +2098,8 @@ shmem3_segment_create_and_attach(
     pmix_gds_shmem3_job_t *job,
     pmix_gds_shmem3_job_shmem3_id_t shmem3_id,
     const char *segment_name,
-    size_t segment_size
+    size_t segment_size,
+    pmix_gds_shmem3_attach_ctx_t ctx
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
     // Pad given size to fill remaining space on the last page.
@@ -2264,17 +2273,34 @@ out:
     }
     return rc;
 out_release:
-    /* Mirror shmem3_attach()'s failure handling: detach and drop the job
-     * tracker entry.
-     *
-     * Take the backing file with it. pmix_shmem_segment_create() made it
-     * and shmem_destruct() only unlinks a segment it managed to ATTACH,
-     * so a failure between the two left the file in the session tmpdir
-     * for the life of the node - and the path is built from a pid, which
-     * gets reused. */
+    /* Take the backing file with the failed segment.
+     * pmix_shmem_segment_create() made it and shmem_destruct() only
+     * unlinks a segment it managed to ATTACH, so a failure between the
+     * two left the file in the session tmpdir for the life of the node -
+     * and the path is built from a pid, which gets reused. */
     (void)pmix_shmem_segment_unlink(shmem3);
     (void)pmix_shmem_segment_detach(shmem3);
-    drop_job_tracker(job);
+
+    /* WHETHER THE TRACKER GOES depends on which case this is, and the
+     * caller is the only one that knows - the same distinction, for the
+     * same reason, that shmem3_attach() was given.
+     *
+     * During registration nothing has read this job yet, so a tracker
+     * whose first segment could not be built has nothing to keep and
+     * dropping it is the cleanup.
+     *
+     * Afterwards it is the opposite. A modex generation, a session
+     * update and an addition to a registered job all build a segment on
+     * a job whose clients are attached and reading - so dropping the
+     * tracker would take away the job and session segments they have
+     * held since PMIx_Init, and pmix_gds_shmem3_fetch() would answer
+     * every lookup for their own namespace with
+     * PMIX_ERR_INVALID_NAMESPACE. That is openpmix#4156 again, from the
+     * server side and by way of a transient failure - no VM hole found,
+     * a full tmpdir - rather than a client that could not map. */
+    if (PMIX_GDS_SHMEM3_ATTACH_INIT == ctx) {
+        drop_job_tracker(job);
+    }
     return rc;
 }
 
@@ -2431,7 +2457,9 @@ prepare_shmem3_stores_for_local_job_data(
     // This will be the backing store for data associated with static, read-only
     // data shared between the server and its clients.
     rc = shmem3_segment_create_and_attach(
-        job, PMIX_GDS_SHMEM3_JOB_ID, "jobdata", seg_size
+        job, PMIX_GDS_SHMEM3_JOB_ID, "jobdata", seg_size,
+        /* registering: nothing has read this job yet */
+        PMIX_GDS_SHMEM3_ATTACH_INIT
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -2472,7 +2500,9 @@ prepare_shmem3_stores_for_local_job_data(
     }
 
     rc = shmem3_segment_create_and_attach(
-        job, PMIX_GDS_SHMEM3_SESSION_ID, session_name, seg_size
+        job, PMIX_GDS_SHMEM3_SESSION_ID, session_name, seg_size,
+        /* registering: nothing has read this job yet */
+        PMIX_GDS_SHMEM3_ATTACH_INIT
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -3483,10 +3513,11 @@ unpack_shmem3_seg_blob_and_attach_if_necessary(
          * pmix_gds_shmem3_get_job_shmem3_by_id(), which abort()s, and a
          * missing nspace reaches strcmp() with NULL.
          *
-         * Skip such a blob rather than failing - it is the same forward
-         * compatibility the unrecognized-key arm of the unpacker keeps,
-         * one level up. A segment kind we have never heard of is one we
-         * have no use for by construction. */
+         * Skip such a blob rather than failing - the same forward
+         * compatibility the unrecognized-key arm one level up keeps, and
+         * the one the fields of this blob get in
+         * unpack_shmem3_connection_info(). A segment kind we have never
+         * heard of is one we have no use for by construction. */
         if (PMIX_GDS_SHMEM3_JOB_ID != usb.smid &&
             PMIX_GDS_SHMEM3_SESSION_ID != usb.smid &&
             PMIX_GDS_SHMEM3_MODEX_ID != usb.smid) {
@@ -3822,13 +3853,20 @@ client_connect_to_shmem3_from_buffi(
             }
         }
         else {
+            /* A key this build has not been taught to read. Skip it.
+             *
+             * Refusing the whole delivery instead makes every future
+             * addition a flag day - and, at PMIx_Init, fails the init
+             * outright rather than degrading. It is the same rule the
+             * inner unpacker keeps for the fields of a seg blob, which
+             * the note in unpack_shmem3_connection_info() spells out;
+             * the two ends of one stream disagreed about it, and the
+             * comment in this file claiming they agreed was reading the
+             * inner one. */
             PMIX_GDS_SHMEM3_VOUT(
-                "%s:ERROR unexpected key=%s", __func__,
+                "%s: ignoring unrecognized key=%s", __func__,
                 (NULL == kval.key) ? "(null)" : kval.key
             );
-            rc = PMIX_ERR_BAD_PARAM;
-            PMIX_ERROR_LOG(rc);
-            break;
         }
         PMIX_DESTRUCT(&kval);
     };
@@ -4097,7 +4135,10 @@ server_store_modex_cb(pmix_proc_t *proc,
         // Create and attach to the shared-memory
         // segment that will back these data.
         rc = shmem3_segment_create_and_attach(
-            job, PMIX_GDS_SHMEM3_MODEX_ID, segname, minfo.size
+            job, PMIX_GDS_SHMEM3_MODEX_ID, segname, minfo.size,
+            /* a live job - its clients are reading the segments this
+             * tracker owns */
+            PMIX_GDS_SHMEM3_ATTACH_UPDATE
         );
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -4529,7 +4570,10 @@ publish_session_update(
         goto out;
     }
     rc = shmem3_segment_create_and_attach(
-        job, PMIX_GDS_SHMEM3_SESSION_ID, name, seg_size
+        job, PMIX_GDS_SHMEM3_SESSION_ID, name, seg_size,
+        /* a live job - its clients are reading the segments this
+         * tracker owns */
+        PMIX_GDS_SHMEM3_ATTACH_UPDATE
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -5074,7 +5118,10 @@ server_add_job_data(
     snprintf(segname, sizeof(segname), "jobdata.%u",
              (unsigned) job->job_generation);
     rc = shmem3_segment_create_and_attach(
-        job, PMIX_GDS_SHMEM3_JOB_ID, segname, seg_size
+        job, PMIX_GDS_SHMEM3_JOB_ID, segname, seg_size,
+        /* a live job - its clients are reading the segments this
+         * tracker owns */
+        PMIX_GDS_SHMEM3_ATTACH_UPDATE
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);

@@ -149,6 +149,13 @@ static pmix_status_t session_del(uint32_t sessionID)
  * Nothing is packed for a job with no session, which is the ordinary
  * case for a host that never described one.
  */
+/* File a lone realm key where its realm keeps values - see the note on
+ * the definition. Used by every path that takes one: the registration
+ * that first stores a job description, the reply to a keyed get, and
+ * the job-level values an update carries. */
+static pmix_status_t store_lone_realm_key(pmix_job_t *trk, uint32_t sid,
+                                          const char *key, pmix_value_t *value);
+
 static pmix_status_t hash_pack_update(struct pmix_peer_t *pr,
                                       pmix_buffer_t *buff)
 {
@@ -166,13 +173,55 @@ static pmix_status_t hash_pack_update(struct pmix_peer_t *pr,
         return PMIX_SUCCESS;
     }
 
-    /* Job-level values added since this namespace was registered.
+    /* Job-level values added since this namespace was registered,
+     * wrapped in a PMIX_JOB_INFO_ARRAY.
+     *
+     * The wrapper is what makes this stream SELF-DESCRIBING, and that is
+     * the point of it rather than tidiness. Sent bare, a job-level value
+     * is indistinguishable from any other kval, so the receiver had to
+     * treat "not a session array" as "a job-level value" - and would
+     * therefore misfile, as job data, the first new kind of entry any
+     * future release adds here. Named, each kind can be recognized and
+     * an unrecognized one skipped, which is what the project's wire
+     * rules ask of a reader.
      *
      * These go first and unconditionally - a job need not be in a
      * session at all, and the session walk below returns early when it
      * is not, which would have dropped these with it. */
-    PMIX_LIST_FOREACH (kvptr, &trk->updates, pmix_kval_t) {
-        PMIX_BFROPS_PACK(rc, peer, buff, kvptr, 1, PMIX_KVAL);
+    if (0 < pmix_list_get_size(&trk->updates)) {
+        pmix_data_array_t *darray = NULL;
+        pmix_info_t *iptr;
+        pmix_kval_t wrap;
+        size_t n = 0;
+
+        PMIX_DATA_ARRAY_CREATE(darray, pmix_list_get_size(&trk->updates),
+                               PMIX_INFO);
+        if (NULL == darray) {
+            return PMIX_ERR_NOMEM;
+        }
+        iptr = (pmix_info_t *) darray->array;
+        PMIX_LIST_FOREACH (kvptr, &trk->updates, pmix_kval_t) {
+            PMIX_LOAD_KEY(iptr[n].key, kvptr->key);
+            rc = PMIx_Value_xfer(&iptr[n].value, kvptr->value);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_DATA_ARRAY_FREE(darray);
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+            n++;
+        }
+        PMIX_CONSTRUCT(&wrap, pmix_kval_t);
+        wrap.key = strdup(PMIX_JOB_INFO_ARRAY);
+        wrap.value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        if (NULL == wrap.key || NULL == wrap.value) {
+            PMIX_DATA_ARRAY_FREE(darray);
+            PMIX_DESTRUCT(&wrap);
+            return PMIX_ERR_NOMEM;
+        }
+        wrap.value->type = PMIX_DATA_ARRAY;
+        wrap.value->data.darray = darray;
+        PMIX_BFROPS_PACK(rc, peer, buff, &wrap, 1, PMIX_KVAL);
+        PMIX_DESTRUCT(&wrap);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -231,19 +280,53 @@ static pmix_status_t hash_accept_update(pmix_buffer_t *buff)
                 return rc;
             }
         }
-        else {
-            /* a job-level value the host added after we attached. It
+        else if (PMIX_CHECK_KEY(&kv, PMIX_JOB_INFO_ARRAY)) {
+            /* Job-level values the host added after we attached. Each
              * goes where hash_cache_job_info() would have put it had it
-             * been there at the time, and pmix_hash_store() replaces by
-             * key - so a notice that arrives twice, or one that restates
-             * what we already hold, lands on the same state. */
-            rc = pmix_hash_store(&trk->internal, PMIX_RANK_WILDCARD, &kv,
-                                 NULL, 0, NULL);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
+             * been there at the time - which for a key naming a realm is
+             * that realm, not the job's own table - and the stores
+             * replace by key, so a notice that arrives twice, or one
+             * that restates what we already hold, lands on the same
+             * state. */
+            pmix_info_t *uptr;
+            size_t nu, u;
+
+            if (PMIX_DATA_ARRAY != kv.value->type ||
+                NULL == kv.value->data.darray ||
+                NULL == kv.value->data.darray->array) {
                 PMIX_DESTRUCT(&kv);
-                return rc;
+                return PMIX_ERR_TYPE_MISMATCH;
             }
+            uptr = (pmix_info_t *) kv.value->data.darray->array;
+            nu = kv.value->data.darray->size;
+            for (u = 0; u < nu; u++) {
+                pmix_kval_t ukv;
+
+                rc = store_lone_realm_key(trk, UINT32_MAX, uptr[u].key,
+                                          &uptr[u].value);
+                if (PMIX_ERR_TAKE_NEXT_OPTION == rc) {
+                    /* no realm of its own - the job's own table */
+                    ukv.key = uptr[u].key;
+                    ukv.value = &uptr[u].value;
+                    rc = pmix_hash_store(&trk->internal, PMIX_RANK_WILDCARD,
+                                         &ukv, NULL, 0, NULL);
+                }
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DESTRUCT(&kv);
+                    return rc;
+                }
+            }
+        }
+        else {
+            /* A kind of entry this build has not been taught to read.
+             * Skip it: a reader tolerates what it does not recognize, so
+             * that a server which has learned to send one more thing can
+             * still talk to a client that has not learned to read it.
+             * Storing it as job data instead - which is what "not a
+             * session array" used to mean here - would misfile it under
+             * its own key, where nothing looks for it. */
+            ;
         }
         PMIX_DESTRUCT(&kv);
         cnt = 1;
@@ -420,13 +503,8 @@ static pmix_status_t nspace_del(const char *nspace);
 static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc, pmix_list_t *kvs, pmix_buffer_t *bo,
                                     void *cbdata);
 
-static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf);
+static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf, pmix_list_t *jobvals);
 
-/* File a lone realm key where its realm keeps values - see the note on
- * the definition. Used by both paths that take one: the registration
- * that first stores a job description, and the reply to a keyed get. */
-static pmix_status_t store_lone_realm_key(pmix_job_t *trk, uint32_t sid,
-                                          const char *key, pmix_value_t *value);
 
 static pmix_status_t mark_modex_complete(struct pmix_peer_t *peer,
                                          pmix_list_t *nslist,
@@ -2089,7 +2167,7 @@ static pmix_status_t store_app_info(pmix_nspace_t nspace, pmix_kval_t *kv)
     return rc;
 }
 
-static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
+static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf, pmix_list_t *jobvals)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     int32_t cnt;
@@ -2097,6 +2175,8 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
     pmix_buffer_t pbkt;
     pmix_kval_t kv;
     pmix_proc_t proct;
+    pmix_rank_t wildrank;
+    bool keep_jobdata;
 
     /* the incoming payload is provided as a set of packed
      * byte objects, one for each rank. A pmix_proc_t is the first
@@ -2119,11 +2199,33 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
             PMIX_DESTRUCT(&pbkt);
             return rc;
         }
+        /* remembered before the normalization below, which turns UNDEF
+         * into our own rank and would hide what this object is */
+        wildrank = proct.rank;
         /* if the rank is UNDEF, then we store this on our own
          * rank tables */
         if (PMIX_RANK_UNDEF == proct.rank) {
             proct.rank = pmix_globals.myid.rank;
         }
+
+        /* Is this byte object JOB-LEVEL data, and does this client read
+         * its job data somewhere other than here?
+         *
+         * If so it must not be stored. gds/shmem3 keeps a client's job
+         * data in shared segments that the server republishes whenever
+         * it changes, and the notice that carries a republication goes
+         * to THAT module - so a copy kept here is never refreshed by it.
+         * It is not even a fast path: it is only ever consulted when the
+         * client's real store has nothing to say, which is exactly when
+         * a stale copy answers in place of a miss. One local fetch that
+         * missed would then be answered from this copy for the rest of
+         * the run, however many times the host revised the value.
+         *
+         * A client whose server module IS "hash" reads job data from
+         * these very tables, so for it this is not a second copy and the
+         * store below is right. */
+        keep_jobdata = (PMIX_RANK_WILDCARD == wildrank) &&
+                       !PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash");
 
         cnt = 1;
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
@@ -2137,6 +2239,22 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
                 rc = store_node_info(proct.nspace, &kv);
             } else if (PMIX_CHECK_KEY(&kv, PMIX_APP_INFO_ARRAY)) {
                 rc = store_app_info(proct.nspace, &kv);
+            } else if (keep_jobdata) {
+                /* job-level, and this client reads its job data
+                 * elsewhere - hand it back for the request in flight
+                 * rather than keeping a copy nothing will refresh */
+                pmix_kval_t *jk = PMIX_NEW(pmix_kval_t);
+                if (NULL == jk) {
+                    rc = PMIX_ERR_NOMEM;
+                } else {
+                    jk->key = strdup(kv.key);
+                    PMIX_VALUE_XFER(rc, jk->value, kv.value);
+                    if (PMIX_SUCCESS == rc && NULL != jobvals) {
+                        pmix_list_append(jobvals, &jk->super);
+                    } else {
+                        PMIX_RELEASE(jk);
+                    }
+                }
             } else {
                 /* A LONE key, which is what a keyed PMIx_Get is answered
                  * with - no wrapper to route on. File it by what its name

@@ -81,6 +81,21 @@ extern char **environ;
 #define SESSION  8765
 #define FIRST    8
 #define UNIV_GROWN   64
+/* A job-level key revised by a JOB-segment update, which is the other
+ * delivery force_update_attach_failure reaches and the one this branch
+ * of the library was built for. The test covered only the session. */
+#define JOBKEY   "sut.jobupd.key"
+#define JOB_WAS  1
+#define JOB_NOW  7
+#define JOB_NOW2 9
+/* TWO local ranks, and only one of them rigged to fail.
+ *
+ * One rank cannot show what this defect costs. The harm is not that a
+ * client is slower - it is that two processes on the same node, in the
+ * same job, answer the same question differently, because one of them
+ * kept reading a value the other had already seen replaced. Both ranks
+ * read the same keys here and both must get the same answers. */
+#define NPROCS   2
 
 static int npass = 0, nfail = 0;
 
@@ -140,7 +155,7 @@ static int run_client(int readyfd, int gofd)
     }
 
     /* before the update: the client obviously holds its own job data */
-    if (0 != read_local_job_size(&sz) || 1 != sz) {
+    if (0 != read_local_job_size(&sz) || NPROCS != sz) {
         fprintf(stderr, "  client: job data unreadable BEFORE the update\n");
         PMIx_Finalize(NULL, 0);
         return 1;
@@ -178,9 +193,9 @@ static int run_client(int readyfd, int gofd)
         PMIx_Finalize(NULL, 0);
         return 2;
     }
-    if (1 != sz) {
-        fprintf(stderr, "  client: job size read back as %u, expected 1\n",
-                (unsigned) sz);
+    if (NPROCS != sz) {
+        fprintf(stderr, "  client: job size read back as %u, expected %u\n",
+                (unsigned) sz, (unsigned) NPROCS);
         PMIx_Finalize(NULL, 0);
         return 3;
     }
@@ -222,6 +237,132 @@ static int run_client(int readyfd, int gofd)
                 (unsigned) got);
     }
 
+    /* THE JOB-SEGMENT HALF. Everything above rigged a SESSION segment.
+     * force_update_attach_failure fails a job segment too, and that is
+     * the delivery server_add_job_data() produces - so fail one and
+     * require the same two things of it: the client still holds its own
+     * job data, and an ordinary get returns the revised value rather
+     * than the one the segment it could not map was published to
+     * replace. */
+    c = 'r';
+    if (1 != write(readyfd, &c, 1) || 1 != read(gofd, &c, 1)) {
+        PMIx_Finalize(NULL, 0);
+        return 1;
+    }
+    {
+        pmix_proc_t jp;
+        pmix_value_t *jv = NULL;
+        uint32_t got = 0;
+        pmix_status_t r;
+        int i;
+
+        PMIX_LOAD_PROCID(&jp, myproc.nspace, PMIX_RANK_WILDCARD);
+        /* the notice and the pipe are different channels */
+        for (i = 0; i < 200; i++) {
+            jv = NULL;
+            r = PMIx_Get(&jp, JOBKEY, NULL, 0, &jv);
+            if (PMIX_SUCCESS == r && NULL != jv) {
+                if (PMIX_SUCCESS == PMIx_Value_get_number(jv, &got,
+                                                          PMIX_UINT32) &&
+                    JOB_NOW == got) {
+                    PMIX_VALUE_RELEASE(jv);
+                    break;
+                }
+                PMIX_VALUE_RELEASE(jv);
+                jv = NULL;
+            }
+            usleep(25000);
+        }
+        if (JOB_NOW != got) {
+            fprintf(stderr, "  client: job value read back as %u, expected "
+                            "the revised %u - the client answered from the "
+                            "segment the update replaced\n",
+                    (unsigned) got, (unsigned) JOB_NOW);
+            PMIx_Finalize(NULL, 0);
+            return 6;
+        }
+        fprintf(stdout, "  client: reads the revised job value %u after a "
+                        "failed JOB segment attach\n", (unsigned) got);
+
+        /* And the tracker survived - which is asked differently here
+         * than in the session half above.
+         *
+         * There, PMIX_OPTIONAL is the right question: a session failure
+         * leaves the JOB realm untouched, so the client must still
+         * answer job-level reads out of its own store. Here the failure
+         * IS the job realm, so that realm is declining locally on
+         * purpose, and PMIX_OPTIONAL - which forbids asking the server -
+         * has no way to be answered. Requiring it to succeed would be
+         * requiring the client to answer from data it has just been
+         * told may be superseded.
+         *
+         * So ask without it. What distinguishes "the tracker went with
+         * the segment" from "this realm is declining" is that the first
+         * takes the namespace with it: pmix_gds_shmem3_fetch() answers
+         * PMIX_ERR_INVALID_NAMESPACE and the server round trip cannot
+         * repair it. A plain get returning the registered job size says
+         * the tracker is there. */
+        {
+            pmix_value_t *sv = NULL;
+            uint32_t jobsz = 0;
+
+            if (PMIX_SUCCESS != PMIx_Get(&jp, PMIX_JOB_SIZE, NULL, 0, &sv) ||
+                NULL == sv ||
+                PMIX_SUCCESS != PMIx_Value_get_number(sv, &jobsz, PMIX_UINT32) ||
+                NPROCS != jobsz) {
+                fprintf(stderr, "  client: own job data lost after the "
+                                "failed job-segment attach\n");
+                if (NULL != sv) {
+                    PMIX_VALUE_RELEASE(sv);
+                }
+                PMIx_Finalize(NULL, 0);
+                return 7;
+            }
+            PMIX_VALUE_RELEASE(sv);
+        }
+        fprintf(stdout, "  client: its namespace and job data survived it\n");
+    }
+
+    /* the repeat: a second update over the one that was refused */
+    c = 'r';
+    if (1 != write(readyfd, &c, 1) || 1 != read(gofd, &c, 1)) {
+        PMIx_Finalize(NULL, 0);
+        return 1;
+    }
+    {
+        pmix_proc_t jp;
+        pmix_value_t *jv;
+        uint32_t got = 0;
+        int i;
+
+        PMIX_LOAD_PROCID(&jp, myproc.nspace, PMIX_RANK_WILDCARD);
+        for (i = 0; i < 200; i++) {
+            jv = NULL;
+            if (PMIX_SUCCESS == PMIx_Get(&jp, JOBKEY, NULL, 0, &jv) &&
+                NULL != jv) {
+                if (PMIX_SUCCESS == PMIx_Value_get_number(jv, &got,
+                                                          PMIX_UINT32) &&
+                    JOB_NOW2 == got) {
+                    PMIX_VALUE_RELEASE(jv);
+                    break;
+                }
+                PMIX_VALUE_RELEASE(jv);
+            }
+            usleep(25000);
+        }
+        if (JOB_NOW2 != got) {
+            fprintf(stderr, "  client: after a second update the value is "
+                            "%u, expected the newest %u - a re-offered "
+                            "older segment must not answer in front of a "
+                            "newer one\n",
+                    (unsigned) got, (unsigned) JOB_NOW2);
+            PMIx_Finalize(NULL, 0);
+            return 8;
+        }
+        fprintf(stdout, "  client: reads the newest value %u after a repeat "
+                        "notice\n", (unsigned) got);
+    }
+
     PMIx_Finalize(NULL, 0);
     return 0;
 }
@@ -242,17 +383,17 @@ static pmix_server_module_t mymodule = {0};
 
 static pmix_status_t register_job(void)
 {
-    pmix_info_t info[5], *sptr;
+    pmix_info_t info[6], *sptr;
     pmix_data_array_t *array;
     pmix_proc_t proc;
     pmix_nspace_t ns;
     pmix_status_t rc;
     char *noderegex = NULL, *ppnregex = NULL;
-    uint32_t nprocs = 1, univ = FIRST, sid = SESSION;
+    uint32_t nprocs = NPROCS, univ = FIRST, sid = SESSION, jv = JOB_WAS;
     int i;
 
     PMIx_generate_regex(pmix_globals.hostname, &noderegex);
-    PMIx_generate_ppn("0", &ppnregex);
+    PMIx_generate_ppn("0,1", &ppnregex);
     PMIX_INFO_LOAD(&info[0], PMIX_NODE_MAP, noderegex, PMIX_REGEX);
     PMIX_INFO_LOAD(&info[1], PMIX_PROC_MAP, ppnregex, PMIX_REGEX);
     PMIX_INFO_LOAD(&info[2], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
@@ -270,9 +411,12 @@ static pmix_status_t register_job(void)
     info[4].value.type = PMIX_DATA_ARRAY;
     info[4].value.data.darray = array;
 
+    /* a job-level value for the job-segment half to revise */
+    PMIX_INFO_LOAD(&info[5], JOBKEY, &jv, PMIX_UINT32);
+
     PMIX_LOAD_NSPACE(ns, NSPACE);
-    rc = PMIx_server_register_nspace(ns, 1, info, 5, NULL, NULL);
-    for (i = 0; i < 5; i++) {
+    rc = PMIx_server_register_nspace(ns, 1, info, 6, NULL, NULL);
+    for (i = 0; i < 6; i++) {
         PMIX_INFO_DESTRUCT(&info[i]);
     }
     free(noderegex);
@@ -284,19 +428,59 @@ static pmix_status_t register_job(void)
         return rc;
     }
 
-    PMIX_LOAD_PROCID(&proc, NSPACE, 0);
-    rc = PMIx_server_register_client(&proc, geteuid(), getegid(), NULL,
-                                     regcbfunc, NULL);
-    if (PMIX_OPERATION_SUCCEEDED == rc) {
-        return PMIX_SUCCESS;
-    }
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-    for (i = 0; i < 400 && !regdone; i++) {
-        usleep(50000);
+    for (i = 0; i < NPROCS; i++) {
+        PMIX_LOAD_PROCID(&proc, NSPACE, (pmix_rank_t) i);
+        regdone = false;
+        rc = PMIx_server_register_client(&proc, geteuid(), getegid(), NULL,
+                                         regcbfunc, NULL);
+        if (PMIX_OPERATION_SUCCEEDED != rc && PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        if (PMIX_SUCCESS == rc) {
+            int w;
+            for (w = 0; w < 400 && !regdone; w++) {
+                usleep(50000);
+            }
+        }
     }
     return PMIX_SUCCESS;
+}
+
+/* Revise a JOB-level value, which publishes a job segment - the other
+ * delivery the forced attach failure reaches. */
+static pmix_status_t revise_job_value(void)
+{
+    pmix_info_t upd;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t v = JOB_NOW;
+
+    PMIX_LOAD_NSPACE(ns, NSPACE);
+    PMIX_INFO_LOAD(&upd, JOBKEY, &v, PMIX_UINT32);
+    rc = PMIx_server_register_nspace(ns, -1, &upd, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&upd);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    return rc;
+}
+
+/* A second revision, published after the first was refused. */
+static pmix_status_t revise_job_value_again(void)
+{
+    pmix_info_t upd;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t v = JOB_NOW2;
+
+    PMIX_LOAD_NSPACE(ns, NSPACE);
+    PMIX_INFO_LOAD(&upd, JOBKEY, &v, PMIX_UINT32);
+    rc = PMIx_server_register_nspace(ns, -1, &upd, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&upd);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    return rc;
 }
 
 int main(int argc, char **argv)
@@ -307,8 +491,9 @@ int main(int argc, char **argv)
     char **client_env = NULL;
     char *client_argv[5];
     char fdbuf[32];
-    int readypipe[2], gopipe[2], status = 0;
-    pid_t child;
+    int readypipe[NPROCS][2], gopipe[NPROCS][2], status = 0;
+    pid_t child[NPROCS];
+    int k;
     bool flag = true;
     uint32_t grown = UNIV_GROWN;
     char c;
@@ -322,9 +507,11 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "=== a failed update attach costs only that segment ===\n");
 
-    if (0 != pipe(readypipe) || 0 != pipe(gopipe)) {
-        fprintf(stderr, "pipe() failed\n");
-        return 1;
+    for (k = 0; k < NPROCS; k++) {
+        if (0 != pipe(readypipe[k]) || 0 != pipe(gopipe[k])) {
+            fprintf(stderr, "pipe() failed\n");
+            return 1;
+        }
     }
 
     PMIX_INFO_LOAD(&sinfo, PMIX_SERVER_TOOL_SUPPORT, &flag, PMIX_BOOL);
@@ -341,17 +528,10 @@ int main(int argc, char **argv)
         goto done;
     }
 
-    PMIX_LOAD_PROCID(&proc, NSPACE, 0);
     /* Seed the child's environment with our own first - see the note in
      * event_forward.c: without it the child runs against the INSTALLED
      * PMIx rather than the one under test. */
     client_env = PMIx_Argv_copy(environ);
-    rc = PMIx_server_setup_fork(&proc, &client_env);
-    if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "PMIx_server_setup_fork failed: %s\n",
-                PMIx_Error_string(rc));
-        goto done;
-    }
     /* Force the client's attach of the update to fail.
      *
      * This is the only way to reach the case from a test: whether a
@@ -363,38 +543,61 @@ int main(int argc, char **argv)
      *
      * It is set only in the CHILD's environment; this server has to go
      * on mapping its own segments. */
-    PMIx_Argv_append_nosize(
-        &client_env, "PMIX_MCA_gds_shmem3_force_update_attach_failure=1"
-    );
+    for (k = 0; k < NPROCS; k++) {
+        char **kenv;
 
-    child = fork();
-    if (0 > child) {
-        fprintf(stderr, "fork() failed\n");
-        goto done;
+        PMIX_LOAD_PROCID(&proc, NSPACE, (pmix_rank_t) k);
+        kenv = PMIx_Argv_copy(client_env);
+        rc = PMIx_server_setup_fork(&proc, &kenv);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "PMIx_server_setup_fork failed: %s\n",
+                    PMIx_Error_string(rc));
+            PMIx_Argv_free(kenv);
+            goto done;
+        }
+        /* ONLY RANK 0 is rigged. Rank 1 maps everything and is the
+         * control: what it reads is what the host set, so if rank 0
+         * answers differently the two have diverged - which is the harm,
+         * and what a single-client test cannot show. */
+        if (0 == k) {
+            PMIx_Argv_append_nosize(
+                &kenv, "PMIX_MCA_gds_shmem3_force_update_attach_failure=1"
+            );
+        }
+
+        child[k] = fork();
+        if (0 > child[k]) {
+            fprintf(stderr, "fork() failed\n");
+            PMIx_Argv_free(kenv);
+            goto done;
+        }
+        if (0 == child[k]) {
+            /* exec rather than run in the fork: this process has an
+             * initialized PMIx server in it */
+            close(readypipe[k][0]);
+            close(gopipe[k][1]);
+            client_argv[0] = argv[0];
+            client_argv[1] = (char *) "client";
+            snprintf(fdbuf, sizeof(fdbuf), "%d", readypipe[k][1]);
+            client_argv[2] = strdup(fdbuf);
+            snprintf(fdbuf, sizeof(fdbuf), "%d", gopipe[k][0]);
+            client_argv[3] = strdup(fdbuf);
+            client_argv[4] = NULL;
+            execve(argv[0], client_argv, kenv);
+            fprintf(stderr, "exec of %s failed\n", argv[0]);
+            _exit(127);
+        }
+        close(readypipe[k][1]);
+        close(gopipe[k][0]);
+        PMIx_Argv_free(kenv);
     }
-    if (0 == child) {
-        /* exec rather than run in the fork: this process has an
-         * initialized PMIx server in it */
-        close(readypipe[0]);
-        close(gopipe[1]);
-        client_argv[0] = argv[0];
-        client_argv[1] = (char *) "client";
-        snprintf(fdbuf, sizeof(fdbuf), "%d", readypipe[1]);
-        client_argv[2] = strdup(fdbuf);
-        snprintf(fdbuf, sizeof(fdbuf), "%d", gopipe[0]);
-        client_argv[3] = strdup(fdbuf);
-        client_argv[4] = NULL;
-        execve(argv[0], client_argv, client_env);
-        fprintf(stderr, "exec of %s failed\n", argv[0]);
-        _exit(127);
-    }
-    close(readypipe[1]);
-    close(gopipe[0]);
 
     /* wait until the client is up and reading its own job data */
-    if (1 != read(readypipe[0], &c, 1)) {
-        fprintf(stderr, "the client never reported that it was up\n");
-        goto done;
+    for (k = 0; k < NPROCS; k++) {
+        if (1 != read(readypipe[k][0], &c, 1)) {
+            fprintf(stderr, "the client never reported that it was up\n");
+            goto done;
+        }
     }
     report("a running client reads its own job data", true);
 
@@ -404,23 +607,74 @@ int main(int argc, char **argv)
     PMIX_INFO_DESTRUCT(&upd);
     report("the host publishes a session update", PMIX_SUCCESS == rc);
 
-    /* release the client to read again */
+    /* release both ranks to read again */
     c = 'g';
-    if (1 != write(gopipe[1], &c, 1)) {
-        fprintf(stderr, "could not release the client\n");
-        goto done;
+    for (k = 0; k < NPROCS; k++) {
+        if (1 != write(gopipe[k][1], &c, 1)) {
+            fprintf(stderr, "could not release the clients\n");
+            goto done;
+        }
     }
 
-    waitpid(child, &status, 0);
-    if (WIFEXITED(status)) {
-        report("the client still holds its own job data afterwards",
-               0 == WEXITSTATUS(status));
-        if (0 != WEXITSTATUS(status)) {
-            fprintf(stdout, "        (client exited %d)\n", WEXITSTATUS(status));
+    /* the job-segment half */
+    for (k = 0; k < NPROCS; k++) {
+        if (1 != read(readypipe[k][0], &c, 1)) {
+            fprintf(stderr, "the client never reported its job-segment read\n");
+            goto done;
         }
-    } else {
-        report("the client still holds its own job data afterwards", false);
-        fprintf(stdout, "        (client died on a signal)\n");
+    }
+    rc = revise_job_value();
+    report("the host revises a job value, which the client cannot map",
+           PMIX_SUCCESS == rc);
+    c = 'g';
+    for (k = 0; k < NPROCS; k++) {
+        if (1 != write(gopipe[k][1], &c, 1)) {
+            goto done;
+        }
+    }
+
+    /* A SECOND update, after one has already been refused.
+     *
+     * The server re-sends the whole chain on every notice, so this
+     * delivery offers the segment that failed before as well as the new
+     * one. That is the retry the recovery depends on - and it is also
+     * how a chain can end up out of order, since the older segment
+     * would be published in front of the newer one if a client took it
+     * on its second offer. Both ranks must end up reading the NEWEST
+     * value either way. */
+    for (k = 0; k < NPROCS; k++) {
+        if (1 != read(readypipe[k][0], &c, 1)) {
+            fprintf(stderr, "a client never reported its repeat read\n");
+            goto done;
+        }
+    }
+    rc = revise_job_value_again();
+    report("the host publishes a second update over the refused one",
+           PMIX_SUCCESS == rc);
+    c = 'g';
+    for (k = 0; k < NPROCS; k++) {
+        if (1 != write(gopipe[k][1], &c, 1)) {
+            goto done;
+        }
+    }
+
+    {
+        bool allok = true;
+        for (k = 0; k < NPROCS; k++) {
+            waitpid(child[k], &status, 0);
+            if (WIFEXITED(status)) {
+                if (0 != WEXITSTATUS(status)) {
+                    allok = false;
+                    fprintf(stdout, "        (rank %d exited %d)\n", k,
+                            WEXITSTATUS(status));
+                }
+            } else {
+                allok = false;
+                fprintf(stdout, "        (rank %d died on a signal)\n", k);
+            }
+        }
+        report("both ranks agree, and each still holds its own job data",
+               allok);
     }
 
     completed = true;

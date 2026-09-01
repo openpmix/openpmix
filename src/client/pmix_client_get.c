@@ -887,9 +887,22 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     pmix_kval_t *kv;
     pmix_get_logic_t *lg;
     pmix_proc_t rproc;
+    /* job-level values this reply carried that were handed back rather
+     * than stored - see the accept_kvs_resp contract */
+    pmix_list_t jobvals;
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     PMIX_ACQUIRE_OBJECT(cb);
+
+    /* Constructed before the first exit that reaches "done:", because
+     * the matching loop past that label walks it either way.
+     *
+     * Job-level values come back on this list rather than being stored,
+     * when this client reads its job data from some other module - see
+     * the note on the accept_kvs_resp contract. They answer the requests
+     * below and are then dropped, so nothing keeps a copy of job data
+     * that the module owning it would never refresh. */
+    PMIX_CONSTRUCT(&jobvals, pmix_list_t);
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix: get_nb callback recvd");
@@ -897,6 +910,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     if (PMIX_UNLIKELY(NULL == cb || NULL == cb->lg)) {
         /* nothing we can do */
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        PMIX_LIST_DESTRUCT(&jobvals);
         return;
     }
     lg = cb->lg;
@@ -942,7 +956,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
      * the buffer will include a copy of the data. If
      * it is the shmem component, it will contain just
      * the memory address info */
-    PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_globals.mypeer, buf);
+    PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_globals.mypeer, buf, &jobvals);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         /* what the payload could not be stored as is precisely what every
          * waiter below is about to be answered from, so the store's
@@ -987,7 +1001,32 @@ done:
             pmix_output_verbose(2, pmix_client_globals.get_output,
                                 "pmix: get_nb searching for key %s for rank %s", cb->key,
                                 PMIX_RANK_PRINT(cb->proc->rank));
-            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+            /* the job-level values this reply carried, which were handed
+             * back rather than stored */
+            rc = PMIX_ERR_NOT_FOUND;
+            if (NULL != cb->key) {
+                pmix_kval_t *jk;
+                PMIX_LIST_FOREACH (jk, &jobvals, pmix_kval_t) {
+                    if (PMIX_CHECK_KEY(jk, cb->key)) {
+                        pmix_kval_t *cp = PMIX_NEW(pmix_kval_t);
+                        if (NULL == cp) {
+                            rc = PMIX_ERR_NOMEM;
+                            break;
+                        }
+                        cp->key = strdup(jk->key);
+                        PMIX_VALUE_XFER(rc, cp->value, jk->value);
+                        if (PMIX_SUCCESS == rc) {
+                            pmix_list_append(&cb->kvs, &cp->super);
+                        } else {
+                            PMIX_RELEASE(cp);
+                        }
+                        break;
+                    }
+                }
+            }
+            if (PMIX_SUCCESS != rc) {
+                PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+            }
             if (PMIX_OPERATION_SUCCEEDED == rc) {
                 rc = PMIX_SUCCESS;
             } else if (PMIX_SUCCESS != rc && PMIX_RANK_UNDEF == cb->proc->rank) {
@@ -1061,6 +1100,7 @@ done:
             }
         }
     }
+    PMIX_LIST_DESTRUCT(&jobvals);
 }
 
 static pmix_status_t process_values(pmix_cb_t *cb)

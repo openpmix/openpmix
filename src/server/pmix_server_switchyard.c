@@ -83,10 +83,18 @@ static void _opcbfunc(int sd, short args, void *cbdata)
         goto cleanup;
     }
 
-    /* the function that created the server_caddy did a
-     * retain on the peer, so we don't have to worry about
-     * it still being present - send a copy to the originator */
-    PMIX_PTL_SEND_ONEWAY(rc, cd->peer, reply, cd->hdr.tag);
+    /* The function that created the server_caddy did a retain on the peer,
+     * so we don't have to worry about it still being present - send a copy
+     * to the originator.
+     *
+     * Queue it inline rather than through PMIX_PTL_SEND_ONEWAY. We are
+     * already on the progress thread, and taking that macro's extra hop
+     * would put this reply behind whatever the host activated on this same
+     * base while handling the command. For PMIX_FINALIZE_CMD that is the
+     * host's own PMIx_server_deregister_nspace of the departing peer, which
+     * closes its socket - and the reply we owe it is then dropped with "no
+     * connection" while the client waits out its finalize guard timer. */
+    PMIX_PTL_SEND_ONEWAY_INLINE(rc, cd->peer, reply, cd->hdr.tag);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(reply);
     }
