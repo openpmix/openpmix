@@ -81,15 +81,29 @@ def strip_comments(text):
     return re.sub(r'//[^\n]*', ' ', text)
 
 
+# Where the library's own classes live.  Deliberately a named directory
+# rather than a walk of everything: a build leaves generated sources, an
+# install tree and third-party bindings lying around, they differ between
+# platforms and between build styles, and a check whose answer depends on
+# what happens to be sitting in the tree is a check nobody can act on. This
+# is also why the results are sorted below - "the first file that matched"
+# is not an answer, it is whatever order the filesystem handed back.
+SOURCE_DIRS = ('src',)
+
+
 def sources(root):
-    for base, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs
-                   if d not in ('.git', 'autom4te.cache', 'oac')
-                   and not d.startswith('vpath')
-                   and not d.startswith('build')]
-        for f in files:
-            if f.endswith(('.c', '.h')):
-                yield os.path.join(base, f)
+    found = []
+    for top in SOURCE_DIRS:
+        for base, dirs, files in os.walk(os.path.join(root, top)):
+            dirs[:] = sorted(d for d in dirs
+                             if d not in ('.git', 'autom4te.cache', 'oac',
+                                          '.libs', '.deps')
+                             and not d.startswith('vpath')
+                             and not d.startswith('build'))
+            for f in sorted(files):
+                if f.endswith(('.c', '.h')):
+                    found.append(os.path.join(base, f))
+    return sorted(found)
 
 
 TYPEDEF_OPEN = re.compile(r'typedef\s+struct\s*(?:[A-Za-z_]\w*\s*)?\{')
@@ -135,6 +149,29 @@ def members_of(body):
     return out
 
 
+def find_struct(files, typename, near):
+    """The struct body for a type, looked for nearest its user first.
+
+    A typedef name is unique in C, so normally exactly one file answers. When
+    more than one does - a header and a copy of it left by an install, say -
+    the nearest one is the one that was actually compiled against, and taking
+    "whichever the walk reached first" makes the answer depend on the
+    filesystem. Look in the using file, then its directory, then everywhere
+    else in sorted order."""
+    near_dir = os.path.dirname(near)
+    ordered = ([near] +
+               sorted(p for p in files if p != near
+                      and os.path.dirname(p) == near_dir) +
+               sorted(p for p in files if os.path.dirname(p) != near_dir))
+    for p in ordered:
+        if p not in files:
+            continue
+        body = struct_body(files[p], typename)
+        if body is not None:
+            return body
+    return None
+
+
 def function_body(text, name):
     m = re.search(r'\b' + re.escape(name) + r'\s*\([^)]*\)\s*\{', text)
     if not m:
@@ -159,17 +196,14 @@ def main():
     files = {p: strip_comments(read(p)) for p in sources(root)}
     problems = []
 
-    for path, text in files.items():
+    for path in sorted(files):
+        text = files[path]
         if not path.endswith('.c'):
             continue
         for typename, parent, ctor, _dtor in CLASS_INSTANCE.findall(text):
             if ctor == 'NULL':
                 continue          # nothing to check
-            body = None
-            for other in files.values():
-                body = struct_body(other, typename)
-                if body is not None:
-                    break
+            body = find_struct(files, typename, path)
             if body is None:
                 continue          # not a plain typedef struct - skip quietly
             ctor_body = function_body(text, ctor)
@@ -197,11 +231,7 @@ def main():
                 # own members are set one at a time, and one of them forgotten.
                 if not mtype or mtype in EXEMPT_TYPES:
                     continue
-                sub_body = None
-                for other in files.values():
-                    sub_body = struct_body(other, mtype)
-                    if sub_body is not None:
-                        break
+                sub_body = find_struct(files, mtype, path)
                 if sub_body is None:
                     continue
                 # handed to something wholesale (a constructor, a memset, a
