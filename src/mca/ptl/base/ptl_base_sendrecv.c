@@ -50,6 +50,14 @@
 
 #include "src/mca/ptl/base/base.h"
 
+/* How long pmix_ptl_base_flush_sends() is willing to wait on a peer that is
+ * not draining its socket: at most MAX_RETRIES waits of RETRY_USEC each.
+ * Small on purpose - the messages this path exists for are a few tens of
+ * bytes on a socket the peer is about to read to EOF, so a full kernel
+ * buffer here means the peer is wedged, not busy. */
+#define PMIX_PTL_FLUSH_MAX_RETRIES 10
+#define PMIX_PTL_FLUSH_RETRY_USEC  1000
+
 static void _notify_complete(pmix_status_t status, void *cbdata)
 {
     (void) status;
@@ -260,6 +268,89 @@ retry:
             msg->sdbytes = ntohl(msg->hdr.nbytes) - rc;
         }
         return PMIX_ERR_RESOURCE_BUSY;
+    }
+}
+
+/* Write out everything already queued for this peer, right now.
+ *
+ * A peer's queued sends normally drain from its send_event, which cannot
+ * fire until the event base next polls. That is fine while the peer is
+ * alive, and wrong at the moment we are about to close its socket in an
+ * orderly teardown: the bytes sitting on send_msg are a reply we owe that
+ * peer, and closing the socket under them discards the reply with no notice
+ * to either side. The peer is then left waiting for an answer that was
+ * packed, queued and thrown away - which for the finalize reply means
+ * waiting out the client's or tool's finalize guard timer, seconds spent
+ * for nothing on every clean departure.
+ *
+ * Bounded and best-effort by design: the socket is non-blocking, so a peer
+ * that has stopped reading gets a short grace period and then loses the
+ * remainder. Truncating a message to a peer that is not draining it is much
+ * cheaper than letting that peer stall the progress thread, which is what
+ * an unbounded wait here would do.
+ */
+void pmix_ptl_base_flush_sends(pmix_peer_t *peer)
+{
+    pmix_ptl_send_t *msg;
+    pmix_status_t rc;
+    int retries;
+    fd_set wfds;
+    struct timeval tv;
+
+    if (NULL == peer || peer->sd < 0) {
+        return;
+    }
+
+    /* stop the send event: we are draining by hand, and leaving it armed
+     * would let it fire against a socket that is about to be closed */
+    if (peer->send_ev_active) {
+        pmix_event_del(&peer->send_event);
+        peer->send_ev_active = false;
+    }
+
+    while (1) {
+        if (NULL == peer->send_msg) {
+            peer->send_msg = (pmix_ptl_send_t *) pmix_list_remove_first(&peer->send_queue);
+            if (NULL == peer->send_msg) {
+                break;
+            }
+        }
+        msg = peer->send_msg;
+        retries = 0;
+        while (PMIX_SUCCESS != (rc = send_msg(peer->sd, msg))) {
+            if ((PMIX_ERR_RESOURCE_BUSY != rc && PMIX_ERR_WOULD_BLOCK != rc) ||
+                PMIX_PTL_FLUSH_MAX_RETRIES <= retries) {
+                /* the peer is unreachable, or is not reading fast enough to
+                 * be worth waiting on - drop this message and everything
+                 * queued behind it */
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "%s ptl:base:flush_sends giving up on sd %d: %s",
+                                    PMIX_NAME_PRINT(&pmix_globals.myid), peer->sd,
+                                    PMIx_Error_string(rc));
+                PMIX_RELEASE(msg);
+                peer->send_msg = NULL;
+                while (NULL != (msg = (pmix_ptl_send_t *)
+                                pmix_list_remove_first(&peer->send_queue))) {
+                    PMIX_RELEASE(msg);
+                }
+                return;
+            }
+            /* the kernel buffer is full - give it a moment to drain. select
+             * is used rather than poll because sys/select.h is what PMIx
+             * already requires of the platform */
+            ++retries;
+            FD_ZERO(&wfds);
+            FD_SET(peer->sd, &wfds);
+            tv.tv_sec = 0;
+            tv.tv_usec = PMIX_PTL_FLUSH_RETRY_USEC;
+            select(peer->sd + 1, NULL, &wfds, NULL, &tv);
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "%s ptl:base:flush_sends MSG SENT on sd %d tag %u",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), peer->sd,
+                            ntohl(msg->hdr.tag));
+        PMIX_RELEASE(msg);
+        peer->send_msg = NULL;
     }
 }
 

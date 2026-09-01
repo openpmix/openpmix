@@ -140,6 +140,11 @@ PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
 /* base support functions */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env);
 PMIX_EXPORT void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata);
+
+/* Drain everything already queued for this peer onto its socket before that
+ * socket is closed in an orderly teardown.  Bounded and best-effort - see
+ * the definition. */
+PMIX_EXPORT void pmix_ptl_base_flush_sends(pmix_peer_t *peer);
 PMIX_EXPORT void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata);
 PMIX_EXPORT void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_nonblocking(int sd);

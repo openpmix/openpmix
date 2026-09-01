@@ -160,6 +160,41 @@ typedef struct pmix_ptl_module_t pmix_ptl_module_t;
         }                                            \
     } while (0)
 
+/* (ONE-WAY, NO THREAD-SHIFT) send a message to the peer from a caller that
+ * is already running on the PMIx progress thread. The buffer will be free'd
+ * at the completion of the send, exactly as with PMIX_PTL_SEND_ONEWAY.
+ *
+ * The difference is not an optimization, it is ordering. PMIX_PTL_SEND_ONEWAY
+ * activates an event to do the queuing, so the message lands on the peer
+ * *behind* everything already sitting in the progress thread's active queue.
+ * That is fatal whenever the host answers a command and then retires the
+ * peer: on PMIX_FINALIZE_CMD the host's client_finalized callback and its
+ * following PMIx_server_deregister_nspace are both activated on this base
+ * from this thread, so a reply that takes the extra hop queues behind the
+ * deregistration, which closes the peer's socket - and the reply is then
+ * discarded with "no connection" while the client sits out its finalize
+ * guard timer. Queuing the reply inline puts the bytes on the peer before
+ * the deregistration can run.
+ *
+ * Only use this where the caller is known to be on the progress thread.
+ */
+#define PMIX_PTL_SEND_ONEWAY_INLINE(r, p, b, t)      \
+    do {                                             \
+        pmix_ptl_queue_t *q;                         \
+        pmix_peer_t *pr = (pmix_peer_t *) (p);       \
+        if ((p)->finalized) {                        \
+            (r) = PMIX_ERR_UNREACH;                  \
+        } else {                                     \
+            q = PMIX_NEW(pmix_ptl_queue_t);          \
+            PMIX_RETAIN(pr);                         \
+            q->peer = pr;                            \
+            q->buf = (b);                            \
+            q->tag = (t);                            \
+            pmix_ptl_base_send(-1, 0, q);            \
+            (r) = PMIX_SUCCESS;                      \
+        }                                            \
+    } while (0)
+
 /* expose functions used by the macros */
 PMIX_EXPORT extern void pmix_ptl_base_send(int sd, short args, void *cbdata);
 PMIX_EXPORT extern void pmix_ptl_base_send_recv(int sd, short args, void *cbdata);
