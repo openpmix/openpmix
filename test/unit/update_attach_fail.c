@@ -81,6 +81,12 @@ extern char **environ;
 #define SESSION  8765
 #define FIRST    8
 #define UNIV_GROWN   64
+/* A job-level key revised by a JOB-segment update, which is the other
+ * delivery force_update_attach_failure reaches and the one this branch
+ * of the library was built for. The test covered only the session. */
+#define JOBKEY   "sut.jobupd.key"
+#define JOB_WAS  1
+#define JOB_NOW  7
 
 static int npass = 0, nfail = 0;
 
@@ -222,6 +228,92 @@ static int run_client(int readyfd, int gofd)
                 (unsigned) got);
     }
 
+    /* THE JOB-SEGMENT HALF. Everything above rigged a SESSION segment.
+     * force_update_attach_failure fails a job segment too, and that is
+     * the delivery server_add_job_data() produces - so fail one and
+     * require the same two things of it: the client still holds its own
+     * job data, and an ordinary get returns the revised value rather
+     * than the one the segment it could not map was published to
+     * replace. */
+    c = 'r';
+    if (1 != write(readyfd, &c, 1) || 1 != read(gofd, &c, 1)) {
+        PMIx_Finalize(NULL, 0);
+        return 1;
+    }
+    {
+        pmix_proc_t jp;
+        pmix_value_t *jv = NULL;
+        uint32_t got = 0;
+        pmix_status_t r;
+        int i;
+
+        PMIX_LOAD_PROCID(&jp, myproc.nspace, PMIX_RANK_WILDCARD);
+        /* the notice and the pipe are different channels */
+        for (i = 0; i < 200; i++) {
+            jv = NULL;
+            r = PMIx_Get(&jp, JOBKEY, NULL, 0, &jv);
+            if (PMIX_SUCCESS == r && NULL != jv) {
+                if (PMIX_SUCCESS == PMIx_Value_get_number(jv, &got,
+                                                          PMIX_UINT32) &&
+                    JOB_NOW == got) {
+                    PMIX_VALUE_RELEASE(jv);
+                    break;
+                }
+                PMIX_VALUE_RELEASE(jv);
+                jv = NULL;
+            }
+            usleep(25000);
+        }
+        if (JOB_NOW != got) {
+            fprintf(stderr, "  client: job value read back as %u, expected "
+                            "the revised %u - the client answered from the "
+                            "segment the update replaced\n",
+                    (unsigned) got, (unsigned) JOB_NOW);
+            PMIx_Finalize(NULL, 0);
+            return 6;
+        }
+        fprintf(stdout, "  client: reads the revised job value %u after a "
+                        "failed JOB segment attach\n", (unsigned) got);
+
+        /* And the tracker survived - which is asked differently here
+         * than in the session half above.
+         *
+         * There, PMIX_OPTIONAL is the right question: a session failure
+         * leaves the JOB realm untouched, so the client must still
+         * answer job-level reads out of its own store. Here the failure
+         * IS the job realm, so that realm is declining locally on
+         * purpose, and PMIX_OPTIONAL - which forbids asking the server -
+         * has no way to be answered. Requiring it to succeed would be
+         * requiring the client to answer from data it has just been
+         * told may be superseded.
+         *
+         * So ask without it. What distinguishes "the tracker went with
+         * the segment" from "this realm is declining" is that the first
+         * takes the namespace with it: pmix_gds_shmem3_fetch() answers
+         * PMIX_ERR_INVALID_NAMESPACE and the server round trip cannot
+         * repair it. A plain get returning the registered job size says
+         * the tracker is there. */
+        {
+            pmix_value_t *sv = NULL;
+            uint32_t jobsz = 0;
+
+            if (PMIX_SUCCESS != PMIx_Get(&jp, PMIX_JOB_SIZE, NULL, 0, &sv) ||
+                NULL == sv ||
+                PMIX_SUCCESS != PMIx_Value_get_number(sv, &jobsz, PMIX_UINT32) ||
+                1 != jobsz) {
+                fprintf(stderr, "  client: own job data lost after the "
+                                "failed job-segment attach\n");
+                if (NULL != sv) {
+                    PMIX_VALUE_RELEASE(sv);
+                }
+                PMIx_Finalize(NULL, 0);
+                return 7;
+            }
+            PMIX_VALUE_RELEASE(sv);
+        }
+        fprintf(stdout, "  client: its namespace and job data survived it\n");
+    }
+
     PMIx_Finalize(NULL, 0);
     return 0;
 }
@@ -242,13 +334,13 @@ static pmix_server_module_t mymodule = {0};
 
 static pmix_status_t register_job(void)
 {
-    pmix_info_t info[5], *sptr;
+    pmix_info_t info[6], *sptr;
     pmix_data_array_t *array;
     pmix_proc_t proc;
     pmix_nspace_t ns;
     pmix_status_t rc;
     char *noderegex = NULL, *ppnregex = NULL;
-    uint32_t nprocs = 1, univ = FIRST, sid = SESSION;
+    uint32_t nprocs = 1, univ = FIRST, sid = SESSION, jv = JOB_WAS;
     int i;
 
     PMIx_generate_regex(pmix_globals.hostname, &noderegex);
@@ -270,9 +362,12 @@ static pmix_status_t register_job(void)
     info[4].value.type = PMIX_DATA_ARRAY;
     info[4].value.data.darray = array;
 
+    /* a job-level value for the job-segment half to revise */
+    PMIX_INFO_LOAD(&info[5], JOBKEY, &jv, PMIX_UINT32);
+
     PMIX_LOAD_NSPACE(ns, NSPACE);
-    rc = PMIx_server_register_nspace(ns, 1, info, 5, NULL, NULL);
-    for (i = 0; i < 5; i++) {
+    rc = PMIx_server_register_nspace(ns, 1, info, 6, NULL, NULL);
+    for (i = 0; i < 6; i++) {
         PMIX_INFO_DESTRUCT(&info[i]);
     }
     free(noderegex);
@@ -297,6 +392,25 @@ static pmix_status_t register_job(void)
         usleep(50000);
     }
     return PMIX_SUCCESS;
+}
+
+/* Revise a JOB-level value, which publishes a job segment - the other
+ * delivery the forced attach failure reaches. */
+static pmix_status_t revise_job_value(void)
+{
+    pmix_info_t upd;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t v = JOB_NOW;
+
+    PMIX_LOAD_NSPACE(ns, NSPACE);
+    PMIX_INFO_LOAD(&upd, JOBKEY, &v, PMIX_UINT32);
+    rc = PMIx_server_register_nspace(ns, -1, &upd, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&upd);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    return rc;
 }
 
 int main(int argc, char **argv)
@@ -408,6 +522,19 @@ int main(int argc, char **argv)
     c = 'g';
     if (1 != write(gopipe[1], &c, 1)) {
         fprintf(stderr, "could not release the client\n");
+        goto done;
+    }
+
+    /* the job-segment half */
+    if (1 != read(readypipe[0], &c, 1)) {
+        fprintf(stderr, "the client never reported its job-segment read\n");
+        goto done;
+    }
+    rc = revise_job_value();
+    report("the host revises a job value, which the client cannot map",
+           PMIX_SUCCESS == rc);
+    c = 'g';
+    if (1 != write(gopipe[1], &c, 1)) {
         goto done;
     }
 
