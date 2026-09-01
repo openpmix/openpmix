@@ -50,7 +50,7 @@ struct pmix_mca_base_dummy_framework_list_item_t {
 };
 
 typedef struct fc_pair {
-    pmix_list_item_t li;
+    pmix_list_item_t super;
     char *framework_name;
     char *component_name;
 } fc_pair_t;
@@ -220,7 +220,7 @@ int pmix_mca_base_show_load_errors_init(void)
                 }
                 free(split);
 
-                pmix_list_append(list, &fcp->li);
+                pmix_list_append(list, &fcp->super);
             }
 
         done:
