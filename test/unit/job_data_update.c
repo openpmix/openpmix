@@ -47,6 +47,11 @@
  * what is checked is that the value is still right afterwards, which is
  * what a caller would notice if a restatement had gone wrong.
  *
+ * Later phases cover what the earlier ones did not: a payload too big
+ * for an estimate made from the key count, a data array whose elements
+ * are copied recursively, and a key whose TYPE changes - all of which
+ * a host may legitimately send and none of which a scalar exercises.
+ *
  * The third phase covers the OTHER path a host might revise job data by.
  * PMIx_server_register_resources() carries job-level information that
  * governs every namespace on the server, and its fan-out reaches the
@@ -81,6 +86,17 @@ extern char **environ;
 #define SECOND  22
 #define THIRD   33
 #define FOURTH  44
+/* A payload big enough that an estimate built from the KEY COUNT alone
+ * cannot cover it. The segment estimate used to be all per-entry
+ * constants while the values are copied into it twice, so a single
+ * large value ran the bump allocator off the end - and the allocator
+ * aborts rather than returning an error, taking the server and every
+ * client on the node with it. Nothing caught that because every value
+ * this test used was four bytes. */
+#define BIGKEY  "sut.big.key"
+#define BIGLEN  65536
+#define ARRKEY  "sut.arr.key"
+#define ARRN    32
 
 static int npass = 0, nfail = 0;
 
@@ -244,6 +260,113 @@ static int run_client(int readyfd, int gofd)
                         "job-level value\n");
     }
 
+    /* phase 5: a payload no key-count estimate covers */
+    c = 'r';
+    if (1 != write(readyfd, &c, 1) || 1 != read(gofd, &c, 1)) {
+        PMIx_Finalize(NULL, 0);
+        return 1;
+    }
+    {
+        pmix_proc_t p;
+        pmix_value_t *bv = NULL;
+        pmix_info_t opt;
+        int i;
+
+        PMIX_LOAD_PROCID(&p, NSPACE, PMIX_RANK_WILDCARD);
+        /* poll: the notice travels on a different channel from the pipe */
+        for (i = 0; i < 200; i++) {
+            PMIX_INFO_LOAD(&opt, PMIX_OPTIONAL, NULL, PMIX_BOOL);
+            if (PMIX_SUCCESS == PMIx_Get(&p, BIGKEY, &opt, 1, &bv) &&
+                NULL != bv) {
+                PMIX_INFO_DESTRUCT(&opt);
+                break;
+            }
+            PMIX_INFO_DESTRUCT(&opt);
+            bv = NULL;
+            usleep(25000);
+        }
+        if (NULL == bv) {
+            fprintf(stderr, "  client: never saw the large value\n");
+            PMIx_Finalize(NULL, 0);
+            return 6;
+        }
+        if (PMIX_STRING != bv->type || NULL == bv->data.string ||
+            BIGLEN != strlen(bv->data.string) ||
+            'a' != bv->data.string[0] ||
+            (char)('a' + ((BIGLEN - 1) % 26)) != bv->data.string[BIGLEN - 1]) {
+            fprintf(stderr, "  client: the large value came back wrong "
+                            "(len %zu, wanted %d)\n",
+                    (NULL == bv->data.string) ? (size_t)0
+                                              : strlen(bv->data.string),
+                    BIGLEN);
+            PMIX_VALUE_RELEASE(bv);
+            PMIx_Finalize(NULL, 0);
+            return 7;
+        }
+        PMIX_VALUE_RELEASE(bv);
+        fprintf(stdout, "  client: reads the %d-byte value intact\n", BIGLEN);
+
+        /* and the array that rode with it */
+        bv = NULL;
+        PMIX_INFO_LOAD(&opt, PMIX_OPTIONAL, NULL, PMIX_BOOL);
+        if (PMIX_SUCCESS != PMIx_Get(&p, ARRKEY, &opt, 1, &bv) ||
+            NULL == bv || PMIX_DATA_ARRAY != bv->type ||
+            NULL == bv->data.darray || ARRN != bv->data.darray->size) {
+            fprintf(stderr, "  client: the data array came back wrong\n");
+            PMIX_INFO_DESTRUCT(&opt);
+            if (NULL != bv) {
+                PMIX_VALUE_RELEASE(bv);
+            }
+            PMIx_Finalize(NULL, 0);
+            return 8;
+        }
+        PMIX_INFO_DESTRUCT(&opt);
+        PMIX_VALUE_RELEASE(bv);
+        fprintf(stdout, "  client: reads the %d-element array intact\n", ARRN);
+    }
+
+    /* phase 6: the same key, a different type */
+    c = 'r';
+    if (1 != write(readyfd, &c, 1) || 1 != read(gofd, &c, 1)) {
+        PMIx_Finalize(NULL, 0);
+        return 1;
+    }
+    {
+        pmix_proc_t p;
+        pmix_value_t *tv = NULL;
+        pmix_info_t opt;
+        int i;
+
+        PMIX_LOAD_PROCID(&p, NSPACE, PMIX_RANK_WILDCARD);
+        for (i = 0; i < 200; i++) {
+            PMIX_INFO_LOAD(&opt, PMIX_OPTIONAL, NULL, PMIX_BOOL);
+            if (PMIX_SUCCESS == PMIx_Get(&p, LATEKEY, &opt, 1, &tv) &&
+                NULL != tv && PMIX_STRING == tv->type) {
+                PMIX_INFO_DESTRUCT(&opt);
+                break;
+            }
+            PMIX_INFO_DESTRUCT(&opt);
+            if (NULL != tv) {
+                PMIX_VALUE_RELEASE(tv);
+                tv = NULL;
+            }
+            usleep(25000);
+        }
+        if (NULL == tv || PMIX_STRING != tv->type ||
+            NULL == tv->data.string ||
+            0 != strcmp(tv->data.string, "now-a-string")) {
+            fprintf(stderr, "  client: the key did not change type - a "
+                            "changed type has to count as a change\n");
+            if (NULL != tv) {
+                PMIX_VALUE_RELEASE(tv);
+            }
+            PMIx_Finalize(NULL, 0);
+            return 9;
+        }
+        PMIX_VALUE_RELEASE(tv);
+        fprintf(stdout, "  client: sees the key change type\n");
+    }
+
     PMIx_Finalize(NULL, 0);
     return 0;
 }
@@ -393,6 +516,78 @@ static pmix_status_t revise_by_resources(uint32_t value)
     return rc;
 }
 
+/* A payload no key-count estimate can cover: a long string and a data
+ * array whose elements are copied one at a time. Both in ONE update, so
+ * the segment has to be sized for their sum rather than for two keys. */
+static pmix_status_t publish_big_values(void)
+{
+    pmix_info_t upd[2];
+    pmix_data_array_t *darray = NULL;
+    pmix_info_t *iptr;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    char *big;
+    size_t n;
+
+    big = (char *) malloc(BIGLEN + 1);
+    if (NULL == big) {
+        return PMIX_ERR_NOMEM;
+    }
+    /* a pattern, not zeros, so a truncated copy is visible */
+    for (n = 0; n < BIGLEN; n++) {
+        big[n] = (char) ('a' + (n % 26));
+    }
+    big[BIGLEN] = '\0';
+
+    PMIX_DATA_ARRAY_CREATE(darray, ARRN, PMIX_INFO);
+    if (NULL == darray) {
+        free(big);
+        return PMIX_ERR_NOMEM;
+    }
+    iptr = (pmix_info_t *) darray->array;
+    for (n = 0; n < ARRN; n++) {
+        char key[PMIX_MAX_KEYLEN + 1];
+        uint32_t v = (uint32_t) n;
+        snprintf(key, sizeof(key), "sut.arr.%zu", n);
+        PMIX_INFO_LOAD(&iptr[n], key, &v, PMIX_UINT32);
+    }
+
+    PMIX_INFO_LOAD(&upd[0], BIGKEY, big, PMIX_STRING);
+    PMIX_LOAD_KEY(upd[1].key, ARRKEY);
+    upd[1].flags = 0;
+    upd[1].value.type = PMIX_DATA_ARRAY;
+    upd[1].value.data.darray = darray;
+
+    PMIX_LOAD_NSPACE(ns, NSPACE);
+    rc = PMIx_server_register_nspace(ns, -1, upd, 2, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&upd[0]);
+    PMIX_INFO_DESTRUCT(&upd[1]);
+    free(big);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    return rc;
+}
+
+/* The same key, a different TYPE. A host may do this, and "has this
+ * changed?" has to say yes - PMIx_Value_compare() reports a type
+ * mismatch as not-equal, which is what makes it so. */
+static pmix_status_t retype_late_key(void)
+{
+    pmix_info_t upd;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+
+    PMIX_LOAD_NSPACE(ns, NSPACE);
+    PMIX_INFO_LOAD(&upd, LATEKEY, "now-a-string", PMIX_STRING);
+    rc = PMIx_server_register_nspace(ns, -1, &upd, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&upd);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    return rc;
+}
+
 int main(int argc, char **argv)
 {
     pmix_info_t sinfo;
@@ -518,6 +713,31 @@ int main(int argc, char **argv)
     rc = revise_whole_description(FOURTH);
     report("the host restates the whole description with one value changed",
            PMIX_SUCCESS == rc);
+    c = 'g';
+    if (1 != write(gopipe[1], &c, 1)) {
+        goto done;
+    }
+
+    /* phase 5: a payload no key-count estimate covers */
+    if (1 != read(readypipe[0], &c, 1)) {
+        fprintf(stderr, "the client never reported its fifth read\n");
+        goto done;
+    }
+    rc = publish_big_values();
+    report("the host publishes a large value and a data array",
+           PMIX_SUCCESS == rc);
+    c = 'g';
+    if (1 != write(gopipe[1], &c, 1)) {
+        goto done;
+    }
+
+    /* phase 6: the same key with a different type */
+    if (1 != read(readypipe[0], &c, 1)) {
+        fprintf(stderr, "the client never reported its sixth read\n");
+        goto done;
+    }
+    rc = retype_late_key();
+    report("the host changes an existing key's type", PMIX_SUCCESS == rc);
     c = 'g';
     if (1 != write(gopipe[1], &c, 1)) {
         goto done;
