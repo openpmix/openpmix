@@ -65,12 +65,47 @@ static void _notify_complete(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(chain);
 }
 
-static void lost_connection(pmix_peer_t *peer)
+/* My connection to the server I am a client of has dropped.
+ *
+ * It is possible that we have sendrecv's in progress where we are waiting
+ * for a response to arrive. Since we have lost connection to the server,
+ * that will never happen. Thus, to preclude any chance of hanging, cycle
+ * thru the list of posted recvs and complete any that are the return call
+ * from a sendrecv - i.e., any that are waiting on dynamic tags.
+ */
+static void lost_my_server(void)
 {
     pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
 
+    if (NULL == pmix_client_globals.myserver ||
+        NULL == pmix_client_globals.myserver->nptr) {
+        return;
+    }
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    /* must set the buffer type so it doesn't fail in unpack */
+    buf.type = pmix_client_globals.myserver->nptr->compat.type;
+    hdr.nbytes = 0; // initialize the hdr to something safe
+    PMIX_LIST_FOREACH (rcv, &pmix_ptl_base.posted_recvs, pmix_ptl_posted_recv_t) {
+        /* only the dynamic tags carry a sendrecv reply that somebody
+         * is blocked on. The reserved tags below PMIX_PTL_TAG_DYNAMIC
+         * hold persistent recvs - the notification, IOF and IOF flow
+         * control handlers - and nobody is waiting on those. Handing
+         * one of them this empty buffer would only make it fail to
+         * unpack a message that was never sent. */
+        if (PMIX_PTL_TAG_DYNAMIC <= rcv->tag && UINT_MAX != rcv->tag &&
+            NULL != rcv->cbfunc) {
+            /* construct and load the buffer */
+            hdr.tag = rcv->tag;
+            rcv->cbfunc(pmix_globals.mypeer, &hdr, &buf, rcv->cbdata);
+        }
+    }
+    PMIX_DESTRUCT(&buf);
+}
+
+static void lost_connection(pmix_peer_t *peer)
+{
     /* stop all events */
     if (peer->recv_ev_active) {
         pmix_event_del(&peer->recv_event);
@@ -124,9 +159,21 @@ static void lost_connection(pmix_peer_t *peer)
          * this peer's data is told. */
         pmix_server_purge_events(peer, NULL, PMIX_ERR_LOST_CONNECTION);
 
-        if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-            /* only connection I can lose is to my server, so mark it */
+        /* Ask which peer went away, not what I am. A launcher - prun, and
+         * anything else that passes PMIX_LAUNCHER to PMIx_tool_init - is a
+         * tool with an upstream server AND a server with downstream peers of
+         * its own, because PMIX_PROC_LAUNCHER carries PMIX_PROC_SERVER. So
+         * "am I a server" cannot distinguish the two directions, and testing
+         * it here got both of them wrong: losing a tool of my own would
+         * declare me disconnected from my server, while losing my server
+         * would leave every sendrecv I had outstanding on it unanswered -
+         * the finalize sync among them, so a launcher paid its full
+         * finalize guard timer on every departure whose reply went astray.
+         * That recovery lives in the client arm below, which a launcher
+         * never reaches. */
+        if (peer == pmix_client_globals.myserver) {
             pmix_atomic_unset_bool(&pmix_globals.connected);
+            lost_my_server();
         } else if (!PMIX_PEER_IS_TOOL(peer)) {
             /* cleanup any sensors that are monitoring them */
             pmix_psensor.stop(peer, NULL);
@@ -164,32 +211,7 @@ static void lost_connection(pmix_peer_t *peer)
         /* if this was the server to which I am connected,
          * then we need to exit */
         pmix_atomic_unset_bool(&pmix_globals.connected);
-        /* it is possible that we have sendrecv's in progress where
-         * we are waiting for a response to arrive. Since we have
-         * lost connection to the server, that will never happen.
-         * Thus, to preclude any chance of hanging, cycle thru
-         * the list of posted recvs and complete any that are
-         * the return call from a sendrecv - i.e., any that are
-         * waiting on dynamic tags */
-        PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-        /* must set the buffer type so it doesn't fail in unpack */
-        buf.type = pmix_client_globals.myserver->nptr->compat.type;
-        hdr.nbytes = 0; // initialize the hdr to something safe
-        PMIX_LIST_FOREACH (rcv, &pmix_ptl_base.posted_recvs, pmix_ptl_posted_recv_t) {
-            /* only the dynamic tags carry a sendrecv reply that somebody
-             * is blocked on. The reserved tags below PMIX_PTL_TAG_DYNAMIC
-             * hold persistent recvs - the notification, IOF and IOF flow
-             * control handlers - and nobody is waiting on those. Handing
-             * one of them this empty buffer would only make it fail to
-             * unpack a message that was never sent. */
-            if (PMIX_PTL_TAG_DYNAMIC <= rcv->tag && UINT_MAX != rcv->tag &&
-                NULL != rcv->cbfunc) {
-                /* construct and load the buffer */
-                hdr.tag = rcv->tag;
-                rcv->cbfunc(pmix_globals.mypeer, &hdr, &buf, rcv->cbdata);
-            }
-        }
-        PMIX_DESTRUCT(&buf);
+        lost_my_server();
         /* if I called finalize, then don't generate an event */
         if (!pmix_globals.mypeer->finalized) {
             PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION,
