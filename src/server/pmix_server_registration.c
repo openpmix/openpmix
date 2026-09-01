@@ -44,6 +44,7 @@
 #include "src/mca/pgpu/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/psensor/base/base.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
@@ -934,6 +935,18 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                 }
                 /* honor any registered epilogs */
                 pmix_execute_epilog(&peer->epilog);
+                /* Push out anything still queued for this peer before its
+                 * socket goes away.  We are retiring a peer the host has
+                 * told us about, not reacting to one that vanished, so a
+                 * message sitting on its send queue is one we accepted the
+                 * obligation to deliver - typically the reply to the very
+                 * finalize that brought the host here, which reaches the
+                 * peer only when its send event next fires and so is still
+                 * unwritten at this point.  Dropping it leaves the peer
+                 * waiting on an answer that was packed and discarded, and
+                 * on the finalize path that wait is the full guard timer in
+                 * PMIx_Finalize/PMIx_tool_finalize. */
+                pmix_ptl_base_flush_sends(peer);
                 /* ensure we close the socket to this peer so we don't
                  * generate "connection lost" events should it be
                  * subsequently "killed" by the host */
