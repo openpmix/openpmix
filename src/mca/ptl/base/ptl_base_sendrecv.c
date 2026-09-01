@@ -58,6 +58,10 @@
 #define PMIX_PTL_FLUSH_MAX_RETRIES 10
 #define PMIX_PTL_FLUSH_RETRY_USEC  1000
 
+/* The aggregation window to use for a report that cannot aggregate: deliver
+ * on the next pass of the event loop rather than a second from now. */
+static struct timeval report_now = {0, 0};
+
 static void _notify_complete(pmix_status_t status, void *cbdata)
 {
     (void) status;
@@ -182,9 +186,20 @@ static void lost_connection(pmix_peer_t *peer)
             /* if this peer already called finalize, then
              * we are just seeing their connection go away
              * when they terminate - so do not generate
-             * an event. If an abnormal termination, then we do */
-            PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION, peer,
-                              PMIX_RANGE_PROC_LOCAL, _notify_complete);
+             * an event. If an abnormal termination, then we do.
+             *
+             * Which peer it was decides whether the aggregation window is
+             * worth waiting out.  Losing a client is precisely the cascade
+             * the window exists for: a job that dies drops all of its
+             * peers at once, and one event naming them all is the point.
+             * Losing my own server is not - I have exactly one, so that
+             * chain can never gain a second source and the window is a
+             * second of delay in exchange for nothing. */
+            PMIX_REPORT_EVENT_WINDOW(PMIX_ERR_LOST_CONNECTION, peer,
+                                     PMIX_RANGE_PROC_LOCAL, _notify_complete,
+                                     (peer == pmix_client_globals.myserver)
+                                         ? &report_now
+                                         : &pmix_globals.event_window);
         }
 
         /* if a local peer finalized cleanly and its socket has now dropped,
@@ -212,11 +227,19 @@ static void lost_connection(pmix_peer_t *peer)
          * then we need to exit */
         pmix_atomic_unset_bool(&pmix_globals.connected);
         lost_my_server();
-        /* if I called finalize, then don't generate an event */
+        /* if I called finalize, then don't generate an event.
+         *
+         * No aggregation window here: this report names my one and only
+         * server, so nothing can ever join it.  Waiting the window out is
+         * what made a tool whose whole job is to watch for this - pterm,
+         * which orders a DVM down and then waits for the connection to
+         * drop as proof it went - spend a full second of its ~1.02 s
+         * runtime waiting for an event that was ready immediately. */
         if (!pmix_globals.mypeer->finalized) {
-            PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION,
-                              pmix_client_globals.myserver,
-                              PMIX_RANGE_PROC_LOCAL, _notify_complete);
+            PMIX_REPORT_EVENT_WINDOW(PMIX_ERR_LOST_CONNECTION,
+                                     pmix_client_globals.myserver,
+                                     PMIX_RANGE_PROC_LOCAL, _notify_complete,
+                                     &report_now);
         }
     }
 }

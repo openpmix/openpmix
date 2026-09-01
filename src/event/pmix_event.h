@@ -362,7 +362,23 @@ PMIX_EXPORT void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata);
  * after invoking cbfunc.opcbfn, so the poster must not. */
 PMIX_EXPORT void pmix_internal_dereg_event_hdlr(int sd, short args, void *cbdata);
 
-#define PMIX_REPORT_EVENT(e, p, r, f)                                                          \
+/* Cache an event for aggregation, then report it.
+ *
+ * The window (w) is how long the chain stays open for other sources of the
+ * same status to join it, and it is the whole reason this caching exists: a
+ * job that dies takes its peers with it, and one event naming all of them
+ * beats a cascade of identical events naming one each.  Pass
+ * &pmix_globals.event_window for that - PMIX_REPORT_EVENT below is the
+ * shorthand, and is what almost every report wants.
+ *
+ * Pass a zero window where the report has nothing it could ever aggregate
+ * with, because there the wait is pure latency bought with nothing.  Note
+ * that a zero window handed to an already-open chain flushes that chain
+ * now, carrying whatever had joined it out early; nothing is lost, it is
+ * merely reported sooner, and a report urgent enough to skip the window is
+ * urgent enough to take the others with it.
+ */
+#define PMIX_REPORT_EVENT_WINDOW(e, p, r, f, w)                                                \
     do {                                                                                       \
         pmix_event_chain_t *ch, *cp;                                                           \
         size_t _n;                                                                             \
@@ -403,7 +419,7 @@ PMIX_EXPORT void pmix_internal_dereg_event_hdlr(int sd, short args, void *cbdata
             ch->timer_active = true;                                                           \
             pmix_event_assign(&ch->ev, pmix_globals.evbase, -1, 0, pmix_event_timeout_cb, ch); \
             PMIX_POST_OBJECT(ch);                                                              \
-            pmix_event_add(&ch->ev, &pmix_globals.event_window);                               \
+            pmix_event_add(&ch->ev, (w));                                                      \
         } else {                                                                               \
             /* add this peer to the array of sources */                                        \
             pmix_proc_t proc_tmp;                                                              \
@@ -428,9 +444,13 @@ PMIX_EXPORT void pmix_internal_dereg_event_hdlr(int sd, short args, void *cbdata
             }                                                                                  \
             PMIX_POST_OBJECT(ch);                                                              \
             ch->timer_active = true;                                                           \
-            pmix_event_add(&ch->ev, &pmix_globals.event_window);                               \
+            pmix_event_add(&ch->ev, (w));                                                      \
         }                                                                                      \
     } while (0)
+
+/* Report an event over the standard aggregation window. */
+#define PMIX_REPORT_EVENT(e, p, r, f) \
+    PMIX_REPORT_EVENT_WINDOW((e), (p), (r), (f), &pmix_globals.event_window)
 
 END_C_DECLS
 
