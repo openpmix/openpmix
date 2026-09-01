@@ -109,7 +109,7 @@ pmix_bfrop_tma_kval_new(
  * Structure for holding a buffer */
 typedef struct {
     /** First member must be the object's parent */
-    pmix_object_t parent;
+    pmix_object_t super;
     /** type of buffer */
     pmix_bfrop_buffer_type_t type;
     /** Start of my memory */
