@@ -518,6 +518,15 @@ delivery completes with nothing refused. Declining turns the silent
 wrong answer back into the miss the paragraph above describes, and the
 server answers it correctly.
 
+One caller sees that as a failure rather than a round trip, and it is
+worth knowing which. ``PMIX_OPTIONAL`` says "do not ask the server", so
+a request carrying it against a realm that is declining has nowhere to
+be answered from and returns ``PMIX_ERR_NOT_FOUND``. That is the honest
+answer — the process genuinely cannot answer without asking — but a
+caller that uses ``PMIX_OPTIONAL`` as a cheap presence test will see a
+key it had before appear to vanish, until a delivery completes with
+nothing refused and the realm answers locally again.
+
 Clients are read-only, and the MMU enforces it
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
