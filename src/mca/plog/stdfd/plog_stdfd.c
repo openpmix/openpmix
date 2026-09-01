@@ -72,6 +72,7 @@ typedef struct{
 } pmix_iof_deliver_t;
 static void pdcon(pmix_iof_deliver_t *p)
 {
+    PMIX_LOAD_PROCID(&p->source, NULL, PMIX_RANK_UNDEF);
     p->bo.bytes = NULL;
     p->bo.size = 0;
 }

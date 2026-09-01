@@ -198,19 +198,21 @@ static pmix_status_t pmix_pstat_base_unsupported_finalize(void)
 
 static void opcon(pmix_pstat_op_t *p)
 {
-    /* PMIX_NEW does not zero the object, so every member a consumer might
-     * read has to be set here. requestor and eventcode are the two that
-     * matter: a periodic op notifies with PMIx_Notify_event(eventcode)
-     * scoped to requestor, so leaving them holding heap garbage means
-     * raising an arbitrary status at an arbitrary process. Both real
-     * components assign them immediately after PMIX_NEW, which is what
-     * keeps this latent rather than live - but nothing enforces that.
-     * ev and tv are deliberately not initialized: tv is set by
-     * PMIX_PSTAT_OP_START before the timer is armed, and ev is only ever
-     * touched under the active flag, which starts false. */
+    /* every member a consumer might read is set here. requestor and
+     * eventcode are the two that matter: a periodic op notifies with
+     * PMIx_Notify_event(eventcode) scoped to requestor, so an op that
+     * reached that point without them would raise a status nobody meant
+     * at a process nobody named. Both real components assign them
+     * immediately after PMIX_NEW, which is what keeps this latent rather
+     * than live - but nothing enforces that. ev is the one member left
+     * alone: libevent arms it, and it is only ever touched under the
+     * active flag, which starts false. */
     PMIX_PROC_CONSTRUCT(&p->requestor);
     p->eventcode = PMIX_SUCCESS;
     p->id = NULL;
+    /* overwritten by PMIX_PSTAT_OP_START before the timer is armed */
+    p->tv.tv_sec = 0;
+    p->tv.tv_usec = 0;
     p->active = false;
     p->rate = 0;
     PMIX_CONSTRUCT(&p->peers, pmix_list_t);

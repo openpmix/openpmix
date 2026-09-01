@@ -168,6 +168,7 @@ PMIX_CLASS_INSTANCE(pmix_buffer_t, pmix_object_t, pmix_buffer_construct, pmix_bu
 
 static void pmix_bfrop_type_info_construct(pmix_bfrop_type_info_t *obj)
 {
+    obj->odti_type = PMIX_UNDEF;
     obj->odti_name = NULL;
     obj->odti_pack_fn = NULL;
     obj->odti_unpack_fn = NULL;

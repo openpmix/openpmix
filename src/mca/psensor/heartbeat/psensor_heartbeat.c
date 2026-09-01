@@ -64,6 +64,9 @@ static void ft_constructor(pmix_heartbeat_trkr_t *ft)
     ft->requestor = NULL;
     ft->id = NULL;
     ft->event_active = false;
+    /* the tracker's add event is assigned when the tracker is handed to
+     * the sensor thread - until then it is simply unarmed */
+    memset(&ft->cdev, 0, sizeof(ft->cdev));
     ft->tv.tv_sec = 0;
     ft->tv.tv_usec = 0;
     ft->nbeats = 0;

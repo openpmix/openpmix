@@ -76,6 +76,9 @@ static void tcon(pmix_server_trkr_t *t)
     t->completion_fired = false;
     t->local = true;
     t->id = NULL;
+    /* no command matches this, so a tracker whose type was never set
+     * cannot be mistaken for a PMIX_REQ_CMD collective */
+    t->type = UINT8_MAX;
     PMIX_LOAD_PROCID(&t->pname, NULL, PMIX_RANK_UNDEF);
     t->pcs = NULL;
     t->npcs = 0;
@@ -189,6 +192,7 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->napps = 0;
     p->server_object = NULL;
     p->nlocalprocs = 0;
+    p->sessionid = UINT32_MAX; // no session, as everywhere else
     p->info = NULL;
     p->ninfo = 0;
     p->units = NULL;

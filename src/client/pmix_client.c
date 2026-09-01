@@ -309,6 +309,8 @@ typedef struct {
 } pmix_held_delete_t;
 static void hdcon(pmix_held_delete_t *p)
 {
+    PMIX_LOAD_PROCID(&p->proc, NULL, PMIX_RANK_UNDEF);
+    p->scope = PMIX_SCOPE_UNDEF;
     p->key = NULL;
 }
 static void hddes(pmix_held_delete_t *p)

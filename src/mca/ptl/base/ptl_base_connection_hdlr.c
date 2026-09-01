@@ -68,6 +68,8 @@ typedef struct {
 static void chcon(cnct_hdlr_t *p)
 {
     memset(&p->ev, 0, sizeof(pmix_event_t));
+    p->status = PMIX_SUCCESS;
+    p->reply = PMIX_SUCCESS;
     p->pnd = NULL;
     p->peer = NULL;
     p->info = NULL;
