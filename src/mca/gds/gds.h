@@ -153,10 +153,23 @@ typedef pmix_status_t (*pmix_gds_base_module_assemb_kvs_req_fn_t)(const pmix_pro
     } while (0)
 
 /* CLIENT FN: unpack buffer and key processing */
-typedef pmix_status_t (*pmix_gds_base_module_accept_kvs_resp_fn_t)(pmix_buffer_t *buf);
+/* Take delivery of a server's reply to a data request.
+ *
+ * Rank-specific ("modex") values are stored: this client has no other
+ * copy of another proc's put data. JOB-LEVEL values are different - a
+ * client whose server module keeps them elsewhere (gds/shmem3 keeps
+ * them in shared segments the server republishes on every change)
+ * already has an authoritative copy, and a second one here would never
+ * be refreshed by that republication. Those are appended to "jobvals"
+ * for the caller to answer the request in flight from, and then
+ * discarded. When the module IS where this client reads job data from,
+ * they are stored as before.
+ */
+typedef pmix_status_t (*pmix_gds_base_module_accept_kvs_resp_fn_t)(pmix_buffer_t *buf,
+                                                                   pmix_list_t *jobvals);
 
 /* define a macro for client key processing from a server response based on peer */
-#define PMIX_GDS_ACCEPT_KVS_RESP(s, p, b)                                      \
+#define PMIX_GDS_ACCEPT_KVS_RESP(s, p, b, j)                                      \
     do {                                                                       \
         pmix_gds_base_module_t *_g = PMIX_GDS_PEER_MODULE(p);                  \
         (s) = PMIX_SUCCESS;                                                    \
@@ -171,7 +184,7 @@ typedef pmix_status_t (*pmix_gds_base_module_accept_kvs_resp_fn_t)(pmix_buffer_t
             pmix_output_verbose(1, pmix_gds_base_output,                       \
                                 "[%s:%d] GDS ACCEPT RESP WITH %s",             \
                                 __FILE__, __LINE__, _g->name);                 \
-            (s) = _g->accept_kvs_resp(b);                                      \
+            (s) = _g->accept_kvs_resp((b), (j));                                      \
         }                                                                      \
     } while (0)
 

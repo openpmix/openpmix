@@ -503,7 +503,7 @@ static pmix_status_t nspace_del(const char *nspace);
 static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc, pmix_list_t *kvs, pmix_buffer_t *bo,
                                     void *cbdata);
 
-static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf);
+static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf, pmix_list_t *jobvals);
 
 
 static pmix_status_t mark_modex_complete(struct pmix_peer_t *peer,
@@ -2167,7 +2167,7 @@ static pmix_status_t store_app_info(pmix_nspace_t nspace, pmix_kval_t *kv)
     return rc;
 }
 
-static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
+static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf, pmix_list_t *jobvals)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     int32_t cnt;
@@ -2175,6 +2175,8 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
     pmix_buffer_t pbkt;
     pmix_kval_t kv;
     pmix_proc_t proct;
+    pmix_rank_t wildrank;
+    bool keep_jobdata;
 
     /* the incoming payload is provided as a set of packed
      * byte objects, one for each rank. A pmix_proc_t is the first
@@ -2197,11 +2199,33 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
             PMIX_DESTRUCT(&pbkt);
             return rc;
         }
+        /* remembered before the normalization below, which turns UNDEF
+         * into our own rank and would hide what this object is */
+        wildrank = proct.rank;
         /* if the rank is UNDEF, then we store this on our own
          * rank tables */
         if (PMIX_RANK_UNDEF == proct.rank) {
             proct.rank = pmix_globals.myid.rank;
         }
+
+        /* Is this byte object JOB-LEVEL data, and does this client read
+         * its job data somewhere other than here?
+         *
+         * If so it must not be stored. gds/shmem3 keeps a client's job
+         * data in shared segments that the server republishes whenever
+         * it changes, and the notice that carries a republication goes
+         * to THAT module - so a copy kept here is never refreshed by it.
+         * It is not even a fast path: it is only ever consulted when the
+         * client's real store has nothing to say, which is exactly when
+         * a stale copy answers in place of a miss. One local fetch that
+         * missed would then be answered from this copy for the rest of
+         * the run, however many times the host revised the value.
+         *
+         * A client whose server module IS "hash" reads job data from
+         * these very tables, so for it this is not a second copy and the
+         * store below is right. */
+        keep_jobdata = (PMIX_RANK_WILDCARD == wildrank) &&
+                       !PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash");
 
         cnt = 1;
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
@@ -2215,6 +2239,22 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
                 rc = store_node_info(proct.nspace, &kv);
             } else if (PMIX_CHECK_KEY(&kv, PMIX_APP_INFO_ARRAY)) {
                 rc = store_app_info(proct.nspace, &kv);
+            } else if (keep_jobdata) {
+                /* job-level, and this client reads its job data
+                 * elsewhere - hand it back for the request in flight
+                 * rather than keeping a copy nothing will refresh */
+                pmix_kval_t *jk = PMIX_NEW(pmix_kval_t);
+                if (NULL == jk) {
+                    rc = PMIX_ERR_NOMEM;
+                } else {
+                    jk->key = strdup(kv.key);
+                    PMIX_VALUE_XFER(rc, jk->value, kv.value);
+                    if (PMIX_SUCCESS == rc && NULL != jobvals) {
+                        pmix_list_append(jobvals, &jk->super);
+                    } else {
+                        PMIX_RELEASE(jk);
+                    }
+                }
             } else {
                 /* A LONE key, which is what a keyed PMIx_Get is answered
                  * with - no wrapper to route on. File it by what its name
