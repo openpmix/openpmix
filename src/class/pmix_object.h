@@ -132,6 +132,7 @@
 #endif /* HAVE_STDLIB_H */
 #include <stdatomic.h>
 #include <stdio.h>
+#include <string.h>   /* memset, for the zeroing in PMIX_NEW/PMIX_CONSTRUCT */
 
 BEGIN_C_DECLS
 
@@ -583,6 +584,13 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *tma)
 
 #define PMIX_CONSTRUCT_INTERNAL_TMA(object, type, t)               \
     do {                                                           \
+        /* Start from zero, before anything below writes.  A        \
+         * constructor that forgets a member otherwise leaves it    \
+         * holding whatever the stack or the enclosing struct had,  \
+         * which is a bug that reproduces only sometimes - see the  \
+         * note on pmix_obj_new_tma. Necessarily first: everything  \
+         * after this line is initialization this would erase. */   \
+        memset((object), 0, (type)->cls_sizeof);                   \
         PMIX_SET_MAGIC_ID((object), PMIX_OBJ_MAGIC_ID);            \
         if (!PMIX_CLASS_IS_INITIALIZED(type)) {                    \
             pmix_class_initialize((type));                         \
@@ -723,6 +731,27 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
         pmix_class_initialize(cls);
     }
     if (NULL != object) {
+        /* Zero before anything is initialized.
+         *
+         * A constructor sets the members it knows about, and a member it
+         * forgets is left holding whatever the allocator handed back. That
+         * is a bug which reproduces only when the heap happens to be dirty
+         * there, so it survives review, survives unit tests, and turns up
+         * later as a wrong value on the wire or a pointer that is garbage
+         * only sometimes.
+         *
+         * Zeroing does not make a forgotten member *correct* - a default
+         * that should not be zero still has to be set, and several here
+         * deliberately are not (a count that must start at SIZE_MAX, a
+         * sentinel that is UINT32_MAX). What it buys is that the mistake
+         * behaves the same way every time, which is the difference between
+         * a bug that can be chased and one that cannot.
+         *
+         * It has to be here rather than in each constructor: constructors
+         * run base-class first, so by the time a derived one executes the
+         * object header is already set up and a memset there would erase
+         * it. This is the one point where nothing has been initialized. */
+        memset(object, 0, cls->cls_sizeof);
         object->obj_class = cls;
         atomic_init(&object->obj_reference_count, 1);
         pmix_obj_construct_tma(object, tma);
