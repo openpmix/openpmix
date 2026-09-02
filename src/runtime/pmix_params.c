@@ -45,6 +45,7 @@
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_timings.h"
+#include "src/threads/pmix_threads.h"
 
 #if PMIX_ENABLE_TIMING
 char *pmix_timing_output = NULL;
@@ -84,6 +85,29 @@ pmix_status_t pmix_register_params(void)
     }
 
     pmix_register_done = true;
+
+    /* The four lock macros trace acquire/release under this flag, and
+     * until now nothing outside its definition ever assigned it - the
+     * facility could only be reached by setting the variable from a
+     * debugger, so a silent run was no evidence the handshake had not
+     * run. An environment variable rather than an MCA parameter, for
+     * the reason PMIX_GET_ON_PROGRESS_THREAD is one: the output it
+     * enables is compiled in only under PMIX_ENABLE_DEBUG, so on an
+     * optimized build an MCA parameter would advertise a knob in
+     * pmix_info that does nothing. Set to anything - the value is not
+     * read.
+     *
+     * Guarded rather than unconditional because pmix_threads.h declares
+     * the flag under the same #if. The lock macros that read it are
+     * debug-only, so there is nothing here for an optimized build to
+     * do; writing it anyway would only compile where the developer
+     * happened to configure --enable-debug, which is how this reached
+     * CI as an undeclared identifier. */
+#if PMIX_ENABLE_DEBUG
+    if (NULL != getenv("PMIX_DEBUG_THREADS")) {
+        pmix_debug_threads = true;
+    }
+#endif
 
 #if PMIX_ENABLE_TIMING
     pmix_timing_output = NULL;

@@ -295,11 +295,16 @@ key is tracked and cleaned up no matter which thread touched it first.
 - **`ACQUIRE_THREAD` and `WAIT_THREAD` emit distinct debug strings**
   (`"Acquiring thread"` / `"Thread acquired"` vs. `"Waiting for thread"` /
   `"Thread obtained"`) so the two are distinguishable in a
-  `pmix_debug_threads` log. **Nothing in the tree ever sets
-  `pmix_debug_threads`** — there is no MCA parameter for it and no
-  assignment outside its definition, so those lines only appear if you
-  set the variable from a debugger. Do not conclude from a silent run
-  that the lock handshake was not exercised.
+  `pmix_debug_threads` log. **Set `PMIX_DEBUG_THREADS` in the environment
+  to get them** — to anything, the value is not read;
+  `pmix_register_params()` turns the flag on. Deliberately an environment
+  variable rather than an MCA parameter, because the tracing is compiled
+  in only under `PMIX_ENABLE_DEBUG` and an MCA parameter would advertise
+  a knob in `pmix_info` that does nothing on an optimized build; see
+  `PMIX_GET_ON_PROGRESS_THREAD`, which is the same kind of switch. On a
+  build without `--enable-debug` the lines do not exist at all, so a
+  silent run there is not evidence that the lock handshake was not
+  exercised.
 - **The cast in `pmix_thread_start`** hands a
   `void *(*)(pmix_object_t *)` to `pthread_create`, which wants a
   `void *(*)(void *)`. That is a call through an incompatible function
