@@ -33,6 +33,13 @@
 # server.  A run with two ranks per node can be green with the whole remote
 # path broken.  Keep the geometry.
 #
+# ONE stage departs from it deliberately, and says why where it is defined:
+# xnspace_modex needs two namespaces resident on the same node, which is
+# only reachable with two slots per node.  It still asks for a peer on the
+# far node, so it does not lose the remote arm -- it adds a second
+# condition to it.  A new stage that wants two ranks per node for any other
+# reason is almost certainly wrong.
+#
 # What the stages reach that `make check` cannot:
 #
 #   * dmodex / modex_twice / group_dmodex -- a rank fetches a peer's data
@@ -46,6 +53,23 @@
 #     _satisfy_request(), which packs job-level data before the per-rank
 #     data and is the arm whose not-found path used to strand the packed
 #     buffer.
+#   * xnspace_modex -- the same cross-namespace get, but with the child
+#     job mapped BACK ONTO the nodes its parents already occupy.  THE ONLY
+#     STAGE HERE THAT WANTS TWO RANKS PER NODE, and it wants them for the
+#     opposite of the usual reason: co-residency is what gives the daemon
+#     a local client of the target namespace, and so a gds module for that
+#     namespace which is not the daemon's own -- gds/shmem3 keeps a job's
+#     modex in a shared segment the daemon's "hash" module cannot read.
+#     _satisfy_request() then has to consult that module, and it did not:
+#     a non-reserved key is fetched as "everything this proc has", our own
+#     store always holds the rank's job-level keys, and the resulting
+#     success was read as "we have what was asked for".  The reply went
+#     back with pmix.grank and friends and no modex, and -- being a
+#     success -- stopped pmix_server_get() from ever issuing the direct
+#     modex that would have found it.  It still needs a REMOTE target: the
+#     cross-namespace peer that is local here is answered out of the
+#     daemon's own store, because a local client's commit is filed in
+#     both.  See issue #4225.
 #   * multi_nspace_group -- a group whose members span namespaces and
 #     nodes, which drives the two-level group block/tracker engine through
 #     a real host rather than through simptest.
@@ -90,7 +114,7 @@ root="$(cd "$here/../.." && pwd)"
 
 # The examples this runner drives.  Each one puts the server library on a
 # path a single-node run cannot take; see the header.
-SERVER_EXAMPLES="${SERVER_EXAMPLES:-dmodex dmdx_departed modex_twice group_dmodex dynamic multi_nspace_group resolve simple_resolve pub}"
+SERVER_EXAMPLES="${SERVER_EXAMPLES:-dmodex dmdx_departed modex_twice group_dmodex dynamic xnspace_modex multi_nspace_group resolve simple_resolve pub}"
 
 # See run-client-tests.sh: these are COMPILED in a throwaway builder
 # container and RUN in the long-lived node containers, so they must link the
@@ -121,6 +145,14 @@ sv_geom() {
             # cross-namespace get cross a server boundary rather than being
             # answered out of the parent's own datastore.
             HOSTS="node1:1,node2:1,node3:1,node4:1"; NP=2 ;;
+        xnspace_modex)
+            # The one stage that deliberately breaks the one-rank-per-node
+            # rule: it needs the spawned children to land on nodes their
+            # parents already hold, which is what --map-by node over two
+            # two-slot nodes gives it, and it needs the peer it then asks
+            # for to be on the OTHER node. Both conditions at once, or the
+            # case passes whether the bug is there or not.
+            HOSTS="node1:2,node2:2"; NP=2 ;;
     esac
     case "$1" in
         # Not every example announces itself the same way. Match what each
@@ -133,6 +165,9 @@ sv_geom() {
         group_dmodex)   WANT='COMPLETE' ;;
         resolve)        WANT='Bye\.' ;;
         pub|simple_resolve) WANT='' ;;
+        # every rank grades itself and says so; a FAIL line is caught by
+        # judge() through the exit status the program returns with it
+        xnspace_modex)  WANT=': PASS' ;;
     esac
 }
 
@@ -257,6 +292,8 @@ test_linux() {
             modex_twice) judge "$ex" "repeated modex: second request joins an existing tracker" ;;
             group_dmodex) judge "$ex" "modex within a group spanning servers" ;;
             dynamic)     judge "$ex" "spawn + connect: a get across namespaces and servers" ;;
+            xnspace_modex)
+                         judge "$ex" "cross-namespace get for a remote peer where a node holds both namespaces" ;;
             multi_nspace_group)
                          judge "$ex" "group block/tracker engine across namespaces and nodes" ;;
             resolve)     judge "$ex" "resolve_peers/resolve_node answered by the host" ;;

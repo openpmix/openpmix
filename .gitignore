@@ -90,6 +90,7 @@ examples/dmdx_departed
 examples/modex_attach_fail
 examples/dmodex
 examples/dynamic
+examples/xnspace_modex
 examples/modex_twice
 examples/fault
 examples/jctrl
