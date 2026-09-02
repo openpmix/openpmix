@@ -52,7 +52,7 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 9**
+**Deferred work — 8**
 
 * :ref:`todo-resolve-peers-wildcard`
 * :ref:`todo-get-pointer-values`
@@ -60,22 +60,22 @@ At a glance
 * :ref:`todo-tool-delete-notice`
 * :ref:`todo-global-syslog`
 * :ref:`todo-compress-length-prefix`
-* :ref:`todo-pcompress-init-fatal`
 * :ref:`todo-fabric-inventory`
 * :ref:`todo-server-genvars`
 
-**Coverage gaps — 20.**  No CI race detector; the switchyard's
+**Coverage gaps — 21.**  No CI race detector; the switchyard's
 out-of-memory and finalize-race arms; a multi-namespace
 ``PMIx_Disconnect``; a spawn hosted by ``simptest``; the
 ``PMIx_Compute_distances`` reply path; two ``src/tool`` fixes (SIGCONT
 stdin, late finalize reply); the ``PMIx_Init`` debugger-wait teardown;
-leak validation of the process-set and resolve examples; ``pps``
-against a live process table; the compressed half of ``preg``;
-``psensor/file`` drop counts; a blocking ``psec`` handshake; ``psec/munge``'s
-failed encode; ``plog/smtp`` (never run at all); the ``pnet`` fabric
-calls; ``pnet/simptest``'s end-to-end launch; the TSD finalize ordering;
-``gds/shmem3`` on macOS; the client-side tombstone generation; and three
-``src/hwloc`` findings.  Each is listed in full under `Coverage gaps`_.
+leak validation of the process-set and resolve examples; ``pps`` against
+a live process table; the compressed half of ``preg``; ``psensor/file``
+drop counts; a ``pcompress`` module that fails to start; a blocking
+``psec`` handshake; ``psec/munge``'s failed encode; ``plog/smtp`` (never
+run at all); the ``pnet`` fabric calls; ``pnet/simptest``'s end-to-end
+launch; the TSD finalize ordering; ``gds/shmem3`` on macOS; the
+client-side tombstone generation; and three ``src/hwloc`` findings.
+Each is listed in full under `Coverage gaps`_.
 
 **Review coverage — 3 directories unread**, plus ``src/common`` and four
 lower-priority directories whose code has moved since their review.
@@ -341,27 +341,6 @@ Note also that the caller has already read the whole blob into memory by
 the time it gets here, so the amplification is bounded by what the PTL
 was willing to accept.
 
-.. _todo-pcompress-init-fatal:
-
-A pcompress module's ``init()`` failure is fatal to library init
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Also from the ``src/mca/pcompress`` review, and dead code today.
-
-The framework's documented stance is that having no compressor is not an
-error: ``pmix_compress_base_select()`` returns ``PMIX_SUCCESS`` when it
-selects nothing, and the base default no-op stubs stay in place.  But if
-the winning module's ``init()`` fails, that error is returned, and
-``pmix_init.c`` treats a non-``SUCCESS`` return from the select as fatal
-to ``PMIx_Init``.  So a compression library that loads but cannot start
-would take the whole library down, where an absent one is shrugged off.
-
-Unreachable: no module in the framework implements ``init``, and every
-one of the five leaves the slot ``NULL``.  It is recorded because the
-first module that does implement it will inherit the inconsistency, and
-the fix — degrade to the base default rather than fail — should be made
-then, with a module to test it against.
-
 .. _todo-fabric-inventory:
 
 Fabric inventory collection is a stub
@@ -488,6 +467,14 @@ Coverage gaps
 * ``pps`` **has never been validated against a live process-table
   server.**  Its no-connect paths are covered by the tools smoke test;
   the proc-table rendering is not.
+* **A** ``pcompress`` **module that fails to start has nothing to fail
+  it with.**  ``pmix_compress_base_select()`` now degrades to the base's
+  no-op stubs when the winning module's ``init()`` returns an error,
+  rather than failing ``PMIx_Init``.  No component implements ``init``
+  — all five leave the slot ``NULL`` — so reaching that branch needs a
+  component written to fail on purpose.  The behavior it replaced was
+  equally unreachable; the branch is written for the first module that
+  does implement ``init``.
 * **The compressed half of** ``preg`` **is invisible to a build with no
   compression library.**  ``preg/compress`` disables itself when
   ``pcompress`` has no module, so on such a build — a stock macOS
