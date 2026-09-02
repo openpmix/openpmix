@@ -52,10 +52,9 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 14**
+**Deferred work — 13**
 
 * :ref:`todo-resolve-peers-wildcard`
-* :ref:`todo-sigproc-errno`
 * :ref:`todo-get-pointer-values`
 * :ref:`todo-mypeer-second-ref`
 * :ref:`todo-pfexec-iof-directives`
@@ -197,26 +196,6 @@ did, and the legacy path resolves because ``try_fetch()`` retries an
 **directly, as the branch intended, is still untried** — that is a
 behavior change on a path only a pre-v3.2 server exercises, and there is
 none to test against.
-
-.. _todo-sigproc-errno:
-
-``sigproc()`` returns a raw ``errno`` into a ``pmix_status_t``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found re-reviewing ``src/common/pmix_pfexec.c`` (2026-08-27).
-
-``sigproc()`` answers ``0`` or the ``errno`` from a failed ``kill(2)``,
-and both ``kill_stage2``/``kill_stage3`` and
-``pmix_pfexec_base_signal_proc`` store that straight into
-``scd->lock->status``.  PMIx statuses are negative; an ``EPERM`` arrives
-at a caller as the positive value ``1``, which is neither
-``PMIX_SUCCESS`` nor any defined error.
-
-It is recorded rather than fixed because **nothing reads it**.  The one
-caller of ``PMIX_PFEXEC_KILL`` (``PMIx_tool_finalize``) waits on the lock
-and discards ``lock.status``, and ``PMIX_PFEXEC_SIGNAL`` has no caller at
-all.  Convert it at the same time as the first consumer appears, so that
-the conversion and a test for it land together.
 
 .. _todo-get-pointer-values:
 

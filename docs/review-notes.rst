@@ -630,6 +630,36 @@ address — which is a constraint the pointer did not impose and is now
 stated on the member, in ``src/common/AGENTS.md``, and nowhere else it
 could be missed.
 
+2026-09-02 — a raw errno in a pmix_status_t
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``sigproc()`` in ``src/common/pmix_pfexec.c`` is declared to answer a
+``pmix_status_t`` and answered the ``errno`` from a failed ``kill(2)``,
+which ``kill_stage2``/``kill_stage3`` and
+``pmix_pfexec_base_signal_proc`` stored straight into
+``scd->lock->status``.  PMIx statuses are negative, so an ``EPERM``
+reached a caller as the positive value ``1`` — neither ``PMIX_SUCCESS``
+nor any defined error.  That entry is closed: the function now answers
+``PMIX_SUCCESS`` or ``PMIX_ERROR``, and the errno stays where it is
+useful, in the verbose line beside the signal and the pid that produced
+it.
+
+The entry proposed converting the errno to a PMIx code and deferred that
+until a consumer existed, so that the conversion and a test for it could
+land together.  The deferral was right about the mapping and wrong about
+what it was holding up.  **Nothing had to be converted for the type
+violation to stop** — the function had only ever been asked whether the
+signal was delivered, and answering that needs no table.  Deciding
+EPERM's PMIx spelling is a separate question, and it is still open,
+still with no consumer, and no longer keeping a wrong value in a status
+field while it waits.
+
+Worth carrying: *a defect and the design question next to it are not the
+same work item, and pairing them lets the open question hold the closed
+one hostage.*  Ask what the smallest correct answer costs before
+recording the whole thing as deferred.
+
+
 Review coverage as it stands
 ----------------------------
 

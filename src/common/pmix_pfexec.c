@@ -601,7 +601,22 @@ complete:
     return;
 }
 
-/* deliver a signal to a specified pid. */
+/* Deliver a signal to a specified pid.
+ *
+ * Answers a pmix_status_t, and therefore NOT the errno from a failed
+ * kill(2): PMIx statuses are negative, so an EPERM returned here reached
+ * a caller as the positive value 1, which is neither PMIX_SUCCESS nor
+ * any defined error. The errno is what a reader of this actually wants
+ * and it is in the verbose line below, next to the signal and the pid
+ * that produced it; what the caller gets is the question it asked,
+ * which is whether the signal was delivered.
+ *
+ * No finer status than PMIX_ERROR, deliberately. Mapping EPERM and
+ * EINVAL onto PMIx codes is a guess until something consumes the
+ * distinction - and nothing does: the one caller of PMIX_PFEXEC_KILL
+ * (PMIx_tool_finalize) waits on the lock and discards its status, and
+ * PMIX_PFEXEC_SIGNAL has no caller at all. Make that mapping when the
+ * first consumer appears, so it and a test for it land together. */
 static pmix_status_t sigproc(pid_t pd, int signum)
 {
     pid_t pgrp;
@@ -628,13 +643,13 @@ static pmix_status_t sigproc(pid_t pd, int signum)
             pmix_output_verbose(2, pmix_client_globals.spawn_output,
                                  "%s pfexec: sent signal %d to pid %d, got errno %d",
                                  PMIX_NAME_PRINT(&pmix_globals.myid), signum, (int) pid, errno);
-            return errno;
+            return PMIX_ERROR;
         }
     }
     pmix_output_verbose(2, pmix_client_globals.spawn_output,
                          "%s pfexec: sent signal %d to pid %d - success",
                          PMIX_NAME_PRINT(&pmix_globals.myid), signum, (int) pid);
-    return 0;
+    return PMIX_SUCCESS;
 }
 
 /* The kill sequence (SIGCONT, pause, SIGTERM, pause, SIGKILL) must not
@@ -744,7 +759,7 @@ static void kill_stage3(int sd, short args, void *cbdata)
 
     /* a SIGKILL that lands rescues a SIGTERM that did not, so only
      * report a failure when neither signal could be delivered */
-    if (0 != scd->lock->status) {
+    if (PMIX_SUCCESS != scd->lock->status) {
         scd->lock->status = rc;
     }
 
