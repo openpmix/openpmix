@@ -68,19 +68,35 @@ typedef struct {
     bool pending;
     bool always_writable;
     int numtries;
-    pmix_event_t *ev;
+    /* Held by value, as pmix_iof_read_event_t holds its own. It used to
+     * be a pointer the constructor malloc'd, which put an allocation
+     * that can fail somewhere a failure cannot be reported: a PMIx class
+     * constructor returns void. Never copy or move a write event once
+     * this has been set - libevent records the address with its base. */
+    pmix_event_t ev;
+    /* Whether "ev" has been through pmix_event_set()/evtimer_set() and is
+     * therefore something libevent will accept. It is NOT enough that the
+     * object was constructed: a sink defined on a negative descriptor
+     * never arms one, and a statically initialized sink has not run a
+     * constructor at all. Both leave "ev" zeroed, and handing that to
+     * pmix_event_add() earns a libevent warning and an error return. The
+     * NULL pointer used to carry this and no longer can. */
+    bool evset;
     struct timeval tv;
     int fd;
     pmix_list_t outputs;
 } pmix_iof_write_event_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_write_event_t);
+/* "ev" is deliberately absent: a designated initializer zeroes what it
+ * does not name, which is what an un-armed libevent record wants, and
+ * naming it would mean spelling out a third-party struct's first member. */
 #define PMIX_IOF_WRITE_EVENT_STATIC_INIT(w) \
 {                                           \
     .super = PMIX_LIST_ITEM_STATIC_INIT,    \
     .pending = false,                       \
     .always_writable = false,               \
     .numtries = 0,                          \
-    .ev = NULL,                             \
+    .evset = false,                         \
     .tv = {0, 0},                           \
     .fd = 0,                                \
     .outputs = PMIX_LIST_STATIC_INIT((w).outputs) \
@@ -173,15 +189,16 @@ static inline bool pmix_iof_fd_always_ready(int fd)
 
 #define PMIX_IOF_SINK_BLOCKSIZE (1024)
 
-/* The write event's libevent record is malloc'd by the class
- * constructor, which has no way to report a failure - so every user of
- * these two macros has to tolerate its absence rather than hand a NULL
- * to libevent. Output queued on such a sink is simply never written,
- * which is the best a process this far out of memory can do. */
+/* A write event whose record has never been armed is not something
+ * libevent will take, so both macros screen for that rather than walk
+ * into it. Output queued on such a sink is simply never written, which
+ * is what it was before the record stopped being a pointer that could
+ * fail to allocate - the sink that had no memory and the sink that has
+ * no descriptor come to the same thing here. */
 #define PMIX_IOF_SINK_ACTIVATE(w)                                      \
     do {                                                               \
         struct timeval *tv = NULL;                                     \
-        if (NULL == (w)->ev) {                                         \
+        if (!(w)->evset) {                                             \
             break;                                                     \
         }                                                              \
         (w)->pending = true;                                           \
@@ -190,7 +207,7 @@ static inline bool pmix_iof_fd_always_ready(int fd)
             /* Regular is always write ready. Use timer to activate */ \
             tv = &(w)->tv;                                             \
         }                                                              \
-        if (pmix_event_add((w)->ev, tv)) {                             \
+        if (pmix_event_add(&(w)->ev, tv)) {                            \
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);                        \
         }                                                              \
     } while (0);
@@ -204,15 +221,16 @@ static inline bool pmix_iof_fd_always_ready(int fd)
         pmix_strncpy((snk)->name.nspace, (nm)->nspace, PMIX_MAX_NSLEN);                            \
         (snk)->name.rank = (nm)->rank;                                                             \
         (snk)->tag = (tg);                                                                         \
-        if (0 <= (fid) && NULL != (snk)->wev.ev) {                                                 \
+        if (0 <= (fid)) {                                                                          \
             (snk)->wev.fd = (fid);                                                                 \
             (snk)->wev.always_writable = pmix_iof_fd_always_ready(fid);                            \
             if ((snk)->wev.always_writable) {                                                      \
-                pmix_event_evtimer_set(pmix_globals.evbase, (snk)->wev.ev, wrthndlr, (snk));       \
+                pmix_event_evtimer_set(pmix_globals.evbase, &(snk)->wev.ev, wrthndlr, (snk));      \
             } else {                                                                               \
-                pmix_event_set(pmix_globals.evbase, (snk)->wev.ev, (snk)->wev.fd, PMIX_EV_WRITE,   \
+                pmix_event_set(pmix_globals.evbase, &(snk)->wev.ev, (snk)->wev.fd, PMIX_EV_WRITE,  \
                                wrthndlr, (snk));                                                   \
             }                                                                                      \
+            (snk)->wev.evset = true;                                                               \
         }                                                                                          \
         PMIX_POST_OBJECT(snk);                                                                     \
     } while (0);

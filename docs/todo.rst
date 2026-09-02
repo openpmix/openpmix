@@ -52,10 +52,9 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 15**
+**Deferred work — 14**
 
 * :ref:`todo-resolve-peers-wildcard`
-* :ref:`todo-iof-write-event`
 * :ref:`todo-sigproc-errno`
 * :ref:`todo-get-pointer-values`
 * :ref:`todo-mypeer-second-ref`
@@ -198,28 +197,6 @@ did, and the legacy path resolves because ``try_fetch()`` retries an
 **directly, as the branch intended, is still untried** — that is a
 behavior change on a path only a pre-v3.2 server exercises, and there is
 none to test against.
-
-.. _todo-iof-write-event:
-
-A write event's libevent record is allocated where failure cannot be reported
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found re-reviewing ``src/common/pmix_iof.c`` (2026-08-27).
-
-``pmix_iof_write_event_t.ev`` is a ``pmix_event_t *`` that
-``iof_write_event_construct()`` ``malloc``\ s.  A PMIx class constructor
-returns ``void``, so an allocation failure there is invisible to
-``PMIX_NEW``'s caller, and the NULL then reached ``pmix_event_set()``.
-``PMIX_IOF_SINK_DEFINE`` and ``PMIX_IOF_SINK_ACTIVATE`` now screen it, so
-the failure degrades to output that is queued and never written rather
-than to a segfault in libevent.
-
-The real fix is to embed the event by value, as ``pmix_iof_read_event_t``
-already does, which removes the allocation and the ``free`` with it.
-That changes the layout of a type declared in an installed header and
-touches every user of the two macros — ``pmix_pfexec.c``, the server,
-the client and the tool — so it is a change of its own, not a review
-tidy-up.
 
 .. _todo-sigproc-errno:
 

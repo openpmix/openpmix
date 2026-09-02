@@ -192,16 +192,20 @@ lose the user's output *silently*.
 - **`pending` is the arm/disarm interlock, not a status bit.** Any path
   that returns from `pmix_iof_write_handler` without clearing it is
   asserting "this channel is done forever".
-- **A write event may have no libevent record.**
-  `iof_write_event_construct()` `malloc`s `wev.ev`, and a class
-  constructor has no way to report a failure — so the two sink macros
-  (`PMIX_IOF_SINK_DEFINE`, `PMIX_IOF_SINK_ACTIVATE`) screen it rather
-  than hand a NULL to libevent. Output queued on such a sink is never
-  written, which is the best a process that far out of memory can do.
-  The real fix is to embed the event in the struct the way
-  `pmix_iof_read_event_t` does; that changes the layout of a type in an
-  installed header, so it is recorded in `docs/todo.rst` rather than
-  done in passing.
+- **A write event may have no *armed* libevent record, and `evset` is
+  what says so.** `wev.ev` is held by value, as `pmix_iof_read_event_t`
+  holds its own; it used to be a pointer the constructor `malloc`ed,
+  which put an allocation that can fail where a `void` constructor
+  cannot report it. Constructing a write event does not arm the record —
+  `PMIX_IOF_SINK_DEFINE` does, and only when it is given a non-negative
+  descriptor — and a statically initialized sink
+  (`PMIX_IOF_SINK_STATIC_INIT`) has run no constructor at all. So both
+  sink macros screen `evset` rather than hand libevent a zeroed record,
+  which it answers with a warning and an error return. Output queued on
+  such a sink is never written. **Never copy or move a write event once
+  it is armed**: libevent records the address with its base, so the
+  struct has to stay where it was set — which is why sinks live in lists
+  and globals and are reached by pointer.
 - **A stream's last, unterminated line is written when the stream
   closes.** Non-raw output is split on `'\n'` and the tail is parked on
   `pmix_server_globals.iof_residuals` until the rest of the line arrives.

@@ -597,6 +597,39 @@ caller passed ``NULL`` to, and a job-segment mechanism
 guide that outlives the code it describes is worse than no guide, because
 it is read as evidence.
 
+2026-09-02 — the IOF write event's libevent record
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The deferred-work entry about ``pmix_iof_write_event_t.ev`` being
+``malloc``\ ed by a constructor that cannot report a failure is closed.
+The record is now held by value, as ``pmix_iof_read_event_t`` has always
+held its own, so there is no allocation to fail and no ``free`` to
+match it.
+
+What the entry did not say, and what doing it turned up, is that the
+``NULL`` it asked the two sink macros to screen was carrying **two**
+meanings, not one.  Out-of-memory was the one it named.  The other is
+ordinary and happens on every run: a sink is constructed before it has a
+descriptor, and ``PMIX_IOF_SINK_DEFINE`` arms the record only when it is
+given a non-negative one — while ``PMIX_IOF_SINK_STATIC_INIT`` produces a
+sink that has run no constructor at all.  Deleting the pointer would have
+deleted the answer to the second question along with the first, and
+handed libevent a zeroed record.  The screens stay; they now read an
+explicit ``evset`` flag that says what they were really asking.
+
+**Worth carrying: a sentinel that has been standing in for a state
+usually loses one of its meanings when the thing it lives in changes
+shape.**  A pointer that is NULL when the allocation failed is also NULL
+before anything has been done with it, and only one of those survives
+embedding the object.  Ask what a screen is *for* before removing what it
+screens.
+
+The change is confined to the write event because a libevent record held
+by value cannot be copied or moved once it is set — the base records its
+address — which is a constraint the pointer did not impose and is now
+stated on the member, in ``src/common/AGENTS.md``, and nowhere else it
+could be missed.
+
 Review coverage as it stands
 ----------------------------
 
