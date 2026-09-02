@@ -599,15 +599,26 @@ static void server_teardown(void)
      * re-selected and every entry on it names an unloaded plugin */
     (void) pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
 
-    pmix_rte_finalize();
-    if (NULL != pmix_globals.mypeer) {
-        /* this is the reference myserver took when it was pointed at our
-         * own peer (see PMIx_server_init) - releasing it through mypeer
-         * frees the object, so myserver has to be cleared too or it is
-         * left naming freed memory until the next init reassigns it */
-        PMIX_RELEASE(pmix_globals.mypeer);
-        pmix_globals.mypeer = NULL;
+    /* Give back the reference myserver took when it was pointed at our
+     * own peer (see PMIx_server_init) through myserver, which is the
+     * pointer that took it, and do it BEFORE the runtime teardown - the
+     * order the client already uses.
+     *
+     * This does not free the peer: mypeer still holds the reference
+     * pmix_rte_init created it with, so the object - and this pointer to
+     * it - stay valid for the whole of pmix_rte_finalize(), which is
+     * what pmix_ptl_close() needs when it closes myserver->sd. The
+     * release inside rte_finalize is then the one that frees, exactly as
+     * it is for a client. */
+    if (NULL != pmix_client_globals.myserver) {
+        PMIX_RELEASE(pmix_client_globals.myserver);
     }
+
+    pmix_rte_finalize();
+
+    /* rte_finalize dropped the last reference and NULLed mypeer for us;
+     * myserver aliased the same object, so clear it too rather than
+     * leave it naming freed memory until the next init reassigns it */
     pmix_client_globals.myserver = NULL;
 
     if (NULL != pmix_server_globals.tmpdir) {

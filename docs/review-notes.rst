@@ -688,6 +688,56 @@ the variable is *read* there and had to be *written* somewhere else, and
 **A frozen directory is a reason not to change that directory, not a
 reason not to fix the thing.**
 
+2026-09-02 — giving back mypeer's second reference
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The server and the tool point ``pmix_client_globals.myserver`` at
+``pmix_globals.mypeer`` and ``PMIX_RETAIN`` it, and both used to give
+that reference back by releasing ``pmix_globals.mypeer`` a second time
+after ``pmix_rte_finalize()`` rather than by releasing ``myserver``, the
+pointer that took it.  It worked, and it cost the tool a
+``myserver_is_mypeer`` flag captured before the teardown purely to
+suppress a release that would otherwise have been a third one.  Both now
+release ``myserver`` *before* ``pmix_rte_finalize()``, which is the order
+the client already used, and the flag is gone.
+
+The entry deferred this on one question — whether anything in the
+``rte_finalize`` chain reads ``pmix_client_globals.myserver`` — and said
+answering it wanted more than a grep.  It does, and the answer is **yes,
+one thing does**: ``pmix_ptl_close()``, reached through the framework
+close, dereferences ``myserver->sd`` to close the socket.  Every other
+reader in the tree is on a request path rather than a teardown one;
+``pmix_hwloc_finalize`` and ``pmix_iof_finalize``, the two that looked
+most likely, touch it nowhere.
+
+That reader is safe under the new order, and the reason is a property of
+``PMIX_RELEASE`` worth naming: **it NULLs its argument only when the
+count reaches zero.**  So the release before the teardown does not mean
+the same thing in the two shapes this pointer has, and does not need to:
+
+* aliased — count 2 to 1.  The object stands on ``mypeer``'s reference
+  for the whole chain and ``myserver`` still names it, so
+  ``pmix_ptl_close()`` closes a live socket.  ``rte_finalize`` then
+  frees, exactly as it does for a client.
+* a real server the tool connected to — count 1 to 0.  The object is
+  freed here, the pointer is NULLed, and ``pmix_ptl_close()``'s guard
+  skips.  Nothing is left open: the peer destructor closes ``sd``
+  itself.
+
+One release covers both, which is what removed the flag.  Verified by
+1200 tool and 1200 client init/finalize cycles under ``MallocScribble``
+and ``MallocPreScribble`` — the check that would catch touching the peer
+after an early free — and by an A/B ``leaks`` run over the tool cycles,
+identical before and after at 3657 allocations.
+
+The reordering also made a comment in ``src/runtime/pmix_finalize.c``
+wrong in the most expensive way a comment can be: it told the reader not
+to NULL ``pmix_globals.mypeer`` there, *because* the roles holding a
+second reference release it after returning and guard that release on
+the pointer.  No role does that any more.  A comment describing a
+contract that has moved is worse than none, since the next reader has no
+way to tell it is out of date.
+
 Review coverage as it stands
 ----------------------------
 

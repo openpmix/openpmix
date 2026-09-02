@@ -1662,7 +1662,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     size_t ndying = 0, nd;
     pmix_dmdx_local_t *dlcd, *dnxt;
     pmix_lock_t lock;
-    bool myserver_is_mypeer;
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -1887,25 +1886,34 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
         pmix_server_globals.system_tmpdir = NULL;
     }
 
-    /* Capture whether our active server currently aliases our own peer
-     * BEFORE rte_finalize releases (and may NULL) mypeer. The switch paths
-     * (disc, pmix_tool_retry_set) point myserver back at pmix_globals.mypeer
-     * when we disconnect our primary, taking a reference on it. rte_finalize
-     * plus the mypeer release below already drop mypeer's references, so
-     * releasing myserver separately in that case would free mypeer a third
-     * time. */
-    myserver_is_mypeer = (pmix_client_globals.myserver == pmix_globals.mypeer);
-
-    pmix_rte_finalize();
-    if (NULL != pmix_globals.mypeer) {
-        PMIX_RELEASE(pmix_globals.mypeer);
-    }
-    if (!myserver_is_mypeer && NULL != pmix_client_globals.myserver) {
+    /* Give back what myserver holds through myserver, and before the
+     * runtime teardown - the order the client already uses. One release
+     * covers both shapes this pointer can have, which is why there is no
+     * longer a flag telling them apart:
+     *
+     *   - a real server we connected to is a peer of its own, so this is
+     *     its last reference and the object is freed here. PMIX_RELEASE
+     *     NULLs the pointer when it frees, and the peer destructor closes
+     *     the socket.
+     *   - our own peer, which the switch paths (disc,
+     *     pmix_tool_retry_set) point myserver back at when the primary
+     *     goes away, taking a reference as they do. That reference is
+     *     what this gives back; mypeer still holds the one rte_init
+     *     created it with, so the object survives to be freed inside
+     *     pmix_rte_finalize().
+     *
+     * Either way the object outlives every use of it in the teardown -
+     * pmix_ptl_close() closes myserver->sd under a NULL guard, and in
+     * the case where this pointer is NULL by then the destructor has
+     * already closed that descriptor. */
+    if (NULL != pmix_client_globals.myserver) {
         PMIX_RELEASE(pmix_client_globals.myserver);
     }
-    /* in the aliased case the release above is skipped and the one
-     * through mypeer is what freed the object, so this pointer would
-     * otherwise be left naming freed memory */
+
+    pmix_rte_finalize();
+
+    /* in the aliased case rte_finalize is what freed the object, so this
+     * pointer would otherwise be left naming freed memory */
     pmix_client_globals.myserver = NULL;
 
     /* finalize the class/object system */

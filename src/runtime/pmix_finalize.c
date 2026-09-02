@@ -164,21 +164,21 @@ void pmix_rte_finalize(void)
      * pmix_rte_init created the peer with - and it is the only one this
      * file owns.
      *
-     * How many others exist depends on the role, so do not assume the
-     * peer is freed here. pmix_server.c and pmix_tool.c point
-     * pmix_client_globals.myserver at this same object and PMIX_RETAIN
-     * it, so on those two the count is 2 and their own release, after we
-     * return, is what frees it. A client's myserver is a peer of its
-     * own, so on a client the count is 1 and this release is the one
-     * that frees.
+     * It is now also, on every role, the LAST one: a server or tool that
+     * points pmix_client_globals.myserver at this same object retains it
+     * and gives that reference back through myserver, before calling us.
+     * So the peer is freed here and PMIX_RELEASE NULLs the pointer for
+     * us; those two roles only have to clear their own myserver
+     * afterwards.
      *
-     * So do NOT NULL the pointer here, however much the re-entrancy
-     * rules for this file otherwise want it. The roles that hold a
-     * second reference guard their release with "if (NULL !=
-     * pmix_globals.mypeer)", so clearing it would silently cancel the
-     * release that does the freeing and leak the peer - and its
-     * namespace - on every init/finalize cycle. Where the peer really
-     * is freed here, PMIX_RELEASE NULLs the pointer for us. */
+     * That ordering is theirs to keep, and it is not arbitrary. Anything
+     * in the teardown below that still reads a peer needs it to be alive,
+     * and pmix_ptl_close() - reached through the framework close above -
+     * does exactly that with myserver->sd. Releasing the second reference
+     * before us leaves the object standing on this one for the whole
+     * chain; releasing it after would work too, and is what the two roles
+     * used to do, at the cost of a flag in the tool to keep from
+     * releasing a peer that aliases this one a third time. */
     PMIX_RELEASE(pmix_globals.mypeer);
     PMIX_DESTRUCT(&pmix_globals.events);
     PMIX_LIST_DESTRUCT(&pmix_globals.cached_events);

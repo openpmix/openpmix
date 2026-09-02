@@ -132,8 +132,20 @@ descriptor (**while its base still exists**), stop the progress thread, dump and
 sinks, release the client peer/pending lists, stop listening, release the
 server clients array, close `pnet`/`pmdl`, `PMIX_LIST_DESTRUCT` every
 `pmix_server_globals` list that `pmix_server_initialize` builds, free the
-tmpdir strings, then `pmix_rte_finalize`, release `mypeer`/`myserver`,
-and `pmix_class_finalize`.
+tmpdir strings, **release `myserver`**, then `pmix_rte_finalize` and
+`pmix_class_finalize`.
+
+The `myserver` release comes *before* `pmix_rte_finalize`, which is the
+order the client uses, and one release covers both shapes the pointer
+has. When it aliases `mypeer` (the switch paths repoint it there) the
+count drops to 1, the object stands on `mypeer`'s reference for the whole
+teardown, and `rte_finalize` frees it; when it is a real server it drops
+to 0 and is freed here, `PMIX_RELEASE` NULLs the pointer, and the peer
+destructor closes the socket. Both matter to `pmix_ptl_close()`, which
+runs inside `rte_finalize` and closes `myserver->sd` under a NULL guard.
+Releasing after `rte_finalize` also works and is what this used to do,
+at the cost of a flag captured beforehand to keep the aliased case from
+releasing the same peer a third time.
 
 Nothing in that sequence returns early on an error — see the
 "must not abandon the teardown" invariant below.
@@ -201,7 +213,9 @@ memory-ordering rules.
 > the clients-array entry's reference.** Every `myserver = X` is paired
 > with `PMIX_RETAIN(X)` and a `PMIX_RELEASE` of the outgoing `myserver`;
 > finalize releases once per array entry *and* once for the `myserver`
-> global. When you touch any of these paths, trace the whole
+> global, and that second release is what gives back the reference —
+> never a second release of `mypeer`, even where the two alias. When you
+> touch any of these paths, trace the whole
 > attach → set → disconnect → finalize lifecycle rather than reasoning
 > about one site.
 
