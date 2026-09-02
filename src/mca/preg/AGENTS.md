@@ -278,9 +278,17 @@ framing completes can be read a few bytes past its end. It takes a
 caller-owned value that claims to be a blob and is not one — not an
 ordinary list, and not anything that arrived from a peer, since those come
 through `unpack`, which *is* bounded. Do not "fix" it by removing the
-bound from `unpack`; if you want it fixed properly, the length has to be
-plumbed through the deprecated signatures, and at that point you are
-better off moving the caller to `pmix_regex2_t`.
+bound from `unpack`.
+
+**And do not plumb a length through the deprecated signatures either.**
+That is a decision rather than an omission, recorded under "Will not be
+done" in `docs/review-notes.rst`: `pmix_regex2_t` exists precisely
+because the old interface cannot express a bounded buffer, so a caller
+in a position to supply a length is in a position to use regex2. Widening
+the deprecated signatures would spend ABI-visible work making the
+superseded interface almost safe. PMIx supports a deprecated API
+indefinitely, which is a promise to keep it working — not a promise to
+keep developing it.
 
 ## Selection and lifecycle
 
