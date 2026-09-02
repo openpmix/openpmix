@@ -3543,8 +3543,9 @@ static void iof_sink_destruct(pmix_iof_sink_t *ptr)
     }
     /* Always tear down the write event: the write handler sets wev.fd to
      * -1 after writing an EOF buffer, so gating the destruct on a valid
-     * fd would leak the malloc'd wev.ev and the queued outputs list. The
-     * wev destructor guards its own close() against an invalid fd. */
+     * fd would leave the event armed in libevent and leak the queued
+     * outputs list. The wev destructor guards its own close() against an
+     * invalid fd. */
     PMIX_DESTRUCT(&ptr->wev);
 }
 PMIX_CLASS_INSTANCE(pmix_iof_sink_t,
@@ -3599,7 +3600,10 @@ static void iof_write_event_construct(pmix_iof_write_event_t *wev)
     wev->pending = false;
     wev->always_writable = false;
     wev->numtries = 0;
-    wev->ev = (pmix_event_t*)malloc(sizeof(pmix_event_t));
+    /* "ev" is left as the object zeroing gave it: PMIX_IOF_SINK_DEFINE
+     * arms it once a descriptor is known, and "evset" says whether that
+     * has happened. Nothing to allocate - see the note on the member. */
+    wev->evset = false;
     wev->fd = -1;
     PMIX_CONSTRUCT(&wev->outputs, pmix_list_t);
     wev->tv.tv_sec = 0;
@@ -3608,9 +3612,8 @@ static void iof_write_event_construct(pmix_iof_write_event_t *wev)
 static void iof_write_event_destruct(pmix_iof_write_event_t *wev)
 {
     if (wev->pending) {
-        pmix_event_del(wev->ev);
+        pmix_event_del(&wev->ev);
     }
-    free(wev->ev);
     if (2 < wev->fd) {
         pmix_output_verbose(20, pmix_client_globals.iof_output,
                              "%s iof: closing fd %d for write event",
