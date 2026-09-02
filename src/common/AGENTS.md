@@ -572,13 +572,17 @@ add or edit an entry point:
    `PMIX_ERR_WOULD_BLOCK` — a tool that deregisters from inside its own
    IOF delivery callback is doing exactly this, and the guard turns a
    permanent hang into a diagnostic.
-11. **Caddy fields you did not set are garbage, not zero.** `PMIX_NEW`
-   allocates with `malloc`, so every field a constructor skips starts as
-   whatever was on the heap. `scon()`/`qcon()` did not initialize
-   `status`, and `chcon()` in `pmix_pfexec.c` did not initialize
-   `exitcode`; all three are fixed, but the rule is general — when you add
-   a field to one of these structs, add it to the constructor in the same
-   change.
+11. **A caddy field you did not set is zero, and zero is rarely the
+   answer you wanted.** `PMIX_NEW` and `PMIX_CONSTRUCT` both zero the
+   object before the constructors run, so a skipped field is at least
+   *repeatably* wrong rather than whatever the heap last held — but a
+   `status` of zero is `PMIX_SUCCESS`, which is the most expensive
+   possible default for a field nobody assigned. `scon()`/`qcon()` did not
+   initialize `status`, and `chcon()` in `pmix_pfexec.c` did not
+   initialize `exitcode`; all three are fixed, but the rule is general —
+   when you add a field to one of these structs, add it to the constructor
+   in the same change. `test/unit/check_ctor_coverage.py` enforces it in
+   `make check`.
 
 ## pfexec-specific hazards
 

@@ -80,10 +80,10 @@ class needs none.
 
 | Macro | Use for | Effect |
 |-------|---------|--------|
-| `PMIX_NEW(type)` | heap objects | `malloc` + set refcount to 1 + run constructors (parent→child) |
+| `PMIX_NEW(type)` | heap objects | `malloc` + **zero the whole object** + set refcount to 1 + run constructors (parent→child) |
 | `PMIX_RELEASE(obj)` | heap objects | decrement refcount; at 0 run destructors (child→parent), free, **and set `obj` to NULL** |
 | `PMIX_RETAIN(obj)` | heap objects | increment refcount |
-| `PMIX_CONSTRUCT(&obj, type)` | stack/static objects | initialize in place + run constructors (no allocation) |
+| `PMIX_CONSTRUCT(&obj, type)` | stack/static objects | **zero the whole object** + initialize in place + run constructors (no allocation) |
 | `PMIX_DESTRUCT(&obj)` | stack/static objects | run destructors (no free) |
 
 Rules that trip people up:
@@ -100,6 +100,21 @@ Rules that trip people up:
   arrays cached in the class descriptor.
 - **Never call `pmix_obj_run_constructors`/`_destructors` or
   `pmix_obj_new_tma` directly** — always go through the macros.
+- **Both `PMIX_NEW` and `PMIX_CONSTRUCT` zero the object before anything
+  else runs**, so a member a constructor forgets starts at zero rather
+  than at whatever the heap or the stack last held. That is a debugging
+  property, not a licence: it makes such a bug *repeatable* instead of
+  intermittent, and it does not make zero the right value. A count that
+  must start at `SIZE_MAX` so an unsent operation cannot look complete, a
+  sentinel that is `UINT32_MAX` because zero is a real value, a uid that
+  must be `geteuid()` because zero is **root** — every one of those is
+  still wrong if the constructor skips it, and now wrong the same way
+  every time. **When you add a member to one of these structs, add it to
+  the constructor in the same change**; `test/unit/check_ctor_coverage.py`
+  runs in `make check` and will tell you if you did not. The zeroing has
+  to live in the two macros rather than in each constructor because
+  constructors run base-class first — by the time a derived one executes,
+  the object header is already set up and a `memset` there would erase it.
 - Every class provides a **`PMIX_*_STATIC_INIT`** macro for
   file-scope/stack objects that need a defined state before any
   constructor runs (e.g. `PMIX_LIST_STATIC_INIT`,
@@ -432,11 +447,15 @@ do not remove during a foreach. TMA-aware.
 reads — but `src/util/pmix_hash.c` prints it at four sites as
 `(NULL == table->ht_label) ? "UNKNOWN" : table->ht_label`. That NULL test
 is the only thing between `%s` and a wild pointer, and the constructor
-used to skip the field entirely: `PMIX_NEW` mallocs without zeroing, so
-every table that does not set its own label (`gds/shmem3`'s, the mca
-base's) carried garbage there. The constructor now clears it. If you add
-a member to this struct, add it to the constructor in the same edit —
-that is the whole defence.
+used to skip the field entirely, back when `PMIX_NEW` allocated without
+zeroing — so every table that does not set its own label (`gds/shmem3`'s,
+the mca base's) carried garbage there. Two things changed since, and the
+second does not make the first redundant: the constructor now clears the
+field, and `PMIX_NEW` now zeroes the object, which would have made this
+particular defect harmless because `NULL` is exactly what the test looks
+for. Do not generalize from that — zero is the right default here and is
+not the right default everywhere. If you add a member to this struct, add
+it to the constructor in the same edit.
 
 `pmix_hash_table_init2` is a `PMIX_EXPORT` entry point taking two ratios,
 and it now validates them. A zero `density_numer` divided by zero on its

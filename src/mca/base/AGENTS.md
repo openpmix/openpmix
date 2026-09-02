@@ -363,9 +363,11 @@ Two things about it repay attention:
   `pmix_pdl_foreachfile()`, and `pmix_mca_base_component_repository_init()`
   passes a **stack buffer**. It must be copied, never freed.
 
-`ri_constructor()` has to initialize every field of the item:
-`PMIX_NEW` malloc's without zeroing, and the destructor `free()`s
-`ri_project` and `ri_base`.
+`ri_constructor()` has to initialize every field of the item. `PMIX_NEW`
+zeroes the object now, so the pointers the destructor `free()`s —
+`ri_project` and `ri_base` — are at least reliably NULL rather than heap
+garbage if it forgets one; `ri_refcnt` is the member where zero is not
+the answer.
 
 **Frameworks can be opened before the repository exists.**
 `pmix_init_util()` opens `pinstalldirs` *before* it calls
@@ -576,7 +578,8 @@ above are read as regression tests rather than decoration:
 - **`process_repository_item()` `free()`d its caller's project string**
   on the out-of-memory path; the caller passes a stack buffer.
 - **`ri_constructor()` left `ri_project`, `ri_base`, `ri_name` and
-  `ri_refcnt` uninitialized** over a non-zeroing `PMIX_NEW`.
+  `ri_refcnt` uninitialized**, over a `PMIX_NEW` that did not yet zero
+  what it allocated.
 - **`parse_verbose()` pointed `lds_syslog_ident` into a buffer it then
   freed**, so `mca_base_verbose=syslogid:foo` used freed memory.
 - **`var_set_from_env()` compared against `pmix_mca_base_var_override_file`
