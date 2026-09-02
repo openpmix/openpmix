@@ -659,6 +659,34 @@ same work item, and pairing them lets the open question hold the closed
 one hostage.*  Ask what the smallest correct answer costs before
 recording the whole thing as deferred.
 
+2026-09-02 — a debug facility nothing could turn on
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``pmix_debug_threads`` gates the acquire/release tracing in the four lock
+macros, and nothing in the tree ever assigned it — no MCA parameter, no
+environment variable, no write outside its definition in
+``src/threads/thread.c``.  It was reachable only by setting the variable
+from a debugger, which meant a quiet run was no evidence the handshake
+had not run.  ``pmix_register_params()`` now sets it from
+``PMIX_DEBUG_THREADS``.
+
+The entry proposed an MCA parameter and that is not what landed, for the
+reason recorded under the 2026-08-30 pass: *what would a user be
+choosing between?*  The tracing is compiled in only under
+``PMIX_ENABLE_DEBUG``, so on an optimized build an MCA parameter would
+put a row in ``pmix_info`` for a knob that does nothing at all — worse
+than the facility being hard to reach.  It is a development switch, so
+it takes the shape the other one took: an environment variable,
+documented where a developer looks rather than where a user does.
+``PMIX_GET_ON_PROGRESS_THREAD`` is its sibling and the two should stay
+the same shape.
+
+Also worth noting is what the entry gave as its reason for deferring —
+that ``src/threads`` is semantics-frozen.  True, and it never applied:
+the variable is *read* there and had to be *written* somewhere else, and
+``src/runtime`` is where every other piece of that startup state is set.
+**A frozen directory is a reason not to change that directory, not a
+reason not to fix the thing.**
 
 Review coverage as it stands
 ----------------------------

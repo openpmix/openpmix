@@ -52,7 +52,7 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 13**
+**Deferred work — 12**
 
 * :ref:`todo-resolve-peers-wildcard`
 * :ref:`todo-get-pointer-values`
@@ -65,7 +65,6 @@ At a glance
 * :ref:`todo-pmdl-app-values`
 * :ref:`todo-fabric-inventory`
 * :ref:`todo-legacy-regex-length`
-* :ref:`todo-debug-threads`
 * :ref:`todo-server-genvars`
 
 **Coverage gaps — 20.**  No CI race detector; the switchyard's
@@ -458,21 +457,6 @@ end.  What is left needs a caller-owned string that really does carry the
 can produce (those arrive through the bounded ``unpack``).  Closing it
 properly means plumbing a length through the deprecated signatures, and a
 caller that can do that is better off moving to ``pmix_regex2_t``.
-
-.. _todo-debug-threads:
-
-``pmix_debug_threads`` cannot be turned on
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The four lock macros emit distinct debug strings under
-``if (pmix_debug_threads)``, but nothing in the tree ever assigns that
-variable — there is no MCA parameter for it and no other write outside
-its definition in ``src/threads/thread.c``.  The facility is reachable
-only by setting the variable from a debugger.  Registering an MCA
-parameter for it would cost a few lines; it was left alone because
-``src/threads`` is semantics-frozen and this is a feature rather than a
-defect.  Until then, do not read a silent run as evidence the handshake
-was not exercised.
 
 .. _todo-server-genvars:
 
