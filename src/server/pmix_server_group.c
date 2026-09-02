@@ -89,9 +89,10 @@ typedef struct {
 } grp_block_t;
 static void gbcon(grp_block_t *p)
 {
-    /* PMIX_NEW mallocs rather than callocs, so the event has to be zeroed
-     * here: gbdes hands it to pmix_event_del, and the event_active guard is
-     * then the only thing standing between us and a garbage ev_base. Same
+    /* Kept although PMIX_NEW now zeroes the object: gbdes hands this
+     * event to pmix_event_del, and the event_active guard is the only
+     * thing between that and an unarmed record, so the state it depends
+     * on is stated here rather than inherited from the allocator. Same
      * reason tcon memsets the fence tracker's. */
     memset(&p->ev, 0, sizeof(pmix_event_t));
     p->id = NULL;

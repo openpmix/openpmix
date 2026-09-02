@@ -75,9 +75,10 @@ static bool dirpath_is_empty(const char *path);
 
 static void nsenvcon(pmix_nspace_env_cache_t *p)
 {
-    /* PMIX_NEW mallocs rather than callocs, so this is not redundant: the
-     * destructor below releases this reference, and it has to be able to
-     * tell "never assigned" from "assigned" */
+    /* Not redundant with the zeroing PMIX_NEW does: the destructor below
+     * releases this reference and has to tell "never assigned" from
+     * "assigned", and a member whose correctness rests on the allocator
+     * is one the next reader has to go and check. */
     p->ns = NULL;
     PMIX_CONSTRUCT(&p->envars, pmix_list_t);
 }
@@ -163,13 +164,15 @@ static void nscon(pmix_namespace_t *p)
     p->local_app_fini_fired = false;
     PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
     memset(&p->compat, 0, sizeof(p->compat));
-    /* Default the epilog's identity to our own. PMIX_NEW malloc's rather
-     * than calloc's, so these two are uninitialized heap until somebody
-     * assigns them, and the only thing that does is the connection
-     * handler, for a peer that actually completed a handshake. That was
-     * harmless for as long as nothing read them; pmix_execute_epilog now
-     * does, and "act as whatever this word happens to hold" is not a
-     * thing to leave in a function that unlinks files. Our own identity
+    /* Default the epilog's identity to our own. Nothing assigns these
+     * two but the connection handler, and only for a peer that actually
+     * completed a handshake. That was harmless for as long as nothing
+     * read them; pmix_execute_epilog now does, and a function that
+     * unlinks files must not act as an identity nobody vouched for.
+     * PMIX_NEW zeroes what it hands back, which does not help here and
+     * is the reason to be explicit: uid 0 is root, so the value a
+     * skipped assignment would leave is the one identity that must
+     * never be assumed. Our own identity
      * is the honest default: it makes an epilog nobody vouched for
      * behave exactly as it always has, and reserves the privilege drop
      * for a peer the host actually registered a uid and gid for. */
@@ -487,9 +490,10 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_iof_req_t, pmix_object_t, iofreqcon, iofreq
 static void scon(pmix_shift_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
-    /* objects are malloc'd, not calloc'd, so every field must be
-     * given a value here - a caddy whose status is never explicitly
-     * set is otherwise reported to the caller as random garbage */
+    /* Every field gets a value here. PMIX_NEW zeroes the object first,
+     * so a skipped one is repeatable rather than random - but zero is
+     * PMIX_SUCCESS, and a caddy that reports success because nobody
+     * assigned its status is worse than one that reports garbage. */
     p->status = PMIX_SUCCESS;
     p->codes = NULL;
     p->ncodes = 0;
@@ -695,8 +699,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_querylist_t,
 static void qcon(pmix_query_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
-    /* objects are malloc'd, not calloc'd, so every field must be
-     * given a value here - see the note in scon() */
+    /* every field gets a value here - see the note in scon() */
     p->status = PMIX_SUCCESS;
     p->host_called = false;
     p->queries = NULL;

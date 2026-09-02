@@ -25,8 +25,11 @@
  * instead - see pmix_server_group.c, pmix_server_fence.c,
  * pmix_server_get.c and pmix_server_control.c.
  *
- * Note that PMIX_NEW does not zero the allocation, so a member a
- * constructor here skips starts out as whatever was on the heap. */
+ * PMIX_NEW zeroes the allocation before the constructors run, so a
+ * member a constructor here skips starts at zero rather than at whatever
+ * was on the heap. That makes such a mistake repeatable, not correct:
+ * give every member a value, and where zero is not the right default,
+ * say so. */
 
 #include "src/include/pmix_config.h"
 
@@ -332,8 +335,8 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_local_t,
 static void prevcon(pmix_peer_events_info_t *p)
 {
     p->peer = NULL;
-    /* PMIX_NEW does not zero the allocation, and the default-handler
-     * registration path never assigns this one */
+    /* the default-handler registration path never assigns this one, so
+     * the constructor is where it gets its value */
     p->enviro_events = false;
     p->affected = NULL;
     p->naffected = 0;

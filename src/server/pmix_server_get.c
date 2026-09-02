@@ -74,11 +74,12 @@ typedef struct {
 } pmix_dmdx_reply_caddy_t;
 static void dcd_con(pmix_dmdx_reply_caddy_t *p)
 {
-    /* PMIX_NEW mallocs rather than callocs, so anything the constructor
-     * skips is whatever was on the heap. PMIX_THREADSHIFT does assign the
-     * event before it is used, and dmdx_cbfunc does fill in data on every
-     * path - but every sibling caddy constructor in this tree initializes
-     * both, and a second producer added later would not know it had to */
+    /* PMIX_THREADSHIFT does assign the event before it is used, and
+     * dmdx_cbfunc does fill in data on every path - but every sibling
+     * caddy constructor in this tree initializes both, and a second
+     * producer added later would not know it had to. Note the status:
+     * PMIX_NEW zeroes the object, and zero is PMIX_SUCCESS, so the one
+     * field here that must not inherit its value is this one. */
     memset(&p->ev, 0, sizeof(pmix_event_t));
     p->status = PMIX_ERROR;
     p->data = NULL;

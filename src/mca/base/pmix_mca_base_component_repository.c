@@ -684,11 +684,13 @@ void pmix_mca_base_component_repository_finalize(void)
  */
 static void ri_constructor(pmix_mca_base_component_repository_item_t *ri)
 {
-    /* PMIX_NEW does not zero the allocation, so every field has to be
-     * set here. Leaving ri_project/ri_base unset left the destructor
-     * free()ing indeterminate pointers, and leaving ri_refcnt unset
-     * meant retain/release worked from garbage for any component that
-     * was scanned but never opened through this repository. */
+    /* Every field is set here. Leaving ri_project/ri_base unset left the
+     * destructor free()ing indeterminate pointers, and leaving ri_refcnt
+     * unset meant retain/release worked from garbage for any component
+     * that was scanned but never opened through this repository - both
+     * from before PMIX_NEW zeroed what it allocated. The zeroing would
+     * cover the two pointers now and would not cover ri_refcnt, which is
+     * the field here that must not start at zero. */
     memset(ri->ri_type, 0, sizeof(ri->ri_type));
     memset(ri->ri_name, 0, sizeof(ri->ri_name));
     ri->ri_project = NULL;

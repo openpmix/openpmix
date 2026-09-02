@@ -372,10 +372,16 @@ static void test_growth_and_backshift(void)
 /* pmix_hash_table_construct() initialized every member except ht_label.
  * That is not a decorative field: src/util/pmix_hash.c prints it at four
  * sites as "(NULL == table->ht_label) ? "UNKNOWN" : table->ht_label", so
- * the NULL test is what stands between %s and a wild pointer. PMIX_NEW
- * mallocs without zeroing, and PMIX_CONSTRUCT initializes in place, so
- * every table that does not set its own label -- gds/shmem3's and the mca
- * base's among them -- carried garbage there.
+ * the NULL test is what stands between %s and a wild pointer. Back when
+ * PMIX_NEW mallocked without zeroing, every table that does not set its
+ * own label -- gds/shmem3's and the mca base's among them -- carried
+ * garbage there.
+ *
+ * Both macros zero the object now, so the heap case below can no longer
+ * fail the way it originally did; what these still pin down is that the
+ * field ends up NULL by every route into a table, which is what the
+ * print sites depend on. Do not read them as covering the constructor
+ * assignment on its own.
  *
  * (all builds -- there was never an assert on this) */
 static void test_construct_initializes_label(void)
@@ -384,7 +390,7 @@ static void test_construct_initializes_label(void)
     pmix_hash_table_t stack;
     pmix_hash_table_t stat = PMIX_HASH_TABLE_STATIC_INIT;
 
-    /* The heap case is the one that had garbage: PMIX_NEW does not zero. */
+    /* the heap case is the one that used to hold garbage */
     heap = PMIX_NEW(pmix_hash_table_t);
     report("PMIX_NEW: allocation succeeded", NULL != heap);
     if (NULL != heap) {

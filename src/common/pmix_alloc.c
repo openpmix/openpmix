@@ -52,8 +52,8 @@ typedef struct {
 static void acon(pmix_alloc_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
-    /* objects are malloc'd, not calloc'd - every field gets a value
-     * here even though the one call site fills them all in */
+    /* every field gets a value here even though the one call site fills
+     * them all in */
     p->directive = 0;
     p->info = NULL;
     p->ninfo = 0;
