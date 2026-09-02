@@ -251,9 +251,11 @@ holding on to:
   module fan-out, not before: once the server drops its own reference,
   the cache's is the only thing keeping the `pmix_namespace_t` the
   modules are being handed alive.
-- `nsenvcon` sets `ns` to NULL explicitly. `PMIX_NEW` mallocs rather than
-  callocs, so without that the destructor would release a garbage
-  pointer.
+- `nsenvcon` sets `ns` to NULL explicitly. It has to say so even though
+  `PMIX_NEW` now zeroes the object: the destructor releases that pointer,
+  and a member whose correctness depends on the allocator is a member the
+  next reader has to go and check. It predates the zeroing, when the
+  alternative was releasing heap garbage.
 
 `pgpu` uses the same class in the same way; a change to either half of
 this contract has to account for both frameworks.

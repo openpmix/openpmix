@@ -3030,17 +3030,18 @@ misbehave by design).
   set `SIGCHLD` to `SIG_IGN`, and then our child is reaped out from
   under us.
 
-  **What made this a live hazard rather than a latent one is that
-  `PMIX_NEW` `malloc`s and does not `calloc`.** Neither `nscon` nor
-  `pcon` assigned those two members, so until a handshake wrote them
-  they were uninitialized heap — fine while nothing read them, and not
-  fine at all in a function that unlinks files. Both constructors now
+  **Neither `nscon` nor `pcon` assigned those two members**, so until a
+  handshake wrote them they held whatever the allocator had left there —
+  fine while nothing read them, and not fine at all in a function that
+  unlinks files. `PMIX_NEW` and `PMIX_CONSTRUCT` zero an object now,
+  which makes that particular failure repeatable and **no less
+  dangerous**: a uid of zero is root, so the skipped member would have
+  named the one identity that must never be assumed. Both constructors
   default them to `geteuid()`/`getegid()`, which makes an epilog nobody
   vouched for behave exactly as it always has and reserves the drop for
-  a peer the host actually registered an identity for. **Any new member
-  of an object here is uninitialized until a constructor says
-  otherwise** — do not read the absence of a crash as evidence that
-  something zeroed it.
+  a peer the host actually registered an identity for. **A member no
+  constructor assigns is zero, and here zero is a claim** — do not read
+  the zeroing as a default that spares you writing one.
 - **A job-control cleanup request is staged and then committed, and it
   has to stay that way.** The three epilog lists outlive the request —
   they live as long as the namespace or the peer — and nothing gives a

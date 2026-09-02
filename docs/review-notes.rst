@@ -752,8 +752,8 @@ not "fixed" by a later reader.
   would turn a forgotten assignment into a confident wrong answer;
   ``PMIX_ERR_INIT`` makes it loud.  ``PMIX_CONSTRUCT_LOCK`` previously
   assigned nothing at all, and since the lock usually lives in a
-  ``PMIX_NEW``'d caddy — ``malloc``, not ``calloc`` — the alternative
-  was heap garbage.  If one of these turns up in a bug report, look at
+  ``PMIX_NEW``'d caddy — which at the time allocated without zeroing —
+  the alternative was heap garbage.  If one of these turns up in a bug report, look at
   the handler that woke the lock and check its error paths before
   believing the status.
 
