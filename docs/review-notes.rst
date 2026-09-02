@@ -783,6 +783,43 @@ both in ``src/client``:
   one question, and a request the first accepts and the second rejects
   is not refused, it is lost.**
 
+Will not be done
+----------------
+
+Real defects, correctly described, that are **not going to be fixed** —
+because the fix would invest in something the project has already
+replaced.  They are recorded so nobody re-derives them and opens the
+question again; an entry here is a decision, not an oversight.
+
+* **The deprecated regex API cannot carry a length, and will not learn
+  to.**  From the ``src/mca/preg`` review (2026-08-19), which narrowed
+  it rather than closing it.  ``pmix_preg_base_legacy_decode`` bounds
+  every read against an ``avail`` argument, but only ``unpack`` can
+  supply a real one — it knows how many bytes are left in the buffer.
+  Every other caller holds a bare ``char *`` and passes ``SIZE_MAX``,
+  because ``pmix_preg.parse_nodes(regexp, &names)`` has nowhere to put a
+  length without changing a signature that predates the current API.
+  ``gds/hash`` has the length in ``val->data.bo.size`` and still cannot
+  hand it over.
+
+  What remains reachable is narrow: it needs a caller-owned string that
+  really does carry the ``"blob:"`` tag and is truncated behind it, which
+  is not something a peer can produce — those arrive through the bounded
+  ``unpack``.  The review had already made the tag test exact, so a plain
+  node list whose first node begins with ``blob`` is no longer taken for
+  a blob and walked past its end, which was the case a host could trigger
+  with ordinary data.
+
+  Closing it properly means plumbing a length through the deprecated
+  signatures, and **that is the direction** ``pmix_regex2_t`` **was
+  created to avoid**.  The regex2 API exists precisely because the old
+  one cannot express a bounded buffer; a caller that is in a position to
+  supply a length is in a position to use regex2, and widening the
+  deprecated signatures would spend ABI-visible work making the
+  superseded interface almost safe.  Deprecated APIs are supported
+  indefinitely here, which is a promise to keep them *working*, not a
+  promise to keep developing them.
+
 Not defects — by design
 -----------------------
 

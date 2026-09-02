@@ -9,9 +9,9 @@ Each entry records what the problem is, why it was left alone, and what
 closing it would take.
 
 Nothing here is closed, and no entry is a retrospective.  Closed entries,
-the dated log of what each review pass found and retired, and the list of
-things that look like bugs but are *by design* all live in
-:doc:`review-notes`.  They are kept, because they stop the same ground
+the dated log of what each review pass found and retired, the list of
+things that look like bugs but are *by design*, and the things that are
+real and **will not be done** all live in :doc:`review-notes`.  They are kept, because they stop the same ground
 being re-covered; they are kept **there**, so that this page reads as a
 work list.
 
@@ -52,7 +52,7 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 12**
+**Deferred work — 11**
 
 * :ref:`todo-resolve-peers-wildcard`
 * :ref:`todo-get-pointer-values`
@@ -64,7 +64,6 @@ At a glance
 * :ref:`todo-pcompress-init-fatal`
 * :ref:`todo-pmdl-app-values`
 * :ref:`todo-fabric-inventory`
-* :ref:`todo-legacy-regex-length`
 * :ref:`todo-server-genvars`
 
 **Coverage gaps — 20.**  No CI race detector; the switchyard's
@@ -434,29 +433,6 @@ unlike ``allocate`` and ``setup_fork``, it ``PMIX_ERROR_LOG``\ s any
 non-``PMIX_SUCCESS`` return and abandons the fan-out to every component
 behind it — so today "nothing here" and "collected everything" are the
 same answer.
-
-.. _todo-legacy-regex-length:
-
-The deprecated regex API cannot carry a length
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found in the ``src/mca/preg`` review (2026-08-19), and narrowed rather
-than closed by it.  ``pmix_preg_base_legacy_decode`` bounds every read
-against an ``avail`` argument, but only ``unpack`` can supply a real one:
-it knows how many bytes are left in the buffer.  Every other caller holds
-a bare ``char *`` and passes ``SIZE_MAX``, because
-``pmix_preg.parse_nodes(regexp, &names)`` has nowhere to put a length
-without changing a signature that predates the current API.  ``gds/hash``
-has the length in ``val->data.bo.size`` and still cannot hand it over.
-
-The review made the tag test exact, which removed the case that a host
-could trigger with ordinary data — a plain node list whose first node
-begins with ``blob`` is no longer taken for a blob and walked past its
-end.  What is left needs a caller-owned string that really does carry the
-``"blob:"`` tag and is truncated behind it, which is not something a peer
-can produce (those arrive through the bounded ``unpack``).  Closing it
-properly means plumbing a length through the deprecated signatures, and a
-caller that can do that is better off moving to ``pmix_regex2_t``.
 
 .. _todo-server-genvars:
 
