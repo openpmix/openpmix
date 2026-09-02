@@ -104,7 +104,7 @@ implements; the rest stay `NULL`.
 
 | Field | Signature | Purpose |
 |-------|-----------|---------|
-| `init` | `(void) -> int` | one-time setup; **unset by every module today** |
+| `init` | `(void) -> int` | one-time setup; **unset by every module today**. A non-`PMIX_SUCCESS` return means "I cannot run" — the base defaults stay in place and the library carries on without compression |
 | `finalize` | `(void) -> int` | teardown; called by base close only if non-`NULL` |
 | `compress` | `(const uint8_t *in, size_t size, uint8_t **out, size_t *nbytes) -> bool` | compress a byte block; `true` if it did |
 | `decompress` | `(uint8_t **out, size_t *outlen, const uint8_t *in, size_t len) -> bool` | inflate a block produced by `compress` |
@@ -124,7 +124,10 @@ caller ships the data uncompressed.
 `init` and `finalize` are declared in the struct but set by **neither**
 the base default module **nor** any of the four components — they are always
 `NULL` in practice. `finalize` is safely guarded (`pcompress_base_close`
-calls it only when non-`NULL`).
+calls it only when non-`NULL`), and a failing `init` is too: it degrades
+to the base default rather than failing `PMIx_Init` (see `select` above).
+Both behaviors are written for the first module that does implement them;
+neither can be reached today.
 
 `get_decompressed_size` and `get_decompressed_strlen`, by contrast, **are**
 implemented by every module (the base default, `zlib`, `zlibng`, `zstd`
@@ -395,6 +398,15 @@ rule: a new format means a new scheme, not a silent change to this one).
   copies it into `pmix_compress`. Selecting nothing is **not** an error —
   the base default stubs simply remain in place. (Contrast `ptl`/`preg`,
   which treat "no component" as fatal; `pcompress` degrades to a no-op.)
+  **It returns `PMIX_SUCCESS` in every case**, including a winning
+  module whose `init` fails: `pmix_rte_init()` treats any other status as
+  fatal to `PMIx_Init`, and a compression library that loads but cannot
+  start is the same situation as one that was never installed — the
+  stubs are what the library will call either way. A failed `init`
+  leaves `pmix_compress` untouched, so the module never becomes the
+  active one and `pcompress_base_close` never calls its `finalize`
+  either. The degradation is not silent: the first attempt to compress
+  anything emits the "unavailable" help message.
 
 The framework is opened and selected during library init in
 [`src/runtime/pmix_init.c`](../../runtime/pmix_init.c) for **all** process

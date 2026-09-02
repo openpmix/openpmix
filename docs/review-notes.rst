@@ -304,6 +304,42 @@ placed ahead of the MPMD one deliberately — a session-realm value
 registered by an earlier job in the same process is still there for a
 later one, so a job registered after it *does* find a universe size.
 
+A pcompress module's ``init()`` failure is fatal to library init
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/pcompress`` review (2026-08-20), closed
+2026-09-02.  The framework's stance is that having no compressor is not
+an error — ``pmix_compress_base_select()`` returns ``PMIX_SUCCESS`` when
+it selects nothing and the base's no-op stubs stay in place — but if the
+winning module's ``init()`` failed, that status was returned, and
+``pmix_rte_init()`` treats a non-``SUCCESS`` return from the select as
+fatal to ``PMIx_Init``.  A compression library that loaded but could not
+start took the whole library down, where an absent one was shrugged off.
+
+The entry deferred it for want of a module to test against: no component
+implements ``init``, and all five leave the slot ``NULL``.  That
+condition does not need a test to resolve, because it is not a question
+about behavior under load — the two states are already indistinguishable
+to everything downstream.  A module that cannot start and a module that
+was never installed leave ``pmix_compress`` holding exactly the same six
+stubs, so they get the same answer: ``select()`` now returns
+``PMIX_SUCCESS`` in every case.
+
+Three details make the degradation complete rather than merely
+non-fatal.  The assignment to ``pmix_compress`` was already *after* the
+``init()`` call, so a failed module never becomes the active one — which
+also means ``pcompress_base_close()`` never calls its ``finalize``, the
+right outcome for something that never started.  The user is still told:
+the base stubs emit the ``help-pcompress.txt`` "unavailable" message the
+first time anything tries to compress, so the only thing lost is the
+crash.  And the failure is not swallowed for a developer either — it is
+reported at verbose level 2 with the component's name and the status it
+returned.
+
+The code is still unreachable, and that is the point: it is written for
+the first module that implements ``init``, so that module inherits the
+framework's documented stance instead of a contradiction of it.
+
 Review log
 ----------
 
