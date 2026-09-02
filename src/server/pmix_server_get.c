@@ -102,6 +102,7 @@ static pmix_status_t get_job_data(char *nspace, pmix_server_caddy_t *cd,
                                   char *key, pmix_buffer_t *pbkt);
 static void get_timeout(int sd, short args, void *cbdata);
 static pmix_peer_t *local_peer_of_nspace(pmix_namespace_t *nptr);
+static bool list_has_key(pmix_list_t *kvs, const char *key);
 
 /* The release function we hand to the reply path along with a payload we
  * unloaded from a buffer: the reply copies the bytes, then calls this to
@@ -1170,12 +1171,32 @@ static pmix_peer_t *local_peer_of_nspace(pmix_namespace_t *nptr)
     return NULL;
 }
 
+/* Does this fetch result already carry the given key? A fetch made with
+ * a NULL key answers "everything this proc has", so its status cannot
+ * say whether the key the caller actually wants is among what came
+ * back - only a walk of the result can. */
+static bool list_has_key(pmix_list_t *kvs, const char *key)
+{
+    pmix_kval_t *kv;
+
+    if (NULL == key) {
+        return false;
+    }
+    PMIX_LIST_FOREACH (kv, kvs, pmix_kval_t) {
+        if (NULL != kv->key && PMIX_CHECK_KEY(kv, key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, char *key,
                                       pmix_server_caddy_t *cd, bool diffnspace, pmix_scope_t scope,
                                       pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_status_t rc;
     bool found = false;
+    bool answered;
     pmix_buffer_t pbkt, pkt;
     pmix_proc_t proc;
     pmix_cb_t cb;
@@ -1227,7 +1248,20 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
     cb.info = cd->info;
     cb.ninfo = cd->ninfo;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-    if (PMIX_SUCCESS != rc) {
+    /* Did that answer the question? Only a fetch that named the key can
+     * say so from its status alone. The optimization above asks for a
+     * non-reserved key as cb.key == NULL - "give me everything this proc
+     * has" - and for a rank of a namespace we have registered, our own
+     * store always holds that rank's job-level keys. So success there
+     * means "we hold something for this rank", not "we hold what was
+     * asked for", and taking it for the latter is what left a
+     * cross-namespace get answered with pmix.grank and friends and no
+     * modex at all. */
+    answered = (PMIX_SUCCESS == rc);
+    if (answered && NULL == cb.key && NULL != key) {
+        answered = list_has_key(&cb.kvs, key);
+    }
+    if (!answered) {
         /* Not in our own store - but that does not mean it is not here.
          * The target nspace's clients may be on a different gds module
          * than we are: gds/shmem3 keeps their modex in a shared-memory
@@ -1238,11 +1272,50 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
         pmix_peer_t *nspeer = local_peer_of_nspace(nptr);
         if (NULL != nspeer && !PMIX_GDS_CHECK_PEER_COMPONENT(nspeer, pmix_globals.mypeer)) {
             pmix_kval_t *kvtmp;
-            /* a failed fetch may still have appended something */
-            while (NULL != (kvtmp = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs))) {
-                PMIX_RELEASE(kvtmp);
+            pmix_status_t rc2;
+            pmix_cb_t cb2;
+
+            if (PMIX_SUCCESS != rc) {
+                /* a failed fetch may still have appended something */
+                while (NULL != (kvtmp = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs))) {
+                    PMIX_RELEASE(kvtmp);
+                }
             }
-            PMIX_GDS_FETCH_KV(rc, nspeer, &cb);
+            /* Fetch into a list of its own and merge, rather than
+             * discarding what we already have and asking again. Neither
+             * store contains the other: the nspace's module holds the
+             * modex its own clients contributed, while ours holds what a
+             * cross-namespace direct modex put there - dmdx_cbfunc()
+             * stores a reply against mypeer whenever the requester's
+             * namespace differs from the target's. Where the two name
+             * the same key - each keeps its own copy of the job-level
+             * data - the copy we already have wins, because a key that
+             * appears twice reaches the client's process_values() as an
+             * aggregate and hands the application a PMIX_DATA_ARRAY
+             * where it asked for a scalar. */
+            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+            cb2.key = cb.key;
+            cb2.proc = &proc;
+            cb2.scope = scope;
+            cb2.copy = cb.copy;
+            cb2.info = cd->info;
+            cb2.ninfo = cd->ninfo;
+            PMIX_GDS_FETCH_KV(rc2, nspeer, &cb2);
+            if (PMIX_SUCCESS == rc2) {
+                while (NULL != (kvtmp = (pmix_kval_t *) pmix_list_remove_first(&cb2.kvs))) {
+                    if (list_has_key(&cb.kvs, kvtmp->key)) {
+                        PMIX_RELEASE(kvtmp);
+                    } else {
+                        pmix_list_append(&cb.kvs, &kvtmp->super);
+                    }
+                }
+                rc = PMIX_SUCCESS;
+            }
+            /* the info array is the caller's and the key is ours */
+            cb2.info = NULL;
+            cb2.ninfo = 0;
+            cb2.key = NULL;
+            PMIX_DESTRUCT(&cb2);
         }
     }
     if (PMIX_SUCCESS != rc) {
