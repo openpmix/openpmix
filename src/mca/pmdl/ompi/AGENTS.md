@@ -160,12 +160,24 @@ Two things about the match are load-bearing, and both were wrong:
 ### `register_nspace`
 
 For a tracked nspace, fetches `PMIX_UNIV_SIZE`, `PMIX_JOB_SIZE`,
-`PMIX_JOB_NUM_APPS`, and (best-effort) `PMIX_LOCAL_SIZE` from GDS into the
-tracker. If the job has more than one application, it also builds
-space-separated `OMPI_APP_SIZES` (per-app `PMIX_APP_SIZE`) and
-`OMPI_FIRST_RANKS` (per-app `PMIX_APPLDR`) strings and caches them back
-into GDS as job info via `PMIX_GDS_CACHE_JOB_INFO`. A single-app job
-returns early. An unknown nspace returns `PMIX_ERR_TAKE_NEXT_OPTION`.
+`PMIX_JOB_NUM_APPS` and `PMIX_LOCAL_SIZE` from GDS into the tracker. If
+the job has more than one application, it also builds space-separated
+`OMPI_APP_SIZES` (per-app `PMIX_APP_SIZE`) and `OMPI_FIRST_RANKS`
+(per-app `PMIX_APPLDR`) strings and caches them back into GDS as job info
+via `PMIX_GDS_CACHE_JOB_INFO`. A single-app job returns early. An unknown
+nspace returns `PMIX_ERR_TAKE_NEXT_OPTION`.
+
+**Every one of those fetches is best-effort**, the same rule `setup_fork`
+follows below. A size the host did not register leaves its field at
+`UINT32_MAX` — the tracker's "not known" — and `setup_fork` then does not
+pass it on. Returning the fetch error instead failed
+`PMIx_server_register_nspace` outright, so a host that registered a
+namespace without one of them could not register it at all. That was not
+theoretical: `PMIX_UNIV_SIZE` is a *session*-realm key
+(`pmix_check_session_info`), so a host that registers a job without
+naming a session has none to find, which is exactly what `test/simple`'s
+`simptest --model` does. An unknown app count is also a reason to stop
+before the per-app lists rather than to loop `UINT32_MAX` times.
 
 ### `setup_fork`
 
@@ -184,19 +196,31 @@ drawing sizes from the tracker and per-rank facts from GDS:
   `OMPI_COMM_WORLD_NODE_RANK` (`PMIX_NODE_RANK`);
 - multi-app only: `OMPI_APP_CTX_NUM_PROCS` (per-app sizes),
   `OMPI_FIRST_RANKS` (per-app leaders);
-- `OMPI_MCA_num_restarts` (`PMIX_REINCARNATION`), **if the host provided
-  one** — nothing in PMIx sets that key, and a host that has never
-  restarted the proc has nothing to say. Its absence is not a failure;
-  returning the fetch error from here fails `PMIx_server_setup_fork` and
-  with it the child's launch;
+- `OMPI_MCA_num_restarts` (`PMIX_REINCARNATION`) — nothing in PMIx sets
+  that key, and a host that has never restarted the proc has nothing to
+  say;
 - finally, every `myenvars` value collected by `parse_file_envars`.
 
-Three rules govern the whole function:
+Four rules govern the whole function:
 
+- **Every value it passes on is best-effort.** A host is not obliged to
+  have registered everything Open MPI would like, so a value the module
+  cannot fetch — or cannot read as the type it needs — leaves that envar
+  unset and the function keeps going. It does *not* return the fetch
+  error: a `setup_fork` error fails `PMIx_server_setup_fork` and with it
+  the child's launch, which is far too heavy a response to a missing
+  `PMIX_WDIR`. If Open MPI genuinely needs something that was not
+  supplied, the Open MPI library is the component that knows it and will
+  say so. The only statuses that come back out are the module's own
+  failures — out of memory, or an environment it could not write, which
+  is all a non-`SUCCESS` return from `setenv_string` means. The per-app
+  lists are all-or-nothing: `setenv_per_app` needs every app's value to
+  build a meaningful space-separated string, so one it cannot get drops
+  the whole variable.
 - **The per-app values belong to the child's app, not to ours.**
   `PMIX_WDIR` and `PMIX_APP_ARGV` are app-level, so they are fetched with
   the appnum of `proc` — read from the datastore, defaulting to 0 the way
-  `gds/hash` does when a host names none. `pmix_globals.appnum` is *my*
+  `gds/hash` does when a host names none or names one we cannot read. `pmix_globals.appnum` is *my*
   appnum, which in a server is the server's; using it handed every rank in
   an MPMD job the first app's command line and working directory.
 - **Only the per-app breakdown is multi-app-only.** Everything after it —

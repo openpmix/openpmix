@@ -50,6 +50,7 @@
 
 #define APP0NS "pmdl-mpmd"
 #define APP1NS "pmdl-single"
+#define APP2NS "pmdl-sparse"
 
 static int failures = 0;
 static int checks = 0;
@@ -172,6 +173,40 @@ static pmix_status_t register_job(const char *nspace, uint32_t napps)
     return (PMIX_OPERATION_SUCCEEDED == rc) ? PMIX_SUCCESS : rc;
 }
 
+/* register an ompi job the sparse way: the personality and the job size,
+ * and nothing else.  No universe size, no app count, no app array (so no
+ * working directory and no command line) and no proc array (so no
+ * procdir and no local or node rank).  A host is not obliged to provide
+ * any of them, and every one of them used to fail either the
+ * registration or the launch */
+static pmix_status_t register_sparse_job(const char *nspace, uint32_t jobsize)
+{
+    void *jinfo;
+    pmix_data_array_t darray;
+    pmix_nspace_t ns;
+    pmix_info_t *info;
+    pmix_status_t rc;
+    size_t ninfo;
+    uint32_t u32;
+
+    /* the API takes a pmix_nspace_t, so hand it one - a bare string
+     * literal is a smaller region than the parameter's type and the
+     * compiler says so once this function is inlined */
+    PMIX_LOAD_NSPACE(ns, nspace);
+
+    PMIX_INFO_LIST_START(jinfo);
+    PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_PERSONALITY, "ompi", PMIX_STRING);
+    u32 = jobsize;
+    PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_JOB_SIZE, &u32, PMIX_UINT32);
+    PMIX_INFO_LIST_CONVERT(rc, jinfo, &darray);
+    PMIX_INFO_LIST_RELEASE(jinfo);
+    info = (pmix_info_t *) darray.array;
+    ninfo = darray.size;
+    rc = PMIx_server_register_nspace(ns, jobsize, info, ninfo, NULL, NULL);
+    PMIX_DATA_ARRAY_DESTRUCT(&darray);
+    return (PMIX_OPERATION_SUCCEEDED == rc) ? PMIX_SUCCESS : rc;
+}
+
 int main(int argc, char **argv)
 {
     pmix_mca_base_var_file_value_t *fv, *fvnext;
@@ -280,6 +315,45 @@ int main(int argc, char **argv)
         }
     }
 
+    /* --- a host that registered almost nothing --- */
+
+    /* None of what this job leaves out is required.  register_nspace
+     * used to return the fetch error for a missing PMIX_UNIV_SIZE, which
+     * fails PMIx_server_register_nspace outright, and setup_fork used to
+     * do the same for a missing PMIX_PROCDIR, PMIX_WDIR or
+     * PMIX_APP_ARGV, which fails PMIx_server_setup_fork and with it the
+     * child's launch.  Both now pass on what they have: if Open MPI
+     * genuinely needs one of these, the Open MPI library is what says so */
+    rc = register_sparse_job(APP2NS, 2);
+    ok(PMIX_SUCCESS == rc, "a namespace registers without a universe size");
+    if (PMIX_SUCCESS == rc) {
+        PMIX_LOAD_PROCID(&proc, APP2NS, 1);
+        env = NULL;
+        rc = pmix_pmdl.setup_fork(&proc, &env);
+        ok(PMIX_SUCCESS == rc, "setup_fork succeeds with almost nothing registered");
+        /* what it could work out, it still passes on */
+        ok_env(env, "OMPI_COMM_WORLD_SIZE", "2");
+        ok_env(env, "OMPI_COMM_WORLD_RANK", "1");
+        /* and what it was never given, it leaves alone */
+        ok(NULL == envval(env, "OMPI_UNIVERSE_SIZE"),
+           "no universe size envar when the host named no session");
+        ok(NULL == envval(env, "OMPI_NUM_APP_CTX"),
+           "no app count envar when the host named no apps");
+        ok(NULL == envval(env, "OMPI_MCA_initial_wdir"),
+           "no working directory envar when the host named none");
+        ok(NULL == envval(env, "OMPI_COMMAND") && NULL == envval(env, "OMPI_ARGV"),
+           "no command envars when the host gave no argv");
+        ok(NULL == envval(env, "OMPI_FILE_LOCATION"),
+           "no file location envar when the host gave no procdir");
+        ok(NULL == envval(env, "OMPI_COMM_WORLD_LOCAL_RANK"),
+           "no local rank envar when the host registered no proc data");
+        /* the MCA-file values do not depend on any of that */
+        ev = envval(env, "OMPI_MCA_btl");
+        ok(NULL != ev && 0 == strcmp(ev, "self,tcp"),
+           "and the MCA param file values still reach the child");
+        PMIx_Argv_free(env);
+    }
+
     /* --- an MPMD job's per-app values --- */
 
     rc = register_job(APP0NS, 2);
@@ -346,6 +420,7 @@ int main(int argc, char **argv)
 
     pmix_pmdl.deregister_nspace(APP0NS);
     pmix_pmdl.deregister_nspace(APP1NS);
+    pmix_pmdl.deregister_nspace(APP2NS);
 
     PMIx_server_finalize();
 

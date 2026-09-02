@@ -748,242 +748,6 @@ static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv)
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t register_nspace(pmix_namespace_t *nptr)
-{
-    pmdl_nspace_t *ns, *ns2;
-    char *ev1, **tmp;
-    pmix_proc_t wildcard, undef;
-    pmix_status_t rc;
-    pmix_kval_t *kv;
-    pmix_info_t info[2];
-    uint32_t n;
-    pmix_cb_t cb;
-
-    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi: register_nspace for %s", nptr->nspace);
-
-    /* see if we already have this nspace */
-    ns = NULL;
-    PMIX_LIST_FOREACH (ns2, &mynspaces, pmdl_nspace_t) {
-        if (PMIX_CHECK_NSPACE(ns2->nspace, nptr->nspace)) {
-            ns = ns2;
-            break;
-        }
-    }
-    if (NULL == ns) {
-        /* we don't know anything about this one or
-         * it doesn't have any ompi-based apps */
-        return PMIX_ERR_TAKE_NEXT_OPTION;
-    }
-
-    /* do we already have the data we need here? Servers are
-     * allowed to call register_nspace multiple times with
-     * different info, so we really need to recheck those
-     * values that haven't already been filled */
-    PMIX_LOAD_PROCID(&wildcard, nptr->nspace, PMIX_RANK_WILDCARD);
-
-    /* fetch the universe size */
-    if (UINT32_MAX == ns->univ_size) {
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &wildcard;
-        cb.copy = true;
-        cb.key = PMIX_UNIV_SIZE;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        cb.key = NULL;
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&cb);
-            return rc;
-        }
-        /* the data is the first value on the cb.kvs list */
-        if (1 != pmix_list_get_size(&cb.kvs)) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
-        ns->univ_size = kv->value->data.uint32;
-        PMIX_DESTRUCT(&cb);
-    }
-
-    /* fetch the job size */
-    if (UINT32_MAX == ns->job_size) {
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &wildcard;
-        cb.copy = true;
-        cb.key = PMIX_JOB_SIZE;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        cb.key = NULL;
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&cb);
-            return rc;
-        }
-        /* the data is the first value on the cb.kvs list */
-        if (1 != pmix_list_get_size(&cb.kvs)) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
-        ns->job_size = kv->value->data.uint32;
-        PMIX_DESTRUCT(&cb);
-    }
-
-    /* fetch the number of apps */
-    if (UINT32_MAX == ns->num_apps) {
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &wildcard;
-        cb.copy = true;
-        cb.key = PMIX_JOB_NUM_APPS;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        cb.key = NULL;
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&cb);
-            return rc;
-        }
-        /* the data is the first value on the cb.kvs list */
-        if (1 != pmix_list_get_size(&cb.kvs)) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
-        ns->num_apps = kv->value->data.uint32;
-        PMIX_DESTRUCT(&cb);
-    }
-
-    /* fetch the number of local peers */
-    if (UINT32_MAX == ns->local_size) {
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &wildcard;
-        cb.copy = true;
-        cb.key = PMIX_LOCAL_SIZE;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        cb.key = NULL;
-        /* it is okay if there are no local procs */
-        if (PMIX_SUCCESS == rc) {
-            /* the data is the first value on the cb.kvs list */
-            if (1 != pmix_list_get_size(&cb.kvs)) {
-                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-                PMIX_DESTRUCT(&cb);
-                return PMIX_ERR_BAD_PARAM;
-            }
-            kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
-            ns->local_size = kv->value->data.uint32;
-        }
-        /* the cb owns whatever the fetch put on its list either way */
-        PMIX_DESTRUCT(&cb);
-    }
-
-    if (1 == ns->num_apps) {
-        return PMIX_SUCCESS;
-    }
-
-    /* construct the list of app sizes */
-    PMIX_LOAD_PROCID(&undef, nptr->nspace, PMIX_RANK_UNDEF);
-    PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
-    tmp = NULL;
-    for (n = 0; n < ns->num_apps; n++) {
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &undef;
-        cb.copy = true;
-        cb.info = info;
-        cb.ninfo = 2;
-        cb.key = PMIX_APP_SIZE;
-        PMIX_INFO_LOAD(&info[1], PMIX_APPNUM, &n, PMIX_UINT32);
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        PMIX_INFO_DESTRUCT(&info[1]);
-        cb.key = NULL;
-        cb.info = NULL;
-        cb.ninfo = 0;
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&cb);
-            return rc;
-        }
-        /* the data is the first value on the cb.kvs list */
-        if (1 != pmix_list_get_size(&cb.kvs)) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
-        pmix_asprintf(&ev1, "%u", kv->value->data.uint32);
-        PMIx_Argv_append_nosize(&tmp, ev1);
-        free(ev1);
-        PMIX_DESTRUCT(&cb);
-    }
-    PMIX_INFO_DESTRUCT(&info[0]);
-
-    if (NULL != tmp) {
-        ev1 = PMIx_Argv_join(tmp, ' ');
-        PMIx_Argv_free(tmp);
-        PMIX_INFO_LOAD(&info[0], "OMPI_APP_SIZES", ev1, PMIX_STRING);
-        free(ev1);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
-        PMIX_INFO_DESTRUCT(&info[0]);
-        if (PMIX_SUCCESS != rc) {
-            /* setup_fork hands this to the child from the datastore, so a
-             * silent failure here is a job that comes up without it */
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-    }
-
-    /* construct the list of app leaders */
-    PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
-    tmp = NULL;
-    for (n = 0; n < ns->num_apps; n++) {
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &undef;
-        cb.copy = true;
-        cb.info = info;
-        cb.ninfo = 2;
-        cb.key = PMIX_APPLDR;
-        PMIX_INFO_LOAD(&info[1], PMIX_APPNUM, &n, PMIX_UINT32);
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        PMIX_INFO_DESTRUCT(&info[1]);
-        cb.key = NULL;
-        cb.info = NULL;
-        cb.ninfo = 0;
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&cb);
-            return rc;
-        }
-        /* the data is the first value on the cb.kvs list */
-        if (1 != pmix_list_get_size(&cb.kvs)) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
-        pmix_asprintf(&ev1, "%u", kv->value->data.uint32);
-        PMIx_Argv_append_nosize(&tmp, ev1);
-        free(ev1);
-        PMIX_DESTRUCT(&cb);
-    }
-    PMIX_INFO_DESTRUCT(&info[0]);
-
-    if (NULL != tmp) {
-        ev1 = PMIx_Argv_join(tmp, ' ');
-        PMIx_Argv_free(tmp);
-        tmp = NULL;
-        PMIX_INFO_LOAD(&info[0], "OMPI_FIRST_RANKS", ev1, PMIX_STRING);
-        free(ev1);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
-        PMIX_INFO_DESTRUCT(&info[0]);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-    }
-
-    return PMIX_SUCCESS;
-}
-
 /* Fetch one value from our own datastore, copying it into "value" - which
  * the caller destructs.  "qual"/"nqual" carry the app-level qualifiers,
  * if any.  Every call site used to open-code this, and each copy had to
@@ -1019,7 +783,164 @@ static pmix_status_t fetch_value(const pmix_proc_t *proc, const char *key,
     return rc;
 }
 
-/* the same, for a value the caller wants as a string it does not own */
+/* the same, for a value this module keeps as a uint32.  A host is not
+ * obliged to have registered every one of them, so "value" is left as it
+ * was - UINT32_MAX, this module's "not known" - and false returned when
+ * there is nothing usable to read. */
+static bool fetch_u32(const pmix_proc_t *proc, const char *key,
+                      pmix_info_t *qual, size_t nqual, uint32_t *value)
+{
+    pmix_value_t val;
+    pmix_status_t rc;
+
+    PMIX_VALUE_CONSTRUCT(&val);
+    rc = fetch_value(proc, key, qual, nqual, &val);
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_Value_get_number(&val, value, PMIX_UINT32);
+    }
+    PMIX_VALUE_DESTRUCT(&val);
+    if (PMIX_SUCCESS != rc) {
+        pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                            "pmdl:ompi: no %s available", key);
+        return false;
+    }
+    return true;
+}
+
+/* Build the list Open MPI expects for a per-app key: one value per app,
+ * in appnum order, for the caller to join into a single space-separated
+ * string.  That string only means anything if we have every app's value,
+ * so one we cannot get returns NULL and the caller leaves its variable
+ * unset rather than emitting a short list. */
+static char **collect_per_app(const pmix_proc_t *undef, uint32_t num_apps,
+                              const char *key)
+{
+    pmix_info_t info[2];
+    char *ev1, **tmp = NULL;
+    uint32_t n, u32 = 0;
+
+    PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
+    for (n = 0; n < num_apps; n++) {
+        PMIX_INFO_LOAD(&info[1], PMIX_APPNUM, &n, PMIX_UINT32);
+        if (!fetch_u32(undef, key, info, 2, &u32)) {
+            PMIX_INFO_DESTRUCT(&info[1]);
+            PMIx_Argv_free(tmp);
+            tmp = NULL;
+            break;
+        }
+        PMIX_INFO_DESTRUCT(&info[1]);
+        if (0 > pmix_asprintf(&ev1, "%u", u32)) {
+            PMIx_Argv_free(tmp);
+            tmp = NULL;
+            break;
+        }
+        PMIx_Argv_append_nosize(&tmp, ev1);
+        free(ev1);
+    }
+    PMIX_INFO_DESTRUCT(&info[0]);
+    return tmp;
+}
+
+static pmix_status_t register_nspace(pmix_namespace_t *nptr)
+{
+    pmdl_nspace_t *ns, *ns2;
+    char *ev1, **tmp;
+    pmix_proc_t wildcard, undef;
+    pmix_status_t rc;
+    pmix_info_t info[1];
+
+    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                        "pmdl:ompi: register_nspace for %s", nptr->nspace);
+
+    /* see if we already have this nspace */
+    ns = NULL;
+    PMIX_LIST_FOREACH (ns2, &mynspaces, pmdl_nspace_t) {
+        if (PMIX_CHECK_NSPACE(ns2->nspace, nptr->nspace)) {
+            ns = ns2;
+            break;
+        }
+    }
+    if (NULL == ns) {
+        /* we don't know anything about this one or
+         * it doesn't have any ompi-based apps */
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    /* do we already have the data we need here? Servers are
+     * allowed to call register_nspace multiple times with
+     * different info, so we really need to recheck those
+     * values that haven't already been filled.  None of them is
+     * required: a host that has not given us a size leaves the field at
+     * UINT32_MAX, which setup_fork reads as "not known" and simply does
+     * not pass on.  Returning the fetch error instead failed
+     * PMIx_server_register_nspace outright, so a host that registered a
+     * namespace without, say, PMIX_UNIV_SIZE could not register it at
+     * all */
+    PMIX_LOAD_PROCID(&wildcard, nptr->nspace, PMIX_RANK_WILDCARD);
+
+    if (UINT32_MAX == ns->univ_size) {
+        fetch_u32(&wildcard, PMIX_UNIV_SIZE, NULL, 0, &ns->univ_size);
+    }
+    if (UINT32_MAX == ns->job_size) {
+        fetch_u32(&wildcard, PMIX_JOB_SIZE, NULL, 0, &ns->job_size);
+    }
+    if (UINT32_MAX == ns->num_apps) {
+        fetch_u32(&wildcard, PMIX_JOB_NUM_APPS, NULL, 0, &ns->num_apps);
+    }
+    /* it is okay if there are no local procs */
+    if (UINT32_MAX == ns->local_size) {
+        fetch_u32(&wildcard, PMIX_LOCAL_SIZE, NULL, 0, &ns->local_size);
+    }
+
+    /* the per-app lists below only mean anything to an MPMD job, and we
+     * cannot count the apps if the host never said how many there are */
+    if (UINT32_MAX == ns->num_apps || 1 == ns->num_apps) {
+        return PMIX_SUCCESS;
+    }
+
+    /* construct the list of app sizes */
+    PMIX_LOAD_PROCID(&undef, nptr->nspace, PMIX_RANK_UNDEF);
+    tmp = collect_per_app(&undef, ns->num_apps, PMIX_APP_SIZE);
+
+    if (NULL != tmp) {
+        ev1 = PMIx_Argv_join(tmp, ' ');
+        PMIx_Argv_free(tmp);
+        PMIX_INFO_LOAD(&info[0], "OMPI_APP_SIZES", ev1, PMIX_STRING);
+        free(ev1);
+        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
+        PMIX_INFO_DESTRUCT(&info[0]);
+        if (PMIX_SUCCESS != rc) {
+            /* setup_fork hands this to the child from the datastore, so a
+             * silent failure here is a job that comes up without it */
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+
+    /* construct the list of app leaders */
+    tmp = collect_per_app(&undef, ns->num_apps, PMIX_APPLDR);
+
+    if (NULL != tmp) {
+        ev1 = PMIx_Argv_join(tmp, ' ');
+        PMIx_Argv_free(tmp);
+        PMIX_INFO_LOAD(&info[0], "OMPI_FIRST_RANKS", ev1, PMIX_STRING);
+        free(ev1);
+        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
+        PMIX_INFO_DESTRUCT(&info[0]);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
+/* the same, for a value the caller wants as a string it does not own.
+ * A key the host never registered - or registered as something we cannot
+ * read as a string - leaves "var" unset and is not an error: we set what
+ * we can and leave it to Open MPI to complain about anything it actually
+ * needs.  Only a failure to write the environment is reported back. */
 static pmix_status_t setenv_string(const pmix_proc_t *proc, const char *key,
                                    pmix_info_t *qual, size_t nqual,
                                    const char *var, char ***env)
@@ -1030,15 +951,20 @@ static pmix_status_t setenv_string(const pmix_proc_t *proc, const char *key,
     PMIX_VALUE_CONSTRUCT(&val);
     rc = fetch_value(proc, key, qual, nqual, &val);
     if (PMIX_SUCCESS != rc) {
+        pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                            "pmdl:ompi: no %s - leaving %s unset", key, var);
         PMIX_VALUE_DESTRUCT(&val);
-        return rc;
+        return PMIX_SUCCESS;
     }
     if (PMIX_STRING != val.type || NULL == val.data.string) {
         /* the host stored something else under a key we can only use as
-         * a string - saying so beats setting the variable from whatever
-         * else was in the union */
+         * a string - leaving the variable unset beats setting it from
+         * whatever else was in the union */
+        pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                            "pmdl:ompi: %s is not a string - leaving %s unset",
+                            key, var);
         PMIX_VALUE_DESTRUCT(&val);
-        return PMIX_ERR_TYPE_MISMATCH;
+        return PMIX_SUCCESS;
     }
     rc = PMIx_Setenv(var, val.data.string, true, env);
     PMIX_VALUE_DESTRUCT(&val);
@@ -1065,40 +991,14 @@ static pmix_status_t setenv_per_app(const pmix_proc_t *proc, uint32_t num_apps,
                                     const char *key, const char *var, char ***env)
 {
     pmix_proc_t undef;
-    pmix_info_t info[2];
-    pmix_value_t val;
     pmix_status_t rc;
-    char *ev1, **tmp = NULL;
-    uint32_t n, u32;
+    char *ev1, **tmp;
 
     PMIX_LOAD_PROCID(&undef, proc->nspace, PMIX_RANK_UNDEF);
-    PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
-    for (n = 0; n < num_apps; n++) {
-        PMIX_INFO_LOAD(&info[1], PMIX_APPNUM, &n, PMIX_UINT32);
-        PMIX_VALUE_CONSTRUCT(&val);
-        rc = fetch_value(&undef, key, info, 2, &val);
-        PMIX_INFO_DESTRUCT(&info[1]);
-        if (PMIX_SUCCESS == rc) {
-            rc = PMIx_Value_get_number(&val, &u32, PMIX_UINT32);
-        }
-        PMIX_VALUE_DESTRUCT(&val);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_INFO_DESTRUCT(&info[0]);
-            PMIx_Argv_free(tmp);
-            return rc;
-        }
-        if (0 > pmix_asprintf(&ev1, "%u", u32)) {
-            PMIX_INFO_DESTRUCT(&info[0]);
-            PMIx_Argv_free(tmp);
-            return PMIX_ERR_NOMEM;
-        }
-        PMIx_Argv_append_nosize(&tmp, ev1);
-        free(ev1);
-    }
-    PMIX_INFO_DESTRUCT(&info[0]);
-
+    tmp = collect_per_app(&undef, num_apps, key);
     if (NULL == tmp) {
+        pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                            "pmdl:ompi: incomplete %s - leaving %s unset", key, var);
         return PMIX_SUCCESS;
     }
     ev1 = PMIx_Argv_join(tmp, ' ');
@@ -1152,10 +1052,19 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    /* the sizes come from register_nspace, and a host is not obliged to
-     * have given us every one of them.  UINT32_MAX is this module's "not
-     * known", so pass on what we have rather than telling the child its
-     * universe holds four billion procs */
+    /* Everything below is best-effort.  A host is not obliged to have
+     * registered every value Open MPI would like, and a value we cannot
+     * get leaves its envar unset rather than failing this function -
+     * setup_fork's error fails PMIx_server_setup_fork and with it the
+     * child's launch, which is far too heavy a response to, say, a
+     * missing initial working directory.  If Open MPI genuinely needs
+     * something we could not supply, the Open MPI library is the one
+     * that knows it and will say so.  Only our own failures - out of
+     * memory, an environment we could not write - are returned.
+     *
+     * The sizes come from register_nspace.  UINT32_MAX is this module's
+     * "not known", so pass on what we have rather than telling the child
+     * its universe holds four billion procs */
 
     /* pass universe size */
     if (UINT32_MAX != ns->univ_size) {
@@ -1193,6 +1102,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     /* pass an envar so the proc can find any files it had prepositioned */
     rc = setenv_string(proc, PMIX_PROCDIR, NULL, 0, "OMPI_FILE_LOCATION", env);
     if (PMIX_SUCCESS != rc) {
+        /* setenv_string only fails if it could not write the environment */
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -1206,12 +1116,8 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     rc = fetch_value(proc, PMIX_APPNUM, NULL, 0, &val);
     if (PMIX_SUCCESS == rc) {
         rc = PMIx_Value_get_number(&val, &appnum, PMIX_UINT32);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_VALUE_DESTRUCT(&val);
-            return rc;
-        }
-    } else {
+    }
+    if (PMIX_SUCCESS != rc) {
         /* a host that never said is telling us there is only one app -
          * the same assumption gds/hash makes when registering a proc */
         appnum = 0;
@@ -1229,18 +1135,15 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
         goto quals;
     }
 
-    /* pass its command. */
+    /* pass its command, if the host gave us one */
     PMIX_VALUE_CONSTRUCT(&val);
     rc = fetch_value(&undef, PMIX_APP_ARGV, qual, 2, &val);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
+    if (PMIX_SUCCESS != rc || PMIX_STRING != val.type || NULL == val.data.string) {
+        pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                            "pmdl:ompi: no usable %s - leaving OMPI_COMMAND and "
+                            "OMPI_ARGV unset", PMIX_APP_ARGV);
         PMIX_VALUE_DESTRUCT(&val);
-        goto quals;
-    }
-    if (PMIX_STRING != val.type || NULL == val.data.string) {
-        PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
-        PMIX_VALUE_DESTRUCT(&val);
-        rc = PMIX_ERR_TYPE_MISMATCH;
+        rc = PMIX_SUCCESS;
         goto quals;
     }
     /* an argv with nothing in it splits to no argv at all, so there is
@@ -1298,13 +1201,16 @@ quals:
         rc = PMIx_Value_get_number(&val, &u16, PMIX_UINT16);
     }
     PMIX_VALUE_DESTRUCT(&val);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    rc = setenv_number("OMPI_COMM_WORLD_LOCAL_RANK", (unsigned long) u16, env);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
+    if (PMIX_SUCCESS == rc) {
+        rc = setenv_number("OMPI_COMM_WORLD_LOCAL_RANK", (unsigned long) u16, env);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+    } else {
+        pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                            "pmdl:ompi: no local rank for %s - leaving "
+                            "OMPI_COMM_WORLD_LOCAL_RANK unset",
+                            PMIX_NAME_PRINT(proc));
     }
 
     /* get the proc's node rank */
@@ -1314,13 +1220,16 @@ quals:
         rc = PMIx_Value_get_number(&val, &u16, PMIX_UINT16);
     }
     PMIX_VALUE_DESTRUCT(&val);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    rc = setenv_number("OMPI_COMM_WORLD_NODE_RANK", (unsigned long) u16, env);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
+    if (PMIX_SUCCESS == rc) {
+        rc = setenv_number("OMPI_COMM_WORLD_NODE_RANK", (unsigned long) u16, env);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+    } else {
+        pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                            "pmdl:ompi: no node rank for %s - leaving "
+                            "OMPI_COMM_WORLD_NODE_RANK unset",
+                            PMIX_NAME_PRINT(proc));
     }
 
     /* the per-app breakdown only means anything to an MPMD job */
@@ -1344,18 +1253,13 @@ quals:
     rc = fetch_value(proc, PMIX_REINCARNATION, NULL, 0, &val);
     if (PMIX_SUCCESS == rc) {
         rc = PMIx_Value_get_number(&val, &n, PMIX_UINT32);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_VALUE_DESTRUCT(&val);
-            return rc;
-        }
-        PMIX_VALUE_DESTRUCT(&val);
+    }
+    PMIX_VALUE_DESTRUCT(&val);
+    if (PMIX_SUCCESS == rc) {
         rc = setenv_number("OMPI_MCA_num_restarts", n, env);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
-    } else {
-        PMIX_VALUE_DESTRUCT(&val);
     }
 
     /* add any envars we collected from param files.  This, and the

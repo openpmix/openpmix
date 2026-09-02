@@ -242,6 +242,68 @@ was verified by re-breaking each half separately: without the sharing the
 "second job is given the first job's session segment" assertion fails,
 and without the ownership move the surviving-job read crashes.
 
+An absent app-level value fails a child's launch
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/pmdl`` review (2026-08-19), closed 2026-09-02.
+``pmdl/ompi``'s ``setup_fork`` treated a missing ``PMIX_PROCDIR``,
+``PMIX_WDIR`` or ``PMIX_APP_ARGV`` as an error, and a ``setup_fork``
+error fails ``PMIx_server_setup_fork`` and with it the child's launch.
+The entry deferred it on the question of "which of them Open MPI
+genuinely requires".
+
+That question does not have to be answered here, and trying to answer it
+was what kept the entry open.  PMIx is not the component that knows what
+Open MPI needs: it is filling in an environment for a library that reads
+it, and a library that cannot start without ``OMPI_MCA_initial_wdir``
+will say so far more usefully than a failed ``setup_fork`` ever could.
+So the rule is now the one the sizes already followed — **pass on what we
+have** — and it is applied to every value the function fetches, not only
+to the three the entry named: ``PMIX_PROCDIR``, ``PMIX_WDIR``,
+``PMIX_APP_ARGV``, ``PMIX_APPNUM``, ``PMIX_LOCAL_RANK``,
+``PMIX_NODE_RANK``, and the per-app ``PMIX_APP_SIZE`` / ``PMIX_APPLDR``
+lists.  A value that cannot be fetched, or cannot be read as the type it
+needs, leaves its envar unset and the function keeps going.
+
+**The same defect was one function up, and worse.**  ``register_nspace``
+returned the fetch error for a missing ``PMIX_UNIV_SIZE``,
+``PMIX_JOB_SIZE`` or ``PMIX_JOB_NUM_APPS``, and that error fails
+``PMIx_server_register_nspace`` itself — the host cannot register the
+namespace at all, never mind fork a child into it.  It fires in the
+tree's own tests: ``PMIX_UNIV_SIZE`` is a *session*-realm key, so a host
+that registers a job without naming a session has no universe size to
+find, and ``test/simple``'s ``simptest --model`` was logging
+``PMIX_ERR_NOT_FOUND`` out of ``register_nspace`` and then hanging with
+``PMIX_ERR_UNREACH``.  It now runs to "Test finished OK!".  The sizes
+already had a "not known" state — ``UINT32_MAX``, which ``setup_fork``
+declines to pass on — so the fix was to leave the field in it.  An
+unknown app count now also stops before the per-app lists instead of
+looping ``UINT32_MAX`` times.
+
+Two details of the shape are worth keeping.  A **type mismatch is
+treated as an absence** rather than as an error: the host stored
+something under a key this module can only read one way, and the choice
+is between leaving the variable unset and setting it from whatever else
+was in the union — never between failing and not failing.  And the
+per-app lists are **all-or-nothing**: ``setenv_per_app`` joins one value
+per app into a single space-separated string, which means nothing if a
+value is missing from the middle of it, so a value it cannot get drops
+the whole variable rather than emitting a short list.
+
+What still comes back out of ``setup_fork`` is the module's own failure
+— out of memory, or an environment it could not write.  That is now all
+a non-``PMIX_SUCCESS`` return from ``setenv_string`` means, which is why
+the ``PMIX_ERROR_LOG`` at its call sites is still right.
+
+Covered by ``test/unit/pmdl_envars``, which registers a third namespace
+carrying the ompi personality and the job size and *nothing else*, then
+forks a rank out of it.  Verified by breaking each half separately: with
+the ``register_nspace`` change reverted the registration fails, and with
+only ``setenv_string``'s tolerance reverted the fork does.  The case is
+placed ahead of the MPMD one deliberately — a session-realm value
+registered by an earlier job in the same process is still there for a
+later one, so a job registered after it *does* find a universe size.
+
 Review log
 ----------
 

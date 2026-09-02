@@ -52,7 +52,7 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 10**
+**Deferred work — 9**
 
 * :ref:`todo-resolve-peers-wildcard`
 * :ref:`todo-get-pointer-values`
@@ -61,7 +61,6 @@ At a glance
 * :ref:`todo-global-syslog`
 * :ref:`todo-compress-length-prefix`
 * :ref:`todo-pcompress-init-fatal`
-* :ref:`todo-pmdl-app-values`
 * :ref:`todo-fabric-inventory`
 * :ref:`todo-server-genvars`
 
@@ -362,27 +361,6 @@ one of the five leaves the slot ``NULL``.  It is recorded because the
 first module that does implement it will inherit the inconsistency, and
 the fix — degrade to the base default rather than fail — should be made
 then, with a module to test it against.
-
-.. _todo-pmdl-app-values:
-
-An absent app-level value fails a child's launch
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found in the ``src/mca/pmdl`` review (2026-08-19), and narrowed rather
-than closed.  ``pmdl/ompi``'s ``setup_fork`` treats a missing
-``PMIX_PROCDIR``, ``PMIX_WDIR`` or ``PMIX_APP_ARGV`` as an error, and a
-``setup_fork`` error fails ``PMIx_server_setup_fork`` and with it the
-child's launch — so a host that registers a namespace without one of them
-cannot start the job at all, however little the resulting envar matters
-(``OMPI_MCA_initial_wdir`` is informational).
-
-The review closed the case that was unambiguously wrong —
-``PMIX_REINCARNATION``, which nothing in PMIx sets and no host is obliged
-to provide, so its absence now means "zero restarts" rather than a failed
-launch.  The three above are ordinary registration data that every host
-in practice provides, so making them optional would be a behavior change
-with nothing to test it against; it needs a decision about which of them
-Open MPI genuinely requires.
 
 .. _todo-fabric-inventory:
 
