@@ -635,9 +635,10 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_sr_t,
 
 static void pccon(pmix_pending_connection_t *p)
 {
-    /* PMIX_NEW does not zero the object, so every field has to be set
-     * here - including the ones the listener fills in immediately, since
-     * an error path may look at them before it gets that far */
+    /* every field is set here - including the ones the listener fills in
+     * immediately, since an error path may look at them before it gets
+     * that far, and several of these want something other than the zero
+     * PMIX_NEW would leave */
     p->protocol = PMIX_PROTOCOL_UNDEF;
     p->sd = -1;
     p->status = PMIX_SUCCESS;

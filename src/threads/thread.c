@@ -53,9 +53,9 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_thread_t, pmix_object_t, pmix_thread_constr
 static void pmix_thread_construct(pmix_thread_t *t)
 {
     t->t_run = NULL;
-    /* PMIX_NEW does not zero the object, so every field has to be set
-     * here or it carries whatever was in the heap. t_arg is handed to
-     * the thread body as its only argument */
+    /* every field is set here rather than left to the zeroing PMIX_NEW
+     * does: t_arg is handed to the thread body as its only argument, and
+     * what it starts as should be stated where it is read from */
     t->t_arg = NULL;
     t->t_handle = (pthread_t) -1;
 }

@@ -95,9 +95,12 @@ static void thread_lifecycle(void)
 
     PMIX_CONSTRUCT(&t, pmix_thread_t);
 
-    /* PMIX_NEW/PMIX_CONSTRUCT do not zero the object - the constructor
-     * has to establish every field, or the thread body is handed heap
-     * garbage as its argument */
+    /* The constructor has to establish every field. PMIX_NEW and
+     * PMIX_CONSTRUCT do zero the object first, which means these two
+     * assertions would now hold even against a constructor that skipped
+     * them - so read a pass here as "the field is NULL", which is what
+     * the thread body needs, rather than as proof the constructor set
+     * it. */
     report("construct leaves t_run NULL", NULL == t.t_run);
     report("construct leaves t_arg NULL", NULL == t.t_arg);
 

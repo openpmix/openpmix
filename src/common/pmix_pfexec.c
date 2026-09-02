@@ -1538,9 +1538,9 @@ static void chcon(pmix_pfexec_child_t *p)
     p->pid = 0;
     p->completed = false;
     p->onlist = false;
-    /* objects are malloc'd, not calloc'd - a child that completes
-     * through a path that never records an exit status must report
-     * zero, not whatever was on the heap */
+    /* a child that completes through a path which never records an exit
+     * status must report zero, and saying so here is what makes that a
+     * decision rather than a property of the allocator */
     p->exitcode = 0;
     p->keepalive[0] = -1;
     p->keepalive[1] = -1;

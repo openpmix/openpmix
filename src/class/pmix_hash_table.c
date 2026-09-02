@@ -81,9 +81,12 @@ static void pmix_hash_table_construct(pmix_hash_table_t *ht)
      * prints it as "(NULL == table->ht_label) ? "UNKNOWN" : table->ht_label"
      * at several verbosity-gated sites. Leaving it out of the constructor
      * meant every table that does not set one carried whatever malloc()
-     * returned -- PMIX_NEW does not zero its allocation -- so that NULL test
-     * passed on garbage and the %s dereferenced a wild pointer. gds/shmem3
-     * and the mca base tables are all built this way. */
+     * returned -- back when PMIX_NEW did not zero its allocation -- so
+     * that NULL test passed on garbage and the %s dereferenced a wild
+     * pointer. gds/shmem3 and the mca base tables are all built this way.
+     * Zeroing would answer this particular case now, since NULL is what
+     * the test looks for; the assignment stays because that is a
+     * coincidence and not a design. */
     ht->ht_label = NULL;
     ht->ht_table = NULL;
     ht->ht_capacity = ht->ht_size = ht->ht_growth_trigger = 0;
