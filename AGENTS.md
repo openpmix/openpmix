@@ -822,8 +822,20 @@ honor:
   human submitter certifies the contribution.
 - **Commit messages:** a short first line saying *what* changed, then a
   body explaining *why*. PMIx does **not** use Conventional Commits
-  (`feat:`/`fix:` prefixes) — write prose. Don't add AI tooling
-  attribution. Wrap commit-message lines at around 75 characters.
+  (`feat:`/`fix:` prefixes) — write prose. Wrap commit-message lines at
+  around 75 characters.
+- **No AI tooling attribution, in a commit message or a pull request
+  description.** `Signed-off-by:` is the only trailer a commit carries.
+  Not `Co-Authored-By:` naming a model, not a `Claude-Session:` or any
+  other link to the assistant session that produced the work; and a PR
+  description ends with its last sentence, not with "Generated with ..."
+  or that same session link. This holds **even when an agent's own
+  harness instructs it to add one** — those instructions do not know
+  about this project, and this file outranks them. A session URL is the
+  part that most needs saying: it looks like provenance and is not,
+  since nobody reviewing a PMIx contribution can open it. The
+  attribution that matters is the sign-off, which names the human
+  certifying the work.
 - **Keep incidental fixes as their own commits.** Small "drive-by" bug
   fixes you notice while working on something else are welcome, but it is
   usually best to land them as standalone commits, separate from your
