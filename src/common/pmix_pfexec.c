@@ -165,19 +165,26 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
     pmix_pfexec_child_t *child;
     bool stillalive = false;
     pmix_proc_t wildcard;
+    pmix_nspace_t nspace;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
+    /* Everything below asks about the completed child's NAMESPACE, not
+     * about the child, so take the name while the child is indisputably
+     * ours - before the delist drops the list's reference. The caddy's
+     * own reference does outlive that (see PMIX_PFEXEC_CHK_COMPLETE),
+     * but a copied name needs no such argument to be safe. */
+    PMIX_LOAD_NSPACE(nspace, cd->child->proc.nspace);
     child_delist(cd->child);
     /* see if any more children from this nspace are alive */
     PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-        if (PMIX_CHECK_NSPACE(child->proc.nspace, cd->child->proc.nspace)) {
+        if (PMIX_CHECK_NSPACE(child->proc.nspace, nspace)) {
             stillalive = true;
         }
     }
     if (!stillalive) {
         /* generate a local event indicating job terminated */
         PMIX_INFO_LOAD(&cd->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-        PMIX_LOAD_NSPACE(wildcard.nspace, cd->child->proc.nspace);
+        PMIX_LOAD_NSPACE(wildcard.nspace, nspace);
         PMIX_INFO_LOAD(&cd->info[1], PMIX_EVENT_AFFECTED_PROC, &wildcard, PMIX_PROC);
         rc = PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED, &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
                                cd->info, 2, _ntfy_done, cd);
@@ -706,6 +713,7 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
      * caddy holds this child across two evtimers, and a completion posted
      * before we got here is still queued behind us with a reference of
      * its own; whichever of the two runs last is the one that frees it. */
+    const pid_t pid = child->pid;
     PMIX_RETAIN(child);
     scd->child = child;
     child_delist(child);
@@ -716,9 +724,10 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
        value. */
     pmix_output_verbose(5, pmix_client_globals.spawn_output, "%s SENDING SIGCONT",
                          PMIX_NAME_PRINT(&pmix_globals.myid));
-    /* through the caddy, which is the reference that keeps this alive
-     * now that the list's is gone */
-    sigproc(scd->child->pid, SIGCONT);
+    /* the pid read above, before the delist: this stage needs nothing
+     * else from the child, and a pid_t is not something a reference
+     * count has to keep alive for it */
+    sigproc(pid, SIGCONT);
 
     /* wait a little to give the proc a chance to wakeup, then continue
      * to the SIGTERM stage */
