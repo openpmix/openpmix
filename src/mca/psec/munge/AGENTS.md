@@ -22,7 +22,7 @@ specific to `munge`. It uses the **single-shot credential** model
 
 | File | Contents |
 |------|----------|
-| `configure.m4` | `OAC_CHECK_PACKAGE` gate — builds the component only if `munge.h` / `libmunge` are found. |
+| `configure.m4` | opt-in gate — builds the component only when `--with-munge` was given *and* `munge.h` / `libmunge` are found. |
 | `psec_munge.h` | Declares the component and module symbols. |
 | `psec_munge_component.c` | Component struct + `component_query` (priority **80**). |
 | `psec_munge.c` | The module: `init`/`finalize` + `create_cred` / `validate_cred`, wrapping `libmunge`. |
@@ -31,12 +31,17 @@ specific to `munge`. It uses the **single-shot credential** model
 
 Two gates must both pass:
 
-1. **Build-time.** [`configure.m4`](configure.m4) runs
-   `OAC_CHECK_PACKAGE([munge], …, [munge.h], [munge], [munge_encode], …)`.
-   The component is compiled only if MUNGE is present; if `--with-munge`
-   was given and MUNGE is *not* found, configure errors out rather than
-   silently skipping. So on a host without MUNGE, `munge` is simply not in
-   the tree's `static-components.h`.
+1. **Build-time.** MUNGE is **opt-in**: [`configure.m4`](configure.m4)
+   runs `OAC_CHECK_PACKAGE([munge], …, [munge.h], [munge],
+   [munge_encode], …)` **only** when `--with-munge[=DIR]` (or
+   `--with-munge-libdir=DIR`) was given, and if the check then fails,
+   configure errors out rather than silently skipping. Merely having
+   MUNGE installed is not enough — `OAC_CHECK_PACKAGE` ends its search in
+   pkg-config and the default compiler paths, so calling it
+   unconditionally would build this component on every host that happens
+   to have libmunge, which is exactly the bug that guard prevents. So
+   unless MUNGE was asked for, `munge` is simply not in the tree's
+   `static-components.h`.
 2. **Run-time.** Even when built, `munge_init` calls `munge_encode` to
    obtain a credential as a liveness check on the local `munged` daemon.
    If that fails it returns `PMIX_ERR_SERVER_NOT_AVAIL`, and

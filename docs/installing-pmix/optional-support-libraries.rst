@@ -6,7 +6,8 @@ Optional support libraries
 Beyond the :ref:`required support libraries
 <label-install-required-support-libraries>`, PMIx will use a number of
 further libraries **if it finds them at configure time**, and will build
-without them otherwise.
+without them otherwise. MUNGE is the one exception: it is searched for
+only when ``--with-munge`` asks for it (see below).
 
 None of these is needed to produce a working PMIx. Each one either
 enables a capability that some sites want and others do not, or makes
@@ -111,8 +112,10 @@ costs you that capability and nothing else.
    * - `MUNGE <https://dun.github.io/munge/>`_
      - ``--with-munge``
      - Builds the ``psec/munge`` component, which authenticates PMIx
-       connections using MUNGE credentials. Without it, the other
-       ``psec`` components (``native``, ``none``) remain available.
+       connections using MUNGE credentials. **Opt-in only:** unlike the
+       rest of this table, an installed MUNGE is not detected on its own
+       |mdash| the option must be given. Without it, the other ``psec``
+       components (``native``, ``none``) remain available.
    * - `libesmtp <https://libesmtp.github.io/>`_
      - ``--with-smtp``
      - Builds the ``plog/smtp`` component, which can emit log messages by
