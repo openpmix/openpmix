@@ -831,6 +831,32 @@ void pmix_server_peer_finalized(pmix_peer_t *peer)
         --info->proc_cnt;
     }
 
+    /* Is this object still the occupant of its own clients slot?
+     *
+     * If it is not, it has already been retired - the tombstone reclaim in
+     * process_tool_request/the connection handler nulls the slot, drops the
+     * finalized count and releases a finalized peer whose socket-close has
+     * not been processed yet - and the reference the array held is already
+     * gone.  Everything below would then be done a second time, on state
+     * that now belongs to somebody else: pmix_pointer_array_add hands a
+     * freed slot straight to the next connection, so peer->index can name
+     * the very peer that replaced this one.  Repeating the work would null
+     * that live peer out of the array, set the rank's peerid to -1 while it
+     * is still connected, decrement nfinalized twice, and release a
+     * reference this object no longer owns - which destroys it while its
+     * in-flight recv_msg still holds one, and the message's destructor then
+     * releases freed memory.
+     *
+     * Comparing the slot's OCCUPANT is what tells the two cases apart.  The
+     * index cannot: peers are constructed with index 0, a freed slot is
+     * reused, and info->peerid is compared against that same index just
+     * below - so an index test aliases a different object exactly when it
+     * matters most. */
+    if (peer != (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
+                                                            peer->index)) {
+        return;
+    }
+
     if (NULL != info && info->peerid == peer->index) {
         /* This peer is still the rank's referenced peer. How we retire it
          * depends on whether it is an application client or a tool. */
@@ -878,9 +904,10 @@ void pmix_server_peer_finalized(pmix_peer_t *peer)
      * over - a fork/exec'd clone still running, or a fast re-init that
      * reconnected before this socket-close was processed. In the stranded
      * case info->peerid no longer names this object, so nothing references
-     * it as the rank's peer. Either way it is safe to free it now: we null
-     * only its OWN clients slot (never the live referenced one), drop the
-     * finalized count it was still holding, and release it. */
+     * it as the rank's peer. Either way this object still occupies its own
+     * slot (the check above established that) and so still holds the
+     * reference the array took, which is the one dropped here: we null that
+     * slot, drop the finalized count it was still holding, and release it. */
     if (NULL != nptr && 0 < nptr->nfinalized) {
         --nptr->nfinalized;
     }
