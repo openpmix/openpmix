@@ -110,6 +110,8 @@ static void lost_my_server(void)
 
 static void lost_connection(pmix_peer_t *peer)
 {
+    pmix_ptl_recv_t *msg;
+
     /* stop all events */
     if (peer->recv_ev_active) {
         pmix_event_del(&peer->recv_event);
@@ -119,10 +121,27 @@ static void lost_connection(pmix_peer_t *peer)
         pmix_event_del(&peer->send_event);
         peer->send_ev_active = false;
     }
-    if (NULL != peer->recv_msg) {
-        PMIX_RELEASE(peer->recv_msg);
-        peer->recv_msg = NULL;
-    }
+    /* Detach the message this peer was part-way through reading, but do
+     * NOT release it here.
+     *
+     * That message holds a reference on this peer, taken in
+     * pmix_ptl_base_recv_handler when the message was created, and it can
+     * be the last one - a peer whose only remaining holder is the partial
+     * message it was reading is exactly the peer that turns up in a
+     * teardown.  Releasing it at this point would run rdes, drop that
+     * reference, and free the peer; the assignment that used to follow was
+     * then a write into freed memory, and so was every use of peer in the
+     * rest of this function.
+     *
+     * Holding a reference of our own instead does not work, because the
+     * tail of this function hands the peer to pmix_server_peer_finalized(),
+     * which is an ownership transfer and not a balanced release - the
+     * comment there says the call must be the last use of the object.  So
+     * let the message's reference do exactly what a reference is for: keep
+     * the peer alive until we are finished with it, and release it at the
+     * very end. */
+    msg = peer->recv_msg;
+    peer->recv_msg = NULL;
     CLOSE_THE_SOCKET(peer->sd);
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
 
@@ -241,6 +260,14 @@ static void lost_connection(pmix_peer_t *peer)
                                      PMIX_RANGE_PROC_LOCAL, _notify_complete,
                                      &report_now);
         }
+    }
+
+    /* Now let the in-flight message go.  This is the last statement that can
+     * touch the peer: the release runs rdes, which drops the message's
+     * reference, and where that was the last one the peer is freed right
+     * here - which is why nothing below may use it. */
+    if (NULL != msg) {
+        PMIX_RELEASE(msg);
     }
 }
 
@@ -683,22 +710,17 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
     return;
 
 err_close:
-    /* stop all events */
-    if (peer->recv_ev_active) {
-        pmix_event_del(&peer->recv_event);
-        peer->recv_ev_active = false;
-    }
-    if (peer->send_ev_active) {
-        pmix_event_del(&peer->send_event);
-        peer->send_ev_active = false;
-    }
-    if (NULL != peer->recv_msg) {
-        PMIX_RELEASE(peer->recv_msg);
-        peer->recv_msg = NULL;
-    }
+    /* Everything this used to do before calling lost_connection - stop the
+     * two events, release peer->recv_msg - lost_connection does itself, on
+     * exactly the same object, as its first three statements.  Doing it
+     * here as well was not merely redundant: releasing peer->recv_msg drops
+     * the reference it holds on this peer (taken above, when the message
+     * was created), so this teardown could free the peer and then hand the
+     * dangling pointer to lost_connection.  Just call it. */
     lost_connection(peer);
     /* ensure we post the modified peer object before another thread
-     * picks it back up */
+     * picks it back up.  lost_connection may have freed the peer, which is
+     * why this is a write barrier and not a dereference. */
     PMIX_POST_OBJECT(peer);
 }
 
