@@ -343,10 +343,12 @@ bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
         if (0 != nbytes && 0 != memcmp(a6_1, a6_2, nbytes)) {
             return false;
         }
-        if (0 != nbits) {
-            /* nbits is 1..7 here, so neither shift is undefined, and
-             * nbytes is at most 15 - a prefix that ends mid-byte cannot
-             * be 128 */
+        /* nbits is 1..7 here, so neither shift is undefined, and nbytes
+         * is at most 15 - a prefix that ends mid-byte cannot be 128.
+         * The index is bounded in the test rather than only in this
+         * comment: the two are correlated through prefixlen, which no
+         * reader of this line alone - human or analyzer - can see. */
+        if (0 != nbits && nbytes < sizeof(inaddr1.sin6_addr)) {
             uint8_t mask = (uint8_t) (0xFFU << (8 - nbits));
             if ((a6_1[nbytes] & mask) != (a6_2[nbytes] & mask)) {
                 return false;
