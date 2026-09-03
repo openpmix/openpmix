@@ -625,27 +625,6 @@ job_construct(
     job->conni = NULL;
 }
 
-static pmix_tma_t *
-get_tma_by_shmem3_id(
-    pmix_gds_shmem3_job_t *job,
-    pmix_gds_shmem3_job_shmem3_id_t shmem3_id
-) {
-    switch (shmem3_id) {
-        case PMIX_GDS_SHMEM3_JOB_ID:
-            return &job->smdata->tma;
-        case PMIX_GDS_SHMEM3_MODEX_ID:
-            return &job->smmodex->tma;
-        case PMIX_GDS_SHMEM3_SESSION_ID:
-            return &job->session->smdata->tma;
-        case PMIX_GDS_SHMEM3_INVALID_ID:
-        default:
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            // This is an internal error.
-            abort();
-            return NULL;
-    }
-}
-
 static const char *
 get_shmem3_id_name(
     pmix_gds_shmem3_job_shmem3_id_t shmem3_id
@@ -688,34 +667,10 @@ emit_segment_usage_stats(
 }
 
 static void
-emit_shmem3_usage_stats(
-    pmix_gds_shmem3_job_t *job,
-    pmix_gds_shmem3_job_shmem3_id_t shmem3_id
-) {
-    pmix_status_t rc = PMIX_SUCCESS;
-
-    pmix_shmem_t *shmem3;
-    rc = pmix_gds_shmem3_get_job_shmem3_by_id(
-        job, shmem3_id, &shmem3
-    );
-    if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
-        PMIX_ERROR_LOG(rc);
-        return;
-    }
-
-    emit_segment_usage_stats(
-        shmem3,
-        get_tma_by_shmem3_id(job, shmem3_id),
-        get_shmem3_id_name(shmem3_id)
-    );
-}
-
-static void
 job_destruct(
     pmix_gds_shmem3_job_t *job
 ) {
     PMIX_GDS_SHMEM3_VVOUT_HERE();
-    pmix_status_t rc = PMIX_SUCCESS;
 
     if (job->nspace_id) {
         free(job->nspace_id);
@@ -729,7 +684,7 @@ job_destruct(
     }
 
     /* Retired modex generations. Each holds its own segment handle, and
-     * the class destructor gives it back the same way the loop below
+     * the class destructor gives it back the same way the block below
      * does for the current one. */
     pmix_gds_shmem3_chain_destruct(&job->job_chain);
     pmix_gds_shmem3_chain_destruct(&job->modex_chain);
@@ -772,39 +727,27 @@ job_destruct(
     }
 
     /* Neither the job's nor the session's published segments are in the
-     * loop below: both are held by chains, which gave them back above.
+     * block below: both are held by chains, which gave them back above.
      * What is left is the modex BUILD slot - a generation that was being
      * assembled when this job went away and was never published. */
-    static const pmix_gds_shmem3_job_shmem3_id_t shmem3_ids[] = {
-        PMIX_GDS_SHMEM3_MODEX_ID,
-        PMIX_GDS_SHMEM3_INVALID_ID
-    };
-    for (int i = 0; shmem3_ids[i] != PMIX_GDS_SHMEM3_INVALID_ID; ++i) {
-        const pmix_gds_shmem3_job_shmem3_id_t sid = shmem3_ids[i];
-
-        pmix_shmem_t *shmem3;
-        rc = pmix_gds_shmem3_get_job_shmem3_by_id(job, sid, &shmem3);
-        if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
-            /* Neither of the two ids above can fail this lookup - both
-             * handles are allocated by job_construct(). Checked anyway,
-             * and skipped rather than returned on, because abandoning
-             * the loop would also abandon the arena reservation and the
-             * session reference given back below. */
-            PMIX_ERROR_LOG(rc);
-            continue;
-        }
-        if (pmix_gds_shmem3_has_status(job, sid, PMIX_GDS_SHMEM3_MINE)) {
+    if (NULL != job->modex_shmem3) {
+        if (NULL != job->smmodex &&
+            (job->modex_shmem3_status & PMIX_GDS_SHMEM3_MINE)) {
             // Emit usage status before we potentially destroy the segment.
-            emit_shmem3_usage_stats(job, sid);
+            emit_segment_usage_stats(
+                job->modex_shmem3, &job->smmodex->tma,
+                get_shmem3_id_name(PMIX_GDS_SHMEM3_MODEX_ID)
+            );
             // Points to a pmix_gds_shmem3_alloc_ctx_t.
-            PMIX_RELEASE(get_tma_by_shmem3_id(job, sid)->data_context);
+            PMIX_RELEASE(job->smmodex->tma.data_context);
         }
-        // Releases memory for the structures located in shared-memory. This
-        // will also unmap in case we need to later remap something in the
-        // address space covered by this.
-        PMIX_RELEASE(shmem3);
-        // Invalidate the shmem3 flags.
-        pmix_gds_shmem3_clearall_status(job, sid);
+        /* Releases memory for the structures located in shared-memory.
+         * This will also unmap in case we need to later remap something
+         * in the address space covered by this. */
+        PMIX_RELEASE(job->modex_shmem3);
+        job->modex_shmem3 = NULL;
+        job->smmodex = NULL;
+        job->modex_shmem3_status = 0;
     }
 
     /* The arena goes last: releasing it unmaps everything inside it, so
@@ -1774,10 +1717,9 @@ init_client_side_sm_data(
     if (PMIX_GDS_SHMEM3_SESSION_ID == shmem3_id) {
         return pmix_gds_shmem3_publish_session_segment(job->session);
     }
-    if (PMIX_GDS_SHMEM3_JOB_ID == shmem3_id) {
-        return pmix_gds_shmem3_publish_job_segment(job);
-    }
-    return PMIX_SUCCESS;
+    /* Only the job segment is left: the switch above abort()s on any
+     * other id, so there is no fourth case to fall through to. */
+    return pmix_gds_shmem3_publish_job_segment(job);
 }
 
 static pmix_status_t
@@ -2818,9 +2760,14 @@ pack_shmem3_connection_info(
          * tracker this segment belongs to, which a client cannot work out
          * from the segment because the answer decides whether to map it.
          * A job that named no session sends nothing, and its receiver
-         * keeps the private tracker it was constructed with. */
+         * keeps the private tracker it was constructed with.
+         *
+         * A session blob is never packed for a job without a session
+         * tracker: pack_shmem3_seg_blob() returns before describing one,
+         * and the by-id lookup above refuses the segment - so the id is
+         * safe to read here. */
         if (PMIX_GDS_SHMEM3_SESSION_ID != shmem3_id ||
-            NULL == job->session || UINT32_MAX == job->session->id) {
+            UINT32_MAX == job->session->id) {
             break;
         }
         PMIX_DESTRUCT(&kv);
