@@ -59,8 +59,12 @@ static void regcb(pmix_status_t status, size_t refid, void *cbdata)
 {
     mylock_t *lock = (mylock_t *) cbdata;
 
+    /* the registration id is what a tool would keep in order to
+     * PMIx_IOF_deregister later; this one watches until it exits, so it
+     * has no use for the id and does not record it */
+    EXAMPLES_HIDE_UNUSED_PARAMS(refid);
+
     lock->status = status;
-    lock->count = (int) refid;
     DEBUG_WAKEUP_THREAD(lock);
 }
 
