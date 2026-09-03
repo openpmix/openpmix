@@ -6,7 +6,9 @@ CLI Options for optional support libraries
 The following ``configure`` command line options are for PMIx's
 :ref:`optional support libraries
 <label-install-optional-support-libraries>` |mdash| libraries PMIx will
-use if it finds them, and build without if it does not.
+use if it finds them, and build without if it does not. The one
+exception is ``--with-munge``, which is opt-in only: nothing looks for
+MUNGE unless that option is given.
 
 Compression
 -----------
@@ -46,6 +48,14 @@ Other capabilities
   builds the ``psec/munge`` component, which authenticates PMIx
   connections using MUNGE credentials.
 
+  Unlike the other options on this page, MUNGE is **opt-in only**:
+  ``configure`` does not go looking for it, so a host that has MUNGE
+  installed builds no ``psec/munge`` component unless this option is
+  given. That is deliberate |mdash| ``psec/munge`` outranks the default
+  ``psec/native`` mechanism, so building it changes how every PMIx
+  connection on that installation is authenticated. Ask for it
+  explicitly, or do not get it.
+
 * ``--with-smtp[=VALUE]``:
 
   Specifies where to find `libesmtp
@@ -73,8 +83,10 @@ Permitted values, and one important behavior
    that you want it |mdash| so if it cannot find a usable copy it will
    **abort** rather than quietly build without it. Omit the option
    entirely to get a best-effort search that silently continues on
-   failure. This is why a build that "should have had compression" and
-   does not is almost always one where the option was left off.
+   failure |mdash| except for ``--with-munge``, which is opt-in only and
+   searches for nothing when it is omitted. This is why a build that
+   "should have had compression" and does not is almost always one where
+   the option was left off.
 
 * ``--with-zstd-libdir=LIBDIR``:
 * ``--with-zlibng-libdir=LIBDIR``:

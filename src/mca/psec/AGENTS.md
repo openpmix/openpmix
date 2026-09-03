@@ -337,7 +337,7 @@ Default priorities come from each component's `component_query`:
 | Component | Priority | Model | Active when |
 |-----------|----------|-------|-------------|
 | `dummy_handshake` | 100 | handshake | built only with `--enable-dummy-handshake`; always active when built |
-| `munge` | 80 | single-shot | built only if libmunge is found; `init` succeeds only if the `munged` daemon issues a credential |
+| `munge` | 80 | single-shot | built only if `--with-munge` was given and libmunge is found; `init` succeeds only if the `munged` daemon issues a credential |
 | `native` | 10 | single-shot | always (no `configure.m4`, no gate) |
 | `none` | 0 | single-shot (no-op) | **only** if the `psec` MCA value explicitly names `none` (its `component_open` checks) |
 
@@ -420,10 +420,12 @@ src/mca/psec/
 (which in a stock build lists exactly `native` and `none`). The other two
 are conditional:
 
-- **`munge`** ships a [`configure.m4`](munge/configure.m4) that runs
-  `OAC_CHECK_PACKAGE` for `munge.h` / `libmunge`. It is built only if
-  MUNGE is present (or errors out if `--with-munge` was requested and not
-  found). Its source can be *compile-tested* without the real library via
+- **`munge`** ships a [`configure.m4`](munge/configure.m4) that is
+  **opt-in**: it runs `OAC_CHECK_PACKAGE` for `munge.h` / `libmunge`
+  only when `--with-munge[=DIR]` (or `--with-munge-libdir=DIR`) was
+  given, and errors out if that check then fails. A host with libmunge
+  installed but no `--with-munge` builds no `munge` component. Its source
+  can be *compile-tested* without the real library via
   the `#if PMIX_TESTBUILD` stub block at the top of `psec_munge.c`
   (activated by `--enable-test-build`) — that block is not used in real
   builds.
