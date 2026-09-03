@@ -1881,6 +1881,19 @@ static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, pbkt, &kv, &cnt, PMIX_KVAL);
 
     while (PMIX_SUCCESS == rc) {
+        /* Every path below reads through this value - the type test
+         * that follows, both stores, and pmix_hash_store() itself - so
+         * the check they all need is made here, once, rather than on
+         * whichever one happens to carry it. A successful unpack always
+         * leaves a value behind, allocating it before filling it in, so
+         * a NULL is not a contribution that named no value: it is an
+         * unpacker that answered success without producing one. */
+        if (NULL == kv.value) {
+            rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&kv);
+            return rc;
+        }
         /* An entry whose value is PMIX_UNDEF is not data - it is the
          * contributing process saying the key is gone. The modex is
          * additive, so a contribution that merely stops carrying a key
@@ -1888,7 +1901,7 @@ static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
          * is where it is acted on. We can take the key straight out,
          * unlike a datastore whose copy is in a segment it cannot
          * rewrite. */
-        if (NULL != kv.value && PMIX_UNDEF == kv.value->type) {
+        if (PMIX_UNDEF == kv.value->type) {
             pmix_rank_t drank = (PMIX_RANK_UNDEF == proc->rank) ? 0 : proc->rank;
             rc = pmix_hash_remove_data(&trk->remote, drank, kv.key, NULL);
             if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
