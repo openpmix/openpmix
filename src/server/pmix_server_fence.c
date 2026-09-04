@@ -947,7 +947,18 @@ pmix_status_t PMIx_server_collect_job_info(pmix_proc_t *procs, size_t nprocs,
  *
  * A peer too old to know the tag never posted a receive for it, so it
  * cannot be reached this way; PMIx_Put refuses a delete against such a
- * server up front, which is where the caller learns about it. */
+ * server up front, which is where the caller learns about it.
+ *
+ * Note what the version test below is and is not asserting. It is a
+ * proxy for "this peer posted the receive", and it is only a sound one
+ * because EVERY role that can appear in this array posts it - client and
+ * tool alike, through pmix_client_post_data_recvs(). It was not always
+ * true: a tool posted the IOF receives and no others, so it was sent a
+ * notice it could not hear, went on answering with the key it had
+ * cached, and - if it served clients of its own - fed the message to its
+ * own switchyard. Adding a role here would not have fixed that; posting
+ * the receive did. The backstop for the next role that forgets is the
+ * reserved-tag screen in pmix_server_message_handler(). */
 void pmix_server_notify_deleted(const pmix_proc_t *proc,
                                 pmix_scope_t scope,
                                 const char *key,
@@ -1006,6 +1017,14 @@ void pmix_server_notify_deleted(const pmix_proc_t *proc,
  * One-way, like the deletion notice above, and for the same reason:
  * there is nothing for the client to answer, and a client that has gone
  * away has no copy left to correct.
+ *
+ * The version test carries the same meaning as the one above, and rests
+ * on the same thing: every role in this array posts the receive. Note
+ * that the namespace filter is no help here - both callers that matter
+ * pass NULL for it, so a tool is a candidate for this message exactly as
+ * a client is. It was spared only by its gds module having nothing to
+ * pack for it, which is a fact about the tool's state rather than a
+ * screen.
  */
 void pmix_server_notify_gds_update(const char *nspace)
 {

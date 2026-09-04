@@ -2564,9 +2564,29 @@ is on the progress thread rather than the caller's.
 from the progress thread must be safe against `PMIx_Init` still running
 on the application's. Today the deletion handler is the only such writer;
 if you add a second, it needs the same treatment, and the place to add it
-is `_init_complete()`'s drain. `PMIx_Finalize` gives the list back after
+is `drain_and_mark()`. `PMIx_Finalize` gives the list back after
 `PMIx_Progress_thread_stop()`, because it clears `initialized` early and
 a deletion arriving after that is held with nothing left to apply it to.
+
+**All of this belongs to the tool role too, and is shared with it.**
+`pmix_server_notify_deleted()` walks `pmix_server_globals.clients`, and
+an attached tool is in that array like any client; a tool caches what it
+reads for the same reason a client does. So the three pieces are exported
+rather than file-static — `pmix_client_post_data_recvs()` (both receives
+plus the held-delete list), `pmix_client_mark_initialized()`, and
+`pmix_client_release_held_deletes()` — and `PMIx_tool_init` /
+`PMIx_tool_finalize` call the same three, in the same order.
+`PMIx_tool_init` does at least as much datastore work on the caller's
+thread after its connection is live as `PMIx_Init` does, so it needs the
+drain for exactly the same reason. See `test/unit/tool_delete.c`.
+
+`pmix_client_mark_initialized()` runs the drain **inline** under
+`PMIX_EXTERNAL_PROGRESS` rather than threadshifting. There is no engine
+spinning the event base in that mode — the host steps it through
+`PMIx_Progress()`, and it cannot be doing so while it is still inside our
+init — so the shift would never be dispatched and the wait would never
+return. With nothing dispatching the base there is also no second thread
+for the drain to race, which is the only thing the shift was buying.
 
 ### Two return codes from `PMIx_Init` that mean opposite things
 

@@ -708,6 +708,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     rcv->tag = PMIX_PTL_TAG_IOF_CONTROL;
     rcv->cbfunc = pmix_iof_flow_control_handler;
     pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
+    /* and the two "data you are holding has changed" recvs. A tool that
+     * attaches to a server sits in that server's client array and is
+     * sent these exactly as a client is, and it caches what it reads
+     * exactly as a client does - so it has to be able to hear them. See
+     * pmix_client_post_data_recvs(). */
+    pmix_client_post_data_recvs();
     /* default tools to outputting their IOF */
     pmix_globals.iof_flags.local_output = outputio;
 
@@ -1268,8 +1274,13 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
      * is a no-op for a tool that never created a listener. */
     pmix_ptl_base_start_listening();
 
-    // mark ourselves as initialized
-    pmix_atomic_set_bool(&pmix_globals.initialized);
+    /* mark ourselves as initialized - on the progress thread, which is
+     * also where any deletions our server announced while we were
+     * working have been waiting. This function does a great deal of
+     * datastore work on the caller's thread after the connection is
+     * live, so a deletion arriving in that window is held rather than
+     * applied; this is what drains it. */
+    pmix_client_mark_initialized();
 
     return rc;
 }
@@ -1812,6 +1823,12 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
+    /* A deletion that arrived after we cleared the initialized flag was
+     * held with nothing left to apply it to. Given back here, after the
+     * progress thread has stopped, and matched by the construct in
+     * pmix_client_post_data_recvs() on every init - which is what makes
+     * a destruct per cycle safe. */
+    pmix_client_release_held_deletes();
     /* drop the delta-commit record, and leave the flag set so a second
      * PMIx_tool_init in this process starts cumulative (matches the
      * client finalize) */

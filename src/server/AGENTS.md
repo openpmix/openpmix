@@ -1334,6 +1334,22 @@ Four things about it are deliberate:
   to its own store before sending. Not restricted to the affected
   namespace: a process may have cached data belonging to any namespace it
   asked about, and one that never held the key removes nothing.
+- **"Client" here means every peer in the array, tools included.** The
+  version test is a proxy for "this peer posted the receive", and it is
+  sound only because every role that can appear in
+  `pmix_server_globals.clients` posts it. That was not true at first:
+  `PMIx_tool_init` posted the IOF receives and no others, so an attached
+  tool was sent a notice it could not hear, went on answering with the
+  key it had cached, and - if it was a launcher or scheduler, and so had
+  a wildcard recv of its own - fed the message to its own switchyard,
+  which answered on the reserved tag and started an unbounded error
+  ping-pong with the server. Both halves of that are fixed:
+  `pmix_client_post_data_recvs()` is now called by client and tool alike,
+  and `pmix_server_message_handler` drops the whole reserved tag range
+  rather than answering on it. `test/unit/tool_delete.c` is the
+  regression test. The same reasoning covers
+  `pmix_server_notify_gds_update()`, whose namespace filter does not help
+  - both callers that matter pass `NULL`.
 - **One message per key.** Deletions are rare; this keeps the wire format
   a single-key statement rather than a list whose length has to be
   screened on receipt.

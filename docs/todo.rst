@@ -52,11 +52,10 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 7**
+**Deferred work — 6**
 
 * :ref:`todo-resolve-peers-wildcard`
 * :ref:`todo-get-pointer-values`
-* :ref:`todo-tool-delete-notice`
 * :ref:`todo-global-syslog`
 * :ref:`todo-compress-length-prefix`
 * :ref:`todo-fabric-inventory`
@@ -216,31 +215,6 @@ progress thread.  The two shortcuts are safe because they point at
 process-lifetime globals.  Left as recorded behavior; the smaller,
 separable piece is making ``PMIX_VERSION_NUMERIC`` agree with its two
 neighbours.
-
-.. _todo-tool-delete-notice:
-
-A tool is sent key-deletion notices it has no receive posted for
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found reviewing ``src/client/pmix_client.c`` (2026-08-22); the fix
-belongs in ``src/tool/pmix_tool.c``.
-
-``pmix_server_notify_deleted()`` walks ``pmix_server_globals.clients``
-and sends ``PMIX_PTL_TAG_DATA_DELETE`` to every peer there that is not
-finalized and is not earlier than 7.0.0.  A tool that attached to the
-server is in that array and reports its real version, so it is sent the
-notice — but only ``PMIx_Init`` posts a receive for that tag.
-``PMIx_tool_init`` does not, so the message reaches
-``pmix_ptl_base_process_msg()`` with nothing waiting for it, is
-discarded, and raises a ``PMIX_ERROR`` event on the way out.
-
-Two things are wrong with that, and they want different fixes.  A tool
-that has cached a key another process then deleted goes on answering
-with the stale value, which is the whole reason the notice exists; that
-argues for the tool posting the same receive and using the same handler.
-Separately, a server should not be telling a peer something it cannot
-have arranged to hear; the version test is the wrong screen for a role
-that never posts the receive at all.
 
 .. _todo-global-syslog:
 

@@ -313,6 +313,30 @@ The **zero-byte-buffer = lost connection** convention applies to every
 one of these — check `PMIX_BUFFER_IS_EMPTY` / `0 == bytes_used` before
 unpacking, exactly as the client recv callbacks do.
 
+Two more are posted by **`pmix_client_post_data_recvs()`**, shared
+verbatim with `PMIx_Init`: `PMIX_PTL_TAG_DATA_DELETE` ("a key you cached
+has been deleted") and `PMIX_PTL_TAG_GDS_UPDATE` ("a segment you are
+reading has been added to"). **A tool needs these for the same reason a
+client does, and it is easy to assume otherwise.** The server sends them
+by walking `pmix_server_globals.clients`, where an attached tool sits
+alongside every client, and a tool caches what it reads exactly as a
+client does. When they were client-only, a tool went on answering with a
+key the job had deleted — and a *launcher* or *scheduler* tool, which
+also posts a wildcard recv for its own clients, matched the notice with
+that wildcard, handed it to its own switchyard, answered on the reserved
+tag, and spun with the server forever. See `test/unit/tool_delete.c`, and
+the reserved-tag screen in `pmix_server_message_handler` that now bounds
+the damage.
+
+Because that helper also constructs the held-delete list, its two
+partners belong to `PMIx_tool_init`/`_finalize` as well:
+`pmix_client_mark_initialized()` must be the last act of init (a deletion
+arriving while init is still storing on the caller's thread is held, not
+applied, and this is what drains it — see
+[`src/client/AGENTS.md`](../client/AGENTS.md)), and
+`pmix_client_release_held_deletes()` gives the list back after the
+progress thread has stopped.
+
 ## Invariants and gotchas
 
 - **Stdin forwarding is the library's, not this file's.** A tool given
