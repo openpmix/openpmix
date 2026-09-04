@@ -282,17 +282,37 @@ Do not read the matching loop as "we only ever receive what we asked
 for". A server posts a **wildcard** (`UINT_MAX`) recv for the command
 switchyard, so on a server almost nothing is unmatched — a message on a
 tag nobody posted for is handed to `server_switchyard` as if it were a
-command. That is why `pmix_server_message_handler` screens
-`PMIX_PTL_TAG_HEARTBEAT` before dispatching: `psensor/heartbeat` posts
-its recv only when a heartbeat monitor is first armed, and a beat that
-arrives before that would otherwise be read as a command, fail, and draw
-an error reply on tag 1 that no client can place — `PMIx_Heartbeat` is
-one-way and nobody posts for it. Heartbeat is the only reserved tag that
-can reach the switchyard today: `PMIX_PTL_TAG_IOF` and
-`PMIX_PTL_TAG_IOF_CONTROL` are posted at server init,
-`PMIX_PTL_TAG_DATA_DELETE` only ever travels server→client, and
-`PMIX_PTL_TAG_NOTIFY` is unused. **Any new reserved tag a client may send
-up needs either an eagerly-posted recv or a screen of its own.**
+command. That is why `pmix_server_message_handler` screens the **whole
+reserved range** (`PMIX_PTL_TAG_DYNAMIC > hdr->tag`) before dispatching.
+No reserved tag is a command, and a reserved-tag message whose own recv
+was not posted lands on the wildcard rather than being discarded, so
+without the screen it is read as a command, fails, and draws an error
+reply on the reserved tag — where nobody is posted, because every
+reserved tag is one-way.
+
+**An unanswerable error reply is not a message dropped at the far end.**
+If the sender also serves clients, its own wildcard recv catches the
+error, fails to read a command out of it, and answers on the same tag;
+the two processes then trade unreadable replies at full CPU for as long
+as they both live. One key-deletion notice sent to an attached launcher
+produced ~2M log lines of exactly that before the screen was
+generalized — see `test/unit/tool_delete.c`.
+
+Two tags can reach the screen today. `PMIX_PTL_TAG_HEARTBEAT`:
+`psensor/heartbeat` posts its recv only when a monitor is first armed,
+and nothing is lost by dropping a beat with no monitor to credit it to.
+And `PMIX_PTL_TAG_DATA_DELETE` / `PMIX_PTL_TAG_GDS_UPDATE` if they ever
+reach a role that did not post for them — a current client or tool posts
+for both, through `pmix_client_post_data_recvs()`, so the screen is the
+backstop rather than the mechanism. `PMIX_PTL_TAG_IOF` and
+`PMIX_PTL_TAG_IOF_CONTROL` are posted at server init and at
+`PMIx_tool_init`, ahead of the wildcard, so they never arrive here;
+`PMIX_PTL_TAG_NOTIFY` is unused.
+
+**A new reserved tag needs a posted recv on every role that can be sent
+one.** The screen keeps the cost of getting that wrong at "the message
+is ignored" instead of "both processes spin forever", but it does not
+make the message arrive.
 
 **Loopback.** A send whose peer is `pmix_globals.mypeer` skips the socket
 entirely: the buffer is handed straight to `PMIX_ACTIVATE_POST_MSG` and

@@ -880,21 +880,40 @@ void pmix_server_message_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
 
     PMIX_HIDE_UNUSED_PARAMS(cbdata);
 
-    /* A heartbeat is not a command, and it is the one reserved tag that
-     * can reach this handler. psensor/heartbeat posts a recv of its own
-     * for the tag, but only once the first heartbeat monitor is armed -
-     * so a beat sent before that is matched instead by the wildcard recv
-     * this handler serves. Passing it down would hand server_switchyard
-     * a zero-byte buffer it cannot read a command out of, and the error
-     * that comes back would be queued to the client on tag 1, where
-     * nothing is listening: PMIx_Heartbeat is one-way and no client ever
-     * posts for it. Drop it instead. Nothing is lost - there is no
-     * monitor to credit the beat to yet, which is precisely why the recv
-     * it belongs to has not been posted. */
-    if (PMIX_PTL_TAG_HEARTBEAT == hdr->tag) {
+    /* No reserved tag is a command, and any of them can reach this
+     * handler: the wildcard recv this handler serves matches every tag,
+     * so a reserved-tag message whose own recv has not been posted is
+     * caught here rather than discarded. Passing one down hands
+     * server_switchyard a payload it cannot read a command out of, and
+     * the error that comes back is queued to the sender on the reserved
+     * tag - where nothing is listening, because every reserved tag is
+     * one-way and no peer ever posts for a reply on one.
+     *
+     * That is not merely a message dropped at the far end. If the sender
+     * also serves clients, its own wildcard recv catches our error,
+     * fails to read a command out of it, and answers on the same tag -
+     * and the two processes trade unreadable replies at full CPU for as
+     * long as they both live. A single key-deletion notice sent to an
+     * attached launcher did exactly that.
+     *
+     * So drop it here, silently and without an answer. Two tags reach
+     * this today. PMIX_PTL_TAG_HEARTBEAT: psensor/heartbeat posts a recv
+     * of its own, but only once the first monitor is armed, and nothing
+     * is lost by dropping a beat with no monitor to credit it to -
+     * which is precisely why that recv is not posted yet. And any notice
+     * a server sends about data we hold (PMIX_PTL_TAG_DATA_DELETE,
+     * PMIX_PTL_TAG_GDS_UPDATE) if it reaches a role that did not post
+     * for it; a current client or tool does post for both, through
+     * pmix_client_post_data_recvs(), so this is the backstop rather than
+     * the mechanism.
+     *
+     * The rule this leaves behind: a reserved tag needs its own posted
+     * recv on every role that can be sent one. This screen keeps the
+     * cost of getting that wrong at "the message is ignored". */
+    if (PMIX_PTL_TAG_DYNAMIC > hdr->tag) {
         pmix_output_verbose(2, pmix_server_globals.base_output,
-                            "SWITCHYARD ignoring heartbeat from %s:%u with no monitor armed",
-                            peer->info->pname.nspace, peer->info->pname.rank);
+                            "SWITCHYARD ignoring reserved tag %u from %s:%u",
+                            hdr->tag, peer->info->pname.nspace, peer->info->pname.rank);
         return;
     }
 
