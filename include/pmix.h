@@ -1679,6 +1679,10 @@ PMIX_EXPORT void PMIx_Load_nspace(pmix_nspace_t nspace, const char *str);
 /* check two nspace structs for equality */
 PMIX_EXPORT bool PMIx_Check_nspace(const char *key1, const char *key2);
 
+/* check two nspace structs for equality, treating an invalid
+ * namespace as matching nothing rather than as a wildcard */
+PMIX_EXPORT bool PMIx_Check_nspace_strict(const char *key1, const char *key2);
+
 /* check if a namespace is invalid */
 PMIX_EXPORT bool PMIx_Nspace_invalid(const char *nspace);
 

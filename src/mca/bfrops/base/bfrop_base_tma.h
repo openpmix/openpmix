@@ -249,6 +249,36 @@ bool pmix_bfrops_base_tma_check_nspace(const char *nspace1,
     return false;
 }
 
+/* The strict counterpart of the above.
+ *
+ * pmix_bfrops_base_tma_check_nspace() treats an invalid namespace as a
+ * WILDCARD, which is right for matching a request against a filter and
+ * wrong for asking "are these the same job".  Callers of the second kind
+ * want a namespace that has never been set to match nothing at all, and
+ * writing that out by hand - guard with nspace_invalid(), then compare -
+ * is easy to forget and easy to get subtly wrong.  So it is spelled once,
+ * here.
+ *
+ * Note the asymmetry that makes this worth its own routine: an invalid
+ * namespace does not even match another invalid one.  "Unset" is not a
+ * value two things can agree on. */
+static inline
+bool pmix_bfrops_base_tma_check_nspace_strict(const char *nspace1,
+                                              const char *nspace2,
+                                              pmix_tma_t *tma)
+{
+    if (pmix_bfrops_base_tma_nspace_invalid(nspace1, tma)) {
+        return false;
+    }
+    if (pmix_bfrops_base_tma_nspace_invalid(nspace2, tma)) {
+        return false;
+    }
+    if (0 == strncmp(nspace1, nspace2, PMIX_MAX_NSLEN)) {
+        return true;
+    }
+    return false;
+}
+
 static inline
 bool pmix_bfrops_base_tma_check_reserved_key(const char *key,
                                              pmix_tma_t *tma)

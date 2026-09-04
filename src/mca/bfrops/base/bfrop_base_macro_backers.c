@@ -36,6 +36,11 @@ bool PMIx_Check_nspace(const char *nspace1, const char *nspace2)
     return pmix_bfrops_base_tma_check_nspace(nspace1, nspace2, NULL);
 }
 
+bool PMIx_Check_nspace_strict(const char *nspace1, const char *nspace2)
+{
+    return pmix_bfrops_base_tma_check_nspace_strict(nspace1, nspace2, NULL);
+}
+
 bool PMIx_Nspace_invalid(const char *nspace)
 {
     return pmix_bfrops_base_tma_nspace_invalid(nspace, NULL);

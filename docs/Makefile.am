@@ -337,6 +337,7 @@ PMIX_MAN3 = \
 	PMIx_Check_reserved_key.3 \
 	PMIx_Check_key.3 \
 	PMIx_Check_nspace.3 \
+	PMIx_Check_nspace_strict.3 \
 	PMIx_Check_procid.3 \
 	PMIx_Check_rank.3 \
 	PMIx_Xfer_procid.3 \
