@@ -127,6 +127,15 @@ PMIX_EXPORT pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inp
 
 PMIX_EXPORT bool pmix_client_proc_is_included(const pmix_proc_t *procs, size_t nprocs);
 
+/* The three pieces of "this role holds data a server may take back".
+ * Both PMIx_Init and PMIx_tool_init use all three, in this order: post
+ * the receives during bring-up, mark ourselves initialized as the last
+ * act of init, and give back anything still held during finalize.
+ * See the comments on each in pmix_client.c. */
+PMIX_EXPORT void pmix_client_post_data_recvs(void);
+PMIX_EXPORT void pmix_client_mark_initialized(void);
+PMIX_EXPORT void pmix_client_release_held_deletes(void);
+
 END_C_DECLS
 
 #endif /* PMIX_CLIENT_OPS_H */

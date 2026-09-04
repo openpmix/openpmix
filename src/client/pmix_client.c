@@ -337,15 +337,24 @@ static void client_gds_update_handler(struct pmix_peer_t *pr,
                                       pmix_ptl_hdr_t *hdr,
                                       pmix_buffer_t *buf, void *cbdata)
 {
+    pmix_peer_t *sender = (pmix_peer_t *) pr;
     pmix_status_t rc;
 
-    PMIX_HIDE_UNUSED_PARAMS(pr, hdr, cbdata);
+    PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
 
     /* a zero-byte buffer means the connection was lost */
     if (NULL == buf || PMIX_BUFFER_IS_EMPTY(buf)) {
         return;
     }
-    PMIX_GDS_ACCEPT_UPDATE(rc, pmix_client_globals.myserver, buf);
+    /* The payload was packed by THIS sender's gds module, and the macro
+     * dispatches on the peer it is given - so it has to be the peer the
+     * message came from, not our primary server. Those are the same
+     * object for a client, which has exactly one server, but a tool can
+     * be attached to several at once and any of them can send this. */
+    if (NULL == sender) {
+        sender = pmix_client_globals.myserver;
+    }
+    PMIX_GDS_ACCEPT_UPDATE(rc, sender, buf);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }
@@ -355,6 +364,7 @@ static void client_data_delete_handler(struct pmix_peer_t *pr,
                                        pmix_ptl_hdr_t *hdr,
                                        pmix_buffer_t *buf, void *cbdata)
 {
+    pmix_peer_t *sender = (pmix_peer_t *) pr;
     pmix_proc_t proc;
     pmix_scope_t scope;
     char *key = NULL;
@@ -362,26 +372,34 @@ static void client_data_delete_handler(struct pmix_peer_t *pr,
     int32_t cnt;
     pmix_held_delete_t *hd;
 
-    PMIX_HIDE_UNUSED_PARAMS(pr, hdr, cbdata);
+    PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
 
     /* a zero-byte buffer means the connection was lost */
     if (NULL == buf || PMIX_BUFFER_IS_EMPTY(buf)) {
         return;
     }
+    /* Decode against the peer that sent this, not against our primary
+     * server. They are the same object for a client, which has exactly
+     * one server, but a tool can be attached to several at once - and
+     * they need not have negotiated the same bfrops module, so reading
+     * a secondary server's message with the primary's is a misparse. */
+    if (NULL == sender) {
+        sender = pmix_client_globals.myserver;
+    }
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &proc, &cnt, PMIX_PROC);
+    PMIX_BFROPS_UNPACK(rc, sender, buf, &proc, &cnt, PMIX_PROC);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return;
     }
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &scope, &cnt, PMIX_SCOPE);
+    PMIX_BFROPS_UNPACK(rc, sender, buf, &scope, &cnt, PMIX_SCOPE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return;
     }
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &key, &cnt, PMIX_STRING);
+    PMIX_BFROPS_UNPACK(rc, sender, buf, &key, &cnt, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return;
@@ -423,17 +441,14 @@ static void client_data_delete_handler(struct pmix_peer_t *pr,
     apply_delete(&proc, scope, key);
 }
 
-/* Declare ourselves initialized - on the progress thread, so that the
- * deletions held while PMIx_Init worked are applied before anything can
- * read them, and so that no deletion can slip between the drain and the
- * flag. See client_data_delete_handler(). */
-static void _init_complete(int sd, short args, void *cbdata)
+/* Apply what was held while init ran, then declare ourselves
+ * initialized. Both halves belong to the progress thread, so that the
+ * deletions held while init worked are applied before anything can read
+ * them, and so that no deletion can slip between the drain and the flag.
+ * See client_data_delete_handler(). */
+static void drain_and_mark(void)
 {
-    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_held_delete_t *hd;
-
-    PMIX_ACQUIRE_OBJECT(cb);
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     while (NULL != (hd = (pmix_held_delete_t *)
                     pmix_list_remove_first(&pmix_client_held_deletes))) {
@@ -442,9 +457,92 @@ static void _init_complete(int sd, short args, void *cbdata)
         PMIX_RELEASE(hd);
     }
     pmix_atomic_set_bool(&pmix_globals.initialized);
+}
+
+static void _init_complete(int sd, short args, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cb);
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    drain_and_mark();
 
     PMIX_POST_OBJECT(cb);
     PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
+/* Post the receives for the two one-way notices a server sends about
+ * data we are holding, and construct the list the first of them parks
+ * work on.
+ *
+ * Shared by PMIx_Init and PMIx_tool_init because the server does not
+ * distinguish between them: pmix_server_notify_deleted() and
+ * pmix_server_notify_gds_update() walk pmix_server_globals.clients, and
+ * an attached tool is in that array like any client. A tool caches what
+ * it reads for exactly the same reason a client does, so it needs to
+ * hear about a deletion for exactly the same reason - and a role that
+ * does not post these receives does not merely miss the notice, it
+ * either discards a message and raises PMIX_ERROR or, if it also serves
+ * clients of its own, feeds a reserved tag to its own switchyard.
+ *
+ * The list is constructed here rather than left to its static
+ * initializer for the two reasons any PMIX_LIST_STATIC_INIT list has to
+ * be. Its sentinel is NULL-linked until a construct runs, so it reads as
+ * empty but the first pmix_list_append() to it writes through a NULL -
+ * and appending is exactly what client_data_delete_handler() does when a
+ * deletion arrives before we are marked initialized, which is the case
+ * that handler exists for. And PMIX_DESTRUCT zeroes an object's magic
+ * id, so the teardown can only run once per process unless something
+ * puts it back: without this, the second init in a process aborted on
+ * the assertion in a debug build. */
+void pmix_client_post_data_recvs(void)
+{
+    pmix_ptl_posted_recv_t *rcv;
+
+    /* the "a key you may have cached has been deleted" recv */
+    rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
+    rcv->tag = PMIX_PTL_TAG_DATA_DELETE;
+    rcv->cbfunc = client_data_delete_handler;
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
+    /* and the "a segment you are reading has been added to" recv */
+    rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
+    rcv->tag = PMIX_PTL_TAG_GDS_UPDATE;
+    rcv->cbfunc = client_gds_update_handler;
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
+
+    PMIX_CONSTRUCT(&pmix_client_held_deletes, pmix_list_t);
+}
+
+/* The last act of an init, on the progress thread rather than the
+ * caller's - see drain_and_mark(). */
+void pmix_client_mark_initialized(void)
+{
+    pmix_cb_t cb;
+
+    if (pmix_globals.external_progress) {
+        /* There is no engine spinning our event base: the host steps it
+         * through PMIx_Progress(), and it cannot be doing so while it is
+         * still inside our init. A threadshift here would never be
+         * dispatched and the wait below would never return. Run it
+         * inline instead - with nothing dispatching the base there is no
+         * second thread for the drain to be racing, which is the only
+         * thing the shift was buying us. */
+        drain_and_mark();
+        return;
+    }
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_THREADSHIFT(&cb, _init_complete);
+    PMIX_WAIT_THREAD(&cb.lock);
+    PMIX_DESTRUCT(&cb);
+}
+
+/* A deletion that arrived while we were not marked initialized was held
+ * rather than applied, and there is now nothing to apply it to. Called
+ * from finalize, after the progress thread has stopped. */
+void pmix_client_release_held_deletes(void)
+{
+    PMIX_LIST_DESTRUCT(&pmix_client_held_deletes);
 }
 
 pmix_client_globals_t pmix_client_globals = {
@@ -1101,13 +1199,11 @@ static void client_teardown(void)
     PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
-    /* A deletion that arrived while we were not marked initialized was
-     * held rather than applied, and there is now nothing to apply it to.
-     * PMIx_Init constructs this list on every cycle, which is what makes it
-     * safe to destruct it on every cycle - the list destructor does re-link
-     * the sentinel, but PMIX_DESTRUCT also zeroes the object's magic id, so
-     * a second destruct without a construct between them is an abort. */
-    PMIX_LIST_DESTRUCT(&pmix_client_held_deletes);
+    /* Every init constructs this list, which is what makes it safe to
+     * destruct it on every cycle - the list destructor does re-link the
+     * sentinel, but PMIX_DESTRUCT also zeroes the object's magic id, so a
+     * second destruct without a construct between them is an abort. */
+    pmix_client_release_held_deletes();
     /* drop the delta-commit record, and leave the flag set so a second
      * PMIx_Init in this process starts cumulative rather than trusting
      * what a previous cycle told a previous server */
@@ -1282,16 +1378,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     rcv->tag = PMIX_PTL_TAG_IOF_CONTROL;
     rcv->cbfunc = pmix_iof_flow_control_handler;
     pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
-    /* and the "a key you may have cached has been deleted" recv */
-    rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
-    rcv->tag = PMIX_PTL_TAG_DATA_DELETE;
-    rcv->cbfunc = client_data_delete_handler;
-    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
-    /* and the "a segment you are reading has been added to" recv */
-    rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
-    rcv->tag = PMIX_PTL_TAG_GDS_UPDATE;
-    rcv->cbfunc = client_gds_update_handler;
-    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
+    /* and the two "data you are holding has changed" recvs */
+    pmix_client_post_data_recvs();
     /* create the default iof handler */
     iofreq = PMIX_NEW(pmix_iof_req_t);
     iofreq->channels = PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL;
@@ -1315,17 +1403,6 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_client_globals.singleton = false;
     pmix_client_globals.local_iof = false;
     PMIX_CONSTRUCT(&pmix_client_globals.pending_requests, pmix_list_t);
-    /* Constructed here, and not left to its static initializer, for the two
-     * reasons any PMIX_LIST_STATIC_INIT list has to be. Its sentinel is
-     * NULL-linked until a construct runs, so it reads as empty but the first
-     * pmix_list_append() to it writes through a NULL - and appending is
-     * exactly what client_data_delete_handler() does when a deletion arrives
-     * before we are marked initialized, which is the case that handler exists
-     * for. And PMIX_DESTRUCT zeroes an object's magic id, so the teardown
-     * below can only run once per process unless something puts it back:
-     * without this, the second PMIx_Init in a process aborted on the
-     * assertion in a debug build. */
-    PMIX_CONSTRUCT(&pmix_client_held_deletes, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.peers, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
     pmix_client_globals.myserver = PMIX_NEW(pmix_peer_t);
@@ -1813,10 +1890,7 @@ nodebugger:
     /* mark ourselves as initialized - on the progress thread, which is
      * also where any deletions the server announced while we were
      * working have been waiting */
-    PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    PMIX_THREADSHIFT(&cb, _init_complete);
-    PMIX_WAIT_THREAD(&cb.lock);
-    PMIX_DESTRUCT(&cb);
+    pmix_client_mark_initialized();
 
     if (unreach) {
         return PMIX_ERR_UNREACH;
