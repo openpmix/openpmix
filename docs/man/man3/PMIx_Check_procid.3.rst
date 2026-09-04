@@ -46,7 +46,14 @@ when *both* their namespaces match (as determined by
 Because the underlying namespace and rank comparisons both apply wildcard
 semantics, this is a matching test rather than a strict byte-for-byte
 comparison: an invalid namespace matches any namespace, and
-``PMIX_RANK_WILDCARD`` matches any rank.
+``PMIX_RANK_WILDCARD`` matches any rank. Both wildcards are easy to inherit
+by accident from data that is legitimately unset. Where the question being
+asked is "do these two name the same process" rather than "does this match
+the specification", use
+:ref:`PMIx_Check_procid_strict(3) <man3-PMIx_Check_procid_strict>`.
+
+A ``NULL`` argument is accepted: two absent procIDs are reported as equal,
+and an absent one is not equal to a present one.
 
 
 RETURN VALUE
@@ -60,11 +67,11 @@ NOTES
 -----
 
 ``PMIx_Check_procid`` is an OpenPMIx convenience routine and is the backing
-implementation of the ``PMIX_CHECK_PROCID`` macro. Both arguments must point
-to valid structures; the routine performs no ``NULL`` checking.
+implementation of the ``PMIX_CHECK_PROCID`` macro.
 
 
 .. seealso::
+   :ref:`PMIx_Check_procid_strict(3) <man3-PMIx_Check_procid_strict>`,
    :ref:`PMIx_Load_procid(3) <man3-PMIx_Load_procid>`,
    :ref:`PMIx_Check_nspace(3) <man3-PMIx_Check_nspace>`,
    :ref:`PMIx_Check_rank(3) <man3-PMIx_Check_rank>`,

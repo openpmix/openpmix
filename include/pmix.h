@@ -1699,6 +1699,11 @@ PMIX_EXPORT void PMIx_Xfer_procid(pmix_proc_t *dst,
 PMIX_EXPORT bool PMIx_Check_procid(const pmix_proc_t *a,
                                    const pmix_proc_t *b);
 
+/* check two procIDs for equality, without treating an invalid
+ * namespace or PMIX_RANK_WILDCARD as matching anything */
+PMIX_EXPORT bool PMIx_Check_procid_strict(const pmix_proc_t *a,
+                                          const pmix_proc_t *b);
+
 /* check two ranks for equality */
 PMIX_EXPORT bool PMIx_Check_rank(pmix_rank_t a,
                                  pmix_rank_t b);

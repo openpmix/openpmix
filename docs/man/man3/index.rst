@@ -246,6 +246,7 @@ APIs (section 3)
    PMIx_Check_nspace.3.rst
    PMIx_Check_nspace_strict.3.rst
    PMIx_Check_procid.3.rst
+   PMIx_Check_procid_strict.3.rst
    PMIx_Check_rank.3.rst
    PMIx_Xfer_procid.3.rst
    PMIx_Nspace_invalid.3.rst

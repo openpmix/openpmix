@@ -292,6 +292,11 @@ PMIX_EXPORT void PMIx_Xfer_procid(pmix_proc_t *dst,
 PMIX_EXPORT bool PMIx_Check_procid(const pmix_proc_t *a,
                                    const pmix_proc_t *b);
 
+/* check two procIDs for equality, without treating an invalid
+ * namespace or PMIX_RANK_WILDCARD as matching anything */
+PMIX_EXPORT bool PMIx_Check_procid_strict(const pmix_proc_t *a,
+                                          const pmix_proc_t *b);
+
 /* check two ranks for equality */
 PMIX_EXPORT bool PMIx_Check_rank(pmix_rank_t a,
                                  pmix_rank_t b);
@@ -925,6 +930,12 @@ PMIX_EXPORT void PMIx_Fabric_construct(pmix_fabric_t *p);
 
 #define PMIX_CHECK_PROCID(a, b) \
     PMIx_Check_procid(a, b)
+
+/* ...and one that wildcards on neither half.  Use this one to ask "are
+ * these the same process"; PMIX_CHECK_PROCID answers that "yes" whenever
+ * either namespace is unset or either rank is PMIX_RANK_WILDCARD. */
+#define PMIX_CHECK_PROCID_STRICT(a, b) \
+    PMIx_Check_procid_strict(a, b)
 
 #define PMIX_CHECK_RANK(a, b) \
     PMIx_Check_rank(a, b)
