@@ -131,6 +131,7 @@ static void test_procid_degenerate(void)
 
     PMIx_Load_procid(NULL, "ns", 0);
     (void) PMIx_Check_procid(NULL, NULL);
+    (void) PMIx_Check_procid_strict(NULL, NULL);
     (void) PMIx_Procid_invalid(NULL);
     PMIx_Xfer_procid(NULL, NULL);
 
@@ -177,6 +178,63 @@ static void test_nspace_comparison(void)
 
     report("an unset namespace is a wildcard to one comparison and to "
            "neither side of the other", ok);
+}
+
+/* Same question one level up: PMIX_CHECK_PROCID wildcards twice over,
+ * through the namespace and again through PMIX_RANK_WILDCARD, and the
+ * strict form does neither.  Note the rank half is strict in a different
+ * way from the namespace half - it compares literally rather than
+ * refusing any particular value - because PMIX_RANK_WILDCARD is a real
+ * participant designation, not an unset field. */
+static void test_procid_comparison(void)
+{
+    pmix_proc_t a, b;
+    int ok = 1;
+
+    PMIx_Load_procid(&a, "jobA", 0);
+    PMIx_Load_procid(&b, "jobA", 0);
+    ok = ok && PMIx_Check_procid(&a, &b);
+    ok = ok && PMIx_Check_procid_strict(&a, &b);
+
+    /* a different rank of the same job is a different proc to both */
+    PMIx_Load_procid(&b, "jobA", 1);
+    ok = ok && !PMIx_Check_procid(&a, &b);
+    ok = ok && !PMIx_Check_procid_strict(&a, &b);
+
+    /* the same rank of a different job, likewise */
+    PMIx_Load_procid(&b, "jobB", 0);
+    ok = ok && !PMIx_Check_procid(&a, &b);
+    ok = ok && !PMIx_Check_procid_strict(&a, &b);
+
+    /* a wildcard rank stands for every rank to the ordinary form, and
+     * for itself alone to the strict one - "jobA/0" and "jobA/WILDCARD"
+     * are different participant lists */
+    PMIx_Load_procid(&b, "jobA", PMIX_RANK_WILDCARD);
+    ok = ok && PMIx_Check_procid(&a, &b);
+    ok = ok && !PMIx_Check_procid_strict(&a, &b);
+
+    /* ...but it does name the same thing as another wildcard: the strict
+     * form declines to treat one rank as standing for the others, it does
+     * not refuse any particular rank */
+    PMIx_Load_procid(&a, "jobA", PMIX_RANK_WILDCARD);
+    ok = ok && PMIx_Check_procid_strict(&a, &b);
+
+    /* an unset namespace is a wildcard to one and matches nothing in the
+     * other, exactly as for the bare namespace comparison */
+    PMIx_Load_procid(&a, NULL, 0);
+    PMIx_Load_procid(&b, "jobA", 0);
+    ok = ok && PMIx_Check_procid(&a, &b);
+    ok = ok && !PMIx_Check_procid_strict(&a, &b);
+
+    /* two absent procIDs are the same proc to one and neither to the
+     * other: an absent procID names no process, so it matches none */
+    ok = ok && PMIx_Check_procid(NULL, NULL);
+    ok = ok && !PMIx_Check_procid_strict(NULL, NULL);
+    ok = ok && !PMIx_Check_procid(NULL, &b);
+    ok = ok && !PMIx_Check_procid_strict(NULL, &b);
+
+    report("neither an unset namespace nor a wildcard rank stands for "
+           "anything in the strict procID comparison", ok);
 }
 
 /* The two halves of a multi-cluster nspace are written element by
@@ -373,6 +431,7 @@ int main(int argc, char **argv)
     test_argv_still_works();
     test_procid_degenerate();
     test_nspace_comparison();
+    test_procid_comparison();
     test_multicluster_parse();
     test_zero_and_null_lifecycle();
     test_load_helpers_with_no_data();

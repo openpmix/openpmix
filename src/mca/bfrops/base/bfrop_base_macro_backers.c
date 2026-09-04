@@ -70,6 +70,12 @@ bool PMIx_Check_procid(const pmix_proc_t *a,
     return pmix_bfrops_base_tma_check_procid(a, b, NULL);
 }
 
+bool PMIx_Check_procid_strict(const pmix_proc_t *a,
+                              const pmix_proc_t *b)
+{
+    return pmix_bfrops_base_tma_check_procid_strict(a, b, NULL);
+}
+
 bool PMIx_Check_rank(pmix_rank_t a,
                      pmix_rank_t b)
 {

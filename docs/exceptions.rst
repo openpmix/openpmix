@@ -124,6 +124,14 @@ Utility APIs
      bool PMIx_Check_procid(const pmix_proc_t *a,
                             const pmix_proc_t *b);
 
+* Check two process ID structs for equality, wildcarding on neither the
+  namespace nor the rank:
+
+  .. code-block:: c
+
+     bool PMIx_Check_procid_strict(const pmix_proc_t *a,
+                                   const pmix_proc_t *b);
+
 * Check two ranks for equality:
 
   .. code-block:: c

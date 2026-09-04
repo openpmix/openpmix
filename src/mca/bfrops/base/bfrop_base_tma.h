@@ -353,6 +353,40 @@ bool pmix_bfrops_base_tma_check_procid(const pmix_proc_t *a,
     return pmix_bfrops_base_tma_check_rank(a->rank, b->rank, tma);
 }
 
+/* The strict counterpart of the above: no wildcard on either half.
+ *
+ * pmix_bfrops_base_tma_check_procid() wildcards twice over - once through
+ * check_nspace(), where an unset namespace matches anything, and once
+ * through check_rank(), where PMIX_RANK_WILDCARD does.  Both are right for
+ * matching a proc against a specification and wrong for asking whether two
+ * procIDs name the same process.
+ *
+ * The two halves are strict in different ways, because the two fields
+ * differ.  An unset namespace matches nothing at all, not even another
+ * unset namespace, for the reason given above check_nspace_strict().  The
+ * rank is simply compared literally: PMIX_RANK_WILDCARD is a real value a
+ * caller may legitimately be carrying - "every rank of this namespace" is
+ * how most connect requests name their participants - and it names the same
+ * thing as another PMIX_RANK_WILDCARD and a different thing from rank 0.
+ * So this routine does not test the rank for validity; it only declines to
+ * treat one value as standing for the others. */
+static inline
+bool pmix_bfrops_base_tma_check_procid_strict(const pmix_proc_t *a,
+                                              const pmix_proc_t *b,
+                                              pmix_tma_t *tma)
+{
+    /* an absent procID names no process, so it matches none - including
+     * another absent one.  Note this is the opposite of check_procid(),
+     * which calls two NULLs the same proc */
+    if (NULL == a || NULL == b) {
+        return false;
+    }
+    if (!pmix_bfrops_base_tma_check_nspace_strict(a->nspace, b->nspace, tma)) {
+        return false;
+    }
+    return (a->rank == b->rank);
+}
+
 static inline
 bool pmix_bfrops_base_tma_procid_invalid(const pmix_proc_t *p,
                                          pmix_tma_t *tma)
