@@ -69,6 +69,13 @@ typedef struct {
     pmix_iof_sink_t stdinsink;
     pmix_iof_read_event_t *stdoutev;
     pmix_iof_read_event_t *stderrev;
+    /* The output channels the spawn asked us to forward, as
+     * pmix_server_spawn_parser() worked them out. A channel that is not
+     * in here was turned off by the request, and its bytes are read and
+     * dropped rather than written - see pmix_iof_read_local_handler().
+     * The constructor defaults it to every channel so a child created by
+     * some path that never consults a spawn request still speaks. */
+    pmix_iof_channel_t channels;
 } pmix_pfexec_child_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pfexec_child_t);
 

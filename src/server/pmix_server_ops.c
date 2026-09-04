@@ -895,6 +895,15 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
         fcd->ninfo = cd->ninfo;
         fcd->apps = cd->apps;
         fcd->napps = cd->napps;
+        /* what the parser above worked out about output - pfexec reads
+         * it to decide which of the child's streams to write, which the
+         * request asked to be silent, and whether it named any channel
+         * at all. Only these two: the formatting flags reach the spawned
+         * namespace through the job description pfexec registers, and
+         * copying them here would hand a second caddy the file and
+         * directory strings this one frees. */
+        fcd->channels = cd->channels;
+        fcd->inherit_iof = cd->inherit_iof;
         fcd->spcbfunc = pfexec_spcbfunc;
         fcd->cbdata = cd;
         rc = pmix_pfexec_base_spawn_job(fcd);

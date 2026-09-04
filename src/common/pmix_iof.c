@@ -3316,15 +3316,19 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
     if (NULL != child &&
         (PMIX_FWD_STDOUT_CHANNEL == rev->channel ||
          PMIX_FWD_STDERR_CHANNEL == rev->channel)) {
-        if (PMIX_FWD_STDOUT_CHANNEL == rev->channel) {
-            rc = pmix_iof_write_output(&child->stdoutev->name, PMIX_FWD_STDOUT_CHANNEL, &bo);
-        } else if (PMIX_FWD_STDERR_CHANNEL == rev->channel) {
-            rc = pmix_iof_write_output(&child->stderrev->name, PMIX_FWD_STDERR_CHANNEL, &bo);
-        } else {
-            rc = PMIX_ERR_BAD_PARAM;
-        }
-        if (0 > rc) {
-            PMIX_ERROR_LOG(rc);
+        /* A spawn may have turned this channel off, which PMIx_Spawn(3)
+         * documents as a request for silence and not merely for "no
+         * subscription": a connected launcher honors it by registering
+         * nothing for the channel, so the bytes are read on the node and
+         * go nowhere. Do the same for a job we fork/exec'd ourselves.
+         * The pipe is still drained - a channel nobody wants must not be
+         * left to fill and stall the child - and the EOF bookkeeping
+         * below still runs, since that is how we learn the child died. */
+        if (rev->channel & child->channels) {
+            rc = pmix_iof_write_output(&rev->name, rev->channel, &bo);
+            if (0 > rc) {
+                PMIX_ERROR_LOG(rc);
+            }
         }
         /* if the number of bytes is zero, then we just delete the event - there
          * is no need to pass it upstream as WE are the ones holding the event

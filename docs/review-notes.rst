@@ -340,6 +340,64 @@ The code is still unreachable, and that is the point: it is written for
 the first module that implements ``init``, so that module inherits the
 framework's documented stance instead of a contradiction of it.
 
+A locally fork/exec'd job gets none of its spawn's IOF directives
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/client/pmix_client_spawn.c`` (2026-08-22), closed
+2026-09-04.  **The entry was half wrong, and the half it got wrong was
+its headline.**
+
+It observed correctly that the fork/exec dispatch in ``PMIx_Spawn_nb``
+never calls ``pmix_server_spawn_parser()``, and concluded from the call
+sites that the namespace ``pfexec`` creates therefore keeps the zeroed
+``iof_flags`` its constructor gave it — so that ``PMIx_Spawn`` with
+``PMIX_IOF_TAG_OUTPUT`` produced tagged output from a connected launcher
+and untagged output from a disconnected one.  Run, it does not: the
+directives arrive by a second route the entry did not follow.
+``pfexec``'s ``register_nspace()`` copies the spawn's job-level info into
+the job description it registers, and ``gds/hash``'s
+``apply_job_value_effects()`` runs the *same* ``pmix_iof_check_flags()``
+over that description that the parser would have run over the request.
+Tag, rank, timestamp, xml, ``PMIX_IOF_OUTPUT_TO_FILE`` and
+``PMIX_IOF_OUTPUT_TO_DIRECTORY`` were each verified to reach a
+fork/exec'd job, and that route has been in place since 2021 — it
+predates the entry by five years.  This is the shape the page's own
+warning describes: an entry written from a plausible reading of the call
+graph rather than from watching the code run.
+
+What the entry did find is the **channel set**, which nothing but the
+parser computes.  ``PMIX_FWD_STDOUT``/``STDERR``/``STDDIAG`` set to
+``false`` is documented in :doc:`how-things-work/iof_inheritance` as a
+request for silence and not merely an absent subscription — a connected
+launcher honors it by registering no subscription for that channel, so
+the bytes are read on the node and go nowhere.  A disconnected one
+printed them anyway, on both fork/exec entries: ``PMIx_Spawn_nb``'s,
+which never parsed, and ``pmix_server_spawn()``'s fallback, which parsed
+into the caddy it keeps and then handed ``pfexec`` a second, freshly
+constructed one.
+
+Closed by parsing where the other two dispatch paths do, copying
+``cd->channels`` onto the borrowed caddy in ``pmix_server_spawn()``, and
+carrying the mask on ``pmix_pfexec_child_t`` so that
+``pmix_iof_read_local_handler()`` can drain a silenced pipe without
+writing it.  Draining rather than declining to read is the point: a
+channel nobody wants must not be left to fill and stall the child, and
+the EOF on it is still how ``pfexec`` learns the child died.  Only the
+channels are copied onto the borrowing caddy — the formatting flags
+already arrive through the job description, and copying them would hand
+a second caddy the ``file`` and ``directory`` strings the first one
+frees.
+
+The entry also recorded that "there is no in-tree way to exercise a
+disconnected launcher's fork/exec output end to end".  There is:
+``test/unit/pfexec_iof.c`` comes up as a ``PMIX_LAUNCHER`` with
+``PMIX_TOOL_DO_NOT_CONNECT`` — the combination ``test/unit/pfexec_params.c``
+already used — stands pipes up in place of its own stdout and stderr, and
+fork/execs a shell that writes one line to each.  It holds down both
+halves: the tag naming the spawned namespace, which guards the indirect
+route the entry missed, and the per-channel silence, which fails against
+the unfixed library and passes against the fixed one.
+
 Review log
 ----------
 
