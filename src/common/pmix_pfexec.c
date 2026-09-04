@@ -346,11 +346,32 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     char tmp[2048];
     bool nohup = false;
     char *security_mode;
+    pmix_iof_channel_t channels;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(5, pmix_client_globals.spawn_output,
                         "%s pfexec:base spawn proc",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
+
+    /* Which of the spawned job's streams we are to write.
+     *
+     * The formatting directives reach us by another route -
+     * register_nspace() below puts the spawn's job-level info into the
+     * job description, and the datastore applies the output flags among
+     * it to the new namespace - but which channels were asked for is
+     * decided only by pmix_server_spawn_parser(), so it is carried on
+     * the caddy.
+     *
+     * A request that named any output channel is honored exactly as
+     * written, including one it turned off: that is a request for
+     * silence, and the connected path honors it by registering no
+     * subscription for the channel. A request that named none asks to
+     * inherit instead, and on this path WE are the parent - our own
+     * stdout and stderr are where the child's output belongs - so every
+     * channel speaks. Reading the parser's empty channel set as silence
+     * would mute every spawn a plain client issues, since the "forward
+     * everything" default the parser applies is a tool's alone. */
+    channels = fcd->inherit_iof ? PMIX_FWD_ALL_CHANNELS : fcd->channels;
 
     /* establish our baseline working directory - we will be potentially
      * bouncing around as we execute various apps, but we will always return
@@ -471,6 +492,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             }
             PMIX_LOAD_PROCID(&child->proc, nspace, rank);
             ++rank;
+            child->channels = channels;
             pmix_list_append(&pmix_pfexec_globals.children, &child->super);
             child->onlist = true;
             /* we now have something to watch for; start at the floor of
@@ -1563,6 +1585,8 @@ static void chcon(pmix_pfexec_child_t *p)
     PMIX_CONSTRUCT(&p->stdinsink, pmix_iof_sink_t);
     p->stdoutev = NULL;
     p->stderrev = NULL;
+    /* speak on every channel until a spawn request says otherwise */
+    p->channels = PMIX_FWD_ALL_CHANNELS;
 }
 static void chdes(pmix_pfexec_child_t *p)
 {

@@ -100,8 +100,9 @@ comes up with no server. `client_cycle` (init/finalize cycling),
 
 ### `iof_pending` — output held for a spawn reply that has not landed
 
-The only test here that comes up as a **tool**, because the thing under
-test is tool-only: a client is never sent a spawned job's output. It
+Comes up as a plain **tool**, because the thing under test is tool-only:
+a client is never sent a spawned job's output. (`pfexec_iof` is a tool
+too, but a launcher one, which is a different path - see below.) It
 stands pipes up in place of stdout and stderr the way `iof_output` does,
 then drives `pmix_iof_spawn_begin` / `pmix_iof_write_output` /
 `pmix_iof_release_pending` / `pmix_iof_spawn_end` directly, each
@@ -131,6 +132,50 @@ per-namespace match, passes every positive case and fails those two.
 `configure`, which start a `test/simple` server and drive real clients
 against it. The `run_grp*.pl` family covers group construct/invite/
 destruct including the failure and timeout cases.
+
+### `pfexec_iof` — the output directives a fork/exec'd job gets
+
+[`pfexec_iof.c`](pfexec_iof.c) is the only program here that runs a
+**real spawn end to end**, and it can because it comes up as a
+`PMIX_LAUNCHER` with `PMIX_TOOL_DO_NOT_CONNECT` — the combination
+`pfexec_params.c` uses. That is what selects `PMIx_Spawn_nb`'s fork/exec
+dispatch: a launcher with no server fork/execs locally instead of asking
+one. It stands pipes up in place of its own stdout and stderr the way
+`iof_output` does, then fork/execs `/bin/sh` writing one line to each.
+
+`docs/todo.rst` carried this as "a locally fork/exec'd job gets none of
+its spawn's IOF directives" and recorded that there was no in-tree way to
+exercise it. Both halves of that entry are answered here, and they are
+different kinds of assertion:
+
+- **The formatting directives already worked, by a route that is easy to
+  miss.** The fork/exec path calls no spawn parser, but `pfexec`'s
+  `register_nspace()` copies the spawn's job-level info into the job
+  description it registers, and `gds/hash`'s
+  `apply_job_value_effects()` runs the same `pmix_iof_check_flags()`
+  over it. The `PMIX_IOF_TAG_OUTPUT` cases pass against an unfixed
+  library and are here to keep that indirection from being refactored
+  away silently — they check the tag names **this spawn's** namespace,
+  so flags landing on the process-wide defaults instead would fail them.
+- **The channel set did not.** `PMIX_FWD_STDOUT`/`STDERR` set false is a
+  request for silence (see
+  [`docs/how-things-work/iof_inheritance.rst`](../../docs/how-things-work/iof_inheritance.rst));
+  those two cases fail against an unfixed library.
+
+The negative cases pair a `settle()` on the silenced stream with a
+`collect_until()` on the surviving one, and the order matters: the
+surviving stream is the sentinel saying the job ran and was drained, so
+the silence is a real absence rather than an answer we were too early to
+see. Keep that pairing if you add a case.
+
+`spawn_inheriting()` is the one case that does **not** go through
+`PMIx_Spawn`. It builds a caddy and calls `pmix_pfexec_base_spawn_job()`
+directly, which is all `pmix_server_spawn()`'s pfexec fallback does — the
+path that serves a spawn a *client* sent. A client is not a tool, so the
+parser's "forward everything to me" default does not apply and the caddy
+names no channel at all, asking to inherit instead. Reading that empty
+set as silence would mute every such spawn, and there is no client here
+to send one. It fails if the inherit arm is removed, which was checked.
 
 ### `client_api` — the `src/client` regression test
 

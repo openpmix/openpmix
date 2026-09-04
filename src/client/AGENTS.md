@@ -2737,7 +2737,7 @@ Most of what this sweep found sits in the gaps between them.
 | path | taken when | parses IOF directives | who completes the caddy |
 |---|---|---|---|
 | `_spawn_for_host` | a server that is not a launcher or tool | yes, and `pmix_server_process_iof()` acts on `channels`/`inherit_iof` | `localcbfunc` → `_lclcbfunc` |
-| fork/exec | a launcher with no server | **no** | `pmix_pfexec.c` |
+| fork/exec | a launcher with no server | yes, and `pfexec` acts on `channels` | `pmix_pfexec.c` |
 | PTL send | everyone else | yes, and `wait_cbfunc` copies `flags` onto the namespace | `wait_cbfunc` |
 
 **The completion paths have to agree about a NULL callback, and one did
@@ -2761,13 +2761,29 @@ waits when it is not already there, the same shape
 `pmix_gds_base_fetch_kv_tsafe()` uses. If you add a caller, the question
 to ask is only which thread it is on.
 
-**The fork/exec path never parses the request's IOF directives at all.**
-That is not fixed here — see `docs/todo.rst`, since acting on them is a
-`pfexec` change and a small feature rather than a transcription. Know
-that it is a real behavior difference: the same `PMIx_Spawn` with
-`PMIX_IOF_TAG_OUTPUT` tags output from a connected launcher and does not
-from a disconnected one, which is precisely what `PMIx_Spawn(3)`'s
-"single code path" promise says will not happen.
+**The fork/exec path never parsed the request's IOF directives, and half
+of that mattered.** This sweep recorded it as losing the formatting
+directives too — that a `PMIx_Spawn` with `PMIX_IOF_TAG_OUTPUT` tagged
+output from a connected launcher and not from a disconnected one. **That
+half was wrong**, and only running it says so: `pfexec`'s
+`register_nspace()` copies the spawn's job-level info into the job
+description it registers, and `gds/hash`'s `apply_job_value_effects()`
+runs the same `pmix_iof_check_flags()` over that description that the
+parser would have. Tag, rank, timestamp, xml, output-to-file and
+output-to-directory all reach the spawned namespace, and have since 2021.
+Do not re-derive the loss from the call sites; the route is indirect and
+the flags arrive before the first child is forked.
+
+What was really lost is the **channel set**, which nothing but the parser
+computes. `PMIX_FWD_STDOUT` set false is documented (see
+`docs/how-things-work/iof_inheritance.rst`) as a request for silence, and
+a connected launcher honors it by registering no subscription; a
+disconnected one printed the output anyway. Fixed: the fork/exec dispatch
+parses like the other two, `pmix_server_spawn()`'s own `pfexec` fallback
+copies `cd->channels` onto the borrowing caddy, and
+`pmix_pfexec_child_t` carries the mask so
+`pmix_iof_read_local_handler()` can drain a silenced pipe without writing
+it. `test/unit/pfexec_iof.c` holds both halves down.
 
 ### `PMIx_Spawn_nb` cannot answer `PMIX_OPERATION_SUCCEEDED`
 

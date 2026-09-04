@@ -700,6 +700,23 @@ envars_done:
     PMIX_RETAIN(fcd->peer);
 
     if (forkexec) {
+        /* Read the request's output directives, as the other two
+         * dispatch paths do. What pfexec needs from this is the channel
+         * set: the formatting flags reach the job by another route -
+         * pfexec's register_nspace() puts the spawn's job-level info into
+         * the job description, and the datastore applies the output flags
+         * among it to the new namespace - but nothing else works out
+         * which channels were asked for, and a channel the request turned
+         * off is a request for silence.
+         *
+         * Neither the flag stash nor pmix_iof_spawn_begin() belongs here:
+         * both exist to cover the gap before a reply names the namespace,
+         * and on this path there is no reply and no gap. The namespace
+         * exists, and carries its flags, before the first child is
+         * forked. */
+        pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
+                                 &fcd->inherit_iof,
+                                 fcd->info, fcd->ninfo);
         rc = pmix_pfexec_base_spawn_job(fcd);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_RELEASE(fcd);
