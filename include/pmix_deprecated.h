@@ -272,6 +272,10 @@ PMIX_EXPORT void PMIx_Load_nspace(pmix_nspace_t nspace, const char *str);
 /* check two nspace structs for equality */
 PMIX_EXPORT bool PMIx_Check_nspace(const char *key1, const char *key2);
 
+/* check two nspace structs for equality, treating an invalid
+ * namespace as matching nothing rather than as a wildcard */
+PMIX_EXPORT bool PMIx_Check_nspace_strict(const char *key1, const char *key2);
+
 /* check if a namespace is invalid */
 PMIX_EXPORT bool PMIx_Nspace_invalid(const char *nspace);
 
@@ -901,6 +905,12 @@ PMIX_EXPORT void PMIx_Fabric_construct(pmix_fabric_t *p);
 /* define a convenience macro for checking nspaces */
 #define PMIX_CHECK_NSPACE(a, b) \
     PMIx_Check_nspace(a, b)
+
+/* ...and one that does NOT treat an invalid namespace as a wildcard.
+ * Use this one to ask "are these the same namespace"; PMIX_CHECK_NSPACE
+ * answers that question "yes" whenever either side is unset. */
+#define PMIX_CHECK_NSPACE_STRICT(a, b) \
+    PMIx_Check_nspace_strict(a, b)
 
 #define PMIX_NSPACE_INVALID(a) \
     PMIx_Nspace_invalid(a)

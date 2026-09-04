@@ -82,11 +82,19 @@ Utility APIs
 
      void PMIx_Load_nspace(pmix_nspace_t nspace, const char *str);
 
-* Check two ``nspace`` structs for equality:
+* Check two ``nspace`` structs for equality, an invalid namespace on
+  either side matching anything:
 
   .. code-block:: c
 
      bool PMIx_Check_nspace(const char *key1, const char *key2);
+
+* Check two ``nspace`` structs for equality, an invalid namespace on
+  either side matching nothing:
+
+  .. code-block:: c
+
+     bool PMIx_Check_nspace_strict(const char *key1, const char *key2);
 
 * Check if a namespace is invalid:
 

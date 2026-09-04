@@ -740,18 +740,18 @@ static pmix_namespace_t *consolidate_nspace(pmix_pending_connection_t *pnd,
         return nptr;
     }
 
-    /* Compare names EXACTLY. Do not reach for PMIx_Check_nspace() here:
-     * it reports a match whenever *either* name is absent, which is the
-     * right answer for the wildcard matching its callers do and a
-     * catastrophic one for us. The server's list legitimately carries
-     * namespaces whose name is not set yet, and treating the first of
-     * those as "the same namespace" hands this tool an object belonging
-     * to something else - after which the job data the server packs for
-     * it is somebody else's, and the tool fails to unpack its own
-     * identity out of the reply. */
+    /* Compare names EXACTLY, which is what PMIx_Check_nspace_strict() is
+     * for. Do NOT reach for PMIx_Check_nspace() here: it reports a match
+     * whenever *either* name is absent, which is the right answer for the
+     * wildcard matching its callers do and a catastrophic one for us. The
+     * server's list legitimately carries namespaces whose name is not set
+     * yet, and treating the first of those as "the same namespace" hands
+     * this tool an object belonging to something else - after which the
+     * job data the server packs for it is somebody else's, and the tool
+     * fails to unpack its own identity out of the reply. */
     PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (ns != nptr && NULL != ns->nspace &&
-            0 == strncmp(nptr->nspace, ns->nspace, PMIX_MAX_NSLEN)) {
+        if (ns != nptr &&
+            PMIx_Check_nspace_strict(nptr->nspace, ns->nspace)) {
             existing = ns;
             break;
         }

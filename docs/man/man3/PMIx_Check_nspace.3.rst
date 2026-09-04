@@ -63,8 +63,18 @@ implementation of the ``PMIX_CHECK_NSPACE`` macro. Because an invalid
 namespace is treated as a wildcard, this routine is intended for matching
 semantics rather than a strict byte-for-byte equality test.
 
+That wildcard is easy to inherit by accident. Structures commonly carry
+namespace fields that are legitimately empty |mdash| a parent or launcher
+that was never recorded, a requestor nobody is waiting on, an object named
+only later in its lifetime |mdash| and comparing one of those here answers
+``true`` against every namespace in the system. Where the question being
+asked is "do these two belong to the same namespace" rather than "does this
+pass the filter", use
+:ref:`PMIx_Check_nspace_strict(3) <man3-PMIx_Check_nspace_strict>`.
+
 
 .. seealso::
+   :ref:`PMIx_Check_nspace_strict(3) <man3-PMIx_Check_nspace_strict>`,
    :ref:`PMIx_Load_nspace(3) <man3-PMIx_Load_nspace>`,
    :ref:`PMIx_Nspace_invalid(3) <man3-PMIx_Nspace_invalid>`,
    :ref:`pmix_nspace_t(5) <man5-pmix_nspace_t>`

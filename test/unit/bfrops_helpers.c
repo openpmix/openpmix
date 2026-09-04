@@ -137,12 +137,46 @@ static void test_procid_degenerate(void)
     PMIx_Load_key(k, NULL);
     (void) PMIx_Check_key(NULL, NULL);
     (void) PMIx_Check_nspace(NULL, NULL);
+    (void) PMIx_Check_nspace_strict(NULL, NULL);
     PMIx_Load_nspace(n, NULL);
 
     PMIx_Multicluster_nspace_parse(NULL, cluster, nspace);
     PMIx_Load_procid(&p, NULL, 0);
 
     report("the proc and key helpers survive NULL arguments", 1);
+}
+
+/* The two namespace comparisons answer opposite questions, and the whole
+ * point of having both is that they disagree about an unset namespace.
+ * This is one of the few things in this file that asserts behaviour
+ * rather than survival, because a caller can tell the difference and the
+ * difference is the reason the strict form exists. */
+static void test_nspace_comparison(void)
+{
+    int ok = 1;
+
+    /* two real namespaces: both routines agree, both ways */
+    ok = ok && PMIx_Check_nspace("jobA", "jobA");
+    ok = ok && PMIx_Check_nspace_strict("jobA", "jobA");
+    ok = ok && !PMIx_Check_nspace("jobA", "jobB");
+    ok = ok && !PMIx_Check_nspace_strict("jobA", "jobB");
+
+    /* an unset namespace is a WILDCARD to the ordinary form... */
+    ok = ok && PMIx_Check_nspace("", "jobA");
+    ok = ok && PMIx_Check_nspace("jobA", "");
+    ok = ok && PMIx_Check_nspace(NULL, "jobA");
+
+    /* ...and matches NOTHING in the strict form, including another
+     * unset namespace: "unset" is not a value two things can agree on */
+    ok = ok && !PMIx_Check_nspace_strict("", "jobA");
+    ok = ok && !PMIx_Check_nspace_strict("jobA", "");
+    ok = ok && !PMIx_Check_nspace_strict(NULL, "jobA");
+    ok = ok && !PMIx_Check_nspace_strict("jobA", NULL);
+    ok = ok && !PMIx_Check_nspace_strict("", "");
+    ok = ok && !PMIx_Check_nspace_strict(NULL, NULL);
+
+    report("an unset namespace is a wildcard to one comparison and to "
+           "neither side of the other", ok);
 }
 
 /* The two halves of a multi-cluster nspace are written element by
@@ -338,6 +372,7 @@ int main(int argc, char **argv)
     test_argv_degenerate();
     test_argv_still_works();
     test_procid_degenerate();
+    test_nspace_comparison();
     test_multicluster_parse();
     test_zero_and_null_lifecycle();
     test_load_helpers_with_no_data();
