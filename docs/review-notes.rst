@@ -22,6 +22,54 @@ Entries that stood on :doc:`todo` and have since been answered.  Each is
 kept with the reasoning that closed it, because in most cases the way it
 closed contradicted what the entry predicted.
 
+Nothing forwards a global-syslog request to a gateway
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/plog`` review (2026-08-20), and it closed on the
+design rather than on new machinery.  The entry asked whether
+``PMIX_LOG_GLOBAL_SYSLOG`` needed a server-to-server relay so that a
+non-gateway peer could move the request to the gateway node.  **It does
+not, and it must not have one.**  PMIx has no way of knowing which
+daemon sits on the gateway; the forwarding belongs to the host
+environment, which does know its own topology, and the ordinary log
+up-call is the hand-over point.  The entry's own closing note had the
+answer in it.
+
+Both halves were already implemented, which is why the entry read as a
+gap and was not one.  A server that is the gateway processes the request
+locally, and the ``syslog`` module writes it, because on the gateway the
+local syslog *is* the system-wide one.  A server that is not the gateway
+never reaches ``plog`` at all: ``pmix_server_log`` and ``PMIx_Log_nb``
+both hand the whole request to ``pmix_host_server.log2()`` (or ``log()``)
+first, and ``pmix_log_host_only`` makes a host that wants every request,
+gateway or not, say so.  The request reaches the module on a non-gateway
+peer only when there is no host to take it — an unconnected tool, a
+client whose server answered ``PMIX_ERR_NOT_AVAILABLE``, or a server
+whose host registered neither entry point — and in that configuration
+nothing on the node can reach the global syslog.  Declining is the
+correct and only answer.
+
+So no transport was written.  What the entry did turn up was a real
+defect one layer up.  The router decided what to tell the caller from a
+per-*module* tally, and a module answers for the whole ``data`` array:
+the ``syslog`` module owns ``pmix.log.lsys`` and ``pmix.log.gsys`` both,
+so a request carrying one of each on a non-gateway peer serviced the
+local entry, returned ``PMIX_SUCCESS`` for the pair, and the global entry
+was dropped with the caller told it had been logged.  That is the same
+vanishing message the 2026-08-20 pass had set out to kill, surviving in
+the mixed-request case.  ``pmix_plog_base_log`` now counts the completion
+marks the modules leave on the array as well as the module statuses, and
+reports ``PMIX_ERR_PARTIAL_SUCCESS`` when entries are left unserviced —
+except under ``PMIX_LOG_ONCE``, where leftover entries are what the
+directive asked for.  ``test/unit/plog_gsys.c`` covers the three cases
+and fails on the old code.
+
+The documentation was the other half of the close.  The attribute's
+description in ``include/pmix_common.h.in``, the ``PMIx_Log(3)`` man
+page, :doc:`how-things-work/pmix_log` and the ``plog`` and
+``plog/syslog`` ``AGENTS.md`` files now all say who performs the relay,
+so the next reader does not re-open the question as a missing transport.
+
 Who owns a credential the host hands up
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

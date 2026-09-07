@@ -108,10 +108,30 @@ data items:
 - `PMIX_LOG_SYSLOG` and `PMIX_LOG_LOCAL_SYSLOG` → `write_local(...)`.
 - `PMIX_LOG_GLOBAL_SYSLOG` → **only** written if this process is a gateway
   server (`PMIX_PEER_IS_GATEWAY`); otherwise it is skipped (logged at
-  verbosity, not delivered). The intent is that a "global" message is
-  forwarded up to the gateway node and recorded in *that* node's syslog,
-  so only the gateway actually emits it. There is currently no separate
-  forwarding transport here — the gateway simply writes locally.
+  verbosity, not delivered). A "global" message belongs in the gateway
+  node's syslog, and on the gateway the local syslog *is* that syslog, so
+  the gateway simply writes locally.
+
+  **This module is not where a non-gateway request gets forwarded, and
+  there is no missing transport here.** PMIx has no way of knowing which
+  daemon sits on the gateway node, so it never relays the request itself
+  — that is the host environment's job, and a server that is not the
+  gateway hands the whole request up through `pmix_host_server.log2()`
+  long before `plog` is consulted (see `pmix_server_log` in
+  [`src/server/pmix_server_control.c`](../../../server/pmix_server_control.c)
+  and the branch in [`src/common/pmix_log.c`](../../../common/pmix_log.c)).
+  A `gsys` entry only arrives here on a non-gateway peer when there is no
+  host to take it: an unconnected tool, a client whose server answered
+  `PMIX_ERR_NOT_AVAILABLE`, or a server whose host registered neither
+  `log` nor `log2`. Nothing on the node can reach the global syslog in
+  that configuration, which is exactly what declining the entry reports.
+
+  Leaving the entry *unmarked* is what makes that report reach the
+  caller. The router counts the completion marks as well as the module
+  statuses, precisely because this module answers for the whole array:
+  a request carrying a `lsys` entry alongside the `gsys` one is
+  serviced in part, and used to come back as plain `PMIX_SUCCESS` on the
+  strength of the local write. `test/unit/plog_gsys.c` covers it.
 
 Entries already marked `PMIX_INFO_OP_IS_COMPLETE` are skipped, and each
 entry this module delivers is marked with `PMIX_INFO_OP_COMPLETED`. An

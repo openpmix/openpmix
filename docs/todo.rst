@@ -52,11 +52,10 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 6**
+**Deferred work — 5**
 
 * :ref:`todo-resolve-peers-wildcard`
 * :ref:`todo-get-pointer-values`
-* :ref:`todo-global-syslog`
 * :ref:`todo-compress-length-prefix`
 * :ref:`todo-fabric-inventory`
 * :ref:`todo-server-genvars`
@@ -215,41 +214,6 @@ progress thread.  The two shortcuts are safe because they point at
 process-lifetime globals.  Left as recorded behavior; the smaller,
 separable piece is making ``PMIX_VERSION_NUMERIC`` agree with its two
 neighbours.
-
-.. _todo-global-syslog:
-
-Nothing forwards a global-syslog request to a gateway
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found in the ``src/mca/plog`` review (2026-08-20).  Half of it was
-fixed; the other half needs a design decision.
-
-``PMIX_LOG_GLOBAL_SYSLOG`` means "record this in the system-wide
-syslog", and only a gateway server is meant to emit it — the message is
-supposed to travel to the gateway node and be written there.  The
-``syslog`` module implements the gateway half: if it is a gateway it
-writes locally, and if it is not it declines.  Nothing implements the
-other half.  There is no transport that moves the request to a gateway,
-so on a peer that is not one the entry has nowhere to go.
-
-Before the review this was invisible, because the module returned
-``PMIX_SUCCESS`` regardless and the caller was told the message had been
-logged.  It now declines the entry, so the framework reports
-``PMIX_ERR_NOT_AVAILABLE`` (or ``PMIX_ERR_PARTIAL_SUCCESS`` alongside
-another channel that did work) and a *client* falls back to its own
-modules — which will decline for the same reason.  The failure is
-honest now, and still a failure.
-
-Closing it means choosing between two designs and is not a bug fix:
-either the request is relayed to the gateway over the existing
-server-to-server path, which needs the routing to exist and raises the
-question of what a client should be told while it is in flight, or
-``PMIX_LOG_GLOBAL_SYSLOG`` is documented as gateway-only and the
-attribute's description in ``include/pmix_common.h.in`` is corrected to
-say so.  Note that ``pmix_log_host_only`` and the host's ``log2`` entry
-point already give a resource manager a way to take the request and do
-the forwarding itself, which may be the answer that needs no new PMIx
-machinery at all.
 
 .. _todo-compress-length-prefix:
 

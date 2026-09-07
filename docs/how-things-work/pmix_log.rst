@@ -281,6 +281,54 @@ syslog (src/mca/plog/syslog/)
 Handles ``PMIX_LOG_SYSLOG``, ``PMIX_LOG_LOCAL_SYSLOG``, and (on gateway
 servers only) ``PMIX_LOG_GLOBAL_SYSLOG``.
 
+.. _pmix-log-global-syslog:
+
+Who forwards a global-syslog request
+""""""""""""""""""""""""""""""""""""
+
+``PMIX_LOG_GLOBAL_SYSLOG`` asks for the message to be recorded in the
+system-wide syslog, which lives on the gateway node.  **PMIx never
+relays that request itself**, and the reason is not an omission: the
+library has no idea which daemon is running on the gateway node, and no
+server-to-server path on which to reach it.  Moving the entry is the
+*host environment's* job, and the machinery for handing it over already
+exists — it is the ordinary log up-call.
+
+The result is a two-case rule, and both cases are already implemented:
+
+* **This server is the gateway** (``PMIX_SERVER_GATEWAY`` was given to
+  ``PMIx_server_init``).  The request is processed locally and the
+  ``syslog`` module writes the entry, because on the gateway the local
+  syslog *is* the system-wide one.
+
+* **This server is not the gateway.**  The whole request goes up to the
+  host through ``pmix_host_server.log2()`` (or the older ``log()``)
+  before the ``plog`` framework is consulted at all — see `Call Flow`_
+  above.  The host, which does know its own topology, relays it to
+  whichever of its daemons is on the gateway node and calls
+  ``PMIx_Log`` there.  A host that would rather take *every* log request,
+  gateway or not, sets the ``pmix_log_host_only`` MCA parameter.
+
+A request only reaches the ``syslog`` module on a non-gateway peer when
+there is no host to take it — an unconnected tool, a client whose server
+answered ``PMIX_ERR_NOT_AVAILABLE``, or a server whose host registered
+neither ``log`` nor ``log2``.  In that configuration nothing on the node
+can reach the global syslog, and the module says so: it leaves the entry
+unmarked and uncounted so the framework reports
+``PMIX_ERR_NOT_AVAILABLE`` (or ``PMIX_ERR_PARTIAL_SUCCESS`` when other
+entries in the same request *were* serviced) rather than telling the
+caller a message was logged that was not.
+
+.. note::
+
+   That partial-success answer is why the router counts the completion
+   marks on ``data[]`` and not just the modules that reported success.
+   A module returns one status for the whole array and is entitled to
+   return ``PMIX_SUCCESS`` when it handled "at least part of" it — so a
+   request carrying both a local and a global syslog entry would
+   otherwise be reported as fully logged on the strength of the local
+   one alone.  ``test/unit/plog_gsys.c`` covers all three cases.
+
 MCA parameters on the *component* (set at open time) configure the
 default syslog facility and priority level.  The per-call
 ``PMIX_LOG_SYSLOG_PRI`` directive overrides the priority.  Unrecognised

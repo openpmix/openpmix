@@ -831,7 +831,11 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_LOG_SYSLOG                     "pmix.log.syslog"       // (char*) log message to syslog - defaults to ERROR priority. Will log
                                                                     //         to global syslog if available, otherwise to local syslog
 #define PMIX_LOG_LOCAL_SYSLOG               "pmix.log.lsys"         // (char*) log msg to local syslog - defaults to ERROR priority
-#define PMIX_LOG_GLOBAL_SYSLOG              "pmix.log.gsys"         // (char*) forward data to system "master" and log msg to that syslog
+#define PMIX_LOG_GLOBAL_SYSLOG              "pmix.log.gsys"         // (char*) forward data to system "master" and log msg to that syslog.
+                                                                    //         The relay is the host environment's to perform - PMIx has no
+                                                                    //         way of knowing which daemon sits on the gateway node, so a
+                                                                    //         server that is not itself the gateway passes the request up
+                                                                    //         to its host and reports an error if there is no host to take it
 #define PMIX_LOG_SYSLOG_PRI                 "pmix.log.syspri"       // (int) syslog priority level
 
 #define PMIX_LOG_TIMESTAMP                  "pmix.log.tstmp"        // (time_t) timestamp for log report

@@ -105,7 +105,11 @@ never names a component directly. Supported channels include:
 * ``PMIX_LOG_LOCAL_SYSLOG`` |mdash| output the message to the local syslog. Defaults to ``ERROR``
   priority.
 * ``PMIX_LOG_GLOBAL_SYSLOG`` |mdash| forward the message to the system "master" and output it to that
-  node's syslog. Defaults to ``ERROR`` priority.
+  node's syslog. Defaults to ``ERROR`` priority. The relay to the gateway node is performed by the
+  *host environment*, not by PMIx |mdash| the library has no way of knowing which daemon sits on the
+  gateway. A PMIx server writes the entry itself only when it is the gateway (see
+  ``PMIX_SERVER_GATEWAY``); otherwise it passes the request up to its host, and reports an error if
+  there is no host to take it.
 * ``PMIX_LOG_EMAIL`` (pmix_data_array_t\*) |mdash| send the message via email, described by an array
   of :ref:`pmix_info_t(5) <man5-pmix_info_t>` using the following ``PMIX_LOG_EMAIL_*`` attributes:
 
