@@ -101,7 +101,7 @@ PMIX_EXPORT void pmix_pnet_base_child_finalized(pmix_proc_t *peer);
 PMIX_EXPORT void pmix_pnet_base_local_app_finalized(pmix_namespace_t *nptr);
 PMIX_EXPORT void pmix_pnet_base_deregister_nspace(char *nspace);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                                           pmix_list_t *inventory);
+                                                           void *inventory);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
                                                            pmix_info_t directives[], size_t ndirs);
 /* Build the value of a device-selection variable for one process from the

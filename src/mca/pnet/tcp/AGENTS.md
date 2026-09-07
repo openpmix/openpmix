@@ -71,9 +71,13 @@ keep it aligned with `pmix_pnet_module_t`:
   base-only, so a component that needs an envar in the child appends a
   `pmix_envar_list_item_t` to the namespace's `ns->envars` cache during
   `setup_local_network`.
-- `collect_inventory` takes a plain `pmix_list_t *inventory` (append
-  `pmix_kval_t`s to it) and `deliver_inventory` takes
-  `(info, ninfo, directives, ndirs)` — neither uses a callback.
+- `collect_inventory` takes an opaque `void *inventory` — a
+  `PMIx_Info_list` handle, filled with `PMIx_Info_list_add()`, **not** a
+  `pmix_list_t` to append `pmix_kval_t`s to; the converter reads its
+  entries as `pmix_infolist_t` — and returns `PMIX_SUCCESS` when it finds
+  nothing, because the base fan-out has no decline convention.
+  `deliver_inventory` takes `(info, ninfo, directives, ndirs)` — neither
+  uses a callback.
 - `setup_local_network` takes a `pmix_nspace_env_cache_t *` (use
   `ns->ns` for the underlying `pmix_namespace_t *`).
 - The framework's old global inventory store (`pmix_pnet_globals.nodes`

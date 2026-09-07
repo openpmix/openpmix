@@ -38,6 +38,7 @@
 #include <time.h>
 
 #include "pmix_common.h"
+#include "pmix.h"
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
@@ -68,7 +69,7 @@ static void child_finalized(pmix_proc_t *peer);
 static void local_app_finalized(pmix_namespace_t *nptr);
 static void deregister_nspace(pmix_namespace_t *nptr);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_list_t *inventory);
+                                       void *inventory);
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo, pmix_info_t directives[],
                                        size_t ndirs);
 
@@ -992,7 +993,7 @@ static void deregister_nspace(pmix_namespace_t *nptr)
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_list_t *inventory)
+                                       void *inventory)
 {
     char *prefix;
     char myconnhost[PMIX_MAXHOSTNAMELEN] = {0};
@@ -1004,7 +1005,6 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     pmix_status_t rc;
     bool found = false;
     pmix_byte_object_t pbo;
-    pmix_kval_t *kv;
 
     PMIX_HIDE_UNUSED_PARAMS(directives, ndirs);
 
@@ -1091,32 +1091,32 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
             return rc;
         }
     }
-    /* if we have anything to report, then package it up for transfer */
+    /* Having nothing to report is not a failure. The framework's
+     * collect_inventory contract says so in as many words - "if there is
+     * no inventory to report, then just return PMIX_SUCCESS" - and the
+     * base fan-out has no decline convention: it treats any non-success
+     * as an error and abandons the whole collection, every other module
+     * included. A node whose only interfaces are loopback and virtual is
+     * ordinary, and it used to fail inventory collection outright. */
     if (!found) {
         PMIX_DESTRUCT(&bucket);
-        return PMIX_ERR_TAKE_NEXT_OPTION;
+        return PMIX_SUCCESS;
     }
     /* extract the resulting blob */
     PMIX_UNLOAD_BUFFER(&bucket, pbo.bytes, pbo.size);
-    kv = PMIX_NEW(pmix_kval_t);
-    if (NULL == kv) {
-        PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
-        return PMIX_ERR_NOMEM;
+    /* The inventory is an opaque PMIx_Info_list handle, not a list of
+     * our own choosing: PMIx_Info_list_convert() reads its entries as
+     * pmix_infolist_t, so appending anything else - this used to append a
+     * pmix_kval_t - has the converter read a char* key pointer as the
+     * head of a pmix_info_t's key array and a pmix_value_t out of memory
+     * past the end of the allocation. The add copies the blob, so our own
+     * copy goes back either way. */
+    rc = PMIx_Info_list_add(inventory, PMIX_TCP_INVENTORY_KEY, &pbo, PMIX_BYTE_OBJECT);
+    PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
     }
-    kv->key = strdup(PMIX_TCP_INVENTORY_KEY);
-    PMIX_VALUE_CREATE(kv->value, 1);
-    if (NULL == kv->value) {
-        PMIX_RELEASE(kv);
-        PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
-        return PMIX_ERR_NOMEM;
-    }
-    kv->value->type = PMIX_BYTE_OBJECT;
-    /* transfer ownership of the unloaded blob into the value */
-    kv->value->data.bo.bytes = pbo.bytes;
-    kv->value->data.bo.size = pbo.size;
-    pmix_list_append(inventory, &kv->super);
-
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 /* start tracking an allocation drawn from the given pool, and publish

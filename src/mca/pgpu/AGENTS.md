@@ -136,7 +136,7 @@ This is the per-component module. Its function-pointer fields:
 | `child_finalized` | `..._child_finalized_fn_t` — `(pmix_proc_t *peer)` | cleanup when a local client exits |
 | `local_app_finalized` | `..._local_app_finalized_fn_t` — `(pmix_namespace_t *nptr)` | cleanup when all local clients of an app exit |
 | `deregister_nspace` | `..._dregister_nspace_fn_t` — `(pmix_namespace_t *nptr)` | release per-nspace resources |
-| `collect_inventory` | `..._collect_inventory_fn_t` — `(pmix_info_t directives[], size_t ndirs, pmix_list_t *inventory)` | add local GPU inventory as `pmix_kval_t`s |
+| `collect_inventory` | `..._collect_inventory_fn_t` — `(pmix_info_t directives[], size_t ndirs, void *inventory)` | add local GPU inventory with `PMIx_Info_list_add()` |
 | `deliver_inventory` | `..._deliver_inventory_fn_t` — `(pmix_info_t info[], size_t ninfo, pmix_info_t directives[], size_t ndirs)` | archive inventory from remote peers |
 | `setup_fork` | `..._setup_fork_fn_t` — `(const pmix_proc_t *proc, char ***env)` | contribute this one process's GPU environment |
 

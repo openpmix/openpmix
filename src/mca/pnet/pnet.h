@@ -106,13 +106,19 @@ typedef void (*pmix_pnet_base_module_dregister_nspace_fn_t)(pmix_namespace_t *np
  * callback function when the operation is completed.
  *
  * If there is no inventory to report, then just return PMIX_SUCCESS.
+ * There is no decline convention here: the base fan-out treats any
+ * non-success as an error and abandons the whole collection.
+ *
+ * "inventory" is the opaque handle from PMIx_Info_list_start() - add to
+ * it with PMIx_Info_list_add(), not by appending items of your own
+ * choosing, which the conversion at the end cannot read.
  *
  * If the module should be providing inventory but encounters an error,
  * then immediately return an error code if the error is immediately detected,
  * or execute the callback function with an error code if it is detected later.
  */
 typedef pmix_status_t (*pmix_pnet_base_module_collect_inventory_fn_t)(
-    pmix_info_t directives[], size_t ndirs, pmix_list_t *inventory);
+    pmix_info_t directives[], size_t ndirs, void *inventory);
 
 /**
  * Deliver inventory for archiving by corresponding modules
@@ -270,7 +276,7 @@ typedef pmix_mca_base_component_t pmix_pnet_base_component_t;
  * the same three by pasting its name, so the two cannot drift apart.
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
-#define PMIX_MCA_pnet_MAJOR_VERSION   2
+#define PMIX_MCA_pnet_MAJOR_VERSION   3
 #define PMIX_MCA_pnet_MINOR_VERSION   0
 #define PMIX_MCA_pnet_RELEASE_VERSION 0
 

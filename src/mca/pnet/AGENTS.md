@@ -131,7 +131,7 @@ base skips a `NULL` slot):
 | `child_finalized` | `(pmix_proc_t *peer)` | one client exited |
 | `local_app_finalized` | `(pmix_namespace_t *nptr)` | all local clients of a job exited |
 | `deregister_nspace` | `(pmix_namespace_t *nptr)` | release per-job resources (e.g. static ports) |
-| `collect_inventory` | `(directives, ndirs, pmix_list_t *inventory)` | append local fabric inventory |
+| `collect_inventory` | `(directives, ndirs, void *inventory)` | add local fabric inventory with `PMIx_Info_list_add()` |
 | `deliver_inventory` | `(info, ninfo, directives, ndirs)` | archive inventory from remote peers |
 | `register_fabric` | `(pmix_fabric_t *fabric, directives, ndirs, cbfunc, cbdata)` | claim a fabric plane for cost/endpoint queries |
 | `update_fabric` | `(pmix_fabric_t *fabric)` | refresh fabric data |

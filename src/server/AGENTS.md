@@ -2258,11 +2258,30 @@ before you "fix" one:
   before the screen is added, because some of them (the `preg` and hwloc
   helpers in `pmix_server_setup.c`, for instance) work perfectly well in
   a client and must keep doing so.
+- **The inventory is an opaque `PMIx_Info_list` handle, not a list of
+  your own.** `clct` used to construct a bare `pmix_list_t` on the stack,
+  hand its address to the `pnet`/`pgpu` `collect_inventory` fan-outs — whose
+  hooks took a `pmix_list_t *`, which is what invited it — and cast it into
+  `PMIx_Info_list_convert()`. That worked only for as long as the handle's
+  concrete class stayed `pmix_list_t`, and it said nothing at all about
+  what the entries on it had to be: `pnet/tcp` appended a `pmix_kval_t`,
+  while the converter reads entries as `pmix_infolist_t`. A `pmix_kval_t`
+  is `{super; char *key; pmix_value_t *value;}` and a `pmix_infolist_t` is
+  `{super; pmix_info_t info;}`, so the converter read the `char *` key
+  **pointer's bytes** as the head of a `pmix_info_t`'s key array and a
+  `pmix_value_t` out of memory well past the end of a forty-byte
+  allocation. It does not reliably fault; what it produces is an entry
+  with a garbage key and `PMIX_UNDEF` for a type, handed to the host under
+  `PMIX_SUCCESS`, with the blob the collector just assembled gone. It now
+  starts a real list, the hooks take `void *`, and collectors add with
+  `PMIx_Info_list_add()`. `test/unit/server_inventory.c` asserts the shape
+  of a collected entry, though only a build configured `--with-tcp` and run
+  with `PMIX_MCA_pnet=tcp` reaches that arm.
 - **`PMIx_Info_list_convert` copies.** It `PMIx_Info_xfer`s every element
   into a freshly created array, so `clct` owns what it hands back *and*
-  still owes the list a `PMIX_LIST_DESTRUCT`. Doing both is not a double
-  free. `PMIX_ERR_EMPTY` from it means "nothing collected" and is mapped
-  to success with a NULL array.
+  still owes the list a `PMIx_Info_list_release()`. Doing both is not a
+  double free. `PMIX_ERR_EMPTY` from it means "nothing collected" and is
+  mapped to success with a NULL array.
 - **`cirelease` is handed to the *host*, so it can run on the host's
   thread.** That is safe only because it touches nothing global — it
   frees the converted array and releases the caddy. Do not grow it into

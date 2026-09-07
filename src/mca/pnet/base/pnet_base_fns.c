@@ -504,7 +504,7 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
 }
 
 pmix_status_t pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                               pmix_list_t *inventory)
+                                               void *inventory)
 {
     pmix_pnet_base_active_module_t *active;
     pmix_status_t rc;

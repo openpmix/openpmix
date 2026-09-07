@@ -76,7 +76,10 @@ static void report(const char *name, int passed, const char *detail)
 static pmix_lock_t clock_;
 static pmix_status_t cstatus = PMIX_ERR_NOT_SUPPORTED;
 static size_t cninfo = SIZE_MAX;
-static pmix_info_t *cinfo = (pmix_info_t *) 0x1;
+/* deliberately neither of the two answers a real callback can give, so an
+ * assertion cannot pass on a callback that never fired */
+static int cinfo_present = -1;
+static int centries_ok = -1;
 
 static void infocbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                        pmix_release_cbfunc_t relfn, void *relcbdata)
@@ -84,8 +87,21 @@ static void infocbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, vo
     PMIX_HIDE_UNUSED_PARAMS(cbdata);
 
     cstatus = status;
-    cinfo = info;
     cninfo = ninfo;
+    cinfo_present = (NULL != info);
+    /* Judge the entries here, not in main(): the release below hands the
+     * array back to the library, which frees it, so a pointer kept across
+     * it is dangling.  Only a NULL/0 answer survived that, which is why
+     * nothing noticed. */
+    centries_ok = (NULL != info) && (0 < ninfo);
+    if (NULL != info) {
+        size_t q;
+        for (q = 0; q < ninfo; q++) {
+            centries_ok = centries_ok && ('\0' != info[q].key[0])
+                          && (NULL != strchr(info[q].key, '.'))
+                          && (PMIX_UNDEF != info[q].value.type);
+        }
+    }
     /* the array belongs to the library - hand it back the way the man
      * page requires rather than freeing it ourselves */
     if (NULL != relfn) {
@@ -213,12 +229,30 @@ int main(int argc, char **argv)
     report("collect_inventory accepted in a server", PMIX_SUCCESS == rc, PMIx_Error_string(rc));
     if (PMIX_SUCCESS == rc) {
         PMIX_WAIT_THREAD(&clock_);
-        /* no in-tree pnet/pgpu component contributes anything, so the
-         * documented "nothing collected" answer is the one to expect:
-         * PMIX_ERR_EMPTY out of PMIx_Info_list_convert mapped to success
-         * with a NULL array */
         report("collection reports success", PMIX_SUCCESS == cstatus, PMIx_Error_string(cstatus));
-        report("an empty inventory is NULL/0", NULL == cinfo && 0 == cninfo, "array not empty");
+        /* Both experimental pnet components gate themselves behind being
+         * named, and every other collector in the tree is a stub, so a
+         * default build selects nothing and the documented "nothing
+         * collected" answer is the one to expect: PMIX_ERR_EMPTY out of
+         * PMIx_Info_list_convert, mapped to success with a NULL array.
+         *
+         * The other arm needs a build configured --with-tcp and run with
+         * PMIX_MCA_pnet=tcp.  It is worth asserting even though it is
+         * normally skipped, because it is the only place the collectors'
+         * side of the contract is checked at all: the inventory they fill
+         * is an opaque PMIx_Info_list handle, and pnet/tcp used to append
+         * a pmix_kval_t to it directly.  The converter reads entries as
+         * pmix_infolist_t, so what came back was an entry whose key was
+         * the bytes of a char* pointer and whose value type was whatever
+         * lay past the end of the allocation - handed to the host under
+         * PMIX_SUCCESS.  A key that is empty, or not one of ours, is that
+         * bug. */
+        if (!cinfo_present) {
+            report("an uncollected inventory is NULL/0", 0 == cninfo, "array not empty");
+        } else {
+            report("a collected inventory entry is a real pmix_info_t", centries_ok,
+                   "key or type is not one we could have written");
+        }
     }
     PMIX_DESTRUCT_LOCK(&clock_);
 

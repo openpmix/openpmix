@@ -61,31 +61,41 @@ static void cirelease(void *cbdata)
 static void clct(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
-    pmix_list_t inventory;
     pmix_data_array_t darray;
     pmix_status_t rc;
+    void *inventory;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    PMIX_CONSTRUCT(&inventory, pmix_list_t);
+    /* the collectors fill an opaque PMIx_Info_list handle. This used to
+     * construct a bare pmix_list_t on the stack and cast it into the
+     * list API, which worked only for as long as the handle's concrete
+     * class stayed pmix_list_t and said nothing about what the entries on
+     * it had to be. */
+    inventory = PMIx_Info_list_start();
+    if (NULL == inventory) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        goto report;
+    }
 
     /* collect the pnet inventory */
-    rc = pmix_pnet.collect_inventory(cd->directives, cd->ndirs, &inventory);
+    rc = pmix_pnet.collect_inventory(cd->directives, cd->ndirs, inventory);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto report;
     }
 
     /* collect the pgpu inventory */
-    rc = pmix_pgpu.collect_inventory(cd->directives, cd->ndirs, &inventory);
+    rc = pmix_pgpu.collect_inventory(cd->directives, cd->ndirs, inventory);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto report;
     }
 
     /* convert list to an array of info */
-    rc = PMIx_Info_list_convert((void*)&inventory, &darray);
+    rc = PMIx_Info_list_convert(inventory, &darray);
     if (PMIX_ERR_EMPTY == rc) {
         rc = PMIX_SUCCESS;
     } else if (PMIX_SUCCESS == rc) {
@@ -103,7 +113,9 @@ report:
          * and the info array converted into it are ours to give back */
         cirelease(cd);
     }
-    PMIX_LIST_DESTRUCT(&inventory);
+    if (NULL != inventory) {
+        PMIx_Info_list_release(inventory);
+    }
     return;
 }
 

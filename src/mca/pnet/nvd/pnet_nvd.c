@@ -37,7 +37,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
                                          pmix_info_t info[], size_t ninfo);
 static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_list_t *inventory);
+                                       void *inventory);
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                        pmix_info_t directives[], size_t ndirs);
 pmix_pnet_module_t pmix_pnet_nvd_module = {
@@ -313,7 +313,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_list_t *inventory)
+                                       void *inventory)
 {
     size_t n;
 
