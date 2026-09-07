@@ -155,13 +155,29 @@ Its algorithm:
      declined; continue to the next.
    - anything else — a real error; abort the loop and return it.
 
-   Once the loop finishes, collapse the tally into a single status:
+   Once the loop finishes, count the data entries still lacking a
+   completion mark (skipping this when `logonce` was requested, where
+   leftover entries are what the directive asked for), and collapse
+   both tallies into a single status:
    - **no module handled it** → `PMIX_ERR_NOT_AVAILABLE` — none of the
      available channels could service the request.
-   - **some, but not all, modules handled it** (and this was not a
-     `logonce` request) → `PMIX_ERR_PARTIAL_SUCCESS`.
-   - **every module handled it** (or the first one did under `logonce`)
-     → `PMIX_SUCCESS`.
+   - **some, but not all, of the request was handled** (and this was not
+     a `logonce` request) → `PMIX_ERR_PARTIAL_SUCCESS`. That covers a
+     module that declined outright *and* a module that serviced some of
+     the array and left the rest.
+   - **every module handled it, and no entry was left unmarked** (or the
+     first module handled it under `logonce`) → `PMIX_SUCCESS`.
+
+   **The module tally alone is not enough, which is why the marks are
+   counted too.** A module returns one status for the whole array and is
+   entitled to say `PMIX_SUCCESS` when it handled "at least part of" it.
+   The `syslog` module owns both `pmix.log.lsys` and `pmix.log.gsys`, and
+   on a peer that is not the gateway it can service the first and not the
+   second — so a request carrying both used to be reported as fully
+   logged on the strength of the local write, and the global entry
+   vanished with the caller told otherwise. See
+   [`syslog/AGENTS.md`](syslog/AGENTS.md) for why that entry is declined
+   rather than forwarded, and `test/unit/plog_gsys.c` for the case.
 
 4. **Nothing to route?** If no module matched any data item at all,
    return `PMIX_ERR_NOT_AVAILABLE` — the caller asked for channels that no

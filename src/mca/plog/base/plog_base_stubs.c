@@ -29,7 +29,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
 {
     pmix_plog_base_active_module_t *active;
     pmix_status_t rc = PMIX_ERR_NOT_AVAILABLE;
-    size_t n, k, nmods, nsucc;
+    size_t n, k, nmods, nsucc, nleft;
     int m;
     bool logonce = false;
     pmix_list_t channels;
@@ -180,11 +180,32 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
         }
     }
 
+    /* the module tally alone cannot answer this. A module reports
+     * success when it handled "at least part of" the request, so one
+     * that services an entry and declines another in the same array -
+     * a PMIX_LOG_GLOBAL_SYSLOG entry on a peer that is not the gateway,
+     * alongside a local one, is the case that motivated this - answers
+     * for both, and the declined entry would be reported to the caller
+     * as logged. The marks the modules leave on the array are what says
+     * which entries actually went somewhere, so count those too.
+     *
+     * PMIX_LOG_ONCE is the exception: it asks for exactly one channel
+     * to take the request, so the entries left over are what the
+     * directive wanted rather than a failure. */
+    nleft = 0;
+    if (!logonce) {
+        for (n = 0; n < ndata; n++) {
+            if (!PMIX_INFO_OP_IS_COMPLETE(&data[n])) {
+                ++nleft;
+            }
+        }
+    }
+
     if (0 == nsucc) {
         // none of the available modules could service the request
         rc = PMIX_ERR_NOT_AVAILABLE;
-    } else if (!logonce && nsucc < nmods) {
-        // at least one, but not all, of the modules handled the request
+    } else if (!logonce && (nsucc < nmods || 0 < nleft)) {
+        // at least one, but not all, of the request was handled
         rc = PMIX_ERR_PARTIAL_SUCCESS;
     } else {
         rc = PMIX_SUCCESS;

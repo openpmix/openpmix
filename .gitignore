@@ -349,6 +349,7 @@ test/unit/pnet_simptest_map
 test/unit/pgpu_affinity_mask
 test/unit/pgpu_envar_blob
 test/unit/pmdl_envars
+test/unit/plog_gsys
 test/unit/plog_routing
 test/unit/psec_credentials
 test/unit/threads_primitives
