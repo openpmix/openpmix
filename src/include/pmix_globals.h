@@ -497,6 +497,26 @@ typedef struct {
 } pmix_infolist_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_infolist_t);
 
+/* The object behind the opaque handle PMIx_Info_list_start() returns: a
+ * list of the pmix_infolist_t above, carrying the first failure any of
+ * the adds onto it hit.
+ *
+ * The status is the point.  A caller assembling a large info list - the
+ * PRRTE daemon's namespace registration adds sixty-eight keys in one
+ * function - either tests every add, which is unreadable and still
+ * misses a value that failed to load inside an add that reported
+ * success, or tests none and registers a job with keys silently
+ * missing.  Folding the failure into the list lets PMIx_Info_list_convert()
+ * report it once, at the end, where the caller is already looking.
+ *
+ * It records the FIRST failure and keeps it: a later success must not
+ * erase an earlier loss, and the first one is the one with a cause. */
+typedef struct {
+    pmix_list_t super;
+    pmix_status_t status;
+} pmix_ilist_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_ilist_t);
+
 typedef struct {
     pmix_list_item_t super;
     pmix_query_t query;

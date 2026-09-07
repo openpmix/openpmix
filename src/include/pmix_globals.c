@@ -684,6 +684,14 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_infolist_t,
                                 pmix_list_item_t,
                                 ifcon, ifdes);
 
+static void ilcon(pmix_ilist_t *p)
+{
+    p->status = PMIX_SUCCESS;
+}
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ilist_t,
+                                pmix_list_t,
+                                ilcon, NULL);
+
 static void qlcon(pmix_querylist_t *p)
 {
     PMIX_QUERY_CONSTRUCT(&p->query);

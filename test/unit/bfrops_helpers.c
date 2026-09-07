@@ -23,13 +23,19 @@
  * helper picks is not the subject; the subject is that the answer is
  * not a signal.
  *
- * Two cases here do assert behaviour, because a caller can tell the
+ * Three cases here do assert behaviour, because a caller can tell the
  * difference and does depend on it:
  *   - PMIx_Info_list_release(NULL) must be a no-op, like every other
  *     release in that file. A caller whose PMIx_Info_list_start()
  *     failed holds exactly that NULL.
  *   - a zero-length create must not hand back something a matching free
  *     will choke on.
+ *   - an add that fails must SAY so, and the list must remember it. The
+ *     reason is a caller assembling forty keys in one function: it either
+ *     tests every add, which is unreadable, or it tests none and hands on
+ *     a list silently short of an entry. The accumulated status is what
+ *     lets it test once, so both halves are asserted here - the add's own
+ *     return, and the conversion at the end reporting the same failure.
  */
 
 #include "src/include/pmix_config.h"
@@ -378,6 +384,106 @@ static void test_info_list_degenerate(void)
     report("the info list builders survive a NULL or empty list", 1);
 }
 
+/* An add cannot fail on a good list without an allocation failure we
+ * cannot stage, but it can fail on its arguments, and that is the same
+ * path: nothing is appended, the add says why, and the list remembers.
+ * A NULL key used to be accepted - PMIx_Info_list_add discarded the
+ * status of the load underneath it and appended an entry carrying
+ * nothing - which is the shape of the bug this guards.
+ *
+ * Two different failures, so the conversion at the end has to name one:
+ * it must be the FIRST, because a later failure and a later success are
+ * both things that must not displace the one with a cause. */
+static void test_info_list_records_failure(void)
+{
+    pmix_info_t probe;
+    pmix_data_array_t d;
+    pmix_status_t first, second;
+    void *lst;
+    int ok = 1;
+
+    lst = PMIx_Info_list_start();
+    if (NULL == lst) {
+        report("a failed add is reported and remembered", 0);
+        return;
+    }
+    PMIX_INFO_CONSTRUCT(&probe);
+
+    /* a good entry first, so the list is not merely empty at the end */
+    ok = ok && (PMIX_SUCCESS == PMIx_Info_list_add(lst, "good", "value", PMIX_STRING));
+
+    /* a NULL key cannot be loaded */
+    first = PMIx_Info_list_add(lst, NULL, "value", PMIX_STRING);
+    ok = ok && (PMIX_SUCCESS != first);
+    /* nothing was appended */
+    ok = ok && (1 == PMIx_Info_list_get_size(lst));
+
+    /* a type the loader does not store is a different failure */
+    second = PMIx_Info_list_add(lst, "bad.type", &probe, PMIX_INFO);
+    ok = ok && (PMIX_SUCCESS != second) && (second != first);
+    ok = ok && (1 == PMIx_Info_list_get_size(lst));
+
+    /* neither a later failure nor a later success displaces the first */
+    ok = ok && (PMIX_SUCCESS == PMIx_Info_list_add(lst, "later", "value", PMIX_STRING));
+
+    /* the conversion is where a caller that tested no add finds out */
+    memset(&d, 0, sizeof(d));
+    ok = ok && (first == PMIx_Info_list_convert(lst, &d));
+    PMIX_DATA_ARRAY_DESTRUCT(&d);
+
+    PMIX_INFO_DESTRUCT(&probe);
+    PMIx_Info_list_release(lst);
+    report("a failed add is reported and remembered", ok);
+}
+
+/* A list whose only add failed is a failure, not an empty list: the
+ * recorded status has to come out in front of PMIX_ERR_EMPTY, or a
+ * caller that tolerates an empty list - several do - swallows it. */
+static void test_info_list_failure_beats_empty(void)
+{
+    pmix_data_array_t d;
+    pmix_status_t rc, cvt;
+    void *lst;
+    int ok = 1;
+
+    lst = PMIx_Info_list_start();
+    if (NULL == lst) {
+        report("a recorded failure outranks an empty list", 0);
+        return;
+    }
+    rc = PMIx_Info_list_add(lst, NULL, "value", PMIX_STRING);
+    ok = ok && (PMIX_SUCCESS != rc);
+    ok = ok && (0 == PMIx_Info_list_get_size(lst));
+
+    memset(&d, 0, sizeof(d));
+    cvt = PMIx_Info_list_convert(lst, &d);
+    ok = ok && (rc == cvt) && (PMIX_ERR_EMPTY != cvt);
+    PMIX_DATA_ARRAY_DESTRUCT(&d);
+
+    PMIx_Info_list_release(lst);
+    report("a recorded failure outranks an empty list", ok);
+}
+
+/* An empty list with nothing wrong with it still answers PMIX_ERR_EMPTY -
+ * callers depend on that, so the status must not have displaced it. */
+static void test_info_list_empty_still_empty(void)
+{
+    pmix_data_array_t d;
+    void *lst;
+    int ok = 1;
+
+    lst = PMIx_Info_list_start();
+    if (NULL == lst) {
+        report("an untouched empty list still reports EMPTY", 0);
+        return;
+    }
+    memset(&d, 0, sizeof(d));
+    ok = ok && (PMIX_ERR_EMPTY == PMIx_Info_list_convert(lst, &d));
+    PMIX_DATA_ARRAY_DESTRUCT(&d);
+    PMIx_Info_list_release(lst);
+    report("an untouched empty list still reports EMPTY", ok);
+}
+
 static void test_info_list_still_works(void)
 {
     void *lst;
@@ -437,6 +543,9 @@ int main(int argc, char **argv)
     test_load_helpers_with_no_data();
     test_info_list_degenerate();
     test_info_list_still_works();
+    test_info_list_records_failure();
+    test_info_list_failure_beats_empty();
+    test_info_list_empty_still_empty();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 

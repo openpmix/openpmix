@@ -2281,7 +2281,8 @@ before you "fix" one:
   into a freshly created array, so `clct` owns what it hands back *and*
   still owes the list a `PMIx_Info_list_release()`. Doing both is not a
   double free. `PMIX_ERR_EMPTY` from it means "nothing collected" and is
-  mapped to success with a NULL array.
+  mapped to success with a NULL array — but a list carrying a recorded
+  failure reports that instead, ahead of `PMIX_ERR_EMPTY`.
 - **`cirelease` is handed to the *host*, so it can run on the host's
   thread.** That is safe only because it touches nothing global — it
   frees the converted array and releases the caddy. Do not grow it into

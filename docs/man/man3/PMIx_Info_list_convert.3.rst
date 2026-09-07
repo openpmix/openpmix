@@ -69,6 +69,9 @@ Returns one of:
 * ``PMIX_ERR_EMPTY`` |mdash| the list contained no entries; no array is
   allocated.
 * ``PMIX_ERR_NOMEM`` |mdash| the destination array could not be allocated.
+* any other PMIx error constant |mdash| the first failure recorded on the
+  list by an earlier operation, reported here even though that operation
+  has already returned it once.
 
 
 NOTES
@@ -77,6 +80,11 @@ NOTES
 An empty list is reported as ``PMIX_ERR_EMPTY`` rather than producing a
 zero-length array, so callers that may legitimately build an empty list should
 handle that return value.
+
+An earlier failure is reported **ahead of** ``PMIX_ERR_EMPTY``: a list left
+empty because its only add failed is a failure, not an empty list. This makes
+the conversion the single place a caller assembling a long list has to test.
+A converted array is complete only when this returns ``PMIX_SUCCESS``.
 
 
 EXAMPLES

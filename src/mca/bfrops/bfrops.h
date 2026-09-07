@@ -322,8 +322,8 @@ typedef pmix_status_t (*pmix_bfrop_value_xfer_fn_t)(pmix_value_t *dest, const pm
  * Load data into a pmix_value_t object. Again, this is provided
  * as a component function to support different data types
  */
-typedef void (*pmix_bfrop_value_load_fn_t)(pmix_value_t *v, const void *data,
-                                           pmix_data_type_t type);
+typedef pmix_status_t (*pmix_bfrop_value_load_fn_t)(pmix_value_t *v, const void *data,
+                                                    pmix_data_type_t type);
 
 /**
  * Unload data from a pmix_value_t object
@@ -453,7 +453,7 @@ typedef struct pmix_bfrops_base_component_t pmix_bfrops_base_component_t;
  * the same three by pasting its name, so the two cannot drift apart.
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
-#define PMIX_MCA_bfrops_MAJOR_VERSION   1
+#define PMIX_MCA_bfrops_MAJOR_VERSION   2
 #define PMIX_MCA_bfrops_MINOR_VERSION   0
 #define PMIX_MCA_bfrops_RELEASE_VERSION 0
 

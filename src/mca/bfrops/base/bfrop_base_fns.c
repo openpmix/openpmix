@@ -108,9 +108,15 @@ bool pmix_bfrops_base_value_is_null_object(const pmix_value_t *v)
     }
 }
 
-void pmix_bfrops_base_value_load(pmix_value_t *v,
-                                 const void *data,
-                                 pmix_data_type_t type)
+/* Returns the status of the load rather than swallowing it.  It used to
+ * return void, so a value that failed to copy - a data array or a regex
+ * that could not be allocated, a type this switch does not know - left
+ * the pmix_value_t holding whatever the construct put there and told
+ * nobody.  Every caller above it reported success, which is how a key can
+ * go missing from a namespace registration with nothing logged. */
+pmix_status_t pmix_bfrops_base_value_load(pmix_value_t *v,
+                                          const void *data,
+                                          pmix_data_type_t type)
 {
     pmix_byte_object_t *bo;
     pmix_proc_info_t *pi;
@@ -130,6 +136,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
     pmix_nspace_t *nspace;
     pmix_node_pid_t *ndpidptr;
 
+    rc = PMIX_SUCCESS;
     v->type = type;
     if (NULL == data) {
         /* just set the fields to zero */
@@ -217,7 +224,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
             PMIX_PROC_CREATE(v->data.proc, 1);
             if (NULL == v->data.proc) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                return;
+                return PMIX_ERR_NOMEM;
             }
             memcpy(v->data.proc, data, sizeof(pmix_proc_t));
             break;
@@ -228,7 +235,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
             v->data.bo.bytes = (char *) malloc(bo->size);
             if (NULL == v->data.bo.bytes) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                return;
+                return PMIX_ERR_NOMEM;
             }
             memcpy(v->data.bo.bytes, bo->bytes, bo->size);
             memcpy(&(v->data.bo.size), &bo->size, sizeof(size_t));
@@ -249,7 +256,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
             PMIX_PROC_INFO_CREATE(v->data.pinfo, 1);
             if (NULL == v->data.pinfo) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                return;
+                return PMIX_ERR_NOMEM;
             }
             pi = (pmix_proc_info_t *) data;
             memcpy(&(v->data.pinfo->proc), &pi->proc, sizeof(pmix_proc_t));
@@ -403,11 +410,15 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
         }
 
         default:
-            /* silence warnings */
+            /* A type this switch does not store is a value the caller
+             * asked for and did not get.  Saying so is the point of the
+             * status: silence here is indistinguishable from success, and
+             * the entry still goes onto the list carrying nothing. */
+            rc = PMIX_ERR_NOT_SUPPORTED;
             break;
         }
     }
-    return;
+    return rc;
 }
 
 pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_t *sz)
@@ -859,11 +870,24 @@ const char *pmix_bfrops_base_data_type_string(pmix_pointer_array_t *regtypes, pm
     return info->odti_name;
 }
 
+/* Record the first failure any operation on a list hits, and hand the
+ * failure back so the caller that does want to test each one still can.
+ * The first is kept rather than the last because it is the one with a
+ * cause: a NOMEM followed by a NOMEM says nothing more than the first
+ * did, and a success after a failure must not look like no failure. */
+static pmix_status_t ilist_record(pmix_ilist_t *p, pmix_status_t rc)
+{
+    if (PMIX_SUCCESS != rc && PMIX_SUCCESS == p->status) {
+        p->status = rc;
+    }
+    return rc;
+}
+
 PMIX_EXPORT void *PMIx_Info_list_start(void)
 {
-    pmix_list_t *p;
+    pmix_ilist_t *p;
 
-    p = PMIX_NEW(pmix_list_t);
+    p = PMIX_NEW(pmix_ilist_t);
     return p;
 }
 
@@ -872,18 +896,27 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
                                              const void *value,
                                              pmix_data_type_t type)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
     pmix_infolist_t *iptr;
+    pmix_status_t rc;
 
     if (NULL == p) {
         return PMIX_ERR_BAD_PARAM;
     }
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
-        return PMIX_ERR_NOMEM;
+        return ilist_record(p, PMIX_ERR_NOMEM);
     }
-    PMIX_INFO_LOAD(&iptr->info, key, value, type);
-    pmix_list_append(p, &iptr->super);
+    /* the load is what can quietly fail - a NULL key, a value of a type
+     * the loader does not store, an allocation for the copy - and it used
+     * to be discarded here, so an entry carrying nothing went onto the
+     * list under a report of success */
+    rc = PMIx_Info_load(&iptr->info, key, value, type);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(iptr);
+        return ilist_record(p, rc);
+    }
+    pmix_list_append(&p->super, &iptr->super);
     return PMIX_SUCCESS;
 }
 
@@ -893,20 +926,24 @@ pmix_status_t PMIx_Info_list_add_unique(void *ptr,
                                         pmix_data_type_t type,
                                         bool overwrite)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
     pmix_infolist_t *iptr;
+    pmix_status_t rc;
 
     if (NULL == p) {
         return PMIX_ERR_BAD_PARAM;
     }
 
     // see if this key is already on the list
-    PMIX_LIST_FOREACH(iptr, p, pmix_infolist_t) {
+    PMIX_LIST_FOREACH(iptr, &p->super, pmix_infolist_t) {
         if (PMIX_CHECK_KEY(&iptr->info, key)) {
             if (overwrite) {
                 // replace with new value
                 PMIx_Value_destruct(&iptr->info.value);
-                PMIx_Value_load(&iptr->info.value, value, type);
+                rc = PMIx_Value_load(&iptr->info.value, value, type);
+                if (PMIX_SUCCESS != rc) {
+                    return ilist_record(p, rc);
+                }
             }
             return PMIX_SUCCESS;
         }
@@ -914,10 +951,14 @@ pmix_status_t PMIx_Info_list_add_unique(void *ptr,
 
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
-        return PMIX_ERR_NOMEM;
+        return ilist_record(p, PMIX_ERR_NOMEM);
     }
-    PMIX_INFO_LOAD(&iptr->info, key, value, type);
-    pmix_list_append(p, &iptr->super);
+    rc = PMIx_Info_load(&iptr->info, key, value, type);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(iptr);
+        return ilist_record(p, rc);
+    }
+    pmix_list_append(&p->super, &iptr->super);
     return PMIX_SUCCESS;
 }
 
@@ -925,7 +966,7 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value(void *ptr,
                                                    const char *key,
                                                    const pmix_value_t *value)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
     pmix_infolist_t *iptr;
     pmix_status_t rc;
 
@@ -935,15 +976,15 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value(void *ptr,
 
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
-        return PMIX_ERR_NOMEM;
+        return ilist_record(p, PMIX_ERR_NOMEM);
     }
     PMIX_LOAD_KEY(iptr->info.key, key);
     rc = PMIx_Value_xfer(&iptr->info.value, value);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(iptr);
-        return rc;
+        return ilist_record(p, rc);
     }
-    pmix_list_append(p, &iptr->super);
+    pmix_list_append(&p->super, &iptr->super);
     return PMIX_SUCCESS;
 }
 
@@ -952,7 +993,7 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value_unique(void *ptr,
                                                           const pmix_value_t *value,
                                                           bool overwrite)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
     pmix_infolist_t *iptr;
     pmix_status_t rc;
 
@@ -961,12 +1002,15 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value_unique(void *ptr,
     }
 
     // see if this key is already on the list
-    PMIX_LIST_FOREACH(iptr, p, pmix_infolist_t) {
+    PMIX_LIST_FOREACH(iptr, &p->super, pmix_infolist_t) {
         if (PMIX_CHECK_KEY(&iptr->info, key)) {
             if (overwrite) {
                 // replace with new value
                 PMIx_Value_destruct(&iptr->info.value);
-                PMIx_Value_xfer(&iptr->info.value, value);
+                rc = PMIx_Value_xfer(&iptr->info.value, value);
+                if (PMIX_SUCCESS != rc) {
+                    return ilist_record(p, rc);
+                }
             }
             return PMIX_SUCCESS;
         }
@@ -974,15 +1018,15 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value_unique(void *ptr,
 
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
-        return PMIX_ERR_NOMEM;
+        return ilist_record(p, PMIX_ERR_NOMEM);
     }
     PMIX_LOAD_KEY(iptr->info.key, key);
     rc = PMIx_Value_xfer(&iptr->info.value, value);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(iptr);
-        return rc;
+        return ilist_record(p, rc);
     }
-    pmix_list_append(p, &iptr->super);
+    pmix_list_append(&p->super, &iptr->super);
     return PMIX_SUCCESS;
 }
 
@@ -991,26 +1035,30 @@ pmix_status_t PMIx_Info_list_prepend(void *ptr,
                                      const void *value,
                                      pmix_data_type_t type)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
     pmix_infolist_t *iptr;
+    pmix_status_t rc;
 
     if (NULL == p) {
         return PMIX_ERR_BAD_PARAM;
     }
-
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
-        return PMIX_ERR_NOMEM;
+        return ilist_record(p, PMIX_ERR_NOMEM);
     }
-    PMIX_INFO_LOAD(&iptr->info, key, value, type);
-    pmix_list_prepend(p, &iptr->super);
+    rc = PMIx_Info_load(&iptr->info, key, value, type);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(iptr);
+        return ilist_record(p, rc);
+    }
+    pmix_list_prepend(&p->super, &iptr->super);
     return PMIX_SUCCESS;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr,
                                                 pmix_info_t *info)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
     pmix_infolist_t *iptr;
 
     if (NULL == p || NULL == info) {
@@ -1018,7 +1066,7 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr,
     }
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
-        return PMIX_ERR_NOMEM;
+        return ilist_record(p, PMIX_ERR_NOMEM);
     }
     /* we want to preserve any pointers in the provided
      * info struct so the result points to the same
@@ -1026,14 +1074,15 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr,
     memcpy(&iptr->info, info, sizeof(pmix_info_t));
     // mark that this value should not be released
     PMIX_INFO_SET_PERSISTENT(&iptr->info);
-    pmix_list_append(p, &iptr->super);
+    pmix_list_append(&p->super, &iptr->super);
     return PMIX_SUCCESS;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr, const pmix_info_t *info)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
     pmix_infolist_t *iptr;
+    pmix_status_t rc;
 
     if (NULL == p || NULL == info) {
         return PMIX_ERR_BAD_PARAM;
@@ -1041,17 +1090,21 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr, const pmix_info_t *info
 
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
-        return PMIX_ERR_NOMEM;
+        return ilist_record(p, PMIX_ERR_NOMEM);
     }
-    PMIx_Info_xfer(&iptr->info, info);
-    pmix_list_append(p, &iptr->super);
+    rc = PMIx_Info_xfer(&iptr->info, info);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(iptr);
+        return ilist_record(p, rc);
+    }
+    pmix_list_append(&p->super, &iptr->super);
     return PMIX_SUCCESS;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer_unique(void *ptr, const pmix_info_t *info,
                                                      bool overwrite)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
     pmix_infolist_t *iptr;
     pmix_status_t rc;
 
@@ -1060,12 +1113,15 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer_unique(void *ptr, const pmix_info_
     }
 
     // see if this key is already on the list
-    PMIX_LIST_FOREACH(iptr, p, pmix_infolist_t) {
+    PMIX_LIST_FOREACH(iptr, &p->super, pmix_infolist_t) {
         if (PMIX_CHECK_KEY(&iptr->info, info->key)) {
             if (overwrite) {
                 // replace with new value
                 PMIx_Value_destruct(&iptr->info.value);
-                PMIx_Value_xfer(&iptr->info.value, &info->value);
+                rc = PMIx_Value_xfer(&iptr->info.value, &info->value);
+                if (PMIX_SUCCESS != rc) {
+                    return ilist_record(p, rc);
+                }
             }
             return PMIX_SUCCESS;
         }
@@ -1073,23 +1129,24 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer_unique(void *ptr, const pmix_info_
 
     iptr = PMIX_NEW(pmix_infolist_t);
     if (NULL == iptr) {
-        return PMIX_ERR_NOMEM;
+        return ilist_record(p, PMIX_ERR_NOMEM);
     }
     rc = PMIx_Info_xfer(&iptr->info, info);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(iptr);
-        return rc;
+        return ilist_record(p, rc);
     }
-    pmix_list_append(p, &iptr->super);
+    pmix_list_append(&p->super, &iptr->super);
     return PMIX_SUCCESS;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *par)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
     size_t n;
     pmix_infolist_t *iptr;
     pmix_info_t *array;
+    pmix_status_t rc;
 
     if (NULL == par) {
         return PMIX_ERR_BAD_PARAM;
@@ -1106,7 +1163,18 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *p
         return PMIX_ERR_BAD_PARAM;
     }
 
-    n = pmix_list_get_size(p);
+    /* Report anything that went wrong on the way here, ahead of anything
+     * this conversion itself can say.  This is the one test a caller
+     * building a long list has to make: an add that failed left the list
+     * short by an entry, and converting the remainder and calling it a
+     * success is how a namespace gets registered with a key missing.  It
+     * precedes the empty check deliberately - a list left empty because
+     * its only add failed is a failure, not an empty list. */
+    if (PMIX_SUCCESS != p->status) {
+        return p->status;
+    }
+
+    n = pmix_list_get_size(&p->super);
     if (0 == n) {
         return PMIX_ERR_EMPTY;
     }
@@ -1120,8 +1188,14 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *p
 
     /* transfer the elements across */
     n = 0;
-    PMIX_LIST_FOREACH (iptr, p, pmix_infolist_t) {
-        PMIx_Info_xfer(&array[n], &iptr->info);
+    PMIX_LIST_FOREACH (iptr, &p->super, pmix_infolist_t) {
+        rc = PMIx_Info_xfer(&array[n], &iptr->info);
+        if (PMIX_SUCCESS != rc) {
+            /* the array is the caller's to destruct either way - it was
+             * initialized above and par->size counts what was created,
+             * not what was filled */
+            return rc;
+        }
         ++n;
     }
 
@@ -1130,7 +1204,8 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *p
 
 PMIX_EXPORT void PMIx_Info_list_release(void *ptr)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
+    pmix_list_item_t *item;
 
     /* releasing nothing is not an error. Every other release in this
      * file - PMIx_Info_free, PMIx_Data_array_free, PMIx_Argv_free -
@@ -1139,32 +1214,36 @@ PMIX_EXPORT void PMIx_Info_list_release(void *ptr)
     if (NULL == p) {
         return;
     }
-    PMIX_LIST_RELEASE(p);
+    /* drain and release by hand: PMIX_LIST_RELEASE NULLs the pointer it
+     * is handed, so it cannot take the address of a member */
+    while (NULL != (item = pmix_list_remove_first(&p->super))) {
+        PMIX_RELEASE(item);
+    }
+    PMIX_RELEASE(p);
 }
-
 
 pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **next)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
     pmix_list_item_t *prv = (pmix_list_item_t*)prev;
     pmix_infolist_t *active;
 
     if (NULL == p || NULL == next) {
         return NULL;
     }
-    if (0 == pmix_list_get_size(p)) {
+    if (0 == pmix_list_get_size(&p->super)) {
         /* an empty list has no first item to hand back, and
          * pmix_list_get_first() on one returns the sentinel */
         *next = NULL;
         return NULL;
     }
     if (NULL == prev) {
-        prv = pmix_list_get_first(p);
+        prv = pmix_list_get_first(&p->super);
         active = (pmix_infolist_t*)prv;
     } else {
         active = (pmix_infolist_t*)prv;
     }
-    if (prv == pmix_list_get_last(p)) {
+    if (prv == pmix_list_get_last(&p->super)) {
         *next = NULL;
     } else {
         *next = (void*)pmix_list_get_next(prv);
@@ -1174,13 +1253,13 @@ pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **next)
 
 size_t PMIx_Info_list_get_size(void *ptr)
 {
-    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_ilist_t *p = (pmix_ilist_t *) ptr;
 
     if (NULL == p) {
         return 0;
     }
 
-    return pmix_list_get_size(p);
+    return pmix_list_get_size(&p->super);
 }
 
 /* Sizing a compressed blob asks the selected pcompress module how big

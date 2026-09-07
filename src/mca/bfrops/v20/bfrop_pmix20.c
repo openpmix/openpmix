@@ -308,7 +308,7 @@ pmix_status_t pmix20_bfrop_get_data_type(pmix_pointer_array_t *regtypes, pmix_bu
     return rc;
 }
 
-void pmix20_bfrop_value_load(pmix_value_t *v, const void *data, pmix_data_type_t type)
+pmix_status_t pmix20_bfrop_value_load(pmix_value_t *v, const void *data, pmix_data_type_t type)
 {
     pmix_byte_object_t *bo;
     pmix_proc_info_t *pi;
@@ -392,7 +392,7 @@ void pmix20_bfrop_value_load(pmix_value_t *v, const void *data, pmix_data_type_t
             PMIX_PROC_CREATE(v->data.proc, 1);
             if (NULL == v->data.proc) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                return;
+                return PMIX_ERR_NOMEM;
             }
             memcpy(v->data.proc, data, sizeof(pmix_proc_t));
             break;
@@ -417,7 +417,7 @@ void pmix20_bfrop_value_load(pmix_value_t *v, const void *data, pmix_data_type_t
             PMIX_PROC_INFO_CREATE(v->data.pinfo, 1);
             if (NULL == v->data.pinfo) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                return;
+                return PMIX_ERR_NOMEM;
             }
             pi = (pmix_proc_info_t *) data;
             memcpy(&(v->data.pinfo->proc), &pi->proc, sizeof(pmix_proc_t));
@@ -434,11 +434,13 @@ void pmix20_bfrop_value_load(pmix_value_t *v, const void *data, pmix_data_type_t
             memcpy(&(v->data.ptr), data, sizeof(void *));
             break;
         default:
-            /* silence warnings */
+            /* this module stores none of these - say so rather than
+             * report a load that put nothing in the value */
             PMIX_ERROR_LOG(PMIX_ERR_UNKNOWN_DATA_TYPE);
-            break;
+            return PMIX_ERR_UNKNOWN_DATA_TYPE;
         }
     }
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix20_bfrop_value_unload(pmix_value_t *kv, void **data, size_t *sz)

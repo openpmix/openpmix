@@ -688,8 +688,7 @@ pmix_status_t pmix_bfrops_base_tma_value_load(pmix_value_t *v,
 {
     PMIX_HIDE_UNUSED_PARAMS(tma);
     // TODO(skg) Add TMA support when necessary.
-    pmix_bfrops_base_value_load(v, data, type);
-    return PMIX_SUCCESS;
+    return pmix_bfrops_base_value_load(v, data, type);
 }
 
 static inline

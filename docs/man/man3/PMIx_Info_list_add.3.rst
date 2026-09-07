@@ -58,7 +58,13 @@ RETURN VALUE
 
 Returns ``PMIX_SUCCESS`` on success, or a negative PMIx error constant on
 failure |mdash| most commonly ``PMIX_ERR_NOMEM`` if the entry could not be
-allocated.
+allocated, ``PMIX_ERR_BAD_PARAM`` for a ``NULL`` list or ``key``, and
+``PMIX_ERR_NOT_SUPPORTED`` for a ``type`` the library does not store.
+
+Nothing is appended when this fails, and the failure is **recorded on the
+list**: a caller that does not test here can test once at the end instead,
+because :ref:`PMIx_Info_list_convert(3) <man3-PMIx_Info_list_convert>`
+reports it.
 
 
 .. seealso::

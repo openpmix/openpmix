@@ -376,6 +376,42 @@ this file — `PMIx_Info_free`, `PMIx_Data_array_free`, `PMIx_Argv_free`
 holds exactly that NULL. Every `PMIx_Info_list_*` entry point is now
 screened for a NULL list.
 
+#### The info list carries its own status
+
+`PMIx_Info_list_start()` returns a `pmix_ilist_t` — a `pmix_list_t` with
+a `pmix_status_t` on it — and every add, prepend, insert and xfer records
+the **first** failure it hits there. `PMIx_Info_list_convert()` reports
+that status, ahead of anything the conversion itself can say and ahead of
+`PMIX_ERR_EMPTY` — a list left empty because its only add failed is a
+failure, not an empty list. There is deliberately no separate accessor
+for it: the conversion is the one place every caller already looks, and
+adding a second way to ask would be public API with nothing to call it.
+
+The reason is the caller who assembles a large list in one function. The
+PRRTE daemon's namespace registration adds sixty-eight keys and used to
+test three of them, on the reasonable argument that forty checks would
+treble the length of an already very long function to report a condition
+under which the daemon is failing everywhere at once. The accumulator is
+what makes that argument unnecessary rather than merely defensible: one
+test, at the end, where the caller is already looking.
+
+It also closes the hole that the forty checks would **not** have closed.
+`PMIx_Info_list_add()` used to call `PMIX_INFO_LOAD`, which is
+`(void) PMIx_Info_load(...)`, and append the entry regardless — so a
+value that failed to load went onto the list under a report of success,
+and no amount of caller-side checking could see it. The adds now test the
+load, release the entry and report. That in turn required
+`pmix_bfrops_base_value_load()` to stop returning `void`: it discarded
+the status of every deep copy it makes and had a silent `default:`, which
+is the same failure one layer down. It returns `pmix_status_t` now, and
+so do the `v12` and `v20` modules' own copies (the framework interface
+version is bumped for it).
+
+The handle is opaque on purpose. It is `void *` in every signature,
+including the `pnet`/`pgpu` `collect_inventory` hooks, which used to take
+a `pmix_list_t *` — see [`src/server/AGENTS.md`](../../../server/AGENTS.md)
+for what a collector did with that.
+
 `PMIx_Multicluster_nspace_parse()` had two further problems that a NULL
 check would not have caught: it cleared only the *cluster* half of its
 output while writing the nspace half element by element without ever

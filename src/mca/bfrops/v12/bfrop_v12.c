@@ -372,7 +372,7 @@ pmix_status_t pmix12_bfrop_get_data_type(pmix_pointer_array_t *regtypes, pmix_bu
     return rc;
 }
 
-void pmix12_bfrop_value_load(pmix_value_t *v, const void *data, pmix_data_type_t type)
+pmix_status_t pmix12_bfrop_value_load(pmix_value_t *v, const void *data, pmix_data_type_t type)
 {
     pmix_byte_object_t *bo;
 
@@ -454,10 +454,12 @@ void pmix12_bfrop_value_load(pmix_value_t *v, const void *data, pmix_data_type_t
         case PMIX_MODEX:
         case PMIX_PERSIST:
         case PMIX_PROC:
-            /* silence warnings */
-            break;
+            /* this module stores none of these - say so rather than
+             * report a load that put nothing in the value */
+            return PMIX_ERR_NOT_SUPPORTED;
         }
     }
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix12_bfrop_value_unload(pmix_value_t *kv, void **data, size_t *sz)

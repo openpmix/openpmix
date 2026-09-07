@@ -1123,8 +1123,8 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_payload(pmix_buffer_t *dest, pmi
 
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_embed_payload(pmix_buffer_t *dest, pmix_byte_object_t *src);
 
-PMIX_EXPORT void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
-                                             pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
+                                                      pmix_data_type_t type);
 
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_t *sz);
 
