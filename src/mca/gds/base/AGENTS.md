@@ -177,7 +177,7 @@ August 2026 a byte every sender agreed on and no datastore understood
 passed straight through and its blobs were stored as an ordinary full
 contribution. The walker now screens the value first:
 
-- `PMIX_COLLECT_NO`, `PMIX_COLLECT_YES`, `PMIX_MODEX_DELTA` — accepted.
+- `PMIX_COLLECT_NO`, `PMIX_COLLECT_YES` — accepted.
 - anything else — a value no release ever defined, so `PMIX_ERR_BAD_PARAM`.
 
 **The kind is handed to `cb_fn`**, because what a delta means differs by
@@ -245,7 +245,7 @@ flag byte the walker reads is a plain `pmix_collect_t` value, not a
 bitmask — do not reintroduce the bit accessors on the theory that it is
 one. If a second thing ever does need saying about a contribution,
 decide then whether to make the byte a bitmask, converting both ends, or
-to add another value, as `PMIX_MODEX_DELTA` did.
+to add another value.
 
 ## The modex keymap, and why it is not coming back
 

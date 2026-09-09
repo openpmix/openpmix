@@ -293,7 +293,6 @@ typedef struct pmix_gds_shmem3_seg_t {
     /** Did this generation carry only what changed? Per-generation, so
      *  it belongs here rather than on the job: the blob describing this
      *  segment to a client has to say what THIS one holds. */
-    bool is_delta;
 } pmix_gds_shmem3_seg_t;
 
 /** The head of a chain.
@@ -523,12 +522,6 @@ typedef struct {
     pmix_gds_shmem3_shared_job_data_t *smdata;
     /** Points to shared modex data located in a shared-memory segment. */
     pmix_gds_shmem3_shared_modex_data_t *smmodex;
-    /** Does the current modex generation hold only what changed?
-     *
-     * Set when it was built from a PMIX_MODEX_DELTA contribution, and
-     * told to each client in the segment blob so it can make the same
-     * keep-or-drop decision this server made. */
-    bool modex_is_delta;
     /* There is no lock here, and that is the design rather than an
      * omission.
      *

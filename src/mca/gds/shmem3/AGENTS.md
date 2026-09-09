@@ -710,17 +710,15 @@ the caller sees it twice with the stale value second.
 The chain holds only one generation until a second fence arrives, so
 the ordinary case is the single lookup it has always been.
 
-The client makes the same keep-or-drop decision, from a
-`SHMEM3_SEG_DELTA_KEY` field in the segment blob. Adding a field there
-was possible because this component has never been in a release; once it
-ships, that blob is a wire format like any other.
+Every generation is kept and the chain is walked newest-first, so
+nothing has to be told whether a given one stands on its own. The
+segment blob carried a field saying so for a while; nothing ever read it,
+and it is gone.
 
 `examples/modex_twice.c` is the canary, and
-`contrib/dockerswarm/run-gds-tests.sh` drives it **twice**: once
-cumulatively and once with `pmix_server_fence_delta_modex=1`. Only the
-second actually tests the chain - its `gen1` keys are published before
-the first fence and never again, so under a delta they exist *only* in
-the retired generation.
+`contrib/dockerswarm/run-gds-tests.sh` drives it. It tests the chain
+because its `gen1` keys are published before the first fence and never
+again, so they exist *only* in the earlier generation.
 
 ## Sessions: one object, one segment, N jobs
 
