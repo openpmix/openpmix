@@ -1259,10 +1259,10 @@ not be drained.
 
 ### A contribution can be a delta
 
-With `pmix_server_fence_delta_modex` set, a server contributes only what
-its local processes have committed **since they last took part in a
-collecting fence**, rather than each one's whole published set. Three
-things make that sound, and each is easy to undo:
+A server contributes only what its local processes have committed
+**since they last took part in a collecting fence**, rather than each
+one's whole published set. Three things make that sound, and each is easy
+to undo:
 
 - **The participant set has to match.** A delta is only correct for a
   fence over the same participants: contributing one to a fence over some
@@ -1279,19 +1279,30 @@ things make that sound, and each is easy to undo:
   and its caller has three arms that discard the bucket. Draining there
   loses the deltas for good, because the datastore still holds the values
   but nothing else remembers which ones this rank had yet to send.
-- **`pmix_server_commit` is not the only writer.** Remote-scope data also
-  reaches our store through `PMIx_server_register_resources`
-  (`pmix_server_setup.c`) and the group collective
-  (`pmix_server_group.c`), neither of which goes through the commit path
-  and so neither of which is on the pending list. Both call
-  `pmix_server_modex_resync` to force that proc's next contribution to be
-  cumulative. **Any new such writer owes the same call.**
+- **A deleted key has to leave the pending list.** A `PMIX_DEL_REMOTE` or
+  `PMIX_DEL_GLOBAL` commit removes the key from the datastore, but the
+  pending list may still hold the value an earlier `PMIx_Put` staged, and
+  sending that again would re-publish what was just removed. The commit
+  therefore takes any entry for that key off `pending_modex`. The removal
+  is still *announced* - that is what `pending_deletes` carries - so the
+  other servers are told, rather than merely not reminded.
 
-The contribution is marked `PMIX_MODEX_DELTA` in the envelope's
-per-server flag byte so the receiving datastore knows it is not
-self-contained. The whole bucket is one kind or the other - that byte
-describes the server's contribution as a whole - so a delta is used only
-when *every* local participant qualifies.
+Only what a client has **committed** belongs in a modex, and
+`pmix_server_commit` is the log's only writer, so that is all it can
+hold. Note the distinction: a value staged with `PMIx_Put` and not yet
+committed has never reached this server, and no fence carries it. Data
+that reaches our store by another route - the host's
+`PMIx_server_register_resources`, or the group collective - is likewise
+not on the log and must not be pulled into a contribution: the host has
+put it where it is needed, and circulating it is the exchange those
+paths exist to avoid.
+
+How much a server had to send is not stated on the wire: the envelope's
+per-server flag byte says only whether that server collected, which is a
+job-wide directive every server in one fence must agree on. The whole
+bucket is one kind or the other, so the short form is used only when
+*every* local participant qualifies - but that is a local decision, and
+two servers in one fence may legitimately reach different answers.
 
 ### A deletion has to survive the collection, not just reach it
 
@@ -1311,10 +1322,9 @@ therefore dropped the deletion, and dropped it permanently:
 `pmix_server_modex_contributed` drains `pending_deletes` as soon as the
 bucket reaches the host, so nothing re-announces it and every other
 server goes on serving the key for the life of the job. The blob is now
-built when there is **either** data or a pending deletion. Note this was
-the default path — `fence_delta_modex` is off unless asked for, and the
-delta arm has always packed the deletes unconditionally. Covered by
-`test/unit/server_fence.c`.
+built when there is **either** data or a pending deletion. Note this is
+the cumulative fallback arm; the delta arm has always packed the deletes
+unconditionally. Covered by `test/unit/server_fence.c`.
 
 ### Telling the clients a key is gone
 

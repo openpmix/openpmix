@@ -749,8 +749,7 @@ that key twice with the stale value second.
 The chain is empty of prior generations unless a delta has been stored,
 so the ordinary case is the single lookup it has always been.
 ``examples/modex_twice.c`` is the canary, and
-``contrib/dockerswarm/run-gds-tests.sh`` drives it twice: once
-cumulatively, once with ``pmix_server_fence_delta_modex=1``.
+``contrib/dockerswarm/run-gds-tests.sh`` drives it.
 
 Deletion: tombstones
 ^^^^^^^^^^^^^^^^^^^^
@@ -1391,8 +1390,7 @@ so it is not even compiled there.
 * ``contrib/dockerswarm/run-gds-tests.sh`` is the suite that builds it
   on Linux and then exercises it: server and clients on ``shmem3``, a
   client forced onto the fallback path, cross-node fetches that reach
-  the modex, and ``examples/modex_twice.c`` run both cumulatively and
-  with ``pmix_server_fence_delta_modex=1``.
+  the modex, and ``examples/modex_twice.c``.
 * ``test/unit/gds_datastore`` covers the framework contracts this
   component has to honor, against whichever module is assigned. Its last
   case, ``test_shmem3_job_segment()``, asks for ``shmem3`` by name and

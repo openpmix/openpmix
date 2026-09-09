@@ -102,23 +102,18 @@ is cached at the server to reduce memory footprint and is retrieved as needed vi
 **What a collecting fence carries.** Each PMIx server contributes, on behalf
 of each of its local participants, the data that process staged with
 :ref:`PMIx_Put(3) <man3-PMIx_Put>` and committed with
-:ref:`PMIx_Commit(3) <man3-PMIx_Commit>`. That contribution is *cumulative* by
-default: everything the process has published so far is sent on every
-collecting fence, so a job that fences repeatedly re-sends the same data each
-time. Setting the ``pmix_server_fence_delta_modex`` MCA parameter (see
-`MCA PARAMETERS`_) instead has each server send only what its processes have
-committed since they last took part in a collecting fence.
+:ref:`PMIx_Commit(3) <man3-PMIx_Commit>`. Each server sends only what its
+processes have committed since they last took part in a collecting fence, so a
+job that fences repeatedly does not re-send data an earlier fence already
+delivered.
 
-The delta changes only what is put on the wire, not what a participant can
-retrieve afterwards: the servers keep what earlier fences delivered, and a
-contribution reverts to the full published set whenever a delta could not
-express it |mdash| in particular when the participants of this fence are not
-exactly the set the process last contributed to (two sub-communicators fencing
-independently, for example), when a local participant has not yet taken part in
-a collecting fence, or when data was published on that process's behalf by some
-path other than a commit, such as
-:ref:`PMIx_server_register_resources(3) <man3-PMIx_server_register_resources>`
-or a group collective.
+This changes only what is put on the wire, not what a participant can retrieve
+afterwards: the servers keep what earlier fences delivered, and a contribution
+reverts to the full published set whenever a delta could not express it
+|mdash| in particular when the participants of this fence are not exactly the
+set the process last contributed to (two sub-communicators fencing
+independently, for example), or when a local participant has not yet taken part
+in a collecting fence.
 
 A fence that does not collect data exchanges nothing, and therefore does not
 move that boundary: whatever is owed is still carried by the next collecting
@@ -167,31 +162,6 @@ depend on the implementation and host environment.
    The ``PMIX_COLLECTIVE_ALGO`` and ``PMIX_COLLECTIVE_ALGO_REQD`` attributes, used
    in earlier releases to request specific collective algorithms, are deprecated
    and should not be used in new code.
-
-
-MCA PARAMETERS
---------------
-
-The following MCA parameter influences the behavior of a collecting
-``PMIx_Fence``. It is read by the PMIx **server** library, so it must be set in
-the environment of the servers (e.g.,
-``PMIX_MCA_pmix_server_fence_delta_modex=1``) and not in that of the
-application processes. The complete, authoritative list of parameters (with
-current values) can be displayed with ``pmix_info``.
-
-* ``pmix_server_fence_delta_modex=<true|false>`` (default: ``false``). When
-  ``true``, a server contributes only the data its processes have committed
-  since they last took part in a collecting fence, rather than everything they
-  have published. See the description above for the cases that fall back to the
-  full set regardless.
-
-.. caution::
-   Every node in the job must be running a PMIx release that understands a
-   delta contribution before this is enabled. A server that does not understand
-   one rejects the entire collective rather than storing a contribution it
-   cannot interpret, so a job whose nodes run mixed releases fails the fence
-   with ``PMIX_ERR_BAD_PARAM`` |mdash| loudly, on both sides, rather than
-   silently losing keys. That is why the parameter defaults to ``false``.
 
 
 RETURN VALUE

@@ -484,19 +484,13 @@ static void drop_armed_tracker(int sd, short args, void *cbdata)
  *
  * The modex is additive, so a contribution that merely stops carrying a
  * key removes nothing at the far end - the deletion has to be stated, as
- * an entry whose value is PMIX_UNDEF. pmix_server_collect_data used to
- * build a rank's blob only when the datastore fetch for that rank
- * succeeded, and the fetch answers PMIX_ERR_NOT_FOUND once the last
- * remote key the rank published has been deleted. So exactly the rank
- * that had a deletion to announce, and nothing else left to say, was
- * skipped - and skipped permanently, because
- * pmix_server_modex_contributed drains the pending list as soon as the
- * bucket reaches the host. Every other server went on serving the key.
+ * an entry whose value is PMIX_UNDEF. It is appended to the rank's modex
+ * log as a tombstone, exactly as an ordinary put is, and reaches a
+ * participant set whenever that set's mark is behind it.
  *
  * This drives the collection directly, on the progress thread, and takes
  * the bucket apart far enough to see the rank blob and the PMIX_UNDEF
- * entry inside it. Against an unfixed library there is no rank blob at
- * all. */
+ * entry inside it. */
 #define DELNS "fence-delete-ns"
 #define DELKEY "fence-ut.doomed"
 
@@ -617,6 +611,7 @@ static void check_deletion(int sd, short args, void *cbdata)
     pmix_server_trkr_t *trk = NULL;
     pmix_server_caddy_t *cd;
     pmix_kval_t kvs, *dk;
+    pmix_modex_entry_t *ment;
     pmix_value_t v;
     pmix_proc_t p;
     pmix_buffer_t buf;
@@ -655,11 +650,15 @@ static void check_deletion(int sd, short args, void *cbdata)
     if (PMIX_SUCCESS != rc) {
         goto done;
     }
-    /* and record the deletion as owed to the next contribution */
+    /* and record the deletion on the rank's log, as pmix_server_commit
+     * does - a tombstone carrying the key with a PMIX_UNDEF value */
     dk = PMIX_NEW(pmix_kval_t);
     dk->key = strdup(DELKEY);
     PMIX_VALUE_CREATE(dk->value, 1); /* PMIX_UNDEF: "gone" */
-    pmix_list_append(&rinfo->pending_deletes, &dk->super);
+    ment = PMIX_NEW(pmix_modex_entry_t);
+    ment->kv = dk;
+    ment->id = ++rinfo->modex_next_id;
+    pmix_list_append(&rinfo->modex_log, &ment->super);
 
     /* a peer for that rank, and a collecting tracker holding it */
     peer = PMIX_NEW(pmix_peer_t);

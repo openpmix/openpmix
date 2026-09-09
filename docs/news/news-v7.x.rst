@@ -78,20 +78,14 @@ Detailed changes since v6.1.0:
    rather than silently discarding the data that scope labelled. It also
    rejects PMIX_INTERNAL, which names data that never leaves the process
    and so has no business on the wire.
- - A PMIx server can now contribute only what its processes published
-   since they last took part in a collecting fence, rather than
-   everything they have published, controlled by the new
-   pmix_server_fence_delta_modex MCA parameter. It defaults to false: a
-   server from a release that predates the delta marker rejects the whole
-   collective rather than storing a contribution it cannot interpret -
-   the right failure, but it means a job running mixed releases works
-   today and would stop working if this defaulted on. Enable it once
-   every node understands the marker. A delta is only sent when every
-   local participant has already contributed to a fence over the same
-   participant set; anything else falls back to the full set, which
-   keeps two sub-communicators fencing independently from withholding
-   data from each other. The watermark advances only once the host has
-   taken the bucket, since the request has three arms that discard it.
+ - A PMIx server now contributes only what its processes published since
+   they last took part in a collecting fence, rather than everything they
+   have published. A delta is only sent when every local participant has
+   already contributed to a fence over the same participant set; anything
+   else falls back to the full set, which keeps two sub-communicators
+   fencing independently from withholding data from each other. The
+   watermark advances only once the host has taken the bucket, since the
+   request has three arms that discard it.
  - gds/shmem3 keeps modex generations rather than always dropping the
    previous one. A cumulative contribution repeats everything, so it
    still supersedes the generation before it and every one behind that.
@@ -120,19 +114,13 @@ Detailed changes since v6.1.0:
    changes on the wire, so a client and server of different releases
    interoperate exactly as before. See openpmix#4087.
  - The per-server flag byte carried in the modex envelope is now screened
-   before it is used. That byte says what kind of contribution a server
-   made, and the only check on it was that the contributing servers agreed
-   with each other - so a value they all agreed on, and that no datastore
-   knew how to act on, passed straight through and its data was stored as
-   though it were an ordinary full contribution. It is now rejected with
-   PMIX_ERR_BAD_PARAM. A new value, PMIX_MODEX_DELTA, marks a contribution
-   carrying only what the sending processes published since they last took
-   part in a collecting fence, and the value is now handed to the
-   datastore, which decides what it means for its own storage. Since the
-   agreement check is what an older release already performs, a job mixing
-   a release that sends delta data with one that cannot store it fails
-   loudly on both sides instead of silently losing data. See openpmix#4087
-   and the delta-exchange section of docs/how-things-work/modex.rst.
+   before it is used. That byte says whether a server collected, and the
+   only check on it was that the contributing servers agreed with each
+   other - so a value they all agreed on, and that no datastore knew how
+   to act on, passed straight through and its data was stored as though
+   it were an ordinary contribution. It is now rejected with
+   PMIX_ERR_BAD_PARAM. See openpmix#4087 and the delta-exchange section
+   of docs/how-things-work/modex.rst.
  - An MCA component whose framework interface version does not match the
    framework it is being loaded into is now refused instead of being
    opened. Nothing checked this before: the only version test in the
