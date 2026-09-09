@@ -465,19 +465,12 @@ static void test_store_modex_nspace_filter(void)
     PMIX_DESTRUCT(&buf);
 }
 
-/* The per-server flag byte says what kind of contribution follows. Until
+/* The per-server flag byte says whether that server collected. Until
  * August 2026 the walker only asked whether the servers agreed with each
  * other, so a value they all agreed on and none of us could act on went
  * straight through and its blobs were stored as though they were an
- * ordinary full contribution.
- *
- * That matters because of what a PMIX_MODEX_DELTA contribution is: only
- * what the sender published since it last took part in a collecting
- * fence. Storing one as a full set drops every key the sender left out,
- * and for gds/shmem3 - which retires the previous modex generation on
- * the strength of the new one standing alone - drops that generation
- * too. Nothing emits it yet (openpmix#4087); what is pinned here is that
- * a peer which does emit one is refused rather than half-believed.
+ * ordinary contribution - which is what this pins down: a peer sending
+ * a byte no release ever defined is refused rather than half-believed.
  *
  * Note each case asserts the *status*, not the blob count: a walk that
  * stops has usually delivered some blobs already, and how many is not
@@ -509,19 +502,17 @@ static void test_store_modex_blob_info(void)
     }
     PMIX_DESTRUCT(&buf);
 
-    /* a delta contribution is stored, and the kind reaches the callback
-     * so a datastore that retires what an earlier modex left behind can
-     * tell the difference */
+    /* a non-collecting contribution is equally acceptable on its own -
+     * what the walker refuses is servers that disagree with each other */
     modex_nblobs = modex_ndone = 0;
     modex_last_kind = PMIX_COLLECT_INVALID;
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-    rc = build_modex(&buf, "gds-modex-ns", ranks, 1, PMIX_MODEX_DELTA);
+    rc = build_modex(&buf, "gds-modex-ns", ranks, 1, PMIX_COLLECT_NO);
     if (PMIX_SUCCESS == rc) {
         rc = pmix_gds_base_store_modex(&buf, NULL, modex_cb, &trk);
-        report("a delta contribution is stored",
-               PMIX_SUCCESS == rc && 1 == modex_nblobs);
-        report("the callback is told it was a delta",
-               PMIX_MODEX_DELTA == modex_last_kind);
+        report("PMIX_COLLECT_NO is accepted", PMIX_SUCCESS == rc);
+        report("the callback is told it did not collect",
+               PMIX_COLLECT_NO == modex_last_kind);
     }
     PMIX_DESTRUCT(&buf);
 
@@ -1900,7 +1891,7 @@ static void test_shmem3_modex_generations(void)
      * the generation retired behind it */
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     rc = build_modex_kv(&buf, "gds-modexgen", remote, 2,
-                        "gds.modex.gen2", 222, PMIX_MODEX_DELTA);
+                        "gds.modex.gen2", 222, PMIX_COLLECT_YES);
     if (PMIX_SUCCESS == rc) {
         PMIX_GDS_STORE_MODEX(rc, peer, "gds-modexgen", &buf, &trk);
     }

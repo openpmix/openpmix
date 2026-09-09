@@ -1424,7 +1424,7 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
          * is false, then store_modex will not be called on that
          * node and this information (and the flag) will be ignored,
          * meaning that no error is generated! */
-        blob_info_byte = usedelta ? PMIX_MODEX_DELTA : PMIX_COLLECT_YES;
+        blob_info_byte = PMIX_COLLECT_YES;
         /* pack the modex blob info byte - check it, as the blob packs
          * below would otherwise overwrite the failure and ship a bucket
          * whose first byte is a rank blob rather than the collect type */
