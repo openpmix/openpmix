@@ -55,7 +55,6 @@
 /* "1" when this modex generation holds only what changed, so the client
  * must keep the generations before it; "0" when it stands on its own and
  * supersedes them. Only ever packed for the modex segment. */
-#define SHMEM3_SEG_DELTA_KEY "PMIX_GDS_SHMEM3_SEG_DELTA"
 /* Session id, on a SESSION blob only. A client needs it to decide which
  * session tracker a segment belongs to, and it cannot read that out of
  * the segment: the answer is what says whether to map the segment at
@@ -138,7 +137,6 @@ typedef struct {
     char *seg_path;
     size_t seg_size;
     size_t seg_hadr;
-    bool is_delta;
     /** Session id from a SESSION blob; UINT32_MAX if none was sent. */
     uint32_t ssid;
     /** Where this segment sits in its chain, as the SERVER ordered them.
@@ -162,7 +160,6 @@ unpacked_seg_blob_construct(
     ub->seg_path = NULL;
     ub->seg_size = 0;
     ub->seg_hadr = 0;
-    ub->is_delta = false;
     ub->ssid = UINT32_MAX;
     ub->generation = UINT32_MAX;
     ub->arena_base = 0;
@@ -610,7 +607,6 @@ job_construct(
     job->modex_generation = 0;
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
-    job->modex_is_delta = false;
     job->job_generation = 0;
     atomic_init(&job->job_chain, NULL);
     atomic_init(&job->modex_chain, NULL);
@@ -862,7 +858,6 @@ publish_modex_generation(
     seg->shmem3 = job->modex_shmem3;
     seg->smdata = job->smmodex;
     seg->generation = job->modex_generation;
-    seg->is_delta = job->modex_is_delta;
 
     pmix_gds_shmem3_chain_publish(&job->modex_chain, seg);
 
@@ -2505,15 +2500,11 @@ pack_shmem3_connection_info(
     );
 
     /* The modex is described from the newest published generation, not
-     * from the build slot - see pack_shmem3_seg_blob(). Its delta-ness
-     * comes from the same node, because that is a property of the
-     * generation being described rather than of the job. */
+     * from the build slot - see pack_shmem3_seg_blob(). */
     pmix_shmem_t *shmem3;
-    bool is_delta = false;
     if (NULL != which) {
         /* a named segment on a chain - see pack_shmem3_seg_blob() */
         shmem3 = which->shmem3;
-        is_delta = which->is_delta;
     }
     else if (PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id) {
         pmix_gds_shmem3_seg_t *const head =
@@ -2524,7 +2515,6 @@ pack_shmem3_connection_info(
             return rc;
         }
         shmem3 = head->shmem3;
-        is_delta = head->is_delta;
     }
     else {
         rc = pmix_gds_shmem3_get_job_shmem3_by_id(
@@ -2694,45 +2684,6 @@ pack_shmem3_connection_info(
         if (PMIX_GDS_SHMEM3_MODEX_ID != shmem3_id) {
             break;
         }
-        /* Say whether this modex generation stands on its own, so the
-         * client makes the same keep-or-drop decision this server made.
-         * Only the modex is ever republished, so only it carries this. */
-        PMIX_DESTRUCT(&kv);
-        PMIX_CONSTRUCT(&kv, pmix_kval_t);
-        kv.key = strdup(SHMEM3_SEG_DELTA_KEY);
-        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
-        if (PMIX_UNLIKELY(NULL == kv.value)) {
-            rc = PMIX_ERR_NOMEM;
-            PMIX_ERROR_LOG(rc);
-            break;
-        }
-        kv.value->type = PMIX_STRING;
-        kv.value->data.string = strdup(is_delta ? "1" : "0");
-        if (PMIX_UNLIKELY(NULL == kv.value->data.string)) {
-            rc = PMIX_ERR_NOMEM;
-            PMIX_ERROR_LOG(rc);
-            break;
-        }
-        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            break;
-        }
-
-        /* Where this segment sits in its chain, as WE ordered them.
-         *
-         * The client cannot work this out for itself. It publishes each
-         * segment it attaches at the head of its chain, so without a
-         * number its order is its ATTACH order - and those differ the
-         * moment one attach fails and is retried. A client that missed
-         * generation 2, took 3, and then took 2 on the next notice would
-         * end up with 2 in front of 3 and answer from the older of the
-         * two for every key both carry.
-         *
-         * Appended, like every other field here, so an older peer that
-         * does not read it is unaffected - see the note in
-         * unpack_shmem3_connection_info() on skipping what it has not
-         * been taught to hear. */
         PMIX_DESTRUCT(&kv);
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_GEN_KEY);
@@ -2913,10 +2864,6 @@ unpack_shmem3_connection_info(
                 PMIX_ERROR_LOG(rc);
                 break;
             }
-        }
-        else if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_DELTA_KEY)) {
-            /* only the modex carries this; absent means "stands alone" */
-            usb->is_delta = ('0' != val[0]);
         }
         else if (PMIX_CHECK_KEY(&kv, SHMEM3_SEG_ARBS_KEY)) {
             rc = strtost(val, 16, &usb->arena_base);
@@ -4016,10 +3963,12 @@ server_store_modex_cb(pmix_proc_t *proc,
     pmix_kval_t kv;
     pmix_gds_shmem3_job_t *job;
 
-    /* PMIX_MODEX_DELTA means this contribution holds only what its
-     * processes published since they last took part in a collecting
-     * fence, so the generation it lands in does not stand on its own. */
-    const bool isdelta = (PMIX_MODEX_DELTA == (pmix_collect_t) kind);
+    /* The flag byte says whether the contributing server collected, and
+     * the walker has already refused a payload whose servers disagreed
+     * about that. Nothing here turns on it: every generation is kept and
+     * read back through the chain, so a contribution that repeats what
+     * an earlier one carried and one that does not are stored alike. */
+    PMIX_HIDE_UNUSED_PARAMS(kind);
 
     rc = pmix_gds_shmem3_get_job_tracker(proc->nspace, false, &job);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -4070,8 +4019,6 @@ server_store_modex_cb(pmix_proc_t *proc,
             );
             advance_modex_generation(job);
         }
-        /* what the clients have to be told about this generation */
-        job->modex_is_delta = isdelta;
         /* The name has to differ per generation or the backing paths
          * collide - they are built from the nspace, this pid and this
          * name. */

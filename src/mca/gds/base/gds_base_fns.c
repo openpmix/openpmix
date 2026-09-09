@@ -383,25 +383,22 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
                 goto exit;
             }
             blob_info = (pmix_collect_t) blob_info_byte;
-            /* Screen the value before comparing it. The check below only
-             * asks whether the servers agree with each other, so a marker
-             * they all agree on and none of us can act on would otherwise
-             * pass straight through. Two cases, and they fail differently:
-             *
-             * PMIX_MODEX_DELTA is honored - the kind is handed to the
-             * component's callback, which decides what it means for its
-             * own storage (gds/hash accumulates, so nothing; gds/shmem3
-             * keeps the generations a delta does not repeat).
-             *
-             * Anything else is a value no release ever defined, so the
-             * sender is not something this code can reason about. */
-            if (PMIX_COLLECT_NO != blob_info && PMIX_COLLECT_YES != blob_info
-                && PMIX_MODEX_DELTA != blob_info) {
+            /* Screen the value before comparing it. The check below
+             * only asks whether the servers agree with each other, so a
+             * marker they all agree on and none of us can act on would
+             * otherwise pass straight through, and its data would be
+             * stored as though it were an ordinary contribution. */
+            if (PMIX_COLLECT_NO != blob_info && PMIX_COLLECT_YES != blob_info) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 rc = PMIX_ERR_BAD_PARAM;
                 PMIX_DESTRUCT(&bkt3);
                 goto exit;
             }
+            /* The servers must agree on the collection strategy -
+             * collect vs non-collect is a job-wide directive, which is
+             * what the "collection-mismatch" help topic describes. How
+             * much each server had to send is its own business and is
+             * not stated on the wire. */
             if (PMIX_COLLECT_INVALID == last_blob_info_byte) {
                 last_blob_info_byte = blob_info;
             } else if (last_blob_info_byte != blob_info) {

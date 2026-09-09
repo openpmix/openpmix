@@ -87,13 +87,13 @@ typedef struct pmix_gds_globals_t pmix_gds_globals_t;
  * "kind" is the per-server flag byte the contribution carried - a
  * pmix_collect_t value, typed here as the byte it actually is because
  * that enum lives in pmix_globals.h, which includes this framework's
- * header rather than the other way round. PMIX_COLLECT_YES means a
- * process's whole published set; PMIX_MODEX_DELTA means only what it
- * published since it last took part in a collecting fence. A datastore
- * that retires what an earlier modex left behind has to know the
- * difference, because a delta does not stand on its own. The value is
- * uniform across one walk: the walker refuses a payload whose servers
- * disagree about it. */
+ * header rather than the other way round. It says whether the sending
+ * server collected, which is a job-wide directive: the value is uniform
+ * across one walk, and the walker refuses a payload whose servers
+ * disagree about it. How much any one server had to send is its own
+ * business and is not stated on the wire - a contribution carries what
+ * its processes published since they last took part in a collecting
+ * fence, and a datastore keeps what earlier ones left behind. */
 typedef pmix_status_t (*pmix_gds_base_store_modex_cb_fn_t)(pmix_proc_t *proc,
                                                            pmix_buffer_t *pbkt,
                                                            uint8_t kind);
