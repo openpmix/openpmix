@@ -42,7 +42,9 @@ INPUT PARAMETERS
   `SCOPE`_).
 * ``key``: A NULL-terminated string identifying the value. The string must be no
   longer than ``PMIX_MAX_KEYLEN`` characters and must not begin with the reserved
-  prefix ``"pmix"``.
+  prefix ``"pmix"`` |mdash| with the single exception of ``PMIX_QUALIFIED_VALUE``,
+  which is how a value is posted together with its qualifiers (see
+  `DESCRIPTION`_).
 * ``val``: Pointer to a ``pmix_value_t`` structure containing the value to be
   posted.
 
@@ -66,6 +68,9 @@ values between host architectures.
    Standard and the library. Applications must never use a defined ``PMIX_``
    attribute |mdash| or any other ``"pmix"``-prefixed string |mdash| as the
    ``key`` in a call to ``PMIx_Put``; doing so returns ``PMIX_ERR_BAD_PARAM``.
+   ``PMIX_QUALIFIED_VALUE`` is the sole exception, because it names the
+   *carrier* for a qualified value rather than the value's own key, which
+   travels inside the array it carries.
 
 
 SCOPE
@@ -111,7 +116,8 @@ Returns ``PMIX_SUCCESS`` on success. On error, a negative value corresponding to
 a PMIx error constant is returned, including:
 
 * ``PMIX_ERR_BAD_PARAM`` |mdash| the ``key`` is ``NULL``, exceeds
-  ``PMIX_MAX_KEYLEN``, or uses the reserved ``"pmix"`` prefix.
+  ``PMIX_MAX_KEYLEN``, or uses the reserved ``"pmix"`` prefix other than as
+  ``PMIX_QUALIFIED_VALUE``.
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the requested ``scope`` is not supported by
   the implementation.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because the
