@@ -536,6 +536,13 @@ static void test_put_bad_params(void)
     rc = PMIx_Put(PMIX_GLOBAL, longkey, &val);
     check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Put(oversized key) rejected");
 
+    /* the "pmix" prefix belongs to the Standard and the library, which
+     * PMIx_Put(3) has always said - it just was not enforced */
+    rc = PMIx_Put(PMIX_GLOBAL, PMIX_HOSTNAME, &val);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Put(reserved key) rejected");
+    rc = PMIx_Put(PMIX_GLOBAL, "pmix.made.up", &val);
+    check(PMIX_ERR_BAD_PARAM == rc, "PMIx_Put(any pmix-prefixed key) rejected");
+
     /* and the well-formed call still works */
     rc = PMIx_Put(PMIX_GLOBAL, "client.api.putkey", &val);
     check(PMIX_SUCCESS == rc, "PMIx_Put with valid arguments succeeds");

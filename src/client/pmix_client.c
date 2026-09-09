@@ -2344,6 +2344,21 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
     if (PMIX_UNLIKELY(NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key))) {
         return PMIX_ERR_BAD_PARAM;
     }
+    /* The "pmix" prefix belongs to the Standard and the library, and
+     * PMIx_Put(3) has always said so - a key using it is PMIX_ERR_BAD_PARAM.
+     * Nothing enforced it, so such a key was accepted silently, stored,
+     * and carried into a modex alongside the reserved keys the library
+     * puts there itself.
+     *
+     * PMIX_QUALIFIED_VALUE is the one exception, and it is not a hole:
+     * the same man page documents it as *the* way to post a value with
+     * qualifiers, the caller's own key being the first element of the
+     * data array it carries. So the prefix is refused except for that
+     * one carrier. */
+    if (PMIX_UNLIKELY(PMIx_Check_reserved_key(key)
+                      && 0 != strcmp(key, PMIX_QUALIFIED_VALUE))) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     /* A delete names a key to remove and carries no value; anything else
      * must have one, since _putfn dereferences it. */
     if (is_delete_scope(scope)) {
