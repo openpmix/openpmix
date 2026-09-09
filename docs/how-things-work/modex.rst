@@ -496,8 +496,8 @@ one section because the two halves are one problem: **the mechanism that
 lets a modex carry only what changed is the same mechanism that lets a key
 be deleted**, and neither can be built without the other.
 
-Both halves are implemented — the commit delta, the server's fence delta
-behind ``pmix_server_fence_delta_modex``, the ``shmem3`` generation chain
+Both halves are implemented — the commit delta, the server's fence delta,
+the ``shmem3`` generation chain
 that makes a non-self-contained modex readable, and the ``PMIX_DEL_*``
 scopes with the propagation that carries a removal to the other clients
 of a server and, through a collecting fence, to the other nodes.
@@ -549,11 +549,10 @@ Two watermarks, at two levels:
   server. **This half is implemented**; see *Transmission* above.
 * **The server** contributes what has arrived since this process last
   contributed to a collecting fence. A barrier-only fence exchanges
-  nothing and so does not move the watermark. **Implemented**, behind the
-  ``pmix_server_fence_delta_modex`` MCA parameter — see below for why it
-  defaults off. The watermark moves only once the host has *taken* the
-  bucket: the request has three arms that discard it, and draining
-  earlier would lose those deltas for good.
+  nothing and so does not move the watermark. **Implemented**. The
+  watermark moves only once the host has *taken* the bucket: the request
+  has three arms that discard it, and draining earlier would lose those
+  deltas for good.
 
 **The server's watermark is qualified by the participant set.** A per-process
 watermark alone is not sound: a process that contributed to a fence over one
@@ -566,58 +565,39 @@ matches that stamp exactly. Otherwise the contribution is cumulative and the
 stamp is replaced. Equality rather than containment is deliberate: it can
 only cost an unnecessary cumulative contribution, never a short one.
 
-Telling a delta from a full contribution
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Nothing on the wire says how much was sent
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A receiving server must know which kind of contribution it is storing,
-because ``gds/shmem3`` may drop the previous modex generation for a
-cumulative one and must not for a delta. That is carried by the per-server
-flag byte already in the envelope — the one that today distinguishes
-``PMIX_COLLECT_YES`` from ``PMIX_COLLECT_NO``.
+A contribution does not announce whether it is short or complete, and no
+receiver needs to be told. Every generation is kept and read back through
+the chain, so a generation that repeats what an earlier one carried and
+one that does not are stored the same way; and a fence whose participant
+set has no prior stamp sends everything, which is a delta against nothing
+rather than a different kind of thing.
 
-Reusing that byte is what makes the change safe across versions, and the
-guard costs nothing because the *existing* code already implements it.
+The per-server flag byte in the envelope therefore says just what it
+always said: whether that server collected. That is a job-wide directive,
+so every server in one fence must agree, and
 ``pmix_gds_base_store_modex`` compares the byte pairwise across the
 contributing servers and raises the ``collection-mismatch`` help message
-when they disagree. In a job mixing releases, the older servers emit the
-old value and the newer ones the new value, so the comparison fails and the
-fence returns an error — loud, on both old and new receivers, rather than
-silently storing a partial modex.
+when they disagree.
+
+The byte is also screened before it is compared, which matters
+independently: the comparison only asks whether the senders agree with
+each other, so a value they all agreed on and no datastore could act on
+would otherwise pass straight through and its blobs be stored as an
+ordinary contribution. Regression coverage is
+``test_store_modex_blob_info()`` in ``test/unit/gds_datastore.c``.
 
 .. note::
 
-   The byte must be a distinct constant, not an overloading of the
-   tracker's ``collect_type``: that field is compared against
-   ``PMIX_COLLECT_YES`` in several places that decide whether to collect at
-   all.
-
-**Why the parameter defaults off.** A server from a release that predates
-the marker rejects the whole collective rather than storing a contribution
-it cannot interpret. That is the right failure — the alternative is
-silently losing data — but it means a job whose nodes run mixed releases
-works today and would stop working if this defaulted on. Turn it on once
-every node understands the marker.
-
-The kind is handed to the datastore, because what it means differs by
-component. ``gds/hash`` accumulates — a value replaces the one it matches
-and everything else stays — so a delta needs nothing special there. It
-matters to a datastore that retires what an earlier modex left behind.
-
-**This much is implemented.** ``PMIX_MODEX_DELTA`` is defined, and
-``pmix_gds_base_store_modex`` now screens the flag byte before comparing
-it across servers — refusing a delta contribution with
-``PMIX_ERR_NOT_SUPPORTED`` and the ``delta-modex-unsupported`` help
-message, and an undefined value with ``PMIX_ERR_BAD_PARAM``. Nothing emits
-the marker yet, so no behavior changes for a job whose nodes all run this
-release. What it buys is that the refusal is in place *before* anything can
-send one, which is why it landed first and on its own. Regression coverage
-is ``test_store_modex_blob_info()`` in ``test/unit/gds_datastore.c``.
-
-Screening the value matters independently of the delta work: the
-cross-server comparison only asks whether the senders agree with each
-other, so before this a byte they all agreed on and no datastore could act
-on passed straight through and its blobs were stored as though they were an
-ordinary full contribution.
+   A marker distinguishing the two kinds was carried here for a while,
+   on the theory that ``shmem3`` could drop the previous generation for a
+   complete contribution. Nothing ever acted on it - the chain keeps
+   every generation either way, and the field the segment blob carried to
+   the client was never read - so it is gone. If a datastore ever does
+   want to retire a superseded generation, that is when the wire needs to
+   say so again.
 
 Generations in shared memory
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -657,10 +637,9 @@ Three properties make that work without disturbing the read path:
 * Each segment carries its own key index, so a generation is self-describing
   and no two generations need to agree about numbering.
 
-Because the flag byte says which kind of contribution arrived, a cumulative
-modex keeps today's behavior — drop the previous generation, one segment
-live — and only a delta grows the chain. The interim state, after the chain
-exists but before contributions are deltas, therefore costs nothing.
+Every fence that carries data adds a generation, and the chain is walked
+newest-first. A job that fences once holds a single generation, which is
+the single lookup this has always been.
 
 Deleting a key
 ^^^^^^^^^^^^^^
@@ -780,11 +759,12 @@ Summary
   its numbering once at initialization, and for modex data by giving each
   modex segment its own key index, written by the one process that owns
   the segment.
-* The commit sends only what changed; the fence contribution does too when
-  ``pmix_server_fence_delta_modex`` is set. Both keep the cumulative path
-  as a resync fallback, a delta is marked in the envelope's existing flag
-  byte so a mixed-version job fails loudly, and ``shmem3``'s modex
-  generations become a chain that is searched newest to oldest.
+* The commit sends only what changed, and so does the fence
+  contribution. The commit keeps the cumulative fetch as a full-resync
+  fallback and the fence falls back to the full set when it has nothing
+  to be a delta against; a delta is marked in the envelope's existing
+  ``shmem3``'s modex generations become a chain that is searched newest to
+  oldest.
 * **Deleting a key is the same mechanism seen from the other side**: a
   ``PMIX_DEL_*`` scope on ``PMIx_Put``, stated in the commit and in the
   next collecting fence, and answered by a removal in ``hash`` and a
