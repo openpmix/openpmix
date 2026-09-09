@@ -182,7 +182,6 @@ typedef struct {
     char *tmpdir;             // temporary directory for this server
     char *system_tmpdir;      // system tmpdir
     bool fence_localonly_opt; // local-only fence optimization
-    bool fence_delta_modex;   // contribute only what changed since our last collecting fence
     pmix_list_t grp_collectives;  // group-op collectives
     pmix_pointer_array_t monitors;  // monitoring operations
     // verbosity for server get operations
@@ -607,7 +606,6 @@ PMIX_EXPORT void pmix_server_modex_contributed(pmix_server_trkr_t *trk);
 /* Force this proc's next fence contribution to be cumulative. Call it
  * wherever remote-scope data reaches our datastore for a local proc by
  * some route other than pmix_server_commit. */
-PMIX_EXPORT void pmix_server_modex_resync(const pmix_proc_t *proc);
 
 /* Tell our local clients that a key has been deleted so their cached
  * copies go too. "skip" is the peer that asked for the deletion and has

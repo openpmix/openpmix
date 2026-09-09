@@ -268,7 +268,6 @@ PMIX_EXPORT extern pmix_status_t pmix_tool_init_info(void);
  *
  * pmix_server_trkr_t.collect_type holds one of these, and several places
  * test it against PMIX_COLLECT_YES to decide whether to collect at all.
- *
  * The same values are the per-server flag byte carried in the modex
  * envelope (see pmix_gds_base_store_modex), where the byte says whether
  * that server collected - a job-wide directive, so every server in one
@@ -435,6 +434,28 @@ typedef struct {
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_envar_list_item_t);
 
 
+/* One entry in a rank's modex log: a committed kval, or a tombstone
+ * whose value is PMIX_UNDEF, stamped with a monotonic per-rank id.
+ * An id rather than a list position because callers remember where they
+ * have read to, and an id stays meaningful whatever else happens to the
+ * list. */
+typedef struct {
+    pmix_list_item_t super;
+    uint64_t id;
+    pmix_kval_t *kv;
+} pmix_modex_entry_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_modex_entry_t);
+
+/* How far one participant set has been brought up to date. "sig" is the
+ * digest of that set (participant_signature() in pmix_server_fence.c),
+ * and "watermark" is the highest modex_log id already sent to it. */
+typedef struct {
+    pmix_list_item_t super;
+    uint64_t sig;
+    uint64_t watermark;
+} pmix_modex_mark_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_modex_mark_t);
+
 typedef struct pmix_rank_info_t {
     pmix_list_item_t super;
     int peerid; // peer object index into the local clients array on the server
@@ -447,33 +468,50 @@ typedef struct pmix_rank_info_t {
     bool modex_recvd;
     int proc_cnt;        // #clones of this rank we know about
     void *server_object; // pointer to rank-specific object provided by server
-    /* Delta-modex bookkeeping, server side - see pmix_server_collect_data.
+    /* Modex bookkeeping, server side - see pmix_server_collect_data.
      *
-     * pending_modex holds the PMIX_REMOTE-scope kvals this rank has
-     * committed since it last contributed to a collecting fence, so that
-     * contribution can carry what changed instead of everything the rank
-     * has ever published. It lives here rather than on the peer because a
+     * modex_log holds every PMIX_REMOTE/GLOBAL kval this rank has
+     * committed, in the order it committed them, each stamped with an id
+     * from modex_next_id. A deletion is an entry too, carrying the key
+     * with a PMIX_UNDEF value, which the receiving datastore reads as
+     * "this key is gone" - a removal has to be *said*, because the
+     * exchange is additive and a contribution that merely stops naming a
+     * key removes nothing at the far end.
+     *
+     * The log is the whole of a fence contribution, and pmix_server_commit
+     * is its only writer - so it holds what the client has *committed*,
+     * not what it has put. A value staged with PMIx_Put and not yet
+     * committed has never reached this server at all, and no fence can
+     * carry it. Equally, data that arrived in our store by some route
+     * other than a commit is not on the log and is never circulated.
+     *
+     * It lives on the rank rather than the peer for two reasons: a
      * fork/exec'd clone shares its parent's rank_info, which is the same
-     * identity the collection dedups on.
+     * identity the collection dedups on, so a per-peer log would
+     * contribute that rank twice; and the modex is keyed on the rank,
+     * which is what a contribution's blob names.
      *
-     * modex_sig digests the participant set of the fence this rank last
-     * contributed to, and modex_contributed says whether it means
-     * anything yet. A delta is only sound for a fence over the same set:
-     * contributing one to a fence over some *other* set would leave every
-     * server holding only that set's procs never learning these keys. */
-    pmix_list_t pending_modex;
-    uint64_t modex_sig;
-    bool modex_contributed;
-    /* Keys this rank has deleted that its peers on other nodes have not
-     * been told about yet.
+     * It is append-only for the life of the rank, and no entry is ever
+     * reclaimed: a fence over a participant set this rank has not
+     * contributed to before must send the log from the beginning, and
+     * such a fence can happen at any time. Applications put tens of
+     * keys, not millions, so the log is small.
      *
-     * Removing the key from our store is not enough to reach them: the
-     * modex is additive, so a later contribution simply not carrying the
-     * key removes nothing at the far end. The deletion has to be *said*,
-     * as an entry whose value is PMIX_UNDEF, which the receiving
-     * datastore reads as "this key is gone". Announced once, with the
-     * next contribution, and then dropped. */
-    pmix_list_t pending_deletes;
+     * modex_marks holds one pmix_modex_mark_t per participant set this
+     * rank has contributed to, each remembering the highest log id that
+     * set has already been sent. A contribution to a set carries
+     * everything above its mark; a set with no mark yet gets the whole
+     * log. That is what makes a short contribution sound for every set
+     * independently - two sub-communicators fencing separately each get
+     * exactly what they have not seen.
+     *
+     * modex_marked_upto is scratch: the id collect_data packed up to, so
+     * pmix_server_modex_contributed can advance the mark to precisely
+     * that point once the host has taken the bucket. */
+    pmix_list_t modex_log;
+    uint64_t modex_next_id;
+    pmix_list_t modex_marks;
+    uint64_t modex_marked_upto;
 } pmix_rank_info_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_rank_info_t);
 

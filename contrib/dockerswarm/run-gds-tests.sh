@@ -523,33 +523,22 @@ test_linux() {
             && ok "$np servers on hash: every rank read every peer's values"
     done
 
-    banner "a second collecting fence (modex segment is republished)"
+    banner "a second collecting fence carrying only what changed"
+    # The case the segment chain exists for. Each server contributes only
+    # what its procs published since the previous collecting fence - so
+    # modex_twice's gen1 keys, published before the first fence and never
+    # again, are NOT in the second fence's payload. They survive only if
+    # gds/shmem3 kept the generation that carried them and reads back
+    # through it. A chain that does not work fails this.
     for geom in $GEOMETRIES; do
         hosts="${geom%|*}"; np="${geom#*|}"
         run_across_nodes modex_twice "$hosts" "$np" "" "(default)" \
             && ok "$np servers: second fence visible, first fence kept"
     done
-
-    banner "a second collecting fence carrying only what changed"
-    # The case the segment chain exists for. With
-    # pmix_server_fence_delta_modex on, each server contributes only what
-    # its procs published since the previous collecting fence - so
-    # modex_twice's gen1 keys, published before the first fence and never
-    # again, are NOT in the second fence's payload. They survive only if
-    # gds/shmem3 kept the generation that carried them and reads back
-    # through it. A chain that does not work fails this and passes the
-    # cumulative cases above, which is exactly why this case is here.
     for geom in $GEOMETRIES; do
         hosts="${geom%|*}"; np="${geom#*|}"
-        run_across_nodes modex_twice "$hosts" "$np" \
-            "PMIX_MCA_pmix_server_fence_delta_modex=1" "(delta modex)" \
-            && ok "$np servers with delta modex: second fence visible, first kept"
-    done
-    for geom in $GEOMETRIES; do
-        hosts="${geom%|*}"; np="${geom#*|}"
-        run_across_nodes client "$hosts" "$np" \
-            "PMIX_MCA_pmix_server_fence_delta_modex=1" "(delta modex)" \
-            && ok "$np servers with delta modex: put/commit/fence/get across servers"
+        run_across_nodes client "$hosts" "$np" "" "(default)" \
+            && ok "$np servers: put/commit/fence/get across servers"
     done
 
     banner "deleting a published key"

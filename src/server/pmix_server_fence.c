@@ -95,6 +95,9 @@ static PMIX_CLASS_INSTANCE(rank_blob_t,
                            pmix_list_item_t,
                            bufcon, bufdes);
 
+static pmix_status_t modex_log_append(pmix_rank_info_t *info, pmix_kval_t *kv);
+static pmix_modex_mark_t *modex_mark_get(pmix_rank_info_t *info, uint64_t sig);
+
 pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
 {
     int32_t cnt;
@@ -195,12 +198,6 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                     PMIX_DESTRUCT(&b2);
                     return rc;
                 }
-                /* A later fence contribution must not re-publish what was
-                 * just removed. The pending list a delta is built from
-                 * still holds the old value, so make the next
-                 * contribution cumulative - that one is built from the
-                 * datastore, which no longer has the key. */
-                pmix_server_modex_resync(&proc);
             }
             if (PMIX_DEL_LOCAL == scope || PMIX_DEL_REMOTE == scope
                 || PMIX_DEL_GLOBAL == scope) {
@@ -222,8 +219,16 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                  * removing the key here cannot tell them: the modex is
                  * additive, so a contribution that simply no longer
                  * carries the key removes nothing at the far end. The
-                 * deletion has to be said out loud, which is what this
-                 * records for the next contribution to carry. */
+                 * deletion is therefore said out loud, as a log entry
+                 * whose value is PMIX_UNDEF.
+                 *
+                 * It goes on the log rather than being applied to it,
+                 * because how it must be told depends on the audience: a
+                 * participant set that already holds the key needs the
+                 * tombstone, one whose mark is still behind the original
+                 * value gets both and nets out correctly, and either way
+                 * the mark decides. Editing the log would answer for all
+                 * of them at once, and wrongly. */
                 pmix_kval_t *dk = PMIX_NEW(pmix_kval_t);
                 if (NULL != dk) {
                     dk->key = strdup(kp->key);
@@ -231,33 +236,30 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                     if (NULL == dk->key || NULL == dk->value) {
                         PMIX_RELEASE(dk);
                     } else {
-                        pmix_list_append(&info->pending_deletes, &dk->super);
+                        rc = modex_log_append(info, dk);
+                        PMIX_RELEASE(dk);
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_ERROR_LOG(rc);
+                            PMIX_RELEASE(kp);
+                            PMIX_DESTRUCT(&b2);
+                            return rc;
+                        }
                     }
                 }
             }
-            if (pmix_server_globals.fence_delta_modex
-                && (PMIX_REMOTE == scope || PMIX_GLOBAL == scope)) {
-                /* Keep this for the next collecting fence, which may be
-                 * able to contribute only what has changed.
-                 *
-                 * Gated on the parameter because the list is only ever
-                 * drained by a collecting fence: with deltas off it would
-                 * hold a second copy of everything the process has ever
-                 * committed and nothing would ever take it away. Even
-                 * with them on, a job that commits but never fences with
-                 * data accumulates - there is simply no contribution to
-                 * hand it to - but that is now something the parameter
-                 * asked for rather than the default.
-                 *
-                 * Retain
-                 * before the release below rather than at the top of the
-                 * loop: the two error returns above leave the loop with
-                 * the kval only partly stored, and those must not put it
-                 * on the list. The list hangs off the rank_info rather
-                 * than the peer because a fork/exec'd clone shares it,
-                 * which is the identity the collection dedups on. */
-                PMIX_RETAIN(kp);
-                pmix_list_append(&info->pending_modex, &kp->super);
+            if (PMIX_REMOTE == scope || PMIX_GLOBAL == scope) {
+                /* Record it for every fence still to come. Appending
+                 * here rather than at the top of the loop is deliberate:
+                 * the two error returns above leave the loop with the
+                 * kval only partly stored, and those must not reach the
+                 * log. */
+                rc = modex_log_append(info, kp);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kp);
+                    PMIX_DESTRUCT(&b2);
+                    return rc;
+                }
             }
             PMIX_RELEASE(kp); // maintain accounting
             kp = PMIX_NEW(pmix_kval_t);
@@ -1080,47 +1082,50 @@ void pmix_server_notify_gds_update(const char *nspace)
  * Announced once. After that every server that took part has applied it,
  * and this rank's own store no longer has the key, so nothing will
  * re-introduce it. */
-static pmix_status_t pack_pending_deletes(pmix_rank_info_t *info,
-                                          pmix_buffer_t *pbkt)
+/* Append one entry to a rank's modex log, taking a reference on the
+ * kval. Called only from pmix_server_commit, which is what makes the log
+ * a record of what the client has committed rather than of what it has
+ * put. The log is append-only and nothing is ever reclaimed from it -
+ * see pmix_rank_info_t. */
+static pmix_status_t modex_log_append(pmix_rank_info_t *info, pmix_kval_t *kv)
 {
-    pmix_kval_t *kv;
-    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_modex_entry_t *e;
 
-    if (NULL == info) {
-        return PMIX_SUCCESS;
+    if (NULL == info || NULL == kv) {
+        return PMIX_ERR_BAD_PARAM;
     }
-    PMIX_LIST_FOREACH (kv, &info->pending_deletes, pmix_kval_t) {
-        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt, kv, 1, PMIX_KVAL);
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
+    e = PMIX_NEW(pmix_modex_entry_t);
+    if (NULL == e) {
+        return PMIX_ERR_NOMEM;
     }
+    PMIX_RETAIN(kv);
+    e->kv = kv;
+    e->id = ++info->modex_next_id;
+    pmix_list_append(&info->modex_log, &e->super);
     return PMIX_SUCCESS;
 }
 
-/* Digest a fence's participant set.
- *
- * A delta contribution is only sound for a fence over the same
- * participants: contributing one to a fence over some *other* set would
- * leave every server holding only that set's procs never learning the
- * keys we left out - two sub-communicators fencing independently is
- * enough to reach that. Comparing the sets directly would mean keeping a
- * copy of one per local rank, which on a large job is the job's whole
- * proc array per rank, so we keep a 64-bit digest and require it to
- * match exactly.
- *
- * Requiring equality rather than containment is deliberate. It is the
- * conservative half of the rule, so it can only cost an unnecessary
- * cumulative contribution, never a short one - and it still covers the
- * case that matters, a job that fences repeatedly over the same set.
- *
- * The digest is taken over the fields rather than the raw bytes because
- * pmix_proc_t may carry padding between its nspace array and its rank,
- * and padding is not guaranteed to hold the same thing twice. Note the
- * array need not be sorted for this to be correct: a different ordering
- * of the same set simply digests differently, and the only consequence
- * is a cumulative contribution we could in principle have made a delta.
- */
+/* The mark for one participant set, created at watermark 0 - "this set
+ * has seen nothing" - the first time we contribute to that set. */
+static pmix_modex_mark_t *modex_mark_get(pmix_rank_info_t *info, uint64_t sig)
+{
+    pmix_modex_mark_t *m;
+
+    PMIX_LIST_FOREACH (m, &info->modex_marks, pmix_modex_mark_t) {
+        if (m->sig == sig) {
+            return m;
+        }
+    }
+    m = PMIX_NEW(pmix_modex_mark_t);
+    if (NULL == m) {
+        return NULL;
+    }
+    m->sig = sig;
+    m->watermark = 0;
+    pmix_list_append(&info->modex_marks, &m->super);
+    return m;
+}
+
 static uint64_t participant_signature(const pmix_proc_t *procs, size_t nprocs)
 {
     uint64_t h = 14695981039346656037ULL; /* FNV-1a 64-bit offset basis */
@@ -1169,6 +1174,7 @@ void pmix_server_modex_contributed(pmix_server_trkr_t *trk)
 {
     pmix_server_caddy_t *scd;
     pmix_rank_info_t *info;
+    pmix_modex_mark_t *mark;
     uint64_t sig;
 
     if (PMIX_COLLECT_YES != trk->collect_type) {
@@ -1180,42 +1186,20 @@ void pmix_server_modex_contributed(pmix_server_trkr_t *trk)
         if (NULL == info) {
             continue;
         }
-        PMIX_LIST_DESTRUCT(&info->pending_modex);
-        PMIX_CONSTRUCT(&info->pending_modex, pmix_list_t);
-        /* the deletions have now been announced */
-        PMIX_LIST_DESTRUCT(&info->pending_deletes);
-        PMIX_CONSTRUCT(&info->pending_deletes, pmix_list_t);
-        info->modex_sig = sig;
-        info->modex_contributed = true;
-    }
-}
-
-/* Force this proc's next fence contribution to be cumulative.
- *
- * pmix_server_commit is not the only way remote-scope data arrives for a
- * local proc - a host can register a group's endpoint data through
- * PMIx_server_register_resources, and the group collective stores
- * members' contributions directly. Neither goes through the commit path,
- * so neither is on the pending list, and a delta built from that list
- * alone would silently omit it. */
-void pmix_server_modex_resync(const pmix_proc_t *proc)
-{
-    pmix_namespace_t *nptr;
-    pmix_rank_info_t *info;
-
-    if (NULL == proc) {
-        return;
-    }
-    PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 != strncmp(nptr->nspace, proc->nspace, PMIX_MAX_NSLEN)) {
+        mark = modex_mark_get(info, sig);
+        if (NULL == mark) {
+            /* out of memory - leaving the mark where it is only costs a
+             * repeated contribution next time, never a short one */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             continue;
         }
-        PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
-            if (PMIX_RANK_WILDCARD == proc->rank || info->pname.rank == proc->rank) {
-                info->modex_contributed = false;
-            }
+        /* Advance to precisely what collect_data packed, not to the log's
+         * current end: anything appended since is owed to this set, and
+         * stamping it as sent would lose it. Marking a rank twice is
+         * idempotent, so unlike the collection this needs no clone dedup. */
+        if (mark->watermark < info->modex_marked_upto) {
+            mark->watermark = info->modex_marked_upto;
         }
-        return;
     }
 }
 
@@ -1223,8 +1207,8 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                                        pmix_buffer_t *buf)
 {
     pmix_buffer_t bucket, bkt, *pbkt = NULL;
-    pmix_cb_t cb;
-    pmix_kval_t *kv;
+    pmix_modex_entry_t *ment;
+    pmix_modex_mark_t *mark;
     pmix_byte_object_t bo, outbo;
     pmix_server_caddy_t *scd;
     pmix_proc_t pcs;
@@ -1236,8 +1220,6 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
     pmix_list_t pnames;
     pmix_namelist_t *pn;
     bool found;
-    bool usedelta;
-    bool havedata, hasdeletes;
     uint64_t sig;
 
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
@@ -1246,26 +1228,10 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
        pmix_output_verbose(2, pmix_server_globals.fence_output,
                            "fence - assembling data");
 
-        /* Decide once, for the whole bucket, whether this contribution
-         * can be a delta. The flag byte that says so describes the
-         * server's contribution as a whole, so the bucket cannot be part
-         * delta and part not - and a delta is only sound if *every*
-         * local participant has already contributed to a fence over this
-         * same participant set. Anything else falls back to sending
-         * each rank's full published set, which is what this always
-         * used to do. */
+        /* Every contribution is bounded by what the receiving
+         * participant set has already been sent, so there is one path
+         * here and it is correct for every set independently. */
         sig = participant_signature(trk->pcs, trk->npcs);
-        usedelta = pmix_server_globals.fence_delta_modex;
-        if (usedelta) {
-            PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
-                if (NULL == scd->peer->info
-                    || !scd->peer->info->modex_contributed
-                    || scd->peer->info->modex_sig != sig) {
-                    usedelta = false;
-                    break;
-                }
-            }
-        }
 
         PMIX_CONSTRUCT(&rank_blobs, pmix_list_t);
         PMIX_CONSTRUCT(&pnames, pmix_list_t);
@@ -1318,104 +1284,54 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                 PMIX_RELEASE(pbkt);
                 goto cleanup;
             }
-            if (usedelta) {
-                /* pack what this rank has committed since it last
-                 * contributed - an empty list is a legitimate answer,
-                 * and the receiver reads a proc with no kvals as "this
-                 * rank published nothing new" */
-                PMIX_LIST_FOREACH (kv, &scd->peer->info->pending_modex, pmix_kval_t) {
-                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt, kv, 1, PMIX_KVAL);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                        PMIX_LIST_DESTRUCT(&pnames);
-                        PMIX_LIST_DESTRUCT(&rank_blobs);
-                        PMIX_RELEASE(pbkt);
-                        goto cleanup;
-                    }
-                }
-                if (PMIX_SUCCESS != pack_pending_deletes(scd->peer->info, pbkt)) {
-                    PMIX_ERROR_LOG(PMIX_ERR_PACK_FAILURE);
-                    PMIX_LIST_DESTRUCT(&pnames);
-                    PMIX_LIST_DESTRUCT(&rank_blobs);
-                    PMIX_RELEASE(pbkt);
-                    rc = PMIX_ERR_PACK_FAILURE;
-                    goto cleanup;
-                }
-                blob = PMIX_NEW(rank_blob_t);
-                if (NULL == blob) {
-                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                    PMIX_LIST_DESTRUCT(&pnames);
-                    PMIX_LIST_DESTRUCT(&rank_blobs);
-                    PMIX_RELEASE(pbkt);
-                    rc = PMIX_ERR_NOMEM;
-                    goto cleanup;
-                }
-                blob->buf = pbkt;
-                pmix_list_append(&rank_blobs, &blob->super);
-                pbkt = NULL;
-                continue;
-            }
-            PMIX_CONSTRUCT(&cb, pmix_cb_t);
-            cb.proc = &pcs;
-            cb.scope = PMIX_REMOTE;
-            cb.copy = true;
-            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-            havedata = (PMIX_SUCCESS == rc);
-            if (havedata) {
-                /* pack the returned kval's */
-                PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
-                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt, kv, 1, PMIX_KVAL);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                        PMIX_DESTRUCT(&cb);
-                        PMIX_LIST_DESTRUCT(&pnames);
-                        PMIX_LIST_DESTRUCT(&rank_blobs);
-                        PMIX_RELEASE(pbkt);
-                        goto cleanup;
-                    }
-                }
-            }
-            PMIX_DESTRUCT(&cb);
-            /* A rank whose remote data is *gone* still has to say so, and
-             * the fetch above cannot tell us that: once the last remote
-             * key a rank published has been deleted it answers
-             * PMIX_ERR_NOT_FOUND, exactly as it does for a rank that
-             * never published anything. Building the blob only when the
-             * fetch succeeded therefore dropped the deletion - and
-             * dropped it for good, because pmix_server_modex_contributed
-             * drains the pending list the moment the bucket reaches the
-             * host, so no later fence re-announces it and every other
-             * server goes on serving the deleted key. Send the blob
-             * whenever there is either data or a deletion to report. */
-            hasdeletes = (NULL != scd->peer->info
-                          && 0 < pmix_list_get_size(&scd->peer->info->pending_deletes));
-            if (havedata || hasdeletes) {
-                if (PMIX_SUCCESS != pack_pending_deletes(scd->peer->info, pbkt)) {
-                    PMIX_ERROR_LOG(PMIX_ERR_PACK_FAILURE);
-                    PMIX_LIST_DESTRUCT(&pnames);
-                    PMIX_LIST_DESTRUCT(&rank_blobs);
-                    PMIX_RELEASE(pbkt);
-                    rc = PMIX_ERR_PACK_FAILURE;
-                    goto cleanup;
-                }
-                /* add the blob to the list */
-                blob = PMIX_NEW(rank_blob_t);
-                if (NULL == blob) {
-                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                    PMIX_LIST_DESTRUCT(&pnames);
-                    PMIX_LIST_DESTRUCT(&rank_blobs);
-                    PMIX_RELEASE(pbkt);
-                    rc = PMIX_ERR_NOMEM;
-                    goto cleanup;
-                }
-                blob->buf = pbkt;
-                pmix_list_append(&rank_blobs, &blob->super);
-                pbkt = NULL;
-            }
-            if (NULL != pbkt) {
+            /* Everything this rank has committed above the mark for
+             * this participant set - the whole log the first time we
+             * contribute to it, and only what has been added since on
+             * every later fence over the same set. A set that has never
+             * been fenced over therefore gets all of it, which is what
+             * closes the gap two sub-communicators would otherwise leave.
+             *
+             * The mark is not moved here. collect_data's caller has three
+             * arms that discard the bucket, so the advance waits until the
+             * host has taken it - see pmix_server_modex_contributed.
+             *
+             * An empty selection is a legitimate answer, and the receiver
+             * reads a proc with no kvals as "nothing new from this rank". */
+            mark = modex_mark_get(scd->peer->info, sig);
+            if (NULL == mark) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                rc = PMIX_ERR_NOMEM;
+                PMIX_LIST_DESTRUCT(&pnames);
+                PMIX_LIST_DESTRUCT(&rank_blobs);
                 PMIX_RELEASE(pbkt);
-                pbkt = NULL;
+                goto cleanup;
             }
+            PMIX_LIST_FOREACH (ment, &scd->peer->info->modex_log, pmix_modex_entry_t) {
+                if (ment->id <= mark->watermark) {
+                    continue;
+                }
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt, ment->kv, 1, PMIX_KVAL);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_LIST_DESTRUCT(&pnames);
+                    PMIX_LIST_DESTRUCT(&rank_blobs);
+                    PMIX_RELEASE(pbkt);
+                    goto cleanup;
+                }
+            }
+            scd->peer->info->modex_marked_upto = scd->peer->info->modex_next_id;
+            blob = PMIX_NEW(rank_blob_t);
+            if (NULL == blob) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIX_LIST_DESTRUCT(&pnames);
+                PMIX_LIST_DESTRUCT(&rank_blobs);
+                PMIX_RELEASE(pbkt);
+                rc = PMIX_ERR_NOMEM;
+                goto cleanup;
+            }
+            blob->buf = pbkt;
+            pmix_list_append(&rank_blobs, &blob->super);
+            pbkt = NULL;
         }
         PMIX_LIST_DESTRUCT(&pnames);
         /* mark the collection type so we can check on the

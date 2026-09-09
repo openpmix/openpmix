@@ -358,22 +358,46 @@ static void info_con(pmix_rank_info_t *info)
     info->modex_recvd = false;
     info->proc_cnt = 0;
     info->server_object = NULL;
-    PMIX_CONSTRUCT(&info->pending_modex, pmix_list_t);
-    PMIX_CONSTRUCT(&info->pending_deletes, pmix_list_t);
-    info->modex_sig = 0;
-    info->modex_contributed = false;
+    PMIX_CONSTRUCT(&info->modex_log, pmix_list_t);
+    info->modex_next_id = 0;
+    PMIX_CONSTRUCT(&info->modex_marks, pmix_list_t);
+    info->modex_marked_upto = 0;
 }
 static void info_des(pmix_rank_info_t *info)
 {
     if (NULL != info->pname.nspace) {
         free(info->pname.nspace);
     }
-    PMIX_LIST_DESTRUCT(&info->pending_modex);
-    PMIX_LIST_DESTRUCT(&info->pending_deletes);
+    PMIX_LIST_DESTRUCT(&info->modex_log);
+    PMIX_LIST_DESTRUCT(&info->modex_marks);
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_rank_info_t,
                                 pmix_list_item_t,
                                 info_con, info_des);
+
+static void mecon(pmix_modex_entry_t *e)
+{
+    e->id = 0;
+    e->kv = NULL;
+}
+static void medes(pmix_modex_entry_t *e)
+{
+    if (NULL != e->kv) {
+        PMIX_RELEASE(e->kv);
+    }
+}
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_modex_entry_t,
+                                pmix_list_item_t,
+                                mecon, medes);
+
+static void mmcon(pmix_modex_mark_t *m)
+{
+    m->sig = 0;
+    m->watermark = 0;
+}
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_modex_mark_t,
+                                pmix_list_item_t,
+                                mmcon, NULL);
 
 static void pcon(pmix_peer_t *p)
 {
