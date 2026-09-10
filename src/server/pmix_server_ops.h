@@ -602,6 +602,10 @@ PMIX_EXPORT pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *p
  * changes from here. Call it once the up-call has been accepted, never
  * from the collection itself - see the comment on the definition. */
 PMIX_EXPORT void pmix_server_modex_contributed(pmix_server_trkr_t *trk);
+PMIX_EXPORT pmix_status_t pmix_server_build_proc_info(pmix_rank_info_t *info,
+                                                      bool include_scope,
+                                                      pmix_info_t *xfer,
+                                                      bool *have_data);
 
 /* Force this proc's next fence contribution to be cumulative. Call it
  * wherever remote-scope data reaches our datastore for a local proc by

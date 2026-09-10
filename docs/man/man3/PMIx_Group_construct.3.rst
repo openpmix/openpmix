@@ -110,6 +110,15 @@ jobs. Upon completion of the construct procedure, each group member has access
 to the job-level information of all namespaces represented in the group and the
 contact information for every group member.
 
+.. important::
+   Only data the calling process has **committed** is exchanged. A value
+   staged with :ref:`PMIx_Put(3) <man3-PMIx_Put>` and not yet committed has
+   not been made public, so it is not shared here: commit it with
+   :ref:`PMIx_Commit(3) <man3-PMIx_Commit>` before this call if the other
+   participants are to see it. Data committed earlier remains available
+   whether or not it has since been exchanged by a
+   :ref:`PMIx_Fence(3) <man3-PMIx_Fence>`.
+
 That contact information is contributed by the members themselves, and what it
 consists of is worth being precise about: each member supplies exactly the
 values it posted with :ref:`PMIx_Put(3) <man3-PMIx_Put>` at ``PMIX_REMOTE`` or

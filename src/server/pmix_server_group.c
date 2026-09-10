@@ -1179,7 +1179,8 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     /* ninf is initialized because a peer whose message is short or malformed
      * can have the unpack below report success without writing it - the count
      * it found was zero - and ninf then sizes an allocation and indexes it */
-    size_t n, ninfo = 0, ninf = 0, nprocs = 0;
+    size_t n, ninfo = 0, ninf = 0, nprocs = 0, ncontrib = 0;
+    bool haveendpts = false;
     grp_block_t *blk;
     grp_trk_t *trk;
     bool bootstrap = false;
@@ -1275,7 +1276,10 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto error;
     }
-    ninfo = ninf + 1;
+    /* Two slots beyond what the client sent: the status seed, and this
+     * process's own contribution, which this server now builds rather
+     * than taking from the client - see below. */
+    ninfo = ninf + 2;
     PMIX_INFO_CREATE(info, ninfo);
     if (NULL == info) {
         rc = PMIX_ERR_NOMEM;
@@ -1283,9 +1287,6 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         ninfo = 0;
         goto error;
     }
-    /* store default response */
-    rc = PMIX_SUCCESS;
-    PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
     if (0 < ninf) {
         cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
@@ -1294,6 +1295,40 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             goto error;
         }
     }
+    /* An older client sends its own puts as a PMIX_PROC_INFO_ARRAY. We no
+     * longer take them: what a process has made public is what it
+     * committed, and this server has that on the rank's modex log, which
+     * also keeps anything the client never committed out of the exchange.
+     * Drop theirs, closing the gap so the array stays contiguous. */
+    ncontrib = 0;
+    for (n = 0; n < ninf; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_INFO_ARRAY)) {
+            PMIX_INFO_DESTRUCT(&info[n]);
+            continue;
+        }
+        if (ncontrib != n) {
+            PMIX_INFO_XFER(&info[ncontrib], &info[n]);
+            PMIX_INFO_DESTRUCT(&info[n]);
+        }
+        ++ncontrib;
+    }
+    /* this process's own contribution, built from what it has committed.
+     * The group paths carry the scope the values are to be stored at, so
+     * unlike connect this array leads with PMIX_PROCID *and*
+     * PMIX_DATA_SCOPE - the shape store_endpts() and the
+     * PMIX_GROUP_ENDPT_DATA handler both parse. */
+    rc = pmix_server_build_proc_info(peer->info, true, &info[ncontrib], &haveendpts);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    if (haveendpts) {
+        ++ncontrib;
+    }
+    /* store default response */
+    rc = PMIX_SUCCESS;
+    PMIX_INFO_LOAD(&info[ncontrib], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    ninfo = ncontrib + 1;
     /* check directives. Note that PMIX_GROUP_ASSIGN_CONTEXT_ID is not one of
      * them: it travels to the host inside trk->info and is answered there, so
      * there is nothing for this layer to do with it. */

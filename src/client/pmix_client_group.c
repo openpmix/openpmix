@@ -399,10 +399,9 @@ static pmix_status_t construct_msg(pmix_buffer_t *msg,
 {
     pmix_status_t rc;
     pmix_cmd_t cmd = PMIX_GROUP_CONSTRUCT_CMD;
-    pmix_info_t local_endpts, *icopy, *iarray, *iptr;
+    pmix_info_t *icopy, *iarray, *iptr;
     pmix_data_array_t *darray;
     size_t sz, n, m, niarray;
-    bool lclendpts;
 
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
@@ -432,25 +431,14 @@ static pmix_status_t construct_msg(pmix_buffer_t *msg,
         }
     }
 
-    /* get our endpt info, if some was posted. We use
-     * "remote" scope as all local procs have access
-     * to info posted by all other local procs, regardless
-     * of their namespace */
+    /* Our own puts are no longer sent from here. What a process has made
+     * public is what it committed, and our server holds that on this
+     * rank's modex log - it builds our contribution from there when it
+     * handles this request, which also keeps anything we never committed
+     * out of the exchange. */
     sz = ninfo;
-    lclendpts = false;
-    rc = get_endpts(&local_endpts, PMIX_REMOTE, &lclendpts);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    if (lclendpts) {
-        sz = sz + 1;
-    }
     PMIX_INFO_CREATE(icopy, sz);
     if (PMIX_UNLIKELY(0 < sz && NULL == icopy)) {
-        if (lclendpts) {
-            PMIX_INFO_DESTRUCT(&local_endpts);
-        }
         return PMIX_ERR_NOMEM;
     }
 
@@ -475,9 +463,6 @@ static pmix_status_t construct_msg(pmix_buffer_t *msg,
                 PMIX_INFO_CREATE(iptr, niarray+1);
                 if (PMIX_UNLIKELY(NULL == iptr)) {
                     PMIX_INFO_FREE(icopy, sz);
-                    if (lclendpts) {
-                        PMIX_INFO_DESTRUCT(&local_endpts);
-                    }
                     return PMIX_ERR_NOMEM;
                 }
                 PMIX_INFO_LOAD(&iptr[0], PMIX_PROCID, &pmix_globals.myid, PMIX_PROC);
@@ -488,9 +473,6 @@ static pmix_status_t construct_msg(pmix_buffer_t *msg,
                 if (PMIX_UNLIKELY(NULL == darray)) {
                     PMIX_INFO_FREE(iptr, niarray + 1);
                     PMIX_INFO_FREE(icopy, sz);
-                    if (lclendpts) {
-                        PMIX_INFO_DESTRUCT(&local_endpts);
-                    }
                     return PMIX_ERR_NOMEM;
                 }
                 PMIx_Load_key(icopy[n].key, PMIX_GROUP_INFO);
@@ -505,12 +487,6 @@ static pmix_status_t construct_msg(pmix_buffer_t *msg,
         } else {
             PMIX_INFO_XFER(&icopy[n], &info[n]);
         }
-    }
-    if (lclendpts) {
-        // add the local endpt data
-        PMIX_INFO_XFER(&icopy[n], &local_endpts);
-        PMIX_INFO_DESTRUCT(&local_endpts);
-        ++n;
     }
 
     /* pack the info structs */
