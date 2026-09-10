@@ -7,18 +7,17 @@
 
 # Exercise an invite whose leader is NOT one of the invitees, deterministically,
 # in "make check". A single persistent server (test/simple/simptest) forks four
-# clients (examples/group_invite_others). Rank 0 is the leader and invites ranks
-# 1..3 only; those three accept via PMIx_Group_join_nb from their
-# PMIX_GROUP_INVITED handlers, and the group forms on them alone.
+# clients (examples/group_invite_others). Rank 0 tries to invite ranks 1..3
+# without joining, and must be refused: a process may not form a group it does
+# not belong to - PMIx_Group_invite answers PMIX_ERR_NOT_A_MEMBER, the same
+# status PMIx_Group_construct gives for the same mistake.
 #
-# The distinction from run_grpinvite.pl matters because of how the leader's own
-# answer is counted. It is credited when the leader is itself an invitee; doing
-# so unconditionally starts the count one ahead of the membership here, so the
-# invitation resolves one answer early, the last invitee is recorded as a
-# non-responder, and - this construct being all-or-nothing - the whole thing
-# aborts. Each invitee then reports PMIX_GROUP_CONSTRUCT_ABORT rather than
-# PMIX_GROUP_CONSTRUCT_COMPLETE, which is what the checks below catch. See
-# invite_setup() in src/client/pmix_client_group.c.
+# This test formerly asserted the opposite - that the group formed on the
+# invitees alone - which came from a mistaken reading of the API. A leader
+# outside its own group would be left waiting on a completion event addressed
+# to a group it is not in, with nothing reported - the hard-to-diagnose
+# failure openpmix#3850 asked to have detected. The rule is enforced where the
+# invitation is created, in pmix_server_group_invite().
 
 use strict;
 
@@ -110,30 +109,22 @@ if (0 != $status) {
     exit($status == 0 ? 1 : $status);
 }
 
-# Confirm the run actually exercised the path rather than passing vacuously.
-# The membership is the invitees only - rank 0 invited but did not join - so
-# the expected count is one less than the job size.
-my $nmembers = $nprocs - 1;
+# Confirm the run actually exercised the path rather than passing vacuously:
+# the leader must report the refusal, and no group may have formed.
+my $nrefused = () = ($output =~ /leader-excluded invite refused: PASS/g);
 my $npass  = () = ($output =~ /CONSTRUCT_COMPLETE received: PASS/g);
-my $nfence = () = ($output =~ /group fence complete/g);
-my $naborted = () = ($output =~ /CONSTRUCT_ABORT/g);
 my $server_done = ($output =~ /Test finished OK!/);
-if (0 < $naborted) {
-    print "FAIL: the construct aborted - the invitation resolved before every\n";
-    print "      invitee answered (see invite_setup in pmix_client_group.c)\n";
+if ($nrefused < 1) {
+    print "FAIL: the leader did not report its invitation being refused\n";
     exit(1);
 }
-if ($npass < $nmembers) {
-    print "FAIL: only $npass/$nmembers invitees notified of construct completion\n";
-    exit(1);
-}
-if ($nfence < $nmembers) {
-    print "FAIL: only $nfence/$nmembers invitees fenced across the group\n";
+if (0 < $npass) {
+    print "FAIL: a group formed from an invitation that should have been refused\n";
     exit(1);
 }
 if (!$server_done) {
     print "FAIL: server did not finish cleanly after the clients ran\n";
     exit(1);
 }
-print "PASS: leader-excluded invite formed the group across all $nmembers invitees\n";
+print "PASS: a leader excluding itself from its own group is refused\n";
 exit(0);
