@@ -331,7 +331,7 @@ static void show_tuple_duplicates(tuple_list_item_t *tli)
     tli->tli_count_since_last_display = 0;
 
     if (first) {
-        if (0 <= pmix_asprintf(&tmp, "%s", "Set MCA parameter \"base_help_aggregate\" to 0 to see all help / error messages\n")) {
+        if (0 <= pmix_asprintf(&tmp, "%s", "Set the PMIX_AGGREGATE_HELP attribute to false when spawning the job to see all help / error messages\n")) {
             local_delivery(tli->tli_nspace, tli->tli_filename, tli->tli_topic, tmp);
             free(tmp);
         }
