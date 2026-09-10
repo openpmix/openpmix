@@ -768,6 +768,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_query_caddy_t,
 
 static void ncon(pmix_notify_caddy_t *p)
 {
+    p->proxy = false;
     PMIX_CONSTRUCT_LOCK(&p->lock);
 #if defined(__linux__) && PMIX_HAVE_CLOCK_GETTIME
     struct timespec tp;
