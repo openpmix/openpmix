@@ -931,6 +931,19 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             }
         }
         if (!found) {
+            /* Not addressed to us - so the application's chain must not see
+             * it, and neither must the group bookkeeping below. The
+             * library's own observers are a different matter: an observer
+             * watches an event because the library needs it to stay
+             * correct, and a server raising an event on behalf of one of
+             * its clients addresses that event to the client, never to
+             * itself. Filtering observers on targeting therefore hid from
+             * the library exactly the events it originated - the group
+             * invite/join accounting in pmix_server_group.c saw none of the
+             * responses it was registered for. Observers apply their own
+             * code/range/affected filters, so one that should not match
+             * still will not. */
+            sweep_observers(chain);
             pmix_output_verbose(8, pmix_client_globals.event_output,
                                 "%s Ignoring event %s:%d",
                                 PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
@@ -1059,7 +1072,9 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
     /* Give the library's own observers the event before the application
      * chain gets a chance to end it. This runs after the group bookkeeping
      * above so an observer sees the same view of pmix_client_globals.groups
-     * that a handler would. */
+     * that a handler would. An event we are *not* a target of has already
+     * been swept above and returned, so this is reached once or not at
+     * all - never both. */
     sweep_observers(chain);
 
     /* if we registered a "first" handler, and it fits the given range,
@@ -1442,10 +1457,17 @@ static void _notify_client_event(int sd, short args, void *cbdata)
             if ((PMIX_MAX_ERR_CONSTANT == reginfoptr->code && !cd->nondefault) ||
                 cd->status == reginfoptr->code) {
                 PMIX_LIST_FOREACH (pr, &reginfoptr->peers, pmix_peer_events_info_t) {
-                    /* if this client was the source of the event, then
+                    /* If this client was the source of the event, then
                      * don't send it back as they will have processed it
-                     * when they generated it */
-                    if (PMIX_CHECK_NAMES(&cd->source, &pr->peer->info->pname)) {
+                     * when they generated it - unless we generated it *for*
+                     * them. A proxied event carries the client as its source
+                     * so its recipients see who it came from, but the client
+                     * never saw it: its server made it, and the client may
+                     * well be waiting on it. Skipping it there left the
+                     * leader of a group invitation waiting out its own
+                     * completion event. */
+                    if (!cd->proxy &&
+                        PMIX_CHECK_NAMES(&cd->source, &pr->peer->info->pname)) {
                         continue;
                     }
                     /* don't notify ourselves - we handle this internally */
@@ -1592,9 +1614,13 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         PMIX_LIST_DESTRUCT(&trk);
         if (PMIX_RANGE_LOCAL != cd->range &&
             !cd->staylocal &&
-            PMIX_CHECK_PROCID(&cd->source, &pmix_globals.myid)) {
-            /* if we are the source, then we need to post this upwards as
-             * well so the host RM can broadcast it as necessary */
+            (cd->proxy || PMIX_CHECK_PROCID(&cd->source, &pmix_globals.myid))) {
+            /* If we are the source - or raised this on behalf of one of our
+             * own clients - then we need to post this upwards as well so the
+             * host RM can broadcast it as necessary. The source test alone
+             * kept a server from re-broadcasting an event that merely
+             * arrived here, which a proxied event is not: we made it, and
+             * without the up-call it would reach only this node's clients. */
             if (NULL != pmix_host_server.notify_event) {
                 /* mark that we sent it upstairs so we don't release
                  * the caddy until we return from the host RM */
@@ -1632,6 +1658,15 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status, const pmi
                                                  size_t ninfo, pmix_op_cbfunc_t cbfunc,
                                                  void *cbdata)
 {
+    return pmix_server_notify_event_proxy(status, source, range, info, ninfo,
+                                          false, cbfunc, cbdata);
+}
+
+pmix_status_t pmix_server_notify_event_proxy(pmix_status_t status, const pmix_proc_t *source,
+                                             pmix_data_range_t range, const pmix_info_t info[],
+                                             size_t ninfo, bool proxy,
+                                             pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
     pmix_notify_caddy_t *cd;
     size_t n;
 
@@ -1651,6 +1686,7 @@ pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status, const pmi
         PMIX_LOAD_PROCID(&cd->source, source->nspace, source->rank);
     }
     cd->range = range;
+    cd->proxy = proxy;
     /* have to copy the info to preserve it for future when cached */
     if (0 < ninfo && NULL != info) {
         cd->ninfo = ninfo;

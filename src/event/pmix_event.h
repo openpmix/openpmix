@@ -341,6 +341,15 @@ PMIX_EXPORT pmix_status_t pmix_server_notify_client_of_event(pmix_status_t statu
                                                              pmix_data_range_t range,
                                                              const pmix_info_t info[], size_t ninfo,
                                                              pmix_op_cbfunc_t cbfunc, void *cbdata);
+/* As above, but marking the event as one this server raised on behalf of a
+ * client: the source stays the client, and the event is still posted up to
+ * the host so it can reach processes beyond this node. */
+PMIX_EXPORT pmix_status_t pmix_server_notify_event_proxy(pmix_status_t status,
+                                                         const pmix_proc_t *source,
+                                                         pmix_data_range_t range,
+                                                         const pmix_info_t info[], size_t ninfo,
+                                                         bool proxy,
+                                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
 PMIX_EXPORT pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_t *source,
                                                       pmix_data_range_t range, const pmix_info_t info[],
                                                       size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata,

@@ -945,6 +945,14 @@ typedef struct {
     pmix_proc_t source;
     pmix_data_range_t range;
     bool staylocal;  // do not pass up to host environment
+    /* This server raised the event on behalf of one of its clients, naming
+     * that client as the source. Without this the up-call below would not
+     * happen: it fires only when the source *is* us, which is what keeps a
+     * server from re-broadcasting an event that merely arrived here. A
+     * proxied event has no such origin to guard against - we made it - so
+     * it is posted upward like any event we sourced ourselves, while the
+     * source stays the client so its recipients see who it came from. */
+    bool proxy;      // raised by this server for a client
     /* For notification, we use the targets field to track
      * any custom range of procs that are to receive the
      * event.
