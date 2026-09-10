@@ -121,7 +121,8 @@ static void test_show_help_string_null_args(void)
 static void test_show_help_norender(void)
 {
     /* Delivers a raw string to the local output; must not crash. */
-    pmix_status_t rc = pmix_show_help_norender("help-cli.txt",
+    pmix_status_t rc = pmix_show_help_norender("unit-test-nspace",
+                                               "help-cli.txt",
                                                "norender-test",
                                                "raw message: no-op delivery\n");
     report("show_help_norender: returns SUCCESS", PMIX_SUCCESS == rc);
@@ -133,12 +134,60 @@ static void test_show_help_norender(void)
 
 static void test_help_check_dups_first_call(void)
 {
-    /* A (file, topic) pair seen for the first time is NOT a duplicate.
-     * pmix_help_check_dups returns PMIX_ERR_NOT_FOUND for "not a dup". */
-    pmix_status_t rc = pmix_help_check_dups("help-cli.txt",
+    /* An (nspace, file, topic) triple seen for the first time is NOT a
+     * duplicate.  pmix_help_check_dups returns PMIX_ERR_NOT_FOUND for
+     * "not a dup". */
+    pmix_status_t rc = pmix_help_check_dups("unit-test-nspace",
+                                            "help-cli.txt",
                                             "unit-test-unique-topic-xyz");
     report("help_check_dups_first: returns ERR_NOT_FOUND (not a dup)",
            PMIX_ERR_NOT_FOUND == rc);
+}
+
+/* ------------------------------------------------------------------ */
+/* The job is part of the key                                          */
+/*                                                                     */
+/* Suppression exists to stop ONE job's message storm.  Keyed on the   */
+/* message alone, the first job to trip a diagnostic was the only job  */
+/* ever told about it - on a persistent DVM, for the life of the DVM.  */
+/* And a job that has gone away must not keep suppressing for the job  */
+/* that reuses nothing of it.                                          */
+/* ------------------------------------------------------------------ */
+
+static void test_check_dups_per_nspace(void)
+{
+    pmix_status_t rc;
+
+    rc = pmix_help_check_dups("job-A", "help-cli.txt", "shared-topic");
+    report("dups_per_nspace: first sighting for job A is not a dup",
+           PMIX_ERR_NOT_FOUND == rc);
+    rc = pmix_help_check_dups("job-A", "help-cli.txt", "shared-topic");
+    report("dups_per_nspace: ...and the second one is",
+           PMIX_SUCCESS == rc);
+
+    /* the whole point: a different job starts over */
+    rc = pmix_help_check_dups("job-B", "help-cli.txt", "shared-topic");
+    report("dups_per_nspace: a different job gets its own first sighting",
+           PMIX_ERR_NOT_FOUND == rc);
+    rc = pmix_help_check_dups("job-B", "help-cli.txt", "shared-topic");
+    report("dups_per_nspace: ...and its own suppression after that",
+           PMIX_SUCCESS == rc);
+
+    /* job A ends: its entry goes, and A's name becomes new again.  A
+     * purge that swept the list rather than one job would have taken
+     * B's entry with it, so check B still holds. */
+    pmix_show_help_purge_nspace("job-A");
+    rc = pmix_help_check_dups("job-A", "help-cli.txt", "shared-topic");
+    report("dups_per_nspace: a purged job starts over",
+           PMIX_ERR_NOT_FOUND == rc);
+    rc = pmix_help_check_dups("job-B", "help-cli.txt", "shared-topic");
+    report("dups_per_nspace: ...and the purge left the other job alone",
+           PMIX_SUCCESS == rc);
+
+    /* a purge of something never seen is a no-op, not a crash */
+    pmix_show_help_purge_nspace("job-never-registered");
+    pmix_show_help_purge_nspace(NULL);
+    report("dups_per_nspace: purging an unknown job is harmless", 1);
 }
 
 /* ------------------------------------------------------------------ */
@@ -147,13 +196,15 @@ static void test_help_check_dups_first_call(void)
 
 static void test_check_dups_null_args(void)
 {
-    /* Both arguments reach strcmp() by way of match(), and the list
-     * entry built from them outlives this call - a NULL stored there is
-     * a segfault on the next lookup, not on this one. */
+    /* All three reach strcmp(), two of them by way of match(), and the
+     * list entry built from them outlives this call - a NULL stored
+     * there is a segfault on the next lookup, not on this one. */
+    report("check_dups_null_nspace: refused",
+           PMIX_SUCCESS != pmix_help_check_dups(NULL, "help-cli.txt", "topic"));
     report("check_dups_null_file: refused",
-           PMIX_SUCCESS != pmix_help_check_dups(NULL, "topic"));
+           PMIX_SUCCESS != pmix_help_check_dups("ns", NULL, "topic"));
     report("check_dups_null_topic: refused",
-           PMIX_SUCCESS != pmix_help_check_dups("help-cli.txt", NULL));
+           PMIX_SUCCESS != pmix_help_check_dups("ns", "help-cli.txt", NULL));
 }
 
 static void test_add_data_null_args(void)
@@ -276,8 +327,8 @@ static void test_duplicates_flushed_at_finalize(void)
             _exit(2);   /* nothing to say about a library that never came up */
         }
         /* first sighting, then a duplicate that gets counted and held */
-        (void) pmix_help_check_dups("help-cli.txt", "finalize-flush-topic");
-        (void) pmix_help_check_dups("help-cli.txt", "finalize-flush-topic");
+        (void) pmix_help_check_dups("flush-job", "help-cli.txt", "finalize-flush-topic");
+        (void) pmix_help_check_dups("flush-job", "help-cli.txt", "finalize-flush-topic");
         PMIx_Finalize(NULL, 0);
         _exit(0);
     }
@@ -330,6 +381,7 @@ int main(int argc, char **argv)
     test_show_help_string_unknown_topic();
     test_show_help_string_null_args();
     test_show_help_norender();
+    test_check_dups_per_nspace();
     test_help_check_dups_first_call();
     test_check_dups_null_args();
     test_add_data_null_args();

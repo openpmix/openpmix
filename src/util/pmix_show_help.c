@@ -47,7 +47,8 @@ static bool pmix_show_help_initialized = false;
 /* How long to wait between displaying duplicate show_help notices */
 static struct timeval show_help_interval = {5, 0};
 
-static void local_delivery(const char *file,
+static void local_delivery(const char *nspace,
+                           const char *file,
                            const char *topic,
                            const char *msg)
 {
@@ -65,6 +66,12 @@ static void local_delivery(const char *file,
     }
     if (NULL == topic) {
         topic = "";
+    }
+    /* the job this message is about - it is what scopes duplicate
+     * suppression, so a caller that does not name one lands in the
+     * bucket belonging to our own job rather than in nobody's */
+    if (NULL == nspace) {
+        nspace = pmix_globals.myid.nspace;
     }
 
     if (!pmix_show_help_initialized ||
@@ -90,10 +97,14 @@ static void local_delivery(const char *file,
     PMIX_INFO_CREATE(cd->info, cd->ninfo);
     PMIX_INFO_LOAD(&cd->info[0], PMIX_LOG_STDERR, msg, PMIX_STRING);
     cd->infocopy = true;
-    cd->ndirs = 2;
+    cd->ndirs = 3;
     PMIX_INFO_CREATE(cd->directives, cd->ndirs);
     PMIX_INFO_LOAD(&cd->directives[0], PMIX_LOG_KEY, file, PMIX_STRING);
     PMIX_INFO_LOAD(&cd->directives[1], PMIX_LOG_VAL, topic, PMIX_STRING);
+    /* NOT the source proc: plog's stdfd module routes by source, and
+     * handing it the job the message is *about* would deliver a daemon's
+     * diagnostic into that job's output stream */
+    PMIX_INFO_LOAD(&cd->directives[2], PMIX_NSPACE, nspace, PMIX_STRING);
     cd->dircopy = true;
     PMIX_PROC_CREATE(cd->proc, 1);
     memcpy(cd->proc, &pmix_globals.myid, sizeof(pmix_proc_t));
@@ -124,9 +135,18 @@ static PMIX_CLASS_INSTANCE(tuple_array_item_t,
 // list of arrays to search
 static pmix_list_t data_arrays;
 
-/* List items for holding (filename, topic) tuples */
+/* List items for holding (nspace, filename, topic) tuples.
+ *
+ * The nspace is part of the key, not decoration.  Suppression exists to
+ * stop one job's message storm, and a DVM runs many jobs - in parallel,
+ * and one after another for as long as it lives.  Keyed on the message
+ * alone, the first job to trip a diagnostic was the only job ever told
+ * about it: every later one got silence, on a persistent DVM for days.
+ * Keyed on the job as well, each gets its own first time. */
 typedef struct {
     pmix_list_item_t super;
+    /* The job the message is about */
+    char *tli_nspace;
     /* The filename */
     char *tli_filename;
     /* The topic */
@@ -144,6 +164,7 @@ typedef struct {
 
 static void tuple_list_item_constructor(tuple_list_item_t *obj)
 {
+    obj->tli_nspace = NULL;
     obj->tli_filename = NULL;
     obj->tli_topic = NULL;
     PMIX_CONSTRUCT(&(obj->tli_processes), pmix_list_t);
@@ -154,6 +175,9 @@ static void tuple_list_item_constructor(tuple_list_item_t *obj)
 
 static void tuple_list_item_destructor(tuple_list_item_t *obj)
 {
+    if (NULL != obj->tli_nspace) {
+        free(obj->tli_nspace);
+    }
     if (NULL != obj->tli_filename) {
         free(obj->tli_filename);
     }
@@ -224,16 +248,21 @@ static pmix_status_t match(const char *a, const char *b)
 }
 
 
-static pmix_status_t pmix_get_tli(const char *filename,
+static pmix_status_t pmix_get_tli(const char *nspace,
+                                  const char *filename,
                                   const char *topic,
                                   tuple_list_item_t **tli_)
 {
     tuple_list_item_t *tli;
 
-    /* Search the list for a duplicate. */
+    /* Search the list for a duplicate.  The nspace is compared exactly
+     * rather than through match(): a job name is a name, and match()
+     * treats a '*' in either operand as a wildcard - which would make
+     * one job's suppression reach another's. */
     PMIX_LIST_FOREACH(tli, &abd_tuples, tuple_list_item_t)
     {
-        if (PMIX_SUCCESS == match(tli->tli_filename, filename) &&
+        if (0 == strcmp(tli->tli_nspace, nspace) &&
+            PMIX_SUCCESS == match(tli->tli_filename, filename) &&
             PMIX_SUCCESS == match(tli->tli_topic, topic)) {
             *tli_ = tli;
             return PMIX_SUCCESS;
@@ -245,12 +274,14 @@ static pmix_status_t pmix_get_tli(const char *filename,
     if (NULL == tli) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
+    tli->tli_nspace = strdup(nspace);
     tli->tli_filename = strdup(filename);
     tli->tli_topic = strdup(topic);
-    if (NULL == tli->tli_filename || NULL == tli->tli_topic) {
-        /* match() hands both of these straight to strcmp(), so an entry
-         * carrying a NULL is a segfault on the very next lookup - and
-         * this list outlives the call that built it */
+    if (NULL == tli->tli_nspace || NULL == tli->tli_filename ||
+        NULL == tli->tli_topic) {
+        /* all three reach strcmp() by way of the search above, so an
+         * entry carrying a NULL is a segfault on the very next lookup -
+         * and this list outlives the call that built it */
         PMIX_RELEASE(tli);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -260,11 +291,58 @@ static pmix_status_t pmix_get_tli(const char *filename,
     return PMIX_ERR_NOT_FOUND;
 }
 
+/* Emit the "N more..." notice for one tuple, if it has any pending, and
+ * clear its count.  Split out of the sweep below because the purge at
+ * job end has to say the same thing for the one job that is ending. */
+static void show_tuple_duplicates(tuple_list_item_t *tli)
+{
+    static bool first = true;
+    char stamp[50] = {0};
+    char *buf = NULL, *tmp;
+    struct tm *when;
+
+    if (!tli->tli_display || 0 == tli->tli_count_since_last_display) {
+        return;
+    }
+    /* The job is named because the tuples are now per job: two jobs
+     * running side by side each accumulate their own, and without it the
+     * sweep prints two identical lines that nobody can tell apart. */
+    if (0 > pmix_asprintf(&tmp, "%d more process%s sent help message %s / %s (job %s)\n",
+                          tli->tli_count_since_last_display,
+                          (1 < tli->tli_count_since_last_display) ? "es have" : " has",
+                          tli->tli_filename, tli->tli_topic, tli->tli_nspace)) {
+        return;
+    }
+    tli->tli_time_displayed = time(NULL);
+    when = localtime(&tli->tli_time_displayed);
+    if (NULL != when) {
+        strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", when);
+    }
+    /* the stamped name only labels the notice - if we cannot build it,
+     * deliver the notice under the bare filename rather than dropping it */
+    if (0 > pmix_asprintf(&buf, "%s-%s", tli->tli_filename, stamp)) {
+        buf = NULL;
+    }
+    local_delivery(tli->tli_nspace, (NULL == buf) ? tli->tli_filename : buf,
+                   tli->tli_topic, tmp);
+    free(buf);
+    /* local_delivery copies the message, so we own tmp */
+    free(tmp);
+    tli->tli_count_since_last_display = 0;
+
+    if (first) {
+        if (0 <= pmix_asprintf(&tmp, "%s", "Set MCA parameter \"base_help_aggregate\" to 0 to see all help / error messages\n")) {
+            local_delivery(tli->tli_nspace, tli->tli_filename, tli->tli_topic, tmp);
+            free(tmp);
+        }
+        first = false;
+    }
+}
+
 static void pmix_show_accumulated_duplicates(int fd, short event, void *context)
 {
     time_t now = time(NULL);
     tuple_list_item_t *tli;
-    char *tmp;
     PMIX_HIDE_UNUSED_PARAMS(fd, event, context);
 
     /* Loop through all the messages we've displayed and see if any
@@ -272,64 +350,55 @@ static void pmix_show_accumulated_duplicates(int fd, short event, void *context)
        yet */
     PMIX_LIST_FOREACH(tli, &abd_tuples, tuple_list_item_t)
     {
-        if (tli->tli_display && 0 < tli->tli_count_since_last_display) {
-            static bool first = true;
-            char stamp[50] = {0};
-            char *buf = NULL;
-            struct tm *when;
-
-            if (0 > pmix_asprintf(&tmp, "%d more process%s sent help message %s / %s\n",
-                                  tli->tli_count_since_last_display,
-                                  (1 < tli->tli_count_since_last_display) ? "es have" : " has",
-                                  tli->tli_filename, tli->tli_topic)) {
-                continue;
-            }
-            tli->tli_time_displayed = time(NULL);
-            when = localtime(&tli->tli_time_displayed);
-            if (NULL != when) {
-                strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", when);
-            }
-            /* the stamped name only labels the notice - if we cannot
-             * build it, deliver the notice under the bare filename
-             * rather than dropping it */
-            if (0 > pmix_asprintf(&buf, "%s-%s", tli->tli_filename, stamp)) {
-                buf = NULL;
-            }
-            local_delivery((NULL == buf) ? tli->tli_filename : buf,
-                           tli->tli_topic, tmp);
-            free(buf);
-            /* local_delivery copies the message, so we own tmp */
-            free(tmp);
-            tli->tli_count_since_last_display = 0;
-
-            if (first) {
-                if (0 <= pmix_asprintf(&tmp, "%s", "Set MCA parameter \"base_help_aggregate\" to 0 to see all help / error messages\n")) {
-                    local_delivery(tli->tli_filename, tli->tli_topic, tmp);
-                    free(tmp);
-                }
-                first = false;
-            }
-        }
+        show_tuple_duplicates(tli);
     }
 
     show_help_time_last_displayed = now;
     show_help_timer_set = false;
 }
 
+/* A job is going away: say what we were holding back for it, and let go
+ * of its tuples.
+ *
+ * Both halves matter.  Without the flush, the last duplicates a job
+ * accumulated are never reported - the five-second timer is the only
+ * other thing that would have said them, and a job that ends sooner,
+ * which is most of them, ends first.  Without the free, the list grows
+ * without bound for the life of a DVM that may run for weeks, holding
+ * one entry per (job, message) pair for jobs that finished long ago. */
+void pmix_show_help_purge_nspace(const char *nspace)
+{
+    tuple_list_item_t *tli, *next;
 
-pmix_status_t pmix_help_check_dups(const char *filename, const char *topic)
+    if (NULL == nspace || !pmix_show_help_initialized) {
+        return;
+    }
+    PMIX_LIST_FOREACH_SAFE(tli, next, &abd_tuples, tuple_list_item_t)
+    {
+        if (0 != strcmp(tli->tli_nspace, nspace)) {
+            continue;
+        }
+        show_tuple_duplicates(tli);
+        pmix_list_remove_item(&abd_tuples, &tli->super);
+        PMIX_RELEASE(tli);
+    }
+}
+
+pmix_status_t pmix_help_check_dups(const char *nspace,
+                                   const char *filename,
+                                   const char *topic)
 {
 
     tuple_list_item_t *tli;
     time_t now = time(NULL);
     int rc;
 
-    /* both of these reach strcmp() by way of match() */
-    if (NULL == filename || NULL == topic) {
+    /* all three reach strcmp(), two of them by way of match() */
+    if (NULL == nspace || NULL == filename || NULL == topic) {
         return PMIX_ERR_BAD_PARAM;
     }
 
-    rc = pmix_get_tli(filename, topic, &tli);
+    rc = pmix_get_tli(nspace, filename, topic, &tli);
     if (PMIX_SUCCESS == rc) {
         /* Already  displayed!
            But do we want to print anything?  That's complicated.
@@ -696,7 +765,8 @@ char *pmix_show_help_vstring(const char *filename,
                               (NULL == topic) ? "(none given)" : topic, dash_line)) {
             return NULL;
         }
-        local_delivery(filename, topic, msg);
+        /* a missing help reference is our own bug, not the job's */
+        local_delivery(pmix_globals.myid.nspace, filename, topic, msg);
         free(msg);
         return NULL;
    }
@@ -748,8 +818,10 @@ pmix_status_t pmix_show_help(const char *filename,
         return PMIX_SUCCESS;
     }
 
-    /* local_delivery copies the message, so we own the rendered string */
-    local_delivery(filename, topic, output);
+    /* local_delivery copies the message, so we own the rendered string.
+     * A message PMIx raises itself is about our own job - the host that
+     * knows better says so through pmix_show_help_norender(). */
+    local_delivery(pmix_globals.myid.nspace, filename, topic, output);
     free(output);
     return PMIX_SUCCESS;
 }
@@ -796,10 +868,11 @@ pmix_status_t pmix_show_help_add_data(const char *project,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_show_help_norender(const char *filename,
+pmix_status_t pmix_show_help_norender(const char *nspace,
+                                      const char *filename,
                                       const char *topic,
                                       const char *output)
 {
-    local_delivery(filename, topic, output);
+    local_delivery(nspace, filename, topic, output);
     return PMIX_SUCCESS;
 }
