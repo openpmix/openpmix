@@ -48,6 +48,7 @@
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_show_help.h"
 
 #include "pmix_server_ops.h"
 #include "src/client/pmix_client_ops.h"
@@ -1046,6 +1047,14 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
     /* flush anything that is still trying to be written out */
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
+
+    /* Say what show_help was holding back for this job, and let go of it.
+     * Duplicate suppression is keyed on the job, so its entries are dead
+     * the moment the job is - and on a persistent server that runs jobs
+     * for weeks, nothing else would ever reclaim them.  Before the GDS
+     * and event teardown below, so a notice raised here still has
+     * somewhere to go. */
+    pmix_show_help_purge_nspace(cd->proc.nspace);
 
     /* release any job-level network resources */
     pmix_pnet.deregister_nspace(cd->proc.nspace);

@@ -200,29 +200,55 @@ PMIX_EXPORT pmix_status_t pmix_show_help_add_data(const char *project,
                                                   pmix_show_help_file_t *array);
 
 /**
- * Record that this (filename, topic) is about to be displayed, and say
- * whether it has been displayed before.
+ * Record that this (nspace, filename, topic) is about to be displayed,
+ * and say whether it has been displayed before.
  *
  * Answers PMIX_SUCCESS if it is a duplicate - in which case it has been
  * counted, and a summary of the accumulated duplicates will be
- * displayed on a timer and again at finalize - PMIX_ERR_NOT_FOUND if
- * this is the first time, and an error otherwise.  Note that
- * PMIX_ERR_NOT_FOUND is the ordinary answer, not a failure.
+ * displayed on a timer, when the job is deregistered, and again at
+ * finalize - PMIX_ERR_NOT_FOUND if this is the first time, and an error
+ * otherwise.  Note that PMIX_ERR_NOT_FOUND is the ordinary answer, not
+ * a failure.
  *
- * Neither argument may be NULL.  Must be called on the progress thread:
- * the duplicate list is process-global and carries no lock.
+ * The nspace names the job the message is *about*, and it is part of the
+ * key rather than decoration.  Suppression exists to stop one job's
+ * message storm; a host that runs many jobs from one process - a
+ * persistent DVM does, in parallel and for as long as it lives - would
+ * otherwise tell only the first job to trip a diagnostic about it and
+ * leave every later one in silence.
+ *
+ * No argument may be NULL.  Must be called on the progress thread: the
+ * duplicate list is process-global and carries no lock.
  */
-PMIX_EXPORT pmix_status_t pmix_help_check_dups(const char *filename,
+PMIX_EXPORT pmix_status_t pmix_help_check_dups(const char *nspace,
+                                               const char *filename,
                                                const char *topic);
+
+/**
+ * Report and forget everything held for one job.
+ *
+ * Displays whatever duplicates that job had accumulated - the timer is
+ * otherwise the only thing that would, and a job that ends before it
+ * fires, which is most of them, would never be told - and then releases
+ * its entries so the list stays bounded across the life of a host
+ * process that outlives many jobs.
+ *
+ * Called by PMIx_server_deregister_nspace(); a host that deregisters
+ * nothing keeps the behavior it had.
+ */
+PMIX_EXPORT void pmix_show_help_purge_nspace(const char *nspace);
 
 /**
  * Deliver an already-rendered show-help message.
  *
  * No lookup and no substitution is done: output is delivered as it
- * stands, and is copied, so the caller keeps ownership.  filename and
- * topic only label the message for the log.
+ * stands, and is copied, so the caller keeps ownership.  nspace names
+ * the job the message is about and scopes duplicate suppression to it;
+ * NULL means our own job.  filename and topic only label the message
+ * for the log.
  */
-PMIX_EXPORT pmix_status_t pmix_show_help_norender(const char *filename,
+PMIX_EXPORT pmix_status_t pmix_show_help_norender(const char *nspace,
+                                                  const char *filename,
                                                   const char *topic,
                                                   const char *output);
 
