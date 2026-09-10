@@ -180,8 +180,8 @@ accepted for processing and the final status will be delivered to ``cbfunc``.
   participants.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid argument was supplied (e.g., a ``NULL``
   ``procs`` array with a non-zero ``nprocs``), or the servers contributing to a
-  collecting fence did not agree on the kind of contribution they sent |mdash|
-  see `MCA PARAMETERS`_.
+  collecting fence did not agree on whether they were collecting data |mdash|
+  a job-wide directive that must be the same on every node.
 * ``PMIX_ERR_UNREACH`` |mdash| the local PMIx server could not be reached.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because the
   library's progress engine has been stopped.
