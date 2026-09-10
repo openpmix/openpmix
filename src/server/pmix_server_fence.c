@@ -1203,6 +1203,110 @@ void pmix_server_modex_contributed(pmix_server_trkr_t *trk)
     }
 }
 
+/* Build one process's contribution to a connect or group operation from
+ * its modex log: a PMIX_PROC_INFO_ARRAY led by the contributor's PMIX_PROCID,
+ * optionally followed by the PMIX_DATA_SCOPE its values are to be stored at
+ * (the group paths carry that element; connect does not), and then the
+ * values themselves.
+ *
+ * Unlike a fence, this wants the process's data *as it now stands* rather
+ * than what has changed - the peers being joined have seen none of it. So
+ * the log is collapsed rather than replayed: for each key only its newest
+ * entry is emitted, and a key whose newest entry is a tombstone is left out
+ * entirely, since it has been deleted. Replaying the log instead would hand
+ * the far side a superseded value or resurrect a deleted key, neither of
+ * which the receiving parsers would recognize as such - they store what they
+ * are given.
+ *
+ * This reads the log rather than the datastore, so only what the client has
+ * committed can be shared. Data staged with PMIx_Put and not yet committed
+ * has not been made public, and is not ours to circulate.
+ *
+ * PMIX_QUALIFIED_VALUE is skipped, matching what the client-side assembly
+ * this replaces did with reserved keys generally. It is now the only
+ * reserved key that can reach a log at all, since PMIx_Put refuses the rest.
+ *
+ * Sets *have_data false and leaves xfer untouched when the process has
+ * nothing to contribute; that is not an error. */
+pmix_status_t pmix_server_build_proc_info(pmix_rank_info_t *info,
+                                          bool include_scope,
+                                          pmix_info_t *xfer,
+                                          bool *have_data)
+{
+    pmix_modex_entry_t *e, *later;
+    pmix_data_array_t darray;
+    pmix_scope_t scope = PMIX_REMOTE;
+    pmix_status_t rc;
+    void *ilist;
+    bool superseded, found = false;
+
+    *have_data = false;
+    if (NULL == info) {
+        return PMIX_SUCCESS;
+    }
+
+    ilist = PMIx_Info_list_start();
+    if (NULL == ilist) {
+        return PMIX_ERR_NOMEM;
+    }
+    /* who this is from, and - for the group paths - where it is to land */
+    rc = PMIx_Info_list_add(ilist, PMIX_PROCID, &info->pname, PMIX_PROC);
+    if (PMIX_SUCCESS == rc && include_scope) {
+        rc = PMIx_Info_list_add(ilist, PMIX_DATA_SCOPE, &scope, PMIX_SCOPE);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIx_Info_list_release(ilist);
+        return rc;
+    }
+
+    PMIX_LIST_FOREACH (e, &info->modex_log, pmix_modex_entry_t) {
+        if (NULL == e->kv || NULL == e->kv->key || NULL == e->kv->value) {
+            continue;
+        }
+        if (PMIx_Check_reserved_key(e->kv->key)) {
+            continue;
+        }
+        /* only the newest entry for a key, and nothing at all if that
+         * newest entry says the key is gone */
+        superseded = false;
+        for (later = (pmix_modex_entry_t *) pmix_list_get_next(&e->super);
+             later != (pmix_modex_entry_t *) pmix_list_get_end(&info->modex_log);
+             later = (pmix_modex_entry_t *) pmix_list_get_next(&later->super)) {
+            if (NULL != later->kv && NULL != later->kv->key
+                && PMIx_Check_key(e->kv->key, later->kv->key)) {
+                superseded = true;
+                break;
+            }
+        }
+        if (superseded || PMIX_UNDEF == e->kv->value->type) {
+            continue;
+        }
+        rc = PMIx_Info_list_add_value_unique(ilist, e->kv->key, e->kv->value, true);
+        if (PMIX_SUCCESS != rc) {
+            PMIx_Info_list_release(ilist);
+            return rc;
+        }
+        found = true;
+    }
+
+    if (!found) {
+        PMIx_Info_list_release(ilist);
+        return PMIX_SUCCESS;
+    }
+    rc = PMIx_Info_list_convert(ilist, &darray);
+    PMIx_Info_list_release(ilist);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    rc = PMIx_Info_load(xfer, PMIX_PROC_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
+    PMIX_DATA_ARRAY_DESTRUCT(&darray);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    *have_data = true;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                                        pmix_buffer_t *buf)
 {

@@ -86,6 +86,15 @@ fails). ``PMIx_Connect_nb`` is the non-blocking form: it returns immediately, an
 the provided ``cbfunc`` is invoked with the final status once the operation
 completes.
 
+.. important::
+   Only data the calling process has **committed** is exchanged. A value
+   staged with :ref:`PMIx_Put(3) <man3-PMIx_Put>` and not yet committed has
+   not been made public, so it is not shared here: commit it with
+   :ref:`PMIx_Commit(3) <man3-PMIx_Commit>` before this call if the other
+   participants are to see it. Data committed earlier remains available
+   whether or not it has since been exchanged by a
+   :ref:`PMIx_Fence(3) <man3-PMIx_Fence>`.
+
 The PMIx definition of *connected* solely implies that the host environment should
 treat the failure of any process in the assemblage as a reportable event, taking
 action on the assemblage as if it were a single application. For example, if the

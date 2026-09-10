@@ -1304,6 +1304,42 @@ bucket is one kind or the other, so the short form is used only when
 *every* local participant qualifies - but that is a local decision, and
 two servers in one fence may legitimately reach different answers.
 
+### Connect and group take the same log, collapsed
+
+`pmix_server_build_proc_info()` builds a process's contribution to a
+connect or group operation from the same `modex_log` a fence reads, but
+**collapsed rather than replayed**: only the newest entry per key, and
+nothing at all for a key whose newest entry is a tombstone. A fence sends
+the log as a sequence because the far side is applying increments; the
+peers being joined by a connect or a group have seen none of it and want
+the process's data as it now stands. Replaying instead would hand them a
+superseded value or resurrect a deleted key, and the receiving parsers -
+`pmix_server_process_grpinfo()` and the client's `store_endpts()` - store
+what they are given without interpreting either.
+
+The two paths differ in one element and deliberately so: a group array
+leads with `PMIX_PROCID` **and** `PMIX_DATA_SCOPE`, which is the shape
+`store_endpts()` and the `PMIX_GROUP_ENDPT_DATA` handler in
+`pmix_server_setup.c` parse; connect's leads with the procID alone. Hence
+the `include_scope` argument rather than one shape for both.
+
+Because the log is the source, **only committed data is exchanged** - a
+value put and not committed has not been made public. The man pages for
+`PMIx_Connect` and `PMIx_Group_construct` say so.
+
+An older client still sends its own puts as a `PMIX_PROC_INFO_ARRAY`;
+both handlers discard it and use the log, so a rank contributes once and
+never contributes data it did not commit. Connect's optional tail is
+therefore routed **by key rather than by position** - it used to read
+endpoint-then-job-level positionally, which breaks the moment a client
+sends one and not the other.
+
+**Not yet unified:** the async group paths - `invite_setup()` and
+`PMIx_Group_join_nb()` in `src/client/pmix_client_group.c` - still
+assemble their contribution client-side through `get_endpts()`. Those
+travel peer-to-peer by event and never pass through a server collective,
+so there is no point at which the local server could substitute the log.
+
 ### A deletion has to survive the collection, not just reach it
 
 The modex is additive, so a contribution that merely stops carrying a
