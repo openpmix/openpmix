@@ -30,12 +30,10 @@
 #                             forms, and every member receives
 #                             PMIX_GROUP_CONSTRUCT_COMPLETE and can fence across
 #                             the group.
-#   * group_invite_others  -- the leader invites the other ranks and does not
-#                             join. The group forms on the invitees alone, so
-#                             the leader's own answer must not be counted
-#                             against a membership it is not part of -- doing so
-#                             resolves the invitation one answer early and
-#                             aborts the (all-or-nothing) construct.
+#   * group_invite_others  -- the leader tries to invite the other ranks
+#                             without joining. A process may not form a group
+#                             it does not belong to, so the invitation is
+#                             refused with PMIX_ERR_BAD_PARAM.
 #   * group_invite_suppress-- the leader also registers an ordinary handler for
 #                             PMIX_GROUP_INVITE_ACCEPTED that ends the event
 #                             chain, which is the normal way for an application
@@ -243,33 +241,28 @@ test_linux() {
     #############################################################
     # invite whose leader is not one of the invitees
     #############################################################
-    banner "leader-excluded invite (group forms on the invitees alone)"
+    banner "leader-excluded invite is refused"
     cleanup_swarm
-    # group_invite_others: rank 0 invites ranks 1..N-1 and does NOT join. The
-    # library credits the leader's own answer when it is itself an invitee;
-    # crediting it unconditionally starts the count one ahead of the
-    # membership here, so the invitation resolves one answer early, the last
-    # invitee's accept lands after the decision and is recorded as a
-    # non-responder, and - the construct being all-or-nothing - the whole
-    # thing aborts. The invitees say so explicitly rather than timing out.
+    # group_invite_others: rank 0 tries to invite ranks 1..N-1 without joining.
+    # A process may not form a group it does not belong to, so PMIx_Group_invite
+    # refuses it with PMIX_ERR_NOT_A_MEMBER - the same status
+    # PMIx_Group_construct gives - and no invitation is issued.
     #
-    # Spread over two nodes so the last accept has to cross servers to reach
-    # the leader, which is what makes it the late one.
+    # This case used to assert the opposite - that the group formed on the
+    # invitees alone - which was written from a mistaken reading of the API.
+    # A leader outside its own group would be waiting on a completion event
+    # addressed to a group it is not in.
     if RUN 'test -x /opt/prte/tests/group_invite_others'; then
         OUT="$(RUN 'prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 60 /opt/prte/tests/group_invite_others 2>&1')"
-        npass=$(echo "$OUT" | grep -c 'CONSTRUCT_COMPLETE received: PASS')
-        nfence=$(echo "$OUT" | grep -c 'group fence complete')
-        nabort=$(echo "$OUT" | grep -c 'CONSTRUCT_ABORT')
+        nrefused=$(echo "$OUT" | grep -c 'leader-excluded invite refused: PASS')
         if hung "$OUT"; then
-            bad "group_invite_others HUNG (the invitation never resolved)"
-        elif [ "$nabort" -gt 0 ]; then
-            bad "group_invite_others: construct ABORTED - the invitation resolved before every invitee answered"
+            bad "group_invite_others HUNG (the refusal did not return)"
         elif echo "$OUT" | grep -qiE 'ERROR!|FAILED -'; then
-            bad "group_invite_others: a member reported failure: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
-        elif [ "$npass" -ge 3 ] && [ "$nfence" -ge 3 ]; then
-            ok "group formed on all 3 invitees with the leader outside it"
+            bad "group_invite_others: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
+        elif [ "$nrefused" -ge 1 ]; then
+            ok "a leader excluding itself from its own group is refused"
         else
-            bad "group_invite_others: only $npass completed / $nfence fenced: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
+            bad "group_invite_others: no refusal reported: $(echo "$OUT" | tr '\n' ' ' | tail -c 160)"
         fi
     else
         skp "group_invite_others not built"

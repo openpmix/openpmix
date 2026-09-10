@@ -10,12 +10,18 @@
  * membership it already exchanged: a context ID, and the members' endpoint
  * data.
  *
- * Every rank posts one value with PMIx_Put at PMIX_REMOTE scope and then
- * *does not* commit or fence it. That is the point of the test: nothing but
- * the group operation itself can carry that value to the other members, so a
- * PMIx_Get that finds it afterwards can only have been satisfied out of what
- * the group exchanged. Rank 0 then invites the whole job, asking for a
- * context ID; ranks 1..N accept from their PMIX_GROUP_INVITED handler.
+ * Every rank posts one value with PMIx_Put at PMIX_REMOTE scope and commits
+ * it - a value that has not been committed has not been made public, and a
+ * group operation will not share it. It is deliberately *not* fenced, so
+ * nothing has distributed it to the other members' servers.
+ *
+ * What still makes the PMIx_Get below meaningful is the qualifier rather
+ * than the absence of a commit: a group carrying a context ID stores each
+ * member's contribution qualified by that ID, while the commit stores the
+ * value unqualified. So a Get that asks for the *qualified* value can only
+ * be satisfied out of what the group exchanged. Rank 0 then invites the
+ * whole job, asking for a context ID; ranks 1..N accept from their
+ * PMIX_GROUP_INVITED handler.
  *
  * Once PMIX_GROUP_CONSTRUCT_COMPLETE arrives, every member asserts:
  *
@@ -170,13 +176,20 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    /* Post our contribution. Deliberately no PMIx_Commit and no fence: the
-     * value must reach the other members through the group operation or not
-     * at all, which is what makes the PMIx_Get below meaningful. */
+    /* Post our contribution and commit it: only committed data has been
+     * made public, and only public data is shared by a group operation.
+     * Deliberately no fence - nothing else distributes it, and the
+     * context-id qualifier on the Get below is what proves the group
+     * exchange is where it came from. */
     value.type = PMIX_UINT64;
     value.data.uint64 = 1234UL + (unsigned long) myproc.rank;
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, ENDPT_KEY, &value))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Put failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        goto done;
+    }
+    if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Commit failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
         goto done;
     }

@@ -587,14 +587,13 @@ list deep enough for the coalescing to matter.
 **The group side of `src/client` is covered by `run-group-events.sh`, not
 here.** That suite drives the invite/join negotiation, which is realized
 entirely through cross-server event notification. Its
-`group_invite_others` case belongs to this review: the leader invites the
-other ranks and does *not* join, so the group forms on the invitees alone.
-The library credits the leader's own answer against the membership — right
-only when the leader is itself an invitee — and crediting it in this shape
-resolves the invitation one answer early, marks the last accept a
-non-responder, and aborts the (all-or-nothing) construct. Ranks are split
-across two nodes precisely so the last accept has to cross a server
-boundary to reach the leader, which is what makes it the late one.
+`group_invite_others` case belongs to this review: the leader tries to
+invite the other ranks without joining, and must be refused. A process may
+not form a group it does not belong to — a leader outside its own group
+would be waiting on a completion event addressed to a group it is not in.
+The case previously asserted that such a group formed on the invitees
+alone; that was written from a mistaken reading of the API and has been
+corrected.
 
 Two more of its cases belong to the same review. `group_invite_suppress`
 has the leader register an ordinary handler for

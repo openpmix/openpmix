@@ -65,9 +65,8 @@ PRRTE_REPO="${PRRTE_REPO:-https://github.com/openpmix/prrte.git}"
 # decliner and forming the group on those that accepted), group_invite_abort (an
 # invitee declines an all-or-nothing invite -- no PMIX_GROUP_OPTIONAL -- so the
 # whole construct aborts and every participant is notified),
-# group_invite_others (the leader invites the others and does NOT join, so the
-# group forms on the invitees alone -- a shape in which the leader's own answer
-# must NOT be credited against the membership),
+# group_invite_others (the leader tries to invite the others without joining,
+# which is not a legal group and is refused),
 # group_invite_suppress (the leader also registers an ordinary handler for
 # PMIX_GROUP_INVITE_ACCEPTED that ends the event chain, which used to suppress
 # the library's own answer counter and hang the invite forever -- openpmix#4059),

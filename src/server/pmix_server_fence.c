@@ -1237,6 +1237,7 @@ pmix_status_t pmix_server_build_proc_info(pmix_rank_info_t *info,
     pmix_data_array_t darray;
     pmix_scope_t scope = PMIX_REMOTE;
     pmix_status_t rc;
+    pmix_proc_t procid;
     void *ilist;
     bool superseded, found = false;
 
@@ -1244,13 +1245,17 @@ pmix_status_t pmix_server_build_proc_info(pmix_rank_info_t *info,
     if (NULL == info) {
         return PMIX_SUCCESS;
     }
+    /* pmix_rank_info_t carries a pmix_name_t, whose nspace is a pointer -
+     * a pmix_proc_t holds the name inline, so it has to be built rather
+     * than pointed at */
+    PMIX_LOAD_PROCID(&procid, info->pname.nspace, info->pname.rank);
 
     ilist = PMIx_Info_list_start();
     if (NULL == ilist) {
         return PMIX_ERR_NOMEM;
     }
     /* who this is from, and - for the group paths - where it is to land */
-    rc = PMIx_Info_list_add(ilist, PMIX_PROCID, &info->pname, PMIX_PROC);
+    rc = PMIx_Info_list_add(ilist, PMIX_PROCID, &procid, PMIX_PROC);
     if (PMIX_SUCCESS == rc && include_scope) {
         rc = PMIx_Info_list_add(ilist, PMIX_DATA_SCOPE, &scope, PMIX_SCOPE);
     }

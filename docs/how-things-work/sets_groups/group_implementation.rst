@@ -33,14 +33,30 @@ API rather than per group:
   replies to each local participant. Commands: ``PMIX_GROUP_CONSTRUCT_CMD``
   and ``PMIX_GROUP_DESTRUCT_CMD``.
 
-* **Event-driven handshakes.** ``PMIx_Group_invite``, ``PMIx_Group_join``,
-  and ``PMIx_Group_leave`` send **no** server command. They are realized
-  entirely through the event-notification subsystem (``PMIx_Notify_event``),
-  with the server's only role being to relay events between its clients and
-  the host. This is why the invite method works without any host collective
-  support, and why ``PMIx_Group_leave`` was re-implemented as an event
-  (its former ``PMIX_GROUP_LEAVE_CMD`` round-trip was never handled by any
-  server switchyard and has been removed).
+* **Server-run handshakes.** ``PMIx_Group_invite`` and ``PMIx_Group_join``
+  send ``PMIX_GROUP_INVITE_CMD`` and ``PMIX_GROUP_JOIN_CMD`` to the local
+  server, which runs the operation: membership expansion, response
+  accounting, the timeout, the abort-or-announce decision, the context ID,
+  and the completion broadcast. The negotiation still travels as events
+  between the participants — there is no host *collective* — but the events
+  are raised by each participant's server rather than by the participant.
+
+  That is not a preference: a member's contribution to the group is what it
+  has **committed**, and only its own server knows that (see the modex log
+  on ``pmix_rank_info_t``). A client assembling its own contribution reads
+  its whole store, committed or not, plus data that arrived by other
+  routes. So the operation moved to where the right answer is known.
+
+  ``PMIx_Group_leave`` is still realized purely as an event; its former
+  ``PMIX_GROUP_LEAVE_CMD`` round-trip was never handled by any server
+  switchyard and has been removed.
+
+  A server raising an event on behalf of a client marks it **proxy** on the
+  notify caddy. Three things in the event layer key off "am I the source",
+  and all three are wrong for such an event: the up-call that carries it
+  beyond this node, the discard of an event this process is not a target of
+  (which would hide it from the library's own observers), and the skip that
+  spares a source the event it generated. See ``src/event/AGENTS.md``.
 
 The code lives in two files:
 
@@ -121,42 +137,62 @@ shared "is the caller covered by this participant array?" predicate — it
 matches the caller's namespace and accepts ``PMIX_RANK_WILDCARD``,
 ``PMIX_RANK_LOCAL_NODE``, ``PMIX_RANK_LOCAL_PEERS``, or an exact rank. It was
 hoisted out of duplicate copies in the fence and connect/disconnect paths so
-all three collectives share one membership check.
+the collectives share one membership check. ``PMIx_Group_invite`` uses it
+too: a process may not form a group it does not belong to, and an invitation
+that excludes its own leader is refused with ``PMIX_ERR_NOT_A_MEMBER``
+before anything is sent — the detection asked for in openpmix#3850, since
+the failure it otherwise produces (the leader waiting out a completion event
+addressed to a group it is not in) reports nothing and is very hard to
+chase down.
 
-Invite / join / leave (event-driven)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Invite / join / leave (server-run)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The invite method tracks invitees **by identity**. ``invite_setup()``
-expands wildcard ranks into concrete members, builds parallel
-``responded[]`` (accepters) and ``answered[]`` (accepters *and* decliners
-*and* terminated) flag arrays, seeds the leader's own slot, and registers a
-prepended handler for ``PMIX_GROUP_INVITE_ACCEPTED``,
-``PMIX_GROUP_INVITE_DECLINED``, and ``PMIX_PROC_TERMINATED``. It then notifies
-the invitees with ``PMIX_GROUP_INVITED`` over a custom range, and, if a
-``PMIX_TIMEOUT`` was supplied, arms a libevent timer.
+``PMIx_Group_invite`` sends ``PMIX_GROUP_INVITE_CMD`` to its server with the
+proposed membership, the timeout, and whether the invitation is optional or
+wants a context ID. ``PMIx_Group_join`` sends ``PMIX_GROUP_JOIN_CMD`` with
+the group id, the leader, and its accept/decline. Neither raises the
+negotiation's events itself.
 
-The critical thread-safety rule: the response handler (``invite_handler``)
-and the timeout handler run on the **progress thread** and must never raise
-an event themselves (that would deadlock). They only *wake* the operation
-(``invite_wake``, guarded by the ``completed`` one-shot). All event
-generation — ``PMIX_GROUP_INVITE_FAILED`` for non-accepters, the
-``PMIX_GROUP_CONSTRUCT_COMPLETE`` broadcast, or a ``PMIX_GROUP_CONSTRUCT_ABORT``
-— happens afterward on the caller's thread in ``invite_announce()``. A
-termination event names the departed proc in ``PMIX_EVENT_AFFECTED_PROC``
-(not the event source), so ``invite_handler`` attributes it to the right
-member via that key.
+``pmix_server_group_invite()`` builds a ``pmix_server_invite_t``: it expands
+wildcard ranks into concrete members (the accounting is by identity, so a
+wildcard cannot be matched against an answer), seeds the leader's own slot
+and its contribution from that rank's modex log, arms the timeout, registers
+an internal observer for ``PMIX_GROUP_INVITE_ACCEPTED``,
+``PMIX_GROUP_INVITE_DECLINED`` and ``PMIX_PROC_TERMINATED``, and raises
+``PMIX_GROUP_INVITED`` at the invitees. The timer is armed *before* the
+observer so every path that can resolve the invitation is downstream of it
+and therefore cancels it.
 
-``PMIx_Group_join_nb`` maps the ``pmix_group_opt_t`` to an event code
-(``PMIX_GROUP_INVITE_ACCEPTED`` / ``PMIX_GROUP_INVITE_DECLINED``) and notifies
-the leader. On an *accept* with a known leader it also arms the leader-failure
-watch (below).
+``pmix_server_group_join()`` builds the joiner's contribution from *its*
+modex log and raises the accept or decline naming the joiner as source, so
+the leader's server sees exactly the event the client used to send.
 
-``PMIx_Group_leave_nb`` finds the group locally, drops it from the local list
-immediately, and generates a ``PMIX_GROUP_LEFT`` event ranged to the
-membership excluding self (naming self in ``PMIX_EVENT_AFFECTED_PROC``). Per
-its contract it returns once the event is *locally generated*. Remaining
-members update their local membership when they receive ``PMIX_GROUP_LEFT``,
-handled in ``pmix_invoke_local_event_hdlr`` (``src/event/pmix_event_notification.c``)
+Each answer runs the observer, which attributes it by identity — a
+termination names its subject in ``PMIX_EVENT_AFFECTED_PROC`` rather than
+being sourced from it — and records an acceptance along with the
+contribution it carried. When every invitee has answered (or the timeout
+fires), ``invite_complete()`` either aborts the whole construct, if anyone
+failed to join and the invitation was not ``PMIX_GROUP_OPTIONAL``, or
+reports each non-accepter to the leader with ``PMIX_GROUP_INVITE_FAILED``
+and announces the group. A requested context ID is asked of the host
+through ``pmix_host_server.job_control``; that is the one asynchronous step,
+and ``invite_broadcast()`` runs from its callback.
+
+There is no equivalent of the client's old wake-then-announce split. That
+existed because a client's response handler runs on the progress thread and
+cannot call the public ``PMIx_Notify_event`` from there. The server raises
+its events through the internal path instead — the rule
+``notify_local_members_of_loss()`` follows — so the decision and the
+announcement happen in one place.
+
+``PMIx_Group_leave_nb`` is unchanged: it finds the group locally, drops it
+from the local list immediately, and generates a ``PMIX_GROUP_LEFT`` event
+ranged to the membership excluding self (naming self in
+``PMIX_EVENT_AFFECTED_PROC``). Per its contract it returns once the event is
+*locally generated*. Remaining members update their local membership when
+they receive ``PMIX_GROUP_LEFT``, handled in
+``pmix_invoke_local_event_hdlr`` (``src/event/pmix_event_notification.c``)
 alongside the existing group-construct-complete membership handling.
 
 The leader-failure watch

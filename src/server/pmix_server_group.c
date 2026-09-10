@@ -1167,6 +1167,852 @@ bailout:
 
 /* we are being called from the PMIx server's switchyard function,
  * which means we are in an event and can access global data */
+/* A client's response to an invitation, arriving as PMIX_GROUP_JOIN_CMD.
+ *
+ * The client used to raise this event itself, attaching its endpoint data
+ * from its own store. It cannot do that correctly: what a process has made
+ * public is what it has *committed*, and only its server knows that - the
+ * client's store holds everything it ever put, committed or not, plus
+ * whatever arrived by other routes. So the response comes here instead, we
+ * attach the contribution from the rank's modex log, and we raise the event
+ * naming the client as its source. The leader receives exactly the event it
+ * received before.
+ *
+ * Runs on the progress thread, so the notification goes out through the
+ * internal path rather than the public PMIx_Notify_event, which cannot be
+ * called from here - the same rule notify_local_members_of_loss() follows. */
+
+/* ==================================================================
+ * Invitation tracking
+ *
+ * An invitation used to be run entirely by the leader's client: it
+ * expanded the membership, watched for responses, timed them out, and
+ * announced the outcome. It cannot do the one thing that matters here -
+ * assemble a member's contribution - because what a process has made
+ * public is what it has *committed*, and only its server knows that.
+ * So the whole operation runs here now, and each member's contribution
+ * is built by that member's own server from its modex log.
+ *
+ * Everything below runs on the progress thread. Events are raised
+ * through the internal path rather than the public PMIx_Notify_event,
+ * which cannot be called from here - the same rule
+ * notify_local_members_of_loss() follows. That is also why this has no
+ * equivalent of the client's wake-then-announce split: there is nothing
+ * to defer to another thread.
+ * ================================================================== */
+
+typedef struct {
+    pmix_list_item_t super;
+    char *grpid;
+    pmix_proc_t leader;
+    /* proposed membership, wildcards already expanded */
+    pmix_proc_t *members;
+    size_t nmembers;
+    /* responded[] is "accepted"; answered[] is "accepted, declined or
+     * gone" - an invitation resolves when every invitee has answered,
+     * and its outcome turns on who accepted */
+    bool *responded;
+    bool *answered;
+    size_t nanswered;
+    /* one PMIX_PROC_INFO_ARRAY per contributor: the leader's own if it
+     * is a member, plus whatever each acceptance carried */
+    pmix_info_t *endpts;
+    size_t nendpts;
+    pmix_event_t ev;
+    bool timer_active;
+    bool completed;
+    bool optional;
+    bool assignid;
+    size_t ctxid;
+    size_t obsid;
+    bool have_obs;
+} pmix_server_invite_t;
+
+static void invcon(pmix_server_invite_t *p)
+{
+    p->grpid = NULL;
+    PMIX_LOAD_PROCID(&p->leader, NULL, PMIX_RANK_UNDEF);
+    p->members = NULL;
+    p->nmembers = 0;
+    p->responded = NULL;
+    p->answered = NULL;
+    p->nanswered = 0;
+    p->endpts = NULL;
+    p->nendpts = 0;
+    p->timer_active = false;
+    p->completed = false;
+    p->optional = false;
+    p->assignid = false;
+    p->ctxid = SIZE_MAX;
+    p->obsid = SIZE_MAX;
+    p->have_obs = false;
+}
+static void invdes(pmix_server_invite_t *p)
+{
+    if (p->timer_active) {
+        pmix_event_del(&p->ev);
+        p->timer_active = false;
+    }
+    if (NULL != p->grpid) {
+        free(p->grpid);
+    }
+    if (NULL != p->members) {
+        PMIX_PROC_FREE(p->members, p->nmembers);
+    }
+    if (NULL != p->responded) {
+        free(p->responded);
+    }
+    if (NULL != p->answered) {
+        free(p->answered);
+    }
+    if (NULL != p->endpts) {
+        /* allocated with nmembers+1 slots, filled to nendpts */
+        PMIX_INFO_FREE(p->endpts, p->nmembers + 1);
+    }
+}
+static PMIX_CLASS_INSTANCE(pmix_server_invite_t,
+                           pmix_list_item_t,
+                           invcon, invdes);
+
+static pmix_list_t pmix_server_invites;
+static bool invites_initialized = false;
+
+static void invites_init(void)
+{
+    if (!invites_initialized) {
+        PMIX_CONSTRUCT(&pmix_server_invites, pmix_list_t);
+        invites_initialized = true;
+    }
+}
+
+static pmix_server_invite_t *find_invite(const char *grpid)
+{
+    pmix_server_invite_t *inv;
+
+    if (!invites_initialized) {
+        return NULL;
+    }
+    PMIX_LIST_FOREACH (inv, &pmix_server_invites, pmix_server_invite_t) {
+        if (0 == strcmp(inv->grpid, grpid)) {
+            return inv;
+        }
+    }
+    return NULL;
+}
+
+/* Raise one event, from the progress thread, on behalf of the leader. */
+static void invite_raise(pmix_server_invite_t *inv, pmix_status_t code,
+                         pmix_info_t *info, size_t ninfo)
+{
+    pmix_status_t rc;
+
+    /* proxy: we raised this for the leader, so it has to be posted up to
+     * the host as well - the members are not all on this node */
+    rc = pmix_server_notify_event_proxy(code, &inv->leader, PMIX_RANGE_CUSTOM,
+                                        info, ninfo, true, NULL, NULL);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+}
+
+/* Aim an event at a set of procs. */
+static pmix_status_t invite_range(pmix_info_t *dst, const pmix_proc_t *procs, size_t nprocs)
+{
+    (void) strncpy(dst->key, PMIX_EVENT_CUSTOM_RANGE, PMIX_MAX_KEYLEN);
+    dst->value.type = PMIX_DATA_ARRAY;
+    PMIX_DATA_ARRAY_CREATE(dst->value.data.darray, nprocs, PMIX_PROC);
+    if (NULL == dst->value.data.darray || NULL == dst->value.data.darray->array) {
+        return PMIX_ERR_NOMEM;
+    }
+    memcpy(dst->value.data.darray->array, procs, nprocs * sizeof(pmix_proc_t));
+    return PMIX_SUCCESS;
+}
+
+static void invite_done(pmix_server_invite_t *inv)
+{
+    if (inv->have_obs && SIZE_MAX != inv->obsid) {
+        pmix_event_deregister_observer(inv->obsid, NULL, NULL);
+        inv->have_obs = false;
+    }
+    if (inv->timer_active) {
+        pmix_event_del(&inv->ev);
+        inv->timer_active = false;
+    }
+    pmix_list_remove_item(&pmix_server_invites, &inv->super);
+    PMIX_RELEASE(inv);
+}
+
+/* Phase two: the membership is settled and the context ID, if one was
+ * asked for, is in hand. Tell every member. */
+static void invite_broadcast(pmix_server_invite_t *inv)
+{
+    pmix_proc_t *members = NULL;
+    pmix_info_t *info = NULL;
+    pmix_data_array_t darray;
+    size_t i, k, nmembers = 0, ninfo, n;
+    pmix_status_t rc;
+
+    for (i = 0; i < inv->nmembers; i++) {
+        if (inv->responded[i]) {
+            ++nmembers;
+        }
+    }
+    if (0 == nmembers) {
+        /* nobody joined - there is no group to announce */
+        invite_done(inv);
+        return;
+    }
+    PMIX_PROC_CREATE(members, nmembers);
+    if (NULL == members) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        invite_done(inv);
+        return;
+    }
+    k = 0;
+    for (i = 0; i < inv->nmembers; i++) {
+        if (inv->responded[i]) {
+            memcpy(&members[k], &inv->members[i], sizeof(pmix_proc_t));
+            ++k;
+        }
+    }
+
+    /* range + membership + group id, plus the context id when we have one,
+     * plus each contributor's endpoint array */
+    ninfo = 3 + inv->nendpts;
+    if (SIZE_MAX != inv->ctxid) {
+        ++ninfo;
+    }
+    PMIX_INFO_CREATE(info, ninfo);
+    if (NULL == info) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_PROC_FREE(members, nmembers);
+        invite_done(inv);
+        return;
+    }
+    n = 0;
+    /* the accepted membership - which always includes the leader, since a
+     * process may not form a group it does not belong to */
+    rc = invite_range(&info[n], members, nmembers);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_INFO_FREE(info, ninfo);
+        PMIX_PROC_FREE(members, nmembers);
+        invite_done(inv);
+        return;
+    }
+    ++n;
+    /* the membership itself, so every member learns who joined */
+    PMIX_DATA_ARRAY_CONSTRUCT(&darray, nmembers, PMIX_PROC);
+    if (NULL == darray.array) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_INFO_FREE(info, ninfo);
+        PMIX_PROC_FREE(members, nmembers);
+        invite_done(inv);
+        return;
+    }
+    memcpy(darray.array, members, nmembers * sizeof(pmix_proc_t));
+    PMIx_Info_load(&info[n], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
+    PMIX_DATA_ARRAY_DESTRUCT(&darray);
+    ++n;
+    PMIX_INFO_LOAD(&info[n], PMIX_GROUP_ID, inv->grpid, PMIX_STRING);
+    ++n;
+    if (SIZE_MAX != inv->ctxid) {
+        PMIX_INFO_LOAD(&info[n], PMIX_GROUP_CONTEXT_ID, &inv->ctxid, PMIX_SIZE);
+        ++n;
+    }
+    for (i = 0; i < inv->nendpts; i++) {
+        PMIX_INFO_XFER(&info[n], &inv->endpts[i]);
+        ++n;
+    }
+
+    invite_raise(inv, PMIX_GROUP_CONSTRUCT_COMPLETE, info, n);
+
+    PMIX_INFO_FREE(info, ninfo);
+    PMIX_PROC_FREE(members, nmembers);
+    invite_done(inv);
+}
+
+/* The host's answer to our context-ID request. */
+static void invite_ctxid_cb(pmix_status_t status, pmix_info_t *info, size_t ninfo,
+                            void *cbdata, pmix_release_cbfunc_t relfn, void *relcbdata)
+{
+    pmix_server_invite_t *inv = (pmix_server_invite_t *) cbdata;
+    size_t n;
+
+    if (PMIX_SUCCESS == status) {
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_CONTEXT_ID)) {
+                PMIx_Value_get_number(&info[n].value, &inv->ctxid, PMIX_SIZE);
+                break;
+            }
+        }
+    }
+    if (NULL != relfn) {
+        relfn(relcbdata);
+    }
+    /* announce with whatever we got - a group without an ID is still a
+     * group, and the members are told which they have */
+    invite_broadcast(inv);
+}
+
+/* Phase one: report the invitees that did not join, then either abort the
+ * whole construct or go on to announce it. */
+static void invite_complete(pmix_server_invite_t *inv)
+{
+    pmix_info_t *info = NULL;
+    size_t i, nfailed = 0, ninfo;
+    pmix_status_t rc;
+
+    if (inv->completed) {
+        return;
+    }
+    inv->completed = true;
+    if (inv->timer_active) {
+        pmix_event_del(&inv->ev);
+        inv->timer_active = false;
+    }
+
+    for (i = 0; i < inv->nmembers; i++) {
+        if (!inv->responded[i]) {
+            ++nfailed;
+        }
+    }
+
+    if (0 < nfailed && !inv->optional) {
+        /* all-or-nothing, and somebody did not join: abort for everybody
+         * that was invited, so those that accepted stop waiting */
+        PMIX_INFO_CREATE(info, 2);
+        if (NULL == info) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            invite_done(inv);
+            return;
+        }
+        rc = invite_range(&info[0], inv->members, inv->nmembers);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_INFO_FREE(info, 2);
+            invite_done(inv);
+            return;
+        }
+        PMIX_INFO_LOAD(&info[1], PMIX_GROUP_ID, inv->grpid, PMIX_STRING);
+        invite_raise(inv, PMIX_GROUP_CONSTRUCT_ABORT, info, 2);
+        PMIX_INFO_FREE(info, 2);
+        invite_done(inv);
+        return;
+    }
+
+    /* report each invitee that did not accept, to the leader alone */
+    for (i = 0; i < inv->nmembers; i++) {
+        if (inv->responded[i]) {
+            continue;
+        }
+        PMIX_INFO_CREATE(info, 3);
+        if (NULL == info) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            break;
+        }
+        rc = invite_range(&info[0], &inv->leader, 1);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_INFO_FREE(info, 3);
+            break;
+        }
+        PMIX_INFO_LOAD(&info[1], PMIX_GROUP_ID, inv->grpid, PMIX_STRING);
+        PMIX_INFO_LOAD(&info[2], PMIX_EVENT_AFFECTED_PROC, &inv->members[i], PMIX_PROC);
+        invite_raise(inv, PMIX_GROUP_INVITE_FAILED, info, 3);
+        PMIX_INFO_FREE(info, 3);
+        info = NULL;
+    }
+
+    /* a context ID has to be asked of the host - there is no collective
+     * here for it to answer */
+    if (inv->assignid && NULL != pmix_host_server.job_control) {
+        PMIX_INFO_CREATE(info, 1);
+        if (NULL != info) {
+            ninfo = 1;
+            PMIX_INFO_LOAD(&info[0], PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
+            rc = pmix_host_server.job_control(&inv->leader, NULL, 0, info, ninfo,
+                                              invite_ctxid_cb, (void *) inv);
+            PMIX_INFO_FREE(info, ninfo);
+            if (PMIX_SUCCESS == rc) {
+                /* invite_ctxid_cb will announce */
+                return;
+            }
+        }
+    }
+    invite_broadcast(inv);
+}
+
+static void invite_timeout(int sd, short args, void *cbdata)
+{
+    pmix_server_invite_t *inv = (pmix_server_invite_t *) cbdata;
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    inv->timer_active = false;
+    /* whoever has not answered by now is not going to */
+    invite_complete(inv);
+}
+
+/* A response to an invitation, or the loss of an invitee. Attribution is
+ * by identity: a termination names the departed proc in
+ * PMIX_EVENT_AFFECTED_PROC rather than being sourced from it. */
+static void invite_observer(pmix_status_t status, const pmix_proc_t *source,
+                            const pmix_info_t info[], size_t ninfo,
+                            const pmix_proc_t *affected, size_t naffected,
+                            void *cbobject)
+{
+    pmix_server_invite_t *inv = (pmix_server_invite_t *) cbobject;
+    const pmix_proc_t *responder = source;
+    size_t n, i;
+
+    PMIX_HIDE_UNUSED_PARAMS(affected, naffected);
+
+    if (inv->completed) {
+        return;
+    }
+    if (PMIX_PROC_TERMINATED == status) {
+        responder = NULL;
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC) &&
+                PMIX_PROC == info[n].value.type &&
+                NULL != info[n].value.data.proc) {
+                responder = info[n].value.data.proc;
+                break;
+            }
+        }
+        if (NULL == responder) {
+            return;
+        }
+    }
+    if (NULL == responder) {
+        return;
+    }
+
+    for (i = 0; i < inv->nmembers; i++) {
+        if (!PMIX_CHECK_PROCID(responder, &inv->members[i])) {
+            continue;
+        }
+        if (inv->answered[i]) {
+            return; /* already counted */
+        }
+        inv->answered[i] = true;
+        ++inv->nanswered;
+        if (PMIX_GROUP_INVITE_ACCEPTED == status) {
+            inv->responded[i] = true;
+            /* keep whatever contribution the acceptance carried - the
+             * accepting member's own server built it from that member's
+             * committed data */
+            for (n = 0; n < ninfo; n++) {
+                if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_INFO_ARRAY) &&
+                    inv->nendpts <= inv->nmembers) {
+                    PMIX_INFO_XFER(&inv->endpts[inv->nendpts], (pmix_info_t *) &info[n]);
+                    ++inv->nendpts;
+                }
+            }
+        }
+        break;
+    }
+
+    if (inv->nanswered == inv->nmembers) {
+        invite_complete(inv);
+    }
+}
+
+/* Record the observer's id so invite_done() can deregister it - without it
+ * the invitation leaves its observer behind on every completion, matching
+ * nothing forever.
+ *
+ * The registration completes asynchronously, so this holds a reference on
+ * the invitation for the duration: an invitation that resolves before the
+ * registration is acknowledged would otherwise be released underneath this
+ * callback, and the id written into freed memory. */
+static void invite_obs_registered(pmix_status_t status, size_t ref, void *cbdata)
+{
+    pmix_server_invite_t *inv = (pmix_server_invite_t *) cbdata;
+
+    if (PMIX_SUCCESS == status) {
+        inv->obsid = ref;
+        inv->have_obs = true;
+    }
+    PMIX_RELEASE(inv);
+}
+
+/* An invitation, arriving as PMIX_GROUP_INVITE_CMD.
+ *
+ * The leader used to run this itself. It now hands us the membership and
+ * we run it: expand the membership, seed the leader's own contribution
+ * from its modex log, watch for the answers, and announce the outcome.
+ * The leader learns of it the same way every other member does - from the
+ * completion event. */
+pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
+                                       pmix_buffer_t *buf,
+                                       pmix_op_cbfunc_t cbfunc)
+{
+    int32_t cnt;
+    pmix_status_t rc;
+    pmix_status_t codes[] = {
+        PMIX_GROUP_INVITE_ACCEPTED,
+        PMIX_GROUP_INVITE_DECLINED,
+        PMIX_PROC_TERMINATED
+    };
+    char *grpid = NULL;
+    pmix_proc_t *procs = NULL;
+    size_t nprocs = 0, n, i;
+    uint32_t timeout = 0;
+    bool optional = false, assignid = false, haveendpts = false;
+    pmix_server_invite_t *inv = NULL;
+    pmix_info_t *info = NULL;
+    struct timeval tv;
+    pmix_namespace_t *nptr;
+
+    pmix_output_verbose(2, pmix_server_globals.group_output,
+                        "recvd group invite from %s", PMIX_PEER_PRINT(cd->peer));
+
+    invites_init();
+
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &grpid, &cnt, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &nprocs, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    /* this count sizes an allocation and then indexes it, and it came off
+     * the wire - the same screen every other handler here applies */
+    cnt = nprocs;
+    if (nprocs < 1 || 0 > cnt || (size_t) cnt != nprocs) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    PMIX_PROC_CREATE(procs, nprocs);
+    if (NULL == procs) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
+    cnt = nprocs;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, procs, &cnt, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &timeout, &cnt, PMIX_UINT32);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &optional, &cnt, PMIX_BOOL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &assignid, &cnt, PMIX_BOOL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+
+    if (NULL != find_invite(grpid)) {
+        rc = PMIX_ERR_EXISTS;
+        goto done;
+    }
+
+    inv = PMIX_NEW(pmix_server_invite_t);
+    if (NULL == inv) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
+    inv->grpid = strdup(grpid);
+    PMIX_LOAD_PROCID(&inv->leader, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+    inv->optional = optional;
+    inv->assignid = assignid;
+
+    /* expand any wildcard rank into the namespace's concrete ranks - the
+     * accounting below is by identity, so a wildcard cannot be matched
+     * against an answer */
+    inv->nmembers = 0;
+    for (n = 0; n < nprocs; n++) {
+        if (PMIX_RANK_WILDCARD == procs[n].rank) {
+            nptr = NULL;
+            PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
+                if (PMIX_CHECK_NSPACE(nptr->nspace, procs[n].nspace)) {
+                    break;
+                }
+                nptr = NULL;
+            }
+            if (NULL == nptr || 0 == nptr->nprocs) {
+                /* we cannot name the members of a namespace we do not know */
+                rc = PMIX_ERR_BAD_PARAM;
+                PMIX_ERROR_LOG(rc);
+                goto done;
+            }
+            inv->nmembers += nptr->nprocs;
+        } else {
+            ++inv->nmembers;
+        }
+    }
+    PMIX_PROC_CREATE(inv->members, inv->nmembers);
+    inv->responded = (bool *) calloc(inv->nmembers, sizeof(bool));
+    inv->answered = (bool *) calloc(inv->nmembers, sizeof(bool));
+    /* every member may contribute, and the leader need not be among them */
+    PMIX_INFO_CREATE(inv->endpts, inv->nmembers + 1);
+    if (NULL == inv->members || NULL == inv->responded ||
+        NULL == inv->answered || NULL == inv->endpts) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
+    i = 0;
+    for (n = 0; n < nprocs; n++) {
+        if (PMIX_RANK_WILDCARD == procs[n].rank) {
+            nptr = NULL;
+            PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
+                if (PMIX_CHECK_NSPACE(nptr->nspace, procs[n].nspace)) {
+                    break;
+                }
+                nptr = NULL;
+            }
+            if (NULL == nptr) {
+                rc = PMIX_ERR_BAD_PARAM;
+                goto done;
+            }
+            for (cnt = 0; (uint32_t) cnt < nptr->nprocs; cnt++) {
+                PMIX_LOAD_PROCID(&inv->members[i], procs[n].nspace, (pmix_rank_t) cnt);
+                ++i;
+            }
+        } else {
+            memcpy(&inv->members[i], &procs[n], sizeof(pmix_proc_t));
+            ++i;
+        }
+    }
+
+    /* The leader answers for itself and contributes its own committed data.
+     *
+     * A process may not form a group it does not belong to, so a membership
+     * that does not name the requestor is refused rather than run. This is
+     * the diagnostic openpmix#3850 asked for: nothing enforced the rule, and
+     * the resulting failure is very hard to chase down from the outside -
+     * the leader simply waits out a completion event addressed to a group it
+     * is not in, with nothing reported. Refusing the request names the
+     * mistake at the point it is made. */
+    for (i = 0; i < inv->nmembers; i++) {
+        if (PMIX_CHECK_PROCID(&inv->leader, &inv->members[i])) {
+            break;
+        }
+    }
+    if (i >= inv->nmembers) {
+        /* the client screens this too, with the same status - this is the
+         * backstop for a request that reached us anyway */
+        rc = PMIX_ERR_NOT_A_MEMBER;
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    inv->answered[i] = true;
+    inv->responded[i] = true;
+    ++inv->nanswered;
+    rc = pmix_server_build_proc_info(cd->peer->info, true,
+                                     &inv->endpts[inv->nendpts], &haveendpts);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    if (haveendpts) {
+        ++inv->nendpts;
+    }
+
+    pmix_list_append(&pmix_server_invites, &inv->super);
+
+    /* Arm the timeout before the observer, so every path that can resolve
+     * the invitation is downstream of it and therefore cancels it. */
+    if (0 < timeout) {
+        pmix_event_assign(&inv->ev, pmix_globals.evbase, -1, 0, invite_timeout, (void *) inv);
+        inv->timer_active = true;
+        tv.tv_sec = timeout;
+        tv.tv_usec = 0;
+        PMIX_POST_OBJECT(inv);
+        pmix_event_add(&inv->ev, &tv);
+    }
+
+    /* the registration callback holds this until it reports the id */
+    PMIX_RETAIN(inv);
+    rc = pmix_event_register_observer("pmix-server-group-invite", codes,
+                                      sizeof(codes) / sizeof(pmix_status_t),
+                                      invite_observer, inv, NULL,
+                                      invite_obs_registered, inv);
+    if (PMIX_SUCCESS != rc) {
+        /* no callback is coming, so give that reference back here */
+        PMIX_RELEASE(inv);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        invite_done(inv);
+        inv = NULL;
+        goto done;
+    }
+
+    /* invite everyone who is not us */
+    PMIX_INFO_CREATE(info, 3);
+    if (NULL == info) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
+    rc = invite_range(&info[0], inv->members, inv->nmembers);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    /* only non-default handlers are interested */
+    PMIX_INFO_LOAD(&info[1], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_GROUP_ID, inv->grpid, PMIX_STRING);
+    invite_raise(inv, PMIX_GROUP_INVITED, info, 3);
+    rc = PMIX_SUCCESS;
+
+    /* a single-member invitation is already resolved */
+    if (inv->nanswered == inv->nmembers) {
+        invite_complete(inv);
+    }
+    inv = NULL;
+
+done:
+    if (NULL != info) {
+        PMIX_INFO_FREE(info, 3);
+    }
+    if (NULL != inv) {
+        /* never got as far as the list */
+        PMIX_RELEASE(inv);
+    }
+    if (NULL != procs) {
+        PMIX_PROC_FREE(procs, nprocs);
+    }
+    if (NULL != grpid) {
+        free(grpid);
+    }
+    if (NULL != cbfunc) {
+        cbfunc(rc, cd);
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_server_group_join(pmix_server_caddy_t *cd,
+                                     pmix_buffer_t *buf,
+                                     pmix_op_cbfunc_t cbfunc)
+{
+    int32_t cnt;
+    pmix_status_t rc, code;
+    char *grpid = NULL;
+    pmix_proc_t leader, source;
+    bool haveleader = false, haveendpts = false;
+    pmix_data_range_t range;
+    pmix_info_t *info = NULL, endpts;
+    size_t ninfo = 0, n;
+
+    pmix_output_verbose(2, pmix_server_globals.group_output,
+                        "recvd group join from %s", PMIX_PEER_PRINT(cd->peer));
+
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &grpid, &cnt, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &code, &cnt, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &haveleader, &cnt, PMIX_BOOL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    if (haveleader) {
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &leader, &cnt, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto done;
+        }
+    }
+    /* the client's word about which code it sent is not ours to assume */
+    if (PMIX_GROUP_INVITE_ACCEPTED != code && PMIX_GROUP_INVITE_DECLINED != code) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+
+    /* an acceptance carries this process's committed data; a decline
+     * joins nothing and contributes nothing */
+    if (PMIX_GROUP_INVITE_ACCEPTED == code) {
+        rc = pmix_server_build_proc_info(cd->peer->info, true, &endpts, &haveendpts);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto done;
+        }
+    }
+
+    /* aim it at the leader alone, exactly as the client did */
+    n = 0;
+    if (haveleader) {
+        range = PMIX_RANGE_CUSTOM;
+        ++n;
+    } else {
+        range = PMIX_RANGE_SESSION;
+    }
+    if (haveendpts) {
+        ++n;
+    }
+    if (0 < n) {
+        PMIX_INFO_CREATE(info, n);
+        if (NULL == info) {
+            rc = PMIX_ERR_NOMEM;
+            goto done;
+        }
+        ninfo = n;
+        n = 0;
+        if (haveleader) {
+            PMIX_INFO_LOAD(&info[n], PMIX_EVENT_CUSTOM_RANGE, &leader, PMIX_PROC);
+            ++n;
+        }
+        if (haveendpts) {
+            PMIX_INFO_XFER(&info[n], &endpts);
+        }
+    }
+
+    PMIX_LOAD_PROCID(&source, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+    /* proxy: raised for our client, and the leader is very likely on
+     * another node, so it has to go up to the host */
+    rc = pmix_server_notify_event_proxy(code, &source, range, info, ninfo, true, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+
+done:
+    if (haveendpts) {
+        PMIX_INFO_DESTRUCT(&endpts);
+    }
+    if (NULL != info) {
+        PMIX_INFO_FREE(info, ninfo);
+    }
+    if (NULL != grpid) {
+        free(grpid);
+    }
+    /* the client is waiting on a status either way */
+    if (NULL != cbfunc) {
+        cbfunc(rc, cd);
+    }
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                                 pmix_group_operation_t op)
 {

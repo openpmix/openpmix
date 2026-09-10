@@ -672,11 +672,11 @@ input handling sits below a `connected` gate.
 
 **Tier 1a — `test/unit/run_grpinviteothers.pl` (in `make check`).**
 Drives `examples/group_invite_others` through `test/simple/simptest`:
-four clients, with rank 0 inviting ranks 1..3 and *not* joining. That
-shape is what distinguishes it from `run_grpinvite.pl` — see the
-`invite_setup()` entry in the August 2026 defect list. The test fails
-loudly (an aborted construct) rather than hanging when the invitation
-resolves early.
+four clients, with rank 0 attempting to invite ranks 1..3 without
+joining. That is not a legal group, and the test asserts the refusal —
+`PMIx_Group_invite` answers `PMIX_ERR_NOT_A_MEMBER` - the same status
+`PMIx_Group_construct` gives for the same mistake - and no invitation is
+issued. It fails loudly if a group forms anyway.
 
 **Tier 2 — `contrib/dockerswarm/run-client-tests.sh`.** Drives the
 `examples/` clients through PRRTE across the ten-container swarm, so the
@@ -894,15 +894,30 @@ one) `test/unit/run_grpinviteothers.pl` plus the swarm suite.
   correct it. `PMIx_Group_destruct` therefore never re-applied the
   policy for anybody. The scan now happens in `_nb`, on the tracker that
   is actually consulted.
+> **Note (invite/join moved to the server).** `PMIx_Group_invite` and
+> `PMIx_Group_join` now send `PMIX_GROUP_INVITE_CMD` /
+> `PMIX_GROUP_JOIN_CMD` and the operation runs in `pmix_server_group.c`;
+> `invite_setup()`, `invite_observer()`, `invite_wake()`,
+> `invite_finish()`, `announce_step()`, `invite_timeout()`,
+> `invite_teardown()` and `get_endpts()` are gone from this file. A member's
+> contribution is what it has *committed*, which only its server knows, so
+> the client could never assemble it correctly. Entries below that name
+> those functions are kept as a record of what the reviews found — they
+> describe code that no longer exists here.
+
 - **`invite_setup()` resolved an invitation one answer early whenever
   the leader was not itself an invitee.** It credited the leader's own
   answer unconditionally (`nanswered = 1`) but only set the matching
-  per-member flag if it found itself in the `procs` array. A leader
-  inviting only the others therefore started one ahead of the
-  membership: the last accept arrived after the decision, was recorded
-  as a non-responder, and — the default construct being
-  all-or-nothing — aborted the whole thing. Covered by
-  `examples/group_invite_others.c`.
+  per-member flag if it found itself in the `procs` array.
+
+  Superseded: a leader that is not a member is not a legal invitation at
+  all, and is now refused where the invitation is created - the detection
+  openpmix#3850 asked for, since the failure it otherwise produces (the
+  leader waiting out a completion event addressed to a group it is not in)
+  is very hard to chase down. The defect
+  above was a real one in the accounting, but the shape that exposed it
+  cannot arise. `examples/group_invite_others.c` now asserts the
+  refusal.
 - `PMIx_Abort` discarded the server's reply and always returned
   `PMIX_SUCCESS`, so a host that refused the abort (or does not support
   one) never reached the caller. Same shape as the `_commitfn` defect

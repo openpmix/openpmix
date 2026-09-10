@@ -386,6 +386,12 @@ PMIX_EXPORT pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t 
 
 PMIX_EXPORT pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                                             pmix_group_operation_t op);
+PMIX_EXPORT pmix_status_t pmix_server_group_join(pmix_server_caddy_t *cd,
+                                                 pmix_buffer_t *buf,
+                                                 pmix_op_cbfunc_t cbfunc);
+PMIX_EXPORT pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
+                                                   pmix_buffer_t *buf,
+                                                   pmix_op_cbfunc_t cbfunc);
 
 PMIX_EXPORT pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer_t *buf,
                                                               pmix_op_cbfunc_t cbfunc,
