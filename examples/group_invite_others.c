@@ -6,28 +6,26 @@
  *
  * $HEADER$
  *
- * Invite/join where the leader is NOT one of the invitees.
+ * A leader may not form a group it does not belong to.
  *
- * group_invite.c has rank 0 invite the whole job, itself included. That is
- * the common shape, but it is not the only legal one: a coordinator may
- * form a group among *other* processes without joining it. The API says
- * nothing that requires the inviter to appear in the procs array, and the
- * two cases run different code inside the library.
+ * group_invite.c has rank 0 invite the whole job, itself included. This
+ * program checks the case that is *not* legal: a process inviting others
+ * to a group it is not a member of. PMIx_Group_invite refuses it with
+ * PMIX_ERR_NOT_A_MEMBER - the same status PMIx_Group_construct gives for
+ * the same mistake - and no invitation is issued.
  *
- * They differ because of how the leader's own answer is counted. The
- * invitation resolves when every invitee has answered, and the leader
- * counts as having answered by virtue of issuing the invitation - but only
- * when it is actually one of the invited members. Crediting that answer
- * unconditionally makes the count start one ahead of the membership here,
- * so the invitation resolves one answer early: the last invitee's accept
- * arrives after the decision, it is recorded as a non-responder, and
- * because this construct is all-or-nothing (no PMIX_GROUP_OPTIONAL) the
- * whole thing aborts. Every invitee then reports having received
- * PMIX_GROUP_CONSTRUCT_ABORT instead of PMIX_GROUP_CONSTRUCT_COMPLETE, and
- * the leader's PMIx_Group_invite returns that status. That is exactly what
- * this program checks for.
+ * This test previously asserted the opposite - that the invitation ran and
+ * the group formed on the invitees alone - on the understanding that "the
+ * API says nothing that requires the inviter to appear in the procs
+ * array". That was wrong. A group's leader is one of its members, and the
+ * operation has no meaning otherwise: the leader would be waiting on a
+ * completion event addressed to a group it is not in, which is precisely
+ * the hang that made the old expectation look plausible. The check now
+ * lives where the invitation is created, in pmix_server_group_invite().
  *
- * Layout: rank 0 is the leader and invites ranks 1..N-1. Those ranks accept
+ * Layout: rank 0 attempts to invite ranks 1..N-1 without joining, and must
+ * be refused. The other ranks have nothing to wait for - no invitation is
+ * ever sent - so they proceed straight to the closing fence. Formerly they accept
  * from their PMIX_GROUP_INVITED handlers (the non-blocking join is
  * mandatory - the handler runs on the progress thread). The group is the
  * invitees only, so they - not the leader - receive
@@ -219,19 +217,24 @@ int main(int argc, char **argv)
         if (NULL != results) {
             PMIX_INFO_FREE(results, nresults);
         }
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: ERROR! PMIx_Group_invite FAILED: %s\n",
+        if (PMIX_ERR_NOT_A_MEMBER != rc) {
+            fprintf(stderr, "Client ns %s rank %d: FAILED - a leader-excluded invite "
+                            "returned %s, expected PMIX_ERR_NOT_A_MEMBER\n",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+            rc = PMIX_ERROR;
             goto done;
         }
-        fprintf(stderr, "%d Group invite complete with status PMIX_SUCCESS\n", myproc.rank);
-        /* the leader is not a member, so it has nothing further to do with
-         * the group - just wait at the closing job fence below */
+        fprintf(stderr, "%d leader-excluded invite refused: PASS\n", myproc.rank);
+        rc = PMIX_SUCCESS;
+        /* nothing was invited, so there is nothing to wait for */
         goto lastsync;
     }
 
-    fprintf(stderr, "%s:%d waiting to be invited and to join the group\n",
+    /* No invitation is coming - the leader's request is refused before one
+     * is issued - so there is nothing for an invitee to wait for. */
+    fprintf(stderr, "%s:%d not expecting an invitation\n",
             myproc.nspace, myproc.rank);
+    goto lastsync;
 
     /* every invitee must be told the group formed */
     for (waited = 0; !complete_seen && !abort_seen && waited < 100; waited++) {

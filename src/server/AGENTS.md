@@ -921,10 +921,9 @@ alone. `pmix_server_valid_darray` is that screen, shared with
 types still need checking by hand, since the array being of the right
 element type says nothing about what a given element carries.
 
-One thing to know before writing a host against this: the shape
-`PMIX_GROUP_ENDPT_DATA` carries here is the one a client builds. The
-array is `get_endpts()`'s in
-[`src/client/pmix_client_group.c`](../client/pmix_client_group.c) — the
+One thing to know before writing a host against this: the array is
+`pmix_server_build_proc_info()`'s, in
+[`pmix_server_fence.c`](pmix_server_fence.c) — the
 contributor's `PMIX_PROCID`, then the `PMIX_DATA_SCOPE` its remaining
 elements are to be stored at — contributed to the construct as
 `PMIX_PROC_INFO_ARRAY` and relabelled by the host when it hands each
@@ -1334,11 +1333,12 @@ therefore routed **by key rather than by position** - it used to read
 endpoint-then-job-level positionally, which breaks the moment a client
 sends one and not the other.
 
-**Not yet unified:** the async group paths - `invite_setup()` and
-`PMIx_Group_join_nb()` in `src/client/pmix_client_group.c` - still
-assemble their contribution client-side through `get_endpts()`. Those
-travel peer-to-peer by event and never pass through a server collective,
-so there is no point at which the local server could substitute the log.
+**The async group paths run here too.** `PMIx_Group_invite` and
+`PMIx_Group_join` send `PMIX_GROUP_INVITE_CMD` / `PMIX_GROUP_JOIN_CMD`,
+and this server runs the invitation and builds every contribution from
+the contributor's own log — see "Invitation tracking" above. They used to
+assemble client-side and travel peer-to-peer by event, which could not be
+correct: a client does not know what it has committed.
 
 ### A deletion has to survive the collection, not just reach it
 

@@ -767,6 +767,30 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
         return rc;
     }
 
+    if (PMIX_GROUP_INVITE_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
+        rc = pmix_server_group_invite(cd, buf, op_cbfunc);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+
+    if (PMIX_GROUP_JOIN_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
+        rc = pmix_server_group_join(cd, buf, op_cbfunc);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+
     if (PMIX_GROUP_DESTRUCT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
         if (NULL == cd) {
