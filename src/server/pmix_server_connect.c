@@ -341,6 +341,28 @@ cleanup:
     return rc;
 }
 
+/* Append one info to a tracker's array. The array is rebuilt rather than
+ * grown in place because it is handed to the host as a unit. */
+static pmix_status_t add_trk_info(pmix_server_trkr_t *trk, pmix_info_t *src)
+{
+    pmix_info_t *iptr;
+    size_t n, ninf;
+
+    ninf = trk->ninfo + 1;
+    PMIX_INFO_CREATE(iptr, ninf);
+    if (NULL == iptr) {
+        return PMIX_ERR_NOMEM;
+    }
+    for (n = 0; n < trk->ninfo; n++) {
+        PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
+    }
+    PMIX_INFO_XFER(&iptr[trk->ninfo], src);
+    PMIX_INFO_FREE(trk->info, trk->ninfo);
+    trk->info = iptr;
+    trk->ninfo = ninf;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
                                   pmix_buffer_t *buf,
                                   pmix_op_cbfunc_t cbfunc)
@@ -348,8 +370,9 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     int32_t cnt;
     pmix_status_t rc;
     pmix_proc_t *procs = NULL;
-    pmix_info_t *info = NULL, *iptr, endpt;
-    size_t nprocs, ninfo, n, ninf;
+    pmix_info_t *info = NULL, endpt;
+    size_t nprocs, ninfo, ninf;
+    bool haveendpt;
     pmix_server_trkr_t *trk;
     struct timeval tv = {0, 0};
 
@@ -468,56 +491,53 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         ninfo = 0;
     }
 
-    // see if they provided endpt info
-    cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &endpt, &cnt, PMIX_INFO);
-    if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto trkerr;
-    }
-    if (PMIX_SUCCESS == rc) {
-        // add the endpt to the end
-        ninf = trk->ninfo + 1;
-        PMIX_INFO_CREATE(iptr, ninf);
-        if (NULL == iptr) {
-            PMIX_INFO_DESTRUCT(&endpt);
-            rc = PMIX_ERR_NOMEM;
+    /* Drain whatever optional blobs this client sent, and route them by
+     * key rather than by position. They used to be read positionally -
+     * endpoint first, job-level second - which only works while a client
+     * sends both or neither. A client that sends just one would have had
+     * it taken for the other, and a client that has stopped sending its
+     * own endpoint data (this server now builds that itself, below) is
+     * exactly that case. Unknown keys are dropped rather than refused:
+     * this is an optional tail, and a peer of another release may put
+     * something here we have no use for. */
+    while (true) {
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &endpt, &cnt, PMIX_INFO);
+        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+            break;
+        }
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             goto trkerr;
         }
-        for (n=0; n < trk->ninfo; n++) {
-            PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
+        if (PMIX_CHECK_KEY(&endpt, PMIX_PROC_INFO_ARRAY)) {
+            /* An older client still sends its own puts. We no longer take
+             * them: what a process has made public is what it committed,
+             * and this server has that on the rank's modex log - reading
+             * it there also keeps data the client never committed out of
+             * the exchange. Discard theirs rather than contribute both. */
+            PMIX_INFO_DESTRUCT(&endpt);
+            continue;
         }
-        PMIX_INFO_XFER(&iptr[trk->ninfo], &endpt);
-        PMIX_INFO_FREE(trk->info, trk->ninfo);
+        rc = add_trk_info(trk, &endpt);
         PMIX_INFO_DESTRUCT(&endpt);
-        trk->info = iptr;
-        trk->ninfo = ninf;
+        if (PMIX_SUCCESS != rc) {
+            goto trkerr;
+        }
     }
 
-    // see if they provided job-level info
-    cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &endpt, &cnt, PMIX_INFO);
-    if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+    /* this process's own contribution, built from what it has committed */
+    rc = pmix_server_build_proc_info(cd->peer->info, false, &endpt, &haveendpt);
+    if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto trkerr;
     }
-    if (PMIX_SUCCESS == rc) {
-        // add the info to the end
-        ninf = trk->ninfo + 1;
-        PMIX_INFO_CREATE(iptr, ninf);
-        if (NULL == iptr) {
-            PMIX_INFO_DESTRUCT(&endpt);
-            rc = PMIX_ERR_NOMEM;
+    if (haveendpt) {
+        rc = add_trk_info(trk, &endpt);
+        PMIX_INFO_DESTRUCT(&endpt);
+        if (PMIX_SUCCESS != rc) {
             goto trkerr;
         }
-        for (n=0; n < trk->ninfo; n++) {
-            PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
-        }
-        PMIX_INFO_XFER(&iptr[trk->ninfo], &endpt);
-        PMIX_INFO_FREE(trk->info, trk->ninfo);
-        PMIX_INFO_DESTRUCT(&endpt);
-        trk->info = iptr;
-        trk->ninfo = ninf;
     }
 
     /* add this contributor to the tracker so they get

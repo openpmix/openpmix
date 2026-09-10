@@ -264,90 +264,11 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
         }
     }
 
-    /* get our endpt info, if some was posted. We use
-     * "remote" scope as all local procs have access
-     * to info posted by all other local procs, regardless
-     * of their namespace */
-    PMIX_CONSTRUCT(&cb2, pmix_cb_t);
-    cb2.proc = &pmix_globals.myid;
-    cb2.scope = PMIX_REMOTE;
-    cb2.copy = true;
-    /* we are on the caller's thread, and this is the table _putfn writes
-     * on the progress thread */
-    rc = pmix_gds_base_fetch_kv_tsafe(pmix_globals.mypeer, &cb2);
-    if (PMIX_SUCCESS == rc) {
-        ilist = PMIx_Info_list_start();
-        // start with our procID
-        rc = PMIx_Info_list_add(ilist, PMIX_PROCID, &pmix_globals.myid, PMIX_PROC);
-        // now add the kvals
-        found = false;
-        if (PMIX_SUCCESS == rc) {
-            PMIX_LIST_FOREACH (kv, &cb2.kvs, pmix_kval_t) {
-                if (PMIx_Check_reserved_key(kv->key)) {
-                    continue;
-                }
-                rc = PMIx_Info_list_add_value_unique(ilist, kv->key, kv->value, true);
-                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                    break;
-                }
-                found = true;
-            }
-        }
-        /* a key dropped here is one this peer never publishes to the
-         * processes it is connecting to, and nothing downstream can tell
-         * that from our having posted nothing at all - so stop rather
-         * than send a blob that is quietly short */
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            PMIx_Info_list_release(ilist);
-            PMIX_DESTRUCT(&cb2);
-            PMIX_PROC_FREE(rgs, nrg);
-            return rc;
-        }
-        if (found) {
-            // convert to array
-            rc = PMIx_Info_list_convert(ilist, &darray);
-            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msg);
-                PMIx_Info_list_release(ilist);
-                PMIX_DESTRUCT(&cb2);
-                PMIX_PROC_FREE(rgs, nrg);
-                return rc;
-            }
-            // insert into a pmix_info_t for packing
-            rc = PMIx_Info_load(&xfer, PMIX_PROC_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
-            PMIX_DATA_ARRAY_DESTRUCT(&darray);
-            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                /* the load copies the array, and it is the copy that goes
-                 * on the wire. PMIX_INFO_LOAD discards this status, which
-                 * left a failed copy packing an info whose array is NULL -
-                 * indistinguishable, to the server, from our having posted
-                 * nothing */
-                PMIX_ERROR_LOG(rc);
-                PMIX_INFO_DESTRUCT(&xfer);
-                PMIX_RELEASE(msg);
-                PMIx_Info_list_release(ilist);
-                PMIX_DESTRUCT(&cb2);
-                PMIX_PROC_FREE(rgs, nrg);
-                return rc;
-            }
-            // append it if this peer can carry it
-            rc = append_optional(msg, &xfer);
-            PMIX_INFO_DESTRUCT(&xfer);
-            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msg);
-                PMIx_Info_list_release(ilist);
-                PMIX_DESTRUCT(&cb2);
-                PMIX_PROC_FREE(rgs, nrg);
-                return rc;
-            }
-        }
-        PMIx_Info_list_release(ilist);
-    }
-    PMIX_DESTRUCT(&cb2);
+    /* Our own puts are no longer sent from here. What a process has made
+     * public is what it committed, and our server holds that on this
+     * rank's modex log - it builds our contribution from there when it
+     * handles this request, which also keeps anything we never committed
+     * out of the exchange. */
 
     /* if this operation involves multiple namespaces, then we need to
      * share job-level info between the participants. We only need to
