@@ -217,6 +217,43 @@ covers it, and has to fork before the test's own `PMIx_Init` — a child of
 an already-initialized process only adjusts a reference count and never
 reaches `pmix_rte_finalize()` at all.
 
+**Suppression is keyed on the job, and a job's entries die with it.**
+The tuple list is `(nspace, filename, topic)`, not `(filename, topic)`.
+Aggregation exists to stop *one job's* message storm, and a PMIx server
+runs many jobs — a persistent DVM runs them in parallel and one after
+another for weeks — so a list keyed on the message alone meant the first
+job to trip a diagnostic was the only job ever told about it, and every
+later one got a bare counter or silence. That is the explanation of why a
+job died being withheld from the user whose job died, and no existing
+control reached it: `PMIX_AGGREGATE_HELP` turns aggregation off for a job
+that asks, but a job cannot ask to be told about a message some job that
+finished last Tuesday already consumed.
+
+The nspace travels as a `PMIX_NSPACE` *directive*, not in the source
+proc, because `plog/stdfd` routes by source — naming the job a message is
+*about* there would deliver a daemon's diagnostic into that job's output
+stream. It is compared with `strcmp`, not `match()`, whose `*` handling
+would let one job's suppression reach another's. A caller naming no job
+gets its own, which is what every message PMIx raises on its own behalf
+wants.
+
+`PMIx_server_deregister_nspace()` then calls
+`pmix_show_help_purge_nspace()`, which flushes that job's held-back
+duplicates and frees its entries. Both halves are load-bearing: without
+the flush, what the job accumulated is never reported, since the timer is
+the only other thing that would say it and a job that ends sooner ends
+first; without the free, per-job keying turns a bounded list into one
+that grows for the life of the server. It runs *ahead* of the GDS and
+event teardown in `_deregister_nspace` so a notice raised by the flush
+still has somewhere to go.
+
+**The notice attached to the first summary named a parameter that does
+not exist.** It advertised MCA parameter `base_help_aggregate`, inherited
+from Open MPI's show_help and registered nowhere here — grep found it
+only in the string advertising it — so a user who followed it got no
+change and no complaint, and the aggregation read as unavoidable rather
+than adjustable. It now names `PMIX_AGGREGATE_HELP`.
+
 **A message can pull in another one**, with a line of the form
 `#include#FILE#TOPIC` or `#include#PROJECT#FILE#TOPIC`, parsed from the
 right. No `help-*.txt` in the tree uses it yet, which is why both copies
