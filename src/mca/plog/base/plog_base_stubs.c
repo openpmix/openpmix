@@ -33,7 +33,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
     int m;
     bool logonce = false;
     pmix_list_t channels;
-    char *key = NULL, *val = NULL;
+    char *key = NULL, *val = NULL, *nspace = NULL;
     bool agg = true;  // default to aggregating show_help messages
     bool suppressed = false;
     pmix_info_t *dt = (pmix_info_t*)data;
@@ -74,10 +74,24 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
                 if (PMIX_STRING == directives[n].value.type) {
                     val = directives[n].value.data.string;
                 }
+            } else if (PMIX_CHECK_KEY(&directives[n], PMIX_NSPACE)) {
+                /* the job this message is ABOUT, which is what scopes
+                 * duplicate suppression - not necessarily the job that
+                 * sent it, which for a daemon's diagnostic is the
+                 * daemon */
+                if (PMIX_STRING == directives[n].value.type) {
+                    nspace = directives[n].value.data.string;
+                }
             }
         }
         if (agg && NULL != key && NULL != val) {
-            if (PMIX_SUCCESS == pmix_help_check_dups(key, val)) {
+            /* a caller that named no job means its own: suppressing one
+             * job's storm must not silence another's first occurrence */
+            if (NULL == nspace) {
+                nspace = (NULL == source) ? pmix_globals.myid.nspace
+                                          : (char *) source->nspace;
+            }
+            if (PMIX_SUCCESS == pmix_help_check_dups(nspace, key, val)) {
                 for (k = 0; k < ndata; k++) {
                     // This is a dup and has been tracked as such,
                     // mark this as complete so we don't log it again.
