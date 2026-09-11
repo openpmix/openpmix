@@ -30,6 +30,24 @@ SUBDIRS = config contrib include src etc bindings docs
 
 AM_DISTCHECK_CONFIGURE_FLAGS = --disable-dlopen
 
+# Check for common symbols, which cause linking problems on some
+# platforms (macOS among them).  A "-hook" so that a developer sees it at
+# the end of their install, and prefixed with "-" so a machine with no
+# nm -- where the script exits 1 to say it could not look -- does not
+# fail the install over it.
+#
+# Only in a git checkout: a tarball build is not where a new common
+# symbol gets introduced, and the whitelist files this reads are not
+# shipped.
+install-exec-hook:
+	-@if test -d "$(top_srcdir)/.git"; then \
+	    $(top_srcdir)/config/find_common_syms \
+	        --brief \
+	        --top_builddir=$(top_builddir) \
+	        --top_srcdir=$(top_srcdir) \
+	        --objext=$(OBJEXT); \
+	fi
+
 headers =
 sources =
 nodist_headers =
