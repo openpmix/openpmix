@@ -225,18 +225,6 @@ if test -e $PMIX_TOP_SRCDIR/.git; then
 else
     PMIX_DEVEL=0
 fi
-# check for Flex
-AC_PROG_LEX(noyywrap)
-if test "x$LEX" != xflex && test ! -e $PMIX_TOP_SRCDIR/src/util/keyval/keyval_lex.c; then
-    AC_MSG_WARN([*** Could not find Flex on your system.])
-    AC_MSG_WARN([*** Flex is required for developer builds of PMIx.])
-    AC_MSG_WARN([*** Other versions of Lex are not supported.])
-    AC_MSG_WARN([*** NOTE: If you are building from an official tarball])
-    AC_MSG_WARN([*** (not the ones made by GitHub!) downloaded from the])
-    AC_MSG_WARN([*** OpenPMIx web site, you do not need Flex.])
-    AC_MSG_ERROR([Cannot continue])
-fi
-
 ############################################################################
 # Configuration options
 ############################################################################
