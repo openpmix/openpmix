@@ -18,6 +18,7 @@
 #include <dirent.h>
 #include <dlfcn.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -33,6 +34,24 @@
 /*
  * Trivial helper function to avoid replicating code
  */
+/*
+ * Hand back a copy of the loader's message, never the loader's own
+ * pointer.  dlerror() returns storage belonging to the dynamic linker,
+ * which the caller may not free and which the next dlerror() in this
+ * process may reuse; every caller of this interface does free the message
+ * it is given, because that is what the interface promises and what the
+ * libltdl module beside this one has always done.
+ */
+static char *copy_dlerror(void)
+{
+    const char *msg = dlerror();
+
+    if (NULL == msg) {
+        return NULL;
+    }
+    return strdup(msg);
+}
+
 static void do_pdlopen(const char *fname, int flags, void **handle, char **err_msg)
 {
     assert(handle);
@@ -43,7 +62,7 @@ static void do_pdlopen(const char *fname, int flags, void **handle, char **err_m
         if (NULL != *handle) {
             *err_msg = NULL;
         } else {
-            *err_msg = dlerror();
+            *err_msg = copy_dlerror();
         }
     }
 }
@@ -68,6 +87,9 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
     /* If the caller wants to use filename extensions, loop through
        them */
     void *local_handle = NULL;
+    if (NULL != err_msg) {
+        *err_msg = NULL;
+    }
     if (use_ext && NULL != fname) {
         int i;
         char *ext;
@@ -89,6 +111,11 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
             /* coverity[TOCTOU] */
             if (stat(name, &buf) < 0) {
                 if (NULL != err_msg) {
+                    /* a message from an earlier suffix is ours to drop --
+                     * the loop keeps going, so overwriting it in place
+                     * leaked one string per suffix that did not exist */
+                    free(*err_msg);
+                    *err_msg = NULL;
                     rc = pmix_asprintf(err_msg, "File %s not found", name);
                     if (0 > rc) {
                         free(name);
@@ -101,6 +128,10 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
 
             /* Yes, the file exists -- try to dlopen it.  If we can't
                dlopen it, bail. */
+            if (NULL != err_msg) {
+                free(*err_msg);
+                *err_msg = NULL;
+            }
             do_pdlopen(name, flags, &local_handle, err_msg);
             free(name);
             break;
@@ -141,7 +172,7 @@ static int pdlopen_lookup(pmix_pdl_handle_t *handle, const char *symbol, void **
     }
 
     if (NULL != err_msg) {
-        *err_msg = dlerror();
+        *err_msg = copy_dlerror();
     }
     return PMIX_ERROR;
 }
