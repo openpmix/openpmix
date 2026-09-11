@@ -1226,6 +1226,7 @@ typedef struct {
     size_t ctxid;
     size_t obsid;
     bool have_obs;
+    bool defunct;
 } pmix_server_invite_t;
 
 static void invcon(pmix_server_invite_t *p)
@@ -1246,6 +1247,7 @@ static void invcon(pmix_server_invite_t *p)
     p->ctxid = SIZE_MAX;
     p->obsid = SIZE_MAX;
     p->have_obs = false;
+    p->defunct = false;
 }
 static void invdes(pmix_server_invite_t *p)
 {
@@ -1328,8 +1330,35 @@ static pmix_status_t invite_range(pmix_info_t *dst, const pmix_proc_t *procs, si
     return PMIX_SUCCESS;
 }
 
+/* Release callback for the observer registration. The registry holds a
+ * reference on the invitation for as long as the observer is registered,
+ * and discharges this when it is actually removed. */
+static void invite_relcb(void *cbdata)
+{
+    pmix_server_invite_t *inv = (pmix_server_invite_t *) cbdata;
+
+    PMIX_RELEASE(inv);
+}
+
+/* Retire the invitation: stop the clock, take the observer down, and drop
+ * the list's reference.
+ *
+ * Deregistration threadshifts, so the observer can still fire after this
+ * returns - an acceptance that was already on its way in when the last
+ * awaited answer resolved the invitation arrives afterwards. The
+ * invitation therefore cannot be freed here: it is kept alive by the
+ * reference the registry holds until invite_relcb discharges it, and
+ * ->defunct stops the late arrival from doing anything with it. Freeing it
+ * here left every such event dereferencing freed memory, and re-entering
+ * invite_complete() on it corrupted the notification chain the completion
+ * had just been handed to - so the members were never told the group had
+ * formed. */
 static void invite_done(pmix_server_invite_t *inv)
 {
+    if (inv->defunct) {
+        return;
+    }
+    inv->defunct = true;
     if (inv->have_obs && SIZE_MAX != inv->obsid) {
         pmix_event_deregister_observer(inv->obsid, NULL, NULL);
         inv->have_obs = false;
@@ -1568,7 +1597,10 @@ static void invite_observer(pmix_status_t status, const pmix_proc_t *source,
 
     PMIX_HIDE_UNUSED_PARAMS(affected, naffected);
 
-    if (inv->completed) {
+    /* an answer that was already in flight when the invitation resolved
+     * arrives after invite_done() has retired it - there is nothing left
+     * for it to count */
+    if (inv->completed || inv->defunct) {
         return;
     }
     if (PMIX_PROC_TERMINATED == status) {
@@ -1634,6 +1666,13 @@ static void invite_obs_registered(pmix_status_t status, size_t ref, void *cbdata
     if (PMIX_SUCCESS == status) {
         inv->obsid = ref;
         inv->have_obs = true;
+        /* the invitation can resolve in the window between the observer
+         * being placed on the list and this ack arriving - invite_done()
+         * could not name the observer then, so take it down now */
+        if (inv->defunct) {
+            pmix_event_deregister_observer(inv->obsid, NULL, NULL);
+            inv->have_obs = false;
+        }
     }
     PMIX_RELEASE(inv);
 }
@@ -1841,14 +1880,19 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         pmix_event_add(&inv->ev, &tv);
     }
 
-    /* the registration callback holds this until it reports the id */
+    /* One reference for the registry, which outlives the invitation itself
+     * (see invite_done), and one for the registration callback, which holds
+     * it until it reports the id */
+    PMIX_RETAIN(inv);
     PMIX_RETAIN(inv);
     rc = pmix_event_register_observer("pmix-server-group-invite", codes,
                                       sizeof(codes) / sizeof(pmix_status_t),
-                                      invite_observer, inv, NULL,
+                                      invite_observer, inv, invite_relcb,
                                       invite_obs_registered, inv);
     if (PMIX_SUCCESS != rc) {
-        /* no callback is coming, so give that reference back here */
+        /* nothing was registered and no callback is coming, so both
+         * references come back here */
+        PMIX_RELEASE(inv);
         PMIX_RELEASE(inv);
     }
     if (PMIX_SUCCESS != rc) {
