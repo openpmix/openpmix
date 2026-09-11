@@ -537,12 +537,6 @@ size, which is a rough proxy for how much there is to find.
 
 * ``src/mca/pdl``, ``src/mca/pinstalldirs`` — about 2200 lines between
   them, and the lowest risk of the group.
-* ``src/util/keyval`` — 138 lines of flex source (``keyval_lex.l``);
-  the 2327-line ``keyval_lex.c`` beside it is a generated build product
-  and is not review material.  It has no ``AGENTS.md`` of its own, but
-  the ``src/util`` re-review gave it a section in that directory's
-  guide and covered its only driver, ``pmix_keyval_parse.c``, so what
-  is left unread is the ``.l`` itself.
 
 Outside ``src/``, nothing has been reviewed: ``examples/`` (16678 lines,
 leak-swept only), ``test/simple`` (11011), ``test/unit/util`` and
