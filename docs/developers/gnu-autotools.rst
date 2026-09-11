@@ -49,9 +49,6 @@ on the internals of PMIx itself):
    * - GNU Libtool
      - 2.4.6
      - https://ftp.gnu.org/gnu/libtool/
-   * - Flex
-     - 2.5.35
-     - https://sourceforge.net/projects/flex/
    * - Sphinx
      - 4.2.0
      - https://www.sphinx-doc.org/en/master/index.html

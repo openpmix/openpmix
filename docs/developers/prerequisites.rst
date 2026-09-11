@@ -70,38 +70,6 @@ OpenPMIx still uses Perl for a few of its build scripts (most notably,
 Generally speaking, any recent-ish release of Perl 5 should be
 sufficient to correctly execute OpenPMIx's Perl scripts.
 
-Flex
-----
-
-Minimum supported version: |flex_min_version|.
-
-`Flex <https://github.com/westes/flex>`_ is used during the
-compilation of a developer's checkout (it is not used to build
-official distribution tarballs).  Other flavors of lex are *not*
-supported: given the choice of making parsing code portable between
-all flavors of lex and doing more interesting work on OpenPMIx, we
-greatly prefer the latter.
-
-Note that no testing has been performed to see what the minimum
-version of Flex is required by OpenPMIx.  We suggest that you use
-v2.5.35 at the earliest.
-
-For now, OpenPMIx will allow developer builds with Flex |flex_min_version|.  This
-is primarily motivated by the fact that RedHat/CentOS 5 ships with
-Flex 2.5.4.  It is likely that someday OpenPMIx developer builds will
-require Flex version >=2.5.35.
-
-Note that the ``flex``-generated code generates some compiler warnings
-on some platforms, but the warnings do not seem to be consistent or
-uniform on all platforms, compilers, and flex versions.  As such, we
-have done little to try to remove those warnings.
-
-If you do not have Flex installed and cannot easily install it via
-your operating system's packaging system (to include Homebrew or
-MacPorts on MacOS), see `the Flex Github repository
-<https://github.com/westes/flex>`_.
-
-
 .. _developers-requirements-sphinx-label:
 
 Sphinx
