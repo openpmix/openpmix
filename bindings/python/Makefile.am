@@ -23,7 +23,28 @@
 # $HEADER$
 #
 
-# We do NOT want picky compilers down here
+# Hand setuptools the compiler flags without the "picky" warning ones.
+#
+# This assignment reaches setup.py, which is easy to miss: CFLAGS is
+# normally in the environment of whoever ran configure, and make
+# re-exports an environment-originated variable with whatever value the
+# Makefile gives it.  So what is written here is what setuptools
+# compiles the extension with.
+#
+# It must not be PMIx's own CFLAGS.  Cython's generated pmix.c shadows
+# its file-static __pyx_lineno/__pyx_filename/__pyx_clineno in every
+# generated function, so -Wshadow -Werror stops the build outright, and
+# the extension is not ours to hold to this tree's warning discipline
+# anyway.
+#
+# It must not be empty either.  That would drop the optimization and
+# hardening flags the build environment supplied -- the -O2,
+# -fstack-protector-strong, -D_FORTIFY_SOURCE and -fcf-protection that a
+# distribution build expects every object it ships to carry.
+#
+# PMIX_CFLAGS_BEFORE_PICKY is exactly the middle: configure snapshots it
+# before the picky flags are added and before the user's own -W flags
+# are restored, so it carries the hardening and none of the warnings.
 CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
 
 helpers = \

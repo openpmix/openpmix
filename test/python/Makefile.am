@@ -7,9 +7,6 @@
 #
 # $HEADER$
 #
-# we do NOT want picky compilers down here
-CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
-
 noinst_SCRIPTS = \
 	run_server.sh.in \
 	run_sched.sh.in \
