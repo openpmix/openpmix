@@ -41,6 +41,7 @@ dist-hook:
 
 EXTRA_DIST = \
     distscript.sh \
+    find_common_syms \
     getdate.sh \
     pmix_get_version.sh \
     mca_library_paths.txt \
