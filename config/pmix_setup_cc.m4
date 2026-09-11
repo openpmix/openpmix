@@ -314,10 +314,17 @@ AC_DEFUN([PMIX_SETUP_CC],[
         AC_MSG_WARN([-g has been added to CFLAGS (--enable-debug)])
     fi
 
-    # These flags are generally gcc-specific; even the
-    # gcc-impersonating compilers won't accept them.
+    # Snapshot the flags as they stand, which is before the picky
+    # warning flags are added (PMIX_SETUP_PICKY_COMPILERS) and before
+    # configure.ac restores the user's own -W flags.  What is left is
+    # the optimization and hardening flags without any warning flags --
+    # which is what the Python bindings need; see the comment on its
+    # only use, in bindings/python/Makefile.am.
     PMIX_CFLAGS_BEFORE_PICKY="$CFLAGS"
 
+    # The flags below are generally gcc-specific; even the
+    # gcc-impersonating compilers won't accept them.
+    #
     # Note: Some versions of clang (at least >= 3.5 -- perhaps
     # older versions, too?) and xlc with -g (v16.1, perhaps older)
     # will *warn* about -finline-functions, but still allow it.
@@ -413,6 +420,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
 
     PMIX_ENSURE_CONTAINS_OPTFLAGS("$PMIX_CFLAGS_BEFORE_PICKY")
     PMIX_CFLAGS_BEFORE_PICKY="$co_result"
+    AC_SUBST([PMIX_CFLAGS_BEFORE_PICKY])
 
     AC_MSG_CHECKING([for C optimization flags])
     PMIX_ENSURE_CONTAINS_OPTFLAGS(["$CFLAGS"])

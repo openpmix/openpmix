@@ -350,7 +350,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         # the first check, and all is fine.  :-)
 
         PMIX_CFLAGS_save=$CFLAGS
-        CFLAGS="$PMIX_CFLAGS_BEFORE_PICKY -Werror -ansi"
+        CFLAGS="$CFLAGS -Werror -ansi"
     fi
     AC_C_INLINE
     if test "$GCC" = "yes"; then

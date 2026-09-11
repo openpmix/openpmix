@@ -44,7 +44,7 @@ AC_DEFUN([PMIX_CHECK_VISIBILITY],[
 
         # Check using -fvisibility=hidden
         pmix_add=-fvisibility=hidden
-        CFLAGS="$PMIX_CFLAGS_BEFORE_PICKY $pmix_add -Werror"
+        CFLAGS="$CFLAGS $pmix_add -Werror"
 
         AC_MSG_CHECKING([if $CC supports $pmix_add])
         AC_LINK_IFELSE([AC_LANG_PROGRAM([[
