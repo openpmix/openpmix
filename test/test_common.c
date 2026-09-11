@@ -22,7 +22,7 @@
 #include <stdio.h>
 
 int pmix_test_verbose = 0;
-FILE *file;
+FILE *file = NULL;
 
 #define OUTPUT_MAX 1024
 char *pmix_test_output_prepare(const char *fmt, ...)
@@ -306,9 +306,9 @@ PMIX_CLASS_INSTANCE(key_replace_t, pmix_list_item_t, NULL, NULL);
 static int ns_id = -1;
 static fence_desc_t *fdesc = NULL;
 pmix_list_t *participants = NULL;
-pmix_list_t test_fences;
+pmix_list_t test_fences = PMIX_LIST_STATIC_INIT(test_fences);
 pmix_list_t *noise_range = NULL;
-pmix_list_t key_replace;
+pmix_list_t key_replace = PMIX_LIST_STATIC_INIT(key_replace);
 
 #define CHECK_STRTOL_VAL(val, str, store)    \
     do {                                     \
