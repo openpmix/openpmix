@@ -45,7 +45,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # the next `docker compose up`.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential gcc g++ make \
-        autoconf automake libtool m4 flex \
+        autoconf automake libtool m4 \
         perl python3 python3-dev python3-setuptools cython3 git \
         libevent-dev libhwloc-dev \
         zlib1g-dev libzstd-dev liblz4-dev \

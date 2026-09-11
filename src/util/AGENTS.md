@@ -15,14 +15,13 @@ are not repeated. This file covers what is specific to `src/util`.
 code** that the rest of PMIx builds on: argv/string/environment munging,
 path and filesystem helpers, the output/verbose subsystem, the
 `show_help` machinery, the command-line parser, network/interface
-utilities, the TMA-aware hash datastore helper, a flex-based keyval
+utilities, the TMA-aware hash datastore helper, the MCA parameter-file
 parser, shared-memory/virtual-memory helpers, an RNG, and profiling.
 
 Unlike `src/mca/*`, **this is not an MCA framework** — there are no
 components, no selection logic, no `configure.m4`. Everything here
-compiles into the convenience library `libpmix_util.la` (plus the
-`keyval/` sub-library `libpmixutilkeyval.la`), which is absorbed into
-`libpmix`. A change here therefore takes effect with a plain top-level
+compiles into the convenience library `libpmix_util.la`, which is
+absorbed into `libpmix`. A change here therefore takes effect with a plain top-level
 `make` from an already-configured tree; you only need
 `autogen.pl`/`configure` if you add or remove a source file (adding a
 file only needs `make`, which regenerates the `Makefile`).
@@ -44,7 +43,7 @@ interface list).
 | `pmix_string_copy.{c,h}` / `pmix_strnlen.h` | always-NUL-terminating bounded copy; `pmix_getline`; `PMIX_STRNLEN` | pure |
 | `pmix_basename.{c,h}` | OS-independent `basename`/`dirname` (fresh allocations) | pure |
 | `pmix_parse_options.{c,h}` | numeric range-string expansion (`"1,3-5"` → argv) | pure |
-| `pmix_keyval_parse.{c,h}` + `keyval/keyval_lex.l` | flex parser for `key = value` / `-mca` / `-x` config files | needs a temp file + callback |
+| `pmix_keyval_parse.{c,h}` | line parser for the `key = value` / `-mca` / `-x` MCA parameter files | needs a temp file + callback |
 | `pmix_cmd_line.{c,h}` | the `getopt_long`-based CLI parser used by `src/tools` | partial (see `util_cmd_line`) |
 | `pmix_output.{c,h}` | the generalized output/verbose stream subsystem (≤64 streams) | partial |
 | `pmix_show_help.{c,h}` + `pmix_show_help_content.c` + `convert-help.py` | help-message lookup/aggregation; content compiled from `help-*.txt` | partial |
@@ -1762,16 +1761,44 @@ exercise it *here*, force the guards as above, rebuild `libpmix` (not
 just the test — remove `<builddir>/src/util/pmix_printf.lo` first), and
 run `util_printf`.
 
-### `keyval/` — the flex lexer
+### `pmix_keyval_parse` — the MCA parameter file
 
-`keyval_lex.l` is the flex source; `keyval_lex.c` is a **generated build
-product** — never hand-edit it, edit the `.l` and let the build
-regenerate. `pmix_keyval_parse` drives it over a real `FILE*` under
-`keyval_mutex` with process-global scratch buffers.
+One `FILE*` read a line at a time, under `keyval_mutex`. A line is a
+`#`/`//`/block comment, a `name = value` pair, or one or more `-mca name
+value` / `-x NAME[=VALUE]` directives; only the first two forms are
+documented (see [`docs/mca.rst`](../../docs/mca.rst)), and the rest are
+kept because a file in the wild may use them.
 
-### `pmix_keyval_parse` — process-global state that outlives a run
+**This used to be a flex scanner (`src/util/keyval/keyval_lex.l`), and
+it was removed in September 2026** — with it went PMIx's only build-time
+dependency on flex. Nothing in the format needs a scanner: there is no
+nesting and no lookahead past the end of a line. What the scanner's
+longest-match and trailing-context rules *did* produce was four silent
+misreadings, each now pinned by a case in
+[`test/unit/util/util_keyval.c`](../../test/unit/util/util_keyval.c):
 
-Everything here is file-static: the key buffer, the lock, and `env_str`,
+- **A malformed name resumed parsing in the middle of its own line**, so
+  `a:b = 1` and `a+b = 1` quietly set the parameter `b`. A typo in a
+  name set some *other* parameter rather than being reported. A
+  malformed line is now dropped whole.
+- **A CRLF file left the carriage return on the end of every value** —
+  a parameter file edited on Windows set `mca_base_component_path` to a
+  path list with a `\r` on it. The line terminator is now stripped as
+  LF or CRLF.
+- **A quoted `-mca` value that ended a line was truncated** at the first
+  space inside the quotes, because the flex rule required whitespace
+  after the closing quote.
+- **A bare `-x NAME` as the last line of a file with no closing newline
+  lost its last character**, from the rule's trailing context.
+
+Two properties worth keeping. The name and value handed to the callback
+point into the parser's line buffer, which is reused on the next line, so
+a callback that keeps either one must copy it. And both character classes
+(`is_white`, `is_key_char`) are spelled out rather than handed to
+`isspace()`/`isalnum()`, so what a parameter file means cannot depend on
+the locale the process happens to be running in.
+
+The remaining file-static state is the lock and `env_str`,
 which is where the `-x FOO=bar` directives of *every* file parsed so far
 pile up. They are not delivered as they are read — they are accumulated
 into one `;`-separated string and handed over as a single pair named
@@ -1785,8 +1812,8 @@ that fails to parse, *before* it reaches the store; and
 `pmix_init_util()` — and therefore `pmix_util_keyval_parse_init()` — runs
 again in the same process. An `env_str` left standing is therefore not
 just a leak: the next run is handed the previous run's variables.
-`pmix_util_keyval_parse_finalize()` has to release it alongside the key
-buffer. `test_finalize_drops_pending_envars` in
+`pmix_util_keyval_parse_finalize()` has to release it.
+`test_finalize_drops_pending_envars` in
 [`test/unit/util/util_keyval.c`](../../test/unit/util/util_keyval.c) pins
 it.
 
@@ -1816,16 +1843,10 @@ Two more things the shape of this file invites:
   against itself. `save_value()` in `src/mca/base` does not; keep it that
   way.
 
-The `NULL != pmix_util_keyval_yytext` test in `parse_line_new` is dead —
-flex never leaves `yytext` NULL after a match, and the two
-`save_param_name`-style paths `strlen()` it unguarded — but it is
-harmless and is left alone.
-
 ## Build wiring
 
 - `Makefile.am` builds `noinst` `libpmix_util.la` from the `headers` +
-  `sources` lists and pulls in `keyval/libpmixutilkeyval.la` via
-  `LIBADD`. Adding a source means adding it to `sources` (and `headers`
+  `sources` lists. Adding a source means adding it to `sources` (and `headers`
   if it ships a public internal header, which are installed into
   `$(pmixincludedir)/src/util`).
 - `pmix_show_help_content.c` is generated by the `convert-help.py` rule
@@ -1947,7 +1968,9 @@ own commit. Recorded so they are not re-introduced by a future edit.
 - **`pmix_keyval_parse.c`.** `isspace()` on a possibly-negative `char`
   (project portability rule) → cast to `unsigned char`; `trim_name`'s
   suffix back-scan could step before the buffer on an all-whitespace
-  value → now bounded at `buffer`.
+  value → now bounded at `buffer`. Both functions have since been
+  replaced along with the flex scanner; see
+  [`pmix_keyval_parse`](#pmix_keyval_parse--the-mca-parameter-file).
 - **`pmix_shmem.c`.** `pmix_shmem_segment_create` sized the backing store
   as `pad_to_page(size + sizeof(header))`, but the data region starts a
   full page in (`data_addr_from_base` rounds the header up to a page), so
@@ -2020,5 +2043,4 @@ A second pass then cleared the remaining latent/robustness items:
 - Prefer a `make check`-able pure unit test over a manual check; the
   `test/unit/util` harness makes it cheap.
 - Regenerate `pmix_show_help_content.*` after touching any help text.
-- Don't hand-edit generated files (`pmix_show_help_content.c`,
-  `keyval/keyval_lex.c`).
+- Don't hand-edit generated files (`pmix_show_help_content.c`).

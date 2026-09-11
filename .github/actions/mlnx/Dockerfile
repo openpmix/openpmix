@@ -3,7 +3,7 @@ FROM almalinux:latest
 RUN \
     dnf install -y perl perl-Data-Dumper \
         python3 python3-pip zlib \
-        automake libtool flex make bzip2 git which rpm-build libevent-devel hwloc hwloc-devel
+        automake libtool make bzip2 git which rpm-build libevent-devel hwloc hwloc-devel
 
 COPY entrypoint.sh /entrypoint.sh
 
