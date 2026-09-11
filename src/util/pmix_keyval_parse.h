@@ -33,9 +33,10 @@ PMIX_EXPORT extern int pmix_util_keyval_parse_lineno;
  * Callback triggered for each key = value pair
  *
  * Callback triggered from pmix_util_keyval_parse for each key = value
- * pair.  Both key and value will be pointers into static buffers.
- * The buffers must not be free()ed and contents may be overwritten
- * immediately after the callback returns.  The \c file and \c lineno
+ * pair.  Both key and value point into the parser's own line buffer.
+ * They must not be free()ed, and their contents are overwritten as soon
+ * as the next line is read - so a callback that needs to keep either one
+ * must copy it.  The \c file and \c lineno
  * parameters identify where the pair came from, and \c cbdata is the
  * opaque pointer the caller handed to the parser - the callback must
  * take its context from these parameters rather than from any state
@@ -78,7 +79,7 @@ PMIX_EXPORT int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_f
  * Ready this file's process-global state (the serializing lock).
  * Must be called before the first pmix_util_keyval_parse(); paired
  * with pmix_util_keyval_parse_finalize(), which releases the lock and
- * every buffer accumulated since, and may be called again afterwards.
+ * the accumulated "-x" directives, and may be called again afterwards.
  */
 PMIX_EXPORT int pmix_util_keyval_parse_init(void);
 
