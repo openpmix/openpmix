@@ -53,6 +53,7 @@
  * and a non-zero exit status accompanies any FAIL.
  */
 
+#define _GNU_SOURCE
 #include <stdbool.h>
 
 #include <stdio.h>
