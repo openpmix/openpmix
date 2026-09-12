@@ -94,6 +94,26 @@ Highlights since v6.1.0
   called from within the PMIx progress thread, and reports which call it
   was; the affected man pages state the rule.
 
+* **MCA parameter files are read more carefully.** The flex scanner that
+  parsed them has been replaced by a line reader, closing four cases
+  where a file was silently misread: a malformed parameter name set some
+  *other* parameter instead of being reported, CRLF line endings left a
+  carriage return on the end of every value, a quoted ``-mca`` value that
+  ended a line was truncated at the first space inside the quotes, and a
+  final line with no closing newline lost its last character. A UTF-8
+  byte-order mark is now skipped rather than reported as an error.
+  Everything the old scanner accepted still parses the same way.
+
+* **Build.** ``flex`` is no longer a prerequisite, and the generated
+  scanner it produced is gone from the release tarball. The Python
+  bindings extension is now compiled with the optimization and hardening
+  flags the build environment supplied — it had been receiving none of
+  them — while still avoiding the picky warning flags that Cython's
+  generated source cannot survive. A build from a git checkout also
+  checks its objects for common symbols at install time, a class of
+  tentative definition that merges silently instead of being reported as
+  a duplicate and that causes link problems on macOS.
+
 * **Documentation.** The public API is now covered by man pages — 277 new
   pages — and ``docs/how-things-work`` gained descriptions of the modex,
   the shared-memory datastore, the transport layer, group construction,
