@@ -1267,6 +1267,23 @@ its `collect_type` flipped to `PMIX_COLLECT_INVALID`). It shows up
 against an *older* client, whose different startup timing widens the
 window, which is why the cross-version CI job is where it was caught.
 
+**A tracker the host already owns must not be *modified* either.**
+`pmix_server_connect` assembles the request between the tracker lookup
+and the `local_cbs` append: it drains the client's optional trailing
+blobs and adds this rank's own contribution, both through
+`add_trk_info`, which rebuilds `trk->info` and frees the old array. That
+array is the one this server passed to `pmix_host_server.connect`, and
+the host may read it until it calls back - so a late contributor freed
+it underneath the host. Worse, a failure anywhere in that stretch jumps
+to `trkerr`, which clears `host_called` and drives the completion:
+replies go out, the tracker is unlinked and released, and the host's
+eventual callback then runs `pmix_server_cnct_cbfunc` on freed memory.
+`test/unit/server_connect.c` reproduces that as a SIGSEGV. Hence the
+`if (!trk->host_called)` wrapper around the whole assembly. A late
+contributor loses nothing by being skipped: its contribution is built
+from `cd->peer->info`, and a clone shares its parent's
+`pmix_rank_info_t`, so it is exactly what the rank already sent.
+
 **A tracker the host already owns must not be completed again.**
 `pmix_server_get_tracker` matches on the participant set and the command,
 and `completion_fired` is the only state it refuses. That leaves the
@@ -1289,6 +1306,22 @@ whose `def_complete` is set, which a `host_called` tracker necessarily
 is. `test/unit/server_fence.c` pins this with a host stub that *accepts*
 the operation; a declining stub tears the tracker down on the spot and
 cannot reach the state at all.
+
+**A wire array can be SHORTER than the count that introduced it, and the
+unpack calls that SUCCESS.** `pmix_bfrops_base_unpack` reads the count
+stored ahead of an array and, when it is smaller than the storage
+offered, writes that smaller number back through `num_vals` and returns
+`PMIX_SUCCESS`. So the three collective handlers' `cnt = nprocs;
+PMIX_BFROPS_UNPACK(..., procs, &cnt, PMIX_PROC)` says nothing about how
+many procs actually arrived unless `cnt` is read back. Left unchecked,
+the tail of the array stays as `PMIX_PROC_CREATE` left it - an empty
+nspace, which `PMIX_CHECK_NSPACE` reads as a *wildcard* - so phantom
+participants go up to the host and match any peer
+`pmix_server_trk_peer_lost` walks; and in `pmix_server_connect` the
+undrained bytes are then read by the optional-trailer loop as
+directives and forwarded to the host. Every PMIx client back to v3.2
+packs both arrays in one call, so a conforming peer always agrees and
+the screen costs nothing.
 
 **Never build the modex bucket anywhere but `pmix_server_collect_data`.**
 `pmix_server_execute_collective` used to assemble it inline, and the copy

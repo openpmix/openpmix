@@ -1698,6 +1698,19 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     if (PMIX_SUCCESS != rc) {
         goto cleanup;
     }
+    /* The unpack reports SUCCESS when the array on the wire is SHORTER
+     * than the count that introduced it - it simply writes back how many
+     * it found. Hold the count against what arrived, or the shortfall is
+     * silently accepted: the trailing elements stay as PMIX_PROC_CREATE
+     * left them, and an empty nspace is what PMIX_CHECK_NSPACE reads as a
+     * wildcard, so those phantom participants go up to the host and match
+     * any peer the lost-connection sweep walks. Every PMIx client packs
+     * this array in one call, so a conforming peer always agrees. */
+    if ((size_t) cnt != nprocs) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        rc = PMIX_ERR_BAD_PARAM;
+        goto cleanup;
+    }
     /* sort the array */
     qsort(procs, nprocs, sizeof(pmix_proc_t), pmix_util_compare_proc);
 
@@ -1738,6 +1751,14 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
+            PMIX_INFO_FREE(info, ninfo);
+            goto cleanup;
+        }
+        /* held against what arrived, for the reason given at the proc
+         * array above */
+        if ((size_t) cnt != ninf) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            rc = PMIX_ERR_BAD_PARAM;
             PMIX_INFO_FREE(info, ninfo);
             goto cleanup;
         }
