@@ -547,8 +547,11 @@ The caddies (`pmix_ptl_sr_t`, `pmix_ptl_queue_t`, `pmix_pending_connection_t`,
 `cnct_hdlr_t`) all carry the mandatory `pmix_event_t ev` and retain the
 peer so it outlives the async hop, exactly as the top-level thread-safety
 rules require. The blocking file-wait paths (`pmix_ptl_base_parse_uri_file`,
-`check_server`) use a local `pmix_lock_t` + evtimer to sleep on the
-progress thread without spinning.
+`check_server`) pause through `retry_wait()`: an evtimer plus a local
+`pmix_lock_t` when the caller is some other thread, and a plain sleep
+when it is the progress thread itself — which it is for
+`PMIx_tool_attach_to_server`, and where a timer on its own loop could
+never fire. See [`base/AGENTS.md`](base/AGENTS.md).
 
 ## Directory layout
 
