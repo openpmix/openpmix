@@ -398,6 +398,15 @@ PMIX_EXPORT pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
                                                               void *cbdata);
 PMIX_EXPORT void pmix_server_execute_collective(int sd, short args, void *cbdata);
 
+/* Fail a collective that can no longer be completed: answer every local
+ * participant with the given status, then unlink and release the tracker.
+ * Every arm that abandons a tracker owes this - a tracker simply released
+ * hangs each participant parked on it, since the caddy destructor sends
+ * nothing. Implemented in pmix_server_registration.c beside
+ * pmix_server_execute_collective; also used by pmix_server_trk_peer_lost. */
+PMIX_EXPORT void pmix_server_fail_collective(pmix_server_trkr_t *trk,
+                                             pmix_status_t status);
+
 PMIX_EXPORT pmix_status_t pmix_server_initialize(void);
 
 /* Generic completion callback used by the blocking form of the public
