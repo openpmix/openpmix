@@ -134,12 +134,20 @@ pmix_status_t pmix_ptl_base_send_blocking(int sd, char *ptr, size_t size)
 }
 
 /*
- * A blocking recv on a non-blocking socket. Used to receive the small amount of connection
+ * A blocking recv. Used to receive the small amount of connection
  * information that identifies the peers endpoint.
+ *
+ * Every caller hands this a socket in blocking mode, and on such a socket
+ * EAGAIN/EWOULDBLOCK does not mean "no data yet": it is how recv() reports
+ * that an SO_RCVTIMEO expired. That is the only way a caller can bound the
+ * wait, so it has to come back as PMIX_ERR_TIMEOUT - retrying it silently
+ * turned every receive timeout into an unbounded wait. A socket that is
+ * genuinely non-blocking still cycles, as it always did.
  */
 pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
 {
     size_t cnt = 0;
+    int flags;
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                         "waiting for blocking recv of %" PRIsize_t " bytes", size);
@@ -157,11 +165,18 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
         /* handle errors */
         if (retval < 0) {
             if (EAGAIN == pmix_socket_errno || EWOULDBLOCK == pmix_socket_errno) {
+                flags = fcntl(sd, F_GETFL, 0);
+                if (0 <= flags && 0 == (flags & O_NONBLOCK)) {
+                    pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
+                                        "blocking_recv timed out after %" PRIsize_t
+                                        " of %" PRIsize_t " bytes", cnt, size);
+                    return PMIX_ERR_TIMEOUT;
+                }
                 /* just cycle and let it try again */
                 pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                                     "blocking_recv received error %d:%s from remote - cycling",
                                     pmix_socket_errno, strerror(pmix_socket_errno));
-		continue;
+                continue;
             }
             if (pmix_socket_errno != EINTR) {
                 /* If we overflow the listen backlog, it's

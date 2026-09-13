@@ -52,13 +52,14 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 5**
+**Deferred work — 6**
 
 * :ref:`todo-resolve-peers-wildcard`
 * :ref:`todo-get-pointer-values`
 * :ref:`todo-compress-length-prefix`
 * :ref:`todo-fabric-inventory`
 * :ref:`todo-server-genvars`
+* :ref:`todo-ptl-blocking-handshake`
 
 **Coverage gaps — 21.**  No CI race detector; the switchyard's
 out-of-memory and finalize-race arms; a multi-namespace
@@ -330,6 +331,34 @@ envar back out of children that have already been forked (it cannot).
 The comment above ``setup_fork_body`` used to assert that the registration
 path sets it; that has been corrected, and ``src/server/AGENTS.md`` says
 the read site is not evidence of a writer.
+
+.. _todo-ptl-blocking-handshake:
+
+A stalling peer still pauses the server for the connect-ack timeout
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/mca/ptl/base/ptl_base_connect.c`` (2026-09-13).
+A server reads each incoming connect-ack with blocking ``recv()`` calls on
+its progress thread, before the credential is checked.  It used to start
+the moment a connection was accepted, with no timeout, so one idle
+connection stopped the whole server indefinitely.  That is fixed: the
+listener now hands a socket to the handler only once it is readable, and
+the handler bounds each read with ``ptl_base_connect_ack_timeout``
+(default 5 seconds).  ``test/unit/ptl_stalled_peer.c`` pins both halves.
+
+**What remains:** a peer that sends *part* of a request and then stalls
+still gets the handler run, and still holds the progress thread — now for
+at most the timeout rather than forever.  Anything that can reach the
+listener can repeat that, stalling every client of the server for up to
+five seconds at a time.
+
+Closing it means not blocking at all: parse the connect-ack incrementally
+from read events, accumulating across callbacks, and hand the peer on
+only once the whole message is in.  That is a restructuring rather than a
+fix.  It touches ``pmix_ptl_base_connection_handler`` and the psec server
+handshakes, which make their own blocking reads on the same socket
+(``psec/dummy_handshake`` today, and any future handshake-model module).
+The connect-ack wire format itself would not change.
 
 Coverage gaps
 -------------

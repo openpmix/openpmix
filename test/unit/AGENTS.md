@@ -932,6 +932,36 @@ server collective. `jctrl_fn` in
 not is a legitimate configuration but not one this test can check, so a
 missing ID is reported as a failure rather than passing quietly.
 
+### `ptl_stalled_peer` — a server must outlast a peer that stops talking
+
+[`ptl_stalled_peer.c`](ptl_stalled_peer.c) brings up a real server, opens
+a raw TCP socket to its own listener, stalls it, and then makes a
+blocking server call that can only complete if the progress thread is
+still running. The server reads each connect-ack with blocking `recv()`
+calls on that thread, before any credential is checked, and it used to
+start the moment it accepted a connection with nothing bounding the read
+— so one idle connection stopped the whole server. See
+[`src/mca/ptl/base/AGENTS.md`](../../src/mca/ptl/base/AGENTS.md).
+
+Two changes fixed it, and the two cases are arranged so each one pins
+**one** of them:
+
+- the **idle** case runs with `ptl_base_connect_ack_timeout` set to 0,
+  i.e. no timeout at all. Only the listener's wait for readability can
+  pass it. Leave the timeout disabled there; with it on, the case would
+  pass for the timeout's sake and stop guarding the listener.
+- the **partial** case sends three bytes and stops, with a one-second
+  timeout. The handler has to run for that, so readability does not
+  help; it needs the receive timeout *and* `pmix_ptl_base_recv_blocking`
+  reporting its expiry rather than retrying it.
+
+Each was re-broken on its own and failed its own case and no other.
+
+Every case runs in a forked child with its own `alarm()`, so a regression
+is an exit status the parent reports rather than a hang of `make check`.
+The child sets the MCA parameter in its environment before
+`PMIx_server_init`, which is the only point the variable is read.
+
 ## Running
 
 ```sh
