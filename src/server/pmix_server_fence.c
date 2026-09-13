@@ -759,13 +759,19 @@ static void fence_timeout(int sd, short args, void *cbdata)
 
     pmix_output_verbose(2, pmix_server_globals.fence_output, "ALERT: fence timeout fired");
 
+    /* this timer has fired, so it is no longer armed. Clear the flag
+     * before anything else can return: every arm leaves through a
+     * different door, and one that kept the flag set would leave the
+     * tracker claiming an event is pending in libevent's heap when none
+     * is. */
+    trk->event_active = false;
+
     /* a completion already driven for this tracker owns it, and its
      * handler will unlink and release it. Every hand-off deletes this
      * timer, but a timer whose event is already queued fires anyway, so
      * this is the guard that makes that harmless rather than a second
      * completion of a tracker that is about to be freed. */
     if (trk->completion_fired) {
-        trk->event_active = false;
         return;
     }
 
@@ -778,7 +784,6 @@ static void fence_timeout(int sd, short args, void *cbdata)
      * ourselves - which means unlinking it from the collectives list first.
      * Being on that list is not a reference; releasing while still linked
      * leaves a dangling entry that the next sweep walks into. */
-    trk->event_active = false;
     pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
     PMIX_RELEASE(trk);
 }
@@ -1133,17 +1138,6 @@ void pmix_server_notify_gds_update(const char *nspace)
     }
 }
 
-/* Append this rank's unannounced deletions to its contribution.
- *
- * Each goes out as an entry whose value is PMIX_UNDEF, which every
- * receiving datastore reads as "this key is gone" - see
- * _hash_store_modex(). It has to be said rather than implied: the modex
- * is additive, so a contribution that merely stops carrying a key
- * removes nothing at the far end.
- *
- * Announced once. After that every server that took part has applied it,
- * and this rank's own store no longer has the key, so nothing will
- * re-introduce it. */
 /* Append one entry to a rank's modex log, taking a reference on the
  * kval. Called only from pmix_server_commit, which is what makes the log
  * a record of what the client has committed rather than of what it has
@@ -1688,6 +1682,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     ninfo = ninf + 2;
     PMIX_INFO_CREATE(info, ninfo);
     if (NULL == info) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         PMIX_PROC_FREE(procs, nprocs);
         return PMIX_ERR_NOMEM;
     }
@@ -2152,11 +2147,11 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
                     if (NULL != trk->op_cbfunc) {
                         trk->op_cbfunc(rc, trk);
                     }
-                } else if (PMIX_GROUP_CONSTRUCT_CMD == trk->type) {
-                    if (NULL != trk->op_cbfunc) {
-                        trk->op_cbfunc(rc, trk);
-                    }
                 }
+                /* there is deliberately no group arm: a group collective
+                 * is a grp_block_t on pmix_server_globals.grp_collectives,
+                 * never a tracker on this list, and its loss accounting is
+                 * pmix_server_grp_peer_lost() */
             } else {
                 /* The host has not been called, so we have to pass the
                  * call up or the global collective will hang. This is the
