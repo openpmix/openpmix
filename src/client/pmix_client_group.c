@@ -70,79 +70,25 @@ typedef struct {
     pmix_status_t status;
     size_t ref;
     char *grpid;
+    /* for the leader watch, the one process being watched: the leader whose
+     * loss would strand a pending PMIx_Group_join (see setup_leader_watch) */
     pmix_proc_t *members;
     size_t nmembers;
-    /* for the invite/join model: the concrete (wildcard-expanded) list of
-     * invited processes and two parallel per-member flags. "answered" marks
-     * that a member has responded definitively (accepted OR declined/
-     * terminated); the invitation resolves once every member has answered, or
-     * the timeout fires. "responded" marks the members that specifically
-     * ACCEPTED - those form the group. Whether a non-accepter is fatal depends
-     * on "optional" (the PMIX_GROUP_OPTIONAL directive): when set, participation
-     * is optional, so every non-accepter (a decliner, a terminated proc, or, on
-     * timeout, a non-responder) is reported to the leader via
-     * PMIX_GROUP_INVITE_FAILED and excluded, and the group forms on the reduced
-     * membership. When not set (the default), the construct is all-or-nothing:
-     * any non-accepter aborts it via PMIX_GROUP_CONSTRUCT_ABORT and no group
-     * forms. The timer bounds how long the leader waits, and is armed only when
-     * PMIX_TIMEOUT is provided. */
-    bool *responded;
-    bool *answered;
-    size_t nanswered;
-    bool optional;
     /* whether PMIX_GROUP_NOTIFY_TERMINATION was requested at construct time;
      * carried into the persistent pmix_group_t so it can be re-applied to the
      * later destruct (see add_group / PMIx_Group_destruct_nb). */
     bool notterm;
-    /* whether PMIX_GROUP_ASSIGN_CONTEXT_ID was requested, and the value the
-     * host assigned if it was. The invite/join method runs no server-side
-     * collective, so there is no group up-call for the host to answer -
-     * announce_step() asks for the ID with its own job-control request once
-     * the membership is known, and puts it in the completion event. SIZE_MAX
-     * means "none", which is what the group is announced with when the ID was
-     * not requested or the host could not provide one. */
-    bool assignid;
-    size_t ctxid;
-    /* Endpoint data contributed by the members, one PMIX_PROC_INFO_ARRAY
-     * each: our own if we are a member, plus whatever each acceptance
-     * carried. The leader assembles these and hands them back to everybody in
-     * the completion event, which is what gives an invite/join group the
-     * exchange PMIx_Group_construct gets from its collective.
-     *
-     * Allocated with nmembers+1 slots (every member may contribute, and the
-     * leader need not be among them) and filled to nendpts; the destructor
-     * frees the allocated count, not the fill. */
-    pmix_info_t *endpts;
-    size_t nendpts;
-    pmix_event_t ev;
-    bool timer_active;
+    /* set once a watch has completed its caller, so neither a second
+     * matching event nor the registration ack completes it again */
     bool completed;
     pmix_info_t *info;
     size_t ninfo;
     pmix_info_t *results;
     size_t nresults;
-    /* State of the outcome announcement (see announce_step). The
-     * announcement is a chain of non-blocking notifications run on the
-     * progress thread, so its position has to live somewhere that survives
-     * between them: astate is where the chain is, aidx walks the
-     * non-responders while reporting them, and ainfo holds the info array
-     * of the notification currently in flight - which must outlive the
-     * PMIx_Notify_event call that carries it. */
-    int astate;
-    size_t aidx;
-    pmix_info_t *ainfo;
-    size_t nainfo;
     pmix_op_cbfunc_t opcbfunc;
     pmix_info_cbfunc_t cbfunc;
     void *cbdata;
 } pmix_group_tracker_t;
-
-/* the announcement chain's states, in the order they are traversed */
-#define PMIX_GRP_ANNOUNCE_START    0
-#define PMIX_GRP_ANNOUNCE_FAILED   1
-#define PMIX_GRP_ANNOUNCE_CTXID    2
-#define PMIX_GRP_ANNOUNCE_COMPLETE 3
-#define PMIX_GRP_ANNOUNCE_DONE     4
 
 static void gtcon(pmix_group_tracker_t *p)
 {
@@ -152,25 +98,12 @@ static void gtcon(pmix_group_tracker_t *p)
     p->grpid = NULL;
     p->members = NULL;
     p->nmembers = 0;
-    p->responded = NULL;
-    p->answered = NULL;
-    p->nanswered = 0;
-    p->optional = false;
     p->notterm = false;
-    p->assignid = false;
-    p->ctxid = SIZE_MAX;
-    p->endpts = NULL;
-    p->nendpts = 0;
-    p->timer_active = false;
     p->completed = false;
     p->info = NULL;
     p->ninfo = 0;
     p->results = NULL;
     p->nresults = 0;
-    p->astate = PMIX_GRP_ANNOUNCE_START;
-    p->aidx = 0;
-    p->ainfo = NULL;
-    p->nainfo = 0;
     p->cbfunc = NULL;
     p->opcbfunc = NULL;
     p->cbdata = NULL;
@@ -181,26 +114,8 @@ static void gtdes(pmix_group_tracker_t *p)
     if (NULL != p->members) {
         PMIX_PROC_FREE(p->members, p->nmembers);
     }
-    if (NULL != p->responded) {
-        free(p->responded);
-        p->responded = NULL;
-    }
-    if (NULL != p->answered) {
-        free(p->answered);
-        p->answered = NULL;
-    }
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
-    }
-    if (NULL != p->endpts) {
-        /* freed against the count that was allocated, not the fill - see the
-         * member's comment */
-        PMIX_INFO_FREE(p->endpts, p->nmembers + 1);
-        p->endpts = NULL;
-        p->nendpts = 0;
-    }
-    if (NULL != p->ainfo) {
-        PMIX_INFO_FREE(p->ainfo, p->nainfo);
     }
     if (NULL != p->results) {
         PMIX_INFO_FREE(p->results, p->nresults);
@@ -229,7 +144,6 @@ static void invite_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                           pmix_buffer_t *buf, void *cbdata);
 static pmix_status_t setup_leader_watch(const char *grp, const pmix_proc_t *leader,
                                         pmix_info_cbfunc_t cbfunc, void *cbdata);
-static void watch_teardown(pmix_group_tracker_t *cb);
 
 static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                         pmix_release_cbfunc_t release_fn, void *release_cbdata);
@@ -910,36 +824,19 @@ done:
     return rc;
 }
 
-/* ---- announcing the outcome of an invitation ----------------------------
+/* ---- the invitation ------------------------------------------------------
  *
- * Once an invitation has resolved - every invitee answered, or the timeout
- * fired - the leader has to tell the participants what happened. If any
- * invitee failed to join (declined, terminated, or timed out) and
- * participation was not marked PMIX_GROUP_OPTIONAL, the construct is
- * all-or-nothing: abort it by notifying every invited participant with
- * PMIX_GROUP_CONSTRUCT_ABORT, and no group forms. Otherwise report each
- * non-responder to the leader via PMIX_GROUP_INVITE_FAILED and announce the
- * group to the members that accepted via PMIX_GROUP_CONSTRUCT_COMPLETE (only
- * sent to members; servers intercept it to update their membership lists).
- * The membership is the full invited list in the common case, or a reduced
- * list if some invitees declined, terminated, or timed out.
- *
- * This is a chain of *non-blocking* notifications, each step driven by the
- * completion of the one before it, all of it on the progress thread. It used
- * to be a straight-line function built out of blocking PMIx_Notify_event
- * calls, which meant it could only run on the caller's own thread after the
- * blocking PMIx_Group_invite woke - so PMIx_Group_invite_nb, which has no
- * such thread to borrow, never announced anything at all: no
- * PMIX_GROUP_INVITE_FAILED, no PMIX_GROUP_CONSTRUCT_COMPLETE, no
- * PMIX_GROUP_CONSTRUCT_ABORT, and therefore no group. Driving it from the
- * progress thread is what makes the non-blocking form work, and it is also
- * what lets a pending PMIx_Group_join complete at the point its man page
- * documents (see the leader watch below).
- *
- * The chain's position lives on the tracker (astate/aidx/ainfo) because
- * nothing else survives between the steps. Each notification's info array is
- * built on the heap into cb->ainfo and freed by the completion callback,
- * since it has to outlive the call that carries it. */
+ * Resolving an invitation - expanding the membership, collecting each
+ * invitee's answer, timing them out, and announcing the outcome as
+ * PMIX_GROUP_INVITE_FAILED / PMIX_GROUP_CONSTRUCT_COMPLETE /
+ * PMIX_GROUP_CONSTRUCT_ABORT - is the server's job, in
+ * pmix_server_group_invite(). The leader used to run all of it here, but it
+ * cannot assemble a member's endpoint contribution, not even its own: what a
+ * process has made public is what it has *committed*, and only its server
+ * knows that. So the two entry points below just hand the invitation over,
+ * and the leader learns the outcome the same way every other member does -
+ * from the completion event, through the watch armed at the end of
+ * PMIx_Group_invite_nb. */
 
 PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[], const pmix_proc_t procs[],
                                             size_t nprocs, const pmix_info_t info[], size_t ninfo,
