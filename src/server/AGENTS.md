@@ -1823,7 +1823,8 @@ the detach-and-release shape is still right is the follower/bootstrap
 arm, whose block is created for a single caller and holds exactly one
 caddy.
 
-For the same reason `_grpcbfunc` must never return early. Its block has
+For the same reason `_grpcbfunc` must never return early on a block whose
+participants have not been answered. Its block has
 `host_called` set, so nothing else in the tree will ever complete it —
 returning on a missing context ID or a `pmix_server_process_grpinfo`
 failure left the block on `grp_collectives` for the life of the server
@@ -1862,6 +1863,65 @@ once the thread-shift is certain: the `PMIX_NEW` failure above it leaves
 the block unclaimed and rescuable. This is the group family's spelling of
 the fence family's `completion_fired`.
 
+**A block handed to the host is owed exactly one completion, and the
+sweep that answers its siblings must not free it before that arrives.**
+A bootstrap or follower participant gets a block of its *own* (see
+`get_tracker`, which jumps straight to `newblock` for both), so several
+blocks carrying the same group id can sit on `grp_collectives` at once,
+each handed to the host separately. `_grpcbfunc` therefore answers every
+block matching the id rather than only `scd->blk` — it has to, because a
+host that treats them as one operation calls back only once, and the
+participants on the other blocks are waiting on a reply nothing else will
+send. PRRTE is such a host: `get_tracker` in its `grpcomm_group.c` keys on
+`{groupID, op}` and each up-call overwrites `coll->cbfunc`/`cbdata`, so
+only the last one is ever discharged.
+
+But the tri-state contract says the opposite for a host that honors it —
+`pmix_server_grp_fn_t` promises one callback per call, and
+`test/simple/simptest.c`'s `grp_fn` delivers exactly that. Freeing the
+siblings therefore did two things at once: it handed the host's `cbdata`
+back as a dangling pointer (`grpcbfunc` writes `blk->host_called` through
+it and `_grpcbfunc` `strdup`s `blk->id`), and it freed the `procs` and
+`directives` arrays the host is entitled to read until it calls back.
+`awaiting_host` records the debt and `answered` records that the
+participants have already been served: a swept block still owed a
+completion comes off the list but stays alive, and its own completion
+takes the early return at the top of `_grpcbfunc` and releases it. Against
+a coalescing host that completion never comes and the shell is stranded —
+which is the trade that had to be made, because the participants being
+answered is the part that cannot be given up. **This is the one early
+return `_grpcbfunc` is allowed** (see the rule below); every other one
+hangs the block's participants.
+
+**`check_definition_complete` counts the membership, and the membership
+is the first tracker's array.** The walk used to be over all of
+`blk->mbrs`, and every non-bootstrap participant hands us the same
+membership — so the moment more than one tracker was on the block when
+the definition first became computable, each of them re-counted every
+expected local proc and `nlocal` came out as (real count x participants).
+`grp_blk_locally_complete` then compares that against
+`len(mbrs) + len(departed)`, a target its own participants can never
+reach, and the block sat on `grp_collectives` for the life of the server
+with all of them blocked in `PMIx_Group_construct`.
+
+It only bites when the *first* participant could not settle the
+definition — an unregistered participant namespace, a namespace whose
+`nlocalprocs` is still `SIZE_MAX`, or one whose clients are not all
+registered — which is exactly the state `pmix_server_grp_check_pending`
+exists to resolve, and by then two or more trackers are on the block.
+That is why a single-participant test cannot see it.
+
+**Read the first tracker, not a de-duplicated union of all of them.**
+That is the same array `forward_to_host()` and `pmix_server_group()` hand
+to `pmix_host_server.group` as the group's membership, so any other
+choice has this predicate and the host disagreeing about who is in the
+group. It is also the only affordable one: a pairwise dedup across
+trackers is quadratic in (participants x membership), which for a group
+over a large job is not a constant factor but an unusable one. The fence
+family's twin of this guard is the `prev_nlocal == SIZE_MAX` test in
+`_register_nspace`; it needs nothing of the kind because a fence has one
+tracker per signature, not one per call.
+
 **`check_definition_complete` gives up on an unknown namespace, so
 something has to call it again.** It returns the moment it meets a
 participant namespace this server has not been told about, and for a long
@@ -1879,11 +1939,47 @@ the same two places. The completion tail it shares with
 `account_departed` lives in `forward_to_host()`; **a third path that
 discovers a block is locally complete must call that, not copy it.**
 
+**The invitation engine's host callback has to thread-shift like every
+other one.** `invite_ctxid_cb` receives the host's answer to the
+`PMIX_GROUP_ASSIGN_CONTEXT_ID` request it made through
+`pmix_host_server.job_control`, and everything it goes on to do is
+progress-thread state: `invite_broadcast` walks and unlinks
+`pmix_server_invites`, deletes the invitation's timer off the progress
+thread's event base, and releases the invitation. It used to do all of
+that on whatever thread the host called it from. It now reads the context
+id out of the array — which does not outlive the call — and shifts, and
+`invite_complete` holds a reference across the excursion, giving it back
+on the two arms where no callback is coming
+(`PMIX_OPERATION_SUCCEEDED` and an error). `grpcbfunc` right above it is
+the shape to copy.
+
+**The invitation list is not one of the `pmix_server_globals` lists, so
+finalize has to be told about it.** `pmix_server_invites` is a file-scope
+static behind `invites_initialized`, and `PMIx_server_finalize` destructs
+`grp_collectives` and nothing else — so an invitation still in flight
+leaked and, worse, carried into the next `PMIx_server_init` in the same
+process, where `find_invite()` answered `PMIX_ERR_EXISTS` for a group id
+belonging to a server generation that no longer exists.
+`pmix_server_grp_finalize()` is the counterpart, called beside that
+destruct.
+
+**`pmix_server_group_invite`'s `done:` label assumes the invitation never
+reached the list, and two paths reach it after it did.** Once
+`pmix_list_append(&pmix_server_invites, ...)` has run and the observer is
+registered, the plain `PMIX_RELEASE(inv)` there drops the reference the
+list owns while leaving the entry on it: the invitation answers nobody,
+its invitees are never told, and — with no `PMIX_TIMEOUT` armed, since the
+timer is the only other thing that could retire it — the group id is
+refused for the life of the server. Anything failing below the append
+must call `invite_done(inv)` and NULL the pointer, as the
+register-observer arm already did.
+
 Two things here are safe and look as though they should not be. A block
 handed to the host survives the call without any reference of its own —
 unlike the dmodex tracker above — because `host_called` is set before
 the up-call and `account_departed` skips any block carrying it, so
-`_grpcbfunc` is the only code that frees a block. And
+`_grpcbfunc` is the only code that frees a block (`awaiting_host` above
+is what keeps that true when several blocks share an id). And
 `notify_local_members_of_loss` hands a stack `pmix_info_t[2]` to
 `pmix_server_notify_client_of_event` and destructs it on the next line:
 that entry point deep-copies the array into its own caddy *before*
