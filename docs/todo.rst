@@ -202,8 +202,17 @@ participant per group.
 The leak is the deliberate half of the trade; answering the
 participants is the half that cannot be given up.  Closing it means
 PRRTE discharging every ``cbdata`` it is handed rather than overwriting
-it, which is a PRRTE change, so it is recorded here rather than worked
-around further.
+it — which is a PRRTE change, and one now written: its group tracker
+carries a list of pending completions instead of a single pair
+(``prte_grpcomm_grp_pending_t``).
+
+**The behavior on this side stays regardless**, and the entry stays with
+it.  A PMIx server has no way to ask a host which of the two it does,
+supports hosts other than PRRTE, and must interoperate back to v3.2 — so
+keeping a block alive until its own completion arrives is the only
+answer that is correct against both, and the sweep is what a
+once-answering host still needs.  What the PRRTE fix removes is the
+leak, not the requirement.
 
 .. _todo-resolve-peers-wildcard:
 
