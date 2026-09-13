@@ -246,7 +246,10 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
     }
 
     /* add this contributor to the tracker so they get
-     * notified when we are done */
+     * notified when we are done. Count its namespace first, in case the
+     * tracker was built before we had heard of it - see
+     * pmix_server_trk_join. */
+    pmix_server_trk_join(trk, cd->peer);
     pmix_list_append(&trk->local_cbs, &cd->super);
 
     /* if a timeout was specified, arm it once - guard against re-arming for
@@ -547,7 +550,10 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     }
 
     /* add this contributor to the tracker so they get
-     * notified when we are done */
+     * notified when we are done. Count its namespace first, in case the
+     * tracker was built before we had heard of it - see
+     * pmix_server_trk_join. */
+    pmix_server_trk_join(trk, cd->peer);
     pmix_list_append(&trk->local_cbs, &cd->super);
 
     /* if a timeout was specified, arm it once - guard against re-arming for
