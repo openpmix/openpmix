@@ -119,6 +119,16 @@ typedef struct pmix_ptl_module_t pmix_ptl_module_t;
 
 /*****    MACROS FOR EXECUTING PTL FUNCTIONS    *****/
 
+/* Each of the three send macros below reports through "r", and a
+ * non-success value always means nothing was queued: the caller still owns
+ * the buffer it passed and must release it, exactly as it already does for
+ * the finalized-peer case. That is why an allocation failure inside them is
+ * reported rather than ignored - writing through the NULL would take the
+ * whole process down (every local client with it, in a server) for one
+ * message that could not be queued. PMIX_QUEUE_REPLY in ptl_types.h answers
+ * the same way for the same reason. The "break" leaves the enclosing
+ * do/while(0), which is the whole macro. */
+
 /* (TWO-WAY) send a message to the peer, and get a response delivered
  * to the specified callback function. The buffer will be free'd
  * at the completion of the send, and the cbfunc will be called
@@ -131,6 +141,10 @@ typedef struct pmix_ptl_module_t pmix_ptl_module_t;
             (r) = PMIX_ERR_UNREACH;                        \
         } else {                                           \
             ms = PMIX_NEW(pmix_ptl_sr_t);                  \
+            if (PMIX_UNLIKELY(NULL == ms)) {               \
+                (r) = PMIX_ERR_NOMEM;                      \
+                break;                                     \
+            }                                              \
             PMIX_RETAIN(pr);                               \
             ms->peer = pr;                                 \
             ms->bfr = (b);                                 \
@@ -151,6 +165,10 @@ typedef struct pmix_ptl_module_t pmix_ptl_module_t;
             (r) = PMIX_ERR_UNREACH;                  \
         } else {                                     \
             q = PMIX_NEW(pmix_ptl_queue_t);          \
+            if (PMIX_UNLIKELY(NULL == q)) {          \
+                (r) = PMIX_ERR_NOMEM;                \
+                break;                               \
+            }                                        \
             PMIX_RETAIN(pr);                         \
             q->peer = pr;                            \
             q->buf = (b);                            \
@@ -186,6 +204,10 @@ typedef struct pmix_ptl_module_t pmix_ptl_module_t;
             (r) = PMIX_ERR_UNREACH;                  \
         } else {                                     \
             q = PMIX_NEW(pmix_ptl_queue_t);          \
+            if (PMIX_UNLIKELY(NULL == q)) {          \
+                (r) = PMIX_ERR_NOMEM;                \
+                break;                               \
+            }                                        \
             PMIX_RETAIN(pr);                         \
             q->peer = pr;                            \
             q->buf = (b);                            \
