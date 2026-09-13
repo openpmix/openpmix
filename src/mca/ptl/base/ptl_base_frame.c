@@ -110,7 +110,8 @@ pmix_ptl_base_t pmix_ptl_base = {
     .max_retries = 0,
     .wait_to_connect = 0,
     .handshake_wait_time = 0,
-    .handshake_max_retries = 0
+    .handshake_max_retries = 0,
+    .connect_ack_timeout = 5
 };
 int pmix_ptl_base_output = -1;
 pmix_ptl_module_t pmix_ptl = {
@@ -274,6 +275,13 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      &pmix_ptl_base.handshake_max_retries);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_max_retries",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    (void) pmix_mca_base_var_register("pmix", "ptl", "base", "connect_ack_timeout",
+                                      "Number of seconds a server waits for the rest of an incoming "
+                                      "connection request once it has started to arrive, before "
+                                      "dropping the connection (0 = wait indefinitely)",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_ptl_base.connect_ack_timeout);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "report_uri",
                                      "Output URI [- => stdout, + => stderr, or filename]",
