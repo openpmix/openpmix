@@ -559,6 +559,8 @@ static void server_teardown(void)
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.psets);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.grp_collectives);
+    /* the group invitation list is private to pmix_server_group.c */
+    pmix_server_grp_finalize();
 
     /* NULL each of these as it goes: they are file-scope statics that
      * outlive the library, and pmix_server_initialize() is the only thing
