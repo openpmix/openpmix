@@ -139,29 +139,38 @@ TESTS = \
 
 ##########################
 
+# Every program here is linked -no-fast-install. They are only ever run
+# out of the build tree, and the tests start several copies of one at
+# once (simptest -n 4 forking its clients, or several run_*.pl drivers
+# each starting simptest). A fast-install libtool wrapper relinks
+# .libs/lt-PROG the first time it runs; concurrent first runs relink and
+# swap that file under each other, so one copy can pass the wrapper's
+# existence check and then fail to exec it. -no-fast-install links the
+# build-tree binary directly, leaving the wrapper nothing to relink.
+
 noinst_PROGRAMS += pmix_test pmix_client pmix_regex pmix_environ
 
 pmix_test_SOURCES = $(headers) \
         pmix_test.c test_common.c cli_stages.c server_callbacks.c test_server.c utils.c
-pmix_test_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pmix_test_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 pmix_test_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 pmix_client_SOURCES = $(headers) \
         pmix_client.c test_fence.c test_common.c test_publish.c test_spawn.c \
         test_cd.c test_resolve_peers.c test_error.c test_replace.c test_internal.c
-pmix_client_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pmix_client_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 pmix_client_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 pmix_regex_SOURCES = $(headers) \
         pmix_regex.c test_common.c cli_stages.c server_callbacks.c test_server.c utils.c
-pmix_regex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pmix_regex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 pmix_regex_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 pmix_environ_SOURCES = pmix_environ.c
-pmix_environ_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pmix_environ_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 pmix_environ_LDADD = $(top_builddir)/src/libpmix.la
 
 EXTRA_DIST = $(noinst_SCRIPTS) pmix_test_env.sh.in
