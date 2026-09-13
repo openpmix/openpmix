@@ -288,7 +288,7 @@ steady-state events.
 The discovery matrix in `connect_to_peer` is the bulk of that file: a
 caller-specified connection **order**, an explicit URI, a rendezvous or
 attachment file, a server pid, a server nspace, or a directory search of
-the session tmpdir. Two things to keep straight:
+the session tmpdir. Things to keep straight:
 
 - **Every branch must produce a URI before jumping to `complete:`.**
   Falling through with a NULL `suri` reaches `setup_connection`, which
