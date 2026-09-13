@@ -85,18 +85,19 @@ static void collective_timeout(int sd, short args, void *cbdata)
                         "ALERT: %s timeout fired",
                         (PMIX_CONNECTNB_CMD == trk->type) ? "connect" : "disconnect");
 
+    /* the timer has fired, so it is no longer armed, and the completion
+     * and the tracker destructor both read this to decide whether they
+     * still owe libevent a delete. Clear it once, before any arm can
+     * return - see the matching line in fence_timeout */
+    trk->event_active = false;
+
     /* already spoken for - see the matching guard in fence_timeout */
     if (trk->completion_fired) {
-        trk->event_active = false;
         return;
     }
 
-    /* execute the provided callback function with the error. Clear the
-     * flag first: the timer has fired, so it is no longer armed, and the
-     * completion and the tracker destructor both read this to decide
-     * whether they still owe libevent a delete */
+    /* execute the provided callback function with the error */
     if (NULL != trk->op_cbfunc) {
-        trk->event_active = false;
         trk->op_cbfunc(PMIX_ERR_TIMEOUT, trk);
         return; // the cbfunc will have cleaned up the tracker
     }
@@ -104,7 +105,6 @@ static void collective_timeout(int sd, short args, void *cbdata)
      * ourselves - which means unlinking it from the collectives list first.
      * Being on that list is not a reference; releasing while still linked
      * leaves a dangling entry that the next sweep walks into. */
-    trk->event_active = false;
     pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
     PMIX_RELEASE(trk);
 }
