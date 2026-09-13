@@ -1873,8 +1873,12 @@ block matching the id rather than only `scd->blk` — it has to, because a
 host that treats them as one operation calls back only once, and the
 participants on the other blocks are waiting on a reply nothing else will
 send. PRRTE is such a host: `get_tracker` in its `grpcomm_group.c` keys on
-`{groupID, op}` and each up-call overwrites `coll->cbfunc`/`cbdata`, so
-only the last one is ever discharged.
+`{groupID, op}` and each up-call overwrote `coll->cbfunc`/`cbdata`, so
+only the last one was ever discharged. That has been fixed on the PRRTE
+side — its tracker now carries a list of pending completions — but the
+behavior here does not depend on it and must not: a server cannot ask a
+host which of the two it does, supports hosts other than PRRTE, and has
+to interoperate back to v3.2.
 
 But the tri-state contract says the opposite for a host that honors it —
 `pmix_server_grp_fn_t` promises one callback per call, and
