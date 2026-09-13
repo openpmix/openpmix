@@ -229,6 +229,7 @@ static void invite_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                           pmix_buffer_t *buf, void *cbdata);
 static pmix_status_t setup_leader_watch(const char *grp, const pmix_proc_t *leader,
                                         pmix_info_cbfunc_t cbfunc, void *cbdata);
+static void watch_teardown(pmix_group_tracker_t *cb);
 
 static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                         pmix_release_cbfunc_t release_fn, void *release_cbdata);
@@ -593,6 +594,15 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
 
     // send any data to our server
     msg = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(NULL == msg)) {
+        /* PMIX_BFROPS_PACK reads (b)->type in the macro body before it
+         * reaches any pack routine, so a NULL buffer faults here rather
+         * than being reported - every allocation of one has to be checked */
+        if (NULL != rgs) {
+            PMIX_PROC_FREE(rgs, nrg);
+        }
+        return PMIX_ERR_NOMEM;
+    }
     if (NULL != rgs) {
         rc = construct_msg(msg, grp, rgs, nrg, info, ninfo);
         PMIX_PROC_FREE(rgs, nrg);
@@ -609,9 +619,20 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_group_tracker_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        PMIX_RELEASE(msg);
+        return PMIX_ERR_NOMEM;
+    }
     cb->cbfunc = cbfunc;
     cb->cbdata = cbdata;
+    /* construct_cbfunc hands this to add_group(), which strcmp's it against
+     * every group on the list and strdup's it into the new one */
     cb->grpid = strdup(grp);
+    if (PMIX_UNLIKELY(NULL == cb->grpid)) {
+        PMIX_RELEASE(cb);
+        PMIX_RELEASE(msg);
+        return PMIX_ERR_NOMEM;
+    }
     /* Capture the group's failure policy while we still have the construct
      * directives, so construct_cbfunc can record it in the persistent group
      * and the later destruct can re-apply PMIX_GROUP_NOTIFY_TERMINATION on
@@ -780,6 +801,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
             bool flag = true;
             ndinfo = ninfo + 1;
             PMIX_INFO_CREATE(dinfo, ndinfo);
+            if (PMIX_UNLIKELY(NULL == dinfo)) {
+                if (NULL != mbrs) {
+                    PMIX_PROC_FREE(mbrs, nmbrs);
+                }
+                return PMIX_ERR_NOMEM;
+            }
             for (n = 0; n < ninfo; n++) {
                 PMIX_INFO_XFER(&dinfo[n], (pmix_info_t *) &info[n]);
             }
@@ -789,6 +816,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
     }
 
     msg = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(NULL == msg)) {
+        /* PMIX_BFROPS_PACK reads (b)->type in the macro body, so the pack
+         * below would fault rather than report - see PMIx_Group_construct_nb */
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -845,9 +878,18 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
      * recv routine so we know which callback to use when
      * the return message is recvd */
     cb = PMIX_NEW(pmix_group_tracker_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
     cb->opcbfunc = cbfunc;
     cb->cbdata = cbdata;
     cb->grpid  = strdup(grpid);
+    if (PMIX_UNLIKELY(NULL == cb->grpid)) {
+        PMIX_RELEASE(cb);
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, destruct_cbfunc, (void *) cb);
@@ -1021,7 +1063,16 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
      * member does, from the completion event. */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
-            PMIx_Value_get_number(&info[n].value, &timeout, PMIX_UINT32);
+            /* A value that will not convert is reported, not dropped. Left
+             * silent it becomes a timeout of zero, which is "no bound" - an
+             * unbounded wait produced by the very directive asked for to
+             * prevent one, with nothing said anywhere. The server's group
+             * handler and the fence and connect families all reject it. */
+            rc = PMIx_Value_get_number(&info[n].value, &timeout, PMIX_UINT32);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_OPTIONAL)) {
             optional = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ASSIGN_CONTEXT_ID)) {
@@ -1060,26 +1111,54 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
         return rc;
     }
 
-    /* Arm the watch that completes this call before the request goes out -
-     * the outcome comes back as an event and could otherwise beat the
-     * registration. Watching ourselves as "leader" is deliberate: the watch
-     * completes on the construct's outcome, and its leader-failure arm has
-     * nothing to fire on when the leader is us. */
-    rc = setup_leader_watch(grp, &pmix_globals.myid, cbfunc, cbdata);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        PMIX_RELEASE(msg);
-        return rc;
-    }
-
     cb = PMIX_NEW(pmix_group_tracker_t);
     if (PMIX_UNLIKELY(NULL == cb)) {
         PMIX_RELEASE(msg);
         return PMIX_ERR_NOMEM;
     }
+
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, invite_cbfunc, (void *) cb);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        /* nothing was sent, so nothing will complete - and an error return
+         * from an _nb entry point means no callback is coming */
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
+        return rc;
+    }
+
+    /* Arm the watch that completes this call, now that the request is away
+     * and nothing that can fail is left - the shape PMIx_Group_join_nb uses,
+     * and for the same reason. An armed watch holds the caller's
+     * cbfunc/cbdata and fires on any matching construct event, so a failure
+     * that returned with it still registered would call back into an object
+     * the caller was told no callback was coming for - for the blocking
+     * form, a tracker on a stack frame that has since returned. Taking it
+     * back down from here instead is not a way out: the watch is owned by
+     * the progress thread from the moment it is armed, and an entry point
+     * that reached into it would be racing the registration ack and the
+     * observer itself for cb->ref and cb->completed.
+     *
+     * Arming after the send cannot lose the outcome. Both operations only
+     * queue work on the progress thread - PMIX_PTL_SEND_RECV thread-shifts
+     * the send, and pmix_event_register_observer thread-shifts the
+     * registration - so the registration is already active on that event
+     * base before the invitation has even been written to the socket. Any
+     * inbound event is delivered by that same thread, in a callback that
+     * cannot run until the registration ahead of it has, and it cannot be
+     * pending at all before the send it answers. The outcome also needs our
+     * server to expand the membership, invite every member and collect
+     * their answers first. Should it somehow arrive early anyway, the
+     * registration replays matching cached notifications as it completes.
+     *
+     * Watching ourselves as "leader" is deliberate: the watch completes on
+     * the construct's outcome, and its leader-failure arm has nothing to
+     * fire on when the leader is us. */
+    rc = setup_leader_watch(grp, &pmix_globals.myid, cbfunc, cbdata);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        /* with no watch nothing would ever complete the caller, so report
+         * the failure through the return value instead - which, as above,
+         * means no callback is coming */
+        PMIX_ERROR_LOG(rc);
     }
     return rc;
 }
@@ -1351,9 +1430,15 @@ static void watch_regcb(pmix_status_t status, size_t refid, void *cbdata)
  * thread. Ownership of the tracker passes to the observer registry, which
  * discharges watch_relcb on every exit including finalize.
  *
- * Returns PMIX_SUCCESS only if the watch was accepted, because the caller
- * hands it responsibility for completing the join: if this fails the caller
- * must complete the join itself rather than leave it pending forever. */
+ * Returns an error only if the watch could not be handed to the registry at
+ * all, because the caller hands it responsibility for completing the join:
+ * if this fails the caller must complete the join itself rather than leave
+ * it pending forever. Note that PMIX_SUCCESS here means the registration was
+ * accepted for processing, not that it has completed - it thread-shifts, and
+ * whether the observer was really installed is reported later to
+ * watch_regcb. There is no failure of that second step to report to a
+ * caller that has already returned, which is the other reason this must be
+ * the last thing an entry point does. */
 static pmix_status_t setup_leader_watch(const char *grp, const pmix_proc_t *leader,
                                         pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
@@ -1372,7 +1457,13 @@ static pmix_status_t setup_leader_watch(const char *grp, const pmix_proc_t *lead
     if (PMIX_UNLIKELY(NULL == cb)) {
         return PMIX_ERR_NOMEM;
     }
+    /* leader_watch_observer strcmp's this against the group id every
+     * matching event names, without a NULL check of its own */
     cb->grpid = strdup(grp);
+    if (PMIX_UNLIKELY(NULL == cb->grpid)) {
+        PMIX_RELEASE(cb);
+        return PMIX_ERR_NOMEM;
+    }
     PMIX_PROC_CREATE(cb->members, 1);
     if (PMIX_UNLIKELY(NULL == cb->members)) {
         PMIX_RELEASE(cb);
@@ -1720,6 +1811,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
     }
 
     cb = PMIX_NEW(pmix_group_tracker_t);
+    if (PMIX_UNLIKELY(NULL == cb)) {
+        return PMIX_ERR_NOMEM;
+    }
     cb->opcbfunc = cbfunc;
     cb->cbdata = cbdata;
 
@@ -2033,6 +2127,26 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     }
 
 report:
+    /* Record the group locally before anything else, and before anything
+     * else can fail. This must happen on the completion path shared by both
+     * forms of the API, and not in the callback the blocking wrapper
+     * installs - a caller of PMIx_Group_construct_nb supplies its own
+     * callback, and would otherwise never get the group registered, leaving
+     * every subsequent leave/destruct to fail with PMIX_ERR_NOT_FOUND.
+     *
+     * It also has to come ahead of the results assembly below, whose every
+     * failure path jumps to "done". Those failures are not reported to the
+     * caller - "ret" is what it sees, and the construct did succeed - so
+     * skipping the registration on the way past left the caller told its
+     * group was built while nothing here knew about it, with the same
+     * PMIX_ERR_NOT_FOUND waiting for it later. */
+    if (PMIX_SUCCESS == ret && NULL != members) {
+        rc = add_group(cb->grpid, ctxid, cb->notterm, members, nmembers);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+
     ilist = PMIx_Info_list_start();
 
     rc = PMIx_Info_list_add(ilist, PMIX_GROUP_ID, cb->grpid, PMIX_STRING);
@@ -2066,16 +2180,6 @@ report:
         cb->ninfo = darray.size;
     }
     PMIx_Info_list_release(ilist);
-
-    /* record the group locally now that its construction has succeeded.
-     * This must happen here, on the completion path shared by both forms
-     * of the API, and not in the callback the blocking wrapper installs -
-     * a caller of PMIx_Group_construct_nb supplies its own callback, and
-     * would otherwise never get the group registered, leaving every
-     * subsequent leave/destruct to fail with PMIX_ERR_NOT_FOUND */
-    if (PMIX_SUCCESS == ret && NULL != members) {
-        add_group(cb->grpid, ctxid, cb->notterm, members, nmembers);
-    }
 
 done:
     if (NULL != members) {
@@ -2255,7 +2359,13 @@ static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
         }
     }
     if (NULL != members && NULL != grpid) {
-        add_group(grpid, ctxid, cb->notterm, members, nmembers);
+        rc = add_group(grpid, ctxid, cb->notterm, members, nmembers);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            /* the group is formed either way; failing to record it here is
+             * what makes the later leave/destruct report PMIX_ERR_NOT_FOUND,
+             * so it must not pass silently */
+            PMIX_ERROR_LOG(rc);
+        }
     }
 
     if (NULL != release_fn) {
