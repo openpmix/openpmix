@@ -865,6 +865,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                 return rc;
             }
         } else {
+            /* connect_to_peer hands back whatever URI it had got as far as
+             * on a failure too - see the note in pmix_tool_retry_attach */
+            if (NULL != suri) {
+                free(suri);
+                suri = NULL;
+            }
             /* if connection wasn't optional, then error out */
             if (!connect_optional) {
                 return rc;
