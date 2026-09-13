@@ -42,6 +42,7 @@
 #include "include/pmix_server.h"
 #include "include/pmix_tool.h"
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -172,6 +173,66 @@ static void check_empty_order(const char *order)
     }
 }
 
+/* PMIx_tool_attach_to_server runs the connection on the progress thread,
+ * and the wait for a connection file that does not exist yet used to
+ * park that thread on a lock only its own event loop could release - a
+ * deadlock that took the caller with it. The attach must come back (with
+ * an error: there is nothing to attach to), and it must not need the
+ * alarm to do it. Child arrangement as above, for the same reason. */
+static void attach_alarm(int sig)
+{
+    (void) sig;
+    _exit(3);
+}
+
+static int missing_attach_child(void)
+{
+    pmix_proc_t myproc, server;
+    pmix_info_t tinfo, ainfo[2];
+    pmix_status_t rc;
+    bool optional = false;
+
+    PMIX_INFO_LOAD(&tinfo, PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
+    rc = PMIx_tool_init(&myproc, &tinfo, 1);
+    PMIX_INFO_DESTRUCT(&tinfo);
+    if (PMIX_SUCCESS != rc) {
+        return 2;
+    }
+    PMIX_INFO_LOAD(&ainfo[0], PMIX_TOOL_ATTACHMENT_FILE,
+                   "/nonexistent/pmix-tool-api-attach", PMIX_STRING);
+    PMIX_INFO_LOAD(&ainfo[1], PMIX_TOOL_CONNECT_OPTIONAL, &optional, PMIX_BOOL);
+    signal(SIGALRM, attach_alarm);
+    alarm(8);
+    (void) PMIx_tool_attach_to_server(NULL, &server, ainfo, 2);
+    alarm(0);
+    PMIx_tool_finalize();
+    return 0;
+}
+
+static void check_missing_attach(void)
+{
+    const char *name = "attach to a missing, required attachment file returns";
+    pid_t child;
+    int status = 0;
+
+    child = fork();
+    if (0 > child) {
+        report(name, 0, "fork failed");
+        return;
+    }
+    if (0 == child) {
+        _exit(missing_attach_child());
+    }
+    waitpid(child, &status, 0);
+    if (!WIFEXITED(status)) {
+        report(name, 0, "the tool died on a signal");
+    } else if (3 == WEXITSTATUS(status)) {
+        report(name, 0, "the attach never returned - the progress thread deadlocked");
+    } else {
+        report(name, 0 == WEXITSTATUS(status), "the child could not set up");
+    }
+}
+
 /* elapsed seconds between two gettimeofday samples */
 static double elapsed(struct timeval *start, struct timeval *end)
 {
@@ -223,6 +284,7 @@ int main(int argc, char **argv)
     check_bad_directive(PMIX_SYSTEM_TMPDIR);
     check_empty_order("");
     check_empty_order(",");
+    check_missing_attach();
 
     PMIX_INFO_LOAD(&tinfo, PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
     rc = PMIx_tool_init(&myproc, &tinfo, 1);
