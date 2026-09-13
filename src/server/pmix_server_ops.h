@@ -676,6 +676,12 @@ PMIX_EXPORT void pmix_server_grp_member_left(const char *grpid, const pmix_proc_
  * of pmix_pending_nspace_requests, called from the same two sites. */
 PMIX_EXPORT void pmix_server_grp_check_pending(void);
 
+/* Drop any group invitation still in flight. The invitation list is
+ * private to pmix_server_group.c and is not one of the pmix_server_globals
+ * lists PMIx_server_finalize destructs, so it needs its own teardown or it
+ * carries into the next PMIx_server_init in this process. */
+PMIX_EXPORT void pmix_server_grp_finalize(void);
+
 /* Does this entry belong somewhere other than a job's own job-level
  * table - a map, a realm array, a programming-model key, or a lone key
  * naming the session, node or app realm?
