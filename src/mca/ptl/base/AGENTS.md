@@ -311,6 +311,22 @@ the session tmpdir. Two things to keep straight:
 - **A list-valued directive may split to nothing.** `PMIx_Argv_split`
   returns NULL for `""` and `","`, so a `PMIX_CONNECTION_ORDER` of either
   used to fault indexing the result. An empty order means no preference.
+- **Every directive `connect_to_peer` reads is screened for its type
+  first.** They come straight from the caller of `PMIx_tool_init` or
+  `PMIx_tool_attach_to_server`, and the string ones used to be read out
+  of the union as pointers whatever they held — a `bool` in
+  `PMIX_SERVER_URI`, `PMIX_TCP_URI`, `PMIX_TOOL_ATTACHMENT_FILE`,
+  `PMIX_SERVER_NSPACE` or `PMIX_CONNECTION_ORDER` was a SIGSEGV. Use
+  `is_string_value()` for a string and `PMIx_Value_get_number()` for a
+  number, and leave through `badinput:`, which is the single exit for
+  anything that fails before the info array is built. A copy that fails
+  there must fail the call too: losing the copy of a URI or an
+  attachment file does not stop anything, it silently falls through to
+  discovery and can attach the tool to a different server than the one
+  it named. `test/unit/tool_api.c` sends each of these a `bool`.
+- **`connect_to_peer` hands back `*suriout` on every path**, failure
+  included, so every caller frees it whether or not the connection was
+  made.
 
 ## Steady state
 
