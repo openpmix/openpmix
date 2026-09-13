@@ -1229,23 +1229,6 @@ bailout:
     return rc;
 }
 
-/* we are being called from the PMIx server's switchyard function,
- * which means we are in an event and can access global data */
-/* A client's response to an invitation, arriving as PMIX_GROUP_JOIN_CMD.
- *
- * The client used to raise this event itself, attaching its endpoint data
- * from its own store. It cannot do that correctly: what a process has made
- * public is what it has *committed*, and only its server knows that - the
- * client's store holds everything it ever put, committed or not, plus
- * whatever arrived by other routes. So the response comes here instead, we
- * attach the contribution from the rank's modex log, and we raise the event
- * naming the client as its source. The leader receives exactly the event it
- * received before.
- *
- * Runs on the progress thread, so the notification goes out through the
- * internal path rather than the public PMIx_Notify_event, which cannot be
- * called from here - the same rule notify_local_members_of_loss() follows. */
-
 /* ==================================================================
  * Invitation tracking
  *
@@ -1839,6 +1822,7 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
     char *grpid = NULL;
     pmix_proc_t *procs = NULL;
     size_t nprocs = 0, n, i;
+    uint32_t k;
     uint32_t timeout = 0;
     bool optional = false, assignid = false, haveendpts = false;
     pmix_server_invite_t *inv = NULL;
@@ -1978,8 +1962,8 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
                 rc = PMIX_ERR_BAD_PARAM;
                 goto done;
             }
-            for (cnt = 0; (uint32_t) cnt < nptr->nprocs; cnt++) {
-                PMIX_LOAD_PROCID(&inv->members[i], procs[n].nspace, (pmix_rank_t) cnt);
+            for (k = 0; k < nptr->nprocs; k++) {
+                PMIX_LOAD_PROCID(&inv->members[i], procs[n].nspace, (pmix_rank_t) k);
                 ++i;
             }
         } else {
@@ -2109,6 +2093,21 @@ done:
     return PMIX_SUCCESS;
 }
 
+/* A client's response to an invitation, arriving as PMIX_GROUP_JOIN_CMD.
+ *
+ * The client used to raise this event itself, attaching its endpoint data
+ * from its own store. It cannot do that correctly: what a process has made
+ * public is what it has *committed*, and only its server knows that - the
+ * client's store holds everything it ever put, committed or not, plus
+ * whatever arrived by other routes. So the response comes here instead, we
+ * attach the contribution from the rank's modex log, and we raise the event
+ * naming the client as its source. The leader receives exactly the event it
+ * received before.
+ *
+ * Called from the switchyard, so we are on the progress thread and can
+ * access global data - and the notification goes out through the internal
+ * path rather than the public PMIx_Notify_event, which cannot be called
+ * from here - the same rule notify_local_members_of_loss() follows. */
 pmix_status_t pmix_server_group_join(pmix_server_caddy_t *cd,
                                      pmix_buffer_t *buf,
                                      pmix_op_cbfunc_t cbfunc)
