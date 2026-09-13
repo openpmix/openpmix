@@ -360,6 +360,20 @@ handshakes, which make their own blocking reads on the same socket
 (``psec/dummy_handshake`` today, and any future handshake-model module).
 The connect-ack wire format itself would not change.
 
+**The connecting side has the mirror image.**
+``PMIx_tool_attach_to_server`` runs ``pmix_ptl_base_connect_to_peer`` on
+the progress thread (``pmix_tool_retry_attach`` is a thread-shift
+handler), so the blocking ``connect()`` and the wait for the server's
+reply both hold that thread.  The reply wait is bounded only by
+``ptl_base_handshake_wait_time``, whose default of 0 means no bound: an
+attach to a server that accepts the connection and never answers pins
+the tool's progress thread indefinitely.  Setting the parameter does
+bound it — it did not before ``pmix_ptl_base_recv_blocking`` stopped
+retrying the expired timeout — but nothing sets it by default.  The
+complete answer is the same shape as above, on the other side: an
+attach that connects and handshakes asynchronously instead of from
+inside a thread-shift handler.
+
 Coverage gaps
 -------------
 
@@ -468,19 +482,23 @@ Coverage gaps
   capped monitor), because a request can be given an allowance no run
   can spend; there is no equivalent for "must not alert on the first
   look".
-* **A handshake-model psec module blocks the progress thread for as long
-  as its peer takes to answer.**  ``PMIX_PSEC_SERVER_HANDSHAKE_IFNEED``
-  runs inside the ``ptl`` connection handler, on the progress thread,
-  with the socket deliberately still in blocking mode; a peer that
-  connects and then stops writing pins that thread until the socket
-  errors out.  This is intrinsic to the way ``ptl`` sequences the
-  connection handshake rather than anything ``psec`` chooses, and today
-  the only handshake-model module is ``dummy_handshake``, which is
-  test-only.  It becomes a real availability question the moment a
-  genuine one is written, and the fix belongs in ``ptl`` — a timeout on
-  the handshake exchange, the way ``handshake_wait_time`` already bounds
-  the connect-ack.  Recorded here so a new mechanism does not inherit it
-  silently.
+* **A handshake-model psec module's exchange is not exercised.**
+  ``PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`` runs inside the ``ptl``
+  connection handler, on the progress thread, with the socket still in
+  blocking mode.  It used to be unbounded, and this entry used to say
+  the fix belonged in ``ptl`` "the way ``handshake_wait_time`` already
+  bounds the connect-ack" — which was never true: that parameter only
+  applies on the *connecting* side, defaults to no bound, and was
+  retried away by ``pmix_ptl_base_recv_blocking`` in any case.  The
+  inbound connect-ack was unbounded too.  The handler now sets
+  ``SO_RCVTIMEO`` from ``ptl_base_connect_ack_timeout`` before its first
+  read, and the option stays on the socket until it goes non-blocking,
+  which is after the psec exchange — so a stalled handshake peer is now
+  bounded by the same timeout, with the same remaining limit recorded
+  under :ref:`todo-ptl-blocking-handshake`.  What is still missing is
+  coverage: the only handshake-model module is ``dummy_handshake``,
+  built only under ``--enable-dummy-handshake``, so nothing runs that
+  exchange against a stalled peer.
 * ``psec/munge``'s **failed-encode path is still not executed.**  The
   rest of the component now is: ``test/unit/psec_credentials.c`` drives
   every *active* credential module rather than a fixed list, so on a
