@@ -34,6 +34,13 @@
  *   participant namespace
  *      registered late       -> parks, and is forwarded to the host by the
  *                               registration rather than waiting forever
+ *   two participants, one
+ *      namespace late        -> the expected-local count is the membership,
+ *                               not the membership times the number of
+ *                               participants that named it
+ *   two bootstrap blocks,
+ *      host accepts both     -> each block survives until its own completion
+ *                               arrives (kills an unfixed library)
  *
  * Every case asserts that grp_collectives is empty afterwards, because a
  * block left parked there with participants on it hangs those clients for
@@ -64,6 +71,8 @@
 
 #define GRPUT_NSPACE "server-group-ut"
 #define GRPUT_LATE   "server-group-ut-late"
+#define GRPUT_TWO    "server-group-ut-two"
+#define GRPUT_LATE2  "server-group-ut-late2"
 
 static int npass = 0;
 static int nfail = 0;
@@ -85,6 +94,15 @@ static size_t group_ninfo = 0;
 static bool group_status_last = false;
 static char *group_id = NULL;
 
+/* When set, the stub accepts the operation and parks the completion so the
+ * test can drive it. A declining stub tears the block down on the spot and
+ * so cannot reach any state in which the host owns a block. */
+#define GRPUT_MAXHELD 4
+static bool group_accept = false;
+static pmix_info_cbfunc_t held_cbfunc[GRPUT_MAXHELD];
+static void *held_cbdata[GRPUT_MAXHELD];
+static size_t nheld = 0;
+
 static pmix_status_t stub_group(pmix_group_operation_t op, char grp[],
                                 const pmix_proc_t procs[], size_t nprocs,
                                 const pmix_info_t directives[], size_t ndirs,
@@ -93,8 +111,6 @@ static pmix_status_t stub_group(pmix_group_operation_t op, char grp[],
     (void) op;
     (void) procs;
     (void) nprocs;
-    (void) cbfunc;
-    (void) cbdata;
 
     group_fired = true;
     group_ninfo = ndirs;
@@ -110,6 +126,18 @@ static pmix_status_t stub_group(pmix_group_operation_t op, char grp[],
     if (NULL != grp) {
         group_id = strdup(grp);
     }
+    if (group_accept) {
+        /* accept and hold the completion, so the block stays on
+         * grp_collectives with the host owning it */
+        if (nheld < GRPUT_MAXHELD) {
+            held_cbfunc[nheld] = cbfunc;
+            held_cbdata[nheld] = cbdata;
+            ++nheld;
+        }
+        return PMIX_SUCCESS;
+    }
+    (void) cbfunc;
+    (void) cbdata;
     /* decline, so the handler takes its refusal arm: it hands the block to
      * grpcbfunc, which answers every participant and tears the block down.
      * Accepting would leave the completion to us. */
@@ -130,6 +158,11 @@ typedef struct {
     size_t nprocs_real; /* how many procs actually to pack */
     size_t ninf;        /* the count to put on the wire */
     size_t ninf_real;   /* how many info structs actually to pack */
+    /* when set, pack these procs verbatim instead of synthesizing
+     * pns:0..nprocs_real-1 - the multi-namespace and wildcard cases need
+     * a membership the rank-counting form cannot express */
+    const pmix_proc_t *plist;
+    bool bootstrap;     /* pack PMIX_GROUP_BOOTSTRAP rather than FT_COLLECTIVE */
     pmix_status_t status;
 } grp_req_t;
 
@@ -138,10 +171,11 @@ static void do_group(int sd, short args, void *cbdata)
     grp_req_t *r = (grp_req_t *) cbdata;
     pmix_buffer_t buf;
     pmix_server_caddy_t *cd;
-    pmix_proc_t proc;
-    pmix_info_t dir;
+    pmix_proc_t *procs = NULL;
+    pmix_info_t *dirs = NULL;
     pmix_status_t rc;
     size_t n;
+    size_t nboot = 2;
     char *cptr;
     bool flag = true;
 
@@ -155,23 +189,57 @@ static void do_group(int sd, short args, void *cbdata)
     cptr = (char *) r->grpid;
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &cptr, 1, PMIX_STRING);
 
-    /* the proc count, then the procs. The two may disagree on purpose:
-     * that is the whole point of the malformed-count cases. */
+    /* The proc count, then the procs. The two may disagree on purpose:
+     * that is the whole point of the malformed-count cases. Each array
+     * goes out in ONE pack call, because that is what every PMIx client
+     * does and it is what the handler's short-array screen is held
+     * against - packing element by element writes N separate one-element
+     * arrays, which the handler correctly rejects, so a harness that did
+     * that would be testing itself. */
     if (PMIX_SUCCESS == rc) {
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &r->nprocs, 1, PMIX_SIZE);
     }
-    for (n = 0; PMIX_SUCCESS == rc && n < r->nprocs_real; n++) {
-        PMIX_LOAD_PROCID(&proc, r->pns, (pmix_rank_t) n);
-        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &proc, 1, PMIX_PROC);
+    if (PMIX_SUCCESS == rc && 0 < r->nprocs_real) {
+        PMIX_PROC_CREATE(procs, r->nprocs_real);
+        if (NULL == procs) {
+            PMIX_DESTRUCT(&buf);
+            r->status = PMIX_ERR_NOMEM;
+            PMIX_WAKEUP_THREAD(&r->lock);
+            return;
+        }
+        for (n = 0; n < r->nprocs_real; n++) {
+            if (NULL != r->plist) {
+                memcpy(&procs[n], &r->plist[n], sizeof(pmix_proc_t));
+            } else {
+                PMIX_LOAD_PROCID(&procs[n], r->pns, (pmix_rank_t) n);
+            }
+        }
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, procs,
+                         (int32_t) r->nprocs_real, PMIX_PROC);
+        PMIX_PROC_FREE(procs, r->nprocs_real);
     }
     /* the info count, then the info structs */
     if (PMIX_SUCCESS == rc) {
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &r->ninf, 1, PMIX_SIZE);
     }
-    for (n = 0; PMIX_SUCCESS == rc && n < r->ninf_real; n++) {
-        PMIX_INFO_LOAD(&dir, PMIX_GROUP_FT_COLLECTIVE, &flag, PMIX_BOOL);
-        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &dir, 1, PMIX_INFO);
-        PMIX_INFO_DESTRUCT(&dir);
+    if (PMIX_SUCCESS == rc && 0 < r->ninf_real) {
+        PMIX_INFO_CREATE(dirs, r->ninf_real);
+        if (NULL == dirs) {
+            PMIX_DESTRUCT(&buf);
+            r->status = PMIX_ERR_NOMEM;
+            PMIX_WAKEUP_THREAD(&r->lock);
+            return;
+        }
+        for (n = 0; n < r->ninf_real; n++) {
+            if (r->bootstrap) {
+                PMIX_INFO_LOAD(&dirs[n], PMIX_GROUP_BOOTSTRAP, &nboot, PMIX_SIZE);
+            } else {
+                PMIX_INFO_LOAD(&dirs[n], PMIX_GROUP_FT_COLLECTIVE, &flag, PMIX_BOOL);
+            }
+        }
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, dirs,
+                         (int32_t) r->ninf_real, PMIX_INFO);
+        PMIX_INFO_FREE(dirs, r->ninf_real);
     }
     if (PMIX_SUCCESS != rc) {
         PMIX_DESTRUCT(&buf);
@@ -224,21 +292,51 @@ static pmix_status_t drive_group(const char *grpid, const char *pns,
     return rc;
 }
 
+/* Drive one participant whose membership is given explicitly. */
+static pmix_status_t drive_group_procs(const char *grpid,
+                                       const pmix_proc_t *procs, size_t nprocs,
+                                       bool bootstrap)
+{
+    grp_req_t req;
+    pmix_status_t rc;
+
+    memset(&req, 0, sizeof(req));
+    PMIX_CONSTRUCT_LOCK(&req.lock);
+    req.grpid = grpid;
+    req.plist = procs;
+    req.nprocs = nprocs;
+    req.nprocs_real = nprocs;
+    req.ninf = 1;
+    req.ninf_real = 1;
+    req.bootstrap = bootstrap;
+    group_fired = false;
+    PMIX_THREADSHIFT(&req, do_group);
+    PMIX_WAIT_THREAD(&req.lock);
+    rc = req.status;
+    PMIX_DESTRUCT_LOCK(&req.lock);
+    return rc;
+}
+
 /* Register a namespace that places no procs on this node. That is enough
  * for check_definition_complete: it needs the namespace to be known and
  * its local count to be settled, and a count of zero settles it with
  * nothing to wait for. */
-static pmix_status_t register_nspace(const char *ns)
+static pmix_status_t register_nspace_n(const char *ns, int nlocal)
 {
     pmix_nspace_t nspace;
     pmix_status_t rc;
 
     PMIX_LOAD_NSPACE(nspace, ns);
-    rc = PMIx_server_register_nspace(nspace, 0, NULL, 0, NULL, NULL);
+    rc = PMIx_server_register_nspace(nspace, nlocal, NULL, 0, NULL, NULL);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         rc = PMIX_SUCCESS;
     }
     return rc;
+}
+
+static pmix_status_t register_nspace(const char *ns)
+{
+    return register_nspace_n(ns, 0);
 }
 
 /* grpcbfunc thread-shifts, so let anything queued behind us run before we
@@ -262,6 +360,8 @@ static bool nothing_parked(void)
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
+    pmix_proc_t twoprocs[2], bootproc;
+    size_t baseline;
     pmix_status_t rc;
 
     (void) argc;
@@ -310,6 +410,25 @@ int main(int argc, char **argv)
     report("group rejects an oversized proc count", PMIX_ERR_BAD_PARAM == rc);
     report("oversized proc count parks nothing", nothing_parked());
 
+    /* --- an array shorter than the count that introduced it --- *
+     * The unpack reports SUCCESS when it finds fewer elements than the
+     * count promised - it just writes back how many it found. Unchecked,
+     * the trailing procs stay as PMIX_PROC_CREATE left them, and an empty
+     * nspace is what PMIX_CHECK_NSPACE reads as a WILDCARD: those phantom
+     * participants are copied into the tracker, counted against namespaces
+     * that do not exist, and sent to the host as members of the group. The
+     * info array is the same shape one field along. Fence and connect
+     * carry this screen; the group handler did not. */
+    rc = drive_group("grput.shortprocs", GRPUT_NSPACE, 3, 1, 0, 0);
+    report("group rejects a proc array shorter than its count",
+           PMIX_ERR_BAD_PARAM == rc);
+    report("a short proc array parks nothing", nothing_parked());
+
+    rc = drive_group("grput.shortinfo", GRPUT_NSPACE, 1, 1, 3, 1);
+    report("group rejects an info array shorter than its count",
+           PMIX_ERR_BAD_PARAM == rc);
+    report("a short info array parks nothing", nothing_parked());
+
     /* --- a well-formed construct --- *
      * The participant namespace is registered with no local procs, so
      * check_definition_complete has nothing to wait for and the block
@@ -356,6 +475,88 @@ int main(int argc, char **argv)
     progress_barrier();
     report("registering that namespace forwards the block", group_fired);
     report("and leaves nothing parked", nothing_parked());
+
+    /* --- two participants, one namespace registering late --- *
+     * The expected-local count is computed by walking every tracker on the
+     * block, and every non-bootstrap participant hands us the same
+     * membership - so once more than one participant has arrived before the
+     * definition can be settled, each of them re-counts the whole
+     * membership. The block's target becomes (real count x participants),
+     * which its own participants can never reach: it sat on
+     * grp_collectives for the life of the server with both clients blocked
+     * in PMIx_Group_construct. Here two participants name a namespace with
+     * two local procs plus one that is not registered yet, so the
+     * definition can only be settled by the registration - with both
+     * trackers already on the block, which is the state that miscounts. */
+    rc = register_nspace_n(GRPUT_TWO, 2);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "register_nspace_n failed: %s\n", PMIx_Error_string(rc));
+        PMIx_server_finalize();
+        return 1;
+    }
+    PMIX_LOAD_PROCID(&twoprocs[0], GRPUT_TWO, PMIX_RANK_WILDCARD);
+    PMIX_LOAD_PROCID(&twoprocs[1], GRPUT_LATE2, PMIX_RANK_WILDCARD);
+
+    rc = drive_group_procs("grput.two", twoprocs, 2, false);
+    report("first of two participants is accepted", PMIX_SUCCESS == rc);
+    rc = drive_group_procs("grput.two", twoprocs, 2, false);
+    report("second of two participants is accepted", PMIX_SUCCESS == rc);
+    report("both park while a participant namespace is unknown",
+           !group_fired && !nothing_parked());
+
+    rc = register_nspace(GRPUT_LATE2);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "late register_nspace failed: %s\n", PMIx_Error_string(rc));
+        PMIx_server_finalize();
+        return 1;
+    }
+    progress_barrier();
+    /* against an unfixed library nlocal is 4 rather than 2, so the block
+     * never reaches its own target and these two fail */
+    report("two participants are counted once, not once per participant",
+           group_fired);
+    report("and the block does not park forever", nothing_parked());
+
+    /* --- two bootstrap blocks the host accepts separately --- *
+     * A bootstrap participant gets a block of its own, so two of them on
+     * one node put two blocks carrying the same group id on
+     * grp_collectives, and each is handed to the host separately. The
+     * completion sweep answers every block with that id - it has to, since
+     * a host that treats them as one operation answers only one of them -
+     * but it also freed them, including blocks whose own completion had not
+     * arrived yet. The host then completed on a freed block: grpcbfunc
+     * writes through it and _grpcbfunc strdup's its id. Against an unfixed
+     * library the second completion below takes the process down. */
+    group_accept = true;
+    nheld = 0;
+    /* measured against a baseline rather than against zero, so an earlier
+     * case that stranded a block reports itself once rather than making
+     * every case after it look broken too */
+    progress_barrier();
+    baseline = pmix_list_get_size(&pmix_server_globals.grp_collectives);
+    PMIX_LOAD_PROCID(&bootproc, GRPUT_NSPACE, 0);
+    rc = drive_group_procs("grput.boot", &bootproc, 1, true);
+    report("first bootstrap participant is accepted", PMIX_SUCCESS == rc);
+    rc = drive_group_procs("grput.boot", &bootproc, 1, true);
+    report("second bootstrap participant is accepted", PMIX_SUCCESS == rc);
+    report("the host was given both blocks", 2 == nheld);
+    report("both blocks are parked with the host",
+           baseline + 2 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+
+    if (2 == nheld) {
+        /* the first completion answers both participants and must leave the
+         * second block alive for the completion it is still owed */
+        held_cbfunc[0](PMIX_SUCCESS, NULL, 0, held_cbdata[0], NULL, NULL);
+        progress_barrier();
+        report("one completion clears both blocks off the list",
+               baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+        /* and this one must not run on freed memory */
+        held_cbfunc[1](PMIX_SUCCESS, NULL, 0, held_cbdata[1], NULL, NULL);
+        progress_barrier();
+        report("the second completion is absorbed safely",
+               baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+    }
+    group_accept = false;
 
     if (NULL != group_id) {
         free(group_id);

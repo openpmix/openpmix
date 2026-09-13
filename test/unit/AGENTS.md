@@ -550,10 +550,43 @@ first two pass and the last two fail, which is exactly the hang.
 
 Its driver thread-shifts, like `server_fence`'s: the handler touches
 `pmix_server_globals.grp_collectives` and must not be called from
-`main()`. And the namespace it registers has **zero** local procs — that
-is enough for `check_definition_complete`, which needs the namespace
-known and its local count settled, and a count of zero settles it with
-nothing to wait for.
+`main()`. And the namespace most of its cases register has **zero** local
+procs — that is enough for `check_definition_complete`, which needs the
+namespace known and its local count settled, and a count of zero settles
+it with nothing to wait for.
+
+Three later groups of case need more than one participant, and two things
+about them are load-bearing.
+
+**Each array goes out in one pack call.** Packing element by element
+writes N separate one-element arrays, which the handler's short-array
+screen correctly rejects — so a harness that did that would be testing
+itself rather than the handler. (This is the same defect
+`test/unit/server_connect.c`'s bad-trailer case had.) The malformed-count
+cases still work, because the wire count and the number of elements
+packed are separate fields of `grp_req_t`.
+
+**The two-participant case is about arithmetic, not parking.**
+`check_definition_complete` walks every tracker on the block, and every
+non-bootstrap participant hands us the same membership, so a definition
+that could not be settled until two participants had arrived counted the
+membership twice. The case registers a namespace with two local procs and
+names it alongside one that is not registered yet, so the definition can
+only be settled by the registration — with both trackers already on the
+block, which is the state that miscounts. Against an unfixed library the
+block's target is 4 where 2 participants can ever contribute, and it
+parks forever.
+
+**The bootstrap pair is the only place the stub host *accepts*.** A
+declining stub tears the block down on the spot, so it cannot reach the
+state where the host owns a block — and the defect is entirely in what
+happens when a second completion arrives for a group id whose blocks a
+sibling's completion already swept. It parks the two completions and
+drives them by hand. Against an unfixed library the second one runs on
+a freed block and the process dies with SIGSEGV (exit 139, buffered
+output lost). Its assertions are measured against a **baseline** list
+length rather than against zero, so an earlier case that stranded a block
+reports itself once instead of making everything after it look broken.
 
 What it cannot reach is anything past the host up-call: a group spanning
 servers, the departed-member accounting, and the two-level block/tracker

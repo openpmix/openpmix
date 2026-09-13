@@ -84,6 +84,12 @@ typedef struct {
                             //    See docs/how-things-work/collectives.
     bool host_called;       // the block has been forwarded to the host - the
                             //    local phase is frozen
+    bool awaiting_host;     // the host accepted this block and still owes it
+                            //    exactly one completion, so the block must
+                            //    outlive any sibling's completion
+    bool answered;          // every participant on this block has been replied
+                            //    to and the block is off grp_collectives; it is
+                            //    kept alive only for the completion above
     bool def_complete;      // all local procs have been registered and the trk definition is complete
     uint32_t nlocal;        // number of local participants
 } grp_block_t;
@@ -105,6 +111,8 @@ static void gbcon(grp_block_t *p)
     PMIX_CONSTRUCT(&p->mbrs, pmix_list_t);
     PMIX_CONSTRUCT(&p->departed, pmix_list_t);
     p->host_called = false;
+    p->awaiting_host = false;
+    p->answered = false;
     p->def_complete = false;
     p->nlocal = 0;
 }
@@ -229,71 +237,87 @@ static void check_definition_complete(grp_block_t *blk)
         return;
     }
 
-    PMIX_LIST_FOREACH(trk, &blk->mbrs, grp_trk_t) {
-        for (i = 0; i < trk->npcs; i++) {
-            /* is this nspace known to us? */
-            nptr = NULL;
-            PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-                if (0 == strcmp(trk->pcs[i].nspace, ns->nspace)) {
-                    nptr = ns;
-                    break;
-                }
+    /* Count the MEMBERSHIP, once - not once per participant that named it.
+     * Every non-bootstrap participant hands us the same membership array,
+     * so walking every tracker on the block multiplied this count by the
+     * number of calls received so far; the block's target then became one
+     * its own participants could never reach, and it sat here for the life
+     * of the server with all of them blocked in PMIx_Group_construct. It
+     * only bit once more than one tracker was on the block before the
+     * definition first became computable - a participant namespace that
+     * had not registered yet, which is exactly the state
+     * pmix_server_grp_check_pending() exists to resolve.
+     *
+     * The first tracker is the right one to read, and not merely the
+     * cheapest: it is the array forward_to_host() and pmix_server_group()
+     * hand to pmix_host_server.group as the group's membership, so
+     * counting from anywhere else would have this predicate and the host
+     * disagreeing about who is in the group. mbrs is never empty - a
+     * tracker is appended to every block get_tracker creates. */
+    trk = (grp_trk_t *) pmix_list_get_first(&blk->mbrs);
+    for (i = 0; i < trk->npcs; i++) {
+        /* is this nspace known to us? */
+        nptr = NULL;
+        PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (0 == strcmp(trk->pcs[i].nspace, ns->nspace)) {
+                nptr = ns;
+                break;
             }
-            if (NULL == nptr) {
-                /* we don't know about this nspace - we need to
-                 * wait until it has been registered */
-                return;
-            }
-            /* it is possible we know about this nspace because the host
-             * has registered one or more clients via "register_client",
-             * but the host has not yet called "register_nspace". There is
-             * a very tiny race condition whereby this can happen due
-             * to event-driven processing, but account for it here */
-            if (SIZE_MAX == nptr->nlocalprocs) {
-                /* delay processing until this nspace is registered */
-                return;
-            }
-            if (0 == nptr->nlocalprocs) {
-                /* the host has informed us that this nspace has no local procs */
-                pmix_output_verbose(5, pmix_server_globals.group_output,
-                                    "check_definition_complete: nspace %s has no local procs",
-                                    trk->pcs[i].nspace);
-                continue;
-            }
+        }
+        if (NULL == nptr) {
+            /* we don't know about this nspace - we need to
+             * wait until it has been registered */
+            return;
+        }
+        /* it is possible we know about this nspace because the host
+         * has registered one or more clients via "register_client",
+         * but the host has not yet called "register_nspace". There is
+         * a very tiny race condition whereby this can happen due
+         * to event-driven processing, but account for it here */
+        if (SIZE_MAX == nptr->nlocalprocs) {
+            /* delay processing until this nspace is registered */
+            return;
+        }
+        if (0 == nptr->nlocalprocs) {
+            /* the host has informed us that this nspace has no local procs */
+            pmix_output_verbose(5, pmix_server_globals.group_output,
+                                "check_definition_complete: nspace %s has no local procs",
+                                trk->pcs[i].nspace);
+            continue;
+        }
 
-            /* if they want all the local members of this nspace, then
-             * add them in here. They told us how many procs will be
-             * local to us from this nspace, but we don't know their
-             * ranks. So as long as they want _all_ of them, we can
-             * handle that case regardless of whether the individual
-             * clients have been "registered" */
-            if (PMIX_RANK_WILDCARD == trk->pcs[i].rank) {
-                nlocal += nptr->nlocalprocs;
-                continue;
-            }
+        /* if they want all the local members of this nspace, then
+         * add them in here. They told us how many procs will be
+         * local to us from this nspace, but we don't know their
+         * ranks. So as long as they want _all_ of them, we can
+         * handle that case regardless of whether the individual
+         * clients have been "registered" */
+        if (PMIX_RANK_WILDCARD == trk->pcs[i].rank) {
+            nlocal += nptr->nlocalprocs;
+            continue;
+        }
 
-            /* They don't want all the local clients, or they are at
-             * least listing them individually. Check if all the clients
-             * for this nspace have been registered via "register_client"
-             * so we know the specific ranks on this node */
-            if (!nptr->all_registered) {
-                /* nope, so no point in going further on this one - we'll
-                 * process it once all the procs are known */
+        /* They don't want all the local clients, or they are at
+         * least listing them individually. Check if all the clients
+         * for this nspace have been registered via "register_client"
+         * so we know the specific ranks on this node */
+        if (!nptr->all_registered) {
+            /* nope, so no point in going further on this one - we'll
+             * process it once all the procs are known */
+            pmix_output_verbose(5, pmix_server_globals.group_output,
+                                "check_definition_complete: all clients not registered nspace %s",
+                                trk->pcs[i].nspace);
+            return;
+        }
+        /* is this one of my local ranks? */
+        PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
+            if (trk->pcs[i].rank == info->pname.rank) {
                 pmix_output_verbose(5, pmix_server_globals.group_output,
-                                    "check_definition_complete: all clients not registered nspace %s",
-                                    trk->pcs[i].nspace);
-                return;
-            }
-            /* is this one of my local ranks? */
-            PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
-                if (trk->pcs[i].rank == info->pname.rank) {
-                    pmix_output_verbose(5, pmix_server_globals.group_output,
-                                        "adding local proc %s.%d to tracker", info->pname.nspace,
-                                        info->pname.rank);
-                    /* track the count */
-                    nlocal++;
-                    break;
-                }
+                                    "adding local proc %s.%d to tracker", info->pname.nspace,
+                                    info->pname.rank);
+                /* track the count */
+                nlocal++;
+                break;
             }
         }
     }
@@ -549,6 +573,23 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
         return;
     }
 
+    /* A sibling's completion already answered this block's participants and
+     * took it off grp_collectives, leaving it alive for precisely this call
+     * (see the sweep below). There is nobody left to reply to and nothing
+     * left to store - let it go. This is the one early return the block's
+     * participants do not pay for. */
+    if (blk->answered) {
+        blk->awaiting_host = false;
+        PMIX_RELEASE(blk);
+        if (NULL != scd->relfn) {
+            scd->relfn(scd->cbdata);
+        }
+        PMIX_RELEASE(scd);
+        return;
+    }
+    /* this completion discharges what the host owed for this block */
+    blk->awaiting_host = false;
+
     PMIX_CONSTRUCT(&grpinfo, pmix_list_t);
     /* see if this group was assigned a context ID or collected data */
     for (n = 0; n < scd->ninfo; n++) {
@@ -652,9 +693,11 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
 
 reply:
     // because bootstrap will have added multiple blocks to the collectives
-    // for each bootstrap operation, cycle across the list to find them all.
-    // Use the SAFE variant: matching blocks are removed and released below,
-    // so we must cache the next pointer before freeing the current block.
+    // for each bootstrap operation, cycle across the list to find them all -
+    // a host that treats them as one operation answers only one of them, and
+    // the participants on the rest are waiting on a reply nothing else will
+    // send. Use the SAFE variant: matching blocks are removed (and usually
+    // released) below, so we must cache the next pointer first.
     PMIX_LIST_FOREACH_SAFE(bk, nxt_bk, &pmix_server_globals.grp_collectives, grp_block_t) {
         if (0 != strcmp(id, bk->id)) {
             continue;
@@ -769,7 +812,22 @@ reply:
         }
         /* remove the block from the list */
         pmix_list_remove_item(&pmix_server_globals.grp_collectives, &bk->super);
-        PMIX_RELEASE(bk);
+        /* A block the host accepted owes us one completion, and the host is
+         * entitled to read the procs and directives we handed it until that
+         * completion runs. Freeing a sibling here therefore both pulled that
+         * memory out from under an operation still in flight and left the
+         * host holding a cbdata pointing at a freed block - which grpcbfunc
+         * then wrote through and _grpcbfunc strdup'd from. Keep it alive,
+         * marked as answered, and let its own completion above release it.
+         * A host that treats the whole group as one operation and answers
+         * once never sends that completion, so such a block is stranded
+         * rather than freed; its participants have been answered either way,
+         * which is the outcome that cannot be traded away. */
+        if (bk->awaiting_host) {
+            bk->answered = true;
+        } else {
+            PMIX_RELEASE(bk);
+        }
     }
 
     /* we are done */
@@ -1068,14 +1126,20 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
                         // the numbers must match
                         rc = PMIx_Value_get_number(&blk->info[m].value, &bt, PMIX_SIZE);
                         if (PMIX_SUCCESS != rc) {
+                            PMIX_ERROR_LOG(rc);
                             goto bailout;
                         }
                         rc = PMIx_Value_get_number(&trk->info[n].value, &bt2, PMIX_SIZE);
                         if (PMIX_SUCCESS != rc) {
+                            PMIX_ERROR_LOG(rc);
                             goto bailout;
                         }
                         if (bt != bt2) {
+                            /* the participants disagree about how many procs
+                             * are bootstrapping this group - the host cannot
+                             * be told two different numbers */
                             rc = PMIX_ERR_BAD_PARAM;
+                            PMIX_ERROR_LOG(rc);
                             goto bailout;
                         }
                     } else if (PMIX_CHECK_KEY(&blk->info[m], PMIX_PROC_INFO_ARRAY) ||
@@ -1287,6 +1351,23 @@ static void invites_init(void)
     }
 }
 
+/* Drop every invitation still in flight. PMIx_server_finalize destructs
+ * grp_collectives and had no counterpart for this list, so an invitation
+ * that had not resolved leaked - and, worse, survived into a subsequent
+ * PMIx_server_init in the same process (the library supports that), where
+ * find_invite() answered PMIX_ERR_EXISTS for a group id belonging to a
+ * server generation that no longer exists. Any reference the event
+ * registry still holds keeps its own object alive; what matters here is
+ * that the list starts a new cycle empty. */
+void pmix_server_grp_finalize(void)
+{
+    if (!invites_initialized) {
+        return;
+    }
+    PMIX_LIST_DESTRUCT(&pmix_server_invites);
+    invites_initialized = false;
+}
+
 static pmix_server_invite_t *find_invite(const char *grpid)
 {
     pmix_server_invite_t *inv;
@@ -1461,17 +1542,60 @@ static void invite_broadcast(pmix_server_invite_t *inv)
     invite_done(inv);
 }
 
-/* The host's answer to our context-ID request. */
+/* Carrier for getting the host's context-ID answer back onto the progress
+ * thread. Everything invite_broadcast() goes on to do is progress-thread
+ * state - it walks and unlinks pmix_server_invites, deletes the timer off
+ * the progress thread's event base, and releases the invitation. */
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_server_invite_t *inv;
+    size_t ctxid;
+    bool have_ctxid;
+} invite_ctxid_caddy_t;
+static PMIX_CLASS_INSTANCE(invite_ctxid_caddy_t,
+                           pmix_object_t,
+                           NULL, NULL);
+
+static void invite_ctxid_shifted(int sd, short args, void *cbdata)
+{
+    invite_ctxid_caddy_t *cd = (invite_ctxid_caddy_t *) cbdata;
+    pmix_server_invite_t *inv = cd->inv;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(cd);
+    if (cd->have_ctxid) {
+        inv->ctxid = cd->ctxid;
+    }
+    PMIX_RELEASE(cd);
+    /* announce with whatever we got - a group without an ID is still a
+     * group, and the members are told which they have */
+    invite_broadcast(inv);
+    /* the reference taken across the host call */
+    PMIX_RELEASE(inv);
+}
+
+/* The host's answer to our context-ID request. May arrive on the host's own
+ * thread, so it does nothing here but read the answer out of an array that
+ * does not outlive the call, and shift. */
 static void invite_ctxid_cb(pmix_status_t status, pmix_info_t *info, size_t ninfo,
                             void *cbdata, pmix_release_cbfunc_t relfn, void *relcbdata)
 {
     pmix_server_invite_t *inv = (pmix_server_invite_t *) cbdata;
-    size_t n;
+    invite_ctxid_caddy_t *cd;
+    pmix_status_t rc;
+    size_t n, ctxid = SIZE_MAX;
+    bool have_ctxid = false;
 
     if (PMIX_SUCCESS == status) {
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_CONTEXT_ID)) {
-                PMIx_Value_get_number(&info[n].value, &inv->ctxid, PMIX_SIZE);
+                rc = PMIx_Value_get_number(&info[n].value, &ctxid, PMIX_SIZE);
+                if (PMIX_SUCCESS == rc) {
+                    have_ctxid = true;
+                } else {
+                    PMIX_ERROR_LOG(rc);
+                }
                 break;
             }
         }
@@ -1479,9 +1603,19 @@ static void invite_ctxid_cb(pmix_status_t status, pmix_info_t *info, size_t ninf
     if (NULL != relfn) {
         relfn(relcbdata);
     }
-    /* announce with whatever we got - a group without an ID is still a
-     * group, and the members are told which they have */
-    invite_broadcast(inv);
+
+    cd = PMIX_NEW(invite_ctxid_caddy_t);
+    if (NULL == cd) {
+        /* we cannot get back onto the progress thread, and touching the
+         * invitation from here would corrupt the list it sits on. It is
+         * left for the timeout, or for the shutdown teardown, to retire. */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return;
+    }
+    cd->inv = inv;
+    cd->ctxid = ctxid;
+    cd->have_ctxid = have_ctxid;
+    PMIX_THREADSHIFT(cd, invite_ctxid_shifted);
 }
 
 /* Phase one: report the invitees that did not join, then either abort the
@@ -1560,6 +1694,10 @@ static void invite_complete(pmix_server_invite_t *inv)
         if (NULL != info) {
             ninfo = 1;
             PMIX_INFO_LOAD(&info[0], PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
+            /* the host holds this pointer until it calls back, and that
+             * callback shifts before touching the invitation, so hold a
+             * reference of our own across the whole excursion */
+            PMIX_RETAIN(inv);
             rc = pmix_host_server.job_control(&inv->leader, NULL, 0, info, ninfo,
                                               invite_ctxid_cb, (void *) inv);
             PMIX_INFO_FREE(info, ninfo);
@@ -1567,6 +1705,9 @@ static void invite_complete(pmix_server_invite_t *inv)
                 /* invite_ctxid_cb will announce */
                 return;
             }
+            /* no callback is coming - PMIX_OPERATION_SUCCEEDED says the host
+             * finished without one, and an error says it never started */
+            PMIX_RELEASE(inv);
         }
     }
     invite_broadcast(inv);
@@ -1741,6 +1882,14 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         PMIX_ERROR_LOG(rc);
         goto done;
     }
+    /* a wire array shorter than its count unpacks as SUCCESS - the same
+     * screen pmix_server_group applies, and here the untouched tail would
+     * be expanded into the invitation's membership and invited */
+    if ((size_t) cnt != nprocs) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &timeout, &cnt, PMIX_UINT32);
     if (PMIX_SUCCESS != rc) {
@@ -1771,6 +1920,12 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         goto done;
     }
     inv->grpid = strdup(grpid);
+    if (NULL == inv->grpid) {
+        /* find_invite strcmp's this against every invitation on the list,
+         * and it is loaded as a PMIX_STRING into three separate events */
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
     PMIX_LOAD_PROCID(&inv->leader, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
     inv->optional = optional;
     inv->assignid = assignid;
@@ -1902,15 +2057,24 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         goto done;
     }
 
-    /* invite everyone who is not us */
+    /* From here on the invitation is on pmix_server_invites and carries a
+     * live observer, so a failure has to retire it rather than drop the
+     * list's reference at the "never got as far as the list" label below.
+     * Left on the list it answers nobody, refuses the group id with
+     * PMIX_ERR_EXISTS for the life of the server, and - with no timeout
+     * armed - never comes off again. */
     PMIX_INFO_CREATE(info, 3);
     if (NULL == info) {
         rc = PMIX_ERR_NOMEM;
+        invite_done(inv);
+        inv = NULL;
         goto done;
     }
     rc = invite_range(&info[0], inv->members, inv->nmembers);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        invite_done(inv);
+        inv = NULL;
         goto done;
     }
     /* only non-default handlers are interested */
@@ -2141,6 +2305,21 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             PMIX_ERROR_LOG(rc);
             goto error;
         }
+        /* The unpack reports SUCCESS when the array on the wire is SHORTER
+         * than the count that introduced it - it simply writes back how
+         * many it found. Unchecked, the trailing elements stay as
+         * PMIX_PROC_CREATE left them, and an empty nspace is what
+         * PMIX_CHECK_NSPACE reads as a wildcard: those phantom
+         * participants are copied into the tracker, counted by
+         * check_definition_complete against namespaces that do not exist,
+         * and sent to the host as members of the group. Every PMIx client
+         * packs this array in one call, so a conforming peer always
+         * agrees. Same screen the fence and connect handlers apply. */
+        if ((size_t) cnt != nprocs) {
+            rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
+            goto error;
+        }
     } else {
         // if no procs were given, then this must be a follower
         follower = true;
@@ -2181,6 +2360,15 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto error;
+        }
+        /* held against what arrived, for the reason given at the proc
+         * array above - the slots the wire did not fill are default
+         * constructed, and the directive scan below reads every one of
+         * them before the whole array is forwarded to the host */
+        if ((size_t) cnt != ninf) {
+            rc = PMIX_ERR_BAD_PARAM;
             PMIX_ERROR_LOG(rc);
             goto error;
         }
@@ -2230,7 +2418,15 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
             // bound how long we wait for all local participants to contribute
-            PMIx_Value_get_number(&info[n].value, &tmo, PMIX_UINT32);
+            /* A value that will not convert is reported, not dropped:
+             * swallowing it gives the caller an unbounded wait produced by
+             * the very directive meant to prevent one, with nothing said
+             * anywhere. The fence and connect families reject it too. */
+            rc = PMIx_Value_get_number(&info[n].value, &tmo, PMIX_UINT32);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                goto error;
+            }
         }
     }
 
@@ -2281,6 +2477,11 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         blk->host_called = true;
         rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, blk->id, trk->pcs, trk->npcs,
                                     trk->info, trk->ninfo, grpcbfunc, blk);
+        if (PMIX_SUCCESS == rc) {
+            /* the host owes this block a completion - see the sweep in
+             * _grpcbfunc, which must not free a block still owed one */
+            blk->awaiting_host = true;
+        }
         if (PMIX_OPERATION_SUCCEEDED == rc) {
             // the host will not be calling back
             /* let the grpcbfunc threadshift the result */
@@ -2360,6 +2561,11 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     blk->host_called = true;
     rc = pmix_host_server.group(op, blk->id, trk->pcs, trk->npcs,
                                 blk->info, blk->ninfo, grpcbfunc, blk);
+    if (PMIX_SUCCESS == rc) {
+        /* the host owes this block a completion - see the sweep in
+         * _grpcbfunc, which must not free a block still owed one */
+        blk->awaiting_host = true;
+    }
     if (PMIX_SUCCESS != rc) {
         if (PMIX_OPERATION_SUCCEEDED == rc) {
             /* let the grpcbfunc threadshift the result */
@@ -2461,6 +2667,11 @@ static void forward_to_host(grp_block_t *blk)
     blk->host_called = true;
     rc = pmix_host_server.group(blk->grpop, blk->id, trk->pcs, trk->npcs,
                                 blk->info, blk->ninfo, grpcbfunc, blk);
+    if (PMIX_SUCCESS == rc) {
+        /* the host owes this block a completion - see the sweep in
+         * _grpcbfunc, which must not free a block still owed one */
+        blk->awaiting_host = true;
+    }
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         /* the host will not call back - drive completion ourselves */
         grpcbfunc(PMIX_SUCCESS, NULL, 0, blk, NULL, NULL);
