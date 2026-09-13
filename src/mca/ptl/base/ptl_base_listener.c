@@ -218,19 +218,35 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
      * OS might start rejecting connections due to timeout.
      */
     pending_connection = PMIX_NEW(pmix_pending_connection_t);
+    if (NULL == pending_connection) {
+        CLOSE_THE_SOCKET(sd);
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return;
+    }
     pending_connection->protocol = lt->protocol;
-    pmix_event_assign(&pending_connection->ev, pmix_globals.evbase,
-                      -1, EV_WRITE,
-                      lt->cbfunc, pending_connection);
     pending_connection->sd = sd;
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                         "connection_event_handler: new connection: (%d, %d)", pending_connection->sd,
                         pmix_socket_errno);
+
+    /* Do not run the connection handler until the peer has actually sent
+     * something. The handler reads the connect-ack with blocking recvs on
+     * the progress thread, so running it the moment the connection is
+     * accepted let any process that could reach the listener - or a tool
+     * suspended between its connect() and its send - hold the progress
+     * thread, and with it every client of this server, for as long as it
+     * stayed silent. Waiting for readability costs nothing while the peer
+     * is idle, and a peer that closes without sending still wakes us, so
+     * the handler's error path reclaims the socket as before. A peer that
+     * sends part of a request and then stalls is bounded by the receive
+     * timeout the handler sets. */
+    pmix_event_assign(&pending_connection->ev, pmix_globals.evbase,
+                      sd, EV_READ,
+                      lt->cbfunc, pending_connection);
     /* post the object */
     PMIX_POST_OBJECT(pending_connection);
-    /* activate the event */
-    pmix_event_active(&pending_connection->ev, EV_WRITE, 1);
+    pmix_event_add(&pending_connection->ev, NULL);
 }
 
 

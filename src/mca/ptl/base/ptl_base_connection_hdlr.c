@@ -223,6 +223,26 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     /* ensure the socket is in blocking mode */
     pmix_ptl_base_set_blocking(pnd->sd);
 
+    /* Bound every blocking read below. The listener only calls us once
+     * the peer has started sending, and a well-behaved peer writes its
+     * whole connect-ack at once - but this runs before the credential is
+     * checked, on the progress thread, so a peer that sends part of a
+     * request and stops would otherwise hold that thread indefinitely.
+     * The timeout stays on the socket for the rest of the handshake,
+     * which bounds a psec server handshake too; once the socket goes
+     * non-blocking for steady-state traffic it no longer applies. A
+     * failure to set it is not fatal - we are no worse off than before */
+    if (0 < pmix_ptl_base.connect_ack_timeout) {
+        struct timeval tv;
+        tv.tv_sec = pmix_ptl_base.connect_ack_timeout;
+        tv.tv_usec = 0;
+        if (0 != setsockopt(pnd->sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:base:connection_handler: could not set SO_RCVTIMEO: %s",
+                                strerror(pmix_socket_errno));
+        }
+    }
+
     /* ensure all is zero'd */
     memset(&hdr, 0, sizeof(pmix_ptl_hdr_t));
 

@@ -118,9 +118,11 @@ Similarly, the peer's version string is parsed by
 Four functions, in this order, all on the progress thread:
 
 1. **`connection_event_handler`** (`ptl_base_listener.c`) — `accept()`,
-   wrap the fd in a `pmix_pending_connection_t` (`pnd`), post it. It
-   does the minimum on purpose: a slow accept loop makes the OS start
-   refusing connections.
+   wrap the fd in a `pmix_pending_connection_t` (`pnd`), and arm it as a
+   one-shot **read** event on that fd. It does the minimum on purpose: a
+   slow accept loop makes the OS start refusing connections. The handler
+   below must not run until the peer has sent something — see *The
+   inbound handshake blocks the server's progress thread*.
 2. **`pmix_ptl_base_connection_handler`** (`ptl_base_connection_hdlr.c`)
    — flips the socket to **blocking**, reads the connect-ack, parses it
    with the `GET_*` macros, and then splits:
@@ -140,6 +142,54 @@ Four functions, in this order, all on the progress thread:
    the psec server handshake if the module asked for one, set the socket
    non-blocking, arm the recv/send events, and flush cached
    notifications.
+
+### The inbound handshake blocks the server's progress thread
+
+`pmix_ptl_base_connection_handler` sets the accepted socket to blocking
+and reads the whole connect-ack with `pmix_ptl_base_recv_blocking` —
+**on the progress thread, before the credential is checked.** Every
+client of this server waits while it does. It is not "only startup":
+that is true of the peer connecting, not of the server, which reaches
+this code whenever anyone connects.
+
+Two things keep that bounded, and each covers a case the other cannot:
+
+- **The listener arms the pending connection on readability**, not as an
+  immediately-active event. A peer that connects and sends nothing — a
+  port probe, a hostile local process, or simply a tool suspended with
+  ^Z between its `connect()` and its first send — therefore costs the
+  progress thread nothing. A peer that closes without sending still
+  wakes the event, so the handler's error path reclaims the socket as it
+  always did. Do not "simplify" this back to `pmix_event_active`: that
+  was the version in which one idle connection stopped the server
+  indefinitely.
+- **The handler sets `SO_RCVTIMEO` from `ptl_base_connect_ack_timeout`**
+  (seconds; default 5; 0 disables it). A peer that sends part of a
+  request and stalls still gets the handler run, so readability does not
+  help; the timeout does. It stays on the socket for the rest of the
+  blocking handshake, which bounds a psec server handshake too, and stops
+  mattering once the socket goes non-blocking.
+
+The timeout only works because **`pmix_ptl_base_recv_blocking` reports
+it.** On a socket in blocking mode, `EAGAIN`/`EWOULDBLOCK` is how `recv()`
+says an `SO_RCVTIMEO` expired — it is not "no data yet". The function
+returns `PMIX_ERR_TIMEOUT` in that case, and only still cycles when the
+socket really is non-blocking. It used to cycle unconditionally, which
+turned every receive timeout into an unbounded wait: the outbound
+`handshake_wait_time` never expired either. Every current caller of both
+blocking helpers passes a blocking socket.
+
+**What is still true:** the partial-request case is *bounded*, not free.
+A peer that repeatedly sends a few bytes and stalls still freezes the
+server for up to the timeout each time. The complete answer is to parse
+the connect-ack incrementally from read events instead of blocking
+reads, which is a restructuring of this file and the psec handshakes
+rather than a fix; it is recorded in `docs/todo.rst`.
+
+`test/unit/ptl_stalled_peer.c` pins both halves separately: its idle
+case runs with the timeout disabled, so only the readability change can
+pass it, and its partial case needs the timeout and the `EAGAIN` handling
+together.
 
 ### Ownership along that path — read this before editing
 
@@ -299,11 +349,16 @@ publishes the URI into `gds`, and drops rendezvous files.
 Two regimes, described in the framework doc. What matters *here*:
 
 - `pmix_ptl_base_send_blocking` / `_recv_blocking` and everything in the
-  connect-ack exchange are genuinely blocking. That is acceptable only
-  because they run at init, before the peer is in steady-state traffic —
-  and because the inbound side sets a receive timeout
-  (`pmix_ptl_base_set_timeout`) so a peer that connects and says nothing
-  cannot wedge the progress thread forever.
+  connect-ack exchange are genuinely blocking. On the **outbound** side
+  that is acceptable because it runs on the caller's thread during init;
+  `pmix_ptl_base_set_timeout` applies `handshake_wait_time` there, which
+  defaults to 0 — no bound. On the **inbound** side it is the server's
+  progress thread, and the bound comes from the listener and
+  `connect_ack_timeout` instead — see *The inbound handshake blocks the
+  server's progress thread*. `set_timeout` is not called inbound.
+- `pmix_ptl_base_set_timeout` only ever *clears* its `sockopt`
+  out-parameter, on failure. That is not a bug: the caller initializes it
+  to `true`, and it means "restore the saved timeout afterwards".
 - The file-wait loops (`pmix_ptl_base_parse_uri_file`, `check_server`)
   sleep on a local `pmix_lock_t` armed by an evtimer rather than
   spinning. Every one of those loops needs its own
@@ -317,6 +372,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_uri.c` | URI/version parsing and version comparison, including every malformed input |
 | `test/unit/ptl_handshake.c` | the `PUT_*`/`GET_*` pair as a round trip, plus truncated-field rejection |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file |
+| `test/unit/ptl_stalled_peer.c` | a server keeps servicing requests while a peer's connection is idle, or stalled partway into its connect-ack |
 | `test/unit/tool_nspace.c` | a real tool connection leaves exactly one namespace object, and the peer resolves through the one on the list |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |
 | `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: tools connecting across nodes, discovery by pid/nspace, remote-connection interface selection |

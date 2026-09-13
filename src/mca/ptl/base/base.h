@@ -105,6 +105,9 @@ struct pmix_ptl_base_t {
     int wait_to_connect;
     int handshake_wait_time;
     int handshake_max_retries;
+    /* seconds a server waits for the rest of an incoming connect-ack once
+     * it has started to arrive - see pmix_ptl_base_connection_handler */
+    int connect_ack_timeout;
 };
 typedef struct pmix_ptl_base_t pmix_ptl_base_t;
 
