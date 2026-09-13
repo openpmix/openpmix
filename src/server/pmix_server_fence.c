@@ -546,10 +546,8 @@ pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *procs,
 {
     pmix_server_trkr_t *trk;
     size_t i;
-    bool all_def, found;
+    bool all_def;
     pmix_namespace_t *nptr, *ns;
-    pmix_rank_info_t *info;
-    pmix_nspace_caddy_t *nm;
     pmix_nspace_t first;
 
     pmix_output_verbose(5, pmix_server_globals.fence_output,
@@ -624,124 +622,35 @@ pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *procs,
             trk->hybrid = true;
         }
         if (NULL == nptr) {
-            /* we don't know about this nspace. If there is going to
-             * be at least one local process participating in a fence,
-             * they we require that either at least one process must already
-             * have been registered (via "register client") or that the
-             * nspace itself have been regisered. So either the nspace
-             * wasn't registered because it doesn't include any local
-             * procs, or our host has not been told about this nspace
-             * because it won't host any local procs. We therefore mark
-             * this tracker as including non-local participants.
-             *
-             * NOTE: It is conceivable that someone might want to review
-             * this constraint at a future date. I believe it has to be
-             * required (at least for now) as otherwise we wouldn't have
-             * a way of knowing when all local procs have participated.
-             * It is possible that a new nspace could come along at some
-             * later time and add more local participants - but we don't
-             * know how long to wait.
-             *
-             * The only immediately obvious alternative solutions would
-             * be to either require that RMs always inform all daemons
-             * about the launch of nspaces, regardless of whether or
-             * not they will host local procs; or to drop the aggregation
-             * of local participants and just pass every fence call
-             * directly to the host. Neither of these seems palatable
-             * at this time. */
+            /* We do not know about this nspace. If a local process of it
+             * is going to participate, the host is required to have
+             * registered either the nspace or one of its clients before
+             * that process calls in - so either this nspace has no local
+             * procs, or we have not been told about it yet and cannot
+             * tell which. Assume the former, as this code always has:
+             * the alternative is to wait for a namespace that may never
+             * arrive. The assumption is repaired rather than avoided -
+             * pmix_server_trk_count_nspace is called again when the
+             * namespace registers and when one of its procs contributes,
+             * either of which proves the assumption wrong in time to
+             * correct nlocal. */
             trk->local = false;
-            /* we don't know any more info about this nspace, so
-             * there isn't anything more we can do */
-            continue;
-        }
-        /* it is possible we know about this nspace because the host
-         * has registered one or more clients via "register_client",
-         * but the host has not yet called "register_nspace". There is
-         * a very tiny race condition whereby this can happen due
-         * to event-driven processing, but account for it here */
-        if (SIZE_MAX == nptr->nlocalprocs) {
-            /* delay processing until this nspace is registered */
-            all_def = false;
             continue;
         }
         if (0 == nptr->nlocalprocs) {
             /* the host has informed us that this nspace has no local procs */
             pmix_output_verbose(5, pmix_server_globals.fence_output,
-                                "pmix_server_new_tracker: nspace %s has no local procs", procs[i].nspace);
-            trk->local = false;
-            continue;
-        }
-
-        /* check and add uniq ns into trk nslist */
-        found = false;
-        PMIX_LIST_FOREACH (nm, &trk->nslist, pmix_nspace_caddy_t) {
-            if (0 == strcmp(nptr->nspace, nm->ns->nspace)) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            nm = PMIX_NEW(pmix_nspace_caddy_t);
-            if (NULL == nm) {
-                /* fail the tracker outright rather than returning one
-                 * that is missing a participating namespace: the caller
-                 * turns a NULL into an error the client is told about,
-                 * where a short nslist would leave the collective quietly
-                 * unable to complete */
-                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                PMIX_RELEASE(trk);
-                return NULL;
-            }
-            PMIX_RETAIN(nptr);
-            nm->ns = nptr;
-            pmix_list_append(&trk->nslist, &nm->super);
-        }
-
-        /* if they want all the local members of this nspace, then
-         * add them in here. They told us how many procs will be
-         * local to us from this nspace, but we don't know their
-         * ranks. So as long as they want _all_ of them, we can
-         * handle that case regardless of whether the individual
-         * clients have been "registered" */
-        if (PMIX_RANK_WILDCARD == procs[i].rank) {
-            trk->nlocal += nptr->nlocalprocs;
-            /* the total number of procs in this nspace was provided
-             * in the data blob delivered to register_nspace, so check
-             * to see if all the procs are local */
-            if (nptr->nprocs != nptr->nlocalprocs) {
-                trk->local = false;
-            }
-            continue;
-        }
-
-        /* They don't want all the local clients, or they are at
-         * least listing them individually. Check if all the clients
-         * for this nspace have been registered via "register_client"
-         * so we know the specific ranks on this node */
-        if (!nptr->all_registered) {
-            /* nope, so no point in going further on this one - we'll
-             * process it once all the procs are known */
-            all_def = false;
-            pmix_output_verbose(5, pmix_server_globals.fence_output,
-                                "pmix_server_new_tracker: all clients not registered nspace %s",
+                                "pmix_server_new_tracker: nspace %s has no local procs",
                                 procs[i].nspace);
+            trk->local = false;
             continue;
         }
-        /* is this one of my local ranks? */
-        found = false;
-        PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
-            if (procs[i].rank == info->pname.rank) {
-                pmix_output_verbose(5, pmix_server_globals.fence_output,
-                                    "adding local proc %s.%d to tracker", info->pname.nspace,
-                                    info->pname.rank);
-                found = true;
-                /* track the count */
-                trk->nlocal++;
-                break;
-            }
-        }
-        if (!found) {
-            trk->local = false;
+        /* Count it - once, and only if it can be counted in full. The
+         * tracker's nspace list is the ledger every caller consults, so
+         * a namespace that cannot be settled yet is left off it and the
+         * tracker is marked definition-incomplete instead. */
+        if (!pmix_server_trk_count_nspace(trk, nptr)) {
+            all_def = false;
         }
     }
 
@@ -750,6 +659,140 @@ pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *procs,
     }
     pmix_list_append(&pmix_server_globals.collectives, &trk->super);
     return trk;
+}
+
+/* Count one namespace's local participants into a tracker, once.
+ *
+ * pmix_server_new_tracker does this for every namespace it can see when
+ * the tracker is built. A namespace it has NEVER heard of is a different
+ * matter: it cannot tell "this namespace has no local procs" from "this
+ * namespace has not registered yet", and it assumes the former - marking
+ * the tracker non-local, counting nothing, and leaving def_complete set.
+ *
+ * When the assumption is wrong the collective completes short. nlocal
+ * then names fewer participants than will actually call in, and
+ * pmix_server_trk_complete compares a COUNT of contributions against it
+ * without asking which ranks they came from - so contributions from the
+ * uncounted namespace fill slots meant for ranks that have not called
+ * yet. The fence goes to the host early, the stragglers' data never
+ * reaches the exchange (their peers get PMIX_ERR_NOT_FOUND for keys the
+ * fence was supposed to deliver), and the stragglers then land on a
+ * fresh tracker that the job's next fence over the same participant set
+ * merges into - flipping its collect type to PMIX_COLLECT_INVALID, which
+ * is answered with PMIX_ERR_INVALID_ARG. Neither registration path
+ * repairs this: both skip a tracker whose def_complete is already set.
+ *
+ * The contribution itself is the missing signal. A peer contributing to
+ * this collective is a registered client of its namespace, so by the time
+ * we are called that namespace IS known - and it can be counted exactly
+ * as new_tracker would have. Being on trk->nslist is the "already
+ * counted" mark, which is what _register_nspace uses for the same purpose.
+ *
+ * If the namespace is known but its clients are not all registered yet,
+ * the count would be short again - so clear def_complete instead and
+ * leave it off nslist. That hands the tracker back to the registration
+ * paths, which now no longer skip it, and the next contribution retries. */
+bool pmix_server_trk_count_nspace(pmix_server_trkr_t *trk, pmix_namespace_t *nptr)
+{
+    pmix_nspace_caddy_t *nm;
+    pmix_rank_info_t *rinfo;
+    size_t i, addend = 0;
+    bool found, any = false;
+
+    if (NULL == trk || NULL == nptr || NULL == nptr->nspace || NULL == trk->pcs) {
+        return true;
+    }
+    PMIX_LIST_FOREACH (nm, &trk->nslist, pmix_nspace_caddy_t) {
+        if (0 == strcmp(nptr->nspace, nm->ns->nspace)) {
+            /* counted already - the list is the ledger */
+            return true;
+        }
+    }
+
+    /* All or nothing. A namespace is counted once, by whichever caller
+     * first sees it fully registered, and is then on the list forever -
+     * so a partial count here would be a permanent undercount, and a
+     * second caller adding the rest would double it. */
+    for (i = 0; i < trk->npcs; i++) {
+        if (0 != strncmp(trk->pcs[i].nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+            continue;
+        }
+        any = true;
+        if (PMIX_RANK_WILDCARD == trk->pcs[i].rank) {
+            if (SIZE_MAX == nptr->nlocalprocs) {
+                return false;
+            }
+            addend += nptr->nlocalprocs;
+            continue;
+        }
+        if (!nptr->all_registered) {
+            return false;
+        }
+        found = false;
+        PMIX_LIST_FOREACH (rinfo, &nptr->ranks, pmix_rank_info_t) {
+            if (trk->pcs[i].rank == rinfo->pname.rank) {
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            ++addend;
+        }
+    }
+    if (!any) {
+        /* no participant from this namespace - nothing to record */
+        return true;
+    }
+
+    /* what this namespace contributes is now fixed; note whether any of
+     * it lies off this node */
+    for (i = 0; i < trk->npcs; i++) {
+        if (0 != strncmp(trk->pcs[i].nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+            continue;
+        }
+        if (PMIX_RANK_WILDCARD == trk->pcs[i].rank) {
+            if (nptr->nprocs != nptr->nlocalprocs) {
+                trk->local = false;
+            }
+            continue;
+        }
+        found = false;
+        PMIX_LIST_FOREACH (rinfo, &nptr->ranks, pmix_rank_info_t) {
+            if (trk->pcs[i].rank == rinfo->pname.rank) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            trk->local = false;
+        }
+    }
+
+    nm = PMIX_NEW(pmix_nspace_caddy_t);
+    if (NULL == nm) {
+        /* leave it uncounted rather than record it as counted - a later
+         * caller will try again */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return false;
+    }
+    PMIX_RETAIN(nptr);
+    nm->ns = nptr;
+    pmix_list_append(&trk->nslist, &nm->super);
+    trk->nlocal += (uint32_t) addend;
+
+    pmix_output_verbose(5, pmix_server_globals.fence_output,
+                        "pmix_server_trk_count_nspace: counted %d local participants "
+                        "for nspace %s (nlocal now %u)",
+                        (int) addend, nptr->nspace, trk->nlocal);
+    return true;
+}
+
+void pmix_server_trk_join(pmix_server_trkr_t *trk, pmix_peer_t *peer)
+{
+    if (NULL == peer) {
+        return;
+    }
+    pmix_server_trk_count_nspace(trk, peer->nptr);
 }
 
 static void fence_timeout(int sd, short args, void *cbdata)
@@ -1772,7 +1815,10 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     }
 
     /* add this contributor to the tracker so they get
-     * notified when we are done */
+     * notified when we are done. Count its namespace first, in case the
+     * tracker was built before we had heard of it - see
+     * pmix_server_trk_join. */
+    pmix_server_trk_join(trk, cd->peer);
     pmix_list_append(&trk->local_cbs, &cd->super);
     /* if a timeout was specified, set it */
     if (0 < tv.tv_sec && !trk->event_active) {
