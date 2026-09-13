@@ -132,6 +132,13 @@ static size_t fence_nprocs = 0;
 static size_t fence_ninfo = 0;
 static bool fence_status_last = false;
 static bool fence_sorted_next_to_last = false;
+/* the in-flight cases below need a host that ACCEPTS the operation, so
+ * the tracker is left with the host owning it - that is the state the
+ * double-hand-off case is about. Counted, with the cbdata recorded, so a
+ * second hand-off of the same tracker is visible. */
+static bool fence_accept = false;
+static int fence_calls = 0;
+static void *fence_cbdata = NULL;
 
 static pmix_status_t stub_fence_nb(const pmix_proc_t procs[], size_t nprocs,
                                    const pmix_info_t info[], size_t ninfo,
@@ -142,7 +149,6 @@ static pmix_status_t stub_fence_nb(const pmix_proc_t procs[], size_t nprocs,
     (void) data;
     (void) ndata;
     (void) cbfunc;
-    (void) cbdata;
 
     fence_fired = true;
     fence_nprocs = nprocs;
@@ -152,6 +158,13 @@ static pmix_status_t stub_fence_nb(const pmix_proc_t procs[], size_t nprocs,
     if (NULL != info && 2 <= ninfo) {
         fence_status_last = PMIX_CHECK_KEY(&info[ninfo - 1], PMIX_LOCAL_COLLECTIVE_STATUS);
         fence_sorted_next_to_last = PMIX_CHECK_KEY(&info[ninfo - 2], PMIX_SORTED_PROC_ARRAY);
+    }
+    ++fence_calls;
+    fence_cbdata = cbdata;
+    if (fence_accept) {
+        /* take the operation and say nothing more: the tracker is now
+         * ours, and the handler must not offer it to us again */
+        return PMIX_SUCCESS;
     }
     /* decline, so the handler takes its host-error arm: it detaches our
      * caddy from the tracker and drives the completion, which tears the
@@ -895,6 +908,54 @@ int main(int argc, char **argv)
                1 == d.nblobs);
         report("the blob carries the deletion",
                d.saw_deletion);
+    }
+
+    /* --- a tracker the host already owns is not handed up twice ---
+     *
+     * pmix_server_get_tracker matches on the participant set, so a second
+     * contribution over the same set - a fork/exec'd clone of a rank that
+     * already called in, or a second PMIx_Fence_nb issued before the
+     * first resolved - is given the tracker that is still in flight.
+     * pmix_server_trk_complete says "complete" again, and the handler
+     * used to hand the host that same tracker pointer a second time. The
+     * host then holds two operations against one cbdata: the first
+     * completion answers every participant, unlinks the tracker and frees
+     * it, and the second runs pmix_server_modex_cbfunc on freed memory.
+     *
+     * The accepting stub is what makes the state reachable - a declining
+     * host tears the tracker down on the spot. */
+    {
+        pmix_status_t rc2;
+        pmix_buffer_t *reply;
+
+        fence_accept = true;
+        fence_calls = 0;
+        fence_cbdata = NULL;
+
+        rc = drive_fence(1, 1, 1, 1);
+        progress_barrier();
+        report("a fence the host accepts reaches it once",
+               PMIX_SUCCESS == rc && 1 == fence_calls);
+
+        /* the same participant set again, while the host still owns it */
+        rc2 = drive_fence(1, 1, 1, 1);
+        progress_barrier();
+        report("a second contribution does not hand the host the tracker again",
+               1 == fence_calls);
+        report("the late contribution is accepted and parked",
+               PMIX_SUCCESS == rc2);
+
+        /* resolve it once, which is all the host was ever asked for, and
+         * let the completion answer both caddies and free the tracker */
+        if (NULL != fence_cbdata) {
+            pmix_server_modex_cbfunc(PMIX_SUCCESS, NULL, 0, fence_cbdata, NULL, NULL);
+            progress_barrier();
+        }
+        /* drain what the completion queued for our socket-less peer */
+        while (NULL != (reply = take_queued_reply())) {
+            PMIX_RELEASE(reply);
+        }
+        fence_accept = false;
     }
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);

@@ -1426,7 +1426,7 @@ static bool collective_is_pending(pmix_server_trkr_t *trk)
  * releases the tracker. If no completion function was ever attached, tear
  * it down here - unlinking first, since being on the collectives list is
  * not a reference. */
-static void fail_collective(pmix_server_trkr_t *trk, pmix_status_t status)
+void pmix_server_fail_collective(pmix_server_trkr_t *trk, pmix_status_t status)
 {
     cancel_collective_timer(trk);
     trk->host_called = false; // the host will not be calling us back
@@ -1469,7 +1469,7 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
      * is by definition not the arm that lands us here. */
     if (PMIX_FENCENB_CMD == trk->type) {
         if (NULL == pmix_host_server.fence_nb) {
-            fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
+            pmix_server_fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
             PMIX_RELEASE(tcd);
             return;
         }
@@ -1491,7 +1491,7 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
             PMIX_DESTRUCT(&bucket);
             /* every participant is parked on this tracker and nothing
              * else will ever answer them */
-            fail_collective(trk, rc);
+            pmix_server_fail_collective(trk, rc);
             PMIX_RELEASE(tcd);
             return;
         }
@@ -1510,7 +1510,7 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
             pmix_server_modex_contributed(trk);
         }
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-            fail_collective(trk, rc);
+            pmix_server_fail_collective(trk, rc);
         } else if (PMIX_OPERATION_SUCCEEDED == rc) {
             /* the host completed atomically and will not call us back, so
              * we owe every participant the reply ourselves */
@@ -1520,7 +1520,7 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
         }
     } else if (PMIX_CONNECTNB_CMD == trk->type) {
         if (NULL == pmix_host_server.connect) {
-            fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
+            pmix_server_fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
             PMIX_RELEASE(tcd);
             return;
         }
@@ -1529,7 +1529,7 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
         rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info, trk->ninfo, trk->op_cbfunc,
                                       trk);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-            fail_collective(trk, rc);
+            pmix_server_fail_collective(trk, rc);
         } else if (PMIX_OPERATION_SUCCEEDED == rc) {
             trk->host_called = false;
             rc = pmix_server_get_collective_status(trk->info, trk->ninfo);
@@ -1537,7 +1537,7 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
         }
     } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
         if (NULL == pmix_host_server.disconnect) {
-            fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
+            pmix_server_fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
             PMIX_RELEASE(tcd);
             return;
         }
@@ -1546,7 +1546,7 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
         rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info, trk->ninfo, trk->op_cbfunc,
                                          trk);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-            fail_collective(trk, rc);
+            pmix_server_fail_collective(trk, rc);
         } else if (PMIX_OPERATION_SUCCEEDED == rc) {
             trk->host_called = false;
             rc = pmix_server_get_collective_status(trk->info, trk->ninfo);

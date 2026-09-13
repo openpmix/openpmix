@@ -938,7 +938,14 @@ and is read as one.
 
 All three of these collectives share `pmix_server_trkr_t` and the engine
 in `pmix_server_fence.c`. A tracker is keyed either by an `id` string or
-by the tuple `{sorted participant set, cmd type}`.
+by the tuple `{sorted participant set, cmd type}`. **Nothing in the tree
+passes an `id` today** — `pmix_server_fence.c` and
+`pmix_server_connect.c` are the only callers and both pass NULL — so the
+whole `NULL != id` branch of `pmix_server_get_tracker` and
+`pmix_server_new_tracker` is unexercised by any test or any run. Read it
+as a facility awaiting a user, not as working code: its participant-merge
+arm, for one, would `memcpy` from the NULL `trk->pcs` of an id-keyed
+tracker created with no procs.
 `pmix_server_get_tracker` brute-force-searches `pmix_server_globals.collectives`;
 `pmix_server_new_tracker` creates one, **copies** the participant array
 into `trk->pcs` (it does not take ownership of the caller's `procs`),
@@ -1177,7 +1184,54 @@ list. Its own pack failures returned the same way. A collective reached
 through this path has no switchyard caddy to hand back - every caddy on
 `local_cbs` is already the tracker's - so the way to fail it is to drive
 the completion function with the error, which replies to each participant
-and tears the tracker down. That is what `fail_collective` is for.
+and tears the tracker down. That is what `pmix_server_fail_collective` is
+for.
+
+**Every up-call site owes the same five things, and the way to be sure is
+to call `pmix_server_fail_collective`.** There are now four places that
+hand a tracker to the host - `pmix_server_fence`, the two handlers in
+`pmix_server_connect.c`, `pmix_server_execute_collective`, and
+`pmix_server_trk_peer_lost`. Each owes: a screen on the host entry point
+being non-NULL; the local-phase timer cancelled first; the modex bucket
+built (fence only); `PMIX_OPERATION_SUCCEEDED` treated as a *success*
+that says the host will not call back, so this site owes the replies; and
+a failure return answered by driving the completion rather than releasing
+the tracker. A tracker simply unlinked and released answers nobody - the
+caddy destructor sends nothing - so every participant parked on it sits
+in its collective until the job is killed.
+
+`pmix_server_trk_peer_lost` was the site that had none of them: it
+up-called with `NULL` data (so a `PMIX_COLLECT_DATA` fence lost this
+node's contribution outright whenever a participant died before
+contributing - the survivors' committed values were never circulated, and
+the remote ranks, which know nothing of the loss, saw a fence complete
+with those keys simply absent), read `PMIX_OPERATION_SUCCEEDED` as a
+failure, and answered any failure by unlinking and releasing. Duplicating
+the arms is what let them drift, which is why the helper is now exported
+rather than static to `pmix_server_registration.c`.
+
+**A tracker the host already owns must not be completed again.**
+`pmix_server_get_tracker` matches on the participant set and the command,
+and `completion_fired` is the only state it refuses. That leaves the
+window between `fence_nb` returning and the host calling back - the
+length of a global barrier - during which the tracker is on the list,
+`host_called`, and joinable. A contribution arriving in that window is a
+routine event: a fork/exec'd clone of a rank that already called in, or a
+second `PMIx_Fence_nb` over the same set issued before the first
+resolved. `pmix_server_trk_complete()` then answers "yes" again (the
+`>=` is deliberately tolerant of a clone over-count), and the handler
+handed the host *the same tracker pointer* a second time. The host then
+has two operations outstanding against one `cbdata` and completes both:
+the first reply run unlinks and releases the tracker, and the second runs
+`pmix_server_modex_cbfunc` on freed memory. Hence the `!trk->host_called`
+test guarding the completion block in `pmix_server_fence` and in both
+`pmix_server_connect.c` handlers; the late caddy needs nothing beyond
+being on `local_cbs`, which the pending completion drains. The two sites
+in `pmix_server_registration.c` are covered already - both skip a tracker
+whose `def_complete` is set, which a `host_called` tracker necessarily
+is. `test/unit/server_fence.c` pins this with a host stub that *accepts*
+the operation; a declining stub tears the tracker down on the spot and
+cannot reach the state at all.
 
 **Never build the modex bucket anywhere but `pmix_server_collect_data`.**
 `pmix_server_execute_collective` used to assemble it inline, and the copy
@@ -1416,6 +1470,30 @@ blobs, prepends a collect-type byte (so a receiver can detect a mismatched
 help message), optionally compresses, and packs the whole thing as one
 byte object. `pmix_server_commit` is the reverse ingest and then wakes
 any pending `remote_pnd` and `local_reqs` direct-modex requests.
+
+**A pack status that a loop overwrites is a short blob reported as a
+whole one.** The `remote_pnd` wake-up in `pmix_server_commit` packs the
+committing rank's remote kvs one at a time, and the status of each pack
+landed in the variable the next iteration wrote and the callback finally
+read. An element the peer's module could not pack was therefore dropped
+from the blob, and any later element that packed cleanly reported the
+whole thing a success - so the requesting server was handed a modex it
+had no way to tell from a complete one, and the key went missing at the
+far end with no error anywhere. Its sibling in `pmix_server_dmodex.c` is
+the same six lines written correctly (it checks inside the loop and
+bails); when two copies of one loop exist, diff them.
+
+**A tombstone that is not recorded is never announced, and nothing
+re-announces it.** The `PMIX_DEL_REMOTE`/`PMIX_DEL_GLOBAL` arm of
+`pmix_server_commit` builds a `PMIX_UNDEF` entry for the rank's modex log
+so remote servers are *told* the key is gone - the exchange is additive,
+so a contribution that merely stops naming a key removes nothing at the
+far end. Two arms there used to fall out silently on an allocation
+failure. That is not a degraded commit: the key is already gone from this
+server's own store, so no later contribution mentions it, and every
+server on another node serves the stale value for the rest of the job.
+Fail the commit instead - the client is told, and the switchyard packs
+the status into its reply.
 
 ## Direct modex (`pmix_server_get.c`)
 
@@ -2519,13 +2597,22 @@ Two suites cover the halves:
   reads back what was queued for each — the shape that catches both a
   reply loop that abandons participants and a status the loop clobbers.
   It reads the replies off `send_msg`/`send_queue`, per the
-  `test/unit/server_control.c` idiom below.
+  `test/unit/server_control.c` idiom below. Its host stub can also
+  *accept* the operation, which is the only way to reach the state where
+  the host owns a tracker that is still on the `collectives` list - a
+  declining stub tears the tracker down on the spot - and that is what
+  the second-contribution case needs.
   `test/unit/tracker_match.c` and `test/unit/trk_complete.c` cover the
   tracker-identity and completion-predicate halves of the same file, and
   [`test/unit/collect_job_info.c`](../../test/unit/collect_job_info.c)
   covers `PMIx_server_collect_job_info`, including the case where one
   named namespace cannot be answered for and must not discard the job
-  info collected for the others.
+  info collected for the others - and the other end of that rule, where
+  *none* of them could be answered. Skipping a namespace is right;
+  skipping all of them and still reporting `PMIX_SUCCESS` hands the
+  caller an empty buffer it cannot tell from a collected one, and a host
+  ships that onward as the job info it asked for. The man page had
+  documented `PMIX_ERR_NOT_FOUND` for this all along.
 - [`test/unit/server_fabric.c`](../../test/unit/server_fabric.c) drives
   `pmix_server_device_dists` from a hand-packed buffer that carries no
   topology — the "use your own" path — and asserts that a locally

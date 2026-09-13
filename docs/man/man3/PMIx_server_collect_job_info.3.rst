@@ -69,8 +69,12 @@ of processes without requiring a separate registration for each namespace.
 For each unique namespace in ``procs``, the library locates the namespace in its
 internal tables and fetches its job-level data |mdash| preferring a local
 client's data store when one exists, otherwise falling back to the server's own
-storage. Namespaces the server does not know are silently skipped. The packed
-result for each namespace is appended to ``dbuf`` as a byte object.
+storage. Namespaces the server does not know are silently skipped |mdash| one
+name it cannot answer for must not cost the caller the namespaces it can. If
+*no* namespace in the array could be answered, there is nothing partial about
+the outcome and ``PMIX_ERR_NOT_FOUND`` is returned rather than an empty buffer
+stamped success. The packed result for each namespace is appended to ``dbuf``
+as a byte object.
 
 Unlike most server APIs, ``PMIx_server_collect_job_info`` is a **blocking**
 operation and does not take a callback: internally it thread-shifts the request
@@ -86,8 +90,10 @@ Returns one of the following:
 
 * ``PMIX_SUCCESS`` |mdash| the job-level information was collected and loaded
   into ``dbuf``.
-* ``PMIX_ERR_NOT_FOUND`` |mdash| the requested job-level information could not
-  be located for the specified namespace(s).
+* ``PMIX_ERR_NOT_FOUND`` |mdash| the job-level information could not be located
+  for any of the specified namespaces, so nothing was collected. A request that
+  could answer at least one of them returns ``PMIX_SUCCESS``, carrying what it
+  found.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because
   the library's progress engine has been stopped.
 * ``PMIX_ERR_INIT`` |mdash| the PMIx server library has not been initialized.
