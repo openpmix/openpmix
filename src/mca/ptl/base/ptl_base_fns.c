@@ -34,9 +34,12 @@
 #    include <dirent.h>
 #endif
 #include <ctype.h>
+#include <errno.h>
+#include <time.h>
 
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
+#include "src/runtime/pmix_progress_threads.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
@@ -53,6 +56,7 @@
 
 /****    SUPPORTING FUNCTIONS    ****/
 static void timeout(int sd, short args, void *cbdata);
+static void retry_wait(const struct timeval *tv);
 static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t *sz,
                                        pmix_info_t *iptr, size_t niptr);
 
@@ -221,8 +225,6 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
 {
     FILE *fp;
     char *srvr, *p = NULL;
-    pmix_lock_t lock;
-    pmix_event_t ev;
     struct timeval tv;
     int retries;
     pmix_status_t rc;
@@ -246,22 +248,14 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
                 ++retries;
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "WAITING FOR CONNECTION FILE %s", filename);
-                PMIX_CONSTRUCT_LOCK(&lock);
                 if (0 < pmix_ptl_base.wait_to_connect) {
                     tv.tv_sec = pmix_ptl_base.wait_to_connect;
                     tv.tv_usec = 0;
-                    pmix_event_evtimer_set(pmix_globals.evbase, &ev, timeout, &lock);
-                    PMIX_POST_OBJECT(&ev);
-                    pmix_event_evtimer_add(&ev, &tv);
                 } else {
                     tv.tv_sec = 0;
                     tv.tv_usec = 10000; // use 0.01 sec as default
-                    pmix_event_evtimer_set(pmix_globals.evbase, &ev, timeout, &lock);
-                    PMIX_POST_OBJECT(&ev);
-                    pmix_event_evtimer_add(&ev, &tv);
                 }
-                PMIX_WAIT_THREAD(&lock);
-                PMIX_DESTRUCT_LOCK(&lock);
+                retry_wait(&tv);
                 /* coverity[TOCTOU] */
                 if (0 == access(filename, R_OK)) {
                     goto process;
@@ -307,12 +301,7 @@ process:
         fclose(fp);
         tv.tv_sec = 0;
         tv.tv_usec = 10000; // use 0.01 sec as default
-        PMIX_CONSTRUCT_LOCK(&lock);
-        pmix_event_evtimer_set(pmix_globals.evbase, &ev, timeout, &lock);
-        PMIX_POST_OBJECT(&ev);
-        pmix_event_evtimer_add(&ev, &tv);
-        PMIX_WAIT_THREAD(&lock);
-        PMIX_DESTRUCT_LOCK(&lock);
+        retry_wait(&tv);
         fp = fopen(filename, "r");
         if (NULL == fp) {
             return PMIX_ERR_UNREACH;
@@ -1050,8 +1039,6 @@ static void check_server(char *filename, pmix_list_t *servers)
 {
     FILE *fp;
     char *srvr, *p, *p2;
-    pmix_lock_t lock;
-    pmix_event_t ev;
     struct timeval tv;
     int retries;
     pmix_info_t *sdata;
@@ -1080,22 +1067,14 @@ static void check_server(char *filename, pmix_list_t *servers)
                 ++retries;
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "WAITING FOR CONNECTION FILE %s", filename);
-                PMIX_CONSTRUCT_LOCK(&lock);
                 if (0 < pmix_ptl_base.wait_to_connect) {
                     tv.tv_sec = pmix_ptl_base.wait_to_connect;
                     tv.tv_usec = 0;
-                    pmix_event_evtimer_set(pmix_globals.evbase, &ev, timeout, &lock);
-                    PMIX_POST_OBJECT(&ev);
-                    pmix_event_evtimer_add(&ev, &tv);
                 } else {
                     tv.tv_sec = 0;
                     tv.tv_usec = 10000; // use 0.01 sec as default
-                    pmix_event_evtimer_set(pmix_globals.evbase, &ev, timeout, &lock);
-                    PMIX_POST_OBJECT(&ev);
-                    pmix_event_evtimer_add(&ev, &tv);
                 }
-                PMIX_WAIT_THREAD(&lock);
-                PMIX_DESTRUCT_LOCK(&lock);
+                retry_wait(&tv);
                 /* coverity[TOCTOU] */
                 if (0 == access(filename, R_OK)) {
                     goto process;
@@ -1123,12 +1102,7 @@ process:
         fclose(fp);
         tv.tv_sec = 0;
         tv.tv_usec = 10000; // use 0.01 sec as default
-        PMIX_CONSTRUCT_LOCK(&lock);
-        pmix_event_evtimer_set(pmix_globals.evbase, &ev, timeout, &lock);
-        PMIX_POST_OBJECT(&ev);
-        pmix_event_evtimer_add(&ev, &tv);
-        PMIX_WAIT_THREAD(&lock);
-        PMIX_DESTRUCT_LOCK(&lock);
+        retry_wait(&tv);
         fp = fopen(filename, "r");
         if (NULL == fp) {
             return;
@@ -1374,6 +1348,48 @@ static void timeout(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_WAKEUP_THREAD(lock);
+}
+
+/* Pause before looking at a connection file again.
+ *
+ * The pause is normally an evtimer on pmix_globals.evbase with the caller
+ * parked on a lock the timer releases, so the waiting thread does not
+ * spin. That only works when the caller is some OTHER thread: the timer
+ * can fire only when the progress thread gets back to its event loop, and
+ * if the caller IS the progress thread, it never will - the wait is
+ * forever. These file loops are reached on the progress thread whenever
+ * pmix_ptl_base_connect_to_peer is, which includes every
+ * PMIx_tool_attach_to_server (pmix_tool_retry_attach is a thread-shift
+ * handler): an attachment file that did not exist yet deadlocked the
+ * tool's progress thread, and with it the call waiting on the other side.
+ *
+ * On the progress thread, sleep for the interval instead. That blocks the
+ * loop for the length of the pause - but that path already blocks it for
+ * the whole TCP handshake that follows, and a bounded pause the caller
+ * asked for is what the loop is there to provide. Off the progress thread
+ * nothing changes. */
+static void retry_wait(const struct timeval *tv)
+{
+    pmix_lock_t lock;
+    pmix_event_t ev;
+    struct timeval tvc = *tv;
+    struct timespec req, rem;
+
+    if (pmix_progress_thread_is_current()) {
+        req.tv_sec = tv->tv_sec;
+        req.tv_nsec = (long) tv->tv_usec * 1000L;
+        while (0 != nanosleep(&req, &rem) && EINTR == errno) {
+            req = rem;
+        }
+        return;
+    }
+
+    PMIX_CONSTRUCT_LOCK(&lock);
+    pmix_event_evtimer_set(pmix_globals.evbase, &ev, timeout, &lock);
+    PMIX_POST_OBJECT(&ev);
+    pmix_event_evtimer_add(&ev, &tvc);
+    PMIX_WAIT_THREAD(&lock);
+    PMIX_DESTRUCT_LOCK(&lock);
 }
 
 /*

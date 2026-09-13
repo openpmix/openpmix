@@ -374,11 +374,25 @@ Two regimes, described in the framework doc. What matters *here*:
 - `pmix_ptl_base_set_timeout` only ever *clears* its `sockopt`
   out-parameter, on failure. That is not a bug: the caller initializes it
   to `true`, and it means "restore the saved timeout afterwards".
-- The file-wait loops (`pmix_ptl_base_parse_uri_file`, `check_server`)
-  sleep on a local `pmix_lock_t` armed by an evtimer rather than
-  spinning. Every one of those loops needs its own
-  `PMIX_CONSTRUCT_LOCK` — the lock is a stack object and waiting on an
-  unconstructed one is undefined.
+- **`pmix_ptl_base_connect_to_peer` runs on either thread.** From
+  `PMIx_tool_init` it is the caller's thread. From
+  `PMIx_tool_attach_to_server` it is the **progress thread**:
+  `pmix_tool_retry_attach` is a thread-shift handler. Anything it reaches
+  that waits on `pmix_globals.evbase` has to know which one it is on.
+- **The file-wait loops pause through `retry_wait()`, and nothing else.**
+  `pmix_ptl_base_parse_uri_file` and `check_server` pause between looks
+  at a connection file — once while it does not exist yet, and again
+  while it exists but is still being written. The pause is normally an
+  evtimer on `pmix_globals.evbase` with the caller parked on a lock the
+  timer releases. That cannot work on the progress thread: the timer
+  fires only when that thread gets back to its loop, and it is the one
+  waiting. All four loops used to open-code that pattern, so an attach
+  to an attachment file that did not exist yet deadlocked the tool's
+  progress thread, and the caller of the attach with it.
+  `retry_wait()` sleeps for the interval instead when it finds itself on
+  the progress thread; off it, nothing changed. Do not add a fifth loop
+  that open-codes the timer. `test/unit/tool_api.c` holds the attach
+  case.
 
 ## Tests
 
