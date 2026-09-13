@@ -35,6 +35,15 @@
  * pmix_globals.nspaces carries its name, and that entry is the one the
  * tool's peer is using.
  *
+ * The server's own namespace deliberately contains dots. A tool handed
+ * the server's URI ("nspace.rank;tcp4://...") has to split the name from
+ * the rank at the LAST '.', and one route through
+ * pmix_ptl_base_connect_to_peer split at the first: the tool connected to
+ * the right address but then recorded its server as "tool", rank 0,
+ * overwriting the correct identity the handshake had just delivered. The
+ * tool checks what it recorded and reports a mismatch through its exit
+ * status.
+ *
  * The fork happens before any PMIx call so neither side inherits an
  * initialized library, and the two pipes keep the check inside the
  * window where the tool is connected - so nothing here races the
@@ -46,6 +55,7 @@
 #include "include/pmix.h"
 #include "include/pmix_server.h"
 #include "include/pmix_tool.h"
+#include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/server/pmix_server_ops.h"
@@ -58,6 +68,10 @@
 #include <unistd.h>
 
 #define TOOL_NSPACE "tool-nspace-test"
+/* dotted on purpose - see the header */
+#define SERVER_NSPACE "tool.nspace.server"
+/* the tool's exit status when it recorded the wrong server identity */
+#define TOOL_EXIT_WRONG_SERVER 3
 
 static int npass = 0;
 static int nfail = 0;
@@ -98,6 +112,7 @@ static int run_tool(int urifd, int readyfd, int gofd)
     pmix_info_t tinfo;
     pmix_status_t rc;
     char c = 'r';
+    bool wrong_server = false;
 
     n = read(urifd, uri, sizeof(uri) - 1);
     if (0 >= n) {
@@ -113,6 +128,19 @@ static int run_tool(int urifd, int readyfd, int gofd)
         return 1;
     }
 
+    /* the identity we recorded for our server must be the whole name */
+    if (NULL == pmix_client_globals.myserver ||
+        NULL == pmix_client_globals.myserver->info ||
+        NULL == pmix_client_globals.myserver->info->pname.nspace ||
+        0 != strcmp(pmix_client_globals.myserver->info->pname.nspace, SERVER_NSPACE)) {
+        fprintf(stderr, "  tool: recorded its server as \"%s\", expected \"%s\"\n",
+                (NULL != pmix_client_globals.myserver && NULL != pmix_client_globals.myserver->info &&
+                 NULL != pmix_client_globals.myserver->info->pname.nspace)
+                    ? pmix_client_globals.myserver->info->pname.nspace : "(null)",
+                SERVER_NSPACE);
+        wrong_server = true;
+    }
+
     /* tell the server we are up, and stay connected until it has looked */
     if (1 != write(readyfd, &c, 1)) {
         PMIx_tool_finalize();
@@ -124,7 +152,7 @@ static int run_tool(int urifd, int readyfd, int gofd)
     }
 
     PMIx_tool_finalize();
-    return 0;
+    return wrong_server ? TOOL_EXIT_WRONG_SERVER : 0;
 }
 
 /* count the entries on the server's global list carrying this name, and
@@ -192,7 +220,7 @@ int main(int argc, char **argv)
     close(gopipe[0]);
 
     PMIX_INFO_LOAD(&sinfo[0], PMIX_SERVER_TOOL_SUPPORT, &flag, PMIX_BOOL);
-    PMIX_INFO_LOAD(&sinfo[1], PMIX_SERVER_NSPACE, "tool-nspace-server", PMIX_STRING);
+    PMIX_INFO_LOAD(&sinfo[1], PMIX_SERVER_NSPACE, SERVER_NSPACE, PMIX_STRING);
     rc = PMIx_server_init(&mymodule, sinfo, 2);
     PMIX_INFO_DESTRUCT(&sinfo[0]);
     PMIX_INFO_DESTRUCT(&sinfo[1]);
@@ -267,7 +295,11 @@ reap:
     }
     close(readypipe[0]);
     waitpid(child, &status, 0);
-    if (!WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
+    report("tool recorded its server's full, dotted namespace",
+           !WIFEXITED(status) || TOOL_EXIT_WRONG_SERVER != WEXITSTATUS(status),
+           "the name was split at its first '.'");
+    if (!WIFEXITED(status) ||
+        (0 != WEXITSTATUS(status) && TOOL_EXIT_WRONG_SERVER != WEXITSTATUS(status))) {
         report("tool completed its own init/finalize", 0, "tool exited non-zero");
     } else {
         report("tool completed its own init/finalize", 1, NULL);

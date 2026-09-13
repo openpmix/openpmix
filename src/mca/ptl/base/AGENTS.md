@@ -296,6 +296,21 @@ the session tmpdir. Two things to keep straight:
   complaining about, not whether we have an address.
 - **The info array the caller passed is theirs.** Copy before you carve
   a string up; a caller may legitimately hand us a string literal.
+- **There is one parser for a server URI, and it splits at the last
+  `.`.** A URI is `nspace.rank;tcp4://host:port`, and an nspace may
+  contain dots of its own (Slurm's are `slurm.pmix.<jobid>.<stepid>`).
+  `pmix_ptl_base_parse_uri` searches from the end for that reason. A
+  second, inline parser in `connect_to_peer` searched from the front, so
+  a tool given `PMIX_SERVER_URI` reached the right address and then
+  recorded its server as `slurm`, rank 0 — and because
+  `pmix_ptl_base_complete_connection` runs *after* the tool handshake, it
+  overwrote the correct identity the handshake had just delivered. Call
+  `pmix_ptl_base_parse_uri`; do not split one by hand.
+  `test/unit/tool_nspace.c` gives its server a dotted namespace to hold
+  this.
+- **A list-valued directive may split to nothing.** `PMIx_Argv_split`
+  returns NULL for `""` and `","`, so a `PMIX_CONNECTION_ORDER` of either
+  used to fault indexing the result. An empty order means no preference.
 
 ## Steady state
 
