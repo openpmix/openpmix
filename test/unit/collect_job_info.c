@@ -237,6 +237,20 @@ int main(int argc, char **argv)
            PMIX_SUCCESS == rc && 0 < dbuf.bytes_used);
     PMIX_DATA_BUFFER_DESTRUCT(&dbuf);
 
+    /* When *every* namespace is unanswerable there is nothing partial
+     * about the outcome, and reporting success handed the caller an empty
+     * buffer it had no way to tell from a collected one - a host ships
+     * that onward as the job info it asked for. The skip that keeps one
+     * bad namespace from costing the others must not also turn a request
+     * that collected nothing into a success. */
+    PMIX_LOAD_PROCID(&procs[0], bare, 0);
+    PMIX_LOAD_PROCID(&procs[1], "collect.ut.never", 0);
+    PMIX_DATA_BUFFER_CONSTRUCT(&dbuf);
+    rc = PMIx_server_collect_job_info(procs, 2, &dbuf);
+    report("a request that could answer nothing is not a success",
+           PMIX_SUCCESS != rc);
+    PMIX_DATA_BUFFER_DESTRUCT(&dbuf);
+
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
     PMIx_server_finalize();

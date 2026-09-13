@@ -258,11 +258,17 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
         trk->event_active = true;
     }
 
-    /* if all local contributions have been received,
-     * let the local host's server know that we are at the
-     * "fence" point - they will callback once the [dis]connect
-     * across all participants has been completed */
-    if (pmix_server_trk_complete(trk)) {
+    /* If all local contributions have been received, let the local host's
+     * server know that we are at the "fence" point - they will callback
+     * once the [dis]connect across all participants has been completed.
+     *
+     * A tracker the host already owns is excluded for the reason spelled
+     * out in pmix_server_fence: get_tracker matches on the participant
+     * set, so a clone - or a second non-blocking call over the same set -
+     * is handed the in-flight tracker, and completing it again gives the
+     * host two operations against one cbdata and ends in a double
+     * release. */
+    if (!trk->host_called && pmix_server_trk_complete(trk)) {
         /* delete the local-phase timer before handing the tracker to the
          * host, so a late internal timeout cannot race the host completion
          * (which could return the tracker after we released it). Once handed
@@ -553,11 +559,17 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         trk->event_active = true;
     }
 
-    /* if all local contributions have been received,
-     * let the local host's server know that we are at the
-     * "fence" point - they will callback once the [dis]connect
-     * across all participants has been completed */
-    if (pmix_server_trk_complete(trk)) {
+    /* If all local contributions have been received, let the local host's
+     * server know that we are at the "fence" point - they will callback
+     * once the [dis]connect across all participants has been completed.
+     *
+     * A tracker the host already owns is excluded for the reason spelled
+     * out in pmix_server_fence: get_tracker matches on the participant
+     * set, so a clone - or a second non-blocking call over the same set -
+     * is handed the in-flight tracker, and completing it again gives the
+     * host two operations against one cbdata and ends in a double
+     * release. */
+    if (!trk->host_called && pmix_server_trk_complete(trk)) {
         /* delete the local-phase timer before handing the tracker to the
          * host, so a late internal timeout cannot race the host completion
          * (which could return the tracker after we released it). Once handed
