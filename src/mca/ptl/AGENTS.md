@@ -528,8 +528,14 @@ to break this framework:
    runs in the caller's thread during `PMIx_Init`/`PMIx_tool_init`, does
    *blocking* socket I/O, and returns only once the handshake completes.
    The listener's per-connection handshake likewise flips the socket to
-   blocking mode for the duration. This is acceptable precisely because it
-   is startup, before the peer is participating in steady-state traffic.
+   blocking mode for the duration — but do not borrow the same excuse for
+   it. "It is only startup" is true of the *connecting* peer and false of
+   the server: the inbound handshake runs on the server's progress thread,
+   at any moment, while that thread is serving every other client. A
+   blocking read there that nobody bounds stops the whole server. So the
+   listener hands a new socket to the handler only once it is readable,
+   and the handler caps each read with `ptl_base_connect_ack_timeout` —
+   see [`base/AGENTS.md`](base/AGENTS.md).
 2. **Steady-state I/O is entirely on the progress thread.** Every
    `PMIX_PTL_SEND_*` macro thread-shifts; the send/recv handlers,
    `process_msg`, the accept handler, and the connection handler all run
