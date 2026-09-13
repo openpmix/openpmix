@@ -157,6 +157,12 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
          * in this peer's native GDS component so that other local
          * procs from that nspace can access it */
         kp = PMIX_NEW(pmix_kval_t);
+        if (NULL == kp) {
+            /* the unpack below writes straight through this pointer */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            PMIX_DESTRUCT(&b2);
+            return PMIX_ERR_NOMEM;
+        }
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, peer, &b2, kp, &cnt, PMIX_KVAL);
         while (PMIX_SUCCESS == rc) {
@@ -230,21 +236,36 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                  * the mark decides. Editing the log would answer for all
                  * of them at once, and wrongly. */
                 pmix_kval_t *dk = PMIX_NEW(pmix_kval_t);
-                if (NULL != dk) {
-                    dk->key = strdup(kp->key);
-                    PMIX_VALUE_CREATE(dk->value, 1); // PMIX_UNDEF: "gone"
-                    if (NULL == dk->key || NULL == dk->value) {
-                        PMIX_RELEASE(dk);
-                    } else {
-                        rc = modex_log_append(info, dk);
-                        PMIX_RELEASE(dk);
-                        if (PMIX_SUCCESS != rc) {
-                            PMIX_ERROR_LOG(rc);
-                            PMIX_RELEASE(kp);
-                            PMIX_DESTRUCT(&b2);
-                            return rc;
-                        }
-                    }
+                if (NULL == dk) {
+                    /* Fail the commit rather than drop the tombstone. A
+                     * deletion that is not recorded is never announced,
+                     * and nothing will re-announce it - the key is gone
+                     * from our own store, so no later contribution
+                     * mentions it, and every server on another node goes
+                     * on serving the value forever. The log-append failure
+                     * below is answered exactly this way; these two arms
+                     * used to end in a silent success instead. */
+                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    PMIX_RELEASE(kp);
+                    PMIX_DESTRUCT(&b2);
+                    return PMIX_ERR_NOMEM;
+                }
+                dk->key = strdup(kp->key);
+                PMIX_VALUE_CREATE(dk->value, 1); // PMIX_UNDEF: "gone"
+                if (NULL == dk->key || NULL == dk->value) {
+                    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    PMIX_RELEASE(dk);
+                    PMIX_RELEASE(kp);
+                    PMIX_DESTRUCT(&b2);
+                    return PMIX_ERR_NOMEM;
+                }
+                rc = modex_log_append(info, dk);
+                PMIX_RELEASE(dk);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kp);
+                    PMIX_DESTRUCT(&b2);
+                    return rc;
                 }
             }
             if (PMIX_REMOTE == scope || PMIX_GLOBAL == scope) {
@@ -263,6 +284,11 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             }
             PMIX_RELEASE(kp); // maintain accounting
             kp = PMIX_NEW(pmix_kval_t);
+            if (NULL == kp) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIX_DESTRUCT(&b2);
+                return PMIX_ERR_NOMEM;
+            }
             cnt = 1;
             PMIX_BFROPS_UNPACK(rc, peer, &b2, kp, &cnt, PMIX_KVAL);
         }
@@ -308,10 +334,26 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                 PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
                 PMIX_LIST_FOREACH (kp, &cb.kvs, pmix_kval_t) {
                     /* we pack this in our native BFROPS form as it
-                     * will be sent to another daemon */
+                     * will be sent to another daemon.
+                     *
+                     * Check every element. The loop used to leave the
+                     * status where the last iteration put it, so a value
+                     * this peer's module could not pack was dropped from
+                     * the blob and a later one that packed cleanly then
+                     * reported the whole thing a success. The requesting
+                     * server was handed a short modex it had no way to
+                     * tell from a complete one, and the key simply went
+                     * missing at the far end. */
                     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, kp, 1, PMIX_KVAL);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        break;
+                    }
                 }
-                PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
+                if (PMIX_SUCCESS == rc) {
+                    PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
+                }
+                PMIX_DESTRUCT(&pbkt);
             }
             PMIX_DESTRUCT(&cb);
             /* execute the callback */
@@ -745,7 +787,7 @@ static void _collect_job_info(int sd, short args, void *cbdata)
 {
     pmix_cb_t *cbin = (pmix_cb_t*)cbdata;
     char **nspaces = NULL;
-    size_t n, m;
+    size_t n, m, nanswered = 0;
     bool found;
     pmix_proc_t proc;
     pmix_cb_t cb;
@@ -761,20 +803,25 @@ static void _collect_job_info(int sd, short args, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(cbin);
 
-    /* find the unique nspaces that are participating */
+    /* Find the unique nspaces that are participating. An append that
+     * fails is not survivable here: the namespace it dropped would simply
+     * be left out of the collection, and the caller would be handed a
+     * job-info blob short one namespace with nothing to say so. */
     for (m=0; m < cbin->nprocs; m++) {
-        if (NULL == nspaces) {
-            PMIx_Argv_append_nosize(&nspaces, cbin->procs[m].nspace);
-        } else {
-            found = false;
+        found = false;
+        if (NULL != nspaces) {
             for (n = 0; NULL != nspaces[n]; n++) {
                 if (0 == strcmp(nspaces[n], cbin->procs[m].nspace)) {
                     found = true;
                     break;
                 }
             }
-            if (!found) {
-                PMIx_Argv_append_nosize(&nspaces, cbin->procs[m].nspace);
+        }
+        if (!found) {
+            ret = PMIx_Argv_append_nosize(&nspaces, cbin->procs[m].nspace);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_ERROR_LOG(ret);
+                goto done;
             }
         }
     }
@@ -875,6 +922,16 @@ static void _collect_job_info(int sd, short args, void *cbdata)
         }
 
         PMIX_DESTRUCT(&pbkt);
+        ++nanswered;
+    }
+
+    if (0 == nanswered) {
+        /* Skipping a namespace we cannot answer for is right - one bad
+         * name must not discard the job info collected for the others.
+         * But when that was every one of them the caller is left holding
+         * an empty buffer stamped PMIX_SUCCESS, and ships it onward as
+         * though it were the job info it asked for. Say so instead. */
+        ret = PMIX_ERR_NOT_FOUND;
     }
 
 done:
@@ -1021,12 +1078,17 @@ void pmix_server_notify_deleted(const pmix_proc_t *proc,
  * away has no copy left to correct.
  *
  * The version test carries the same meaning as the one above, and rests
- * on the same thing: every role in this array posts the receive. Note
- * that the namespace filter is no help here - both callers that matter
- * pass NULL for it, so a tool is a candidate for this message exactly as
- * a client is. It was spared only by its gds module having nothing to
- * pack for it, which is a fact about the tool's state rather than a
- * screen.
+ * on the same thing: every role in this array posts the receive.
+ *
+ * Do not read the namespace filter as a screen that keeps this off a
+ * tool. Two of the four callers - a session description, which spans
+ * namespaces and so has no one name to give - pass NULL, and that
+ * reaches every peer here; the two that do name a namespace (a revised
+ * job value, in each gds module) reach a tool whenever that tool's peer
+ * object carries the named nspace, which is exactly a tool registered as
+ * a client of that job. What has spared a tool in practice is its gds
+ * module having nothing to pack for it, which is a fact about the tool's
+ * state rather than a screen. The screen is the receive it posts, above.
  */
 void pmix_server_notify_gds_update(const char *nspace)
 {
@@ -1723,11 +1785,30 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         trk->event_active = true;
     }
 
-    /* if all local contributions have been received,
-     * let the local host's server know that we are at the
-     * "fence" point - they will callback once the barrier
-     * across all participants has been completed */
-    if (pmix_server_trk_complete(trk)) {
+    /* If all local contributions have been received, let the local host's
+     * server know that we are at the "fence" point - they will callback
+     * once the barrier across all participants has been completed.
+     *
+     * A tracker already handed to the host is excluded, and that guard is
+     * load-bearing rather than defensive. pmix_server_get_tracker matches
+     * on the participant set, so a contribution that arrives while the
+     * host still owns the tracker is given that same tracker - a
+     * fork/exec'd clone of a rank that already contributed, or a second
+     * PMIx_Fence_nb over the same set issued before the first resolved.
+     * pmix_server_trk_complete then answers "yes" again (it is a '>='
+     * comparison, deliberately tolerant of an over-count), and without
+     * this test the host was handed the *same tracker pointer* a second
+     * time. It then had two operations outstanding against one cbdata and
+     * completed both: the first completion replies to every participant,
+     * unlinks the tracker and releases it, and the second runs
+     * pmix_server_modex_cbfunc on freed memory.
+     *
+     * The late caddy needs nothing more than to be on local_cbs, which it
+     * now is - the pending completion answers it with everyone else.
+     * completion_fired covers the rest of the window: get_tracker already
+     * refuses a tracker whose completion has been driven, which is the
+     * state the local-only and error arms below leave behind. */
+    if (!trk->host_called && pmix_server_trk_complete(trk)) {
         pmix_output_verbose(2, pmix_server_globals.fence_output,
                             "fence LOCALLY complete");
         /* if a timeout was set, then we delete it here as we can
@@ -1932,6 +2013,9 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
     pmix_server_caddy_t *rinfo;
     pmix_proclist_t *dp;
     pmix_status_t rc;
+    pmix_buffer_t bucket;
+    char *data;
+    size_t sz;
     bool flag;
     size_t n;
 
@@ -2074,32 +2158,98 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
                     }
                 }
             } else {
-                /* if the host has not been called, then we need to pass the call
-                 * up to the host as otherwise the global collective will hang */
+                /* The host has not been called, so we have to pass the
+                 * call up or the global collective will hang. This is the
+                 * same hand-off pmix_server_execute_collective performs,
+                 * and it has to be spelled the same way here - the three
+                 * things below were each missing, and each of them ended
+                 * with the surviving local participants stuck in the
+                 * collective they had already called:
+                 *
+                 *  - the host entry point has to be screened, because
+                 *    nothing on this path has checked it (the arms in
+                 *    pmix_server_fence check it only on the arm where the
+                 *    collective completed while that function still held
+                 *    the tracker, which is by definition not this one);
+                 *  - PMIX_OPERATION_SUCCEEDED is a success, and says the
+                 *    host will not call back - so we owe the replies. Read
+                 *    as a failure it released the tracker instead, and the
+                 *    caddy destructor sends nothing;
+                 *  - a genuine failure return owes those same replies,
+                 *    rather than an unlink-and-release that frees every
+                 *    participant's caddy unanswered. */
                 if (PMIX_FENCENB_CMD == trk->type) {
+                    if (NULL == pmix_host_server.fence_nb) {
+                        pmix_server_fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
+                        continue;
+                    }
+                    /* This is the tracker's one and only up-call, so it
+                     * carries the contribution of every local participant
+                     * that did call in. Handing the host NULL here meant a
+                     * PMIX_COLLECT_DATA fence lost this node's data
+                     * outright whenever a participant died before
+                     * contributing: the survivors' committed values were
+                     * never circulated, and the remote ranks - which have
+                     * no idea a peer was lost here - saw a fence complete
+                     * with those keys simply absent. */
+                    PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
+                    rc = pmix_server_collect_data(trk, &bucket);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_DESTRUCT(&bucket);
+                        pmix_server_fail_collective(trk, rc);
+                        continue;
+                    }
+                    PMIX_UNLOAD_BUFFER(&bucket, data, sz);
+                    PMIX_DESTRUCT(&bucket);
+                    /* the blob transfers to the host on the call - see
+                     * pmix_server_fence */
                     trk->host_called = true;
                     rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info,
-                                                   trk->ninfo, NULL, 0,
+                                                   trk->ninfo, data, sz,
                                                    trk->modexcbfunc, trk);
-                    if (PMIX_SUCCESS != rc) {
-                        pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
-                        PMIX_RELEASE(trk);
+                    if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                        /* the host has taken the bucket, so what it
+                         * carries is no longer outstanding. Do this before
+                         * any completion below, which releases trk. */
+                        pmix_server_modex_contributed(trk);
+                    }
+                    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+                        pmix_server_fail_collective(trk, rc);
+                    } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+                        trk->host_called = false;
+                        rc = pmix_server_get_collective_status(trk->info, trk->ninfo);
+                        trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
                     }
                 } else if (PMIX_CONNECTNB_CMD == trk->type) {
+                    if (NULL == pmix_host_server.connect) {
+                        pmix_server_fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
+                        continue;
+                    }
                     trk->host_called = true;
                     rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info,
                                                   trk->ninfo, trk->op_cbfunc, trk);
-                    if (PMIX_SUCCESS != rc) {
-                        pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
-                        PMIX_RELEASE(trk);
+                    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+                        pmix_server_fail_collective(trk, rc);
+                    } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+                        trk->host_called = false;
+                        rc = pmix_server_get_collective_status(trk->info, trk->ninfo);
+                        trk->op_cbfunc(rc, trk);
                     }
                 } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
+                    if (NULL == pmix_host_server.disconnect) {
+                        pmix_server_fail_collective(trk, PMIX_ERR_NOT_SUPPORTED);
+                        continue;
+                    }
                     trk->host_called = true;
                     rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info,
                                                      trk->ninfo, trk->op_cbfunc, trk);
-                    if (PMIX_SUCCESS != rc) {
-                        pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
-                        PMIX_RELEASE(trk);
+                    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+                        pmix_server_fail_collective(trk, rc);
+                    } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+                        trk->host_called = false;
+                        rc = pmix_server_get_collective_status(trk->info, trk->ninfo);
+                        trk->op_cbfunc(rc, trk);
                     }
                 }
             }
