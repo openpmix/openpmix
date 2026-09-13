@@ -314,6 +314,14 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* init is free to write to either stream on its own account - e.g., the
+     * show_help notice for a deprecated MCA variable set in the environment -
+     * and that text would otherwise be read back as the start of the first
+     * delivery checked on that stream. Nothing has been delivered yet, so
+     * whatever is waiting is init's */
+    (void) settle(rfd, buf);
+    (void) settle(efd, buf);
+
     /* ---- baseline: a complete line is written out ---- */
     PMIX_LOAD_PROCID(&src, "outtest", 0);
     if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, "alpha\n", 6)) {

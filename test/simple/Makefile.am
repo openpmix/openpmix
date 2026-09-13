@@ -25,6 +25,15 @@ AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_buildd
 
 headers = simptest.h
 
+# Every program here is linked -no-fast-install. They are only ever run
+# out of the build tree, and the tests start several copies of one at
+# once (simptest -n 4 forking its clients, or several run_*.pl drivers
+# each starting simptest). A fast-install libtool wrapper relinks
+# .libs/lt-PROG the first time it runs; concurrent first runs relink and
+# swap that file under each other, so one copy can pass the wrapper's
+# existence check and then fail to exec it. -no-fast-install links the
+# build-tree binary directly, leaving the wrapper nothing to relink.
+
 noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
                   test_pmix simptool simpdie simptimeout \
                   gwtest gwclient stability quietclient simpjctrl simpio simpsched \
@@ -112,222 +121,222 @@ $(SIMPLE_WRAPPERS): Makefile
 
 simptest_SOURCES = $(headers) \
         simptest.c
-simptest_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simptest_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simptest_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpclient_SOURCES = $(headers) \
         simpclient.c
-simpclient_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpclient_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpclient_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simppub_SOURCES = $(headers) \
         simppub.c
-simppub_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simppub_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simppub_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpdmodex_SOURCES = $(headers) \
         simpdmodex.c
-simpdmodex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpdmodex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpdmodex_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpft_SOURCES = $(headers) \
         simpft.c
-simpft_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpft_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpft_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpdyn_SOURCES = $(headers) \
         simpdyn.c
-simpdyn_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpdyn_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpdyn_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 test_pmix_SOURCES = $(headers) \
         test_pmix.c
-test_pmix_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+test_pmix_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 test_pmix_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simptool_SOURCES = $(headers) \
         simptool.c
-simptool_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simptool_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simptool_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpdie_SOURCES = $(headers) \
         simpdie.c
-simpdie_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpdie_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpdie_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simptimeout_SOURCES = $(headers) \
         simptimeout.c
-simptimeout_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simptimeout_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simptimeout_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 gwtest_SOURCES = $(headers) \
         gwtest.c
-gwtest_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+gwtest_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 gwtest_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 gwclient_SOURCES = $(headers) \
         gwclient.c
-gwclient_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+gwclient_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 gwclient_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 stability_SOURCES = $(headers) \
         stability.c
-stability_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+stability_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 stability_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 quietclient_SOURCES = $(headers) \
         quietclient.c
-quietclient_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+quietclient_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 quietclient_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpjctrl_SOURCES = $(headers) \
         simpjctrl.c
-simpjctrl_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpjctrl_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpjctrl_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpmonitor_SOURCES = $(headers) \
         simpmonitor.c
-simpmonitor_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpmonitor_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpmonitor_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpio_SOURCES = $(headers) \
         simpio.c
-simpio_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpio_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpio_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpsched_SOURCES = $(headers) \
         simpsched.c
-simpsched_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpsched_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpsched_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpcoord_SOURCES = $(headers) \
         simpcoord.c
-simpcoord_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpcoord_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpcoord_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpcycle_SOURCES = $(headers) \
         simpcycle.c
-simpcycle_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpcycle_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpcycle_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpgrpmember_SOURCES = $(headers) \
         simpgrpmember.c
-simpgrpmember_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpgrpmember_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpgrpmember_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpgrpdie_SOURCES = $(headers) \
         simpgrpdie.c
-simpgrpdie_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpgrpdie_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpgrpdie_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpgrpddie_SOURCES = $(headers) \
         simpgrpddie.c
-simpgrpddie_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpgrpddie_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpgrpddie_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpgrpleader_SOURCES = $(headers) \
         simpgrpleader.c
-simpgrpleader_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpgrpleader_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpgrpleader_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpgrpcabort_SOURCES = $(headers) \
         simpgrpcabort.c
-simpgrpcabort_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpgrpcabort_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpgrpcabort_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpgrpctimeout_SOURCES = $(headers) \
         simpgrpctimeout.c
-simpgrpctimeout_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpgrpctimeout_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpgrpctimeout_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simptoolcycle_SOURCES = $(headers) \
         simptoolcycle.c
-simptoolcycle_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simptoolcycle_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simptoolcycle_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 tool_server_switch_SOURCES = $(headers) \
         tool_server_switch.c
-tool_server_switch_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+tool_server_switch_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 tool_server_switch_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 doubleget_SOURCES = $(headers) \
         doubleget.c
-doubleget_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+doubleget_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 doubleget_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpfabric_SOURCES = $(headers) \
         simpfabric.c
-simpfabric_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpfabric_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpfabric_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 get_put_example_SOURCES = $(headers) \
         get_put_example.c
-get_put_example_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+get_put_example_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 get_put_example_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpvni_SOURCES = $(headers) \
         simpvni.c
-simpvni_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpvni_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpvni_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 hybrid_SOURCES = $(headers) \
         hybrid.c
-hybrid_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+hybrid_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 hybrid_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpqual_SOURCES = $(headers) \
         simpqual.c
-simpqual_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpqual_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpqual_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 simpdist_SOURCES = $(headers) \
         simpdist.c
-simpdist_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpdist_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simpdist_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 legacy_SOURCES = $(headers) \
         legacy.c
-legacy_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+legacy_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 legacy_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 refresh_SOURCES = $(headers) \
         refresh.c
-refresh_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+refresh_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 refresh_LDADD = \
     $(top_builddir)/src/libpmix.la
