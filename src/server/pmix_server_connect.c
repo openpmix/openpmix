@@ -115,19 +115,31 @@ static void collective_timeout(int sd, short args, void *cbdata)
  * the accessor writes exactly the width of the requested type, so handing
  * it the address of a wider time_t would fill only half the field - the
  * wrong half on a big-endian host. */
-static void check_timeout(pmix_info_t *info, size_t ninfo, struct timeval *tv)
+static pmix_status_t check_timeout(pmix_info_t *info, size_t ninfo, struct timeval *tv)
 {
     size_t n;
     uint32_t tmo;
+    pmix_status_t rc;
 
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
-            if (PMIX_SUCCESS == PMIx_Value_get_number(&info[n].value, &tmo, PMIX_UINT32)) {
-                tv->tv_sec = tmo;
+            /* A value that will not convert is reported, not dropped. It
+             * used to be swallowed here, which is the worst answer
+             * available: the caller asked to be released after a bounded
+             * wait and instead got an unbounded one - a hang produced by
+             * the very directive meant to prevent it, with nothing said
+             * anywhere. pmix_server_fence rejects the request on this
+             * arm; the two families now agree. */
+            rc = PMIx_Value_get_number(&info[n].value, &tmo, PMIX_UINT32);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
             }
-            return;
+            tv->tv_sec = tmo;
+            return PMIX_SUCCESS;
         }
     }
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
@@ -179,6 +191,20 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
+    /* The unpack reports SUCCESS when the array on the wire is SHORTER
+     * than the count that introduced it - it simply writes back how many
+     * it found. So the count has to be held against what arrived, or the
+     * shortfall is silently accepted: the trailing elements stay as
+     * PMIX_PROC_CREATE left them, and an empty nspace is what
+     * PMIX_CHECK_NSPACE reads as a wildcard, so those phantom
+     * participants go up to the host and match any peer the
+     * lost-connection sweep walks. Every PMIx client packs this array in
+     * one call, so a conforming peer always agrees. */
+    if ((size_t) cnt != nprocs) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        rc = PMIX_ERR_BAD_PARAM;
+        goto cleanup;
+    }
     /* sort the procs */
     qsort(procs, nprocs, sizeof(pmix_proc_t), pmix_util_compare_proc);
 
@@ -218,10 +244,23 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
         cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        /* held against what arrived, for the reason given at the proc
+         * array above - and here a shortfall also leaves bytes in the
+         * buffer that the optional-trailer drain below would read as
+         * directives and forward to the host */
+        if ((size_t) cnt != ninf) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            rc = PMIX_ERR_BAD_PARAM;
             goto cleanup;
         }
         /* check for a timeout */
-        check_timeout(info, ninf, &tv);
+        rc = check_timeout(info, ninf, &tv);
+        if (PMIX_SUCCESS != rc) {
+            goto cleanup;
+        }
     }
 
     /* find/create the local tracker for this operation */
@@ -351,11 +390,22 @@ cleanup:
 }
 
 /* Append one info to a tracker's array. The array is rebuilt rather than
- * grown in place because it is handed to the host as a unit. */
+ * grown in place because it is handed to the host as a unit.
+ *
+ * Every transfer is checked, and the tracker's existing array is not let
+ * go until they have all succeeded. PMIX_INFO_XFER casts its status away,
+ * so a value that would not copy - an allocation failure, or a type the
+ * copier does not handle even though the unpacker did - left that element
+ * empty, freed the originals anyway, and handed the host an array quietly
+ * missing an entry. PMIX_LOCAL_COLLECTIVE_STATUS is in that array: losing
+ * it makes pmix_server_set_collective_status a no-op and
+ * pmix_server_get_collective_status answer PMIX_SUCCESS for a collective
+ * that has been degraded. */
 static pmix_status_t add_trk_info(pmix_server_trkr_t *trk, pmix_info_t *src)
 {
     pmix_info_t *iptr;
     size_t n, ninf;
+    pmix_status_t rc;
 
     ninf = trk->ninfo + 1;
     PMIX_INFO_CREATE(iptr, ninf);
@@ -363,9 +413,19 @@ static pmix_status_t add_trk_info(pmix_server_trkr_t *trk, pmix_info_t *src)
         return PMIX_ERR_NOMEM;
     }
     for (n = 0; n < trk->ninfo; n++) {
-        PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
+        rc = PMIx_Info_xfer(&iptr[n], &trk->info[n]);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_INFO_FREE(iptr, ninf);
+            return rc;
+        }
     }
-    PMIX_INFO_XFER(&iptr[trk->ninfo], src);
+    rc = PMIx_Info_xfer(&iptr[trk->ninfo], src);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_INFO_FREE(iptr, ninf);
+        return rc;
+    }
     PMIX_INFO_FREE(trk->info, trk->ninfo);
     trk->info = iptr;
     trk->ninfo = ninf;
@@ -427,6 +487,20 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
+    /* The unpack reports SUCCESS when the array on the wire is SHORTER
+     * than the count that introduced it - it simply writes back how many
+     * it found. So the count has to be held against what arrived, or the
+     * shortfall is silently accepted: the trailing elements stay as
+     * PMIX_PROC_CREATE left them, and an empty nspace is what
+     * PMIX_CHECK_NSPACE reads as a wildcard, so those phantom
+     * participants go up to the host and match any peer the
+     * lost-connection sweep walks. Every PMIx client packs this array in
+     * one call, so a conforming peer always agrees. */
+    if ((size_t) cnt != nprocs) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        rc = PMIX_ERR_BAD_PARAM;
+        goto cleanup;
+    }
     /* sort the procs */
     qsort(procs, nprocs, sizeof(pmix_proc_t), pmix_util_compare_proc);
 
@@ -469,8 +543,20 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
+        /* held against what arrived, for the reason given at the proc
+         * array above - and here a shortfall also leaves bytes in the
+         * buffer that the optional-trailer drain below would read as
+         * directives and forward to the host */
+        if ((size_t) cnt != ninf) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            rc = PMIX_ERR_BAD_PARAM;
+            goto cleanup;
+        }
         /* check for a timeout */
-        check_timeout(info, ninf, &tv);
+        rc = check_timeout(info, ninf, &tv);
+        if (PMIX_SUCCESS != rc) {
+            goto cleanup;
+        }
     }
 
     /* find/create the local tracker for this operation */
@@ -500,52 +586,80 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         ninfo = 0;
     }
 
-    /* Drain whatever optional blobs this client sent, and route them by
-     * key rather than by position. They used to be read positionally -
-     * endpoint first, job-level second - which only works while a client
-     * sends both or neither. A client that sends just one would have had
-     * it taken for the other, and a client that has stopped sending its
-     * own endpoint data (this server now builds that itself, below) is
-     * exactly that case. Unknown keys are dropped rather than refused:
-     * this is an optional tail, and a peer of another release may put
-     * something here we have no use for. */
-    while (true) {
-        cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &endpt, &cnt, PMIX_INFO);
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
-            break;
+    /* Everything between here and the local_cbs append MODIFIES the
+     * tracker, and a tracker the host already owns must not be modified.
+     *
+     * That state is reachable: pmix_server_get_tracker matches on the
+     * participant set, so a fork/exec'd clone of a rank that already
+     * called in joins the in-flight tracker (nlocal counts ranks, not
+     * peers, so the parent's contribution completed it). Two things then
+     * go wrong. add_trk_info rebuilds trk->info and frees the old array -
+     * the very array this server handed to pmix_host_server.connect,
+     * which the host may read until it calls back. And a failure in here
+     * jumps to trkerr, which drives the completion: that replies to every
+     * participant, unlinks the tracker and releases it, while the host
+     * still holds it as cbdata - so the host's callback then runs
+     * pmix_server_cnct_cbfunc on freed memory.
+     *
+     * A late contributor loses nothing by being skipped. Its endpoint
+     * data is built from cd->peer->info, and a clone shares its parent's
+     * pmix_rank_info_t - so what it would contribute is precisely what
+     * the rank already contributed. All it needs is to be on local_cbs,
+     * which the pending completion drains. */
+    if (!trk->host_called) {
+        /* Drain whatever optional blobs this client sent, and route them by
+         * key rather than by position. They used to be read positionally -
+         * endpoint first, job-level second - which only works while a client
+         * sends both or neither. A client that sends just one would have had
+         * it taken for the other, and a client that has stopped sending its
+         * own endpoint data (this server now builds that itself, below) is
+         * exactly that case. Unknown keys are dropped rather than refused:
+         * this is an optional tail, and a peer of another release may put
+         * something here we have no use for. */
+        while (true) {
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &endpt, &cnt, PMIX_INFO);
+            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+                break;
+            }
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                /* the unpack zeroes the key and value before it reads
+                 * anything, so this element is a valid pmix_info_t
+                 * whatever point it failed at - and it may already hold
+                 * an allocation, since the value unpack can fail partway
+                 * through a data array */
+                PMIX_INFO_DESTRUCT(&endpt);
+                goto trkerr;
+            }
+            if (PMIX_CHECK_KEY(&endpt, PMIX_PROC_INFO_ARRAY)) {
+                /* An older client still sends its own puts. We no longer take
+                 * them: what a process has made public is what it committed,
+                 * and this server has that on the rank's modex log - reading
+                 * it there also keeps data the client never committed out of
+                 * the exchange. Discard theirs rather than contribute both. */
+                PMIX_INFO_DESTRUCT(&endpt);
+                continue;
+            }
+            rc = add_trk_info(trk, &endpt);
+            PMIX_INFO_DESTRUCT(&endpt);
+            if (PMIX_SUCCESS != rc) {
+                goto trkerr;
+            }
         }
+
+        /* this process's own contribution, built from what it has committed */
+        rc = pmix_server_build_proc_info(cd->peer->info, false, &endpt, &haveendpt);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto trkerr;
         }
-        if (PMIX_CHECK_KEY(&endpt, PMIX_PROC_INFO_ARRAY)) {
-            /* An older client still sends its own puts. We no longer take
-             * them: what a process has made public is what it committed,
-             * and this server has that on the rank's modex log - reading
-             * it there also keeps data the client never committed out of
-             * the exchange. Discard theirs rather than contribute both. */
+        if (haveendpt) {
+            rc = add_trk_info(trk, &endpt);
             PMIX_INFO_DESTRUCT(&endpt);
-            continue;
-        }
-        rc = add_trk_info(trk, &endpt);
-        PMIX_INFO_DESTRUCT(&endpt);
-        if (PMIX_SUCCESS != rc) {
-            goto trkerr;
-        }
-    }
-
-    /* this process's own contribution, built from what it has committed */
-    rc = pmix_server_build_proc_info(cd->peer->info, false, &endpt, &haveendpt);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto trkerr;
-    }
-    if (haveendpt) {
-        rc = add_trk_info(trk, &endpt);
-        PMIX_INFO_DESTRUCT(&endpt);
-        if (PMIX_SUCCESS != rc) {
-            goto trkerr;
+            if (PMIX_SUCCESS != rc) {
+                goto trkerr;
+            }
         }
     }
 
@@ -673,7 +787,12 @@ trkerr:
      *
      * These arms sit between the tracker lookup and the local_cbs append
      * only because the endpoint and job-info blocks were threaded in
-     * between the two; pmix_server_disconnect has no such window. */
+     * between the two; pmix_server_disconnect has no such window.
+     *
+     * Only a tracker the host does NOT own can reach here - the guard
+     * above keeps a late contributor out of the block that jumps to this
+     * label - which is what makes clearing host_called and driving the
+     * completion safe. */
     trk->host_called = false;
     cbfunc(rc, trk);
 
