@@ -407,6 +407,92 @@ static void build_reg_trackers(int sd, short args, void *cbdata)
     PMIX_WAKEUP_THREAD(&r->lock);
 }
 
+/* A participating namespace this server has not heard of yet.
+ *
+ * pmix_server_new_tracker cannot tell "this namespace has no local
+ * procs" from "this namespace has not registered yet". It assumes the
+ * former: it counts nothing for it and leaves def_complete set. When the
+ * assumption is wrong the tracker's nlocal names fewer participants than
+ * will actually call in, and since pmix_server_trk_complete compares a
+ * COUNT of contributions against it, a contribution from the uncounted
+ * namespace fills a slot meant for a rank that has not called yet - so
+ * the collective goes to the host short, and the straggler's data never
+ * reaches the exchange. Neither registration path repairs it, because
+ * both skip a tracker whose def_complete is already set.
+ *
+ * pmix_server_trk_join closes it from the other side: the contribution
+ * itself proves the namespace is now known, so it is counted then. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_server_trkr_t *trk;
+    uint32_t nlocal_before;
+    uint32_t nlocal_after;
+    bool def_complete_before;
+    pmix_peer_t *latepeer;
+} latens_t;
+
+static void build_late_tracker(int sd, short args, void *cbdata)
+{
+    latens_t *l = (latens_t *) cbdata;
+    pmix_proc_t procs[2];
+
+    (void) sd;
+    (void) args;
+
+    /* lateA is registered; lateB is not known to us at all */
+    PMIX_LOAD_PROCID(&procs[0], "lateA", 0);
+    PMIX_LOAD_PROCID(&procs[1], "lateB", 0);
+    l->trk = pmix_server_new_tracker(NULL, procs, 2, PMIX_FENCENB_CMD);
+    if (NULL != l->trk) {
+        l->nlocal_before = l->trk->nlocal;
+        l->def_complete_before = l->trk->def_complete;
+    }
+    PMIX_WAKEUP_THREAD(&l->lock);
+}
+
+static void join_late_tracker(int sd, short args, void *cbdata)
+{
+    latens_t *l = (latens_t *) cbdata;
+    pmix_namespace_t *ns, *nptr = NULL;
+
+    (void) sd;
+    (void) args;
+
+    /* stand in for the contributing client of the late namespace */
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(ns->nspace, "lateB")) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL != nptr && NULL != l->trk) {
+        l->latepeer = PMIX_NEW(pmix_peer_t);
+        PMIX_RETAIN(nptr);
+        l->latepeer->nptr = nptr;
+        pmix_server_trk_join(l->trk, l->latepeer);
+        l->nlocal_after = l->trk->nlocal;
+    }
+    PMIX_WAKEUP_THREAD(&l->lock);
+}
+
+static void drop_late_tracker(int sd, short args, void *cbdata)
+{
+    latens_t *l = (latens_t *) cbdata;
+
+    (void) sd;
+    (void) args;
+
+    if (NULL != l->trk) {
+        pmix_list_remove_item(&pmix_server_globals.collectives, &l->trk->super);
+        PMIX_RELEASE(l->trk);
+    }
+    if (NULL != l->latepeer) {
+        PMIX_RELEASE(l->latepeer);
+    }
+    PMIX_WAKEUP_THREAD(&l->lock);
+}
+
 static void drop_reg_trackers(int sd, short args, void *cbdata)
 {
     regtrk_t *r = (regtrk_t *) cbdata;
@@ -956,6 +1042,55 @@ int main(int argc, char **argv)
             PMIX_RELEASE(reply);
         }
         fence_accept = false;
+    }
+
+    /* --- a participating namespace we have not heard of yet --- */
+    {
+        latens_t l;
+        pmix_proc_t pr;
+        pmix_nspace_t ns;
+
+        /* lateA fully registered, one local proc */
+        PMIX_LOAD_PROCID(&pr, "lateA", 0);
+        PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
+        PMIX_LOAD_NSPACE(ns, "lateA");
+        PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        progress_barrier();
+
+        memset(&l, 0, sizeof(l));
+        PMIX_CONSTRUCT_LOCK(&l.lock);
+        PMIX_THREADSHIFT(&l, build_late_tracker);
+        PMIX_WAIT_THREAD(&l.lock);
+        PMIX_DESTRUCT_LOCK(&l.lock);
+
+        report("a tracker over a late namespace was built", NULL != l.trk);
+        /* this is the state that causes the early completion: the
+         * unknown namespace contributes nothing to nlocal, yet the
+         * tracker still calls itself definition-complete */
+        report("the unknown namespace counts for nothing",
+               NULL != l.trk && 1 == l.nlocal_before);
+        report("the tracker is nonetheless definition-complete",
+               NULL != l.trk && l.def_complete_before);
+
+        /* now the late namespace arrives and one of its procs contributes */
+        PMIX_LOAD_PROCID(&pr, "lateB", 0);
+        PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
+        PMIX_LOAD_NSPACE(ns, "lateB");
+        PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        progress_barrier();
+
+        PMIX_CONSTRUCT_LOCK(&l.lock);
+        PMIX_THREADSHIFT(&l, join_late_tracker);
+        PMIX_WAIT_THREAD(&l.lock);
+        PMIX_DESTRUCT_LOCK(&l.lock);
+
+        report("a contribution from the late namespace is counted",
+               NULL != l.trk && 2 == l.nlocal_after);
+
+        PMIX_CONSTRUCT_LOCK(&l.lock);
+        PMIX_THREADSHIFT(&l, drop_late_tracker);
+        PMIX_WAIT_THREAD(&l.lock);
+        PMIX_DESTRUCT_LOCK(&l.lock);
     }
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
