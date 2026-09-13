@@ -437,12 +437,73 @@ nothing.
   group's membership in place of the process the caller asked for, with
   no error anywhere. Use a plain bounded `strncmp` when byte equality is
   what you mean; `same_nspace()` in that file is the local spelling.
+- **`PMIX_BFROPS_PACK` dereferences the buffer in the macro body, so a
+  NULL one faults rather than reporting.** The macro reads `(b)->type` to
+  pick the peer's wire version before it ever reaches a pack routine —
+  there is no NULL screen anywhere on that path, and none of the `PMIX_`
+  status codes come back. Every `msg = PMIX_NEW(pmix_buffer_t)` feeding a
+  pack therefore has to be checked at the allocation, not relied on to
+  surface as a `PMIX_ERR_BAD_PARAM` from the first pack. `PMIX_BFROPS_UNPACK`
+  reads `(b)->type` the same way.
 - **`PMIX_PROC_CREATE(n)` with `n == 0` yields the same NULL an
   allocation failure does.** Test the count first wherever zero is a
   legal answer — a group expansion that matched nothing, or a group
   whose membership has drained (the `PMIX_GROUP_LEFT` handler decrements
   `nmbrs` and keeps the group) — or a valid empty result is reported as
   `PMIX_ERR_NOMEM`.
+- **Arming the construct watch must be the last thing an entry point does,
+  because there is no way to take it back.** `setup_leader_watch()` hands
+  the observer registry a tracker carrying the caller's `cbfunc`/`cbdata`,
+  and from that moment the watch fires on any
+  `PMIX_GROUP_CONSTRUCT_COMPLETE` or `_ABORT` naming its group id — or
+  naming none at all, which it treats as its own. An `_nb` entry point that
+  then returns an error has told the caller no callback is coming, and the
+  caller is entitled to free what `cbdata` points at; for the blocking
+  wrappers that object is a `pmix_group_tracker_t` on a **stack frame**, so
+  the next matching event writes a status and a `PMIX_WAKEUP_THREAD` into a
+  frame that has returned.
+
+  Disarming from the entry point is not a way out, and it is worth knowing
+  why, because it looks like one. From the moment the registration is
+  handed over, the tracker belongs to the progress thread: `watch_regcb`
+  writes `cb->ref` there and `leader_watch_observer` reads `cb->cbfunc` and
+  `cb->completed` there. An entry point that reached back in would be
+  racing both. The losing interleaving needs no exotic timing — the
+  progress thread sets `cb->ref` and reads `cb->completed` as `false`, the
+  entry point then reads a stale `cb->ref` of `SIZE_MAX` and skips the
+  deregistration, and the observer is left installed for the life of the
+  process holding a `cbdata` the caller has freed. So both `_nb` entry
+  points arm the watch only after their send, with nothing fallible after
+  it, and each explains in place why arming late cannot lose the outcome:
+  the send and the registration are both thread-shifted, so the
+  registration is active on the progress thread's event base before the
+  request has reached the socket, and any inbound event is delivered by
+  that same thread in a callback that must run after it.
+- **Record the group before you build the results, not after.**
+  `construct_cbfunc()` reports the server's status in `ret` and assembles
+  the caller's results separately, so every failure in that assembly is
+  invisible to the caller — it is still told the construct succeeded. When
+  the registration sat after the assembly, one failed
+  `PMIx_Info_list_add()` jumped past it, and the caller was handed a
+  successful construct for a group nothing local knew about: the next
+  `PMIx_Group_leave` or `PMIx_Group_destruct` answered `PMIX_ERR_NOT_FOUND`
+  with nothing having reported an error anywhere. The registration is the
+  part that must not be skipped, so it goes first. `add_group()`'s status
+  is worth logging at both call sites for the same reason — it is the only
+  trace an OOM there will ever leave.
+- **`PMIx_Group_leave_nb` drops the group before it notifies, and that
+  order is deliberate.** The membership snapshot, the removal from
+  `pmix_client_globals.groups` and the release all happen under
+  `grouplock`; the `PMIx_Notify_event` that announces the departure is
+  issued after the lock is dropped, because the `PMIX_GROUP_LEFT` handler
+  it drives — including the local delivery to ourselves — takes that same
+  lock and shifts members out of exactly this array. A failure of that
+  notification therefore returns an error to a caller whose group is
+  already gone, and a retry answers `PMIX_ERR_NOT_FOUND`. That is not a
+  defect to repair by re-adding the group: we have in fact left, the API
+  defines the operation as complete once the event is locally generated,
+  and re-publishing a group we have already released would put a tracker
+  back on a list the progress thread is reading.
 - **Nothing half-built may go on the groups list.** Every caller
   expanding a group reference compares against `grp->grpid` and indexes
   `grp->members`, both without a NULL check, and they run on the other
