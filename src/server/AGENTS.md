@@ -1218,6 +1218,55 @@ failure, and answered any failure by unlinking and releasing. Duplicating
 the arms is what let them drift, which is why the helper is now exported
 rather than static to `pmix_server_registration.c`.
 
+**One namespace is counted into a tracker exactly once, and
+`trk->nslist` is the ledger.** `nlocal` is the number of local
+participants a collective waits for, and `pmix_server_trk_complete`
+compares a *count* of contributions against it without asking which
+ranks they came from - so any error in `nlocal` is silent. Undercount
+and the collective goes to the host early, with the stragglers' data
+never reaching the exchange and the stragglers themselves left on a
+fresh tracker that the job's next collective over the same participant
+set merges into. Overcount and it waits forever.
+
+Three paths can learn that a namespace has local participants:
+`pmix_server_new_tracker`, `_register_nspace` and `_register_client`.
+All three now go through `pmix_server_trk_count_nspace()`, which is
+all-or-nothing and idempotent: it counts a namespace only when it can
+count it in full (every client registered, or a wildcard whose
+`nlocalprocs` is known), and records it on `trk->nslist` so no other
+path counts it again. A namespace it cannot settle yet is left off the
+list and the tracker is marked definition-incomplete, so a later path
+retries.
+
+The three ways this went wrong, all producing the same silent short
+collective:
+
+- **A namespace we have never heard of** cannot be told apart from one
+  that has no local procs, so `new_tracker` assumes the latter - and used
+  to mark the tracker definition-complete anyway. Both registration paths
+  then skipped it, because both skipped a `def_complete` tracker. The
+  assumption is now *repaired* rather than avoided: the same counter runs
+  again when that namespace registers and when one of its procs
+  contributes (`pmix_server_trk_join`), either of which proves it wrong
+  in time. Only a tracker that is `host_called` or `completion_fired` is
+  past repair, and that is what those paths now skip on.
+- **A namespace still registering its clients** had its already-registered
+  ranks skipped by `new_tracker` (which waited for "all registered"),
+  while `_register_client` only ever added the one rank it was
+  registering - so a rank registered before the tracker existed was
+  counted by nobody.
+- **Counting in two places at once** is the overcount: `_register_client`
+  incremented per rank without recording the namespace, so the
+  namespace-keyed counter could add the same rank again and the fence
+  would hang. That is why there is one counter and one ledger.
+
+Symptoms to recognize: `PMIX_ERR_NOT_FOUND` from a `PMIx_Get` for a key
+a collect-fence should have delivered, and `PMIX_ERR_INVALID_ARG` from a
+later fence over the same participant set (the straggler's tracker has
+its `collect_type` flipped to `PMIX_COLLECT_INVALID`). It shows up
+against an *older* client, whose different startup timing widens the
+window, which is why the cross-version CI job is where it was caught.
+
 **A tracker the host already owns must not be completed again.**
 `pmix_server_get_tracker` matches on the participant set and the command,
 and `completion_fired` is the only state it refuses. That leaves the

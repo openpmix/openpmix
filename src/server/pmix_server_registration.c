@@ -156,9 +156,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
     pmix_gds_base_module_t *gds;
     pmix_kval_t *kv;
     pmix_proc_t proc;
-    pmix_nspace_caddy_t *nm;
     size_t prev_nlocal;
-    bool counted;
     bool nodata;
     bool prev_all_reg;
     pmix_rank_t rank;
@@ -470,8 +468,26 @@ static void _register_nspace(int sd, short args, void *cbdata)
      * it called back into the collective -before- our local event
      * would fire the register_client callback. Deal with that here. */
     PMIX_LIST_FOREACH (trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
+        /* A tracker already handed to the host, or whose completion has
+         * been driven, is spoken for - its participant set is what the
+         * host was told and nothing here may change it. */
+        if (trk->host_called || trk->completion_fired) {
+            continue;
+        }
+        /* The namespace we have just been told about may add local
+         * participants to this tracker, and that is true whatever
+         * def_complete says. pmix_server_new_tracker cannot tell a
+         * namespace with no local procs from one that has not registered
+         * yet: it assumes the former, counts nothing, and still marks the
+         * tracker definition-complete - so the "already complete, nothing
+         * to update" test below used to skip exactly the trackers that
+         * most needed repairing. The collective then went to the host
+         * without those participants, and their data never reached the
+         * exchange. Counting is idempotent (the tracker's nspace list is
+         * the mark), so doing it here costs a walk. */
+        pmix_server_trk_count_nspace(trk, nptr);
         /* if this tracker is already complete, then we
-         * don't need to update it */
+         * don't need to update it further */
         if (trk->def_complete) {
             continue;
         }
@@ -529,32 +545,9 @@ static void _register_nspace(int sd, short args, void *cbdata)
                  * namespace whose count was previously unknown can have
                  * been skipped by new_tracker. Record it on the tracker's
                  * nspace list as new_tracker does for the ones it counts. */
-                if (SIZE_MAX == prev_nlocal) {
-                    counted = false;
-                    PMIX_LIST_FOREACH (nm, &trk->nslist, pmix_nspace_caddy_t) {
-                        if (0 == strcmp(nm->ns->nspace, nptr->nspace)) {
-                            counted = true;
-                            break;
-                        }
-                    }
-                    if (!counted) {
-                        nm = PMIX_NEW(pmix_nspace_caddy_t);
-                        if (NULL == nm) {
-                            rc = PMIX_ERR_NOMEM;
-                            goto release;
-                        }
-                        PMIX_RETAIN(nptr);
-                        nm->ns = nptr;
-                        pmix_list_append(&trk->nslist, &nm->super);
-                        trk->nlocal += nptr->nlocalprocs;
-                    }
-                }
-                /* the total number of procs in this nspace was provided
-                 * in the data blob delivered to register_nspace, so check
-                 * to see if all the procs are local */
-                if (nptr->nprocs != nptr->nlocalprocs) {
-                    trk->local = false;
-                }
+                /* pmix_server_trk_count_nspace above has already done
+                 * this, idempotently - the tracker's nspace list is the
+                 * ledger, and it also settles trk->local */
                 continue;
             }
         }
@@ -1652,8 +1645,16 @@ static void _register_client(int sd, short args, void *cbdata)
          * it called back into the collective -before- our local event
          * would fire the register_client callback. Deal with that here. */
         PMIX_LIST_FOREACH (trk, &pmix_server_globals.collectives, pmix_server_trkr_t) {
-            /* if this tracker is already complete, then we
-             * don't need to update it */
+            /* a tracker the host owns, or whose completion has been
+             * driven, is spoken for - see the matching guard in
+             * _register_nspace */
+            if (trk->host_called || trk->completion_fired) {
+                continue;
+            }
+            /* every client of this namespace is now registered, so it can
+             * be counted in full - idempotent, and a no-op for a tracker
+             * that already has it */
+            pmix_server_trk_count_nspace(trk, nptr);
             if (trk->def_complete) {
                 continue;
             }
@@ -1695,11 +1696,15 @@ static void _register_client(int sd, short args, void *cbdata)
                 if (PMIX_RANK_WILDCARD == trk->pcs[i].rank) {
                     continue;
                 }
-                /* see if the rank we just registered is a participant */
-                if (cd->proc.rank == trk->pcs[i].rank) {
-                    /* yes, we are included */
-                    ++trk->nlocal;
-                }
+                /* The count is not incremented per rank here. This path
+                 * only ever saw the ONE rank it was registering, so a rank
+                 * already registered when the tracker was built was
+                 * counted by nobody - and a rank this path did count
+                 * could then be counted a second time by
+                 * pmix_server_trk_count_nspace, leaving nlocal naming
+                 * more participants than exist and the collective waiting
+                 * forever. The helper below counts the namespace once, in
+                 * full, now that every one of its clients is registered. */
             }
             /* update this tracker's status */
             trk->def_complete = all_def;

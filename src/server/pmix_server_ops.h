@@ -617,6 +617,18 @@ PMIX_EXPORT pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *p
  * changes from here. Call it once the up-call has been accepted, never
  * from the collection itself - see the comment on the definition. */
 PMIX_EXPORT void pmix_server_modex_contributed(pmix_server_trkr_t *trk);
+
+/* Count a contributing peer's namespace into a tracker's expected local
+ * participant count, if pmix_server_new_tracker could not. Call it for
+ * every contribution, immediately before the caddy is appended to
+ * local_cbs - it is a no-op for a namespace already counted. */
+PMIX_EXPORT void pmix_server_trk_join(pmix_server_trkr_t *trk, pmix_peer_t *peer);
+
+/* The same, keyed on the namespace rather than a contributing peer, for
+ * the registration paths: a namespace registering is the other moment at
+ * which a tracker built before we had heard of it can be repaired. */
+PMIX_EXPORT bool pmix_server_trk_count_nspace(pmix_server_trkr_t *trk,
+                                              pmix_namespace_t *nptr);
 PMIX_EXPORT pmix_status_t pmix_server_build_proc_info(pmix_rank_info_t *info,
                                                       bool include_scope,
                                                       pmix_info_t *xfer,
