@@ -453,6 +453,36 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
     return rc;
 }
 
+/* A string directive must carry a string. Its value comes from the caller,
+ * and one of any other type used to be read out of the union as a pointer
+ * - so a PMIX_SERVER_URI, PMIX_TCP_URI, PMIX_TOOL_ATTACHMENT_FILE,
+ * PMIX_SERVER_NSPACE or PMIX_CONNECTION_ORDER holding a bool took
+ * PMIx_tool_init down with SIGSEGV. Same screen as the tool directives in
+ * pmix_tool.c. */
+static bool is_string_value(const pmix_info_t *info)
+{
+    if (PMIX_STRING != info->value.type || NULL == info->value.data.string) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return false;
+    }
+    return true;
+}
+
+/* Queue an info for the connect-ack. The caddy borrows it - the caddy has
+ * no destructor - so the info must outlive the list. */
+static pmix_status_t add_info(pmix_list_t *list, pmix_info_t *info)
+{
+    pmix_info_caddy_t *kv;
+
+    kv = PMIX_NEW(pmix_info_caddy_t);
+    if (NULL == kv) {
+        return PMIX_ERR_NOMEM;
+    }
+    kv->info = info;
+    pmix_list_append(list, &kv->super);
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                                             pmix_info_t *info, size_t ninfo,
                                             char **suriout)
@@ -513,16 +543,20 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECTION_ORDER)) {
+                if (!is_string_value(&info[n])) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badinput;
+                }
                 if (NULL != order) {
                     // overrides all prior specs
                     PMIx_Argv_free(order);
                     order = NULL;
                 }
                 order = PMIx_Argv_split(info[n].value.data.string, ',');
-                /* an empty list - "" or "," - splits to NULL, and so does
-                 * a NULL string. That names no preference, so leave the
-                 * order cleared (this attribute overrides every prior
-                 * spec) rather than indexing the NULL below */
+                /* an empty list - "" or "," - splits to NULL. That names no
+                 * preference, so leave the order cleared (this attribute
+                 * overrides every prior spec) rather than indexing the NULL
+                 * below */
                 if (NULL == order) {
                     continue;
                 }
@@ -534,15 +568,8 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                         /* they named something that isn't an attribute */
                         pmix_show_help("help-ptl-base.txt", "unknown-attribute", true,
                                        order[m], PMIX_CONNECTION_ORDER);
-                        if (NULL != server_nspace) {
-                            free(server_nspace);
-                        }
-                        if (NULL != rendfile) {
-                            free(rendfile);
-                        }
-                        PMIx_Argv_free(order);
-                        PMIX_LIST_DESTRUCT(&ilist);
-                        return PMIX_ERR_BAD_PARAM;
+                        rc = PMIX_ERR_BAD_PARAM;
+                        goto badinput;
                     }
                     free(order[m]);
                     order[m] = strdup(tmp);
@@ -554,21 +581,27 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                             free(order[m]);
                         }
                         free(order);
-                        if (NULL != server_nspace) {
-                            free(server_nspace);
-                        }
-                        if (NULL != rendfile) {
-                            free(rendfile);
-                        }
-                        PMIX_LIST_DESTRUCT(&ilist);
-                        return PMIX_ERR_NOMEM;
+                        order = NULL;
+                        rc = PMIX_ERR_NOMEM;
+                        goto badinput;
                     }
                 }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_PIDINFO)) {
-                pid = info[n].value.data.pid;
+                /* read as a number: a value of the wrong type used to be
+                 * taken from the union as whatever bits it held, and a pid
+                 * that means nothing still sends us searching for it */
+                rc = PMIx_Value_get_number(&info[n].value, &pid, PMIX_PID);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    goto badinput;
+                }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_NSPACE)) {
+                if (!is_string_value(&info[n])) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badinput;
+                }
                 // if this is my nspace, then ignore it
                 if (0 == strcmp(pmix_globals.myid.nspace, info[n].value.data.string)) {
                     continue;
@@ -580,86 +613,113 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                         continue;
                     }
                     /* otherwise, we don't know which one to use */
-                    if (NULL != server_nspace) {
-                        free(server_nspace);
-                    }
-                    if (NULL != rendfile) {
-                        free(rendfile);
-                    }
-                    PMIx_Argv_free(order);
-                    PMIX_LIST_DESTRUCT(&ilist);
-                    return PMIX_ERR_BAD_PARAM;
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badinput;
                 }
                 server_nspace = strdup(info[n].value.data.string);
+                if (NULL == server_nspace) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto badinput;
+                }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_ATTACHMENT_FILE)) {
+                if (!is_string_value(&info[n])) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badinput;
+                }
                 if (NULL != rendfile) {
                     free(rendfile);
                 }
+                /* a failed copy here would not fail anything later - it
+                 * would drop the file they named and send us off to
+                 * discover, and possibly attach to, some other server */
                 rendfile = strdup(info[n].value.data.string);
+                if (NULL == rendfile) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto badinput;
+                }
 
             } else if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)
                        && PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
+                if (!is_string_value(&info[n])) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badinput;
+                }
                 if (NULL != pmix_ptl_base.rendezvous_filename) {
                     free(pmix_ptl_base.rendezvous_filename);
                 }
                 pmix_ptl_base.rendezvous_filename = strdup(info[n].value.data.string);
+                if (NULL == pmix_ptl_base.rendezvous_filename) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto badinput;
+                }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
                 optional = PMIX_INFO_TRUE(&info[n]);
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_URI)
                        || PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
+                if (!is_string_value(&info[n])) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badinput;
+                }
                 if (NULL != pmix_ptl_base.uri) {
                     free(pmix_ptl_base.uri);
                 }
+                /* as for the attachment file: losing this copy would not
+                 * fail, it would discover some other server instead */
                 pmix_ptl_base.uri = strdup(info[n].value.data.string);
+                if (NULL == pmix_ptl_base.uri) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto badinput;
+                }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
+                if (!is_string_value(&info[n])) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badinput;
+                }
                 if (NULL != pmix_ptl_base.session_tmpdir) {
                     free(pmix_ptl_base.session_tmpdir);
                 }
                 pmix_ptl_base.session_tmpdir = strdup(info[n].value.data.string);
+                if (NULL == pmix_ptl_base.session_tmpdir) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto badinput;
+                }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
+                if (!is_string_value(&info[n])) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badinput;
+                }
                 if (NULL != pmix_ptl_base.system_tmpdir) {
                     free(pmix_ptl_base.system_tmpdir);
                 }
                 pmix_ptl_base.system_tmpdir = strdup(info[n].value.data.string);
+                if (NULL == pmix_ptl_base.system_tmpdir) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto badinput;
+                }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_MAX_RETRIES)) {
                 rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.max_retries, PMIX_INT);
                 if (PMIX_SUCCESS != rc) {
-                    if (NULL != server_nspace) {
-                        free(server_nspace);
-                    }
-                    if (NULL != rendfile) {
-                        free(rendfile);
-                    }
-                    PMIx_Argv_free(order);
-                    PMIX_LIST_DESTRUCT(&ilist);
-                    return rc;
+                    goto badinput;
                 }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_RETRY_DELAY)) {
                 rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.wait_to_connect, PMIX_INT);
                 if (PMIX_SUCCESS != rc) {
-                    if (NULL != server_nspace) {
-                        free(server_nspace);
-                    }
-                    if (NULL != rendfile) {
-                        free(rendfile);
-                    }
-                    PMIx_Argv_free(order);
-                    PMIX_LIST_DESTRUCT(&ilist);
-                    return rc;
+                    goto badinput;
                 }
 
             } else {
                 /* need to pass this to server */
-                kv = PMIX_NEW(pmix_info_caddy_t);
-                kv->info = &info[n];
-                pmix_list_append(&ilist, &kv->super);
+                rc = add_info(&ilist, &info[n]);
+                if (PMIX_SUCCESS != rc) {
+                    goto badinput;
+                }
             }
         }
     }
@@ -669,68 +729,78 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
      * include it, and we now need it for all cases */
 
     /* add our pid to the array */
-    kv = PMIX_NEW(pmix_info_caddy_t);
     PMIX_INFO_LOAD(&mypidinfo, PMIX_PROC_PID, &pmix_globals.pid, PMIX_PID);
-    kv->info = &mypidinfo;
-    pmix_list_append(&ilist, &kv->super);
+    rc = add_info(&ilist, &mypidinfo);
+    if (PMIX_SUCCESS != rc) {
+        goto badinput;
+    }
 
     /* add our real uid */
-    kv = PMIX_NEW(pmix_info_caddy_t);
     PMIX_INFO_LOAD(&realuid, PMIX_REALUID, &pmix_globals.realuid, PMIX_UINT32);
-    kv->info = &realuid;
-    pmix_list_append(&ilist, &kv->super);
+    rc = add_info(&ilist, &realuid);
+    if (PMIX_SUCCESS != rc) {
+        goto badinput;
+    }
 
     /* add our effective uid */
-    kv = PMIX_NEW(pmix_info_caddy_t);
     PMIX_INFO_LOAD(&effectiveuid, PMIX_USERID, &pmix_globals.uid, PMIX_UINT32);
-    kv->info = &effectiveuid;
-    pmix_list_append(&ilist, &kv->super);
+    rc = add_info(&ilist, &effectiveuid);
+    if (PMIX_SUCCESS != rc) {
+        goto badinput;
+    }
 
     /* add our real gid */
-    kv = PMIX_NEW(pmix_info_caddy_t);
     PMIX_INFO_LOAD(&realgid, PMIX_REALGID, &pmix_globals.realgid, PMIX_UINT32);
-    kv->info = &realgid;
-    pmix_list_append(&ilist, &kv->super);
+    rc = add_info(&ilist, &realgid);
+    if (PMIX_SUCCESS != rc) {
+        goto badinput;
+    }
 
     /* add our effective gid */
-    kv = PMIX_NEW(pmix_info_caddy_t);
     PMIX_INFO_LOAD(&effectivegid, PMIX_GRPID, &pmix_globals.gid, PMIX_UINT32);
-    kv->info = &effectivegid;
-    pmix_list_append(&ilist, &kv->super);
+    rc = add_info(&ilist, &effectivegid);
+    if (PMIX_SUCCESS != rc) {
+        goto badinput;
+    }
 
     /* if I am a launcher, tell them so */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        kv = PMIX_NEW(pmix_info_caddy_t);
         PMIX_INFO_LOAD(&launcher, PMIX_LAUNCHER, NULL, PMIX_BOOL);
-        kv->info = &launcher;
-        pmix_list_append(&ilist, &kv->super);
+        rc = add_info(&ilist, &launcher);
+        if (PMIX_SUCCESS != rc) {
+            goto badinput;
+        }
     }
 
     /* if I am a system controller, tell them so */
     if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
-        kv = PMIX_NEW(pmix_info_caddy_t);
         PMIX_INFO_LOAD(&launcher, PMIX_SERVER_SYS_CONTROLLER, NULL, PMIX_BOOL);
-        kv->info = &launcher;
-        pmix_list_append(&ilist, &kv->super);
+        rc = add_info(&ilist, &launcher);
+        if (PMIX_SUCCESS != rc) {
+            goto badinput;
+        }
     }
 
     /* if I am a scheduler, tell them so */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
-        kv = PMIX_NEW(pmix_info_caddy_t);
         PMIX_INFO_LOAD(&launcher, PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
-        kv->info = &launcher;
-        pmix_list_append(&ilist, &kv->super);
+        rc = add_info(&ilist, &launcher);
+        if (PMIX_SUCCESS != rc) {
+            goto badinput;
+        }
     }
 
     /* add our cmd line to the array */
     p = pmix_ptl_base_get_cmd_line();
     if (NULL != p) {
         /* pass it along */
-        kv = PMIX_NEW(pmix_info_caddy_t);
         PMIX_INFO_LOAD(&mycmdlineinfo, PMIX_CMD_LINE, p, PMIX_STRING);
-        kv->info = &mycmdlineinfo;
-        pmix_list_append(&ilist, &kv->super);
         free(p);
+        rc = add_info(&ilist, &mycmdlineinfo);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_INFO_DESTRUCT(&mycmdlineinfo);
+            goto badinput;
+        }
         cmdline_loaded = true;
     }
 
@@ -980,5 +1050,18 @@ cleanup:
     if (NULL != server_nspace) {
         free(server_nspace);
     }
+    return rc;
+
+badinput:
+    /* a directive we could not use, or could not keep, before anything had
+     * been built from the array - only the loop's own state to give back */
+    if (NULL != server_nspace) {
+        free(server_nspace);
+    }
+    if (NULL != rendfile) {
+        free(rendfile);
+    }
+    PMIx_Argv_free(order);
+    PMIX_LIST_DESTRUCT(&ilist);
     return rc;
 }

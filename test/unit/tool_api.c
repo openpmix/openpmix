@@ -282,6 +282,13 @@ int main(int argc, char **argv)
     check_bad_directive(PMIX_TOOL_NSPACE);
     check_bad_directive(PMIX_SERVER_TMPDIR);
     check_bad_directive(PMIX_SYSTEM_TMPDIR);
+    /* these reach pmix_ptl_base_connect_to_peer, which read each one out
+     * of the union as a string pointer whatever its type */
+    check_bad_directive(PMIX_SERVER_URI);
+    check_bad_directive(PMIX_TCP_URI);
+    check_bad_directive(PMIX_TOOL_ATTACHMENT_FILE);
+    check_bad_directive(PMIX_SERVER_NSPACE);
+    check_bad_directive(PMIX_CONNECTION_ORDER);
     check_empty_order("");
     check_empty_order(",");
     check_missing_attach();
