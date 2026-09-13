@@ -117,6 +117,61 @@ static void check_bad_directive(const char *key)
     }
 }
 
+/* An empty PMIX_CONNECTION_ORDER names no preference - it must not take
+ * the tool down. The list is split on ',', and PMIx_Argv_split hands back
+ * NULL for "" or ",", which connect_to_peer then indexed. Same child
+ * arrangement as above, and for the same reason; here the only failure is
+ * a signal, since with nothing to connect to the init may legitimately
+ * report an error. The tmpdirs point at an empty directory so the search
+ * that follows cannot find, and attach to, some real server on this node. */
+static int empty_order_child(const char *order)
+{
+    pmix_proc_t myproc;
+    pmix_info_t info[4];
+    pmix_status_t rc;
+    bool flag = true;
+    char tmpl[] = "/tmp/pmix-toolapi-XXXXXX";
+    char *dir;
+
+    dir = mkdtemp(tmpl);
+    if (NULL == dir) {
+        return 2;
+    }
+    PMIX_INFO_LOAD(&info[0], PMIX_CONNECTION_ORDER, order, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_TOOL_CONNECT_OPTIONAL, &flag, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_SYSTEM_TMPDIR, dir, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[3], PMIX_SERVER_TMPDIR, dir, PMIX_STRING);
+    rc = PMIx_tool_init(&myproc, info, 4);
+    if (PMIX_SUCCESS == rc) {
+        PMIx_tool_finalize();
+    }
+    rmdir(dir);
+    return 0;
+}
+
+static void check_empty_order(const char *order)
+{
+    pid_t child;
+    int status = 0;
+    char name[128];
+
+    snprintf(name, sizeof(name), "PMIX_CONNECTION_ORDER=\"%s\" does not crash init", order);
+    child = fork();
+    if (0 > child) {
+        report(name, 0, "fork failed");
+        return;
+    }
+    if (0 == child) {
+        _exit(empty_order_child(order));
+    }
+    waitpid(child, &status, 0);
+    if (!WIFEXITED(status)) {
+        report(name, 0, "the tool died on a signal");
+    } else {
+        report(name, 0 == WEXITSTATUS(status), "the child could not set up");
+    }
+}
+
 /* elapsed seconds between two gettimeofday samples */
 static double elapsed(struct timeval *start, struct timeval *end)
 {
@@ -166,6 +221,8 @@ int main(int argc, char **argv)
     check_bad_directive(PMIX_TOOL_NSPACE);
     check_bad_directive(PMIX_SERVER_TMPDIR);
     check_bad_directive(PMIX_SYSTEM_TMPDIR);
+    check_empty_order("");
+    check_empty_order(",");
 
     PMIX_INFO_LOAD(&tinfo, PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
     rc = PMIx_tool_init(&myproc, &tinfo, 1);
