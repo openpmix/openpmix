@@ -537,6 +537,14 @@ and one member the destructor deliberately ignores:
   `PMIX_PROC_CREATE`s one owes it a free on every path that does not
   reach the completion — `pmix_monitor_processing`'s `relcbfunc` is what
   frees it on the paths that do.
+- `kvs` is **always** owned, whatever `copy` was set to. The flag reads
+  like the usual borrow/own switch and is not one: it is a hint passed
+  down to the gds module, and no module acts on it — `gds/hash` builds a
+  fresh `pmix_kval_t` through `make_copy()` for every answer, and
+  `gds/shmem3` names the parameter in `PMIX_HIDE_UNUSED_PARAMS`. So
+  `PMIX_DESTRUCT` on a `pmix_cb_t` frees the fetched kvals either way,
+  and `cb.copy = false` (in `_collect_job_info`, say) is neither a leak
+  nor a double free. Do not "fix" one by changing the flag.
 
 ### What `scdes` does *not* free
 
