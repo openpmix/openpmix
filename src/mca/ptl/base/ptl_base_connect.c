@@ -457,7 +457,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                                             pmix_info_t *info, size_t ninfo,
                                             char **suriout)
 {
-    char *suri = NULL, *st, *evar;
+    char *suri = NULL, *evar;
     char *filename, *nspace = NULL;
     char **order = NULL;
     const char* tmp;
@@ -519,6 +519,13 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                     order = NULL;
                 }
                 order = PMIx_Argv_split(info[n].value.data.string, ',');
+                /* an empty list - "" or "," - splits to NULL, and so does
+                 * a NULL string. That names no preference, so leave the
+                 * order cleared (this attribute overrides every prior
+                 * spec) rather than indexing the NULL below */
+                if (NULL == order) {
+                    continue;
+                }
                 // the strings will just be the name of the attribute, so we
                 // must convert them to the attribute values
                 for (m=0; NULL != order[m]; m++) {
@@ -539,6 +546,23 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                     }
                     free(order[m]);
                     order[m] = strdup(tmp);
+                    if (NULL == order[m]) {
+                        /* a NULL here would end the argv early - silently
+                         * dropping the rest of the requested order and
+                         * leaking the strings after it */
+                        for (++m; NULL != order[m]; m++) {
+                            free(order[m]);
+                        }
+                        free(order);
+                        if (NULL != server_nspace) {
+                            free(server_nspace);
+                        }
+                        if (NULL != rendfile) {
+                            free(rendfile);
+                        }
+                        PMIX_LIST_DESTRUCT(&ilist);
+                        return PMIX_ERR_NOMEM;
+                    }
                 }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_PIDINFO)) {
@@ -713,6 +737,12 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     /* if we need to pass anything, setup an array */
     if (0 < (niptr = pmix_list_get_size(&ilist))) {
         PMIX_INFO_CREATE(iptr, niptr);
+        if (NULL == iptr) {
+            niptr = 0;
+            PMIX_LIST_DESTRUCT(&ilist);
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
         n = 0;
         while (NULL != (kv = (pmix_info_caddy_t *) pmix_list_remove_first(&ilist))) {
             PMIX_INFO_XFER(&iptr[n], kv->info);
@@ -736,32 +766,17 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 goto cleanup;
             }
             goto complete;
-        } else {
-            st = strdup(pmix_ptl_base.uri);
-            /* we need to extract the nspace/rank of the server from the string */
-            p = strchr(st, ';');
-            if (NULL == p) {
-                free(st);
-                rc = PMIX_ERR_BAD_PARAM;
-                goto cleanup;
-            }
-            *p = '\0';
-            p++;
-            suri = strdup(p); // save the uri portion
-            /* the '.' in the first part of the original string separates
-             * nspace from rank */
-            p = strchr(st, '.');
-            if (NULL == p) {
-                free(st);
-                rc = PMIX_ERR_BAD_PARAM;
-                goto cleanup;
-            }
-            *p = '\0';
-            p++;
-            nspace = strdup(st);
-            rank = strtoull(p, NULL, 10);
-            /* now update the URI */
-            free(st);
+        }
+        /* Extract the server's nspace and rank with the same parser every
+         * other route uses. This used to split "nspace.rank" at the FIRST
+         * '.', so an nspace that itself contains one - Slurm's
+         * "slurm.pmix.<jobid>.<stepid>", say - connected to the right
+         * address but recorded the server as "slurm", rank 0. The rank is
+         * whatever follows the LAST '.'. */
+        rc = pmix_ptl_base_parse_uri(pmix_ptl_base.uri, &nspace, &rank, &suri);
+        if (PMIX_SUCCESS != rc) {
+            rc = PMIX_ERR_BAD_PARAM;
+            goto cleanup;
         }
         goto complete;
     }
