@@ -81,6 +81,15 @@ EXTRA_DIST = \
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix
 
+# Every program here is linked -no-fast-install. They are only ever run
+# out of the build tree, and the tests start several copies of one at
+# once (simptest -n 4 forking its clients, or several run_*.pl drivers
+# each starting simptest). A fast-install libtool wrapper relinks
+# .libs/lt-PROG the first time it runs; concurrent first runs relink and
+# swap that file under each other, so one copy can pass the wrapper's
+# existence check and then fail to exec it. -no-fast-install links the
+# build-tree binary directly, leaving the wrapper nothing to relink.
+
 noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   tool debugger debuggerd alloc jctrl group group_dmodex asyncgroup \
                   hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
@@ -101,261 +110,261 @@ noinst_PROGRAMS += server
 endif
 
 client_SOURCES = client.c examples.h
-client_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+client_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 client_LDADD =  $(top_builddir)/src/libpmix.la
 
 client2_SOURCES = client2.c examples.h
-client2_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+client2_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 client2_LDADD =  $(top_builddir)/src/libpmix.la
 
 client3_SOURCES = client3.c examples.h
-client3_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+client3_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 client3_LDADD =  $(top_builddir)/src/libpmix.la
 
 client4_SOURCES = client4.c examples.h
-client4_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+client4_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 client4_LDADD =  $(top_builddir)/src/libpmix.la
 
 debugger_SOURCES = debugger.c examples.h
-debugger_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+debugger_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 debugger_LDADD =  $(top_builddir)/src/libpmix.la
 
 debuggerd_SOURCES = debuggerd.c examples.h
-debuggerd_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+debuggerd_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 debuggerd_LDADD =  $(top_builddir)/src/libpmix.la
 
 alloc_SOURCES = alloc.c examples.h
-alloc_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+alloc_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 alloc_LDADD =  $(top_builddir)/src/libpmix.la
 
 jctrl_SOURCES = jctrl.c examples.h
-jctrl_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+jctrl_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 jctrl_LDADD =  $(top_builddir)/src/libpmix.la
 
 dmodex_SOURCES = dmodex.c examples.h
-dmodex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+dmodex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 dmodex_LDADD =  $(top_builddir)/src/libpmix.la
 
 dynamic_SOURCES = dynamic.c examples.h
-dynamic_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+dynamic_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 dynamic_LDADD = $(top_builddir)/src/libpmix.la
 
 xnspace_modex_SOURCES = xnspace_modex.c examples.h
-xnspace_modex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+xnspace_modex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 xnspace_modex_LDADD = $(top_builddir)/src/libpmix.la
 
 fault_SOURCES = fault.c examples.h
-fault_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+fault_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 fault_LDADD = $(top_builddir)/src/libpmix.la
 
 pub_SOURCES = pub.c examples.h
-pub_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pub_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 pub_LDADD = $(top_builddir)/src/libpmix.la
 
 pubi_SOURCES = pubi.c examples.h
-pubi_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pubi_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 pubi_LDADD = $(top_builddir)/src/libpmix.la
 
 tool_SOURCES = tool.c examples.h
-tool_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+tool_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 tool_LDADD = $(top_builddir)/src/libpmix.la
 
 group_SOURCES = group.c examples.h
-group_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_LDADD = $(top_builddir)/src/libpmix.la
 
 group_die_SOURCES = group_die.c examples.h
-group_die_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_die_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_die_LDADD = $(top_builddir)/src/libpmix.la
 
 connect_die_SOURCES = connect_die.c examples.h
-connect_die_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+connect_die_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 connect_die_LDADD = $(top_builddir)/src/libpmix.la
 
 group_leave_SOURCES = group_leave.c examples.h
-group_leave_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_leave_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_leave_LDADD = $(top_builddir)/src/libpmix.la
 
 group_destruct_die_SOURCES = group_destruct_die.c examples.h
-group_destruct_die_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_destruct_die_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_destruct_die_LDADD = $(top_builddir)/src/libpmix.la
 
 group_invite_SOURCES = group_invite.c examples.h
-group_invite_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_invite_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_invite_LDADD = $(top_builddir)/src/libpmix.la
 
 group_invite_endpts_SOURCES = group_invite_endpts.c examples.h
-group_invite_endpts_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_invite_endpts_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_invite_endpts_LDADD = $(top_builddir)/src/libpmix.la
 
 group_invite_others_SOURCES = group_invite_others.c examples.h
-group_invite_others_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_invite_others_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_invite_others_LDADD = $(top_builddir)/src/libpmix.la
 
 group_badinfo_SOURCES = group_badinfo.c examples.h
-group_badinfo_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_badinfo_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_badinfo_LDADD = $(top_builddir)/src/libpmix.la
 
 spawn_reuse_SOURCES = spawn_reuse.c examples.h
-spawn_reuse_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+spawn_reuse_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 spawn_reuse_LDADD = $(top_builddir)/src/libpmix.la
 
 spawn_iof_SOURCES = spawn_iof.c examples.h
-spawn_iof_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+spawn_iof_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 spawn_iof_LDADD = $(top_builddir)/src/libpmix.la
 
 iof_watcher_SOURCES = iof_watcher.c examples.h
-iof_watcher_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+iof_watcher_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 iof_watcher_LDADD = $(top_builddir)/src/libpmix.la
 
 group_invite_suppress_SOURCES = group_invite_suppress.c examples.h
-group_invite_suppress_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_invite_suppress_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_invite_suppress_LDADD = $(top_builddir)/src/libpmix.la
 
 group_invite_nb_SOURCES = group_invite_nb.c examples.h
-group_invite_nb_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_invite_nb_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_invite_nb_LDADD = $(top_builddir)/src/libpmix.la
 
 group_invite_timeout_SOURCES = group_invite_timeout.c examples.h
-group_invite_timeout_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_invite_timeout_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_invite_timeout_LDADD = $(top_builddir)/src/libpmix.la
 
 group_invite_decline_SOURCES = group_invite_decline.c examples.h
-group_invite_decline_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_invite_decline_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_invite_decline_LDADD = $(top_builddir)/src/libpmix.la
 
 group_invite_abort_SOURCES = group_invite_abort.c examples.h
-group_invite_abort_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_invite_abort_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_invite_abort_LDADD = $(top_builddir)/src/libpmix.la
 
 group_dmodex_SOURCES = group_dmodex.c examples.h
-group_dmodex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_dmodex_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_dmodex_LDADD = $(top_builddir)/src/libpmix.la
 
 asyncgroup_SOURCES = asyncgroup.c examples.h
-asyncgroup_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+asyncgroup_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 asyncgroup_LDADD = $(top_builddir)/src/libpmix.la
 
 if !WANT_HIDDEN
 server_SOURCES = server.c examples.h
-server_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+server_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 server_LDADD = $(top_builddir)/src/libpmix.la
 endif
 
 hello_SOURCES = hello.c examples.h
-hello_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+hello_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 hello_LDADD =  $(top_builddir)/src/libpmix.la
 
 abi_no_init_SOURCES = abi_no_init.c
-abi_no_init_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+abi_no_init_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 abi_no_init_LDADD =  $(top_builddir)/src/libpmix.la
 
 abi_with_init_SOURCES = abi_with_init.c
-abi_with_init_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+abi_with_init_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 abi_with_init_LDADD =  $(top_builddir)/src/libpmix.la
 
 group_lcl_cid_SOURCES = group_lcl_cid.c examples.h
-group_lcl_cid_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_lcl_cid_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_lcl_cid_LDADD =  $(top_builddir)/src/libpmix.la
 
 nodeinfo_SOURCES = nodeinfo.c examples.h
-nodeinfo_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+nodeinfo_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 nodeinfo_LDADD =  $(top_builddir)/src/libpmix.la
 
 topology_SOURCES = topology.c examples.h
-topology_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+topology_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 topology_LDADD =  $(top_builddir)/src/libpmix.la
 
 pset_SOURCES = pset.c examples.h
-pset_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pset_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 pset_LDADD = $(top_builddir)/src/libpmix.la
 
 log_SOURCES = log.c examples.h
-log_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+log_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 log_LDADD = $(top_builddir)/src/libpmix.la
 
 group_bootstrap_SOURCES = group_bootstrap.c examples.h
-group_bootstrap_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_bootstrap_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_bootstrap_LDADD = $(top_builddir)/src/libpmix.la
 
 launcher_SOURCES = launcher.c examples.h
-launcher_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+launcher_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 launcher_LDADD = $(top_builddir)/src/libpmix.la
 
 spawn_group_SOURCES = spawn_group.c examples.h
-spawn_group_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+spawn_group_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 spawn_group_LDADD = $(top_builddir)/src/libpmix.la
 
 resolve_SOURCES = resolve.c examples.h
-resolve_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+resolve_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 resolve_LDADD = $(top_builddir)/src/libpmix.la
 
 multi_nspace_group_SOURCES = multi_nspace_group.c examples.h
-multi_nspace_group_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+multi_nspace_group_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 multi_nspace_group_LDADD = $(top_builddir)/src/libpmix.la
 
 pub2_SOURCES = pub2.c examples.h
-pub2_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pub2_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 pub2_LDADD = $(top_builddir)/src/libpmix.la
 
 toolqry_SOURCES = toolqry.c examples.h
-toolqry_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+toolqry_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 toolqry_LDADD = $(top_builddir)/src/libpmix.la
 
 toolswitch_SOURCES = toolswitch.c examples.h
-toolswitch_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+toolswitch_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 toolswitch_LDADD = $(top_builddir)/src/libpmix.la
 
 simple_resolve_SOURCES = simple_resolve.c examples.h
-simple_resolve_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simple_resolve_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simple_resolve_LDADD = $(top_builddir)/src/libpmix.la
 
 pubstress_SOURCES = pubstress.c examples.h
-pubstress_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pubstress_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 pubstress_LDADD = $(top_builddir)/src/libpmix.la
 
 monitor_SOURCES = monitor.c examples.h
-monitor_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+monitor_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 monitor_LDADD = $(top_builddir)/src/libpmix.la
 
 monitor_remote_SOURCES = monitor_remote.c examples.h
-monitor_remote_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+monitor_remote_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 monitor_remote_LDADD = $(top_builddir)/src/libpmix.la
 
 monitor_multi_SOURCES = monitor_multi.c examples.h
-monitor_multi_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+monitor_multi_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 monitor_multi_LDADD = $(top_builddir)/src/libpmix.la
 
 simple_SOURCES = simple.c examples.h
-simple_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simple_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simple_LDADD = $(top_builddir)/src/libpmix.la
 
 simple_server_SOURCES = simple_server.c examples.h
-simple_server_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simple_server_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 simple_server_LDADD = $(top_builddir)/src/libpmix.la
 
 datatypes_SOURCES = datatypes.c examples.h
-datatypes_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+datatypes_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 datatypes_LDADD = $(top_builddir)/src/libpmix.la
 
 modex_twice_SOURCES = modex_twice.c examples.h
-modex_twice_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+modex_twice_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 modex_twice_LDADD = $(top_builddir)/src/libpmix.la
 
 delete_key_SOURCES = delete_key.c examples.h
-delete_key_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+delete_key_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 delete_key_LDADD = $(top_builddir)/src/libpmix.la
 
 modex_attach_fail_SOURCES = modex_attach_fail.c examples.h
-modex_attach_fail_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+modex_attach_fail_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 modex_attach_fail_LDADD = $(top_builddir)/src/libpmix.la
 
 dmdx_departed_SOURCES = dmdx_departed.c examples.h
-dmdx_departed_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+dmdx_departed_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 dmdx_departed_LDADD = $(top_builddir)/src/libpmix.la
 
 abort_SOURCES = abort.c examples.h
-abort_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+abort_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 abort_LDADD = $(top_builddir)/src/libpmix.la
 
 distclean-local:
