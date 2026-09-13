@@ -67,14 +67,16 @@ pmix_status_t pmix_ptl_base_set_nonblocking(int sd)
 {
     int flags;
     /* setup the socket as non-blocking */
-    if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
+    flags = fcntl(sd, F_GETFL, 0);
+    if (0 > flags) {
         pmix_output(0, "ptl:base:set_nonblocking: fcntl(F_GETFL) failed: %s (%d)\n",
                     strerror(pmix_socket_errno), pmix_socket_errno);
     } else {
         flags |= O_NONBLOCK;
-        if (fcntl(sd, F_SETFL, flags) < 0)
+        if (0 > fcntl(sd, F_SETFL, flags)) {
             pmix_output(0, "ptl:base:set_nonblocking: fcntl(F_SETFL) failed: %s (%d)\n",
                         strerror(pmix_socket_errno), pmix_socket_errno);
+        }
     }
     return PMIX_SUCCESS;
 }
@@ -82,33 +84,38 @@ pmix_status_t pmix_ptl_base_set_nonblocking(int sd)
 pmix_status_t pmix_ptl_base_set_blocking(int sd)
 {
     int flags;
-    /* setup the socket as non-blocking */
-    if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
+    /* setup the socket as blocking */
+    flags = fcntl(sd, F_GETFL, 0);
+    if (0 > flags) {
         pmix_output(0, "ptl:base:set_blocking: fcntl(F_GETFL) failed: %s (%d)\n",
                     strerror(pmix_socket_errno), pmix_socket_errno);
     } else {
         flags &= ~(O_NONBLOCK);
-        if (fcntl(sd, F_SETFL, flags) < 0)
+        if (0 > fcntl(sd, F_SETFL, flags)) {
             pmix_output(0, "ptl:base:set_blocking: fcntl(F_SETFL) failed: %s (%d)\n",
                         strerror(pmix_socket_errno), pmix_socket_errno);
+        }
     }
     return PMIX_SUCCESS;
 }
 
 /*
- * A blocking send on a non-blocking socket. Used to send the small amount of connection
- * information that identifies the peers endpoint.
+ * A blocking send. Used to send the small amount of connection
+ * information that identifies the peers endpoint. Every caller hands this
+ * a socket in blocking mode, and none sets SO_SNDTIMEO, so EAGAIN cannot
+ * occur on it - the cycle below is only for a socket that is genuinely
+ * non-blocking.
  */
 pmix_status_t pmix_ptl_base_send_blocking(int sd, char *ptr, size_t size)
 {
     size_t cnt = 0;
-    int retval;
+    ssize_t retval;
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                         "send blocking of %" PRIsize_t " bytes to socket %d", size, sd);
     while (cnt < size) {
         retval = send(sd, (char *) ptr + cnt, size - cnt, 0);
-        if (retval < 0) {
+        if (0 > retval) {
             if (EAGAIN == pmix_socket_errno || EWOULDBLOCK == pmix_socket_errno) {
                 /* just cycle and let it try again */
                 pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
@@ -116,7 +123,7 @@ pmix_status_t pmix_ptl_base_send_blocking(int sd, char *ptr, size_t size)
                                     pmix_socket_errno, strerror(pmix_socket_errno));
                 continue;
             }
-            if (pmix_socket_errno != EINTR) {
+            if (EINTR != pmix_socket_errno) {
                 pmix_output_verbose(
                     8, pmix_ptl_base_framework.framework_output,
                     "ptl:base:peer_send_blocking: send() to socket %d failed: %s (%d)\n", sd,
@@ -153,17 +160,17 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
                         "waiting for blocking recv of %" PRIsize_t " bytes", size);
 
     while (cnt < size) {
-        int retval = recv(sd, (char *) data + cnt, size - cnt, MSG_WAITALL);
+        ssize_t retval = recv(sd, (char *) data + cnt, size - cnt, MSG_WAITALL);
 
         /* remote closed connection */
-        if (retval == 0) {
+        if (0 == retval) {
             pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                                 "ptl:base:recv_blocking: remote closed connection");
             return PMIX_ERR_UNREACH;
         }
 
         /* handle errors */
-        if (retval < 0) {
+        if (0 > retval) {
             if (EAGAIN == pmix_socket_errno || EWOULDBLOCK == pmix_socket_errno) {
                 flags = fcntl(sd, F_GETFL, 0);
                 if (0 <= flags && 0 == (flags & O_NONBLOCK)) {
@@ -178,7 +185,7 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
                                     pmix_socket_errno, strerror(pmix_socket_errno));
                 continue;
             }
-            if (pmix_socket_errno != EINTR) {
+            if (EINTR != pmix_socket_errno) {
                 /* If we overflow the listen backlog, it's
                    possible that even though we finished the three
                    way handshake, the remote host was unable to
@@ -283,14 +290,17 @@ char *pmix_ptl_base_get_cmd_line(void)
     mib[1] = KERN_ARGMAX;
     size = sizeof(argmax);
 
-    if (sysctl(mib, 2, &argmax, &size, NULL, 0) == -1) {
-        fprintf(stderr, "sysctl() argmax failed\n");
+    if (-1 == sysctl(mib, 2, &argmax, &size, NULL, 0)) {
+        /* the command line is optional information - say why it is
+         * missing only to someone who asked, not on every tool's stderr */
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:get_cmd_line: sysctl(KERN_ARGMAX) failed");
         return NULL;
     }
 
     /* Allocate space for the arguments. */
     procargs = (char *) malloc(argmax);
-    if (procargs == NULL) {
+    if (NULL == procargs) {
         return NULL;
     }
 
@@ -301,19 +311,21 @@ char *pmix_ptl_base_get_cmd_line(void)
 
     size = (size_t) argmax;
 
-    if (sysctl(mib, 3, procargs, &size, NULL, 0) == -1) {
-        fprintf(stderr, "Lacked permissions\n");
-        ;
+    if (-1 == sysctl(mib, 3, procargs, &size, NULL, 0)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:get_cmd_line: sysctl(KERN_PROCARGS2) failed");
         free(procargs);
         return NULL;
     }
 
     memcpy(&nargs, procargs, sizeof(nargs));
-    /* this points to the executable - skip over that to get the rest */
+    /* this points to the executable path, which is not part of argv - skip
+     * over it. (An append used to sit here labeled "the first argv", but
+     * it appended the path's terminating NUL: an empty first element, so
+     * the joined line always started with a blank. argv[0] is picked up
+     * by the loop below.) */
     cp = procargs + sizeof(nargs);
     cp += strlen(cp);
-    /* this is the first argv */
-    PMIx_Argv_append_nosize(&stack, cp);
     /* skip any embedded NULLs */
     while (cp < &procargs[size] && '\0' == *cp) {
         ++cp;
@@ -352,9 +364,7 @@ char *pmix_ptl_base_get_cmd_line(void)
             fclose(fp);
             return NULL;
         }
-        if (0 != fclose(fp)) {
-            ;
-        }
+        fclose(fp);
         p = strdup(tmp);
     }
 #endif
