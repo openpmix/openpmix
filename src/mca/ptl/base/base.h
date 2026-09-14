@@ -148,6 +148,10 @@ PMIX_EXPORT void pmix_ptl_base_start_listening(void);
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
 
 /* base support functions */
+/* Build the port array a listener scans from a list or range. NULL, an
+ * unparseable value and the "-1" wildcard all yield the ephemeral port.
+ * Any array already at *ports is freed first. */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_set_ports(const char *spec, char ***ports);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env);
 PMIX_EXPORT void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata);
 
