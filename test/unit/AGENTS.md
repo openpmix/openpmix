@@ -943,27 +943,34 @@ missing ID is reported as a failure rather than passing quietly.
 ### `ptl_stalled_peer` — a server must outlast a peer that stops talking
 
 [`ptl_stalled_peer.c`](ptl_stalled_peer.c) brings up a real server, opens
-a raw TCP socket to its own listener, stalls it, and then makes a
+raw TCP sockets to its own listener, stalls them, and then makes a
 blocking server call that can only complete if the progress thread is
-still running. The server reads each connect-ack with blocking `recv()`
-calls on that thread, before any credential is checked, and it used to
-start the moment it accepted a connection with nothing bounding the read
-— so one idle connection stopped the whole server. See
-[`src/mca/ptl/base/AGENTS.md`](../../src/mca/ptl/base/AGENTS.md).
+still running. The server reads each connect-ack on that thread, before
+any credential is checked, and it used to read with blocking `recv()`
+calls from the moment it accepted a connection — so one idle connection
+stopped the whole server. It now reads the connect-ack as its bytes
+arrive. See [`src/mca/ptl/base/AGENTS.md`](../../src/mca/ptl/base/AGENTS.md).
 
-Two changes fixed it, and the two cases are arranged so each one pins
-**one** of them:
+**Every stall case runs with `ptl_base_connect_ack_timeout` set to 0.**
+Leave it that way. A timeout can end a stall, so with one enabled these
+cases would pass for the timeout's sake - which is exactly how an earlier
+version passed its "partial" case while a peer could still freeze the
+server for the length of the timeout. With it disabled, only never
+waiting can pass them:
 
-- the **idle** case runs with `ptl_base_connect_ack_timeout` set to 0,
-  i.e. no timeout at all. Only the listener's wait for readability can
-  pass it. Leave the timeout disabled there; with it on, the case would
-  pass for the timeout's sake and stop guarding the listener.
-- the **partial** case sends three bytes and stops, with a one-second
-  timeout. The handler has to run for that, so readability does not
-  help; it needs the receive timeout *and* `pmix_ptl_base_recv_blocking`
-  reporting its expiry rather than retrying it.
+- **idle**, **one byte** and **partial** (three bytes of a header): the
+  server keeps answering, and has not closed the connection either.
+- **pieces**: half a header, then the rest and half a payload, are waited
+  for without the server closing; the last piece gets the (deliberately
+  invalid) connect-ack parsed and refused. A header naming more than
+  `PMIX_MAX_CRED_SIZE` is refused on sight, and a peer that departs
+  mid-header costs nothing.
+- **finalize**: connections that never finished are closed when the
+  server finalizes, not left holding a descriptor.
 
-Each was re-broken on its own and failed its own case and no other.
+The **timeout** case is the one that enables it, at one second, and
+checks that an unfinished connection survives the first moment and is
+dropped once the timeout passes.
 
 Every case runs in a forked child with its own `alarm()`, so a regression
 is an exit status the parent reports rather than a hang of `make check`.
