@@ -498,12 +498,11 @@ static pmix_status_t read_bytes(int sd, char **buf, size_t *remain)
                 ret = PMIX_ERR_WOULD_BLOCK;
                 goto exit;
             }
-            /* we hit an error and cannot progress this message - report
-             * the error back to the RML and let the caller know
-             * to abort this message
+            /* we hit an error and cannot progress this message - let
+             * the caller know to abort it
              */
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "pmix_ptl_base_msg_recv: readv failed: %s (%d)",
+                                "pmix_ptl_base_msg_recv: read failed: %s (%d)",
                                 strerror(pmix_socket_errno), pmix_socket_errno);
             ret = PMIX_ERR_UNREACH;
             goto exit;
@@ -624,7 +623,7 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
                             "ptl:base:recv:handler allocate new recv msg");
         peer->recv_msg = PMIX_NEW(pmix_ptl_recv_t);
         if (NULL == peer->recv_msg) {
-            pmix_output(0, "sptl:base:recv_handler: unable to allocate recv message\n");
+            pmix_output(0, "ptl:base:recv_handler: unable to allocate recv message\n");
             goto err_close;
         }
         PMIX_RETAIN(peer);
@@ -942,9 +941,8 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
         pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                             "posting recv on tag %d",
                             req->tag);
-        /* add it to the list of recvs - we cannot have unexpected messages
-         * in this subsystem as the server never sends us something that
-         * we didn't previously request */
+        /* add it to the list of recvs - ahead of any wildcard recv, so
+         * the reply is matched here rather than read as a command */
         pmix_list_prepend(&pmix_ptl_base.posted_recvs, &req->super);
     }
 
