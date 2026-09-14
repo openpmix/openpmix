@@ -156,15 +156,27 @@ static void _findpeer(int sd, short args, void *cbdata)
         return;
     }
     peer->nptr->nspace = strdup(proc->nspace);
-    /* assign a module to it based on the returned version */
-    peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(kv->value->data.string);
+    /* assign a module to it based on the recorded wire format - the
+     * name of the bfrops component the nspace's peers used */
+    if (NULL != kv->value && PMIX_STRING == kv->value->type &&
+        NULL != kv->value->data.string) {
+        peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(kv->value->data.string);
+    }
     PMIX_RELEASE(kv);
     if (NULL == peer->nptr->compat.bfrops) {
-        scd->status = PMIX_ERR_NOMEM;
+        /* no active component speaks it - not an allocation failure */
+        scd->status = PMIX_ERR_NOT_SUPPORTED;
         PMIX_RELEASE(peer);
         PMIX_WAKEUP_THREAD(&scd->lock);
         return;
     }
+    /* PMIx_Data_pack/unpack embed the caller's data buffer with our own
+     * buffer type (PMIX_EMBED_DATA_BUFFER), and PMIX_BFROPS_PACK refuses
+     * a buffer whose type differs from the peer's - so a peer we build
+     * has to carry ours, or every operation through it is a
+     * PMIX_ERR_PACK_MISMATCH. The recorded wire format says nothing about
+     * the departed peers' buffer type to prefer instead. */
+    peer->nptr->compat.type = pmix_globals.mypeer->nptr->compat.type;
     /* Cache the peer object so the next pack for this nspace can reuse it.
      * It goes in the peer_cache, not the clients array: it stands for a
      * foreign nspace, not a local client, and carries no rank_info, which
