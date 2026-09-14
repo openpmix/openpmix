@@ -603,13 +603,8 @@ pmix_status_t pmix_ptl_base_check_connect_directives(const pmix_info_t info[], s
             }
             rc = pmix_ptl_base_parse_uri(str, &uri_nspace, &rank, &suri);
             if (PMIX_SUCCESS != rc) {
-                return PMIX_ERR_BAD_PARAM;
-            }
-            if (NULL == uri_nspace || NULL == suri) {
                 /* parse_uri's own copies failed */
-                free(uri_nspace);
-                free(suri);
-                return PMIX_ERR_NOMEM;
+                return (PMIX_ERR_NOMEM == rc) ? rc : PMIX_ERR_BAD_PARAM;
             }
             rc = pmix_ptl_base_setup_connection(suri, &addr, &len);
             free(uri_nspace);
@@ -1141,7 +1136,7 @@ complete:
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "tool_peer_try_connect: Connection across to server succeeded");
 
-    pmix_ptl_base_complete_connection(peer, nspace, rank);
+    rc = pmix_ptl_base_complete_connection(peer, nspace, rank);
 
 cleanup:
     *suriout = suri;
