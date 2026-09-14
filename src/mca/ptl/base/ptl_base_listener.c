@@ -136,7 +136,7 @@ void pmix_ptl_base_stop_listening(void)
     pmix_listener_t *lt = &pmix_ptl_base.listener;
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
-                        "listen_thread: shutdown");
+                        "ptl:base:stop_listening");
 
     /* The listener has to be built again if the framework is opened
      * again in this process - pmix_ptl_close destructs the listener
@@ -559,7 +559,7 @@ static pmix_status_t store_uri(const char *key, const char *uri)
  * tool connections - in that case, we will take a non-loopback
  * device by default, if one is available after filtering directives
  *
- * If we are a tool and were give a rendezvous file, then we first
+ * If we are a tool and were given a rendezvous file, then we first
  * check to see if it already exists. If it does, then this is the
  * connection info we are to use. If it doesn't, then this is the
  * name of the file we are to use to store our listener info.
@@ -590,7 +590,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     long portnum;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "ptl:tool setup_listener");
+                        "ptl:base:setup_listener");
 
     for (n = 0; n < ninfo; n++) {
         if (0 == strcmp(info[n].key, PMIX_SERVER_SESSION_SUPPORT)) {
@@ -684,7 +684,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
      * available interface since we are only talking locally */
     for (i = pmix_ifbegin(); i >= 0; i = pmix_ifnext(i)) {
         if (PMIX_SUCCESS != pmix_ifindextoaddr(i, (struct sockaddr *) &my_ss, sizeof(my_ss))) {
-            pmix_output(0, "ptl_tool: problems getting address for index %i (kernel index %i)\n", i,
+            pmix_output(0, "ptl:base:setup_listener: problems getting address for index %i (kernel index %i)\n", i,
                         pmix_ifindextokindex(i));
             continue;
         }
@@ -745,14 +745,14 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                 if (PMIX_SUCCESS != rc) {
                     pmix_output_verbose(
                         10, pmix_ptl_base_framework.framework_output,
-                        "ptl:tool:init rejecting interface %s (not in include list)", name);
+                        "ptl:base:setup_listener rejecting interface %s (not in include list)", name);
                     continue;
                 }
             } else {
                 /* we are excluding, so ignore if present */
                 if (PMIX_SUCCESS == rc) {
                     pmix_output_verbose(10, pmix_ptl_base_framework.framework_output,
-                                        "ptl:tool:init rejecting interface %s (in exclude list)",
+                                        "ptl:base:setup_listener rejecting interface %s (in exclude list)",
                                         name);
                     continue;
                 }
@@ -763,7 +763,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
          * remote connections, then we are done */
         if (pmix_ifisloopback(i)) {
             pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
-                                "ptl:tool:init loopback interface %s found", name);
+                                "ptl:base:setup_listener loopback interface %s found", name);
             if (savelpbk < 0) {
                 savelpbk = i;
             }
