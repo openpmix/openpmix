@@ -125,6 +125,13 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_connection_t);
 
 /* API stubs */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_notification_cbfunc(pmix_ptl_cbfunc_t cbfunc);
+/* Check, without acting on any of them, the directives
+ * pmix_ptl_base_connect_to_peer consumes. PMIX_ERR_BAD_PARAM means one of
+ * them is malformed - no connection could be attempted with it, so the
+ * caller's PMIX_TOOL_CONNECT_OPTIONAL does not apply. */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_check_connect_directives(const pmix_info_t info[],
+                                                                 size_t ninfo);
+
 PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *peer,
                                                         pmix_info_t info[], size_t ninfo,
                                                         char **suri);

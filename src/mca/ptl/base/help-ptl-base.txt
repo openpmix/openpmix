@@ -147,14 +147,15 @@ Please remove the file and try again.
 #
 [unknown-attribute]
 A PMIx tool asked to connect to its server using an ordered list of
-connection targets, but one of the entries does not name a known PMIx
-attribute:
+connection targets, but one of the entries is not a connection target:
 
   Entry:      %s
   Given via:  %s
 
-Please check the spelling of the entry - "pmix_info --attributes" will
-list the attributes this build recognizes.
+Each entry must name one of PMIX_CONNECT_SYSTEM_FIRST,
+PMIX_CONNECT_TO_SYSTEM, PMIX_CONNECT_TO_SCHEDULER or
+PMIX_CONNECT_TO_SYS_CONTROLLER, spelled exactly and with no spaces
+around it.
 #
 [no-available-ports]
 A PMIx server was unable to bind its listening socket to any of the

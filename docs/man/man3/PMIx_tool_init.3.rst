@@ -123,7 +123,10 @@ during initialization.
   identity.
 * ``PMIX_TOOL_CONNECT_OPTIONAL`` (bool) |mdash| the tool shall connect to a
   server if one is available, but otherwise shall continue (self-assigning its
-  identity) rather than returning an error.
+  identity) rather than returning an error. This covers a connection that is
+  attempted and fails; it does not cover a malformed connection directive,
+  which is reported as ``PMIX_ERR_BAD_PARAM`` whether or not the connection is
+  optional.
 * ``PMIX_CONNECT_TO_SYSTEM`` (bool) |mdash| connect solely to the system-level
   PMIx server.
 * ``PMIX_CONNECT_SYSTEM_FIRST`` (bool) |mdash| preferentially look for a
@@ -150,7 +153,10 @@ during initialization.
   ``PMIX_CONNECT_TO_SYS_CONTROLLER``, ``PMIX_CONNECT_TO_SYSTEM``) defining the
   order, first to last, in which connections are attempted. Unless the final entry
   is an "only" flag, the tool falls back to the local server if no listed target
-  succeeds.
+  succeeds. Each entry must be one of ``PMIX_CONNECT_SYSTEM_FIRST``,
+  ``PMIX_CONNECT_TO_SYSTEM``, ``PMIX_CONNECT_TO_SCHEDULER`` or
+  ``PMIX_CONNECT_TO_SYS_CONTROLLER``, given by name or by its string value,
+  with no surrounding spaces; any other entry is ``PMIX_ERR_BAD_PARAM``.
 * ``PMIX_CONNECT_MAX_RETRIES`` (uint32_t) |mdash| maximum number of times to
   attempt connecting to the server.
 * ``PMIX_CONNECT_RETRY_DELAY`` (uint32_t) |mdash| time, in seconds, between
@@ -213,8 +219,11 @@ a PMIx error constant is returned, including:
   example, a usock-only transport was requested, or a tight race between
   concurrent init calls left the library in an unusable state).
 * ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid combination of directives was
-  supplied (e.g., a namespace without a rank), or ``proc`` was ``NULL`` on the
-  initial call.
+  supplied (e.g., a namespace without a rank), a connection directive was
+  malformed (a value of the wrong type, a server URI that does not parse, or an
+  unrecognized ``PMIX_CONNECTION_ORDER`` entry) |mdash| even when the connection
+  was marked optional, since no connection was attempted |mdash| or ``proc``
+  was ``NULL`` on the initial call.
 * ``PMIX_ERR_UNREACH`` |mdash| the requested PMIx server could not be reached and
   the connection was not optional.
 * ``PMIX_ERR_NOMEM`` |mdash| the library could not allocate required internal
