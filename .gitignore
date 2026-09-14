@@ -327,6 +327,7 @@ test/unit/iof_inherit
 test/unit/proc_array_id
 test/unit/attr_dictionary
 test/unit/get_api
+test/unit/data_pack_peer
 test/unit/get_perf
 test/unit/ptl_uri
 test/unit/ptl_search
