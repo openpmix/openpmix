@@ -181,7 +181,7 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "if_include",
                                      "Comma-delimited list of devices and/or CIDR notation of TCP networks "
-                                     "(e.g., \"eth0,192.168.0.0/16\").  Mutually exclusive with ptl_tcp_if_exclude.",
+                                     "(e.g., \"eth0,192.168.0.0/16\").  Mutually exclusive with ptl_base_if_exclude.",
                                      PMIX_MCA_BASE_VAR_TYPE_STRING,
                                      &pmix_ptl_base.if_include);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "if_include",
@@ -191,7 +191,7 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      "Comma-delimited list of devices and/or CIDR notation of TCP networks to NOT use "
                                      "-- all devices not matching these specifications will be used (e.g., "
                                      "\"eth0,192.168.0.0/16\"). "
-                                     "If set to a non-default value, it is mutually exclusive with ptl_tcp_if_include.",
+                                     "If set to a non-default value, it is mutually exclusive with ptl_base_if_include.",
                                      PMIX_MCA_BASE_VAR_TYPE_STRING,
                                      &pmix_ptl_base.if_exclude);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "if_exclude",
@@ -452,11 +452,8 @@ static pmix_status_t pmix_ptl_close(void)
         pmix_ptl_base.created_pid_filename = false;
     }
     if (NULL != pmix_ptl_base.rendezvous_filename) {
-        if (pmix_ptl_base.created_rendezvous_dir) {
-            tmp = pmix_dirname(pmix_ptl_base.rendezvous_filename);
-            pmix_os_dirpath_destroy(tmp, true, _check_file);
-            free(tmp);
-        }
+        /* the file first - destroying the directory takes the file with
+         * it, and the remove would then fail on every clean shutdown */
         if (pmix_ptl_base.created_rendezvous_file) {
             rc = remove(pmix_ptl_base.rendezvous_filename);
             if (0 != rc) {
@@ -464,6 +461,11 @@ static pmix_status_t pmix_ptl_close(void)
                                     "Remove of %s failed: %s",
                                     pmix_ptl_base.rendezvous_filename, strerror(errno));
             }
+        }
+        if (pmix_ptl_base.created_rendezvous_dir) {
+            tmp = pmix_dirname(pmix_ptl_base.rendezvous_filename);
+            pmix_os_dirpath_destroy(tmp, true, _check_file);
+            free(tmp);
         }
         free(pmix_ptl_base.rendezvous_filename);
         pmix_ptl_base.rendezvous_filename = NULL;

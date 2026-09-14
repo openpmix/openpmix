@@ -513,6 +513,7 @@ All under the `pmix_ptl_base_` prefix, most with deprecated
 | `disable_ipv4_family` / `disable_ipv6_family` | skip a whole address family (IPv6 disabled by default) |
 | `connection_wait_time` / `max_retries` | how long/often to wait for a server's connection file to appear |
 | `handshake_wait_time` / `handshake_max_retries` | timeout/retries on the connect-ack exchange |
+| `connect_ack_timeout` | seconds a server waits for the rest of an inbound connect-ack before dropping it (default 5; 0 = no limit) |
 | `report_uri` | where to print the listener URI |
 
 Per the top-level guidance, prefer adding an MCA parameter (or, better, an
