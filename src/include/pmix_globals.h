@@ -505,13 +505,12 @@ typedef struct pmix_rank_info_t {
      * independently - two sub-communicators fencing separately each get
      * exactly what they have not seen.
      *
-     * modex_marked_upto is scratch: the id collect_data packed up to, so
-     * pmix_server_modex_contributed can advance the mark to precisely
-     * that point once the host has taken the bucket. */
+     * How far a particular fence packed this rank is not kept here: it
+     * belongs to that fence, and lives on its caddy (modex_upto) until
+     * the fence completes. */
     pmix_list_t modex_log;
     uint64_t modex_next_id;
     pmix_list_t modex_marks;
-    uint64_t modex_marked_upto;
 } pmix_rank_info_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_rank_info_t);
 
@@ -754,6 +753,10 @@ typedef struct {
     size_t ninfo;
     pmix_query_t *query;
     char *key;
+    /* for a collecting fence: the modex log id this participant's
+     * contribution was packed up to, applied to its mark only if the
+     * fence completes successfully - see pmix_server_modex_contributed */
+    uint64_t modex_upto;
 } pmix_server_caddy_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
 

@@ -150,6 +150,7 @@ static void cdcon(pmix_server_caddy_t *cd)
     cd->ninfo = 0;
     cd->query = NULL;
     cd->key = NULL;
+    cd->modex_upto = 0;
 }
 static void cddes(pmix_server_caddy_t *cd)
 {
