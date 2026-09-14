@@ -33,6 +33,16 @@
  *    half to read it, so it is answered empty rather than looped back to
  *    wait forever. (A server's request to itself is ptl_loopback.c.)
  *
+ *  - a buffer too large for the header's 32-bit length was framed anyway,
+ *    with the length truncated. It is now refused before it is queued;
+ *    the case only claims the size, it does not allocate it.
+ *
+ *  - no single writev may exceed pmix_ptl_base.max_write, since macOS
+ *    refuses one totalling more than INT_MAX. Reproducing that needs a
+ *    2 GB message, so the case lowers the cap to a few bytes instead and
+ *    checks that a message split across many writes arrives intact -
+ *    which is what the chunking arithmetic has to get right.
+ *
  *  - pmix_ptl_base_flush_sends, draining a peer that is not reading, put
  *    its socket in an fd_set whatever the descriptor's number. Past
  *    FD_SETSIZE that writes beyond the set, on the stack. This case runs
@@ -277,6 +287,155 @@ static void do_sendrecv(void *arg)
     }
 }
 
+typedef struct {
+    pmix_peer_t *peer;
+    pmix_buffer_t *buf;
+    pmix_ptl_tag_t tag;
+    size_t cap;
+    pmix_status_t rc;
+} oneway_t;
+
+static void arm_send(void *arg)
+{
+    pmix_peer_t *peer = (pmix_peer_t *) arg;
+    pmix_event_assign(&peer->send_event, pmix_globals.evbase, peer->sd, EV_WRITE | EV_PERSIST,
+                      pmix_ptl_base_send_handler, peer);
+}
+
+static void do_oneway(void *arg)
+{
+    oneway_t *o = (oneway_t *) arg;
+    pmix_ptl_base.max_write = o->cap;
+    PMIX_PTL_SEND_ONEWAY(o->rc, o->peer, o->buf, o->tag);
+}
+
+/* Release a fake peer on the progress thread, before its far end is
+ * closed: the peer's recv event is armed, so a far end closed first makes
+ * the progress thread tear the peer down while this thread frees it. */
+static void release_peer(void *arg)
+{
+    fake_t *f = (fake_t *) arg;
+    PMIX_RELEASE(f->peer);
+}
+
+static void reset_cap(void *arg)
+{
+    PMIX_HIDE_UNUSED_PARAMS(arg);
+    pmix_ptl_base.max_write = INT_MAX;
+}
+
+/* read exactly len bytes, or give up after the socket's receive timeout */
+static size_t read_all(int fd, char *ptr, size_t len)
+{
+    size_t got = 0;
+    ssize_t rc;
+
+    while (got < len) {
+        rc = read(fd, ptr + got, len - got);
+        if (0 >= rc) {
+            break;
+        }
+        got += (size_t) rc;
+    }
+    return got;
+}
+
+#define CHUNKED_PAYLOAD 5000
+
+static void test_chunked_write(void)
+{
+    fake_t c = {NULL, -1, "server.c"};
+    oneway_t o;
+    pmix_ptl_hdr_t hdr;
+    char *payload, *got;
+    struct timeval tv = {5, 0};
+    size_t i, n;
+    bool intact, hdr_ok;
+    char detail[128];
+
+    on_progress_thread(make_peer, &c);
+    on_progress_thread(arm_send, c.peer);
+    setsockopt(c.far, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    payload = (char *) malloc(CHUNKED_PAYLOAD);
+    got = (char *) malloc(CHUNKED_PAYLOAD);
+    for (i = 0; i < CHUNKED_PAYLOAD; i++) {
+        payload[i] = (char) (i % 251);
+    }
+    o.peer = c.peer;
+    o.buf = PMIX_NEW(pmix_buffer_t);
+    o.buf->base_ptr = payload;
+    o.buf->bytes_allocated = CHUNKED_PAYLOAD;
+    o.buf->bytes_used = CHUNKED_PAYLOAD;
+    o.tag = PMIX_PTL_TAG_DYNAMIC + 7;
+    /* smaller than the header, so every region is split */
+    o.cap = 7;
+    on_progress_thread(do_oneway, &o);
+
+    n = read_all(c.far, (char *) &hdr, sizeof(hdr));
+    hdr_ok = (sizeof(hdr) == n && PMIX_PTL_TAG_DYNAMIC + 7 == ntohl(hdr.tag) &&
+              CHUNKED_PAYLOAD == ntohl(hdr.nbytes));
+    intact = hdr_ok;
+    n = 0;
+    i = 0;
+    if (hdr_ok) {
+        n = read_all(c.far, got, CHUNKED_PAYLOAD);
+        for (i = 0; i < CHUNKED_PAYLOAD && i < n; i++) {
+            if (got[i] != (char) (i % 251)) {
+                break;
+            }
+        }
+        intact = (CHUNKED_PAYLOAD == n && CHUNKED_PAYLOAD == i);
+    }
+    snprintf(detail, sizeof(detail), "rc %s, header %s, %lu payload bytes, first bad byte %lu",
+             PMIx_Error_string(o.rc), hdr_ok ? "ok" : "wrong", (unsigned long) n,
+             (unsigned long) i);
+    report("a message split across capped writes arrives intact",
+           PMIX_SUCCESS == o.rc && intact, detail);
+    on_progress_thread(reset_cap, NULL);
+
+    free(got);
+    on_progress_thread(release_peer, &c);
+    close(c.far);
+}
+
+#if SIZEOF_SIZE_T > 4
+static void test_too_big(void)
+{
+    fake_t d = {NULL, -1, "server.d"};
+    probe_t big;
+    sr_t sr;
+    pmix_buffer_t *buf;
+    struct timeval tv = {0, 300000};
+    char byte;
+    ssize_t n;
+    char detail[128];
+
+    on_progress_thread(make_peer, &d);
+    on_progress_thread(arm_send, d.peer);
+    setsockopt(d.far, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    memset(&big, 0, sizeof(big));
+    buf = PMIX_NEW(pmix_buffer_t);
+    /* claimed, never allocated - the send must refuse it before it looks */
+    buf->bytes_used = (size_t) UINT32_MAX + 1;
+    PMIX_RETAIN(d.peer);
+    sr.peer = d.peer;
+    sr.probe = &big;
+    PMIX_PTL_SEND_RECV(sr.rc, d.peer, buf, probe_cb, &big);
+    PMIX_RELEASE(d.peer);
+    wait_calls(&big, 1);
+    n = read(d.far, &byte, 1);
+    snprintf(detail, sizeof(detail), "rc %s, %d calls, %s on the wire", PMIx_Error_string(sr.rc),
+             big.calls, (0 < n) ? "something" : "nothing");
+    report("a buffer too large to frame is refused and its caller answered",
+           PMIX_SUCCESS == sr.rc && 1 == big.calls && 0 >= n, detail);
+
+    on_progress_thread(release_peer, &d);
+    close(d.far);
+}
+#endif
+
 #define HIGH_FD 4000
 
 typedef struct {
@@ -445,6 +604,10 @@ int main(int argc, char **argv)
     PMIX_RELEASE(a.peer);
     PMIX_RELEASE(b.peer);
 
+    test_chunked_write();
+#if SIZEOF_SIZE_T > 4
+    test_too_big();
+#endif
     test_flush_high_fd();
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);

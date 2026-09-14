@@ -108,6 +108,10 @@ struct pmix_ptl_base_t {
     /* seconds a server waits for the rest of an incoming connect-ack once
      * it has started to arrive - see pmix_ptl_base_connection_handler */
     int connect_ack_timeout;
+    /* the most any one writev may carry - see send_msg. Not a tuning
+     * parameter: it exists so a test can drive the chunking with a small
+     * message instead of a 2 GB one */
+    size_t max_write;
 };
 typedef struct pmix_ptl_base_t pmix_ptl_base_t;
 

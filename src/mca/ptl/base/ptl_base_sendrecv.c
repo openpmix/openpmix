@@ -305,71 +305,80 @@ static pmix_status_t send_msg(int sd, pmix_ptl_send_t *msg)
 {
     struct iovec iov[2];
     int iov_count;
-    ssize_t remain = msg->sdbytes, rc;
+    size_t nbytes = ntohl(msg->hdr.nbytes), want, cap, done;
+    ssize_t rc;
 
-    iov[0].iov_base = msg->sdptr;
-    iov[0].iov_len = msg->sdbytes;
-    if (!msg->hdr_sent && NULL != msg->data) {
-        iov[1].iov_base = msg->data->base_ptr;
-        iov[1].iov_len = ntohl(msg->hdr.nbytes);
-        remain += ntohl(msg->hdr.nbytes);
-        iov_count = 2;
-    } else {
+    /* No single writev may carry more than max_write bytes. A message can
+     * be up to 4 GB, and macOS refuses a writev totalling more than
+     * INT_MAX with EINVAL rather than writing part of it - which dropped
+     * the connection. A capped write that goes out whole is not the kernel
+     * buffer filling, so keep going; only a short write waits for the
+     * socket to become writable again. */
+    cap = (0 < pmix_ptl_base.max_write) ? pmix_ptl_base.max_write : (size_t) INT_MAX;
+
+    while (1) {
+        /* what is left of the current region, plus the payload if the
+         * header is still going out */
+        iov[0].iov_base = msg->sdptr;
+        iov[0].iov_len = (msg->sdbytes < cap) ? msg->sdbytes : cap;
+        want = iov[0].iov_len;
         iov_count = 1;
-    }
-retry:
-    rc = writev(sd, iov, iov_count);
-    if (PMIX_LIKELY(rc == remain)) {
-        /* we successfully sent the header and the msg data if any */
-        msg->hdr_sent = true;
-        msg->sdbytes = 0;
-        msg->sdptr = (char *) iov[iov_count - 1].iov_base + iov[iov_count - 1].iov_len;
-        return PMIX_SUCCESS;
-    } else if (rc < 0) {
-        if (pmix_socket_errno == EINTR) {
-            goto retry;
-        } else if (pmix_socket_errno == EAGAIN) {
-            /* tell the caller to keep this message on active,
-             * but let the event lib cycle so other messages
-             * can progress while this socket is busy
-             */
-            return PMIX_ERR_RESOURCE_BUSY;
-        } else if (pmix_socket_errno == EWOULDBLOCK) {
-            /* tell the caller to keep this message on active,
-             * but let the event lib cycle so other messages
-             * can progress while this socket is busy
-             */
-            return PMIX_ERR_WOULD_BLOCK;
-        } else {
+        if (!msg->hdr_sent && NULL != msg->data && 0 < nbytes && want < cap) {
+            iov[1].iov_base = msg->data->base_ptr;
+            iov[1].iov_len = (nbytes < cap - want) ? nbytes : cap - want;
+            want += iov[1].iov_len;
+            iov_count = 2;
+        }
+
+        rc = writev(sd, iov, iov_count);
+        if (rc < 0) {
+            if (pmix_socket_errno == EINTR) {
+                continue;
+            } else if (pmix_socket_errno == EAGAIN) {
+                /* tell the caller to keep this message on active,
+                 * but let the event lib cycle so other messages
+                 * can progress while this socket is busy
+                 */
+                return PMIX_ERR_RESOURCE_BUSY;
+            } else if (pmix_socket_errno == EWOULDBLOCK) {
+                /* tell the caller to keep this message on active,
+                 * but let the event lib cycle so other messages
+                 * can progress while this socket is busy
+                 */
+                return PMIX_ERR_WOULD_BLOCK;
+            }
             /* we hit an error and cannot progress this message */
             pmix_output(0, "pmix_ptl_base: send_msg: write failed: %s (%d) [sd = %d]",
                         strerror(pmix_socket_errno), pmix_socket_errno, sd);
             return PMIX_ERR_UNREACH;
         }
-    } else {
-        /* short writev. This usually means the kernel buffer is full,
-         * so there is no point for retrying at that time.
-         * simply update the msg and return with PMIX_ERR_RESOURCE_BUSY */
+
+        /* account for what went out */
         if ((size_t) rc < msg->sdbytes) {
-            /* partial write of the header or the msg data */
+            /* part of the current region - header or payload */
             msg->sdptr = (char *) msg->sdptr + rc;
-            msg->sdbytes -= rc;
-        } else {
-            /* header was fully written, but only a part of the msg data was written */
+            msg->sdbytes -= (size_t) rc;
+        } else if (!msg->hdr_sent) {
+            /* the rest of the header, and perhaps some of the payload */
+            done = (size_t) rc - msg->sdbytes;
             msg->hdr_sent = true;
-            rc -= msg->sdbytes;
-            if (NULL != msg->data) {
-                /* technically, this should never happen as iov_count
-                 * would be 1 for a zero-byte message, and so we cannot
-                 * have a case where we write the header and part of the
-                 * msg. However, code checkers don't know that and are
-                 * fooled by our earlier check for NULL, and so
-                 * we silence their warnings by using this check */
-                msg->sdptr = (char *) msg->data->base_ptr + rc;
-            }
-            msg->sdbytes = ntohl(msg->hdr.nbytes) - rc;
+            msg->sdptr = (NULL == msg->data) ? NULL : (char *) msg->data->base_ptr + done;
+            msg->sdbytes = nbytes - done;
+        } else {
+            /* the rest of the payload */
+            msg->sdptr = (char *) msg->sdptr + rc;
+            msg->sdbytes = 0;
         }
-        return PMIX_ERR_RESOURCE_BUSY;
+
+        if (msg->hdr_sent && 0 == msg->sdbytes) {
+            /* we successfully sent the header and the msg data if any */
+            return PMIX_SUCCESS;
+        }
+        if ((size_t) rc < want) {
+            /* short writev. This usually means the kernel buffer is full,
+             * so there is no point for retrying at that time */
+            return PMIX_ERR_RESOURCE_BUSY;
+        }
     }
 }
 
@@ -839,6 +848,15 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
         return;
     }
 
+    if (PMIX_PTL_MSG_TOO_BIG(queue->buf)) {
+        /* see PMIX_PTL_MSG_TOO_BIG - nobody waits on a one-way send, so
+         * refusing it is all there is to do, but say so */
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        PMIX_RELEASE(queue->buf);
+        PMIX_RELEASE(queue);
+        return;
+    }
+
     /* is this a send to myself? */
     if (queue->peer == pmix_globals.mypeer) {
         /* just push it to the matching code */
@@ -951,6 +969,12 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
         /* nothing to send? */
         PMIX_RELEASE(ms);
         return;
+    }
+
+    if (PMIX_PTL_MSG_TOO_BIG(ms->bfr)) {
+        /* see PMIX_PTL_MSG_TOO_BIG - the caller is waiting, so answer it */
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        goto unanswered;
     }
 
     /* take the next tag in the sequence of tags for this peer */

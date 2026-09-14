@@ -111,7 +111,8 @@ pmix_ptl_base_t pmix_ptl_base = {
     .wait_to_connect = 0,
     .handshake_wait_time = 0,
     .handshake_max_retries = 0,
-    .connect_ack_timeout = 5
+    .connect_ack_timeout = 5,
+    .max_write = INT_MAX
 };
 int pmix_ptl_base_output = -1;
 pmix_ptl_module_t pmix_ptl = {
@@ -355,6 +356,7 @@ static pmix_status_t pmix_ptl_close(void)
     pmix_ptl_base.allow_foreign_tools = true;
     pmix_ptl_base.session_tool = false;
     pmix_ptl_base.tool_support = false;
+    pmix_ptl_base.max_write = INT_MAX;
 
     /* ensure the listen thread has been shut down */
     pmix_ptl_base_stop_listening();
