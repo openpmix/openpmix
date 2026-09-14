@@ -311,19 +311,42 @@ the session tmpdir. Things to keep straight:
 - **A list-valued directive may split to nothing.** `PMIx_Argv_split`
   returns NULL for `""` and `","`, so a `PMIX_CONNECTION_ORDER` of either
   used to fault indexing the result. An empty order means no preference.
-- **Every directive `connect_to_peer` reads is screened for its type
-  first.** They come straight from the caller of `PMIx_tool_init` or
-  `PMIx_tool_attach_to_server`, and the string ones used to be read out
-  of the union as pointers whatever they held — a `bool` in
-  `PMIX_SERVER_URI`, `PMIX_TCP_URI`, `PMIX_TOOL_ATTACHMENT_FILE`,
-  `PMIX_SERVER_NSPACE` or `PMIX_CONNECTION_ORDER` was a SIGSEGV. Use
-  `is_string_value()` for a string and `PMIx_Value_get_number()` for a
-  number, and leave through `badinput:`, which is the single exit for
-  anything that fails before the info array is built. A copy that fails
-  there must fail the call too: losing the copy of a URI or an
-  attachment file does not stop anything, it silently falls through to
-  discovery and can attach the tool to a different server than the one
-  it named. `test/unit/tool_api.c` sends each of these a `bool`.
+- **Every directive `connect_to_peer` reads is vetted first, by
+  `pmix_ptl_base_check_connect_directives()`, and nothing else in the
+  loop validates.** They come straight from the caller of
+  `PMIx_tool_init` or `PMIx_tool_attach_to_server`, and the string ones
+  used to be read out of the union as pointers whatever they held — a
+  `bool` in `PMIX_SERVER_URI`, `PMIX_TCP_URI`,
+  `PMIX_TOOL_ATTACHMENT_FILE`, `PMIX_SERVER_NSPACE` or
+  `PMIX_CONNECTION_ORDER` was a SIGSEGV. The check covers each
+  directive's type, a URI that does not parse (address included — no
+  name resolution, so it cannot block), two different servers named by
+  nspace, and a connection order entry that is not a connection target.
+  It acts on nothing, so a bad value is refused before any
+  `pmix_ptl_base` global is overwritten. Add a new directive to it, not
+  to the loop.
+
+  **It is exported because "no connection was attempted" has to be
+  decidable.** A malformed directive is `PMIX_ERR_BAD_PARAM` even when the
+  caller asked for an optional connection, and `PMIx_tool_init` calls the
+  check itself, before the attempt, to know that — `connect_to_peer`'s
+  status cannot tell it, because a host refusing a tool may answer
+  `PMIX_ERR_BAD_PARAM` too. See `src/tool/AGENTS.md`.
+
+  After the check, the loop leaves through `badinput:` only for a failed
+  allocation, and that must fail the call too: losing the copy of a URI
+  or an attachment file does not stop anything, it silently falls through
+  to discovery and can attach the tool to a different server than the one
+  it named. `test/unit/tool_api.c` sends each directive a `bool`, both
+  with and without `PMIX_TOOL_CONNECT_OPTIONAL`.
+- **`pmix_attributes_lookup()` never returns NULL for a name.** It hands
+  back the attribute's string value, or the input unchanged when it knows
+  no such name — so "is it NULL?" tells you nothing. The connection-order
+  check used to ask exactly that, which made its `unknown-attribute`
+  diagnostic unreachable: a misspelled entry, an attribute that is not a
+  connection target, or an entry with a space after its comma was
+  skipped without a word, and the tool connected in some other order than
+  the one it asked for. Test the result against the values you accept.
 - **`connect_to_peer` hands back `*suriout` on every path**, failure
   included, so every caller frees it whether or not the connection was
   made.
