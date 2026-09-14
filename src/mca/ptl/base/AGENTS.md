@@ -452,13 +452,30 @@ that bite:
   thread-shift ran. It gives the callback the same empty buffer instead
   of dropping the request, which left a blocking caller waiting forever.
   The same goes for an allocation failure on that path.
-- **The loopback branch of `pmix_ptl_base_send_recv` is unreachable.**
-  `pmix_globals.mypeer->sd` is always -1, so the closed-socket screen
-  above answers first. Do not reorder the two to "enable" it: a request
-  delivered to ourselves would match the reply recv just posted for it
-  on the same tag, ahead of the server's wildcard, and hand the request
-  to the reply callback. The one-way `pmix_ptl_base_send` loopback is
-  real.
+- **A server's request to itself is a real round trip, and its two
+  halves share a tag.** A server's `myserver` is its own peer, which has
+  no socket, so `pmix_ptl_base_send_recv` posts the request through
+  `pmix_ptl_base_post_loopback()` and the switchyard's answer comes back
+  the same way — `PMIX_SERVER_QUEUE_REPLY` loops a reply to
+  `pmix_globals.mypeer` back instead of queuing it. Each message records
+  its kind in `pmix_ptl_recv_t.loopback`, and `process_msg` keeps them
+  apart:
+  - a `REQUEST` never matches a dynamic-tag recv. The reply recv for it
+    is posted first, on the same tag, and prepended, so the request
+    would otherwise be handed to the caller as its own answer.
+  - a `REPLY` never matches the wildcard. One that nobody waits for
+    would otherwise be read as a command, and the error that draws is
+    itself a reply to ourselves — the two go round forever. An unmatched
+    reply is dropped without an event.
+
+  Three things broke this before: the closed-socket screen ran ahead of
+  the loopback branch, so nothing was ever sent; the request matched its
+  own reply recv; and the reply sat forever on a peer with no socket to
+  send it on. A process with no server half answers a request to itself
+  with the empty buffer instead — nobody would read it. Note that every
+  API entry point gates on `connected`, which is false whenever
+  `myserver` is `mypeer`, so no caller issues one today.
+  `test/unit/ptl_loopback.c` pins each piece.
 - **A header is read into the message, through its cursor.** The
   receive handler must resume a header that arrived in pieces. It once
   read into a local copy that each call restarted, so the first piece
@@ -470,7 +487,9 @@ that bite:
   hundred local procs has descriptors well past 1024. Such a socket just
   waits out the retry interval.
 - **Loopback bypasses the socket entirely.** A send whose peer is
-  `pmix_globals.mypeer` goes straight to `PMIX_ACTIVATE_POST_MSG`.
+  `pmix_globals.mypeer` goes through `pmix_ptl_base_post_loopback()`.
+  A one-way send (kind `NONE`) matches like anything off a socket; that
+  is how a server receives its own IOF.
 - **`send_msg` handles partial writes** by tracking `hdr_sent` plus the
   `sdptr`/`sdbytes` cursor; `EAGAIN` returns `PMIX_ERR_RESOURCE_BUSY` and
   the event refires. Do not simplify this into a single `write`.
@@ -601,6 +620,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_handshake.c` | the `PUT_*`/`GET_*` pair as a round trip, plus truncated-field rejection |
 | `test/unit/ptl_frame.c` | a released message frees its payload, an oversized `max_msg_size` means no limit, port-list fallback, and role flags reset across an init/finalize cycle |
 | `test/unit/ptl_sendrecv.c` | lost-connection completion per peer, a split header, a sendrecv to a closed peer, and `flush_sends` past `FD_SETSIZE` |
+| `test/unit/ptl_loopback.c` | a server's request to itself reaches its switchyard and is answered once; a loopback reply nobody waits for is not read as a command |
 | `test/unit/ptl_listener.c` | accept out of descriptors stops the listener cleanly; mistyped, out-of-range and empty directives; a directive-named report file is removed |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
 | `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one |

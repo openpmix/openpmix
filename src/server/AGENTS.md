@@ -2759,7 +2759,9 @@ Two suites cover the halves:
   suite that reads a *reply* back: `PMIX_SERVER_QUEUE_REPLY` never arms
   the send event for a peer whose `sd` is negative, so the message comes
   to rest on `peer->send_msg` and a single process can unpack what the
-  server actually packed. Use that idiom rather than a host stub's
+  server actually packed. That peer must be a stand-in, not
+  `pmix_globals.mypeer` — a reply to our own peer is looped back to us
+  (see `src/mca/ptl/base/AGENTS.md`). Use that idiom rather than a host stub's
   arguments when what you need to pin down is what crossed the wire.
 - [`test/unit/server_group.c`](../../test/unit/server_group.c) drives
   `pmix_server_group` from hand-packed wire buffers against a host stub

@@ -771,11 +771,49 @@ err_close:
     PMIX_POST_OBJECT(peer);
 }
 
+/* Deliver a message to ourselves, bypassing the socket we do not have.
+ *
+ * A one-way loopback (kind NONE) matches like anything off a socket. A
+ * sendrecv to ourselves is harder, because the request and its reply carry
+ * the same tag. The request is posted AFTER the recv for its reply, and a
+ * dynamic-tag recv is prepended, so the request would match that recv
+ * first and be handed to the reply callback as if it were the answer. And
+ * the reply, arriving where nothing waits for it, would fall through to a
+ * server's wildcard recv and be read as a command - the error that draws
+ * is itself a reply to ourselves, and the two go round forever. So
+ * pmix_ptl_base_process_msg keeps them apart: a REQUEST never matches a
+ * dynamic-tag recv, and a REPLY never matches the wildcard.
+ */
+pmix_status_t pmix_ptl_base_post_loopback(struct pmix_peer_t *pr, pmix_ptl_tag_t tag,
+                                          pmix_buffer_t *buf, pmix_ptl_loopback_t kind)
+{
+    pmix_peer_t *peer = (pmix_peer_t *) pr;
+    pmix_ptl_recv_t *msg;
+
+    msg = PMIX_NEW(pmix_ptl_recv_t);
+    if (NULL == msg) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(peer);
+    msg->peer = peer;
+    msg->hdr.pindex = pmix_globals.pindex;
+    msg->hdr.tag = tag;
+    msg->loopback = kind;
+    if (NULL != buf) {
+        msg->hdr.nbytes = buf->bytes_used;
+        msg->data = buf->base_ptr;
+        buf->base_ptr = NULL;
+        buf->bytes_used = 0;
+        PMIX_RELEASE(buf);
+    }
+    PMIX_ACTIVATE_POST_MSG(msg);
+    return PMIX_SUCCESS;
+}
+
 void pmix_ptl_base_send(int sd, short args, void *cbdata)
 {
     pmix_ptl_queue_t *queue = (pmix_ptl_queue_t *) cbdata;
     pmix_ptl_send_t *snd;
-    pmix_ptl_recv_t *msg;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* acquire the object */
@@ -804,22 +842,11 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
     /* is this a send to myself? */
     if (queue->peer == pmix_globals.mypeer) {
         /* just push it to the matching code */
-        msg = PMIX_NEW(pmix_ptl_recv_t);
-        if (NULL == msg) {
+        if (PMIX_SUCCESS != pmix_ptl_base_post_loopback(queue->peer, queue->tag, queue->buf,
+                                                        PMIX_PTL_LOOPBACK_NONE)) {
             goto nomem;
         }
-        PMIX_RETAIN(queue->peer);
-        msg->peer = queue->peer;
-        msg->hdr.pindex = pmix_globals.pindex;
-        msg->hdr.tag = queue->tag;
-        if (NULL != queue->buf) {
-            msg->hdr.nbytes = (queue->buf)->bytes_used;
-            msg->data = (queue->buf)->base_ptr;
-            (queue->buf)->base_ptr = NULL;
-            (queue->buf)->bytes_used = 0;
-            PMIX_RELEASE(queue->buf);
-        }
-        PMIX_ACTIVATE_POST_MSG(msg);
+        queue->buf = NULL;
         PMIX_RELEASE(queue);
         return;
     }
@@ -896,14 +923,13 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     pmix_ptl_posted_recv_t *req = NULL;
     pmix_ptl_send_t *snd;
     uint32_t tag;
-    pmix_ptl_recv_t *msg;
     PMIX_HIDE_UNUSED_PARAMS(fd, args);
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(ms);
 
-    if (NULL == ms->peer || ms->peer->sd < 0 ||
-        NULL == ms->peer->info || NULL == ms->peer->nptr) {
+    if (NULL == ms->peer || NULL == ms->peer->info || NULL == ms->peer->nptr ||
+        (ms->peer != pmix_globals.mypeer && ms->peer->sd < 0)) {
         /* this peer has lost connection - or lost it after the caller
          * checked, which is the race that matters. The caller is waiting
          * on this callback, blocked if the API is, so it must still be
@@ -911,6 +937,13 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
          * connection drops gets, which every callback already reads as
          * "no reply". Dropping the request silently left it waiting
          * forever. */
+        goto unanswered;
+    }
+
+    if (ms->peer == pmix_globals.mypeer && !PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+        /* a request to ourselves is answered by our own server half - a
+         * process without one has nobody to read it, and would wait on
+         * the reply forever */
         goto unanswered;
     }
 
@@ -951,28 +984,16 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
                         PMIX_PNAME_PRINT(&ms->peer->info->pname), ms->peer->sd,
                         (int) ms->bfr->bytes_used);
 
-    /* is this a send to myself? */
+    /* is this a send to myself? The request goes to our own command
+     * handler, and its reply comes back through PMIX_SERVER_QUEUE_REPLY to
+     * the recv just posted - see pmix_ptl_base_post_loopback for how the
+     * two are kept apart, since they carry the same tag */
     if (ms->peer == pmix_globals.mypeer) {
-        /* just push it to the matching code */
-        msg = PMIX_NEW(pmix_ptl_recv_t);
-        if (NULL == msg) {
+        if (PMIX_SUCCESS != pmix_ptl_base_post_loopback(ms->peer, tag, ms->bfr,
+                                                        PMIX_PTL_LOOPBACK_REQUEST)) {
             goto unposted;
         }
-        PMIX_RETAIN(ms->peer);
-        msg->peer = ms->peer;
-        msg->hdr.pindex = pmix_globals.pindex;
-        msg->hdr.tag = tag;
-        msg->hdr.nbytes = ms->bfr->bytes_used;
-        msg->data = ms->bfr->base_ptr;
-        ms->bfr->base_ptr = NULL;
-        ms->bfr->bytes_used = 0;
-        /* we took the data region, so the buffer that carried it is
-         * ours to release - the caddy's destructor does not do it, and
-         * the socket path below hands the buffer itself to the send
-         * object instead */
-        PMIX_RELEASE(ms->bfr);
         ms->bfr = NULL;
-        PMIX_ACTIVATE_POST_MSG(msg);
         PMIX_RELEASE(ms);
         return;
     }
@@ -1058,6 +1079,15 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
         if (NULL != rcv->peer && msg->peer != rcv->peer && UINT_MAX != rcv->tag) {
             continue;
         }
+        /* a request to ourselves is not the reply to itself, and a reply
+         * to ourselves is never a command - see pmix_ptl_base_post_loopback */
+        if (PMIX_PTL_LOOPBACK_REQUEST == msg->loopback &&
+            PMIX_PTL_TAG_DYNAMIC <= rcv->tag && UINT_MAX != rcv->tag) {
+            continue;
+        }
+        if (PMIX_PTL_LOOPBACK_REPLY == msg->loopback && UINT_MAX == rcv->tag) {
+            continue;
+        }
         if (msg->hdr.tag == rcv->tag || UINT_MAX == rcv->tag) {
             /* a dynamic-tag recv is one-shot: take it off the list before
              * its callback runs, so nothing the callback does - posting
@@ -1111,6 +1141,11 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
                         "%s discarding unexpected message from %s on tag %u",
                         PMIX_NAME_PRINT(&pmix_globals.myid),
                         PMIX_PEER_PRINT(msg->peer), msg->hdr.tag);
-    PMIX_REPORT_EVENT(PMIX_ERROR, msg->peer, PMIX_RANGE_NAMESPACE, _notify_complete);
+    if (PMIX_PTL_LOOPBACK_REPLY != msg->loopback) {
+        /* a reply to ourselves that nobody waits for is our own server
+         * half answering a request its caller has already given up on -
+         * nothing to tell anyone */
+        PMIX_REPORT_EVENT(PMIX_ERROR, msg->peer, PMIX_RANGE_NAMESPACE, _notify_complete);
+    }
     PMIX_RELEASE(msg);
 }

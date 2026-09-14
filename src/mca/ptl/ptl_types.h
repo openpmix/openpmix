@@ -277,6 +277,14 @@ typedef struct {
 } pmix_ptl_send_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_ptl_send_t);
 
+/* How a message that never crossed a socket is to be matched against the
+ * posted recvs - see pmix_ptl_base_post_loopback */
+typedef enum {
+    PMIX_PTL_LOOPBACK_NONE,     // read off a socket, or a one-way send to ourselves
+    PMIX_PTL_LOOPBACK_REQUEST,  // a sendrecv we sent to ourselves
+    PMIX_PTL_LOOPBACK_REPLY     // our server half's answer to one
+} pmix_ptl_loopback_t;
+
 /* structure for recving a message */
 typedef struct {
     pmix_list_item_t super;
@@ -288,6 +296,7 @@ typedef struct {
     bool hdr_recvd;
     char *rdptr;
     size_t rdbytes;
+    pmix_ptl_loopback_t loopback;
 } pmix_ptl_recv_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_ptl_recv_t);
 
@@ -397,6 +406,14 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_listener_t);
 /* provide a backdoor to the framework output for debugging */
 PMIX_EXPORT extern int pmix_ptl_base_output;
 
+/* Deliver a message to ourselves without a socket: the payload is taken
+ * out of buf, which is released, and matched as the given kind. Returns
+ * an error, with buf untouched, if the message could not be posted. */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_post_loopback(struct pmix_peer_t *peer,
+                                                      pmix_ptl_tag_t tag,
+                                                      pmix_buffer_t *buf,
+                                                      pmix_ptl_loopback_t kind);
+
 #define PMIX_ACTIVATE_POST_MSG(ms)                                        \
     do {                                                                  \
         pmix_event_assign(&((ms)->ev), pmix_globals.evbase, -1, EV_WRITE, \
@@ -421,6 +438,11 @@ PMIX_EXPORT extern int pmix_ptl_base_output;
                             (t), (int) (b)->bytes_used);                                        \
         if ((p)->finalized) {                                                                   \
             (r) = PMIX_ERR_UNREACH;                                                             \
+        } else if ((pmix_peer_t *) (p) == pmix_globals.mypeer) {                                \
+            /* the answer to a request we sent ourselves: we have no                            \
+             * socket to queue it on, so hand it straight back to the                          \
+             * recv waiting for it */                                                           \
+            (r) = pmix_ptl_base_post_loopback((p), (t), (b), PMIX_PTL_LOOPBACK_REPLY);          \
         } else {                                                                                \
             snd = PMIX_NEW(pmix_ptl_send_t);                                                    \
             /* an unchecked allocation here wrote through NULL and took                         \
