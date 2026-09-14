@@ -64,6 +64,7 @@ struct pmix_ptl_base_t {
     bool selected;
     pmix_list_t posted_recvs; // list of pmix_ptl_posted_recv_t
     pmix_listener_t listener;
+    pmix_list_t pending_connections; // pmix_pending_connection_t still reading their connect-ack
     struct sockaddr_storage *connection;
     size_t max_msg_size;
     char *session_tmpdir;
@@ -105,8 +106,9 @@ struct pmix_ptl_base_t {
     int wait_to_connect;
     int handshake_wait_time;
     int handshake_max_retries;
-    /* seconds a server waits for the rest of an incoming connect-ack once
-     * it has started to arrive - see pmix_ptl_base_connection_handler */
+    /* seconds a server gives an incoming connection to deliver its whole
+     * connect-ack, and bound on each blocking read of the handshake that
+     * follows it - see pmix_ptl_base_connection_handler */
     int connect_ack_timeout;
     /* the most any one writev may carry - see send_msg. Not a tuning
      * parameter: it exists so a test can drive the chunking with a small
@@ -150,6 +152,7 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_connection(char *uri,
 PMIX_EXPORT pmix_status_t pmix_ptl_base_create_listener(pmix_info_t info[], size_t ninfo);
 PMIX_EXPORT void pmix_ptl_base_start_listening(void);
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
+PMIX_EXPORT void pmix_ptl_base_drop_pending_connection(pmix_pending_connection_t *pnd);
 
 /* base support functions */
 /* Build the port array a listener scans from a list or range. NULL, an

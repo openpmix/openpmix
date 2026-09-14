@@ -223,11 +223,12 @@ ends at the version string, and the server assumes ``v20`` ``bfrops`` and
 
 On the server side the connection handler:
 
-#. reads and parses the handshake (with the socket temporarily in blocking
-   mode), guarding sizes against ``PMIX_MAX_CRED_SIZE`` and taint limits.
-   The handler runs only once the peer has started sending — the listener
-   waits for the new socket to become readable — and every blocking read
-   is bounded by ``ptl_base_connect_ack_timeout``;
+#. reads the handshake as its bytes arrive — the accepted socket is
+   non-blocking, and the handler runs each time it becomes readable,
+   keeping its place, until the whole message is in — and then parses it,
+   guarding sizes against ``PMIX_MAX_CRED_SIZE`` and taint limits. A
+   connection that has not delivered its whole handshake within
+   ``ptl_base_connect_ack_timeout`` is dropped;
 #. for a **simple client or singleton**, verifies the nspace and rank were
    pre-registered, creates the peer, and assigns its ``psec`` / ``bfrops``
    / ``gds`` compatibility modules;
@@ -321,14 +322,12 @@ Two regimes coexist:
 * **Init-time connection is synchronous.** ``connect_to_peer`` runs in the
   caller's thread during ``PMIx_Init`` / ``PMIx_tool_init``, performs
   *blocking* socket I/O, and returns only when the handshake is complete.
-  The server's per-connection handshake likewise flips the socket to
-  blocking mode for its duration — but that is *not* "only startup" for
-  the server: it runs on the server's progress thread, whenever anyone
-  connects, while that thread is serving every other client. So the
-  server does not start reading until the peer has sent something, and
-  bounds each read with ``ptl_base_connect_ack_timeout``; a peer that
-  sends part of a request and stalls still pauses the server for up to
-  that long.
+  That is *not* true of the server's side: its handshake runs on the
+  server's progress thread, whenever anyone connects, while that thread
+  is serving every other client. So the server reads an incoming
+  handshake as it arrives and never waits for it. Only the replies and
+  any security handshake that follow are blocking exchanges, each read
+  bounded by ``ptl_base_connect_ack_timeout``.
 * **Steady-state I/O is entirely on the progress thread.** Every
   ``PMIX_PTL_SEND_*`` macro thread-shifts; the send/receive handlers,
   message matching, the accept handler, and the connection handler all run
@@ -354,9 +353,10 @@ deprecated ``pmix_ptl_tcp_`` synonyms): ``max_msg_size``,
 for a server's rendezvous file to appear), ``handshake_wait_time`` /
 ``handshake_max_retries`` (the connecting side's wait for the server's
 reply; a ``handshake_wait_time`` of 0, the default, does not bound it),
-``connect_ack_timeout`` (how long a server waits for the rest of an
-incoming connection request once it has started to arrive; default 5
-seconds, 0 to wait indefinitely), and ``report_uri``. Inspect the current values
+``connect_ack_timeout`` (how long a server gives an incoming connection to
+deliver its whole connection request, and to answer each step of any
+security handshake after it; default 5 seconds, 0 for no limit), and
+``report_uri``. Inspect the current values
 for a build with::
 
     pmix_info --param ptl base

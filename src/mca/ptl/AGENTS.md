@@ -519,7 +519,7 @@ All under the `pmix_ptl_base_` prefix, most with deprecated
 | `disable_ipv4_family` / `disable_ipv6_family` | skip a whole address family (IPv6 disabled by default) |
 | `connection_wait_time` / `max_retries` | how long/often to wait for a server's connection file to appear |
 | `handshake_wait_time` / `handshake_max_retries` | timeout/retries on the connect-ack exchange |
-| `connect_ack_timeout` | seconds a server waits for the rest of an inbound connect-ack before dropping it (default 5; 0 = no limit) |
+| `connect_ack_timeout` | seconds a server gives an inbound connection to deliver its whole connect-ack, and to answer each step of the blocking handshake after it, before dropping it (default 5; 0 = no limit) |
 | `report_uri` | where to print the listener URI |
 
 Per the top-level guidance, prefer adding an MCA parameter (or, better, an
@@ -534,15 +534,14 @@ to break this framework:
 1. **Init-time connection is synchronous and blocking.** `connect_to_peer`
    runs in the caller's thread during `PMIx_Init`/`PMIx_tool_init`, does
    *blocking* socket I/O, and returns only once the handshake completes.
-   The listener's per-connection handshake likewise flips the socket to
-   blocking mode for the duration — but do not borrow the same excuse for
-   it. "It is only startup" is true of the *connecting* peer and false of
-   the server: the inbound handshake runs on the server's progress thread,
-   at any moment, while that thread is serving every other client. A
-   blocking read there that nobody bounds stops the whole server. So the
-   listener hands a new socket to the handler only once it is readable,
-   and the handler caps each read with `ptl_base_connect_ack_timeout` —
-   see [`base/AGENTS.md`](base/AGENTS.md).
+   Do not borrow the same excuse for the listener's side. "It is only
+   startup" is true of the *connecting* peer and false of the server: the
+   inbound handshake runs on the server's progress thread, at any moment,
+   while that thread is serving every other client, for a port anything
+   can open. So the server reads the connect-ack as its bytes arrive and
+   never waits for them; only the replies and psec handshake after it are
+   blocking, bounded by `ptl_base_connect_ack_timeout` — see
+   [`base/AGENTS.md`](base/AGENTS.md).
 2. **Steady-state I/O is entirely on the progress thread.** Every
    `PMIX_PTL_SEND_*` macro thread-shifts; the send/recv handlers,
    `process_msg`, the accept handler, and the connection handler all run

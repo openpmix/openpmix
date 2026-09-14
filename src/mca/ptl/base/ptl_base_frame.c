@@ -70,6 +70,7 @@ pmix_ptl_base_t pmix_ptl_base = {
     .selected = false,
     .posted_recvs = PMIX_LIST_STATIC_INIT(pmix_ptl_base.posted_recvs),
     .listener = PMIX_LISTENER_STATIC_INIT,
+    .pending_connections = PMIX_LIST_STATIC_INIT(pmix_ptl_base.pending_connections),
     .connection = NULL,
     .max_msg_size = 0,
     .session_tmpdir = NULL,
@@ -278,9 +279,10 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     (void) pmix_mca_base_var_register("pmix", "ptl", "base", "connect_ack_timeout",
-                                      "Number of seconds a server waits for the rest of an incoming "
-                                      "connection request once it has started to arrive, before "
-                                      "dropping the connection (0 = wait indefinitely)",
+                                      "Number of seconds a server gives an incoming connection to "
+                                      "deliver its whole connection request, and to answer each "
+                                      "step of any security handshake after it, before dropping "
+                                      "the connection (0 = no limit)",
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_ptl_base.connect_ack_timeout);
 
@@ -374,6 +376,9 @@ static pmix_status_t pmix_ptl_close(void)
     /* the component will cleanup when closed */
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
     PMIX_DESTRUCT(&pmix_ptl_base.listener);
+    /* stop_listening above has already closed and released anything
+     * that was still on it */
+    PMIX_DESTRUCT(&pmix_ptl_base.pending_connections);
 
     if (NULL != pmix_ptl_base.scheduler_filename) {
         if (pmix_ptl_base.created_scheduler_filename) {
@@ -544,6 +549,7 @@ static void open_cleanup(void)
     pmix_ptl_base.rendezvous_filename = NULL;
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
     PMIX_DESTRUCT(&pmix_ptl_base.listener);
+    PMIX_DESTRUCT(&pmix_ptl_base.pending_connections);
     pmix_ptl_base.initialized = false;
 }
 
@@ -557,6 +563,7 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
     pmix_ptl_base.initialized = true;
     PMIX_CONSTRUCT(&pmix_ptl_base.posted_recvs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.listener, pmix_listener_t);
+    PMIX_CONSTRUCT(&pmix_ptl_base.pending_connections, pmix_list_t);
     pmix_ptl_base.connection = (struct sockaddr_storage *)malloc(sizeof(struct sockaddr_storage));
     if (NULL == pmix_ptl_base.connection) {
         rc = PMIX_ERR_NOMEM;
@@ -713,7 +720,15 @@ static void pccon(pmix_pending_connection_t *p)
      * that far, and several of these want something other than the zero
      * PMIX_NEW would leave */
     p->protocol = PMIX_PROTOCOL_UNDEF;
+    /* assigned only when the connect-ack timeout is enabled, and deleted
+     * only when timer_active says it was added */
+    memset(&p->timer, 0, sizeof(p->timer));
+    p->timer_active = false;
     p->sd = -1;
+    memset(&p->hdr, 0, sizeof(p->hdr));
+    p->hdr_recvd = 0;
+    p->msg = NULL;
+    p->msg_recvd = 0;
     p->status = PMIX_SUCCESS;
     p->flag = PMIX_SIMPLE_CLIENT;
     p->buffer_type = PMIX_BFROP_BUFFER_UNDEF;
@@ -741,6 +756,13 @@ static void pccon(pmix_pending_connection_t *p)
 }
 static void pcdes(pmix_pending_connection_t *p)
 {
+    if (p->timer_active) {
+        pmix_event_evtimer_del(&p->timer);
+        p->timer_active = false;
+    }
+    if (NULL != p->msg) {
+        free(p->msg);
+    }
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
     }
@@ -761,7 +783,7 @@ static void pcdes(pmix_pending_connection_t *p)
     }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_pending_connection_t,
-                                pmix_object_t,
+                                pmix_list_item_t,
                                 pccon, pcdes);
 
 static void lcon(pmix_listener_t *p)
