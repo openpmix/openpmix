@@ -69,43 +69,67 @@ static void _notify_complete(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(chain);
 }
 
-/* My connection to the server I am a client of has dropped.
- *
- * It is possible that we have sendrecv's in progress where we are waiting
- * for a response to arrive. Since we have lost connection to the server,
- * that will never happen. Thus, to preclude any chance of hanging, cycle
- * thru the list of posted recvs and complete any that are the return call
- * from a sendrecv - i.e., any that are waiting on dynamic tags.
- */
-static void lost_my_server(void)
+/* Hand a sendrecv that will never be answered the empty buffer its
+ * callback treats as "no reply", so a caller blocked on it unwinds. */
+static void deliver_empty(pmix_peer_t *peer, pmix_ptl_tag_t tag,
+                          pmix_ptl_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
 
-    if (NULL == pmix_client_globals.myserver ||
-        NULL == pmix_client_globals.myserver->nptr) {
-        return;
-    }
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     /* must set the buffer type so it doesn't fail in unpack */
-    buf.type = pmix_client_globals.myserver->nptr->compat.type;
-    hdr.nbytes = 0; // initialize the hdr to something safe
-    PMIX_LIST_FOREACH (rcv, &pmix_ptl_base.posted_recvs, pmix_ptl_posted_recv_t) {
-        /* only the dynamic tags carry a sendrecv reply that somebody
-         * is blocked on. The reserved tags below PMIX_PTL_TAG_DYNAMIC
-         * hold persistent recvs - the notification, IOF and IOF flow
-         * control handlers - and nobody is waiting on those. Handing
-         * one of them this empty buffer would only make it fail to
-         * unpack a message that was never sent. */
+    if (NULL != peer && NULL != peer->nptr) {
+        buf.type = peer->nptr->compat.type;
+    } else {
+        buf.type = pmix_globals.mypeer->nptr->compat.type;
+    }
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.tag = tag;
+    cbfunc(pmix_globals.mypeer, &hdr, &buf, cbdata);
+    PMIX_DESTRUCT(&buf);
+}
+
+/* A connection has dropped, so any sendrecv still waiting on a reply from
+ * that peer will never get one. Complete each with an empty buffer, and
+ * take it off the list - a dynamic-tag recv is one-shot, and its callback
+ * has now fired.
+ *
+ * Only this peer's recvs. A tool can be connected to more than one server
+ * at once and switch which one is its primary, so the recvs on the list
+ * can be waiting on several peers. Completing the others as well answers
+ * requests whose connection is still up - and when their real reply then
+ * arrives it matches the recv again and runs the callback a second time,
+ * on a caddy the first run released. Leaving this peer's recvs posted is
+ * the same fault in another form: nothing else ever removes them, and
+ * each holds a pointer to a peer that may be freed and its address reused.
+ *
+ * The reserved tags below PMIX_PTL_TAG_DYNAMIC hold persistent recvs - the
+ * notification, IOF and IOF flow control handlers - and nobody is waiting
+ * on those. Handing one of them this empty buffer would only make it fail
+ * to unpack a message that was never sent. The recvs are moved to a list
+ * of our own before any callback runs, so a callback cannot disturb the
+ * walk. */
+static void complete_recvs(pmix_peer_t *peer)
+{
+    pmix_ptl_posted_recv_t *rcv, *rnext;
+    pmix_list_t done;
+
+    PMIX_CONSTRUCT(&done, pmix_list_t);
+    PMIX_LIST_FOREACH_SAFE (rcv, rnext, &pmix_ptl_base.posted_recvs, pmix_ptl_posted_recv_t) {
         if (PMIX_PTL_TAG_DYNAMIC <= rcv->tag && UINT_MAX != rcv->tag &&
-            NULL != rcv->cbfunc) {
-            /* construct and load the buffer */
-            hdr.tag = rcv->tag;
-            rcv->cbfunc(pmix_globals.mypeer, &hdr, &buf, rcv->cbdata);
+            peer == rcv->peer) {
+            pmix_list_remove_item(&pmix_ptl_base.posted_recvs, &rcv->super);
+            pmix_list_append(&done, &rcv->super);
         }
     }
-    PMIX_DESTRUCT(&buf);
+    while (NULL != (rcv = (pmix_ptl_posted_recv_t *) pmix_list_remove_first(&done))) {
+        if (NULL != rcv->cbfunc) {
+            deliver_empty(peer, rcv->tag, rcv->cbfunc, rcv->cbdata);
+        }
+        PMIX_RELEASE(rcv);
+    }
+    PMIX_DESTRUCT(&done);
 }
 
 static void lost_connection(pmix_peer_t *peer)
@@ -196,11 +220,11 @@ static void lost_connection(pmix_peer_t *peer)
          * never reaches. */
         if (peer == pmix_client_globals.myserver) {
             pmix_atomic_unset_bool(&pmix_globals.connected);
-            lost_my_server();
         } else if (!PMIX_PEER_IS_TOOL(peer)) {
             /* cleanup any sensors that are monitoring them */
             pmix_psensor.stop(peer, NULL);
         }
+        complete_recvs(peer);
         if (!pmix_globals.mypeer->finalized && !peer->finalized) {
             /* if this peer already called finalize, then
              * we are just seeing their connection go away
@@ -241,11 +265,17 @@ static void lost_connection(pmix_peer_t *peer)
             pmix_server_peer_finalized(peer);
         }
 
-    } else if (peer == pmix_client_globals.myserver) {
+    } else {
         /* if this was the server to which I am connected,
          * then we need to exit */
-        pmix_atomic_unset_bool(&pmix_globals.connected);
-        lost_my_server();
+        if (peer == pmix_client_globals.myserver) {
+            pmix_atomic_unset_bool(&pmix_globals.connected);
+        }
+        /* and whichever server it was, nothing it owed us is coming. A
+         * tool attached to several servers loses one that is not its
+         * primary through here too, and used to leave every request
+         * outstanding on it waiting forever */
+        complete_recvs(peer);
         /* if I called finalize, then don't generate an event.
          *
          * No aggregation window here: this report names my one and only
@@ -254,7 +284,7 @@ static void lost_connection(pmix_peer_t *peer)
          * which orders a DVM down and then waits for the connection to
          * drop as proof it went - spend a full second of its ~1.02 s
          * runtime waiting for an event that was ready immediately. */
-        if (!pmix_globals.mypeer->finalized) {
+        if (peer == pmix_client_globals.myserver && !pmix_globals.mypeer->finalized) {
             PMIX_REPORT_EVENT_WINDOW(PMIX_ERR_LOST_CONNECTION,
                                      pmix_client_globals.myserver,
                                      PMIX_RANGE_PROC_LOCAL, _notify_complete,
@@ -409,13 +439,23 @@ void pmix_ptl_base_flush_sends(pmix_peer_t *peer)
             }
             /* the kernel buffer is full - give it a moment to drain. select
              * is used rather than poll because sys/select.h is what PMIx
-             * already requires of the platform */
+             * already requires of the platform.
+             *
+             * An fd_set holds only descriptors below FD_SETSIZE, and FD_SET
+             * does not check: a larger one writes past the end of the set,
+             * on the stack. A server hosting a few hundred local procs has
+             * descriptors well past 1024, so such a socket just waits out
+             * the interval - select with no sets is a portable sleep. */
             ++retries;
-            FD_ZERO(&wfds);
-            FD_SET(peer->sd, &wfds);
             tv.tv_sec = 0;
             tv.tv_usec = PMIX_PTL_FLUSH_RETRY_USEC;
-            select(peer->sd + 1, NULL, &wfds, NULL, &tv);
+            if (FD_SETSIZE > peer->sd) {
+                FD_ZERO(&wfds);
+                FD_SET(peer->sd, &wfds);
+                select(peer->sd + 1, NULL, &wfds, NULL, &tv);
+            } else {
+                select(0, NULL, NULL, NULL, &tv);
+            }
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "%s ptl:base:flush_sends MSG SENT on sd %d tag %u",
@@ -429,12 +469,17 @@ void pmix_ptl_base_flush_sends(pmix_peer_t *peer)
 static pmix_status_t read_bytes(int sd, char **buf, size_t *remain)
 {
     pmix_status_t ret = PMIX_SUCCESS;
-    int rc;
+    ssize_t rc;
+    size_t chunk;
     char *ptr = *buf;
 
     /* read until all bytes recvd or error */
     while (0 < *remain) {
-        rc = read(sd, ptr, *remain);
+        /* a message may be up to 4 GB, and macOS refuses a read() of more
+         * than INT_MAX bytes with EINVAL rather than returning a short
+         * count - which would drop the connection */
+        chunk = (INT_MAX < *remain) ? (size_t) INT_MAX : *remain;
+        rc = read(sd, ptr, chunk);
         if (rc < 0) {
             if (pmix_socket_errno == EINTR) {
                 continue;
@@ -468,7 +513,7 @@ static pmix_status_t read_bytes(int sd, char **buf, size_t *remain)
             goto exit;
         }
         /* we were able to read something, so adjust counters and location */
-        *remain -= rc;
+        *remain -= (size_t) rc;
         ptr += rc;
     }
     /* we read the full data block */
@@ -559,9 +604,6 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
     pmix_status_t rc;
     pmix_peer_t *peer = (pmix_peer_t *) cbdata;
     pmix_ptl_recv_t *msg = NULL;
-    pmix_ptl_hdr_t hdr;
-    size_t nbytes;
-    char *ptr;
     PMIX_HIDE_UNUSED_PARAMS(flags);
 
     /* acquire the object */
@@ -593,19 +635,25 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
     }
     msg = peer->recv_msg;
     msg->sd = sd;
-    /* if the header hasn't been completely read, read it */
+    /* if the header hasn't been completely read, read it
+     *
+     * Straight into the message, through the cursor set up above, so a
+     * header that arrives in pieces resumes where it stopped. It used to
+     * be read into a local copy that each call started afresh, which threw
+     * away whatever part had arrived before the socket ran dry - and from
+     * then on every header was read from the wrong offset in the stream.
+     * A sender produces exactly that split when its own kernel buffer
+     * fills part-way through a header (see send_msg). */
     if (!msg->hdr_recvd) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:base:recv:handler read hdr on socket %d", peer->sd);
-        nbytes = sizeof(pmix_ptl_hdr_t);
-        ptr = (char *) &hdr;
-        if (PMIX_SUCCESS == (rc = read_bytes(peer->sd, &ptr, &nbytes))) {
+        if (PMIX_SUCCESS == (rc = read_bytes(peer->sd, &msg->rdptr, &msg->rdbytes))) {
             /* completed reading the header */
             peer->recv_msg->hdr_recvd = true;
             /* convert the hdr to host format */
-            peer->recv_msg->hdr.pindex = ntohl(hdr.pindex);
-            peer->recv_msg->hdr.tag = ntohl(hdr.tag);
-            peer->recv_msg->hdr.nbytes = ntohl(hdr.nbytes);
+            peer->recv_msg->hdr.pindex = ntohl(peer->recv_msg->hdr.pindex);
+            peer->recv_msg->hdr.tag = ntohl(peer->recv_msg->hdr.tag);
+            peer->recv_msg->hdr.nbytes = ntohl(peer->recv_msg->hdr.nbytes);
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "%s RECVD MSG FROM %s FOR TAG %d SIZE %d",
                                 PMIX_NAME_PRINT(&pmix_globals.myid),
@@ -758,6 +806,9 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
     if (queue->peer == pmix_globals.mypeer) {
         /* just push it to the matching code */
         msg = PMIX_NEW(pmix_ptl_recv_t);
+        if (NULL == msg) {
+            goto nomem;
+        }
         PMIX_RETAIN(queue->peer);
         msg->peer = queue->peer;
         msg->hdr.pindex = pmix_globals.pindex;
@@ -786,6 +837,9 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
     }
 
     snd = PMIX_NEW(pmix_ptl_send_t);
+    if (NULL == snd) {
+        goto nomem;
+    }
     snd->hdr.pindex = htonl(pmix_globals.pindex);
     snd->hdr.tag = htonl(queue->tag);
     snd->hdr.nbytes = htonl((queue->buf)->bytes_used);
@@ -827,12 +881,20 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
     }
     PMIX_RELEASE(queue);
     PMIX_POST_OBJECT(snd);
+    return;
+
+nomem:
+    /* a one-way send has nobody waiting on it, so dropping it is all
+     * there is to do - but say so */
+    PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+    PMIX_RELEASE(queue->buf);
+    PMIX_RELEASE(queue);
 }
 
 void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
 {
     pmix_ptl_sr_t *ms = (pmix_ptl_sr_t *) cbdata;
-    pmix_ptl_posted_recv_t *req;
+    pmix_ptl_posted_recv_t *req = NULL;
     pmix_ptl_send_t *snd;
     uint32_t tag;
     pmix_ptl_recv_t *msg;
@@ -843,12 +905,14 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
 
     if (NULL == ms->peer || ms->peer->sd < 0 ||
         NULL == ms->peer->info || NULL == ms->peer->nptr) {
-        /* this peer has lost connection */
-        if (NULL != ms->bfr) {
-            PMIX_RELEASE(ms->bfr);
-        }
-        PMIX_RELEASE(ms);
-        return;
+        /* this peer has lost connection - or lost it after the caller
+         * checked, which is the race that matters. The caller is waiting
+         * on this callback, blocked if the API is, so it must still be
+         * answered: with the empty buffer a sendrecv outstanding when a
+         * connection drops gets, which every callback already reads as
+         * "no reply". Dropping the request silently left it waiting
+         * forever. */
+        goto unanswered;
     }
 
     if (NULL == ms->bfr) {
@@ -867,6 +931,9 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     if (NULL != ms->cbfunc) {
         /* if a callback msg is expected, setup a recv for it */
         req = PMIX_NEW(pmix_ptl_posted_recv_t);
+        if (NULL == req) {
+            goto unanswered;
+        }
         req->peer = ms->peer;
         req->tag = tag;
         req->cbfunc = ms->cbfunc;
@@ -890,6 +957,9 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     if (ms->peer == pmix_globals.mypeer) {
         /* just push it to the matching code */
         msg = PMIX_NEW(pmix_ptl_recv_t);
+        if (NULL == msg) {
+            goto unposted;
+        }
         PMIX_RETAIN(ms->peer);
         msg->peer = ms->peer;
         msg->hdr.pindex = pmix_globals.pindex;
@@ -910,6 +980,9 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     }
 
     snd = PMIX_NEW(pmix_ptl_send_t);
+    if (NULL == snd) {
+        goto unposted;
+    }
     snd->hdr.pindex = htonl(pmix_globals.pindex);
     snd->hdr.tag = htonl(tag);
     snd->hdr.nbytes = htonl(ms->bfr->bytes_used);
@@ -938,6 +1011,27 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     /* cleanup */
     PMIX_RELEASE(ms);
     PMIX_POST_OBJECT(snd);
+    return;
+
+unposted:
+    /* the message cannot be sent, so take back the recv posted for its
+     * reply before answering the caller ourselves */
+    if (NULL != req) {
+        pmix_list_remove_item(&pmix_ptl_base.posted_recvs, &req->super);
+        PMIX_RELEASE(req);
+    }
+unanswered:
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "%s ptl:base:send_recv could not send to %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        (NULL == ms->peer) ? "NULL" : PMIX_PEER_PRINT(ms->peer));
+    if (NULL != ms->bfr) {
+        PMIX_RELEASE(ms->bfr);
+    }
+    if (NULL != ms->cbfunc) {
+        deliver_empty(ms->peer, UINT32_MAX, ms->cbfunc, ms->cbdata);
+    }
+    PMIX_RELEASE(ms);
 }
 
 void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
@@ -967,6 +1061,13 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
             continue;
         }
         if (msg->hdr.tag == rcv->tag || UINT_MAX == rcv->tag) {
+            /* a dynamic-tag recv is one-shot: take it off the list before
+             * its callback runs, so nothing the callback does - posting
+             * another recv, or a lost connection completing this peer's
+             * outstanding ones - can find it still there */
+            if (PMIX_PTL_TAG_DYNAMIC <= rcv->tag && UINT_MAX != rcv->tag) {
+                pmix_list_remove_item(&pmix_ptl_base.posted_recvs, &rcv->super);
+            }
             if (NULL != rcv->cbfunc) {
                 /* construct and load the buffer */
                 PMIX_CONSTRUCT(&buf, pmix_buffer_t);
@@ -990,7 +1091,6 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
             }
             /* done with the recv if it is a dynamic tag */
             if (PMIX_PTL_TAG_DYNAMIC <= rcv->tag && UINT_MAX != rcv->tag) {
-                pmix_list_remove_item(&pmix_ptl_base.posted_recvs, &rcv->super);
                 PMIX_RELEASE(rcv);
             }
             PMIX_RELEASE(msg);
