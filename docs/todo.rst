@@ -334,31 +334,28 @@ the read site is not evidence of a writer.
 
 .. _todo-ptl-blocking-handshake:
 
-A stalling peer still pauses the server for the connect-ack timeout
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The handshake after a connect-ack still blocks the server's progress thread
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Found reviewing ``src/mca/ptl/base/ptl_base_connect.c`` (2026-09-13).
-A server reads each incoming connect-ack with blocking ``recv()`` calls on
-its progress thread, before the credential is checked.  It used to start
-the moment a connection was accepted, with no timeout, so one idle
-connection stopped the whole server indefinitely.  That is fixed: the
-listener now hands a socket to the handler only once it is readable, and
-the handler bounds each read with ``ptl_base_connect_ack_timeout``
-(default 5 seconds).  ``test/unit/ptl_stalled_peer.c`` pins both halves.
+A server used to read each incoming connect-ack with blocking ``recv()``
+calls on its progress thread, before the credential is checked, from the
+moment a connection was accepted — so one idle or half-sent connection
+stopped the whole server.  That is fixed: the accepted socket is
+non-blocking, the handler reads the connect-ack as its bytes arrive and
+keeps its place between read events, and a connection that has not
+delivered all of it within ``ptl_base_connect_ack_timeout`` is dropped.
+``test/unit/ptl_stalled_peer.c`` pins it with the timeout disabled.
 
-**What remains:** a peer that sends *part* of a request and then stalls
-still gets the handler run, and still holds the progress thread — now for
-at most the timeout rather than forever.  Anything that can reach the
-listener can repeat that, stalling every client of the server for up to
-five seconds at a time.
-
-Closing it means not blocking at all: parse the connect-ack incrementally
-from read events, accumulating across callbacks, and hand the peer on
-only once the whole message is in.  That is a restructuring rather than a
-fix.  It touches ``pmix_ptl_base_connection_handler`` and the psec server
-handshakes, which make their own blocking reads on the same socket
-(``psec/dummy_handshake`` today, and any future handshake-model module).
-The connect-ack wire format itself would not change.
+**What remains:** once the connect-ack is in, the server's replies to it
+and the psec server handshake (``PMIX_PSEC_SERVER_HANDSHAKE_IFNEED``) are
+still blocking exchanges on the progress thread, before the connection is
+trusted.  Each read is bounded by the same timeout, so a peer that
+completes a valid connect-ack and then stalls a handshake still pauses
+the server for up to five seconds.  Only a handshake-model psec module
+reads anything there (``psec/dummy_handshake`` today).  Closing it means
+changing psec's ``server_handshake(int sd)`` interface so the exchange
+can be driven from read events too; the wire format would not change.
 
 **The connecting side has the mirror image.**
 ``PMIx_tool_attach_to_server`` runs ``pmix_ptl_base_connect_to_peer`` on
@@ -494,8 +491,8 @@ Coverage gaps
   ``SO_RCVTIMEO`` from ``ptl_base_connect_ack_timeout`` before its first
   read, and the option stays on the socket until it goes non-blocking,
   which is after the psec exchange — so a stalled handshake peer is now
-  bounded by the same timeout, with the same remaining limit recorded
-  under :ref:`todo-ptl-blocking-handshake`.  What is still missing is
+  bounded by the same timeout — the remaining limit is recorded under
+  :ref:`todo-ptl-blocking-handshake`.  What is still missing is
   coverage: the only handshake-model module is ``dummy_handshake``,
   built only under ``--enable-dummy-handshake``, so nothing runs that
   exchange against a stalled peer.

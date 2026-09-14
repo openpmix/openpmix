@@ -139,14 +139,17 @@ Similarly, the peer's version string is parsed by
 Four functions, in this order, all on the progress thread:
 
 1. **`connection_event_handler`** (`ptl_base_listener.c`) — `accept()`,
-   wrap the fd in a `pmix_pending_connection_t` (`pnd`), and arm it as a
-   one-shot **read** event on that fd. It does the minimum on purpose: a
-   slow accept loop makes the OS start refusing connections. The handler
-   below must not run until the peer has sent something — see *The
-   inbound handshake blocks the server's progress thread*.
+   make the socket non-blocking, wrap the fd in a
+   `pmix_pending_connection_t` (`pnd`), put it on
+   `pending_connections`, arm the connect-ack timer, and arm a one-shot
+   **read** event on the fd. It does the minimum on purpose: a slow
+   accept loop makes the OS start refusing connections. See *The inbound
+   connect-ack never blocks the server's progress thread*.
 2. **`pmix_ptl_base_connection_handler`** (`ptl_base_connection_hdlr.c`)
-   — flips the socket to **blocking**, reads the connect-ack, parses it
-   with the `GET_*` macros, and then splits:
+   — runs each time the socket is readable until the whole connect-ack
+   has arrived, then takes the `pnd` off the pending list, flips the
+   socket to **blocking** for the replies, parses the connect-ack with
+   the `GET_*` macros, and splits:
    - a **simple client or singleton** must already be a registered
      nspace+rank; the handler builds the peer inline;
    - anything else is a tool/launcher/scheduler and goes to
@@ -164,53 +167,81 @@ Four functions, in this order, all on the progress thread:
    non-blocking, arm the recv/send events, and flush cached
    notifications.
 
-### The inbound handshake blocks the server's progress thread
+### The inbound connect-ack never blocks the server's progress thread
 
-`pmix_ptl_base_connection_handler` sets the accepted socket to blocking
-and reads the whole connect-ack with `pmix_ptl_base_recv_blocking` —
-**on the progress thread, before the credential is checked.** Every
-client of this server waits while it does. It is not "only startup":
-that is true of the peer connecting, not of the server, which reaches
-this code whenever anyone connects.
+`pmix_ptl_base_connection_handler` runs **on the progress thread, before
+the credential is checked**, for a socket that anything able to reach the
+listener can open. Every client of this server waits while it runs. It
+is not "only startup": that is true of the peer connecting, not of the
+server, which reaches this code whenever anyone connects. So the
+connect-ack is never waited for:
 
-Two things keep that bounded, and each covers a case the other cannot:
+- **The accepted socket is non-blocking**, set in
+  `connection_event_handler` before anything reads it. An accepted
+  socket inherits the listener's `O_NONBLOCK` on BSD-derived systems and
+  never does on Linux, so do not rely on inheritance; a socket that
+  cannot be made non-blocking is closed rather than used.
+- **The pending connection is a one-shot read event**, not an
+  immediately-active one. A peer that connects and sends nothing — a
+  port probe, a hostile local process, or a tool suspended with ^Z
+  between its `connect()` and its first send — costs the progress thread
+  nothing, and a peer that closes without sending still wakes the event,
+  so the handler's error path reclaims the socket.
+- **The handler reads what has arrived and keeps its place.**
+  `read_connect_ack` fills `pnd->hdr` and then `pnd->msg`, counting bytes
+  in `hdr_recvd`/`msg_recvd`, and answers `PMIX_ERR_WOULD_BLOCK` when the
+  socket has nothing more; the handler re-arms the read event and
+  returns. The header is judged against `PMIX_MAX_CRED_SIZE` the moment
+  it is complete, before any payload is allocated from the length it
+  names. Only once the whole connect-ack is in does the handler take the
+  payload, put the socket into blocking mode and parse.
 
-- **The listener arms the pending connection on readability**, not as an
-  immediately-active event. A peer that connects and sends nothing — a
-  port probe, a hostile local process, or simply a tool suspended with
-  ^Z between its `connect()` and its first send — therefore costs the
-  progress thread nothing. A peer that closes without sending still
-  wakes the event, so the handler's error path reclaims the socket as it
-  always did. Do not "simplify" this back to `pmix_event_active`: that
-  was the version in which one idle connection stopped the server
-  indefinitely.
-- **The handler sets `SO_RCVTIMEO` from `ptl_base_connect_ack_timeout`**
-  (seconds; default 5; 0 disables it). A peer that sends part of a
-  request and stalls still gets the handler run, so readability does not
-  help; the timeout does. It stays on the socket for the rest of the
-  blocking handshake, which bounds a psec server handshake too, and stops
-  mattering once the socket goes non-blocking.
+A blocking read bounded by a receive timeout is **not** a substitute:
+that was the intermediate version, and it still let a peer that sent a
+few bytes and stalled freeze the whole server for the length of the
+timeout, as often as it cared to reconnect.
 
-The timeout only works because **`pmix_ptl_base_recv_blocking` reports
-it.** On a socket in blocking mode, `EAGAIN`/`EWOULDBLOCK` is how `recv()`
-says an `SO_RCVTIMEO` expired — it is not "no data yet". The function
-returns `PMIX_ERR_TIMEOUT` in that case, and only still cycles when the
-socket really is non-blocking. It used to cycle unconditionally, which
-turned every receive timeout into an unbounded wait: the outbound
-`handshake_wait_time` never expired either. Every current caller of both
-blocking helpers passes a blocking socket.
+**`pmix_ptl_base.pending_connections`** holds every `pnd` whose
+connect-ack is still arriving — `pmix_pending_connection_t` is a list
+item for this. It is how such a connection is found again, and three
+things take it off:
 
-**What is still true:** the partial-request case is *bounded*, not free.
-A peer that repeatedly sends a few bytes and stalls still freezes the
-server for up to the timeout each time. The complete answer is to parse
-the connect-ack incrementally from read events instead of blocking
-reads, which is a restructuring of this file and the psec handshakes
-rather than a fix; it is recorded in `docs/todo.rst`.
+1. the handler, the moment the connect-ack is complete or has failed —
+   before anything else can release the `pnd`;
+2. `connect_ack_expired`, when `ptl_base_connect_ack_timeout` (seconds;
+   default 5; 0 disables it) passes before the whole connect-ack has
+   arrived. The listener arms that timer at accept. Without it an idle
+   connection costs nothing but a descriptor — but it holds that
+   descriptor for as long as it likes, and anything that can reach the
+   listener can open more;
+3. `pmix_ptl_base_stop_listening`, at finalize, which is what closes
+   them when the timeout is disabled. Both finalize paths stop the
+   progress thread first, so neither event can be running.
 
-`test/unit/ptl_stalled_peer.c` pins both halves separately: its idle
-case runs with the timeout disabled, so only the readability change can
-pass it, and its partial case needs the timeout and the `EAGAIN` handling
-together.
+All three go through `pmix_ptl_base_drop_pending_connection` or remove
+the item themselves before the `pnd` can be released: releasing a list
+item that is still on a list aborts a debug build.
+
+**What is still blocking, and bounded by the same timeout.** Once the
+connect-ack is in, the replies to it and the psec server handshake
+(`PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`) are blocking exchanges on the same
+socket, still before the connection is trusted. The handler sets
+`SO_RCVTIMEO` from `connect_ack_timeout` when it puts the socket into
+blocking mode, and the option stays until the socket goes non-blocking
+for steady-state traffic. That bound only works because
+**`pmix_ptl_base_recv_blocking` reports it**: on a socket in blocking
+mode, `EAGAIN`/`EWOULDBLOCK` is how `recv()` says an `SO_RCVTIMEO`
+expired, not "no data yet", so the function returns `PMIX_ERR_TIMEOUT`
+there and cycles only for a socket that really is non-blocking. It used
+to cycle unconditionally, which turned every receive timeout into an
+unbounded wait — the outbound `handshake_wait_time` never expired
+either. Making the psec exchange asynchronous means changing psec's
+`server_handshake(int sd)` interface; `docs/todo.rst` records it.
+
+`test/unit/ptl_stalled_peer.c` runs every stall case with the timeout
+**disabled**, so only the non-blocking read can pass them, and gives the
+timeout's own job a separate case. `test/unit/ptl_recv_timeout.c` pins
+the two readings of `EAGAIN` directly, over a socketpair.
 
 ### Ownership along that path — read this before editing
 
@@ -606,9 +637,10 @@ Two regimes, described in the framework doc. What matters *here*:
   that is acceptable because it runs on the caller's thread during init;
   `pmix_ptl_base_set_timeout` applies `handshake_wait_time` there, which
   defaults to 0 — no bound. On the **inbound** side it is the server's
-  progress thread, and the bound comes from the listener and
-  `connect_ack_timeout` instead — see *The inbound handshake blocks the
-  server's progress thread*. `set_timeout` is not called inbound.
+  progress thread: the connect-ack itself is read without blocking, and
+  what blocks after it is bounded by `connect_ack_timeout` — see *The
+  inbound connect-ack never blocks the server's progress thread*.
+  `set_timeout` is not called inbound.
 - `pmix_ptl_base_set_timeout` only ever *clears* its `sockopt`
   out-parameter, on failure. That is not a bug: the caller initializes it
   to `true`, and it means "restore the saved timeout afterwards".
@@ -649,7 +681,8 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_listener.c` | accept out of descriptors stops the listener cleanly; mistyped, out-of-range and empty directives; a directive-named report file is removed |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
 | `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one |
-| `test/unit/ptl_stalled_peer.c` | a server keeps servicing requests while a peer's connection is idle, or stalled partway into its connect-ack |
+| `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them |
+| `test/unit/ptl_recv_timeout.c` | `pmix_ptl_base_recv_blocking` ends a blocking socket's receive at its timeout, and still waits out `EAGAIN` on a non-blocking one |
 | `test/unit/tool_nspace.c` | a real tool connection leaves exactly one namespace object, and the peer resolves through the one on the list |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |
 | `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: tools connecting across nodes, discovery by pid/nspace, remote-connection interface selection |

@@ -342,10 +342,23 @@ typedef uint16_t pmix_listener_protocol_t;
 
 /* connection support */
 typedef struct {
-    pmix_object_t super;
+    /* on pmix_ptl_base.pending_connections while its connect-ack is
+     * still arriving */
+    pmix_list_item_t super;
     pmix_event_t ev;
+    /* drops the connection if its connect-ack has not all arrived within
+     * ptl_base_connect_ack_timeout - armed only when that is non-zero */
+    pmix_event_t timer;
+    bool timer_active;
     pmix_listener_protocol_t protocol;
     int sd;
+    /* the connect-ack as it arrives - it is read a piece at a time as
+     * the socket delivers it, never waited for, so the place reached
+     * is kept here between read events */
+    pmix_ptl_hdr_t hdr;
+    size_t hdr_recvd;
+    char *msg;
+    size_t msg_recvd;
     bool need_id;
     bool nspace_created;
     bool rinfo_created;

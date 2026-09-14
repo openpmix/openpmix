@@ -188,6 +188,82 @@ static void _connect_complete(pmix_status_t status, void *cbdata)
     PMIX_THREADSHIFT(ch, _cnct_complete);
 }
 
+/* Take into buf, at *recvd, whatever the socket has of the size bytes
+ * we want. Returns PMIX_ERR_WOULD_BLOCK when it has given us all it has
+ * and that is not yet everything. */
+static pmix_status_t read_available(int sd, char *buf, size_t size, size_t *recvd)
+{
+    ssize_t rc;
+
+    while (*recvd < size) {
+        rc = recv(sd, buf + *recvd, size - *recvd, 0);
+        if (0 < rc) {
+            *recvd += (size_t) rc;
+            continue;
+        }
+        if (0 == rc) {
+            /* the far end closed the connection */
+            pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
+                                "ptl:base:connection_handler: remote closed socket %d", sd);
+            return PMIX_ERR_UNREACH;
+        }
+        if (EINTR == pmix_socket_errno) {
+            continue;
+        }
+        if (EAGAIN == pmix_socket_errno || EWOULDBLOCK == pmix_socket_errno) {
+            return PMIX_ERR_WOULD_BLOCK;
+        }
+        pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:connection_handler: recv on socket %d failed: %s (%d)",
+                            sd, strerror(pmix_socket_errno), pmix_socket_errno);
+        return PMIX_ERR_UNREACH;
+    }
+    return PMIX_SUCCESS;
+}
+
+/* Read what has arrived of a connect-ack.
+ *
+ * This runs on the progress thread, for a socket that anything able to
+ * reach our listener can open - and the connect-ack arrives before any
+ * credential has been checked. So it must never wait for bytes: it takes
+ * what the (non-blocking) socket has, keeps its place in the pending
+ * connection, and returns PMIX_ERR_WOULD_BLOCK when that is not yet the
+ * whole message. A blocking read, even one bounded by a receive timeout,
+ * let a peer that sent part of a request and stalled hold the progress
+ * thread - and with it every client of this server - for the length of
+ * the timeout, as often as it cared to reconnect and do it again.
+ *
+ * The header is judged the moment it is complete, before any payload is
+ * sized from the length it names. The payload is allocated one byte
+ * longer than that and zeroed, so the string fields parsed out of it are
+ * always terminated. */
+static pmix_status_t read_connect_ack(pmix_pending_connection_t *pnd)
+{
+    pmix_status_t rc;
+
+    rc = read_available(pnd->sd, (char *) &pnd->hdr, sizeof(pmix_ptl_hdr_t), &pnd->hdr_recvd);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    if (NULL == pnd->msg) {
+        /* get the id, authentication and version payload (and possibly
+         * security credential) - to guard against potential attacks,
+         * we'll set an arbitrary limit per a define */
+        if (PMIX_MAX_CRED_SIZE < pnd->hdr.nbytes) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:base:connection_handler: connect-ack of %u bytes "
+                                "on socket %d exceeds the limit",
+                                pnd->hdr.nbytes, pnd->sd);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        pnd->msg = (char *) calloc(pnd->hdr.nbytes + 1, sizeof(char));
+        if (NULL == pnd->msg) {
+            return PMIX_ERR_NOMEM;
+        }
+    }
+    return read_available(pnd->sd, pnd->msg, pnd->hdr.nbytes, &pnd->msg_recvd);
+}
+
 /* PMIX_PTL_LEGACY_PAD: a trailer too short to hold an info count is not an
  * info blob.
  *
@@ -204,7 +280,6 @@ static void _connect_complete(pmix_status_t status, void *cbdata)
 void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 {
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
-    pmix_ptl_hdr_t hdr;
     pmix_peer_t *peer = NULL;
     pmix_status_t rc, reply;
     char *msg = NULL, *mg, *blob = NULL;
@@ -231,20 +306,50 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
-                        "ptl:base:connection_handler: new connection: %d", pnd->sd);
+                        "ptl:base:connection_handler: readable connection: %d", pnd->sd);
 
-    /* ensure the socket is in blocking mode */
+    /* collect what has arrived of the connect-ack */
+    rc = read_connect_ack(pnd);
+    if (PMIX_ERR_WOULD_BLOCK == rc) {
+        /* the rest of it has not arrived - pnd holds what has, so wait for
+         * the socket to become readable again. The listener's timer, if
+         * the timeout is enabled, is still running */
+        PMIX_POST_OBJECT(pnd);
+        if (0 != pmix_event_add(&pnd->ev, NULL)) {
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            pmix_ptl_base_drop_pending_connection(pnd);
+        }
+        return;
+    }
+    /* complete or failed, it is no longer waiting on its socket - and
+     * everything below disposes of pnd itself */
+    pmix_list_remove_item(&pmix_ptl_base.pending_connections, &pnd->super);
+    if (pnd->timer_active) {
+        pmix_event_evtimer_del(&pnd->timer);
+        pnd->timer_active = false;
+    }
+    if (PMIX_SUCCESS != rc) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:connection_handler unable to complete recv of connect-ack "
+                            "on socket %d: %s",
+                            pnd->sd, PMIx_Error_string(rc));
+        goto error;
+    }
+    /* the payload is ours from here - the error path below frees it */
+    msg = pnd->msg;
+    pnd->msg = NULL;
+
+    /* The replies to this connect-ack, and the security handshake some psec
+     * modules run after them, are written and read as blocking exchanges -
+     * so put the socket back into blocking mode for them */
     pmix_ptl_base_set_blocking(pnd->sd);
 
-    /* Bound every blocking read below. The listener only calls us once
-     * the peer has started sending, and a well-behaved peer writes its
-     * whole connect-ack at once - but this runs before the credential is
-     * checked, on the progress thread, so a peer that sends part of a
-     * request and stops would otherwise hold that thread indefinitely.
-     * The timeout stays on the socket for the rest of the handshake,
-     * which bounds a psec server handshake too; once the socket goes
-     * non-blocking for steady-state traffic it no longer applies. A
-     * failure to set it is not fatal - we are no worse off than before */
+    /* Bound every blocking read from here on. This is still before the
+     * credential has been validated, on the progress thread, so a psec
+     * handshake peer that stops answering would otherwise hold that thread
+     * indefinitely. The timeout stays on the socket until it goes
+     * non-blocking for steady-state traffic. A failure to set it is not
+     * fatal - we are no worse off than before */
     if (0 < pmix_ptl_base.connect_ack_timeout) {
         struct timeval tv;
         tv.tv_sec = pmix_ptl_base.connect_ack_timeout;
@@ -256,35 +361,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         }
     }
 
-    /* ensure all is zero'd */
-    memset(&hdr, 0, sizeof(pmix_ptl_hdr_t));
-
-    /* get the header */
-    rc = pmix_ptl_base_recv_blocking(pnd->sd, (char *) &hdr, sizeof(pmix_ptl_hdr_t));
-    if (PMIX_SUCCESS != rc) {
-        goto error;
-    }
-
-    /* get the id, authentication and version payload (and possibly
-     * security credential) - to guard against potential attacks,
-     * we'll set an arbitrary limit per a define */
-    if (PMIX_MAX_CRED_SIZE < hdr.nbytes) {
-        goto error;
-    }
-    if (NULL == (msg = (char *) malloc(hdr.nbytes+1))) {
-        goto error;
-    }
-    memset(msg, 0, hdr.nbytes + 1);  // ensure NULL termination of result
-    if (PMIX_SUCCESS != pmix_ptl_base_recv_blocking(pnd->sd, msg, hdr.nbytes)) {
-        /* unable to complete the recv */
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:tool:connection_handler unable to complete recv of connect-ack "
-                            "with client ON SOCKET %d",
-                            pnd->sd);
-        goto error;
-    }
-
-    cnt = hdr.nbytes;
+    cnt = pnd->hdr.nbytes;
     mg = msg;
     /* extract the name of the sec module they used */
     PMIX_PTL_GET_STRING(pnd->psec);
