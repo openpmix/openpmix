@@ -58,7 +58,6 @@
 #include "src/util/pmix_environ.h"
 
 #include "pmix_server_ops.h"
-#include "src/client/pmix_client_ops.h"
 
 extern pmix_server_module_t pmix_host_server;
 
@@ -228,7 +227,6 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     bool diffnspace = false;
     bool refresh_cache = false;
     bool scope_given = false;
-    bool keyprovided = false;
     bool found = false;
     uint32_t tmo;
     struct timeval tv = {0, 0};
@@ -325,9 +323,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    if (PMIX_SUCCESS == rc) {
-        keyprovided = true;
-    }
+    /* a key that is absent and one packed as NULL mean the same thing -
+     * "all data for this proc" - so from here on either is a NULL key */
     /* the caddy takes ownership of the key string so that it is
      * released no matter which of the many exit paths below is
      * taken - cddes will free it when the caddy is released */
@@ -371,7 +368,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     /* check for a request for pset names - these are not associated
      * with a given nspace. Instead, we are searching for any psets
      * that contain the calling process */
-    if (keyprovided && PMIx_Check_key(key, PMIX_PSET_NAMES)) {
+    if (NULL != key && PMIx_Check_key(key, PMIX_PSET_NAMES)) {
         /* loop over all known psets and collect names
          * in which this proc is a member */
         pmix_pset_t *pset;
@@ -632,149 +629,128 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         goto request;
     }
 
-    /* the target nspace is known - if they asked us to wait for a specific
-     * key to be available, check if it is present. NOTE: key is only
-     * NULL if the request came from an older version */
-    if (NULL != key || !keyprovided) {
-        PMIX_LOAD_PROCID(&proc, nspace, rank);
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &proc;
-        if (scope_given) {
-            cb.scope = scope;
+    /* the target nspace is known - see if what they asked for is already
+     * here. A NULL key fetches everything we hold for the proc */
+    PMIX_LOAD_PROCID(&proc, nspace, rank);
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = &proc;
+    if (scope_given) {
+        cb.scope = scope;
+    } else {
+        if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
+            cb.scope = PMIX_SCOPE_UNDEF;
+        } else if (local) {
+            cb.scope = PMIX_LOCAL;
         } else {
-            if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
-                cb.scope = PMIX_SCOPE_UNDEF;
-            } else if (local) {
-                cb.scope = PMIX_LOCAL;
-            } else {
-                cb.scope = PMIX_REMOTE;
-            }
+            cb.scope = PMIX_REMOTE;
         }
-        cb.copy = false;
-        cb.info = cd->info;
-        cb.ninfo = cd->ninfo;
-        cb.key = key;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS_OUTSIDE_SCOPE != rc) {
-            /* Not in our own store - but that does not mean it is not
-             * here, and the same reasoning applies as in
-             * _satisfy_request() below. A server assigns ITSELF "hash",
-             * while a modex is stored through the module of the nspace
-             * that contributed it: PMIX_GDS_STORE_MODEX resolves from a
-             * local peer of that nspace (pmix_server_op_replies.c). So
-             * for a job whose clients negotiated gds/shmem3 the fence
-             * data went into a shared-memory segment our module knows
-             * nothing about, and we have just searched the wrong store.
-             * For a "hash" job the two are one module and this changes
-             * nothing.
-             *
-             * Left unasked, every remote get for such a job missed here
-             * and was pushed up to the host as a direct modex - for data
-             * this server already held. Slow when it works, and it does
-             * not always work: the up-call chases the proc that owns the
-             * key, so a straggler asking for a peer that has already
-             * called PMIx_Finalize waits on an answer nobody is left to
-             * give. The remote request below deliberately carries no
-             * timeout - we cannot know how long a host may legitimately
-             * take - so that wait never ends. */
-            pmix_peer_t *nspeer = local_peer_of_nspace(nptr);
-            if (NULL != nspeer &&
-                !PMIX_GDS_CHECK_PEER_COMPONENT(nspeer, pmix_globals.mypeer)) {
-                pmix_kval_t *kvtmp;
-                /* a failed fetch may still have appended something */
-                while (NULL != (kvtmp = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs))) {
-                    PMIX_RELEASE(kvtmp);
-                }
-                PMIX_GDS_FETCH_KV(rc, nspeer, &cb);
+    }
+    cb.copy = false;
+    cb.info = cd->info;
+    cb.ninfo = cd->ninfo;
+    cb.key = key;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS_OUTSIDE_SCOPE != rc) {
+        /* Not in our own store - but that does not mean it is not
+         * here, and the same reasoning applies as in
+         * _satisfy_request() below. A server assigns ITSELF "hash",
+         * while a modex is stored through the module of the nspace
+         * that contributed it: PMIX_GDS_STORE_MODEX resolves from a
+         * local peer of that nspace (pmix_server_op_replies.c). So
+         * for a job whose clients negotiated gds/shmem3 the fence
+         * data went into a shared-memory segment our module knows
+         * nothing about, and we have just searched the wrong store.
+         * For a "hash" job the two are one module and this changes
+         * nothing.
+         *
+         * Left unasked, every remote get for such a job missed here
+         * and was pushed up to the host as a direct modex - for data
+         * this server already held. Slow when it works, and it does
+         * not always work: the up-call chases the proc that owns the
+         * key, so a straggler asking for a peer that has already
+         * called PMIx_Finalize waits on an answer nobody is left to
+         * give. The remote request below deliberately carries no
+         * timeout - we cannot know how long a host may legitimately
+         * take - so that wait never ends. */
+        pmix_peer_t *nspeer = local_peer_of_nspace(nptr);
+        if (NULL != nspeer &&
+            !PMIX_GDS_CHECK_PEER_COMPONENT(nspeer, pmix_globals.mypeer)) {
+            pmix_kval_t *kvtmp;
+            /* a failed fetch may still have appended something */
+            while (NULL != (kvtmp = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs))) {
+                PMIX_RELEASE(kvtmp);
             }
+            PMIX_GDS_FETCH_KV(rc, nspeer, &cb);
         }
-        /* if the requested key was found, but in a different scope,
-         * then we report this back as there is no point in waiting */
-        if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc) {
+    }
+    /* if the requested key was found, but in a different scope,
+     * then we report this back as there is no point in waiting */
+    if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc) {
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_NOT_FOUND;
+    }
+    /* A local client may send a get request concurrently with
+     * a commit request from another client, but the server may
+     * have processed the commit request earlier than the get
+     * request. In this case, we create a local tracker for
+     * possibly existing keys that are added with the completed
+     * commit request. Thus, the get request will be pended in
+     * tracker and will be deferred. This scenario is possible
+     * when the non-fence commit-get scheme is used and when
+     * the peer GDS component is `dstore`.
+     * Checking the peer storage for local keys to avoid creating
+     * a local tracker for existing keys. */
+    if ((PMIX_SUCCESS != rc) && local) {
+        PMIX_GDS_FETCH_KV(rc, cd->peer, &cb);
+        if (PMIX_SUCCESS == rc) {
+            cbfunc(rc, NULL, 0, cbdata, NULL, NULL);
             PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_NOT_FOUND;
-        }
-        /* A local client may send a get request concurrently with
-         * a commit request from another client, but the server may
-         * have processed the commit request earlier than the get
-         * request. In this case, we create a local tracker for
-         * possibly existing keys that are added with the completed
-         * commit request. Thus, the get request will be pended in
-         * tracker and will be deferred. This scenario is possible
-         * when the non-fence commit-get scheme is used and when
-         * the peer GDS component is `dstore`.
-         * Checking the peer storage for local keys to avoid creating
-         * a local tracker for existing keys. */
-        if ((PMIX_SUCCESS != rc) && local) {
-            PMIX_GDS_FETCH_KV(rc, cd->peer, &cb);
-            if (PMIX_SUCCESS == rc) {
-                cbfunc(rc, NULL, 0, cbdata, NULL, NULL);
-                PMIX_DESTRUCT(&cb);
-                return rc;
-            }
-        }
-        PMIX_DESTRUCT(&cb); // does not release info or key
-        /* if the requested key was found, but in a different scope,
-         * then we report this back as there is no point in waiting */
-        if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc) {
-            return PMIX_ERR_NOT_FOUND;
-        }
-        if (PMIX_SUCCESS != rc) {
-            /* if the target proc is local, then we just need to wait */
-            if (local) {
-                /* ...unless this is a reserved key, in which case there is
-                 * nothing to wait for. A reserved key for a local client is
-                 * ours at the moment its namespace is registered - it does
-                 * not arrive later in that client's commit, which carries
-                 * only what the client itself put. So if we do not have it
-                 * now we are never going to, and the caller is better told
-                 * so at once than made to sit out a timeout. Nor can we
-                 * push the question up to our host: the local arm below
-                 * the "request" label answers a local rank from the
-                 * client's own commit rather than up-calling. Only a
-                 * remote target reaches the host. */
-                if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
-                    return PMIX_ERR_NOT_FOUND;
-                }
-                /* if they provided a timeout, we need to execute it here
-                 * as we are not going to pass it upwards for the host
-                 * to perform - we default it to 2 sec */
-                if (0 == tv.tv_sec) {
-                    tv.tv_sec = 2;
-                }
-                rc = defer_response(nspace, rank, key, cd, localonly, cbfunc, cbdata, &tv, &lcd);
-                if (PMIX_ERR_NOT_FOUND == rc) {
-                    /* just means we created a tracker */
-                    rc = PMIX_SUCCESS;
-                } else if (PMIX_ERR_NOT_AVAILABLE == rc) {
-                    /* means they requested "immediate" */
-                    rc = PMIX_ERR_NOT_FOUND;
-                }
-                return rc;
-            }
-            /* otherwise, we need to request the info */
-            goto request;
-        }
-        /* we did find it, so go ahead and collect the payload */
-    } else if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 4, 0, 0)) {
-        /* Reached only when the peer packed a key that unpacked to NULL,
-         * i.e. an empty string: a peer old enough to send no key at all
-         * leaves keyprovided false and is taken by the branch above,
-         * which handles a NULL key by fetching every key for the proc.
-         * Note also that the version tested here is our own upstream
-         * server's, not the requestor's. */
-        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-        rc = get_job_data(nspace, cd, key, &pbkt);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_DESTRUCT(&pbkt);
             return rc;
         }
-        /* pass it back */
-        PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
-        PMIX_DESTRUCT(&pbkt);
-        cbfunc(rc, data, sz, cbdata, relfn, data);
-        return rc;
     }
+    PMIX_DESTRUCT(&cb); // does not release info or key
+    /* if the requested key was found, but in a different scope,
+     * then we report this back as there is no point in waiting */
+    if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    if (PMIX_SUCCESS != rc) {
+        /* if the target proc is local, then we just need to wait */
+        if (local) {
+            /* ...unless this is a reserved key, in which case there is
+             * nothing to wait for. A reserved key for a local client is
+             * ours at the moment its namespace is registered - it does
+             * not arrive later in that client's commit, which carries
+             * only what the client itself put. So if we do not have it
+             * now we are never going to, and the caller is better told
+             * so at once than made to sit out a timeout. Nor can we
+             * push the question up to our host: the local arm below
+             * the "request" label answers a local rank from the
+             * client's own commit rather than up-calling. Only a
+             * remote target reaches the host. */
+            if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
+                return PMIX_ERR_NOT_FOUND;
+            }
+            /* if they provided a timeout, we need to execute it here
+             * as we are not going to pass it upwards for the host
+             * to perform - we default it to 2 sec */
+            if (0 == tv.tv_sec) {
+                tv.tv_sec = 2;
+            }
+            rc = defer_response(nspace, rank, key, cd, localonly, cbfunc, cbdata, &tv, &lcd);
+            if (PMIX_ERR_NOT_FOUND == rc) {
+                /* just means we created a tracker */
+                rc = PMIX_SUCCESS;
+            } else if (PMIX_ERR_NOT_AVAILABLE == rc) {
+                /* means they requested "immediate" */
+                rc = PMIX_ERR_NOT_FOUND;
+            }
+            return rc;
+        }
+        /* otherwise, we need to request the info */
+        goto request;
+    }
+    /* we did find it, so go ahead and collect the payload */
 
     /* check if the nspace of the requestor is different from
      * the nspace of the target process */
