@@ -119,6 +119,16 @@ these macros. Two consequences:
   (`process_tool_request`) parse this blob and both must apply the guard;
   the client path silently lacked it for a time. Check the unpack return
   on each step here as well — a corrupt blob is the normal way these fail.
+- **Except one failure, which a released version sends on every
+  connection.** v4.1 counted its connector-flag byte twice when sizing
+  the connect-ack, so the message ends with one zero byte after the gds
+  name. A v4.1 peer that sends no info has that byte where the blob would
+  be, and unpacking a count from it reads past the end. Both parsers
+  treat `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER` on the *count* as "no
+  blob" (`PMIX_PTL_LEGACY_PAD` in `ptl_base_connection_hdlr.c`); every
+  other failure is still refused. Making the count check strict once
+  failed every v4.1 client's `PMIx_Init`. Only the `xversion (v4.1)` CI
+  leg noticed; `test/unit/ptl_legacy_ack.c` now sends that exact message.
 
 Similarly, the peer's version string is parsed by
 `pmix_ptl_base_parse_version`, which tolerates any number of components
@@ -634,6 +644,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_handshake.c` | the `PUT_*`/`GET_*` pair as a round trip, plus truncated-field rejection |
 | `test/unit/ptl_frame.c` | a released message frees its payload, an oversized `max_msg_size` means no limit, port-list fallback, and role flags reset across an init/finalize cycle |
 | `test/unit/ptl_sendrecv.c` | lost-connection completion per peer, a split header, a sendrecv to a closed peer or to a tool itself, a message too large to frame, writes split by the cap, and `flush_sends` past `FD_SETSIZE` |
+| `test/unit/ptl_legacy_ack.c` | a v4.1-shaped connect-ack, pad byte and all, still connects as a client and as a tool |
 | `test/unit/ptl_loopback.c` | a server's request to itself reaches its switchyard and is answered once; a loopback reply nobody waits for is not read as a command |
 | `test/unit/ptl_listener.c` | accept out of descriptors stops the listener cleanly; mistyped, out-of-range and empty directives; a directive-named report file is removed |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
