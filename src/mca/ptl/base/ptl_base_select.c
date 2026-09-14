@@ -41,7 +41,6 @@ int pmix_ptl_base_select(void)
     pmix_mca_base_module_t *mod;
     pmix_ptl_module_t *pmod;
     int rc, pri, best_pri = -1;
-    ;
     bool inserted = false;
 
     if (pmix_ptl_base.selected) {
