@@ -158,18 +158,40 @@ void pmix_ptl_base_stop_listening(void)
     lt->socket = -1;
 }
 
+/* Stop accepting for good, after an accept() failure we cannot retry.
+ *
+ * All three pieces go together. The handler used to close only the
+ * descriptor it was handed, which left the event registered, the listener
+ * marked active, and lt->socket naming a number the kernel was free to
+ * hand out again - to a client socket or an IOF pipe. The stale event then
+ * fired on that reuse and called accept() on it, and finalize closed it,
+ * so the failure took some unrelated descriptor down with it. */
+static void abandon_listener(void)
+{
+    pmix_listener_t *lt = &pmix_ptl_base.listener;
+
+    if (lt->active) {
+        pmix_event_del(&lt->ev);
+        lt->active = false;
+    }
+    CLOSE_THE_SOCKET(lt->socket);
+}
+
 /*
  * Handler for accepting connections from the event library
  */
 static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
 {
-    struct sockaddr addr;
-    pmix_socklen_t addrlen = sizeof(struct sockaddr);
+    struct sockaddr_storage addr;
+    pmix_socklen_t addrlen = sizeof(addr);
     int sd;
     pmix_pending_connection_t *pending_connection;
     pmix_listener_t *lt = &pmix_ptl_base.listener;
     PMIX_HIDE_UNUSED_PARAMS(flags, cbdata);
 
+    /* the address is only printed, but an IPv6 peer's does not fit in a
+     * plain struct sockaddr - it was truncated, and then read past the
+     * end of the stack variable to print it */
     sd = accept(incoming_sd, (struct sockaddr *) &addr, &addrlen);
     pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                         "connection_event_handler: working connection "
@@ -178,34 +200,46 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
                         pmix_net_get_hostname((struct sockaddr *) &addr),
                         pmix_net_get_port((struct sockaddr *) &addr));
     if (sd < 0) {
-        /* Non-fatal errors */
+        /* Non-fatal errors. Besides the obvious ones, a connection that
+         * was reset or hit a network error while it waited in the backlog
+         * is reported by accept() on some systems - Linux documents that
+         * these are to be retried like EAGAIN. None of them says anything
+         * about the listening socket itself. */
         if (EINTR == pmix_socket_errno ||
             EAGAIN == pmix_socket_errno ||
-            EWOULDBLOCK == pmix_socket_errno) {
+            EWOULDBLOCK == pmix_socket_errno ||
+            ECONNABORTED == pmix_socket_errno ||
+            EPROTO == pmix_socket_errno ||
+            ENETDOWN == pmix_socket_errno ||
+            ENETUNREACH == pmix_socket_errno ||
+            EHOSTUNREACH == pmix_socket_errno ||
+            EHOSTDOWN == pmix_socket_errno) {
             return;
         }
 
         /* If we run out of file descriptors, log an extra warning (so
            that the user can know to fix this problem) and abandon all
-           hope. */
-        else if (EMFILE == pmix_socket_errno) {
-            CLOSE_THE_SOCKET(incoming_sd);
+           hope. The pending connection stays in the backlog, so the
+           event would fire again at once for as long as we are out. */
+        else if (EMFILE == pmix_socket_errno || ENFILE == pmix_socket_errno) {
             PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
             pmix_show_help("help-ptl-base.txt", "accept failed", true,
                            pmix_globals.hostname,
                            pmix_socket_errno, strerror(pmix_socket_errno),
                            "Out of file descriptors");
+            abandon_listener();
             return;
         }
 
-        /* For all other cases, close the socket, print a warning but
-           try to continue */
+        /* For all other cases, print a warning and stop accepting: a
+           failure we do not recognize may well recur on every wakeup,
+           and the job can still continue with the peers it has */
         else {
-            CLOSE_THE_SOCKET(incoming_sd);
             pmix_show_help("help-ptl-base.txt", "accept failed", true,
                            pmix_globals.hostname,
                            pmix_socket_errno, strerror(pmix_socket_errno),
                            "Unknown cause; job will try to continue");
+            abandon_listener();
             return;
         }
     }
@@ -246,7 +280,12 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
                       lt->cbfunc, pending_connection);
     /* post the object */
     PMIX_POST_OBJECT(pending_connection);
-    pmix_event_add(&pending_connection->ev, NULL);
+    if (0 != pmix_event_add(&pending_connection->ev, NULL)) {
+        /* nothing will ever service this connection */
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        CLOSE_THE_SOCKET(pending_connection->sd);
+        PMIX_RELEASE(pending_connection);
+    }
 }
 
 
@@ -289,7 +328,13 @@ static char *rndz_file_owner(char *filename)
             endptr = NULL;
             errno = 0;
             pid = strtoul(line, &endptr, 10);
-            if (0 == errno && NULL != endptr && endptr != line && 0 < pid) {
+            /* the value has to fit in a pid_t. One that does not - a
+             * garbled line, or a pid wider than this system's - narrows
+             * to some other number, and 4294967295 narrows to -1, which
+             * asks kill() about every process we may signal and so
+             * always found a "live owner" */
+            if (0 == errno && NULL != endptr && endptr != line && 0 < pid &&
+                (unsigned long) INT_MAX >= pid && pid == (unsigned long) (pid_t) pid) {
                 havepid = true;
             }
         }
@@ -404,11 +449,18 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
 
     /* output the information */
     mytime = time(NULL);
-    pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n",
-                  uri, PMIX_VERSION, (unsigned long)pmix_globals.pid,
-                  (unsigned long)pmix_globals.uid,
-                  (unsigned long)pmix_globals.gid,
-                  ctime(&mytime));
+    if (0 > pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n",
+                          uri, PMIX_VERSION, (unsigned long)pmix_globals.pid,
+                          (unsigned long)pmix_globals.uid,
+                          (unsigned long)pmix_globals.gid,
+                          ctime(&mytime))) {
+        /* nothing has been written, so do not leave an empty file behind
+         * for a peer to read as a server that died partway thru */
+        close(fd);
+        unlink(filename);
+        *file_created = false;
+        return PMIX_ERR_NOMEM;
+    }
     /* a short write leaves a file a peer will read as truncated, which
      * is indistinguishable from the creator having died partway thru
      * writing it - so treat it exactly like a failure */
@@ -424,6 +476,80 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     close(fd);
     *file_created = true;
     return PMIX_SUCCESS;
+}
+
+/* Replace a string global from a directive. These come straight from the
+ * host, and the key says what the value should be, never what it is: a
+ * value of any other type was read out of the union as a pointer and
+ * handed to strdup. Returns false, with *rc set, if the directive cannot
+ * be used. */
+static bool replace_string(const pmix_info_t *info, char **target, int *rc)
+{
+    char *copy;
+
+    if (PMIX_STRING != info->value.type || NULL == info->value.data.string) {
+        pmix_output(0, "ptl:base:setup_listener: directive %s must be a non-NULL PMIX_STRING, "
+                    "not %s", info->key, PMIx_Data_type_string(info->value.type));
+        *rc = PMIX_ERR_BAD_PARAM;
+        return false;
+    }
+    copy = strdup(info->value.data.string);
+    if (NULL == copy) {
+        *rc = PMIX_ERR_NOMEM;
+        return false;
+    }
+    free(*target);
+    *target = copy;
+    return true;
+}
+
+/* A port directive is a single port as a PMIX_INT, or a list or range as
+ * a PMIX_STRING. Zero, a negative number, and a NULL string all ask for
+ * the ephemeral port. A number too large to be a port is refused rather
+ * than bound: the bind loop narrows it to 16 bits, so 70000 used to
+ * listen on 4464. */
+static pmix_status_t port_directive(const pmix_info_t *info, char ***ports)
+{
+    char num[16];
+
+    if (PMIX_INT == info->value.type) {
+        if (65535 < info->value.data.integer) {
+            pmix_output(0, "ptl:base:setup_listener: %s value %d is not a port number",
+                        info->key, info->value.data.integer);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        snprintf(num, sizeof(num), "%d",
+                 (0 < info->value.data.integer) ? info->value.data.integer : 0);
+        return pmix_ptl_base_set_ports(num, ports);
+    }
+    if (PMIX_STRING == info->value.type) {
+        return pmix_ptl_base_set_ports(info->value.data.string, ports);
+    }
+    /* any other type was never acted on - keep it that way */
+    return PMIX_SUCCESS;
+}
+
+/* store our URI under the given key in our own datastore */
+static pmix_status_t store_uri(const char *key, const char *uri)
+{
+    pmix_kval_t *urikv;
+    pmix_status_t rc;
+
+    PMIX_KVAL_NEW(urikv, key);
+    if (NULL == urikv || NULL == urikv->value) {
+        if (NULL != urikv) {
+            PMIX_RELEASE(urikv);
+        }
+        return PMIX_ERR_NOMEM;
+    }
+    rc = PMIx_Value_load(urikv->value, uri, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(urikv);
+        return rc;
+    }
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, urikv);
+    PMIX_RELEASE(urikv); // maintain accounting
+    return rc;
 }
 
 /* discover the available
@@ -455,13 +581,13 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     char *prefix;
     char myconnhost[PMIX_MAXHOSTNAMELEN] = {0};
     int myport;
-    pmix_kval_t *urikv;
     pid_t mypid;
     int outpipe;
     char *leftover;
     size_t n;
     FILE *fptst;
     uint16_t port = 0;
+    long portnum;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tool setup_listener");
@@ -484,94 +610,27 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
             pmix_ptl_base.connections_specified = true;
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_INCLUDE)) {
-            if (NULL != pmix_ptl_base.if_include) {
-                free(pmix_ptl_base.if_include);
+            if (!replace_string(&info[n], &pmix_ptl_base.if_include, &rc)) {
+                return rc;
             }
-            pmix_ptl_base.if_include = strdup(info[n].value.data.string);
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_EXCLUDE)) {
-            if (NULL != pmix_ptl_base.if_exclude) {
-                free(pmix_ptl_base.if_exclude);
+            if (!replace_string(&info[n], &pmix_ptl_base.if_exclude, &rc)) {
+                return rc;
             }
-            pmix_ptl_base.if_exclude = strdup(info[n].value.data.string);
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV4_PORT)) {
-            if (PMIX_INT == info[n].value.type) {
-                if (NULL != pmix_ptl_base.ipv4_ports) {
-                    PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
-                }
-                pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
-                pmix_ptl_base.ipv4_ports[1] = NULL;
-                if (0 < info[n].value.data.integer) {
-                    pmix_asprintf(&pmix_ptl_base.ipv4_ports[0], "%d", info[n].value.data.integer);
-                } else {
-                    pmix_ptl_base.ipv4_ports[0] = strdup("0");
-                }
-            } else if (PMIX_STRING == info[n].value.type) {
-                if (NULL != pmix_ptl_base.ipv4_ports) {
-                    PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
-                }
-                if (NULL == info[n].value.data.string) {
-                    pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
-                    pmix_ptl_base.ipv4_ports[0] = strdup("0");
-                    pmix_ptl_base.ipv4_ports[1] = NULL;
-                } else {
-                    pmix_util_parse_range_options(info[n].value.data.string, &pmix_ptl_base.ipv4_ports);
-                    /* the parse yields nothing at all for a value it cannot
-                     * read - "-", "abc" - so the array can be NULL here,
-                     * and indexing it segfaulted the process during init.
-                     * Fall back to the ephemeral port, as an absent value
-                     * does. */
-                    if (NULL == pmix_ptl_base.ipv4_ports
-                        || NULL == pmix_ptl_base.ipv4_ports[0]
-                        || 0 == strcmp(pmix_ptl_base.ipv4_ports[0], "-1")) {
-                        PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
-                        pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
-                        pmix_ptl_base.ipv4_ports[0] = strdup("0");
-                        pmix_ptl_base.ipv4_ports[1] = NULL;
-                    }
-                }
+            rc = port_directive(&info[n], &pmix_ptl_base.ipv4_ports);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
             }
 
 #if PMIX_ENABLE_IPV6
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV6_PORT)) {
-            if (PMIX_INT == info[n].value.type) {
-                if (NULL != pmix_ptl_base.ipv6_ports) {
-                    PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
-                    pmix_ptl_base.ipv6_ports = NULL;
-                }
-                pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
-                pmix_ptl_base.ipv6_ports[1] = NULL;
-                if (0 < info[n].value.data.integer) {
-                    pmix_asprintf(&pmix_ptl_base.ipv6_ports[0], "%d", info[n].value.data.integer);
-                } else {
-                    pmix_ptl_base.ipv6_ports[0] = strdup("0");
-                }
-            } else if (PMIX_STRING == info[n].value.type) {
-                if (NULL != pmix_ptl_base.ipv6_ports) {
-                    PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
-                }
-                if (NULL == info[n].value.data.string) {
-                    pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
-                    pmix_ptl_base.ipv6_ports[0] = strdup("0");
-                    pmix_ptl_base.ipv6_ports[1] = NULL;
-                } else {
-                    pmix_util_parse_range_options(info[n].value.data.string, &pmix_ptl_base.ipv6_ports);
-                     /* the parse yields nothing at all for a value it cannot
-                     * read - "-", "abc" - so the array can be NULL here,
-                     * and indexing it segfaulted the process during init.
-                     * Fall back to the ephemeral port, as an absent value
-                     * does. */
-                    if (NULL == pmix_ptl_base.ipv6_ports
-                        || NULL == pmix_ptl_base.ipv6_ports[0]
-                        || 0 == strcmp(pmix_ptl_base.ipv6_ports[0], "-1")) {
-                        PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
-                        pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
-                        pmix_ptl_base.ipv6_ports[0] = strdup("0");
-                        pmix_ptl_base.ipv6_ports[1] = NULL;
-                    }
-                }
-           }
+            rc = port_directive(&info[n], &pmix_ptl_base.ipv6_ports);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
 #endif
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV4)) {
@@ -583,22 +642,19 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
 #endif
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_REPORT_URI)) {
-            if (NULL != pmix_ptl_base.report_uri) {
-                free(pmix_ptl_base.report_uri);
+            if (!replace_string(&info[n], &pmix_ptl_base.report_uri, &rc)) {
+                return rc;
             }
-            pmix_ptl_base.report_uri = strdup(info[n].value.data.string);
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
-            if (NULL != pmix_ptl_base.session_tmpdir) {
-                free(pmix_ptl_base.session_tmpdir);
+            if (!replace_string(&info[n], &pmix_ptl_base.session_tmpdir, &rc)) {
+                return rc;
             }
-            pmix_ptl_base.session_tmpdir = strdup(info[n].value.data.string);
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
-            if (NULL != pmix_ptl_base.system_tmpdir) {
-                free(pmix_ptl_base.system_tmpdir);
+            if (!replace_string(&info[n], &pmix_ptl_base.system_tmpdir, &rc)) {
+                return rc;
             }
-            pmix_ptl_base.system_tmpdir = strdup(info[n].value.data.string);
         }
     }
 
@@ -817,10 +873,19 @@ complete:
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:setup_listener - trying port %s", ports[n]);
 
-        /* get the port number */
-        port = strtol(ports[n], NULL, 10);
+        /* get the port number - a list or range from the parser can
+         * still name one that does not fit in 16 bits, and narrowing it
+         * would bind some other port instead */
+        errno = 0;
+        portnum = strtol(ports[n], &leftover, 10);
+        if (0 != errno || leftover == ports[n] || '\0' != *leftover ||
+            0 > portnum || 65535 < portnum) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:setup_listener - skipping invalid port %s", ports[n]);
+            continue;
+        }
         /* convert it to network-byte-order */
-        port = htons(port);
+        port = htons((uint16_t) portnum);
 
         /* set the port */
         if (AF_INET == pmix_ptl_base.connection->ss_family) {
@@ -946,24 +1011,19 @@ complete:
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base URI %s", lt->uri);
 
-    /* save the URI internally so we can report it */
-    urikv = PMIX_NEW(pmix_kval_t);
-    urikv->key = strdup(PMIX_MYSERVER_URI);
-    PMIX_VALUE_CREATE(urikv->value, 1);
-    PMIX_VALUE_LOAD(urikv->value, lt->uri, PMIX_STRING);
-    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, urikv);
-    PMIX_RELEASE(urikv); // maintain accounting
+    /* save the URI internally so we can report it - and a legacy copy
+     * for older tools */
+    rc = store_uri(PMIX_MYSERVER_URI, lt->uri);
+    if (PMIX_SUCCESS == rc) {
+        rc = store_uri(PMIX_SERVER_URI, lt->uri);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto sockerror;
+    }
 
-    /* save a legacy URI internally so we can report it
-     * to older tools */
-    urikv = PMIX_NEW(pmix_kval_t);
-    urikv->key = strdup(PMIX_SERVER_URI);
-    PMIX_VALUE_CREATE(urikv->value, 1);
-    PMIX_VALUE_LOAD(urikv->value, lt->uri, PMIX_STRING);
-    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, urikv);
-    PMIX_RELEASE(urikv); // maintain accounting
-
-    if (NULL != pmix_ptl_base.report_uri) {
+    /* an empty value names nowhere to report to */
+    if (NULL != pmix_ptl_base.report_uri && '\0' != pmix_ptl_base.report_uri[0]) {
         /* if the string is a "-", then output to stdout */
         if (0 == strcmp(pmix_ptl_base.report_uri, "-")) {
             fprintf(stdout, "%s\n", lt->uri);
@@ -971,12 +1031,19 @@ complete:
             /* output to stderr */
             fprintf(stderr, "%s\n", lt->uri);
         } else {
-            /* see if it is an integer pipe */
+            /* see if it is an integer pipe. It is one only if there were
+             * digits and nothing after them: strtol consumes nothing of
+             * an empty value and leaves no leftover, so "" used to be
+             * read as descriptor 0 - and stdin was written and closed */
             leftover = NULL;
             outpipe = strtol(pmix_ptl_base.report_uri, &leftover, 10);
-            if (NULL == leftover || 0 == strlen(leftover)) {
+            if (NULL != leftover && leftover != pmix_ptl_base.report_uri &&
+                '\0' == *leftover) {
                 /* stitch together the var names and URI */
-                pmix_asprintf(&leftover, "%s;%s", lt->varname, lt->uri);
+                if (0 > pmix_asprintf(&leftover, "%s;%s", lt->varname, lt->uri)) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto sockerror;
+                }
                 /* output to the pipe */
                 rc = pmix_fd_write(outpipe, strlen(leftover) + 1, leftover);
                 free(leftover);
@@ -1001,6 +1068,19 @@ complete:
                 /* add a flag that indicates we accept v2.1 protocols */
                 fprintf(fp, "v%s\n", PMIX_VERSION);
                 fclose(fp);
+                /* record the name of the file we actually wrote, which is
+                 * what pmix_ptl_close removes. The open took its copy from
+                 * the MCA parameter, before a PMIX_TCP_REPORT_URI directive
+                 * could replace it - so a file named by the directive was
+                 * left behind, and one named by the parameter removed
+                 * though this run never wrote it */
+                leftover = strdup(pmix_ptl_base.report_uri);
+                if (NULL == leftover) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto sockerror;
+                }
+                free(pmix_ptl_base.urifile);
+                pmix_ptl_base.urifile = leftover;
                 pmix_ptl_base.created_urifile = true;
             }
         }
