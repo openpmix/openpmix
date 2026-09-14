@@ -81,6 +81,37 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* A stand-in for a connected client that has no socket. The server's
+ * handlers are driven with it as the requesting peer, so a reply queued to
+ * it comes to rest on its send_msg, where the cases read it back. It
+ * cannot be pmix_globals.mypeer itself: a reply the server queues to its
+ * own peer is the answer to a request it sent itself, and is delivered
+ * straight back through the loopback rather than queued. It shares the
+ * server's namespace and rank objects, so it packs and identifies itself
+ * exactly as that peer does. */
+static pmix_peer_t *standin_peer = NULL;
+
+static pmix_peer_t *standin(void)
+{
+    if (NULL == standin_peer) {
+        standin_peer = PMIX_NEW(pmix_peer_t);
+        PMIX_RETAIN(pmix_globals.mypeer->nptr);
+        standin_peer->nptr = pmix_globals.mypeer->nptr;
+        PMIX_RETAIN(pmix_globals.mypeer->info);
+        standin_peer->info = pmix_globals.mypeer->info;
+        memcpy(&standin_peer->proc_type, &pmix_globals.mypeer->proc_type,
+               sizeof(pmix_proc_type_t));
+    }
+    return standin_peer;
+}
+
+static void release_standin(void)
+{
+    if (NULL != standin_peer) {
+        PMIX_RELEASE(standin_peer);
+    }
+}
+
 /* a code with no meaning to the library, so nothing else reacts to it,
  * and deliberately not a system event - those take the arm that calls
  * the host, and this file has no host to call */
@@ -161,7 +192,7 @@ static void settle(void)
  * on the peer: the first on send_msg, the rest on send_queue. */
 static size_t queued_count(void)
 {
-    pmix_peer_t *peer = pmix_globals.mypeer;
+    pmix_peer_t *peer = standin();
     size_t n = 0;
 
     if (NULL != peer->send_msg) {
@@ -174,7 +205,7 @@ static size_t queued_count(void)
 /* Take the first of those messages and hand back its buffer. */
 static pmix_buffer_t *take_queued_reply(void)
 {
-    pmix_peer_t *peer = pmix_globals.mypeer;
+    pmix_peer_t *peer = standin();
     pmix_ptl_send_t *snd = peer->send_msg;
     pmix_buffer_t *buf;
 
@@ -191,7 +222,7 @@ static pmix_buffer_t *take_queued_reply(void)
 
 static void drain_queued(void)
 {
-    pmix_peer_t *peer = pmix_globals.mypeer;
+    pmix_peer_t *peer = standin();
     pmix_ptl_send_t *snd;
 
     if (NULL != peer->send_msg) {
@@ -228,7 +259,7 @@ static pmix_status_t do_register(size_t ncodes, pmix_status_t *codes,
         PMIX_RELEASE(buf);
         return rc;
     }
-    rc = pmix_server_register_events(pmix_globals.mypeer, buf, NULL, NULL);
+    rc = pmix_server_register_events(standin(), buf, NULL, NULL);
     PMIX_RELEASE(buf);
     return rc;
 }
@@ -257,11 +288,11 @@ static pmix_status_t do_register_acked(size_t ncodes, pmix_status_t *codes)
     }
 
     cd = PMIX_NEW(pmix_server_caddy_t);
-    PMIX_RETAIN(pmix_globals.mypeer);
-    cd->peer = pmix_globals.mypeer;
+    cd->peer = standin();
+    PMIX_RETAIN(cd->peer);
     cd->hdr.tag = 0;
 
-    rc = pmix_server_register_events(pmix_globals.mypeer, buf,
+    rc = pmix_server_register_events(standin(), buf,
                                      pmix_server_events_cbfunc, cd);
     if (PMIX_SUCCESS != rc) {
         /* the switchyard owns the caddy on a non-success return */
@@ -293,7 +324,7 @@ static pmix_status_t do_notify(pmix_status_t status, pmix_data_range_t range,
         PMIX_RELEASE(buf);
         return rc;
     }
-    rc = pmix_server_event_recvd_from_client(pmix_globals.mypeer, buf, NULL, NULL);
+    rc = pmix_server_event_recvd_from_client(standin(), buf, NULL, NULL);
     PMIX_RELEASE(buf);
     return rc;
 }
@@ -515,6 +546,7 @@ int main(int argc, char **argv)
 
     drain_queued();
     PMIX_INFO_DESTRUCT(&dir);
+    release_standin();
     PMIx_server_finalize();
 
     fprintf(stdout, "\nserver_events: %d passed, %d failed\n", npass, nfail);

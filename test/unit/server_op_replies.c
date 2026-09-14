@@ -73,6 +73,37 @@
 #include <string.h>
 #include <unistd.h>
 
+/* A stand-in for a connected client that has no socket. The server's
+ * handlers are driven with it as the requesting peer, so a reply queued to
+ * it comes to rest on its send_msg, where the cases read it back. It
+ * cannot be pmix_globals.mypeer itself: a reply the server queues to its
+ * own peer is the answer to a request it sent itself, and is delivered
+ * straight back through the loopback rather than queued. It shares the
+ * server's namespace and rank objects, so it packs and identifies itself
+ * exactly as that peer does. */
+static pmix_peer_t *standin_peer = NULL;
+
+static pmix_peer_t *standin(void)
+{
+    if (NULL == standin_peer) {
+        standin_peer = PMIX_NEW(pmix_peer_t);
+        PMIX_RETAIN(pmix_globals.mypeer->nptr);
+        standin_peer->nptr = pmix_globals.mypeer->nptr;
+        PMIX_RETAIN(pmix_globals.mypeer->info);
+        standin_peer->info = pmix_globals.mypeer->info;
+        memcpy(&standin_peer->proc_type, &pmix_globals.mypeer->proc_type,
+               sizeof(pmix_proc_type_t));
+    }
+    return standin_peer;
+}
+
+static void release_standin(void)
+{
+    if (NULL != standin_peer) {
+        PMIX_RELEASE(standin_peer);
+    }
+}
+
 #define OPUT_KEY1 "server-op-replies-ut.one"
 #define OPUT_KEY2 "server-op-replies-ut.two"
 /* a type no bfrops module implements, so value_xfer refuses it */
@@ -107,7 +138,7 @@ static void settle(void)
 /* Take the reply the server queued to a peer that has no socket. */
 static pmix_buffer_t *take_queued_reply(void)
 {
-    pmix_peer_t *peer = pmix_globals.mypeer;
+    pmix_peer_t *peer = standin();
     pmix_ptl_send_t *snd = peer->send_msg;
     pmix_buffer_t *buf;
 
@@ -150,8 +181,8 @@ static pmix_buffer_t *drive_lookup(pmix_status_t status, int nelements, int bogu
         PMIX_PDATA_FREE(pdata, (size_t) nelements);
         return NULL;
     }
-    PMIX_RETAIN(pmix_globals.mypeer);
-    cd->peer = pmix_globals.mypeer;
+    cd->peer = standin();
+    PMIX_RETAIN(cd->peer);
     cd->hdr.tag = 0;
 
     pmix_server_lookup_cbfunc(status, pdata, (size_t) (0 < nelements ? nelements : 0), cd);
@@ -275,6 +306,7 @@ int main(int argc, char **argv)
         PMIX_RELEASE(reply);
     }
 
+    release_standin();
     PMIx_server_finalize();
 
     fprintf(stdout, "server_op_replies: %d passed, %d failed\n", npass, nfail);

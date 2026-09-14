@@ -619,10 +619,18 @@ Copy the shape for any public entry point whose misuse is asynchronous;
 [`server_op_replies.c`](server_op_replies.c) covers the lookup reply, and
 its shape is worth copying for anything in
 [`src/server/pmix_server_op_replies.c`](../../src/server/pmix_server_op_replies.c):
-it drives the *host callback* directly and then reads the reply off
-`pmix_globals.mypeer->send_msg`, per the `server_control.c` idiom, rather
-than inspecting a stub's arguments. What crossed the wire is exactly what
-is under test.
+it drives the *host callback* directly and then reads the reply off a
+socketless stand-in peer's `send_msg`, per the `server_control.c` idiom,
+rather than inspecting a stub's arguments. What crossed the wire is
+exactly what is under test.
+
+**The stand-in cannot be `pmix_globals.mypeer`.** A reply the server
+queues to its own peer is the answer to a request it sent itself, and
+`PMIX_SERVER_QUEUE_REPLY` delivers it straight back through the loopback
+rather than leaving it on `send_msg`. Five programs here used `mypeer`
+until that round trip was made to work; each now builds a `standin()`
+peer that shares the server's namespace and rank objects. Copy that
+helper rather than reaching for `mypeer`.
 
 `pmix_lookup_cbfunc_t` carries no release function, so the server has to
 copy the host's array — through the **requesting peer's** bfrops module,

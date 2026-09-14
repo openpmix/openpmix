@@ -29,6 +29,9 @@
  *
  *  - a sendrecv reaching a peer whose socket had already closed was
  *    dropped without its callback, so a caller blocked on it never woke.
+ *    The same goes for a request a tool sends itself: it has no server
+ *    half to read it, so it is answered empty rather than looped back to
+ *    wait forever. (A server's request to itself is ptl_loopback.c.)
  *
  *  - pmix_ptl_base_flush_sends, draining a peer that is not reading, put
  *    its socket in an fd_set whatever the descriptor's number. Past
@@ -427,6 +430,16 @@ int main(int argc, char **argv)
     wait_calls(&late, 1);
     snprintf(detail, sizeof(detail), "rc %s, %d calls", PMIx_Error_string(sr.rc), late.calls);
     report("a sendrecv to a closed peer is answered", PMIX_SUCCESS == sr.rc && 1 == late.calls,
+           detail);
+
+    /* ---- a tool's request to itself has nobody to answer it ---- */
+    memset(&late, 0, sizeof(late));
+    sr.peer = pmix_globals.mypeer;
+    sr.probe = &late;
+    on_progress_thread(do_sendrecv, &sr);
+    wait_calls(&late, 1);
+    snprintf(detail, sizeof(detail), "rc %s, %d calls", PMIx_Error_string(sr.rc), late.calls);
+    report("a tool's sendrecv to itself is answered", PMIX_SUCCESS == sr.rc && 1 == late.calls,
            detail);
 
     PMIX_RELEASE(a.peer);
