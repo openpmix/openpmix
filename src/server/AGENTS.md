@@ -1416,12 +1416,19 @@ to undo:
   anything but an exact match falls back to the full set. Equality rather
   than containment is deliberate: it can only cost an unnecessary
   cumulative contribution, never a short one.
-- **The watermark moves only once the host has the bucket.**
-  `pmix_server_modex_contributed` is called after the `fence_nb` up-call
-  is accepted, never from `pmix_server_collect_data` - that runs earlier,
-  and its caller has three arms that discard the bucket. Draining there
-  loses the deltas for good, because the datastore still holds the values
-  but nothing else remembers which ones this rank had yet to send.
+- **The watermark moves only once the fence has completed successfully.**
+  `pmix_server_modex_contributed` is called from `_mdxcbfunc` when the
+  collective's status is `PMIX_SUCCESS`, never from
+  `pmix_server_collect_data` (its caller has arms that discard the bucket)
+  and never on the `fence_nb` up-call being *accepted*. Acceptance is not
+  delivery: a host may still end the collective without delivering
+  anything - PRRTE does, on every daemon, when a `PMIX_TIMEOUT` expires
+  or a participant is lost. Moving the mark at acceptance marked that
+  data as sent to a set that never received it, and every later fence
+  over the set skipped it for the life of the job. How far each
+  participant was packed rides on its caddy (`modex_upto`) until the
+  completion, because one rank can be in two fences over different sets
+  at once.
 - **A deleted key has to leave the pending list.** A `PMIX_DEL_REMOTE` or
   `PMIX_DEL_GLOBAL` commit removes the key from the datastore, but the
   pending list may still hold the value an earlier `PMIx_Put` staged, and

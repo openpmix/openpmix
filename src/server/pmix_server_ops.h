@@ -613,9 +613,11 @@ PMIX_EXPORT pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *p
                                                         size_t nprocs, pmix_cmd_t type);
 
 /* Record that every local participant of this tracker has had its
- * contribution taken by the host, so the next one can carry only what
- * changes from here. Call it once the up-call has been accepted, never
- * from the collection itself - see the comment on the definition. */
+ * contribution delivered, so the next one can carry only what changes
+ * from here. Call it only once the fence has completed successfully -
+ * never from the collection, and never on the host merely accepting the
+ * bucket, since the host can still fail the collective after that. See
+ * the comment on the definition. */
 PMIX_EXPORT void pmix_server_modex_contributed(pmix_server_trkr_t *trk);
 
 /* Count a contributing peer's namespace into a tracker's expected local

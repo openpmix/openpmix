@@ -361,7 +361,6 @@ static void info_con(pmix_rank_info_t *info)
     PMIX_CONSTRUCT(&info->modex_log, pmix_list_t);
     info->modex_next_id = 0;
     PMIX_CONSTRUCT(&info->modex_marks, pmix_list_t);
-    info->modex_marked_upto = 0;
 }
 static void info_des(pmix_rank_info_t *info)
 {
