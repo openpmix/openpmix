@@ -683,8 +683,17 @@ static int dirpath_destroy_at(int fd, const char *path, bool recursive,
             continue;
         }
         filenm = pmix_os_path(false, path, ep->d_name, NULL);
-        rc = dirpath_destroy_at(childfd, (NULL == filenm) ? ep->d_name : filenm,
-                                recursive, cbfunc);
+        if (NULL == filenm) {
+            /* do not fall back to the bare entry name: that is the
+             * path handed to the callback for everything below, and
+             * the callback would resolve it against the current
+             * working directory rather than this tree - so it would
+             * judge files by whatever happens to sit there */
+            close(childfd);
+            exit_status = PMIX_ERR_OUT_OF_RESOURCE;
+            break;
+        }
+        rc = dirpath_destroy_at(childfd, filenm, recursive, cbfunc);
         free(filenm);
         if (PMIX_SUCCESS != rc) {
             exit_status = rc;
