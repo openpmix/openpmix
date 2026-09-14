@@ -52,9 +52,8 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 6**
+**Deferred work — 5**
 
-* :ref:`todo-resolve-peers-wildcard`
 * :ref:`todo-get-pointer-values`
 * :ref:`todo-compress-length-prefix`
 * :ref:`todo-fabric-inventory`
@@ -214,22 +213,6 @@ keeping a block alive until its own completion arrives is the only
 answer that is correct against both, and the sweep is what a
 once-answering host still needs.  What the PRRTE fix removes is the
 leak, not the requirement.
-
-.. _todo-resolve-peers-wildcard:
-
-The legacy ``resolve_peers()`` branch never fetches at ``WILDCARD``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The pre-v3.2 branch of ``resolve_peers()`` no longer carries a dead
-store — it assigned ``PMIX_RANK_WILDCARD`` and was then overwritten with
-``PMIX_RANK_UNDEF`` before anything read it, and that assignment is
-gone — but what it *meant* to do is still not done.  The branch now
-varies only the ``key`` and ``ninfo``, which is what it always really
-did, and the legacy path resolves because ``try_fetch()`` retries an
-``UNDEF`` rank as ``WILDCARD``.  **Fetching at** ``WILDCARD``
-**directly, as the branch intended, is still untried** — that is a
-behavior change on a path only a pre-v3.2 server exercises, and there is
-none to test against.
 
 .. _todo-get-pointer-values:
 

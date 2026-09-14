@@ -215,9 +215,21 @@ Smaller items carried forward (closed 2026-08-13)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The items that stood under this heading were closed on 2026-08-13.  One
-of them did not close all the way and is now an entry of its own:
-:ref:`todo-resolve-peers-wildcard`.  The other left a behavior change
-worth recording.
+of them did not close all the way, and two things are worth recording.
+
+* **The pre-v3.2 branch of** ``resolve_peers()`` **is gone** (closed
+  2026-09-14).  Removing its dead store of ``PMIX_RANK_WILDCARD`` left an
+  open question — should the branch fetch at ``WILDCARD`` directly rather
+  than through ``try_fetch()``'s retry? — and re-reading it showed the
+  branch could not work either way.  ``gds/hash`` already answers an
+  ``UNDEF`` fetch from the ``WILDCARD``-filed entry, and the value found
+  there was unusable: a pre-v3.2 server files a node's data under its
+  hostname as a ``PMIX_DATA_ARRAY`` of info carrying ``PMIX_LOCAL_PEERS``
+  (which is how v3.0's own ``preg/native`` reads it), while the walk
+  requires a ``PMIX_STRING``.  Only a client attached to a pre-v3.2 server
+  could reach it, and none are in service, so the branch was removed
+  rather than repaired.  Such a client now takes the same path as every
+  other; that pairing is not supported and was not tested.
 
 * **A malformed** ``PMIX_QUALIFIED_VALUE`` **or a NULL key arriving in a
   cache refresh now fails the enclosing** ``PMIx_Get``.  See the
