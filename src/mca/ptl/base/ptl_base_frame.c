@@ -654,6 +654,7 @@ static void rcon(pmix_ptl_recv_t *p)
     p->hdr_recvd = false;
     p->rdptr = NULL;
     p->rdbytes = 0;
+    p->loopback = PMIX_PTL_LOOPBACK_NONE;
 }
 static void rdes(pmix_ptl_recv_t *p)
 {
