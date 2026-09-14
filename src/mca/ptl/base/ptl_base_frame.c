@@ -141,12 +141,12 @@ static char *dyn_port_string6;
  * pmix_ptl_close only frees the arrays when the framework was opened, and
  * a framework that was registered but never opened is re-registered by
  * the next open. */
-static pmix_status_t set_ports(char *spec, char ***ports)
+pmix_status_t pmix_ptl_base_set_ports(const char *spec, char ***ports)
 {
     PMIx_Argv_free(*ports);
     *ports = NULL;
     if (NULL != spec) {
-        pmix_util_parse_range_options(spec, ports);
+        pmix_util_parse_range_options((char *) spec, ports);
         if (NULL != *ports && NULL != (*ports)[0] && 0 != strcmp((*ports)[0], "-1")) {
             return PMIX_SUCCESS;
         }
@@ -213,7 +213,7 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv4_port",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
-    rc = set_ports(dyn_port_string, &pmix_ptl_base.ipv4_ports);
+    rc = pmix_ptl_base_set_ports(dyn_port_string, &pmix_ptl_base.ipv4_ports);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
@@ -228,7 +228,7 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv6_port",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
-    rc = set_ports(dyn_port_string6, &pmix_ptl_base.ipv6_ports);
+    rc = pmix_ptl_base_set_ports(dyn_port_string6, &pmix_ptl_base.ipv6_ports);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }

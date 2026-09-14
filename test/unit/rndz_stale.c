@@ -112,6 +112,20 @@ static void plant_file(const char *path, pid_t owner, bool truncated)
     fclose(fp);
 }
 
+/* the same layout, with the pid line given verbatim */
+static void plant_file_pid(const char *path, const char *pidline)
+{
+    FILE *fp;
+
+    fp = fopen(path, "w");
+    if (NULL == fp) {
+        return;
+    }
+    fprintf(fp, "testns.0;tcp4://127.0.0.1:1\n%s\n%s\n%lu:%lu\nsome time\n", PMIX_VERSION,
+            pidline, (unsigned long) getuid(), (unsigned long) getgid());
+    fclose(fp);
+}
+
 static bool file_exists(const char *path)
 {
     struct stat buf;
@@ -265,6 +279,14 @@ int main(void)
     plant_file(path, 0, false);
     rc = run_child(true);
     report("file with no usable pid is reclaimed", CHILD_OK == rc, "init failed");
+
+    /* a pid too wide for a pid_t names no process. 4294967295 narrows to
+     * -1, and kill(-1, 0) asks about every process we may signal - so it
+     * always answered that the file had a live owner, and a scheduler
+     * refused to start over a garbage line */
+    plant_file_pid(path, "4294967295");
+    rc = run_child(true);
+    report("file whose pid does not fit a pid_t is reclaimed", CHILD_OK == rc, "init failed");
 
     free(path);
     cleanup();
