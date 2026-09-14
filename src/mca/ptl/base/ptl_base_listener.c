@@ -134,9 +134,20 @@ void pmix_ptl_base_start_listening(void)
 void pmix_ptl_base_stop_listening(void)
 {
     pmix_listener_t *lt = &pmix_ptl_base.listener;
+    pmix_pending_connection_t *pnd, *pnext;
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                         "ptl:base:stop_listening");
+
+    /* A connection still sending its connect-ack holds a socket, an armed
+     * read event and perhaps a timer, and nothing else refers to it - with
+     * the timeout disabled, a peer that connected and went quiet would keep
+     * all three for the life of the process. Every caller has stopped the
+     * progress thread by now, so neither of its handlers can be running. */
+    PMIX_LIST_FOREACH_SAFE (pnd, pnext, &pmix_ptl_base.pending_connections,
+                            pmix_pending_connection_t) {
+        pmix_ptl_base_drop_pending_connection(pnd);
+    }
 
     /* The listener has to be built again if the framework is opened
      * again in this process - pmix_ptl_close destructs the listener
@@ -177,6 +188,38 @@ static void abandon_listener(void)
     CLOSE_THE_SOCKET(lt->socket);
 }
 
+/* Give up on a connection whose connect-ack is still arriving: take it off
+ * the pending list, disarm both of its events, close its socket and
+ * release it. Runs on the progress thread, or once that has stopped. */
+void pmix_ptl_base_drop_pending_connection(pmix_pending_connection_t *pnd)
+{
+    pmix_list_remove_item(&pmix_ptl_base.pending_connections, &pnd->super);
+    pmix_event_del(&pnd->ev);
+    if (pnd->timer_active) {
+        pmix_event_evtimer_del(&pnd->timer);
+        pnd->timer_active = false;
+    }
+    CLOSE_THE_SOCKET(pnd->sd);
+    PMIX_RELEASE(pnd);
+}
+
+/* ptl_base_connect_ack_timeout expired before a connection delivered its
+ * whole connect-ack */
+static void connect_ack_expired(int sd, short args, void *cbdata)
+{
+    pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(pnd);
+    pnd->timer_active = false;
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:base:listener: connection on socket %d sent %" PRIsize_t
+                        " bytes of its connect-ack in %d seconds - dropping it",
+                        pnd->sd, pnd->hdr_recvd + pnd->msg_recvd,
+                        pmix_ptl_base.connect_ack_timeout);
+    pmix_ptl_base_drop_pending_connection(pnd);
+}
+
 /*
  * Handler for accepting connections from the event library
  */
@@ -184,7 +227,8 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
 {
     struct sockaddr_storage addr;
     pmix_socklen_t addrlen = sizeof(addr);
-    int sd;
+    int sd, fdflags;
+    struct timeval tv;
     pmix_pending_connection_t *pending_connection;
     pmix_listener_t *lt = &pmix_ptl_base.listener;
     PMIX_HIDE_UNUSED_PARAMS(flags, cbdata);
@@ -244,12 +288,29 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
         }
     }
 
+    /* The connect-ack that follows is read on the progress thread, from a
+     * port that anything able to reach it can open, before any credential
+     * has been checked - so it is read as its bytes arrive and never waited
+     * for. That only works on a socket that says so when it has nothing: an
+     * accepted socket inherits the listener's O_NONBLOCK on BSD-derived
+     * systems but never does on Linux, and a blocking one parks the progress
+     * thread in recv() until the far end sends the rest, which it need never
+     * do. So a socket we cannot make non-blocking is not used at all. */
+    fdflags = fcntl(sd, F_GETFL, 0);
+    if (0 > fdflags || 0 > fcntl(sd, F_SETFL, fdflags | O_NONBLOCK)) {
+        pmix_output(0, "connection_event_handler: unable to make socket %d non-blocking: %s (%d)",
+                    sd, strerror(pmix_socket_errno), pmix_socket_errno);
+        CLOSE_THE_SOCKET(sd);
+        return;
+    }
+
     /* this descriptor is ready to be read, which means a connection
      * request has been received - so harvest it. All we want to do
-     * here is accept the connection and push the info onto the event
-     * library for subsequent processing - we don't want to actually
-     * process the connection here as it takes too long, and so the
-     * OS might start rejecting connections due to timeout.
+     * here is accept the connection and wait for its connect-ack to
+     * arrive - we don't want to actually process the connection here
+     * as it takes too long, and so the OS might start rejecting
+     * connections due to timeout. The handler runs each time the
+     * socket becomes readable until it has the whole connect-ack.
      */
     pending_connection = PMIX_NEW(pmix_pending_connection_t);
     if (NULL == pending_connection) {
@@ -264,27 +325,38 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
                         "connection_event_handler: new connection: (%d, %d)", pending_connection->sd,
                         pmix_socket_errno);
 
-    /* Do not run the connection handler until the peer has actually sent
-     * something. The handler reads the connect-ack with blocking recvs on
-     * the progress thread, so running it the moment the connection is
-     * accepted let any process that could reach the listener - or a tool
-     * suspended between its connect() and its send - hold the progress
-     * thread, and with it every client of this server, for as long as it
-     * stayed silent. Waiting for readability costs nothing while the peer
+    /* Run the handler only when the peer has sent something. It used to be
+     * activated the moment the connection was accepted, and to read the
+     * connect-ack with blocking recvs: any process that could reach the
+     * listener - or a tool suspended between its connect() and its send -
+     * held the progress thread, and with it every client of this server,
+     * for as long as it stayed silent. Waiting costs nothing while the peer
      * is idle, and a peer that closes without sending still wakes us, so
-     * the handler's error path reclaims the socket as before. A peer that
-     * sends part of a request and then stalls is bounded by the receive
-     * timeout the handler sets. */
+     * the handler's error path reclaims the socket. */
     pmix_event_assign(&pending_connection->ev, pmix_globals.evbase,
                       sd, EV_READ,
                       lt->cbfunc, pending_connection);
+    /* Track it until its connect-ack is complete, so that one which never
+     * finishes is still closed when we finalize - and, unless the timeout
+     * is disabled, closed well before that. A peer holding a connection
+     * costs nothing but a descriptor, but it costs one for as long as it
+     * likes, and anything that can reach the listener can open more. */
+    pmix_list_append(&pmix_ptl_base.pending_connections, &pending_connection->super);
+    if (0 < pmix_ptl_base.connect_ack_timeout) {
+        pmix_event_evtimer_set(pmix_globals.evbase, &pending_connection->timer,
+                               connect_ack_expired, pending_connection);
+        tv.tv_sec = pmix_ptl_base.connect_ack_timeout;
+        tv.tv_usec = 0;
+        if (0 == pmix_event_evtimer_add(&pending_connection->timer, &tv)) {
+            pending_connection->timer_active = true;
+        }
+    }
     /* post the object */
     PMIX_POST_OBJECT(pending_connection);
     if (0 != pmix_event_add(&pending_connection->ev, NULL)) {
         /* nothing will ever service this connection */
         PMIX_ERROR_LOG(PMIX_ERROR);
-        CLOSE_THE_SOCKET(pending_connection->sd);
-        PMIX_RELEASE(pending_connection);
+        pmix_ptl_base_drop_pending_connection(pending_connection);
     }
 }
 
