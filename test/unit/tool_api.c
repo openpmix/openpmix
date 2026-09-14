@@ -118,6 +118,76 @@ static void check_bad_directive(const char *key)
     }
 }
 
+/* PMIX_TOOL_CONNECT_OPTIONAL covers a connection that was attempted and
+ * failed. It does not cover a directive that is malformed: no connection
+ * can be attempted with one, so the call itself is in error. Init used to
+ * swallow that under "optional" and come up with a self-assigned identity,
+ * reporting success for a call that could never have done what was asked.
+ *
+ * The child reports what init returned: 0 = PMIX_ERR_BAD_PARAM,
+ * 1 = PMIX_SUCCESS, 2 = anything else. The tmpdirs point at an empty
+ * directory so a regression that fell through to discovery cannot attach
+ * to some real server on this node. */
+static int optional_child(const char *key, const char *strval)
+{
+    pmix_proc_t myproc;
+    pmix_info_t info[4];
+    pmix_status_t rc;
+    bool flag = true;
+    char tmpl[] = "/tmp/pmix-toolapi-XXXXXX";
+    char *dir;
+
+    dir = mkdtemp(tmpl);
+    if (NULL == dir) {
+        return 3;
+    }
+    if (NULL == strval) {
+        /* the key names a string or a number; hand it a bool */
+        PMIX_INFO_LOAD(&info[0], key, &flag, PMIX_BOOL);
+    } else {
+        PMIX_INFO_LOAD(&info[0], key, strval, PMIX_STRING);
+    }
+    PMIX_INFO_LOAD(&info[1], PMIX_TOOL_CONNECT_OPTIONAL, &flag, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_SYSTEM_TMPDIR, dir, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[3], PMIX_SERVER_TMPDIR, dir, PMIX_STRING);
+    rc = PMIx_tool_init(&myproc, info, 4);
+    rmdir(dir);
+    if (PMIX_SUCCESS == rc) {
+        PMIx_tool_finalize();
+        return 1;
+    }
+    return (PMIX_ERR_BAD_PARAM == rc) ? 0 : 2;
+}
+
+static void check_optional(const char *name, const char *key, const char *strval,
+                           int expect)
+{
+    static const char *outcome[] = {"PMIX_ERR_BAD_PARAM", "PMIX_SUCCESS",
+                                    "some other error", "the child could not set up"};
+    pid_t child;
+    int status = 0;
+    char detail[128];
+
+    child = fork();
+    if (0 > child) {
+        report(name, 0, "fork failed");
+        return;
+    }
+    if (0 == child) {
+        _exit(optional_child(key, strval));
+    }
+    waitpid(child, &status, 0);
+    if (!WIFEXITED(status)) {
+        report(name, 0, "the tool died on a signal");
+    } else if (expect != WEXITSTATUS(status)) {
+        snprintf(detail, sizeof(detail), "init returned %s",
+                 (WEXITSTATUS(status) < 4) ? outcome[WEXITSTATUS(status)] : "?");
+        report(name, 0, detail);
+    } else {
+        report(name, 1, NULL);
+    }
+}
+
 /* An empty PMIX_CONNECTION_ORDER names no preference - it must not take
  * the tool down. The list is split on ',', and PMIx_Argv_split hands back
  * NULL for "" or ",", which connect_to_peer then indexed. Same child
@@ -292,6 +362,37 @@ int main(int argc, char **argv)
     check_empty_order("");
     check_empty_order(",");
     check_missing_attach();
+    /* a malformed directive fails init even when connecting is optional */
+    check_optional("optional init refuses a malformed PMIX_SERVER_URI",
+                   PMIX_SERVER_URI, NULL, 0);
+    check_optional("optional init refuses a malformed PMIX_TCP_URI",
+                   PMIX_TCP_URI, NULL, 0);
+    check_optional("optional init refuses a malformed PMIX_TOOL_ATTACHMENT_FILE",
+                   PMIX_TOOL_ATTACHMENT_FILE, NULL, 0);
+    check_optional("optional init refuses a malformed PMIX_SERVER_NSPACE",
+                   PMIX_SERVER_NSPACE, NULL, 0);
+    check_optional("optional init refuses a malformed PMIX_CONNECTION_ORDER",
+                   PMIX_CONNECTION_ORDER, NULL, 0);
+    check_optional("optional init refuses a malformed PMIX_SERVER_PIDINFO",
+                   PMIX_SERVER_PIDINFO, NULL, 0);
+    check_optional("optional init refuses a URI that does not parse",
+                   PMIX_SERVER_URI, "not-a-uri", 0);
+    check_optional("optional init refuses a URI whose address does not parse",
+                   PMIX_SERVER_URI, "probe.0;tcp4://not.an.address:1", 0);
+    check_optional("optional init refuses an unknown PMIX_CONNECTION_ORDER entry",
+                   PMIX_CONNECTION_ORDER, "PMIX_NOT_AN_ATTRIBUTE", 0);
+    check_optional("optional init refuses an order entry that is not a target",
+                   PMIX_CONNECTION_ORDER, "PMIX_SERVER_URI", 0);
+    check_optional("optional init refuses an order entry with a stray space",
+                   PMIX_CONNECTION_ORDER, "PMIX_CONNECT_TO_SCHEDULER, PMIX_CONNECT_TO_SYSTEM", 0);
+    /* a valid order is accepted, by attribute name or by string value */
+    check_optional("optional init accepts a valid order by attribute name",
+                   PMIX_CONNECTION_ORDER, "PMIX_CONNECT_TO_SCHEDULER,PMIX_CONNECT_TO_SYSTEM", 1);
+    check_optional("optional init accepts a valid order by string value",
+                   PMIX_CONNECTION_ORDER, PMIX_CONNECT_TO_SYSTEM, 1);
+    /* ...but a well-formed one that fails to connect is still optional */
+    check_optional("optional init survives a well-formed URI nobody answers",
+                   PMIX_SERVER_URI, "probe.0;tcp4://127.0.0.1:1", 1);
 
     PMIX_INFO_LOAD(&tinfo, PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
     rc = PMIx_tool_init(&myproc, &tinfo, 1);

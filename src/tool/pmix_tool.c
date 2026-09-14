@@ -847,6 +847,19 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             PMIX_SET_PEER_TYPE(pmix_client_globals.myserver, ptype.type);
         }
     } else {
+        /* A malformed connection directive is an error in this call, not a
+         * failure to connect: no connection can be attempted with it, so
+         * PMIX_TOOL_CONNECT_OPTIONAL does not apply to it. It has to be
+         * caught here, before the attempt - connect_to_peer refuses it too,
+         * but its status cannot say whether anything was attempted, since
+         * a server refusing the tool may answer PMIX_ERR_BAD_PARAM as well,
+         * and "optional" must still be honored for that. Without this, an
+         * optional connection turned every malformed directive into a
+         * successful init with a self-assigned identity. */
+        rc = pmix_ptl_base_check_connect_directives(info, ninfo);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
         /* connect to the server */
         rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver, info,
                                       ninfo, &suri);
