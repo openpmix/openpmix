@@ -127,6 +127,34 @@ static void gtdes(pmix_group_tracker_t *p)
 }
 PMIX_CLASS_INSTANCE(pmix_group_tracker_t, pmix_list_item_t, gtcon, gtdes);
 
+/* A request that must not reach our server until the construct watch that
+ * completes its caller is live - see setup_leader_watch. It owns nothing:
+ * whoever last holds it releases the message and send cbdata explicitly. */
+typedef struct {
+    pmix_object_t super;
+    /* the watch this request waits behind - valid only in a successful
+     * registration callback, since a failed registration releases it */
+    pmix_group_tracker_t *watch;
+    pmix_buffer_t *msg;
+    pmix_ptl_cbfunc_t sendfn;
+    pmix_object_t *sendcbdata;
+    /* the caller's completion, copied so a failed registration can still
+     * report to it after the watch holding the original is gone */
+    pmix_info_cbfunc_t cbfunc;
+    void *cbdata;
+} watch_send_t;
+
+static void wscon(watch_send_t *p)
+{
+    p->watch = NULL;
+    p->msg = NULL;
+    p->sendfn = NULL;
+    p->sendcbdata = NULL;
+    p->cbfunc = NULL;
+    p->cbdata = NULL;
+}
+static PMIX_CLASS_INSTANCE(watch_send_t, pmix_object_t, wscon, NULL);
+
 /* callback for wait completion */
 static void construct_cbfunc(struct pmix_peer_t *pr,
                              pmix_ptl_hdr_t *hdr,
@@ -143,7 +171,8 @@ static void join_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
 static void invite_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                           pmix_buffer_t *buf, void *cbdata);
 static pmix_status_t setup_leader_watch(const char *grp, const pmix_proc_t *leader,
-                                        pmix_info_cbfunc_t cbfunc, void *cbdata);
+                                        pmix_info_cbfunc_t cbfunc, void *cbdata,
+                                        watch_send_t *send);
 
 static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                         pmix_release_cbfunc_t release_fn, void *release_cbdata);
@@ -912,6 +941,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
                                                void *cbdata)
 {
     pmix_group_tracker_t *cb;
+    watch_send_t *ws;
     pmix_status_t rc;
     pmix_buffer_t *msg;
     pmix_cmd_t cmd;
@@ -1009,53 +1039,53 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
     }
 
     cb = PMIX_NEW(pmix_group_tracker_t);
-    if (PMIX_UNLIKELY(NULL == cb)) {
+    ws = PMIX_NEW(watch_send_t);
+    if (PMIX_UNLIKELY(NULL == cb || NULL == ws)) {
         PMIX_RELEASE(msg);
+        if (NULL != cb) {
+            PMIX_RELEASE(cb);
+        }
+        if (NULL != ws) {
+            PMIX_RELEASE(ws);
+        }
         return PMIX_ERR_NOMEM;
     }
 
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, invite_cbfunc, (void *) cb);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        /* nothing was sent, so nothing will complete - and an error return
-         * from an _nb entry point means no callback is coming */
-        PMIX_RELEASE(msg);
-        PMIX_RELEASE(cb);
-        return rc;
-    }
-
-    /* Arm the watch that completes this call, now that the request is away
-     * and nothing that can fail is left - the shape PMIx_Group_join_nb uses,
-     * and for the same reason. An armed watch holds the caller's
-     * cbfunc/cbdata and fires on any matching construct event, so a failure
-     * that returned with it still registered would call back into an object
-     * the caller was told no callback was coming for - for the blocking
-     * form, a tracker on a stack frame that has since returned. Taking it
-     * back down from here instead is not a way out: the watch is owned by
-     * the progress thread from the moment it is armed, and an entry point
-     * that reached into it would be racing the registration ack and the
-     * observer itself for cb->ref and cb->completed.
+    /* Arm the watch that completes this call BEFORE the invitation goes
+     * out, and send the invitation from the watch's registration callback.
      *
-     * Arming after the send cannot lose the outcome. Both operations only
-     * queue work on the progress thread - PMIX_PTL_SEND_RECV thread-shifts
-     * the send, and pmix_event_register_observer thread-shifts the
-     * registration - so the registration is already active on that event
-     * base before the invitation has even been written to the socket. Any
-     * inbound event is delivered by that same thread, in a callback that
-     * cannot run until the registration ahead of it has, and it cannot be
-     * pending at all before the send it answers. The outcome also needs our
-     * server to expand the membership, invite every member and collect
-     * their answers first. Should it somehow arrive early anyway, the
-     * registration replays matching cached notifications as it completes.
+     * The order matters because the send starts work at once. The
+     * invitation is written by the progress thread the moment it is
+     * thread-shifted, and the whole construct - our server inviting every
+     * member, collecting their answers, and announcing the outcome - can
+     * then complete while this thread has not yet been scheduled to arm the
+     * watch. The outcome reaches the application's handlers, the watch
+     * that would have completed the caller is registered after it, and the
+     * caller waits forever. It happened on loaded CI machines; a 300 ms
+     * pause between the two calls made it happen every time. Registration
+     * does replay cached notifications, but a construct outcome that was
+     * delivered to a handler is not cached.
+     *
+     * Sending from the registration callback keeps the other rule intact:
+     * once the watch is handed to the registry it belongs to the progress
+     * thread, so no error may follow it here. Everything after this call -
+     * a failed registration, a failed send - is reported through cbfunc,
+     * which is what our success return promises.
      *
      * Watching ourselves as "leader" is deliberate: the watch completes on
      * the construct's outcome, and its leader-failure arm has nothing to
      * fire on when the leader is us. */
-    rc = setup_leader_watch(grp, &pmix_globals.myid, cbfunc, cbdata);
+    ws->msg = msg;
+    ws->sendfn = invite_cbfunc;
+    ws->sendcbdata = (pmix_object_t *) cb;
+    rc = setup_leader_watch(grp, &pmix_globals.myid, cbfunc, cbdata, ws);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        /* with no watch nothing would ever complete the caller, so report
-         * the failure through the return value instead - which, as above,
-         * means no callback is coming */
+        /* nothing was handed off, so nothing will complete - and an error
+         * return from an _nb entry point means no callback is coming */
         PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        PMIX_RELEASE(cb);
+        PMIX_RELEASE(ws);
     }
     return rc;
 }
@@ -1318,6 +1348,42 @@ static void watch_regcb(pmix_status_t status, size_t refid, void *cbdata)
     PMIX_POST_OBJECT(cb);
 }
 
+/* Registration callback for a watch that has a request waiting behind it.
+ * The observer is on its list by the time this runs, so this is the first
+ * moment the request can go out without its outcome being able to arrive
+ * unwatched. Everything from here on is reported through the caller's
+ * callback: the entry point has already returned success. */
+static void watch_send_regcb(pmix_status_t status, size_t refid, void *cbdata)
+{
+    watch_send_t *ws = (watch_send_t *) cbdata;
+    pmix_group_tracker_t *cb = ws->watch;
+    pmix_status_t rc;
+
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != status)) {
+        /* the registry has already released the watch, so the request has
+         * nothing to complete its caller - report the failure directly */
+        PMIX_RELEASE(ws->msg);
+        PMIX_RELEASE(ws->sendcbdata);
+        ws->cbfunc(status, NULL, 0, ws->cbdata, NULL, NULL);
+        PMIX_RELEASE(ws);
+        return;
+    }
+
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, ws->msg, ws->sendfn,
+                       (void *) ws->sendcbdata);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_RELEASE(ws->msg);
+        PMIX_RELEASE(ws->sendcbdata);
+        if (!cb->completed) {
+            cb->completed = true;
+            join_complete(cb, rc, NULL, 0);
+        }
+    }
+    PMIX_RELEASE(ws);
+    /* the rest is the ordinary acknowledgement */
+    watch_regcb(PMIX_SUCCESS, refid, cb);
+}
+
 /* Register the construct watch for a process that has accepted an invitation,
  * carrying the join's completion callback so the construct's outcome can be
  * reported to it. This is normally reached from within the application's
@@ -1337,7 +1403,8 @@ static void watch_regcb(pmix_status_t status, size_t refid, void *cbdata)
  * caller that has already returned, which is the other reason this must be
  * the last thing an entry point does. */
 static pmix_status_t setup_leader_watch(const char *grp, const pmix_proc_t *leader,
-                                        pmix_info_cbfunc_t cbfunc, void *cbdata)
+                                        pmix_info_cbfunc_t cbfunc, void *cbdata,
+                                        watch_send_t *send)
 {
     pmix_group_tracker_t *cb;
     pmix_status_t codes[] = {
@@ -1372,9 +1439,18 @@ static pmix_status_t setup_leader_watch(const char *grp, const pmix_proc_t *lead
     cb->cbfunc = cbfunc;
     cb->cbdata = cbdata;
 
-    rc = pmix_event_register_observer("pmix-group-construct-watch", codes, ncodes,
-                                      leader_watch_observer, cb, watch_relcb,
-                                      watch_regcb, cb);
+    if (NULL == send) {
+        rc = pmix_event_register_observer("pmix-group-construct-watch", codes, ncodes,
+                                          leader_watch_observer, cb, watch_relcb,
+                                          watch_regcb, cb);
+    } else {
+        send->watch = cb;
+        send->cbfunc = cbfunc;
+        send->cbdata = cbdata;
+        rc = pmix_event_register_observer("pmix-group-construct-watch", codes, ncodes,
+                                          leader_watch_observer, cb, watch_relcb,
+                                          watch_send_regcb, send);
+    }
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         /* the registration was never accepted, so watch_relcb was not
          * discharged and the tracker is still ours */
@@ -1468,6 +1544,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
 {
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
+    watch_send_t *ws;
     pmix_status_t code;
     pmix_buffer_t *msg;
     pmix_cmd_t cmd;
@@ -1576,29 +1653,37 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
         return rc;
     }
 
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, join_cbfunc, (void *) cb);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        /* nothing was sent, so nothing will complete - and an error return
-         * from an _nb entry point means no callback is coming */
-        PMIX_RELEASE(msg);
-        PMIX_RELEASE(cb);
-        return rc;
-    }
-
-    if (waitsconstruct) {
-        /* Set up the watch that will complete this join. There is a window
-         * here - the acceptance is already away, and the watch is not yet
-         * registered - but the leader cannot resolve the construct until it
-         * has our answer, so a PMIX_GROUP_CONSTRUCT_COMPLETE would have to
-         * make a full round trip through the leader to beat a registration
-         * that is already queued on the same server connection. Should it
-         * ever lose that race anyway, the registration replays matching
-         * cached notifications as it completes. */
-        rc = setup_leader_watch(grp, leader, cbfunc, cbdata);
+    if (!waitsconstruct) {
+        PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, join_cbfunc, (void *) cb);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            /* with no watch nothing would ever complete the caller, so report
-             * the failure through the return value instead - which, as above,
-             * means no callback is coming */
+            /* nothing was sent, so nothing will complete - and an error return
+             * from an _nb entry point means no callback is coming */
+            PMIX_RELEASE(msg);
+            PMIX_RELEASE(cb);
+            return rc;
+        }
+    } else {
+        /* Arm the watch that completes this join before the acceptance goes
+         * out, and send the acceptance from the watch's registration
+         * callback - see PMIx_Group_invite_nb for why the other order loses
+         * the construct's outcome. Our acceptance may be the last answer the
+         * leader was waiting for, so the outcome can follow it at once. */
+        ws = PMIX_NEW(watch_send_t);
+        if (PMIX_UNLIKELY(NULL == ws)) {
+            PMIX_RELEASE(msg);
+            PMIX_RELEASE(cb);
+            return PMIX_ERR_NOMEM;
+        }
+        ws->msg = msg;
+        ws->sendfn = join_cbfunc;
+        ws->sendcbdata = (pmix_object_t *) cb;
+        rc = setup_leader_watch(grp, leader, cbfunc, cbdata, ws);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            /* nothing was handed off, so nothing will complete - report the
+             * failure through the return value */
+            PMIX_RELEASE(msg);
+            PMIX_RELEASE(cb);
+            PMIX_RELEASE(ws);
             return rc;
         }
     }
