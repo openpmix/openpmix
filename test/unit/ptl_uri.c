@@ -166,6 +166,94 @@ static void test_setup_connection(void)
 
     rc = pmix_ptl_base_setup_connection(NULL, &ss, &len);
     report("setup_connection: NULL URI rejected", PMIX_SUCCESS != rc, "accepted");
+
+    /* The port has to be the whole field and a port that can be
+     * connected to. It was read with atoi(), so an empty or non-numeric
+     * field became port 0 and an out-of-range one wrapped - 70000 is
+     * 4464 - and the caller connected somewhere it had not asked for */
+    rc = pmix_ptl_base_setup_connection("tcp4://127.0.0.1:", &ss, &len);
+    report("setup_connection: empty port rejected", PMIX_SUCCESS != rc, "accepted");
+    rc = pmix_ptl_base_setup_connection("tcp4://127.0.0.1:http", &ss, &len);
+    report("setup_connection: non-numeric port rejected", PMIX_SUCCESS != rc, "accepted");
+    rc = pmix_ptl_base_setup_connection("tcp4://127.0.0.1:4242x", &ss, &len);
+    report("setup_connection: port with trailing junk rejected", PMIX_SUCCESS != rc,
+           "accepted");
+    rc = pmix_ptl_base_setup_connection("tcp4://127.0.0.1:70000", &ss, &len);
+    report("setup_connection: out-of-range port rejected", PMIX_SUCCESS != rc, "accepted");
+    rc = pmix_ptl_base_setup_connection("tcp4://127.0.0.1:0", &ss, &len);
+    report("setup_connection: port 0 rejected", PMIX_SUCCESS != rc, "accepted");
+}
+
+/* ---- pmix_ptl_base_setup_connection, IPv6 ------------------------ */
+
+static void test_setup_connection_ipv6(void)
+{
+    pmix_status_t rc;
+    struct sockaddr_storage ss;
+    struct sockaddr_in6 *in6;
+    size_t len = 0;
+
+    /* the form a listener publishes. The IPv6 branch never stepped past
+     * the ':' it split the port off at, so it converted an empty string
+     * and every IPv6 URI came out as port 0 */
+    rc = pmix_ptl_base_setup_connection("tcp6://[::1]:41234", &ss, &len);
+    report("setup_connection: IPv6 URI accepted", PMIX_SUCCESS == rc, PMIx_Error_string(rc));
+    if (PMIX_SUCCESS == rc) {
+        in6 = (struct sockaddr_in6 *) &ss;
+        report("setup_connection: family is AF_INET6", AF_INET6 == in6->sin6_family,
+               "wrong family");
+        report("setup_connection: IPv6 port converted to network order",
+               41234 == ntohs(in6->sin6_port), "wrong port");
+        report("setup_connection: IPv6 address length reported",
+               sizeof(struct sockaddr_in6) == len, "wrong length");
+    }
+
+    /* ...and the form the listener actually writes, which does not
+     * bracket the address - the port is whatever follows the last ':' */
+    rc = pmix_ptl_base_setup_connection("tcp6://::1:41235", &ss, &len);
+    report("setup_connection: unbracketed IPv6 URI accepted", PMIX_SUCCESS == rc,
+           PMIx_Error_string(rc));
+    if (PMIX_SUCCESS == rc) {
+        in6 = (struct sockaddr_in6 *) &ss;
+        report("setup_connection: unbracketed IPv6 port converted",
+               41235 == ntohs(in6->sin6_port), "wrong port");
+    }
+
+    /* nothing before the port separator. The parser looked at the last
+     * character of the (empty) address to strip a ']', which is the byte
+     * before its own allocation - and wrote a NUL there when it matched.
+     * On an unfixed library this passes unless run under a memory
+     * checker; it is here so the refusal stays */
+    rc = pmix_ptl_base_setup_connection("tcp6://:1", &ss, &len);
+    report("setup_connection: IPv6 URI with no address rejected", PMIX_SUCCESS != rc,
+           "accepted");
+    rc = pmix_ptl_base_setup_connection("tcp6://[::1]:", &ss, &len);
+    report("setup_connection: IPv6 empty port rejected", PMIX_SUCCESS != rc, "accepted");
+}
+
+/* ---- pmix_ptl_base_split_and_resolve ----------------------------- */
+
+static void test_split_and_resolve(void)
+{
+    char **ifs;
+
+    /* PMIx_Argv_split() answers NULL, not an empty array, for a string
+     * with no tokens in it - which the loop then indexed. An if_include
+     * of "," took a server down in PMIx_server_init */
+    ifs = pmix_ptl_base_split_and_resolve(",", "include");
+    report("split_and_resolve: a list of nothing resolves to nothing", NULL == ifs,
+           "returned a list");
+    PMIx_Argv_free(ifs);
+    ifs = pmix_ptl_base_split_and_resolve("", "include");
+    report("split_and_resolve: an empty string resolves to nothing", NULL == ifs,
+           "returned a list");
+    PMIx_Argv_free(ifs);
+
+    ifs = pmix_ptl_base_split_and_resolve("foo0,,bar1", "include");
+    report("split_and_resolve: named interfaces kept",
+           2 == PMIx_Argv_count(ifs) && 0 == strcmp(ifs[0], "foo0") && 0 == strcmp(ifs[1], "bar1"),
+           "wrong list");
+    PMIx_Argv_free(ifs);
 }
 
 /* The IPv6 branch never stepped past the ':' it split the port off at, so it
@@ -316,6 +404,7 @@ int main(int argc, char **argv)
     test_parse_uri();
     test_setup_connection();
     test_setup_connection_ipv6();
+    test_split_and_resolve();
     test_parse_version();
     test_peer_is_earlier();
 
