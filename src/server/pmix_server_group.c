@@ -1271,6 +1271,12 @@ typedef struct {
     bool optional;
     bool assignid;
     size_t ctxid;
+    /* the directives of our context-ID request to the host. They must
+     * outlive the request: a host is entitled to read them until it
+     * calls back, and a host that thread-shifts reads them later - so
+     * they go with the invitation, not with the call */
+    pmix_info_t *ctxreq;
+    size_t nctxreq;
     size_t obsid;
     bool have_obs;
     bool defunct;
@@ -1292,6 +1298,8 @@ static void invcon(pmix_server_invite_t *p)
     p->optional = false;
     p->assignid = false;
     p->ctxid = SIZE_MAX;
+    p->ctxreq = NULL;
+    p->nctxreq = 0;
     p->obsid = SIZE_MAX;
     p->have_obs = false;
     p->defunct = false;
@@ -1317,6 +1325,9 @@ static void invdes(pmix_server_invite_t *p)
     if (NULL != p->endpts) {
         /* allocated with nmembers+1 slots, filled to nendpts */
         PMIX_INFO_FREE(p->endpts, p->nmembers + 1);
+    }
+    if (NULL != p->ctxreq) {
+        PMIX_INFO_FREE(p->ctxreq, p->nctxreq);
     }
 }
 static PMIX_CLASS_INSTANCE(pmix_server_invite_t,
@@ -1673,17 +1684,25 @@ static void invite_complete(pmix_server_invite_t *inv)
     /* a context ID has to be asked of the host - there is no collective
      * here for it to answer */
     if (inv->assignid && NULL != pmix_host_server.job_control) {
-        PMIX_INFO_CREATE(info, 1);
+        ninfo = 1;
+        PMIX_INFO_CREATE(info, ninfo);
         if (NULL != info) {
-            ninfo = 1;
             PMIX_INFO_LOAD(&info[0], PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
+            /* The directives are the host's to read until it calls back,
+             * so they are parked on the invitation and freed with it -
+             * never here. Freeing them as soon as the up-call returned
+             * handed a thread-shifting host freed memory: PRRTE read the
+             * directive after the free, no longer recognized a context-ID
+             * request in it, and answered with no ID. */
+            inv->ctxreq = info;
+            inv->nctxreq = ninfo;
             /* the host holds this pointer until it calls back, and that
              * callback shifts before touching the invitation, so hold a
-             * reference of our own across the whole excursion */
+             * reference of our own across the whole excursion - which
+             * also keeps the directives alive for exactly that long */
             PMIX_RETAIN(inv);
-            rc = pmix_host_server.job_control(&inv->leader, NULL, 0, info, ninfo,
-                                              invite_ctxid_cb, (void *) inv);
-            PMIX_INFO_FREE(info, ninfo);
+            rc = pmix_host_server.job_control(&inv->leader, NULL, 0, inv->ctxreq,
+                                              inv->nctxreq, invite_ctxid_cb, (void *) inv);
             if (PMIX_SUCCESS == rc) {
                 /* invite_ctxid_cb will announce */
                 return;
