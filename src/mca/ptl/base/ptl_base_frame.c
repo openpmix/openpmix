@@ -132,9 +132,34 @@ static char *dyn_port_string;
 static char *dyn_port_string6;
 #endif
 
+/* Turn a port-list parameter into the array the listener scans. No value,
+ * a value the parser cannot read ("-", "abc") and the "-1" wildcard all
+ * mean the same thing - let the kernel choose - so each yields {"0"}.
+ *
+ * Whatever array is already there is given back first. The parser appends
+ * to the array it is handed, and this can run a second time in a process:
+ * pmix_ptl_close only frees the arrays when the framework was opened, and
+ * a framework that was registered but never opened is re-registered by
+ * the next open. */
+static pmix_status_t set_ports(char *spec, char ***ports)
+{
+    PMIx_Argv_free(*ports);
+    *ports = NULL;
+    if (NULL != spec) {
+        pmix_util_parse_range_options(spec, ports);
+        if (NULL != *ports && NULL != (*ports)[0] && 0 != strcmp((*ports)[0], "-1")) {
+            return PMIX_SUCCESS;
+        }
+        PMIx_Argv_free(*ports);
+        *ports = NULL;
+    }
+    return PMIx_Argv_append_nosize(ports, "0");
+}
+
 static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 {
     int idx;
+    pmix_status_t rc;
 
     (void) flags;
     pmix_mca_base_var_register("pmix", "ptl", "base", "max_msg_size",
@@ -144,8 +169,11 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
     /* a zero value means "no limit" - we still need a ceiling to bound
      * the allocation an inbound header can ask for, so use the taint
      * limit. Note that the working value must always be assigned: leaving
-     * it at its static zero would reject every message carrying a payload */
-    if (0 == max_msg_size) {
+     * it at its static zero would reject every message carrying a payload.
+     * A value too large to express in bytes means "no limit" too - the
+     * multiplication would otherwise wrap, and a 4096 MB limit on a 32-bit
+     * size_t wraps to exactly that zero */
+    if (0 == max_msg_size || (PMIX_TAINT_SIZE_LIMIT) / (1024 * 1024) < max_msg_size) {
         pmix_ptl_base.max_msg_size = PMIX_TAINT_SIZE_LIMIT;
     } else {
         pmix_ptl_base.max_msg_size = max_msg_size * 1024 * 1024;
@@ -185,23 +213,9 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv4_port",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
-    if (NULL != dyn_port_string) {
-        pmix_util_parse_range_options(dyn_port_string, &pmix_ptl_base.ipv4_ports);
-        /* the parse yields nothing at all for a value it cannot read
-         * - "-", "abc" - so the array can be NULL here, and indexing it
-         * segfaulted the process during init. Fall back to the
-         * ephemeral port, as an absent value does. */
-        if (NULL == pmix_ptl_base.ipv4_ports || NULL == pmix_ptl_base.ipv4_ports[0]
-            || 0 == strcmp(pmix_ptl_base.ipv4_ports[0], "-1")) {
-            PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
-            pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
-            pmix_ptl_base.ipv4_ports[0] = strdup("0");
-            pmix_ptl_base.ipv4_ports[1] = NULL;
-        }
-    } else {
-        pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
-        pmix_ptl_base.ipv4_ports[0] = strdup("0");
-        pmix_ptl_base.ipv4_ports[1] = NULL;
+    rc = set_ports(dyn_port_string, &pmix_ptl_base.ipv4_ports);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
     }
 
 #if PMIX_ENABLE_IPV6
@@ -214,23 +228,9 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv6_port",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
-    if (NULL != dyn_port_string6) {
-        pmix_util_parse_range_options(dyn_port_string6, &pmix_ptl_base.ipv6_ports);
-        /* the parse yields nothing at all for a value it cannot read
-         * - "-", "abc" - so the array can be NULL here, and indexing it
-         * segfaulted the process during init. Fall back to the
-         * ephemeral port, as an absent value does. */
-        if (NULL == pmix_ptl_base.ipv6_ports || NULL == pmix_ptl_base.ipv6_ports[0]
-            || 0 == strcmp(pmix_ptl_base.ipv6_ports[0], "-1")) {
-            PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
-            pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
-            pmix_ptl_base.ipv6_ports[0] = strdup("0");
-            pmix_ptl_base.ipv6_ports[1] = NULL;
-        }
-    } else {
-        pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
-        pmix_ptl_base.ipv6_ports[0] = strdup("0");
-        pmix_ptl_base.ipv6_ports[1] = NULL;
+    rc = set_ports(dyn_port_string6, &pmix_ptl_base.ipv6_ports);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
     }
 #endif
 
@@ -343,6 +343,18 @@ static pmix_status_t pmix_ptl_close(void)
      * and pmix_ptl_open only reinstates the fields it sets itself. A
      * rendezvous filename left dangling from the previous cycle would be
      * unlinked and freed a second time here. */
+
+    /* The same goes for the role flags pmix_ptl_base_setup_listener reads
+     * out of its caller's directives: it only ever sets the ones it is
+     * given, so a flag left over from the previous cycle - remote
+     * connections, tool support - would silently apply to a server that
+     * never asked for it. Put back the defaults from the initializer. */
+    pmix_ptl_base.remote_connections = false;
+    pmix_ptl_base.connections_specified = false;
+    pmix_ptl_base.system_tool = false;
+    pmix_ptl_base.allow_foreign_tools = true;
+    pmix_ptl_base.session_tool = false;
+    pmix_ptl_base.tool_support = false;
 
     /* ensure the listen thread has been shut down */
     pmix_ptl_base_stop_listening();
@@ -510,10 +522,32 @@ static pmix_status_t pmix_ptl_close(void)
     return pmix_mca_base_framework_components_close(&pmix_ptl_base_framework, NULL);
 }
 
+/* Give back what pmix_ptl_open built, when the open fails. pmix_ptl_close
+ * cannot do this: pmix_mca_base_framework_open() answers a failed open by
+ * closing the framework, and a framework that never reached OPEN is closed
+ * without calling its close function. */
+static void open_cleanup(void)
+{
+    free(pmix_ptl_base.connection);
+    pmix_ptl_base.connection = NULL;
+    free(pmix_ptl_base.session_tmpdir);
+    pmix_ptl_base.session_tmpdir = NULL;
+    free(pmix_ptl_base.system_tmpdir);
+    pmix_ptl_base.system_tmpdir = NULL;
+    free(pmix_ptl_base.urifile);
+    pmix_ptl_base.urifile = NULL;
+    free(pmix_ptl_base.rendezvous_filename);
+    pmix_ptl_base.rendezvous_filename = NULL;
+    PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
+    PMIX_DESTRUCT(&pmix_ptl_base.listener);
+    pmix_ptl_base.initialized = false;
+}
+
 static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
 {
     pmix_status_t rc;
-    char *tdir;
+    const char *tdir;
+    bool server;
 
     /* initialize globals */
     pmix_ptl_base.initialized = true;
@@ -521,46 +555,64 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
     PMIX_CONSTRUCT(&pmix_ptl_base.listener, pmix_listener_t);
     pmix_ptl_base.connection = (struct sockaddr_storage *)malloc(sizeof(struct sockaddr_storage));
     if (NULL == pmix_ptl_base.connection) {
-        return PMIX_ERR_NOMEM;
+        rc = PMIX_ERR_NOMEM;
+        goto error;
     }
     memset(pmix_ptl_base.connection, 0, sizeof(struct sockaddr_storage));
 
-    /* check for environ-based directives
-     * on system tmpdir to use */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        pmix_ptl_base.session_tmpdir = strdup(pmix_server_globals.tmpdir);
-    } else {
-        if (NULL != (tdir = getenv("PMIX_SERVER_TMPDIR"))) {
-            pmix_ptl_base.session_tmpdir = strdup(tdir);
-        } else {
-            pmix_ptl_base.session_tmpdir = strdup(pmix_tmp_directory());
-        }
+    /* check for environ-based directives on the tmpdirs to use. A server
+     * or launcher has already resolved both in its init, and they can only
+     * be NULL here if that copy failed - which is an allocation failure,
+     * not an absent directory */
+    server = PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer);
+    if (server) {
+        tdir = pmix_server_globals.tmpdir;
+    } else if (NULL == (tdir = getenv("PMIX_SERVER_TMPDIR"))) {
+        tdir = pmix_tmp_directory();
+    }
+    if (NULL == tdir || NULL == (pmix_ptl_base.session_tmpdir = strdup(tdir))) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
     }
 
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        pmix_ptl_base.system_tmpdir = strdup(pmix_server_globals.system_tmpdir);
-    } else {
-        if (NULL != (tdir = getenv("PMIX_SYSTEM_TMPDIR"))) {
-            pmix_ptl_base.system_tmpdir = strdup(tdir);
-        } else {
-            pmix_ptl_base.system_tmpdir = strdup(pmix_tmp_directory());
-        }
+    if (server) {
+        tdir = pmix_server_globals.system_tmpdir;
+    } else if (NULL == (tdir = getenv("PMIX_SYSTEM_TMPDIR"))) {
+        tdir = pmix_tmp_directory();
+    }
+    if (NULL == tdir || NULL == (pmix_ptl_base.system_tmpdir = strdup(tdir))) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
     }
 
     if (NULL != pmix_ptl_base.report_uri && 0 != strcmp(pmix_ptl_base.report_uri, "-")
         && 0 != strcmp(pmix_ptl_base.report_uri, "+")) {
         pmix_ptl_base.urifile = strdup(pmix_ptl_base.report_uri);
+        if (NULL == pmix_ptl_base.urifile) {
+            rc = PMIX_ERR_NOMEM;
+            goto error;
+        }
     }
 
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (server) {
         if (NULL != (tdir = getenv("PMIX_LAUNCHER_RENDEZVOUS_FILE"))) {
             pmix_ptl_base.rendezvous_filename = strdup(tdir);
+            if (NULL == pmix_ptl_base.rendezvous_filename) {
+                rc = PMIX_ERR_NOMEM;
+                goto error;
+            }
         }
     }
 
     /* Open up all available components */
     rc = pmix_mca_base_framework_components_open(&pmix_ptl_base_framework, flags);
     pmix_ptl_base_output = pmix_ptl_base_framework.framework_output;
+    if (PMIX_SUCCESS == rc) {
+        return PMIX_SUCCESS;
+    }
+
+error:
+    open_cleanup();
     return rc;
 }
 
@@ -603,6 +655,14 @@ static void rcon(pmix_ptl_recv_t *p)
 }
 static void rdes(pmix_ptl_recv_t *p)
 {
+    /* the payload stays ours until pmix_ptl_base_process_msg loads it into
+     * a buffer and clears the pointer. Every other way a message ends - no
+     * recv posted for its tag, a recv with no callback, or a connection
+     * lost part-way through reading it - releases it with the payload
+     * still attached */
+    if (NULL != p->data) {
+        free(p->data);
+    }
     if (NULL != p->peer) {
         PMIX_RELEASE(p->peer);
     }
