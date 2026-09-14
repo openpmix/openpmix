@@ -361,6 +361,59 @@ the session tmpdir. Things to keep straight:
 - **`connect_to_peer` hands back `*suriout` on every path**, failure
   included, so every caller frees it whether or not the connection was
   made.
+- **`pmix_ptl_base_complete_connection` can fail, and does its failing
+  first.** It copies the server's identity into the peer before it sets
+  `pmix_globals.connected` or arms an event, and on failure closes the
+  socket the handshake just finished on, since nothing will ever service
+  it. Keep anything fallible above the `connected` flag.
+
+### Searching a directory for a server
+
+`pmix_ptl_base_df_search` (behind `trysearch` in `connect_to_peer`) and
+`query_servers` (behind `PMIX_QUERY_AVAIL_SERVERS`) walk a directory tree
+for `pmix.*` contact files. **That tree is the system tmpdir, which
+defaults to `$TMPDIR` or `/tmp` — anyone on the node can write there**,
+so everything found in it is untrusted, including what kind of file it
+is. Three rules, each of which was once broken:
+
+- **Only a real directory is descended into.** An entry is classified
+  with `lstat()`; a symbolic link is never followed to a directory. A
+  link back up the tree makes the walk revisit everything below it at
+  every level until the path length runs out, and two of them make that
+  exponential — the walk never came back. A link to a regular file is
+  still read.
+- **Only a regular file is read.** `fopen()` on a FIFO blocks until
+  something opens the other end, so one `pmix.*` FIFO hung every tool
+  searching that directory. The walk skips anything that is not a
+  regular file, and `open_conn_file()` then opens the file
+  `O_NONBLOCK` and checks the *descriptor* with `fstat()`, so the entry
+  cannot be swapped for a FIFO between the check and the open. A file
+  the caller named explicitly (`PMIX_TOOL_ATTACHMENT_FILE`, a rendezvous
+  file) is still opened with plain `fopen()` — naming a FIFO there is
+  the caller's own choice.
+- **A candidate that cannot be read or parsed is skipped, not fatal.**
+  The search used to return the first such failure, which hid any valid
+  file `readdir()` happened to list after it — and a server killed while
+  writing its file leaves exactly that behind. Only `PMIX_ERR_NOMEM`
+  ends the walk.
+
+`test/unit/ptl_search.c` builds a directory holding all three next to
+one valid file and drives both walks under a watchdog.
+
+### What a URI parse accepts
+
+- **The port is strict.** `setup_connection` accepts only a whole
+  decimal field in 1..65535. It used `atoi()`, so `""` and `"x"` were
+  port 0 and `70000` wrapped to 4464 — a mistyped URI connected to some
+  other port instead of being refused. The IPv6 branch additionally
+  never stepped past the `:` it split at, so every `tcp6://` URI came
+  out as port 0; nothing noticed because IPv6 is disabled by default.
+- **The rank is deliberately lenient — do not tighten it.**
+  `pmix_ptl_base_parse_uri` reads the rank with `strtoull()` and no end
+  check. v3.2 servers write the URI with `"%d"`, so a wildcard or
+  invalid rank arrives as a negative number, and `strtoull()` wraps it
+  back onto the same `pmix_rank_t`. A digits-only parse would refuse
+  those servers, which are inside the interoperability floor.
 
 ## Steady state
 
@@ -430,9 +483,13 @@ Two regimes, described in the framework doc. What matters *here*:
   `pmix_tool_retry_attach` is a thread-shift handler. Anything it reaches
   that waits on `pmix_globals.evbase` has to know which one it is on.
 - **The file-wait loops pause through `retry_wait()`, and nothing else.**
-  `pmix_ptl_base_parse_uri_file` and `check_server` pause between looks
-  at a connection file — once while it does not exist yet, and again
-  while it exists but is still being written. The pause is normally an
+  `pmix_ptl_base_parse_uri_file` pauses between looks at a connection
+  file — once while it does not exist yet, and again while it exists but
+  is still being written; `check_server` only for the second. A file a
+  directory walk has just listed is never waited for as "not there yet":
+  it is gone, not late, and `query_servers` runs on the progress thread,
+  so `ptl_base_max_retries` × `connection_wait_time` of waiting per
+  vanished file would stall everything. The pause is normally an
   evtimer on `pmix_globals.evbase` with the caller parked on a lock the
   timer releases. That cannot work on the progress thread: the timer
   fires only when that thread gets back to its loop, and it is the one
@@ -451,6 +508,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_uri.c` | URI/version parsing and version comparison, including every malformed input |
 | `test/unit/ptl_handshake.c` | the `PUT_*`/`GET_*` pair as a round trip, plus truncated-field rejection |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file |
+| `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one |
 | `test/unit/ptl_stalled_peer.c` | a server keeps servicing requests while a peer's connection is idle, or stalled partway into its connect-ack |
 | `test/unit/tool_nspace.c` | a real tool connection leaves exactly one namespace object, and the peer resolves through the one on the list |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |

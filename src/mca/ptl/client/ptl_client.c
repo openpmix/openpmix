@@ -231,7 +231,10 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
 
 complete:
     /* mark the connection as made */
-    pmix_ptl_base_complete_connection(peer, nspace, rank);
+    rc = pmix_ptl_base_complete_connection(peer, nspace, rank);
+    if (PMIX_SUCCESS != rc) {
+        goto error;
+    }
     /* the caller takes ownership of the server URI */
     *suriout = suri;
     suri = NULL;
