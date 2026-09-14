@@ -188,6 +188,19 @@ static void _connect_complete(pmix_status_t status, void *cbdata)
     PMIX_THREADSHIFT(ch, _cnct_complete);
 }
 
+/* PMIX_PTL_LEGACY_PAD: a trailer too short to hold an info count is not an
+ * info blob.
+ *
+ * The v4.1 series counted the connector-flag byte twice when it sized its
+ * connect-ack - once in send_connect_ack, once in construct_message - so
+ * every connect-ack from a v4.1 client or tool ends with one zero byte
+ * after the gds name. A peer that also sends info has that byte after the
+ * blob, where nothing reads it; a peer that does not has it where the blob
+ * would be, and unpacking a count out of it reads past the end. That is a
+ * released wire format and must keep connecting, so both blob parsers
+ * below read "past the end" on the count as "no blob". Any other failure,
+ * and a count that does not fit the bytes received, is still refused.
+ */
 void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 {
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
@@ -563,10 +576,38 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         PMIX_LOAD_BUFFER_NON_DESTRUCT(peer, &buf, blob, len); // allocates no memory
         i32 = 1;
         PMIX_BFROPS_UNPACK(rc, peer, &buf, &nblob, &i32, PMIX_SIZE);
+        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+            /* too short to hold even the count - see PMIX_PTL_LEGACY_PAD */
+            nblob = 0;
+        } else if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIx_Info_list_release(ilist);
+            goto error;
+        }
+        /* nblob came off the wire before the credential was validated - a
+         * packed pmix_info_t is never smaller than a byte, so a count
+         * larger than the blob we actually received is malformed and must
+         * not be handed to PMIX_INFO_CREATE (a huge value over-allocates,
+         * or fails and leaves iblob NULL for the unpack below to walk off
+         * of). This mirrors the guard on the tool path in
+         * process_tool_request(). */
+        if (nblob > len) {
+            rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
+            PMIx_Info_list_release(ilist);
+            goto error;
+        }
         if (0 < nblob) {
             PMIX_INFO_CREATE(iblob, nblob);
             i32 = nblob;
             PMIX_BFROPS_UNPACK(rc, peer, &buf, iblob, &i32, PMIX_INFO);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_INFO_FREE(iblob, nblob);
+                iblob = NULL;
+                PMIx_Info_list_release(ilist);
+                goto error;
+            }
             // process the data
             for (n=0; n < nblob; n++) {
                 if (PMIx_Check_key(iblob[n].key, PMIX_PROC_PID)) {
@@ -638,6 +679,11 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     // prep for processing
     ch = PMIX_NEW(cnct_hdlr_t);
+    if (NULL == ch) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIx_Info_list_release(ilist);
+        goto error;
+    }
     ch->peer = peer;
     ch->pnd = pnd;
     ch->reply = reply;
@@ -1368,7 +1414,10 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         PMIX_LOAD_BUFFER_NON_DESTRUCT(peer, &buf, mg, cnt); // allocates no memory
         foo = 1;
         PMIX_BFROPS_UNPACK(rc, peer, &buf, &sz, &foo, PMIX_SIZE);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+            /* too short to hold even the count - see PMIX_PTL_LEGACY_PAD */
+            sz = 0;
+        } else if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIx_Info_list_release(ilist);
             goto cleanup;
@@ -1382,19 +1431,21 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             PMIx_Info_list_release(ilist);
             goto cleanup;
         }
-        foo = (int32_t) sz;
-        PMIX_INFO_CREATE(iptr, sz);
-        PMIX_BFROPS_UNPACK(rc, peer, &buf, iptr, &foo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
+        if (0 < sz) {
+            foo = (int32_t) sz;
+            PMIX_INFO_CREATE(iptr, sz);
+            PMIX_BFROPS_UNPACK(rc, peer, &buf, iptr, &foo, PMIX_INFO);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_INFO_FREE(iptr, sz);
+                PMIx_Info_list_release(ilist);
+                goto cleanup;
+            }
+            for (n=0; n < sz; n++) {
+                PMIx_Info_list_xfer(ilist, &iptr[n]);
+            }
             PMIX_INFO_FREE(iptr, sz);
-            PMIx_Info_list_release(ilist);
-            goto cleanup;
         }
-        for (n=0; n < sz; n++) {
-            PMIx_Info_list_xfer(ilist, &iptr[n]);
-        }
-        PMIX_INFO_FREE(iptr, sz);
     }
 
     /* does the server support tool connections? */
