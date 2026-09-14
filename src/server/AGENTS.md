@@ -2101,7 +2101,7 @@ notifications.
 tool, because for a tool this is the host's only notice that it has
 gone: a tool is nobody's child, so no waitpid reaches the host, and the
 connection drop that follows raises no `PMIX_ERR_LOST_CONNECTION` —
-`pmix_ptl_base_lost_connection` suppresses that for a peer already marked
+`lost_connection()` in `ptl_base_sendrecv.c` suppresses that for a peer already marked
 finalized, and `op_cbfunc2` marks it. A host that skipped the call would
 carry the tool's state, and anything it had been granted, for the rest of
 its own lifetime; PRRTE stranded the nodes of every command-line elastic
