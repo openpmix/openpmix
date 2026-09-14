@@ -180,8 +180,8 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, p
 PMIX_EXPORT pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
                                                         pmix_info_t *iptr, size_t niptr);
-PMIX_EXPORT void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
-                                                   pmix_rank_t rank);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
+                                                            pmix_rank_t rank);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save,
                                                     pmix_socklen_t *sz, bool *sockopt);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_client_handshake(pmix_peer_t *peer, pmix_status_t reply);
