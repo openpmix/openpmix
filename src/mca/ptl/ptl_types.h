@@ -403,6 +403,13 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_listener_t);
     .cbfunc = NULL                          \
 }
 
+/* The header carries a payload's length in 32 bits, so a buffer larger
+ * than that cannot be framed: the length would be truncated, and the peer
+ * would read the rest of the payload as the next message. Every send path
+ * refuses such a buffer before it is queued. */
+#define PMIX_PTL_MSG_TOO_BIG(b) \
+    (NULL != (b) && (uint64_t) (b)->bytes_used > (uint64_t) UINT32_MAX)
+
 /* provide a backdoor to the framework output for debugging */
 PMIX_EXPORT extern int pmix_ptl_base_output;
 
@@ -438,6 +445,9 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_post_loopback(struct pmix_peer_t *peer,
                             (t), (int) (b)->bytes_used);                                        \
         if ((p)->finalized) {                                                                   \
             (r) = PMIX_ERR_UNREACH;                                                             \
+        } else if (PMIX_PTL_MSG_TOO_BIG(b)) {                                                   \
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);                                                 \
+            (r) = PMIX_ERR_BAD_PARAM;                                                           \
         } else if ((pmix_peer_t *) (p) == pmix_globals.mypeer) {                                \
             /* the answer to a request we sent ourselves: we have no                            \
              * socket to queue it on, so hand it straight back to the                          \

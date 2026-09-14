@@ -493,6 +493,20 @@ that bite:
 - **`send_msg` handles partial writes** by tracking `hdr_sent` plus the
   `sdptr`/`sdbytes` cursor; `EAGAIN` returns `PMIX_ERR_RESOURCE_BUSY` and
   the event refires. Do not simplify this into a single `write`.
+- **Two size limits apply before and during a send.**
+  - A buffer larger than `UINT32_MAX` is refused before it is queued
+    (`PMIX_PTL_MSG_TOO_BIG`, on all three send paths). The header holds
+    the payload length in 32 bits; framing one anyway truncated the
+    length, and the peer read the rest of the payload as the next
+    message. A refused sendrecv is answered with the empty buffer.
+  - No single `writev` carries more than `pmix_ptl_base.max_write`
+    (`INT_MAX`). macOS refuses a larger one with `EINVAL` instead of
+    writing part of it, which dropped the connection on any message over
+    2 GB. `send_msg` loops over capped writes, and waits on the socket
+    only after a genuinely short one. `read_bytes` caps each `read()`
+    the same way. `max_write` exists for `test/unit/ptl_sendrecv.c`,
+    which lowers it to drive the chunking with a small message; it is
+    not a tuning knob.
 
 ## The listener
 
@@ -619,7 +633,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_uri.c` | URI/version parsing and version comparison, including every malformed input |
 | `test/unit/ptl_handshake.c` | the `PUT_*`/`GET_*` pair as a round trip, plus truncated-field rejection |
 | `test/unit/ptl_frame.c` | a released message frees its payload, an oversized `max_msg_size` means no limit, port-list fallback, and role flags reset across an init/finalize cycle |
-| `test/unit/ptl_sendrecv.c` | lost-connection completion per peer, a split header, a sendrecv to a closed peer, and `flush_sends` past `FD_SETSIZE` |
+| `test/unit/ptl_sendrecv.c` | lost-connection completion per peer, a split header, a sendrecv to a closed peer or to a tool itself, a message too large to frame, writes split by the cap, and `flush_sends` past `FD_SETSIZE` |
 | `test/unit/ptl_loopback.c` | a server's request to itself reaches its switchyard and is answered once; a loopback reply nobody waits for is not read as a command |
 | `test/unit/ptl_listener.c` | accept out of descriptors stops the listener cleanly; mistyped, out-of-range and empty directives; a directive-named report file is removed |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
