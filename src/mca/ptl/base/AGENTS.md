@@ -462,6 +462,35 @@ publishes the URI into `gds`, and drops rendezvous files.
   thread failed to start" message does not bury it.
   `test/unit/rndz_stale.c` pins both halves.
 
+## Framework open and close
+
+`ptl_base_frame.c`. The framework can be opened, closed and opened again
+in one process — a server init after a finalize does exactly that — so
+three rules apply:
+
+- **`pmix_ptl_close` puts every global back to its initializer value.**
+  That covers more than the allocated strings. The listener's role flags
+  (`remote_connections`, `tool_support`, `system_tool`, `session_tool`,
+  `allow_foreign_tools`, `connections_specified`) are set only from the
+  directives the caller passes, never cleared by the listener itself. A
+  flag left over from the last cycle once made a second server listen on
+  a public interface it never asked for. Add a new flag to the reset.
+- **A failed `pmix_ptl_open` must clean up after itself.**
+  `pmix_mca_base_framework_open()` answers a failed open by closing the
+  framework, but a framework that never reached OPEN is closed *without*
+  calling `pmix_ptl_close`. `open_cleanup()` is the unwind; keep it in
+  step with what open allocates.
+- **Register can run twice without a close in between.** The port
+  arrays are built in `pmix_ptl_register`, and a framework that was
+  registered but never opened is registered again by the next open.
+  `set_ports()` frees the old array first.
+
+`pmix_ptl_recv_t` owns its `data`. `pmix_ptl_base_process_msg` hands the
+payload to a buffer and clears the pointer; every other ending — no recv
+for the tag, a recv without a callback, a connection lost mid-message —
+releases the message with the payload attached, and the destructor frees
+it.
+
 ## Threading
 
 Two regimes, described in the framework doc. What matters *here*:
@@ -507,6 +536,7 @@ Two regimes, described in the framework doc. What matters *here*:
 |------|--------|
 | `test/unit/ptl_uri.c` | URI/version parsing and version comparison, including every malformed input |
 | `test/unit/ptl_handshake.c` | the `PUT_*`/`GET_*` pair as a round trip, plus truncated-field rejection |
+| `test/unit/ptl_frame.c` | a released message frees its payload, an oversized `max_msg_size` means no limit, port-list fallback, and role flags reset across an init/finalize cycle |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file |
 | `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one |
 | `test/unit/ptl_stalled_peer.c` | a server keeps servicing requests while a peer's connection is idle, or stalled partway into its connect-ack |
