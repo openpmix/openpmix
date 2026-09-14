@@ -167,6 +167,37 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/* A stand-in for a connected client that has no socket. The server's
+ * handlers are driven with it as the requesting peer, so a reply queued to
+ * it comes to rest on its send_msg, where the cases read it back. It
+ * cannot be pmix_globals.mypeer itself: a reply the server queues to its
+ * own peer is the answer to a request it sent itself, and is delivered
+ * straight back through the loopback rather than queued. It shares the
+ * server's namespace and rank objects, so it packs and identifies itself
+ * exactly as that peer does. */
+static pmix_peer_t *standin_peer = NULL;
+
+static pmix_peer_t *standin(void)
+{
+    if (NULL == standin_peer) {
+        standin_peer = PMIX_NEW(pmix_peer_t);
+        PMIX_RETAIN(pmix_globals.mypeer->nptr);
+        standin_peer->nptr = pmix_globals.mypeer->nptr;
+        PMIX_RETAIN(pmix_globals.mypeer->info);
+        standin_peer->info = pmix_globals.mypeer->info;
+        memcpy(&standin_peer->proc_type, &pmix_globals.mypeer->proc_type,
+               sizeof(pmix_proc_type_t));
+    }
+    return standin_peer;
+}
+
+static void release_standin(void)
+{
+    if (NULL != standin_peer) {
+        PMIX_RELEASE(standin_peer);
+    }
+}
+
 #define CTLUT_DIR "/tmp/pmix-server-control-ut-no-such-dir"
 
 /* the sentinel the credential case looks for in the queued reply */
@@ -337,7 +368,7 @@ static pmix_status_t stub_get_credential(const pmix_proc_t *proc,
  * rest on the peer and can be read back here. */
 static pmix_buffer_t *take_queued_reply(void)
 {
-    pmix_peer_t *peer = pmix_globals.mypeer;
+    pmix_peer_t *peer = standin();
     pmix_ptl_send_t *snd = peer->send_msg;
     pmix_buffer_t *buf;
 
@@ -378,11 +409,11 @@ static pmix_status_t do_get_credential(void)
         PMIX_RELEASE(buf);
         return PMIX_ERR_NOMEM;
     }
-    PMIX_RETAIN(pmix_globals.mypeer);
-    cd->peer = pmix_globals.mypeer;
+    cd->peer = standin();
+    PMIX_RETAIN(cd->peer);
     cd->hdr.tag = 0;
 
-    rc = pmix_server_get_credential(pmix_globals.mypeer, buf,
+    rc = pmix_server_get_credential(standin(), buf,
                                     pmix_server_cred_cbfunc, cd);
     if (PMIX_SUCCESS != rc) {
         /* the switchyard owns the caddy on a non-success return */
@@ -457,7 +488,7 @@ static pmix_status_t do_log(time_t timestamp,
     if (NULL == buf) {
         return PMIX_ERR_NOMEM;
     }
-    rc = pmix_server_log(pmix_globals.mypeer, buf, op_stub, NULL);
+    rc = pmix_server_log(standin(), buf, op_stub, NULL);
     PMIX_RELEASE(buf);
     return rc;
 }
@@ -508,11 +539,11 @@ static pmix_status_t do_query(const char *key, const char *qualkey,
         PMIX_RELEASE(buf);
         return PMIX_ERR_NOMEM;
     }
-    PMIX_RETAIN(pmix_globals.mypeer);
-    cd->peer = pmix_globals.mypeer;
+    cd->peer = standin();
+    PMIX_RETAIN(cd->peer);
     cd->hdr.tag = 0;
 
-    rc = pmix_server_query(pmix_globals.mypeer, buf, qry_cbfunc, cd);
+    rc = pmix_server_query(standin(), buf, qry_cbfunc, cd);
     if (PMIX_SUCCESS != rc) {
         /* the switchyard owns the caddy on a non-success return */
         PMIX_RELEASE(cd);
@@ -550,7 +581,7 @@ static pmix_status_t do_job_ctrl(pmix_info_t *info, size_t ninfo)
         PMIX_RELEASE(buf);
         return rc;
     }
-    rc = pmix_server_job_ctrl(pmix_globals.mypeer, buf, NULL, NULL);
+    rc = pmix_server_job_ctrl(standin(), buf, NULL, NULL);
     PMIX_RELEASE(buf);
     return rc;
 }
@@ -585,11 +616,11 @@ static pmix_status_t do_query_count(size_t nqueries)
         PMIX_RELEASE(buf);
         return PMIX_ERR_NOMEM;
     }
-    PMIX_RETAIN(pmix_globals.mypeer);
-    cd->peer = pmix_globals.mypeer;
+    cd->peer = standin();
+    PMIX_RETAIN(cd->peer);
     cd->hdr.tag = 0;
 
-    rc = pmix_server_query(pmix_globals.mypeer, buf, qry_cbfunc, cd);
+    rc = pmix_server_query(standin(), buf, qry_cbfunc, cd);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cd);
     }
@@ -637,11 +668,11 @@ static pmix_status_t do_query_nokeys(void)
         PMIX_RELEASE(buf);
         return PMIX_ERR_NOMEM;
     }
-    PMIX_RETAIN(pmix_globals.mypeer);
-    cd->peer = pmix_globals.mypeer;
+    cd->peer = standin();
+    PMIX_RETAIN(cd->peer);
     cd->hdr.tag = 0;
 
-    rc = pmix_server_query(pmix_globals.mypeer, buf, qry_cbfunc, cd);
+    rc = pmix_server_query(standin(), buf, qry_cbfunc, cd);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cd);
     }
@@ -690,7 +721,7 @@ static pmix_status_t do_job_ctrl_targets(size_t declared, size_t packed)
         PMIX_RELEASE(buf);
         return rc;
     }
-    rc = pmix_server_job_ctrl(pmix_globals.mypeer, buf, NULL, NULL);
+    rc = pmix_server_job_ctrl(standin(), buf, NULL, NULL);
     PMIX_RELEASE(buf);
     return rc;
 }
@@ -1534,6 +1565,7 @@ int main(int argc, char **argv)
     /* --- the host's abort up-call --------------------------------- */
     test_abort_upcall();
 
+    release_standin();
     PMIx_server_finalize();
 
     fprintf(stdout, "server_control: %d passed, %d failed\n", npass, nfail);

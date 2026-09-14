@@ -112,6 +112,37 @@
 #include <string.h>
 #include <unistd.h>
 
+/* A stand-in for a connected client that has no socket. The server's
+ * handlers are driven with it as the requesting peer, so a reply queued to
+ * it comes to rest on its send_msg, where the cases read it back. It
+ * cannot be pmix_globals.mypeer itself: a reply the server queues to its
+ * own peer is the answer to a request it sent itself, and is delivered
+ * straight back through the loopback rather than queued. It shares the
+ * server's namespace and rank objects, so it packs and identifies itself
+ * exactly as that peer does. */
+static pmix_peer_t *standin_peer = NULL;
+
+static pmix_peer_t *standin(void)
+{
+    if (NULL == standin_peer) {
+        standin_peer = PMIX_NEW(pmix_peer_t);
+        PMIX_RETAIN(pmix_globals.mypeer->nptr);
+        standin_peer->nptr = pmix_globals.mypeer->nptr;
+        PMIX_RETAIN(pmix_globals.mypeer->info);
+        standin_peer->info = pmix_globals.mypeer->info;
+        memcpy(&standin_peer->proc_type, &pmix_globals.mypeer->proc_type,
+               sizeof(pmix_proc_type_t));
+    }
+    return standin_peer;
+}
+
+static void release_standin(void)
+{
+    if (NULL != standin_peer) {
+        PMIX_RELEASE(standin_peer);
+    }
+}
+
 static int npass = 0;
 static int nfail = 0;
 
@@ -248,8 +279,8 @@ static void do_fence(int sd, short args, void *cbdata)
         PMIX_WAKEUP_THREAD(&r->lock);
         return;
     }
-    PMIX_RETAIN(pmix_globals.mypeer);
-    cd->peer = pmix_globals.mypeer;
+    cd->peer = standin();
+    PMIX_RETAIN(cd->peer);
     cd->hdr.tag = 0;
 
     rc = pmix_server_fence(cd, &buf, pmix_server_modex_cbfunc);
@@ -317,8 +348,8 @@ static void build_tracker(int sd, short args, void *cbdata)
     trk->host_called = true;
     for (n = 0; n < b->nparticipants; n++) {
         cd = PMIX_NEW(pmix_server_caddy_t);
-        PMIX_RETAIN(pmix_globals.mypeer);
-        cd->peer = pmix_globals.mypeer;
+        cd->peer = standin();
+        PMIX_RETAIN(cd->peer);
         cd->hdr.tag = (uint32_t) (100 + n);
         pmix_list_append(&trk->local_cbs, &cd->super);
     }
@@ -333,7 +364,7 @@ static void build_tracker(int sd, short args, void *cbdata)
  * rest accumulate on send_queue. */
 static pmix_buffer_t *take_queued_reply(void)
 {
-    pmix_peer_t *peer = pmix_globals.mypeer;
+    pmix_peer_t *peer = standin();
     pmix_ptl_send_t *snd = peer->send_msg;
     pmix_buffer_t *buf;
 
@@ -1265,6 +1296,7 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
+    release_standin();
     PMIx_server_finalize();
 
     return (nfail > 0) ? 1 : 0;

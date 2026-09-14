@@ -319,8 +319,11 @@ is ignored" instead of "both processes spin forever", but it does not
 make the message arrive.
 
 **Loopback.** A send whose peer is `pmix_globals.mypeer` skips the socket
-entirely: the buffer is handed straight to `PMIX_ACTIVATE_POST_MSG` and
-matched locally. This is how a server delivers to itself.
+entirely: the buffer is posted straight to the matching code. This is how
+a server delivers to itself — one-way messages such as its own IOF, and
+a sendrecv round trip, whose reply `PMIX_SERVER_QUEUE_REPLY` loops back
+the same way. A request and its reply carry the same tag, so the matching
+code tells them apart; see [`base/AGENTS.md`](base/AGENTS.md).
 
 **Teardown.** `lost_connection` stops the peer's events, closes the
 socket, and — if we are a server — accounts for the departed client in
