@@ -188,6 +188,14 @@ static void _mdxcbfunc(int sd, short args, void *cbdata)
     /* do NOT destruct the xfer buffer as that would release the payload! */
 
 finish_collective:
+    /* Only now is what each participant contributed known to have been
+     * delivered, so only now may the next fence over this set skip it.
+     * This has to precede the reply loop, which releases the caddies that
+     * record how far each contribution went. */
+    if (PMIX_SUCCESS == rc) {
+        pmix_server_modex_contributed(tracker);
+    }
+
     /* Loop across all procs in the tracker, sending them the reply.
      *
      * A failure serving one participant must not abandon the others.

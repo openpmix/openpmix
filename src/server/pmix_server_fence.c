@@ -1256,19 +1256,34 @@ static uint64_t participant_signature(const pmix_proc_t *procs, size_t nprocs)
     return h;
 }
 
-/* Record that every local participant's contribution has reached the
- * host, so the next one can carry only what changes from here.
+/* Record that every local participant's contribution has been delivered,
+ * so the next one can carry only what changes from here.
  *
- * This is deliberately NOT done inside pmix_server_collect_data. That
- * runs before the up-call, and its caller has three arms that discard
- * the bucket - collect_data failing, the host refusing the request, and
- * fail_collective. Draining there would lose those deltas for good,
- * because nothing else remembers them: the datastore still holds the
- * values, but the record of which ones this rank had yet to send does
- * not survive.
+ * Call this only for a fence that has COMPLETED SUCCESSFULLY - from
+ * _mdxcbfunc, once the payload is stored. Every earlier point is too
+ * early, because the data can still be lost after it:
  *
- * Draining a rank twice is a no-op and stamping it twice is idempotent,
- * so unlike the collection itself this needs no clone dedup. */
+ * - pmix_server_collect_data runs before the up-call, and its caller has
+ *   arms that discard the bucket (collect_data failing, the host refusing
+ *   the request, fail_collective).
+ * - the host accepting the bucket is not delivery either. A host may
+ *   still end the collective without delivering anything - on a
+ *   PMIX_TIMEOUT, or when it loses a participant - and it did so on every
+ *   daemon at once. Stamping at acceptance marked that data as sent to a
+ *   set that never received it, so every later fence over the same set
+ *   sent only what was newer, and the lost values were never sent again:
+ *   a PMIx_Get for them with PMIX_OPTIONAL could not succeed for the life
+ *   of the job.
+ *
+ * Nothing is lost by waiting: a failed fence leaves the mark where it
+ * was, and the next fence over the set resends from there.
+ *
+ * Each caddy carries how far collect_data packed its rank for THIS fence
+ * (modex_upto), rather than the rank keeping one scratch value - a rank
+ * can be in two fences over different sets at once, and a per-rank
+ * scratch would be overwritten by the second collection before the first
+ * completes. A mark only ever moves forward, so a clone's caddy (which
+ * collect_data skips, leaving 0) and a repeated stamp are both no-ops. */
 void pmix_server_modex_contributed(pmix_server_trkr_t *trk)
 {
     pmix_server_caddy_t *scd;
@@ -1294,10 +1309,9 @@ void pmix_server_modex_contributed(pmix_server_trkr_t *trk)
         }
         /* Advance to precisely what collect_data packed, not to the log's
          * current end: anything appended since is owed to this set, and
-         * stamping it as sent would lose it. Marking a rank twice is
-         * idempotent, so unlike the collection this needs no clone dedup. */
-        if (mark->watermark < info->modex_marked_upto) {
-            mark->watermark = info->modex_marked_upto;
+         * stamping it as sent would lose it. */
+        if (mark->watermark < scd->modex_upto) {
+            mark->watermark = scd->modex_upto;
         }
     }
 }
@@ -1499,9 +1513,9 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
              * been fenced over therefore gets all of it, which is what
              * closes the gap two sub-communicators would otherwise leave.
              *
-             * The mark is not moved here. collect_data's caller has three
-             * arms that discard the bucket, so the advance waits until the
-             * host has taken it - see pmix_server_modex_contributed.
+             * The mark is not moved here: the advance waits until the
+             * fence has completed successfully - see
+             * pmix_server_modex_contributed.
              *
              * An empty selection is a legitimate answer, and the receiver
              * reads a proc with no kvals as "nothing new from this rank". */
@@ -1527,7 +1541,7 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
                     goto cleanup;
                 }
             }
-            scd->peer->info->modex_marked_upto = scd->peer->info->modex_next_id;
+            scd->modex_upto = scd->peer->info->modex_next_id;
             blob = PMIX_NEW(rank_blob_t);
             if (NULL == blob) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
@@ -1946,12 +1960,6 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         trk->host_called = true;
         rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info, trk->ninfo, data, sz,
                                        trk->modexcbfunc, trk);
-        if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
-            /* the host has taken the bucket, so what it carries is no
-             * longer outstanding. Do this before the completion below,
-             * which can release the tracker. */
-            pmix_server_modex_contributed(trk);
-        }
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             /* clear the caddy from this tracker so it can be
              * released upon return - the switchyard will send an
@@ -2270,12 +2278,6 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
                     rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info,
                                                    trk->ninfo, data, sz,
                                                    trk->modexcbfunc, trk);
-                    if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
-                        /* the host has taken the bucket, so what it
-                         * carries is no longer outstanding. Do this before
-                         * any completion below, which releases trk. */
-                        pmix_server_modex_contributed(trk);
-                    }
                     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
                         pmix_server_fail_collective(trk, rc);
                     } else if (PMIX_OPERATION_SUCCEEDED == rc) {

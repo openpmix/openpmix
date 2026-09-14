@@ -84,8 +84,9 @@ Detailed changes since v6.1.0:
    already contributed to a fence over the same participant set; anything
    else falls back to the full set, which keeps two sub-communicators
    fencing independently from withholding data from each other. The
-   watermark advances only once the host has taken the bucket, since the
-   request has three arms that discard it.
+   watermark advances only once the fence has completed successfully, so
+   a contribution the host accepted but a timed-out or aborted collective
+   never delivered is sent again by the next fence.
  - gds/shmem3 keeps modex generations rather than always dropping the
    previous one. A cumulative contribution repeats everything, so it
    still supersedes the generation before it and every one behind that.
