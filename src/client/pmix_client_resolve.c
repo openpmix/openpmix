@@ -165,7 +165,6 @@ static void resolve_peers(int sd, short args, void *cbdata)
     size_t m, n, np, nalloc = 0, ninfo;
     int npeers;
     pmix_namespace_t *ns;
-    char *key;
     pmix_kval_t *kv;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
@@ -175,37 +174,15 @@ static void resolve_peers(int sd, short args, void *cbdata)
     // not allow the search to call up to the server. This
     // avoids a threadlock situation
     PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, NULL, PMIX_BOOL);
-
-    /* if I am a client and my server is earlier than v3.2.x, then I need to
-     * look for this data keyed by the nodename rather than under
-     * PMIX_LOCAL_PEERS with node-info qualifiers.
-     *
-     * NOTE: what the legacy branch varies is the key and the number of
-     * directives - not the rank. Both branches look the data up at
-     * PMIX_RANK_UNDEF, set once below, because try_fetch() retries an UNDEF
-     * rank as WILDCARD and that is what reaches a pre-v3.2 server's
-     * wildcard-filed entry. This branch used to assign PMIX_RANK_WILDCARD
-     * here as well, which read as the thing that made the legacy path work
-     * and was in fact a dead store - the assignment below overwrote it
-     * before anyone looked. Removing it changes nothing; *restoring the
-     * intent* - fetching at WILDCARD directly rather than by way of the
-     * retry - is the part that wants a pre-v3.2 server to test against, and
-     * there is none. See docs/todo.rst. */
-    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
-        PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100)) {
-        key = cd->nodename;
-        ninfo = 1;
-    } else {
-        key = PMIX_LOCAL_PEERS;
-        PMIX_INFO_LOAD(&info[1], PMIX_NODE_INFO, NULL, PMIX_BOOL);
-        PMIX_INFO_LOAD(&info[2], PMIX_HOSTNAME, cd->nodename, PMIX_STRING);
-        ninfo = 3;
-    }
+    // the peers are node-level info for the node being resolved
+    PMIX_INFO_LOAD(&info[1], PMIX_NODE_INFO, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_HOSTNAME, cd->nodename, PMIX_STRING);
+    ninfo = 3;
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     proc.rank = PMIX_RANK_UNDEF;
     cb.proc = &proc;
-    cb.key = key;
+    cb.key = PMIX_LOCAL_PEERS;
     cb.scope = PMIX_INTERNAL;
     cb.info = info;
     cb.ninfo = ninfo;
