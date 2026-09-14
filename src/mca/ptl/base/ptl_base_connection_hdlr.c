@@ -637,10 +637,13 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
      * affecting the other peers sharing this nspace */
     peer->gds = peer->nptr->compat.gds;
 
-    /* if we haven't previously stored the version for this
-     * nspace, do so now */
+    /* if we haven't previously stored the wire format for this
+     * nspace, do so now. This is what PMIx_Data_pack/unpack fall back
+     * on for an nspace with no connected peer left, and they hand it to
+     * pmix_bfrops_base_assign_module() - which matches a component
+     * name ("v61"), not the peer's library release ("7.0.0") */
     if (!nptr->version_stored) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_BFROPS_MODULE, pnd->version, PMIX_STRING);
+        PMIX_INFO_LOAD(&ginfo, PMIX_BFROPS_MODULE, peer->nptr->compat.bfrops->version, PMIX_STRING);
         PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, peer->nptr, &ginfo, 1);
         PMIX_INFO_DESTRUCT(&ginfo);
         nptr->version_stored = true;
@@ -1116,13 +1119,13 @@ static void process_cbfunc(int sd, short args, void *cbdata)
      * connection path for rationale) */
     peer->gds = peer->nptr->compat.gds;
 
-    /* if we haven't previously stored the version for this
-     * nspace, do so now */
+    /* if we haven't previously stored the wire format for this
+     * nspace, do so now - see the client path above */
     if (!peer->nptr->version_stored) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_BFROPS_MODULE, pnd->version, PMIX_STRING);
+        PMIX_INFO_LOAD(&ginfo, PMIX_BFROPS_MODULE, peer->nptr->compat.bfrops->version, PMIX_STRING);
         PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, peer->nptr, &ginfo, 1);
         PMIX_INFO_DESTRUCT(&ginfo);
-        nptr->version_stored = true;
+        peer->nptr->version_stored = true;
     }
 
     /* automatically setup to forward output to the tool */
