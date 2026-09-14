@@ -1271,18 +1271,19 @@ static void check_server(char *filename, pmix_list_t *servers)
             return;
         }
     }
+    /* an empty or malformed "pmix.*" file is to be expected in a
+     * directory anyone can write to - not an error worth reporting */
     if (NULL == srvr) {
-        PMIX_ERROR_LOG(PMIX_ERR_FILE_READ_FAILURE);
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "pmix:tcp: %s is empty", filename);
         fclose(fp);
         return;
     }
     rc = pmix_ptl_base_parse_uri(srvr, &nspace, &rank, NULL);
     if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "pmix:tcp: %s holds no server URI", filename);
         fclose(fp);
-        if (NULL != nspace) {
-            free(nspace);
-        }
         free(srvr);
         return;
     }
@@ -1291,7 +1292,6 @@ static void check_server(char *filename, pmix_list_t *servers)
     PMIX_LIST_FOREACH (iptr, servers, pmix_infolist_t) {
         /* each item contains an array starting with the server nspace */
         sdata = (pmix_info_t *) iptr->info.value.data.darray->array;
-        ndata = iptr->info.value.data.darray->size;
         if (0 == strcmp(sdata[0].value.data.string, nspace) && sdata[1].value.data.rank == rank) {
             /* already have this one */
             fclose(fp);
