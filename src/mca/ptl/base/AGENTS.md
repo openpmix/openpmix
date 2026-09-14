@@ -108,6 +108,17 @@ these macros. Two consequences:
   underflow `cnt`, which then lets every later field read out of bounds
   too. If you add a field, bound it the same way, and add the truncated
   case to `test/unit/ptl_handshake.c`.
+- The optional trailing `pmix_info_t` blob (field 10) carries its own
+  element **count** as the first thing `PMIX_BFROPS_UNPACK` reads out of
+  it, and that count is off the wire too. Bound it against the blob's own
+  byte length before handing it to `PMIX_INFO_CREATE` — a packed
+  `pmix_info_t` is never smaller than a byte, so a count larger than the
+  bytes received is malformed, and passing it on either over-allocates or
+  returns a NULL array the follow-on unpack then walks off of. **Both**
+  the client path (`pmix_ptl_base_connection_handler`) and the tool path
+  (`process_tool_request`) parse this blob and both must apply the guard;
+  the client path silently lacked it for a time. Check the unpack return
+  on each step here as well — a corrupt blob is the normal way these fail.
 
 Similarly, the peer's version string is parsed by
 `pmix_ptl_base_parse_version`, which tolerates any number of components
