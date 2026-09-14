@@ -451,34 +451,43 @@ nothing.
   whose membership has drained (the `PMIX_GROUP_LEFT` handler decrements
   `nmbrs` and keeps the group) — or a valid empty result is reported as
   `PMIX_ERR_NOMEM`.
-- **Arming the construct watch must be the last thing an entry point does,
-  because there is no way to take it back.** `setup_leader_watch()` hands
-  the observer registry a tracker carrying the caller's `cbfunc`/`cbdata`,
-  and from that moment the watch fires on any
-  `PMIX_GROUP_CONSTRUCT_COMPLETE` or `_ABORT` naming its group id — or
-  naming none at all, which it treats as its own. An `_nb` entry point that
-  then returns an error has told the caller no callback is coming, and the
-  caller is entitled to free what `cbdata` points at; for the blocking
-  wrappers that object is a `pmix_group_tracker_t` on a **stack frame**, so
-  the next matching event writes a status and a `PMIX_WAKEUP_THREAD` into a
-  frame that has returned.
+- **The construct watch must be armed before the request it waits on is
+  sent, and nothing fallible may follow the arming.** Both halves have
+  been broken, one at a time.
 
-  Disarming from the entry point is not a way out, and it is worth knowing
-  why, because it looks like one. From the moment the registration is
-  handed over, the tracker belongs to the progress thread: `watch_regcb`
-  writes `cb->ref` there and `leader_watch_observer` reads `cb->cbfunc` and
-  `cb->completed` there. An entry point that reached back in would be
-  racing both. The losing interleaving needs no exotic timing — the
-  progress thread sets `cb->ref` and reads `cb->completed` as `false`, the
-  entry point then reads a stale `cb->ref` of `SIZE_MAX` and skips the
-  deregistration, and the observer is left installed for the life of the
-  process holding a `cbdata` the caller has freed. So both `_nb` entry
-  points arm the watch only after their send, with nothing fallible after
-  it, and each explains in place why arming late cannot lose the outcome:
-  the send and the registration are both thread-shifted, so the
-  registration is active on the progress thread's event base before the
-  request has reached the socket, and any inbound event is delivered by
-  that same thread in a callback that must run after it.
+  *No error after the arming.* `setup_leader_watch()` hands the observer
+  registry a tracker carrying the caller's `cbfunc`/`cbdata`, and from that
+  moment the watch fires on any `PMIX_GROUP_CONSTRUCT_COMPLETE` or `_ABORT`
+  naming its group id — or naming none at all, which it treats as its own.
+  An `_nb` entry point that then returns an error has told the caller no
+  callback is coming, and the caller is entitled to free what `cbdata`
+  points at; for the blocking wrappers that object is a
+  `pmix_group_tracker_t` on a **stack frame**. Disarming from the entry
+  point is not a way out: from the handoff the tracker belongs to the
+  progress thread (`watch_regcb` writes `cb->ref`, `leader_watch_observer`
+  reads `cb->cbfunc`/`cb->completed`), and an entry point reaching back in
+  races both.
+
+  *No send before the arming.* Both `_nb` entry points used to send first
+  and arm afterwards, on the reasoning that both calls merely thread-shift,
+  so the registration would be active before any reply could arrive. It is
+  not so: the send is written by the progress thread the moment it is
+  shifted, and the whole construct can complete while the caller's thread
+  is still descheduled between the two calls. The outcome is delivered to
+  the application's handlers, the watch registers after it, and
+  `PMIx_Group_invite` never returns. A construct outcome that reached a
+  handler is not cached, so the registration's replay does not recover it.
+  This hung `run_grpinvitesuppress.pl` about 1 run in 250 on loaded
+  machines, and every time with a 300 ms pause inserted between the calls.
+
+  So the entry points now pack the request, put it in a `watch_send_t`,
+  and arm the watch with it; `watch_send_regcb()` sends it from the
+  registration callback, where the observer is known to be on its list.
+  A failed registration or a failed send there is reported through the
+  caller's callback — the entry point has already returned success. The
+  join path does this only for an acceptance that waits on a leader; a
+  decline or a leaderless accept is completed by its send and sends
+  directly.
 - **Record the group before you build the results, not after.**
   `construct_cbfunc()` reports the server's status in `ret` and assembles
   the caller's results separately, so every failure in that assembly is
