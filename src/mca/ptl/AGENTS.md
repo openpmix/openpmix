@@ -326,9 +326,12 @@ matched locally. This is how a server delivers to itself.
 socket, and — if we are a server — accounts for the departed client in
 every collective tracker it was part of (adjusting counts, possibly
 completing or forwarding the collective), purges its cached
-notifications, and reports `PMIX_ERR_LOST_CONNECTION`. If instead our
-*server* died, it completes any in-flight `SEND_RECV`s with an empty
-buffer so blocked callers do not hang, then reports the event.
+notifications, and reports `PMIX_ERR_LOST_CONNECTION`. For any lost peer
+it completes the `SEND_RECV`s still waiting on *that peer* with an empty
+buffer, so blocked callers do not hang; if the peer was our primary
+server it also reports the event. A tool may be attached to several
+servers, which is why the completion is per peer — see
+[`base/AGENTS.md`](base/AGENTS.md).
 
 ## How a connection is established
 

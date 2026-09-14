@@ -428,11 +428,47 @@ that bite:
 - **A dynamic-tag recv is one-shot**; `process_msg` removes it after
   firing. The reserved tags below `PMIX_PTL_TAG_DYNAMIC` are persistent
   and are never removed.
-- **`lost_connection` must only complete the dynamic-tag recvs.** It
-  hands them an empty buffer so blocked `SEND_RECV` callers unwind. The
-  persistent recvs (notification, IOF, IOF flow control) have nobody
+- **`lost_connection` completes the lost peer's dynamic-tag recvs, and
+  only that peer's.** It hands each an empty buffer so a blocked
+  `SEND_RECV` caller unwinds, then takes it off the list. Three ways to
+  get this wrong, all of which the code once did:
+  - completing *every* peer's recvs. A tool can be attached to several
+    servers and switch its primary with `PMIx_tool_set_server`, so the
+    list holds recvs for more than one peer. Completing another server's
+    recv answers a live request; its real reply then runs the callback a
+    second time, on a caddy the first run freed.
+  - completing nothing when the lost peer is not `myserver`. That is the
+    tool losing a non-primary server, and every request outstanding on
+    it waited forever.
+  - leaving a completed recv posted. Nothing else removes it, and it
+    points at a peer that may be freed and its address reused.
+
+  The persistent recvs (notification, IOF, IOF flow control) have nobody
   waiting on them; giving them that buffer only makes them fail to
   unpack a message that was never sent.
+- **A sendrecv that cannot be sent is still answered.**
+  `pmix_ptl_base_send_recv` can find the peer's socket already closed —
+  the connection dropped after the caller checked `connected`, before the
+  thread-shift ran. It gives the callback the same empty buffer instead
+  of dropping the request, which left a blocking caller waiting forever.
+  The same goes for an allocation failure on that path.
+- **The loopback branch of `pmix_ptl_base_send_recv` is unreachable.**
+  `pmix_globals.mypeer->sd` is always -1, so the closed-socket screen
+  above answers first. Do not reorder the two to "enable" it: a request
+  delivered to ourselves would match the reply recv just posted for it
+  on the same tag, ahead of the server's wildcard, and hand the request
+  to the reply callback. The one-way `pmix_ptl_base_send` loopback is
+  real.
+- **A header is read into the message, through its cursor.** The
+  receive handler must resume a header that arrived in pieces. It once
+  read into a local copy that each call restarted, so the first piece
+  was lost and every later header was read from the wrong offset. A
+  sender splits a header whenever its kernel buffer fills part-way
+  through one — `send_msg` has a branch for exactly that.
+- **`flush_sends` must not `FD_SET` a descriptor at or past
+  `FD_SETSIZE`.** `FD_SET` does not check, and a server hosting a few
+  hundred local procs has descriptors well past 1024. Such a socket just
+  waits out the retry interval.
 - **Loopback bypasses the socket entirely.** A send whose peer is
   `pmix_globals.mypeer` goes straight to `PMIX_ACTIVATE_POST_MSG`.
 - **`send_msg` handles partial writes** by tracking `hdr_sent` plus the
@@ -537,6 +573,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_uri.c` | URI/version parsing and version comparison, including every malformed input |
 | `test/unit/ptl_handshake.c` | the `PUT_*`/`GET_*` pair as a round trip, plus truncated-field rejection |
 | `test/unit/ptl_frame.c` | a released message frees its payload, an oversized `max_msg_size` means no limit, port-list fallback, and role flags reset across an init/finalize cycle |
+| `test/unit/ptl_sendrecv.c` | lost-connection completion per peer, a split header, a sendrecv to a closed peer, and `flush_sends` past `FD_SETSIZE` |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file |
 | `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one |
 | `test/unit/ptl_stalled_peer.c` | a server keeps servicing requests while a peer's connection is idle, or stalled partway into its connect-ack |
