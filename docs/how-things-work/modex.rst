@@ -550,9 +550,12 @@ Two watermarks, at two levels:
 * **The server** contributes what has arrived since this process last
   contributed to a collecting fence. A barrier-only fence exchanges
   nothing and so does not move the watermark. **Implemented**. The
-  watermark moves only once the host has *taken* the bucket: the request
-  has three arms that discard it, and draining earlier would lose those
-  deltas for good.
+  watermark moves only once the fence has *completed successfully*. Not
+  when the contribution is collected, since the request has arms that
+  discard the bucket; and not when the host accepts the bucket either,
+  since the host can still end the collective without delivering it - on
+  a timeout, or on losing a participant. A mark moved at either point
+  loses that data for good: every later fence over the same set skips it.
 
 **The server's watermark is qualified by the participant set.** A per-process
 watermark alone is not sound: a process that contributed to a fence over one

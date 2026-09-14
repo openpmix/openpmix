@@ -139,6 +139,11 @@ static bool fence_sorted_next_to_last = false;
 static bool fence_accept = false;
 static int fence_calls = 0;
 static void *fence_cbdata = NULL;
+/* with fence_collect the handler is asked to collect, and an accepting
+ * stub keeps the bucket it is handed - it is the host's on the call */
+static bool fence_collect = false;
+static char *fence_data = NULL;
+static size_t fence_ndata = 0;
 
 static pmix_status_t stub_fence_nb(const pmix_proc_t procs[], size_t nprocs,
                                    const pmix_info_t info[], size_t ninfo,
@@ -161,6 +166,11 @@ static pmix_status_t stub_fence_nb(const pmix_proc_t procs[], size_t nprocs,
     }
     ++fence_calls;
     fence_cbdata = cbdata;
+    if (fence_accept && fence_collect) {
+        free(fence_data);
+        fence_data = data;
+        fence_ndata = ndata;
+    }
     if (fence_accept) {
         /* take the operation and say nothing more: the tracker is now
          * ours, and the handler must not offer it to us again */
@@ -197,7 +207,7 @@ static void do_fence(int sd, short args, void *cbdata)
     pmix_info_t dir;
     pmix_status_t rc;
     size_t n;
-    bool collect = false;
+    bool collect = fence_collect;
 
     (void) sd;
     (void) args;
@@ -599,11 +609,16 @@ typedef struct {
     pmix_status_t status;
     int nblobs;
     bool saw_deletion;
+    const char *key;   /* when set, also look for this key in any blob */
+    bool saw_key;
 } delchk_t;
 
-/* unpack one rank blob and look for our deleted key in it */
-static bool blob_has_deletion(pmix_byte_object_t *bo)
+/* unpack one rank blob and look for a key in it: any value when
+ * "tombstone" is false, only a PMIX_UNDEF one when it is true */
+static bool blob_has_key(pmix_byte_object_t *bo, const char *key, bool tombstone)
 {
+    char *bytes;
+    size_t size;
     pmix_buffer_t blob;
     pmix_proc_t p;
     pmix_kval_t *kv;
@@ -611,8 +626,13 @@ static bool blob_has_deletion(pmix_byte_object_t *bo)
     int32_t cnt;
     bool found = false;
 
+    /* load through copies of the pointer and size: PMIX_LOAD_BUFFER clears
+     * the variables it is handed, and the caller's byte object has to
+     * survive for the next search of the same blob */
+    bytes = bo->bytes;
+    size = bo->size;
     PMIX_CONSTRUCT(&blob, pmix_buffer_t);
-    PMIX_LOAD_BUFFER(pmix_globals.mypeer, &blob, bo->bytes, bo->size);
+    PMIX_LOAD_BUFFER(pmix_globals.mypeer, &blob, bytes, size);
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &blob, &p, &cnt, PMIX_PROC);
     if (PMIX_SUCCESS != rc) {
@@ -624,8 +644,8 @@ static bool blob_has_deletion(pmix_byte_object_t *bo)
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &blob, kv, &cnt, PMIX_KVAL);
     while (PMIX_SUCCESS == rc) {
-        if (NULL != kv->key && 0 == strcmp(kv->key, DELKEY)
-            && NULL != kv->value && PMIX_UNDEF == kv->value->type) {
+        if (NULL != kv->key && 0 == strcmp(kv->key, key) && NULL != kv->value
+            && (!tombstone || PMIX_UNDEF == kv->value->type)) {
             found = true;
         }
         PMIX_RELEASE(kv);
@@ -693,8 +713,11 @@ static void inspect_bucket(pmix_buffer_t *buf, delchk_t *d)
             break;
         }
         ++d->nblobs;
-        if (blob_has_deletion(&bo)) {
+        if (blob_has_key(&bo, DELKEY, true)) {
             d->saw_deletion = true;
+        }
+        if (NULL != d->key && blob_has_key(&bo, d->key, false)) {
+            d->saw_key = true;
         }
         PMIX_BYTE_OBJECT_DESTRUCT(&bo);
     }
@@ -791,6 +814,118 @@ done:
         PMIX_RELEASE(peer);
     }
     PMIX_WAKEUP_THREAD(&d->lock);
+}
+
+/* --------------------------------------------------------------------
+ * A fence the host accepted but then failed must not count as sent.
+ *
+ * A collecting fence contributes only what each rank committed above its
+ * mark for the participant set. The mark used to move as soon as the
+ * host accepted the bucket - but a host can still end the collective
+ * without delivering anything (PRRTE does, on a PMIX_TIMEOUT or a lost
+ * participant), and then every later fence over the set skipped data
+ * that no one ever received. The mark may move only on a successful
+ * completion.
+ *
+ * Driven through pmix_server_fence with an accepting stub that keeps the
+ * bucket, so it exercises the real call sites rather than the helper. */
+#define MARKKEY1 "fence-ut.mark.first"
+#define MARKKEY2 "fence-ut.mark.second"
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    const char *key;
+    bool ok;
+} logadd_t;
+
+/* append a committed value to our own rank's modex log, as
+ * pmix_server_commit does */
+static void add_log_entry(int sd, short args, void *cbdata)
+{
+    logadd_t *l = (logadd_t *) cbdata;
+    pmix_rank_info_t *rinfo = pmix_globals.mypeer->info;
+    pmix_modex_entry_t *ment;
+    pmix_kval_t *kv;
+    uint32_t v = 42;
+
+    (void) sd;
+    (void) args;
+
+    l->ok = false;
+    if (NULL != rinfo) {
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(l->key);
+        PMIX_VALUE_CREATE(kv->value, 1);
+        PMIX_VALUE_LOAD(kv->value, &v, PMIX_UINT32);
+        ment = PMIX_NEW(pmix_modex_entry_t);
+        ment->kv = kv;
+        ment->id = ++rinfo->modex_next_id;
+        pmix_list_append(&rinfo->modex_log, &ment->super);
+        l->ok = true;
+    }
+    PMIX_WAKEUP_THREAD(&l->lock);
+}
+
+static bool log_add(const char *key)
+{
+    logadd_t l;
+
+    memset(&l, 0, sizeof(l));
+    PMIX_CONSTRUCT_LOCK(&l.lock);
+    l.key = key;
+    PMIX_THREADSHIFT(&l, add_log_entry);
+    PMIX_WAIT_THREAD(&l.lock);
+    PMIX_DESTRUCT_LOCK(&l.lock);
+    return l.ok;
+}
+
+/* does the bucket the stub last kept carry this key? */
+static bool kept_bucket_has(const char *key)
+{
+    pmix_buffer_t buf;
+    delchk_t d;
+    char *copy;
+    size_t n = fence_ndata;
+
+    if (NULL == fence_data || 0 == n) {
+        return false;
+    }
+    copy = (char *) malloc(n);
+    if (NULL == copy) {
+        return false;
+    }
+    memcpy(copy, fence_data, n);
+    memset(&d, 0, sizeof(d));
+    d.key = key;
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    /* through a local: PMIX_LOAD_BUFFER clears the size it is handed */
+    PMIX_LOAD_BUFFER(pmix_globals.mypeer, &buf, copy, n);
+    inspect_bucket(&buf, &d);
+    PMIX_DESTRUCT(&buf);
+    return d.saw_key;
+}
+
+/* one collecting fence over the same participant set each time, completed
+ * by "the host" with the given status; returns the handler's status */
+static pmix_status_t collecting_fence(pmix_status_t completion, bool *reached)
+{
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+
+    fence_calls = 0;
+    fence_cbdata = NULL;
+    rc = drive_fence(1, 1, 1, 1);
+    progress_barrier();
+    *reached = (PMIX_SUCCESS == rc && 1 == fence_calls && NULL != fence_cbdata);
+    if (NULL != fence_cbdata) {
+        pmix_server_modex_cbfunc(completion, NULL, 0, fence_cbdata, NULL, NULL);
+        progress_barrier();
+    }
+    while (NULL != (reply = take_queued_reply())) {
+        PMIX_RELEASE(reply);
+    }
+    return rc;
 }
 
 int main(int argc, char **argv)
@@ -1091,6 +1226,41 @@ int main(int argc, char **argv)
         PMIX_THREADSHIFT(&l, drop_late_tracker);
         PMIX_WAIT_THREAD(&l.lock);
         PMIX_DESTRUCT_LOCK(&l.lock);
+    }
+
+    /* --- a failed fence does not move the mark; a successful one does --- */
+    {
+        bool reached;
+
+        fence_accept = true;
+        fence_collect = true;
+
+        report("our own rank has a modex log to contribute from", log_add(MARKKEY1));
+
+        /* the host takes the bucket, then ends the collective on a timeout */
+        collecting_fence(PMIX_ERR_TIMEOUT, &reached);
+        report("a collecting fence reaches the host", reached);
+        report("...carrying the committed value", kept_bucket_has(MARKKEY1));
+
+        /* the next fence over the same set must send it again */
+        log_add(MARKKEY2);
+        collecting_fence(PMIX_SUCCESS, &reached);
+        report("the fence after a failed one reaches the host", reached);
+        report("...and resends what the failed fence never delivered",
+               kept_bucket_has(MARKKEY1));
+        report("...along with what was committed since", kept_bucket_has(MARKKEY2));
+
+        /* that one succeeded, so the next carries neither */
+        collecting_fence(PMIX_SUCCESS, &reached);
+        report("the fence after a successful one reaches the host", reached);
+        report("...and does not resend what was delivered",
+               !kept_bucket_has(MARKKEY1) && !kept_bucket_has(MARKKEY2));
+
+        free(fence_data);
+        fence_data = NULL;
+        fence_ndata = 0;
+        fence_collect = false;
+        fence_accept = false;
     }
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
