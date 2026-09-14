@@ -496,7 +496,34 @@ publishes the URI into `gds`, and drops rendezvous files.
   orphan is unlinked and replaced, and if it is alive we fail with the
   `rndz-file-in-use` topic and `PMIX_ERR_SILENT` so the generic "listener
   thread failed to start" message does not bury it.
-  `test/unit/rndz_stale.c` pins both halves.
+  `test/unit/rndz_stale.c` pins both halves. The recorded pid must fit
+  a `pid_t` before it is handed to `kill()`: `4294967295` narrows to -1,
+  and `kill(-1, 0)` asks about every process we may signal, so a garbled
+  line always looked like a live owner.
+- **An `accept()` failure that stops the listener must stop all of it.**
+  Out of descriptors (or an error we do not recognize), the accept
+  handler gives up for good — the connection stays in the backlog, so
+  the event would otherwise fire again at once. `abandon_listener()`
+  deletes the event, clears `active` and closes `lt->socket` through
+  `CLOSE_THE_SOCKET`, which sets it to -1. Closing only the descriptor
+  the handler was passed left `lt->socket` naming a number the kernel
+  reuses, and the stale event and finalize then acted on whatever got
+  it. A connection that was reset or hit a network error in the backlog
+  is retried like `EAGAIN`; it says nothing about the listening socket.
+- **The directives are the host's, and typed by nothing but their key.**
+  The string ones (`PMIX_TCP_IF_INCLUDE`/`_EXCLUDE`, `PMIX_TCP_REPORT_URI`,
+  `PMIX_SERVER_TMPDIR`, `PMIX_SYSTEM_TMPDIR`) go through
+  `replace_string()`, which refuses any other type — a `bool` there was
+  a SIGSEGV. A port goes through `port_directive()` and
+  `pmix_ptl_base_set_ports()`, and the bind loop parses each entry
+  strictly: a number past 65535 used to be narrowed to 16 bits and
+  bound, so 70000 listened on 4464.
+- **`report_uri` names the file `pmix_ptl_close` removes.** The open
+  copies the MCA value into `urifile`, but a `PMIX_TCP_REPORT_URI`
+  directive replaces `report_uri` later. The listener therefore records
+  the name it actually wrote when it writes it. An empty value reports
+  nowhere; it used to read as pipe descriptor 0, and stdin was written
+  and closed.
 
 ## Framework open and close
 
@@ -519,7 +546,7 @@ three rules apply:
 - **Register can run twice without a close in between.** The port
   arrays are built in `pmix_ptl_register`, and a framework that was
   registered but never opened is registered again by the next open.
-  `set_ports()` frees the old array first.
+  `pmix_ptl_base_set_ports()` frees the old array first.
 
 `pmix_ptl_recv_t` owns its `data`. `pmix_ptl_base_process_msg` hands the
 payload to a buffer and clears the pointer; every other ending — no recv
@@ -574,7 +601,8 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_handshake.c` | the `PUT_*`/`GET_*` pair as a round trip, plus truncated-field rejection |
 | `test/unit/ptl_frame.c` | a released message frees its payload, an oversized `max_msg_size` means no limit, port-list fallback, and role flags reset across an init/finalize cycle |
 | `test/unit/ptl_sendrecv.c` | lost-connection completion per peer, a split header, a sendrecv to a closed peer, and `flush_sends` past `FD_SETSIZE` |
-| `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file |
+| `test/unit/ptl_listener.c` | accept out of descriptors stops the listener cleanly; mistyped, out-of-range and empty directives; a directive-named report file is removed |
+| `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
 | `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one |
 | `test/unit/ptl_stalled_peer.c` | a server keeps servicing requests while a peer's connection is idle, or stalled partway into its connect-ack |
 | `test/unit/tool_nspace.c` | a real tool connection leaves exactly one namespace object, and the peer resolves through the one on the list |
