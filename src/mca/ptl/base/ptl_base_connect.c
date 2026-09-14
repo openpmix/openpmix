@@ -468,7 +468,7 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
  * - so a PMIX_SERVER_URI, PMIX_TCP_URI, PMIX_TOOL_ATTACHMENT_FILE,
  * PMIX_SERVER_NSPACE or PMIX_CONNECTION_ORDER holding a bool took
  * PMIx_tool_init down with SIGSEGV. Same screen as the tool directives in
- * pmix_tool.c. */
+ * pmix_tool.c; used by pmix_ptl_base_check_connect_directives. */
 static bool is_string_value(const pmix_info_t *info)
 {
     if (PMIX_STRING != info->value.type || NULL == info->value.data.string) {
@@ -490,6 +490,137 @@ static pmix_status_t add_info(pmix_list_t *list, pmix_info_t *info)
     }
     kv->info = info;
     pmix_list_append(list, &kv->super);
+    return PMIX_SUCCESS;
+}
+
+/* Check the directives pmix_ptl_base_connect_to_peer consumes, acting on
+ * none of them. A malformed one is an error in the call rather than a
+ * failure to connect - no connection could have been attempted with it -
+ * so it must be reported as PMIX_ERR_BAD_PARAM whatever the caller says
+ * about the connection being optional. That is why this is separate from
+ * connect_to_peer: its status alone cannot say whether anything was
+ * attempted, because a server that refuses a tool may answer
+ * PMIX_ERR_BAD_PARAM too (the host's tool_connected status is sent to the
+ * tool verbatim), and PMIx_tool_init has to honor "optional" for that.
+ *
+ * Covers every value connect_to_peer would otherwise have to refuse: the
+ * type of each directive, a connection order entry that is not one of the
+ * connection targets, two different servers named by nspace, and a URI
+ * that does not parse - including its address, which is checked the way
+ * pmix_ptl_base_setup_connection will read it. No name resolution
+ * happens there, so this never blocks. A "file:" URI is not opened: what
+ * the file says is the server's word, not the caller's. */
+pmix_status_t pmix_ptl_base_check_connect_directives(const pmix_info_t info[], size_t ninfo)
+{
+    size_t n, m, len;
+    char **order;
+    const char *str, *server_nspace = NULL;
+    char *uri_nspace = NULL, *suri = NULL;
+    pmix_rank_t rank;
+    pid_t pid;
+    int ival;
+    struct sockaddr_storage addr;
+    pmix_status_t rc;
+
+    if (NULL == info) {
+        return PMIX_SUCCESS;
+    }
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECTION_ORDER)) {
+            if (!is_string_value(&info[n])) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            /* "" and "," split to NULL - no preference, which is fine */
+            order = PMIx_Argv_split(info[n].value.data.string, ',');
+            for (m = 0; NULL != order && NULL != order[m]; m++) {
+                /* Each entry names an attribute, which lookup turns into its
+                 * string value - and hands back unchanged when it knows no
+                 * such name. So the test is whether the result is one of the
+                 * connection targets connect_to_peer acts on. This used to be
+                 * "did lookup return NULL", which it never does: a misspelled
+                 * entry, an unrelated attribute, or one with a space after
+                 * its comma was silently skipped, and the requested order
+                 * quietly became a different one. */
+                str = pmix_attributes_lookup(order[m]);
+                if (0 != strcmp(str, PMIX_CONNECT_SYSTEM_FIRST) &&
+                    0 != strcmp(str, PMIX_CONNECT_TO_SYSTEM) &&
+                    0 != strcmp(str, PMIX_CONNECT_TO_SCHEDULER) &&
+                    0 != strcmp(str, PMIX_CONNECT_TO_SYS_CONTROLLER)) {
+                    pmix_show_help("help-ptl-base.txt", "unknown-attribute", true,
+                                   order[m], PMIX_CONNECTION_ORDER);
+                    PMIx_Argv_free(order);
+                    return PMIX_ERR_BAD_PARAM;
+                }
+            }
+            PMIx_Argv_free(order);
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_PIDINFO)) {
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &pid, PMIX_PID)) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                return PMIX_ERR_BAD_PARAM;
+            }
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_MAX_RETRIES) ||
+                   PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_RETRY_DELAY)) {
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &ival, PMIX_INT)) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                return PMIX_ERR_BAD_PARAM;
+            }
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_NSPACE)) {
+            if (!is_string_value(&info[n])) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            str = info[n].value.data.string;
+            /* our own nspace is ignored, exactly as connect_to_peer does */
+            if (0 == strcmp(pmix_globals.myid.nspace, str)) {
+                continue;
+            }
+            if (NULL != server_nspace && 0 != strcmp(server_nspace, str)) {
+                /* two different servers - we cannot know which one to use */
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            server_nspace = str;
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_ATTACHMENT_FILE) ||
+                   PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR) ||
+                   PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR) ||
+                   (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
+                    PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE))) {
+            if (!is_string_value(&info[n])) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_URI) ||
+                   PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
+            if (!is_string_value(&info[n])) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            str = info[n].value.data.string;
+            if (0 == strncmp(str, "file:", 5)) {
+                continue;
+            }
+            rc = pmix_ptl_base_parse_uri(str, &uri_nspace, &rank, &suri);
+            if (PMIX_SUCCESS != rc) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            if (NULL == uri_nspace || NULL == suri) {
+                /* parse_uri's own copies failed */
+                free(uri_nspace);
+                free(suri);
+                return PMIX_ERR_NOMEM;
+            }
+            rc = pmix_ptl_base_setup_connection(suri, &addr, &len);
+            free(uri_nspace);
+            uri_nspace = NULL;
+            free(suri);
+            suri = NULL;
+            if (PMIX_SUCCESS != rc) {
+                return (PMIX_ERR_NOMEM == rc) ? rc : PMIX_ERR_BAD_PARAM;
+            }
+        }
+    }
     return PMIX_SUCCESS;
 }
 
@@ -518,10 +649,19 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base: connecting to server");
 
+    *suriout = NULL;
+    /* Refuse a malformed directive before acting on any of them. Every
+     * value the loop below reads has been vetted here, so the loop only
+     * has to consume them - and nothing has been changed yet if one is
+     * bad, not even the pmix_ptl_base globals the loop overwrites. */
+    rc = pmix_ptl_base_check_connect_directives(info, ninfo);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
     /* check any provided directives
      * to see where they want us to connect to */
     PMIX_CONSTRUCT(&ilist, pmix_list_t);
-    *suriout = NULL;
     if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYSTEM)) {
@@ -553,10 +693,6 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECTION_ORDER)) {
-                if (!is_string_value(&info[n])) {
-                    rc = PMIX_ERR_BAD_PARAM;
-                    goto badinput;
-                }
                 if (NULL != order) {
                     // overrides all prior specs
                     PMIx_Argv_free(order);
@@ -573,14 +709,9 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 // the strings will just be the name of the attribute, so we
                 // must convert them to the attribute values
                 for (m=0; NULL != order[m]; m++) {
+                    /* every entry was vetted as a connection target by
+                     * pmix_ptl_base_check_connect_directives */
                     tmp = pmix_attributes_lookup(order[m]);
-                    if (NULL == tmp) {
-                        /* they named something that isn't an attribute */
-                        pmix_show_help("help-ptl-base.txt", "unknown-attribute", true,
-                                       order[m], PMIX_CONNECTION_ORDER);
-                        rc = PMIX_ERR_BAD_PARAM;
-                        goto badinput;
-                    }
                     free(order[m]);
                     order[m] = strdup(tmp);
                     if (NULL == order[m]) {
@@ -598,20 +729,13 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_PIDINFO)) {
-                /* read as a number: a value of the wrong type used to be
-                 * taken from the union as whatever bits it held, and a pid
-                 * that means nothing still sends us searching for it */
+                /* read as a number, as the validator did */
                 rc = PMIx_Value_get_number(&info[n].value, &pid, PMIX_PID);
                 if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
                     goto badinput;
                 }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_NSPACE)) {
-                if (!is_string_value(&info[n])) {
-                    rc = PMIX_ERR_BAD_PARAM;
-                    goto badinput;
-                }
                 // if this is my nspace, then ignore it
                 if (0 == strcmp(pmix_globals.myid.nspace, info[n].value.data.string)) {
                     continue;
@@ -633,10 +757,6 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_ATTACHMENT_FILE)) {
-                if (!is_string_value(&info[n])) {
-                    rc = PMIX_ERR_BAD_PARAM;
-                    goto badinput;
-                }
                 if (NULL != rendfile) {
                     free(rendfile);
                 }
@@ -651,10 +771,6 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
 
             } else if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)
                        && PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
-                if (!is_string_value(&info[n])) {
-                    rc = PMIX_ERR_BAD_PARAM;
-                    goto badinput;
-                }
                 if (NULL != pmix_ptl_base.rendezvous_filename) {
                     free(pmix_ptl_base.rendezvous_filename);
                 }
@@ -669,10 +785,6 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_URI)
                        || PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
-                if (!is_string_value(&info[n])) {
-                    rc = PMIX_ERR_BAD_PARAM;
-                    goto badinput;
-                }
                 if (NULL != pmix_ptl_base.uri) {
                     free(pmix_ptl_base.uri);
                 }
@@ -685,10 +797,6 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
-                if (!is_string_value(&info[n])) {
-                    rc = PMIX_ERR_BAD_PARAM;
-                    goto badinput;
-                }
                 if (NULL != pmix_ptl_base.session_tmpdir) {
                     free(pmix_ptl_base.session_tmpdir);
                 }
@@ -699,10 +807,6 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                 }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
-                if (!is_string_value(&info[n])) {
-                    rc = PMIX_ERR_BAD_PARAM;
-                    goto badinput;
-                }
                 if (NULL != pmix_ptl_base.system_tmpdir) {
                     free(pmix_ptl_base.system_tmpdir);
                 }

@@ -95,6 +95,21 @@ bottom before editing. Its phases, in order:
    of `hostname:pid` and rank 0 and points `myserver` back at *itself* —
    this is the tool analog of the client singleton path. Otherwise it
    `pmix_ptl.connect_to_peer`s and stores the resulting `PMIX_SERVER_URI`.
+
+   **"Optional" covers a failure to connect, never a malformed
+   directive.** Before the attempt, init runs
+   `pmix_ptl_base_check_connect_directives()` and returns its
+   `PMIX_ERR_BAD_PARAM` whatever `connect_optional` says: nothing could
+   have been attempted with a bad value, so the call itself is in error.
+   It has to be a separate check made up front. `connect_to_peer` refuses
+   the same values, but its status cannot say whether it attempted
+   anything — the host's `tool_connected` status reaches the tool
+   verbatim, and a host may answer `PMIX_ERR_BAD_PARAM` for a tool it
+   refuses, which "optional" must still absorb. Without the check, an
+   optional init turned every malformed connection directive into
+   `PMIX_SUCCESS` and a self-assigned identity. `test/unit/tool_api.c`
+   holds both sides: the malformed cases, and a well-formed URI that
+   nobody answers, which must still succeed.
 7. **Local job-data synthesis** (`pmix_tool_init_info`): because a tool is
    a singleton job of size 1, it fabricates the well-known job keys
    (`PMIX_JOBID`, `PMIX_RANK`, `PMIX_UNIV_SIZE`, `PMIX_JOB_SIZE`,
