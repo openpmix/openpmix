@@ -358,7 +358,6 @@ int main(int argc, char **argv)
             fprintf(stderr, "    -n N     Number of clients to run\n");
             fprintf(stderr,
                     "    -e foo   Name of the client executable to run (default: simpclient\n");
-            fprintf(stderr, "    -u       Enable legacy usock support\n");
             fprintf(stderr, "    -xversion  Cross-version test - simulate single node only\n");
             exit(0);
         } else if (0 == strcmp("-model", argv[n]) || 0 == strcmp("--model", argv[n])) {

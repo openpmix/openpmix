@@ -55,10 +55,6 @@ connect to.
 
 Runs on the connecting side. It branches on the peer's `ptl` protocol:
 
-- **`PMIX_PROTOCOL_V1`** (the legacy Unix-domain-socket transport):
-  produces an *empty* credential. The kernel already knows the peer's
-  identity on a `usock` connection, so there is nothing to send — the
-  server reads it off the socket (see below).
 - **`PMIX_PROTOCOL_V2`** (TCP, today's transport): packs the process's
   effective `uid` then `gid` as raw bytes into the credential
   (`sizeof(uid_t) + sizeof(gid_t)`). This is what the server validates.
@@ -78,20 +74,15 @@ survive.
 ## What `validate_cred` does
 
 Runs on the accepting (server) side and recovers the peer's `uid`/`gid`
-two different ways depending on protocol:
+according to the protocol:
 
-- **`PMIX_PROTOCOL_V1`**: ignores the (empty) credential and asks the
-  kernel directly — `getsockopt(SO_PEERCRED)` on Linux, or `getpeereid()`
-  on platforms that have it. If neither is available it returns
-  `PMIX_ERR_NOT_SUPPORTED`.
 - **`PMIX_PROTOCOL_V2`**: reads the `uid` then `gid` back out of the
   credential bytes the client packed, rejecting a `NULL` or too-short
   credential with `PMIX_ERR_INVALID_CRED`.
 
 - **`PMIX_PROTOCOL_UNDEF`**: rejects with `PMIX_ERR_INVALID_CRED`. A peer
-  whose transport was never established offers neither a socket to
-  interrogate nor a credential format to trust, so there is nothing here
-  that can be validated.
+  whose transport was never established offers no credential format to
+  trust, so there is nothing here that can be validated.
 
 It then compares the recovered `euid`/`egid` against the values recorded
 for the peer (`pr->info->uid` / `pr->info->gid`) and returns
@@ -110,20 +101,11 @@ credential.
   local server share an ABI, but it is not safe across differing
   endianness or integer widths. Do not "reuse" this format for a remote
   or cross-platform mechanism — add a new component instead.
-- **V1 validation ignores the credential entirely** and trusts the
-  socket. That is correct for `usock` (the kernel is the source of
-  truth), but it means the credential bytes are meaningless on V1 — don't
-  add checks that assume they carry data.
-- The `SO_PEERCRED` / `getpeereid` selection is `#ifdef`-heavy for
-  portability; if you touch it, preserve the fallbacks and the final
-  `PMIX_ERR_NOT_SUPPORTED` for platforms that offer neither.
-- **The `ucred` declaration guard has to match the guard on its use.**
-  The declaration block names `HAVE_STRUCT_SOCKPEERCRED_UID` explicitly
-  even though the use site tests `HAVE_STRUCT_UCRED_UID`, because it is
-  that block which `#define`s the latter for the `sockpeercred`
-  platforms. Guarding the declaration on `SO_PEERCRED` alone leaves
-  `ucred` and `crlen` unused — and therefore a `-Werror` build failure —
-  on a platform that has `SO_PEERCRED` but neither field macro.
+- **There is no socket-credential path any more.** The
+  `SO_PEERCRED`/`getpeereid()` branch served the `usock` transport
+  (`PMIX_PROTOCOL_V1`), which is gone along with the v1.x peers that were
+  its only users. Every connection is TCP and is validated from the
+  credential bytes.
 - **The `PMIX_PROTOCOL_UNDEF` rejection is explicit on purpose.** It used
   to fall through to the `uid`/`gid` comparison and be rejected only
   because `euid`/`egid` were still their `(uid_t) -1` initializers.
