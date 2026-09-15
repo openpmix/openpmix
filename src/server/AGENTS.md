@@ -67,7 +67,7 @@ the top of `pmix_server.c`, declared in `pmix_server_ops.h`): the
 `clients` pointer-array, the `nspaces` list, the `collectives` and
 `grp_collectives` lists, the `remote_pnd` / `local_reqs` dmodex lists,
 `events` (client event registrations), `iof` / `iof_residuals`, `psets`,
-`gdata`/`genvars`, and a bank of per-subsystem verbosity channels.
+`gdata`, and a bank of per-subsystem verbosity channels.
 
 ## The switchyard and the reply-ownership contract
 
@@ -736,16 +736,18 @@ is `pmix_ptl.connect_to_peer()` on the `connect_directed` arm; it is the
 only connection in existence at that point, and the store that follows it
 is shifted.
 
-**`pmix_server_globals.genvars` is read and never written.**
-`setup_fork_body` replays it into every child's environment, and nothing
-anywhere in the tree puts anything in it.
-`pmix_server_globals.tool_connections_allowed` is the same shape: declared
-here, initialized to false, and never read or written. The knob that
-actually decides whether we answer a tool is `pmix_ptl_base.tool_support`,
-set from `PMIX_SERVER_TOOL_SUPPORT` in `ptl_base_listener.c`. It is a hook for a "pass these
-envars to all my clients" directive that was never wired up; see
-`docs/todo.rst`. Do not read the read site as evidence that a writer
-exists somewhere.
+**`pmix_server_globals.tool_connections_allowed` is declared,
+initialized to false, and never read or written.** The knob that actually
+decides whether we answer a tool is `pmix_ptl_base.tool_support`, set from
+`PMIX_SERVER_TOOL_SUPPORT` in `ptl_base_listener.c`.
+
+There is no server-wide "pass these envars to every client" hook. A
+`genvars` array that `setup_fork_body` replayed into each child used to
+sit beside `gdata`; its only writer was the hwloc shared-topology setup,
+which put `PMIX_HWLOC_SHMEM_*` there until 2021, when those values moved to
+job data and the writer was removed. The array and its replay loop are
+gone too. Envars a host wants in a job's environment go through
+`PMIx_server_setup_application` and the job's own directives.
 
 **What the host hands `PMIx_server_setup_fork` is unscreened.** It is a
 public entry point and both arguments are dereferenced — the `proc` by the
