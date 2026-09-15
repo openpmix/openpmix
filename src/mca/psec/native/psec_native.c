@@ -21,7 +21,6 @@
 #include "pmix_common.h"
 
 #include "src/include/pmix_globals.h"
-#include "src/include/pmix_socket_errno.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 
@@ -73,10 +72,7 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    if (PMIX_PROTOCOL_V1 == pr->protocol) {
-        /* usock protocol - nothing to do */
-        goto complete;
-    } else if (PMIX_PROTOCOL_V2 == pr->protocol) {
+    if (PMIX_PROTOCOL_V2 == pr->protocol) {
         /* tcp protocol - need to provide our effective
          * uid and gid for validation on remote end */
         tmp = (char *) malloc(sizeof(uid_t) + sizeof(gid_t));
@@ -119,25 +115,6 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
 {
     pmix_peer_t *pr = (pmix_peer_t *) peer;
 
-/* Declare the peer-credential scratch only on the platforms whose
- * getsockopt path below is actually compiled in. The use site is guarded
- * on SO_PEERCRED *and* one of the ucred field macros; declaring on
- * SO_PEERCRED alone leaves these two variables unused - and therefore a
- * -Werror build failure - on a platform that has SO_PEERCRED but neither
- * field. HAVE_STRUCT_SOCKPEERCRED_UID has to be named here rather than
- * HAVE_STRUCT_UCRED_UID, because it is this block that defines the
- * latter for that platform. */
-#if defined(SO_PEERCRED)                    \
-    && (defined(HAVE_STRUCT_SOCKPEERCRED_UID) || defined(HAVE_STRUCT_UCRED_UID) \
-        || defined(HAVE_STRUCT_UCRED_CR_UID))
-#    ifdef HAVE_STRUCT_SOCKPEERCRED_UID
-#        define HAVE_STRUCT_UCRED_UID
-    struct sockpeercred ucred;
-#    else
-    struct ucred ucred;
-#    endif
-    socklen_t crlen = sizeof(ucred);
-#endif
     uid_t euid = (uid_t) -1;
     gid_t egid = (gid_t) -1;
     char *ptr;
@@ -155,41 +132,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    if (PMIX_PROTOCOL_V1 == pr->protocol) {
-        /* usock protocol - get the remote side's uid/gid */
-#if defined(SO_PEERCRED) && (defined(HAVE_STRUCT_UCRED_UID) || defined(HAVE_STRUCT_UCRED_CR_UID))
-        /* Ignore received 'cred' and validate ucred for socket instead. */
-        pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                            "psec:native checking getsockopt on socket %d for peer credentials",
-                            pr->sd);
-        if (getsockopt(pr->sd, SOL_SOCKET, SO_PEERCRED, &ucred, &crlen) < 0) {
-            pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                                "psec: getsockopt SO_PEERCRED failed: %s",
-                                strerror(pmix_socket_errno));
-            return PMIX_ERR_INVALID_CRED;
-        }
-#    if defined(HAVE_STRUCT_UCRED_UID)
-        euid = ucred.uid;
-        egid = ucred.gid;
-#    else
-        euid = ucred.cr_uid;
-        egid = ucred.cr_gid;
-#    endif
-
-#elif defined(HAVE_GETPEEREID)
-        pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                            "psec:native checking getpeereid on socket %d for peer credentials",
-                            pr->sd);
-        if (0 != getpeereid(pr->sd, &euid, &egid)) {
-            pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                                "psec: getsockopt getpeereid failed: %s",
-                                strerror(pmix_socket_errno));
-            return PMIX_ERR_INVALID_CRED;
-        }
-#else
-        return PMIX_ERR_NOT_SUPPORTED;
-#endif
-    } else if (PMIX_PROTOCOL_V2 == pr->protocol) {
+    if (PMIX_PROTOCOL_V2 == pr->protocol) {
         /* this is a tcp protocol, so the cred is actually the uid/gid
          * passed upwards from the client */
         if (NULL == cred) {
@@ -212,12 +155,11 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
             return PMIX_ERR_INVALID_CRED;
         }
     } else if (PMIX_PROTOCOL_UNDEF == pr->protocol) {
-        /* we have neither a socket to interrogate nor a credential
-         * format we can trust, so there is nothing here we can
-         * validate. Say so explicitly rather than relying on the
-         * (uid_t)-1 initializers above to fail the comparison below -
-         * a peer whose recorded uid/gid happened to match those
-         * sentinels would otherwise be accepted */
+        /* we have no credential format we can trust, so there is
+         * nothing here we can validate. Say so explicitly rather than
+         * relying on the (uid_t)-1 initializers above to fail the
+         * comparison below - a peer whose recorded uid/gid happened to
+         * match those sentinels would otherwise be accepted */
         return PMIX_ERR_INVALID_CRED;
     } else {
         /* don't recognize the protocol */

@@ -2689,9 +2689,6 @@ Interoperability rules: append-only message layouts, tolerate short
 buffers from older peers, never reorder. Concrete patterns you must
 preserve:
 
-- **V1 gating.** Several replies are conditioned on `!PMIX_PEER_IS_V1(peer)`
-  (e.g. the commit ack). A v1 client must see exactly the bytes v1
-  expected.
 - **Version-gated fields** are unpacked defensively — e.g. `log`
   version-gates its timestamp unpack on `PMIX_PEER_IS_EARLIER(peer,3,0,0)`.
 - **The command enum `pmix_cmd_t` is a wire value** (in
@@ -2926,7 +2923,7 @@ misbehave by design).
   `cmd → handler → *_cbfunc → _*cbfunc` quadruples, the safest way to add
   or change one is to diff it against a working neighbor and mirror its
   ownership discipline line for line.
-- **Preserve wire compatibility:** V1/version gating, append-only layouts,
+- **Preserve wire compatibility:** version gating, append-only layouts,
   tolerate-short-buffer unpacks.
 - **A kval built to carry a *borrowed* payload must give it up before
   release.** The recurring shape here is `PMIX_KVAL_NEW(kptr, KEY)` →

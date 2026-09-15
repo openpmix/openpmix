@@ -581,7 +581,7 @@ static void _cnct(int sd, short args, void *cbdata)
                 }
                 PMIX_DESTRUCT(&cb);
 
-                if (PMIX_PEER_IS_V1(cd->peer) || PMIX_PEER_IS_V20(cd->peer)) {
+                if (PMIX_PEER_IS_V20(cd->peer)) {
                     PMIX_BFROPS_PACK(rc, cd->peer, reply, &pbkt, 1, PMIX_BUFFER);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
