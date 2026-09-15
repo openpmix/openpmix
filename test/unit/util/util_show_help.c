@@ -47,6 +47,45 @@ static void report(const char *name, int passed)
 }
 
 /* ------------------------------------------------------------------ */
+/* Running a case on the progress thread                               */
+/*                                                                     */
+/* The duplicate list behind pmix_help_check_dups() and                */
+/* pmix_show_help_purge_nspace() has no lock: the library reaches both */
+/* only from the progress thread (plog, and namespace deregistration). */
+/* And this program feeds that thread traffic of its own - every help  */
+/* notice it renders is delivered through pmix_log_local_op(), which   */
+/* runs the same duplicate check.  Calling either function from main() */
+/* therefore races those deliveries on an unlocked list, and a lost    */
+/* append shows up as a wrong answer or as a bad free at finalize.     */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    void (*fn)(void);
+} shift_t;
+
+static void run_shifted(int sd, short args, void *cbdata)
+{
+    shift_t *s = (shift_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    s->fn();
+    PMIX_WAKEUP_THREAD(&s->lock);
+}
+
+static void on_progress_thread(void (*fn)(void))
+{
+    shift_t s;
+
+    PMIX_CONSTRUCT_LOCK(&s.lock);
+    s.fn = fn;
+    PMIX_THREADSHIFT(&s, run_shifted);
+    PMIX_WAIT_THREAD(&s.lock);
+    PMIX_DESTRUCT_LOCK(&s.lock);
+}
+
+/* ------------------------------------------------------------------ */
 /* pmix_show_help_init (idempotency after PMIx_Init)                  */
 /* ------------------------------------------------------------------ */
 
@@ -294,6 +333,13 @@ static void test_include(void)
 /* progress thread has been paused.                                    */
 /* ------------------------------------------------------------------ */
 
+static void hold_a_duplicate(void)
+{
+    /* first sighting, then a duplicate that gets counted and held */
+    (void) pmix_help_check_dups("flush-job", "help-cli.txt", "finalize-flush-topic");
+    (void) pmix_help_check_dups("flush-job", "help-cli.txt", "finalize-flush-topic");
+}
+
 static void test_duplicates_flushed_at_finalize(void)
 {
     int fds[2];
@@ -326,9 +372,7 @@ static void test_duplicates_flushed_at_finalize(void)
         if (PMIX_SUCCESS != rc && PMIX_ERR_UNREACH != rc) {
             _exit(2);   /* nothing to say about a library that never came up */
         }
-        /* first sighting, then a duplicate that gets counted and held */
-        (void) pmix_help_check_dups("flush-job", "help-cli.txt", "finalize-flush-topic");
-        (void) pmix_help_check_dups("flush-job", "help-cli.txt", "finalize-flush-topic");
+        on_progress_thread(hold_a_duplicate);
         PMIx_Finalize(NULL, 0);
         _exit(0);
     }
@@ -381,8 +425,8 @@ int main(int argc, char **argv)
     test_show_help_string_unknown_topic();
     test_show_help_string_null_args();
     test_show_help_norender();
-    test_check_dups_per_nspace();
-    test_help_check_dups_first_call();
+    on_progress_thread(test_check_dups_per_nspace);
+    on_progress_thread(test_help_check_dups_first_call);
     test_check_dups_null_args();
     test_add_data_null_args();
     test_include();
