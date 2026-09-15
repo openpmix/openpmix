@@ -52,12 +52,11 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 4**
+**Deferred work — 3**
 
 * :ref:`todo-get-pointer-values`
 * :ref:`todo-compress-length-prefix`
 * :ref:`todo-fabric-inventory`
-* :ref:`todo-ptl-blocking-handshake`
 
 **Coverage gaps — 21.**  No CI race detector; the switchyard's
 out-of-memory and finalize-race arms; a multi-namespace
@@ -247,45 +246,6 @@ non-``PMIX_SUCCESS`` return and abandons the fan-out to every component
 behind it — so today "nothing here" and "collected everything" are the
 same answer.
 
-.. _todo-ptl-blocking-handshake:
-
-The handshake after a connect-ack still blocks the server's progress thread
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found reviewing ``src/mca/ptl/base/ptl_base_connect.c`` (2026-09-13).
-A server used to read each incoming connect-ack with blocking ``recv()``
-calls on its progress thread, before the credential is checked, from the
-moment a connection was accepted — so one idle or half-sent connection
-stopped the whole server.  That is fixed: the accepted socket is
-non-blocking, the handler reads the connect-ack as its bytes arrive and
-keeps its place between read events, and a connection that has not
-delivered all of it within ``ptl_base_connect_ack_timeout`` is dropped.
-``test/unit/ptl_stalled_peer.c`` pins it with the timeout disabled.
-
-**What remains:** once the connect-ack is in, the server's replies to it
-and the psec server handshake (``PMIX_PSEC_SERVER_HANDSHAKE_IFNEED``) are
-still blocking exchanges on the progress thread, before the connection is
-trusted.  Each read is bounded by the same timeout, so a peer that
-completes a valid connect-ack and then stalls a handshake still pauses
-the server for up to five seconds.  Only a handshake-model psec module
-reads anything there (``psec/dummy_handshake`` today).  Closing it means
-changing psec's ``server_handshake(int sd)`` interface so the exchange
-can be driven from read events too; the wire format would not change.
-
-**The connecting side has the mirror image.**
-``PMIx_tool_attach_to_server`` runs ``pmix_ptl_base_connect_to_peer`` on
-the progress thread (``pmix_tool_retry_attach`` is a thread-shift
-handler), so the blocking ``connect()`` and the wait for the server's
-reply both hold that thread.  The reply wait is bounded only by
-``ptl_base_handshake_wait_time``, whose default of 0 means no bound: an
-attach to a server that accepts the connection and never answers pins
-the tool's progress thread indefinitely.  Setting the parameter does
-bound it — it did not before ``pmix_ptl_base_recv_blocking`` stopped
-retrying the expired timeout — but nothing sets it by default.  The
-complete answer is the same shape as above, on the other side: an
-attach that connects and handshakes asynchronously instead of from
-inside a thread-shift handler.
-
 Coverage gaps
 -------------
 
@@ -406,8 +366,9 @@ Coverage gaps
   ``SO_RCVTIMEO`` from ``ptl_base_connect_ack_timeout`` before its first
   read, and the option stays on the socket until it goes non-blocking,
   which is after the psec exchange — so a stalled handshake peer is now
-  bounded by the same timeout — the remaining limit is recorded under
-  :ref:`todo-ptl-blocking-handshake`.  What is still missing is
+  bounded by the same timeout, and the exchange stays blocking because no
+  production build can reach it (see the closed entry in
+  :doc:`review-notes`).  What is still missing is
   coverage: the only handshake-model module is ``dummy_handshake``,
   built only under ``--enable-dummy-handshake``, so nothing runs that
   exchange against a stalled peer.
