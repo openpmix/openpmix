@@ -1021,7 +1021,13 @@ looks more roundabout than "stat then chmod" or "readdir then unlink".
   swapped between being classified and being removed. `O_NOFOLLOW` and
   `AT_SYMLINK_NOFOLLOW` keep a symlink an entry to be unlinked rather
   than a path to be followed. If you add an operation here, add it in
-  that style.
+  that style. `pmix_os_dirpath_destroy()` holds the directory's
+  *parent* open for the same reason: the base is opened and finally
+  removed relative to it, and only if the parent still holds the
+  directory that was emptied (a `st_dev`/`st_ino` check). A
+  subdirectory gets the same identity check between `fstatat()` and
+  the `openat()` it recurses through, since `O_NOFOLLOW` declines a
+  symlink swapped in there but not a different directory.
 - **A trailing separator defeats `O_NOFOLLOW`.** `open("link/",
   O_DIRECTORY | O_NOFOLLOW)` opens the link's *target* on both Linux and
   macOS, because the separator makes the kernel resolve the final
@@ -1030,6 +1036,16 @@ looks more roundabout than "stat then chmod" or "readdir then unlink".
   anything (`dirpath_strip_trailing_seps()`). The `_under` pair needs no
   such step: `PMIx_Argv_split()` already drops the empty field a
   trailing separator leaves. A new whole-path entry point needs it.
+- **Destroy reports what it did not do.** An entry `fstatat()` cannot
+  classify (a directory readable but not searchable), an emptied
+  subdirectory or base that cannot be removed, and a base swapped during
+  the walk all come back as `PMIX_ERROR`. The exceptions are in
+  `dirpath_rmdir_error_is_benign()`: `ENOENT` (someone else removed it),
+  and `ENOTEMPTY`/`EEXIST` *only when there is a callback*, since only a
+  callback can have chosen to keep something. Without one, a directory
+  still holding something was not destroyed. No caller in this tree or
+  in PRRTE's `session_dir.c` checks the return today; the header is
+  installed, so the answer is still owed.
 - **Permission is not tested, deliberately.** Asking whether a directory
   is writable and then acting on the answer is itself a check/use race
   that no spelling of `access()`/`faccessat()` can close. Whether the
