@@ -46,10 +46,9 @@ Four kinds of entry appear here:
 At a glance
 -----------
 
-**Open decisions — 3**
+**Open decisions — 2**
 
 * :ref:`todo-fabric-async`
-* :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
 **Deferred work — 3**
@@ -110,43 +109,6 @@ its tracker died, so a component that parks an allocation there must free
 it from its own ``deregister_fabric``.
 
 See "The fabric path is scaffolding" in ``src/mca/pnet/AGENTS.md``.
-
-.. _todo-mca-param-owner:
-
-Who owns an ``mca_base_*`` parameter
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found in the ``src/mca/pmdl`` review (2026-08-19).  ``pmdl`` re-prefixes
-every value it reads out of an MCA param file so it reaches the library
-that will look for it — ``PMIX_MCA_``, ``PRTE_MCA_`` or ``OMPI_MCA_`` —
-and decides which by the parameter's first segment.  Two segments name
-something in more than one library: ``mca`` (all three have an MCA base)
-and ``pmix`` (OPAL carried a ``pmix`` framework of its own).
-
-Half of that overlap is now settled, because one side of it was plainly
-wrong: ``parse_file_envars`` was claiming those names out of the list
-PMIx read from **its own** param files, so a value the user set for PMIx
-— ``pmix_hwloc_topo_file`` is the concrete one — was renamed
-``OMPI_MCA_*`` and reached neither library.  A parameter PMIx claims is
-now left alone there.
-
-The other half is left as it stands.  ``process_param_file`` reads
-``openmpi-mca-params.conf``, tests for a PMIx parameter first, and so
-forwards ``mca_base_component_path`` from **Open MPI's** file as
-``PMIX_MCA_mca_base_component_path``.  Note which name that is: PMIx
-registers the variable as project ``pmix``, framework ``mca``, component
-``base``, and the *full* name a param file and an envar carry leaves the
-project off — so ``mca_base_component_path`` is PMIx's own spelling of
-it, and ``pmix_mca_base_component_path`` is the project-qualified long
-name, which a param file also accepts (see ``var_set_from_file``, which
-matches either).  Open MPI spells its equivalent the same way, which is
-the whole difficulty: the unqualified name is genuinely ambiguous, and
-nothing in the line says which library it was meant for.  Claiming it for
-PMIx has been the behavior for releases and a site may be relying on it.
-Deciding it means deciding whether the two ``mca_base`` namespaces are
-one setting or two.
-
-The ``ompi`` component's guide records the precedence as it stands.
 
 .. _todo-iof-pull-handle:
 
