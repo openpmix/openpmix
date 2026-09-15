@@ -577,6 +577,128 @@ static void test_under_declines_a_midway_symlink(void)
     rmdir(root);
 }
 
+/* ------------------------------------------------------------------ */
+/* Trailing separators                                                 */
+/*                                                                     */
+/* A trailing separator makes the kernel resolve the final component   */
+/* as a directory, following a symlink there to do it - and O_NOFOLLOW */
+/* does not stop that: open("link/", O_DIRECTORY | O_NOFOLLOW) opens   */
+/* the link's target on both Linux and macOS. So every single-path     */
+/* entry point has to drop trailing separators before it opens         */
+/* anything, or "link/" walks straight past the symlink refusals       */
+/* tested above.                                                       */
+/* ------------------------------------------------------------------ */
+
+static void test_destroy_trailing_separator(void)
+{
+    char base[512], arg[600], file[600];
+    int rc;
+
+    snprintf(base, sizeof(base), "%s/trailing", tmpbase);
+    snprintf(file, sizeof(file), "%s/f", base);
+    mkdir(base, S_IRWXU);
+    make_file(file);
+
+    snprintf(arg, sizeof(arg), "%s//", base);
+    rc = pmix_os_dirpath_destroy(arg, true, NULL);
+    report("destroy_trailing_separator: returns SUCCESS", PMIX_SUCCESS == rc);
+    report("destroy_trailing_separator: tree removed", !dir_exists(base));
+
+    unlink(file);
+    rmdir(base);
+}
+
+static void test_destroy_symlink_base_trailing_separator(void)
+{
+    char victim[512], victimfile[600], link[512], arg[600];
+    int rc;
+
+    snprintf(victim, sizeof(victim), "%s/tsvictim", tmpbase);
+    snprintf(victimfile, sizeof(victimfile), "%s/precious", victim);
+    snprintf(link, sizeof(link), "%s/tslink", tmpbase);
+    mkdir(victim, S_IRWXU);
+    make_file(victimfile);
+    if (0 != symlink(victim, link)) {
+        report("destroy_symlink_base_trailing_separator: SKIPPED (symlink unavailable)", 1);
+        unlink(victimfile);
+        rmdir(victim);
+        return;
+    }
+
+    snprintf(arg, sizeof(arg), "%s/", link);
+    rc = pmix_os_dirpath_destroy(arg, true, NULL);
+    report("destroy_symlink_base_trailing_separator: refused", PMIX_SUCCESS != rc);
+    report("destroy_symlink_base_trailing_separator: target contents survive",
+           file_exists(victimfile));
+    report("destroy_symlink_base_trailing_separator: link left in place", is_symlink(link));
+
+    unlink(link);
+    unlink(victimfile);
+    rmdir(victim);
+}
+
+static void test_create_on_symlink_trailing_separator(void)
+{
+    char target[512], link[512], arg[600];
+    struct stat st;
+    int rc;
+
+    snprintf(target, sizeof(target), "%s/tclink_target", tmpbase);
+    snprintf(link, sizeof(link), "%s/tclink", tmpbase);
+    mkdir(target, S_IRWXU);
+    if (0 != symlink(target, link)) {
+        report("create_on_symlink_trailing_separator: SKIPPED (symlink unavailable)", 1);
+        rmdir(target);
+        return;
+    }
+
+    snprintf(arg, sizeof(arg), "%s/", link);
+    rc = pmix_os_dirpath_create(arg, S_IRWXU | S_IRWXG);
+    report("create_on_symlink_trailing_separator: refused with ERR_SILENT",
+           PMIX_ERR_SILENT == rc);
+    report("create_on_symlink_trailing_separator: target mode untouched",
+           0 == stat(target, &st) && 0 == (st.st_mode & S_IRWXG));
+
+    unlink(link);
+    rmdir(target);
+}
+
+static void test_is_empty_symlink_trailing_separator(void)
+{
+    char target[512], link[512], arg[600];
+
+    snprintf(target, sizeof(target), "%s/tielink_target", tmpbase);
+    snprintf(link, sizeof(link), "%s/tielink", tmpbase);
+    mkdir(target, S_IRWXU);
+    if (0 != symlink(target, link)) {
+        report("is_empty_symlink_trailing_separator: SKIPPED (symlink unavailable)", 1);
+        rmdir(target);
+        return;
+    }
+
+    snprintf(arg, sizeof(arg), "%s/", link);
+    report("is_empty_symlink_trailing_separator: symlink reported not empty",
+           !pmix_os_dirpath_is_empty(arg));
+
+    unlink(link);
+    rmdir(target);
+}
+
+static void test_create_trailing_separator(void)
+{
+    char path[512], arg[600];
+    int rc;
+
+    snprintf(path, sizeof(path), "%s/tcreate", tmpbase);
+    snprintf(arg, sizeof(arg), "%s/", path);
+    rc = pmix_os_dirpath_create(arg, S_IRWXU);
+    report("create_trailing_separator: returns SUCCESS", PMIX_SUCCESS == rc);
+    report("create_trailing_separator: directory exists", dir_exists(path));
+    rc = pmix_os_dirpath_create(arg, S_IRWXU);
+    report("create_trailing_separator: rerun returns ERR_EXISTS", PMIX_ERR_EXISTS == rc);
+    rmdir(path);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -616,6 +738,12 @@ int main(int argc, char **argv)
     test_is_empty_symlink();
     test_destroy_nonrecursive_with_subdir();
     test_destroy_callback_veto_in_subdir();
+
+    test_destroy_trailing_separator();
+    test_destroy_symlink_base_trailing_separator();
+    test_create_on_symlink_trailing_separator();
+    test_is_empty_symlink_trailing_separator();
+    test_create_trailing_separator();
 
     /* Remove the test root; all subdirectories were cleaned up above. */
     rmdir(tmpbase);
