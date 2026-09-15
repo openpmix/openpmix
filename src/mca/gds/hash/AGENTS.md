@@ -99,7 +99,16 @@ below.
 - **`register_job_info`** (server) — packs the cached job data for one
   connecting peer into a reply buffer (`register_info` does the work),
   formatting for the peer's version (there is explicit down-conversion of
-  node info for peers earlier than v3.2). It caches the packed buffer on
+  node info for peers earlier than v3.2). That down-conversion files each
+  node's array under a key that *is* the hostname, and such a peer finds it
+  by exact key match - none of the alias handling
+  `pmix_gds_hash_check_nodename()` gives our own lookups. So the array is
+  packed once per alias as well: the node is kept under its short name by
+  default, and a v3.0 client asking by the fully qualified name
+  `gethostname()` returned otherwise found nothing (its resolve-peers
+  failed). The "is this our node" test for the standalone node-level keys
+  goes through the same alias-aware lookup for the same reason. It caches
+  the packed buffer on
   `ns->jobbkt` and reuses it for the remaining local clients of the nspace,
   releasing it once all have been served — the optimization the interface
   comment in `gds.h` anticipates.
