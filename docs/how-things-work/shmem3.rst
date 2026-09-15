@@ -1118,9 +1118,9 @@ Either hit goes to ``process_values()`` and completes.
 **Going to the server.** On a miss the caddy records
 ``cb->pname`` (the nspace/rank the reply will be matched against) and:
 
-* a ``NULL`` key does *not* go up, unless the server is pre-v3.2 or we
-  are asking about another namespace's job-level info, in which case the
-  request rank is rewritten to ``PMIX_RANK_WILDCARD``;
+* a ``NULL`` key does *not* go up, unless we are asking about another
+  namespace's job-level info, in which case the request rank is rewritten
+  to ``PMIX_RANK_WILDCARD``;
 * a reserved key goes up like any other — the server's *host* frequently
   knows values it chose not to push down, and it is asked only if the
   request is surfaced to it;
