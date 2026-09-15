@@ -638,7 +638,7 @@ static void test_group_arrays(void)
 
 /* PMIx_server_setup_fork is blocking, has no callback, and reads library
  * state the progress thread writes - the pnet and pgpu per-namespace envar
- * caches, the local datastore, pmix_server_globals.genvars. It therefore
+ * caches and the local datastore. It therefore
  * runs its body on that thread. The wrinkle is a host that calls it from
  * inside a PMIx callback: such a host is *already* on the progress thread,
  * and posting an event to wait for there would be waiting for itself.
