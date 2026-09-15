@@ -38,6 +38,7 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo);
 pmix_ptl_module_t pmix_ptl_tool_module = {
     .name = "tool",
     .connect_to_peer = pmix_ptl_base_connect_to_peer,
+    .connect_to_peer_nb = pmix_ptl_base_connect_to_peer_nb,
     .setup_fork = pmix_ptl_base_setup_fork,
     .setup_listener = setup_listener
 };

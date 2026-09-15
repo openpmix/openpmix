@@ -71,6 +71,7 @@ pmix_ptl_base_t pmix_ptl_base = {
     .posted_recvs = PMIX_LIST_STATIC_INIT(pmix_ptl_base.posted_recvs),
     .listener = PMIX_LISTENER_STATIC_INIT,
     .pending_connections = PMIX_LIST_STATIC_INIT(pmix_ptl_base.pending_connections),
+    .connecting = PMIX_LIST_STATIC_INIT(pmix_ptl_base.connecting),
     .connection = NULL,
     .max_msg_size = 0,
     .session_tmpdir = NULL,
@@ -125,7 +126,8 @@ pmix_ptl_module_t pmix_ptl = {
     .connect_to_peer = NULL,
     .query_servers = NULL,
     .setup_listener = NULL,
-    .setup_fork = NULL
+    .setup_fork = NULL,
+    .connect_to_peer_nb = NULL
 };
 
 static size_t max_msg_size = 32;
@@ -380,6 +382,10 @@ static pmix_status_t pmix_ptl_close(void)
     /* stop_listening above has already closed and released anything
      * that was still on it */
     PMIX_DESTRUCT(&pmix_ptl_base.pending_connections);
+    /* a connect still under way will never finish now - the progress
+     * thread is stopped - so tell whoever is waiting on it */
+    pmix_ptl_base_abandon_connects();
+    PMIX_DESTRUCT(&pmix_ptl_base.connecting);
 
     if (NULL != pmix_ptl_base.scheduler_filename) {
         if (pmix_ptl_base.created_scheduler_filename) {
@@ -551,6 +557,7 @@ static void open_cleanup(void)
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
     PMIX_DESTRUCT(&pmix_ptl_base.listener);
     PMIX_DESTRUCT(&pmix_ptl_base.pending_connections);
+    PMIX_DESTRUCT(&pmix_ptl_base.connecting);
     pmix_ptl_base.initialized = false;
 }
 
@@ -565,6 +572,7 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
     PMIX_CONSTRUCT(&pmix_ptl_base.posted_recvs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.listener, pmix_listener_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.pending_connections, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_ptl_base.connecting, pmix_list_t);
     pmix_ptl_base.connection = (struct sockaddr_storage *)malloc(sizeof(struct sockaddr_storage));
     if (NULL == pmix_ptl_base.connection) {
         rc = PMIX_ERR_NOMEM;

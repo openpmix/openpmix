@@ -34,6 +34,7 @@
 pmix_ptl_module_t pmix_ptl_server_module = {
     .name = "server",
     .connect_to_peer = pmix_ptl_base_connect_to_peer,
+    .connect_to_peer_nb = pmix_ptl_base_connect_to_peer_nb,
     .setup_fork = pmix_ptl_base_setup_fork,
     .setup_listener = pmix_ptl_base_setup_listener
 };
