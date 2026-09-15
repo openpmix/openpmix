@@ -1976,39 +1976,20 @@ pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc, pmix_info_t info[],
     return rc;
 }
 
-void pmix_tool_retry_attach(int sd, short args, void *cbdata)
+/* The second half of pmix_tool_retry_attach: the connection has an
+ * outcome. Runs on the progress thread either way - from the event-driven
+ * connect's callback, or directly after a blocking one. Owns "suri" and
+ * "pr" from here: a peer that did not connect is released, and the URI is
+ * freed unless it is stored below */
+static void attach_complete(pmix_status_t status, struct pmix_peer_t *pr,
+                            char *suri, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    pmix_peer_t *peer = (pmix_peer_t *) pr;
     pmix_kval_t *kptr;
-    pmix_peer_t *peer;
-    size_t n;
     pmix_status_t rc;
-    char *suri;
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    PMIX_ACQUIRE_OBJECT(cb);
-
-    /* check for directives */
-    cb->checked = false;
-    for (n = 0; n < cb->ninfo; n++) {
-        if (PMIX_CHECK_KEY(&cb->info[n], PMIX_PRIMARY_SERVER)) {
-            cb->checked = PMIX_INFO_TRUE(&cb->info[n]);
-            break;
-        }
-    }
-
-    /* ask the ptl to establish connection to the new server */
-    peer = PMIX_NEW(pmix_peer_t);
-    /* setup the infrastructure - assume this new server will follow
-     * same rules as our current one */
-    peer->nptr = PMIX_NEW(pmix_namespace_t);
-    peer->info = PMIX_NEW(pmix_rank_info_t);
-    peer->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
-    peer->nptr->compat.psec = pmix_globals.mypeer->nptr->compat.psec;
-    peer->nptr->compat.type = pmix_globals.mypeer->nptr->compat.type;
-    peer->nptr->compat.gds = pmix_globals.mypeer->nptr->compat.gds;
-
-    cb->status = pmix_ptl.connect_to_peer((struct pmix_peer_t *) peer, cb->info, cb->ninfo, &suri);
+    cb->status = status;
 
     if (PMIX_SUCCESS == cb->status) {
         /* return the name */
@@ -2073,12 +2054,66 @@ void pmix_tool_retry_attach(int sd, short args, void *cbdata)
         }
 
     } else {
+        /* a failed connect can hand back the URI it located too */
+        free(suri);
         PMIX_RELEASE(peer);
     }
 
     PMIX_POST_OBJECT(cb);
     PMIX_WAKEUP_THREAD(&cb->lock);
-    return;
+}
+
+/* Thread-shift handler: connect to a server and, if asked, make it our
+ * primary. It runs on the progress thread, so the connection must not
+ * wait there - a server that is slow to answer, or never answers, would
+ * hold every other connection and event in the process with it. When the
+ * active ptl offers an event-driven connect, this only starts it and
+ * returns; attach_complete finishes the job when the outcome is known */
+void pmix_tool_retry_attach(int sd, short args, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    pmix_peer_t *peer;
+    size_t n;
+    pmix_status_t rc;
+    char *suri = NULL;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(cb);
+
+    /* check for directives */
+    cb->checked = false;
+    for (n = 0; n < cb->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&cb->info[n], PMIX_PRIMARY_SERVER)) {
+            cb->checked = PMIX_INFO_TRUE(&cb->info[n]);
+            break;
+        }
+    }
+
+    /* ask the ptl to establish connection to the new server */
+    peer = PMIX_NEW(pmix_peer_t);
+    /* setup the infrastructure - assume this new server will follow
+     * same rules as our current one */
+    peer->nptr = PMIX_NEW(pmix_namespace_t);
+    peer->info = PMIX_NEW(pmix_rank_info_t);
+    peer->nptr->compat.bfrops = pmix_globals.mypeer->nptr->compat.bfrops;
+    peer->nptr->compat.psec = pmix_globals.mypeer->nptr->compat.psec;
+    peer->nptr->compat.type = pmix_globals.mypeer->nptr->compat.type;
+    peer->nptr->compat.gds = pmix_globals.mypeer->nptr->compat.gds;
+
+    if (NULL != pmix_ptl.connect_to_peer_nb) {
+        rc = pmix_ptl.connect_to_peer_nb((struct pmix_peer_t *) peer, cb->info, cb->ninfo,
+                                         attach_complete, cb);
+        if (PMIX_SUCCESS == rc) {
+            /* under way - attach_complete will be called */
+            return;
+        }
+        /* nothing was started, and nothing will call back */
+        attach_complete(rc, (struct pmix_peer_t *) peer, NULL, cb);
+        return;
+    }
+
+    rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) peer, cb->info, cb->ninfo, &suri);
+    attach_complete(rc, (struct pmix_peer_t *) peer, suri, cb);
 }
 
 pmix_status_t PMIx_tool_attach_to_server(pmix_proc_t *myproc, pmix_proc_t *server,

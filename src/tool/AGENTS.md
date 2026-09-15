@@ -203,6 +203,13 @@ can be connected to **several** servers at once and switch which one is
   `pmix_tool_retry_attach`: opens a new connection, adds the peer to the
   clients array, and — if `PMIX_PRIMARY_SERVER` was requested — repoints
   `myserver` and updates the stored `PMIX_SERVER_NSPACE`/`RANK`/`URI`.
+  **It does not wait for the server on the progress thread.** It starts
+  the ptl's event-driven connect (`pmix_ptl.connect_to_peer_nb`) and
+  returns; `attach_complete` does the bookkeeping above and wakes the
+  waiting caller once the outcome is known. Only when the active ptl
+  module offers no such entry does it fall back to the blocking
+  `connect_to_peer`, and then it calls `attach_complete` directly. See
+  the threading notes in [`src/mca/ptl/base/AGENTS.md`](../mca/ptl/base/AGENTS.md).
 - `PMIx_tool_set_server` → `pmix_tool_retry_set`: switches the primary to
   an **already-known** server, optionally polling
   (`PMIX_WAIT_FOR_CONNECTION`, driven by re-arming

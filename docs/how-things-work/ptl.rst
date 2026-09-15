@@ -319,13 +319,23 @@ buffer so blocked callers do not hang, before reporting the event.
 Threading Model
 ---------------
 
-Two regimes coexist:
+The regimes that coexist:
 
 * **Init-time connection is synchronous.** ``connect_to_peer`` runs in the
   caller's thread during ``PMIx_Init`` / ``PMIx_tool_init``, performs
   *blocking* socket I/O, and returns only when the handshake is complete.
-  That is *not* true of the server's side: its handshake runs on the
-  server's progress thread, whenever anyone connects, while that thread
+  Each ``connect()`` attempt and each reply is bounded by
+  ``ptl_base_handshake_wait_time``.
+* **Connecting from the progress thread is event-driven.**
+  ``PMIx_tool_attach_to_server`` - and a tool or server attaching to
+  another server at init - does its work in a thread-shift handler, on the
+  progress thread. There it uses ``connect_to_peer_nb``: the server is
+  located as before, but the connection is a non-blocking ``connect()``
+  followed by the same handshake, each reply collected as it arrives. The
+  progress thread keeps serving everything else in between, and one timer,
+  ``ptl_base_handshake_wait_time``, bounds the whole attach.
+* **The server's side of the handshake does not wait either.** It runs
+  on the server's progress thread, whenever anyone connects, while that thread
   is serving every other client. So the server reads an incoming
   handshake as it arrives and never waits for it. Only the replies and
   any security handshake that follow are blocking exchanges, each read
@@ -353,8 +363,10 @@ deprecated ``pmix_ptl_tcp_`` synonyms): ``max_msg_size``,
 ``disable_ipv4_family`` / ``disable_ipv6_family``,
 ``connection_wait_time`` / ``max_retries`` (how long and how often to wait
 for a server's rendezvous file to appear), ``handshake_wait_time`` /
-``handshake_max_retries`` (the connecting side's wait for the server's
-reply; a ``handshake_wait_time`` of 0, the default, does not bound it),
+``handshake_max_retries`` (how long a client or tool waits on a server
+while connecting to it, and how often it retries a handshake the server
+asks it to retry; the wait defaults to 60 seconds, and 0 removes the
+bound),
 ``connect_ack_timeout`` (how long a server gives an incoming connection to
 deliver its whole connection request, and to answer each step of any
 security handshake after it; default 5 seconds, 0 for no limit), and
