@@ -167,3 +167,12 @@ Every port in the requested range is already in use. Either free one
 of them, or widen (or clear) the "pmix_ptl_base_ipv4_ports" /
 "pmix_ptl_base_ipv6_ports" MCA parameter so the kernel is allowed to
 choose a port.
+#
+[unsupported-server-version]
+This process attempted to connect to a PMIx server that is running a
+version of the PMIx library this process does not support:
+
+  Server version:  %d.%d
+
+This version of PMIx can only connect to servers using PMIx v3.2 or
+later. The connection has been refused.

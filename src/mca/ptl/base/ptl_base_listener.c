@@ -1137,7 +1137,8 @@ complete:
                 }
                 /* output my nspace and rank plus the URI */
                 fprintf(fp, "%s\n", lt->uri);
-                /* add a flag that indicates we accept v2.1 protocols */
+                /* record our version - a connecting peer uses it to decide
+                 * whether it can talk to us */
                 fprintf(fp, "v%s\n", PMIX_VERSION);
                 fclose(fp);
                 /* record the name of the file we actually wrote, which is
