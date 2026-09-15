@@ -69,6 +69,11 @@ struct pmix_ptl_base_t {
     bool selected;
     pmix_list_t posted_recvs; // list of pmix_ptl_posted_recv_t
     pmix_listener_t listener;
+    /* when remote connections are accepted, a listener on each other
+     * public interface the directives selected, and where they are:
+     * a comma-delimited list of "tcp4://host:port"/"tcp6://host:port" */
+    pmix_list_t alt_listeners;
+    char *alt_uris;
     pmix_list_t pending_connections; // pmix_pending_connection_t still reading their connect-ack
     pmix_list_t connecting;          // pmix_ptl_connect_op_t: our own connects still under way
     struct sockaddr_storage *connection;
@@ -124,6 +129,12 @@ struct pmix_ptl_base_t {
 typedef struct pmix_ptl_base_t pmix_ptl_base_t;
 
 PMIX_EXPORT extern pmix_ptl_base_t pmix_ptl_base;
+
+/* Tags the line of a rendezvous or report-URI file that carries a server's
+ * alternate addresses. The line follows every line a released reader takes
+ * by position, and a reader finds it by this tag rather than by where it
+ * falls, so more lines may yet follow or precede it. */
+#define PMIX_PTL_ALT_URIS_TAG "alturis:"
 
 typedef struct {
     pmix_list_item_t super;

@@ -379,6 +379,8 @@ static pmix_status_t pmix_ptl_close(void)
     /* the component will cleanup when closed */
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
     PMIX_DESTRUCT(&pmix_ptl_base.listener);
+    /* stop_listening above released every alternate and their list */
+    PMIX_LIST_DESTRUCT(&pmix_ptl_base.alt_listeners);
     /* stop_listening above has already closed and released anything
      * that was still on it */
     PMIX_DESTRUCT(&pmix_ptl_base.pending_connections);
@@ -556,6 +558,7 @@ static void open_cleanup(void)
     pmix_ptl_base.rendezvous_filename = NULL;
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
     PMIX_DESTRUCT(&pmix_ptl_base.listener);
+    PMIX_LIST_DESTRUCT(&pmix_ptl_base.alt_listeners);
     PMIX_DESTRUCT(&pmix_ptl_base.pending_connections);
     PMIX_DESTRUCT(&pmix_ptl_base.connecting);
     pmix_ptl_base.initialized = false;
@@ -571,6 +574,8 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
     pmix_ptl_base.initialized = true;
     PMIX_CONSTRUCT(&pmix_ptl_base.posted_recvs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.listener, pmix_listener_t);
+    PMIX_CONSTRUCT(&pmix_ptl_base.alt_listeners, pmix_list_t);
+    pmix_ptl_base.alt_uris = NULL;
     PMIX_CONSTRUCT(&pmix_ptl_base.pending_connections, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.connecting, pmix_list_t);
     pmix_ptl_base.connection = (struct sockaddr_storage *)malloc(sizeof(struct sockaddr_storage));
