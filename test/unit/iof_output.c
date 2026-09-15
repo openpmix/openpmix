@@ -44,6 +44,7 @@
 
 #include "include/pmix.h"
 #include "include/pmix_server.h"
+#include "include/pmix_tool.h"
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
@@ -463,6 +464,33 @@ int main(int argc, char **argv)
                    && PMIX_RANK_WILDCARD == stop_procs[0].rank);
         report("and the local registration is gone",
                NULL == pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid));
+    }
+
+    /* --- a blocking PMIx_IOF_pull hands back its handle ----------------- *
+     * The registration id reaches a non-blocking caller through regcbfunc,
+     * and a NULL regcbfunc is what makes the call blocking - so the return
+     * value is the only place the blocking form can put the handle
+     * PMIx_IOF_deregister needs. pmix_tool.h documents it there: a
+     * non-negative return is the id. It used to answer
+     * PMIX_OPERATION_SUCCEEDED, which is negative, so the registration
+     * could never be removed and a caller following the documented
+     * contract read success as failure. A server is its own IOF target,
+     * so the request is registered locally and nothing is sent. */
+    {
+        pmix_proc_t psrc;
+        pmix_status_t id1, id2;
+        pmix_iof_req_t *preq;
+
+        PMIX_LOAD_PROCID(&psrc, "iof-pull-ut", PMIX_RANK_WILDCARD);
+        id1 = PMIx_IOF_pull(&psrc, 1, NULL, 0, PMIX_FWD_STDOUT_CHANNEL, NULL, NULL, NULL);
+        id2 = PMIx_IOF_pull(&psrc, 1, NULL, 0, PMIX_FWD_STDERR_CHANNEL, NULL, NULL, NULL);
+        report("a blocking IOF pull returns a handle, not a status", 0 <= id1);
+        report("a second blocking IOF pull returns a handle of its own",
+               0 <= id2 && id2 != id1);
+        preq = (0 <= id1) ? (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, id1)
+                          : NULL;
+        report("the handle names the registration it made",
+               NULL != preq && PMIX_FWD_STDOUT_CHANNEL == preq->channels);
     }
 
     PMIx_server_finalize();

@@ -296,7 +296,13 @@ whole of understanding this code:
   delivery means packing a message and sending it —
   `pmix_iof_process_iof()` is the only thing that does this.
 - **Registered by this process**, through its own `PMIx_IOF_pull`.
-  Delivery means invoking `req->cbfunc`.
+  Delivery means invoking `req->cbfunc`. Its handle is `req->local_id`:
+  the non-blocking form hands it to `regcbfunc`, and the **blocking form
+  returns it** - a non-negative return is the id, a negative one an
+  error, as for `PMIx_Register_event_handler`. That is what `pmix_tool.h`
+  always documented; the code used to answer `PMIX_OPERATION_SUCCEEDED`,
+  so a blocking registration could never be deregistered.
+  `test/unit/iof_output.c` holds it.
 
 The second kind only works when the registration was **forwarded
 upstream**. `req->cbfunc` is invoked from exactly three places — the
