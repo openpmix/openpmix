@@ -174,9 +174,18 @@ processing; the final status and the assigned reference identifier are
 delivered to ``regcbfunc``. Any negative return means the request was not
 submitted and ``regcbfunc`` will not be called.
 
-For the blocking form (``regcbfunc`` is ``NULL``), a return of
-``PMIX_OPERATION_SUCCEEDED`` indicates that registration completed
-successfully; a negative value is an error constant.
+For the blocking form (``regcbfunc`` is ``NULL``), a return value greater
+than or equal to zero is the reference identifier assigned to the
+registration - the value to pass to :ref:`PMIx_IOF_deregister(3)
+<man3-PMIx_IOF_deregister>` - and a negative value is an error constant.
+This is the same convention as the blocking form of
+:ref:`PMIx_Register_event_handler(3) <man3-PMIx_Register_event_handler>`.
+Earlier releases did not return the identifier: they reported success as
+``PMIX_OPERATION_SUCCEEDED`` or ``PMIX_SUCCESS``, depending on the release
+and on whether the request was served locally, so a blocking registration
+had no handle to deregister with. Code that must also work with those
+releases should accept ``PMIX_OPERATION_SUCCEEDED`` as success too, and
+cannot rely on the value as an identifier there.
 
 Error constants that may be returned include:
 

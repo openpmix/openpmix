@@ -234,10 +234,10 @@ PMIX_EXPORT pmix_status_t PMIx_tool_set_server(const pmix_proc_t *server,
  *             be submitted - in this case, the regcbfunc
  *             will _not_ be called.
  *             If regcbfunc is NULL, then this will be treated
- *             as a BLOCKING call - a positive return value
- *             represents the reference ID for the request,
- *             while negative values indicate the corresponding
- *             error
+ *             as a BLOCKING call - a non-negative return value
+ *             is the reference ID for the request, to be passed
+ *             to PMIx_IOF_deregister, while negative values
+ *             indicate the corresponding error
  *
  * cbdata - pointer to object to be returned in regcbfunc
  */
