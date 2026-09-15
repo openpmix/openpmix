@@ -22,6 +22,37 @@ Entries that stood on :doc:`todo` and have since been answered.  Each is
 kept with the reasoning that closed it, because in most cases the way it
 closed contradicted what the entry predicted.
 
+A host that answers one group completion for several up-calls strands a block
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Closed 2026-09-15.  A bootstrap or follower participant gets a
+``grp_block_t`` of its own, so several blocks for one group can be
+outstanding with the host at once, each owed one completion.  PRRTE keyed
+its group tracker on ``{groupID, op}`` and each up-call overwrote the
+tracker's callback, so only the last completion was ever delivered.
+``_grpcbfunc()`` covers the participants by answering every block sharing
+the id, and keeps a block the host still owes a completion alive until
+that completion arrives - so against such a host the other blocks were
+stranded for the life of the server.
+
+The entry stayed open after both sides had been fixed, because it was
+written to stay: the PMIx behavior is permanent and the entry described
+it.  What closed it was confirming the fix end to end.  PRRTE's tracker now
+keeps a list of pending completions (``prte_grpcomm_grp_pending_t``,
+PRRTE ``0947807975``), and an out-of-memory path that skipped one was
+fixed in openpmix/prrte#2783.  Run with ``examples/group_bootstrap`` - four
+local bootstrap participants - under PRRTE, a server built before the
+PRRTE fix saw two host completions for five blocks, and one built after it
+saw five, with every participant answered in both cases.
+
+**The behavior in** ``_grpcbfunc()`` **stays.**  A server cannot ask its
+host which kind it is, supports hosts other than PRRTE, and still has to
+work with PRRTE releases that predate the fix, so answering every block
+and keeping a block alive for its own completion remains the only choice
+that is correct against both.  Against such an older PRRTE the stranded
+blocks still leak; that is the deliberate half of the trade, and is
+described in ``src/server/AGENTS.md``.
+
 A server-wide envar hook that nothing fills
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

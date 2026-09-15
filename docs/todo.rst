@@ -173,46 +173,6 @@ reason.
 Deferred work
 -------------
 
-.. _todo-group-coalescing-host:
-
-A host that answers one group completion for several up-calls strands a block
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-A bootstrap or follower participant gets a ``grp_block_t`` of its own, so
-several blocks carrying the same group id can be outstanding with the
-host at once, each handed up by its own ``pmix_host_server.group()``
-call.  ``pmix_server_grp_fn_t`` promises one completion per call —
-``grp_fn`` in ``test/simple/simptest.c`` delivers exactly that — but
-PRRTE does not: ``get_tracker()`` in its ``src/grpcomm/grpcomm_group.c``
-keys its collective on ``{groupID, op}`` and each up-call overwrites
-``coll->cbfunc`` / ``coll->cbdata``, so only the last one is ever
-discharged.
-
-``_grpcbfunc()`` therefore has to answer *every* block sharing the id,
-or PRRTE leaves the other participants waiting on a reply nothing will
-send.  It must equally not free a block the host still owes a
-completion for, or a host that honors the contract completes on
-released memory.  Both are now true: a swept block leaves
-``grp_collectives`` but stays alive until its own completion arrives.
-Against PRRTE that completion never comes and the block's shell is
-stranded for the life of the server — one per extra local bootstrap
-participant per group.
-
-The leak is the deliberate half of the trade; answering the
-participants is the half that cannot be given up.  Closing it means
-PRRTE discharging every ``cbdata`` it is handed rather than overwriting
-it — which is a PRRTE change, and one now written: its group tracker
-carries a list of pending completions instead of a single pair
-(``prte_grpcomm_grp_pending_t``).
-
-**The behavior on this side stays regardless**, and the entry stays with
-it.  A PMIx server has no way to ask a host which of the two it does,
-supports hosts other than PRRTE, and must interoperate back to v3.2 — so
-keeping a block alive until its own completion arrives is the only
-answer that is correct against both, and the sweep is what a
-once-answering host still needs.  What the PRRTE fix removes is the
-leak, not the requirement.
-
 .. _todo-get-pointer-values:
 
 ``PMIX_GET_POINTER_VALUES`` is honored by three shortcuts and nothing else
