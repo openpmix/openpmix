@@ -185,9 +185,11 @@ typedef bool (*pmix_os_dirpath_destroy_callback_fn_t)(const char *root, const ch
 /**
  * Destroy a directory
  *
- * The directory is never opened through a symlink - at the final component or
- * anywhere inside the tree - and trailing separators are ignored so that
- * "link/" cannot make the kernel follow one.
+ * The directory is opened relative to its parent and never through a symlink -
+ * at the final component or anywhere inside the tree, and trailing separators
+ * are ignored so that "link/" cannot make the kernel follow one. It is removed
+ * at the end only if its parent still holds the directory that was emptied: one
+ * renamed away and replaced during the walk leaves the replacement alone.
  *
  * @param path A pointer to a string that contains the path name to be destroyed
  * @param recursive Recursively descend the directory removing all files and directories.
@@ -197,9 +199,16 @@ typedef bool (*pmix_os_dirpath_destroy_callback_fn_t)(const char *root, const ch
  *
  * @retval PMIX_SUCCESS If the directory was successfully removed or removed to the
  *                      specification of the user (i.e., obeyed the callback function).
+ *                      A directory left non-empty counts as obeying the callback only
+ *                      when there is one.
  * @retval PMIX_ERR_NOT_FOUND If directory does not exist.
+ * @retval PMIX_ERR_BAD_PARAM If path has no final component to remove - it is empty
+ *                    or the root - or its final component is "." or "..".
+ * @retval PMIX_ERR_OUT_OF_RESOURCE If memory ran out.
  * @retval PMIX_ERROR If the directory cannot be removed, accessed properly, or contains
- *                    directories that could not be removed..
+ *                    anything that could not be classified or removed - including an
+ *                    emptied subdirectory or the directory itself - or was replaced
+ *                    while it was being emptied.
  */
 PMIX_EXPORT int pmix_os_dirpath_destroy(const char *path, bool recursive,
                                         pmix_os_dirpath_destroy_callback_fn_t cbfunc);

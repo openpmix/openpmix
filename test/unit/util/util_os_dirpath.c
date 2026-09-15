@@ -699,6 +699,259 @@ static void test_create_trailing_separator(void)
     rmdir(path);
 }
 
+static bool veto_all_called = false;
+
+static bool veto_all(const char *root, const char *path)
+{
+    PMIX_HIDE_UNUSED_PARAMS(root, path);
+    veto_all_called = true;
+    return false;
+}
+
+/* A path that names no final component cannot be destroyed relative
+ * to its parent, and "." or ".." would name somewhere else entirely.
+ * These name real, populated directories ("/" and the system tmpdir),
+ * so the calls are made non-recursive with a callback that vetoes
+ * every entry: an implementation that failed to refuse them must
+ * still not be able to remove anything */
+static void test_destroy_no_final_component(void)
+{
+    char arg[600];
+
+    veto_all_called = false;
+    report("destroy_no_final_component: empty path is BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_os_dirpath_destroy("", false, veto_all));
+    report("destroy_no_final_component: root is BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_os_dirpath_destroy("/", false, veto_all));
+    snprintf(arg, sizeof(arg), "%s/..", tmpbase);
+    report("destroy_no_final_component: trailing .. is BAD_PARAM",
+           PMIX_ERR_BAD_PARAM == pmix_os_dirpath_destroy(arg, false, veto_all));
+    report("destroy_no_final_component: nothing was walked", !veto_all_called);
+    report("destroy_no_final_component: tmpbase survives", dir_exists(tmpbase));
+}
+
+static void test_destroy_nonexistent(void)
+{
+    char path[512];
+
+    snprintf(path, sizeof(path), "%s/never_made", tmpbase);
+    report("destroy_nonexistent: returns ERR_NOT_FOUND",
+           PMIX_ERR_NOT_FOUND == pmix_os_dirpath_destroy(path, true, NULL));
+    snprintf(path, sizeof(path), "%s/never_made/below", tmpbase);
+    report("destroy_nonexistent: missing parent returns ERR_NOT_FOUND",
+           PMIX_ERR_NOT_FOUND == pmix_os_dirpath_destroy(path, true, NULL));
+}
+
+/* ------------------------------------------------------------------ */
+/* Destroy must not report success for work it did not do              */
+/* ------------------------------------------------------------------ */
+
+/* The permission-based cases rely on the kernel enforcing mode bits,
+ * which it does not for root */
+static bool running_as_root(const char *name)
+{
+    char msg[256];
+
+    if (0 != geteuid()) {
+        return false;
+    }
+    snprintf(msg, sizeof(msg), "%s: SKIPPED (running as root)", name);
+    report(msg, 1);
+    return true;
+}
+
+/* With a callback present, a directory left non-empty is taken as one
+ * the callback chose to keep. Passing one that keeps nothing therefore
+ * isolates a case to the failure it is about, rather than letting the
+ * leftover contents fail the destroy on their own */
+static bool allow_all(const char *root, const char *path)
+{
+    PMIX_HIDE_UNUSED_PARAMS(root, path);
+    return true;
+}
+
+/* A directory that is readable but not searchable can be listed, but
+ * nothing in it can be classified or removed - the destroy leaves it
+ * all behind and must say so */
+static void test_destroy_unsearchable_dir(void)
+{
+    char base[512], sub[600], file[700];
+    int rc;
+
+    if (running_as_root("destroy_unsearchable_dir")) {
+        return;
+    }
+    snprintf(base, sizeof(base), "%s/unsearch", tmpbase);
+    snprintf(sub, sizeof(sub), "%s/sub", base);
+    snprintf(file, sizeof(file), "%s/f", sub);
+    mkdir(base, S_IRWXU);
+    mkdir(sub, S_IRWXU);
+    make_file(file);
+    chmod(sub, S_IRUSR | S_IWUSR);
+
+    rc = pmix_os_dirpath_destroy(base, true, allow_all);
+    report("destroy_unsearchable_dir: returns an error", PMIX_SUCCESS != rc);
+
+    chmod(sub, S_IRWXU);
+    report("destroy_unsearchable_dir: contents left in place", file_exists(file));
+    unlink(file);
+    rmdir(sub);
+    rmdir(base);
+}
+
+/* The subdirectory is emptied, but the directory holding it cannot be
+ * written, so the subdirectory itself cannot be removed */
+static void test_destroy_subdir_rmdir_failure(void)
+{
+    char base[512], sub[600], file[700];
+    int rc;
+
+    if (running_as_root("destroy_subdir_rmdir_failure")) {
+        return;
+    }
+    snprintf(base, sizeof(base), "%s/subfail", tmpbase);
+    snprintf(sub, sizeof(sub), "%s/sub", base);
+    snprintf(file, sizeof(file), "%s/f", sub);
+    mkdir(base, S_IRWXU);
+    mkdir(sub, S_IRWXU);
+    make_file(file);
+    chmod(base, S_IRUSR | S_IXUSR);
+
+    rc = pmix_os_dirpath_destroy(base, true, allow_all);
+    report("destroy_subdir_rmdir_failure: returns an error", PMIX_SUCCESS != rc);
+    report("destroy_subdir_rmdir_failure: subdirectory contents removed", !file_exists(file));
+    report("destroy_subdir_rmdir_failure: subdirectory still there", dir_exists(sub));
+
+    chmod(base, S_IRWXU);
+    unlink(file);
+    rmdir(sub);
+    rmdir(base);
+}
+
+/* The directory is emptied, but its parent cannot be written, so the
+ * directory itself cannot be removed */
+static void test_destroy_base_rmdir_failure(void)
+{
+    char parent[512], base[600], file[700];
+    int rc;
+
+    if (running_as_root("destroy_base_rmdir_failure")) {
+        return;
+    }
+    snprintf(parent, sizeof(parent), "%s/basefail", tmpbase);
+    snprintf(base, sizeof(base), "%s/base", parent);
+    snprintf(file, sizeof(file), "%s/f", base);
+    mkdir(parent, S_IRWXU);
+    mkdir(base, S_IRWXU);
+    make_file(file);
+    chmod(parent, S_IRUSR | S_IXUSR);
+
+    rc = pmix_os_dirpath_destroy(base, true, NULL);
+    report("destroy_base_rmdir_failure: returns an error", PMIX_SUCCESS != rc);
+    report("destroy_base_rmdir_failure: contents removed", !file_exists(file));
+    report("destroy_base_rmdir_failure: directory still there", dir_exists(base));
+
+    chmod(parent, S_IRWXU);
+    rmdir(base);
+    rmdir(parent);
+}
+
+/* The parent of the directory being destroyed only has to be written
+ * and searched, not read - holding a descriptor on it must not demand
+ * more than removing an entry from it does */
+static void test_destroy_unreadable_parent(void)
+{
+    char parent[512], base[600], file[700];
+    int rc;
+
+    if (running_as_root("destroy_unreadable_parent")) {
+        return;
+    }
+    snprintf(parent, sizeof(parent), "%s/noread", tmpbase);
+    snprintf(base, sizeof(base), "%s/base", parent);
+    snprintf(file, sizeof(file), "%s/f", base);
+    mkdir(parent, S_IRWXU);
+    mkdir(base, S_IRWXU);
+    make_file(file);
+    chmod(parent, S_IWUSR | S_IXUSR);
+
+    rc = pmix_os_dirpath_destroy(base, true, NULL);
+    report("destroy_unreadable_parent: returns SUCCESS", PMIX_SUCCESS == rc);
+    report("destroy_unreadable_parent: directory removed", !dir_exists(base));
+
+    chmod(parent, S_IRWXU);
+    unlink(file);
+    rmdir(base);
+    rmdir(parent);
+}
+
+/* An existing directory the caller owns but cannot read cannot be
+ * opened to have its mode checked or repaired, and repairing it by
+ * path would reintroduce the race the descriptor exists to close */
+static void test_create_on_unreadable_dir(void)
+{
+    char path[512];
+    int rc;
+
+    if (running_as_root("create_on_unreadable_dir")) {
+        return;
+    }
+    snprintf(path, sizeof(path), "%s/noreaddir", tmpbase);
+    mkdir(path, S_IWUSR | S_IXUSR);
+    chmod(path, S_IWUSR | S_IXUSR);
+
+    rc = pmix_os_dirpath_create(path, S_IRWXU);
+    report("create_on_unreadable_dir: refused with ERR_SILENT", PMIX_ERR_SILENT == rc);
+
+    chmod(path, S_IRWXU);
+    rmdir(path);
+}
+
+/* The base directory is renamed away while it is being emptied, and an
+ * unrelated directory takes its name. The destroy was given a path, but
+ * the directory it emptied is the one it opened: the newcomer under the
+ * old name is not its to remove. The callback does the swap, since it
+ * runs in the middle of the walk. */
+static char swap_base[512];
+static char swap_moved[512];
+static bool swap_done = false;
+
+static bool swap_base_cb(const char *root, const char *path)
+{
+    PMIX_HIDE_UNUSED_PARAMS(root, path);
+    if (!swap_done) {
+        swap_done = true;
+        if (0 == rename(swap_base, swap_moved)) {
+            mkdir(swap_base, S_IRWXU);
+        }
+    }
+    return true;
+}
+
+static void test_destroy_base_swapped_during_walk(void)
+{
+    char file[600];
+    int rc;
+
+    snprintf(swap_base, sizeof(swap_base), "%s/swapbase", tmpbase);
+    snprintf(swap_moved, sizeof(swap_moved), "%s/swapmoved", tmpbase);
+    snprintf(file, sizeof(file), "%s/f", swap_base);
+    mkdir(swap_base, S_IRWXU);
+    make_file(file);
+    swap_done = false;
+
+    rc = pmix_os_dirpath_destroy(swap_base, true, swap_base_cb);
+    report("destroy_base_swapped_during_walk: swap happened",
+           swap_done && dir_exists(swap_moved));
+    report("destroy_base_swapped_during_walk: returns an error", PMIX_SUCCESS != rc);
+    report("destroy_base_swapped_during_walk: newcomer left alone", dir_exists(swap_base));
+
+    rmdir(swap_base);
+    snprintf(file, sizeof(file), "%s/f", swap_moved);
+    unlink(file);
+    rmdir(swap_moved);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -744,6 +997,15 @@ int main(int argc, char **argv)
     test_create_on_symlink_trailing_separator();
     test_is_empty_symlink_trailing_separator();
     test_create_trailing_separator();
+    test_destroy_no_final_component();
+    test_destroy_nonexistent();
+
+    test_destroy_unsearchable_dir();
+    test_destroy_subdir_rmdir_failure();
+    test_destroy_base_rmdir_failure();
+    test_destroy_unreadable_parent();
+    test_create_on_unreadable_dir();
+    test_destroy_base_swapped_during_walk();
 
     /* Remove the test root; all subdirectories were cleaned up above. */
     rmdir(tmpbase);
