@@ -148,6 +148,14 @@ def parse_help_files(file_paths, data, citations, verbose=False):
                     if -1 == end:
                         continue
                     current_section = stripped[1:end]
+                    # a repeated topic would silently replace the content
+                    # of the earlier one, so a show_help call written
+                    # against the first gets the second's text - and its
+                    # format string, which need not match the caller's
+                    # arguments
+                    if current_section in sections:
+                        sys.stderr.write("ERROR: topic [" + current_section + "] appears more than once in " + file_path + "\n")
+                        exit(1)
                     sections[current_section] = list()
                 elif current_section is not None:
                     sections[current_section].append(stripped)
