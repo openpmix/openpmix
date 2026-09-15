@@ -22,6 +22,50 @@ Entries that stood on :doc:`todo` and have since been answered.  Each is
 kept with the reasoning that closed it, because in most cases the way it
 closed contradicted what the entry predicted.
 
+The handshake after a connect-ack still blocks the server's progress thread
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/mca/ptl/base/ptl_base_connect.c`` (2026-09-13),
+closed 2026-09-15.  The entry had two halves, and they closed differently.
+
+**The server's half closed as unreachable.**  After a connect-ack is read,
+a psec module that authenticates by exchange rather than by credential runs
+``server_handshake(int sd)``, a blocking call on the server's progress
+thread.  The only module that implements one is ``psec/dummy_handshake``,
+a test module built only under ``--enable-dummy-handshake``; ``native``,
+``munge`` and ``none`` use credentials, and the two replies the server
+writes around that point are four bytes each.  Redesigning the psec
+handshake interface would harden a path no production build reaches, so
+it stays as it is, bounded by ``ptl_base_connect_ack_timeout``, and
+``src/mca/ptl/base/AGENTS.md`` says why.  Revisit if a real handshake-model
+module appears.
+
+**The connecting side's half was fixed.**  ``pmix_tool_retry_attach`` -
+behind ``PMIx_tool_attach_to_server``, a tool connecting to its parent at
+init, and a server attaching upstream - ran the whole connect on the
+progress thread with blocking calls, and ``ptl_base_handshake_wait_time``
+defaulted to 0.  A server that accepted and never answered therefore held
+the tool's progress thread for good; one that silently dropped the
+``connect()`` held it for up to eleven kernel connect timeouts.  Two
+changes:
+
+* ``ptl_base_handshake_wait_time`` now defaults to 60 seconds, and bounds
+  each blocking ``connect()`` attempt as well as each reply, so the
+  callers that still connect on their own thread - ``PMIx_Init``,
+  ``PMIx_tool_init``, a server connecting upstream - cannot hang forever
+  either.  Sixty is generous on purpose: a tool attaching to a PRRTE
+  daemon other than the HNP waits while the attach is relayed to the HNP
+  and back.
+* The attach itself is event-driven.  The ptl module gained
+  ``connect_to_peer_nb``; the server is located exactly as before, then a
+  non-blocking ``connect()`` sends the same connect-ack and reads the same
+  replies as they arrive, bounded by one timer.  The wire does not change.
+
+``test/unit/tool_attach_nb.c`` holds it: while an attach waits on a server
+that never answers, a blocking event registration - which can only
+complete on the progress thread - has to come back promptly, and the attach
+has to fail with ``PMIX_ERR_TIMEOUT`` when the wait expires.
+
 A host that answers one group completion for several up-calls strands a block
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
