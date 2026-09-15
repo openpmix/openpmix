@@ -330,6 +330,7 @@ static pmix_status_t parse_conn_file(char *filename, bool optional, bool found_b
     char *nspace = NULL;
     pmix_rank_t rank;
     char *uri = NULL;
+    char *alt = NULL, *line;
 
     /* if we cannot open the file, then the server must not
      * be configured to support tool connections, or this
@@ -417,6 +418,19 @@ process:
 
     /* see if this file contains the server's version */
     p = pmix_getline(fp);
+    /* and whether it lists other addresses the server listens on. They
+     * follow every line a released reader takes by position, and are found
+     * by their tag rather than by where they fall */
+    alt = NULL;
+    if (NULL != p) {
+        while (NULL == alt && NULL != (line = pmix_getline(fp))) {
+            if (0 == strncmp(line, PMIX_PTL_ALT_URIS_TAG, strlen(PMIX_PTL_ALT_URIS_TAG)) &&
+                '\0' != line[strlen(PMIX_PTL_ALT_URIS_TAG)]) {
+                alt = strdup(line + strlen(PMIX_PTL_ALT_URIS_TAG));
+            }
+            free(line);
+        }
+    }
     fclose(fp);
 
     /* parse the URI */
@@ -430,14 +444,17 @@ process:
             if (NULL != p) {
                 free(p);
             }
+            free(alt);
             return PMIX_ERR_NOMEM;
         }
         cn->nspace = nspace;
         cn->rank = rank;
         cn->uri = uri;
         cn->version = p;
+        cn->alt_uris = alt;
         pmix_list_append(connections, &cn->super);
     } else {
+        free(alt);
         if (NULL != nspace) {
             free(nspace);
         }
@@ -751,6 +768,67 @@ static pmix_status_t refuse_outdated(pmix_peer_t *peer)
 pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
                                             pmix_info_t *iptr, size_t niptr)
 {
+    pmix_status_t rc;
+    char *copy = suri;
+
+    rc = pmix_ptl_base_make_connection_alts(peer, &copy, NULL, iptr, niptr);
+    /* with no alternates the address cannot have changed */
+    return rc;
+}
+
+/* Connect a socket to the first of the server's addresses that answers.
+ *
+ * Only a failure to connect moves on to the next address: once a socket is
+ * up, whatever the handshake says is the server's answer, and asking again
+ * at another of its addresses would only get the same one. The primary
+ * address must parse - it is the one every discovery route validated - but
+ * an alternate that does not is passed over, since it came from a file or a
+ * directive an older or foreign writer may have garbled. */
+static pmix_status_t connect_any(char **suri, const char *alt_uris,
+                                 struct sockaddr_storage *addr, size_t *len, int *sd)
+{
+    char **alts = NULL, *used;
+    pmix_status_t rc;
+    int n;
+
+    rc = pmix_ptl_base_setup_connection(*suri, addr, len);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    rc = pmix_ptl_base_connect(addr, *len, sd);
+    if (PMIX_SUCCESS == rc || NULL == alt_uris) {
+        /* do not error log - might just be a stale connection point */
+        return rc;
+    }
+
+    alts = PMIx_Argv_split(alt_uris, ',');
+    for (n = 0; NULL != alts && NULL != alts[n]; n++) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: %s unreachable - trying alternate %s", *suri, alts[n]);
+        if (PMIX_SUCCESS != pmix_ptl_base_setup_connection(alts[n], addr, len)) {
+            continue;
+        }
+        rc = pmix_ptl_base_connect(addr, *len, sd);
+        if (PMIX_SUCCESS == rc) {
+            used = strdup(alts[n]);
+            if (NULL == used) {
+                CLOSE_THE_SOCKET(*sd);
+                PMIx_Argv_free(alts);
+                return PMIX_ERR_NOMEM;
+            }
+            free(*suri);
+            *suri = used;
+            break;
+        }
+    }
+    PMIx_Argv_free(alts);
+    return rc;
+}
+
+pmix_status_t pmix_ptl_base_make_connection_alts(pmix_peer_t *peer, char **suri,
+                                                 const char *alt_uris,
+                                                 pmix_info_t *iptr, size_t niptr)
+{
     struct sockaddr_storage myconnection;
     pmix_status_t rc;
     size_t len;
@@ -761,17 +839,21 @@ pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
         return rc;
     }
 
-    /* setup the connection */
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_setup_connection(suri, &myconnection, &len))) {
+    /* connect to whichever of the server's addresses answers first */
+    rc = connect_any(suri, alt_uris, &myconnection, &len, &peer->sd);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    goto connected;
+
+retry:
+    /* the server asked us to try the handshake again - at the address that
+     * answered */
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_connect(&myconnection, len, &peer->sd))) {
         return rc;
     }
 
-retry:
-    /* try to connect */
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_connect(&myconnection, len, &peer->sd))) {
-        /* do not error log - might just be a stale connection point */
-        return rc;
-    }
+connected:
 
     /* send our identity and any authentication credentials to the server */
     if (PMIX_SUCCESS != (rc = send_connect_ack(peer, iptr, niptr))) {
@@ -918,7 +1000,9 @@ typedef struct {
     pmix_peer_t *peer;          // borrowed - the caller owns it until cbfunc
     char *nspace;               // the server's identity from locating it
     pmix_rank_t rank;
-    char *suri;
+    char *suri;                 // the address being tried - the one connected, in the end
+    char **alts;                // the server's other addresses, still to try
+    int nextalt;
     pmix_info_t *iptr;          // the info blob for the connect-ack
     size_t niptr;
     struct sockaddr_storage addr;
@@ -947,6 +1031,8 @@ static void cnopcon(pmix_ptl_connect_op_t *p)
     p->nspace = NULL;
     p->rank = PMIX_RANK_UNDEF;
     p->suri = NULL;
+    p->alts = NULL;
+    p->nextalt = 0;
     p->iptr = NULL;
     p->niptr = 0;
     memset(&p->addr, 0, sizeof(p->addr));
@@ -981,6 +1067,7 @@ static void cnopdes(pmix_ptl_connect_op_t *p)
     }
     free(p->nspace);
     free(p->suri);
+    PMIx_Argv_free(p->alts);
     if (NULL != p->iptr) {
         PMIX_INFO_FREE(p->iptr, p->niptr);
     }
@@ -1125,6 +1212,30 @@ static void cnct_begin(int sd, short args, void *cbdata)
                             strerror(pmix_socket_errno), pmix_socket_errno);
         CLOSE_THE_SOCKET(op->sd);
         op->sd = -1;
+    }
+
+    /* this address never answered - move on to the server's next one. Only
+     * a failure to connect does this; see connect_any */
+    while (NULL != op->alts && NULL != op->alts[op->nextalt]) {
+        const char *next = op->alts[op->nextalt++];
+        char *copy;
+
+        if (PMIX_SUCCESS != pmix_ptl_base_setup_connection((char *) next, &op->addr, &op->addrlen)) {
+            continue;
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:connect: %s unreachable - trying alternate %s",
+                            (NULL == op->suri) ? "server" : op->suri, next);
+        copy = strdup(next);
+        if (NULL == copy) {
+            cnct_finish(op, PMIX_ERR_NOMEM);
+            return;
+        }
+        free(op->suri);
+        op->suri = copy;
+        op->connect_tries = 0;
+        cnct_begin(-1, 0, op);
+        return;
     }
     cnct_finish(op, PMIX_ERR_UNREACH);
 }
@@ -1366,6 +1477,7 @@ static void cnct_recv(int sd, short args, void *cbdata)
 
 pmix_status_t pmix_ptl_base_start_connection(pmix_peer_t *peer, char *nspace,
                                              pmix_rank_t rank, char *suri,
+                                             char *alt_uris,
                                              pmix_info_t *iptr, size_t niptr,
                                              pmix_ptl_connect_nb_cbfunc_t cbfunc,
                                              void *cbdata)
@@ -1387,6 +1499,10 @@ pmix_status_t pmix_ptl_base_start_connection(pmix_peer_t *peer, char *nspace,
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(op);
         return rc;
+    }
+    /* a copy - the caller keeps its string whatever happens here */
+    if (NULL != alt_uris) {
+        op->alts = PMIx_Argv_split(alt_uris, ',');
     }
     op->peer = peer;
     op->cbfunc = cbfunc;

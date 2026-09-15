@@ -611,6 +611,19 @@ publishes the URI into `gds`, and drops rendezvous files.
   from `cbdata`, so the primary and the alternates share it, and
   `pmix_ptl_base_stop_listening` releases the alternates whether or not
   they were ever armed.
+- **A tool moves to an alternate only when it cannot connect.** The file
+  reader finds the tagged line by its tag, not its position;
+  `PMIX_SERVER_ALT_URIS` supplies the same list with an explicit URI.
+  `connect_any()` (blocking) and `cnct_begin()` (event-driven) try the
+  next address only after `connect()` fails; once a socket is up, the
+  handshake's verdict is the server's answer. A primary that does not
+  parse is still an error, as it always was; an alternate that does not
+  parse is passed over. `test/unit/tool_alt_uris.c` covers both paths,
+  a garbled file entry, no alternates, and a bad directive; the listener
+  half is in `test/unit/ptl_listener.c` and needs a host with two public
+  addresses (it skips otherwise - an IPv6-enabled build on a host with
+  global IPv6 addresses exercises it).
+
 - **The port scan opens a socket per attempt.** Close it before moving to
   the next port, and detect the case where the whole range is taken —
   `listen()` on an unbound socket succeeds and silently gets a port of
@@ -758,6 +771,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_legacy_ack.c` | a v4.1-shaped connect-ack, pad byte and all, still connects as a client and as a tool |
 | `test/unit/ptl_loopback.c` | a server's request to itself reaches its switchyard and is answered once; a loopback reply nobody waits for is not read as a command |
 | `test/unit/ptl_listener.c` | accept out of descriptors stops the listener cleanly; mistyped, out-of-range and empty directives; a directive-named report file is removed; with remote connections every public interface accepts connections and is advertised where older readers do not look |
+| `test/unit/tool_alt_uris.c` | a tool whose URI's address is unreachable connects at an alternate - by directive, from a contact file, and through the event-driven attach - and still fails when there is none |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
 | `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one |
 | `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them |

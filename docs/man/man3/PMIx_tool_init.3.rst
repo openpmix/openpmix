@@ -133,6 +133,14 @@ during initialization.
   system-level PMIx server first, then fall back to a server identified by
   another attribute.
 * ``PMIX_SERVER_URI`` (char\*) |mdash| connect to the server at the given URI.
+* ``PMIX_SERVER_ALT_URIS`` (char\*) |mdash| comma-delimited list of other
+  addresses, each of the form ``tcp4://host:port`` or ``tcp6://host:port``, at
+  which the server named by ``PMIX_SERVER_URI`` or ``PMIX_TCP_URI`` also accepts
+  connections. If the URI's address cannot be reached, each is tried in turn.
+  An entry that is not such an address is ``PMIX_ERR_BAD_PARAM``. A server
+  accepting remote connections on a host with several interfaces reports these
+  as ``PMIX_MYSERVER_ALT_URIS``, and lists them in its contact files, from
+  which a tool finding the server by file, PID or namespace reads them itself.
 * ``PMIX_SERVER_NSPACE`` (char\*) |mdash| connect to the server of the given
   namespace.
 * ``PMIX_SERVER_PIDINFO`` (pid_t) |mdash| connect to the server embedded in the

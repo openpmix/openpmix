@@ -1297,6 +1297,7 @@ static pmix_attr_init_t tool_fns[]
                          "PMIX_CONNECT_TO_SYSTEM",
                          "PMIX_CONNECT_SYSTEM_FIRST",
                          "PMIX_SERVER_URI",
+                         "PMIX_SERVER_ALT_URIS",
                          "PMIX_SERVER_NSPACE",
                          "PMIX_SERVER_PIDINFO",
                          "PMIX_TCP_URI",
