@@ -1154,8 +1154,9 @@ Will not be done
 
 Real defects, correctly described, that are **not going to be fixed** —
 because the fix would invest in something the project has already
-replaced.  They are recorded so nobody re-derives them and opens the
-question again; an entry here is a decision, not an oversight.
+replaced, or because there is no fix to make.  They are recorded so
+nobody re-derives them and opens the question again; an entry here is a
+decision, not an oversight.
 
 * **The deprecated regex API cannot carry a length, and will not learn
   to.**  From the ``src/mca/preg`` review (2026-08-19), which narrowed
@@ -1185,6 +1186,30 @@ question again; an entry here is a decision, not an oversight.
   superseded interface almost safe.  Deprecated APIs are supported
   indefinitely here, which is a promise to keep them *working*, not a
   promise to keep developing them.
+
+* **Which library owns an unqualified** ``mca_base_*`` **parameter cannot
+  be decided.**  From the ``src/mca/pmdl`` review (2026-08-19); moved here
+  from :doc:`todo` on 2026-09-15.  ``pmdl`` forwards each value it reads
+  from an MCA param file to the library that will look for it -
+  ``PMIX_MCA_``, ``PRTE_MCA_`` or ``OMPI_MCA_`` - by the parameter's first
+  segment, and ``mca`` names a framework in all three.  So
+  ``process_param_file``, reading ``openmpi-mca-params.conf`` and testing
+  for a PMIx parameter first, forwards Open MPI's
+  ``mca_base_component_path`` as ``PMIX_MCA_mca_base_component_path``.
+
+  That is arguably the wrong owner for a file Open MPI wrote, but nothing
+  can make it the right one: ``mca_base_component_path`` is the name PMIx
+  itself gives that variable (a param file leaves the project off), Open
+  MPI spells its own the same way, and nothing in the line says which
+  library it was meant for.  Any rule picks one reading and breaks the
+  other, and claiming it for PMIx has been the behavior for releases, so
+  a site may rely on it.  It stays as it is.
+
+  The half of the same overlap that did have an answer was fixed in that
+  review: ``parse_file_envars`` no longer claims a parameter PMIx itself
+  owns out of PMIx's own param files, which had renamed
+  ``pmix_hwloc_topo_file`` to ``OMPI_MCA_*`` so that it reached neither
+  library.  ``src/mca/pmdl/ompi/AGENTS.md`` records the precedence.
 
 Not defects — by design
 -----------------------
