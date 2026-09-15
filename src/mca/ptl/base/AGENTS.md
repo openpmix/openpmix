@@ -96,7 +96,9 @@ a server from v3.2 on.** Both are enforced here, by version, before
 anything is read that depends on it.
 
 - The connection handler refuses a peer whose version string says v1.x
-  or v2.0 (`unsupported-client-version`). A v1.x peer cannot reach us
+  or v2.0 (`unsupported-client-version`), and sends it `PMIX_ERR_OUTDATED`
+  in the status slot every client reads first. The old client cannot name
+  the code, but it fails instead of carrying on. A v1.x peer cannot reach us
   anyway - it speaks only `usock` - but a v2.0 peer can, through a
   rendezvous file, and its handshake ends at the version string: no wire
   format, no buffer type, no datastore. The buffer type is the fatal
@@ -109,11 +111,13 @@ anything is read that depends on it.
   than v3.2 (`unsupported-server-version`) before opening a socket. Such
   a server accepts the connection and then leaves the client waiting on
   answers it never sends - `PMIx_Get` of a reserved key hangs. The
-  refusal returns `PMIX_ERR_NOT_SUPPORTED`, and what the caller makes of
-  it is the caller's existing policy for any failed connection: a
-  client's `PMIx_Init` comes up as a singleton (`PMIX_ERR_UNREACH`), a
-  tool fails unless its connection was optional. The help message is
-  what tells the user why. "Known" matters:
+  refusal returns `PMIX_ERR_OUTDATED`, which a client's `PMIx_Init` treats
+  as a failure rather than falling back to a singleton the way it does
+  for a server it could not reach; a tool fails with it unless its
+  connection was optional. It has to be its own code: the connect path
+  already returns `PMIX_ERR_NOT_SUPPORTED` for a malformed URI, an
+  unknown address scheme and a server's own rejection, all of which must
+  keep falling back. "Known" matters:
   the version comes from `PMIX_VERSION` or the `PMIX_SERVER_URIxx` name
   for a client, and from the version line of a rendezvous file, whose
   absence means v2.0. A server reached through a URI handed over

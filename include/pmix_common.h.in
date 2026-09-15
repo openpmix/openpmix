@@ -1730,6 +1730,8 @@ typedef int pmix_status_t;
 #define PMIX_ERR_EXISTS_OUTSIDE_SCOPE               -62
 #define PMIX_ERR_NOT_A_MEMBER                       -66
 #define PMIX_ERR_NOT_AVAILABLE                      -64
+#define PMIX_ERR_OUTDATED                           -76     // the peer's PMIx library is older than the oldest version
+                                                             // this library supports, so no connection was made
 
 /* Process set */
 #define PMIX_PROCESS_SET_DEFINE                     -55
