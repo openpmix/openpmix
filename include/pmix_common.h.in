@@ -236,6 +236,11 @@ typedef uint32_t pmix_rank_t;
                                                                     //        to any local server that accepted the connection request.
 #define PMIX_SERVER_URI                     "pmix.srvr.uri"         // (char*) URI of server to be contacted
 #define PMIX_MYSERVER_URI                   "pmix.mysrvr.uri"       // (char*) URI of this proc's listener socket
+#define PMIX_MYSERVER_ALT_URIS              "pmix.mysrvr.alturis"   // (char*) comma-delimited list of the other addresses this
+                                                                    //         proc's listener accepts connections on, each
+                                                                    //         "tcp4://host:port" or "tcp6://host:port" -
+                                                                    //         present only when remote connections are
+                                                                    //         accepted on a host with more than one interface
 #define PMIX_SERVER_HOSTNAME                "pmix.srvr.host"        // (char*) node where target server is located
 #define PMIX_CONNECT_MAX_RETRIES            "pmix.tool.mretries"    // (uint32_t) maximum number of times to try to connect to server
 #define PMIX_CONNECT_RETRY_DELAY            "pmix.tool.retry"       // (uint32_t) time in seconds between connection attempts

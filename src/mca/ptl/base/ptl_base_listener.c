@@ -71,6 +71,18 @@
 // local connection handler
 static void connection_event_handler(int incoming_sd, short flags, void *cbdata);
 
+static void arm_listener(pmix_listener_t *lt)
+{
+    if (lt->active || 0 > lt->socket) {
+        return;
+    }
+    pmix_event_set(pmix_globals.evbase, &lt->ev, lt->socket,
+                   PMIX_EV_READ|PMIX_EV_PERSIST,
+                   connection_event_handler, lt);
+    lt->active = true;
+    pmix_event_add(&lt->ev, 0);
+}
+
 // local value for connection support
 static bool setup_complete = false;
 
@@ -119,21 +131,18 @@ pmix_status_t pmix_ptl_base_create_listener(pmix_info_t info[], size_t ninfo)
 void pmix_ptl_base_start_listening(void)
 {
     pmix_listener_t *lt = &pmix_ptl_base.listener;
+    pmix_listener_t *alt;
 
-    if (lt->active || 0 > lt->socket) {
-        return;
+    arm_listener(lt);
+    PMIX_LIST_FOREACH (alt, &pmix_ptl_base.alt_listeners, pmix_listener_t) {
+        arm_listener(alt);
     }
-
-    pmix_event_set(pmix_globals.evbase, &lt->ev, lt->socket,
-                   PMIX_EV_READ|PMIX_EV_PERSIST,
-                   connection_event_handler, 0);
-    lt->active = true;
-    pmix_event_add(&lt->ev, 0);
 }
 
 void pmix_ptl_base_stop_listening(void)
 {
     pmix_listener_t *lt = &pmix_ptl_base.listener;
+    pmix_listener_t *alt;
     pmix_pending_connection_t *pnd, *pnext;
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
@@ -156,6 +165,18 @@ void pmix_ptl_base_stop_listening(void)
      * repeated start_listening within one cycle still short-circuits. */
     setup_complete = false;
 
+    /* the alternates go whether or not they were ever armed: their sockets
+     * were bound and listening from the moment setup created them */
+    while (NULL != (alt = (pmix_listener_t *) pmix_list_remove_first(&pmix_ptl_base.alt_listeners))) {
+        if (alt->active) {
+            alt->active = false;
+            pmix_event_del(&alt->ev);
+        }
+        PMIX_RELEASE(alt);  // the destructor closes its socket
+    }
+    free(pmix_ptl_base.alt_uris);
+    pmix_ptl_base.alt_uris = NULL;
+
     if (!lt->active) {
         /* nothing we need do */
         return;
@@ -177,10 +198,8 @@ void pmix_ptl_base_stop_listening(void)
  * hand out again - to a client socket or an IOF pipe. The stale event then
  * fired on that reuse and called accept() on it, and finalize closed it,
  * so the failure took some unrelated descriptor down with it. */
-static void abandon_listener(void)
+static void abandon_listener(pmix_listener_t *lt)
 {
-    pmix_listener_t *lt = &pmix_ptl_base.listener;
-
     if (lt->active) {
         pmix_event_del(&lt->ev);
         lt->active = false;
@@ -230,8 +249,9 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
     int sd, fdflags;
     struct timeval tv;
     pmix_pending_connection_t *pending_connection;
-    pmix_listener_t *lt = &pmix_ptl_base.listener;
-    PMIX_HIDE_UNUSED_PARAMS(flags, cbdata);
+    /* the primary listener or one of the alternates - whichever fired */
+    pmix_listener_t *lt = (pmix_listener_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(flags);
 
     /* the address is only printed, but an IPv6 peer's does not fit in a
      * plain struct sockaddr - it was truncated, and then read past the
@@ -271,7 +291,7 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
                            pmix_globals.hostname,
                            pmix_socket_errno, strerror(pmix_socket_errno),
                            "Out of file descriptors");
-            abandon_listener();
+            abandon_listener(lt);
             return;
         }
 
@@ -283,7 +303,7 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
                            pmix_globals.hostname,
                            pmix_socket_errno, strerror(pmix_socket_errno),
                            "Unknown cause; job will try to continue");
-            abandon_listener();
+            abandon_listener(lt);
             return;
         }
     }
@@ -521,11 +541,19 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
 
     /* output the information */
     mytime = time(NULL);
-    if (0 > pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n",
+    /* The five lines every release reads by position come first and are
+     * unchanged; our other addresses follow them, tagged, where no older
+     * reader looks. They cannot go in the URI itself: every released
+     * parser refuses a URI carrying more than one address, and a client
+     * refused that way quietly runs as a singleton. */
+    if (0 > pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n%s%s%s",
                           uri, PMIX_VERSION, (unsigned long)pmix_globals.pid,
                           (unsigned long)pmix_globals.uid,
                           (unsigned long)pmix_globals.gid,
-                          ctime(&mytime))) {
+                          ctime(&mytime),
+                          (NULL == pmix_ptl_base.alt_uris) ? "" : PMIX_PTL_ALT_URIS_TAG,
+                          (NULL == pmix_ptl_base.alt_uris) ? "" : pmix_ptl_base.alt_uris,
+                          (NULL == pmix_ptl_base.alt_uris) ? "" : "\n")) {
         /* nothing has been written, so do not leave an empty file behind
          * for a peer to read as a server that died partway thru */
         close(fd);
@@ -624,6 +652,140 @@ static pmix_status_t store_uri(const char *key, const char *uri)
     return rc;
 }
 
+/* Bind one more listening socket, on the interface at index @c ifidx.
+ *
+ * The port the primary listener got is tried first, so a static port
+ * directive holds for every address; if this address has it taken, the
+ * kernel picks one. Returns the listener, or NULL (having said why at
+ * verbosity) if this interface cannot be listened on - which costs a
+ * remote tool one way of reaching us, not the server its init. */
+static pmix_listener_t *open_alternate(const pmix_listener_t *primary, int ifidx,
+                                       uint16_t primary_port)
+{
+    struct sockaddr_storage addr;
+    pmix_socklen_t addrlen;
+    pmix_listener_t *alt;
+    char host[PMIX_MAXHOSTNAMELEN] = {0};
+    const char *prefix;
+    int attempt, flags;
+    uint16_t port = 0;
+
+    for (attempt = 0; attempt < 2; attempt++) {
+        memset(&addr, 0, sizeof(addr));
+        if (PMIX_SUCCESS != pmix_ifindextoaddr(ifidx, (struct sockaddr *) &addr, sizeof(addr))) {
+            return NULL;
+        }
+        port = (0 == attempt) ? primary_port : 0;
+        if (AF_INET == addr.ss_family) {
+            ((struct sockaddr_in *) &addr)->sin_port = htons(port);
+            addrlen = sizeof(struct sockaddr_in);
+        } else if (AF_INET6 == addr.ss_family) {
+            ((struct sockaddr_in6 *) &addr)->sin6_port = htons(port);
+            addrlen = sizeof(struct sockaddr_in6);
+        } else {
+            return NULL;
+        }
+
+        alt = PMIX_NEW(pmix_listener_t);
+        if (NULL == alt) {
+            return NULL;
+        }
+        alt->socket = socket(addr.ss_family, SOCK_STREAM, 0);
+        if (0 > alt->socket) {
+            PMIX_RELEASE(alt);
+            return NULL;
+        }
+        flags = (0 != port) ? 1 : 0;
+        if (0 > setsockopt(alt->socket, SOL_SOCKET, SO_REUSEADDR, (const char *) &flags,
+                           sizeof(flags)) ||
+            PMIX_SUCCESS != pmix_fd_set_cloexec(alt->socket)) {
+            PMIX_RELEASE(alt);  // closes the socket
+            return NULL;
+        }
+        if (0 == bind(alt->socket, (struct sockaddr *) &addr, addrlen)) {
+            break;
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:setup_listener: alternate interface %d port %u: %s",
+                            ifidx, (unsigned) port, strerror(pmix_socket_errno));
+        PMIX_RELEASE(alt);
+        alt = NULL;
+        if (0 == primary_port ||
+            (EADDRINUSE != pmix_socket_errno && EADDRNOTAVAIL != pmix_socket_errno)) {
+            /* the kernel already chose this port, or the failure is not
+             * about the port - a second try would fail the same way */
+            return NULL;
+        }
+    }
+    if (NULL == alt) {
+        return NULL;
+    }
+
+    if (0 > getsockname(alt->socket, (struct sockaddr *) &addr, &addrlen) ||
+        0 > listen(alt->socket, SOMAXCONN) ||
+        0 > (flags = fcntl(alt->socket, F_GETFL, 0)) ||
+        0 > fcntl(alt->socket, F_SETFL, flags | O_NONBLOCK)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:setup_listener: alternate interface %d: %s",
+                            ifidx, strerror(pmix_socket_errno));
+        PMIX_RELEASE(alt);
+        return NULL;
+    }
+
+    if (AF_INET == addr.ss_family) {
+        prefix = "tcp4://";
+        port = ntohs(((struct sockaddr_in *) &addr)->sin_port);
+        inet_ntop(AF_INET, &((struct sockaddr_in *) &addr)->sin_addr, host, sizeof(host) - 1);
+    } else {
+        prefix = "tcp6://";
+        port = ntohs(((struct sockaddr_in6 *) &addr)->sin6_port);
+        inet_ntop(AF_INET6, &((struct sockaddr_in6 *) &addr)->sin6_addr, host, sizeof(host) - 1);
+    }
+    /* an address and port only, in the form the URI carries after its ';' -
+     * the server's identity is the primary URI's, and is not repeated */
+    if (0 > pmix_asprintf(&alt->uri, "%s%s:%u", prefix, host, (unsigned) port)) {
+        PMIX_RELEASE(alt);
+        return NULL;
+    }
+    alt->protocol = primary->protocol;
+    alt->cbfunc = primary->cbfunc;
+    return alt;
+}
+
+/* Listen on each of the other public interfaces the directives left us, so
+ * a remote tool that cannot reach the primary address can reach one of
+ * these. pmix_ptl_base.alt_uris gets the comma-delimited list of where. */
+static pmix_status_t open_alternates(const pmix_listener_t *primary, const int *altidx,
+                                     int naltidx, uint16_t primary_port)
+{
+    pmix_listener_t *alt;
+    char **uris = NULL;
+    int n;
+
+    for (n = 0; n < naltidx; n++) {
+        alt = open_alternate(primary, altidx[n], primary_port);
+        if (NULL == alt) {
+            continue;
+        }
+        if (PMIX_SUCCESS != PMIx_Argv_append_nosize(&uris, alt->uri)) {
+            PMIX_RELEASE(alt);
+            PMIx_Argv_free(uris);
+            return PMIX_ERR_NOMEM;
+        }
+        pmix_list_append(&pmix_ptl_base.alt_listeners, &alt->super);
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base alternate URI %s", alt->uri);
+    }
+    if (NULL != uris) {
+        pmix_ptl_base.alt_uris = PMIx_Argv_join(uris, ',');
+        PMIx_Argv_free(uris);
+        if (NULL == pmix_ptl_base.alt_uris) {
+            return PMIX_ERR_NOMEM;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 /* discover the available
  * interfaces, filter them thru any given directives, and select
  * the one we will listen on for connection requests. This will
@@ -660,6 +822,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     FILE *fptst;
     uint16_t port = 0;
     long portnum;
+    int *altidx = NULL, naltidx = 0;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base:setup_listener");
@@ -842,8 +1005,21 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
 
         } else if (saveindex < 0) {
             saveindex = i;
+        } else if (pmix_ptl_base.remote_connections) {
+            /* every other public interface the directives left us is
+             * somewhere a remote tool may be able to reach us from when it
+             * cannot reach the first - keep them all */
+            int *tmpidx = (int *) realloc(altidx, (naltidx + 1) * sizeof(int));
+            if (NULL == tmpidx) {
+                free(altidx);
+                PMIx_Argv_free(interfaces);
+                PMIx_Argv_free(candidates);
+                return PMIX_ERR_NOMEM;
+            }
+            altidx = tmpidx;
+            altidx[naltidx++] = i;
         }
-        if (0 <= savelpbk && 0 <= saveindex) {
+        if (0 <= savelpbk && 0 <= saveindex && !pmix_ptl_base.remote_connections) {
             break;
         }
     }
@@ -1094,6 +1270,23 @@ complete:
         goto sockerror;
     }
 
+    /* listen on the other public interfaces too, and record where */
+    if (0 < naltidx) {
+        rc = open_alternates(lt, altidx, naltidx, (uint16_t) myport);
+        free(altidx);
+        altidx = NULL;
+        if (PMIX_SUCCESS != rc) {
+            goto sockerror;
+        }
+        if (NULL != pmix_ptl_base.alt_uris) {
+            rc = store_uri(PMIX_MYSERVER_ALT_URIS, pmix_ptl_base.alt_uris);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                goto sockerror;
+            }
+        }
+    }
+
     /* an empty value names nowhere to report to */
     if (NULL != pmix_ptl_base.report_uri && '\0' != pmix_ptl_base.report_uri[0]) {
         /* if the string is a "-", then output to stdout */
@@ -1140,6 +1333,11 @@ complete:
                 /* record our version - a connecting peer uses it to decide
                  * whether it can talk to us */
                 fprintf(fp, "v%s\n", PMIX_VERSION);
+                /* and, after everything an older reader looks at, the
+                 * other addresses we listen on */
+                if (NULL != pmix_ptl_base.alt_uris) {
+                    fprintf(fp, "%s%s\n", PMIX_PTL_ALT_URIS_TAG, pmix_ptl_base.alt_uris);
+                }
                 fclose(fp);
                 /* record the name of the file we actually wrote, which is
                  * what pmix_ptl_close removes. The open took its copy from
@@ -1287,6 +1485,7 @@ nextstep:
     return PMIX_SUCCESS;
 
 sockerror:
+    free(altidx);
     CLOSE_THE_SOCKET(lt->socket);
     return rc;
 }
