@@ -927,7 +927,21 @@ int server_init(test_params *params)
                 close(fd2[1]);
             } else {
                 my_server_info = server_info;
-                server_info->hostname = strdup("node0");
+                if (1 == params->nservers) {
+                    /* a lone server is really on this host, so say so. A
+                     * client that looks its node up by gethostname() -
+                     * as a v3.0 client's resolve-peers test does - is
+                     * otherwise asking about a node the job is not on */
+                    char hostname[PMIX_MAXHOSTNAMELEN];
+                    if (0 != gethostname(hostname, sizeof(hostname))) {
+                        TEST_ERROR(("gethostname failed"));
+                        return -1;
+                    }
+                    hostname[sizeof(hostname) - 1] = '\0';
+                    server_info->hostname = strdup(hostname);
+                } else {
+                    server_info->hostname = strdup("node0");
+                }
                 server_info->pid = getpid();
                 server_info->idx = 0;
                 server_info->rd_fd = fd1[0];
