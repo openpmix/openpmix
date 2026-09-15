@@ -212,6 +212,9 @@ a PMIx error constant is returned, including:
   :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>` must still be called. Operations
   that require a server return ``PMIX_ERR_UNREACH`` in their turn, while those
   the library can satisfy on its own behave normally.
+* ``PMIX_ERR_OUTDATED`` |mdash| a PMIx server was found, but it uses a version
+  of the PMIx library older than this one can connect to (v3.2). A message
+  naming the server's version is printed. The library is **not** initialized.
 * ``PMIX_ERR_LOST_CONNECTION`` |mdash| a server was reached, but the connection
   failed before it delivered the caller's job information. Unlike
   ``PMIX_ERR_UNREACH`` above, the library is **not** initialized.
