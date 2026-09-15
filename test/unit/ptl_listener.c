@@ -27,6 +27,12 @@
  *    finalize, because the name finalize removes was taken from the MCA
  *    parameter before the directive could replace it.
  *
+ *  - with remote connections accepted, the listener bound only the first
+ *    public interface, so a remote tool on any other network could not
+ *    reach the server at all. It now listens on each of them and records
+ *    the others after everything a released reader takes from the
+ *    rendezvous and report files, where no older reader looks.
+ *
  * Each case runs in a forked child: PMIx_server_init can only be called
  * once in a process, and against the unfixed library several of these die
  * on a signal rather than fail.
@@ -38,8 +44,12 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/pmix_threads.h"
+#include "src/util/pmix_if.h"
 
+#include <arpa/inet.h>
 #include <fcntl.h>
+#include <net/if.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,9 +62,11 @@
 
 #define CHILD_PASS 0
 #define CHILD_FAIL 1
+#define CHILD_SKIP 77
 
 static int npass = 0;
 static int nfail = 0;
+static int nskip = 0;
 static char tmpdir[PMIX_PATH_MAX];
 static pmix_server_module_t mymodule = {0};
 
@@ -99,6 +111,9 @@ static void run_case(const char *name, void (*fn)(void))
     } else if (WIFSIGNALED(status)) {
         snprintf(detail, sizeof(detail), "child died on signal %d", WTERMSIG(status));
         report(name, 0, detail);
+    } else if (CHILD_SKIP == WEXITSTATUS(status)) {
+        fprintf(stdout, "  SKIP: %s\n", name);
+        ++nskip;
     } else {
         report(name, CHILD_PASS == WEXITSTATUS(status), "child reported failure");
     }
@@ -230,6 +245,191 @@ static void report_uri_file_child(void)
     _exit(CHILD_PASS);
 }
 
+/* ---- listening on every public interface ------------------------- */
+
+/* how many addresses the listener could take when remote connections are
+ * accepted: public, in an enabled family, and not a virtual interface */
+static int count_public_addresses(void)
+{
+    struct sockaddr_storage ss;
+    char name[32];
+    int i, n = 0;
+
+    for (i = pmix_ifbegin(); i >= 0; i = pmix_ifnext(i)) {
+        if (PMIX_SUCCESS != pmix_ifindextoaddr(i, (struct sockaddr *) &ss, sizeof(ss)) ||
+            pmix_ifisloopback(i)) {
+            continue;
+        }
+        pmix_ifindextoname(i, name, sizeof(name));
+        if (0 == strncmp(name, "vir", 3)) {
+            continue;
+        }
+        if (AF_INET == ss.ss_family && !pmix_ptl_base.disable_ipv4_family) {
+            ++n;
+        }
+#if PMIX_ENABLE_IPV6
+        if (AF_INET6 == ss.ss_family && !pmix_ptl_base.disable_ipv6_family) {
+            ++n;
+        }
+#endif
+    }
+    return n;
+}
+
+/* does a connect() to this "tcp4://host:port"/"tcp6://host:port" succeed? */
+static bool can_connect(const char *uri)
+{
+    struct sockaddr_storage ss;
+    size_t len;
+    int sd;
+    bool ok;
+
+    if (PMIX_SUCCESS != pmix_ptl_base_setup_connection((char *) uri, &ss, &len)) {
+        return false;
+    }
+    sd = socket(ss.ss_family, SOCK_STREAM, 0);
+    if (0 > sd) {
+        return false;
+    }
+    ok = (0 == connect(sd, (struct sockaddr *) &ss, (pmix_socklen_t) len));
+    close(sd);
+    return ok;
+}
+
+/* the line after the first five that carries the given tag, or NULL */
+static char *tagged_line(const char *path, const char *tag, int *lineno)
+{
+    FILE *fp;
+    char line[4096], *found = NULL;
+    int n = 0;
+
+    *lineno = 0;
+    if (NULL == (fp = fopen(path, "r"))) {
+        return NULL;
+    }
+    while (NULL != fgets(line, sizeof(line), fp)) {
+        ++n;
+        if (0 == strncmp(line, tag, strlen(tag))) {
+            line[strcspn(line, "\n")] = '\0';
+            found = strdup(line + strlen(tag));
+            *lineno = n;
+            break;
+        }
+    }
+    fclose(fp);
+    return found;
+}
+
+static void alternates_child(void)
+{
+    pmix_info_t info[3];
+    pmix_listener_t *alt;
+    pmix_value_t *val = NULL;
+    char path[PMIX_PATH_MAX + 16], *line;
+    int nalt = 0, lineno;
+    bool tool = true, remote = true;
+
+    snprintf(path, sizeof(path), "%s/alturi.txt", tmpdir);
+    unlink(path);
+    PMIX_INFO_LOAD(&info[0], PMIX_SERVER_REMOTE_CONNECTIONS, &remote, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[1], PMIX_SERVER_TOOL_SUPPORT, &tool, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_TCP_REPORT_URI, path, PMIX_STRING);
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, info, 3)) {
+        /* a host with no public interface cannot accept remote tools */
+        _exit(0 == count_public_addresses() ? CHILD_SKIP : CHILD_FAIL);
+    }
+    if (2 > count_public_addresses()) {
+        PMIx_server_finalize();
+        _exit(CHILD_SKIP);
+    }
+    if (NULL == pmix_ptl_base.alt_uris) {
+        fprintf(stderr, "%d public addresses but no alternate listeners\n",
+                count_public_addresses());
+        _exit(CHILD_FAIL);
+    }
+    PMIX_LIST_FOREACH (alt, &pmix_ptl_base.alt_listeners, pmix_listener_t) {
+        ++nalt;
+        if (NULL == strstr(pmix_ptl_base.alt_uris, alt->uri)) {
+            fprintf(stderr, "alternate %s missing from %s\n", alt->uri, pmix_ptl_base.alt_uris);
+            _exit(CHILD_FAIL);
+        }
+        if (!can_connect(alt->uri)) {
+            fprintf(stderr, "alternate %s does not accept connections\n", alt->uri);
+            _exit(CHILD_FAIL);
+        }
+    }
+    if (NULL != strstr(pmix_ptl_base.listener.uri, ",")) {
+        fprintf(stderr, "primary URI %s carries more than one address\n",
+                pmix_ptl_base.listener.uri);
+        _exit(CHILD_FAIL);
+    }
+
+    /* the report file: URI, version, then the tagged alternates */
+    line = tagged_line(path, PMIX_PTL_ALT_URIS_TAG, &lineno);
+    if (NULL == line || 0 != strcmp(line, pmix_ptl_base.alt_uris) || 3 > lineno) {
+        fprintf(stderr, "report file alternates wrong: %s at line %d\n",
+                (NULL == line) ? "none" : line, lineno);
+        _exit(CHILD_FAIL);
+    }
+    free(line);
+
+    /* the rendezvous file: the five lines every release reads, then ours */
+    line = tagged_line(pmix_ptl_base.pid_filename, PMIX_PTL_ALT_URIS_TAG, &lineno);
+    if (NULL == line || 0 != strcmp(line, pmix_ptl_base.alt_uris) || 6 > lineno) {
+        fprintf(stderr, "rendezvous file alternates wrong: %s at line %d\n",
+                (NULL == line) ? "none" : line, lineno);
+        _exit(CHILD_FAIL);
+    }
+    free(line);
+
+    /* and the value a host can ask for */
+    if (PMIX_SUCCESS != PMIx_Get(&pmix_globals.myid, PMIX_MYSERVER_ALT_URIS, NULL, 0, &val) ||
+        PMIX_STRING != val->type || 0 != strcmp(val->data.string, pmix_ptl_base.alt_uris)) {
+        fprintf(stderr, "PMIX_MYSERVER_ALT_URIS not stored\n");
+        _exit(CHILD_FAIL);
+    }
+    PMIX_VALUE_RELEASE(val);
+
+    /* finalize closes them: the first is enough to show it */
+    line = strdup(pmix_ptl_base.alt_uris);
+    if (NULL != line) {
+        line[strcspn(line, ",")] = '\0';
+    }
+    PMIx_server_finalize();
+    if (NULL != line && can_connect(line)) {
+        fprintf(stderr, "alternate %s still accepting after finalize\n", line);
+        _exit(CHILD_FAIL);
+    }
+    free(line);
+    fprintf(stderr, "%d alternate listener(s) checked\n", nalt);
+    _exit(CHILD_PASS);
+}
+
+static void no_alternates_child(void)
+{
+    pmix_info_t info;
+    char *line;
+    int lineno;
+    bool tool = true;
+
+    PMIX_INFO_LOAD(&info, PMIX_SERVER_TOOL_SUPPORT, &tool, PMIX_BOOL);
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, &info, 1)) {
+        _exit(CHILD_FAIL);
+    }
+    if (NULL != pmix_ptl_base.alt_uris ||
+        0 != pmix_list_get_size(&pmix_ptl_base.alt_listeners)) {
+        fprintf(stderr, "alternates opened without remote connections\n");
+        _exit(CHILD_FAIL);
+    }
+    line = tagged_line(pmix_ptl_base.pid_filename, PMIX_PTL_ALT_URIS_TAG, &lineno);
+    if (NULL != line) {
+        fprintf(stderr, "rendezvous file carries alternates: %s\n", line);
+        _exit(CHILD_FAIL);
+    }
+    PMIx_server_finalize();
+    _exit(CHILD_PASS);
+}
+
 int main(int argc, char **argv)
 {
     const char *base;
@@ -254,8 +454,11 @@ int main(int argc, char **argv)
     run_case("a PMIX_TCP_IPV4_PORT past 65535 is refused", big_port_child);
     run_case("an empty PMIX_TCP_REPORT_URI leaves stdin alone", empty_report_uri_child);
     run_case("a report file named by directive is removed at finalize", report_uri_file_child);
+    run_case("remote connections listen on, and advertise, every public interface",
+             alternates_child);
+    run_case("without remote connections there are no alternates", no_alternates_child);
 
     rmdir(tmpdir);
-    fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
+    fprintf(stdout, "\n%d passed, %d failed, %d skipped\n", npass, nfail, nskip);
     return (0 == nfail) ? 0 : 1;
 }

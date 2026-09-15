@@ -95,7 +95,11 @@ reachable in ``pmix_ptl_base_setup_listener``
 #. **Choose an interface.** Enumerate the node's interfaces, filter them
    through any ``if_include`` / ``if_exclude`` directives, and default to
    a **loopback** device. Only if remote or tool connections were
-   requested does it fall back to a public interface.
+   requested does it fall back to a public interface. When remote
+   connections are accepted, *every* public interface the directives leave
+   is used: the first carries the URI, and each of the others gets a
+   listener of its own (on the same port where it is free), so a remote
+   tool on any of the host's networks can reach the server.
 #. **Bind a listen socket.** Try each configured port (default ``0`` —
    let the kernel assign one), set ``SO_REUSEADDR`` and close-on-exec,
    ``listen`` with ``SOMAXCONN``, and make the socket non-blocking.
@@ -103,7 +107,10 @@ reachable in ``pmix_ptl_base_setup_listener``
    ``nspace.rank;tcp4://host:port`` and store it in ``gds`` under both
    ``PMIX_MYSERVER_URI`` and (for older tools) ``PMIX_SERVER_URI``. If
    ``report_uri`` is set, also emit it to stdout (``-``), stderr (``+``),
-   an integer pipe fd, or a named file.
+   an integer pipe fd, or a named file. The other addresses, if any, are
+   stored as ``PMIX_MYSERVER_ALT_URIS`` - a comma-delimited list of
+   ``tcp4://host:port`` / ``tcp6://host:port`` - and follow the version
+   in a report file on a line tagged ``alturis:``.
 #. **Drop rendezvous files.** Depending on the server's role and flags,
    write well-known contact files that a client or tool can later
    discover in the tmpdir tree:
@@ -128,7 +135,9 @@ reachable in ``pmix_ptl_base_setup_listener``
         - any tool-supporting server (keyed by nspace)
 
    Each file contains the URI, the server's version, its PID, its
-   ``uid:gid``, and a timestamp. The ``pmix_ptl_base`` state struct
+   ``uid:gid``, and a timestamp, and then - only when the server listens
+   on more than one address - a line tagged ``alturis:`` listing the
+   others. The ``pmix_ptl_base`` state struct
    records (via its ``created_*`` flags) exactly which files and
    directories this process created, so ``pmix_ptl_close`` can remove
    precisely those at shutdown and nothing that belongs to a peer.
@@ -180,6 +189,20 @@ most specific to least:
 
 ``PMIX_TOOL_CONNECT_OPTIONAL`` decides whether failing to find a server is
 an error or simply leaves the tool unconnected.
+
+Why the other addresses are not simply in the URI
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Clients and tools of one release must be able to connect to servers of
+another, and every released parser refuses a URI that carries more than
+one address - a client refused that way even runs as a singleton rather
+than reporting an error. So the URI keeps exactly its historical form
+everywhere it appears (stored values, environment variables, and the first
+line of every contact file), and the additional addresses travel only where
+no older reader looks: after the five lines a contact file has always held,
+which every release reads by position, and in keys older libraries do not
+know. An older tool therefore connects exactly as it always has, and a
+newer tool facing an older server simply finds no alternates.
 
 Both paths converge on ``pmix_ptl_base_make_connection``, which parses the
 URI into a socket address, opens the connection (with retries), sends the

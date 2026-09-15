@@ -591,6 +591,26 @@ that bite:
 a public one only if remote or tool connections were asked for), binds,
 publishes the URI into `gds`, and drops rendezvous files.
 
+- **With remote connections, every public interface is listened on - but
+  the URI still names one.** The scan keeps going past the first public
+  interface and `open_alternates()` binds a `pmix_listener_t` on each of
+  the others (`pmix_ptl_base.alt_listeners`), trying the primary's port
+  first. Where they are is `pmix_ptl_base.alt_uris`, a comma-delimited
+  list of address-only `tcpX://host:port` strings, stored as
+  `PMIX_MYSERVER_ALT_URIS` and written after everything a released reader
+  takes from a rendezvous or report file, on a line tagged
+  `PMIX_PTL_ALT_URIS_TAG`. **Never put a second address in the URI itself,
+  in `PMIX_SERVER_URI`/`PMIX_MYSERVER_URI`, or in the `PMIX_SERVER_URI*`
+  environment variables**: every released parser (`parse_uri` wants exactly
+  two `;` fields, `setup_connection` one `host:port`) refuses it, and a
+  client refused that way silently runs as a singleton. Likewise never
+  write an extra *file* per address - tool discovery compares the URIs of
+  every matching file and refuses (`too-many-conns`) when they differ. An
+  alternate that cannot be bound is skipped; it costs a remote tool one
+  route, not the server its init. The accept handler takes its listener
+  from `cbdata`, so the primary and the alternates share it, and
+  `pmix_ptl_base_stop_listening` releases the alternates whether or not
+  they were ever armed.
 - **The port scan opens a socket per attempt.** Close it before moving to
   the next port, and detect the case where the whole range is taken —
   `listen()` on an unbound socket succeeds and silently gets a port of
@@ -737,7 +757,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_sendrecv.c` | lost-connection completion per peer, a split header, a sendrecv to a closed peer or to a tool itself, a message too large to frame, writes split by the cap, and `flush_sends` past `FD_SETSIZE` |
 | `test/unit/ptl_legacy_ack.c` | a v4.1-shaped connect-ack, pad byte and all, still connects as a client and as a tool |
 | `test/unit/ptl_loopback.c` | a server's request to itself reaches its switchyard and is answered once; a loopback reply nobody waits for is not read as a command |
-| `test/unit/ptl_listener.c` | accept out of descriptors stops the listener cleanly; mistyped, out-of-range and empty directives; a directive-named report file is removed |
+| `test/unit/ptl_listener.c` | accept out of descriptors stops the listener cleanly; mistyped, out-of-range and empty directives; a directive-named report file is removed; with remote connections every public interface accepts connections and is advertised where older readers do not look |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
 | `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one |
 | `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them |
