@@ -130,7 +130,10 @@ Role and support attributes
 * ``PMIX_SERVER_SYS_CONTROLLER`` (bool) |mdash| the server is hosting the
   system controller.
 * ``PMIX_SERVER_REMOTE_CONNECTIONS`` (bool) |mdash| allow (or disable)
-  connections from remote tools.
+  connections from remote tools. When allowed, the server listens on every
+  non-loopback interface left by ``PMIX_TCP_IF_INCLUDE`` /
+  ``PMIX_TCP_IF_EXCLUDE``. Its URI names the first; the others are stored as
+  ``PMIX_MYSERVER_ALT_URIS`` and listed in its contact files.
 * ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` (bool) |mdash| mark the tool rendezvous
   files as readable by all users and allow tools running under user IDs other
   than that of the server to connect. The host retains ultimate authority over
