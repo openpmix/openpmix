@@ -149,7 +149,8 @@ PMIX_EXPORT int pmix_os_dirpath_open_file(const char *path, int flags, mode_t mo
  * a plain file, it is a symlink, or it is unreadable - answers false, on the
  * grounds that the answer is normally used to decide whether to remove the
  * thing, and none of those may be removed on the strength of this call. A NULL
- * path answers true, there being nothing in it.
+ * path answers true, there being nothing in it. Trailing separators are
+ * ignored, so "link/" is still a symlink rather than the directory it names.
  *
  * @param path A pointer to a string that contains the path name to be checked.
  *
@@ -183,6 +184,10 @@ typedef bool (*pmix_os_dirpath_destroy_callback_fn_t)(const char *root, const ch
 
 /**
  * Destroy a directory
+ *
+ * The directory is never opened through a symlink - at the final component or
+ * anywhere inside the tree - and trailing separators are ignored so that
+ * "link/" cannot make the kernel follow one.
  *
  * @param path A pointer to a string that contains the path name to be destroyed
  * @param recursive Recursively descend the directory removing all files and directories.

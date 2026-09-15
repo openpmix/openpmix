@@ -84,6 +84,36 @@ static int openat_and_close(int dirfd, const char *name, int flags, mode_t mode)
 }
 
 /**
+ * Copy a path without its trailing separators, keeping a lone root
+ * separator.
+ *
+ * A trailing separator makes the kernel resolve the final component as
+ * a directory, following a symlink there to do it - and O_NOFOLLOW does
+ * not stop that: open("link/", O_DIRECTORY | O_NOFOLLOW) opens the
+ * link's target on both Linux and macOS. Every entry point below that
+ * refuses a symlink at the final component of a whole path therefore
+ * has to drop the separators first, or "link/" walks straight past the
+ * refusal.
+ *
+ * @retval NULL on allocation failure
+ */
+static char *dirpath_strip_trailing_seps(const char *path)
+{
+    char *copy;
+    size_t len;
+
+    copy = strdup(path);
+    if (NULL == copy) {
+        return NULL;
+    }
+    len = strlen(copy);
+    while (1 < len && path_sep[0] == copy[len - 1]) {
+        copy[--len] = '\0';
+    }
+    return copy;
+}
+
+/**
  * Open the trusted root a walk starts from.
  *
  * The prefix PMIx is handed - $TMPDIR, PMIX_NSDIR, a user-named output
@@ -425,23 +455,11 @@ static int dirpath_ensure_mode(const char *path, const mode_t mode)
     return PMIX_SUCCESS;
 }
 
-int pmix_os_dirpath_create(const char *path, const mode_t mode)
+static int dirpath_create(const char *path, const mode_t mode)
 {
     char **parts, *tmp;
     int i, len;
     int ret;
-
-    if (NULL == path) { /* protect ourselves from errors */
-        return (PMIX_ERR_BAD_PARAM);
-    }
-    /* an empty path names nothing, and mkdir("") answers ENOENT - which
-     * is the "build the tree" signal below, where an empty path splits
-     * to no components at all and the whole loop is skipped. Left to
-     * itself this function therefore reported that it had created a
-     * directory tree while doing nothing whatsoever */
-    if ('\0' == path[0]) {
-        return (PMIX_ERR_BAD_PARAM);
-    }
 
     /* try to make directory */
     if (0 == mkdir(path, mode)) {
@@ -566,6 +584,35 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
     PMIx_Argv_free(parts);
     free(tmp);
     return PMIX_SUCCESS;
+}
+
+int pmix_os_dirpath_create(const char *path, const mode_t mode)
+{
+    char *clean;
+    int ret;
+
+    if (NULL == path) { /* protect ourselves from errors */
+        return (PMIX_ERR_BAD_PARAM);
+    }
+    /* an empty path names nothing, and mkdir("") answers ENOENT - which
+     * is the "build the tree" signal in dirpath_create(), where an empty
+     * path splits to no components at all and the whole loop is skipped.
+     * Left to itself that reported it had created a directory tree while
+     * doing nothing whatsoever */
+    if ('\0' == path[0]) {
+        return (PMIX_ERR_BAD_PARAM);
+    }
+
+    /* only the fast path hands the caller's string straight to
+     * dirpath_ensure_mode(), but every name the tree walk assembles is
+     * free of trailing separators too, so strip once for all of them */
+    clean = dirpath_strip_trailing_seps(path);
+    if (NULL == clean) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    ret = dirpath_create(clean, mode);
+    free(clean);
+    return ret;
 }
 
 /**
@@ -722,6 +769,7 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
                             pmix_os_dirpath_destroy_callback_fn_t cbfunc)
 {
     int fd, exit_status;
+    char *clean;
 
     if (NULL == path) { /* protect against error */
         return PMIX_ERROR;
@@ -731,15 +779,22 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
      * symlinked base path - the session directories sit under a
      * world-writable root with predictable names, so a link planted
      * there would otherwise redirect this whole recursive removal at
-     * a tree of the attacker's choosing */
-    fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+     * a tree of the attacker's choosing. Trailing separators go first:
+     * "link/" would have the kernel follow the link, O_NOFOLLOW or no */
+    clean = dirpath_strip_trailing_seps(path);
+    if (NULL == clean) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    fd = open(clean, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     if (0 > fd) {
         /* per the documented contract, a directory that does not exist is
          * reported as NOT_FOUND; any other open failure is a generic error */
-        return (ENOENT == errno) ? PMIX_ERR_NOT_FOUND : PMIX_ERROR;
+        exit_status = (ENOENT == errno) ? PMIX_ERR_NOT_FOUND : PMIX_ERROR;
+        free(clean);
+        return exit_status;
     }
 
-    exit_status = dirpath_destroy_at(fd, path, recursive, cbfunc);
+    exit_status = dirpath_destroy_at(fd, clean, recursive, cbfunc);
 
     /*
      * If the directory is empty, then remove it - but leave the system
@@ -755,8 +810,9 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
     if (NULL == pmix_server_globals.system_tmpdir ||
         0 != strcmp(path, pmix_server_globals.system_tmpdir) ||
         pmix_ptl_base.created_system_tmpdir) {
-        rmdir(path);
+        rmdir(clean);
     }
+    free(clean);
     return exit_status;
 }
 
@@ -764,14 +820,21 @@ bool pmix_os_dirpath_is_empty(const char *path)
 {
     DIR *dp;
     struct dirent *ep;
+    char *clean;
     int fd;
 
     if (NULL != path) { /* protect against error */
         /* O_DIRECTORY | O_NOFOLLOW to match pmix_os_dirpath_destroy():
          * the answer to this question is normally used to decide
          * whether to remove the directory, so a symlink must not be
-         * able to answer on behalf of whatever it points at */
-        fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+         * able to answer on behalf of whatever it points at - and a
+         * trailing separator would have the kernel follow one anyway */
+        clean = dirpath_strip_trailing_seps(path);
+        if (NULL == clean) {
+            return false;
+        }
+        fd = open(clean, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        free(clean);
         if (0 > fd) {
             return false;
         }
