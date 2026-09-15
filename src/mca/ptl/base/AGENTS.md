@@ -267,8 +267,12 @@ expired, not "no data yet", so the function returns `PMIX_ERR_TIMEOUT`
 there and cycles only for a socket that really is non-blocking. It used
 to cycle unconditionally, which turned every receive timeout into an
 unbounded wait — the outbound `handshake_wait_time` never expired
-either. Making the psec exchange asynchronous means changing psec's
-`server_handshake(int sd)` interface; `docs/todo.rst` records it.
+either. The psec exchange itself stays blocking, and deliberately: its
+interface is `server_handshake(int sd)`, and the only module that
+implements one is the test module `psec/dummy_handshake`, built only
+under `--enable-dummy-handshake`. No production build reaches it, so it
+is not worth redesigning that interface for; revisit if a real
+handshake-model module ever appears.
 
 `test/unit/ptl_stalled_peer.c` runs every stall case with the timeout
 **disabled**, so only the non-blocking read can pass them, and gives the
@@ -665,22 +669,45 @@ it.
 Two regimes, described in the framework doc. What matters *here*:
 
 - `pmix_ptl_base_send_blocking` / `_recv_blocking` and everything in the
-  connect-ack exchange are genuinely blocking. On the **outbound** side
-  that is acceptable because it runs on the caller's thread during init;
-  `pmix_ptl_base_set_timeout` applies `handshake_wait_time` there, which
-  defaults to 0 — no bound. On the **inbound** side it is the server's
-  progress thread: the connect-ack itself is read without blocking, and
-  what blocks after it is bounded by `connect_ack_timeout` — see *The
-  inbound connect-ack never blocks the server's progress thread*.
-  `set_timeout` is not called inbound.
+  blocking connect-ack exchange are genuinely blocking. On the
+  **outbound** side that is acceptable only on the caller's own thread -
+  `PMIx_Init`, `PMIx_tool_init`, a server connecting upstream.
+  `pmix_ptl_base_set_timeout` applies `handshake_wait_time` to each
+  reply there, and `bounded_connect()` in `ptl_base_connect.c` applies
+  it to each `connect()` attempt; it defaults to 60 seconds (0 means no
+  bound). On the **inbound** side it is the server's progress thread:
+  the connect-ack itself is read without blocking, and what blocks after
+  it is bounded by `connect_ack_timeout` — see *The inbound connect-ack
+  never blocks the server's progress thread*. `set_timeout` is not
+  called inbound.
 - `pmix_ptl_base_set_timeout` only ever *clears* its `sockopt`
   out-parameter, on failure. That is not a bug: the caller initializes it
   to `true`, and it means "restore the saved timeout afterwards".
-- **`pmix_ptl_base_connect_to_peer` runs on either thread.** From
-  `PMIx_tool_init` it is the caller's thread. From
-  `PMIx_tool_attach_to_server` it is the **progress thread**:
-  `pmix_tool_retry_attach` is a thread-shift handler. Anything it reaches
-  that waits on `pmix_globals.evbase` has to know which one it is on.
+- **A connect made from the progress thread must not wait on the
+  server - use `connect_to_peer_nb`.** `PMIx_tool_attach_to_server`, a
+  tool connecting to its parent at init, and a server attaching
+  upstream all reach `pmix_tool_retry_attach`, a thread-shift handler.
+  It used to run the blocking connect there, so the whole progress
+  thread waited on the server - forever, while `handshake_wait_time`
+  defaulted to 0. It now calls the module's `connect_to_peer_nb`
+  (`pmix_ptl_base_connect_to_peer_nb` for the tool and server
+  components; the client component has none and falls back to the
+  blocking call). That locates the server exactly as the blocking form
+  does - it shares `do_connect()` with it - and then hands the connection
+  to the event-driven connect in `ptl_base_fns.c`: a non-blocking
+  `connect()`, the same connect-ack sent as the socket accepts it, and
+  each reply field read as it arrives, in the order
+  `pmix_ptl_base_client_handshake` / `_tool_handshake` read them. One
+  timer, `handshake_wait_time`, bounds the whole connect. **The wire
+  does not change, so keep the two readers in step**: a field added to
+  the blocking handshake has to be added to `cnct_field()` too.
+  The callback never runs inside the starting call - the connect begins
+  on the next pass of the event loop - and connects still under way at
+  finalize are completed with `PMIX_ERR_NOT_AVAILABLE` by
+  `pmix_ptl_base_abandon_connects()`. A psec client handshake is still
+  run blocking, bounded by the same wait, for the reason given above.
+  `test/unit/tool_attach_nb.c` holds this: an event registration made
+  while an attach waits on a silent server has to complete promptly.
 - **The file-wait loops pause through `retry_wait()`, and nothing else.**
   `pmix_ptl_base_parse_uri_file` pauses between looks at a connection
   file — once while it does not exist yet, and again while it exists but
