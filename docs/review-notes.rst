@@ -22,6 +22,32 @@ Entries that stood on :doc:`todo` and have since been answered.  Each is
 kept with the reasoning that closed it, because in most cases the way it
 closed contradicted what the entry predicted.
 
+A blocking ``PMIx_IOF_pull`` hands back no handle
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found re-reviewing ``src/common/pmix_iof.c`` (2026-08-27), closed
+2026-09-15.  The registration id reaches a non-blocking caller through
+``regcbfunc``, and passing a NULL ``regcbfunc`` is what selects the
+blocking form, so a blocking caller was never told the id and could never
+call ``PMIx_IOF_deregister`` for it.
+
+The entry concluded that closing it needed either an ``OUT`` parameter on
+a released API or a new attribute to carry the id back - a Standard
+change.  Neither was needed: the answer was already in the API's own
+contract.  ``pmix_tool.h`` has always documented the blocking form the way
+``PMIx_Register_event_handler``'s works - a non-negative return is the
+reference id, a negative one an error.  The implementation never followed
+it, returning ``PMIX_OPERATION_SUCCEEDED`` (the local path in v5.0 did the
+same, and its remote path returned ``PMIX_SUCCESS``), and the man page
+documented the implementation.  The Python binding follows the header, so
+it reported every successful blocking ``iof_pull`` as a failure.
+
+The blocking form now returns ``req->local_id`` on success, and the man
+page and header say so, with a note for code that must also run against
+earlier releases.  ``test/unit/iof_output.c`` checks that two blocking
+pulls return distinct non-negative handles naming the registrations they
+made; against the previous code all three cases fail.
+
 The handshake after a connect-ack still blocks the server's progress thread
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
