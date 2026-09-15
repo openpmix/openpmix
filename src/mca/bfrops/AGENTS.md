@@ -22,7 +22,7 @@ specific to `bfrops`: what the framework is for, why it is multi-select,
 how a component maps to a wire-format version, the very large body of
 shared code in `base/`, and the rules you must obey to avoid silently
 breaking cross-version communication. Each component subdirectory
-(`v12/`, `v20/`, `v21/`, `v3/`, `v4/`, `v41/`, `v51/`, `v61/`) carries
+(`v21/`, `v3/`, `v4/`, `v41/`, `v51/`, `v61/`) carries
 its own `AGENTS.md` describing that version's deltas, and
 [`base/AGENTS.md`](base/AGENTS.md) covers the shared implementation —
 including the six per-type operations that have to agree with each
@@ -90,7 +90,7 @@ Two independent axes of variation are handled:
 
 The community's intent (stated in `bfrops.h`) is that data-type
 definitions change *rarely*, so new components should be rare. In
-practice eight exist, spanning PMIx 1.2 through 6.1.
+practice six exist, spanning PMIx 2.1 through 6.1.
 
 ## Module interface (`pmix_bfrops_module_t`)
 
@@ -190,29 +190,26 @@ assign a module live in `ptl_base_connection_hdlr.c`, `ptl_client.c`,
 | `v41` | 58 | 4.1 | modern | |
 | `v4`  | 50 | 4.0 | modern | **flex-int break**; dropped deprecated `MODEX`/`INFO_ARRAY` |
 | `v3`  | 40 | 3.x | converged, fixed-width ints | own integer packers |
-| `v21` | 30 | 2.1 | converged, fixed-width ints | first version built on the base driver |
-| `v20` | 20 | 2.0 | legacy (self-contained) | own pack/unpack/copy/print files |
-| `v12` | 5  | 1.2 | legacy (self-contained) | oldest supported |
+| `v21` | 30 | 2.1 | converged, fixed-width ints | oldest supported; first built on the base driver |
 
 Because `assign_module(NULL)` returns the highest priority, a fresh
 build's local peer always uses `v61`. Two peers negotiate down to a
 version both possess.
 
-## The three families of components (read before editing any component)
+## The two families of components (read before editing any component)
 
-The eight components fall into three tiers. Knowing which tier a
+The six components fall into two tiers. Knowing which tier a
 component is in tells you where its wire format actually lives.
 
-1. **Legacy, self-contained (`v12`, `v20`).** These predate the shared
-   base driver. Each has its *own* `pack.c`, `unpack.c`, `copy.c`,
-   `print.c`, and `internal.h`, and its module wires `pack`/`unpack`/
-   `copy`/`print`/`copy_payload`/`value_*` to `pmix20_bfrop_*` /
-   `pmix12_bfrop_*` functions. Their integers are fixed-width with
-   explicit byte-order handling; the buffer is the described-buffer era.
-   They still carry the deprecated `PMIX_MODEX` and `PMIX_INFO_ARRAY`
-   types. **Do not touch their bytes** — they exist solely to talk to
-   ancient peers.
-2. **Converged-but-fixed-width (`v21`, `v3`).** These use the shared base
+There used to be a third: the self-contained `v12` and `v20` encoders,
+with their own pack/unpack/copy/print files, for v1.2 and v2.0 peers.
+Both are gone. A v1.x peer cannot reach a current library at all - it
+speaks only the `usock` transport, which was removed - and a v2.0 peer's
+connection handshake omits its buffer type, so the server cannot read
+its first message. The connection handler refuses both by version (see
+[`src/mca/ptl/base/AGENTS.md`](../ptl/base/AGENTS.md)).
+
+1. **Converged-but-fixed-width (`v21`, `v3`).** These use the shared base
    driver for the framing and for composite types, but register their
    *own* static integer packers (`pack_int`, `pack_int16/32/64`,
    `pack_sizet`) — so their integers are still fixed-width, not squashed.
@@ -220,7 +217,7 @@ component is in tells you where its wire format actually lives.
    `pmixNN_bfrop_pack_modex` / `pack_array` handlers). `v21` introduced
    the base-driver framing; `v3` merely adds `PMIX_IOF_CHANNEL` and
    `PMIX_ENVAR`.
-3. **Modern (`v4`, `v41`, `v51`, `v61`).** These delegate integers to
+2. **Modern (`v4`, `v41`, `v51`, `v61`).** These delegate integers to
    `pmix_bfrops_base_pack_general_int` — the **flexible ("squashed")
    base-7 varint** encoding — and drop the deprecated types. Adjacent
    modern versions differ *only* by which additional data types their
@@ -399,14 +396,13 @@ src/mca/bfrops/
 │   ├── bfrop_base_get_number.c  PMIx_Value_get_number + numeric range checks
 │   ├── bfrop_base_fns.c     buffer helpers, value load/unload/xfer, public Info_list APIs
 │   └── bfrop_base_macro_backers.c  out-of-line bodies for public PMIx_* inline macros
-├── v12/  v20/               legacy self-contained encoders (own pack/unpack/copy/print)
 ├── v21/  v3/                base-driver framing, own fixed-width integer packers
 └── v4/  v41/  v51/  v61/    modern (flex ints), differ only by registered type set
 ```
 
 ## Building
 
-All eight components are statically built into `libpmix` and wired
+All six components are statically built into `libpmix` and wired
 through the generated `base/static-components.h`; **none ships a
 `configure.m4`**, so none is conditionally compiled out — every version
 is always present in every build. `bfrops` ships **no `show_help` text of

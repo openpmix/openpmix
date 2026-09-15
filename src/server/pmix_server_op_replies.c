@@ -581,24 +581,14 @@ static void _cnct(int sd, short args, void *cbdata)
                 }
                 PMIX_DESTRUCT(&cb);
 
-                if (PMIX_PEER_IS_V20(cd->peer)) {
-                    PMIX_BFROPS_PACK(rc, cd->peer, reply, &pbkt, 1, PMIX_BUFFER);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                        PMIX_RELEASE(reply);
-                        PMIX_DESTRUCT(&pbkt);
-                        goto participant_error;
-                    }
-                } else {
-                    PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
-                    PMIX_BFROPS_PACK(rc, cd->peer, reply, &bo, 1, PMIX_BYTE_OBJECT);
-                    PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                        PMIX_RELEASE(reply);
-                        PMIX_DESTRUCT(&pbkt);
-                        goto participant_error;
-                    }
+                PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
+                PMIX_BFROPS_PACK(rc, cd->peer, reply, &bo, 1, PMIX_BYTE_OBJECT);
+                PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(reply);
+                    PMIX_DESTRUCT(&pbkt);
+                    goto participant_error;
                 }
 
                 PMIX_DESTRUCT(&pbkt);

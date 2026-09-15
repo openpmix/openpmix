@@ -137,14 +137,17 @@ Cross-Version Compatibility
 
 As PMIx adoption has grown, the problem of managing application-SMS interactions between different PMIx library versions has increased in visibility. It soon became clear that use of a common library version by both SMS and application could not be guaranteed, especially in the container-based application use-case. Thus, cross-version compatibility arose as a problem.
 
-PMIx has addressed this by utilizing a plugin-based architecture that allows both the client and server to select from a range of supported protocol levels. The resulting coordination is based on a client-driven handshake – i.e., the client selects the protocol to be used, and the server adapts to support it. The client’s selection is based on a combination of environmental parameters passed to it at launch by the server, filtered against the protocols available to that particular client. For example, a PMIx v1.2 client only has the ``usock`` messaging transport available to it, and so would select that transport even when a PMIx v3 server offered ``usock`` and ``tcp`` options. Note that if the PMIx v3 server had not been instructed to support ``usock``, then the v1.2 client would have failed ``PMIx_Init`` with an error indicating the server was unreachable.
+PMIx has addressed this by utilizing a plugin-based architecture that allows both the client and server to select from a range of supported protocol levels. The resulting coordination is based on a client-driven handshake – i.e., the client selects the protocol to be used, and the server adapts to support it. The client's selection is based on a combination of environmental parameters passed to it at launch by the server, filtered against the protocols available to that particular client.
 
-Although the PMIx community is committed to supporting the cross-version use-case, early releases did not fully provide the necessary capabilities. Each release branch has since been updated to include the required translation logic for communicating to other versions, but full compatibility could not be provided due to the level of changes it would introduce to what would otherwise be considered a ``stable`` release series. Thus, the following chart shows the available compatibility:
+That support has limits in both directions:
 
-.. image:: ./images/compatibility.png
+* A server supports clients and tools using PMIx v2.1 or later.
+* A client or tool supports servers using PMIx v3.2 or later.
 
-Starting with v2.1.1, all versions are fully cross-compatible – i.e., the client and server versions can be any combination of release level. Thus, a v2.1.1 client can connect to a v3.0.0 server, and vice versa.
+Connections outside those limits are refused, with a message naming the version that was found, rather than being allowed to fail later in some less obvious way. In particular:
 
-PMIx v1.2.5 servers can only serve v1.2.x clients, but v1.2.5 clients can connect to v2.0.3, and v2.1.1 or higher servers. Similarly, v2.0.3 servers can only serve v2.0.x and v1.2.5 clients, but v2.0.3 clients can connect to v2.1.1 or higher servers.
+* PMIx v1.x clients cannot connect to a current server at all: they only support the ``usock`` transport, which is no longer provided.
+* PMIx v2.0.x clients are not supported. A server does not advertise itself in the form they look for, and one that reaches a server anyway is refused at its handshake, which does not identify the buffer format it uses, so a server cannot reliably read its messages.
+* A current client or tool will not connect to a server older than v3.2. Such a server accepts the connection, but cannot answer requests that current clients make during initialization.
 
 .. note:: The cross-version guarantee only means that users of two different versions will be able to communicate requests and their responses. It does not guarantee that both sides will completely support the requests. It is possible, for example, for a server to not include support for an operation that was introduced in a newer version being used by a client. Likewise, it is possible that a bug existed in an earlier version that precludes correct completion of the request.

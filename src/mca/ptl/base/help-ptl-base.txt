@@ -168,6 +168,15 @@ of them, or widen (or clear) the "pmix_ptl_base_ipv4_ports" /
 "pmix_ptl_base_ipv6_ports" MCA parameter so the kernel is allowed to
 choose a port.
 #
+[unsupported-client-version]
+A process attempted to connect to this PMIx server using a version of
+the PMIx library that this server does not support:
+
+  Peer version:  %s
+
+This server supports peers using PMIx v2.1 or later. The connection
+has been refused.
+#
 [unsupported-server-version]
 This process attempted to connect to a PMIx server that is running a
 version of the PMIx library this process does not support:
