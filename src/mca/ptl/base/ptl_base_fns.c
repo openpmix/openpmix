@@ -478,6 +478,18 @@ pmix_status_t pmix_ptl_base_setup_connection(char *uri, struct sockaddr_storage 
             return PMIX_ERR_BAD_PARAM;
         }
         *p2 = '\0';
+        /* the port is what follows the separator - without stepping past
+         * it, p2 named the NUL just written and every IPv6 URI converted
+         * to port 0 */
+        p2++;
+        /* nothing before the separator leaves no last character to
+         * inspect (p[strlen(p) - 1] would be p[-1]), and nothing after it
+         * is no port at all */
+        if ('\0' == p[0] || '\0' == p2[0]) {
+            free(p);
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            return PMIX_ERR_BAD_PARAM;
+        }
         if (']' == p[strlen(p) - 1]) {
             p[strlen(p) - 1] = '\0';
         }
