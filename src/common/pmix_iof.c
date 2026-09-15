@@ -323,7 +323,18 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
         pmix_status_t status;
         PMIX_WAIT_THREAD(&req->lock);
         if (PMIX_SUCCESS == req->status) {
-            return PMIX_OPERATION_SUCCEEDED;
+            /* The blocking form has nowhere else to put the handle
+             * PMIx_IOF_deregister needs: the registration id reaches a
+             * non-blocking caller through regcbfunc, and the NULL
+             * regcbfunc is what selected this form. So, as
+             * PMIx_Register_event_handler does, a non-negative return is
+             * the id and a negative one is an error - which is what
+             * pmix_tool.h has always documented. It used to answer
+             * PMIX_OPERATION_SUCCEEDED, a negative value that reads as
+             * an error to exactly the check that contract implies, and
+             * left the registration impossible to remove. The id is the
+             * index of a pointer-array slot, so it fits. */
+            return (pmix_status_t) req->local_id;
         } else {
             // the request failed and myreg removed it from the
             // iof_requests array without releasing it (the blocking
