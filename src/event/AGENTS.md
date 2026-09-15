@@ -265,7 +265,7 @@ generic `pmix_shift_caddy_t` for other paths) to
    BEFORE/AFTER locator search lives);
 4. calls `_add_hdlr`, which updates the `actives` refcounts and decides
    whether the registration must leave the process:
-   - **client/tool/launcher, connected, server ≥ v2**: pack a
+   - **client/tool/launcher, connected**: pack a
      `PMIX_REGEVENTS_CMD` and `PMIX_PTL_SEND_RECV` it
      (`_send_to_server`); `_add_hdlr` returns `PMIX_ERR_WOULD_BLOCK`
      and the caller's callback fires later from `regevents_cbfunc`;
@@ -361,9 +361,7 @@ The wire format of both message families (`PMIX_REGEVENTS_CMD`,
 append-only, per the top-level Version Interoperability rules. The
 receive side must tolerate `PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER`
 for fields newer than the peer (see the range unpack in
-`pmix_tool_notify_recv`). Also note the v1 exception: registrations are
-never sent to a v1 server (`PMIX_PEER_IS_V1`) because v1's event system
-did not interoperate.
+`pmix_tool_notify_recv`).
 
 ## The two caches
 

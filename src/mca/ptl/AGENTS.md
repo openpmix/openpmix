@@ -77,10 +77,10 @@ Consequently:
 - **The header comment in `ptl.h` describes an aspiration, not today's
   reality.** It says components exist to support new handshake versions
   and new transports. In practice there is one transport (TCP, protocol
-  `PMIX_PROTOCOL_V2`); the old Unix-domain-socket transport (`usock`,
-  `PMIX_PROTOCOL_V1`) is gone, and `PMIX_PROTOCOL_V1` survives only as a
-  reserved value. Handshake versioning is handled *inside* the base by
-  inspecting the peer's version string, not by swapping components.
+  `PMIX_PROTOCOL_V2`); the old Unix-domain-socket transport (`usock`) is
+  gone, and its `PMIX_PROTOCOL_V1` value with it. Handshake versioning is
+  handled *inside* the base by inspecting the peer's version string, not
+  by swapping components.
 
 If you are looking for "the TCP code," it is in `base/`, not in a
 component. Read `base/` first.
