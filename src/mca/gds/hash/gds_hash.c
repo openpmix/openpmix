@@ -864,6 +864,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
     pmix_rank_t rank;
     pmix_list_t results;
     char *hname;
+    pmix_nodeinfo_t *nd;
     pmix_session_t *sptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -953,6 +954,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
                 info = (pmix_info_t *) kvptr->value->data.darray->array;
                 ninfo = kvptr->value->data.darray->size;
                 hname = NULL;
+                nd = NULL;
                 /* find the hostname */
                 for (n = 0; n < ninfo; n++) {
                     if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
@@ -963,7 +965,32 @@ static pmix_status_t register_info(pmix_peer_t *peer,
                         break;
                     }
                 }
-                if (NULL != hname && pmix_gds_hash_check_hostname(pmix_globals.hostname, hname)) {
+                /* Such a peer finds a node's array by looking the name up
+                 * as a key - an exact match, with none of the alias
+                 * handling our own lookups do. The node is stored under
+                 * the name we keep for it, and by default that is the
+                 * short one, so a peer asking by the fully qualified name
+                 * (what gethostname() commonly returns) found nothing.
+                 * File the array under each of the node's aliases too. */
+                if (PMIX_SUCCESS == rc && NULL != hname) {
+                    nd = pmix_gds_hash_check_nodename(&trk->nodeinfo, hname);
+                    if (NULL != nd && NULL != nd->aliases) {
+                        for (n = 0; PMIX_SUCCESS == rc && NULL != nd->aliases[n]; n++) {
+                            if (0 == strcmp(nd->aliases[n], hname)) {
+                                continue;
+                            }
+                            /* borrow the key slot - hname keeps the one it owns */
+                            kvptr->key = nd->aliases[n];
+                            PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
+                            kvptr->key = hname;
+                        }
+                    }
+                }
+                /* our own node is the one our hostname resolves to, by
+                 * name or alias - not just the one whose name is spelled
+                 * identically */
+                if (PMIX_SUCCESS == rc && NULL != nd &&
+                    nd == pmix_gds_hash_check_nodename(&trk->nodeinfo, pmix_globals.hostname)) {
                     /* older versions are looking for node-level keys for
                      * only their own node as standalone keys */
                     for (n = 0; n < ninfo; n++) {
