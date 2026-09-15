@@ -52,12 +52,11 @@ At a glance
 * :ref:`todo-mca-param-owner`
 * :ref:`todo-iof-pull-handle`
 
-**Deferred work — 5**
+**Deferred work — 4**
 
 * :ref:`todo-get-pointer-values`
 * :ref:`todo-compress-length-prefix`
 * :ref:`todo-fabric-inventory`
-* :ref:`todo-server-genvars`
 * :ref:`todo-ptl-blocking-handshake`
 
 **Coverage gaps — 21.**  No CI race detector; the switchyard's
@@ -287,33 +286,6 @@ unlike ``allocate`` and ``setup_fork``, it ``PMIX_ERROR_LOG``\ s any
 non-``PMIX_SUCCESS`` return and abandons the fan-out to every component
 behind it — so today "nothing here" and "collected everything" are the
 same answer.
-
-.. _todo-server-genvars:
-
-A server-wide envar hook that nothing fills
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found reviewing ``src/server/pmix_server.c`` (2026-08-23).
-``pmix_server_globals.genvars`` is declared as "argv array of envars given
-to me for passing to all clients", is statically initialized to NULL, and
-is read in exactly one place — ``setup_fork_body()`` replays it into every
-child's environment.  **Nothing in the tree ever writes it.**  There is no
-directive, no API argument and no environment variable that reaches it, so
-a host has no way to say "add these to every client I fork" and the replay
-loop is dead code.
-
-This is an unbuilt feature rather than a defect, which is why it is here
-rather than fixed: closing it means choosing the interface.  The obvious
-candidate is ``PMIx_server_register_resources`` — it already carries
-host-supplied job-wide information into ``pmix_server_globals.gdata`` —
-with the ``PMIX_SET_ENVAR`` / ``PMIX_ADD_ENVAR`` / ``PMIX_PREPEND_ENVAR``
-family that ``src/common/pmix_pfexec.c`` already parses for a spawn.  That
-also decides the harder half: whether a later registration replaces or
-appends, and whether ``PMIx_server_deregister_resources`` has to take an
-envar back out of children that have already been forked (it cannot).
-The comment above ``setup_fork_body`` used to assert that the registration
-path sets it; that has been corrected, and ``src/server/AGENTS.md`` says
-the read site is not evidence of a writer.
 
 .. _todo-ptl-blocking-handshake:
 
