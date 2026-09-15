@@ -3110,12 +3110,11 @@ is the shape `PMIx_Connect_nb` already uses for its job-info fetch.
   and the commit that added it (`7ba403b52`, 2024) says why: "the server
   may have returned the data under that rank *depending upon version*".
   Which rank the payload is filed under is the peer's decision and it
-  varies by release — the same class as the `PMIX_PEER_IS_EARLIER`
-  rewrite in `get_data()` forty lines above, which sends a NULL-key
-  request at `WILDCARD` while recording `UNDEF`, and so *creates* the
+  varies by release — the same class as the rewrite in `get_data()`
+  forty lines above, which sends a NULL-key request for another
+  namespace at `WILDCARD` while recording `UNDEF`, and so *creates* the
   mismatch this retry absorbs. `try_fetch()` in
-  [`pmix_client_resolve.c`](pmix_client_resolve.c) is the third instance,
-  and its comment says the legacy resolve path resolves *because of* it.
+  [`pmix_client_resolve.c`](pmix_client_resolve.c) is the third instance.
 
   **It has never been observed to fire, and that is not evidence against
   it.** Instrumented on both of its sites, it was not entered once
@@ -3200,8 +3199,8 @@ proc the server was never asked about.
 Two details to preserve if you touch either site. The coalescing scan
 compares what each request **recorded about itself** (`cb->pname`), not
 the rank it is about to send: `get_data()` rewrites the outgoing rank to
-`WILDCARD` for a NULL key in another namespace and for a pre-v3.2 server,
-while `cb->pname` keeps the original — and `cb->pname` is what the reply
+`WILDCARD` for a NULL key in another namespace, while `cb->pname` keeps
+the original — and `cb->pname` is what the reply
 is matched against. And `same_target()` uses `PMIX_CHECK_NSPACE` for the
 namespace half, which is empty-tolerant; that is safe here only because
 `process_request()` fills `lg->p.nspace` on every path, so neither side

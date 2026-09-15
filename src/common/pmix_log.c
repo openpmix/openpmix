@@ -250,16 +250,13 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
             PMIX_RELEASE(msg);
             goto senderr;
         }
-        if (!PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, PMIX_MINOR_WILDCARD,
-                                  PMIX_RELEASE_WILDCARD)) {
-            /* provide the timestamp - zero will indicate
-             * that it wasn't taken */
-            PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &timestamp, 1, PMIX_TIME);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msg);
-                goto senderr;
-            }
+        /* provide the timestamp - zero will indicate
+         * that it wasn't taken */
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &timestamp, 1, PMIX_TIME);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            goto senderr;
         }
         /* pack the number of data entries */
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ndata, 1, PMIX_SIZE);

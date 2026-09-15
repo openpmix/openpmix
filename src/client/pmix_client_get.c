@@ -1675,11 +1675,9 @@ doget:
      * components. If this is a NULL key, then we do NOT go up to the
      * server unless special circumstances require it */
     if (NULL == cb->key) {
-        /* if the server is pre-v3.2, or we are asking about the
-         * job-level info from another namespace, then we have to
-         * request the data */
-        if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100) ||
-            !PMIX_CHECK_NSPACE(lg->p.nspace, pmix_globals.myid.nspace)) {
+        /* if we are asking about the job-level info from another
+         * namespace, then we have to request the data */
+        if (!PMIX_CHECK_NSPACE(lg->p.nspace, pmix_globals.myid.nspace)) {
             /* flag that we want all of the job-level info */
             proc.rank = PMIX_RANK_WILDCARD;
         }

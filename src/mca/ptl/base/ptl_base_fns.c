@@ -734,6 +734,22 @@ pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
     pmix_status_t rc;
     size_t len;
     int retries = 0;
+    uint8_t major = PMIX_PEER_MAJOR_VERSION(peer);
+    uint8_t minor = PMIX_PEER_MINOR_VERSION(peer);
+
+    /* The oldest server we will talk to is v3.2. Its version is known by
+     * now on every path that can know it - the PMIX_SERVER_URI variable
+     * and PMIX_VERSION for a client, or the version line of a rendezvous
+     * file, whose absence marks a v2.0 server. A server reached through a
+     * URI handed to us directly has none recorded, and is not refused.
+     * Refuse here rather than connect: an older server accepts the
+     * connection and then leaves us waiting on answers it never sends. */
+    if (0 != major && PMIX_MAJOR_WILDCARD != major &&
+        (3 > major || (3 == major && PMIX_MINOR_WILDCARD != minor && 2 > minor))) {
+        pmix_show_help("help-ptl-base.txt", "unsupported-server-version", true,
+                       (int) major, (int) minor);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
 
     /* setup the connection */
     if (PMIX_SUCCESS != (rc = pmix_ptl_base_setup_connection(suri, &myconnection, &len))) {
@@ -1311,7 +1327,9 @@ static void check_server(char *filename, pmix_list_t *servers)
         goto nomem;
     }
 
-    /* see if this file contains the server's version */
+    /* see if this file contains the server's version - every server
+     * since v2.1 writes one, so a file without it came from a v2.0
+     * server, which the connection will then refuse */
     p2 = pmix_getline(fp);
     if (NULL == p2) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V20 SERVER DETECTED");
