@@ -1577,6 +1577,12 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* attempt to connect to a server */
     rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver,
                                    info, ninfo, &suri);
+    if (PMIX_UNLIKELY(PMIX_ERR_OUTDATED == rc)) {
+        /* there is a server, but it is older than we can talk to - the
+         * connection code has said so. Coming up as a singleton would
+         * hide that behind a process that runs as if no server existed */
+        goto errout;
+    }
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         /* mark that we couldn't connect to a server */
         pmix_client_globals.singleton = true;

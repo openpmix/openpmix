@@ -226,6 +226,9 @@ a PMIx error constant is returned, including:
   was ``NULL`` on the initial call.
 * ``PMIX_ERR_UNREACH`` |mdash| the requested PMIx server could not be reached and
   the connection was not optional.
+* ``PMIX_ERR_OUTDATED`` |mdash| the requested PMIx server uses a version of the
+  PMIx library older than this one can connect to (v3.2), and the connection was
+  not optional. A message naming the server's version is printed.
 * ``PMIX_ERR_NOMEM`` |mdash| the library could not allocate required internal
   storage.
 

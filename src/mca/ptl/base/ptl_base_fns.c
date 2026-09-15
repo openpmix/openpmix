@@ -748,7 +748,7 @@ pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
         (3 > major || (3 == major && PMIX_MINOR_WILDCARD != minor && 2 > minor))) {
         pmix_show_help("help-ptl-base.txt", "unsupported-server-version", true,
                        (int) major, (int) minor);
-        return PMIX_ERR_NOT_SUPPORTED;
+        return PMIX_ERR_OUTDATED;
     }
 
     /* setup the connection */
