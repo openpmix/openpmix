@@ -1047,9 +1047,11 @@ one) `test/unit/run_grpinviteothers.pl` plus the swarm suite.
   that is away its own completion can fire at any moment — get that
   ordering wrong and the caller is either completed twice or never.
 
-- The two `resolve_peers()` items are unchanged. The handler-suppression
-  problem from the first pass is fixed; see the updated entry in the
-  previous section for what that did and did not cover.
+- The `resolve_peers()` items are closed: its pre-v3.2 branch has been
+  removed (see "Smaller items carried forward" in
+  `docs/review-notes.rst`). The handler-suppression problem from the first
+  pass is fixed; see the updated entry in the previous section for what
+  that did and did not cover.
 
 ## Defects found in the August 2026 review (third sweep)
 
