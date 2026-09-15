@@ -10,7 +10,24 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        # Each of these is tested in both directions: its client against
+        # the PR's server, and the PR's client against its server.
         versions: ['master', 'v5.0', 'v4.2', 'v4.1', 'v3.2']
+        # A server supports clients back to v2.1, but a client only
+        # connects to servers from v3.2 on (see "Version floors" in
+        # src/mca/ptl/base/AGENTS.md). So the releases below the server
+        # floor are tested as clients only - the branch-to-PR steps skip
+        # them - and a support floor lowered or raised has to move here
+        # too, since only what is tested here is supported.
+        include:
+          - versions: 'v3.1'
+            clientonly: true
+          - versions: 'v3.0'
+            clientonly: true
+          - versions: 'v2.2'
+            clientonly: true
+          - versions: 'v2.1'
+            clientonly: true
     steps:
     - name: Install dependencies
       run: |
@@ -135,82 +152,82 @@ jobs:
 
     - name: branch-to-PR simple
       run:  checkbranch/test/simple/simptest -n 2 -xversion -e pr/test/simple/simpclient
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR tool
       run:  checkbranch/test/simple/simptest -n 1 -xversion -e pr/test/simple/simptool
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check0
       run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:0-2;1:0]" -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check1
       run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:0-2;1:0]" -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check2
       run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:;1:0]" -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check3
       run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:;1:]" -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check4
       run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[0:]" -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check5
       run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[b | 0:]" -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check6
       run:  checkbranch/test/pmix_test -n 4 --job-fence -c -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check7
       run:  checkbranch/test/pmix_test -n 4 --job-fence -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check8
       run:  checkbranch/test/pmix_test -n 2 --test-publish -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check9
       run:  checkbranch/test/pmix_test -n 2 --test-spawn -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check10
       run:  checkbranch/test/pmix_test -n 2 --test-connect -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check11
       run:  checkbranch/test/pmix_test -n 5 --test-resolve-peers --ns-dist "1:2:2" -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check12
       run:  checkbranch/test/pmix_test -n 5 --test-replace 100:0,1,10,50,99 -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
     - name: branch-to-PR check13
       run:  checkbranch/test/pmix_test -n 5 --test-internal 10 -e pr/test/pmix_client
-      if:   ${{ true }}
+      if:   ${{ !matrix.clientonly }}
       timeout-minutes: 5
 
 
