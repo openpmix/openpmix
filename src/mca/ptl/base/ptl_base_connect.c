@@ -218,8 +218,6 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
     return PMIX_SUCCESS;
 }
 
-#define PMIX_MAX_RETRIES 10
-
 /* connect() bounded by ptl_base_handshake_wait_time.
  *
  * A blocking connect() to a host that silently drops the attempt waits out
@@ -685,9 +683,18 @@ pmix_status_t pmix_ptl_base_check_connect_directives(const pmix_info_t info[], s
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
-                                            pmix_info_t *info, size_t ninfo,
-                                            char **suriout)
+/* Locate the server the directives name and connect to it.
+ *
+ * With cbfunc NULL this is the blocking connect every caller once used,
+ * and it returns the outcome. With cbfunc set, everything up to having a
+ * URI to connect to is still done here - that is reading files, not
+ * waiting on a peer - but the connection itself is handed to the
+ * event-driven path, and PMIX_OPERATION_IN_PROGRESS means cbfunc now owns
+ * the outcome. */
+static pmix_status_t do_connect(struct pmix_peer_t *pr,
+                                pmix_info_t *info, size_t ninfo,
+                                char **suriout,
+                                pmix_ptl_connect_nb_cbfunc_t cbfunc, void *cbdata)
 {
     char *suri = NULL, *evar;
     char *filename, *nspace = NULL;
@@ -1194,6 +1201,20 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     goto cleanup;
 
 complete:
+    if (NULL != cbfunc) {
+        rc = pmix_ptl_base_start_connection(peer, nspace, rank, suri, iptr, niptr,
+                                            cbfunc, cbdata);
+        if (PMIX_SUCCESS == rc) {
+            /* all three belong to the connection now */
+            nspace = NULL;
+            suri = NULL;
+            iptr = NULL;
+            niptr = 0;
+            rc = PMIX_OPERATION_IN_PROGRESS;
+        }
+        goto cleanup;
+    }
+
     rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
     if (PMIX_SUCCESS != rc) {
         goto cleanup;
@@ -1239,4 +1260,33 @@ badinput:
     PMIx_Argv_free(order);
     PMIX_LIST_DESTRUCT(&ilist);
     return rc;
+}
+
+pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
+                                            pmix_info_t *info, size_t ninfo,
+                                            char **suriout)
+{
+    return do_connect(pr, info, ninfo, suriout, NULL, NULL);
+}
+
+pmix_status_t pmix_ptl_base_connect_to_peer_nb(struct pmix_peer_t *pr,
+                                               pmix_info_t *info, size_t ninfo,
+                                               pmix_ptl_connect_nb_cbfunc_t cbfunc,
+                                               void *cbdata)
+{
+    pmix_status_t rc;
+    char *suri = NULL;
+
+    if (NULL == cbfunc) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    rc = do_connect(pr, info, ninfo, &suri, cbfunc, cbdata);
+    if (PMIX_OPERATION_IN_PROGRESS == rc) {
+        /* the connection owns everything, including the URI - the
+         * callback will be handed it */
+        return PMIX_SUCCESS;
+    }
+    /* nothing was started, so nobody else will free what we located */
+    free(suri);
+    return (PMIX_SUCCESS == rc) ? PMIX_ERROR : rc;
 }

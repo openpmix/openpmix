@@ -58,6 +58,11 @@ PMIX_EXPORT extern pmix_mca_base_framework_t pmix_ptl_base_framework;
  */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_select(void);
 
+/* how many times a client or tool retries a connect() that fails - both
+ * the blocking and the event-driven connect make this many retries after
+ * the first attempt */
+#define PMIX_MAX_RETRIES 10
+
 /* framework globals */
 struct pmix_ptl_base_t {
     bool initialized;
@@ -65,6 +70,7 @@ struct pmix_ptl_base_t {
     pmix_list_t posted_recvs; // list of pmix_ptl_posted_recv_t
     pmix_listener_t listener;
     pmix_list_t pending_connections; // pmix_pending_connection_t still reading their connect-ack
+    pmix_list_t connecting;          // pmix_ptl_connect_op_t: our own connects still under way
     struct sockaddr_storage *connection;
     size_t max_msg_size;
     char *session_tmpdir;
@@ -141,6 +147,25 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_check_connect_directives(const pmix_info
 PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *peer,
                                                         pmix_info_t info[], size_t ninfo,
                                                         char **suri);
+/* The non-blocking form of pmix_ptl_base_connect_to_peer - see
+ * pmix_ptl_connect_to_peer_nb_fn_t in ptl.h for the contract. Locating the
+ * server is the same synchronous walk; everything from the connect() on is
+ * driven by events on the progress thread. */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer_nb(struct pmix_peer_t *peer,
+                                                           pmix_info_t info[], size_t ninfo,
+                                                           pmix_ptl_connect_nb_cbfunc_t cbfunc,
+                                                           void *cbdata);
+/* Start the event-driven connect to a located server. Takes ownership of
+ * nspace, suri and iptr only when it returns PMIX_SUCCESS - after which
+ * cbfunc is called exactly once, and never from inside this call. */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_start_connection(pmix_peer_t *peer, char *nspace,
+                                                         pmix_rank_t rank, char *suri,
+                                                         pmix_info_t *iptr, size_t niptr,
+                                                         pmix_ptl_connect_nb_cbfunc_t cbfunc,
+                                                         void *cbdata);
+/* Complete every connect still under way with PMIX_ERR_NOT_AVAILABLE.
+ * Only for finalize, once the progress thread has stopped. */
+PMIX_EXPORT void pmix_ptl_base_abandon_connects(void);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
                                                        bool optional,
                                                        pmix_list_t *connections);

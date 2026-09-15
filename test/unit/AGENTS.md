@@ -977,6 +977,35 @@ is an exit status the parent reports rather than a hang of `make check`.
 The child sets the MCA parameter in its environment before
 `PMIx_server_init`, which is the only point the variable is read.
 
+### `tool_attach_nb` — a tool must outlast a server that stops talking
+
+[`tool_attach_nb.c`](tool_attach_nb.c) is `ptl_stalled_peer`'s mirror on
+the connecting side. `PMIx_tool_attach_to_server` does its work in a
+thread-shift handler, and it used to run the whole connect there with
+blocking calls - so while the server took its time, the tool's progress
+thread did nothing else, and with the old unbounded wait a server that
+accepted and never answered held it for good. The attach is now
+event-driven; see the threading notes in
+[`src/mca/ptl/base/AGENTS.md`](../../src/mca/ptl/base/AGENTS.md).
+
+Each case runs in a forked child with an alarm, against a fake "server"
+that is only a loopback listener, so no PMIx server is involved:
+
+- **silent server**: the connection completes into the listener's
+  backlog and nothing ever answers. While the attach waits on a second
+  thread, a blocking `PMIx_Register_event_handler` - which can only
+  complete on the progress thread - must come back promptly, and the
+  attach must then fail with `PMIX_ERR_TIMEOUT` once the handshake wait
+  expires. With the tool component's `connect_to_peer_nb` removed, so the
+  attach takes the blocking path, this case fails: the registration waits
+  out the whole attach.
+- **closed server**: a helper process accepts and closes at once; the
+  attach must fail promptly rather than wait out the timer.
+
+The child sets `ptl_base_handshake_wait_time` in its environment before
+`PMIx_tool_init`, and stdout is unbuffered because the children report
+their details and then `_exit()`.
+
 ## Running
 
 ```sh

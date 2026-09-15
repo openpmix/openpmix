@@ -88,6 +88,26 @@ typedef pmix_status_t (*pmix_ptl_connect_to_peer_fn_t)(struct pmix_peer_t *peer,
                                                        size_t ninfo,
                                                        char **suri);
 
+/* report the outcome of a non-blocking connect. On success the peer is
+ * connected and its events are running. "suri" is the server URI the
+ * connection used, or NULL - the callback owns it and must free it,
+ * whatever the status */
+typedef void (*pmix_ptl_connect_nb_cbfunc_t)(pmix_status_t status,
+                                          struct pmix_peer_t *peer,
+                                          char *suri, void *cbdata);
+
+/* connect to a peer without blocking the thread that asks. Must be called
+ * on the progress thread. PMIX_SUCCESS means the connection is under way
+ * and cbfunc will be called exactly once, never from inside this call;
+ * any other status means nothing was started and cbfunc will not be
+ * called. A module may leave this NULL, in which case the caller uses
+ * connect_to_peer */
+typedef pmix_status_t (*pmix_ptl_connect_to_peer_nb_fn_t)(struct pmix_peer_t *peer,
+                                                          pmix_info_t info[],
+                                                          size_t ninfo,
+                                                          pmix_ptl_connect_nb_cbfunc_t cbfunc,
+                                                          void *cbdata);
+
 /* query available servers on the local node */
 typedef void (*pmix_ptl_query_servers_fn_t)(char *dirname, pmix_list_t *servers);
 
@@ -114,6 +134,7 @@ struct pmix_ptl_module_t {
     pmix_ptl_query_servers_fn_t query_servers;
     pmix_ptl_setup_listener_fn_t setup_listener;
     pmix_ptl_setup_fork_fn_t setup_fork;
+    pmix_ptl_connect_to_peer_nb_fn_t connect_to_peer_nb;
 };
 typedef struct pmix_ptl_module_t pmix_ptl_module_t;
 
