@@ -413,28 +413,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
                 return rc;
             }
             PMIX_DESTRUCT(&cb);
-            if (PMIX_PEER_IS_V1(cd->peer)) {
-                /* if the client is using v1, then it expects the
-                 * data returned to it as the rank followed by a byte object containing
-                 * a buffer - so we have to do a little gyration */
-                pmix_buffer_t xfer;
-                PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
-                PMIX_BFROPS_PACK(rc, cd->peer, &xfer, &pbkt, 1, PMIX_BUFFER);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_DESTRUCT(&pbkt);
-                    PMIX_DESTRUCT(&xfer);
-                    /* cb was already destructed above - destructing it a
-                     * second time takes down its lock and its kvs list
-                     * twice, which aborts a debug build on the list's
-                     * magic id and is undefined on the mutex */
-                    return rc;
-                }
-                PMIX_UNLOAD_BUFFER(&xfer, bo.bytes, bo.size);
-                PMIX_DESTRUCT(&xfer);
-            } else {
-                PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
-            }
+            PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
             PMIX_DESTRUCT(&pbkt);
             /* pack it for transmission */
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
@@ -1091,25 +1070,7 @@ static pmix_status_t get_job_data(char *nspace,
             PMIX_DESTRUCT(&cb);
             return rc;
         }
-        if (PMIX_PEER_IS_V1(cd->peer)) {
-            /* if the client is using v1, then it expects the
-             * data returned to it as the rank followed by a byte object containing
-             * a buffer - so we have to do a little gyration */
-            pmix_buffer_t xfer;
-            PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
-            PMIX_BFROPS_PACK(rc, cd->peer, &xfer, &pkt, 1, PMIX_BUFFER);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_DESTRUCT(&pkt);
-                PMIX_DESTRUCT(&xfer);
-                PMIX_DESTRUCT(&cb);
-                return rc;
-            }
-            PMIX_UNLOAD_BUFFER(&xfer, bo.bytes, bo.size);
-            PMIX_DESTRUCT(&xfer);
-        } else {
-            PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
-        }
+        PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
         PMIX_DESTRUCT(&pkt);
         /* pack it for transmission */
         PMIX_BFROPS_PACK(rc, cd->peer, pbkt, &bo, 1, PMIX_BYTE_OBJECT);
@@ -1315,43 +1276,20 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
         PMIX_DESTRUCT(&cb);
         goto complete;
     }
-    if (PMIX_PEER_IS_V1(cd->peer)) {
-        /* if the client is using v1, then it expects the
-         * data returned to it in a different order than v2
-         * - so we have to do a little gyration */
-        /* pack the rank */
-        PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &rank, 1, PMIX_PROC_RANK);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&pkt);
-            PMIX_DESTRUCT(&cb);
-            goto complete;
-        }
-        /* now pack the data itself as a buffer */
-        PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &pkt, 1, PMIX_BUFFER);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&pkt);
-            PMIX_DESTRUCT(&cb);
-            goto complete;
-        }
-        PMIX_DESTRUCT(&pkt);
-    } else {
-        PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
-        PMIX_DESTRUCT(&pkt);
+    PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
+    PMIX_DESTRUCT(&pkt);
 
-        /* pack it for transmission */
-        PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &bo, 1, PMIX_BYTE_OBJECT);
-        PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            /* do NOT destruct pbkt here - the complete label unloads it,
-             * and unloading an already-destructed buffer hands the caller
-             * a freed pointer to pass on and free again. The sibling error
-             * paths above correctly destruct only the inner pkt. */
-            PMIX_DESTRUCT(&cb);
-            goto complete;
-        }
+    /* pack it for transmission */
+    PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &bo, 1, PMIX_BYTE_OBJECT);
+    PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        /* do NOT destruct pbkt here - the complete label unloads it,
+         * and unloading an already-destructed buffer hands the caller
+         * a freed pointer to pass on and free again. The error path
+         * above correctly destructs only the inner pkt. */
+        PMIX_DESTRUCT(&cb);
+        goto complete;
     }
     PMIX_DESTRUCT(&cb);
 

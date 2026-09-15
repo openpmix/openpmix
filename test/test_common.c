@@ -93,7 +93,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
             fprintf(stderr,
                     "\t--test-internal N  test store internal key, N - number of internal keys\n");
             fprintf(stderr, "\t--gds <external gds name>           set GDS module \"--gds "
-                            "hash|ds12\", default is hash\n");
+                            "hash|shmem3\", default is hash\n");
             exit(0);
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;

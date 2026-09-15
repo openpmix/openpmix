@@ -440,27 +440,25 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
          * name it is given, so packing "rc" from "&rc" left the two
          * meanings sharing one variable */
         ret = pmix_server_commit(peer, buf);
-        if (!PMIX_PEER_IS_V1(peer)) {
-            reply = PMIX_NEW(pmix_buffer_t);
-            if (NULL == reply) {
-                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                return PMIX_ERR_NOMEM;
-            }
-            PMIX_BFROPS_PACK(rc, peer, reply, &ret, 1, PMIX_STATUS);
-            if (PMIX_SUCCESS != rc) {
-                /* an empty buffer is not an answer the client can read,
-                 * and queuing one used it up as *the* reply. Hand the
-                 * failure back instead and let the message handler build
-                 * the status reply it builds for every other error */
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(reply);
-                return rc;
-            }
-            PMIX_SERVER_QUEUE_REPLY(rc, peer, tag, reply);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_RELEASE(reply);
-                return rc;
-            }
+        reply = PMIX_NEW(pmix_buffer_t);
+        if (NULL == reply) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return PMIX_ERR_NOMEM;
+        }
+        PMIX_BFROPS_PACK(rc, peer, reply, &ret, 1, PMIX_STATUS);
+        if (PMIX_SUCCESS != rc) {
+            /* an empty buffer is not an answer the client can read,
+             * and queuing one used it up as *the* reply. Hand the
+             * failure back instead and let the message handler build
+             * the status reply it builds for every other error */
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(reply);
+            return rc;
+        }
+        PMIX_SERVER_QUEUE_REPLY(rc, peer, tag, reply);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(reply);
+            return rc;
         }
         return PMIX_SUCCESS; // don't reply twice
     }
