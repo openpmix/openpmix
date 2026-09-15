@@ -2689,8 +2689,14 @@ Interoperability rules: append-only message layouts, tolerate short
 buffers from older peers, never reorder. Concrete patterns you must
 preserve:
 
+- **The oldest client served is v2.1.** v1.x and v2.0 peers are refused
+  at connection (see "Version floors" in
+  [`src/mca/ptl/base/AGENTS.md`](../mca/ptl/base/AGENTS.md)), so there is
+  no longer any reply shaped for them - do not reintroduce a
+  `PMIX_PEER_IS_V1`/`V20` branch.
 - **Version-gated fields** are unpacked defensively — e.g. `log`
-  version-gates its timestamp unpack on `PMIX_PEER_IS_EARLIER(peer,3,0,0)`.
+  version-gates its timestamp unpack on `PMIX_PEER_IS_EARLIER(peer,3,0,0)`,
+  which is live: a v2.1 client sends none.
 - **The command enum `pmix_cmd_t` is a wire value** (in
   `src/include/pmix_globals.h`). New commands append at the end; the
   switchyard grows a new `if (PMIX_NEW_CMD == cmd)` block; never

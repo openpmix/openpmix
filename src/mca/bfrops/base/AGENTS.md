@@ -403,9 +403,8 @@ and no amount of caller-side checking could see it. The adds now test the
 load, release the entry and report. That in turn required
 `pmix_bfrops_base_value_load()` to stop returning `void`: it discarded
 the status of every deep copy it makes and had a silent `default:`, which
-is the same failure one layer down. It returns `pmix_status_t` now, and
-so do the `v12` and `v20` modules' own copies (the framework interface
-version is bumped for it).
+is the same failure one layer down. It returns `pmix_status_t` now (the
+framework interface version is bumped for it).
 
 The handle is opaque on purpose. It is `void *` in every signature,
 including the `pnet`/`pgpu` `collect_inventory` hooks, which used to take
@@ -423,20 +422,6 @@ protecting.
 **Put the screen in the `_tma_` inline, not in the `PMIx_` wrapper.**
 The wrappers are one line each and the internal callers go straight to
 the inline, so a check in the wrapper protects only half the callers.
-
-### Legacy components are old, not exempt
-
-`v12` and `v20` carry their own `unpack.c`, and their string unpacker
-had the same two holes the base one did: a negative length off the wire
-reached `malloc()` as a huge `size_t`, and the result was handed back as
-a C string without the terminator being guaranteed. "Do not touch their
-bytes" is about the *encoding*; it does not mean an ancient peer gets to
-be trusted. Neither fix changes a byte on the wire — one refuses input
-the packer never produces, the other writes a terminator inside the
-buffer that was already allocated for it.
-
-`v12` already had a `PMIX_TAINT_INT_LIMIT` guard on the same length, so
-the intent was there; it just tested only one end of the range.
 
 ### And a fifth, which only Linux and only one process at a time showed
 

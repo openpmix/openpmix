@@ -186,7 +186,6 @@ typedef struct {
 #define PMIX_PROC_MAJOR_VERSION(p) (p)->major
 #define PMIX_PROC_MINOR_VERSION(p) (p)->minor
 #define PMIX_PROC_REL_VERSION(p)   (p)->release
-#define PMIX_PEER_IS_V20(p)        ((p)->proc_type.major == 2 && (p)->proc_type.minor == 0)
 #define PMIX_PEER_IS_V21(p)        ((p)->proc_type.major == 2 && (p)->proc_type.minor == 1)
 #define PMIX_PEER_IS_V3(p)         ((p)->proc_type.major == 3)
 #define PMIX_PEER_IS_V40(p)        ((p)->proc_type.major == 4 && (p)->proc_type.minor == 0)
