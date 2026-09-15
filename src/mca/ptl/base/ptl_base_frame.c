@@ -110,7 +110,7 @@ pmix_ptl_base_t pmix_ptl_base = {
     .disable_ipv6_family = true,
     .max_retries = 0,
     .wait_to_connect = 0,
-    .handshake_wait_time = 0,
+    .handshake_wait_time = 60,
     .handshake_max_retries = 0,
     .connect_ack_timeout = 5,
     .max_write = INT_MAX
@@ -265,7 +265,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "handshake_wait_time",
-                                     "Number of seconds to wait for the server reply to the handshake request",
+                                     "Seconds a client or tool waits on a server while connecting to it - for the connect "
+                                     "itself and for each reply to the handshake request (0 = wait indefinitely)",
                                      PMIX_MCA_BASE_VAR_TYPE_INT,
                                      &pmix_ptl_base.handshake_wait_time);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_wait_time",

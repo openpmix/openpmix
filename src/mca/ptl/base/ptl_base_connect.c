@@ -39,6 +39,9 @@
 #ifdef HAVE_SYS_STAT_H
 #    include <sys/stat.h>
 #endif
+#ifdef HAVE_SYS_SELECT_H
+#    include <sys/select.h>
+#endif
 #ifdef HAVE_DIRENT_H
 #    include <dirent.h>
 #endif
@@ -217,6 +220,64 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
 
 #define PMIX_MAX_RETRIES 10
 
+/* connect() bounded by ptl_base_handshake_wait_time.
+ *
+ * A blocking connect() to a host that silently drops the attempt waits out
+ * the kernel's own connect timeout - often more than a minute - and the
+ * loop below makes up to eleven attempts. Every caller of this function
+ * blocks its thread for the duration (a tool attaching from its progress
+ * thread uses the event-driven path instead - see ptl_base_fns.c), so give
+ * each attempt the same bound the handshake replies get. Returns 0 on
+ * success, or -1 with errno set - ETIMEDOUT when the bound expired. With
+ * the bound disabled, or no select() to wait with, it is a plain
+ * connect(). */
+static int bounded_connect(int sd, struct sockaddr *addr, pmix_socklen_t addrlen)
+{
+#ifdef HAVE_SYS_SELECT_H
+    int flags, rc, err, n;
+    fd_set wfds;
+    struct timeval tv;
+    pmix_socklen_t errlen = sizeof(err);
+
+    /* FD_SET cannot name a descriptor at or beyond FD_SETSIZE */
+    if (0 < pmix_ptl_base.handshake_wait_time && FD_SETSIZE > sd) {
+        flags = fcntl(sd, F_GETFL, 0);
+        if (0 <= flags && 0 == fcntl(sd, F_SETFL, flags | O_NONBLOCK)) {
+            rc = connect(sd, addr, addrlen);
+            if (0 > rc && EINPROGRESS == pmix_socket_errno) {
+                tv.tv_sec = pmix_ptl_base.handshake_wait_time;
+                tv.tv_usec = 0;
+                do {
+                    FD_ZERO(&wfds);
+                    FD_SET(sd, &wfds);
+                    n = select(sd + 1, NULL, &wfds, NULL, &tv);
+                } while (0 > n && EINTR == pmix_socket_errno);
+                if (0 == n) {
+                    errno = ETIMEDOUT;
+                    rc = -1;
+                } else if (0 < n) {
+                    /* writable: the attempt finished - find out how */
+                    if (0 != getsockopt(sd, SOL_SOCKET, SO_ERROR, (char *) &err, &errlen)) {
+                        rc = -1;
+                    } else if (0 != err) {
+                        errno = err;
+                        rc = -1;
+                    } else {
+                        rc = 0;
+                    }
+                }
+            }
+            err = errno;
+            /* the caller expects the blocking socket it created */
+            (void) fcntl(sd, F_SETFL, flags);
+            errno = err;
+            return rc;
+        }
+    }
+#endif
+    return connect(sd, addr, addrlen);
+}
+
 pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
                                     pmix_socklen_t addrlen, int *fd)
 {
@@ -242,10 +303,15 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
                             "pmix_ptl_base_connect: attempting to connect to server on socket %d",
                             sd);
         /* try to connect */
-        if (connect(sd, (struct sockaddr *) addr, addrlen) < 0) {
+        if (bounded_connect(sd, (struct sockaddr *) addr, addrlen) < 0) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "Connect failed: %s (%d)", strerror(pmix_socket_errno),
                                 pmix_socket_errno);
+            if (ETIMEDOUT == pmix_socket_errno) {
+                /* nothing answered for the whole bound - a host that did
+                 * not answer this attempt will not answer the next ten */
+                break;
+            }
             /* get a different socket, but do that BEFORE we release the current
              * one so we don't just get the same socket handed back to us */
             sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
