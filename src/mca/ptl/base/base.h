@@ -143,6 +143,7 @@ typedef struct {
     pmix_rank_t rank;
     char *uri;
     char *version;
+    char *alt_uris;  // the server's other addresses, if its file listed any
 } pmix_connection_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_connection_t);
 
@@ -171,6 +172,7 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer_nb(struct pmix_peer_t *p
  * cbfunc is called exactly once, and never from inside this call. */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_start_connection(pmix_peer_t *peer, char *nspace,
                                                          pmix_rank_t rank, char *suri,
+                                                         char *alt_uris,
                                                          pmix_info_t *iptr, size_t niptr,
                                                          pmix_ptl_connect_nb_cbfunc_t cbfunc,
                                                          void *cbdata);
@@ -226,6 +228,12 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, p
 PMIX_EXPORT pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
                                                         pmix_info_t *iptr, size_t niptr);
+/* As pmix_ptl_base_make_connection, but if the address in *suri cannot be
+ * reached, try each of the comma-delimited addresses in alt_uris in turn.
+ * *suri is replaced with the address the connection was made to. */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_make_connection_alts(pmix_peer_t *peer, char **suri,
+                                                             const char *alt_uris,
+                                                             pmix_info_t *iptr, size_t niptr);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
                                                             pmix_rank_t rank);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save,
