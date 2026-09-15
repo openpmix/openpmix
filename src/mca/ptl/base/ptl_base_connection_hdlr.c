@@ -293,6 +293,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     pmix_byte_object_t cred;
     pmix_buffer_t buf;
     uint8_t major, minor, release;
+    uint32_t u32;
     cnct_hdlr_t *ch;
     void *ilist;
     pmix_data_array_t darray;
@@ -478,6 +479,12 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     if (1 == major || (2 == major && 0 == minor)) {
         pmix_show_help("help-ptl-base.txt", "unsupported-client-version", true,
                        pnd->version);
+        /* The status is the first thing every client reads back, so it
+         * gets a real failure rather than a closed socket. It cannot name
+         * the code, but it will fail instead of carrying on as though no
+         * server were there. Nothing more is owed if the send fails. */
+        u32 = htonl((uint32_t) PMIX_ERR_OUTDATED);
+        (void) pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
         goto error;
     }
 
