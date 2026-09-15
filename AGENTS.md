@@ -785,6 +785,8 @@ Earlier releases exported a composite `PMIX_CAPABILITIES` bitmask formed by OR-i
 
 PMIx is required to be interoperable across released versions.  A server built against one PMIx version must be able to communicate with a client built against a different version, whether older or newer.
 
+**The supported floors:** a server accepts clients and tools from **v2.1** on, and a client or tool connects only to servers from **v3.2** on.  v1.x peers cannot connect at all (they speak only the removed `usock` transport), and v2.0 peers are refused at the handshake.  Both floors are enforced by version in `src/mca/ptl/base` — see "Version floors" in [`src/mca/ptl/base/AGENTS.md`](src/mca/ptl/base/AGENTS.md).  Code that exists only for a peer below a floor is dead; do not add more of it.
+
 This requirement is especially critical in **static deployment environments such as containers**.  A containerized application image bundles a specific PMIx client library at build time and cannot be updated independently of the image.  When that container is later scheduled on a cluster whose RM hosts a different PMIx server version — possibly newer, possibly older — the two must still interoperate correctly.  Breaks in wire-format or behavioral compatibility silently strand jobs or produce incorrect results with no easy path to remediation short of rebuilding the image.  The same concern applies to any environment where components are independently installed and upgraded: bare-metal HPC clusters with vendor-supplied software stacks, pre-built application binaries distributed through package managers, and long-lived batch jobs that span a system software upgrade.
 
 **Wire-format stability rules:**

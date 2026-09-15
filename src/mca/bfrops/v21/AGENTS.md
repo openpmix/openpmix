@@ -13,8 +13,9 @@
 `v21` is the `bfrops` component for the **PMIx 2.1** wire format. Read the
 framework [`AGENTS.md`](../AGENTS.md) first; this file covers only what is
 specific to `v21`. It is the **first component built on the shared base
-driver** (priority 30) — the bridge between the legacy self-contained
-encoders (`v12`/`v20`) and the base-driven modern components.
+driver** (priority 30), and the oldest wire format the library still
+speaks: a v2.1 client is the oldest peer a current server accepts. The
+self-contained `v12`/`v20` encoders that preceded it are gone.
 
 ## Files
 
@@ -28,15 +29,14 @@ encoders (`v12`/`v20`) and the base-driven modern components.
 
 Always available. Chosen for a peer advertising `"v21"`.
 
-## Same types as `v20`, different framing
+## The 2.0 type set, on the shared driver
 
-`v21` registers the **exact same 44-type set as `v20`** — the type-set
-delta between them is empty. What changed at 2.0 → 2.1 is not *which*
-types exist but *how they are framed*: `v21`'s module trampolines
-`pack`/`unpack`/`copy`/`print` into `pmix_bfrops_base_*` (the shared
-driver), whereas `v20` has its own standalone `pack.c`/`unpack.c`/…
-files. This is the point where the framework's serialization consolidated
-into `base/`.
+`v21` registers the same 44-type set the 2.0 wire format had. What
+changed at 2.1 was not *which* types exist but *how they are framed*:
+`v21`'s module trampolines `pack`/`unpack`/`copy`/`print` into
+`pmix_bfrops_base_*` (the shared driver), where the 2.0 encoder had its
+own standalone files. This is the point where the framework's
+serialization consolidated into `base/`.
 
 Like `v3`, `v21` still registers **its own fixed-width integer packers**
 (`pack_int`, `pack_int16/32/64`, `pack_sizet`) rather than the flexible
@@ -46,10 +46,6 @@ types with bespoke `pmix21_bfrop_pack_modex` / `pack_array` handlers.
 
 ## Gotchas
 
-- **`v21` and `v20` are not interchangeable despite identical type
-  sets** — their framing differs, so they are distinct wire formats and
-  distinct components. Assigning the wrong one to a peer corrupts the
-  stream.
 - `v21`'s integers are fixed-width; do not repoint them at the flexible
   base `general_int` functions.
 - Frozen wire format — talks to real 2.1 peers. A format change is a new
