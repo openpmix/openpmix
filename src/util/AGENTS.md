@@ -181,7 +181,13 @@ clone is CI. Regenerate whenever you add, remove, or rename a
 `pmix_show_help` also aggregates duplicate notices (fired from a libevent
 timer) and can thread-shift delivery through the log path; the global
 `abd_tuples` list is manipulated without locking and assumes
-progress-thread-only callers.
+progress-thread-only callers. **A test is such a caller too.** Every
+notice a test renders is delivered through `pmix_log_local_op()`, which
+runs `pmix_help_check_dups()` on the progress thread, so a test that calls
+it (or `pmix_show_help_purge_nspace()`) from `main()` races its own
+output on that list. `util_show_help.c` did, and failed a few runs in a
+hundred — a lost append read as "not a duplicate", or a bad free inside
+`pmix_show_help_finalize()`. It now thread-shifts those cases.
 
 **The header describes a system that no longer exists**, or rather it
 did: it walked the reader through opening a file in `$pkgdatadir` and
