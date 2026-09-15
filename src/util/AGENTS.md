@@ -1022,6 +1022,14 @@ looks more roundabout than "stat then chmod" or "readdir then unlink".
   `AT_SYMLINK_NOFOLLOW` keep a symlink an entry to be unlinked rather
   than a path to be followed. If you add an operation here, add it in
   that style.
+- **A trailing separator defeats `O_NOFOLLOW`.** `open("link/",
+  O_DIRECTORY | O_NOFOLLOW)` opens the link's *target* on both Linux and
+  macOS, because the separator makes the kernel resolve the final
+  component as a directory. So the whole-path entry points - create,
+  destroy, `is_empty` - strip trailing separators before they open
+  anything (`dirpath_strip_trailing_seps()`). The `_under` pair needs no
+  such step: `PMIx_Argv_split()` already drops the empty field a
+  trailing separator leaves. A new whole-path entry point needs it.
 - **Permission is not tested, deliberately.** Asking whether a directory
   is writable and then acting on the answer is itself a check/use race
   that no spelling of `access()`/`faccessat()` can close. Whether the
@@ -1056,7 +1064,7 @@ Three contracts the callers depend on:
   only `PMIX_SUCCESS != rc` treats an ordinary rerun as a failure.
   `PMIX_ERR_SILENT` means the user has already been shown a message and
   must not be shown another.
-- **The `tmp` buffer in `pmix_os_dirpath_create()` is sized exactly, not
+- **The `tmp` buffer in `dirpath_create()` is sized exactly, not
   generously.** It is `strlen(path) + 1`, and the `strcat` chain fits
   only because every separator it writes was a separator in the input:
   `PMIx_Argv_split()` drops empty fields, so repeated separators
