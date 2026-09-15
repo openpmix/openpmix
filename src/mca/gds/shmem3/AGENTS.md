@@ -43,7 +43,7 @@ observed failure is a segfault in the client, a long way from the change
 that caused it.
 
 This is why the component cannot be versioned the way `bfrops` is.
-`bfrops` keeps `v12`/`v20`/`v3`/`v4`/`v41` alive side by side because each
+`bfrops` keeps `v21`/`v3`/`v4`/`v41` alive side by side because each
 packs different *bytes* from the same in-memory types — several can be
 linked in at once and chosen per peer. Supporting two generations of this
 component simultaneously would instead require two live definitions of

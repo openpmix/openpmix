@@ -89,9 +89,37 @@ are deliberately written to be read side by side so a change to one that
 is not mirrored in the other is visible. `test/unit/ptl_handshake.c`
 drives the pair directly and will catch the drift.
 
-A 2.0 peer is a special case in the parser: its handshake ends at field
-6, so the handler synthesizes the remaining values and sets the
-remaining count to zero.
+### Version floors
+
+**A server accepts peers from v2.1 on; a client or tool connects only to
+a server from v3.2 on.** Both are enforced here, by version, before
+anything is read that depends on it.
+
+- The connection handler refuses a peer whose version string says v1.x
+  or v2.0 (`unsupported-client-version`). A v1.x peer cannot reach us
+  anyway - it speaks only `usock` - but a v2.0 peer can, through a
+  rendezvous file, and its handshake ends at the version string: no wire
+  format, no buffer type, no datastore. The buffer type is the fatal
+  one. It cannot be inferred, the server's default depends on whether
+  *it* was built with debug, and a mismatch misreads the peer's very
+  first message. That, plus a get reply the 2.0 client could not unpack
+  even with the types forced to agree, is why 2.0 is refused rather than
+  served. An unparseable version (major 0) is not refused.
+- `pmix_ptl_base_make_connection()` refuses a server known to be older
+  than v3.2 (`unsupported-server-version`) before opening a socket. Such
+  a server accepts the connection and then leaves the client waiting on
+  answers it never sends - `PMIx_Get` of a reserved key hangs. The
+  refusal returns `PMIX_ERR_NOT_SUPPORTED`, and what the caller makes of
+  it is the caller's existing policy for any failed connection: a
+  client's `PMIx_Init` comes up as a singleton (`PMIX_ERR_UNREACH`), a
+  tool fails unless its connection was optional. The help message is
+  what tells the user why. "Known" matters:
+  the version comes from `PMIX_VERSION` or the `PMIX_SERVER_URIxx` name
+  for a client, and from the version line of a rendezvous file, whose
+  absence means v2.0. A server reached through a URI handed over
+  directly has no recorded version, and `PMIX_PEER_IS_EARLIER()` would
+  call it "earlier", so the check reads the fields itself rather than
+  asking that macro.
 
 ### Everything in the connect-ack is untrusted
 

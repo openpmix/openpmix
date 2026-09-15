@@ -469,27 +469,31 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     PMIX_SET_PROC_MINOR(&pnd->proc_type, minor);
     PMIX_SET_PROC_RELEASE(&pnd->proc_type, release);
 
-    if (2 == major && 0 == minor) {
-        /* the 2.0 release handshake ends with the version string */
-        pnd->bfrops = strdup("v20");
-        pnd->buffer_type = pmix_bfrops_globals.default_type; // we can't know any better
-        pnd->gds = strdup("ds12,hash");
-        cnt = 0;
-    } else {
-        /* extract the name of the bfrops module they used */
-        PMIX_PTL_GET_STRING(pnd->bfrops);
+    /* The oldest peer we serve is v2.1. A v1.x peer cannot reach us at all
+     * (it speaks only the usock transport, which is gone), and a v2.0
+     * peer's handshake ends here, without the wire format, buffer type or
+     * datastore that everything below needs - its buffer type in
+     * particular cannot be inferred, so its very first message is
+     * misread. Say so rather than fail on its traffic. */
+    if (1 == major || (2 == major && 0 == minor)) {
+        pmix_show_help("help-ptl-base.txt", "unsupported-client-version", true,
+                       pnd->version);
+        goto error;
+    }
 
-        /* extract the type of buffer they used */
-        PMIX_PTL_GET_U8(pnd->buffer_type);
+    /* extract the name of the bfrops module they used */
+    PMIX_PTL_GET_STRING(pnd->bfrops);
 
-        /* extract the name of the gds module they used */
-        PMIX_PTL_GET_STRING(pnd->gds);
+    /* extract the type of buffer they used */
+    PMIX_PTL_GET_U8(pnd->buffer_type);
 
-        /* extract the blob */
-        if (0 < cnt) {
-            len = cnt;
-            PMIX_PTL_GET_BLOB(blob, len);
-        }
+    /* extract the name of the gds module they used */
+    PMIX_PTL_GET_STRING(pnd->gds);
+
+    /* extract the blob */
+    if (0 < cnt) {
+        len = cnt;
+        PMIX_PTL_GET_BLOB(blob, len);
     }
 
     /* see if this is a tool connection request */

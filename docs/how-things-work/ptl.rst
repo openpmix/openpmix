@@ -217,9 +217,11 @@ be read side by side.
 server and a client built from different PMIx releases must interoperate,
 so per PMIx's interoperability rules the layout is append-only: new fields
 may be added at the end, but nothing may be inserted, removed, or
-reordered. (There is one explicit legacy branch: a 2.0 peer's handshake
-ends at the version string, and the server assumes ``v20`` ``bfrops`` and
-``ds12,hash`` ``gds`` for it.)
+reordered. The oldest peer a server accepts is v2.1: a v2.0 peer's
+handshake ends at the version string, without the buffer type the server
+needs to read its messages, so the server refuses it there. A client or
+tool likewise refuses to connect to a server it knows to be older than
+v3.2.
 
 On the server side the connection handler:
 

@@ -379,8 +379,9 @@ the real work on the progress thread:
    ([`base/ptl_base_handshake.h`](base/ptl_base_handshake.h)): psec name,
    credential, a **flag** (`pmix_rnd_flag_t`, 0–10) identifying the kind
    of connector, the peer's procid/uid/gid, version, bfrops module, buffer
-   type, gds module, and an optional info blob. There is a special case
-   for a 2.0 peer, whose handshake ends at the version string.
+   type, gds module, and an optional info blob. A v1.x or v2.0 peer is
+   refused at the version string - see "Version floors" in
+   [`base/AGENTS.md`](base/AGENTS.md).
 3. Branch on the flag: a **simple client / singleton** must already be a
    registered nspace+rank; a **tool/launcher** goes through the two-step
    `process_tool_request` (which may call the host's `tool_connected` to
