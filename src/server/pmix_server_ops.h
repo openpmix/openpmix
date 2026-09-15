@@ -172,7 +172,6 @@ typedef struct {
                             // remote req's
     pmix_list_t local_reqs;     // list of pmix_dmdx_local_t awaiting arrival of data from local neighbours
     pmix_list_t gdata;  // cache of data given to me for passing to all clients
-    char **genvars;     // argv array of envars given to me for passing to all clients
     pmix_list_t events; // list of pmix_regevents_info_t registered events
     pmix_list_t iof;    // IO to be forwarded to clients
     pmix_list_t iof_residuals;  // leftover bytes waiting for newline

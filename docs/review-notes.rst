@@ -22,6 +22,31 @@ Entries that stood on :doc:`todo` and have since been answered.  Each is
 kept with the reasoning that closed it, because in most cases the way it
 closed contradicted what the entry predicted.
 
+A server-wide envar hook that nothing fills
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found reviewing ``src/server/pmix_server.c`` (2026-08-23), closed
+2026-09-15 by removing the hook rather than building the feature the entry
+proposed.  ``pmix_server_globals.genvars`` was read by ``setup_fork_body()``,
+which replayed it into every child's environment, and written by nothing.
+The entry took it for an unbuilt "pass these envars to all my clients"
+interface and sketched one through ``PMIx_server_register_resources``.
+
+The history says otherwise.  The array was added in January 2021 for the
+library's own use: the hwloc shared-topology setup put
+``PMIX_HWLOC_SHMEM_FILE``/``ADDR``/``SIZE`` in it, at a time when PRRTE had
+just begun asking PMIx to share the topology on its behalf.  In April 2021
+those values moved to job data, which is how clients read them today, and
+the writer was removed as stale - leaving the array and its replay loop
+behind.  No host ever had a way to reach it, and none asks for one: PRRTE
+puts a job's envars in place through ``PMIx_server_setup_application`` and
+the job's own ``PMIX_*_ENVAR`` directives.  So the field, its initializer
+and the loop are gone, and ``src/server/AGENTS.md`` now says there is no such
+hook.  A real server-wide envar interface remains possible, but it would be
+new work with open questions of its own (whether a second registration
+replaces or appends, and what a deregistration means for children already
+forked), not the completion of an old one.
+
 Nothing forwards a global-syslog request to a gateway
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -89,7 +89,6 @@ pmix_server_globals_t pmix_server_globals = {
     .remote_pnd = PMIX_LIST_STATIC_INIT(pmix_server_globals.remote_pnd),
     .local_reqs = PMIX_LIST_STATIC_INIT(pmix_server_globals.local_reqs),
     .gdata = PMIX_LIST_STATIC_INIT(pmix_server_globals.gdata),
-    .genvars = NULL,
     .events = PMIX_LIST_STATIC_INIT(pmix_server_globals.events),
     .iof = PMIX_LIST_STATIC_INIT(pmix_server_globals.iof),
     .iof_residuals = PMIX_LIST_STATIC_INIT(pmix_server_globals.iof_residuals),
@@ -1598,9 +1597,7 @@ void pmix_server_lock_opcbfunc(pmix_status_t status, void *cbdata)
  * and pgpu per-namespace envar caches are appended to by
  * _setup_local_support and are removed and released by _deregister_nspace,
  * both of which are caddy handlers; and pgpu's device lookup fetches from
- * the local datastore. (pmix_server_globals.genvars is read here too, but
- * nothing in the tree ever writes it - see docs/todo.rst.) Those
- * framework entry points say so themselves -
+ * the local datastore. Those framework entry points say so themselves -
  * "can only be called by a server from within an event" - but until now
  * nothing arranged it: this API thread-shifts nothing, and the host is
  * under no obligation to call it from any particular thread. A namespace
@@ -1721,13 +1718,6 @@ static pmix_status_t setup_fork_body(const pmix_proc_t *proc, char ***env)
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
-    }
-
-    /* pass any global contributions */
-    if (NULL != pmix_server_globals.genvars) {
-        for (n = 0; NULL != pmix_server_globals.genvars[n]; n++) {
-            PMIx_Argv_append_nosize(env, pmix_server_globals.genvars[n]);
-        }
     }
 
     return PMIX_SUCCESS;
