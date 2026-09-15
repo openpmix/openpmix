@@ -46,10 +46,9 @@ Four kinds of entry appear here:
 At a glance
 -----------
 
-**Open decisions — 2**
+**Open decisions — 1**
 
 * :ref:`todo-fabric-async`
-* :ref:`todo-iof-pull-handle`
 
 **Deferred work — 3**
 
@@ -109,27 +108,6 @@ its tracker died, so a component that parks an allocation there must free
 it from its own ``deregister_fabric``.
 
 See "The fabric path is scaffolding" in ``src/mca/pnet/AGENTS.md``.
-
-.. _todo-iof-pull-handle:
-
-A blocking ``PMIx_IOF_pull`` hands back no handle
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found re-reviewing ``src/common/pmix_iof.c`` (2026-08-27).
-
-``PMIx_IOF_pull``'s registration id reaches the caller through
-``regcbfunc``, and passing a NULL ``regcbfunc`` is what selects the
-*blocking* form.  So a caller who registers synchronously is never told
-the id, and ``PMIx_IOF_deregister``, whose first parameter is that id,
-can never be called for it.  The registration lives in
-``pmix_globals.iof_requests`` for the life of the process.
-
-Closing it means either adding an ``OUT`` parameter to a released API —
-which the backward-compatibility rules forbid outright — or defining an
-attribute that carries the id back in the caller's ``directives`` array,
-which is the mechanism the Standard prefers but which is a Standard
-change, not a library one.  Recorded rather than repaired for that
-reason.
 
 Deferred work
 -------------
