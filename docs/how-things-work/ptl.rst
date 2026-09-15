@@ -190,6 +190,12 @@ most specific to least:
 ``PMIX_TOOL_CONNECT_OPTIONAL`` decides whether failing to find a server is
 an error or simply leaves the tool unconnected.
 
+A server may be reachable at more than one address: the rendezvous file's
+``alturis:`` line, or a ``PMIX_SERVER_ALT_URIS`` directive given with the
+URI, lists the rest. If the URI's address cannot be connected to, the tool
+tries each of those in order; a failed handshake, by contrast, is the
+server's answer and is not retried elsewhere.
+
 Why the other addresses are not simply in the URI
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
