@@ -777,6 +777,11 @@ A third audit (August 2026) added these:
     the pitfall above for the forms that replaced both. Covered by
     `test_fabric_uuids` in
     [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c).
+31. **Naming several devices returned only the first.**
+    `pmix_hwloc_compute_distances` passed `devids[0]` to the enumerator and
+    then "filtered the rest" out of a result that could only ever contain
+    the first. It now enumerates once per name and reports a device named
+    twice (`mlx5_0` and `ib0`) once. Covered by `test_named_devices`.
 
 Not a defect, but worth knowing before you "fix" it:
 
@@ -807,7 +812,7 @@ they split by what they need to stand up:
 | Test | Covers |
 |---|---|
 | [`test/unit/hwloc_datatype.c`](../../test/unit/hwloc_datatype.c) | items 5–8, 10–16, 19 (distances), 20, 23–28 — round-trips, prints and measures topologies and cpusets through the public API |
-| [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c) | device enumeration and item 19 (naming) — a pure function of a topology plus a type, so no server and no real hardware; item 30 against `test/topologies/multi-rc.xml` (two packages, four PCIe root complexes, every GUID shape) |
+| [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c) | device enumeration and item 19 (naming) — a pure function of a topology plus a type, so no server and no real hardware; items 30–31 against `test/topologies/multi-rc.xml` (two packages, four PCIe root complexes, every GUID shape) |
 | [`test/unit/hwloc_setup_fail.c`](../../test/unit/hwloc_setup_fail.c) | items 17 and 18 — what a *failed* acquisition leaves behind. Its own binary, because acquisition runs once per process |
 
 Three items are **not** covered, and it is worth knowing which:

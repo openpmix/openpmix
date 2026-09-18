@@ -936,6 +936,75 @@ static void test_fabric_uuids(const char *dir)
     free_topo(&topo);
 }
 
+/* look a device up by osname in a distance array */
+static const pmix_device_distance_t *find_dist(const pmix_device_distance_t *d, size_t n,
+                                               const char *osname)
+{
+    size_t i;
+
+    for (i = 0; i < n; i++) {
+        if (NULL != d[i].osname && 0 == strcmp(d[i].osname, osname)) {
+            return &d[i];
+        }
+    }
+    return NULL;
+}
+
+/* bind to the whole of package 0 */
+static void package0_cpuset(pmix_topology_t *topo, pmix_cpuset_t *cpuset)
+{
+    hwloc_topology_t t = (hwloc_topology_t) topo->topology;
+
+    cpuset->source = strdup("hwloc");
+    cpuset->bitmap = hwloc_bitmap_dup(hwloc_get_obj_by_type(t, HWLOC_OBJ_PACKAGE, 0)->cpuset);
+}
+
+/* PMIX_DEVICE_ID may be given more than once, and each device it names is
+ * reported - once, however many of its names were used. */
+static void test_named_devices(const char *dir)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_device_distance_t *dist = NULL;
+    pmix_cpuset_t cpuset = PMIX_CPUSET_STATIC_INIT;
+    pmix_info_t info[2];
+    size_t ndist = 0;
+    pmix_status_t rc;
+
+    if (0 != load_multi_rc(dir, &topo)) {
+        return;
+    }
+    package0_cpuset(&topo, &cpuset);
+
+    PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_ID, "rdmap32s0", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_DEVICE_ID, "rdmap48s0", PMIX_STRING);
+    rc = pmix_hwloc_compute_distances(&topo, &cpuset, info, 2, &dist, &ndist);
+    ok(PMIX_SUCCESS == rc && 2 == ndist
+       && NULL != find_dist(dist, ndist, "rdmap32s0")
+       && NULL != find_dist(dist, ndist, "rdmap48s0"),
+       "named devices: naming two devices reports both");
+    if (NULL != dist) {
+        PMIx_Device_distance_free(dist, ndist);
+        dist = NULL;
+    }
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+
+    PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_ID, "mlx5_0", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_DEVICE_ID, "ib0", PMIX_STRING);
+    rc = pmix_hwloc_compute_distances(&topo, &cpuset, info, 2, &dist, &ndist);
+    ok(PMIX_SUCCESS == rc && 1 == ndist,
+       "named devices: two names for one device report it once");
+    if (NULL != dist) {
+        PMIx_Device_distance_free(dist, ndist);
+    }
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+
+    hwloc_bitmap_free(cpuset.bitmap);
+    free(cpuset.source);
+    free_topo(&topo);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -965,6 +1034,7 @@ int main(int argc, char **argv)
     test_vendor_check(dir);
     test_unnamed_osdev(dir);
     test_fabric_uuids(dir);
+    test_named_devices(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);
