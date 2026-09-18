@@ -249,6 +249,10 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_IOF_STOP                       "pmix.iof.stop"         // (bool) ***** DEPRECATED ***** Stop forwarding the specified channel(s)
 #define PMIX_NOTIFY_LAUNCH                  "pmix.note.lnch"        // (bool) ***** DEPRECATED ***** notify the requestor upon launch of the child job and return
                                                                     //        its namespace in the event
+#define PMIX_GROUP_FINAL_MEMBERSHIP_ORDER   "pmix.grp.finord"       // (pmix_data_array_t*) ***** DEPRECATED ***** Array of pmix_proc_t specifying the
+                                                                    //        order of the group membership. It existed only to undo a sort of
+                                                                    //        the membership that is no longer done - the membership now keeps
+                                                                    //        the order the participants gave it - and is ignored.
 
 
 /* DUPLICATES */

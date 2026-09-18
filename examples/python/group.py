@@ -10,8 +10,8 @@
 # Python port of examples/group.c
 #
 # Ranks 0, 2 and 3 construct a group named "ourgroup" and then tear it
-# down. Rank 0 additionally supplies PMIX_GROUP_FINAL_MEMBERSHIP_ORDER, so
-# the membership comes back in the order it asked for rather than by rank.
+# down. Each lists the members in the order 2, 0, 3, and the membership
+# comes back in that order rather than by rank.
 #
 # Pass --test-query to also query the server for the active namespaces.
 #
@@ -105,17 +105,10 @@ def main():
     # rank=0,2,3 construct a new group
     if myproc['rank'] in (0, 2, 3):
         eprint("%d executing Group_construct" % myproc['rank'])
-        procs = [{'nspace': myproc['nspace'], 'rank': r} for r in (0, 2, 3)]
+        # the membership comes back in the order listed here
+        procs = [{'nspace': myproc['nspace'], 'rank': r} for r in (2, 0, 3)]
         info = [{'key': PMIX_GROUP_ASSIGN_CONTEXT_ID, 'value': True,
                  'val_type': PMIX_BOOL}]
-
-        if 0 == myproc['rank']:
-            # ask for the membership to come back in this order
-            parray = [{'nspace': myproc['nspace'], 'rank': r}
-                      for r in (2, 0, 3)]
-            info.append({'key': PMIX_GROUP_FINAL_MEMBERSHIP_ORDER,
-                         'value': {'type': PMIX_PROC, 'array': parray},
-                         'val_type': PMIX_DATA_ARRAY})
 
         rc, results = client.group_construct("ourgroup", procs, info)
         if PMIX_SUCCESS != rc:
