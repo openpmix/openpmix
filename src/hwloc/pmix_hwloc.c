@@ -1906,6 +1906,24 @@ static bool osdev_preferred(hwloc_obj_t candidate, hwloc_obj_t incumbent)
     return false;
 }
 
+/* Does this GUID string, as hwloc recorded it, carry an identity?  hwloc
+ * copies the sysfs value through, so an all-zero GUID arrives as
+ * "0000:0000:0000:0000" rather than as an absent attribute. */
+static bool guid_is_set(const char *guid)
+{
+    const char *p;
+
+    if (NULL == guid) {
+        return false;
+    }
+    for (p = guid; '\0' != *p; p++) {
+        if ('0' != *p && ':' != *p) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Build the uuid PMIx reports for a device.  An application correlates the
  * device it was given against the ones it can see, so this grammar must not
  * vary between the paths that produce it - hence one function.  Returns
@@ -1934,17 +1952,20 @@ static pmix_status_t build_device_uuid(hwloc_obj_t osdev, const char *hostname,
                     break;
                 }
             }
-            if (NULL == addr) {
-                return PMIX_ERROR;
-            }
             /* could be IPv4 or IPv6 */
-            cnt = countcolons(addr);
+            cnt = (NULL == addr) ? 0 : countcolons(addr);
             if (5 == cnt) {
                 pmix_asprintf(uuid, "ipv4://%s", addr);
             } else if (19 == cnt) {
                 pmix_asprintf(uuid, "ipv6://%s", addr);
             } else {
-                return PMIX_ERROR;
+                /* An interface with no hardware address, or one of a
+                 * length we do not recognize, is still a device.  Refusing
+                 * to name it removed it from every enumeration - and with
+                 * it the whole PCI function, if this was the OS device
+                 * chosen to name that function.  Fall back to the same
+                 * node-qualified form GPUs and block devices use. */
+                pmix_asprintf(uuid, "net://%s::%s", hostname, osdev->name);
             }
             break;
 
@@ -1956,10 +1977,33 @@ static pmix_status_t build_device_uuid(hwloc_obj_t osdev, const char *hostname,
                     sgid = osdev->infos[i].value;
                 }
             }
+            /* The GUIDs are what make this uuid meaningful across the
+             * fabric, so use them when the device has them.  Not every
+             * device does, in two different ways:
+             *
+             *  - hwloc records each GUID only if the driver exposes it in
+             *    sysfs.  A device missing either one used to be refused a
+             *    uuid, which dropped it - and, if it named its PCI
+             *    function, that whole function - from every enumeration.
+             *    Name it by node and OS name instead.
+             *
+             *  - a driver can expose them as all zeros, as EFA does.  Used
+             *    as-is that gives every such device on the node the SAME
+             *    uuid, so naming one by uuid finds all of them.  Here the
+             *    GUID form is kept and made unique by appending the node
+             *    and OS name, rather than replaced: consumers in the field
+             *    match a fabric device by parsing the two GUID fields out
+             *    of "fab://<node>::<sysimage>" and comparing them to what
+             *    hwloc reports, and a zero-GUID device they can match today
+             *    must stay matchable. */
             if (NULL == ngid || NULL == sgid) {
-                return PMIX_ERROR;
+                pmix_asprintf(uuid, "fab://%s::%s", hostname, osdev->name);
+            } else if (!guid_is_set(ngid)) {
+                pmix_asprintf(uuid, "fab://%s::%s::%s::%s", ngid, sgid,
+                              hostname, osdev->name);
+            } else {
+                pmix_asprintf(uuid, "fab://%s::%s", ngid, sgid);
             }
-            pmix_asprintf(uuid, "fab://%s::%s", ngid, sgid);
             break;
 
         case HWLOC_OBJ_OSDEV_GPU:

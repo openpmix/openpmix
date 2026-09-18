@@ -35,7 +35,10 @@ relative distance from the caller to a given device.
 
 The ``uuid`` field is a string identifier guaranteed to be unique within
 the cluster, and is typically assembled from discovered device attributes
-(e.g., the IP address of the device).
+(e.g., the IP address of the device, or the GUIDs of a fabric device). A
+device that reports no such attributes, or reports them as all zeros, is
+identified by its node and operating system name instead.
+
 
 The ``osname`` field is the local operating system name of the device and
 is only unique to the node on which the device resides.
