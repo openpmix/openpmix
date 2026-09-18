@@ -83,7 +83,6 @@ int main(int argc, char **argv)
     pmix_query_t query;
     int i;
     bool testquery = false;
-    pmix_data_array_t darray;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     for (i=1; i < argc; i++) {
@@ -178,24 +177,13 @@ int main(int argc, char **argv)
         fprintf(stderr, "%d executing Group_construct\n", myproc.rank);
         nprocs = 3;
         psize = 1;
+        /* the membership comes back in the order the participants list
+         * it here, so list it in the order we want - not by rank */
         PMIX_PROC_CREATE(procs, nprocs);
-        PMIX_PROC_LOAD(&procs[0], myproc.nspace, 0);
-        PMIX_PROC_LOAD(&procs[1], myproc.nspace, 2);
+        PMIX_PROC_LOAD(&procs[0], myproc.nspace, 2);
+        PMIX_PROC_LOAD(&procs[1], myproc.nspace, 0);
         PMIX_PROC_LOAD(&procs[2], myproc.nspace, 3);
         PMIX_INFO_LOAD(&info[0], PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
-
-        if (0 == myproc.rank) {
-            psize = 2;
-            PMIX_PROC_CREATE(parray, 3);
-            PMIX_PROC_LOAD(&parray[0], myproc.nspace, 2);
-            PMIX_PROC_LOAD(&parray[1], myproc.nspace, 0);
-            PMIX_PROC_LOAD(&parray[2], myproc.nspace, 3);
-            darray.array = parray;
-            darray.size = 3;
-            darray.type = PMIX_PROC;
-            PMIX_INFO_LOAD(&info[1], PMIX_GROUP_FINAL_MEMBERSHIP_ORDER, &darray, PMIX_DATA_ARRAY);
-            PMIX_PROC_FREE(parray, 3);
-        }
 
         rc = PMIx_Group_construct("ourgroup", procs, nprocs, info, psize, &results, &nresults);
         for (n = 0; n < psize; n++) {

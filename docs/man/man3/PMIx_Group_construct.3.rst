@@ -277,11 +277,6 @@ The following attributes are relevant to this operation:
 * ``PMIX_GROUP_LOCAL_ONLY`` (bool) |mdash| the group operation involves only
   processes that are local to this node, allowing the library to complete it
   without engaging the host environment.
-* ``PMIX_GROUP_FINAL_MEMBERSHIP_ORDER`` (pmix_data_array_t\*) |mdash| an array of
-  ``pmix_proc_t`` specifying the desired order of the processes in the final
-  group membership. The order may be given by individual process or by namespace
-  (with a wildcard rank). If more than one participant supplies this attribute,
-  the provided orderings must be identical.
 * ``PMIX_TIMEOUT`` (int) |mdash| return an error if the group does not assemble
   within the specified number of seconds. This targets the scenario where a
   process fails to participate due to hanging.
@@ -294,7 +289,11 @@ non-blocking callback):
   was requested.
 * ``PMIX_GROUP_MEMBERSHIP`` (pmix_data_array_t\*) |mdash| an array of
   ``pmix_proc_t`` giving the final membership of the constructed group. This is
-  also carried by the ``PMIX_GROUP_MEMBERSHIP_UPDATE`` event.
+  also carried by the ``PMIX_GROUP_MEMBERSHIP_UPDATE`` event. The library does
+  not reorder the membership the host returns, and a group rank - the group
+  ID used as a namespace, with a rank - counts across this array in the order
+  given. PRRTE, for example, returns the members in the order the participants
+  listed them in their ``procs`` arrays.
 
 
 RETURN VALUE
