@@ -836,6 +836,106 @@ static void test_unnamed_osdev(const char *dir)
     free_topo(&topo);
 }
 
+/* test/topologies/multi-rc.xml is a node with two packages, two PCIe root
+ * complexes on each, and under each root complex a switch holding one GPU
+ * and two NICs - the shape of a current GPU cloud instance.  The first root
+ * complex also carries an HCA directly on a second root port.
+ *
+ * It also carries every shape of OpenFabrics GUID hwloc can report: both
+ * set, neither present (rdmap16s0), both all-zero (rdmap17s0 - which is
+ * what real EFA devices report), and a NodeGUID without a SysImageGUID
+ * (mlx5_0, which shares its PCI function with the IPoIB interface ib0). */
+static int load_multi_rc(const char *dir, pmix_topology_t *topo)
+{
+    char path[1024];
+
+    snprintf(path, sizeof(path), "%s/multi-rc.xml", dir);
+    if (0 != load_topo_file(path, topo)) {
+        fprintf(stderr, "FAIL: could not load %s\n", path);
+        ++failures;
+        return -1;
+    }
+    return 0;
+}
+
+/* A fabric device is reported, under a uuid of its own, whatever its GUIDs
+ * say. */
+static void test_fabric_uuids(const char *dir)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0, i, j;
+    char expect[256], lnguid[20], lsguid[20];
+    const char *nguid;
+    bool distinct;
+    pmix_status_t rc;
+
+    if (0 != load_multi_rc(dir, &topo)) {
+        return;
+    }
+
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_OPENFABRICS, NULL,
+                                &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 9 == ndevs,
+       "fabric uuid: every fabric device is enumerated, GUIDs or not");
+    distinct = true;
+    for (i = 0; i < ndevs; i++) {
+        for (j = i + 1; j < ndevs; j++) {
+            if (0 == strcmp(devs[i].dev.uuid, devs[j].dev.uuid)) {
+                distinct = false;
+            }
+        }
+        if (0 == strcmp(devs[i].dev.osname, "rdmap16s0")
+            || 0 == strcmp(devs[i].dev.osname, "mlx5_0")) {
+            snprintf(expect, sizeof(expect), "fab://%s::%s", TESTHOST, devs[i].dev.osname);
+            ok(0 == strcmp(devs[i].dev.uuid, expect),
+               "fabric uuid: a device missing a GUID is named by node and osname");
+        } else if (0 == strcmp(devs[i].dev.osname, "rdmap17s0")) {
+            snprintf(expect, sizeof(expect),
+                     "fab://0000:0000:0000:0000::0000:0000:0000:0000::%s::rdmap17s0", TESTHOST);
+            ok(0 == strcmp(devs[i].dev.uuid, expect),
+               "fabric uuid: a zero-GUID device keeps the GUID form, made unique");
+        } else if (0 == strcmp(devs[i].dev.osname, "rdmap32s0")) {
+            ok(0 == strcmp(devs[i].dev.uuid,
+                           "fab://0e1a:2b3c:0000:0020::0e1a:2b3c:0000:0020"),
+               "fabric uuid: a device with GUIDs keeps the GUID form");
+        }
+    }
+    ok(distinct, "fabric uuid: no two fabric devices share a uuid");
+
+    /* Consumers already in the field match a fabric device by pulling the
+     * GUIDs back out of its uuid - Open MPI's OFI provider selection does
+     * exactly this sscanf and compares the first field with the NodeGUID
+     * hwloc reports.  Making the zero-GUID uuid unique must not stop that
+     * match, or every EFA device silently loses its distance. */
+    for (i = 0; i < ndevs; i++) {
+        if (0 == strcmp(devs[i].dev.osname, "rdmap17s0")) {
+            nguid = "0000:0000:0000:0000";
+        } else if (0 == strcmp(devs[i].dev.osname, "rdmap32s0")) {
+            nguid = "0e1a:2b3c:0000:0020";
+        } else {
+            continue;
+        }
+        ok(2 == sscanf(devs[i].dev.uuid, "fab://%19s::%19s", lnguid, lsguid)
+           && 0 == strcasecmp(lnguid, nguid),
+           "fabric uuid: a device with GUIDs still parses to its NodeGUID");
+    }
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+
+    /* the HCA's function is found by either of its names - which it was
+     * not while its fabric device, lacking a SysImageGUID, was refused a
+     * uuid and took the whole function with it */
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST,
+                                PMIX_DEVTYPE_OPENFABRICS | PMIX_DEVTYPE_NETWORK,
+                                "ib0", &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs && 0 == strcmp(devs[0].dev.osname, "ib0"),
+       "fabric uuid: the HCA answers to its interface name");
+    pmix_hwloc_release_devices(devs, ndevs);
+
+    free_topo(&topo);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -864,6 +964,7 @@ int main(int argc, char **argv)
     test_device_selector(dir);
     test_vendor_check(dir);
     test_unnamed_osdev(dir);
+    test_fabric_uuids(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);
