@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topology SYSTEM "hwloc2.dtd">
+<topology version="2.0">
+  <object type="Machine" os_index="0" cpuset="0x000000ff" complete_cpuset="0x000000ff" allowed_cpuset="0x000000ff" nodeset="0x00000003" complete_nodeset="0x00000003" allowed_nodeset="0x00000003" gp_index="1001">
+    <info name="Backend" value="Linux"/>
+    <info name="HostName" value="multi-rc-01"/>
+    <object type="Package" os_index="0" cpuset="0x0000000f" complete_cpuset="0x0000000f" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1002">
+      <object type="NUMANode" os_index="0" cpuset="0x0000000f" complete_cpuset="0x0000000f" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1003" local_memory="34359738368"/>
+      <object type="Core" os_index="0" cpuset="0x00000001" complete_cpuset="0x00000001" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1004">
+        <object type="PU" os_index="0" cpuset="0x00000001" complete_cpuset="0x00000001" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1005"/>
+      </object>
+      <object type="Core" os_index="1" cpuset="0x00000002" complete_cpuset="0x00000002" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1006">
+        <object type="PU" os_index="1" cpuset="0x00000002" complete_cpuset="0x00000002" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1007"/>
+      </object>
+      <object type="Core" os_index="2" cpuset="0x00000004" complete_cpuset="0x00000004" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1008">
+        <object type="PU" os_index="2" cpuset="0x00000004" complete_cpuset="0x00000004" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1009"/>
+      </object>
+      <object type="Core" os_index="3" cpuset="0x00000008" complete_cpuset="0x00000008" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1010">
+        <object type="PU" os_index="3" cpuset="0x00000008" complete_cpuset="0x00000008" nodeset="0x00000001" complete_nodeset="0x00000001" gp_index="1011"/>
+      </object>
+      <object type="Bridge" gp_index="1012" bridge_type="0-1" depth="0" bridge_pci="0000:[10-1f]">
+        <object type="Bridge" gp_index="1013" bridge_type="1-1" depth="1" bridge_pci="0000:[11-1e]" pci_busid="0000:10:01.0" pci_type="0604 [8086:352a] [8086:0000] 04" pci_link_speed="31.507692">
+          <object type="Bridge" gp_index="1014" bridge_type="1-1" depth="2" bridge_pci="0000:[12-1e]" pci_busid="0000:11:00.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+            <object type="Bridge" gp_index="1015" bridge_type="1-1" depth="3" bridge_pci="0000:[13-13]" pci_busid="0000:12:00.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1016" pci_busid="0000:13:00.0" pci_type="0302 [10de:2335] [10de:18be] a1" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1017" name="cuda0" subtype="CUDA" osdev_type="5">
+                  <info name="Backend" value="CUDA"/>
+                  <info name="NVIDIAUUID" value="GPU-00000000-1111-2222-3333-444444444444"/>
+                </object>
+              </object>
+            </object>
+            <object type="Bridge" gp_index="1018" bridge_type="1-1" depth="3" bridge_pci="0000:[14-14]" pci_busid="0000:12:01.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1019" pci_busid="0000:14:00.0" pci_type="0200 [1d0f:efa2] [1d0f:efa2] 00" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1020" name="rdmap16s0" osdev_type="3"/>
+              </object>
+            </object>
+            <object type="Bridge" gp_index="1021" bridge_type="1-1" depth="3" bridge_pci="0000:[15-15]" pci_busid="0000:12:02.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1022" pci_busid="0000:15:00.0" pci_type="0200 [1d0f:efa2] [1d0f:efa2] 00" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1023" name="rdmap17s0" osdev_type="3">
+                  <info name="NodeGUID" value="0000:0000:0000:0000"/>
+                  <info name="SysImageGUID" value="0000:0000:0000:0000"/>
+                </object>
+              </object>
+            </object>
+          </object>
+        </object>
+        <object type="Bridge" gp_index="1024" bridge_type="1-1" depth="1" bridge_pci="0000:[1f-1f]" pci_busid="0000:10:02.0" pci_type="0604 [8086:352a] [8086:0000] 04" pci_link_speed="31.507692">
+          <object type="PCIDev" gp_index="1025" pci_busid="0000:1f:00.0" pci_type="0207 [15b3:101b] [15b3:0007] 00" pci_link_speed="31.507692">
+            <object type="OSDev" gp_index="1026" name="ib0" osdev_type="2">
+              <info name="Address" value="00:00:10:87:fe:80:00:00:00:00:00:00:b8:59:9f:03:00:a1:b2:c3"/>
+            </object>
+            <object type="OSDev" gp_index="1027" name="mlx5_0" osdev_type="3">
+              <info name="NodeGUID" value="b859:9f03:00a1:b2c3"/>
+            </object>
+          </object>
+        </object>
+      </object>
+      <object type="Bridge" gp_index="1028" bridge_type="0-1" depth="0" bridge_pci="0000:[20-2f]">
+        <object type="Bridge" gp_index="1029" bridge_type="1-1" depth="1" bridge_pci="0000:[21-2f]" pci_busid="0000:20:01.0" pci_type="0604 [8086:352a] [8086:0000] 04" pci_link_speed="31.507692">
+          <object type="Bridge" gp_index="1030" bridge_type="1-1" depth="2" bridge_pci="0000:[22-2f]" pci_busid="0000:21:00.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+            <object type="Bridge" gp_index="1031" bridge_type="1-1" depth="3" bridge_pci="0000:[23-23]" pci_busid="0000:22:00.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1032" pci_busid="0000:23:00.0" pci_type="0302 [10de:2335] [10de:18be] a1" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1033" name="cuda1" subtype="CUDA" osdev_type="5">
+                  <info name="Backend" value="CUDA"/>
+                  <info name="NVIDIAUUID" value="GPU-00000001-1111-2222-3333-444444444444"/>
+                </object>
+              </object>
+            </object>
+            <object type="Bridge" gp_index="1034" bridge_type="1-1" depth="3" bridge_pci="0000:[24-24]" pci_busid="0000:22:01.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1035" pci_busid="0000:24:00.0" pci_type="0200 [1d0f:efa2] [1d0f:efa2] 00" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1036" name="rdmap32s0" osdev_type="3">
+                  <info name="NodeGUID" value="0e1a:2b3c:0000:0020"/>
+                  <info name="SysImageGUID" value="0e1a:2b3c:0000:0020"/>
+                </object>
+              </object>
+            </object>
+            <object type="Bridge" gp_index="1037" bridge_type="1-1" depth="3" bridge_pci="0000:[25-25]" pci_busid="0000:22:02.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1038" pci_busid="0000:25:00.0" pci_type="0200 [1d0f:efa2] [1d0f:efa2] 00" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1039" name="rdmap33s0" osdev_type="3">
+                  <info name="NodeGUID" value="0e1a:2b3c:0000:0021"/>
+                  <info name="SysImageGUID" value="0e1a:2b3c:0000:0021"/>
+                </object>
+              </object>
+            </object>
+          </object>
+        </object>
+      </object>
+    </object>
+    <object type="Package" os_index="1" cpuset="0x000000f0" complete_cpuset="0x000000f0" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1040">
+      <object type="NUMANode" os_index="1" cpuset="0x000000f0" complete_cpuset="0x000000f0" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1041" local_memory="34359738368"/>
+      <object type="Core" os_index="4" cpuset="0x00000010" complete_cpuset="0x00000010" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1042">
+        <object type="PU" os_index="4" cpuset="0x00000010" complete_cpuset="0x00000010" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1043"/>
+      </object>
+      <object type="Core" os_index="5" cpuset="0x00000020" complete_cpuset="0x00000020" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1044">
+        <object type="PU" os_index="5" cpuset="0x00000020" complete_cpuset="0x00000020" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1045"/>
+      </object>
+      <object type="Core" os_index="6" cpuset="0x00000040" complete_cpuset="0x00000040" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1046">
+        <object type="PU" os_index="6" cpuset="0x00000040" complete_cpuset="0x00000040" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1047"/>
+      </object>
+      <object type="Core" os_index="7" cpuset="0x00000080" complete_cpuset="0x00000080" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1048">
+        <object type="PU" os_index="7" cpuset="0x00000080" complete_cpuset="0x00000080" nodeset="0x00000002" complete_nodeset="0x00000002" gp_index="1049"/>
+      </object>
+      <object type="Bridge" gp_index="1050" bridge_type="0-1" depth="0" bridge_pci="0000:[30-3f]">
+        <object type="Bridge" gp_index="1051" bridge_type="1-1" depth="1" bridge_pci="0000:[31-3f]" pci_busid="0000:30:01.0" pci_type="0604 [8086:352a] [8086:0000] 04" pci_link_speed="31.507692">
+          <object type="Bridge" gp_index="1052" bridge_type="1-1" depth="2" bridge_pci="0000:[32-3f]" pci_busid="0000:31:00.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+            <object type="Bridge" gp_index="1053" bridge_type="1-1" depth="3" bridge_pci="0000:[33-33]" pci_busid="0000:32:00.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1054" pci_busid="0000:33:00.0" pci_type="0302 [10de:2335] [10de:18be] a1" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1055" name="cuda2" subtype="CUDA" osdev_type="5">
+                  <info name="Backend" value="CUDA"/>
+                  <info name="NVIDIAUUID" value="GPU-00000002-1111-2222-3333-444444444444"/>
+                </object>
+              </object>
+            </object>
+            <object type="Bridge" gp_index="1056" bridge_type="1-1" depth="3" bridge_pci="0000:[34-34]" pci_busid="0000:32:01.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1057" pci_busid="0000:34:00.0" pci_type="0200 [1d0f:efa2] [1d0f:efa2] 00" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1058" name="rdmap48s0" osdev_type="3">
+                  <info name="NodeGUID" value="0e1a:2b3c:0000:0030"/>
+                  <info name="SysImageGUID" value="0e1a:2b3c:0000:0030"/>
+                </object>
+              </object>
+            </object>
+            <object type="Bridge" gp_index="1059" bridge_type="1-1" depth="3" bridge_pci="0000:[35-35]" pci_busid="0000:32:02.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1060" pci_busid="0000:35:00.0" pci_type="0200 [1d0f:efa2] [1d0f:efa2] 00" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1061" name="rdmap49s0" osdev_type="3">
+                  <info name="NodeGUID" value="0e1a:2b3c:0000:0031"/>
+                  <info name="SysImageGUID" value="0e1a:2b3c:0000:0031"/>
+                </object>
+              </object>
+            </object>
+          </object>
+        </object>
+      </object>
+      <object type="Bridge" gp_index="1062" bridge_type="0-1" depth="0" bridge_pci="0000:[40-4f]">
+        <object type="Bridge" gp_index="1063" bridge_type="1-1" depth="1" bridge_pci="0000:[41-4f]" pci_busid="0000:40:01.0" pci_type="0604 [8086:352a] [8086:0000] 04" pci_link_speed="31.507692">
+          <object type="Bridge" gp_index="1064" bridge_type="1-1" depth="2" bridge_pci="0000:[42-4f]" pci_busid="0000:41:00.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+            <object type="Bridge" gp_index="1065" bridge_type="1-1" depth="3" bridge_pci="0000:[43-43]" pci_busid="0000:42:00.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1066" pci_busid="0000:43:00.0" pci_type="0302 [10de:2335] [10de:18be] a1" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1067" name="cuda3" subtype="CUDA" osdev_type="5">
+                  <info name="Backend" value="CUDA"/>
+                  <info name="NVIDIAUUID" value="GPU-00000003-1111-2222-3333-444444444444"/>
+                </object>
+              </object>
+            </object>
+            <object type="Bridge" gp_index="1068" bridge_type="1-1" depth="3" bridge_pci="0000:[44-44]" pci_busid="0000:42:01.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1069" pci_busid="0000:44:00.0" pci_type="0200 [1d0f:efa2] [1d0f:efa2] 00" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1070" name="rdmap64s0" osdev_type="3">
+                  <info name="NodeGUID" value="0e1a:2b3c:0000:0040"/>
+                  <info name="SysImageGUID" value="0e1a:2b3c:0000:0040"/>
+                </object>
+              </object>
+            </object>
+            <object type="Bridge" gp_index="1071" bridge_type="1-1" depth="3" bridge_pci="0000:[45-45]" pci_busid="0000:42:02.0" pci_type="0604 [1000:c030] [1000:a064] b0" pci_link_speed="31.507692">
+              <object type="PCIDev" gp_index="1072" pci_busid="0000:45:00.0" pci_type="0200 [1d0f:efa2] [1d0f:efa2] 00" pci_link_speed="31.507692">
+                <object type="OSDev" gp_index="1073" name="rdmap65s0" osdev_type="3">
+                  <info name="NodeGUID" value="0e1a:2b3c:0000:0041"/>
+                  <info name="SysImageGUID" value="0e1a:2b3c:0000:0041"/>
+                </object>
+              </object>
+            </object>
+          </object>
+        </object>
+      </object>
+    </object>
+  </object>
+</topology>

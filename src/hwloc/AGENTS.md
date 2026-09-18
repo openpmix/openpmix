@@ -485,6 +485,19 @@ Two consequences that are load-bearing:
   hwloc's `export_xmlbuffer` reports (and `set_xmlbuffer` expects) a
   length that *includes* the terminating NUL, so always pass
   `strlen(xml) + 1` — both `load_xml` and `pmix_hwloc_unpack_topology` do.
+- **A fabric device's uuid does not require its GUIDs.** `build_device_uuid()`
+  uses `fab://<NodeGUID>::<SysImageGUID>` when both are present and the
+  NodeGUID is non-zero; `fab://<NodeGUID>::<SysImageGUID>::<host>::<osname>`
+  when they are present but zero (EFA reports exactly that - see
+  item 30); and `fab://<host>::<osname>` when either is absent. The middle
+  form keeps the two GUID fields **first** on purpose: Open MPI's OFI
+  provider selection `sscanf`s them back out and compares them with what
+  hwloc reports, and a zero-GUID device it matches today must stay
+  matched. A network interface with no recognizable hardware address
+  likewise falls back to `net://<host>::<osname>`. Refusing a uuid drops
+  the device - and its whole PCI function, if it was the OS device chosen
+  to name that function - from every enumeration, so no device type may
+  make one mandatory.
 - **Device distances depend on the cpuset covering something below the
   machine.** `compute_distances` returns `PMIX_ERR_NOT_AVAILABLE` when
   the only object covering the cpuset is the whole machine (common in
@@ -752,6 +765,18 @@ A third audit (August 2026) added these:
     `UINT64_MAX` as its sentinel from a `size_t` function. Both are now
     `size_t`/`SIZE_MAX`, and the three fetched values are checked for the
     sentinel before an adopt is attempted.
+30. **A fabric device without usable GUIDs was dropped or duplicated.**
+    `build_device_uuid()` refused a uuid to any OpenFabrics device lacking
+    either GUID, which removed it from every enumeration - and because the
+    OpenFabrics device is preferred to name a PCI function, an HCA with a
+    NodeGUID but no SysImageGUID took its IPoIB interface with it. A device
+    exposing its GUIDs as zeros, which real EFA does (a `c7gn.16xlarge` on
+    kernel 6.5 reports `0000:0000:0000:0000` for both), got
+    `fab://0000:0000:0000:0000::0000:0000:0000:0000` - the same uuid as every
+    other EFA device on the node, so naming one by uuid named them all. See
+    the pitfall above for the forms that replaced both. Covered by
+    `test_fabric_uuids` in
+    [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c).
 
 Not a defect, but worth knowing before you "fix" it:
 
@@ -782,7 +807,7 @@ they split by what they need to stand up:
 | Test | Covers |
 |---|---|
 | [`test/unit/hwloc_datatype.c`](../../test/unit/hwloc_datatype.c) | items 5–8, 10–16, 19 (distances), 20, 23–28 — round-trips, prints and measures topologies and cpusets through the public API |
-| [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c) | device enumeration and item 19 (naming) — a pure function of a topology plus a type, so no server and no real hardware |
+| [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c) | device enumeration and item 19 (naming) — a pure function of a topology plus a type, so no server and no real hardware; item 30 against `test/topologies/multi-rc.xml` (two packages, four PCIe root complexes, every GUID shape) |
 | [`test/unit/hwloc_setup_fail.c`](../../test/unit/hwloc_setup_fail.c) | items 17 and 18 — what a *failed* acquisition leaves behind. Its own binary, because acquisition runs once per process |
 
 Three items are **not** covered, and it is worth knowing which:
