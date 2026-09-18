@@ -6,7 +6,8 @@ PMIx_Compute_distances
 .. include_body
 
 ``PMIx_Compute_distances``, ``PMIx_Compute_distances_nb`` |mdash| Compute the
-distances from a specified process location to the local devices.
+distances from a specified process location, or from a specified device, to
+the local devices.
 
 
 SYNOPSIS
@@ -71,7 +72,8 @@ INPUT PARAMETERS
   processing units to which the process is bound) from which distances are to be
   computed. A ``NULL`` value indicates that the caller's own location is to be
   used; if it has not yet been determined, the library will attempt to obtain it
-  or relay the request to the local PMIx server.
+  or relay the request to the local PMIx server. Ignored, and may be ``NULL``,
+  when the ``PMIX_DEVICE_DIST_ORIGIN`` directive is given.
 * ``info``: Pointer to an array of :ref:`pmix_info_t(5) <man5-pmix_info_t>`
   structures describing the device type(s) or specific device(s) whose distance
   is to be computed (see `DIRECTIVES`_). A ``NULL`` value (with ``ninfo`` of
@@ -117,9 +119,28 @@ DESCRIPTION
 Compute the distances between a process at a given location and the devices
 available on a node. Both the minimum and maximum distance fields in each element
 of the returned array are filled with the respective distances between the
-process location and the device types (or specific device) identified by the
-``info`` directives. In the absence of directives, distances to all device types
-supported by the underlying topology description are returned.
+process location and the device types (or specific devices) identified by the
+``info`` directives. In the absence of directives, distances to the network,
+OpenFabrics, GPU and coprocessor devices on the node are returned.
+
+Alternatively, distances can be computed from a device rather than from a
+process location by naming that device with the ``PMIX_DEVICE_DIST_ORIGIN``
+directive |mdash| for example, to find the network devices nearest the GPU a
+process is using. The ``cpuset`` plays no part in that case, so a process need
+not be bound to ask. The origin device itself is included in the result, at a
+distance of zero, if it is of a requested type.
+
+Distances are relative, and smaller means closer. A distance from a process
+location is governed first by where the device attaches to the processor
+hierarchy (the package or NUMA domain it is local to); among devices that
+attach at the same place, a device fewer PCIe levels (bridges and switches)
+below that point is closer. A distance from a device follows the path between
+the two devices: devices under the same PCIe switch are closer than devices
+under the same host bridge, which are closer than devices on different host
+bridges of the same package, which are closer than devices on different
+packages. Because every device under a package is equally close to that
+package's processors, only a distance measured from a device can distinguish
+the host bridges within a package.
 
 :ref:`PMIx_Compute_distances(3) <man3-PMIx_Compute_distances>` is the blocking
 form: it does not return until the computation completes, at which point the
@@ -154,7 +175,16 @@ in the ``info`` array to select the devices whose distances are to be computed:
   ``PMIX_DEVTYPE_NETWORK``, ``PMIX_DEVTYPE_OPENFABRICS``, ``PMIX_DEVTYPE_DMA``,
   ``PMIX_DEVTYPE_COPROC``, and others defined in ``pmix_common.h``.
 * ``PMIX_DEVICE_ID`` (``"pmix.dev.id"``) |mdash| a system-wide UUID or node-local
-  OS name (``char*``) identifying a particular device.
+  OS name (``char*``) identifying a particular device. A device may also be
+  named by its vendor identity (e.g., an NVIDIA ``GPU-`` UUID) or its PCI bus
+  id (``"0000:06:00.0"``). The attribute may be given more than once to request
+  distances to several devices.
+* ``PMIX_DEVICE_DIST_ORIGIN`` (``"pmix.dev.dist.origin"``) |mdash| a ``char*``
+  naming the device from which distances are to be computed, in any of the
+  forms accepted by ``PMIX_DEVICE_ID``, in place of a process location. The
+  ``cpuset`` argument is ignored when this directive is given. Returns
+  ``PMIX_ERR_NOT_FOUND`` if no device answers to the name, and
+  ``PMIX_ERR_BAD_PARAM`` if more than one does.
 
 
 RETURN VALUE
@@ -169,6 +199,9 @@ a PMIx error constant is returned, including:
 * ``PMIX_ERR_UNREACH`` |mdash| the request could not be satisfied locally and the
   local PMIx server could not be reached (or the caller is a server, or is not
   connected to a server).
+* ``PMIX_ERR_NOT_SUPPORTED`` |mdash| ``PMIX_DEVICE_DIST_ORIGIN`` was given, the
+  request could not be satisfied locally, and the local PMIx server predates
+  support for that directive.
 
 For the blocking form, the value returned is the status of the completed
 operation. For the non-blocking form, a return of ``PMIX_SUCCESS`` indicates only

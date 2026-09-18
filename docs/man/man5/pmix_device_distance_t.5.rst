@@ -39,7 +39,6 @@ the cluster, and is typically assembled from discovered device attributes
 device that reports no such attributes, or reports them as all zeros, is
 identified by its node and operating system name instead.
 
-
 The ``osname`` field is the local operating system name of the device and
 is only unique to the node on which the device resides.
 
@@ -47,7 +46,8 @@ The ``type`` field is a :ref:`pmix_device_type_t(5) <man5-pmix_device_type_t>`
 bitmask identifying the type(s) of the device.
 
 The ``mindist`` and ``maxdist`` fields provide the minimum and maximum
-relative distance to the device from the specified location of the process,
+relative distance to the device from the specified location of the process
+(or from the specified origin device, in which case the two are equal),
 each expressed as a 16-bit integer value in which a smaller number indicates
 that the device is closer to the process than a device with a larger
 distance value. Note that relative distance values are not necessarily

@@ -697,3 +697,4 @@ pmix.alloc.dir         666   PMIX_ALLOC_REQ_DIRECTIVE
 pmix.alloc.seq         667   PMIX_ALLOC_SEQUENCE
 pmix.mysrvr.alturis    668   PMIX_MYSERVER_ALT_URIS
 pmix.srvr.alturis      669   PMIX_SERVER_ALT_URIS
+pmix.dev.dist.origin   670   PMIX_DEVICE_DIST_ORIGIN
