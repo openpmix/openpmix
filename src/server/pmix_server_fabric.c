@@ -314,6 +314,8 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
     pmix_cb_t cb;
     pmix_kval_t *kv;
     pmix_proc_t proc;
+    size_t n;
+    bool fromdev = false;
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
@@ -383,8 +385,17 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
         topo.topology = pmix_globals.topology.topology;
     }
 
+    /* measured from a device, the requester's binding plays no part - and
+     * an unbound requester, which has none to find, can still ask */
+    for (n = 0; n < cd->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&cd->info[n], PMIX_DEVICE_DIST_ORIGIN)) {
+            fromdev = true;
+            break;
+        }
+    }
+
     /* if the cpuset is NULL, see if we know the binding of the requesting process */
-    if (NULL == cpuset.bitmap) {
+    if (NULL == cpuset.bitmap && !fromdev) {
         /* the unpack hands back a "hwloc" source string even when it
          * carried no bitmap, and pmix_hwloc_parse_cpuset_string below
          * overwrites that member with a fresh one - so give the first

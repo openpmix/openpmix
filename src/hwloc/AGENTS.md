@@ -485,6 +485,29 @@ Two consequences that are load-bearing:
   hwloc's `export_xmlbuffer` reports (and `set_xmlbuffer` expects) a
   length that *includes* the terminating NUL, so always pass
   `strlen(xml) + 1` — both `load_xml` and `pmix_hwloc_unpack_topology` do.
+- **Never call `hwloc_get_common_ancestor_obj()` on an I/O object.** It
+  climbs by comparing `depth`, and bridges, PCI devices and OS devices all
+  carry fixed *negative* special depths rather than a place in that order.
+  Given two PCI devices at different PCIe nesting - a GPU behind a switch
+  and an HCA on a root port - it lifts one side onto its host bridge's
+  parent and then walks the other past the root: **SIGSEGV**, measured
+  against hwloc 2.12 on `test/topologies/multi-rc.xml`. It is safe between
+  two objects of the CPU tree (a PU and a device's locality, which is how
+  the process-relative distance uses it). For anything involving an I/O
+  object use `common_ancestor()` in `pmix_hwloc.c`, which walks parent
+  links.
+- **How a distance is built.** `mindist`/`maxdist` are
+  `(CPU-tree part) * PMIX_HWLOC_DIST_IO_SPAN + (I/O hops)`. The CPU-tree
+  part is the historical measure (from a PU: inverted depth of the common
+  ancestor with the device's locality; from a device: links between the
+  two localities); the I/O hops count the path from the device's PCI
+  function up to its locality, or, device to device, up to where the two
+  meet. The span is larger than any real PCIe depth, so the I/O part only
+  breaks ties the CPU tree leaves and cannot reorder anything it decided.
+  The consequence worth remembering: **from a CPU, two NICs the same depth
+  under two host bridges of one package tie**, because the package is
+  equally close to both. Only `PMIX_DEVICE_DIST_ORIGIN` - measuring from
+  the GPU - can tell them apart, and that was the reason for adding it.
 - **A fabric device's uuid does not require its GUIDs.** `build_device_uuid()`
   uses `fab://<NodeGUID>::<SysImageGUID>` when both are present and the
   NodeGUID is non-zero; `fab://<NodeGUID>::<SysImageGUID>::<host>::<osname>`
@@ -789,12 +812,13 @@ Not a defect, but worth knowing before you "fix" it:
   PU is absent it returns `HWLOC_TYPE_DEPTH_UNKNOWN` (-1); the cast makes
   `width` zero and the loop simply does not run. Safe, but not obviously
   so.
-- **An `info` array that names no `PMIX_DEVICE_TYPE` still searches every
-  device type.** `pmix_hwloc_compute_distances` only applies its curated
-  default (network, OpenFabrics, GPU, coprocessor) when the caller passed
-  no directives at all; a caller who passed, say, only `PMIX_DEVICE_ID`
-  gets the full set including block and DMA. That looks like the same
-  inconsistency as item 24 and is not:
+- **An `info` array that names a device but no `PMIX_DEVICE_TYPE` still
+  searches every device type.** `pmix_hwloc_compute_distances` applies its
+  curated default (network, OpenFabrics, GPU, coprocessor) whenever the
+  caller named neither a type nor a device - including when the only
+  directives are unrelated ones, such as `PMIX_DEVICE_DIST_ORIGIN` alone;
+  a caller who passed `PMIX_DEVICE_ID` gets the full set including block
+  and DMA. That looks like the same inconsistency as item 24 and is not:
   [`PMIx_Compute_distances(3)`](../../docs/man/man3/PMIx_Compute_distances.3.rst)
   documents `PMIX_DEVICE_ID` as an independent selector, so narrowing the
   type set behind a caller who named a block device by name would make
@@ -812,7 +836,7 @@ they split by what they need to stand up:
 | Test | Covers |
 |---|---|
 | [`test/unit/hwloc_datatype.c`](../../test/unit/hwloc_datatype.c) | items 5–8, 10–16, 19 (distances), 20, 23–28 — round-trips, prints and measures topologies and cpusets through the public API |
-| [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c) | device enumeration and item 19 (naming) — a pure function of a topology plus a type, so no server and no real hardware; items 30–31 against `test/topologies/multi-rc.xml` (two packages, four PCIe root complexes, every GUID shape) |
+| [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c) | device enumeration and item 19 (naming) — a pure function of a topology plus a type, so no server and no real hardware; items 30–31 and both distance modes against `test/topologies/multi-rc.xml` (two packages, four PCIe root complexes, every GUID shape) |
 | [`test/unit/hwloc_setup_fail.c`](../../test/unit/hwloc_setup_fail.c) | items 17 and 18 — what a *failed* acquisition leaves behind. Its own binary, because acquisition runs once per process |
 
 Three items are **not** covered, and it is worth knowing which:

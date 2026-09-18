@@ -212,8 +212,10 @@ typedef struct {
  * Pass pmix_globals.hostname only when the topology really is this node's.
  *
  * "type" is a bitmask of the desired types; PMIX_DEVTYPE_UNKNOWN means all.
- * "devid" restricts the result to a single device matching it by osname or
- * uuid, and may be NULL.
+ * "devid" restricts the result to the device it names, and may be NULL.  A
+ * device answers to the name of any OS device on its PCI function, to the
+ * uuid PMIx reports for it, to its vendor identity (see vendor_id below),
+ * and to its PCI bus id in the form "0000:06:00.0".
  *
  * An empty result is not an error: the caller decides what "this node has no
  * such device" means.  Release the array with pmix_hwloc_release_devices().
