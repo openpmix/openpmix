@@ -1005,6 +1005,183 @@ static void test_named_devices(const char *dir)
     free_topo(&topo);
 }
 
+/* A device's min or max distance by osname, or a value above any real
+ * distance when the device is missing - so a comparison involving a device
+ * that should be there fails instead of crashing the test. */
+static unsigned dmin(const pmix_device_distance_t *d, size_t n, const char *osname)
+{
+    const pmix_device_distance_t *p = find_dist(d, n, osname);
+
+    if (NULL == p) {
+        fprintf(stderr, "    (no distance reported for %s)\n", osname);
+        return UINT32_MAX;
+    }
+    return p->mindist;
+}
+
+static unsigned dmax(const pmix_device_distance_t *d, size_t n, const char *osname)
+{
+    const pmix_device_distance_t *p = find_dist(d, n, osname);
+
+    return (NULL == p) ? UINT32_MAX : p->maxdist;
+}
+
+/* distance from "origin" to every OpenFabrics device, measured device to
+ * device - no cpuset at all */
+static pmix_status_t dist_from(pmix_topology_t *topo, const char *origin,
+                               pmix_device_distance_t **dist, size_t *ndist)
+{
+    pmix_info_t info[2];
+    pmix_device_type_t type = PMIX_DEVTYPE_OPENFABRICS;
+    pmix_status_t rc;
+
+    PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_DIST_ORIGIN, origin, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_DEVICE_TYPE, &type, PMIX_DEVTYPE);
+    rc = pmix_hwloc_compute_distances(topo, NULL, info, 2, dist, ndist);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    return rc;
+}
+
+/* From the CPU tree's point of view every NIC on a package is the same
+ * distance away - they all report the package as their locality - so a
+ * process-relative distance cannot say which NICs share a root complex with
+ * a GPU.  That is the question a GPU-driven transfer needs answered, and it
+ * can only be answered by measuring from the GPU. */
+static void test_device_distances(const char *dir)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    pmix_device_distance_t *dist = NULL, *d2 = NULL;
+    const pmix_device_distance_t *p, *q;
+    pmix_cpuset_t cpuset = PMIX_CPUSET_STATIC_INIT;
+    pmix_info_t info[1];
+    pmix_device_type_t type;
+    size_t ndevs = 0, ndist = 0, n2 = 0, i, j;
+    const char *gpus[] = {"cuda0", "cuda1", "cuda2", "cuda3"};
+    const char *near[][2] = {{"rdmap16s0", "rdmap17s0"}, {"rdmap32s0", "rdmap33s0"},
+                             {"rdmap48s0", "rdmap49s0"}, {"rdmap64s0", "rdmap65s0"}};
+    const char *spellings[] = {"0000:13:00.0", "GPU-00000000-1111-2222-3333-444444444444"};
+    const char *p0nics[] = {"rdmap16s0", "rdmap17s0", "mlx5_0", "rdmap32s0", "rdmap33s0"};
+    const char *p1nics[] = {"rdmap48s0", "rdmap49s0", "rdmap64s0", "rdmap65s0"};
+    bool good;
+    pmix_status_t rc;
+
+    if (0 != load_multi_rc(dir, &topo)) {
+        return;
+    }
+
+    /* --- a device answers to the names its own software knows it by --- */
+    for (i = 0; i < sizeof(spellings) / sizeof(spellings[0]); i++) {
+        rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN, spellings[i],
+                                    &devs, &ndevs);
+        ok(PMIX_SUCCESS == rc && 1 == ndevs && 0 == strcmp(devs[0].dev.osname, "cuda0"),
+           "device distance: a GPU is found by its PCI bus id and by its vendor uuid");
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+
+    /* --- device to device --- */
+    for (i = 0; i < 4; i++) {
+        rc = dist_from(&topo, gpus[i], &dist, &ndist);
+        ok(PMIX_SUCCESS == rc && 9 == ndist, "device distance: distances from a GPU computed");
+        if (PMIX_SUCCESS != rc) {
+            continue;
+        }
+        /* the two NICs under the GPU's own switch, and nothing else, are
+         * the nearest */
+        p = find_dist(dist, ndist, near[i][0]);
+        q = find_dist(dist, ndist, near[i][1]);
+        good = (NULL != p && NULL != q && p->mindist == q->mindist);
+        for (j = 0; good && j < ndist; j++) {
+            if (dist[j].mindist != dist[j].maxdist) {
+                good = false;
+            }
+            if (&dist[j] != p && &dist[j] != q && dist[j].mindist <= p->mindist) {
+                good = false;
+            }
+        }
+        ok(good, "device distance: the NICs sharing a GPU's switch are its nearest, alone");
+        PMIx_Device_distance_free(dist, ndist);
+        dist = NULL;
+    }
+
+    /* the ordering beyond the nearest: same root complex, then same
+     * package, then the other package */
+    rc = dist_from(&topo, "cuda0", &dist, &ndist);
+    if (PMIX_SUCCESS == rc) {
+        ok(dmin(dist, ndist, "rdmap16s0") < dmin(dist, ndist, "mlx5_0")
+           && dmin(dist, ndist, "mlx5_0") < dmin(dist, ndist, "rdmap32s0")
+           && dmin(dist, ndist, "rdmap32s0") < dmin(dist, ndist, "rdmap48s0"),
+           "device distance: switch < root complex < package < machine, from a GPU");
+
+        /* the origin may be named any way a device can be */
+        for (i = 0; i < sizeof(spellings) / sizeof(spellings[0]); i++) {
+            rc = dist_from(&topo, spellings[i], &d2, &n2);
+            good = (PMIX_SUCCESS == rc && n2 == ndist);
+            for (j = 0; good && j < ndist; j++) {
+                p = find_dist(d2, n2, dist[j].osname);
+                good = (NULL != p && p->mindist == dist[j].mindist);
+            }
+            ok(good, "device distance: the origin by bus id or vendor uuid measures the same");
+            if (NULL != d2) {
+                PMIx_Device_distance_free(d2, n2);
+                d2 = NULL;
+            }
+        }
+        PMIx_Device_distance_free(dist, ndist);
+        dist = NULL;
+    }
+
+    rc = dist_from(&topo, "no-such-device", &dist, &ndist);
+    ok(PMIX_ERR_NOT_FOUND == rc && NULL == dist && 0 == ndist,
+       "device distance: an origin that names nothing is NOT_FOUND");
+
+    type = 7;
+    PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_DIST_ORIGIN, &type, PMIX_UINT64);
+    rc = pmix_hwloc_compute_distances(&topo, NULL, info, 1, &dist, &ndist);
+    ok(PMIX_ERR_BAD_PARAM == rc, "device distance: an origin that is not a string is refused");
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    /* without an origin, a cpuset is still required */
+    rc = pmix_hwloc_compute_distances(&topo, NULL, NULL, 0, &dist, &ndist);
+    ok(PMIX_ERR_BAD_PARAM == rc, "device distance: no origin and no cpuset is refused");
+
+    /* --- process to device --- */
+    package0_cpuset(&topo, &cpuset);
+    type = PMIX_DEVTYPE_OPENFABRICS;
+    PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_TYPE, &type, PMIX_DEVTYPE);
+    rc = pmix_hwloc_compute_distances(&topo, &cpuset, info, 1, &dist, &ndist);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    ok(PMIX_SUCCESS == rc && 9 == ndist, "device distance: distances from package 0 computed");
+    if (PMIX_SUCCESS == rc) {
+        /* the CPU tree still decides first: every NIC on our package is
+         * nearer than any on the other */
+        good = true;
+        for (i = 0; i < sizeof(p0nics) / sizeof(p0nics[0]); i++) {
+            for (j = 0; j < sizeof(p1nics) / sizeof(p1nics[0]); j++) {
+                if (dmax(dist, ndist, p0nics[i]) >= dmin(dist, ndist, p1nics[j])) {
+                    good = false;
+                }
+            }
+        }
+        ok(good, "device distance: every NIC on the bound package is nearer than any off it");
+        /* and the PCI tree breaks the tie the CPU tree leaves: an HCA on a
+         * root port is nearer than NICs behind a switch */
+        ok(dmin(dist, ndist, "mlx5_0") < dmin(dist, ndist, "rdmap16s0"),
+           "device distance: PCIe depth breaks a tie the CPU tree cannot");
+        /* but it cannot see root complexes - from a CPU, one switch-deep
+         * NIC is as near as another.  This is what a GPU origin is for. */
+        ok(dmin(dist, ndist, "rdmap16s0") == dmin(dist, ndist, "rdmap32s0"),
+           "device distance: from a CPU, equal-depth NICs on two root complexes tie");
+        PMIx_Device_distance_free(dist, ndist);
+    }
+
+    hwloc_bitmap_free(cpuset.bitmap);
+    free(cpuset.source);
+    free_topo(&topo);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -1035,6 +1212,7 @@ int main(int argc, char **argv)
     test_unnamed_osdev(dir);
     test_fabric_uuids(dir);
     test_named_devices(dir);
+    test_device_distances(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);

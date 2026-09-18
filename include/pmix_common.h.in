@@ -1607,6 +1607,13 @@ typedef uint32_t pmix_rank_t;
                                                                    //         assigned - e.g. in that process's own proc info - the
                                                                    //         value is instead a pmix_data_array_t of pmix_device_t,
                                                                    //         and is an array even when it holds one device.
+#define PMIX_DEVICE_DIST_ORIGIN             "pmix.dev.dist.origin" // (char*) Compute distances from the named device instead of from a
+                                                                   //         process location - e.g., the NICs nearest a GPU. The device may
+                                                                   //         be named by its UUID, the OS name of any of its OS devices, its
+                                                                   //         vendor identity (e.g., an NVIDIA "GPU-" UUID), or its PCI bus id
+                                                                   //         ("0000:06:00.0"). When given, the cpuset passed to
+                                                                   //         PMIx_Compute_distances is ignored and may be NULL. Only used as a
+                                                                   //         directive/qualifier.
 
 
 /* Descriptive Attributes */
