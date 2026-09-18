@@ -834,6 +834,62 @@ cleanup:
 #endif
 }
 
+/* Measuring from a device goes through the public entry point with no
+ * cpuset at all - which the client used to take as "go and find mine", and
+ * then measure from wherever that was.  Drive it with the GPU on the
+ * second root complex of test/topologies/multi-rc.xml: the only right
+ * answer is the two NICs behind that GPU's own switch. */
+static void test_compute_distances_from_device(void)
+{
+#ifdef PMIX_TEST_TOPO_DIR
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_device_distance_t *dist = NULL;
+    pmix_device_type_t type = PMIX_DEVTYPE_OPENFABRICS;
+    pmix_info_t info[2];
+    size_t ndist = 0, n;
+    uint16_t nearest = UINT16_MAX;
+    char path[2048];
+    int good = 0, count = 0;
+    pmix_status_t rc;
+
+    snprintf(path, sizeof(path), "%s/multi-rc.xml", PMIX_TEST_TOPO_DIR);
+    if (0 != load_topo_file(path, &topo)) {
+        report("compute_distances from a device (could not load fixture)", 0);
+        return;
+    }
+    PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_DIST_ORIGIN, "cuda1", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_DEVICE_TYPE, &type, PMIX_DEVTYPE);
+    rc = PMIx_Compute_distances(&topo, NULL, info, 2, &dist, &ndist);
+    if (PMIX_SUCCESS == rc) {
+        for (n = 0; n < ndist; n++) {
+            if (dist[n].mindist < nearest) {
+                nearest = dist[n].mindist;
+            }
+        }
+        good = 1;
+        for (n = 0; n < ndist; n++) {
+            if (dist[n].mindist != nearest) {
+                continue;
+            }
+            ++count;
+            if (0 != strcmp(dist[n].osname, "rdmap32s0")
+                && 0 != strcmp(dist[n].osname, "rdmap33s0")) {
+                fprintf(stdout, "    %s is nearest to cuda1\n", dist[n].osname);
+                good = 0;
+            }
+        }
+        good = good && (2 == count);
+        PMIx_Device_distance_free(dist, ndist);
+    } else {
+        fprintf(stdout, "    PMIx_Compute_distances: %s\n", PMIx_Error_string(rc));
+    }
+    report("compute_distances from a device needs no cpuset", good);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    PMIx_Topology_destruct(&topo);
+#endif
+}
+
 /* ------------------------------------------------------------------ */
 /* relative locality                                                   */
 /* ------------------------------------------------------------------ */
@@ -1304,6 +1360,7 @@ int main(int argc, char **argv)
     test_locality_generator_to_consumer();
     test_compute_distances_bad_params();
     test_compute_distances_range();
+    test_compute_distances_from_device();
     test_topology_print_wide();
 
     /* the machine's own topology */

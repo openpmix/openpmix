@@ -1337,6 +1337,115 @@ static int countcolons(const char *str)
     return cnt;
 }
 
+/* Every step of separation in the CPU tree outweighs any path through the
+ * I/O tree, so a distance is stored as (CPU-tree part * this) + I/O hops.
+ * The I/O part only ever breaks ties the CPU tree leaves: which host bridge
+ * a device hangs off, and how many PCIe switches deep it sits - neither of
+ * which the CPU tree can see, because every device under one package or
+ * NUMA node reports that same object as its locality.  No PCIe hierarchy
+ * comes close to this many levels; the hop count is clamped below it
+ * regardless, so the ordering holds even if one did. */
+#define PMIX_HWLOC_DIST_IO_SPAN 32
+
+/* The number of parent links from obj up to ancestor, or -1 if ancestor is
+ * not above it. */
+static int hops_to(hwloc_obj_t obj, hwloc_obj_t ancestor)
+{
+    int hops = 0;
+
+    while (obj != ancestor) {
+        if (NULL == obj) {
+            return -1;
+        }
+        obj = obj->parent;
+        ++hops;
+    }
+    return hops;
+}
+
+/* The lowest object that is an ancestor of (or is) both a and b.
+ *
+ * Not hwloc_get_common_ancestor_obj(): that climbs by comparing depths, and
+ * an I/O object has no depth in that order - bridges, PCI devices and OS
+ * devices all carry fixed negative "special" depths.  Given two devices at
+ * different PCIe nesting, it lifts one side to its host bridge's parent (a
+ * positive depth) and then walks the other side up past the root, because
+ * every bridge on the way reports the same negative depth. */
+static hwloc_obj_t common_ancestor(hwloc_obj_t a, hwloc_obj_t b)
+{
+    hwloc_obj_t x, y;
+
+    for (x = a; NULL != x; x = x->parent) {
+        for (y = b; NULL != y; y = y->parent) {
+            if (x == y) {
+                return x;
+            }
+        }
+    }
+    return NULL;
+}
+
+/* Combine the two parts of a distance, reserving UINT16_MAX for "unknown" */
+static uint16_t dist_value(unsigned cpupart, int iohops)
+{
+    unsigned long v;
+
+    if (0 > iohops) {
+        iohops = 0;
+    } else if (PMIX_HWLOC_DIST_IO_SPAN <= iohops) {
+        iohops = PMIX_HWLOC_DIST_IO_SPAN - 1;
+    }
+    v = (unsigned long) cpupart * PMIX_HWLOC_DIST_IO_SPAN + (unsigned long) iohops;
+    if (UINT16_MAX <= v) {
+        v = UINT16_MAX - 1;
+    }
+    return (uint16_t) v;
+}
+
+/* Distance from one device to another, both in the same topology.
+ *
+ * Measured as the path between them.  If they meet inside the I/O tree -
+ * the same host bridge - the path never enters the CPU tree, so the CPU
+ * part is zero and the answer is the hop count to where they meet.
+ * Otherwise the path goes up each device to its locality, then across the
+ * CPU tree between the two localities, and that crossing is the part that
+ * dominates.  Either way two devices under one host bridge always come out
+ * closer than two that are not, since each side of the second path has to
+ * climb past the point where the first one turned around. */
+static uint16_t device_to_device(const pmix_hwloc_device_t *a,
+                                 const pmix_hwloc_device_t *b)
+{
+    hwloc_obj_t meet;
+    int ahops, bhops, cpu;
+
+    if (NULL == a->locality || NULL == b->locality) {
+        return UINT16_MAX;
+    }
+    meet = common_ancestor(a->obj, b->obj);
+    if (NULL == meet) {
+        return UINT16_MAX;
+    }
+    if (NULL == meet->cpuset) {
+        /* they meet below the CPU tree */
+        ahops = hops_to(a->obj, meet);
+        bhops = hops_to(b->obj, meet);
+        if (0 > ahops || 0 > bhops) {
+            return UINT16_MAX;
+        }
+        return dist_value(0, ahops + bhops);
+    }
+    ahops = hops_to(a->obj, a->locality);
+    bhops = hops_to(b->obj, b->locality);
+    /* meet has a cpuset and is above both devices, so it is at or above
+     * both localities - each being the nearest such object */
+    cpu = hops_to(a->locality, meet);
+    if (0 > ahops || 0 > bhops || 0 > cpu || 0 > hops_to(b->locality, meet)) {
+        return UINT16_MAX;
+    }
+    cpu += hops_to(b->locality, meet);
+    return dist_value((unsigned) cpu, ahops + bhops);
+}
+
 pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpuset,
                                            pmix_info_t info[], size_t ninfo,
                                            pmix_device_distance_t **dist, size_t *ndist)
@@ -1348,13 +1457,16 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
     unsigned dp, depth;
     unsigned maxdist = 0;
     unsigned mindist = UINT_MAX;
+    uint16_t dv;
+    int iohops;
     pmix_list_t dists;
     pmix_devdist_item_t *d;
     pmix_device_distance_t *array;
     size_t n, dn, k, j, c, nsets = 0;
-    unsigned w, width, pudepth;
+    unsigned w, width = 0, pudepth = 0;
     pmix_device_type_t type = 0;
     char **devids = NULL;
+    const char *origin = NULL;
     bool dup;
     /* one enumeration per device the caller named, or a single one of
      * everything of the requested types */
@@ -1362,23 +1474,24 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
         pmix_hwloc_device_t *devs;
         size_t ndevs;
     } *sets = NULL;
+    pmix_hwloc_device_t *odev = NULL;
+    size_t nodev = 0;
     pmix_status_t rc = PMIX_SUCCESS, prc;
 
     /* topo->topology is handed to hwloc, which dereferences it, and this is
      * a caller-supplied structure - PMIx_Compute_distances passes a
      * non-NULL topology straight through. Its siblings in this file all
      * screen the inner pointer as well as the outer one */
-    if (NULL == topo || NULL == topo->topology || NULL == cpuset
+    if (NULL == topo || NULL == topo->topology
         || NULL == dist || NULL == ndist) {
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (NULL == topo->source || NULL == cpuset->source) {
+    if (NULL == topo->source) {
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (0 != strncasecmp(topo->source, "hwloc", 5)
-        || 0 != strncasecmp(cpuset->source, "hwloc", 5)) {
+    if (0 != strncasecmp(topo->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -1386,62 +1499,119 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
     *dist = NULL;
     *ndist = 0;
 
+    /* Construct the result list here, before the first failure exit below, so
+     * every path out of this function can share the single cleanup block at
+     * the bottom. That block is also what releases devids: the argv array
+     * assembled from PMIX_DEVICE_ID below used to be freed on no path at all,
+     * success included, so every call that named a device leaked it. */
+    PMIX_CONSTRUCT(&dists, pmix_list_t);
+
     /* determine what they want us to look at.  "No directives" is
      * (NULL, 0) or (ptr, 0) indifferently - every other PMIx entry point
-     * reads the two the same way, and this one used to give the second the
-     * "every type there is" treatment that belongs to a caller who asked
-     * for it. */
-    if (NULL == info || 0 == ninfo) {
+     * reads the two the same way. */
+    if (NULL != info) {
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_TYPE)) {
+                type |= info[n].value.data.devtype;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_ID)) {
+                /* the array-of-pmix_device_t form of this attribute
+                 * reports an assignment; it is not a selector */
+                if (PMIX_STRING != info[n].value.type
+                    || NULL == info[n].value.data.string) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto cleanup;
+                }
+                PMIx_Argv_append_nosize(&devids, info[n].value.data.string);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_DIST_ORIGIN)) {
+                if (PMIX_STRING != info[n].value.type
+                    || NULL == info[n].value.data.string) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto cleanup;
+                }
+                origin = info[n].value.data.string;
+            }
+        }
+    }
+    if (0 == type && NULL == devids) {
         /* The devices a process communicates through - which is what asking
          * "how far away is it?" is normally about.  Block and DMA devices
          * are deliberately not in the default: this function has never
          * reported a distance for one, and a caller that wants them can ask
          * by naming the type.  Coprocessors ARE included, because that is
          * where a vendor labels a GPU's compute node ("cuda0"), and leaving
-         * them out lost every GPU on a machine whose backend was loaded. */
+         * them out lost every GPU on a machine whose backend was loaded.
+         *
+         * A caller who named a device but no type gets every type instead
+         * - PMIX_DEVICE_ID is a selector in its own right, and narrowing the
+         * type set behind it would make a named block device vanish. */
         type = PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_OPENFABRICS
                | PMIX_DEVTYPE_GPU | PMIX_DEVTYPE_COPROC;
-    } else {
-        for (n = 0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_TYPE)) {
-                type |= info[n].value.data.devtype;
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_ID)) {
-                PMIx_Argv_append_nosize(&devids, info[n].value.data.string);
-            }
-        }
     }
 
-    /* Construct the result list here, before the first failure exit below, so
-     * every path out of this function can share the single cleanup block at
-     * the bottom. That block is also what releases devids: the argv array
-     * assembled from PMIX_DEVICE_ID above used to be freed on no path at all,
-     * success included, so every call that named a device leaked it. */
-    PMIX_CONSTRUCT(&dists, pmix_list_t);
+    /* Measured from a process location, the cpuset is required and is ours
+     * to vet.  Measured from a device, it plays no part - which is what
+     * lets a caller with no binding at all ask the question. */
+    if (NULL == origin) {
+        if (NULL == cpuset || NULL == cpuset->source || NULL == cpuset->bitmap) {
+            rc = PMIX_ERR_BAD_PARAM;
+            goto cleanup;
+        }
+        if (0 != strncasecmp(cpuset->source, "hwloc", 5)) {
+            rc = PMIX_ERR_TAKE_NEXT_OPTION;
+            goto cleanup;
+        }
+    }
 
     /* find the max depth of this topology */
     depth = hwloc_topology_get_depth(topo->topology);
 
-    /* get the lowest object that completely covers the cpuset */
-    for (dp = 1; dp < depth; dp++) {
-        tgt = dsearch(topo->topology, dp, cpuset->bitmap);
-        if (NULL == tgt) {
-            /* nothing found at that depth, so we are done */
-            break;
+    if (NULL != origin) {
+        /* The origin is named the way a device is named anywhere else in
+         * PMIx - osname, uuid, vendor identity or PCI bus id - so resolve
+         * it through the same enumerator, across every type */
+        prc = pmix_hwloc_get_devices(topo, pmix_globals.hostname, PMIX_DEVTYPE_UNKNOWN,
+                                     origin, &odev, &nodev);
+        if (PMIX_SUCCESS != prc) {
+            rc = prc;
+            goto cleanup;
         }
-        obj = tgt;
-    }
-    if (NULL == obj) {
-        /* only the entire machine covers this cpuset - typically,
-         * this means we are in some odd container where every
-         * PU is in its own package. There is nothing useful
-         * that can be done here */
-        rc = PMIX_ERR_NOT_AVAILABLE;
-        goto cleanup;
-    }
+        if (0 == nodev) {
+            pmix_output_verbose(2, pmix_hwloc_output,
+                                "compute_distances: origin device %s not found", origin);
+            rc = PMIX_ERR_NOT_FOUND;
+            goto cleanup;
+        }
+        if (1 < nodev) {
+            /* a name that fits two devices does not say where to measure
+             * from, and picking one would be a guess */
+            pmix_output_verbose(2, pmix_hwloc_output,
+                                "compute_distances: origin device %s is ambiguous", origin);
+            rc = PMIX_ERR_BAD_PARAM;
+            goto cleanup;
+        }
+    } else {
+        /* get the lowest object that completely covers the cpuset */
+        for (dp = 1; dp < depth; dp++) {
+            tgt = dsearch(topo->topology, dp, cpuset->bitmap);
+            if (NULL == tgt) {
+                /* nothing found at that depth, so we are done */
+                break;
+            }
+            obj = tgt;
+        }
+        if (NULL == obj) {
+            /* only the entire machine covers this cpuset - typically,
+             * this means we are in some odd container where every
+             * PU is in its own package. There is nothing useful
+             * that can be done here */
+            rc = PMIX_ERR_NOT_AVAILABLE;
+            goto cleanup;
+        }
 
-    /* get the PU depth */
-    pudepth = (unsigned) hwloc_get_type_depth(topo->topology, HWLOC_OBJ_PU);
-    width = hwloc_get_nbobjs_by_depth(topo->topology, pudepth);
+        /* get the PU depth */
+        pudepth = (unsigned) hwloc_get_type_depth(topo->topology, HWLOC_OBJ_PU);
+        width = hwloc_get_nbobjs_by_depth(topo->topology, pudepth);
+    }
 
     /* Enumerate the devices, then measure each one.
      *
@@ -1453,7 +1623,7 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
      * is what makes them agree by construction: it is also what gives this
      * function per-PCI-function dedup (a GPU exposing a card node, a render
      * node and a vendor node is one device, not three) and a deterministic
-     * order, neither of which the walk here used to have.
+     * order.
      *
      * The enumerator takes one name, so a caller naming several devices
      * gets one enumeration per name.  Filtering a single enumeration by the
@@ -1461,8 +1631,8 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
      *
      * pmix_globals.hostname is the right node here, and is the only place in
      * the tree where that is true by construction: distances are measured
-     * against a cpuset of this machine's PUs, so the topology being read can
-     * only be the local one. */
+     * against a cpuset or a device of this machine, so the topology being
+     * read can only be the local one. */
     nsets = (NULL == devids) ? 1 : (size_t) PMIx_Argv_count(devids);
     sets = calloc(nsets, sizeof(*sets));
     if (NULL == sets) {
@@ -1502,6 +1672,13 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
             d->dist.uuid = strdup(sets[c].devs[k].dev.uuid);
             d->dist.osname = strdup(sets[c].devs[k].dev.osname);
 
+            if (NULL != odev) {
+                dv = device_to_device(&odev[0], &sets[c].devs[k]);
+                d->dist.mindist = dv;
+                d->dist.maxdist = dv;
+                continue;
+            }
+
             tgt = sets[c].devs[k].locality;
             if (NULL == tgt) {
                 /* nothing in the topology is local to it */
@@ -1509,6 +1686,9 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
                 d->dist.maxdist = UINT16_MAX;
                 continue;
             }
+            /* the device's position below its locality is the same from
+             * every PU, so it only has to be measured once */
+            iohops = hops_to(sets[c].devs[k].obj, tgt);
 
             /* Loop over the PUs the process is bound to, measuring each one's
              * distance to this device.
@@ -1567,8 +1747,8 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
                 d->dist.mindist = UINT16_MAX;
                 d->dist.maxdist = UINT16_MAX;
             } else {
-                d->dist.mindist = mindist;
-                d->dist.maxdist = maxdist;
+                d->dist.mindist = dist_value(mindist, iohops);
+                d->dist.maxdist = dist_value(maxdist, iohops);
             }
         }
     }
@@ -1608,6 +1788,9 @@ cleanup:
             }
         }
         free(sets);
+    }
+    if (NULL != odev) {
+        pmix_hwloc_release_devices(odev, nodev);
     }
     if (NULL != devids) {
         PMIx_Argv_free(devids);
@@ -2048,11 +2231,19 @@ static pmix_status_t build_device_uuid(hwloc_obj_t osdev, const char *hostname,
     return PMIX_SUCCESS;
 }
 
-/* Does this OS device answer to the caller's name?  Either spelling counts:
- * the OS name hwloc gave it, or the uuid PMIx reports for it. */
-static bool osdev_named(hwloc_obj_t osdev, const char *hostname, const char *devid)
+/* Does this OS device answer to the caller's name?  Any of these spellings
+ * counts: the OS name hwloc gave it, the uuid PMIx reports for it, the
+ * vendor identity recorded on it, or the bus id of the PCI function it
+ * hangs off.  The last two are how the software that will USE a device
+ * knows it - a GPU runtime reports a vendor uuid and a PCI bus id, never a
+ * PMIx uuid - so accepting them is what lets such a caller name a device
+ * without first translating it through an enumeration of its own. */
+static bool osdev_named(hwloc_obj_t osdev, hwloc_obj_t pci,
+                        const char *hostname, const char *devid)
 {
-    char *uuid = NULL;
+    char *uuid = NULL, busid[32];
+    const char *val;
+    unsigned k;
     bool found;
 
     if (NULL == devid || NULL == osdev->name) {
@@ -2060,6 +2251,20 @@ static bool osdev_named(hwloc_obj_t osdev, const char *hostname, const char *dev
     }
     if (0 == strcasecmp(devid, osdev->name)) {
         return true;
+    }
+    for (k = 0; NULL != vendor_id_keys[k].key; k++) {
+        val = hwloc_obj_get_info_by_name(osdev, vendor_id_keys[k].key);
+        if (NULL != val && 0 == strcasecmp(devid, val)) {
+            return true;
+        }
+    }
+    if (NULL != pci) {
+        snprintf(busid, sizeof(busid), "%04x:%02x:%02x.%01x",
+                 pci->attr->pcidev.domain, pci->attr->pcidev.bus,
+                 pci->attr->pcidev.dev, pci->attr->pcidev.func);
+        if (0 == strcasecmp(devid, busid)) {
+            return true;
+        }
     }
     if (PMIX_SUCCESS != build_device_uuid(osdev, hostname, &uuid)) {
         return false;
@@ -2207,7 +2412,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
         if (NULL != match) {
             /* the name the caller used wins the right to name the function -
              * asking for mlx5_0 and being told about ib0 is not an answer */
-            if (osdev_named(osdev, hostname, devid)) {
+            if (osdev_named(osdev, pci, hostname, devid)) {
                 match->osdev = osdev;
                 match->type = dtype;
                 match->named = true;
@@ -2225,7 +2430,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
         c->osdev = osdev;
         c->pci = pci;
         c->type = dtype;
-        c->named = osdev_named(osdev, hostname, devid);
+        c->named = osdev_named(osdev, pci, hostname, devid);
         pmix_list_append(&cands, &c->super);
 
     next:

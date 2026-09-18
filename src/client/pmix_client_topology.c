@@ -24,6 +24,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_error.h"
 
@@ -320,6 +321,8 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
      * so the whole ask-the-server fallback failed instead of sending. */
     pmix_topology_t notopo = {NULL, NULL};
     pmix_cpuset_t nocpuset = {NULL, NULL};
+    bool fromdev = false;
+    size_t n;
 
     if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.initialized))) {
         return PMIX_ERR_INIT;
@@ -333,6 +336,16 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
 
     if (PMIX_UNLIKELY(pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped))) {
         return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* measuring from a device leaves the cpuset out of it entirely */
+    if (NULL != info) {
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_DIST_ORIGIN)) {
+                fromdev = true;
+                break;
+            }
+        }
     }
 
     cb = PMIX_NEW(pmix_cb_t);
@@ -353,8 +366,12 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
     } else {
         topo = tp;
     }
-    /* same for cpuset */
-    if (NULL == cp) {
+    /* same for cpuset - unless we are measuring from a device, in which
+     * case there is no location of ours to find and failing to find one
+     * is no reason to give up */
+    if (fromdev) {
+        cpuset = cp;
+    } else if (NULL == cp) {
         /* if our cpuset is NULL, it could be we are unbound or
          * that we haven't yet gotten our cpuset. Try to get it. */
         if (NULL == pmix_globals.cpuset.bitmap) {
@@ -384,6 +401,14 @@ request:
         !pmix_atomic_check_bool(&pmix_globals.connected)) {
         PMIX_RELEASE(cb);
         return PMIX_ERR_UNREACH;
+    }
+
+    /* A server that predates PMIX_DEVICE_DIST_ORIGIN would ignore it and
+     * answer a different question - distances from our own location -
+     * with nothing to show that it had.  Refuse rather than return that. */
+    if (fromdev && PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 7, 0, 0)) {
+        PMIX_RELEASE(cb);
+        return PMIX_ERR_NOT_SUPPORTED;
     }
 
     /* don't send our own topology - the server has one. Likewise for a
