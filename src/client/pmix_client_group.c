@@ -2410,8 +2410,13 @@ static pmix_status_t add_group(const char *grpid,
             PMIX_RELEASE(grp);
             return PMIX_ERR_NOMEM;
         }
+        /* keep the host's order - it is the membership order the caller
+         * was handed, and a group reference by rank counts across these
+         * members, so sorting here would give group ranks an order
+         * different from the one PMIX_GROUP_MEMBERSHIP reports. Every
+         * member receives the same array from the host, so their group
+         * ranks agree without it. */
         memcpy(grp->members, members, nmembers * sizeof(pmix_proc_t));
-        qsort(grp->members, nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
     }
     grp->nmbrs = nmembers;
     grp->ctxid = ctxid;
