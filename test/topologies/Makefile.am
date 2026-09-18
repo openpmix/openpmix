@@ -59,4 +59,5 @@
 # that the enumerator has to survive rather than trust.
 
 EXTRA_DIST = test-topo.xml test-topo2.xml nvml-4gpu.xml drm-4gpu.xml \
-        intel-4gpu.xml intel-flat-4gpu.xml opa-hfi.xml unnamed-osdev.xml
+        intel-4gpu.xml intel-flat-4gpu.xml opa-hfi.xml unnamed-osdev.xml \
+        multi-rc.xml
