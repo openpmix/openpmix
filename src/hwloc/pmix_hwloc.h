@@ -171,6 +171,13 @@ typedef struct {
      * device.  Borrowed from the topology, so it is valid only as long as
      * the topology is, and must not be freed. */
     hwloc_obj_t locality;
+    /* The object the device sits at in the I/O tree - its PCI function, or
+     * the OS device itself when it has no PCI ancestor.  This is what a
+     * distance is measured from: the path from here up to "locality" is
+     * the part of the device's position that the CPU tree cannot see - which
+     * host bridge, and how many switches deep.  Borrowed from the topology
+     * like "locality". */
+    hwloc_obj_t obj;
 } pmix_hwloc_device_t;
 
 /* Enumerate the devices of the given type(s) in a topology.
