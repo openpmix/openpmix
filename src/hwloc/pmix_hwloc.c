@@ -1351,12 +1351,17 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
     pmix_list_t dists;
     pmix_devdist_item_t *d;
     pmix_device_distance_t *array;
-    size_t n, dn, k, ndevs = 0;
+    size_t n, dn, k, j, c, nsets = 0;
     unsigned w, width, pudepth;
     pmix_device_type_t type = 0;
     char **devids = NULL;
-    bool found;
-    pmix_hwloc_device_t *devs = NULL;
+    bool dup;
+    /* one enumeration per device the caller named, or a single one of
+     * everything of the requested types */
+    struct {
+        pmix_hwloc_device_t *devs;
+        size_t ndevs;
+    } *sets = NULL;
     pmix_status_t rc = PMIX_SUCCESS, prc;
 
     /* topo->topology is handed to hwloc, which dereferences it, and this is
@@ -1450,108 +1455,121 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
      * node and a vendor node is one device, not three) and a deterministic
      * order, neither of which the walk here used to have.
      *
+     * The enumerator takes one name, so a caller naming several devices
+     * gets one enumeration per name.  Filtering a single enumeration by the
+     * first name, as this once did, returned only the first device.
+     *
      * pmix_globals.hostname is the right node here, and is the only place in
      * the tree where that is true by construction: distances are measured
      * against a cpuset of this machine's PUs, so the topology being read can
      * only be the local one. */
-    prc = pmix_hwloc_get_devices(topo, pmix_globals.hostname, type,
-                                 (NULL == devids) ? NULL : devids[0],
-                                 &devs, &ndevs);
-    if (PMIX_SUCCESS != prc) {
-        rc = prc;
+    nsets = (NULL == devids) ? 1 : (size_t) PMIx_Argv_count(devids);
+    sets = calloc(nsets, sizeof(*sets));
+    if (NULL == sets) {
+        nsets = 0;
+        rc = PMIX_ERR_NOMEM;
         goto cleanup;
     }
+    for (c = 0; c < nsets; c++) {
+        prc = pmix_hwloc_get_devices(topo, pmix_globals.hostname, type,
+                                     (NULL == devids) ? NULL : devids[c],
+                                     &sets[c].devs, &sets[c].ndevs);
+        if (PMIX_SUCCESS != prc) {
+            rc = prc;
+            goto cleanup;
+        }
+    }
 
-    for (k = 0; k < ndevs; k++) {
-        /* a caller may name several devices; get_devices() takes one, so
-         * filter the rest here */
-        if (NULL != devids) {
-            found = false;
-            for (dn = 0; NULL != devids[dn]; dn++) {
-                if (0 == strcasecmp(devids[dn], devs[k].dev.osname)
-                    || 0 == strcasecmp(devids[dn], devs[k].dev.uuid)) {
-                    found = true;
-                    break;
+    for (c = 0; c < nsets; c++) {
+        for (k = 0; k < sets[c].ndevs; k++) {
+            /* two names for one device - "mlx5_0" and "ib0" - report it once */
+            dup = false;
+            for (dn = 0; dn < c && !dup; dn++) {
+                for (j = 0; j < sets[dn].ndevs; j++) {
+                    if (sets[dn].devs[j].obj == sets[c].devs[k].obj) {
+                        dup = true;
+                        break;
+                    }
                 }
             }
-            if (!found) {
+            if (dup) {
                 continue;
             }
-        }
 
-        d = PMIX_NEW(pmix_devdist_item_t);
-        pmix_list_append(&dists, &d->super);
-        d->dist.type = devs[k].dev.type;
-        d->dist.uuid = strdup(devs[k].dev.uuid);
-        d->dist.osname = strdup(devs[k].dev.osname);
+            d = PMIX_NEW(pmix_devdist_item_t);
+            pmix_list_append(&dists, &d->super);
+            d->dist.type = sets[c].devs[k].dev.type;
+            d->dist.uuid = strdup(sets[c].devs[k].dev.uuid);
+            d->dist.osname = strdup(sets[c].devs[k].dev.osname);
 
-        tgt = devs[k].locality;
-        if (NULL == tgt) {
-            /* nothing in the topology is local to it */
-            d->dist.mindist = UINT16_MAX;
-            d->dist.maxdist = UINT16_MAX;
-            continue;
-        }
-
-        /* Loop over the PUs the process is bound to, measuring each one's
-         * distance to this device.
-         *
-         * The min/max pair exists precisely because a process may be bound
-         * to more than one location and those locations may sit at
-         * different distances from the device - that is what
-         * pmix_device_distance_t(5) says the two fields are for.  So the
-         * ancestor has to be taken between THIS PU and the device. */
-        maxdist = 0;
-        mindist = UINT_MAX;
-        for (w = 0; w < width; w++) {
-            pu = hwloc_get_obj_by_depth(topo->topology, pudepth, w);
-            if (NULL == pu || NULL == pu->cpuset
-                || !hwloc_bitmap_intersects(pu->cpuset, cpuset->bitmap)) {
+            tgt = sets[c].devs[k].locality;
+            if (NULL == tgt) {
+                /* nothing in the topology is local to it */
+                d->dist.mindist = UINT16_MAX;
+                d->dist.maxdist = UINT16_MAX;
                 continue;
             }
-            ancestor = hwloc_get_common_ancestor_obj(topo->topology, pu, tgt);
-            if (NULL == ancestor) {
-                /* shouldn't happen - consider this an error condition */
-                rc = PMIX_ERROR;
-                goto cleanup;
+
+            /* Loop over the PUs the process is bound to, measuring each one's
+             * distance to this device.
+             *
+             * The min/max pair exists precisely because a process may be bound
+             * to more than one location and those locations may sit at
+             * different distances from the device - that is what
+             * pmix_device_distance_t(5) says the two fields are for.  So the
+             * ancestor has to be taken between THIS PU and the device. */
+            maxdist = 0;
+            mindist = UINT_MAX;
+            for (w = 0; w < width; w++) {
+                pu = hwloc_get_obj_by_depth(topo->topology, pudepth, w);
+                if (NULL == pu || NULL == pu->cpuset
+                    || !hwloc_bitmap_intersects(pu->cpuset, cpuset->bitmap)) {
+                    continue;
+                }
+                ancestor = hwloc_get_common_ancestor_obj(topo->topology, pu, tgt);
+                if (NULL == ancestor) {
+                    /* shouldn't happen - consider this an error condition */
+                    rc = PMIX_ERROR;
+                    goto cleanup;
+                }
+                if (0 == ancestor->depth) {
+                    /* we only share the machine - need to do something more
+                     * to compute the distance. This can, however, get a little
+                     * hairy as there is no good measure of package-to-package
+                     * distance - it is all typically given in terms of NUMA
+                     * domains, which is no longer a valid way of looking at
+                     * locations due to overlapping domains. For now, we will
+                     * just take the depth of this location and add the depth
+                     * of the topology to ensure it sorts further away than
+                     * anything that shares an ancestor below the machine
+                     * (those are all < depth) */
+                    dp = pu->depth + depth;
+                } else {
+                    /* the depth value can be used as an indicator of relative
+                     * locality - the higher the value, the closer the device.
+                     * We invert the pyramid to set the dist to be closer for
+                     * smaller values */
+                    dp = depth - ancestor->depth;
+                }
+                if (mindist > dp) {
+                    mindist = dp;
+                }
+                if (maxdist < dp) {
+                    maxdist = dp;
+                }
             }
-            if (0 == ancestor->depth) {
-                /* we only share the machine - need to do something more
-                 * to compute the distance. This can, however, get a little
-                 * hairy as there is no good measure of package-to-package
-                 * distance - it is all typically given in terms of NUMA
-                 * domains, which is no longer a valid way of looking at
-                 * locations due to overlapping domains. For now, we will
-                 * just take the depth of this location and add the depth
-                 * of the topology to ensure it sorts further away than
-                 * anything that shares an ancestor below the machine
-                 * (those are all < depth) */
-                dp = pu->depth + depth;
+            if (UINT_MAX == mindist) {
+                /* no location in the cpuset lies in this topology, so we
+                 * measured nothing. Report the documented "distance is
+                 * unknown" sentinel in BOTH fields - leaving maxdist at 0
+                 * claimed the device was as close as possible while
+                 * mindist said it was unknown, and min > max besides. */
+                d->dist.mindist = UINT16_MAX;
+                d->dist.maxdist = UINT16_MAX;
             } else {
-                /* the depth value can be used as an indicator of relative
-                 * locality - the higher the value, the closer the device.
-                 * We invert the pyramid to set the dist to be closer for
-                 * smaller values */
-                dp = depth - ancestor->depth;
+                d->dist.mindist = mindist;
+                d->dist.maxdist = maxdist;
             }
-            if (mindist > dp) {
-                mindist = dp;
-            }
-            if (maxdist < dp) {
-                maxdist = dp;
-            }
-        }
-        if (UINT_MAX == mindist) {
-            /* no location in the cpuset lies in this topology, so we
-             * measured nothing. Report the documented "distance is
-             * unknown" sentinel in BOTH fields - leaving maxdist at 0
-             * claimed the device was as close as possible while
-             * mindist said it was unknown, and min > max besides. */
-            d->dist.mindist = UINT16_MAX;
-            d->dist.maxdist = UINT16_MAX;
-        } else {
-            d->dist.mindist = mindist;
-            d->dist.maxdist = maxdist;
         }
     }
     /* create the return array */
@@ -1583,8 +1601,13 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
 
 cleanup:
     PMIX_LIST_DESTRUCT(&dists);
-    if (NULL != devs) {
-        pmix_hwloc_release_devices(devs, ndevs);
+    if (NULL != sets) {
+        for (c = 0; c < nsets; c++) {
+            if (NULL != sets[c].devs) {
+                pmix_hwloc_release_devices(sets[c].devs, sets[c].ndevs);
+            }
+        }
+        free(sets);
     }
     if (NULL != devids) {
         PMIx_Argv_free(devids);
@@ -2271,6 +2294,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
             tgt = c->osdev;
         }
         array[n].locality = tgt;
+        array[n].obj = (NULL == c->pci) ? c->osdev : c->pci;
         ++n;
     }
 
