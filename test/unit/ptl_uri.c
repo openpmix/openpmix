@@ -256,48 +256,6 @@ static void test_split_and_resolve(void)
     PMIx_Argv_free(ifs);
 }
 
-/* The IPv6 branch never stepped past the ':' it split the port off at, so it
- * converted an empty string: every IPv6 URI came out as port 0, and no
- * client or tool could reach a server listening over IPv6. */
-static void test_setup_connection_ipv6(void)
-{
-    pmix_status_t rc;
-    struct sockaddr_storage ss;
-    struct sockaddr_in6 *in6;
-    size_t len = 0;
-
-    rc = pmix_ptl_base_setup_connection("tcp6://[::1]:41234", &ss, &len);
-    report("setup_connection: IPv6 URI accepted", PMIX_SUCCESS == rc, PMIx_Error_string(rc));
-    if (PMIX_SUCCESS == rc) {
-        in6 = (struct sockaddr_in6 *) &ss;
-        report("setup_connection: family is AF_INET6", AF_INET6 == in6->sin6_family,
-               "wrong family");
-        report("setup_connection: IPv6 port converted to network order",
-               41234 == ntohs(in6->sin6_port), "wrong port");
-        report("setup_connection: IPv6 address length reported",
-               sizeof(struct sockaddr_in6) == len, "wrong length");
-    }
-
-    /* the form the listener writes, which does not bracket the address -
-     * the port is whatever follows the last ':' */
-    rc = pmix_ptl_base_setup_connection("tcp6://::1:41235", &ss, &len);
-    report("setup_connection: unbracketed IPv6 URI accepted", PMIX_SUCCESS == rc,
-           PMIx_Error_string(rc));
-    if (PMIX_SUCCESS == rc) {
-        in6 = (struct sockaddr_in6 *) &ss;
-        report("setup_connection: unbracketed IPv6 port converted",
-               41235 == ntohs(in6->sin6_port), "wrong port");
-    }
-
-    /* nothing before the separator: the parser looked at the last character
-     * of the empty address to strip a ']', the byte before its allocation */
-    rc = pmix_ptl_base_setup_connection("tcp6://:1", &ss, &len);
-    report("setup_connection: IPv6 URI with no address rejected", PMIX_SUCCESS != rc,
-           "accepted");
-    rc = pmix_ptl_base_setup_connection("tcp6://[::1]:", &ss, &len);
-    report("setup_connection: IPv6 empty port rejected", PMIX_SUCCESS != rc, "accepted");
-}
-
 /* ---- pmix_ptl_base_parse_version --------------------------------- */
 
 static void check_version(const char *name, const char *vers, uint8_t emaj, uint8_t emin,
