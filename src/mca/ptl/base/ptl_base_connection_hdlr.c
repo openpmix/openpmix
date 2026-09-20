@@ -245,17 +245,19 @@ static pmix_status_t read_connect_ack(pmix_pending_connection_t *pnd)
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
+    /* get the id, authentication and version payload (and possibly
+     * security credential) - to guard against potential attacks, we'll
+     * set an arbitrary limit per a define. The length is judged on every
+     * pass, not only the one that allocates: it is the bound the read
+     * below runs to, and it comes off the wire */
+    if (PMIX_MAX_CRED_SIZE < pnd->hdr.nbytes) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:connection_handler: connect-ack of %u bytes "
+                            "on socket %d exceeds the limit",
+                            pnd->hdr.nbytes, pnd->sd);
+        return PMIX_ERR_BAD_PARAM;
+    }
     if (NULL == pnd->msg) {
-        /* get the id, authentication and version payload (and possibly
-         * security credential) - to guard against potential attacks,
-         * we'll set an arbitrary limit per a define */
-        if (PMIX_MAX_CRED_SIZE < pnd->hdr.nbytes) {
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:base:connection_handler: connect-ack of %u bytes "
-                                "on socket %d exceeds the limit",
-                                pnd->hdr.nbytes, pnd->sd);
-            return PMIX_ERR_BAD_PARAM;
-        }
         pnd->msg = (char *) calloc(pnd->hdr.nbytes + 1, sizeof(char));
         if (NULL == pnd->msg) {
             return PMIX_ERR_NOMEM;
