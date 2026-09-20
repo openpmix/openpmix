@@ -152,6 +152,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
         niptr = 0;
     } else if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        /* the conversion creates its array before filling it, so a failure
+         * partway leaves one here that iptr never took over */
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
         PMIX_INFO_LIST_RELEASE(ilist);
         goto error;
     } else {

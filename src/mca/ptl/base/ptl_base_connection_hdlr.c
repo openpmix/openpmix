@@ -1582,6 +1582,9 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     PMIx_Info_list_release(ilist);
     if (PMIX_SUCCESS  != rc) {
         PMIX_ERROR_LOG(rc);
+        /* the pending connection never adopted the array, so the partial
+         * one the conversion created is ours to release */
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
         goto cleanup;
     }
 

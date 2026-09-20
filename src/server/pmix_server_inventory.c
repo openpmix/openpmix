@@ -103,6 +103,9 @@ static void clct(int sd, short args, void *cbdata)
         cd->ninfo = darray.size;
     } else {
         PMIX_ERROR_LOG(rc);
+        /* a conversion that failed partway still created the array it was
+         * filling, and it is ours to give back - nothing adopted it here */
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
     }
 
 report:

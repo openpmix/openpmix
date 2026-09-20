@@ -1414,6 +1414,9 @@ pmix_status_t pmix_server_build_proc_info(pmix_rank_info_t *info,
     rc = PMIx_Info_list_convert(ilist, &darray);
     PMIx_Info_list_release(ilist);
     if (PMIX_SUCCESS != rc) {
+        /* the conversion creates the array before it fills it, so a
+         * failure partway still leaves it ours to release */
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
         return rc;
     }
     rc = PMIx_Info_load(xfer, PMIX_PROC_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
