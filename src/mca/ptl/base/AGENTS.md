@@ -223,9 +223,9 @@ connect-ack is never waited for:
   `read_connect_ack` fills `pnd->hdr` and then `pnd->msg`, counting bytes
   in `hdr_recvd`/`msg_recvd`, and answers `PMIX_ERR_WOULD_BLOCK` when the
   socket has nothing more; the handler re-arms the read event and
-  returns. The header is judged against `PMIX_MAX_CRED_SIZE` the moment
-  it is complete, before any payload is allocated from the length it
-  names. Only once the whole connect-ack is in does the handler take the
+  returns. The header is judged against `PMIX_MAX_CRED_SIZE` on every
+  pass over a complete header - before any payload is allocated from the
+  length it names, and again before each resumed read runs to it. Only once the whole connect-ack is in does the handler take the
   payload, put the socket into blocking mode and parse.
 
 A blocking read bounded by a receive timeout is **not** a substitute:
