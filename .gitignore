@@ -144,6 +144,7 @@ examples/group_badinfo
 examples/group_invite_suppress
 examples/group_invite_nb
 examples/group_invite_endpts
+examples/group_invite_wildcard
 examples/topology
 examples/group_construct_abort
 examples/group_daemon_fail
