@@ -98,7 +98,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   simple simple_server abort group_die connect_die group_leave \
                   group_destruct_die group_invite group_invite_timeout group_invite_decline \
                   group_invite_abort group_invite_others group_invite_suppress group_invite_nb \
-                  group_invite_endpts topology \
+                  group_invite_endpts group_invite_wildcard topology \
                   spawn_reuse spawn_iof iof_watcher group_badinfo datatypes toolswitch \
                   modex_twice delete_key modex_attach_fail dmdx_departed \
                   xnspace_modex
@@ -200,6 +200,10 @@ group_invite_endpts_LDADD = $(top_builddir)/src/libpmix.la
 group_invite_others_SOURCES = group_invite_others.c examples.h
 group_invite_others_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 group_invite_others_LDADD = $(top_builddir)/src/libpmix.la
+
+group_invite_wildcard_SOURCES = group_invite_wildcard.c examples.h
+group_invite_wildcard_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
+group_invite_wildcard_LDADD = $(top_builddir)/src/libpmix.la
 
 group_badinfo_SOURCES = group_badinfo.c examples.h
 group_badinfo_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
@@ -375,6 +379,7 @@ distclean-local:
         async_group group_dmodex group_bootstrap client3 \
         group_leave group_destruct_die group_invite group_invite_timeout group_invite_decline \
         group_invite_abort group_invite_suppress group_invite_nb group_invite_endpts \
+        group_invite_others group_invite_wildcard \
         spawn_group resolve multi_nspace_group pub2 toolqry \
         simple_resolve pubstress monitor monitor_remote \
         simple simple_server abort datatypes toolswitch \
