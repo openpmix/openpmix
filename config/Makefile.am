@@ -46,6 +46,4 @@ EXTRA_DIST = \
     pmix_get_version.sh \
     mca_library_paths.txt \
     from-savannah/upstream-config.guess \
-    from-savannah/upstream-config.sub \
-    ltmain_pgi_tp.diff \
-    ltmain_nag_pthread.diff
+    from-savannah/upstream-config.sub
