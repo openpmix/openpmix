@@ -25,12 +25,11 @@
  *
  * Layout: rank 0 attempts to invite ranks 1..N-1 without joining, and must
  * be refused. The other ranks have nothing to wait for - no invitation is
- * ever sent - so they proceed straight to the closing fence. Formerly they accept
- * from their PMIX_GROUP_INVITED handlers (the non-blocking join is
- * mandatory - the handler runs on the progress thread). The group is the
- * invitees only, so they - not the leader - receive
- * PMIX_GROUP_CONSTRUCT_COMPLETE, fence across the group to prove it is
- * usable, and destruct it. The leader takes no part beyond inviting.
+ * ever sent - so they proceed straight to the closing fence. They keep
+ * handlers registered for PMIX_GROUP_INVITED, PMIX_GROUP_CONSTRUCT_COMPLETE
+ * and PMIX_GROUP_CONSTRUCT_ABORT, and check after that fence that none of
+ * the three fired: a refusal that still issued the invitation would show up
+ * as an event on an invitee, not as a status at the leader.
  *
  * Requires at least 3 ranks: with 2 there is a single invitee and the
  * off-by-one is invisible.
@@ -51,11 +50,14 @@
 #define GROUP_ID "invothers"
 
 static pmix_proc_t myproc;
+static volatile bool invited_seen = false;
 static volatile bool complete_seen = false;
 static volatile bool abort_seen = false;
 
-/* PMIX_GROUP_INVITED handler: an invitee accepts. The leader never sees
- * this event here - it did not invite itself. */
+/* PMIX_GROUP_INVITED handler. No invitation may be issued for this group -
+ * the leader's request is refused before one goes out - so an event here
+ * is the failure this program is looking for. Record it rather than
+ * joining, and let the check after the closing fence report it. */
 static void invite_handler(size_t evhdlr_registration_id, pmix_status_t status,
                            const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                            pmix_info_t results[], size_t nresults,
@@ -63,7 +65,6 @@ static void invite_handler(size_t evhdlr_registration_id, pmix_status_t status,
 {
     size_t n;
     char *grp = NULL;
-    pmix_status_t rc;
     EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, results, nresults);
 
     for (n = 0; n < ninfo; n++) {
@@ -72,14 +73,11 @@ static void invite_handler(size_t evhdlr_registration_id, pmix_status_t status,
             break;
         }
     }
-    fprintf(stderr, "%s:%d INVITED to group %s by %s:%d - accepting\n",
+    fprintf(stderr, "%s:%d ERROR! INVITED to group %s by %s:%d - the invitation "
+            "should have been refused\n",
             myproc.nspace, myproc.rank, (NULL == grp) ? "(unknown)" : grp,
             source->nspace, source->rank);
-    rc = PMIx_Group_join_nb(grp, source, PMIX_GROUP_ACCEPT, NULL, 0, NULL, NULL);
-    if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "%s:%d ERROR in PMIx_Group_join_nb: %s\n", myproc.nspace,
-                myproc.rank, PMIx_Error_string(rc));
-    }
+    invited_seen = true;
 
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -154,7 +152,6 @@ int main(int argc, char **argv)
     uint32_t nprocs, n;
     pmix_info_t *results;
     size_t nresults;
-    int waited;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
@@ -234,43 +231,6 @@ int main(int argc, char **argv)
      * is issued - so there is nothing for an invitee to wait for. */
     fprintf(stderr, "%s:%d not expecting an invitation\n",
             myproc.nspace, myproc.rank);
-    goto lastsync;
-
-    /* every invitee must be told the group formed */
-    for (waited = 0; !complete_seen && !abort_seen && waited < 100; waited++) {
-        usleep(100000); /* 0.1s; up to 10s total */
-    }
-    if (abort_seen) {
-        fprintf(stderr, "Client ns %s rank %d: FAILED - construct aborted\n",
-                myproc.nspace, myproc.rank);
-        rc = PMIX_GROUP_CONSTRUCT_ABORT;
-        goto done;
-    }
-    if (!complete_seen) {
-        fprintf(stderr, "Client ns %s rank %d: FAILED - never received "
-                "PMIX_GROUP_CONSTRUCT_COMPLETE\n", myproc.nspace, myproc.rank);
-        rc = PMIX_ERR_TIMEOUT;
-        goto done;
-    }
-    fprintf(stderr, "%d PMIX_GROUP_CONSTRUCT_COMPLETE received: PASS\n", myproc.rank);
-
-    /* prove the group is usable: fence across it by its group id. Only the
-     * invitees are members, so only they participate. */
-    PMIX_LOAD_PROCID(&proc, GROUP_ID, PMIX_RANK_WILDCARD);
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: ERROR! PMIx_Fence across group FAILED: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        goto done;
-    }
-    fprintf(stderr, "%d group fence complete\n", myproc.rank);
-
-    fprintf(stderr, "%d executing Group_destruct\n", myproc.rank);
-    rc = PMIx_Group_destruct(GROUP_ID, NULL, 0);
-    if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "Client ns %s rank %d: ERROR! PMIx_Group_destruct FAILED: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        goto done;
-    }
 
 lastsync:
     /* final sync across the whole job, leader included */
@@ -278,6 +238,18 @@ lastsync:
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
         fprintf(stderr, "Client ns %s rank %d: final PMIx_Fence failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
+        goto done;
+    }
+
+    /* the refusal is what this program checks, so it has to be checked from
+     * both ends: the leader saw the status, and no invitee may have seen an
+     * invitation, a completion or an abort for a group that was never built.
+     * The fence above puts every rank past the point where the leader's
+     * request was answered, so anything issued for it would have arrived. */
+    if (invited_seen || complete_seen || abort_seen) {
+        fprintf(stderr, "Client ns %s rank %d: FAILED - a refused invitation still "
+                "produced group events\n", myproc.nspace, myproc.rank);
+        rc = PMIX_ERROR;
         goto done;
     }
 
