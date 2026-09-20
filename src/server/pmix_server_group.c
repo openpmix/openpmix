@@ -1847,7 +1847,7 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
     pmix_server_invite_t *inv = NULL;
     pmix_info_t *info = NULL;
     struct timeval tv;
-    pmix_namespace_t *nptr;
+    pmix_namespace_t *nptr, *ns;
 
     pmix_output_verbose(2, pmix_server_globals.group_output,
                         "recvd group invite from %s", PMIX_PEER_PRINT(cd->peer));
@@ -1939,12 +1939,15 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
     inv->nmembers = 0;
     for (n = 0; n < nprocs; n++) {
         if (PMIX_RANK_WILDCARD == procs[n].rank) {
+            /* the iterator may not be cleared inside the loop - the step
+             * expression reads its next pointer, so a NULL assigned in the
+             * body is dereferenced on the way to the following entry */
             nptr = NULL;
-            PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
-                if (PMIX_CHECK_NSPACE(nptr->nspace, procs[n].nspace)) {
+            PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+                if (PMIX_CHECK_NSPACE(ns->nspace, procs[n].nspace)) {
+                    nptr = ns;
                     break;
                 }
-                nptr = NULL;
             }
             if (NULL == nptr || 0 == nptr->nprocs) {
                 /* we cannot name the members of a namespace we do not know */
@@ -1971,11 +1974,11 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
     for (n = 0; n < nprocs; n++) {
         if (PMIX_RANK_WILDCARD == procs[n].rank) {
             nptr = NULL;
-            PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
-                if (PMIX_CHECK_NSPACE(nptr->nspace, procs[n].nspace)) {
+            PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+                if (PMIX_CHECK_NSPACE(ns->nspace, procs[n].nspace)) {
+                    nptr = ns;
                     break;
                 }
-                nptr = NULL;
             }
             if (NULL == nptr) {
                 rc = PMIX_ERR_BAD_PARAM;
