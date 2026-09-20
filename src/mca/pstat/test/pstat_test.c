@@ -211,6 +211,9 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     rc = PMIx_Info_list_convert(cache, &darray);
     PMIx_Info_list_release(cache);
     if (PMIX_SUCCESS != rc) {
+        /* the conversion creates its array before filling it, so a failure
+         * partway still leaves one here to release */
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
         return rc;
     }
     rc = PMIx_Info_list_add(answer, PMIX_PROC_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
@@ -370,6 +373,9 @@ static pmix_status_t disk_stat(void *answer,
         rc = PMIx_Info_list_convert(cache, &darray);
         PMIx_Info_list_release(cache);
         if (PMIX_SUCCESS != rc) {
+            /* the conversion creates its array before filling it, so a
+             * failure partway still leaves one here to release */
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             return rc;
         }
         rc = PMIx_Info_list_add(answer, PMIX_DISK_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
@@ -485,6 +491,9 @@ static pmix_status_t net_stat(void *answer, char**nets,
         rc = PMIx_Info_list_convert(cache, &darray);
         PMIx_Info_list_release(cache);
         if (PMIX_SUCCESS != rc) {
+            /* the conversion creates its array before filling it, so a
+             * failure partway still leaves one here to release */
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             return rc;
         }
 
@@ -717,6 +726,9 @@ static void update(int sd, short args, void *cbdata)
         rc = PMIx_Info_list_convert(ilist, &darray);
         PMIx_Info_list_release(ilist);
         if (PMIX_SUCCESS != rc) {
+            /* the conversion creates its array before filling it, so a
+             * failure partway still leaves one here to release */
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             goto error;
         }
         rc = PMIx_Info_list_add(answer, PMIX_NODE_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
@@ -753,6 +765,7 @@ static void update(int sd, short args, void *cbdata)
             if (PMIX_ERR_EMPTY != rc) {
                 PMIX_ERROR_LOG(rc);
             }
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             return;
         }
         // setup the event
@@ -1090,6 +1103,7 @@ processprocs:
         // add this to the final answer
         rc = PMIx_Info_list_convert(cb.cbdata, &darray);
         if (PMIX_SUCCESS != rc) {
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             PMIx_Info_list_release(cb.cbdata);
             op->cb = NULL;
             PMIX_DESTRUCT(&cb);
@@ -1212,6 +1226,7 @@ processprocs:
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
         if (PMIX_SUCCESS != rc) {
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             PMIX_RELEASE(op);
             if (PMIX_ERR_EMPTY == rc) {
                 // empty = nothing found, not an error
