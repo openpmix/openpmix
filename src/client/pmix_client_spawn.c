@@ -406,6 +406,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         // convert the list to an array
         rc = PMIx_Info_list_convert(xlist, &darray);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            /* the array is created before it is filled, so a failure
+             * partway leaves it ours - the caddy never adopted it */
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             PMIx_Info_list_release(xlist);
             PMIX_RELEASE(fcd);
             return rc;
