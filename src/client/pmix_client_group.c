@@ -2160,6 +2160,10 @@ report:
     if (PMIX_SUCCESS == rc) {
         cb->info = (pmix_info_t*)darray.array;
         cb->ninfo = darray.size;
+    } else {
+        /* a conversion that failed partway still created the array it was
+         * filling, and nothing adopted it */
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
     }
     PMIx_Info_list_release(ilist);
 
