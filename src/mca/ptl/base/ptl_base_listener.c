@@ -1095,6 +1095,7 @@ complete:
                               sizeof(struct sockaddr_storage))) {
         pmix_output(0, "ptl:base: problems getting address for kernel index %i\n",
                     pmix_ifindextokindex(saveindex));
+        free(altidx);
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
@@ -1109,6 +1110,7 @@ complete:
         /* unrecognized family type - shouldn't be possible as we only
          * included IPv4 and IPv6 interfaces, but this is needed to
          * silence warnings */
+        free(altidx);
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
