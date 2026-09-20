@@ -258,6 +258,14 @@ can optionally replace the rejecting process with another, can terminate
 the group construct operation, or can ignore the failure (thereby accepting
 a reduced final group membership).
 
+An entry in that array may name a rank of ``PMIX_RANK_WILDCARD``, which
+invites every process in the given namespace. The server expands it into
+the concrete ranks when it creates the invitation, since everything that
+follows - matching each answer to a member, counting who has responded -
+is done by process identity and cannot be matched against a wildcard. The
+namespace has to be one the server knows, or the request is refused with
+``PMIX_ERR_BAD_PARAM``.
+
 The leader will return from the ``PMIx_Group_invite`` function once all
 specified members have responded to the invitation. In addition, the leader
 will (since it is a member of the group) receive the ``PMIX_GROUP_CONSTRUCT_COMPLETE``
