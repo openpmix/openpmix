@@ -73,9 +73,6 @@ my $username;
 my $hostname;
 my $full_hostname;
 
-# Patch program
-my $patch_prog = "patch";
-
 $username = getpwuid($>);
 $full_hostname = `hostname`;
 chomp($full_hostname);
@@ -592,27 +589,9 @@ sub patch_autotools_output {
         $indent_str = "=== ";
     }
 
-    # Patch ltmain.sh error for PGI version numbers.  Redirect stderr to
-    # /dev/null because this patch is only necessary for some versions of
-    # Libtool (e.g., 2.2.6b); it'll [rightfully] fail if you have a new
-    # enough Libtool that doesn't need this patch.  But don't alarm the
-    # user and make them think that autogen failed if this patch fails --
-    # make the errors be silent.
-    # Also patch ltmain.sh for NAG compiler
-    if (-f "config/ltmain.sh") {
-        verbose "$indent_str"."Patching PGI compiler version numbers in ltmain.sh\n";
-        system("$patch_prog -N -p0 < $topdir/config/ltmain_pgi_tp.diff >/dev/null 2>&1");
-        unlink("config/ltmain.sh.rej");
-
-        verbose "$indent_str"."Patching \"-pthread\" option for NAG compiler in ltmain.sh\n";
-        system("$patch_prog -N -p0 < $topdir/config/ltmain_nag_pthread.diff >/dev/null 2>&1");
-        unlink("config/ltmain.sh.rej");
-    }
-
-    # If there's no configure script, there's nothing else to do.
+    # If there's no configure script, there's nothing to do.
     return
         if (! -f "configure");
-    my @verbose_out;
 
     # Total ugh.  We have to patch the configure script itself.  See below
     # for explanations why.
@@ -623,50 +602,68 @@ sub patch_autotools_output {
     close(IN);
     my $c_orig = $c;
 
-    # The PGI 10 version number broke <=LT
-    # 2.2.6b's version number checking regexps.  We can't fix the
-    # Libtool install; all we can do is patch the resulting configure
-    # script.  :-( The following comes from the upstream patch:
-    # http://lists.gnu.org/archive/html/libtool-patches/2009-11/msg00016.html
-    push(@verbose_out, $indent_str . "Patching configure for Libtool PGI version number regexps\n");
-    $c =~ s/\*pgCC\\ \[1-5\]\* \| \*pgcpp\\ \[1-5\]\*/*pgCC\\ [1-5]\.* | *pgcpp\\ [1-5]\.*/g;
+    # Every patch below works around a bug in some range of Libtool
+    # versions, and every one of them stops matching once Libtool fixes
+    # the bug upstream.  A Perl s/// that matched nothing is
+    # indistinguishable from one that matched, so without counting the
+    # substitutions a patch can rot into dead code -- or be born dead
+    # from a typo in its search string -- and autogen.pl will keep
+    # cheerfully reporting that it patched something.  So count, and
+    # report what actually happened.
+    my @patch_names;
+    my %patch_counts;
 
-    # See http://git.savannah.gnu.org/cgit/libtool.git/commit/?id=v2.2.6-201-g519bf91 for details
-    # Note that this issue was fixed in LT 2.2.8, however most distros are still using 2.2.6b
+    my $record = sub {
+        my ($name, $count) = @_;
+        push(@patch_names, $name)
+            if (!exists($patch_counts{$name}));
+        # s/// returns the empty string, not 0, when it matches nothing
+        $patch_counts{$name} += ($count ? $count : 0);
+    };
 
-    push(@verbose_out, $indent_str . "Patching configure for IBM xlf libtool bug\n");
-    $c =~ s/(\$LD -shared \$libobjs \$deplibs \$)compiler_flags( -soname \$soname)/$1linker_flags$2/g;
-
-    #Check if we are using a recent enough libtool that supports PowerPC little endian
-    if(index($c, 'powerpc64le-*linux*)') == -1) {
-        push(@verbose_out, $indent_str . "Patching configure for PowerPC little endian support\n");
+    # Check if we are using a recent enough Libtool that supports
+    # PowerPC little endian.  Upstream added it in LT 2.4.3, so this
+    # only fires on exactly 2.4.2, the oldest Libtool we support.
+    my $ppcle = "PowerPC little endian support (Libtool < 2.4.3)";
+    if (index($c, 'powerpc64le-*linux*)') == -1) {
         my $replace_string = "x86_64-*kfreebsd*-gnu|x86_64-*linux*|powerpc*-*linux*|";
-        $c =~ s/x86_64-\*kfreebsd\*-gnu\|x86_64-\*linux\*\|ppc\*-\*linux\*\|powerpc\*-\*linux\*\|/$replace_string/g;
+        $record->($ppcle,
+                  $c =~ s/x86_64-\*kfreebsd\*-gnu\|x86_64-\*linux\*\|ppc\*-\*linux\*\|powerpc\*-\*linux\*\|/$replace_string/g);
         $replace_string =
         "powerpc64le-*linux*)\n\t    LD=\"\${LD-ld} -m elf32lppclinux\"\n\t    ;;\n\t  powerpc64-*linux*)";
-        $c =~ s/ppc64-\*linux\*\|powerpc64-\*linux\*\)/$replace_string/g;
+        $record->($ppcle,
+                  $c =~ s/ppc64-\*linux\*\|powerpc64-\*linux\*\)/$replace_string/g);
         $replace_string =
         "powerpcle-*linux*)\n\t    LD=\"\${LD-ld} -m elf64lppc\"\n\t    ;;\n\t  powerpc-*linux*)";
-        $c =~ s/ppc\*-\*linux\*\|powerpc\*-\*linux\*\)/$replace_string/g;
+        $record->($ppcle,
+                  $c =~ s/ppc\*-\*linux\*\|powerpc\*-\*linux\*\)/$replace_string/g);
+    } else {
+        # Record it so the report can say this Libtool did not need it
+        $record->($ppcle, 0);
     }
 
     # Fix consequence of broken libtool.m4
     # see http://lists.gnu.org/archive/html/bug-libtool/2015-07/msg00002.html and
     # https://github.com/open-mpi/ompi/issues/751
-    push(@verbose_out, $indent_str . "Patching configure for -L/-R libtool.m4 bug\n");
+    # Fixed upstream in LT 2.5.0; still needed for 2.4.2 - 2.4.7.
+    my $lr = "-L/-R libtool.m4 bug (Libtool < 2.5.0)";
     # patch for libtool < 2.4.3
-    $c =~ s/# Some compilers place space between "-\{L,R\}" and the path.\n       # Remove the space.\n       if test \$p = \"-L\" \|\|/# Some compilers place space between "-\{L,-l,R\}" and the path.\n       # Remove the spaces.\n       if test \$p = \"-L\" \|\|\n          test \$p = \"-l\" \|\|/g;
+    $record->($lr,
+              $c =~ s/# Some compilers place space between "-\{L,R\}" and the path.\n       # Remove the space.\n       if test \$p = \"-L\" \|\|/# Some compilers place space between "-\{L,-l,R\}" and the path.\n       # Remove the spaces.\n       if test \$p = \"-L\" \|\|\n          test \$p = \"-l\" \|\|/g);
     # patch for libtool >= 2.4.3
-    $c =~ s/# Some compilers place space between "-\{L,R\}" and the path.\n       # Remove the space.\n       if test x-L = \"\$p\" \|\|\n          test x-R = \"\$p\"\; then/# Some compilers place space between "-\{L,-l,R\}" and the path.\n       # Remove the spaces.\n       if test x-L = \"x\$p\" \|\|\n          test x-l = \"x\$p\" \|\|\n          test x-R = \"x\$p\"\; then/g;
+    $record->($lr,
+              $c =~ s/# Some compilers place space between "-\{L,R\}" and the path.\n       # Remove the space.\n       if test x-L = \"\$p\" \|\|\n          test x-R = \"\$p\"\; then/# Some compilers place space between "-\{L,-l,R\}" and the path.\n       # Remove the spaces.\n       if test x-L = \"x\$p\" \|\|\n          test x-l = \"x\$p\" \|\|\n          test x-R = \"x\$p\"\; then/g);
 
     # Fix OS X Big Sur (11.0.x) support
     # From https://lists.gnu.org/archive/html/libtool-patches/2020-06/msg00001.html
-    push(@verbose_out, $indent_str . "Patching configure for MacOS Big Sur libtool.m4 bug\n");
+    # Fixed upstream in LT 2.4.7; still needed for 2.4.2 - 2.4.6.
     # Some versions of Libtool use ${wl} consistently, but others did
     # not (e.g., they used $wl).  Make the regexp be able to handle
     # both.  Additionally, the case string searching for 10.[012]*
     # changed over time.  So make sure it can handle both of the case
-    # strings that we're aware of.
+    # strings that we're aware of.  Note that Libtool indents the case
+    # arms below with tabs, not spaces -- get that wrong and the search
+    # string silently never matches anything.
     my $WL = '(\$\{wl\}|\$wl)';
     my $SOMETIMES = '(\[,.\])*';
     my $search_string = 'darwin\*\) # darwin 5.x on
@@ -674,11 +671,11 @@ sub patch_autotools_output {
       # to the OS version, if on x86, and 10.4, the deployment
       # target defaults to 10.4. Don\'t you love it\?
       case \$\{MACOSX_DEPLOYMENT_TARGET-10.0\},\$host in
-    10.0,\*86\*-darwin8\*\|10.0,\*-darwin\[91\]\*\)
-      _lt_dar_allow_undefined=\'' . $WL . '-undefined ' . $WL . 'dynamic_lookup\' ;;
-    10.\[012\]' . $SOMETIMES . '\*\)
-      _lt_dar_allow_undefined=\'' . $WL . '-flat_namespace ' . $WL . '-undefined ' . $WL . 'suppress\' ;;
-    10.\*\)';
+	10.0,\*86\*-darwin8\*\|10.0,\*-darwin\[91\]\*\)
+	  _lt_dar_allow_undefined=\'' . $WL . '-undefined ' . $WL . 'dynamic_lookup\' ;;
+	10.\[012\]' . $SOMETIMES . '\*\)
+	  _lt_dar_allow_undefined=\'' . $WL . '-flat_namespace ' . $WL . '-undefined ' . $WL . 'suppress\' ;;
+	10.\*\)';
     my $replace_string = 'darwin*)
       # PMIx patched for Darwin / MacOS Big Sur.  See
       # http://lists.gnu.org/archive/html/bug-libtool/2015-07/msg00001.html
@@ -686,15 +683,31 @@ sub patch_autotools_output {
       10.[012],*|,*powerpc*)
       _lt_dar_allow_undefined=\'${wl}-flat_namespace ${wl}-undefined ${wl}suppress\' ;;
       *)';
-    $c =~ s/$search_string/$replace_string/g;
+    $record->("MacOS Big Sur libtool.m4 bug (Libtool < 2.4.7)",
+              $c =~ s/$search_string/$replace_string/g);
 
-    # Only write out verbose statements and a new configure if the
-    # configure content actually changed
+    # Say what was patched, and -- more importantly -- what was not.
+    my @dead;
+    foreach my $name (@patch_names) {
+        if (0 < $patch_counts{$name}) {
+            verbose $indent_str . "Patched configure for $name\n";
+        } else {
+            push(@dead, $name);
+        }
+    }
+    if (@dead) {
+        verbose $indent_str . "Patches that matched nothing with this Libtool:\n";
+        foreach my $name (@dead) {
+            verbose $indent_str . "    $name\n";
+        }
+        verbose $indent_str . "(If a patch is listed here for every Libtool version PMIx\n";
+        verbose $indent_str . "supports, it is dead code and should be removed from autogen.pl.)\n";
+    }
+
+    # Only write out a new configure if the configure content actually
+    # changed
     return
         if ($c eq $c_orig);
-    foreach my $str (@verbose_out) {
-        verbose($str);
-    }
 
     open(OUT, ">configure.patched") || my_die "Can't open configure.patched";
     print OUT $c;
