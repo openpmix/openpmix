@@ -503,8 +503,10 @@ static bool rndz_reclaim(const char *name, void *cbdata)
     return true;
 }
 
+/* On success, *dirfd is left holding a descriptor on the file's
+ * directory, which pmix_ptl_close uses to remove the file */
 static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role,
-                                     bool *dir_created, bool *file_created)
+                                     bool *dir_created, bool *file_created, int *dirfd_out)
 {
     int fd, dirfd;
     char *dirname, *tmp;
@@ -552,8 +554,10 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     }
 
     /* The directory is the one we were given, and is trusted as such.
-     * Open it once and do everything from here on relative to that
-     * descriptor, so the name is resolved exactly once */
+     * Open it once and do everything from here on - including the
+     * removal at finalize - relative to that descriptor, so the
+     * directory the file is created in is the one it is removed from,
+     * whatever the name comes to lead to in the meantime */
     dirfd = pmix_os_dirpath_open_dir(dirname);
     if (0 > dirfd) {
         pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
@@ -628,7 +632,10 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     }
     pmix_free(tmp);
     close(fd);
-    close(dirfd);
+    if (0 <= *dirfd_out) {
+        close(*dirfd_out);
+    }
+    *dirfd_out = dirfd;
     *file_created = true;
     return PMIX_SUCCESS;
 }
@@ -1431,7 +1438,8 @@ complete:
         rc = write_rndz_file(pmix_ptl_base.rendezvous_filename, lt->uri,
                              "server",
                              &pmix_ptl_base.created_rendezvous_dir,
-                             &pmix_ptl_base.created_rendezvous_file);
+                             &pmix_ptl_base.created_rendezvous_file,
+                             &pmix_ptl_base.rendezvous_dirfd);
         if (PMIX_SUCCESS != rc) {
             goto sockerror;
         }
@@ -1449,7 +1457,8 @@ nextstep:
         rc = write_rndz_file(pmix_ptl_base.scheduler_filename, lt->uri,
                              "scheduler",
                              &pmix_ptl_base.created_system_tmpdir,
-                             &pmix_ptl_base.created_scheduler_filename);
+                             &pmix_ptl_base.created_scheduler_filename,
+                             &pmix_ptl_base.scheduler_dirfd);
         if (PMIX_SUCCESS != rc) {
             goto sockerror;
         }
@@ -1465,7 +1474,8 @@ nextstep:
         rc = write_rndz_file(pmix_ptl_base.sysctrlr_filename, lt->uri,
                              "system controller",
                              &pmix_ptl_base.created_system_tmpdir,
-                             &pmix_ptl_base.created_sysctrlr_filename);
+                             &pmix_ptl_base.created_sysctrlr_filename,
+                             &pmix_ptl_base.sysctrlr_dirfd);
         if (PMIX_SUCCESS != rc) {
             goto sockerror;
         }
@@ -1480,7 +1490,8 @@ nextstep:
             rc = write_rndz_file(pmix_ptl_base.system_filename, lt->uri,
                                  "system tool",
                                  &pmix_ptl_base.created_system_tmpdir,
-                                 &pmix_ptl_base.created_system_filename);
+                                 &pmix_ptl_base.created_system_filename,
+                                 &pmix_ptl_base.system_dirfd);
             if (PMIX_SUCCESS != rc) {
                 goto sockerror;
             }
@@ -1498,7 +1509,8 @@ nextstep:
             rc = write_rndz_file(pmix_ptl_base.session_filename, lt->uri,
                                  "session tool",
                                  &pmix_ptl_base.created_session_tmpdir,
-                                 &pmix_ptl_base.created_session_filename);
+                                 &pmix_ptl_base.created_session_filename,
+                                 &pmix_ptl_base.session_dirfd);
             if (PMIX_SUCCESS != rc) {
                 goto sockerror;
             }
@@ -1516,7 +1528,8 @@ nextstep:
         rc = write_rndz_file(pmix_ptl_base.pid_filename, lt->uri,
                              "tool (by pid)",
                              &pmix_ptl_base.created_session_tmpdir,
-                             &pmix_ptl_base.created_pid_filename);
+                             &pmix_ptl_base.created_pid_filename,
+                             &pmix_ptl_base.pid_dirfd);
         if (PMIX_SUCCESS != rc) {
             goto sockerror;
         }
@@ -1533,7 +1546,8 @@ nextstep:
         rc = write_rndz_file(pmix_ptl_base.nspace_filename, lt->uri,
                              "tool (by namespace)",
                              &pmix_ptl_base.created_session_tmpdir,
-                             &pmix_ptl_base.created_nspace_filename);
+                             &pmix_ptl_base.created_nspace_filename,
+                             &pmix_ptl_base.nspace_dirfd);
         if (PMIX_SUCCESS != rc) {
             goto sockerror;
         }

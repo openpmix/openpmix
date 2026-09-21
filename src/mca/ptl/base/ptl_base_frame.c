@@ -97,6 +97,13 @@ pmix_ptl_base_t pmix_ptl_base = {
     .created_nspace_filename = false,
     .created_pid_filename = false,
     .created_urifile = false,
+    .rendezvous_dirfd = -1,
+    .sysctrlr_dirfd = -1,
+    .scheduler_dirfd = -1,
+    .system_dirfd = -1,
+    .session_dirfd = -1,
+    .nspace_dirfd = -1,
+    .pid_dirfd = -1,
     .remote_connections = false,
     .connections_specified = false,
     .system_tool = false,
@@ -331,6 +338,29 @@ static bool _check_file(const char *root, const char *path)
     return true;
 }
 
+/* Remove a rendezvous file we created, relative to the descriptor on
+ * the directory we created it in, and release everything held for it */
+static void remove_rndz_file(char **filename, bool *created, int *dirfd)
+{
+    const char *base;
+
+    if (NULL != *filename && *created && 0 <= *dirfd) {
+        base = strrchr(*filename, PMIX_PATH_SEP[0]);
+        base = (NULL == base) ? *filename : base + 1;
+        if (0 != unlinkat(*dirfd, base, 0)) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "Remove of %s failed: %s", *filename, strerror(errno));
+        }
+    }
+    if (0 <= *dirfd) {
+        close(*dirfd);
+        *dirfd = -1;
+    }
+    free(*filename);
+    *filename = NULL;
+    *created = false;
+}
+
 static pmix_status_t pmix_ptl_close(void)
 {
     int rc;
@@ -389,104 +419,39 @@ static pmix_status_t pmix_ptl_close(void)
     pmix_ptl_base_abandon_connects();
     PMIX_DESTRUCT(&pmix_ptl_base.connecting);
 
-    if (NULL != pmix_ptl_base.scheduler_filename) {
-        if (pmix_ptl_base.created_scheduler_filename) {
-            rc = remove(pmix_ptl_base.scheduler_filename);
-            if (0 != rc) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "Remove of %s failed: %s",
-                                    pmix_ptl_base.scheduler_filename, strerror(errno));
-            }
-        }
-        free(pmix_ptl_base.scheduler_filename);
-        pmix_ptl_base.scheduler_filename = NULL;
-        pmix_ptl_base.created_scheduler_filename = false;
-    }
-    if (NULL != pmix_ptl_base.sysctrlr_filename) {
-        if (pmix_ptl_base.created_sysctrlr_filename) {
-            rc = remove(pmix_ptl_base.sysctrlr_filename);
-            if (0 != rc) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "Remove of %s failed: %s",
-                                    pmix_ptl_base.sysctrlr_filename, strerror(errno));
-            }
-        }
-        free(pmix_ptl_base.sysctrlr_filename);
-        pmix_ptl_base.sysctrlr_filename = NULL;
-        pmix_ptl_base.created_sysctrlr_filename = false;
-    }
-    if (NULL != pmix_ptl_base.system_filename) {
-        if (pmix_ptl_base.created_system_filename) {
-            rc = remove(pmix_ptl_base.system_filename);
-            if (0 != rc) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "Remove of %s failed: %s",
-                                    pmix_ptl_base.system_filename, strerror(errno));
-            }
-        }
-        free(pmix_ptl_base.system_filename);
-        pmix_ptl_base.system_filename = NULL;
-        pmix_ptl_base.created_system_filename = false;
-    }
-    if (NULL != pmix_ptl_base.session_filename) {
-        if (pmix_ptl_base.created_session_filename) {
-            rc = remove(pmix_ptl_base.session_filename);
-            if (0 != rc) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "Remove of %s failed: %s",
-                                    pmix_ptl_base.session_filename, strerror(errno));
-            }
-        }
-        free(pmix_ptl_base.session_filename);
-        pmix_ptl_base.session_filename = NULL;
-        pmix_ptl_base.created_session_filename = false;
-    }
-    if (NULL != pmix_ptl_base.nspace_filename) {
-        if (pmix_ptl_base.created_nspace_filename) {
-            rc = remove(pmix_ptl_base.nspace_filename);
-            if (0 != rc) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "Remove of %s failed: %s",
-                                    pmix_ptl_base.nspace_filename, strerror(errno));
-            }
-        }
-        free(pmix_ptl_base.nspace_filename);
-        pmix_ptl_base.nspace_filename = NULL;
-        pmix_ptl_base.created_nspace_filename = false;
-    }
-    if (NULL != pmix_ptl_base.pid_filename) {
-        if (pmix_ptl_base.created_pid_filename) {
-            rc = remove(pmix_ptl_base.pid_filename);
-            if (0 != rc) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "Remove of %s failed: %s",
-                                    pmix_ptl_base.pid_filename, strerror(errno));
-            }
-        }
-        free(pmix_ptl_base.pid_filename);
-        pmix_ptl_base.pid_filename = NULL;
-        pmix_ptl_base.created_pid_filename = false;
-    }
+    remove_rndz_file(&pmix_ptl_base.scheduler_filename,
+                     &pmix_ptl_base.created_scheduler_filename,
+                     &pmix_ptl_base.scheduler_dirfd);
+    remove_rndz_file(&pmix_ptl_base.sysctrlr_filename,
+                     &pmix_ptl_base.created_sysctrlr_filename,
+                     &pmix_ptl_base.sysctrlr_dirfd);
+    remove_rndz_file(&pmix_ptl_base.system_filename,
+                     &pmix_ptl_base.created_system_filename,
+                     &pmix_ptl_base.system_dirfd);
+    remove_rndz_file(&pmix_ptl_base.session_filename,
+                     &pmix_ptl_base.created_session_filename,
+                     &pmix_ptl_base.session_dirfd);
+    remove_rndz_file(&pmix_ptl_base.nspace_filename,
+                     &pmix_ptl_base.created_nspace_filename,
+                     &pmix_ptl_base.nspace_dirfd);
+    remove_rndz_file(&pmix_ptl_base.pid_filename,
+                     &pmix_ptl_base.created_pid_filename,
+                     &pmix_ptl_base.pid_dirfd);
     if (NULL != pmix_ptl_base.rendezvous_filename) {
         /* the file first - destroying the directory takes the file with
          * it, and the remove would then fail on every clean shutdown */
-        if (pmix_ptl_base.created_rendezvous_file) {
-            rc = remove(pmix_ptl_base.rendezvous_filename);
-            if (0 != rc) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "Remove of %s failed: %s",
-                                    pmix_ptl_base.rendezvous_filename, strerror(errno));
-            }
-        }
+        tmp = NULL;
         if (pmix_ptl_base.created_rendezvous_dir) {
             tmp = pmix_dirname(pmix_ptl_base.rendezvous_filename);
+        }
+        remove_rndz_file(&pmix_ptl_base.rendezvous_filename,
+                         &pmix_ptl_base.created_rendezvous_file,
+                         &pmix_ptl_base.rendezvous_dirfd);
+        if (NULL != tmp) {
             pmix_os_dirpath_destroy(tmp, true, _check_file);
             free(tmp);
         }
-        free(pmix_ptl_base.rendezvous_filename);
-        pmix_ptl_base.rendezvous_filename = NULL;
         pmix_ptl_base.created_rendezvous_dir = false;
-        pmix_ptl_base.created_rendezvous_file = false;
     }
     if (NULL != pmix_ptl_base.uri) {
         free(pmix_ptl_base.uri);
