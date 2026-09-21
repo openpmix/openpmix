@@ -267,7 +267,7 @@ undo by accident:
 
 - **Nothing zeroes a block, and nothing needs to.** A bump allocator only
   ever hands out space no caller has touched, and
-  `pmix_shmem_segment_create()` opens its backing file `O_CREAT | O_TRUNC`
+  `pmix_shmem_segment_create()` creates its backing file `O_CREAT | O_EXCL`
   and `ftruncate`s it from empty — so every page of a fresh segment reads
   as zero. `tma_calloc()` therefore returns zeroed storage without writing
   a byte, and so, incidentally, does `tma_malloc()`. The `memset` that used
@@ -276,12 +276,14 @@ undo by accident:
   sized *far* larger than its contents (see `get_modex_sizing_data()`), so
   that was the largest avoidable cost in building one.
 
-  **The `O_TRUNC` is load-bearing**, not tidiness. Segments are unlinked
-  when their last holder lets go, so a backing path collides only with a
-  file some earlier server left behind when it died — but the path is built
-  from the pid, and pids get reused. Without the truncate, `ftruncate()` to
-  the same or a smaller size leaves that corpse's bytes in place and only
-  the extension past the old end reads as zero. If that guarantee ever
+  **The exclusive create is load-bearing**, not tidiness. Segments are
+  unlinked when their last holder lets go, so a backing path collides only
+  with a file some earlier server left behind when it died — but the path
+  is built from the pid, and pids get reused. Reusing that file would leave
+  its bytes in place, since `ftruncate()` to the same or a smaller size
+  zeroes only the extension past the old end; the create removes it and
+  starts from an empty file instead (see "Composing a path PMIx will then
+  open" in [`src/util/AGENTS.md`](../../../util/AGENTS.md)). If that guarantee ever
   weakens, restore the `memset` in `tma_carve()` rather than at the call
   sites.
 
