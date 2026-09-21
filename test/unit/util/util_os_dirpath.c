@@ -9,7 +9,7 @@
  * Unit tests for pmix_os_dirpath utility functions:
  *   pmix_os_dirpath_create, pmix_os_dirpath_is_empty,
  *   pmix_os_dirpath_access, pmix_os_dirpath_destroy,
- *   pmix_os_dirpath_create_file.
+ *   pmix_os_dirpath_create_file, pmix_os_dirpath_create_file_at.
  *
  * A temporary directory is created under /tmp for each test and
  * removed by the test itself.
@@ -1101,6 +1101,53 @@ static void test_create_file_reclaims_only_once(void)
     unlink(path);
 }
 
+/* ------------------------------------------------------------------ */
+/* pmix_os_dirpath_create_file_at() works relative to the descriptor, */
+/* so the directory it writes into is the one the caller holds even   */
+/* after the name that led there has been moved.                      */
+/* ------------------------------------------------------------------ */
+
+static void test_create_file_at_follows_descriptor(void)
+{
+    char dir[512], moved[512], path[1024];
+    int dirfd, fd;
+
+    snprintf(dir, sizeof(dir), "%s/cfa_dir", tmpbase);
+    snprintf(moved, sizeof(moved), "%s/cfa_moved", tmpbase);
+    mkdir(dir, 0700);
+    dirfd = open(dir, O_RDONLY | O_DIRECTORY);
+    /* the name now leads somewhere else: an empty directory in its place */
+    rename(dir, moved);
+    mkdir(dir, 0700);
+
+    fd = pmix_os_dirpath_create_file_at(dirfd, "leaf", O_RDWR, 0600, NULL, NULL);
+    report("create_file_at: created", 0 <= fd);
+    snprintf(path, sizeof(path), "%s/leaf", moved);
+    report("create_file_at: landed in the held directory", 0 == access(path, F_OK));
+    snprintf(path, sizeof(path), "%s/leaf", dir);
+    report("create_file_at: not in the one now at the name", 0 != access(path, F_OK));
+    if (0 <= fd) {
+        close(fd);
+    }
+
+    /* a leftover is removed relative to the descriptor, too */
+    fd = pmix_os_dirpath_create_file_at(dirfd, "leaf", O_RDWR, 0600, NULL, NULL);
+    report("create_file_at: leftover reclaimed", 0 <= fd);
+    if (0 <= fd) {
+        close(fd);
+    }
+
+    errno = 0;
+    fd = pmix_os_dirpath_create_file_at(dirfd, "a/b", O_RDWR, 0600, NULL, NULL);
+    report("create_file_at: a multi-component name is refused", 0 > fd && EINVAL == errno);
+
+    close(dirfd);
+    snprintf(path, sizeof(path), "%s/leaf", moved);
+    unlink(path);
+    rmdir(moved);
+    rmdir(dir);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -1161,6 +1208,7 @@ int main(int argc, char **argv)
     test_create_file_symlink_at_name();
     test_create_file_reclaim_declined();
     test_create_file_reclaims_only_once();
+    test_create_file_at_follows_descriptor();
 
     /* Remove the test root; all subdirectories were cleaned up above. */
     rmdir(tmpbase);

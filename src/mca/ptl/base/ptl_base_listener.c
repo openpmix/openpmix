@@ -391,22 +391,36 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
  * NULL if the file has no live owner (i.e., it is stale and can be
  * reclaimed). The caller must free any returned string.
  */
-static char *rndz_file_owner(const char *filename)
+static char *rndz_file_owner(int dirfd, const char *name)
 {
     FILE *fp;
+    struct stat buf;
     char *line, *endptr, *owner = NULL;
     unsigned long pid = 0;
     bool havepid = false;
-    int n;
+    int fd, n;
 
     /* the file holds the uri, the version, the pid of the process
      * that wrote it, its uid:gid, and a timestamp - one per line.
-     * We only care about the pid */
-    fp = fopen(filename, "r");
+     * We only care about the pid.
+     *
+     * It is read relative to the directory we checked, and not thru a
+     * symlink. O_NONBLOCK keeps a FIFO at the name from stalling us in
+     * the open, and anything that is not a regular file is not one we
+     * wrote. In each case we cannot identify an owner, so treat it as
+     * stale - if it truly is in use, then the removal below will fail
+     * and we will report that instead */
+    fd = openat(dirfd, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    if (0 > fd) {
+        return NULL;
+    }
+    if (0 != fstat(fd, &buf) || !S_ISREG(buf.st_mode)) {
+        close(fd);
+        return NULL;
+    }
+    fp = fdopen(fd, "r");
     if (NULL == fp) {
-        /* we cannot identify an owner, so treat it as stale - if it
-         * truly is in use, then the removal below will fail and we
-         * will report that instead */
+        close(fd);
         return NULL;
     }
     for (n = 0; n < 3; n++) {
@@ -455,6 +469,8 @@ static char *rndz_file_owner(const char *filename)
 
 typedef struct {
     const char *role;
+    const char *filename;
+    int dirfd;
     bool reported;
 } rndz_reclaim_t;
 
@@ -463,24 +479,24 @@ typedef struct {
  * otherwise it was left behind by an instance that is no longer running,
  * so reclaim it. Either refusal is explained here, and says so in
  * cbdata so the caller does not add a misleading message on top. */
-static bool rndz_reclaim(const char *filename, void *cbdata)
+static bool rndz_reclaim(const char *name, void *cbdata)
 {
     rndz_reclaim_t *ctx = (rndz_reclaim_t *) cbdata;
     char *owner;
 
-    owner = rndz_file_owner(filename);
+    owner = rndz_file_owner(ctx->dirfd, name);
     if (NULL != owner) {
         pmix_show_help("help-ptl-base.txt", "rndz-file-in-use", true,
-                       ctx->role, filename, owner);
+                       ctx->role, ctx->filename, owner);
         free(owner);
         ctx->reported = true;
         return false;
     }
     /* someone else beating us to the removal is fine - anything else
      * is not */
-    if (0 != unlink(filename) && ENOENT != errno) {
+    if (0 != unlinkat(ctx->dirfd, name, 0) && ENOENT != errno) {
         pmix_show_help("help-ptl-base.txt", "rndz-file-stale", true,
-                       ctx->role, filename, strerror(errno));
+                       ctx->role, ctx->filename, strerror(errno));
         ctx->reported = true;
         return false;
     }
@@ -490,40 +506,63 @@ static bool rndz_reclaim(const char *filename, void *cbdata)
 static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role,
                                      bool *dir_created, bool *file_created)
 {
-    int fd;
+    int fd, dirfd;
     char *dirname, *tmp;
+    const char *base;
     time_t mytime;
     int rc;
-    rndz_reclaim_t reclaim = {.role = role, .reported = false};
-    mode_t mode = 0;
+    rndz_reclaim_t reclaim = {.role = role, .filename = filename, .dirfd = -1,
+                              .reported = false};
+    mode_t mode;
 
-    dirname = pmix_dirname(filename);
-    if (NULL != dirname) {
-        mode = S_IRWXU;
-        if (pmix_ptl_base.allow_foreign_tools) {
-            mode |= S_IXGRP | S_IRGRP | S_IXOTH | S_IROTH;
-        }
-        rc = pmix_os_dirpath_create(dirname, mode);
-        if (PMIX_ERR_SILENT == rc) {
-            // error has already been reported
-            free(dirname);
-            return rc;
-        }
-        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
-            PMIX_ERROR_LOG(rc);
-            free(dirname);
-            return rc;
-        }
-        if (PMIX_SUCCESS == rc) {
-            // do not change the dir_created flag if the directory
-            // already exists as we don't know if we previously
-            // created it or it already existed. Success is returned
-            // when we were able to both create the directory
-            // and change its mode as directed
-            *dir_created = true;
-        }
-        free(dirname);
+    base = strrchr(filename, PMIX_PATH_SEP[0]);
+    base = (NULL == base) ? filename : base + 1;
+    if ('\0' == base[0]) {
+        /* the name ends in a separator, so it names no file */
+        pmix_output(0, "Rendezvous file %s names a directory, not a file\n", filename);
+        return PMIX_ERR_BAD_PARAM;
     }
+    dirname = pmix_dirname(filename);
+    if (NULL == dirname) {
+        return PMIX_ERR_NOMEM;
+    }
+
+    mode = S_IRWXU;
+    if (pmix_ptl_base.allow_foreign_tools) {
+        mode |= S_IXGRP | S_IRGRP | S_IXOTH | S_IROTH;
+    }
+    rc = pmix_os_dirpath_create(dirname, mode);
+    if (PMIX_ERR_SILENT == rc) {
+        // error has already been reported
+        free(dirname);
+        return rc;
+    }
+    if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
+        PMIX_ERROR_LOG(rc);
+        free(dirname);
+        return rc;
+    }
+    if (PMIX_SUCCESS == rc) {
+        // do not change the dir_created flag if the directory
+        // already exists as we don't know if we previously
+        // created it or it already existed. Success is returned
+        // when we were able to both create the directory
+        // and change its mode as directed
+        *dir_created = true;
+    }
+
+    /* The directory is the one we were given, and is trusted as such.
+     * Open it once and do everything from here on relative to that
+     * descriptor, so the name is resolved exactly once */
+    dirfd = pmix_os_dirpath_open_dir(dirname);
+    if (0 > dirfd) {
+        pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
+                       dirname, strerror(errno));
+        free(dirname);
+        return PMIX_ERR_SILENT;
+    }
+    free(dirname);
+    reclaim.dirfd = dirfd;
 
     /* set the file mode */
     mode = S_IRUSR | S_IWUSR ;
@@ -532,9 +571,10 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     }
     /* if the file already exists, we get one chance to reclaim it as
      * stale and try the create again */
-    fd = pmix_os_dirpath_create_file(filename, O_RDWR, mode, rndz_reclaim, &reclaim);
+    fd = pmix_os_dirpath_create_file_at(dirfd, base, O_RDWR, mode, rndz_reclaim, &reclaim);
     if (0 > fd) {
         *file_created = false;
+        close(dirfd);
         if (reclaim.reported) {
             return PMIX_ERR_SILENT;
         }
@@ -568,7 +608,8 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
         /* nothing has been written, so do not leave an empty file behind
          * for a peer to read as a server that died partway thru */
         close(fd);
-        unlink(filename);
+        unlinkat(dirfd, base, 0);
+        close(dirfd);
         *file_created = false;
         return PMIX_ERR_NOMEM;
     }
@@ -581,10 +622,12 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
         *file_created = false;
         pmix_free(tmp);
         close(fd);
+        close(dirfd);
         return PMIX_ERR_FILE_WRITE_FAILURE;
     }
     pmix_free(tmp);
     close(fd);
+    close(dirfd);
     *file_created = true;
     return PMIX_SUCCESS;
 }
