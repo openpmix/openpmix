@@ -512,7 +512,7 @@ static int dirpath_create(const char *path, const mode_t mode)
        means no component is empty, which is what lets the tmp[strlen-1]
        read below be safe from the second iteration on. */
 
-    tmp = (char *) calloc((strlen(path) + 1), sizeof(char));
+    tmp = (char *) pmix_calloc((strlen(path) + 1), sizeof(char));
     if (NULL == tmp) {
         PMIx_Argv_free(parts);
         return PMIX_ERR_OUT_OF_RESOURCE;

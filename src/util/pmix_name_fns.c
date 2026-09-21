@@ -118,7 +118,7 @@ static pmix_print_args_buffers_t *get_print_name_buffer(void)
             return NULL;
         }
         for (i = 0; i < PMIX_PRINT_NAME_ARG_NUM_BUFS; i++) {
-            ptr->buffers[i] = (char *) calloc((PMIX_PRINT_NAME_ARGS_MAX_SIZE + 1), sizeof(char));
+            ptr->buffers[i] = (char *) pmix_calloc((PMIX_PRINT_NAME_ARGS_MAX_SIZE + 1), sizeof(char));
             if (NULL == ptr->buffers[i]) {
                 /* unwind rather than hand back a struct with NULL buffers */
                 while (i-- > 0) {

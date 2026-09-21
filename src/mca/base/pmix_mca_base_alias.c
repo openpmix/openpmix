@@ -89,7 +89,7 @@ static char *pmix_mca_base_alias_generate_name(const char *project, const char *
     size_t framework_length = framework ? strlen(framework) : 0;
     size_t component_name_length = strlen(component_name);
     size_t length = project_length + framework_length + component_name_length + 2;
-    char *tmp = calloc(1, length + 1);
+    char *tmp = pmix_calloc(1, length + 1);
     if (NULL == tmp) {
         return tmp;
     }

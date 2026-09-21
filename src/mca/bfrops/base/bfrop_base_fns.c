@@ -217,7 +217,11 @@ pmix_status_t pmix_bfrops_base_value_load(pmix_value_t *v,
             break;
         case PMIX_PROC_NSPACE:
             nspace = (pmix_nspace_t *) data;
-            v->data.nspace = (pmix_nspace_t *) malloc(sizeof(pmix_nspace_t));
+            v->data.nspace = (pmix_nspace_t *) pmix_calloc(1, sizeof(pmix_nspace_t));
+            if (NULL == v->data.nspace) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                return PMIX_ERR_NOMEM;
+            }
             PMIX_LOAD_NSPACE(*(v->data.nspace), *nspace);
             break;
         case PMIX_PROC:
@@ -232,7 +236,7 @@ pmix_status_t pmix_bfrops_base_value_load(pmix_value_t *v,
         case PMIX_COMPRESSED_STRING:
         case PMIX_COMPRESSED_BYTE_OBJECT:
             bo = (pmix_byte_object_t *) data;
-            v->data.bo.bytes = (char *) malloc(bo->size);
+            v->data.bo.bytes = (char *) pmix_calloc(bo->size, sizeof(char));
             if (NULL == v->data.bo.bytes) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 return PMIX_ERR_NOMEM;
@@ -677,7 +681,11 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
             if (PMIX_SUCCESS == rc) {
                 *sz = sizeof(pmix_topology_t);
             } else if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
-                *data = malloc(sizeof(pmix_topology_t));
+                *data = pmix_calloc(1, sizeof(pmix_topology_t));
+                if (NULL == *data) {
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
                 memcpy(*data, kv->data.topo, sizeof(pmix_topology_t));
                 *sz = sizeof(pmix_topology_t);
                 rc = PMIX_SUCCESS;
@@ -689,7 +697,11 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
             if (PMIX_SUCCESS == rc) {
                 *sz = sizeof(pmix_cpuset_t);
             } else if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
-                *data = malloc(sizeof(pmix_cpuset_t));
+                *data = pmix_calloc(1, sizeof(pmix_cpuset_t));
+                if (NULL == *data) {
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
                 memcpy(*data, kv->data.cpuset, sizeof(pmix_cpuset_t));
                 *sz = sizeof(pmix_cpuset_t);
                 rc = PMIX_SUCCESS;

@@ -251,7 +251,7 @@ static inline void *pmix_tma_calloc(pmix_tma_t *tma, size_t nmemb, size_t size)
     if (NULL != tma) {
         return tma->tma_calloc(tma, nmemb, size);
     } else {
-        return calloc(nmemb, size);
+        return pmix_calloc(nmemb, size);
     }
 }
 

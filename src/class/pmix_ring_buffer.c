@@ -90,7 +90,7 @@ int pmix_ring_buffer_init(pmix_ring_buffer_t *ring, int size)
     /* Allocate and set the ring to NULL. Pass the count and the element
      * size as calloc()'s two arguments, in that order, so that calloc()
      * can do the multiplication overflow check it exists to do. */
-    ring->addr = (char **) calloc((size_t) size, sizeof(char *));
+    ring->addr = (char **) pmix_calloc((size_t) size, sizeof(char *));
     if (NULL == ring->addr) { /* out of memory */
         return PMIX_ERR_OUT_OF_RESOURCE;
     }

@@ -120,7 +120,7 @@ pmix_timing_event_t *pmix_timing_event_alloc(pmix_timing_t *t)
         // notch timings overhead
         double alloc_begin = t->get_ts();
 
-        t->buffer = calloc(t->buffer_size, sizeof(pmix_timing_event_t));
+        t->buffer = pmix_calloc(t->buffer_size, sizeof(pmix_timing_event_t));
         if (NULL == t->buffer) {
             return NULL;
         }
@@ -290,7 +290,7 @@ static int _prepare_descriptions(pmix_timing_t *t, struct interval_descr **__des
      * those events in place for pmix_timing_report() to index a
      * descriptor array that is still NULL. */
     if (0 < t->next_id_cntr) {
-        *__descr = calloc(t->next_id_cntr, sizeof(struct interval_descr));
+        *__descr = pmix_calloc(t->next_id_cntr, sizeof(struct interval_descr));
         if (NULL == *__descr) {
             return -1;
         }
@@ -396,7 +396,7 @@ pmix_status_t pmix_timing_report(pmix_timing_t *t, char *fname)
         goto err_exit;
     }
 
-    buf = calloc((PMIX_TIMING_OUTBUF_SIZE + 1), sizeof(char));
+    buf = pmix_calloc((PMIX_TIMING_OUTBUF_SIZE + 1), sizeof(char));
     if (NULL == buf) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
         goto err_exit;
@@ -621,7 +621,7 @@ pmix_status_t pmix_timing_deltas(pmix_timing_t *t, char *fname)
         assert(0);
     }
 
-    buf = calloc((PMIX_TIMING_OUTBUF_SIZE + 1), sizeof(char));
+    buf = pmix_calloc((PMIX_TIMING_OUTBUF_SIZE + 1), sizeof(char));
     if (NULL == buf) {
         rc = PMIX_ERR_OUT_OF_RESOURCE;
         goto err_exit;

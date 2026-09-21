@@ -110,7 +110,7 @@ int pmix_bitmap_init(pmix_bitmap_t *bm, int size)
      * allocation failure that left a non-zero size behind a NULL pointer
      * would send every subsequent accessor through bm->bitmap[index]. */
     bm->array_size = 0;
-    bm->bitmap = (uint64_t *) calloc(nwords, sizeof(uint64_t));
+    bm->bitmap = (uint64_t *) pmix_calloc(nwords, sizeof(uint64_t));
     if (NULL == bm->bitmap) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }

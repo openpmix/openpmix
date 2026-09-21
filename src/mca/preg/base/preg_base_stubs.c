@@ -135,7 +135,7 @@ pmix_status_t pmix_preg_base_copy(char **dest, size_t *len, const char *input)
         return PMIX_SUCCESS;
     }
 
-    *dest = calloc(total, sizeof(char));
+    *dest = pmix_calloc(total, sizeof(char));
     if (NULL == *dest) {
         return PMIX_ERR_NOMEM;
     }

@@ -118,7 +118,7 @@ char *pmix_argv_join_range(char **argv, size_t start, size_t end, int delimiter)
 
     /* Allocate the string. */
 
-    if (NULL == (str = (char *) calloc(str_len, sizeof(char)))) {
+    if (NULL == (str = (char *) pmix_calloc(str_len, sizeof(char)))) {
         return NULL;
     }
 
@@ -326,7 +326,7 @@ pmix_status_t pmix_argv_insert(char ***target, int start, char **source)
          * lost to the caller and leaked - and the old code reported
          * that as success. */
 
-        copies = (char **) calloc(source_count, sizeof(char *));
+        copies = (char **) pmix_calloc(source_count, sizeof(char *));
         if (NULL == copies) {
             return PMIX_ERR_NOMEM;
         }

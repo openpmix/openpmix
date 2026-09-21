@@ -186,7 +186,7 @@ pmix_status_t pmix_bfrops_base_std_copy(void **dest, void *src, pmix_data_type_t
         return PMIX_ERR_UNKNOWN_DATA_TYPE;
     }
 
-    val = (uint8_t *) malloc(datasize);
+    val = (uint8_t *) pmix_calloc(datasize, sizeof(uint8_t));
     if (NULL == val) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -227,7 +227,7 @@ pmix_status_t pmix_bfrops_base_copy_info(pmix_info_t **dest, pmix_info_t *src,
 {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    *dest = (pmix_info_t *) malloc(sizeof(pmix_info_t));
+    *dest = (pmix_info_t *) pmix_calloc(1, sizeof(pmix_info_t));
     if (NULL == *dest) {
         return PMIX_ERR_NOMEM;
     }
@@ -253,7 +253,10 @@ pmix_status_t pmix_bfrops_base_copy_app(pmix_app_t **dest, pmix_app_t *src, pmix
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    *dest = (pmix_app_t *) malloc(sizeof(pmix_app_t));
+    *dest = (pmix_app_t *) pmix_calloc(1, sizeof(pmix_app_t));
+    if (NULL == *dest) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     (*dest)->cmd = strdup(src->cmd);
     (*dest)->argv = PMIx_Argv_copy(src->argv);
     (*dest)->env = PMIx_Argv_copy(src->env);
@@ -262,7 +265,12 @@ pmix_status_t pmix_bfrops_base_copy_app(pmix_app_t **dest, pmix_app_t *src, pmix
     }
     (*dest)->maxprocs = src->maxprocs;
     (*dest)->ninfo = src->ninfo;
-    (*dest)->info = (pmix_info_t *) malloc(src->ninfo * sizeof(pmix_info_t));
+    (*dest)->info = (pmix_info_t *) pmix_calloc(src->ninfo, sizeof(pmix_info_t));
+    if (NULL == (*dest)->info && 0 < src->ninfo) {
+        pmix_bfrops_base_tma_app_free(*dest, 1, NULL);
+        *dest = NULL;
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     for (j = 0; j < src->ninfo; j++) {
         pmix_strncpy((*dest)->info[j].key, src->info[j].key, PMIX_MAX_KEYLEN);
         PMIx_Value_xfer(&(*dest)->info[j].value, &src->info[j].value);
@@ -295,7 +303,7 @@ pmix_status_t pmix_bfrops_base_copy_proc(pmix_proc_t **dest, pmix_proc_t *src,
 {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    *dest = (pmix_proc_t *) malloc(sizeof(pmix_proc_t));
+    *dest = (pmix_proc_t *) pmix_calloc(1, sizeof(pmix_proc_t));
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -309,7 +317,7 @@ pmix_status_t pmix_bfrop_base_copy_persist(pmix_persistence_t **dest, pmix_persi
 {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    *dest = (pmix_persistence_t *) malloc(sizeof(pmix_persistence_t));
+    *dest = (pmix_persistence_t *) pmix_calloc(1, sizeof(pmix_persistence_t));
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -322,11 +330,16 @@ pmix_status_t pmix_bfrops_base_copy_bo(pmix_byte_object_t **dest, pmix_byte_obje
 {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    *dest = (pmix_byte_object_t *) malloc(sizeof(pmix_byte_object_t));
+    *dest = (pmix_byte_object_t *) pmix_calloc(1, sizeof(pmix_byte_object_t));
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
-    (*dest)->bytes = (char *) malloc(src->size);
+    (*dest)->bytes = (char *) pmix_calloc(src->size, sizeof(char));
+    if (NULL == (*dest)->bytes && 0 < src->size) {
+        free(*dest);
+        *dest = NULL;
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     memcpy((*dest)->bytes, src->bytes, src->size);
     (*dest)->size = src->size;
     return PMIX_SUCCESS;
@@ -337,7 +350,10 @@ pmix_status_t pmix_bfrops_base_copy_pdata(pmix_pdata_t **dest, pmix_pdata_t *src
 {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    *dest = (pmix_pdata_t *) malloc(sizeof(pmix_pdata_t));
+    *dest = (pmix_pdata_t *) pmix_calloc(1, sizeof(pmix_pdata_t));
+    if (NULL == *dest) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     pmix_strncpy((*dest)->proc.nspace, src->proc.nspace, PMIX_MAX_NSLEN);
     (*dest)->proc.rank = src->proc.rank;
     pmix_strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
@@ -363,7 +379,10 @@ pmix_status_t pmix_bfrops_base_copy_query(pmix_query_t **dest, pmix_query_t *src
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    *dest = (pmix_query_t *) malloc(sizeof(pmix_query_t));
+    *dest = (pmix_query_t *) pmix_calloc(1, sizeof(pmix_query_t));
+    if (NULL == *dest) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     if (NULL != src->keys) {
         (*dest)->keys = PMIx_Argv_copy(src->keys);
     }

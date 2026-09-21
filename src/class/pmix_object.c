@@ -245,7 +245,7 @@ static void expand_array(void)
 
     max_classes += increment;
     if (NULL == classes) {
-        classes = (void **) calloc(max_classes, sizeof(void *));
+        classes = (void **) pmix_calloc(max_classes, sizeof(void *));
     } else {
         classes = (void **) realloc(classes, sizeof(void *) * max_classes);
     }

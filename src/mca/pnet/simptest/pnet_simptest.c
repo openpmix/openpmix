@@ -392,7 +392,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             goto cleanup;
         }
         kv->key = strdup(PMIX_ALLOC_FABRIC_ENDPTS);
-        kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             rc = PMIX_ERR_NOMEM;
@@ -462,7 +462,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             goto cleanup;
         }
         kvc->key = strdup(PMIX_NODE_INFO_ARRAY);
-        kvc->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        kvc->value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
         if (NULL == kvc->value) {
             PMIX_RELEASE(kvc);
             rc = PMIX_ERR_NOMEM;
@@ -521,7 +521,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             goto cleanup;
         }
         kv->key = strdup(PMIX_PNET_SIMPTEST_BLOB);
-        kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             PMIX_DESTRUCT(&buf);

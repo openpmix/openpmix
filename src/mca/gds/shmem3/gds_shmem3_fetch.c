@@ -82,7 +82,7 @@ fetch_all_node_info(
         return PMIX_ERR_NOMEM;
     }
     kv->key = key;
-    kv->value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+    kv->value = (pmix_value_t *)pmix_calloc(1, sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
@@ -311,7 +311,7 @@ fetch_all_app_info(
             return PMIX_ERR_NOMEM;
         }
         kv->key = strdup(PMIX_APP_INFO_ARRAY);
-        kv->value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *)pmix_calloc(1, sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             return PMIX_ERR_NOMEM;

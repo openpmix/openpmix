@@ -205,7 +205,7 @@ static pmix_status_t snapshot_groups(pmix_grpsnap_t **snap, size_t *nsnap)
      * safe because nothing here re-enters PMIx - the only rule that
      * matters for this lock is that we do not wait on the progress
      * thread, and malloc does not. */
-    sn = (pmix_grpsnap_t *) calloc(ngrps, sizeof(pmix_grpsnap_t));
+    sn = (pmix_grpsnap_t *) pmix_calloc(ngrps, sizeof(pmix_grpsnap_t));
     if (PMIX_UNLIKELY(NULL == sn)) {
         pmix_mutex_unlock(&pmix_client_globals.grouplock);
         return PMIX_ERR_NOMEM;
