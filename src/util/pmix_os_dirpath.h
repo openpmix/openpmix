@@ -193,6 +193,47 @@ PMIX_EXPORT int pmix_os_dirpath_create_file(const char *path, int flags, mode_t 
                                             void *cbdata);
 
 /**
+ * The same, relative to a directory the caller already holds.
+ *
+ * pmix_os_dirpath_create_file() resolves the directory by name each
+ * time, so a file created by name and later removed or re-opened by name
+ * need not be found in the same directory twice. Holding a descriptor
+ * from pmix_os_dirpath_open_dir() and working through it keeps every
+ * operation on the one directory the name first led to.
+ *
+ * @param dirfd   A descriptor on the directory. Not closed.
+ * @param name    The file's name within it - a single component.
+ * @param reclaim As for pmix_os_dirpath_create_file(), but handed `name`
+ *                rather than a path, so it must act relative to dirfd
+ *                too. NULL removes the leftover with unlinkat().
+ * @retval >=0  A descriptor on the new file. The caller closes it.
+ * @retval -1   errno says why: EEXIST if the name was still occupied,
+ *              EINVAL if name is empty or has a separator in it.
+ */
+PMIX_EXPORT int pmix_os_dirpath_create_file_at(int dirfd, const char *name, int flags,
+                                               mode_t mode,
+                                               pmix_os_dirpath_reclaim_fn_t reclaim,
+                                               void *cbdata);
+
+/**
+ * Open a descriptor on a directory, to create and remove files relative
+ * to it.
+ *
+ * The name is resolved the ordinary way, symlinks included. What the
+ * descriptor buys is that every later operation through it acts on the
+ * directory the name led to *now*, whatever the name comes to lead to
+ * afterwards - so a file created through it and later removed through
+ * it is removed from the directory it was created in.
+ *
+ * Only the execute bit is needed where the platform can open a directory
+ * for traversal alone (O_SEARCH/O_PATH); elsewhere, read as well.
+ *
+ * @retval >=0 A close-on-exec descriptor. The caller closes it.
+ * @retval -1  errno says why.
+ */
+PMIX_EXPORT int pmix_os_dirpath_open_dir(const char *path);
+
+/**
  * Check to see if a directory is empty
  *
  * A directory that cannot be opened as a directory - it does not exist, it is
