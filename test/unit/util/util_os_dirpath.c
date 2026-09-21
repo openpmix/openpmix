@@ -658,6 +658,7 @@ static void test_create_on_symlink_trailing_separator(void)
     rc = pmix_os_dirpath_create(arg, S_IRWXU | S_IRWXG);
     report("create_on_symlink_trailing_separator: refused with ERR_SILENT",
            PMIX_ERR_SILENT == rc);
+    report("create_on_symlink_trailing_separator: link not replaced", is_symlink(link));
     report("create_on_symlink_trailing_separator: target mode untouched",
            0 == stat(target, &st) && 0 == (st.st_mode & S_IRWXG));
 
