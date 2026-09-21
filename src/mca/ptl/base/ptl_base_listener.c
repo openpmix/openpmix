@@ -622,6 +622,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
         *file_created = false;
         pmix_free(tmp);
         close(fd);
+        unlinkat(dirfd, base, 0);
         close(dirfd);
         return PMIX_ERR_FILE_WRITE_FAILURE;
     }
