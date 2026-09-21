@@ -58,6 +58,8 @@ The PMIx Team
 
 ## Security policy
 
-The OpenPMIx security policy can be viewed online at https://docs.openpmix.org/en/latest/security.html.
+The OpenPMIx security policy is in [SECURITY.md](SECURITY.md), and is rendered
+online at https://docs.openpmix.org/en/latest/security.html.
 
-NOTE: any potential security issue should be reported immediately to us at security@pmix.org
+NOTE: any potential security issue should be reported privately, using GitHub's
+"Report a vulnerability" form: https://github.com/openpmix/openpmix/security/advisories/new
