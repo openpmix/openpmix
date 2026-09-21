@@ -968,6 +968,41 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                  * on the finalize path that wait is the full guard timer in
                  * PMIx_Finalize/PMIx_tool_finalize. */
                 pmix_ptl_base_flush_sends(peer);
+                /* Take the peer's events off the base before its socket
+                 * goes, never after.
+                 *
+                 * libevent issues epoll_ctl() only when the interest it
+                 * holds in a descriptor NUMBER changes, and the kernel drops
+                 * a registration by itself when the descriptor is closed.
+                 * Closing first therefore leaves libevent believing this fd
+                 * number is still watched. The deletes do follow - in the
+                 * destructor, whenever the last reference to the peer goes -
+                 * but by then accept() may have handed the same number to a
+                 * new client. Adding that client's read event raises an
+                 * interest libevent thinks is already registered, so no
+                 * EPOLL_CTL_ADD is ever made for it; and the late delete,
+                 * aimed at a number now held by a different socket, can
+                 * remove that socket's registration instead. Either way the
+                 * new client's connect-ack is never read, the listener drops
+                 * the connection when ptl_base_connect_ack_timeout expires,
+                 * and the client - handed an EOF where a status should be -
+                 * comes up as a singleton with none of its job data.
+                 *
+                 * Under a spawn-heavy workload, where clients connect and
+                 * finalize continuously and descriptor numbers are reused
+                 * within milliseconds, that happened often enough to fail
+                 * the mpi4py spawn tests in CI: the orphaned rank computed
+                 * no locality for its peers, so Open MPI's TCP BTL
+                 * discarded their same-node addresses and MPI_Init died with
+                 * "Unable to find reachable pairing". */
+                if (peer->recv_ev_active) {
+                    pmix_event_del(&peer->recv_event);
+                    peer->recv_ev_active = false;
+                }
+                if (peer->send_ev_active) {
+                    pmix_event_del(&peer->send_event);
+                    peer->send_ev_active = false;
+                }
                 /* ensure we close the socket to this peer so we don't
                  * generate "connection lost" events should it be
                  * subsequently "killed" by the host */
@@ -1562,6 +1597,7 @@ static void _register_client(int sd, short args, void *cbdata)
     bool all_def;
     size_t i;
     pmix_status_t rc;
+    pmix_rank_info_t *adopted;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
@@ -1598,37 +1634,70 @@ static void _register_client(int sd, short args, void *cbdata)
         }
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
-    /* Setup a peer object for this client - since the host server only
-     * deals with the original processes and not any clones, this should
-     * be called only once per rank. Say so rather than trusting it: the
-     * "have we got everyone" test below is an exact equality against the
-     * length of the ranks list, so a second entry for a rank pushes that
-     * list permanently past nlocalprocs, all_registered is never set, and
-     * every collective involving this namespace hangs with nothing
-     * anywhere reporting why. */
+    /* Set up a rank entry for this client.
+     *
+     * At most one entry per rank may exist: the "have we got everyone"
+     * test below is an exact equality against the length of the ranks
+     * list, so a second entry for a rank pushes that list permanently
+     * past nlocalprocs, all_registered is never set, and every
+     * collective involving this namespace hangs with nothing anywhere
+     * reporting why.
+     *
+     * The host registering a rank we already hold is not automatically
+     * that error, though. A proc that connected before anyone registered
+     * it - a self-started tool, or the singleton case - was given its
+     * entry by the connection handler, and the host registering it
+     * afterwards is the ordinary sequence rather than a mistake. Adopt
+     * the host's description into that entry; only a second *host*
+     * registration is the duplicate worth refusing. */
+    adopted = NULL;
     PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
-        if (info->pname.rank == cd->proc.rank) {
+        if (info->pname.rank != cd->proc.rank) {
+            continue;
+        }
+        if (info->host_registered) {
+            /* the host really is registering the same rank twice */
             PMIX_ERROR_LOG(PMIX_ERR_DUPLICATE_KEY);
             rc = PMIX_ERR_DUPLICATE_KEY;
             goto cleanup;
         }
+        /* We made this entry ourselves when the proc connected ahead of
+         * being registered - a self-started tool or singleton. It is the
+         * same rank, so take the host's description of it rather than
+         * adding a second entry: the uid, gid and server_object it
+         * carries are ours only from here, and the server_object in
+         * particular is what every client_connected, client_finalized
+         * and abort upcall hands back to the host to identify the proc.
+         * Refusing this call left those upcalls with NULL and left the
+         * host to recognize its own process some other way. */
+        adopted = info;
+        break;
     }
-    info = PMIX_NEW(pmix_rank_info_t);
-    if (NULL == info) {
-        rc = PMIX_ERR_NOMEM;
-        goto cleanup;
+    if (NULL != adopted) {
+        info = adopted;
+        info->uid = cd->uid;
+        info->gid = cd->gid;
+        info->server_object = cd->server_object;
+        info->host_registered = true;
+    } else {
+        info = PMIX_NEW(pmix_rank_info_t);
+        if (NULL == info) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        info->pname.nspace = strdup(nptr->nspace);
+        if (NULL == info->pname.nspace) {
+            PMIX_RELEASE(info);
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        info->pname.rank = cd->proc.rank;
+        info->uid = cd->uid;
+        info->gid = cd->gid;
+        info->server_object = cd->server_object;
+        info->host_registered = true;
+        pmix_list_append(&nptr->ranks, &info->super);
     }
-    info->pname.nspace = strdup(nptr->nspace);
-    if (NULL == info->pname.nspace) {
-        PMIX_RELEASE(info);
-        rc = PMIX_ERR_NOMEM;
-        goto cleanup;
-    }
-    info->pname.rank = cd->proc.rank;
-    info->uid = cd->uid;
-    info->gid = cd->gid;
-    info->server_object = cd->server_object;
-    pmix_list_append(&nptr->ranks, &info->super);
     /* see if we have everyone - note that nlocalprocs is set to
      * a default value to ensure we don't execute this
      * test until the host calls "register_nspace" */

@@ -1577,13 +1577,18 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* attempt to connect to a server */
     rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver,
                                    info, ninfo, &suri);
-    if (PMIX_UNLIKELY(PMIX_ERR_OUTDATED == rc)) {
-        /* there is a server, but it is older than we can talk to - the
-         * connection code has said so. Coming up as a singleton would
-         * hide that behind a process that runs as if no server existed */
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc && PMIX_ERR_UNREACH != rc)) {
+        /* Only PMIX_ERR_UNREACH means "there is no server for us", and
+         * only that makes us a singleton. Anything else says there IS a
+         * server - one we were pointed at and could not connect to
+         * (PMIX_ERR_COMM_FAILURE), one older than we can talk to
+         * (PMIX_ERR_OUTDATED), one that refused us - and coming up as a
+         * singleton would hide that behind a process that runs as if no
+         * server existed, with an identity the server gave it and none of
+         * the data that goes with it. Fail the init and say why. */
         goto errout;
     }
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+    if (PMIX_UNLIKELY(PMIX_ERR_UNREACH == rc)) {
         /* mark that we couldn't connect to a server */
         pmix_client_globals.singleton = true;
         /* initialize our data values */
