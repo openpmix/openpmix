@@ -53,6 +53,9 @@
 static int npass = 0;
 static int nfail = 0;
 static char tmpdir[PMIX_PATH_MAX];
+static char moveddir[PMIX_PATH_MAX + 8];
+/* the name of the rendezvous file within its directory, once known */
+static const char *schedname = NULL;
 
 static pmix_server_module_t mymodule = {0};
 
@@ -153,6 +156,23 @@ static void child(bool clean)
     }
     if (!clean) {
         _exit(CHILD_OK);
+    }
+    if (NULL != schedname) {
+        /* move the directory away and put a decoy at the old name, so
+         * finalize can only get the right file by removing it from the
+         * directory it was created in */
+        char decoy[PMIX_PATH_MAX * 2];
+        FILE *fp;
+
+        if (0 != rename(tmpdir, moveddir) || 0 != mkdir(tmpdir, 0700)) {
+            _exit(CHILD_INITFAIL);
+        }
+        snprintf(decoy, sizeof(decoy), "%s/%s", tmpdir, schedname);
+        fp = fopen(decoy, "w");
+        if (NULL != fp) {
+            fprintf(fp, "decoy\n");
+            fclose(fp);
+        }
     }
     PMIx_server_finalize();
     _exit(CHILD_OK);
@@ -320,6 +340,25 @@ int main(void)
         if (0 != chown(tmpdir, 0, 0)) {
             fprintf(stderr, "could not restore the tmpdir's owner\n");
         }
+    }
+
+    /* finalize removes the file from the directory it was created in,
+     * not from whatever the name leads to by then */
+    {
+        char moved[PMIX_PATH_MAX * 2];
+
+        snprintf(moveddir, sizeof(moveddir), "%s.moved", tmpdir);
+        schedname = strrchr(path, '/') + 1;
+        rc = run_child(true);
+        schedname = NULL;
+        snprintf(moved, sizeof(moved), "%s/%s", moveddir, strrchr(path, '/') + 1);
+        report("file is removed from the directory it was created in",
+               CHILD_OK == rc && !file_exists(moved), "file left in the moved directory");
+        report("a file now at the old name is left alone", file_exists(path),
+               "decoy was removed");
+        unlink(moved);
+        rmdir(moveddir);
+        unlink(path);
     }
 
     free(path);
