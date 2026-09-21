@@ -168,7 +168,7 @@ char *pmix_path_find(char *fname, char **pathv, int mode, char **envv)
                 if (NULL == delimit) {
                     fullpath = pmix_path_access(fname, env, mode);
                 } else {
-                    pfix = (char *) calloc((strlen(env) + strlen(delimit) + 1), sizeof(char));
+                    pfix = (char *) pmix_calloc((strlen(env) + strlen(delimit) + 1), sizeof(char));
                     if (NULL == pfix) {
                         return NULL;
                     }

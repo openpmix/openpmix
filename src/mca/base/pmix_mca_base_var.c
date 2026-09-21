@@ -170,7 +170,7 @@ int pmix_mca_base_var_generate_full_name4(const char *project, const char *frame
         }
     }
 
-    name = calloc(1, len);
+    name = pmix_calloc(1, len);
     if (NULL == name) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -1988,7 +1988,7 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
         line_count = 8 + (var->mbv_description ? 1 : 0)
                      + (PMIX_VAR_IS_SYNONYM(var[0]) ? 1 : synonym_count) + enum_count;
 
-        *out = (char **) calloc(line_count + 1, sizeof(char *));
+        *out = (char **) pmix_calloc(line_count + 1, sizeof(char *));
         if (NULL == *out) {
             free(value_string);
             free(source_string);
@@ -2063,7 +2063,7 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
         char *color_name = "", *color_value = "", *color_reset = "";
 
         /* There will be at most three lines in the pretty print case */
-        *out = (char **) calloc(4, sizeof(char *));
+        *out = (char **) pmix_calloc(4, sizeof(char *));
         if (NULL == *out) {
             free(value_string);
             free(source_string);
@@ -2141,7 +2141,7 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
             }
         }
     } else if (PMIX_MCA_BASE_VAR_DUMP_SIMPLE == output_type) {
-        *out = (char **) calloc(2, sizeof(char *));
+        *out = (char **) pmix_calloc(2, sizeof(char *));
         if (NULL == *out) {
             free(value_string);
             free(source_string);

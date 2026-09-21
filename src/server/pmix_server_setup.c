@@ -210,7 +210,7 @@ cache_it:
              * "pointer" over whatever the heap happened to hold, and the
              * kval destructor then freed that address. Zeroed, the same
              * failure leaves a NULL the destructor skips. */
-            kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+            kv->value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
             if (NULL == kv->key || NULL == kv->value) {
                 PMIX_RELEASE(kv);
                 ret = PMIX_ERR_NOMEM;

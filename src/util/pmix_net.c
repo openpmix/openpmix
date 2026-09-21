@@ -127,7 +127,7 @@ static char *get_hostname_buffer(void)
     }
 
     if (NULL == buffer) {
-        buffer = calloc((NI_MAXHOST + 1), sizeof(char));
+        buffer = pmix_calloc((NI_MAXHOST + 1), sizeof(char));
         if (NULL == buffer) {
             return NULL;
         }
@@ -165,7 +165,7 @@ pmix_status_t pmix_net_setup_private_ipv4(void)
         return PMIX_SUCCESS;
     }
     count = PMIx_Argv_count(args);
-    private_ipv4 = (private_ipv4_t *) calloc((count + 1), sizeof(private_ipv4_t));
+    private_ipv4 = (private_ipv4_t *) pmix_calloc((count + 1), sizeof(private_ipv4_t));
     if (NULL == private_ipv4) {
         PMIx_Argv_free(args);
         return PMIX_ERR_NOMEM;

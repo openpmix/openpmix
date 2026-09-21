@@ -319,7 +319,7 @@ int pmix_mca_base_var_enum_create(const char *name, const pmix_mca_base_var_enum
     new_enum->enum_value_count = i;
 
     /* make a copy of the values */
-    new_enum->enum_values = calloc(new_enum->enum_value_count + 1, sizeof(*new_enum->enum_values));
+    new_enum->enum_values = pmix_calloc(new_enum->enum_value_count + 1, sizeof(*new_enum->enum_values));
     if (NULL == new_enum->enum_values) {
         PMIX_RELEASE(new_enum);
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -360,7 +360,7 @@ int pmix_mca_base_var_enum_create_flag(const char *name,
     new_enum->super.enum_value_count = i;
 
     /* make a copy of the values */
-    new_enum->enum_flags = calloc(new_enum->super.enum_value_count + 1,
+    new_enum->enum_flags = pmix_calloc(new_enum->super.enum_value_count + 1,
                                   sizeof(*new_enum->enum_flags));
     if (NULL == new_enum->enum_flags) {
         PMIX_RELEASE(new_enum);

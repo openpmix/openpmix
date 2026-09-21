@@ -364,7 +364,7 @@ pmix_status_t pmix_bfrops_base_unpack_string(pmix_pointer_array_t *regtypes, pmi
              * to malloc, where it becomes a huge size_t */
             sdest[i] = NULL;
         } else {
-            sdest[i] = (char *) malloc(len); // NULL terminator is included
+            sdest[i] = (char *) pmix_calloc(len, sizeof(char)); // NULL terminator is included
             if (NULL == sdest[i]) {
                 return PMIX_ERR_OUT_OF_RESOURCE;
             }
@@ -597,21 +597,21 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_b
             break;
         case PMIX_DATA_ARRAY:
             /* this is now a pointer, so allocate storage for it */
-            val->data.darray = (pmix_data_array_t *) malloc(sizeof(pmix_data_array_t));
+            val->data.darray = (pmix_data_array_t *) pmix_calloc(1, sizeof(pmix_data_array_t));
             if (NULL == val->data.darray) {
                 return PMIX_ERR_NOMEM;
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.darray, &m, PMIX_DATA_ARRAY, regtypes);
             break;
         case PMIX_REGATTR:
-            val->data.ptr = (pmix_regattr_t *) calloc(1, sizeof(pmix_regattr_t));
+            val->data.ptr = (pmix_regattr_t *) pmix_calloc(1, sizeof(pmix_regattr_t));
             if (NULL == val->data.ptr) {
                 return PMIX_ERR_NOMEM;
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.ptr, &m, PMIX_REGATTR, regtypes);
             return ret;
         case PMIX_COORD:
-            val->data.coord = (pmix_coord_t *) calloc(1, sizeof(pmix_coord_t));
+            val->data.coord = (pmix_coord_t *) pmix_calloc(1, sizeof(pmix_coord_t));
             if (NULL == val->data.coord) {
                 return PMIX_ERR_NOMEM;
             }
@@ -922,7 +922,7 @@ pmix_status_t pmix_bfrops_base_unpack_buf(pmix_pointer_array_t *regtypes, pmix_b
             if (pmix_bfrop_too_small(buffer, nbytes)) {
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }
-            ptr[i].base_ptr = (char *) malloc(nbytes);
+            ptr[i].base_ptr = (char *) pmix_calloc(nbytes, sizeof(char));
             if (NULL == ptr[i].base_ptr) {
                 return PMIX_ERR_NOMEM;
             }
@@ -1119,7 +1119,7 @@ pmix_status_t pmix_bfrops_base_unpack_kval(pmix_pointer_array_t *regtypes, pmix_
             return ret;
         }
         /* allocate the space */
-        ptr[i].value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        ptr[i].value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
         if (NULL == ptr[i].value) {
             return PMIX_ERR_NOMEM;
         }
@@ -1172,7 +1172,7 @@ pmix_status_t pmix_bfrops_base_unpack_bo(pmix_pointer_array_t *regtypes, pmix_bu
                 ptr[i].size = 0;
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }
-            ptr[i].bytes = (char *) malloc(ptr[i].size * sizeof(char));
+            ptr[i].bytes = (char *) pmix_calloc(ptr[i].size, sizeof(char));
             if (NULL == ptr[i].bytes) {
                 ptr[i].size = 0;
                 return PMIX_ERR_NOMEM;
@@ -1459,7 +1459,7 @@ pmix_status_t pmix_bfrops_base_unpack_query(pmix_pointer_array_t *regtypes, pmix
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }
             /* unpack the keys */
-            if (NULL == (ptr[i].keys = (char **) calloc(nkeys + 1, sizeof(char *)))) {
+            if (NULL == (ptr[i].keys = (char **) pmix_calloc(nkeys + 1, sizeof(char *)))) {
                 return PMIX_ERR_NOMEM;
             }
             /* unpack keys */
@@ -1617,7 +1617,7 @@ pmix_status_t pmix_bfrops_base_unpack_coord(pmix_pointer_array_t *regtypes, pmix
                 ptr[i].dims = 0;
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }
-            ptr[i].coord = (uint32_t *) malloc(ptr[i].dims * sizeof(uint32_t));
+            ptr[i].coord = (uint32_t *) pmix_calloc(ptr[i].dims, sizeof(uint32_t));
             if (NULL == ptr[i].coord) {
                 ptr[i].dims = 0;
                 return PMIX_ERR_NOMEM;
@@ -1689,7 +1689,7 @@ pmix_status_t pmix_bfrops_base_unpack_regattr(pmix_pointer_array_t *regtypes, pm
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }
             /* unpack the description */
-            if (NULL == (ptr[i].description = (char **) calloc(nd + 1, sizeof(char *)))) {
+            if (NULL == (ptr[i].description = (char **) pmix_calloc(nd + 1, sizeof(char *)))) {
                 return PMIX_ERR_NOMEM;
             }
             m = nd;
@@ -1762,7 +1762,7 @@ pmix_status_t pmix_bfrops_base_unpack_regex2(pmix_pointer_array_t *regtypes, pmi
                 ptr[i].len = 0;
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }
-            ptr[i].bytes = (uint8_t *) malloc(ptr[i].len);
+            ptr[i].bytes = (uint8_t *) pmix_calloc(ptr[i].len, sizeof(uint8_t));
             if (NULL == ptr[i].bytes) {
                 ptr[i].len = 0;
                 return PMIX_ERR_NOMEM;
@@ -1878,7 +1878,7 @@ pmix_status_t pmix_bfrops_base_unpack_geometry(pmix_pointer_array_t *regtypes,
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }
             /* allocate the coords */
-            ptr[i].coordinates = (pmix_coord_t *) calloc(ptr[i].ncoords, sizeof(pmix_coord_t));
+            ptr[i].coordinates = (pmix_coord_t *) pmix_calloc(ptr[i].ncoords, sizeof(pmix_coord_t));
             if (NULL == ptr[i].coordinates) {
                 ptr[i].ncoords = 0;
                 return PMIX_ERR_NOMEM;
@@ -2064,7 +2064,7 @@ pmix_status_t pmix_bfrops_base_unpack_endpoint(pmix_pointer_array_t *regtypes,
                 ptr[i].endpt.size = 0;
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }
-            ptr[i].endpt.bytes = (char *) malloc(ptr[i].endpt.size);
+            ptr[i].endpt.bytes = (char *) pmix_calloc(ptr[i].endpt.size, sizeof(char));
             if (NULL == ptr[i].endpt.bytes) {
                 ptr[i].endpt.size = 0;
                 return PMIX_ERR_NOMEM;
@@ -2189,7 +2189,7 @@ pmix_status_t pmix_bfrops_base_unpack_dbuf(pmix_pointer_array_t *regtypes, pmix_
                 ptr[i].bytes_used = 0;
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }
-            ptr[i].base_ptr = malloc(ptr[i].bytes_used);
+            ptr[i].base_ptr = pmix_calloc(ptr[i].bytes_used, sizeof(char));
             if (NULL == ptr[i].base_ptr) {
                 ptr[i].bytes_used = 0;
                 return PMIX_ERR_NOMEM;
