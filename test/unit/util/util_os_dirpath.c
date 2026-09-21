@@ -989,6 +989,9 @@ static void test_create_file_fresh(void)
     report("create_file_fresh: a regular file",
            0 == lstat(path, &st) && S_ISREG(st.st_mode));
     report("create_file_fresh: mode honored", 0 == (st.st_mode & 0077));
+    /* every caller holds the descriptor for itself; a child must not */
+    report("create_file_fresh: close-on-exec",
+           0 <= fd && 0 != (fcntl(fd, F_GETFD) & FD_CLOEXEC));
     if (0 <= fd) {
         close(fd);
     }
