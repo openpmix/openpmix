@@ -237,30 +237,14 @@ pmix_shmem_segment_create(
      * past the old end reads as zero. gds/shmem3's allocator relies on the
      * whole region being zero so it does not have to memset what it hands out;
      * see tma_carve() there. */
-    /* O_EXCL, and opened relative to its directory rather than by name.
-     *
-     * This process composes the whole of backing_path out of its own
-     * naming scheme, so anything already sitting there is either a file
-     * left over from an earlier run - the name carries a pid, and pids
-     * get reused - or something this code did not put there. O_EXCL
-     * declines both, and with O_CREAT it declines a symlink in
-     * particular, which a bare O_CREAT | O_TRUNC would instead follow,
-     * truncating and overwriting some unrelated file.
-     *
-     * Two passes at most, matching write_rndz_file(): a leftover file is
-     * reclaimed once and the create retried. unlink() removes the name
-     * it is given and never follows it onward. */
-    int fd = -1;
-    for (int pass = 0; pass < 2; pass++) {
-        fd = pmix_os_dirpath_open_file(backing_path,
-                                       O_CREAT | O_EXCL | O_RDWR, 0600);
-        if (0 <= fd || EEXIST != errno) {
-            break;
-        }
-        if (0 != unlink(backing_path) && ENOENT != errno) {
-            break;
-        }
-    }
+    /* This process composes the whole of backing_path out of its own
+     * naming scheme, so anything already sitting there is a file left
+     * over from an earlier run - the name carries a pid, and pids get
+     * reused - or something this code did not put there. Either way it
+     * is not ours to open: the create is exclusive, and a leftover is
+     * removed once and the create retried. */
+    const int fd = pmix_os_dirpath_create_file(backing_path, O_RDWR, 0600,
+                                               NULL, NULL);
     if (-1 == fd) {
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
         goto out;

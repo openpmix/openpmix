@@ -385,6 +385,33 @@ int pmix_os_dirpath_open_file(const char *path, int flags, mode_t mode)
     return openat_and_close(dirfd, base, flags, mode);
 }
 
+int pmix_os_dirpath_create_file(const char *path, int flags, mode_t mode,
+                                pmix_os_dirpath_reclaim_fn_t reclaim,
+                                void *cbdata)
+{
+    int fd, pass;
+
+    for (pass = 0;; pass++) {
+        fd = pmix_os_dirpath_open_file(path, flags | O_CREAT | O_EXCL, mode);
+        if (0 <= fd || EEXIST != errno) {
+            return fd;
+        }
+        if (0 < pass) {
+            /* cleared once and taken again - by someone creating it now */
+            return -1;
+        }
+        if (NULL != reclaim) {
+            if (!reclaim(path, cbdata)) {
+                errno = EEXIST;
+                return -1;
+            }
+        } else if (0 != unlink(path) && ENOENT != errno) {
+            /* someone else removing it first is fine; anything else is not */
+            return -1;
+        }
+    }
+}
+
 /**
  * The named path already exists: make sure it really is a directory,
  * and give it (at least) the requested mode bits.
