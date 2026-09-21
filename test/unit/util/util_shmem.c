@@ -398,6 +398,156 @@ static void test_attach_on_attached_handle_is_refused(void)
     unlink(seg);
 }
 
+/* The complaint lchown() did not answer: it declines a symlink at the
+ * last component of the path, and resolves every directory above it
+ * normally. So a directory on the way to the segment, swapped for a link
+ * to one of someone else's choosing, sends the chown - and the chmod -
+ * to whatever file of theirs carries the segment's name. The segment is
+ * created, and only then is its directory replaced, which is the window
+ * gds/shmem3 leaves between the create and shmem3_segment_fix_perms(). */
+static void test_perms_refuse_a_swapped_directory(void)
+{
+    char dir[512], moved[512], elsewhere[512], seg[600], victim[600];
+    struct stat before, after;
+    pmix_shmem_t *shmem;
+    pmix_status_t rc;
+
+    snprintf(dir, sizeof(dir), "%s/segdir", tmpbase);
+    snprintf(moved, sizeof(moved), "%s/segdir.moved", tmpbase);
+    snprintf(elsewhere, sizeof(elsewhere), "%s/elsewhere", tmpbase);
+    snprintf(seg, sizeof(seg), "%s/swapped.seg", dir);
+    snprintf(victim, sizeof(victim), "%s/swapped.seg", elsewhere);
+
+    if (0 != mkdir(dir, S_IRWXU) || 0 != mkdir(elsewhere, S_IRWXU) ||
+        0 != make_bystander(victim, &before)) {
+        report("swapped dir: fixture", 0);
+        return;
+    }
+    shmem = PMIX_NEW(pmix_shmem_t);
+    if (NULL == shmem || PMIX_SUCCESS != pmix_shmem_segment_create(shmem, 4096, seg, 1)) {
+        report("swapped dir: fixture", 0);
+        if (NULL != shmem) {
+            PMIX_RELEASE(shmem);
+        }
+        return;
+    }
+    /* the name now leads to the bystander, through a directory link */
+    if (0 != rename(dir, moved) || 0 != symlink(elsewhere, dir)) {
+        report("swapped dir: fixture", 0);
+        PMIX_RELEASE(shmem);
+        return;
+    }
+
+    /* a group change an unprivileged process is allowed to make, so the
+     * old lchown() would have succeeded at it */
+    rc = pmix_shmem_segment_chown(shmem, (uid_t) -1, getegid());
+    report("swapped dir: chown refused", PMIX_ERR_NO_PERMISSIONS == rc);
+    rc = pmix_shmem_segment_chmod(shmem, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    report("swapped dir: chmod refused", PMIX_ERR_NO_PERMISSIONS == rc);
+    if (0 != stat(victim, &after)) {
+        report("swapped dir: bystander still exists", 0);
+    } else {
+        report("swapped dir: bystander mode unchanged",
+               (before.st_mode & 07777) == (after.st_mode & 07777));
+    }
+
+    /* the segment's own file, in the directory that was moved aside */
+    snprintf(seg, sizeof(seg), "%s/swapped.seg", moved);
+    PMIX_RELEASE(shmem);
+    unlink(seg);
+    unlink(victim);
+    unlink(dir);
+    rmdir(moved);
+    rmdir(elsewhere);
+}
+
+/* A hard link gives the segment's inode a second name, which needs no
+ * symlink anywhere - and is not a name this code made. */
+static void test_perms_refuse_a_second_link(void)
+{
+    char seg[512], alias[512];
+    pmix_shmem_t *shmem;
+    pmix_status_t rc;
+
+    snprintf(seg, sizeof(seg), "%s/linked-twice.seg", tmpbase);
+    snprintf(alias, sizeof(alias), "%s/alias", tmpbase);
+    unlink(seg);
+    unlink(alias);
+
+    shmem = PMIX_NEW(pmix_shmem_t);
+    if (NULL == shmem || PMIX_SUCCESS != pmix_shmem_segment_create(shmem, 4096, seg, 1) ||
+        0 != link(seg, alias)) {
+        report("second link: fixture", 0);
+        if (NULL != shmem) {
+            PMIX_RELEASE(shmem);
+        }
+        unlink(seg);
+        return;
+    }
+    rc = pmix_shmem_segment_chown(shmem, (uid_t) -1, getegid());
+    report("second link: chown refused", PMIX_ERR_NO_PERMISSIONS == rc);
+    rc = pmix_shmem_segment_chmod(shmem, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    report("second link: chmod refused", PMIX_ERR_NO_PERMISSIONS == rc);
+
+    PMIX_RELEASE(shmem);
+    unlink(alias);
+    unlink(seg);
+}
+
+/* And the ordinary case still works - including a second call, since
+ * gds/shmem3 fixes permissions on every segment it makes and cannot know
+ * whether an earlier call already did. */
+static void test_perms_on_own_segment(void)
+{
+    char seg[512];
+    pmix_shmem_t *shmem;
+    struct stat sb;
+    pmix_status_t rc;
+
+    snprintf(seg, sizeof(seg), "%s/own.seg", tmpbase);
+    unlink(seg);
+
+    shmem = PMIX_NEW(pmix_shmem_t);
+    if (NULL == shmem || PMIX_SUCCESS != pmix_shmem_segment_create(shmem, 4096, seg, 1)) {
+        report("own segment: fixture", 0);
+        if (NULL != shmem) {
+            PMIX_RELEASE(shmem);
+        }
+        return;
+    }
+    rc = pmix_shmem_segment_chown(shmem, geteuid(), getegid());
+    report("own segment: chown succeeds", PMIX_SUCCESS == rc);
+    rc = pmix_shmem_segment_chown(shmem, geteuid(), getegid());
+    report("own segment: chown repeats", PMIX_SUCCESS == rc);
+    rc = pmix_shmem_segment_chmod(shmem, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    report("own segment: chmod succeeds", PMIX_SUCCESS == rc);
+    report("own segment: mode applied",
+           0 == stat(seg, &sb) && 0660 == (sb.st_mode & 07777));
+
+    PMIX_RELEASE(shmem);
+    unlink(seg);
+}
+
+/* A handle that did not create a segment has no file to vouch for, so
+ * naming one by path is not enough to have it changed. */
+static void test_perms_need_a_created_segment(void)
+{
+    pmix_shmem_t *shmem = PMIX_NEW(pmix_shmem_t);
+    char seg[512];
+
+    if (NULL == shmem) {
+        report("uncreated: fixture", 0);
+        return;
+    }
+    snprintf(seg, sizeof(seg), "%s/uncreated.seg", tmpbase);
+    pmix_string_copy(shmem->backing_path, seg, PMIX_PATH_MAX);
+    report("uncreated: chown refused",
+           PMIX_ERR_BAD_PARAM == pmix_shmem_segment_chown(shmem, (uid_t) -1, getegid()));
+    report("uncreated: chmod refused",
+           PMIX_ERR_BAD_PARAM == pmix_shmem_segment_chmod(shmem, 0600));
+    PMIX_RELEASE(shmem);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -418,6 +568,10 @@ int main(int argc, char **argv)
     test_create_takes_no_reference();
     test_failed_create_leaves_no_file();
     test_attach_on_attached_handle_is_refused();
+    test_perms_refuse_a_swapped_directory();
+    test_perms_refuse_a_second_link();
+    test_perms_on_own_segment();
+    test_perms_need_a_created_segment();
 
     rmdir(tmpbase);
 
