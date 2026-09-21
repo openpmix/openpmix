@@ -311,6 +311,67 @@ int pmix_os_dirpath_open_file_under(const char *root, const char *tail,
     return fd;
 }
 
+/* Open the directory that holds `path` and point *base at its final
+ * component. The directory is trusted, so it is resolved the ordinary
+ * way. A bare filename answers AT_FDCWD, which the caller must not close.
+ * PMIX_O_TRAVERSE asks only for the execute bit, so a traverse-only
+ * (e.g. 0711) directory still works - which a plain O_RDONLY would
+ * refuse. */
+static int open_parent(const char *path, const char **base)
+{
+    char *dir;
+    int dirfd, save;
+
+    if (NULL == path || '\0' == path[0]) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    *base = strrchr(path, path_sep[0]);
+    if (NULL == *base) {
+        /* a bare filename in the current directory */
+        *base = path;
+        return AT_FDCWD;
+    }
+    if (*base == path) {
+        dir = strdup(path_sep);
+    } else {
+        dir = (char *) malloc((size_t) (*base - path) + 1);
+        if (NULL != dir) {
+            memcpy(dir, path, (size_t) (*base - path));
+            dir[*base - path] = '\0';
+        }
+    }
+    if (NULL == dir) {
+        errno = ENOMEM;
+        return -1;
+    }
+    ++(*base);
+    if ('\0' == (*base)[0]) {
+        /* the name ended in a separator, so it names no file */
+        free(dir);
+        errno = EISDIR;
+        return -1;
+    }
+
+    dirfd = open(dir, PMIX_O_TRAVERSE | O_DIRECTORY | PMIX_O_CLOEXEC);
+    save = errno;
+    free(dir);
+    errno = save;
+    return dirfd;
+}
+
+static void close_parent(int dirfd)
+{
+    int save;
+
+    if (AT_FDCWD != dirfd) {
+        save = errno;
+        close(dirfd);
+        errno = save;
+    }
+}
+
 /**
  * Open a file, declining a symlink at the file itself.
  *
@@ -345,65 +406,31 @@ int pmix_os_dirpath_open_file_under(const char *root, const char *tail,
  */
 int pmix_os_dirpath_open_file(const char *path, int flags, mode_t mode)
 {
-    char *dir;
-    const char *base;
-    int dirfd, save;
+    const char *base = NULL;
+    int dirfd, fd;
 
-    if (NULL == path || '\0' == path[0]) {
-        errno = EINVAL;
+    dirfd = open_parent(path, &base);
+    if (AT_FDCWD != dirfd && 0 > dirfd) {
         return -1;
     }
-
-    base = strrchr(path, path_sep[0]);
-    if (NULL == base) {
-        /* a bare filename in the current directory */
-        return open(path, flags | O_NOFOLLOW, mode);
-    }
-    if (base == path) {
-        dir = strdup(path_sep);
-    } else {
-        dir = (char *) malloc((size_t) (base - path) + 1);
-        if (NULL != dir) {
-            memcpy(dir, path, (size_t) (base - path));
-            dir[base - path] = '\0';
-        }
-    }
-    if (NULL == dir) {
-        errno = ENOMEM;
-        return -1;
-    }
-    ++base;
-    if ('\0' == base[0]) {
-        /* the name ended in a separator, so it names no file */
-        free(dir);
-        errno = EISDIR;
-        return -1;
-    }
-
-    /* The directory is trusted, so it is resolved the ordinary way.
-     * PMIX_O_TRAVERSE asks only for the execute bit, so a traverse-only
-     * (e.g. 0711) directory still works - which a plain O_RDONLY would
-     * refuse. */
-    dirfd = open(dir, PMIX_O_TRAVERSE | O_DIRECTORY);
-    save = errno;
-    free(dir);
-    if (0 > dirfd) {
-        errno = save;
-        return -1;
-    }
-
-    return openat_and_close(dirfd, base, flags, mode);
+    fd = openat(dirfd, base, flags | O_NOFOLLOW, mode);
+    close_parent(dirfd);
+    return fd;
 }
 
-int pmix_os_dirpath_create_file(const char *path, int flags, mode_t mode,
-                                pmix_os_dirpath_reclaim_fn_t reclaim,
-                                void *cbdata)
+/* The create-and-reclaim-once loop, relative to a directory already
+ * held. `cbname` is what the reclaim callback is handed: the caller's
+ * full path when it came in through pmix_os_dirpath_create_file(), the
+ * bare name when through pmix_os_dirpath_create_file_at(). */
+static int create_file_at(int dirfd, const char *name, const char *cbname,
+                          int flags, mode_t mode,
+                          pmix_os_dirpath_reclaim_fn_t reclaim, void *cbdata)
 {
     int fd, pass;
 
     for (pass = 0;; pass++) {
-        fd = pmix_os_dirpath_open_file(path, flags | O_CREAT | O_EXCL | PMIX_O_CLOEXEC,
-                                       mode);
+        fd = openat(dirfd, name,
+                    flags | O_CREAT | O_EXCL | O_NOFOLLOW | PMIX_O_CLOEXEC, mode);
         if (0 <= fd) {
             if (0 == PMIX_O_CLOEXEC) {
                 (void) pmix_fd_set_cloexec(fd);
@@ -418,15 +445,53 @@ int pmix_os_dirpath_create_file(const char *path, int flags, mode_t mode,
             return -1;
         }
         if (NULL != reclaim) {
-            if (!reclaim(path, cbdata)) {
+            if (!reclaim(cbname, cbdata)) {
                 errno = EEXIST;
                 return -1;
             }
-        } else if (0 != unlink(path) && ENOENT != errno) {
+        } else if (0 != unlinkat(dirfd, name, 0) && ENOENT != errno) {
             /* someone else removing it first is fine; anything else is not */
             return -1;
         }
     }
+}
+
+int pmix_os_dirpath_create_file(const char *path, int flags, mode_t mode,
+                                pmix_os_dirpath_reclaim_fn_t reclaim,
+                                void *cbdata)
+{
+    const char *base = NULL;
+    int dirfd, fd;
+
+    dirfd = open_parent(path, &base);
+    if (AT_FDCWD != dirfd && 0 > dirfd) {
+        return -1;
+    }
+    fd = create_file_at(dirfd, base, path, flags, mode, reclaim, cbdata);
+    close_parent(dirfd);
+    return fd;
+}
+
+int pmix_os_dirpath_create_file_at(int dirfd, const char *name, int flags,
+                                   mode_t mode,
+                                   pmix_os_dirpath_reclaim_fn_t reclaim,
+                                   void *cbdata)
+{
+    if (0 > dirfd || NULL == name || '\0' == name[0] ||
+        NULL != strchr(name, path_sep[0])) {
+        errno = EINVAL;
+        return -1;
+    }
+    return create_file_at(dirfd, name, name, flags, mode, reclaim, cbdata);
+}
+
+int pmix_os_dirpath_open_dir(const char *path)
+{
+    if (NULL == path || '\0' == path[0]) {
+        errno = EINVAL;
+        return -1;
+    }
+    return open(path, PMIX_O_TRAVERSE | O_DIRECTORY | PMIX_O_CLOEXEC);
 }
 
 /**
