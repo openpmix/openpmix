@@ -258,7 +258,7 @@ static pmix_status_t read_connect_ack(pmix_pending_connection_t *pnd)
         return PMIX_ERR_BAD_PARAM;
     }
     if (NULL == pnd->msg) {
-        pnd->msg = (char *) calloc(pnd->hdr.nbytes + 1, sizeof(char));
+        pnd->msg = (char *) pmix_calloc(pnd->hdr.nbytes + 1, sizeof(char));
         if (NULL == pnd->msg) {
             return PMIX_ERR_NOMEM;
         }

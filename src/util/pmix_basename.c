@@ -168,7 +168,7 @@ char *pmix_dirname(const char *filename)
         return strdup(PMIX_PATH_SEP);
     }
 
-    ret = (char *) calloc((end - filename) + 1, sizeof(char));
+    ret = (char *) pmix_calloc((end - filename) + 1, sizeof(char));
     if (NULL == ret) {
         return NULL;
     }

@@ -193,7 +193,7 @@ static inline int pmix_bitmap_copy(pmix_bitmap_t *dest, pmix_bitmap_t *src)
         /* Grow first and only commit once the allocation succeeded: the
          * old code freed dest->bitmap, then memcpy'd into whatever calloc
          * returned without looking at it. */
-        uint64_t *grown = (uint64_t *) calloc(src->array_size, sizeof(uint64_t));
+        uint64_t *grown = (uint64_t *) pmix_calloc(src->array_size, sizeof(uint64_t));
         if (NULL == grown) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }

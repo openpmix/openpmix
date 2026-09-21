@@ -388,7 +388,7 @@ int pmix_vasprintf(char **ptr, const char *fmt, va_list ap)
     }
 
     /* allocate a buffer */
-    buf = (char *) calloc(((size_t) length + 1), sizeof(char));
+    buf = (char *) pmix_calloc(((size_t) length + 1), sizeof(char));
     if (NULL == buf) {
 #if PMIX_HAVE_VA_COPY || PMIX_HAVE_UNDERSCORE_VA_COPY
         va_end(ap2);

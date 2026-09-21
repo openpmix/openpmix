@@ -212,7 +212,7 @@ static pmix_status_t hash_pack_update(struct pmix_peer_t *pr,
         }
         PMIX_CONSTRUCT(&wrap, pmix_kval_t);
         wrap.key = strdup(PMIX_JOB_INFO_ARRAY);
-        wrap.value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        wrap.value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
         if (NULL == wrap.key || NULL == wrap.value) {
             PMIX_DATA_ARRAY_FREE(darray);
             PMIX_DESTRUCT(&wrap);

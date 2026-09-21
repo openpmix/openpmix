@@ -364,7 +364,7 @@ static int add_to_env_str(const char *var, const char *val)
         }
         strcat(env_str, ";");
     } else {
-        env_str = calloc(1, new_envsize);
+        env_str = pmix_calloc(1, new_envsize);
         if (NULL == env_str) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }

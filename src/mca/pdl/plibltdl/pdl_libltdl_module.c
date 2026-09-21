@@ -58,7 +58,7 @@ static int plibltdl_open(const char *fname, bool use_ext, bool private_namespace
 #endif
 
     if (NULL != local_handle) {
-        *handle = calloc(1, sizeof(pmix_pdl_handle_t));
+        *handle = pmix_calloc(1, sizeof(pmix_pdl_handle_t));
         if (NULL == *handle) {
             lt_dlclose(local_handle);
             return PMIX_ERR_OUT_OF_RESOURCE;
