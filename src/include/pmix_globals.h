@@ -468,6 +468,18 @@ typedef struct pmix_rank_info_t {
     bool modex_recvd;
     int proc_cnt;        // #clones of this rank we know about
     void *server_object; // pointer to rank-specific object provided by server
+    /* True once the host has registered this rank with
+     * PMIx_server_register_client.
+     *
+     * A rank normally reaches our list that way and no other, but a
+     * self-started tool - a singleton being the common case - connects
+     * before any host knows to register it, so the connection handler
+     * creates its entry itself. The host may then legitimately register
+     * that same rank, and it is the only one that can tell us the uid,
+     * gid and server_object the entry is missing. Without this flag the
+     * two cases are indistinguishable and the second one has to be
+     * refused, which drops what the host was trying to give us. */
+    bool host_registered;
     /* Modex bookkeeping, server side - see pmix_server_collect_data.
      *
      * modex_log holds every PMIX_REMOTE/GLOBAL kval this rank has

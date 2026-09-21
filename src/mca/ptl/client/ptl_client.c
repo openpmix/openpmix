@@ -91,6 +91,10 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     pmix_data_array_t darray;
     pmix_list_t connections;
     pmix_connection_t *cn;
+    /* Whether we were told where a server is - by a PMIX_SERVER_URI
+     * directive or by the launcher's environment - as opposed to going
+     * looking for one on our own. See the end of this function. */
+    bool given = false;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
@@ -101,6 +105,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     /* see if we were given one */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
+            given = true;
             /* separate out the server URI version(s). Work on a copy -
              * the info array belongs to our caller and must come back
              * unmodified */
@@ -166,7 +171,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     if (NULL == evar) {
         /* check the environment */
         rc = pmix_ptl_base_set_peer(peer, &evar);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS == rc) {
+            given = true;
+        } else {
             /* we must be a singleton */
             PMIX_SET_PEER_TYPE(pmix_globals.mypeer, PMIX_PROC_SINGLETON);
             /* if we weren't given one and don't have one
@@ -244,6 +251,20 @@ complete:
     rc = PMIX_SUCCESS;
 
 error:
+    /* PMIX_ERR_UNREACH is how PMIx_Init learns it is a singleton, and it
+     * is only true when nobody told us where a server is: the no-server
+     * branch above is the one place it means that. A process that WAS
+     * given a server - launched by one, whose environment says so, or
+     * handed a PMIX_SERVER_URI - and could not reach it is not a
+     * singleton. It is a process that failed to make the connection it
+     * was set up to make. Reporting that as UNREACH turned it into a
+     * singleton carrying the launcher's namespace and rank but none of its
+     * job data, which then failed somewhere far from the cause: under
+     * Open MPI, as an MPI_Init that could not pair its TCP interfaces
+     * with those of peers on its own node. Say what happened. */
+    if (given && PMIX_ERR_UNREACH == rc) {
+        rc = PMIX_ERR_COMM_FAILURE;
+    }
     PMIX_LIST_DESTRUCT(&connections);
     if (NULL != urispec) {
         free(urispec);
