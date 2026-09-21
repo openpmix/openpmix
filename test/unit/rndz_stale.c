@@ -141,6 +141,9 @@ static void child(bool clean)
     pmix_info_t info;
     pmix_status_t rc;
 
+    /* a case that stalls - e.g., on opening a FIFO - fails rather
+     * than hanging the test suite */
+    alarm(60);
     PMIX_INFO_LOAD(&info, PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
     rc = PMIx_server_init(&mymodule, &info, 1);
     PMIX_INFO_DESTRUCT(&info);
@@ -287,6 +290,37 @@ int main(void)
     plant_file_pid(path, "4294967295");
     rc = run_child(true);
     report("file whose pid does not fit a pid_t is reclaimed", CHILD_OK == rc, "init failed");
+
+    /* something other than a regular file at the name - here a FIFO,
+     * whose open would block until a writer came along - is not a file
+     * we wrote, and must be reclaimed without stalling the server */
+    unlink(path);
+    if (0 == mkfifo(path, 0600)) {
+        rc = run_child(true);
+        report("FIFO at the name is reclaimed", CHILD_OK == rc, "init failed or stalled");
+        unlink(path);
+    }
+
+    /* the directory's mode is not held against it: a root-owned 0777
+     * volume, such as a Kubernetes emptyDir at /tmp, is a normal place
+     * for a containerized server to work. Ours at 0777 stands in */
+    chmod(tmpdir, 0777);
+    rc = run_child(true);
+    report("world-writable directory is accepted", CHILD_OK == rc, "init failed");
+    chmod(tmpdir, 0700);
+
+    /* The directory is one we were handed, so whoever owns it is not
+     * held against it: a host running its server with privilege commonly
+     * gives it a per-job directory owned by the job's user. Only root can
+     * make one to test with */
+    if (0 == geteuid() && 0 == chown(tmpdir, 65534, 65534)) {
+        rc = run_child(true);
+        report("a given directory owned by another user is used", CHILD_OK == rc,
+               "init failed");
+        if (0 != chown(tmpdir, 0, 0)) {
+            fprintf(stderr, "could not restore the tmpdir's owner\n");
+        }
+    }
 
     free(path);
     cleanup();
