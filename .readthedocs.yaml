@@ -14,7 +14,8 @@ build:
     python: "3.10"
   jobs:
     pre_build:
-      - python3 docs/generate-code-of-conduct-rst.py --input .github/CODE_OF_CONDUCT.md --output docs/code-of-conduct.rst
+      - python3 docs/generate-rst-from-md.py --input .github/CODE_OF_CONDUCT.md --label .github/CODE_OF_CONDUCT.md --output docs/code-of-conduct.rst
+      - python3 docs/generate-rst-from-md.py --input SECURITY.md --label SECURITY.md --output docs/security.rst
 
 python:
   install:
