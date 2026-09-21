@@ -220,6 +220,7 @@ pmix_shmem_segment_create(
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
     bool created = false;
+    struct stat created_st;
     // Real size of the segment: the data region begins a full page in
     // (data_addr_from_base() rounds the header up to a page boundary), so
     // this is larger than what the caller asked to store. The arithmetic
@@ -246,6 +247,17 @@ pmix_shmem_segment_create(
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
         goto out;
     }
+    /* What this file is, as distinct from what it is called: chown and
+     * chmod later act only on this device and inode (see
+     * open_created_file() below), because the name can come to lead
+     * somewhere else in the meantime. */
+    if (0 != fstat(fd, &created_st)) {
+        rc = PMIX_ERROR;
+        (void)close(fd);
+        (void)unlink(backing_path);
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
     /* From here on the file exists because we made it, so every failure
      * below has to take it away again. Nothing else will: the caller is
      * being told the create failed, and shmem_destruct() only unlinks a
@@ -265,6 +277,11 @@ pmix_shmem_segment_create(
     pmix_string_copy(shmem->backing_path, backing_path, PMIX_PATH_MAX);
     // Add internal segment header.
     rc = add_internal_segment_header(shmem, layout_id);
+    if (PMIX_SUCCESS == rc) {
+        shmem->backing_dev = created_st.st_dev;
+        shmem->backing_ino = created_st.st_ino;
+        shmem->have_backing_id = true;
+    }
 out:
     if (-1 != fd) {
         (void)close(fd);
@@ -274,6 +291,7 @@ out:
             (void)unlink(backing_path);
             /* and do not leave the caller a path to a file that is gone */
             memset(shmem->backing_path, 0, PMIX_PATH_MAX);
+            shmem->have_backing_id = false;
         }
         PMIX_ERROR_LOG(rc);
     }
@@ -359,18 +377,76 @@ pmix_shmem_segment_detach(
     return (0 == rc) ? PMIX_SUCCESS : PMIX_ERROR;
 }
 
+/**
+ * Open the file this handle created, and nothing else.
+ *
+ * lchown(2) - and O_NOFOLLOW - decline a symlink at the last component of
+ * the path and nothing else. The directories above it are resolved
+ * normally, the name under them is predictable, and a hard link needs no
+ * symlink at all; any of those makes the path lead to a file of someone
+ * else's choosing, and a server running as root would re-own or
+ * re-permission whatever that was. So the path only finds a candidate.
+ * What decides is the descriptor: it is bound to its inode at open time,
+ * so the file inspected here is the file the caller then changes, and it
+ * has to be the regular file pmix_shmem_segment_create() made, under no
+ * name but this one.
+ *
+ * O_NONBLOCK so that a FIFO put at the name cannot hold the open up; it
+ * means nothing for a regular file, which is all that gets past fstat().
+ */
+static pmix_status_t
+open_created_file(
+    pmix_shmem_t *shmem,
+    int *fdp,
+    struct stat *st
+) {
+    if (NULL == shmem || !shmem->have_backing_id) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    const int fd = pmix_os_dirpath_open_file(shmem->backing_path,
+                                             O_RDONLY | O_NONBLOCK, 0);
+    if (0 > fd) {
+        return PMIX_ERR_FILE_OPEN_FAILURE;
+    }
+    if (0 != fstat(fd, st)) {
+        (void)close(fd);
+        return PMIX_ERROR;
+    }
+    if (!S_ISREG(st->st_mode) ||
+        1 != st->st_nlink ||
+        shmem->backing_dev != st->st_dev ||
+        shmem->backing_ino != st->st_ino) {
+        (void)close(fd);
+        return PMIX_ERR_NO_PERMISSIONS;
+    }
+    *fdp = fd;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t
 pmix_shmem_segment_chown(
     pmix_shmem_t *shmem,
     uid_t owner,
     gid_t group
 ) {
-    pmix_status_t rc = PMIX_SUCCESS;
+    struct stat st;
+    int fd;
 
-    if (0 != lchown(shmem->backing_path, owner, group)) {  // DO NOT FOLLOW LINKS
+    pmix_status_t rc = open_created_file(shmem, &fd, &st);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    /* Already as asked is success, and is not touched: the caller sets
+     * permissions on every segment it makes, and has no reason to know
+     * whether an earlier call got there first. */
+    const bool owner_ok = ((uid_t)-1 == owner || st.st_uid == owner);
+    const bool group_ok = ((gid_t)-1 == group || st.st_gid == group);
+    if (!(owner_ok && group_ok) && 0 != fchown(fd, owner, group)) {
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
     }
+    (void)close(fd);
     return rc;
 }
 
@@ -401,17 +477,14 @@ pmix_shmem_segment_chmod(
     pmix_shmem_t *shmem,
     mode_t mode
 ) {
-    pmix_status_t rc = PMIX_SUCCESS;
+    struct stat st;
+    int fd;
 
-    /* Through a descriptor rather than by name. chmod() follows a
-     * symlink at the final component, so where its neighbour lchown()
-     * above deliberately acts on the link itself, this acted on whatever
-     * the link named, and the two disagreed about which object they were
-     * changing. A descriptor is bound to its inode at open() time, so
-     * the object inspected is the object modified. */
-    const int fd = pmix_os_dirpath_open_file(shmem->backing_path, O_RDONLY, 0);
-    if (0 > fd) {
-        rc = PMIX_ERROR;
+    /* Under the same rule as chown above. A descriptor on the leaf alone
+     * was not enough here either: it declined a symlink at the name, but
+     * not a directory swapped in above it. */
+    pmix_status_t rc = open_created_file(shmem, &fd, &st);
+    if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -419,7 +492,7 @@ pmix_shmem_segment_chmod(
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
     }
-    close(fd);
+    (void)close(fd);
     return rc;
 }
 
@@ -429,6 +502,7 @@ pmix_shmem_segment_unlink(
 ) {
     const int rc = unlink(shmem->backing_path);
     memset(shmem->backing_path, 0, PMIX_PATH_MAX);
+    shmem->have_backing_id = false;
 
     return (0 == rc) ? PMIX_SUCCESS : PMIX_ERROR;
 }
@@ -479,6 +553,9 @@ shmem_construct(
     s->hdr_address = NULL;
     s->data_address = NULL;
     memset(s->backing_path, 0, PMIX_PATH_MAX);
+    s->have_backing_id = false;
+    s->backing_dev = 0;
+    s->backing_ino = 0;
 }
 
 static void
