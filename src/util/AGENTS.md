@@ -1288,6 +1288,19 @@ its neighbour were doing. Open once and use `fchmod()`/`fstat()`, the way
 `dirpath_ensure_mode()` does in
 [`pmix_os_dirpath.c`](pmix_os_dirpath.c).
 
+**And when you come back to a file later, check it is the one you made.**
+A descriptor opened by name is only as good as the name, and the
+`O_NOFOLLOW` behind it protects the last component and nothing above it.
+`lchown()` was the "fix" for a symlink at a segment's backing path, and it
+left the directories above that path, and hard links, just as open as
+before; a server running as root would re-own any file an attacker could
+route the name to. `pmix_shmem_segment_create()` therefore records the
+device and inode of the file it made, and `open_created_file()` in
+[`pmix_shmem.c`](pmix_shmem.c) lets chown/chmod act only on a regular file
+with that identity and a link count of one. A caller-side ownership check
+("still owned by our euid") is not a substitute: under root the target is
+root-owned too, and passes.
+
 ### `pmix_shmem` — a created segment reads as zero
 
 `pmix_shmem_segment_create()` creates its backing file fresh and
