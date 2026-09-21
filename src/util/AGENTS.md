@@ -1263,17 +1263,22 @@ who composed which part of the name:
     line: the last separator before the first conversion, since nothing
     ahead of that is transformed and the offset is therefore the same in
     the pattern and in its expansion.
-- **Where the name is created fresh, pass `O_EXCL` with `O_CREAT`.**
-  Together they decline *anything* already at the name rather than only a
-  symlink. `write_rndz_file()` in
-  [`ptl_base_listener.c`](../mca/ptl/base/ptl_base_listener.c) is the
-  model, **including its two-pass loop** — a name that carries a pid may
+- **Where the name is created fresh, use `pmix_os_dirpath_create_file()`.**
+  It opens `O_CREAT | O_EXCL` through `pmix_os_dirpath_open_file()`,
+  which declines *anything* already at the name rather than only a
+  symlink — and then reclaims it, because a name that carries a pid may
   hold a file left over from an earlier run, since pids get reused, and
-  that has to be reclaimed or the operation cannot succeed at all.
-  Reclaim it with `unlink()`, which removes the name it is given and
-  never follows it onward. A change that only declines breaks startup;
-  `test/unit/util/util_shmem.c` covers both halves for exactly that
-  reason.
+  that has to be reclaimed or the operation cannot succeed at all. By
+  default the reclaim is `unlink()`, which removes the name it is given
+  and never follows it onward; a caller that has to decide first passes
+  a callback, the way `write_rndz_file()` in
+  [`ptl_base_listener.c`](../mca/ptl/base/ptl_base_listener.c) checks
+  whether a live server still owns its rendezvous file. The retry happens
+  **once**: a name occupied again after being cleared belongs to a
+  process creating it right now. That loop used to be written out by hand
+  at each of the three call sites. A change that only declines breaks
+  startup; `test/unit/util/util_os_dirpath.c` covers the helper and
+  `test/unit/util/util_shmem.c` covers both halves at the segment level.
 
 **Once you hold a descriptor, act on it rather than on the name.**
 `chmod()` follows a symlink at the final component and `lchown()`
@@ -1295,14 +1300,14 @@ what keeps building a segment from faulting in its whole — heavily
 over-estimated — extent up front.
 
 "Fresh" is the load-bearing half, and it is why the open is
-`O_CREAT | O_EXCL` (through `pmix_os_dirpath_open_file()`) rather than
+`O_CREAT | O_EXCL` (through `pmix_os_dirpath_create_file()`) rather than
 `O_CREAT | O_TRUNC`. Segments are unlinked when their last holder lets
 go, so a path collides only with a file left behind by a server that
 died; but the path carries a pid, and pids get reused, and `ftruncate()`
 to the same or a smaller size would leave that file's bytes in place.
 `O_EXCL` declines whatever is there — a symlink included, which
-`O_CREAT | O_TRUNC` would have followed and truncated — and the two-pass
-loop then reclaims a leftover with `unlink()` and retries, exactly as
+`O_CREAT | O_TRUNC` would have followed and truncated — and the helper
+then reclaims a leftover with `unlink()` and retries once, exactly as
 `write_rndz_file()` does. A change that only declines breaks a server
 whose pid was reused; both halves are covered by
 [`test/unit/util/util_shmem.c`](../../test/unit/util/util_shmem.c).

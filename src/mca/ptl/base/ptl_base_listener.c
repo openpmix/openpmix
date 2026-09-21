@@ -391,7 +391,7 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
  * NULL if the file has no live owner (i.e., it is stale and can be
  * reclaimed). The caller must free any returned string.
  */
-static char *rndz_file_owner(char *filename)
+static char *rndz_file_owner(const char *filename)
 {
     FILE *fp;
     char *line, *endptr, *owner = NULL;
@@ -453,13 +453,48 @@ static char *rndz_file_owner(char *filename)
     return owner;
 }
 
+typedef struct {
+    const char *role;
+    bool reported;
+} rndz_reclaim_t;
+
+/* A rendezvous file is already at the name. If a live process owns it,
+ * then another server holds this role and we must not disturb it;
+ * otherwise it was left behind by an instance that is no longer running,
+ * so reclaim it. Either refusal is explained here, and says so in
+ * cbdata so the caller does not add a misleading message on top. */
+static bool rndz_reclaim(const char *filename, void *cbdata)
+{
+    rndz_reclaim_t *ctx = (rndz_reclaim_t *) cbdata;
+    char *owner;
+
+    owner = rndz_file_owner(filename);
+    if (NULL != owner) {
+        pmix_show_help("help-ptl-base.txt", "rndz-file-in-use", true,
+                       ctx->role, filename, owner);
+        free(owner);
+        ctx->reported = true;
+        return false;
+    }
+    /* someone else beating us to the removal is fine - anything else
+     * is not */
+    if (0 != unlink(filename) && ENOENT != errno) {
+        pmix_show_help("help-ptl-base.txt", "rndz-file-stale", true,
+                       ctx->role, filename, strerror(errno));
+        ctx->reported = true;
+        return false;
+    }
+    return true;
+}
+
 static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role,
                                      bool *dir_created, bool *file_created)
 {
     int fd;
-    char *dirname, *tmp, *owner;
+    char *dirname, *tmp;
     time_t mytime;
-    int rc, n;
+    int rc;
+    rndz_reclaim_t reclaim = {.role = role, .reported = false};
     mode_t mode = 0;
 
     dirname = pmix_dirname(filename);
@@ -495,47 +530,23 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     if (pmix_ptl_base.allow_foreign_tools) {
         mode |= S_IRGRP | S_IROTH;
     }
-    /* two passes at most: if the file already exists, we get one
-     * chance to reclaim it as stale and try the create again */
-    for (n = 0; n < 2; n++) {
-        fd = open(filename, O_RDWR | O_CREAT | O_EXCL, mode);
-        if (0 <= fd || EEXIST != errno) {
-            break;
-        }
-        /* the file already exists - if a live process owns it, then
-         * another server holds this role and we must not disturb it */
-        owner = rndz_file_owner(filename);
-        if (NULL != owner) {
-            pmix_show_help("help-ptl-base.txt", "rndz-file-in-use", true,
-                           role, filename, owner);
-            free(owner);
-            *file_created = false;
-            /* we have explained the problem, so don't let our caller
-             * add a misleading message on top of it */
-            return PMIX_ERR_SILENT;
-        }
-        /* it was left behind by an instance that is no longer
-         * running, so reclaim it. Someone else beating us to the
-         * removal is fine - anything else is not */
-        if (0 != unlink(filename) && ENOENT != errno) {
-            pmix_show_help("help-ptl-base.txt", "rndz-file-stale", true,
-                           role, filename, strerror(errno));
-            *file_created = false;
-            return PMIX_ERR_SILENT;
-        }
-    }
+    /* if the file already exists, we get one chance to reclaim it as
+     * stale and try the create again */
+    fd = pmix_os_dirpath_create_file(filename, O_RDWR, mode, rndz_reclaim, &reclaim);
     if (0 > fd) {
+        *file_created = false;
+        if (reclaim.reported) {
+            return PMIX_ERR_SILENT;
+        }
         if (EEXIST == errno) {
             /* another process recreated the file while we were
              * reclaiming it */
             pmix_show_help("help-ptl-base.txt", "rndz-file-in-use", true,
                            role, filename, "another process");
-            *file_created = false;
             return PMIX_ERR_SILENT;
         }
         pmix_output(0, "Impossible to open the file %s in write mode\n", filename);
         PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
-        *file_created = false;
         return PMIX_ERR_FILE_OPEN_FAILURE;
     }
 
