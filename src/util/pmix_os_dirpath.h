@@ -177,7 +177,9 @@ typedef bool (*pmix_os_dirpath_reclaim_fn_t)(const char *path, void *cbdata);
  * @param path    The file to create. Its directory is resolved normally;
  *                see pmix_os_dirpath_open_file().
  * @param flags   Further open(2) flags - the access mode, typically.
- *                O_CREAT, O_EXCL and O_NOFOLLOW are added.
+ *                O_CREAT, O_EXCL and O_NOFOLLOW are added, and the
+ *                descriptor is close-on-exec: every caller holds it for
+ *                itself, and none means a child to inherit it.
  * @param mode    The new file's mode.
  * @param reclaim Decides about a file already at the name. NULL removes
  *                it unconditionally with unlink(), which acts on the name
