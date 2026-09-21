@@ -340,6 +340,7 @@ test/unit/ptl_legacy_ack
 test/unit/ptl_handshake
 test/unit/ptl_stalled_peer
 test/unit/ptl_recv_timeout
+test/unit/client_connect_fail
 test/unit/tool_delete
 test/unit/tool_nspace
 test/unit/tool_alt_uris

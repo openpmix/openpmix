@@ -358,6 +358,7 @@ static void info_con(pmix_rank_info_t *info)
     info->modex_recvd = false;
     info->proc_cnt = 0;
     info->server_object = NULL;
+    info->host_registered = false;
     PMIX_CONSTRUCT(&info->modex_log, pmix_list_t);
     info->modex_next_id = 0;
     PMIX_CONSTRUCT(&info->modex_marks, pmix_list_t);
@@ -442,14 +443,18 @@ static void pdes(pmix_peer_t *p)
     if (NULL != p->nptr) {
         PMIX_RELEASE(p->nptr);
     }
-    if (0 <= p->sd) {
-        CLOSE_THE_SOCKET(p->sd);
-    }
     /* This is the destructor that runs with no event base left - a role
      * releases its peers after pmix_rte_finalize() has freed it - so the
      * deletes below are the ones pmix_event_del_checked() exists for.
      * The flags are cleared either way, so the state a released peer
-     * leaves behind says what is true of it. */
+     * leaves behind says what is true of it.
+     *
+     * The events go before the socket does. Deleting an event after its
+     * descriptor is closed aims epoll_ctl(EPOLL_CTL_DEL) at a descriptor
+     * NUMBER that may already belong to a different socket - and with the
+     * close first, libevent also spends the interval believing that number
+     * is still watched, so a new socket given the same number is never
+     * added. See remove_client() in pmix_server_registration.c. */
     if (p->send_ev_active) {
         pmix_event_del(&p->send_event);
     }
@@ -458,6 +463,9 @@ static void pdes(pmix_peer_t *p)
     }
     p->send_ev_active = false;
     p->recv_ev_active = false;
+    if (0 <= p->sd) {
+        CLOSE_THE_SOCKET(p->sd);
+    }
 
     if (NULL != p->info) {
         PMIX_RELEASE(p->info);
