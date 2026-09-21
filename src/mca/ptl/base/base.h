@@ -101,6 +101,16 @@ struct pmix_ptl_base_t {
     bool created_nspace_filename;
     bool created_pid_filename;
     bool created_urifile;
+    /* a descriptor on the directory holding each rendezvous file we
+     * created, so the file is removed from the directory it was created
+     * in rather than wherever its name leads by then. -1 when none */
+    int rendezvous_dirfd;
+    int sysctrlr_dirfd;
+    int scheduler_dirfd;
+    int system_dirfd;
+    int session_dirfd;
+    int nspace_dirfd;
+    int pid_dirfd;
     bool remote_connections;
     bool connections_specified;
     bool system_tool;
