@@ -8,7 +8,8 @@
  *
  * Unit tests for pmix_os_dirpath utility functions:
  *   pmix_os_dirpath_create, pmix_os_dirpath_is_empty,
- *   pmix_os_dirpath_access, pmix_os_dirpath_destroy.
+ *   pmix_os_dirpath_access, pmix_os_dirpath_destroy,
+ *   pmix_os_dirpath_create_file.
  *
  * A temporary directory is created under /tmp for each test and
  * removed by the test itself.
@@ -29,6 +30,7 @@
 #    include <sys/stat.h>
 #endif
 
+#include <errno.h>
 #include <fcntl.h>
 
 #include "pmix.h"
@@ -952,6 +954,149 @@ static void test_destroy_base_swapped_during_walk(void)
     rmdir(swap_moved);
 }
 
+/* ------------------------------------------------------------------ */
+/* pmix_os_dirpath_create_file                                         */
+/*                                                                     */
+/* The segment backing files, hwloc.sm and the rendezvous files are    */
+/* all created through this: exclusively, with a leftover at the name  */
+/* reclaimed once and never more than once.                            */
+/* ------------------------------------------------------------------ */
+
+static int file_size(const char *path)
+{
+    struct stat st;
+    return (0 == lstat(path, &st)) ? (int) st.st_size : -1;
+}
+
+static void write_file(const char *path, const char *text)
+{
+    FILE *f = fopen(path, "w");
+    if (NULL != f) {
+        fputs(text, f);
+        fclose(f);
+    }
+}
+
+static void test_create_file_fresh(void)
+{
+    char path[512];
+    struct stat st;
+    int fd;
+
+    snprintf(path, sizeof(path), "%s/cf_fresh", tmpbase);
+    fd = pmix_os_dirpath_create_file(path, O_RDWR, 0600, NULL, NULL);
+    report("create_file_fresh: opened", 0 <= fd);
+    report("create_file_fresh: a regular file",
+           0 == lstat(path, &st) && S_ISREG(st.st_mode));
+    report("create_file_fresh: mode honored", 0 == (st.st_mode & 0077));
+    if (0 <= fd) {
+        close(fd);
+    }
+    unlink(path);
+}
+
+/* The name carries a pid, and pids come round again: a file left by an
+ * earlier run has to be replaced, or the create could never succeed. */
+static void test_create_file_reclaims_leftover(void)
+{
+    char path[512];
+    int fd;
+
+    snprintf(path, sizeof(path), "%s/cf_leftover", tmpbase);
+    write_file(path, "stale contents");
+    fd = pmix_os_dirpath_create_file(path, O_RDWR, 0600, NULL, NULL);
+    report("create_file_leftover: opened", 0 <= fd);
+    report("create_file_leftover: fresh, not the old file", 0 == file_size(path));
+    if (0 <= fd) {
+        close(fd);
+    }
+    unlink(path);
+}
+
+/* A symlink at the name is removed as the name it is, and the create
+ * lands on a new file - never on whatever the link pointed at. */
+static void test_create_file_symlink_at_name(void)
+{
+    char path[512], victim[512];
+    int fd;
+
+    snprintf(path, sizeof(path), "%s/cf_link", tmpbase);
+    snprintf(victim, sizeof(victim), "%s/cf_victim", tmpbase);
+    write_file(victim, "precious");
+    if (0 != symlink(victim, path)) {
+        report("create_file_symlink: fixture", 0);
+        unlink(victim);
+        return;
+    }
+    fd = pmix_os_dirpath_create_file(path, O_RDWR, 0600, NULL, NULL);
+    report("create_file_symlink: opened", 0 <= fd);
+    report("create_file_symlink: name is now a regular file", file_exists(path) && !is_symlink(path));
+    report("create_file_symlink: target untouched", 8 == file_size(victim));
+    if (0 <= fd) {
+        close(fd);
+    }
+    unlink(path);
+    unlink(victim);
+}
+
+static int reclaim_calls;
+
+static bool reclaim_decline(const char *path, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(path, cbdata);
+    reclaim_calls++;
+    return false;
+}
+
+/* Claims to have cleared the name but leaves it occupied - which is
+ * what another process creating the same name in between looks like. */
+static bool reclaim_without_removing(const char *path, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(path, cbdata);
+    reclaim_calls++;
+    return true;
+}
+
+static void test_create_file_reclaim_declined(void)
+{
+    char path[512];
+    int fd;
+
+    snprintf(path, sizeof(path), "%s/cf_declined", tmpbase);
+    write_file(path, "in use");
+    reclaim_calls = 0;
+    errno = 0;
+    fd = pmix_os_dirpath_create_file(path, O_RDWR, 0600, reclaim_decline, NULL);
+    report("create_file_declined: refused with EEXIST", 0 > fd && EEXIST == errno);
+    report("create_file_declined: asked once", 1 == reclaim_calls);
+    report("create_file_declined: existing file untouched", 6 == file_size(path));
+    if (0 <= fd) {
+        close(fd);
+    }
+    unlink(path);
+}
+
+/* One reclaim and no more: a name occupied again after being cleared
+ * belongs to someone creating it right now. */
+static void test_create_file_reclaims_only_once(void)
+{
+    char path[512];
+    int fd;
+
+    snprintf(path, sizeof(path), "%s/cf_once", tmpbase);
+    write_file(path, "theirs");
+    reclaim_calls = 0;
+    errno = 0;
+    fd = pmix_os_dirpath_create_file(path, O_RDWR, 0600, reclaim_without_removing, NULL);
+    report("create_file_once: refused with EEXIST", 0 > fd && EEXIST == errno);
+    report("create_file_once: reclaim asked exactly once", 1 == reclaim_calls);
+    report("create_file_once: occupant untouched", 6 == file_size(path));
+    if (0 <= fd) {
+        close(fd);
+    }
+    unlink(path);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -1006,6 +1151,12 @@ int main(int argc, char **argv)
     test_destroy_unreadable_parent();
     test_create_on_unreadable_dir();
     test_destroy_base_swapped_during_walk();
+
+    test_create_file_fresh();
+    test_create_file_reclaims_leftover();
+    test_create_file_symlink_at_name();
+    test_create_file_reclaim_declined();
+    test_create_file_reclaims_only_once();
 
     /* Remove the test root; all subdirectories were cleaned up above. */
     rmdir(tmpbase);

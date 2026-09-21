@@ -143,6 +143,54 @@ PMIX_EXPORT int pmix_os_dirpath_open_file_under(const char *root, const char *ta
 PMIX_EXPORT int pmix_os_dirpath_open_file(const char *path, int flags, mode_t mode);
 
 /**
+ * Decide whether a file already sitting at a name this process meant to
+ * create may be removed, and remove it.
+ *
+ * Called by pmix_os_dirpath_create_file() when the name is taken.
+ *
+ * @param path   The name that was found occupied.
+ * @param cbdata The caller's pointer, passed through untouched.
+ * @retval true  The name is free now - the callback unlinked it (or found
+ *               it already gone) - so the create is worth one more try.
+ * @retval false Leave it be. The create fails with errno EEXIST; anything
+ *               the caller needs to tell those cases apart travels back
+ *               through cbdata.
+ */
+typedef bool (*pmix_os_dirpath_reclaim_fn_t)(const char *path, void *cbdata);
+
+/**
+ * Create a file fresh at a name PMIx composes, reclaiming a leftover once.
+ *
+ * The names that go through here - a segment backing file, hwloc.sm, a
+ * rendezvous file - are built from PMIx's own naming scheme, usually with
+ * a pid in them, so anything already at the name is either left over from
+ * an earlier run whose pid has come round again or something this code
+ * did not put there. The create is therefore O_CREAT | O_EXCL through
+ * pmix_os_dirpath_open_file(), which declines both, a symlink included.
+ *
+ * A leftover is then offered to `reclaim`, and if it is removed the create
+ * is tried exactly once more. Once more and no further: a name that is
+ * occupied again after being cleared belongs to some other process that
+ * is creating it right now, and removing that one too would pull the file
+ * out from under it.
+ *
+ * @param path    The file to create. Its directory is resolved normally;
+ *                see pmix_os_dirpath_open_file().
+ * @param flags   Further open(2) flags - the access mode, typically.
+ *                O_CREAT, O_EXCL and O_NOFOLLOW are added.
+ * @param mode    The new file's mode.
+ * @param reclaim Decides about a file already at the name. NULL removes
+ *                it unconditionally with unlink(), which acts on the name
+ *                itself and never follows it onward.
+ * @param cbdata  Passed through to reclaim.
+ * @retval >=0  A descriptor on the new file. The caller closes it.
+ * @retval -1   errno says why: EEXIST if the name was still occupied.
+ */
+PMIX_EXPORT int pmix_os_dirpath_create_file(const char *path, int flags, mode_t mode,
+                                            pmix_os_dirpath_reclaim_fn_t reclaim,
+                                            void *cbdata);
+
+/**
  * Check to see if a directory is empty
  *
  * A directory that cannot be opened as a directory - it does not exist, it is
