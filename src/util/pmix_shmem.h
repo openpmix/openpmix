@@ -69,6 +69,12 @@ typedef struct pmix_shmem_t {
     void *data_address;
     /** Buffer holding path to backing store. */
     char backing_path[PMIX_PATH_MAX];
+    /** True once pmix_shmem_segment_create() has recorded the identity of
+     *  the file it made, below. The name in backing_path can come to mean
+     *  some other file afterwards; this is what the file really was. */
+    bool have_backing_id;
+    dev_t backing_dev;
+    ino_t backing_ino;
 } pmix_shmem_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_shmem_t);
 
@@ -186,9 +192,22 @@ pmix_shmem_segment_unlink(
 /**
  * Change ownership of the segment's backing file.
  *
- * Acts on the object at the name without following a symlink there -
- * lchown(2) rather than chown(2) - so that this and its neighbour below
- * cannot end up changing two different objects.
+ * Acts only on the file this handle created. Refusing a symlink at the
+ * name - which lchown(2) did, and all it did - protects the last
+ * component of the path and nothing else: every directory above it is
+ * resolved normally, and the path sits under a predictable name, so a
+ * directory swapped in along the way, or a hard link, pointed the change
+ * at a file of someone else's choosing. For a server running as root,
+ * that is any file on the system.
+ *
+ * So the file is opened, and changed through that descriptor only if it
+ * is the regular file pmix_shmem_segment_create() made - same device and
+ * inode - and has no other name. A file already owned as requested
+ * answers success without being touched, so this can be repeated.
+ * (uid_t)-1 and (gid_t)-1 leave that half unchanged, as for chown(2).
+ *
+ * @retval PMIX_ERR_NO_PERMISSIONS The name no longer leads to that file.
+ * @retval PMIX_ERR_BAD_PARAM      The handle did not create a segment.
  */
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_chown(
@@ -200,10 +219,9 @@ pmix_shmem_segment_chown(
 /**
  * Change permissions of the segment's backing file.
  *
- * Through a descriptor rather than by name, for the reason above:
- * chmod(2) follows a symlink at the final component and lchown(2) does
- * not, so the pair applied to a path would disagree about which object
- * they were changing.
+ * Under the same rule as pmix_shmem_segment_chown(), and with the same
+ * answers: only the file this handle created, reached through a
+ * descriptor, is changed.
  *
  * Note what the mode has to allow. A peer maps the segment MAP_SHARED
  * from a descriptor it opened O_RDWR - it writes the reference count,
