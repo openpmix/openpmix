@@ -31,7 +31,9 @@ Highlights since v6.1.0
 * **Group construction by invitation now runs end to end.** Participants
   exchange endpoint data, ``PMIX_GROUP_ASSIGN_CONTEXT_ID`` is honored on
   the invite/join path, and a group formed by invitation has the same
-  reach as a constructed one. Detectable as
+  reach as a constructed one. An invitation that names a whole
+  namespace with ``PMIX_RANK_WILDCARD`` is expanded into its members
+  rather than crashing the server. Detectable as
   ``PMIX_CAP_GROUP_JOIN_COMPLETES``.
 
 * **Startup moves far less data.** ``PMIx_Commit`` and the collecting
@@ -107,7 +109,14 @@ Highlights since v6.1.0
   mid-connect — no longer freezes the server's progress thread.
   ``PMIx_tool_attach_to_server`` now connects without blocking the
   progress thread, and a client or tool connecting to a server that
-  never answers gives up after a bounded wait instead of hanging.
+  never answers gives up after a bounded wait instead of hanging. A
+  server no longer intermittently drops new client connections after
+  the host deregisters a finalized client — a failure that surfaced
+  under spawn-heavy workloads as a client that came up as a singleton
+  and could not reach its peers. A host's
+  ``PMIx_server_register_client`` for a self-started tool or singleton
+  that has already connected is now accepted, rather than refused with
+  ``PMIX_ERR_DUPLICATE_KEY``.
 
 * **A new regular expression interface,** ``PMIx_generate_regex2`` /
   ``PMIx_parse_regex2``, working on a structured ``pmix_regex2_t``
@@ -143,7 +152,9 @@ Highlights since v6.1.0
 * **Documentation.** The public API is now covered by man pages — 277 new
   pages — and ``docs/how-things-work`` gained descriptions of the modex,
   the shared-memory datastore, the transport layer, group construction,
-  init/finalize, logging, and inheritance.
+  init/finalize, logging, and inheritance. The security policy now
+  lives in ``SECURITY.md``, where GitHub offers a private reporting
+  channel, and describes the process the project actually follows.
 
 * **Testing.** The review work landed with unit coverage for the defects
   it found, multi-node suites that run the same cases across real
@@ -167,6 +178,14 @@ Compatibility notes
   combinations could not work in practice. A refusal is reported with
   the new status ``PMIX_ERR_OUTDATED``, and ``PMIx_Init`` now fails with
   it rather than quietly running as a singleton.
+
+* ``PMIx_Init`` no longer falls back to singleton operation when it
+  cannot reach a server it was told about. ``PMIX_ERR_UNREACH`` now
+  means only that no server was described to the process; one that was
+  given a server — by its launcher's environment or a
+  ``PMIX_SERVER_URI`` directive — and cannot connect fails with
+  ``PMIX_ERR_COMM_FAILURE``, and any other connection failure likewise
+  fails the init.
 
 * Connection waits are now bounded by default.
   ``ptl_base_handshake_wait_time``, which bounds how long a client or
