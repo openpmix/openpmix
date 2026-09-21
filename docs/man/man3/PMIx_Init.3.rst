@@ -206,12 +206,19 @@ a PMIx error constant is returned, including:
 * ``PMIX_ERR_INIT`` |mdash| the PMIx library could not be initialized (for
   example, a required transport was explicitly disabled, or a tight race between
   concurrent ``PMIx_Init`` calls left the library in an unusable state).
-* ``PMIX_ERR_UNREACH`` |mdash| the local PMIx server could not be reached. Note
-  that this is **not** a failure: the library is fully initialized and running
-  as a singleton, the caller's identity has been assigned, and
-  :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>` must still be called. Operations
-  that require a server return ``PMIX_ERR_UNREACH`` in their turn, while those
-  the library can satisfy on its own behave normally.
+* ``PMIX_ERR_UNREACH`` |mdash| no PMIx server was described to this process
+  (neither by its environment nor by a ``PMIX_SERVER_URI`` directive) and no
+  system server was found. Note that this is **not** a failure: the library is
+  fully initialized and running as a singleton, the caller's identity has been
+  assigned, and :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>` must still be
+  called. Operations that require a server return ``PMIX_ERR_UNREACH`` in their
+  turn, while those the library can satisfy on its own behave normally.
+* ``PMIX_ERR_COMM_FAILURE`` |mdash| a PMIx server *was* described to this
+  process |mdash| typically in the environment set up by the launcher that
+  started it, or by a ``PMIX_SERVER_URI`` directive |mdash| but a connection to
+  it could not be established. This process was set up to run under that
+  server, so it does not fall back to running as a singleton. Unlike
+  ``PMIX_ERR_UNREACH`` above, the library is **not** initialized.
 * ``PMIX_ERR_OUTDATED`` |mdash| a PMIx server was found, but it uses a version
   of the PMIx library older than this one can connect to (v3.2). A message
   naming the server's version is printed. The library is **not** initialized.
