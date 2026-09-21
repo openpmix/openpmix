@@ -916,7 +916,7 @@ static char *escape_quotes(const char *value)
     // clear to read; it's not particularly efficient (performance is
     // definitely not important here).
     char *quoted_value;
-    quoted_value = calloc(1, strlen(value) + num_quotes + 1);
+    quoted_value = pmix_calloc(1, strlen(value) + num_quotes + 1);
     if (NULL == quoted_value) {
         return NULL;
     }

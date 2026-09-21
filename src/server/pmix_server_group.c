@@ -1961,8 +1961,8 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         }
     }
     PMIX_PROC_CREATE(inv->members, inv->nmembers);
-    inv->responded = (bool *) calloc(inv->nmembers, sizeof(bool));
-    inv->answered = (bool *) calloc(inv->nmembers, sizeof(bool));
+    inv->responded = (bool *) pmix_calloc(inv->nmembers, sizeof(bool));
+    inv->answered = (bool *) pmix_calloc(inv->nmembers, sizeof(bool));
     /* every member may contribute, and the leader need not be among them */
     PMIX_INFO_CREATE(inv->endpts, inv->nmembers + 1);
     if (NULL == inv->members || NULL == inv->responded ||

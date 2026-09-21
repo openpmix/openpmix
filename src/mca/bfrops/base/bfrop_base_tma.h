@@ -108,11 +108,10 @@ char* pmix_bfrops_base_tma_buffer_extend(pmix_buffer_t *buffer,
         pack_offset = 0;
         unpack_offset = 0;
         buffer->bytes_used = 0;
-        buffer->base_ptr = (char *)pmix_tma_malloc(tma, to_alloc);
-        if (NULL == buffer->base_ptr) {
+        buffer->base_ptr = (char *)pmix_tma_calloc(tma, to_alloc, sizeof(char));
+        if (PMIX_UNLIKELY(NULL == buffer->base_ptr)) {
             return NULL;
         }
-        memset(buffer->base_ptr, 0, to_alloc);
     }
 
     buffer->pack_ptr = ((char *) buffer->base_ptr) + pack_offset;
@@ -505,7 +504,7 @@ pmix_proc_t* pmix_bfrops_base_tma_proc_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_proc_t *p = (pmix_proc_t*)pmix_tma_malloc(tma, n * sizeof(pmix_proc_t));
+    pmix_proc_t *p = (pmix_proc_t*)pmix_tma_calloc(tma, n, sizeof(pmix_proc_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_proc_construct(&p[m], tma);
@@ -619,7 +618,7 @@ pmix_proc_info_t* pmix_bfrops_base_tma_proc_info_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_proc_info_t *p = (pmix_proc_info_t *)pmix_tma_malloc(tma, n * sizeof(pmix_proc_info_t));
+    pmix_proc_info_t *p = (pmix_proc_info_t *)pmix_tma_calloc(tma, n, sizeof(pmix_proc_info_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_proc_info_construct(&p[m], tma);
@@ -671,7 +670,7 @@ pmix_value_t* pmix_bfrops_base_tma_value_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_value_t *v = (pmix_value_t *)pmix_tma_malloc(tma, n * sizeof(pmix_value_t));
+    pmix_value_t *v = (pmix_value_t *)pmix_tma_calloc(tma, n, sizeof(pmix_value_t));
     if (PMIX_LIKELY(NULL != v)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_value_construct(&v[m], tma);
@@ -798,7 +797,7 @@ pmix_info_t* pmix_bfrops_base_tma_info_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_info_t *i = (pmix_info_t *)pmix_tma_malloc(tma, n * sizeof(pmix_info_t));
+    pmix_info_t *i = (pmix_info_t *)pmix_tma_calloc(tma, n, sizeof(pmix_info_t));
     if (PMIX_UNLIKELY(NULL == i)) {
         return NULL;
     }
@@ -838,7 +837,7 @@ pmix_status_t pmix_bfrops_base_tma_fill_coord(pmix_coord_t *dst,
     dst->view = src->view;
     dst->dims = src->dims;
     if (0 < dst->dims) {
-        dst->coord = (uint32_t *)pmix_tma_malloc(tma, dst->dims * sizeof(uint32_t));
+        dst->coord = (uint32_t *)pmix_tma_calloc(tma, dst->dims, sizeof(uint32_t));
         if (PMIX_UNLIKELY(NULL == dst->coord)) {
             return PMIX_ERR_NOMEM;
         }
@@ -869,7 +868,7 @@ pmix_coord_t* pmix_bfrops_base_tma_coord_create(size_t dims,
     if (0 == number) {
         return NULL;
     }
-    pmix_coord_t *m = (pmix_coord_t *)pmix_tma_malloc(tma, number * sizeof(pmix_coord_t));
+    pmix_coord_t *m = (pmix_coord_t *)pmix_tma_calloc(tma, number, sizeof(pmix_coord_t));
     if (PMIX_UNLIKELY(NULL == m)) {
         return NULL;
     }
@@ -879,9 +878,13 @@ pmix_coord_t* pmix_bfrops_base_tma_coord_create(size_t dims,
         if (0 == dims) {
             m[i].coord = NULL;
         } else {
-            m[i].coord = (uint32_t *)pmix_tma_malloc(tma, dims * sizeof(uint32_t));
-            if (PMIX_LIKELY(NULL != m[i].coord)) {
-                memset(m[i].coord, 0, dims * sizeof(uint32_t));
+            m[i].coord = (uint32_t *)pmix_tma_calloc(tma, dims, sizeof(uint32_t));
+            if (PMIX_UNLIKELY(NULL == m[i].coord)) {
+                for (size_t j = 0; j < i; j++) {
+                    pmix_tma_free(tma, m[j].coord);
+                }
+                pmix_tma_free(tma, m);
+                return NULL;
             }
         }
     }
@@ -1044,7 +1047,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_coord(pmix_coord_t **dest,
 {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    pmix_coord_t *d = (pmix_coord_t *)pmix_tma_malloc(tma, sizeof(pmix_coord_t));
+    pmix_coord_t *d = (pmix_coord_t *)pmix_tma_calloc(tma, 1, sizeof(pmix_coord_t));
     if (PMIX_UNLIKELY(NULL == d)) {
         return PMIX_ERR_NOMEM;
     }
@@ -1086,7 +1089,7 @@ pmix_topology_t* pmix_bfrops_base_tma_topology_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_topology_t *t = (pmix_topology_t *)pmix_tma_malloc(tma, n * sizeof(pmix_topology_t));
+    pmix_topology_t *t = (pmix_topology_t *)pmix_tma_calloc(tma, n, sizeof(pmix_topology_t));
     if (PMIX_LIKELY(NULL != t)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_topology_construct(&t[m], tma);
@@ -1169,7 +1172,7 @@ pmix_cpuset_t* pmix_bfrops_base_tma_cpuset_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_cpuset_t *c = (pmix_cpuset_t *)pmix_tma_malloc(tma, n * sizeof(pmix_cpuset_t));
+    pmix_cpuset_t *c = (pmix_cpuset_t *)pmix_tma_calloc(tma, n, sizeof(pmix_cpuset_t));
     if (PMIX_LIKELY(NULL != c)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_cpuset_construct(&c[m], tma);
@@ -1217,7 +1220,7 @@ pmix_geometry_t* pmix_bfrops_base_tma_geometry_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_geometry_t *g = (pmix_geometry_t *)pmix_tma_malloc(tma, n * sizeof(pmix_geometry_t));
+    pmix_geometry_t *g = (pmix_geometry_t *)pmix_tma_calloc(tma, n, sizeof(pmix_geometry_t));
     if (PMIX_LIKELY(NULL != g)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_geometry_construct(&g[m], tma);
@@ -1299,7 +1302,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_nspace(pmix_nspace_t **dest,
 {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    pmix_nspace_t *dst = (pmix_nspace_t *)pmix_tma_malloc(tma, sizeof(pmix_nspace_t));
+    pmix_nspace_t *dst = (pmix_nspace_t *)pmix_tma_calloc(tma, 1, sizeof(pmix_nspace_t));
     if (PMIX_UNLIKELY(NULL == dst)) {
         return PMIX_ERR_NOMEM;
     }
@@ -1350,7 +1353,7 @@ pmix_device_t* pmix_bfrops_base_tma_device_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_device_t *d = (pmix_device_t *)pmix_tma_malloc(tma, n * sizeof(pmix_device_t));
+    pmix_device_t *d = (pmix_device_t *)pmix_tma_calloc(tma, n, sizeof(pmix_device_t));
     if (PMIX_LIKELY(NULL != d)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_device_construct(&d[m], tma);
@@ -1411,7 +1414,7 @@ pmix_node_pid_t* pmix_bfrops_base_tma_node_pid_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_node_pid_t *d = (pmix_node_pid_t *)pmix_tma_malloc(tma, n * sizeof(pmix_node_pid_t));
+    pmix_node_pid_t *d = (pmix_node_pid_t *)pmix_tma_calloc(tma, n, sizeof(pmix_node_pid_t));
     if (PMIX_LIKELY(NULL != d)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_node_pid_construct(&d[m], tma);
@@ -1479,7 +1482,7 @@ pmix_regex2_t* pmix_bfrops_base_tma_regex2_create(size_t n, pmix_tma_t *tma)
     if (0 == n) {
         return NULL;
     }
-    pmix_regex2_t *d = (pmix_regex2_t *)pmix_tma_malloc(tma, n * sizeof(pmix_regex2_t));
+    pmix_regex2_t *d = (pmix_regex2_t *)pmix_tma_calloc(tma, n, sizeof(pmix_regex2_t));
     if (PMIX_LIKELY(NULL != d)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_regex2_construct(&d[m], tma);
@@ -1516,7 +1519,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_regex2(pmix_regex2_t **dest,
         p->type = pmix_tma_strdup(tma, src->type);
     }
     if (NULL != src->bytes && 0 < src->len) {
-        p->bytes = (uint8_t *)pmix_tma_malloc(tma, src->len);
+        p->bytes = (uint8_t *)pmix_tma_calloc(tma, src->len, sizeof(uint8_t));
         if (PMIX_LIKELY(NULL != p->bytes)) {
             memcpy(p->bytes, src->bytes, src->len);
             p->len = src->len;
@@ -1562,7 +1565,7 @@ pmix_resource_unit_t* pmix_bfrops_base_tma_resource_unit_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_resource_unit_t *d = (pmix_resource_unit_t *)pmix_tma_malloc(tma, n * sizeof(pmix_resource_unit_t));
+    pmix_resource_unit_t *d = (pmix_resource_unit_t *)pmix_tma_calloc(tma, n, sizeof(pmix_resource_unit_t));
     if (PMIX_LIKELY(NULL != d)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_resource_unit_construct(&d[m], tma);
@@ -1633,7 +1636,7 @@ pmix_device_distance_t* pmix_bfrops_base_tma_device_distance_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_device_distance_t *d = (pmix_device_distance_t *)pmix_tma_malloc(tma, n * sizeof(pmix_device_distance_t));
+    pmix_device_distance_t *d = (pmix_device_distance_t *)pmix_tma_calloc(tma, n, sizeof(pmix_device_distance_t));
     if (PMIX_LIKELY(NULL != d)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_device_distance_construct(&d[m], tma);
@@ -1697,7 +1700,7 @@ pmix_byte_object_t* pmix_bfrops_base_tma_byte_object_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_byte_object_t *b = (pmix_byte_object_t *)pmix_tma_malloc(tma, n * sizeof(pmix_byte_object_t));
+    pmix_byte_object_t *b = (pmix_byte_object_t *)pmix_tma_calloc(tma, n, sizeof(pmix_byte_object_t));
     if (PMIX_LIKELY(NULL != b)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_byte_object_construct(&b[m], tma);
@@ -1764,7 +1767,7 @@ pmix_endpoint_t* pmix_bfrops_base_tma_endpoint_create(size_t n,
         return NULL;
     }
 
-    pmix_endpoint_t *e = (pmix_endpoint_t *)pmix_tma_malloc(tma, n * sizeof(pmix_endpoint_t));
+    pmix_endpoint_t *e = (pmix_endpoint_t *)pmix_tma_calloc(tma, n, sizeof(pmix_endpoint_t));
     if (PMIX_LIKELY(NULL != e)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_endpoint_construct(&e[m], tma);
@@ -1793,7 +1796,11 @@ pmix_status_t pmix_bfrops_base_tma_copy_endpoint(pmix_endpoint_t **dest,
         dst->osname = pmix_tma_strdup(tma, src->osname);
     }
     if (NULL != src->endpt.bytes) {
-        dst->endpt.bytes = (char *)pmix_tma_malloc(tma, src->endpt.size);
+        dst->endpt.bytes = (char *)pmix_tma_calloc(tma, src->endpt.size, sizeof(char));
+        if (PMIX_UNLIKELY(NULL == dst->endpt.bytes)) {
+            pmix_bfrops_base_tma_endpoint_free(dst, 1, tma);
+            return PMIX_ERR_NOMEM;
+        }
         memcpy(dst->endpt.bytes, src->endpt.bytes, src->endpt.size);
         dst->endpt.size = src->endpt.size;
     }
@@ -1838,8 +1845,8 @@ pmix_status_t pmix_bfrops_base_tma_argv_append_nosize(char ***argv,
     /* Create new argv. */
 
     if (NULL == *argv) {
-        *argv = (char **)pmix_tma_malloc(tma, 2 * sizeof(char *));
-        if (NULL == *argv) {
+        *argv = (char **)pmix_tma_calloc(tma, 2, sizeof(char *));
+        if (PMIX_UNLIKELY(NULL == *argv)) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         argc = 0;
@@ -1886,8 +1893,8 @@ pmix_status_t pmix_bfrops_base_tma_argv_prepend_nosize(char ***argv,
     /* Create new argv. */
 
     if (NULL == *argv) {
-        *argv = (char **)pmix_tma_malloc(tma, 2 * sizeof(char *));
-        if (NULL == *argv) {
+        *argv = (char **)pmix_tma_calloc(tma, 2, sizeof(char *));
+        if (PMIX_UNLIKELY(NULL == *argv)) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         (*argv)[0] = pmix_tma_strdup(tma, arg);
@@ -2001,9 +2008,10 @@ char** pmix_bfrops_base_tma_argv_split_inter(const char *src_string,
         /* long argument, malloc buffer, copy and add */
 
         else if (arglen > 511) {
-            argtemp = (char *)pmix_tma_malloc(tma, arglen + 1);
-            if (NULL == argtemp)
+            argtemp = (char *)pmix_tma_calloc(tma, arglen + 1, sizeof(char));
+            if (PMIX_UNLIKELY(NULL == argtemp)) {
                 return NULL;
+            }
 
             pmix_strncpy(argtemp, src_string, arglen);
             argtemp[arglen] = '\0';
@@ -2077,8 +2085,10 @@ char* pmix_bfrops_base_tma_argv_join(char **argv,
 
     /* Allocate the string. */
 
-    if (NULL == (str = (char *)pmix_tma_malloc(tma, str_len)))
+    str = (char *)pmix_tma_calloc(tma, str_len, sizeof(char));
+    if (PMIX_UNLIKELY(NULL == str)) {
         return NULL;
+    }
 
     /* Loop filling in the string. */
 
@@ -2114,7 +2124,7 @@ char** pmix_bfrops_base_tma_argv_copy(char **argv,
     }
     /* create an "empty" list, so that we return something valid if we
      were passed a valid list with no contained elements */
-    char **dupv = (char **)pmix_tma_malloc(tma, sizeof(char *));
+    char **dupv = (char **)pmix_tma_calloc(tma, 1, sizeof(char *));
     dupv[0] = NULL;
 
     while (NULL != *argv) {
@@ -2187,7 +2197,7 @@ pmix_pdata_t* pmix_bfrops_base_tma_pdata_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_pdata_t *p = (pmix_pdata_t *)pmix_tma_malloc(tma, n * sizeof(pmix_pdata_t));
+    pmix_pdata_t *p = (pmix_pdata_t *)pmix_tma_calloc(tma, n, sizeof(pmix_pdata_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_pdata_construct(&p[m], tma);
@@ -2284,7 +2294,7 @@ pmix_app_t* pmix_bfrops_base_tma_app_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_app_t *p = (pmix_app_t *)pmix_tma_malloc(tma, n * sizeof(pmix_app_t));
+    pmix_app_t *p = (pmix_app_t *)pmix_tma_calloc(tma, n, sizeof(pmix_app_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_app_construct(&p[m], tma);
@@ -2338,7 +2348,7 @@ pmix_query_t* pmix_bfrops_base_tma_query_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_query_t *p = (pmix_query_t *)pmix_tma_malloc(tma, n * sizeof(pmix_query_t));
+    pmix_query_t *p = (pmix_query_t *)pmix_tma_calloc(tma, n, sizeof(pmix_query_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_query_construct(&p[m], tma);
@@ -2403,7 +2413,7 @@ pmix_regattr_t* pmix_bfrops_base_tma_regattr_create(size_t n,
         return NULL;
     }
 
-    pmix_regattr_t *p = (pmix_regattr_t*)pmix_tma_malloc(tma, n * sizeof(pmix_regattr_t));
+    pmix_regattr_t *p = (pmix_regattr_t*)pmix_tma_calloc(tma, n, sizeof(pmix_regattr_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_regattr_construct(&p[m], tma);
@@ -2551,7 +2561,7 @@ void pmix_bfrops_base_tma_data_buffer_construct(pmix_data_buffer_t *b,
 static inline
 pmix_data_buffer_t* pmix_bfrops_base_tma_data_buffer_create(pmix_tma_t *tma)
 {
-    pmix_data_buffer_t *b = (pmix_data_buffer_t *)pmix_tma_malloc(tma, sizeof(pmix_data_buffer_t));
+    pmix_data_buffer_t *b = (pmix_data_buffer_t *)pmix_tma_calloc(tma, 1, sizeof(pmix_data_buffer_t));
     if (PMIX_LIKELY(NULL != b)) {
         pmix_bfrops_base_tma_data_buffer_construct(b, tma);
     }
@@ -2676,7 +2686,7 @@ pmix_envar_t* pmix_bfrops_base_tma_envar_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_envar_t *e = (pmix_envar_t *)pmix_tma_malloc(tma, n * sizeof(pmix_envar_t));
+    pmix_envar_t *e = (pmix_envar_t *)pmix_tma_calloc(tma, n, sizeof(pmix_envar_t));
     if (PMIX_LIKELY(NULL != e)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_envar_construct(&e[m], tma);
@@ -2784,7 +2794,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
     case PMIX_RESBLOCK_DIRECTIVE:
     case PMIX_JOB_STATE:
     case PMIX_LINK_STATE:
-        p->array = pmix_tma_malloc(tma, src->size);
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(uint8_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2797,7 +2807,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
     case PMIX_IOF_CHANNEL:
     case PMIX_LOCTYPE:
     case PMIX_STOR_ACCESS_TYPE:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(uint16_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(uint16_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2806,7 +2816,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         break;
     case PMIX_UINT32:
     case PMIX_INT32:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(uint32_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(uint32_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2819,7 +2829,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
     case PMIX_STOR_MEDIUM:
     case PMIX_STOR_ACCESS:
     case PMIX_STOR_PERSIST:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(uint64_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(uint64_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2827,7 +2837,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(uint64_t));
         break;
     case PMIX_BOOL:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(bool));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(bool));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2835,7 +2845,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(bool));
         break;
     case PMIX_SIZE:
-        p->array = (char *)pmix_tma_malloc(tma, src->size * sizeof(size_t));
+        p->array = (char *)pmix_tma_calloc(tma, src->size, sizeof(size_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2843,7 +2853,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(size_t));
         break;
     case PMIX_PID:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pid_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pid_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2873,7 +2883,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
     }
     case PMIX_INT:
     case PMIX_UINT:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(int));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(int));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2881,7 +2891,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(int));
         break;
     case PMIX_FLOAT:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(float));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(float));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2889,7 +2899,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(float));
         break;
     case PMIX_DOUBLE:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(double));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(double));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2897,7 +2907,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(double));
         break;
     case PMIX_TIMEVAL:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(struct timeval));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(struct timeval));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2905,7 +2915,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(struct timeval));
         break;
     case PMIX_TIME:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(time_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(time_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2913,7 +2923,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(time_t));
         break;
     case PMIX_STATUS:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_status_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_status_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -2945,7 +2955,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(pmix_proc_t));
         break;
     case PMIX_PROC_RANK:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_rank_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_rank_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -3018,7 +3028,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         break;
     }
     case PMIX_BUFFER: {
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_buffer_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_buffer_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -3049,7 +3059,14 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         for (size_t n = 0; n < src->size; n++) {
             if (NULL != sbo[n].bytes && 0 < sbo[n].size) {
                 pbo[n].size = sbo[n].size;
-                pbo[n].bytes = (char *)pmix_tma_malloc(tma, pbo[n].size);
+                pbo[n].bytes = (char *)pmix_tma_calloc(tma, pbo[n].size, sizeof(char));
+                if (PMIX_UNLIKELY(NULL == pbo[n].bytes)) {
+                    pbo[n].size = 0;
+                    pmix_bfrops_base_tma_byte_object_free(pbo, src->size, tma);
+                    p->array = NULL;
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
                 memcpy(pbo[n].bytes, sbo[n].bytes, pbo[n].size);
             } else {
                 pbo[n].bytes = NULL;
@@ -3087,7 +3104,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         break;
     }
     case PMIX_PERSIST:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_persistence_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_persistence_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -3095,7 +3112,11 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(pmix_persistence_t));
         break;
     case PMIX_POINTER: {
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(char *));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(char *));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
         char **prarray = (char **)p->array;
         char **strarray = (char **)src->array;
         for (size_t n = 0; n < src->size; n++) {
@@ -3104,7 +3125,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         break;
     }
     case PMIX_SCOPE:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_scope_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_scope_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -3112,7 +3133,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(pmix_scope_t));
         break;
     case PMIX_DATA_RANGE:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_data_range_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_data_range_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -3120,7 +3141,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(pmix_data_range_t));
         break;
     case PMIX_COMMAND:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_cmd_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_cmd_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -3128,7 +3149,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         memcpy(p->array, src->array, src->size * sizeof(pmix_cmd_t));
         break;
     case PMIX_INFO_DIRECTIVES:
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_info_directives_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_info_directives_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -3323,7 +3344,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
             }
             if (NULL != sgeoset[n].coordinates) {
                 pgeoset[n].ncoords = sgeoset[n].ncoords;
-                pgeoset[n].coordinates = (pmix_coord_t *)pmix_tma_malloc(tma, pgeoset[n].ncoords * sizeof(pmix_coord_t));
+                pgeoset[n].coordinates = (pmix_coord_t *)pmix_tma_calloc(tma, pgeoset[n].ncoords, sizeof(pmix_coord_t));
                 if (PMIX_UNLIKELY(NULL == pgeoset[n].coordinates)) {
                     rc = PMIX_ERR_NOMEM;
                     break;
@@ -3413,7 +3434,13 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
                 pendpt[n].osname = pmix_tma_strdup(tma, sendpt[n].osname);
             }
             if (NULL != sendpt[n].endpt.bytes) {
-                pendpt[n].endpt.bytes = (char *)pmix_tma_malloc(tma, sendpt[n].endpt.size);
+                pendpt[n].endpt.bytes = (char *)pmix_tma_calloc(tma, sendpt[n].endpt.size, sizeof(char));
+                if (PMIX_UNLIKELY(NULL == pendpt[n].endpt.bytes)) {
+                    pmix_bfrops_base_tma_endpoint_free(pendpt, src->size, tma);
+                    p->array = NULL;
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
                 memcpy(pendpt[n].endpt.bytes, sendpt[n].endpt.bytes, sendpt[n].endpt.size);
                 pendpt[n].endpt.size = sendpt[n].endpt.size;
             }
@@ -3433,7 +3460,13 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
                 prx[n].type = pmix_tma_strdup(tma, srx[n].type);
             }
             if (NULL != srx[n].bytes && 0 < srx[n].len) {
-                prx[n].bytes = (uint8_t *)pmix_tma_malloc(tma, srx[n].len);
+                prx[n].bytes = (uint8_t *)pmix_tma_calloc(tma, srx[n].len, sizeof(uint8_t));
+                if (PMIX_UNLIKELY(NULL == prx[n].bytes)) {
+                    pmix_bfrops_base_tma_regex2_free(prx, src->size, tma);
+                    p->array = NULL;
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
                 memcpy(prx[n].bytes, srx[n].bytes, srx[n].len);
                 prx[n].len = srx[n].len;
             }
@@ -3441,7 +3474,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         break;
     }
     case PMIX_PROC_NSPACE: {
-        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_nspace_t));
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_nspace_t));
         if (PMIX_UNLIKELY(NULL == p->array)) {
             rc = PMIX_ERR_NOMEM;
             break;
@@ -3642,7 +3675,10 @@ pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
     case PMIX_COMPRESSED_BYTE_OBJECT:
         memset(&p->data.bo, 0, sizeof(pmix_byte_object_t));
         if (NULL != src->data.bo.bytes && 0 < src->data.bo.size) {
-            p->data.bo.bytes = pmix_tma_malloc(tma, src->data.bo.size);
+            p->data.bo.bytes = pmix_tma_calloc(tma, src->data.bo.size, sizeof(char));
+            if (PMIX_UNLIKELY(NULL == p->data.bo.bytes)) {
+                return PMIX_ERR_NOMEM;
+            }
             memcpy(p->data.bo.bytes, src->data.bo.bytes, src->data.bo.size);
             p->data.bo.size = src->data.bo.size;
         } else {
@@ -3751,7 +3787,7 @@ pmix_status_t pmix_bfrops_base_tma_copy_value(pmix_value_t **dest,
 {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    *dest = (pmix_value_t *)pmix_tma_malloc(tma, sizeof(pmix_value_t));
+    *dest = (pmix_value_t *)pmix_tma_calloc(tma, 1, sizeof(pmix_value_t));
     if (PMIX_UNLIKELY(NULL == *dest)) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -3997,8 +4033,7 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
                    PMIX_JOB_STATE == type ||
                    PMIX_ALLOC_INHERIT == type ||
                    PMIX_RESBLOCK_DIRECTIVE == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(int8_t));
-            memset(p->array, 0, num * sizeof(int8_t));
+            p->array = pmix_tma_calloc(tma, num, sizeof(int8_t));
 
         } else if (PMIX_POINTER == type) {
             /* one pointer per element, not one byte: this array used to
@@ -4007,27 +4042,22 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
              * block by a factor of sizeof(void*). Size it through a
              * typed pointer so the element width is stated in the code
              * rather than inferred from the untyped p->array. */
-            void **ptrs = (void **)pmix_tma_malloc(tma, num * sizeof(void *));
-            memset(ptrs, 0, num * sizeof(void *));
+            void **ptrs = (void **)pmix_tma_calloc(tma, num, sizeof(void *));
             p->array = ptrs;
 
         } else if (PMIX_STRING == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(char*));
-            memset(p->array, 0, num * sizeof(char*));
+            p->array = pmix_tma_calloc(tma, num, sizeof(char*));
 
         } else if (PMIX_SIZE == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(size_t));
-            memset(p->array, 0, num * sizeof(size_t));
+            p->array = pmix_tma_calloc(tma, num, sizeof(size_t));
 
         } else if (PMIX_PID == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(pid_t));
-            memset(p->array, 0, num * sizeof(pid_t));
+            p->array = pmix_tma_calloc(tma, num, sizeof(pid_t));
 
         } else if (PMIX_INT == type ||
                    PMIX_UINT == type ||
                    PMIX_STATUS == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(int));
-            memset(p->array, 0, num * sizeof(int));
+            p->array = pmix_tma_calloc(tma, num, sizeof(int));
 
         } else if (PMIX_IOF_CHANNEL == type ||
                    PMIX_DATA_TYPE == type ||
@@ -4035,15 +4065,13 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
                    PMIX_STOR_ACCESS_TYPE == type ||
                    PMIX_INT16 == type ||
                    PMIX_UINT16 == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(int16_t));
-            memset(p->array, 0, num * sizeof(int16_t));
+            p->array = pmix_tma_calloc(tma, num, sizeof(int16_t));
 
         } else if (PMIX_PROC_RANK == type ||
                    PMIX_INFO_DIRECTIVES == type ||
                    PMIX_INT32 == type ||
                    PMIX_UINT32 == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(int32_t));
-            memset(p->array, 0, num * sizeof(int32_t));
+            p->array = pmix_tma_calloc(tma, num, sizeof(int32_t));
 
         } else if (PMIX_INT64 == type ||
                    PMIX_UINT64 == type ||
@@ -4051,48 +4079,39 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
                    PMIX_STOR_MEDIUM == type ||
                    PMIX_STOR_ACCESS == type ||
                    PMIX_STOR_PERSIST == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(int64_t));
-            memset(p->array, 0, num * sizeof(int64_t));
+            p->array = pmix_tma_calloc(tma, num, sizeof(int64_t));
 
         } else if (PMIX_FLOAT == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(float));
-            memset(p->array, 0, num * sizeof(float));
+            p->array = pmix_tma_calloc(tma, num, sizeof(float));
 
         } else if (PMIX_DOUBLE == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(double));
-            memset(p->array, 0, num * sizeof(double));
+            p->array = pmix_tma_calloc(tma, num, sizeof(double));
 
         } else if (PMIX_TIMEVAL == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(struct timeval));
-            memset(p->array, 0, num * sizeof(struct timeval));
+            p->array = pmix_tma_calloc(tma, num, sizeof(struct timeval));
 
         } else if (PMIX_TIME == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(time_t));
-            memset(p->array, 0, num * sizeof(time_t));
+            p->array = pmix_tma_calloc(tma, num, sizeof(time_t));
 
         } else if (PMIX_REGATTR == type) {
             p->array = pmix_bfrops_base_tma_regattr_create(num, tma);
 
         } else if (PMIX_BOOL == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(bool));
-            memset(p->array, 0, num * sizeof(bool));
+            p->array = pmix_tma_calloc(tma, num, sizeof(bool));
 
         } else if (PMIX_COORD == type) {
             /* cannot use PMIx_Coord_create as we do not
              * know the number of dimensions */
-            p->array = pmix_tma_malloc(tma, num * sizeof(pmix_coord_t));
-            memset(p->array, 0, num * sizeof(pmix_coord_t));
+            p->array = pmix_tma_calloc(tma, num, sizeof(pmix_coord_t));
 
         } else if (PMIX_LINK_STATE == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(pmix_link_state_t));
-            memset(p->array, 0, num * sizeof(pmix_link_state_t));
+            p->array = pmix_tma_calloc(tma, num, sizeof(pmix_link_state_t));
 
         } else if (PMIX_ENDPOINT == type) {
             p->array = pmix_bfrops_base_tma_endpoint_create(num, tma);
 
         } else if (PMIX_PROC_NSPACE == type) {
-            p->array = pmix_tma_malloc(tma, num * sizeof(pmix_nspace_t));
-            memset(p->array, 0, num * sizeof(pmix_nspace_t));
+            p->array = pmix_tma_calloc(tma, num, sizeof(pmix_nspace_t));
 
         } else if (PMIX_DEVICE == type) {
             p->array = pmix_bfrops_base_tma_device_create(num, tma);
@@ -4127,7 +4146,7 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
         } else if (PMIX_BUFFER == type) {
             pmix_buffer_t *pb = (pmix_buffer_t *)pmix_tma_calloc(tma, num,
                                                                  sizeof(pmix_buffer_t));
-            if (NULL != pb) {
+            if (PMIX_LIKELY(NULL != pb)) {
                 for (size_t m = 0; m < num; m++) {
                     PMIX_CONSTRUCT(&pb[m], pmix_buffer_t, tma);
                 }
@@ -4146,6 +4165,9 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
             p->array = NULL;
             p->size = 0;
         }
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            p->size = 0;
+        }
     } else {
         p->array = NULL;
     }
@@ -4159,7 +4181,7 @@ pmix_data_array_t* pmix_bfrops_base_tma_data_array_create(size_t n,
     if (0 == n) {
         return NULL;
     }
-    pmix_data_array_t *p = (pmix_data_array_t *)pmix_tma_malloc(tma, sizeof(pmix_data_array_t));
+    pmix_data_array_t *p = (pmix_data_array_t *)pmix_tma_calloc(tma, 1, sizeof(pmix_data_array_t));
     if (PMIX_LIKELY(NULL != p)) {
         pmix_bfrops_base_tma_data_array_construct(p, n, type, tma);
     }

@@ -696,7 +696,11 @@ static pmix_status_t pmix21_bfrop_unpack_array(pmix_pointer_array_t *regtypes,
             return ret;
         }
         if (0 < ptr[i].size) {
-            ptr[i].array = (pmix_info_t *) malloc(ptr[i].size * sizeof(pmix_info_t));
+            ptr[i].array = (pmix_info_t *) pmix_calloc(ptr[i].size, sizeof(pmix_info_t));
+            if (NULL == ptr[i].array) {
+                ptr[i].size = 0;
+                return PMIX_ERR_NOMEM;
+            }
             m = ptr[i].size;
             if (PMIX_SUCCESS
                 != (ret = pmix_bfrops_base_unpack_value(regtypes, buffer, ptr[i].array, &m,
@@ -734,7 +738,11 @@ static pmix_status_t pmix21_bfrop_unpack_modex(pmix_pointer_array_t *regtypes,
             return ret;
         }
         if (0 < ptr[i].size) {
-            ptr[i].blob = (uint8_t *) malloc(ptr[i].size * sizeof(uint8_t));
+            ptr[i].blob = (uint8_t *) pmix_calloc(ptr[i].size, sizeof(uint8_t));
+            if (NULL == ptr[i].blob) {
+                ptr[i].size = 0;
+                return PMIX_ERR_NOMEM;
+            }
             m = ptr[i].size;
             if (PMIX_SUCCESS
                 != (ret = pmix_bfrops_base_unpack_byte(regtypes, buffer, ptr[i].blob, &m,
@@ -756,9 +764,17 @@ static pmix_status_t pmix21_bfrop_copy_array(pmix_info_array_t **dest, pmix_info
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    *dest = (pmix_info_array_t *) malloc(sizeof(pmix_info_array_t));
+    *dest = (pmix_info_array_t *) pmix_calloc(1, sizeof(pmix_info_array_t));
+    if (NULL == *dest) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     (*dest)->size = src->size;
-    (*dest)->array = (pmix_info_t *) malloc(src->size * sizeof(pmix_info_t));
+    (*dest)->array = (pmix_info_t *) pmix_calloc(src->size, sizeof(pmix_info_t));
+    if (NULL == (*dest)->array && 0 < src->size) {
+        free(*dest);
+        *dest = NULL;
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     d1 = (pmix_info_t *) (*dest)->array;
     s1 = (pmix_info_t *) src->array;
     memcpy(d1, s1, src->size * sizeof(pmix_info_t));
@@ -770,15 +786,17 @@ static pmix_status_t pmix21_bfrop_copy_modex(pmix_modex_data_t **dest, pmix_mode
 {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    *dest = (pmix_modex_data_t *) malloc(sizeof(pmix_modex_data_t));
+    *dest = (pmix_modex_data_t *) pmix_calloc(1, sizeof(pmix_modex_data_t));
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     (*dest)->blob = NULL;
     (*dest)->size = 0;
     if (NULL != src->blob) {
-        (*dest)->blob = (uint8_t *) malloc(src->size * sizeof(uint8_t));
+        (*dest)->blob = (uint8_t *) pmix_calloc(src->size, sizeof(uint8_t));
         if (NULL == (*dest)->blob) {
+            free(*dest);
+            *dest = NULL;
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         memcpy((*dest)->blob, src->blob, src->size * sizeof(uint8_t));

@@ -94,7 +94,7 @@ pmix_status_t pmix_preg_base_legacy_encode(const pmix_regex2_t *regex, char **ou
     }
 
     total = regex->len + strlen(PREG_LEGACY_BLOB_PREFIX) + strlen(slen) + strlen(":") + 1;
-    result = calloc(total, sizeof(char));
+    result = pmix_calloc(total, sizeof(char));
     if (NULL == result) {
         free(slen);
         return PMIX_ERR_NOMEM;

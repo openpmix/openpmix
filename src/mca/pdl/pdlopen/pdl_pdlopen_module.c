@@ -145,7 +145,7 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
     }
 
     if (NULL != local_handle) {
-        *handle = calloc(1, sizeof(pmix_pdl_handle_t));
+        *handle = pmix_calloc(1, sizeof(pmix_pdl_handle_t));
         (*handle)->dlopen_handle = local_handle;
 
 #if PMIX_ENABLE_DEBUG

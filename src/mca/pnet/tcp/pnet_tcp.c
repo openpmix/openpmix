@@ -511,7 +511,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         return PMIX_ERR_NOMEM;
     }
     kv->key = strdup(PMIX_ALLOC_FABRIC_ID);
-    kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+    kv->value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
@@ -765,7 +765,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             return PMIX_ERR_NOMEM;
         }
         kv->key = strdup(PMIX_ALLOC_FABRIC_SEC_KEY);
-        kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             PMIX_LIST_DESTRUCT(&mylist);
@@ -813,7 +813,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             return PMIX_ERR_NOMEM;
         }
         kv->key = strdup(PMIX_TCP_SETUP_APP_KEY);
-        kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             PMIX_DESTRUCT(&buf);
@@ -1158,7 +1158,7 @@ static pmix_status_t process_request(pmix_namespace_t *nptr, char *idkey, int po
         return PMIX_ERR_NOMEM;
     }
     kv->key = strdup(idkey);
-    kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+    kv->value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
@@ -1204,7 +1204,7 @@ static pmix_status_t process_request(pmix_namespace_t *nptr, char *idkey, int po
         return PMIX_ERR_NOMEM;
     }
     kv->key = strdup(idkey);
-    kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+    kv->value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
@@ -1218,7 +1218,7 @@ static pmix_status_t process_request(pmix_namespace_t *nptr, char *idkey, int po
             return PMIX_ERR_NOMEM;
         }
         kv->key = strdup(idkey);
-        kv->value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             return PMIX_ERR_NOMEM;

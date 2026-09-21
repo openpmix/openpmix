@@ -847,7 +847,7 @@ publish_modex_generation(
                                     PMIX_GDS_SHMEM3_ATTACHED)) {
         return PMIX_SUCCESS;
     }
-    pmix_gds_shmem3_seg_t *seg = calloc(1, sizeof(*seg));
+    pmix_gds_shmem3_seg_t *seg = pmix_calloc(1, sizeof(*seg));
     if (PMIX_UNLIKELY(NULL == seg)) {
         return PMIX_ERR_NOMEM;
     }
@@ -884,7 +884,7 @@ pmix_gds_shmem3_publish_job_segment(
     if (NULL == job->smdata) {
         return PMIX_SUCCESS;
     }
-    pmix_gds_shmem3_seg_t *seg = calloc(1, sizeof(*seg));
+    pmix_gds_shmem3_seg_t *seg = pmix_calloc(1, sizeof(*seg));
     if (PMIX_UNLIKELY(NULL == seg)) {
         return PMIX_ERR_NOMEM;
     }
@@ -919,7 +919,7 @@ pmix_gds_shmem3_publish_session_segment(
     if (NULL == sesh || NULL == sesh->smdata) {
         return PMIX_SUCCESS;
     }
-    pmix_gds_shmem3_seg_t *seg = calloc(1, sizeof(*seg));
+    pmix_gds_shmem3_seg_t *seg = pmix_calloc(1, sizeof(*seg));
     if (PMIX_UNLIKELY(NULL == seg)) {
         return PMIX_ERR_NOMEM;
     }
@@ -2531,7 +2531,7 @@ pack_shmem3_connection_info(
         // Pack the namespace name.
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_NSID_KEY);
-        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value = (pmix_value_t *)pmix_calloc(1, sizeof(pmix_value_t));
         if (PMIX_UNLIKELY(NULL == kv.value)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -2548,7 +2548,7 @@ pack_shmem3_connection_info(
         // Pack the shmem3 ID as string.
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_SMID_KEY);
-        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value = (pmix_value_t *)pmix_calloc(1, sizeof(pmix_value_t));
         if (PMIX_UNLIKELY(NULL == kv.value)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -2570,7 +2570,7 @@ pack_shmem3_connection_info(
         // Pack the backing file path.
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_PATH_KEY);
-        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value = (pmix_value_t *)pmix_calloc(1, sizeof(pmix_value_t));
         if (PMIX_UNLIKELY(NULL == kv.value)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -2587,7 +2587,7 @@ pack_shmem3_connection_info(
         // Pack attach size to shared-memory segment.
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_SIZE_KEY);
-        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value = (pmix_value_t *)pmix_calloc(1, sizeof(pmix_value_t));
         if (PMIX_UNLIKELY(NULL == kv.value)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -2609,7 +2609,7 @@ pack_shmem3_connection_info(
         // Pack the addresses used to attach to the shared-memory segment.
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_HADR_KEY);
-        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value = (pmix_value_t *)pmix_calloc(1, sizeof(pmix_value_t));
         if (PMIX_UNLIKELY(NULL == kv.value)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -2640,7 +2640,7 @@ pack_shmem3_connection_info(
          * order they were packed in. */
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_ARBS_KEY);
-        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value = (pmix_value_t *)pmix_calloc(1, sizeof(pmix_value_t));
         if (PMIX_UNLIKELY(NULL == kv.value)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -2663,7 +2663,7 @@ pack_shmem3_connection_info(
         PMIX_DESTRUCT(&kv);
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_ARSZ_KEY);
-        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value = (pmix_value_t *)pmix_calloc(1, sizeof(pmix_value_t));
         if (PMIX_UNLIKELY(NULL == kv.value)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -2687,7 +2687,7 @@ pack_shmem3_connection_info(
         PMIX_DESTRUCT(&kv);
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_GEN_KEY);
-        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value = (pmix_value_t *)pmix_calloc(1, sizeof(pmix_value_t));
         if (PMIX_UNLIKELY(NULL == kv.value)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -2724,7 +2724,7 @@ pack_shmem3_connection_info(
         PMIX_DESTRUCT(&kv);
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_SEG_SSID_KEY);
-        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value = (pmix_value_t *)pmix_calloc(1, sizeof(pmix_value_t));
         if (PMIX_UNLIKELY(NULL == kv.value)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
@@ -3190,7 +3190,7 @@ pack_tombstones(
         }
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM3_TOMBSTONE_KEY);
-        kv.value = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        kv.value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
         if (PMIX_UNLIKELY(NULL == kv.key || NULL == kv.value)) {
             PMIX_DESTRUCT(&kv);
             return PMIX_ERR_NOMEM;
@@ -3928,7 +3928,7 @@ del_key(
             return PMIX_SUCCESS;
         }
     }
-    t = calloc(1, sizeof(*t));
+    t = pmix_calloc(1, sizeof(*t));
     if (PMIX_UNLIKELY(NULL == t)) {
         return PMIX_ERR_NOMEM;
     }
@@ -4368,7 +4368,7 @@ session_changed_entries(
     if (0 == ninfo || NULL == info) {
         return 0;
     }
-    kept = (pmix_info_t *) calloc(ninfo, sizeof(pmix_info_t));
+    kept = (pmix_info_t *) pmix_calloc(ninfo, sizeof(pmix_info_t));
     if (NULL == kept) {
         return 0;
     }
@@ -4853,7 +4853,7 @@ job_changed_entries(
     if (0 == ninfo || NULL == info) {
         return 0;
     }
-    kept = (pmix_info_t *) calloc(ninfo, sizeof(pmix_info_t));
+    kept = (pmix_info_t *) pmix_calloc(ninfo, sizeof(pmix_info_t));
     if (NULL == kept) {
         /* NOT 0 - that is this function's word for "restated, nothing
          * changed", which the caller answers by publishing nothing and

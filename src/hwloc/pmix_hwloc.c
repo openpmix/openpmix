@@ -1634,7 +1634,7 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
      * against a cpuset or a device of this machine, so the topology being
      * read can only be the local one. */
     nsets = (NULL == devids) ? 1 : (size_t) PMIx_Argv_count(devids);
-    sets = calloc(nsets, sizeof(*sets));
+    sets = pmix_calloc(nsets, sizeof(*sets));
     if (NULL == sets) {
         nsets = 0;
         rc = PMIX_ERR_NOMEM;
@@ -2464,7 +2464,7 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
         goto cleanup;
     }
 
-    array = (pmix_hwloc_device_t *) calloc(ncands, sizeof(pmix_hwloc_device_t));
+    array = (pmix_hwloc_device_t *) pmix_calloc(ncands, sizeof(pmix_hwloc_device_t));
     if (NULL == array) {
         rc = PMIX_ERR_NOMEM;
         goto cleanup;
