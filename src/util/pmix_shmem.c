@@ -228,21 +228,18 @@ pmix_shmem_segment_create(
     // would drift.
     const size_t real_size = pmix_shmem_utils_segment_footprint(size);
 
-    /* O_TRUNC is what makes "a freshly created segment reads as zero" a
-     * guarantee rather than an assumption. Segments are unlinked when their
-     * last holder lets go, so a path collides only with a file some earlier
-     * server left behind when it died - but the path is built from the pid,
-     * and pids are reused. Without the truncate, ftruncate() to the same or a
-     * smaller size leaves that corpse's bytes in place, and only the extension
-     * past the old end reads as zero. gds/shmem3's allocator relies on the
-     * whole region being zero so it does not have to memset what it hands out;
-     * see tma_carve() there. */
     /* This process composes the whole of backing_path out of its own
      * naming scheme, so anything already sitting there is a file left
      * over from an earlier run - the name carries a pid, and pids get
      * reused - or something this code did not put there. Either way it
      * is not ours to open: the create is exclusive, and a leftover is
-     * removed once and the create retried. */
+     * removed once and the create retried.
+     *
+     * The exclusive create is also what makes "a freshly created segment
+     * reads as zero" a guarantee rather than an assumption. Reusing a
+     * leftover would not do even if it were ours: ftruncate() to the same
+     * or a smaller size leaves its bytes in place, and only an extension
+     * past the old end reads as zero. */
     const int fd = pmix_os_dirpath_create_file(backing_path, O_RDWR, 0600,
                                                NULL, NULL);
     if (-1 == fd) {

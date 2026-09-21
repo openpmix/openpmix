@@ -647,8 +647,6 @@ sharetopo:
         shmemfile = NULL;
         return PMIX_SUCCESS;
     }
-    /* ensure nobody inherits this fd */
-    pmix_fd_set_cloexec(shmemfd);
     /* populate the shmem segment with the topology */
     rc = hwloc_shmem_topology_write(pmix_globals.topology.topology, shmemfd, 0, (void *) shmemaddr,
                                     shmemsize, 0);

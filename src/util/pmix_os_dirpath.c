@@ -45,6 +45,7 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_fd.h"
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_os_path.h"
 #include "src/util/pmix_output.h"
@@ -70,6 +71,15 @@ static const char path_sep[] = PMIX_PATH_SEP;
 #    define PMIX_O_TRAVERSE O_PATH
 #else
 #    define PMIX_O_TRAVERSE O_RDONLY
+#endif
+
+/* Close-on-exec at open time where the platform can do it, so there is
+ * no window in which another thread's fork/exec inherits the descriptor.
+ * Elsewhere pmix_os_dirpath_create_file() sets it immediately after. */
+#if defined(O_CLOEXEC)
+#    define PMIX_O_CLOEXEC O_CLOEXEC
+#else
+#    define PMIX_O_CLOEXEC 0
 #endif
 
 static int openat_and_close(int dirfd, const char *name, int flags, mode_t mode)
@@ -392,9 +402,16 @@ int pmix_os_dirpath_create_file(const char *path, int flags, mode_t mode,
     int fd, pass;
 
     for (pass = 0;; pass++) {
-        fd = pmix_os_dirpath_open_file(path, flags | O_CREAT | O_EXCL, mode);
-        if (0 <= fd || EEXIST != errno) {
+        fd = pmix_os_dirpath_open_file(path, flags | O_CREAT | O_EXCL | PMIX_O_CLOEXEC,
+                                       mode);
+        if (0 <= fd) {
+            if (0 == PMIX_O_CLOEXEC) {
+                (void) pmix_fd_set_cloexec(fd);
+            }
             return fd;
+        }
+        if (EEXIST != errno) {
+            return -1;
         }
         if (0 < pass) {
             /* cleared once and taken again - by someone creating it now */
