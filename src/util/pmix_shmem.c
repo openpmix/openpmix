@@ -14,6 +14,7 @@
 #include "pmix_output.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/gds/base/base.h"
+#include "src/util/pmix_basename.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_show_help.h"
@@ -210,6 +211,18 @@ add_internal_segment_header(
     return pmix_shmem_segment_detach(shmem);
 }
 
+/**
+ * The final component of a backing path: what the segment is called
+ * within the directory backing_dirfd holds.
+ */
+static const char *
+backing_name(
+    const char *path
+) {
+    const char *base = strrchr(path, PMIX_PATH_SEP[0]);
+    return (NULL == base) ? path : base + 1;
+}
+
 // TODO(skg) Add network FS warning?
 pmix_status_t
 pmix_shmem_segment_create(
@@ -241,12 +254,26 @@ pmix_shmem_segment_create(
      * leftover would not do even if it were ours: ftruncate() to the same
      * or a smaller size leaves its bytes in place, and only an extension
      * past the old end reads as zero. */
-    const int fd = pmix_os_dirpath_create_file(backing_path, O_RDWR, 0600,
-                                               NULL, NULL);
+    const char *base = backing_name(backing_path);
+    char *dir = pmix_dirname(backing_path);
+    const int dirfd = (NULL == dir) ? -1 : pmix_os_dirpath_open_dir(dir);
+    free(dir);
+    const int fd = (0 > dirfd) ? -1
+                 : pmix_os_dirpath_create_file_at(dirfd, base, O_RDWR, 0600,
+                                                  NULL, NULL);
     if (-1 == fd) {
+        if (0 <= dirfd) {
+            (void)close(dirfd);
+        }
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
         goto out;
     }
+    /* the handle holds the directory from here on; a handle being reused
+     * gives up the one it had */
+    if (0 <= shmem->backing_dirfd) {
+        (void)close(shmem->backing_dirfd);
+    }
+    shmem->backing_dirfd = dirfd;
     /* What this file is, as distinct from what it is called: chown and
      * chmod later act only on this device and inode (see
      * open_created_file() below), because the name can come to lead
@@ -254,7 +281,9 @@ pmix_shmem_segment_create(
     if (0 != fstat(fd, &created_st)) {
         rc = PMIX_ERROR;
         (void)close(fd);
-        (void)unlink(backing_path);
+        (void)unlinkat(dirfd, base, 0);
+        (void)close(dirfd);
+        shmem->backing_dirfd = -1;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -288,10 +317,14 @@ out:
     }
     if (PMIX_SUCCESS != rc) {
         if (created) {
-            (void)unlink(backing_path);
+            (void)unlinkat(shmem->backing_dirfd, backing_name(backing_path), 0);
             /* and do not leave the caller a path to a file that is gone */
             memset(shmem->backing_path, 0, PMIX_PATH_MAX);
             shmem->have_backing_id = false;
+        }
+        if (0 <= shmem->backing_dirfd) {
+            (void)close(shmem->backing_dirfd);
+            shmem->backing_dirfd = -1;
         }
         PMIX_ERROR_LOG(rc);
     }
@@ -403,8 +436,10 @@ open_created_file(
     if (NULL == shmem || !shmem->have_backing_id) {
         return PMIX_ERR_BAD_PARAM;
     }
-    const int fd = pmix_os_dirpath_open_file(shmem->backing_path,
-                                             O_RDONLY | O_NONBLOCK, 0);
+    const int fd = (0 <= shmem->backing_dirfd)
+        ? openat(shmem->backing_dirfd, backing_name(shmem->backing_path),
+                 O_RDONLY | O_NONBLOCK | O_NOFOLLOW)
+        : pmix_os_dirpath_open_file(shmem->backing_path, O_RDONLY | O_NONBLOCK, 0);
     if (0 > fd) {
         return PMIX_ERR_FILE_OPEN_FAILURE;
     }
@@ -500,7 +535,15 @@ pmix_status_t
 pmix_shmem_segment_unlink(
     pmix_shmem_t *shmem
 ) {
-    const int rc = unlink(shmem->backing_path);
+    /* the creator removes it from the directory it made it in; anyone
+     * else has only the name */
+    const int rc = (0 <= shmem->backing_dirfd)
+        ? unlinkat(shmem->backing_dirfd, backing_name(shmem->backing_path), 0)
+        : unlink(shmem->backing_path);
+    if (0 <= shmem->backing_dirfd) {
+        (void)close(shmem->backing_dirfd);
+        shmem->backing_dirfd = -1;
+    }
     memset(shmem->backing_path, 0, PMIX_PATH_MAX);
     shmem->have_backing_id = false;
 
@@ -556,6 +599,7 @@ shmem_construct(
     s->have_backing_id = false;
     s->backing_dev = 0;
     s->backing_ino = 0;
+    s->backing_dirfd = -1;
 }
 
 static void
@@ -567,6 +611,12 @@ shmem_destruct(
      * handle and detaching it explicitly cannot come to different
      * answers. A handle that is not attached holds nothing. */
     (void)pmix_shmem_segment_detach(s);
+    /* a segment that was created but never unlinked by us - the last
+     * holder may have been some other process - leaves the directory */
+    if (0 <= s->backing_dirfd) {
+        (void)close(s->backing_dirfd);
+        s->backing_dirfd = -1;
+    }
 }
 
 PMIX_EXPORT PMIX_CLASS_INSTANCE(
