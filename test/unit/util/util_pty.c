@@ -50,7 +50,7 @@ static void report(const char *name, int passed)
     }
 }
 
-#if PMIX_ENABLE_PTY_SUPPORT && defined(HAVE_OPENPTY)
+#if defined(HAVE_OPENPTY)
 
 /* Exit codes a probe child can hand back. */
 #define PROBE_OK        0
@@ -154,9 +154,8 @@ static void test_openpty(void)
 
 #else
 
-/* No openpty(3), or pty support configured out: there is no pty to be
- * had, and the caller has to be told so, since it falls back to a pipe
- * on exactly that answer. */
+/* No openpty(3): there is no pty to be had, and the caller has to be
+ * told so, since it falls back to a pipe on exactly that answer. */
 static void test_openpty(void)
 {
     int master = -1;
