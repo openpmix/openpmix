@@ -1263,6 +1263,24 @@ who composed which part of the name:
     line: the last separator before the first conversion, since nothing
     ahead of that is transformed and the offset is therefore the same in
     the pattern and in its expansion.
+- **A composed directory that is already there has to be ours.** The
+  `_under` walk uses an existing component only if it is owned by the
+  effective uid, and otherwise shows `dir-owner` and refuses it
+  (`PMIX_ERR_SILENT` from `create_under`, `EPERM` from
+  `open_file_under`). The names are PMIx's own, so an existing one should
+  have been made by an earlier rank or an earlier run of the same user;
+  one that was not is left over from someone else. A component the walk
+  itself created is not checked. The mode is deliberately not examined:
+  PRRTE also refuses a group-writable session directory, but these are
+  output directories, and a user opening their own output up to their
+  group is ordinary. **The root is not examined, and neither is anything
+  handed to `pmix_os_dirpath_create()`**: those are the caller's, and a
+  shared group directory or the system tmpdir is an ordinary thing to be
+  given. Open MPI applies its owner test to every existing directory,
+  which works there only because all its callers are session
+  directories; do not copy that here. `test_under_existing_component_ours`
+  in `util_os_dirpath.c` covers it; the other-owner case needs root to
+  build and skips otherwise.
 - **Where the name is created fresh, use `pmix_os_dirpath_create_file()`.**
   It opens `O_CREAT | O_EXCL` through `pmix_os_dirpath_open_file()`,
   which declines *anything* already at the name rather than only a
