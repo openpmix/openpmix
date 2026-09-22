@@ -9,7 +9,8 @@
  * Unit tests for pmix_os_dirpath utility functions:
  *   pmix_os_dirpath_create, pmix_os_dirpath_is_empty,
  *   pmix_os_dirpath_access, pmix_os_dirpath_destroy,
- *   pmix_os_dirpath_create_file, pmix_os_dirpath_create_file_at.
+ *   pmix_os_dirpath_create_file, pmix_os_dirpath_create_file_at,
+ *   pmix_os_dirpath_open_trusted.
  *
  * A temporary directory is created under /tmp for each test and
  * removed by the test itself.
@@ -1148,6 +1149,76 @@ static void test_create_file_at_follows_descriptor(void)
     rmdir(dir);
 }
 
+/* ------------------------------------------------------------------ */
+/* pmix_os_dirpath_open_trusted() accepts a directory owned by this   */
+/* user or by root.                                                    */
+/* ------------------------------------------------------------------ */
+
+static void test_open_trusted(void)
+{
+    char dir[512], link[512];
+    struct stat st;
+    int fd;
+
+    snprintf(dir, sizeof(dir), "%s/ot_dir", tmpbase);
+    snprintf(link, sizeof(link), "%s/ot_link", tmpbase);
+    mkdir(dir, 0700);
+
+    fd = pmix_os_dirpath_open_trusted(dir, &st);
+    report("open_trusted: own 0700 directory accepted", 0 <= fd);
+    if (0 <= fd) {
+        close(fd);
+    }
+
+    chmod(dir, 0755);
+    fd = pmix_os_dirpath_open_trusted(dir, NULL);
+    report("open_trusted: own 0755 directory accepted", 0 <= fd);
+    if (0 <= fd) {
+        close(fd);
+    }
+
+    /* the mode is not examined */
+    chmod(dir, 0777);
+    fd = pmix_os_dirpath_open_trusted(dir, &st);
+    report("open_trusted: own world-writable directory accepted", 0 <= fd);
+    if (0 <= fd) {
+        close(fd);
+    }
+    chmod(dir, 0700);
+
+    /* the name is resolved normally; what it resolves to is checked */
+    if (0 == symlink(dir, link)) {
+        fd = pmix_os_dirpath_open_trusted(link, NULL);
+        report("open_trusted: symlink to a trusted directory accepted", 0 <= fd);
+        if (0 <= fd) {
+            close(fd);
+        }
+        unlink(link);
+    }
+
+    /* somebody else's directory. Only root can make one to test with */
+    if (0 == geteuid()) {
+        if (0 == chown(dir, 65534, 65534)) {
+            errno = 0;
+            fd = pmix_os_dirpath_open_trusted(dir, &st);
+            report("open_trusted: another user's directory refused",
+                   0 > fd && EPERM == errno && 65534 == st.st_uid);
+            if (0 <= fd) {
+                close(fd);
+            }
+        }
+    }
+
+    errno = 0;
+    fd = pmix_os_dirpath_open_trusted(tmpbase, NULL);
+    report("open_trusted: mkdtemp directory accepted", 0 <= fd);
+    if (0 <= fd) {
+        close(fd);
+    }
+
+    rmdir(dir);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -1209,6 +1280,7 @@ int main(int argc, char **argv)
     test_create_file_reclaim_declined();
     test_create_file_reclaims_only_once();
     test_create_file_at_follows_descriptor();
+    test_open_trusted();
 
     /* Remove the test root; all subdirectories were cleaned up above. */
     rmdir(tmpbase);
