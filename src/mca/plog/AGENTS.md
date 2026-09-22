@@ -232,7 +232,7 @@ last branch assigned.
 
 ### Validate the value's type before you read the union
 
-**A module's `data[]` is attacker-controlled in the ordinary case.** A
+**A module's `data[]` is client-supplied in the ordinary case.** A
 client's `PMIx_Log` arguments are packed, sent to its server, and
 unpacked straight into the array the server hands down here — so the
 `pmix_value_t` type is whatever the client said it was, and nothing in
