@@ -494,6 +494,38 @@ int pmix_os_dirpath_open_dir(const char *path)
     return open(path, PMIX_O_TRAVERSE | O_DIRECTORY | PMIX_O_CLOEXEC);
 }
 
+int pmix_os_dirpath_open_trusted(const char *path, struct stat *st)
+{
+    struct stat buf;
+    int fd, save;
+
+    if (NULL == st) {
+        st = &buf;
+    }
+    /* Resolved the ordinary way, symlinks included: the name is one we
+     * were handed, and /tmp is itself a symlink on macOS. Whatever it
+     * resolves to is checked below through the descriptor. */
+    fd = pmix_os_dirpath_open_dir(path);
+    if (0 > fd) {
+        return -1;
+    }
+    if (0 != fstat(fd, st)) {
+        save = errno;
+        close(fd);
+        errno = save;
+        return -1;
+    }
+    /* it must be ours or root's. The mode is deliberately not examined:
+     * a root-owned 0777 volume (e.g., a Kubernetes emptyDir mounted at
+     * /tmp) is an ordinary place for a container to be told to work */
+    if (geteuid() != st->st_uid && 0 != st->st_uid) {
+        close(fd);
+        errno = EPERM;
+        return -1;
+    }
+    return fd;
+}
+
 /**
  * The named path already exists: make sure it really is a directory,
  * and give it (at least) the requested mode bits.
