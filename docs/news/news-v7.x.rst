@@ -129,6 +129,32 @@ Highlights since v6.1.0
   called from within the PMIx progress thread, and reports which call it
   was; the affected man pages state the rule.
 
+* **The files PMIx creates are handled more carefully.** The
+  shared-memory segment backing files, ``hwloc.sm``, and the rendezvous
+  files all sit at predictable names in a directory the host provides,
+  which a host running its server with privilege commonly hands to the
+  job's user. They are now made through a single exclusive-create
+  helper, relative to a descriptor on their directory so that the
+  directory name is resolved exactly once for the create, the
+  stale-file check, the reclaim and the eventual removal. A segment is
+  re-owned and re-permissioned only when the file that opens is still
+  the regular, singly linked file the handle created, identified by its
+  device and inode, rather than whatever the name leads to at that
+  moment. Created files are close-on-exec, a rendezvous file whose
+  write fails is removed at once instead of being left for a later
+  server to reclaim, and a name occupied by something that is not a
+  regular file is declined rather than read.
+
+* **``pmix_info`` now shows what you asked for.** ``--param`` reads the
+  ``<framework>[:<component>[,...]]`` value its usage text has always
+  documented — or ``all`` — instead of printing every parameter in PMIx
+  whatever it was given; any number of ``--param`` and ``--params``
+  options are honored, and a malformed value is reported rather than
+  ignored. ``--show-version`` honors its ``<part>`` argument for
+  ``pmix`` and ``all`` as it already did for a framework or component.
+  The help text and man page describe the accepted syntax and list
+  every ``--path`` keyword the tool accepts.
+
 * **MCA parameter files are read more carefully.** The flex scanner that
   parsed them has been replaced by a line reader, closing four cases
   where a file was silently misread: a malformed parameter name set some
@@ -147,7 +173,12 @@ Highlights since v6.1.0
   generated source cannot survive. A build from a git checkout also
   checks its objects for common symbols at install time, a class of
   tentative definition that merges silently instead of being reported as
-  a duplicate and that causes link problems on macOS.
+  a duplicate and that causes link problems on macOS. The hand-rolled
+  ``openpty`` replacement in ``pmix_pty``, which no supported platform
+  ever compiled, has been removed: ``pmix_openpty()`` and ``pmix_forkpty()``
+  are now thin wrappers over ``openpty(3)`` and ``forkpty(3)`` and
+  report no pty where the platform lacks them, which their callers
+  already handle by using a pipe.
 
 * **Documentation.** The public API is now covered by man pages — 277 new
   pages — and ``docs/how-things-work`` gained descriptions of the modex,
@@ -209,6 +240,14 @@ Compatibility notes
   PCIe-path term, so their absolute values differ from earlier
   releases. Their relative order among devices that the CPU tree
   already distinguished is unchanged.
+
+* A directory PMIx composes below a root it was handed — the
+  ``<nspace>/rank.N`` levels of ``PMIX_IOF_OUTPUT_TO_DIRECTORY``, the
+  levels an output file pattern expands to — is reused only when it is
+  already owned by the effective uid. One left over from another user's
+  job is refused, with a message naming it. The root itself, and any
+  directory given to PMIx by its caller, are trusted as handed over;
+  judging those remains the host's part.
 
 * Support for the Solaris, Sun Studio, and KAI toolchains has been
   removed from ``configure``.
