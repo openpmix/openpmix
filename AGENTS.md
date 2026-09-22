@@ -812,6 +812,18 @@ work in progress (for example, instead of `git stash`) is fine. Just be
 careful not to collide with branches that other agents or people may be
 using in the same clone — pick a clearly-scoped, unlikely-to-clash name.
 
+**Start from upstream, not from the clone's `master`.** A shared clone's
+local `master` is whatever someone last pulled, and can be weeks behind.
+Before creating a topic branch or worktree, `git fetch origin` and branch
+from `origin/master` (for a worktree:
+`git worktree add -b topic/<name> <path> origin/master`). PRRTE
+is the other half of the same code base, so when a change or a test spans
+both, do the same there — and when testing across them, whether in a
+container, the dockerswarm harness or by hand, build each from its current
+master head and state the commits you built. A stale local `master`, an old
+install or a previously built image quietly tests against, or duplicates,
+code upstream has already replaced.
+
 ## Contributing
 
 Authoritative process:
