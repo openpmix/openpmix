@@ -64,7 +64,7 @@ static void report(const char *name, int passed)
     }
 }
 
-#if PMIX_ENABLE_PTY_SUPPORT
+#if defined(HAVE_OPENPTY)
 
 /* Verdicts the orphaned-process-group probe hands back.  They are exit
  * codes, so they have to be small and must not collide with the shell's
@@ -318,7 +318,7 @@ static void test_reports_a_set_it_could_not_make(void)
            PROBE_REPORTED == rc);
 }
 
-#endif /* PMIX_ENABLE_PTY_SUPPORT */
+#endif /* HAVE_OPENPTY */
 
 /* ------------------------------------------------------------------ */
 
@@ -328,13 +328,13 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "\n=== pmix_tty unit tests ===\n\n");
 
-#if PMIX_ENABLE_PTY_SUPPORT
+#if defined(HAVE_OPENPTY)
     test_gettermios();
     test_winsize();
     test_setraw();
     test_reports_a_set_it_could_not_make();
 #else
-    fprintf(stdout, "  (PMIX_ENABLE_PTY_SUPPORT is 0: no pty to test against)\n");
+    fprintf(stdout, "  (no openpty(3): no pty to test against)\n");
 #endif
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
