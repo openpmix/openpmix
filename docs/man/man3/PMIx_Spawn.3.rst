@@ -442,6 +442,15 @@ Formatting and destination of the forwarded output:
   redirected into it.
 * ``PMIX_IOF_OUTPUT_TO_DIRECTORY`` (char\*) |mdash| direct application output
   into files of the form ``<directory>/<jobid>/rank.<rank>/stdout[err]``.
+  The named directory is used as given; the ``<jobid>`` and ``rank.<rank>``
+  directories beneath it (and any directory levels a
+  ``PMIX_IOF_FILE_PATTERN`` expands to) are created by PMIx, and one that
+  already exists is used only if it belongs to the user.
+  The named directory is used as given; the ``<jobid>`` and ``rank.<rank>``
+  directories beneath it (and any directory levels a
+  ``PMIX_IOF_FILE_PATTERN`` expands to) are PMIx's own, and one that
+  already exists is used only if it belongs to the user and is not writable
+  by group or other.
 * ``PMIX_IOF_FILE_PATTERN`` (bool) |mdash| treat the ``PMIX_IOF_OUTPUT_TO_FILE``
   value as a pattern, suppressing the automatic annotation by nspace, rank, or
   other parameters.
