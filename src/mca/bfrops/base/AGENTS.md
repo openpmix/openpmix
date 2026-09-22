@@ -91,7 +91,8 @@ covered.
 
 Every byte the unpacker sees came off a socket, including the count that
 says how many values follow. A peer can be truncated, can be running a
-different version than it claimed, or can be hostile. The contract is:
+different version than it claimed, or can send arbitrary bytes. The
+contract is:
 
 > Returning an error is fine. Returning a wrong value is tolerable.
 > Reading outside the buffer is not.
@@ -136,7 +137,7 @@ reasoning attached; if you add a third sparse encoding, add it there.
 Separately, **every allocation sized from the wire needs its NULL
 check**. Twelve of them did not have one, and the pattern was uniform:
 allocate, then `m = <the wire-supplied count>`, then unpack into the
-pointer. When the allocator declines - which a hostile count makes it
+pointer. When the allocator declines - which an absurd count makes it
 do - that is a write through NULL.
 
 [`test/unit/bfrops_malformed.c`](../../../../test/unit/bfrops_malformed.c)
@@ -437,8 +438,8 @@ bytes.
 its switch does not name, so a peer that tagged a value with one of
 those got that unpacker to write up to 784 bytes past the end of the
 value — and `unpack_kval()`, `unpack_info()` and `unpack_pdata()` all
-unpack into a value they have just `calloc`'d. **A remote heap buffer
-overflow with attacker-controlled length and contents.** `pack_val()`
+unpack into a value they have just `calloc`'d. **A heap buffer overflow
+whose length and contents come off the wire.** `pack_val()`
 had the mirror of it, reading 552 bytes out of a 24-byte union.
 
 Both directions now refuse those six types, and a `_Static_assert` per
