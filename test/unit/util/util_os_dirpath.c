@@ -580,6 +580,68 @@ static void test_under_declines_a_midway_symlink(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* A component PMIx composes that is already there has to be ours:     */
+/* owned by us. Its mode, and the root, are not examined.              */
+/* ------------------------------------------------------------------ */
+
+static void test_under_existing_component_ours(void)
+{
+    char root[512], path[700];
+    int rc, fd;
+
+    snprintf(root, sizeof(root), "%s/oroot", tmpbase);
+    /* a shared root: group- and world-writable, which is the caller's
+     * business and has to stay accepted */
+    if (0 != mkdir(root, S_IRWXU) || 0 != chmod(root, 0777)) {
+        report("owner: fixture", 0);
+        return;
+    }
+
+    rc = pmix_os_dirpath_create_under(root, "ns/rank.0", S_IRWXU | S_IRGRP | S_IXGRP);
+    report("owner: a writable root is not examined", PMIX_SUCCESS == rc);
+
+    /* a second rank finds the namespace level already made, by us */
+    rc = pmix_os_dirpath_create_under(root, "ns/rank.1", S_IRWXU | S_IRGRP | S_IXGRP);
+    report("owner: our own existing level is used", PMIX_SUCCESS == rc);
+    rc = pmix_os_dirpath_create_under(root, "ns/rank.1", S_IRWXU | S_IRGRP | S_IXGRP);
+    report("owner: our own existing leaf is EXISTS", PMIX_ERR_EXISTS == rc);
+
+    /* ours, opened up to the group: still ours */
+    snprintf(path, sizeof(path), "%s/ns", root);
+    chmod(path, 0770);
+    rc = pmix_os_dirpath_create_under(root, "ns/rank.2", S_IRWXU);
+    report("owner: our own group-writable level is used", PMIX_SUCCESS == rc);
+
+    /* someone else's: only root can make one to test with */
+    snprintf(path, sizeof(path), "%s/ns", root);
+    if (0 == geteuid() && 0 == chown(path, 65534, 65534)) {
+        rc = pmix_os_dirpath_create_under(root, "ns/rank.3", S_IRWXU);
+        report("owner: another user's existing level is refused", PMIX_ERR_SILENT == rc);
+        snprintf(path, sizeof(path), "%s/ns/rank.3", root);
+        report("owner: nothing built under it", !dir_exists(path));
+        errno = 0;
+        fd = pmix_os_dirpath_open_file_under(root, "ns/rank.0/stdout",
+                                             O_CREAT | O_RDWR, 0644);
+        report("owner: open_file_under refuses it too", 0 > fd && EPERM == errno);
+        if (0 <= fd) {
+            close(fd);
+        }
+    } else {
+        report("owner: another user's level (skipped: needs root)", 1);
+    }
+
+    snprintf(path, sizeof(path), "%s/ns/rank.0", root);
+    rmdir(path);
+    snprintf(path, sizeof(path), "%s/ns/rank.1", root);
+    rmdir(path);
+    snprintf(path, sizeof(path), "%s/ns/rank.2", root);
+    rmdir(path);
+    snprintf(path, sizeof(path), "%s/ns", root);
+    rmdir(path);
+    rmdir(root);
+}
+
+/* ------------------------------------------------------------------ */
 /* Trailing separators                                                 */
 /*                                                                     */
 /* A trailing separator makes the kernel resolve the final component   */
@@ -1165,6 +1227,7 @@ int main(int argc, char **argv)
     test_under_trusted_root_may_be_a_symlink();
     test_under_declines_a_tail_symlink();
     test_under_declines_a_midway_symlink();
+    test_under_existing_component_ours();
     test_create_new();
     test_create_existing();
     test_create_nested();

@@ -88,6 +88,11 @@ PMIX_EXPORT int pmix_os_dirpath_create(const char *path, const mode_t mode);
  * directories PMIx is building through would otherwise send everything
  * created below it somewhere the caller did not name.
  *
+ * A component of `tail` that is already there is used only if it is
+ * owned by the effective uid - the names are PMIx's own, so one that is
+ * not ours is left over from someone else, and the user is told so.
+ * `root` is not examined.
+ *
  * @param root A directory that already exists. Trusted; not walked.
  * @param tail The relative path to build inside it. Walked.
  * @param mode Access permissions for the directories created.
@@ -96,7 +101,8 @@ PMIX_EXPORT int pmix_os_dirpath_create(const char *path, const mode_t mode);
  *                          carries at least the requested mode. Callers
  *                          normally treat this exactly as SUCCESS.
  * @retval PMIX_ERR_BAD_PARAM  A NULL root or an empty tail.
- * @retval PMIX_ERR_SILENT  It could not be built - the user has already
+ * @retval PMIX_ERR_SILENT  It could not be built, or an existing
+ *                          component is not ours - the user has already
  *                          been shown why, and must not be shown again.
  */
 PMIX_EXPORT int pmix_os_dirpath_create_under(const char *root, const char *tail,
@@ -107,7 +113,9 @@ PMIX_EXPORT int pmix_os_dirpath_create_under(const char *root, const char *tail,
  * every component of the part PMIx composes - the file included.
  *
  * The companion to pmix_os_dirpath_create_under(); see it for what the
- * root/tail split means and why it exists.
+ * root/tail split means and why it exists, and for the rule a directory
+ * component of `tail` has to pass. One that fails it is reported to the
+ * user and answers -1 with errno EPERM.
  *
  * @param root  A directory that already exists. Trusted; not walked.
  * @param tail  The relative path of the file inside it. Walked.
