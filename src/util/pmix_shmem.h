@@ -75,6 +75,11 @@ typedef struct pmix_shmem_t {
     bool have_backing_id;
     dev_t backing_dev;
     ino_t backing_ino;
+    /** In the process that created the segment, a descriptor on the
+     *  directory it was created in, so it is re-opened and removed there
+     *  rather than wherever backing_path comes to lead. -1 elsewhere: a
+     *  process that only attached knows the segment by its path. */
+    int backing_dirfd;
 } pmix_shmem_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_shmem_t);
 
