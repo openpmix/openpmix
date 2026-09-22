@@ -53,6 +53,8 @@
 static int npass = 0;
 static int nfail = 0;
 
+#if defined(HAVE_OPENPTY)
+
 static void report(const char *name, int passed)
 {
     if (passed) {
@@ -63,8 +65,6 @@ static void report(const char *name, int passed)
         nfail++;
     }
 }
-
-#if defined(HAVE_OPENPTY)
 
 /* Verdicts the orphaned-process-group probe hands back.  They are exit
  * codes, so they have to be small and must not collide with the shell's
