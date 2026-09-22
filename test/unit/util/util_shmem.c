@@ -439,11 +439,14 @@ static void test_perms_refuse_a_swapped_directory(void)
     }
 
     /* a group change an unprivileged process is allowed to make, so the
-     * old lchown() would have succeeded at it */
+     * old lchown() would have succeeded at it. The creator reaches its
+     * file thru the directory it made it in, so both land on the segment
+     * in the directory that was moved aside - and neither on the
+     * bystander the name now leads to */
     rc = pmix_shmem_segment_chown(shmem, (uid_t) -1, getegid());
-    report("swapped dir: chown refused", PMIX_ERR_NO_PERMISSIONS == rc);
+    report("swapped dir: chown acts on the segment", PMIX_SUCCESS == rc);
     rc = pmix_shmem_segment_chmod(shmem, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-    report("swapped dir: chmod refused", PMIX_ERR_NO_PERMISSIONS == rc);
+    report("swapped dir: chmod acts on the segment", PMIX_SUCCESS == rc);
     if (0 != stat(victim, &after)) {
         report("swapped dir: bystander still exists", 0);
     } else {
@@ -453,6 +456,12 @@ static void test_perms_refuse_a_swapped_directory(void)
 
     /* the segment's own file, in the directory that was moved aside */
     snprintf(seg, sizeof(seg), "%s/swapped.seg", moved);
+    if (0 != stat(seg, &after)) {
+        report("swapped dir: segment still exists", 0);
+    } else {
+        report("swapped dir: segment took the mode",
+               (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP) == (after.st_mode & 07777));
+    }
     PMIX_RELEASE(shmem);
     unlink(seg);
     unlink(victim);
@@ -548,6 +557,55 @@ static void test_perms_need_a_created_segment(void)
     PMIX_RELEASE(shmem);
 }
 
+/* The creator removes the segment from the directory it created it in.
+ * By path, the removal went wherever the name led by then - here, thru a
+ * directory link to a file of the same name that is not ours. */
+static void test_unlink_follows_the_directory(void)
+{
+    char dir[512], moved[512], elsewhere[512], seg[600], victim[600];
+    struct stat before;
+    pmix_shmem_t *shmem;
+    pmix_status_t rc;
+
+    snprintf(dir, sizeof(dir), "%s/unlinkdir", tmpbase);
+    snprintf(moved, sizeof(moved), "%s/unlinkdir.moved", tmpbase);
+    snprintf(elsewhere, sizeof(elsewhere), "%s/unlinkelse", tmpbase);
+    snprintf(seg, sizeof(seg), "%s/unlink.seg", dir);
+    snprintf(victim, sizeof(victim), "%s/unlink.seg", elsewhere);
+
+    if (0 != mkdir(dir, S_IRWXU) || 0 != mkdir(elsewhere, S_IRWXU) ||
+        0 != make_bystander(victim, &before)) {
+        report("unlink dir: fixture", 0);
+        return;
+    }
+    shmem = PMIX_NEW(pmix_shmem_t);
+    if (NULL == shmem || PMIX_SUCCESS != pmix_shmem_segment_create(shmem, 4096, seg, 1)) {
+        report("unlink dir: fixture", 0);
+        if (NULL != shmem) {
+            PMIX_RELEASE(shmem);
+        }
+        return;
+    }
+    if (0 != rename(dir, moved) || 0 != symlink(elsewhere, dir)) {
+        report("unlink dir: fixture", 0);
+        PMIX_RELEASE(shmem);
+        return;
+    }
+
+    rc = pmix_shmem_segment_unlink(shmem);
+    report("unlink dir: unlink succeeded", PMIX_SUCCESS == rc);
+    report("unlink dir: bystander left alone", 0 == access(victim, F_OK));
+    snprintf(seg, sizeof(seg), "%s/unlink.seg", moved);
+    report("unlink dir: segment removed from its own directory", 0 != access(seg, F_OK));
+
+    PMIX_RELEASE(shmem);
+    unlink(seg);
+    unlink(victim);
+    unlink(dir);
+    rmdir(moved);
+    rmdir(elsewhere);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -569,6 +627,7 @@ int main(int argc, char **argv)
     test_failed_create_leaves_no_file();
     test_attach_on_attached_handle_is_refused();
     test_perms_refuse_a_swapped_directory();
+    test_unlink_follows_the_directory();
     test_perms_refuse_a_second_link();
     test_perms_on_own_segment();
     test_perms_need_a_created_segment();
