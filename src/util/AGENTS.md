@@ -1008,9 +1008,10 @@ segfault the header threatens.
 Creates and recursively destroys directory trees. Its callers are the
 `ptl` rendezvous/session directories and the `pmix_iof` per-rank output
 directories, which means the paths that reach it have **fully predictable
-names under a world-writable root** (`/tmp` by default). That is the
-threat model the whole file is written against, and it is why the code
-looks more roundabout than "stat then chmod" or "readdir then unlink".
+names under a world-writable root** (`/tmp` by default), where anything
+may already be sitting at a name, or be renamed away between two calls.
+The whole file is written for that, and it is why the code looks more
+roundabout than "stat then chmod" or "readdir then unlink".
 
 - **Act through a descriptor, never through a re-resolved path.**
   `dirpath_ensure_mode()` opens the final component
@@ -1054,13 +1055,13 @@ looks more roundabout than "stat then chmod" or "readdir then unlink".
   no-op that always answers `PMIX_SUCCESS`, kept because it is installed
   API that PRRTE may still link against. Do not give it a body.
 - **The plain single-path entry points protect only the *final*
-  component against a planted symlink.** `mkdir(2)` does not follow a
+  component against a symlink.** `mkdir(2)` does not follow a
   symlink at the last component but does follow one at every component
   before it, and the tree-building loop accepts `EEXIST` on an
   intermediate component without asking what it is - by design, since an
-  intermediate need only be traversable. So a symlink pre-planted midway
-  through a predictable session path still redirects the leaf that gets
-  created. That is why `pmix_os_dirpath_create_under()` and
+  intermediate need only be traversable. So a symlink already sitting
+  midway through a predictable session path still redirects the leaf
+  that gets created. That is why `pmix_os_dirpath_create_under()` and
   `_open_file_under()` exist, and why they take the trusted prefix and
   the composed tail as *separate arguments* rather than one path: only
   the tail can be walked with `O_NOFOLLOW` at every step. Which of the
