@@ -141,15 +141,24 @@ static bool file_exists(const char *path)
  * for a server that was killed */
 static void child(bool clean)
 {
-    pmix_info_t info;
+    pmix_info_t info[2];
+    size_t ninfo = 1;
     pmix_status_t rc;
 
     /* a case that stalls - e.g., on opening a FIFO - fails rather
      * than hanging the test suite */
     alarm(60);
-    PMIX_INFO_LOAD(&info, PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
-    rc = PMIx_server_init(&mymodule, &info, 1);
-    PMIX_INFO_DESTRUCT(&info);
+    PMIX_INFO_LOAD(&info[0], PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
+    if (NULL != schedname) {
+        /* so the server writes hwloc.sm too, where the platform can */
+        PMIX_INFO_LOAD(&info[1], PMIX_SERVER_SHARE_TOPOLOGY, NULL, PMIX_BOOL);
+        ninfo = 2;
+    }
+    rc = PMIx_server_init(&mymodule, info, ninfo);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    if (2 == ninfo) {
+        PMIX_INFO_DESTRUCT(&info[1]);
+    }
 
     if (PMIX_SUCCESS != rc) {
         _exit(CHILD_INITFAIL);
@@ -163,7 +172,12 @@ static void child(bool clean)
          * directory it was created in */
         char decoy[PMIX_PATH_MAX * 2];
         FILE *fp;
+        bool had_hwloc;
 
+        /* the server's shmem topology, where this platform makes one, is
+         * in the same directory and is owed the same treatment */
+        snprintf(decoy, sizeof(decoy), "%s/hwloc.sm", tmpdir);
+        had_hwloc = file_exists(decoy);
         if (0 != rename(tmpdir, moveddir) || 0 != mkdir(tmpdir, 0700)) {
             _exit(CHILD_INITFAIL);
         }
@@ -172,6 +186,19 @@ static void child(bool clean)
         if (NULL != fp) {
             fprintf(fp, "decoy\n");
             fclose(fp);
+        }
+        if (had_hwloc) {
+            snprintf(decoy, sizeof(decoy), "%s/hwloc.sm", tmpdir);
+            fp = fopen(decoy, "w");
+            if (NULL != fp) {
+                fprintf(fp, "decoy\n");
+                fclose(fp);
+            }
+            snprintf(decoy, sizeof(decoy), "%s/had-hwloc", moveddir);
+            fp = fopen(decoy, "w");
+            if (NULL != fp) {
+                fclose(fp);
+            }
         }
     }
     PMIx_server_finalize();
@@ -356,6 +383,21 @@ int main(void)
                CHILD_OK == rc && !file_exists(moved), "file left in the moved directory");
         report("a file now at the old name is left alone", file_exists(path),
                "decoy was removed");
+        snprintf(moved, sizeof(moved), "%s/had-hwloc", moveddir);
+        if (file_exists(moved)) {
+            unlink(moved);
+            snprintf(moved, sizeof(moved), "%s/hwloc.sm", moveddir);
+            report("hwloc.sm is removed from the directory it was created in",
+                   !file_exists(moved), "hwloc.sm left in the moved directory");
+            unlink(moved);
+            snprintf(moved, sizeof(moved), "%s/hwloc.sm", tmpdir);
+            report("a hwloc.sm now at the old name is left alone", file_exists(moved),
+                   "decoy hwloc.sm was removed");
+            unlink(moved);
+        } else {
+            fprintf(stdout, "  SKIP: no shmem topology on this platform, so no hwloc.sm to check\n");
+        }
+        snprintf(moved, sizeof(moved), "%s/%s", moveddir, strrchr(path, '/') + 1);
         unlink(moved);
         rmdir(moveddir);
         unlink(path);
