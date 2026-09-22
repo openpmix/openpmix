@@ -59,26 +59,33 @@ OPTIONS
 * ``--internal``: Show internal MCA parameters (not meant to be
   modified by users).
 
-* ``--param <arg0>:<arg1>,<arg2>``: Show MCA parameters.  The first
-  parameter is the framework (or the keyword "all"); the second parameter
-  is a comma-delimited list of specific component names (if only <arg0>
-  is given, then all components will be reported).
+* ``--param <framework>[:<component>[,<component>...]]``: Show MCA
+  parameters of the named framework, optionally limited to a
+  comma-delimited list of its components (all of its components if none
+  are given, or if the list is ``all``). The keyword ``all`` in place of
+  a framework shows every parameter. The option may be repeated.
 
-* ``--params <arg0>:<arg1>,<arg2>``: Synonym for ``--param``.
+* ``--params <framework>[:<component>[,<component>...]]``: Synonym for
+  ``--param``.
 
 * ``--type <arg0>``: Show MCA parameters of the type specified in the argument.
   Accepts: ``unsigned_int``, ``unsigned_long``, ``unsigned_long_long``,
   ``size_t``, ``string``, ``version_string``, ``bool``, and ``double``.
 
-* ``--show-version <arg0>:<arg1>``: Show the version of PMIx or a component. The
-  first parameter can be the keywords ``pmix`` or ``all``, a framework name (all
-  components in a framework), or a ``framework:component`` string. The second
-  parameter can be one of: ``full``, ``major``, ``minor``, ``release``,
-  ``greek``, ``repo``.
+* ``--show-version [<what> [<part>]]``: Show the version of PMIx or a
+  component. ``<what>`` can be the keywords ``pmix`` or ``all``, a
+  framework name (all components in a framework), or a
+  ``framework:component`` string. ``<part>`` can be one of: ``full``
+  (the default), ``major``, ``minor``, ``release``, ``greek``, ``repo``.
+  Given no argument, the version of PMIx and of every component is
+  shown.
 
 * ``--path <type>``: Show paths that PMIx was configured
-  with. Accepts the following parameters: ``all``, ``prefix``, ``bindir``,
-  ``libdir``, ``incdir``, ``pkglibdir``, ``sysconfdir``.
+  with. Accepts ``all`` or one of: ``prefix``, ``exec_prefix``,
+  ``bindir``, ``sbindir``, ``libdir``, ``incdir``, ``mandir``,
+  ``pkglibdir``, ``libexecdir``, ``datarootdir``, ``datadir``,
+  ``sysconfdir``, ``sharedstatedir``, ``localstatedir``, ``infodir``,
+  ``pkgdatadir``, ``pkgincludedir``. The option may be repeated.
 
 * ``--pretty-print``: When used in conjunction with other parameters, the output is
   displayed in "prettyprint" format (default)
@@ -119,12 +126,12 @@ in a machine-parsable format:
 
    pmix_info --parsable
 
-Show the MCA parameters of the "opa" PNET component in a
+Show the MCA parameters of the "linux" PIF component in a
 human-readable / prettyprint format:
 
 .. code-block::
 
-   pmix_info --param pnet opa
+   pmix_info --param pif:linux
 
 Show the "bindir" that PMIx was configured with:
 

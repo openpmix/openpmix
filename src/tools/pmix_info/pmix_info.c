@@ -213,10 +213,16 @@ int main(int argc, char *argv[])
         } else {
             if (0 == strcasecmp(opt->values[0], "pmix") ||
                 0 == strcasecmp(opt->values[0], "all")) {
+                /* an optional second argument selects the part of the
+                 * version to show - it used to be ignored here, so
+                 * "--show-version pmix major" printed the full version */
+                const char *modifier = (NULL != opt->values[1]) ? opt->values[1] : pmix_info_ver_full;
                 pmix_info_show_pmix_package();
-                pmix_info_show_pmix_version();
+                pmix_info_show_version("PMIx", modifier, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
+                                       PMIX_RELEASE_VERSION, PMIX_GREEK_VERSION, PMIX_REPO_REV,
+                                       PMIX_RELEASE_DATE);
                 pmix_info_show_component_version("pmix", &mca_types, &pmix_component_map, pmix_info_type_all,
-                                                 pmix_info_component_all, pmix_info_ver_full,
+                                                 pmix_info_component_all, modifier,
                                                  pmix_info_ver_all);
             } else {
                 // the first arg is either the name of a framework, or a framework:component pair
@@ -256,7 +262,9 @@ int main(int argc, char *argv[])
     }
     if (want_all || pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_PARAM) ||
         pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_PARAMS)) {
-        pmix_info_do_params("PMIx", true, pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_INTERNAL),
+        /* pass want_all through rather than "true": a literal true made
+         * every --param print every parameter, whatever it named */
+        pmix_info_do_params("PMIx", want_all, pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_INTERNAL),
                             &mca_types, &pmix_component_map, &results);
         acted = true;
     }

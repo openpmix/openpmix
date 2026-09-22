@@ -50,19 +50,22 @@ PMIx Library Information
 -c|--config                          Show configuration options
    --hostname                        Show the hostname that PMIx was configured and built on
    --internal                        Show internal MCA parameters (not meant to be modified by users)
-   --param <arg0>:<arg1>,<arg2>      Show MCA parameters.  The first parameter is the framework (or the
-                                     keyword "all"); the second parameter is a comma-delimited list of
-                                     specific component names (if only <arg0> is given, then all
-                                     components will be reported).
-   --params <arg0>:<arg1>,<arg2>     Synonym for "param"
-   --path <type>                     Show paths with which PMIx was configured. Accepts the following
-                                     parameters: "prefix", "bindir", "libdir", "incdir", "mandir",
-                                     "pkglibdir", "sysconfdir".
-   --show-version <arg0>:<arg1>      Show version of PMIx or a component.  The first parameter can be the
-                                     keywords "pmix" or "all", a framework name (indicating all components in
-                                     a framework), or a framework:component string (indicating a specific
-                                     component).  The second parameter can be one of: full, major, minor,
-                                     release, greek, svn.
+   --param <fw>[:<comp>[,<comp>...]] Show MCA parameters of the named framework, optionally limited to
+                                     a comma-delimited list of its components (all of its components
+                                     if none are given). The keyword "all" shows every parameter. May
+                                     be repeated.
+   --params <fw>[:<comp>[,<comp>...]]
+                                     Synonym for "--param"
+   --path <type>                     Show paths with which PMIx was configured. Accepts "all" or one of:
+                                     "prefix", "exec_prefix", "bindir", "sbindir", "libdir", "incdir",
+                                     "mandir", "pkglibdir", "libexecdir", "datarootdir", "datadir",
+                                     "sysconfdir", "sharedstatedir", "localstatedir", "infodir",
+                                     "pkgdatadir", "pkgincludedir". May be repeated.
+   --show-version [<what> [<part>]]  Show version of PMIx or a component.  <what> can be the keywords
+                                     "pmix" or "all", a framework name (indicating all components in a
+                                     framework), or a framework:component string (indicating a specific
+                                     component).  <part> can be one of: full (default), major, minor,
+                                     release, greek, repo.
    --pretty-print                    When used in conjunction with other parameters, the output is
                                      displayed in 'pretty-print' format (default)
    --parsable                        When used in conjunction with other parameters, the output is
@@ -86,23 +89,32 @@ Syntax: "--pmixmca <key> <value>", where "key" is the parameter name
 and "value" is the parameter value.
 #
 [param]
-Syntax: param <arg0> <arg1>
-Show MCA parameters.  The first parameter is the framework (or the
-keyword "all"); the second parameter is the specific component name (or
-the keyword "all").
+Syntax: --param <framework>[:<component>[,<component>...]]
+        --param all
+
+Show MCA parameters.  The value names a framework, optionally followed
+by a colon and a comma-delimited list of that framework's components;
+if no components are listed (or the list is "all"), the parameters of
+every component of the framework are shown.  The keyword "all" shows
+every parameter.  The option may be repeated.  For example:
+
+   --param pif
+   --param pif:linux,bsdx_ipv6
 #
 [params]
-Synonym for "param"
+Synonym for "--param"
 #
 [internal]
 Syntax: internal
 Show internal MCA parameters (i.e., parameters not meant to be modified by users)
 #
 [path]
-Syntax: path <arg0>
-Show the paths with which PMIx was configured.  Accepts the following
-parameters: prefix, bindir, libdir, incdir, mandir, pkglibdir,
-sysconfdir
+Syntax: --path <type>
+Show the paths with which PMIx was configured.  Accepts "all" or one
+of: prefix, exec_prefix, bindir, sbindir, libdir, incdir, mandir,
+pkglibdir, libexecdir, datarootdir, datadir, sysconfdir,
+sharedstatedir, localstatedir, infodir, pkgdatadir, pkgincludedir.
+The option may be repeated.
 #
 [arch]
 Syntax: arch
@@ -121,11 +133,14 @@ Syntax: a or all
 Show all configuration options and MCA parameters
 #
 [show-version]
-Show version of PMIx or a component.  The first parameter can be the
-keywords "pmix" or "all", a framework name (indicating all components in
-a framework), or a framework:component string (indicating a specific
-component).  The second parameter can be one of: full, major, minor,
-release, greek, repo.
+Syntax: --show-version [<what> [<part>]]
+Show version of PMIx or a component.  <what> can be the keywords "pmix"
+or "all", a framework name (indicating all components in a framework),
+or a framework:component string (indicating a specific component).
+<part> can be one of: full (the default), major, minor, release,
+greek, repo.  Given no argument, the version of PMIx and of every
+component is shown.  This is distinct from "-V|--version", which
+prints only the tool's own version.
 #
 [pretty-print]
 When used in conjunction with other parameters, the output is
@@ -180,6 +195,15 @@ The specified framework could not be found:
 This could be due to a misspelling of the framework name, or because support
 for that framework was not configured into this version of orte. Please see
 the "config" option for a full report of how PMIx was configured.
+#
+[bad-param-value]
+The %s option was given a value it cannot interpret:
+
+  Value: "%s"
+
+The value must name a framework, optionally followed by a colon and a
+comma-delimited list of that framework's components - for example,
+"pif" or "pif:linux,bsdx_ipv6" - or be the keyword "all".
 #
 [missing-values]
 The %s option requires %d values, but fewer were provided:
