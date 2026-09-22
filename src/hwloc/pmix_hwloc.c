@@ -74,6 +74,9 @@ static size_t shmemsize = 0;
 static size_t shmemaddr;
 static char *shmemfile = NULL;
 static int shmemfd = -1;
+/* the directory hwloc.sm was created in, so it is removed from there */
+static int shmemdirfd = -1;
+#define PMIX_HWLOC_SHMEM_NAME "hwloc.sm"
 static bool space_available = false;
 static uint64_t amount_space_avail = 0;
 
@@ -145,7 +148,9 @@ void pmix_hwloc_finalize(void)
      * unconditionally, and do it before the early-out below so it also runs
      * when the topology itself is externally owned. */
     if (NULL != shmemfile) {
-        unlink(shmemfile);
+        if (0 <= shmemdirfd) {
+            unlinkat(shmemdirfd, PMIX_HWLOC_SHMEM_NAME, 0);
+        }
         free(shmemfile);
         shmemfile = NULL;
         shmemsize = 0;
@@ -153,6 +158,10 @@ void pmix_hwloc_finalize(void)
     if (0 <= shmemfd) {
         close(shmemfd);
         shmemfd = -1;
+    }
+    if (0 <= shmemdirfd) {
+        close(shmemdirfd);
+        shmemdirfd = -1;
     }
 
     if (NULL == pmix_globals.topology.topology ||
@@ -610,7 +619,7 @@ sharetopo:
     }
     /* create the shmem file in our session dir so it
      * will automatically get cleaned up */
-    pmix_asprintf(&shmemfile, "%s/hwloc.sm", pmix_server_globals.tmpdir);
+    pmix_asprintf(&shmemfile, "%s/" PMIX_HWLOC_SHMEM_NAME, pmix_server_globals.tmpdir);
     /* let's make sure we have enough space for the backing file */
     if (PMIX_SUCCESS != enough_space(shmemfile, shmemsize, &amount_space_avail, &space_available)) {
         pmix_output_verbose(2, pmix_hwloc_output,
@@ -636,9 +645,21 @@ sharetopo:
      * file left over from an earlier run or something this code did not
      * put there: the create is exclusive, and a leftover is removed once
      * and the create retried. */
-    shmemfd = pmix_os_dirpath_create_file(shmemfile, O_RDWR, 0600, NULL, NULL);
+    /* Create it relative to a descriptor on the directory, and keep that
+     * to remove it by at finalize: the directory is the server's session
+     * tmpdir, which a host may have given to the job's user, and a name
+     * resolved again later need not lead back to it */
+    shmemdirfd = pmix_os_dirpath_open_dir(pmix_server_globals.tmpdir);
+    if (0 <= shmemdirfd) {
+        shmemfd = pmix_os_dirpath_create_file_at(shmemdirfd, PMIX_HWLOC_SHMEM_NAME, O_RDWR,
+                                                 0600, NULL, NULL);
+    }
     if (-1 == shmemfd) {
         int err = errno;
+        if (0 <= shmemdirfd) {
+            close(shmemdirfd);
+            shmemdirfd = -1;
+        }
         if (1 < pmix_output_get_verbosity(pmix_hwloc_output)) {
             pmix_show_help("help-ploc.txt", "sys call fail", true,
                            pmix_globals.hostname, "open(2)", "", strerror(err), err);
@@ -654,11 +675,13 @@ sharetopo:
         pmix_output_verbose(2, pmix_hwloc_output,
                             "%s an error %d (%s) occurred while writing topology to %s",
                             PMIX_NAME_PRINT(&pmix_globals.myid), rc, strerror(errno), shmemfile);
-        unlink(shmemfile);
+        unlinkat(shmemdirfd, PMIX_HWLOC_SHMEM_NAME, 0);
         free(shmemfile);
         shmemfile = NULL;
         close(shmemfd);
         shmemfd = -1;
+        close(shmemdirfd);
+        shmemdirfd = -1;
         return PMIX_SUCCESS;
     }
     pmix_output_verbose(2, pmix_hwloc_output, "%s:%s exported shmem",
