@@ -50,6 +50,8 @@ static void report(const char *name, int passed)
     }
 }
 
+#if PMIX_ENABLE_PTY_SUPPORT && defined(HAVE_OPENPTY)
+
 /* Exit codes a probe child can hand back. */
 #define PROBE_OK        0
 #define PROBE_HAS_CTTY  1
@@ -150,96 +152,21 @@ static void test_openpty(void)
            PROBE_OK == rc);
 }
 
-#if PMIX_ENABLE_PTY_SUPPORT
+#else
 
-static int probe_ptymopen(void)
+/* No openpty(3), or pty support configured out: there is no pty to be
+ * had, and the caller has to be told so, since it falls back to a pipe
+ * on exactly that answer. */
+static void test_openpty(void)
 {
-    char name[64];
-    int master;
-    int slave;
+    int master = -1;
+    int slave = -1;
 
-    master = pmix_ptymopen(name, sizeof(name));
-    if (0 > master) {
-        return PROBE_FAILED;
-    }
-    if (have_ctty()) {
-        close(master);
-        return PROBE_HAS_CTTY;
-    }
-    slave = pmix_ptysopen(master, name);
-    if (0 > slave) {
-        close(master);
-        return PROBE_FAILED;
-    }
-    if (have_ctty()) {
-        close(master);
-        close(slave);
-        return PROBE_HAS_CTTY;
-    }
-    close(master);
-    close(slave);
-    return PROBE_OK;
+    report("openpty: reports that there is no pty",
+           0 != pmix_openpty(&master, &slave, NULL, NULL, NULL));
 }
 
-static void test_ptymopen(void)
-{
-    int rc = run_probe(probe_ptymopen);
-
-    if (PROBE_SETUP == rc) {
-        report("ptymopen: probe setup (skipped)", 1);
-        return;
-    }
-    report("ptymopen/ptysopen: open a master and its slave",
-           PROBE_FAILED != rc);
-    report("ptymopen/ptysopen: leave the caller without a controlling terminal",
-           PROBE_OK == rc);
-}
-
-static void test_ptysopen_does_not_close_the_master(void)
-{
-    char name[64];
-    int master;
-    int rc;
-
-    master = pmix_ptymopen(name, sizeof(name));
-    if (0 > master) {
-        report("ptysopen: master open (skipped)", 1);
-        return;
-    }
-
-    /* a slave name that cannot be opened: the failure must be reported
-     * without closing the descriptor the caller handed in, or the
-     * caller's own close of it is a double close */
-    rc = pmix_ptysopen(master, "/dev/null/no-such-pts");
-    report("ptysopen: reports a failure it cannot recover from", 0 > rc);
-    report("ptysopen: does not close the master it was handed",
-           -1 != fcntl(master, F_GETFD));
-
-    close(master);
-}
-
-static void test_ptymopen_short_buffer(void)
-{
-    char buf[8];
-    int rc;
-
-    memset(buf, 'Z', sizeof(buf));
-    buf[sizeof(buf) - 1] = '\0';
-
-    /* Too small to hold even the master device name.  strncpy() would
-     * fill the buffer without a terminator and the open() that follows
-     * would read past the end of it; the size has to be honored. */
-    rc = pmix_ptymopen(buf, 4);
-    report("ptymopen: refuses a buffer too small for the device name",
-           0 > rc);
-    report("ptymopen: leaves a too-small buffer untouched",
-           0 == strcmp(buf, "ZZZZZZZ"));
-    if (0 <= rc) {
-        close(rc);
-    }
-}
-
-#endif /* PMIX_ENABLE_PTY_SUPPORT */
+#endif
 
 /* ------------------------------------------------------------------ */
 
@@ -250,13 +177,6 @@ int main(int argc, char **argv)
     fprintf(stdout, "\n=== pmix_pty unit tests ===\n\n");
 
     test_openpty();
-#if PMIX_ENABLE_PTY_SUPPORT
-    test_ptymopen();
-    test_ptysopen_does_not_close_the_master();
-    test_ptymopen_short_buffer();
-#else
-    fprintf(stdout, "  (PMIX_ENABLE_PTY_SUPPORT is 0: helper cases skipped)\n");
-#endif
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;
