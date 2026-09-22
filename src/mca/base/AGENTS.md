@@ -698,7 +698,7 @@ rather than merely be confused:
   deregistered entries.** Neither has storage. Prefer
   `pmix_mca_base_var_get_value()`, which resolves through.
 - **Test the sign of a `_register()` return, never `!= PMIX_SUCCESS`.**
-- **Every MCA parameter value is attacker-adjacent input.** They arrive
+- **Every MCA parameter value is untrusted input.** They arrive
   from the environment, from files under the user's control, and from
   command lines. Parse them defensively — the two buffer bugs above were
   both in parameter parsing.

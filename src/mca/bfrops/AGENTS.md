@@ -472,7 +472,7 @@ unbounded over-reads, and both are three-byte messages.
 | Where | What it covers |
 |-------|----------------|
 | [`test/unit/bfrops_darray.c`](../../../test/unit/bfrops_darray.c) | every registered data type used as a data-array element, held across construct / pack / unpack / copy |
-| [`test/unit/bfrops_malformed.c`](../../../test/unit/bfrops_malformed.c) | truncated, lying and hostile input; the flexible-integer encoding boundaries |
+| [`test/unit/bfrops_malformed.c`](../../../test/unit/bfrops_malformed.c) | truncated, lying and malformed input; the flexible-integer encoding boundaries |
 | [`test/unit/bfrops_get_number.c`](../../../test/unit/bfrops_get_number.c) | `PMIx_Value_get_number` numeric conversions, as properties over every source/destination pair |
 | [`test/unit/bfrops_null_object.c`](../../../test/unit/bfrops_null_object.c) | every value-level operation against a value that names a pointer-backed type and carries no object |
 | [`test/unit/nested_darray.c`](../../../test/unit/nested_darray.c) | array nesting and the `max_array_depth` cap |

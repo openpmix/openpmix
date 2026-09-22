@@ -215,7 +215,7 @@ connect-ack is never waited for:
   cannot be made non-blocking is closed rather than used.
 - **The pending connection is a one-shot read event**, not an
   immediately-active one. A peer that connects and sends nothing — a
-  port probe, a hostile local process, or a tool suspended with ^Z
+  port probe, a misbehaving local process, or a tool suspended with ^Z
   between its `connect()` and its first send — costs the progress thread
   nothing, and a peer that closes without sending still wakes the event,
   so the handler's error path reclaims the socket.
