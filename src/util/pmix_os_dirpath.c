@@ -49,6 +49,7 @@
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_os_path.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 static const char path_sep[] = PMIX_PATH_SEP;
@@ -147,6 +148,59 @@ static int open_trusted_root(const char *root)
 }
 
 /**
+ * Decide whether a directory found already sitting at a name PMIx
+ * composed is one this process may use.
+ *
+ * Every component below the trusted root is named by PMIx itself -
+ * <nspace>/rank.N, the levels an output pattern expands to - so one that
+ * is already there should be ours: made by an earlier rank or an earlier
+ * run of this user. One with the right name and another owner is at best
+ * left over from someone else's job, and it is not used. The mode is not
+ * examined: a user may well have opened their own output up to their
+ * group.
+ *
+ * The check is made through the descriptor just opened on the component,
+ * so what is checked is what the walk goes on to use. The root is the
+ * caller's and is not examined - it may well be a shared directory, or
+ * the system tmpdir.
+ *
+ * On refusal the user has been told why, and *reported is set.
+ */
+static bool dirpath_is_ours(int fd, const char *root, char **parts, int last,
+                            bool *reported)
+{
+    struct stat buf;
+    char *name, *tmp;
+    int j;
+
+    if (0 != fstat(fd, &buf)) {
+        return false;
+    }
+    if (buf.st_uid == geteuid()) {
+        return true;
+    }
+    /* name the component for the user: the root plus the levels
+     * walked so far */
+    name = strdup(root);
+    for (j = 0; NULL != name && j <= last; j++) {
+        tmp = NULL;
+        if (0 > pmix_asprintf(&tmp, "%s%s%s", name, path_sep, parts[j])) {
+            tmp = NULL;
+        }
+        free(name);
+        name = tmp;
+    }
+    pmix_show_help("help-pmix-util.txt", "dir-owner", true,
+                   (NULL == name) ? parts[last] : name,
+                   (unsigned long) buf.st_uid, (unsigned long) geteuid());
+    free(name);
+    if (NULL != reported) {
+        *reported = true;
+    }
+    return false;
+}
+
+/**
  * Walk `tail` beneath the descriptor `fd`, one component at a time,
  * refusing a symlink at each. Takes ownership of fd.
  *
@@ -164,12 +218,18 @@ static int open_trusted_root(const char *root)
  * held, so a link anywhere along the way is declined rather than walked,
  * and the descriptor returned is bound to a directory that was reached
  * without traversing one.
+ *
+ * A component that was already there must also pass dirpath_is_ours();
+ * one this walk created is ours by construction. `root` only names the
+ * component in a refusal, and *reported says one was shown.
  */
-static int walk_tail(int fd, const char *tail, bool create, mode_t mode,
-                     int last_flags, bool *last_existed)
+static int walk_tail(int fd, const char *root, const char *tail, bool create,
+                     mode_t mode, int last_flags, bool *last_existed,
+                     bool *reported)
 {
     char **parts;
     int next, i, len, save;
+    bool existed;
 
     if (NULL != last_existed) {
         *last_existed = false;
@@ -184,6 +244,7 @@ static int walk_tail(int fd, const char *tail, bool create, mode_t mode,
     len = PMIx_Argv_count(parts);
 
     for (i = 0; i < len; ++i) {
+        existed = !create;
         if (create) {
             if (0 != mkdirat(fd, parts[i], mode)) {
                 if (EEXIST != errno) {
@@ -193,6 +254,7 @@ static int walk_tail(int fd, const char *tail, bool create, mode_t mode,
                     errno = save;
                     return -1;
                 }
+                existed = true;
                 if (NULL != last_existed && (len - 1) == i) {
                     *last_existed = true;
                 }
@@ -209,6 +271,12 @@ static int walk_tail(int fd, const char *tail, bool create, mode_t mode,
             return -1;
         }
         fd = next;
+        if (existed && !dirpath_is_ours(fd, root, parts, i, reported)) {
+            close(fd);
+            PMIx_Argv_free(parts);
+            errno = EPERM;
+            return -1;
+        }
     }
     PMIx_Argv_free(parts);
     return fd;
@@ -218,7 +286,7 @@ int pmix_os_dirpath_create_under(const char *root, const char *tail,
                                  const mode_t mode)
 {
     int fd, rc;
-    bool last_existed = false;
+    bool last_existed = false, reported = false;
     struct stat buf;
 
     if (NULL == root || NULL == tail || '\0' == tail[0]) {
@@ -234,10 +302,12 @@ int pmix_os_dirpath_create_under(const char *root, const char *tail,
     /* the final component is opened O_RDONLY because its mode may have
      * to be adjusted through this descriptor; fchmod() is not available
      * on the traverse-only kind */
-    fd = walk_tail(fd, tail, true, mode, O_RDONLY, &last_existed);
+    fd = walk_tail(fd, root, tail, true, mode, O_RDONLY, &last_existed, &reported);
     if (0 > fd) {
-        pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
-                       tail, strerror(errno));
+        if (!reported) {
+            pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
+                           tail, strerror(errno));
+        }
         return PMIX_ERR_SILENT;
     }
 
@@ -298,7 +368,7 @@ int pmix_os_dirpath_open_file_under(const char *root, const char *tail,
             errno = EISDIR;
             return -1;
         }
-        fd = walk_tail(fd, dir, false, 0, PMIX_O_TRAVERSE, NULL);
+        fd = walk_tail(fd, root, dir, false, 0, PMIX_O_TRAVERSE, NULL, NULL);
         save = errno;
         free(dir);
         if (0 > fd) {
