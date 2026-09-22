@@ -234,6 +234,23 @@ PMIX_EXPORT int pmix_os_dirpath_create_file_at(int dirfd, const char *name, int 
 PMIX_EXPORT int pmix_os_dirpath_open_dir(const char *path);
 
 /**
+ * Open a directory owned by this process's effective uid or by root.
+ *
+ * The name is resolved the ordinary way, symlinks included, since /tmp
+ * is itself a symlink on macOS; the owner is checked through the
+ * descriptor, on whatever the name resolved to. Keep the descriptor and
+ * work relative to it, so that what was checked is what gets used.
+ *
+ * @param path The directory.
+ * @param st   If not NULL, receives the directory's attributes, whether
+ *             it passed or not, so a refusal can say why.
+ * @retval >=0 A descriptor on the directory. The caller closes it.
+ * @retval -1  errno says why: EPERM if the directory exists but has
+ *             some other owner.
+ */
+PMIX_EXPORT int pmix_os_dirpath_open_trusted(const char *path, struct stat *st);
+
+/**
  * Check to see if a directory is empty
  *
  * A directory that cannot be opened as a directory - it does not exist, it is
