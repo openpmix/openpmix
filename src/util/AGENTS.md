@@ -1641,12 +1641,10 @@ any more, and it stays only because the signature is frozen.
 Two things deliberately left alone:
 
 - The BSD arm's `lchown()`/`chmod()` pair acts on two different objects
-  if the slave name is a symlink, which is the shape of CVE-2023-41915
-  (the `chown`→`lchown` sweep that put the `// DO NOT FOLLOW LINKS`
-  comment on that line). It is left as is because the name is a `/dev`
-  device node and both calls are no-ops unless the process is already
-  root, so planting the symlink requires the privilege the attack would
-  gain.
+  if the slave name is a symlink (`lchown()` declines the link, `chmod()`
+  follows it). It is left as is because the name is a `/dev` device node
+  and both calls are no-ops unless the process is already root, so
+  planting the symlink requires the privilege it would gain.
 - `ptsname(3)` is not reentrant. `pmix_ptymopen()` has no caller on a
   platform with `openpty(3)`, and the one caller it can have runs before
   a fork; do not add a second one on another thread.
