@@ -1309,15 +1309,17 @@ its neighbour were doing. Open once and use `fchmod()`/`fstat()`, the way
 **And when you come back to a file later, check it is the one you made.**
 A descriptor opened by name is only as good as the name, and the
 `O_NOFOLLOW` behind it protects the last component and nothing above it.
-`lchown()` was the "fix" for a symlink at a segment's backing path, and it
-left the directories above that path, and hard links, just as open as
-before; a server running as root would re-own any file an attacker could
-route the name to. `pmix_shmem_segment_create()` therefore records the
-device and inode of the file it made, and `open_created_file()` in
-[`pmix_shmem.c`](pmix_shmem.c) lets chown/chmod act only on a regular file
-with that identity and a link count of one. A caller-side ownership check
-("still owned by our euid") is not a substitute: under root the target is
-root-owned too, and passes.
+`lchown()` on a segment's backing path declined a symlink at the last
+component and nothing else: the directories above it are resolved
+normally, and a hard link is not a symlink at all, so the name can come
+to lead to a file other than the one that was created, and chown/chmod
+then change that file instead. `pmix_shmem_segment_create()` therefore
+records the device and inode of the file it made, and
+`open_created_file()` in [`pmix_shmem.c`](pmix_shmem.c) lets chown/chmod
+act only on a regular file with that identity and a link count of one.
+A caller-side ownership check ("still owned by our euid") is not a
+substitute: for a caller running as root, an unrelated root-owned file
+passes it too.
 
 ### `pmix_shmem` — a created segment reads as zero
 
