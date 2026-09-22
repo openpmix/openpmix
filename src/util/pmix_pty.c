@@ -63,46 +63,26 @@
  * forkpty(3).  Without them there is no pty to be had, and the answer
  * is -1, on which every caller falls back to a pipe. */
 
-#if PMIX_ENABLE_PTY_SUPPORT == 0
-
-int pmix_openpty(int *amaster, int *aslave, char *name,
-                 void *termp, void *winpp)
-{
-    PMIX_HIDE_UNUSED_PARAMS(amaster, aslave, name, termp, winpp);
-    return -1;
-}
-
-pid_t pmix_forkpty(int *master, char *slave,
-                   const void *sterm, const void *sws)
-{
-    PMIX_HIDE_UNUSED_PARAMS(master, slave, sterm, sws);
-    return -1;
-}
-
-#else
-
 int pmix_openpty(int *amaster, int *aslave, char *name,
                  struct termios *termp, struct winsize *winp)
 {
-#    if defined(HAVE_OPENPTY)
+#if defined(HAVE_OPENPTY)
     return openpty(amaster, aslave, name, termp, winp);
-#    else
+#else
     PMIX_HIDE_UNUSED_PARAMS(amaster, aslave, name, termp, winp);
     return -1;
-#    endif
+#endif
 }
 
 pid_t pmix_forkpty(int *master, char *slave,
                    const struct termios *sterm,
                    const struct winsize *sws)
 {
-#    if defined(HAVE_FORKPTY)
+#if defined(HAVE_FORKPTY)
     // some OS don't have the "const" in the above declaration
     return forkpty(master, slave, (struct termios *) sterm, (struct winsize *) sws);
-#    else
+#else
     PMIX_HIDE_UNUSED_PARAMS(master, slave, sterm, sws);
     return -1;
-#    endif
-}
-
 #endif
+}
