@@ -582,36 +582,48 @@ void pmix_info_do_pmix_path(bool wall, pmix_cli_result_t *cmd_line)
     pmix_info_do_path(wall, cmd_line, &pmix_pinstall_dirs);
 }
 
+/*
+ * Show the MCA parameters selected by --param/--params.
+ *
+ * Each value is "<framework>[:<component>[,<component>...]]", or the
+ * keyword "all", and either option may be repeated.  getopt hands the
+ * option exactly one token per occurrence, so the framework and its
+ * components have to travel together in that one token: reading the
+ * values as framework/component PAIRS, as this once did, asked for a
+ * second token that the parser can never deliver ("--param pif all"
+ * is refused for its stray "all") and so made a selective request
+ * impossible to write.
+ *
+ * pmix_info_cmd_line may be NULL when want_all_in is true - the
+ * registration-failure paths call this with no parsed command line.
+ */
 void pmix_info_do_params(const char *project, bool want_all_in, bool want_internal, pmix_pointer_array_t *mca_types,
                          pmix_pointer_array_t *component_map, pmix_cli_result_t *pmix_info_cmd_line)
 {
+    const char *names[] = {PMIX_CLI_INFO_PARAM, PMIX_CLI_INFO_PARAMS, NULL};
     pmix_cli_item_t *opt;
-    char *type, *component, *str;
-    bool found;
-    int i, j;
-    bool want_all = false;
+    char *type, *str, **fw, **comps;
+    bool found, asked = false;
+    int i, j, n;
+    bool want_all = want_all_in;
 
-    opt = pmix_cmd_line_get_param(pmix_info_cmd_line, PMIX_CLI_INFO_PARAM);
-    if (NULL == opt) {
-        opt = pmix_cmd_line_get_param(pmix_info_cmd_line, PMIX_CLI_INFO_PARAMS);
-    }
-
-    if (want_all_in) {
-        want_all = true;
-    } else if (NULL != opt) {
-        /* See if the special param "all" was given to --param; that
-         * supercedes any individual type
-         */
-        if (NULL != opt->values) {
-            for (i=0; NULL != opt->values[i]; i++) {
+    if (NULL != pmix_info_cmd_line) {
+        for (n = 0; NULL != names[n]; n++) {
+            opt = pmix_cmd_line_get_param(pmix_info_cmd_line, names[n]);
+            if (NULL == opt) {
+                continue;
+            }
+            asked = true;
+            /* the special value "all" supersedes any individual framework */
+            for (i = 0; NULL != opt->values && NULL != opt->values[i]; i++) {
                 if (0 == strcasecmp(opt->values[i], "all")) {
                     want_all = true;
                 }
             }
         }
-    } else {
-        // they didn't ask for params, so this shouldn't have come
-        // here as there is nothing to be done
+    }
+    if (!want_all && !asked) {
+        // they didn't ask for params, so there is nothing to be done
         return;
     }
 
@@ -626,38 +638,54 @@ void pmix_info_do_params(const char *project, bool want_all_in, bool want_intern
             }
             pmix_info_show_mca_params(type, pmix_info_component_all, want_internal);
         }
-    } else {
+        return;
+    }
+
+    for (n = 0; NULL != names[n]; n++) {
+        opt = pmix_cmd_line_get_param(pmix_info_cmd_line, names[n]);
+        if (NULL == opt) {
+            continue;
+        }
         if (NULL == opt->values) {
-            pmix_show_help("help-pmix_info.txt", "missing-type", true);
+            pmix_show_help("help-pmix_info.txt", "bad-param-value", true, names[n], "");
             exit(1);
         }
-        for (i = 0; NULL != opt->values[i]; ++i) {
-            type = opt->values[i];
-            ++i;
-            if (NULL == opt->values[i]) {
-                pmix_show_help("help-pmix_info.txt", "missing-component", true);
+        for (i = 0; NULL != opt->values[i]; i++) {
+            fw = PMIx_Argv_split(opt->values[i], ':');
+            if (NULL == fw || NULL == fw[0] || '\0' == fw[0][0] ||
+                (NULL != fw[1] && NULL != fw[2])) {
+                pmix_show_help("help-pmix_info.txt", "bad-param-value", true,
+                               names[n], opt->values[i]);
                 exit(1);
             }
-            component = opt->values[i];
 
             for (found = false, j = 0; j < mca_types->size; ++j) {
                 if (NULL == (str = (char *) pmix_pointer_array_get_item(mca_types, j))) {
                     continue;
                 }
-                if (0 == strcmp(str, type)) {
+                if (0 == strcmp(str, fw[0])) {
                     found = true;
                     break;
                 }
             }
-
             if (!found) {
-                pmix_show_help("help-pmix_info.txt", "not-found", true, type);
+                pmix_show_help("help-pmix_info.txt", "not-found", true, fw[0]);
                 exit(1);
             }
 
-            pmix_info_show_component_version(project, mca_types, component_map, type, component,
-                                             pmix_info_ver_full, pmix_info_ver_all);
-            pmix_info_show_mca_params(type, component, want_internal);
+            /* no component list, or an empty one, means every component */
+            if (NULL == fw[1] || '\0' == fw[1][0]) {
+                comps = PMIx_Argv_split(pmix_info_component_all, ',');
+            } else {
+                comps = PMIx_Argv_split(fw[1], ',');
+            }
+            for (j = 0; NULL != comps && NULL != comps[j]; j++) {
+                pmix_info_show_component_version(project, mca_types, component_map, fw[0], comps[j],
+                                                 pmix_info_ver_full, pmix_info_ver_all);
+                pmix_info_show_mca_params(fw[0], comps[j], want_internal);
+            }
+            PMIx_Argv_free(comps);
+            PMIx_Argv_free(fw);
         }
     }
 }
