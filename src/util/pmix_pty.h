@@ -54,13 +54,11 @@ BEGIN_C_DECLS
  *
  * Pseudo-terminal helpers.
  *
- * These are built only when configure found pty support; when it did
- * not, `PMIX_ENABLE_PTY_SUPPORT` is 0 and every function below is a stub
- * that fails, so a caller must always be prepared to fall back to a
- * plain pipe.  Note the declarations differ between the two cases: the
- * stubs take `void *` where the real functions take `struct termios *`
- * and `struct winsize *`, because those types need not exist at all on a
- * platform with no pty support.
+ * Thin wrappers over openpty(3) and forkpty(3).  On a platform without
+ * them each fails, so a caller must always be prepared to fall back to
+ * a plain pipe.  Whether to ask for a pty at all is the caller's
+ * decision: `--disable-pty-support` sets `PMIX_ENABLE_PTY_SUPPORT` to 0,
+ * and pmix_pfexec then does not call pmix_openpty().
  *
  * **None of these gives the caller a controlling terminal, and none of
  * them may.** They run in the process that is *setting up* a pty for
@@ -70,12 +68,11 @@ BEGIN_C_DECLS
  * that, so a helper that took one would tie the server's fate to a pty
  * it merely handed to a child: closing the last master descriptor
  * hangs up the terminal's foreground process group.  openpty(3) opens
- * with `O_NOCTTY`; do not replace it with anything that does not.  A caller that genuinely wants a
- * controlling terminal asks for one itself, in the child, after
- * `setsid()` - which is what `forkpty()` does.
+ * with `O_NOCTTY`; do not replace it with anything that does not.  A
+ * caller that genuinely wants a controlling terminal asks for one
+ * itself, in the child, after `setsid()` - which is what `forkpty()`
+ * does.
  */
-
-#if PMIX_ENABLE_PTY_SUPPORT
 
 /**
  * Open a pty and hand back both ends.
@@ -112,16 +109,6 @@ PMIX_EXPORT int pmix_openpty(int *amaster, int *aslave, char *name,
 PMIX_EXPORT pid_t pmix_forkpty(int *master, char *slave,
                                const struct termios *sterm,
                                const struct winsize *sws);
-
-#else
-
-PMIX_EXPORT int pmix_openpty(int *amaster, int *aslave, char *name,
-                             void *termp, void *winpp);
-
-PMIX_EXPORT pid_t pmix_forkpty(int *master, char *slave,
-                               const void *sterm, const void *sws);
-
-#endif
 
 END_C_DECLS
 

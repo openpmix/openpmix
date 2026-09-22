@@ -1554,11 +1554,11 @@ cross-node timing comparison would need, but read it as 0.
 ### `pmix_pty` — a helper that must not take a terminal for itself
 
 Two thin wrappers: `pmix_openpty()` over `openpty(3)` and `pmix_forkpty()`
-over `forkpty(3)`, each failing with -1 where the platform lacks the call
-or `PMIX_ENABLE_PTY_SUPPORT` is 0. One caller: `pmix_pfexec`'s
-`setup_prefork()` calls `pmix_openpty()` so a spawned child's stdout is a
-pty rather than a pipe, and falls back to a pipe when it fails (PRRTE's
-`iof_base_setup.c` does the same thing with the same call).
+over `forkpty(3)`, each failing with -1 where the platform lacks the call.
+One caller: `pmix_pfexec`'s `setup_prefork()` calls `pmix_openpty()` so
+a spawned child's stdout is a pty rather than a pipe, and falls back to
+a pipe when it fails (PRRTE's `iof_base_setup.c` does the same thing
+with the same call).
 `pmix_forkpty()` has no caller; `pmix_pty.h` is installed, so judge it as
 API.
 
@@ -1602,14 +1602,14 @@ macOS and failed on Linux with "declared inside parameter list". The
 header includes `<sys/ioctl.h>` itself now, the way `pmix_tty.h` always
 has.
 
-**Three independent switches select the arms**: `PMIX_ENABLE_PTY_SUPPORT`
-(all-stubs), `HAVE_OPENPTY` and `HAVE_FORKPTY`. The stub arm takes
-`void *` where the real one takes `struct termios *`, so forcing
-`PMIX_ENABLE_PTY_SUPPORT` means forcing it in the header too, and
-`util_pty.c` has an arm of its own for "no pty". Compile each by hand
-before believing an edit here — `make pmix_pty.lo` in `src/util` with
-the guards edited to `#if 0`/`#if 1` (or an `#undef HAVE_OPENPTY` after
-the includes) is enough.
+**`HAVE_OPENPTY` and `HAVE_FORKPTY` select the arms**, and this
+platform compiles only one of each. Compile the other by hand before
+believing an edit here — an `#undef` of both after the includes and
+`make pmix_pty.lo` in `src/util` is enough; `util_pty.c` has an arm of
+its own for "no pty". `--disable-pty-support` (`PMIX_ENABLE_PTY_SUPPORT`)
+does not reach this file: it is `pmix_pfexec`'s decision whether to ask
+for a pty at all, and it used to be duplicated here as a second set of
+stubs with `void *` in place of the termios types.
 
 ### `pmix_tty` — verifying a set that the driver only half made
 
