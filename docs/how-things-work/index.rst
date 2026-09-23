@@ -23,6 +23,7 @@ find information on that subject here.
    adding_datatypes.rst
    pmix_log.rst
    regex.rst
+   cmd_line.rst
    ptl.rst
    pstat.rst
    python_nonblocking.rst
