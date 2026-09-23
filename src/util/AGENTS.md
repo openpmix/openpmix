@@ -284,6 +284,12 @@ and the list outlives the call that built it, so an entry carrying a
 
 ### `pmix_cmd_line` — the CLI parser
 
+The user- and caller-facing description - the option macros, the shorts
+string, the command-line rules, the result accessors and the directive
+matchers - is `docs/how-things-work/cmd_line.rst`. Keep it in step with
+any change to what the parser accepts; what follows is the implementation's
+traps.
+
 A `getopt_long` wrapper that copies argv (getopt reorders in place),
 walks options, and stashes results in a `pmix_cli_result_t` (a list of
 `pmix_cli_item_t` plus a `tail` of positionals). Each stored value also
