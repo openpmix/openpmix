@@ -848,6 +848,131 @@ int pmix_cmd_line_get_ordered(pmix_cli_result_t *results,
     return PMIX_SUCCESS;
 }
 
+/* How much of a choice or an input is its name: everything before any
+ * '=', which begins the value. */
+static size_t name_length(const char *s)
+{
+    return strcspn(s, "=");
+}
+
+/* Does the input spell this choice's name out in full? */
+static bool names_equal(const char *input, const char *name)
+{
+    size_t len = name_length(input);
+
+    return (0 < len && len == name_length(name) &&
+            0 == strncasecmp(input, name, len));
+}
+
+pmix_cli_match_t pmix_cli_match(const char *input,
+                                const pmix_cli_choice_t *choices,
+                                int *tag)
+{
+    const pmix_cli_choice_t *exact = NULL, *abbrev = NULL, *found;
+    bool ambiguous = false;
+    char *value;
+    int n;
+
+    *tag = -1;
+    if (NULL == input || NULL == choices) {
+        return PMIX_CLI_MATCH_NONE;
+    }
+
+    for (n = 0; NULL != choices[n].name; n++) {
+        if (names_equal(input, choices[n].name)) {
+            /* two choices under one full name is a table that cannot be
+             * answered from, whichever the caller meant */
+            if (NULL != exact && exact->tag != choices[n].tag) {
+                return PMIX_CLI_MATCH_AMBIGUOUS;
+            }
+            exact = &choices[n];
+        } else if (pmix_check_cli_option((char *) input, (char *) choices[n].name)) {
+            if (NULL != abbrev && abbrev->tag != choices[n].tag) {
+                ambiguous = true;
+            }
+            if (NULL == abbrev) {
+                abbrev = &choices[n];
+            }
+        }
+    }
+
+    /* a name given in full is never ambiguous, however many other names it
+     * also happens to be the start of */
+    if (NULL != exact) {
+        found = exact;
+    } else if (ambiguous) {
+        return PMIX_CLI_MATCH_AMBIGUOUS;
+    } else if (NULL != abbrev) {
+        found = abbrev;
+    } else {
+        return PMIX_CLI_MATCH_NONE;
+    }
+    *tag = found->tag;
+
+    /* An '=' with nothing after it promises a value and does not give one,
+     * so it is a missing value where one is allowed at all */
+    value = pmix_cli_qualifier_value((char *) input);
+    switch (found->value) {
+        case PMIX_CLI_VALUE_NONE:
+            if (NULL != strchr(input, '=')) {
+                return PMIX_CLI_MATCH_UNEXPECTED_VALUE;
+            }
+            break;
+        case PMIX_CLI_VALUE_OPTIONAL:
+            if (NULL != strchr(input, '=') && NULL == value) {
+                return PMIX_CLI_MATCH_MISSING_VALUE;
+            }
+            break;
+        case PMIX_CLI_VALUE_REQUIRED:
+            if (NULL == value) {
+                return PMIX_CLI_MATCH_MISSING_VALUE;
+            }
+            break;
+    }
+    return PMIX_CLI_MATCH_FOUND;
+}
+
+char *pmix_cli_match_list(const char *input,
+                          const pmix_cli_choice_t *choices,
+                          char sep)
+{
+    char **names = NULL, *name, *result;
+    size_t len;
+    pmix_status_t rc;
+    int n;
+
+    if (NULL == choices) {
+        return NULL;
+    }
+    for (n = 0; NULL != choices[n].name; n++) {
+        if (NULL != input &&
+            !names_equal(input, choices[n].name) &&
+            !pmix_check_cli_option((char *) input, (char *) choices[n].name)) {
+            continue;
+        }
+        len = name_length(choices[n].name);
+        name = (char *) malloc(len + 1);
+        if (NULL == name) {
+            PMIx_Argv_free(names);
+            return NULL;
+        }
+        memcpy(name, choices[n].name, len);
+        name[len] = '\0';
+        rc = PMIx_Argv_append_nosize(&names, name);
+        free(name);
+        if (PMIX_SUCCESS != rc) {
+            PMIx_Argv_free(names);
+            return NULL;
+        }
+    }
+    if (NULL == names) {
+        return NULL;
+    }
+    result = PMIx_Argv_join(names, sep);
+    PMIx_Argv_free(names);
+    return result;
+}
+
 static void icon(pmix_cli_item_t *p)
 {
     p->key = NULL;
