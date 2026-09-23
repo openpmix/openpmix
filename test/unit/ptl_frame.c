@@ -146,7 +146,7 @@ static void test_role_flags_default(void)
     snprintf(detail, sizeof(detail), "allow_foreign_tools %d, session_tool %d",
              (int) pmix_ptl_base.allow_foreign_tools, (int) pmix_ptl_base.session_tool);
     report("listener role flags start from their defaults",
-           pmix_ptl_base.allow_foreign_tools && !pmix_ptl_base.session_tool, detail);
+           !pmix_ptl_base.allow_foreign_tools && !pmix_ptl_base.session_tool, detail);
 }
 
 static int cycle(const char *spec, bool first)
@@ -154,11 +154,11 @@ static int cycle(const char *spec, bool first)
     static pmix_server_module_t mymodule = {0};
     pmix_info_t info[2];
     pmix_status_t rc;
-    bool no = false, yes = true;
+    bool yes = true;
 
     setenv("PMIX_MCA_ptl_base_ipv4_ports", spec, 1);
     if (first) {
-        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_ALLOW_FOREIGN_TOOLS, &no, PMIX_BOOL);
+        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_ALLOW_FOREIGN_TOOLS, &yes, PMIX_BOOL);
         PMIX_INFO_LOAD(&info[1], PMIX_SERVER_SESSION_SUPPORT, &yes, PMIX_BOOL);
         rc = PMIx_server_init(&mymodule, info, 2);
     } else {
