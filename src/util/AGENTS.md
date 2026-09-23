@@ -1014,9 +1014,11 @@ The whole file is written for that, and it is why the code looks more
 roundabout than "stat then chmod" or "readdir then unlink".
 
 - **Act through a descriptor, never through a re-resolved path.**
-  `dirpath_ensure_mode()` opens the final component
-  (`O_DIRECTORY | O_NOFOLLOW`) and does its `fstat`/`fchmod` on that
-  descriptor, so the object inspected is the object modified.
+  `dirpath_check_existing()` opens the final component
+  (`O_DIRECTORY | O_NOFOLLOW`) and does its `fstat` on that descriptor,
+  and `pmix_os_dirpath_create_under()` does its `fchmod` through the
+  descriptor its walk ends on, so the object inspected is the object
+  modified.
   `dirpath_destroy_at()` walks with `fstatat`/`openat`/`unlinkat`
   relative to a descriptor it already holds, so an entry cannot be
   swapped between being classified and being removed. `O_NOFOLLOW` and
@@ -1071,16 +1073,27 @@ roundabout than "stat then chmod" or "readdir then unlink".
   that still ends in a path-based `mkdir` buys nothing, and one that
   refuses a symlink at every component refuses macOS outright.
 
-Three contracts the callers depend on:
+Four contracts the callers depend on:
 
 - **`PMIX_ERR_EXISTS` is a success.** `pmix_os_dirpath_create()` answers
-  it when the final directory was already there carrying at least the
-  requested mode. Every in-tree caller tests for it alongside
-  `PMIX_SUCCESS`; what the distinction buys them is knowing whether
+  it when the final directory was already there. Every in-tree caller
+  tests for it alongside `PMIX_SUCCESS`; what the distinction buys them is knowing whether
   *they* are the ones who must remove it afterwards. A caller that tests
   only `PMIX_SUCCESS != rc` treats an ordinary rerun as a failure.
   `PMIX_ERR_SILENT` means the user has already been shown a message and
   must not be shown another.
+- **An existing directory keeps its mode.** The `mode` argument
+  applies only to directories `pmix_os_dirpath_create()` makes. One
+  that is already there was named from outside PMIx - `$TMPDIR`, the
+  system tmpdir, a user's output directory - so it is checked (a real
+  directory, not a symlink or a file) and then used as found, even if
+  it lacks some of the requested bits. Who may look into a directory
+  is its owner's call, not the library's; a foreign tool that cannot
+  reach the file is the consequence of that choice, and the listener
+  says so at ptl verbosity 2. The `_under`
+  walk still `fchmod`s its final component, because that one is a
+  name PMIx composed and the walk has checked is ours.
+  `test_create_existing_mode_untouched` covers it.
 - **The `tmp` buffer in `dirpath_create()` is sized exactly, not
   generously.** It is `strlen(path) + 1`, and the `strcat` chain fits
   only because every separator it writes was a separator in the input:
@@ -1248,7 +1261,7 @@ who composed which part of the name:
   one just checked. The test is **how many components PMIx composes**,
   not whether it composes any: a single one is already covered, since
   `mkdir(2)` does not follow a link at the last component of the name it
-  is given and `dirpath_ensure_mode()` then opens that component
+  is given and `dirpath_check_existing()` then opens that component
   `O_NOFOLLOW`. It is the *second* composed level that nothing sees.
   - `write_rndz_file()` does **not** need the `_under` pair. Its
     directory is `pmix_server_globals.tmpdir`, which is
@@ -1304,7 +1317,7 @@ who composed which part of the name:
 deliberately does not, so a pair of them applied to the same path act on
 two different objects — which is what `pmix_shmem_segment_chmod()` and
 its neighbour were doing. Open once and use `fchmod()`/`fstat()`, the way
-`dirpath_ensure_mode()` does in
+`pmix_os_dirpath_create_under()` does in
 [`pmix_os_dirpath.c`](pmix_os_dirpath.c).
 
 **And when you come back to a file later, check it is the one you made.**

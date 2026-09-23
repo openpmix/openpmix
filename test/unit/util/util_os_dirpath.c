@@ -99,6 +99,35 @@ static void test_create_existing(void)
     report("create_existing: returns ERR_EXISTS", PMIX_ERR_EXISTS == rc);
 }
 
+/* An existing directory was named by someone outside PMIx - $TMPDIR,
+ * a user's output directory - and its mode is theirs. Asking for more
+ * bits than it carries must not add them. */
+static void test_create_existing_mode_untouched(void)
+{
+    char path[512], slashed[520];
+    struct stat st;
+    int rc;
+
+    snprintf(path, sizeof(path), "%s/private", tmpbase);
+    mkdir(path, S_IRWXU);
+    chmod(path, S_IRWXU);
+
+    rc = pmix_os_dirpath_create(path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+    report("create_existing_mode_untouched: returns ERR_EXISTS", PMIX_ERR_EXISTS == rc);
+    report("create_existing_mode_untouched: mode not widened",
+           0 == stat(path, &st) && S_IRWXU == (st.st_mode & 07777));
+
+    /* the same through the name with a trailing separator */
+    snprintf(slashed, sizeof(slashed), "%s/", path);
+    rc = pmix_os_dirpath_create(slashed, S_IRWXU | S_IRWXG | S_IRWXO);
+    report("create_existing_mode_untouched: trailing separator returns ERR_EXISTS",
+           PMIX_ERR_EXISTS == rc);
+    report("create_existing_mode_untouched: trailing separator mode not widened",
+           0 == stat(path, &st) && S_IRWXU == (st.st_mode & 07777));
+
+    rmdir(path);
+}
+
 static void test_create_nested(void)
 {
     char path[512];
@@ -951,8 +980,8 @@ static void test_destroy_unreadable_parent(void)
 }
 
 /* An existing directory the caller owns but cannot read cannot be
- * opened to have its mode checked or repaired, and repairing it by
- * path would reintroduce the race the descriptor exists to close */
+ * opened to be checked, and checking it by path instead would
+ * reintroduce the race the descriptor exists to close */
 static void test_create_on_unreadable_dir(void)
 {
     char path[512];
@@ -1230,6 +1259,7 @@ int main(int argc, char **argv)
     test_under_existing_component_ours();
     test_create_new();
     test_create_existing();
+    test_create_existing_mode_untouched();
     test_create_nested();
 
     test_is_empty_null();
