@@ -72,21 +72,21 @@ The following rendezvous files are provided:
 * if ``PMIX_LAUNCHER_RENDEZVOUS_FILE`` is given (either via an attribute to an "init" function
   or as an envar), then the specified file (including any required path elements) will be created.
 
-* if the server is designated as a "system" server (i.e., the ``PMIX_SERVER_SYSTEM_SUPPORT`` attribute
-  was provided to ``PMIx_server_init``), then a rendezvous file named "pmix.sys.<hostname>" will be
-  created in the ``PMIX_SYSTEM_TMPDIR`` location.
-
-* if the server is designated as a "session" server (i.e., the ``PMIX_SERVER_SESSION_SUPPORT`` attribute
-  was provided to ``PMIx_server_init``), then a rendezvous file named "pmix.sys.<hostname>" will be
-  created in the ``PMIX_SERVER_TMPDIR`` location.
-
-* if the server declares that it will support tool connections (i.e., the ``PMIX_SERVER_TOOL_SUPPORT`` 
+* if the server declares that it will support tool connections (i.e., the ``PMIX_SERVER_TOOL_SUPPORT``
   attribute was provided to ``PMIx_server_init``), then the following rendezvous files will be created
   under the ``PMIX_SERVER_TMPDIR`` location:
 
-    * a PID file: "pmix.<hostname>.<pid>"
+    * a PID file: "pmix.<hostname>.tool.<pid>"
 
-    * a namespace file using the nspace of the server: "pmix.<hostname>.<nspace>"
+    * a namespace file using the nspace of the server: "pmix.<hostname>.tool.<nspace>"
+
+* if the server supports tool connections and is also designated as a "system" server (i.e., the
+  ``PMIX_SERVER_SYSTEM_SUPPORT`` attribute was provided as well), then a rendezvous file named
+  "pmix.sys.<hostname>" will be created in the ``PMIX_SYSTEM_TMPDIR`` location.
+
+* if the server supports tool connections and is also designated as a "session" server (i.e., the
+  ``PMIX_SERVER_SESSION_SUPPORT`` attribute was provided as well), then a rendezvous file named
+  "pmix.<hostname>.tool" will be created in the ``PMIX_SERVER_TMPDIR`` location.
 
 * if the server is designated as a "scheduler" (i.e., the ``PMIX_SERVER_SCHEDULER`` attribute
   was provided to ``PMIx_server_init``), then a rendezvous file named "pmix.sched.<hostname>" will be
@@ -97,7 +97,8 @@ The following rendezvous files are provided:
   created in the ``PMIX_SYSTEM_TMPDIR`` location.
  
    .. note:: The above rendezvous files are additive - i.e., generating any one of the files has
-             no bearing on whether another file will be output. Thus, a single server could
+             no bearing on whether another file will be output. The one exception is that a
+             scheduler or system controller writes only its own file, and none of the tool files. Thus, a single server could
              generate anywhere from one to five (or more) rendezvous files spanning several
              directory levels.
 
@@ -110,5 +111,11 @@ The following rendezvous files are provided:
                 without necessarily knowing the PID of that process and PMIx can facilitate the
                 connection. As a result, only one system server can be operating on a node at a time.
                 This is also (independently) true for schedulers and system controllers.
+
+Rendezvous files are readable only by the server's user ID unless the ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``
+attribute was provided, in which case they are readable by all users. A directory the library creates
+to hold one is given a matching mode (0700, or 0755 for foreign tools). A directory that already exists
+is used exactly as found - its permissions are never changed - so a private ``$TMPDIR`` keeps other
+users' tools out regardless of how the files in it are marked.
 
 
