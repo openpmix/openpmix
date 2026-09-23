@@ -183,7 +183,11 @@ Highlights since v6.1.0
 * **Documentation.** The public API is now covered by man pages — 277 new
   pages — and ``docs/how-things-work`` gained descriptions of the modex,
   the shared-memory datastore, the transport layer, group construction,
-  init/finalize, logging, and inheritance. The security policy now
+  init/finalize, logging, and inheritance. ``PMIx_server_init(3)`` now
+  says which rendezvous files a server writes, where, and who can read
+  them, and lists the launcher-rendezvous and TCP listener directives
+  it had omitted; the session-directory page gives the correct names of
+  those files. The security policy now
   lives in ``SECURITY.md``, where GitHub offers a private reporting
   channel, and describes the process the project actually follows.
 
@@ -248,6 +252,20 @@ Compatibility notes
   job is refused, with a message naming it. The root itself, and any
   directory given to PMIx by its caller, are trusted as handed over;
   judging those remains the host's part.
+
+* An existing directory PMIx is given — ``$TMPDIR``, the system tmpdir,
+  ``PMIX_SERVER_TMPDIR``, an IOF output directory — is now used with its
+  permissions as found, rather than having the requested mode bits added
+  to it. Directories PMIx creates itself still get the requested mode.
+
+* ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` now defaults to ``false``. A host
+  that wants tools running under other user IDs to connect, and its
+  rendezvous files readable by all users, must now pass the attribute;
+  previously that was the behavior unless the host said otherwise. PRRTE
+  always passes it and is unaffected. Because the rendezvous directory's
+  permissions are no longer widened, one that other users cannot search
+  still keeps foreign tools out; the listener reports that case at
+  ``ptl_base_verbose`` level 2.
 
 * Support for the Solaris, Sun Studio, and KAI toolchains has been
   removed from ``configure``.
