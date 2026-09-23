@@ -223,7 +223,10 @@ int main(int argc, char **argv)
 
     /* --- the two classification helpers --- */
 
-    /* these do not need a live server, and neither do they change */
+    /* these do not need a live server, and neither do they change.  The
+     * PRRTE list is read from PRTE_MCA_PREFIXES on the first call, if that
+     * is set, so clear it: this tests the built-in table */
+    unsetenv("PRTE_MCA_PREFIXES");
     ok(pmix_pmdl_base_check_pmix_param("pmix_hwloc_topo_file"),
        "a pmix_ parameter belongs to PMIx");
     ok(pmix_pmdl_base_check_pmix_param("ptl_base_verbose"),
@@ -241,6 +244,18 @@ int main(int argc, char **argv)
        "a prte_ parameter belongs to PRRTE");
     ok(pmix_pmdl_base_check_prte_param("rmaps_base_mapping_policy"),
        "so does one naming a PRRTE framework");
+    ok(pmix_pmdl_base_check_prte_param("rml_base_radix"),
+       "and one naming a PRRTE prefix that is no longer a framework");
+    ok(pmix_pmdl_base_check_prte_param("grpcomm_base_verbose") &&
+       pmix_pmdl_base_check_prte_param("routed_radix"),
+       "grpcomm and routed are such prefixes too");
+    ok(pmix_pmdl_base_check_prte_param("oob_tcp_if_include"),
+       "as is oob, the prefix of a PRRTE synonym");
+    ok(!pmix_pmdl_base_check_prte_param("rtc_hwloc_verbose") &&
+       !pmix_pmdl_base_check_prte_param("prtedl_base_verbose"),
+       "but not the frameworks PRRTE has removed");
+    ok(!pmix_pmdl_base_check_prte_param("if_base_do_not_resolve"),
+       "nor \"if\", which PRRTE has no framework for");
     ok(!pmix_pmdl_base_check_prte_param("pr_foo"),
        "but not a segment that is merely a prefix of \"prte\"");
     ok(!pmix_pmdl_base_check_prte_param("pml_ob1_verbose"),
