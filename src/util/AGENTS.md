@@ -371,10 +371,10 @@ flags and must not be eaten. Regression cases are
 
 ### Matching an input against option names
 
-`pmix_cmd_line.h` decides whether a word a user typed names an option,
-and consumers well outside this tree — every `--map-by`,
-`--bind-to` and `--output` directive PRRTE parses — depend on it
-getting it exactly right.
+Two helpers in `pmix_cmd_line.h` decide whether a word a user typed names
+an option, and consumers well outside this tree — every `--map-by`,
+`--bind-to` and `--output` directive PRRTE parses — depend on them
+getting that exactly right.
 
 **`pmix_check_cli_option(input, name)` accepts the name or an
 abbreviation of it, and nothing else.** An abbreviation is a leading
@@ -387,8 +387,21 @@ silently thrown away, and an empty input matched whatever it was tested
 against first. Both sides are cut at the first `=`, so the value never
 takes part.
 
-Tests are `test_check_cli_option` in
+**Use `pmix_cli_match()` wherever the input could be one of several
+options.** Asked one option at a time, a caller's if/else chain resolves
+an abbreviation that fits two options by whichever it tests first —
+silently. `pmix_cli_match()` takes the whole set as a
+`pmix_cli_choice_t` table and applies, in order: a name given in full is
+that choice (so `pe` is `pe` and not `pe-list`); otherwise the input
+must abbreviate exactly one choice; choices sharing a `tag` are
+spellings of one thing and are never ambiguous with each other. Each
+choice also says whether it takes a value, because the name comparison
+cannot see one — `span=false` used to match `span` and turn SPAN *on*.
+`pmix_cli_match_list()` names the choices an input matched, for the
+error message after an ambiguous one, or every choice for a NULL input.
+Tests are `test_check_cli_option` and `test_cli_match` in
 [`test/unit/util/util_cmd_line.c`](../../test/unit/util/util_cmd_line.c).
+Advertised by `PMIX_CAP_CLI_MATCH`.
 
 ### `pmix_parse_options` — the port-range expander
 
