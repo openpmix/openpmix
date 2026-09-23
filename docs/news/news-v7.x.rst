@@ -165,6 +165,17 @@ Highlights since v6.1.0
   byte-order mark is now skipped rather than reported as an error.
   Everything the old scanner accepted still parses the same way.
 
+* **Command-line choices are matched against the whole set.** The new
+  ``pmix_cli_match()`` takes every choice a caller accepts for an option
+  and resolves an input against all of them at once: a name given in
+  full is that choice, an abbreviation must fit exactly one, and one
+  that fits several is reported as ambiguous — with
+  ``pmix_cli_match_list()`` naming the candidates — rather than settled
+  by whichever test the caller happened to write first. Each choice says
+  whether it takes a value, so a value given where none is taken, or
+  missing where one is required, is reported rather than ignored.
+  ``PMIX_CAP_CLI_MATCH``.
+
 * **Build.** ``flex`` is no longer a prerequisite, and the generated
   scanner it produced is gone from the release tarball. The Python
   bindings extension is now compiled with the optimization and hardening
@@ -183,7 +194,8 @@ Highlights since v6.1.0
 * **Documentation.** The public API is now covered by man pages — 277 new
   pages — and ``docs/how-things-work`` gained descriptions of the modex,
   the shared-memory datastore, the transport layer, group construction,
-  init/finalize, logging, and inheritance. ``PMIx_server_init(3)`` now
+  init/finalize, logging, inheritance, and the command-line parser that
+  the PMIx tools and PRRTE build on. ``PMIx_server_init(3)`` now
   says which rendezvous files a server writes, where, and who can read
   them, and lists the launcher-rendezvous and TCP listener directives
   it had omitted; the session-directory page gives the correct names of
@@ -266,6 +278,14 @@ Compatibility notes
   permissions are no longer widened, one that other users cannot search
   still keeps foreign tools out; the listener reports that case at
   ``ptl_base_verbose`` level 2.
+
+* An option value on the command line must now be a leading part of
+  the name it matches, no longer than the name and not empty — applied
+  to each segment of a hyphenated name. Previously any input that merely
+  began with a name matched it, so ``packagefoo`` was taken as
+  ``package`` and ``gpu,ndev=2`` as ``gpu`` with the rest silently
+  dropped, and an empty input matched whatever it was tested against
+  first. Such inputs are now refused.
 
 * Support for the Solaris, Sun Studio, and KAI toolchains has been
   removed from ``configure``.
