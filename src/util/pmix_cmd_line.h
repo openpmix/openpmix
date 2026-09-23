@@ -378,10 +378,19 @@ static inline int pmix_cmd_line_get_first_seq(pmix_cli_result_t *results,
 /* USAGE:
  *  param "a" is the input command line string
  *  param "b" is the defined CLI option
+ *
+ * True if "a" names the option "b": either spells it out or abbreviates
+ * it. An abbreviation is a leading part of the name, so it is never longer
+ * than the name itself, and it is never empty. Accepting either used to
+ * make the comparison run only as far as the shorter of the two strings,
+ * which let an input that merely BEGAN with an option's name match it -
+ * "packagefoo" was "package", and "gpu,ndev=2" was "gpu" with the rest
+ * silently dropped - while an empty input matched whatever it was tested
+ * against first.
  */
 static inline bool pmix_check_cli_option(char *ain, char *bin)
 {
-    size_t len1, len2, len, n;
+    size_t len1, len2, n;
     char *a, *b, *p;
     char **asplit, **bsplit;
     int match, acnt, bcnt;
@@ -446,8 +455,11 @@ static inline bool pmix_check_cli_option(char *ain, char *bin)
         for (n=0; NULL != asplit[n] && NULL != bsplit[n]; n++) {
             len1 = strlen(asplit[n]);
             len2 = strlen(bsplit[n]);
-            len = len1 < len2 ? len1 : len2;
-            if (0 == strncasecmp(asplit[n], bsplit[n], len)) {
+            /* each segment is abbreviated on its own terms - one longer
+             * than the segment it is matched against is a different
+             * word, not a short form of this one */
+            if (len1 <= len2 &&
+                0 == strncasecmp(asplit[n], bsplit[n], len1)) {
                 ++match;
             } else {
                 PMIx_Argv_free(asplit);
@@ -474,8 +486,8 @@ static inline bool pmix_check_cli_option(char *ain, char *bin)
      * check the strings */
     len1 = strlen(a);
     len2 = strlen(b);
-    len = (len1 < len2) ? len1 : len2;
-    if (0 == strncasecmp(a, b, len)) {
+    if (0 < len1 && len1 <= len2 &&
+        0 == strncasecmp(a, b, len1)) {
         free(a);
         free(b);
         return true;
@@ -496,8 +508,8 @@ static inline bool pmix_check_cli_option(char *ain, char *bin)
  * or NULL if it carries none.
  *
  * This is the companion to pmix_check_cli_option above, and exists because
- * that function stops comparing at the '=' and then accepts any unambiguous
- * prefix of the option's name. A caller therefore cannot know how long the
+ * that function stops comparing at the '=' and then accepts any
+ * abbreviation of the option's name. A caller therefore cannot know how long the
  * name it just matched actually is: the user may have written "P=2" for
  * "PE=2", or "F=path" for "FILE=path". Reading the value at an offset fixed
  * to the option's full spelling reads the wrong bytes - or, for a qualifier

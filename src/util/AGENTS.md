@@ -369,6 +369,27 @@ flags and must not be eaten. Regression cases are
 `test_parse_positional_first` / `test_parse_positional_after_options` in
 [`test/unit/util/util_cmd_line.c`](../../test/unit/util/util_cmd_line.c).
 
+### Matching an input against option names
+
+`pmix_cmd_line.h` decides whether a word a user typed names an option,
+and consumers well outside this tree — every `--map-by`,
+`--bind-to` and `--output` directive PRRTE parses — depend on it
+getting it exactly right.
+
+**`pmix_check_cli_option(input, name)` accepts the name or an
+abbreviation of it, and nothing else.** An abbreviation is a leading
+part of the name: never empty, never longer than the name, and for a
+hyphenated name each segment is abbreviated on its own terms. The
+comparison used to run only as far as the shorter of the two strings,
+which let any input that *began* with a name match it — `packagefoo`
+was `package`, `--map-by device=gpu,ndev=2` was `gpu` with the rest
+silently thrown away, and an empty input matched whatever it was tested
+against first. Both sides are cut at the first `=`, so the value never
+takes part.
+
+Tests are `test_check_cli_option` in
+[`test/unit/util/util_cmd_line.c`](../../test/unit/util/util_cmd_line.c).
+
 ### `pmix_parse_options` — the port-range expander
 
 Two functions that turn `"1,3-5"` into an argv. Their only callers are
