@@ -107,7 +107,7 @@ pmix_ptl_base_t pmix_ptl_base = {
     .remote_connections = false,
     .connections_specified = false,
     .system_tool = false,
-    .allow_foreign_tools = true,
+    .allow_foreign_tools = false,
     .session_tool = false,
     .tool_support = false,
     .if_include = NULL,
@@ -388,7 +388,7 @@ static pmix_status_t pmix_ptl_close(void)
     pmix_ptl_base.remote_connections = false;
     pmix_ptl_base.connections_specified = false;
     pmix_ptl_base.system_tool = false;
-    pmix_ptl_base.allow_foreign_tools = true;
+    pmix_ptl_base.allow_foreign_tools = false;
     pmix_ptl_base.session_tool = false;
     pmix_ptl_base.tool_support = false;
     pmix_ptl_base.max_write = INT_MAX;
