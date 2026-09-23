@@ -932,6 +932,29 @@ static void test_check_cli_option(void)
            !pmix_check_cli_option(NULL, "verbose"));
     report("check_cli: a NULL target matches nothing",
            !pmix_check_cli_option("verbose", NULL));
+    /* An abbreviation is never longer than the name it abbreviates. The
+     * comparison used to run only as far as the shorter string, so any
+     * input that BEGAN with an option's name matched it: a device list
+     * written with a comma, "gpu,ndev=2", was read as "gpu" and the rest
+     * thrown away without a word. */
+    report("check_cli: an input longer than the option does not match",
+           !pmix_check_cli_option("packagefoo", "package"));
+    report("check_cli: trailing text after a comma does not match",
+           !pmix_check_cli_option("gpu,ndev=2", "gpu"));
+    report("check_cli: a longer name before the '=' does not match",
+           !pmix_check_cli_option("ndevices=2", "ndev"));
+    report("check_cli: the value after '=' is not part of the name",
+           pmix_check_cli_option("ndev=2", "ndev"));
+    report("check_cli: a longer segment does not match",
+           !pmix_check_cli_option("map-byx", "map-by"));
+    report("check_cli: one unhyphenated word is not every segment",
+           !pmix_check_cli_option("donotlaunch", "do-not-launch"));
+    /* ... and never empty: zero characters compared equal to anything, so
+     * an empty input matched whatever it was tested against first */
+    report("check_cli: an empty input matches nothing",
+           !pmix_check_cli_option("", "none"));
+    report("check_cli: a bare value with no name matches nothing",
+           !pmix_check_cli_option("=2", "pe"));
 }
 
 /* ------------------------------------------------------------------ */
