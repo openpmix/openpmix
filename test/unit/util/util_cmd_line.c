@@ -10,7 +10,7 @@
  *   pmix_cmd_line_parse, pmix_cmd_line_is_taken,
  *   pmix_cmd_line_get_param, pmix_cmd_line_get_ninsts,
  *   pmix_cmd_line_get_nth_instance, pmix_check_cli_option,
- *   pmix_convert_string_to_time.
+ *   pmix_cli_match, pmix_cli_match_list, pmix_convert_string_to_time.
  *
  * The bulk of this is a table of command lines run through
  * pmix_cmd_line_parse() against one realistic option table. A parser like
@@ -958,6 +958,103 @@ static void test_check_cli_option(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* pmix_cli_match (matching against a set of choices)                  */
+/* ------------------------------------------------------------------ */
+
+enum {
+    T_NONE, T_HWTHREAD, T_CORE, T_NUMA, T_NODE, T_PE, T_PELIST,
+    T_SPAN, T_SHARED, T_PARSEABLE
+};
+
+static const pmix_cli_choice_t choices[] = {
+    PMIX_CLI_CHOICE("none", T_NONE, PMIX_CLI_VALUE_NONE),
+    PMIX_CLI_CHOICE("hwthread", T_HWTHREAD, PMIX_CLI_VALUE_NONE),
+    PMIX_CLI_CHOICE("core", T_CORE, PMIX_CLI_VALUE_NONE),
+    PMIX_CLI_CHOICE("numa", T_NUMA, PMIX_CLI_VALUE_NONE),
+    PMIX_CLI_CHOICE("node", T_NODE, PMIX_CLI_VALUE_NONE),
+    PMIX_CLI_CHOICE("pe=", T_PE, PMIX_CLI_VALUE_REQUIRED),
+    PMIX_CLI_CHOICE("pe-list=", T_PELIST, PMIX_CLI_VALUE_REQUIRED),
+    PMIX_CLI_CHOICE("span", T_SPAN, PMIX_CLI_VALUE_NONE),
+    PMIX_CLI_CHOICE("shared", T_SHARED, PMIX_CLI_VALUE_OPTIONAL),
+    PMIX_CLI_CHOICE("parseable", T_PARSEABLE, PMIX_CLI_VALUE_NONE),
+    PMIX_CLI_CHOICE("parsable", T_PARSEABLE, PMIX_CLI_VALUE_NONE),
+    PMIX_CLI_CHOICE_END
+};
+
+static bool matched(const char *input, pmix_cli_match_t want, int wanttag)
+{
+    int tag = -99;
+    pmix_cli_match_t rc;
+
+    rc = pmix_cli_match(input, choices, &tag);
+    return (want == rc && wanttag == tag);
+}
+
+static void test_cli_match(void)
+{
+    char *list;
+
+    report("cli_match: a full name",
+           matched("core", PMIX_CLI_MATCH_FOUND, T_CORE));
+    report("cli_match: a unique abbreviation",
+           matched("hwt", PMIX_CLI_MATCH_FOUND, T_HWTHREAD));
+    report("cli_match: case-insensitive",
+           matched("CORE", PMIX_CLI_MATCH_FOUND, T_CORE));
+    report("cli_match: an input matching nothing",
+           matched("package", PMIX_CLI_MATCH_NONE, -1));
+    report("cli_match: an input longer than every name",
+           matched("corefoo", PMIX_CLI_MATCH_NONE, -1));
+    /* the reason this exists: "n" is none, numa and node at once */
+    report("cli_match: an abbreviation of two choices is ambiguous",
+           matched("n", PMIX_CLI_MATCH_AMBIGUOUS, -1));
+    report("cli_match: ... and a longer one that picks one is not",
+           matched("nu", PMIX_CLI_MATCH_FOUND, T_NUMA));
+    report("cli_match: a name given in full beats the names it begins",
+           matched("pe=2", PMIX_CLI_MATCH_FOUND, T_PE));
+    report("cli_match: ... and the longer name is still reachable",
+           matched("pe-list=0,1", PMIX_CLI_MATCH_FOUND, T_PELIST));
+    report("cli_match: spellings sharing a tag are not ambiguous",
+           matched("pars", PMIX_CLI_MATCH_FOUND, T_PARSEABLE));
+    report("cli_match: an empty input matches nothing",
+           matched("", PMIX_CLI_MATCH_NONE, -1));
+    report("cli_match: a NULL input matches nothing",
+           matched(NULL, PMIX_CLI_MATCH_NONE, -1));
+    /* Values. The name comparison stops at the '=', so without the rule
+     * "span=false" matched "span" and turned SPAN on. */
+    report("cli_match: a value on a choice that takes none",
+           matched("span=false", PMIX_CLI_MATCH_UNEXPECTED_VALUE, T_SPAN));
+    report("cli_match: an empty value on a choice that takes none",
+           matched("span=", PMIX_CLI_MATCH_UNEXPECTED_VALUE, T_SPAN));
+    report("cli_match: a required value that is absent",
+           matched("pe", PMIX_CLI_MATCH_MISSING_VALUE, T_PE));
+    report("cli_match: a required value that is empty",
+           matched("pe=", PMIX_CLI_MATCH_MISSING_VALUE, T_PE));
+    report("cli_match: an optional value given",
+           matched("shared=false", PMIX_CLI_MATCH_FOUND, T_SHARED));
+    report("cli_match: an optional value omitted",
+           matched("sh", PMIX_CLI_MATCH_FOUND, T_SHARED));
+    report("cli_match: an optional value promised but empty",
+           matched("shared=", PMIX_CLI_MATCH_MISSING_VALUE, T_SHARED));
+
+    list = pmix_cli_match_list("n", choices, ':');
+    report("cli_match_list: names what an ambiguous input matches",
+           NULL != list && 0 == strcmp(list, "none:numa:node"));
+    free(list);
+    list = pmix_cli_match_list("pe", choices, ',');
+    report("cli_match_list: drops the '=' from a name",
+           NULL != list && 0 == strcmp(list, "pe,pe-list"));
+    free(list);
+    list = pmix_cli_match_list(NULL, choices, ':');
+    report("cli_match_list: a NULL input lists every choice",
+           NULL != list &&
+           0 == strcmp(list, "none:hwthread:core:numa:node:pe:pe-list:span:"
+                             "shared:parseable:parsable"));
+    free(list);
+    report("cli_match_list: nothing matched is NULL",
+           NULL == pmix_cli_match_list("zzz", choices, ':'));
+}
+
+/* ------------------------------------------------------------------ */
 /* pmix_convert_string_to_time                                        */
 /* ------------------------------------------------------------------ */
 
@@ -1030,6 +1127,7 @@ int main(int argc, char **argv)
     test_order_empty();
 
     test_check_cli_option();
+    test_cli_match();
     test_convert_time();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
