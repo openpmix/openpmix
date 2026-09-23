@@ -387,6 +387,11 @@ static inline int pmix_cmd_line_get_first_seq(pmix_cli_result_t *results,
  * "packagefoo" was "package", and "gpu,ndev=2" was "gpu" with the rest
  * silently dropped - while an empty input matched whatever it was tested
  * against first.
+ *
+ * This answers for one option at a time, so it cannot say whether an
+ * abbreviation also matches some other option the caller accepts. Where
+ * the caller has a set of choices, pmix_cli_match() below asks the
+ * question against all of them at once and refuses an ambiguous one.
  */
 static inline bool pmix_check_cli_option(char *ain, char *bin)
 {
@@ -500,6 +505,76 @@ static inline bool pmix_check_cli_option(char *ain, char *bin)
 
 #define PMIX_CHECK_CLI_OPTION(a, b) \
     pmix_check_cli_option(a, b)
+
+/* Matching one input against every choice a caller accepts.
+ *
+ * pmix_check_cli_option() answers for one option at a time, and a caller
+ * that tests an input against its options in turn - a chain of if/else -
+ * takes the first one that matches. An abbreviation that matches two of
+ * them is then resolved by the order the chain happens to be written in,
+ * silently: "n" was "none" to a binding policy that also accepts "numa",
+ * and nobody was told they had typed something ambiguous. Resolving that
+ * needs the whole set in view at once, which is what this is for.
+ *
+ * Each choice also says whether it takes a value, because the name
+ * comparison stops at an '=' on both sides and so cannot see one. Asked
+ * one option at a time, "span=false" matched "span" and turned SPAN on -
+ * the opposite of what was written.
+ *
+ * The rules, in order:
+ *   - an input that spells a choice's name out in full is that choice,
+ *     whatever else it also abbreviates ("pe" is "pe", not "pe-list");
+ *   - otherwise the input must abbreviate exactly one choice;
+ *   - choices sharing a tag are spellings of one thing, so an input
+ *     matching several of them is not ambiguous;
+ *   - the matched choice's value rule is then applied.
+ */
+typedef enum {
+    PMIX_CLI_VALUE_NONE,        // "span"; "span=false" is refused
+    PMIX_CLI_VALUE_OPTIONAL,    // "shared" or "shared=false"
+    PMIX_CLI_VALUE_REQUIRED     // "pe=2"; a bare "pe" is refused
+} pmix_cli_value_t;
+
+typedef struct {
+    /* the full name - anything from an '=' on is ignored, so an option
+     * name spelled "pe=" can be used as it stands */
+    const char *name;
+    /* what pmix_cli_match() reports when this choice is the one matched */
+    int tag;
+    pmix_cli_value_t value;
+} pmix_cli_choice_t;
+
+#define PMIX_CLI_CHOICE(n, t, v) \
+    {(n), (t), (v)}
+#define PMIX_CLI_CHOICE_END \
+    {NULL, -1, PMIX_CLI_VALUE_NONE}
+
+typedef enum {
+    PMIX_CLI_MATCH_FOUND,
+    PMIX_CLI_MATCH_NONE,              // matches no choice
+    PMIX_CLI_MATCH_AMBIGUOUS,         // abbreviates more than one
+    PMIX_CLI_MATCH_UNEXPECTED_VALUE,  // a value on a choice that takes none
+    PMIX_CLI_MATCH_MISSING_VALUE      // no value on a choice that needs one
+} pmix_cli_match_t;
+
+/* Match "input" against the choices, which end with PMIX_CLI_CHOICE_END.
+ * On PMIX_CLI_MATCH_FOUND, and on the two value errors, "tag" is set to the
+ * matched choice's tag, so a caller can say which option was misused; on
+ * the others it is set to -1. The value itself is read with
+ * pmix_cli_qualifier_value(). */
+PMIX_EXPORT pmix_cli_match_t pmix_cli_match(const char *input,
+                                            const pmix_cli_choice_t *choices,
+                                            int *tag);
+
+/* The names of the choices "input" matches, joined by "sep" - which, after
+ * PMIX_CLI_MATCH_AMBIGUOUS, is what a caller shows the user so they can see
+ * what they must choose between. A NULL input lists every choice, which is
+ * the list of valid spellings for an input that matched nothing. Names are
+ * given without any '=' suffix. Returns NULL if nothing matches; the caller
+ * frees the result. */
+PMIX_EXPORT char *pmix_cli_match_list(const char *input,
+                                      const pmix_cli_choice_t *choices,
+                                      char sep);
 
 /* USAGE:
  *  param "qual" is the input command line qualifier, e.g. "PE=2"
