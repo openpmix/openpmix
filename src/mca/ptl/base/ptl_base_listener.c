@@ -516,6 +516,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     rndz_reclaim_t reclaim = {.role = role, .filename = filename, .dirfd = -1,
                               .reported = false};
     mode_t mode;
+    struct stat buf;
 
     base = strrchr(filename, PMIX_PATH_SEP[0]);
     base = (NULL == base) ? filename : base + 1;
@@ -529,6 +530,9 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
         return PMIX_ERR_NOMEM;
     }
 
+    /* The mode applies only if we have to create the directory. One
+     * that is already there - normally the tmpdir we were given - is
+     * used as found: its permissions belong to whoever named it */
     mode = S_IRWXU;
     if (pmix_ptl_base.allow_foreign_tools) {
         mode |= S_IXGRP | S_IRGRP | S_IXOTH | S_IROTH;
@@ -548,8 +552,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
         // do not change the dir_created flag if the directory
         // already exists as we don't know if we previously
         // created it or it already existed. Success is returned
-        // when we were able to both create the directory
-        // and change its mode as directed
+        // only when we created the directory ourselves
         *dir_created = true;
     }
 
@@ -564,6 +567,18 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
                        dirname, strerror(errno));
         free(dirname);
         return PMIX_ERR_SILENT;
+    }
+    /* a directory we were given may keep other users out, in which
+     * case a foreign tool cannot reach the file however we mark it.
+     * That is the directory owner's call, but say so for whoever is
+     * wondering why their tool cannot find us */
+    if (pmix_ptl_base.allow_foreign_tools &&
+        0 == fstat(dirfd, &buf) &&
+        (S_IXGRP | S_IXOTH) != (buf.st_mode & (S_IXGRP | S_IXOTH))) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: %s rendezvous directory %s has mode %04o - "
+                            "tools under other user IDs may be unable to reach it",
+                            role, dirname, (unsigned) (buf.st_mode & 07777));
     }
     free(dirname);
     reclaim.dirfd = dirfd;
