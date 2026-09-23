@@ -6,7 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -179,34 +179,42 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace, const pmix_info_t info
     return PMIX_SUCCESS;
 }
 
-static char *prte_frameworks_static_3_0_1[] = {
+/* The first segments of the MCA parameters PRRTE registers, as of the
+ * PRRTE 5.0 development series.  This is not the same thing as PRRTE's
+ * list of frameworks: grpcomm, rml and routed are no longer frameworks
+ * but still name live parameters (rml_base_radix, grpcomm_base_verbose,
+ * routed_radix), and oob and hwloc survive as the prefixes of synonyms
+ * (oob_tcp_if_include, hwloc_default_binding_policy).  "reachable"
+ * names nothing by itself - PRRTE rewrites it to its prtereachable
+ * framework.  "if" is deliberately absent: PRRTE has no such framework,
+ * and the generic name belongs to PMIx's pif (and Open MPI's if).
+ *
+ * PRRTE publishes its own list in PRTE_MCA_PREFIXES, which replaces this
+ * one; this table is what a process without that variable falls back on. */
+static char *prte_frameworks_static_5_0_0[] = {
     "errmgr",
     "ess",
     "filem",
     "grpcomm",
+    "hwloc",
     "iof",
     "odls",
     "oob",
     "plm",
     "prtebacktrace",
-    "prtedl",
     "prteinstalldirs",
     "prtereachable",
     "ras",
+    "reachable",
     "rmaps",
     "rml",
     "routed",
-    "rtc",
     "schizo",
     "state",
-    // inherited from OPAL
-    "hwloc",
-    "if",
-    "reachable",
     NULL,
 };
 
-static char **prte_frameworks = prte_frameworks_static_3_0_1;
+static char **prte_frameworks = prte_frameworks_static_5_0_0;
 static bool prte_frameworks_setup = false;
 
 static void setup_prte_frameworks(void)
