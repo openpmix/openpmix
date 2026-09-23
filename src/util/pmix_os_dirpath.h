@@ -28,15 +28,12 @@
  * within them, the function will return an error condition.
  *
  * If the specified full path name already exists, the
- * pmix_os_dirpath_create() function will check to ensure that
- * the final directory in the tree has at least the specified access permission. In other
- * words, if the directory has read-write-execute for all, and the user
- * has requested read-write access for just the user, then the function
- * will consider the directory acceptable. If the minimal permissions are
- * not currently provided, the function will attempt to change the
- * access permissions of the directory to add the specified
- * permissions. The function will return PMIX_ERROR if this cannot
- * be done.
+ * pmix_os_dirpath_create() function checks only that the final
+ * component really is a directory - a symlink or a plain file at the
+ * name is refused. Its permissions are left exactly as found, even
+ * when they lack some of the requested bits: the path was named by
+ * someone outside PMIx (a user, the host, the environment), and so
+ * is the decision about who may see into it.
  **/
 
 #ifndef PMIX_OS_DIRPATH_CREATE_H
@@ -55,10 +52,10 @@ BEGIN_C_DECLS
  * directories being constructed.
  * @retval PMIX_SUCCESS If the directory tree has been successfully created with
  * the specified access permissions.
- * @retval PMIX_ERR_EXISTS If the final directory was already there. It carries
- * at least the requested permissions, so this is a usable directory and most
- * callers treat it exactly as they treat PMIX_SUCCESS - but they have to test
- * for it, since it is not PMIX_SUCCESS. The distinction is what tells a caller
+ * @retval PMIX_ERR_EXISTS If the final directory was already there. It is used
+ * as found - its mode is not altered, and may lack some of the requested bits.
+ * Most callers treat it exactly as they treat PMIX_SUCCESS - but they have to
+ * test for it, since it is not PMIX_SUCCESS. The distinction is what tells a caller
  * whether it is the one that must clean the directory up afterwards.
  * @retval PMIX_ERR_BAD_PARAM If path is NULL or empty.
  * @retval PMIX_ERR_OUT_OF_RESOURCE If memory ran out while building the tree.
