@@ -233,9 +233,15 @@ segment that is merely a *prefix* of the word, which made `pm_foo` a PMIx
 param and `pr_foo` a PRRTE one, so an Open MPI value went out under the
 wrong library's prefix. `segment_is()` is the one place that rule lives.
 
-The PRRTE framework list is a hard-coded `prte_frameworks_static_3_0_1[]`
-table that can be **overridden at runtime** by the `PRTE_MCA_PREFIXES`
-environment variable (comma-delimited). These predicates exist because a
+The PRRTE list is a hard-coded `prte_frameworks_static_5_0_0[]` table
+that can be **overridden at runtime** by the `PRTE_MCA_PREFIXES`
+environment variable (comma-delimited). It lists parameter *prefixes*, not
+PRRTE's frameworks: `grpcomm`, `rml` and `routed` are no longer frameworks
+but still name live parameters, and `oob`/`hwloc` survive as synonym
+prefixes — drop one only after checking PRRTE registers nothing under it.
+The variable is read **once**, on the first call, and the answer is kept
+for the life of the process — so PRRTE must set it before anything asks,
+which in its tools means before the argv pre-scan. These predicates exist because a
 single `openmpi-mca-params.conf` can hold PMIx-, PRRTE-, and OMPI-directed
 values, and each must be re-prefixed (`PMIX_MCA_`, `PRTE_MCA_`,
 `OMPI_MCA_`) before being forwarded. See the `ompi` component doc for how
