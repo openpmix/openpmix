@@ -649,17 +649,21 @@ sharetopo:
      * to remove it by at finalize: the directory is the server's session
      * tmpdir, which a host may have given to the job's user, and a name
      * resolved again later need not lead back to it */
+    /* Leave both descriptors valid or both -1: everything past this block
+     * uses them without re-checking */
     shmemdirfd = pmix_os_dirpath_open_dir(pmix_server_globals.tmpdir);
     if (0 <= shmemdirfd) {
         shmemfd = pmix_os_dirpath_create_file_at(shmemdirfd, PMIX_HWLOC_SHMEM_NAME, O_RDWR,
                                                  0600, NULL, NULL);
-    }
-    if (-1 == shmemfd) {
-        int err = errno;
-        if (0 <= shmemdirfd) {
+        if (0 > shmemfd) {
+            int err = errno;
             close(shmemdirfd);
             shmemdirfd = -1;
+            errno = err;
         }
+    }
+    if (0 > shmemdirfd) {
+        int err = errno;
         if (1 < pmix_output_get_verbosity(pmix_hwloc_output)) {
             pmix_show_help("help-ploc.txt", "sys call fail", true,
                            pmix_globals.hostname, "open(2)", "", strerror(err), err);
