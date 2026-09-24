@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright (c) 2025      Jeffrey M. Squyres.  All rights reserved.
+# Copyright (c) 2025-2026 Jeffrey M. Squyres.  All rights reserved.
 # Copyright (c) 2025-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
@@ -41,6 +41,16 @@ def parse_cmd_line_options(path, verbose=False):
 
     return options
 
+def is_tool_path(path, root):
+    # A file belongs to a tool if it is under a "tools" directory
+    # within the source tree.  Compare whole directory names in the
+    # path relative to root: a substring test on the absolute path
+    # also matches the directories that the source tree itself lives
+    # in (e.g., a build workspace named ".../autotools-update/..."),
+    # which makes every help file in the tree look like a tool's.
+    dirs = os.path.dirname(os.path.relpath(path, root)).split(os.sep)
+    return "tools" in dirs
+
 def find_files(root, verbose=False):
     # Check for existence of root directory - otherwise, we just
     # fall through with no error output
@@ -74,7 +84,7 @@ def find_files(root, verbose=False):
                         break
                 if not skipit:
                     full_path = os.path.join(root_dir, file)
-                    if "tools" in full_path:
+                    if is_tool_path(full_path, root):
                         tool_help_files.append(full_path)
                         if verbose:
                             print("Found tool help: {full_path}".format(full_path=full_path))
@@ -84,7 +94,7 @@ def find_files(root, verbose=False):
                             print("Found help: {full_path}".format(full_path=full_path))
             elif file.endswith(".c") or file.endswith(".h"):
                 full_path = os.path.join(root_dir, file)
-                if "tools" in full_path:
+                if is_tool_path(full_path, root):
                     tool_source_files.append(full_path)
                 else:
                     source_files.append(full_path)
@@ -422,13 +432,13 @@ def parse_tool_files(help_files, source_files, cli_options, citations, verbose=F
                 sys.stderr.write("WARNING: Option " + option + " has no topic entry in " + os.path.basename(hlp) + "\n")
 
 
-def purge(parsed_data, citations):
+def purge(parsed_data, citations, tool_help_files):
     result_data = {}
     errorFound = False
     for filename in parsed_data:
         # tools were processed separately
         sections = parsed_data[filename]
-        if "tools" in filename:
+        if filename in tool_help_files:
             result_data[filename] = sections
             continue
         result_sections = {}
@@ -558,7 +568,7 @@ def main():
     parse_src_files(source_files, citations, args.verbose)
     parse_tool_files(tool_help_files, tool_source_files, cli_options, citations, args.verbose)
     if args.purge:
-        outdata = purge(parsed_data, citations)
+        outdata = purge(parsed_data, citations, tool_help_files)
     else:
         outdata = parsed_data
 
