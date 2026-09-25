@@ -36,6 +36,13 @@ autoconf_min_version=2.69.0
 libtool_min_version=2.4.2
 python_min_version=3.6
 
+# Exact versions of the GNU tools used to make official distribution
+# tarballs (contrib/make_dist_tarball requires these exact versions).
+m4_dist_version=1.4.17
+autoconf_dist_version=2.69
+automake_dist_version=1.15
+libtool_dist_version=2.4.6
+
 # PMIx Standard Compliance Level
 # The major and minor numbers indicate the version
 # of the official PMIx Standard that is supported

@@ -14,7 +14,7 @@
 # Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2019      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
-# Copyright (c) 2024      Nanook Consulting  All rights reserved.
+# Copyright (c) 2024-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -23,13 +23,9 @@
 #
 
 #
-# Version of auto tools that we want
+# The versions of the GNU tools that we want are read from the VERSION
+# file (the *_dist_version fields), below.
 #
-
-M4_TARGET_VERSION=1.4.17
-AM_TARGET_VERSION=1.15
-AC_TARGET_VERSION=2.69
-LT_TARGET_VERSION=2.4.6
 
 #
 # When running "make distcheck", use these parallelization flags.  Can
@@ -205,8 +201,8 @@ Automake: $AM_TARGET_VERSION
 Autoconf: $AC_TARGET_VERSION
 Libtool:  $LT_TARGET_VERSION
 
-Either change this script to match the found version, or install
-the correct version of the tools.
+Either change the *_dist_version values in VERSION to match the found
+version, or install the correct version of the tools.
 ----------------------------------------------------------------------
 EOF
         if test "$gnu_version_ignore" = "0"; then
@@ -227,8 +223,8 @@ Automake: $AM_TARGET_VERSION
 Autoconf: $AC_TARGET_VERSION
 Libtool:  $LT_TARGET_VERSION
 
-Either change this script to match the found version, or install
-the correct version of the tools.
+Either change the *_dist_version values in VERSION to match the found
+version, or install the correct version of the tools.
 ----------------------------------------------------------------------
 EOF
         if test "$gnu_version_ignore" = "0"; then
@@ -264,8 +260,8 @@ Automake: $AM_TARGET_VERSION
 Autoconf: $AC_TARGET_VERSION
 Libtool:  $LT_TARGET_VERSION
 
-Either change this script to match the found version, or install
-the correct version of the tools.
+Either change the *_dist_version values in VERSION to match the found
+version, or install the correct version of the tools.
 ----------------------------------------------------------------------
 EOF
         if test "$gnu_version_ignore" = "0"; then
@@ -334,13 +330,6 @@ make_tarball() {
 start=`date`
 echo "*** Start time: $start"
 
-echo "*** Checking tools versions..."
-check_gnu_version m4 $M4_TARGET_VERSION
-check_gnu_version automake $AM_TARGET_VERSION
-check_gnu_version autoconf $AC_TARGET_VERSION
-if test $mac -eq 0; then
-    check_gnu_version libtool $LT_TARGET_VERSION
-fi
 #
 # Verify that we're in a top PMIx dir
 #
@@ -356,6 +345,34 @@ echo "*** Removing old VERSION file..."
 rm -f VERSION
 echo "*** Restoring pristine VERSION file..."
 git checkout HEAD -- VERSION
+
+#
+# Read the versions of the GNU tools that we want from VERSION.  Do
+# this only now, after restoring the pristine VERSION, so that we
+# check against what will actually be packaged.
+#
+get_dist_version() {
+    ver=`sed -n "s/^$1_dist_version=//p" VERSION`
+    if test -z "$ver"; then
+        echo "Could not find $1_dist_version in VERSION.  Abort!" >&2
+        exit 1
+    fi
+    echo $ver
+}
+
+M4_TARGET_VERSION=`get_dist_version m4` || exit 1
+AM_TARGET_VERSION=`get_dist_version automake` || exit 1
+AC_TARGET_VERSION=`get_dist_version autoconf` || exit 1
+LT_TARGET_VERSION=`get_dist_version libtool` || exit 1
+
+echo "*** Checking tools versions..."
+check_gnu_version m4 $M4_TARGET_VERSION
+check_gnu_version automake $AM_TARGET_VERSION
+check_gnu_version autoconf $AC_TARGET_VERSION
+if test $mac -eq 0; then
+    check_gnu_version libtool $LT_TARGET_VERSION
+fi
+
 echo "*** Getting git version number..."
 repo_rev=git`git log -1 --oneline | head -1 | cut -d' ' -f1`
 echo "    Repo rev number: $repo_rev"
