@@ -56,7 +56,7 @@ on the internals of PMIx itself):
 The above table lists the versions that are used to make official
 release PMIx tarballs. Other versions of the
 tools *may* work for some (but almost certainly not all) platforms;
-the ones listed below are the versions that we know work across an
+the ones listed above are the versions that we know work across an
 extremely wide variety of platforms and environments.
 
 To strengthen this point: the core PMIx developers typically

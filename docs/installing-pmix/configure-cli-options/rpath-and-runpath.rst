@@ -35,7 +35,7 @@ For example:
    ...
    shell$ make -j 32 all && make install
    ...
-   shell$ readelf -d /opt/pmix/lib/libmpi.so | egrep -i 'rpath|runpath'
+   shell$ readelf -d /opt/pmix/lib/libpmix.so | egrep -i 'rpath|runpath'
     0x000000000000001d (RUNPATH)            Library runpath: [/opt/pmix/lib]
 
 The above output indicates that ``libpmix.so`` was built with "runpath"
