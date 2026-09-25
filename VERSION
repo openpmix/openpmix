@@ -40,7 +40,7 @@ python_min_version=3.6
 # tarballs (contrib/make_dist_tarball requires these exact versions).
 m4_dist_version=1.4.17
 autoconf_dist_version=2.69
-automake_dist_version=1.15
+automake_dist_version=1.16.2
 libtool_dist_version=2.4.6
 
 # PMIx Standard Compliance Level
