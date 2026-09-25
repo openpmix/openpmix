@@ -38,16 +38,16 @@ on the internals of PMIx itself):
      - URL
 
    * - GNU m4
-     - 1.4.17
+     - |m4_dist_version|
      - https://ftp.gnu.org/gnu/m4/
    * - GNU Autoconf
-     - 2.69
+     - |autoconf_dist_version|
      - https://ftp.gnu.org/gnu/autoconf/
    * - GNU Automake
-     - 1.15
+     - |automake_dist_version|
      - https://ftp.gnu.org/gnu/automake/
    * - GNU Libtool
-     - 2.4.6
+     - |libtool_dist_version|
      - https://ftp.gnu.org/gnu/libtool/
    * - Sphinx
      - 4.2.0
