@@ -386,7 +386,9 @@ fi
 if test $dirty_ok -eq 0; then
     echo "*** Checking if source tree is dirty..."
     dirty=0
-    if test "`git status | grep 'Changes not staged for commit'`" != ""; then
+    # --porcelain reports staged and unstaged changes alike, in a
+    # form that does not depend on the user's locale
+    if test -n "`git status --porcelain --untracked-files=no`"; then
         dirty=1
     fi
 
