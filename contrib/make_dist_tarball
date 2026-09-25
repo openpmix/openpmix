@@ -63,38 +63,31 @@ nogreek=0
 autogen_args=
 config_args=
 distdir=".."
-for i in "$@"; do
-    case $i in
-        -greekonly) greekonly=1 ;;
-        --greekonly) greekonly=1 ;;
+while test $# -gt 0; do
+    case $1 in
+        -greekonly|--greekonly) greekonly=1 ;;
         --nogreek) nogreek=1 ;;
-        -highok) highok=1 ;;
-        --highok) highok=1 ;;
-        -autogen-args=*) autogen_args="${i#*=}"; shift ;;
-        --autogen-args=*) autogen_args="${i#*=}"; shift ;;
-        -config-args=*) config_args="${i#*=}"; shift ;;
-        --config-args=*) config_args="${i#*=}"; shift ;;
-        -distdir=*) distdir="${i#*=}"; shift ;;
-        --distdir=*) distdir="${i#*=}"; shift ;;
+        -highok|--highok) highok=1 ;;
+        -autogen-args=*|--autogen-args=*) autogen_args="${1#*=}" ;;
+        -config-args=*|--config-args=*) config_args="${1#*=}" ;;
+        -distdir=*|--distdir=*) distdir="${1#*=}" ;;
         --dirtyok) dirty_ok=1 ;;
-        --verok) gnu_version_ignore=1 ;;
-        -verok) gnu_version_ignore=1 ;;
-        --macosx) mac=1 ;;
-        -macosx) mac=1 ;;
+        -verok|--verok) gnu_version_ignore=1 ;;
+        -macosx|--macosx) mac=1 ;;
         *)
             cat <<EOF
 Unrecognized argument: $1
 
 Valid arguments:
-  --greekonly     Only build the greek tarball (vs. both tarballs)
-  --nogreek       Only build the non-greek tarball
-  --highok        Ok if Autotools versions are too high
-  --autogen-args  Arguments to pass to autogen
-  --config-args   Arguments to pass to configure (e.g., --with-libevent=<foo>)
-  --distdir       Move the tarball(s) to this directory when done
-  --dirtyok       Ok if the source tree is dirty
-  --verok         Ignore result of autotools version checking
-  --macosx        Allow execution on Mac OSX
+  --greekonly            Only build the greek tarball (vs. both tarballs)
+  --nogreek              Only build the non-greek tarball
+  --highok               Ok if Autotools versions are too high
+  --autogen-args=<args>  Arguments to pass to autogen
+  --config-args=<args>   Arguments to pass to configure (e.g., --with-libevent=<foo>)
+  --distdir=<dir>        Move the tarball(s) to this directory when done
+  --dirtyok              Ok if the source tree is dirty
+  --verok                Ignore result of autotools version checking
+  --macosx               Allow execution on Mac OSX
 EOF
             exit 1
             ;;
