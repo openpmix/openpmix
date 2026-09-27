@@ -726,6 +726,39 @@ static pmix_status_t do_job_ctrl_targets(size_t declared, size_t packed)
     return rc;
 }
 
+/* A job-control request naming one target, packed exactly as a client
+ * would pack it */
+static pmix_status_t do_job_ctrl_one(const char *nspace, pmix_rank_t rank)
+{
+    pmix_buffer_t *buf;
+    pmix_proc_t target;
+    pmix_status_t rc;
+    size_t one = 1, ninfo = 0;
+
+    jobctrl_fired = false;
+    jobctrl_ntargets = SIZE_MAX;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    if (NULL == buf) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_LOAD_PROCID(&target, nspace, rank);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &one, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &target, 1, PMIX_PROC);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+    rc = pmix_server_job_ctrl(standin(), buf, NULL, NULL);
+    PMIX_RELEASE(buf);
+    return rc;
+}
+
 /* How many namespaces on the global list carry an empty name. Nothing
  * legitimate ever puts one there. */
 static size_t count_empty_nspaces(void)
@@ -1559,6 +1592,19 @@ int main(int argc, char **argv)
         report("job control did not hand the host a bogus target count",
                !jobctrl_fired);
         report("rejected target count created no phantom namespace",
+               before == count_empty_nspaces());
+    }
+
+    /* --- a target that names no namespace at all -------------------- */
+    {
+        size_t before = count_empty_nspaces();
+
+        /* a target must name a valid namespace */
+        rc = do_job_ctrl_one("", 0);
+        report("job control rejects a target with an empty namespace",
+               PMIX_ERR_BAD_PARAM == rc);
+        report("an empty-namespace target did not reach the host", !jobctrl_fired);
+        report("an empty-namespace target created no namespace",
                before == count_empty_nspaces());
     }
 
