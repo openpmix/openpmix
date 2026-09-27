@@ -201,6 +201,58 @@ int main(int argc, char **argv)
     PMIX_INFO_DESTRUCT(&monitor);
 
     /* ------------------------------------------------------------------
+     * The monitor fields and the target procs must be data arrays of
+     * the expected datatype. The payload is a pair of well-formed
+     * pmix_info_t labeled with another datatype.
+     */
+    {
+        pmix_info_t real[2];
+        pmix_data_array_t mislabeled;
+
+        PMIX_INFO_LOAD(&real[0], PMIX_DISK_ID, "sd01", PMIX_STRING);
+        PMIX_INFO_LOAD(&real[1], PMIX_DISK_READ_COMPLETED, NULL, PMIX_BOOL);
+        mislabeled.type = PMIX_UINT8;
+        mislabeled.size = 2;
+        mislabeled.array = real;
+        PMIX_INFO_CONSTRUCT(&monitor);
+        PMIX_LOAD_KEY(monitor.key, PMIX_MONITOR_DISK_RESOURCE_USAGE);
+        monitor.value.type = PMIX_DATA_ARRAY;
+        monitor.value.data.darray = &mislabeled;
+        results = NULL;
+        nresults = 0;
+        rc = pmix_pstat.query(&requestor, &monitor, PMIX_SUCCESS, NULL, 0, &results, &nresults);
+        report("fields: an array that is not of pmix_info_t is rejected",
+               PMIX_ERR_BAD_PARAM == rc);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+        }
+        /* the array is ours, not the info's - do not destruct through it */
+        monitor.value.type = PMIX_UNDEF;
+
+        /* and the same for the procs a request targets */
+        PMIX_INFO_CONSTRUCT(&monitor);
+        PMIX_LOAD_KEY(monitor.key, PMIX_MONITOR_PROC_RESOURCE_USAGE);
+        monitor.value.type = PMIX_UNDEF;
+        PMIX_INFO_CONSTRUCT(&directive);
+        PMIX_LOAD_KEY(directive.key, PMIX_MONITOR_TARGET_PROCS);
+        directive.value.type = PMIX_DATA_ARRAY;
+        directive.value.data.darray = &mislabeled;
+        results = NULL;
+        nresults = 0;
+        rc = pmix_pstat.query(&requestor, &monitor, PMIX_SUCCESS, &directive, 1, &results,
+                              &nresults);
+        report("targets: a proc list that is not of pmix_proc_t is rejected",
+               PMIX_ERR_BAD_PARAM == rc);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+        }
+        directive.value.type = PMIX_UNDEF;
+
+        PMIX_INFO_DESTRUCT(&real[0]);
+        PMIX_INFO_DESTRUCT(&real[1]);
+    }
+
+    /* ------------------------------------------------------------------
      * PMIX_MONITOR_ID is the caller's handle for the monitor. It is
      * strdup'ed, so it too has to really be a string.
      */
