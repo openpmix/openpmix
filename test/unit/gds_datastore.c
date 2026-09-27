@@ -1041,6 +1041,31 @@ static void test_malformed_job_info(void)
         PMIX_DATA_ARRAY_FREE(array);
     }
 
+    /* a PMIX_QUALIFIED_VALUE whose data array is not an array of
+     * pmix_info_t is rejected. The payload is a well-formed pmix_info_t
+     * labeled with another datatype */
+    {
+        pmix_kval_t kv;
+        pmix_value_t val;
+        pmix_proc_t proc;
+        pmix_info_t real;
+        pmix_data_array_t mislabeled;
+
+        PMIX_INFO_LOAD(&real, "gds-mislabeled-key", "value", PMIX_STRING);
+        mislabeled.type = PMIX_UINT8;
+        mislabeled.size = 1;
+        mislabeled.array = &real;
+        val.type = PMIX_DATA_ARRAY;
+        val.data.darray = &mislabeled;
+        kv.key = PMIX_QUALIFIED_VALUE;
+        kv.value = &val;
+        PMIX_LOAD_PROCID(&proc, "gds-empty-qualified", 0);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_INTERNAL, &kv);
+        report("a PMIX_QUALIFIED_VALUE that is not an array of pmix_info_t is rejected",
+               PMIX_SUCCESS != rc);
+        PMIX_INFO_DESTRUCT(&real);
+    }
+
     /* nothing above should have left the datastore unusable */
     PMIX_CONSTRUCT(&kvs, pmix_list_t);
     rc = fetch_key("gds-nodeid-only", PMIX_RANK_WILDCARD, PMIX_JOB_SIZE, &kvs);
