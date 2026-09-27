@@ -816,8 +816,12 @@ static pmix_status_t monitor_fields(const pmix_info_t *monitor,
     if (PMIX_UNDEF == monitor->value.type) {
         return PMIX_SUCCESS;
     }
+    /* the fields must be a data array of pmix_info_t */
     if (PMIX_DATA_ARRAY != monitor->value.type ||
-        NULL == monitor->value.data.darray) {
+        NULL == monitor->value.data.darray ||
+        PMIX_INFO != monitor->value.data.darray->type ||
+        (0 < monitor->value.data.darray->size &&
+         NULL == monitor->value.data.darray->array)) {
         return PMIX_ERR_BAD_PARAM;
     }
     *iptr = (pmix_info_t*)monitor->value.data.darray->array;
@@ -941,6 +945,7 @@ static pmix_status_t query(pmix_proc_t *requestor,
             if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_TARGET_PROCS)) {
                 if (PMIX_DATA_ARRAY != directives[n].value.type ||
                     NULL == directives[n].value.data.darray ||
+                    PMIX_PROC != directives[n].value.data.darray->type ||
                     NULL == directives[n].value.data.darray->array) {
                     PMIX_RELEASE(op);
                     return PMIX_ERR_BAD_PARAM;
@@ -967,6 +972,7 @@ static pmix_status_t query(pmix_proc_t *requestor,
             if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_TARGET_PIDS)) {
                 if (PMIX_DATA_ARRAY != directives[n].value.type ||
                     NULL == directives[n].value.data.darray ||
+                    PMIX_NODE_PID != directives[n].value.data.darray->type ||
                     NULL == directives[n].value.data.darray->array) {
                     PMIX_RELEASE(op);
                     return PMIX_ERR_BAD_PARAM;
