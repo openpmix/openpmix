@@ -632,6 +632,11 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
         pmix_list_append(&epicache, &epicd->super);
     } else {
         for (n = 0; n < cd->ntargets; n++) {
+            /* a target must name a valid namespace */
+            if (PMIx_Nspace_invalid(cd->targets[n].nspace)) {
+                rc = PMIX_ERR_BAD_PARAM;
+                goto exit;
+            }
             /* find the nspace of this proc */
             nptr = NULL;
             PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
