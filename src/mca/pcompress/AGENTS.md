@@ -151,8 +151,8 @@ count, `get_decompressed_strlen` returns that count **+ 1** for the NUL
 terminator (mirroring how a plain `PMIX_STRING` is sized). The base
 default implements them too — with no compression library present a
 process cannot itself produce a compressed blob, but it can still be
-handed one by a peer that had a compressor, and the size query must not
-crash. (Historically these two pointers were `NULL`; that was a latent
+handed one by a peer that had a compressor, and the size query must still
+answer. (Historically these two pointers were `NULL`; that was a latent
 NULL-deref, now fixed.)
 
 ## The base default module (`pcompress_base_frame.c`)
@@ -248,7 +248,7 @@ legacy cleanup.
 
 **And it made the fence bucket bigger, not smaller.** Compressing a
 string on its own destroys the cross-rank redundancy that the
-bucket-level pass would otherwise exploit, and large string values are
+bucket-level pass would otherwise use, and large string values are
 precisely the ones every rank on a node emits a near-identical copy of
 (a locality string, a topology rendering). Measured as a 64-rank bucket
 carrying one large string per rank, shipped size after the fence's own
@@ -335,22 +335,20 @@ this is a contract, not an implementation detail:
   supported, the fix is to make the blob self-describing across the whole
   framework — a scheme byte, or that sniff generalized into the base — not
   a per-component workaround.
-- **Every entry point that inflates must screen the blob before trusting
-  it.** `decompress` and `decompress_string` both read the 4-byte prefix
-  and then size the payload as `len - 4`, and the length is a claim that
-  generally came off a peer's wire — a byte object out of a modex, a
-  `pmix_regex2_t` carrying whatever length the peer declared, or whatever
-  a caller handed the public `PMIx_Data_decompress`, which screens for a
-  NULL pointer and nothing else. Below four bytes the prefix read runs off
-  the end and the subtraction underflows into roughly four billion bytes
-  of "input" for the inflater to walk. So each of the two entry points
-  begins with `if (NULL == in || len < sizeof(uint32_t)) return false;`
-  and `get_decompressed_size` applies the same test against `bo->size`.
+- **Every entry point that inflates must screen the blob's length
+  first.** `decompress` and `decompress_string` both read the 4-byte
+  prefix and then size the payload as `len - 4`. The length comes from
+  the caller — a byte object out of a modex, a `pmix_regex2_t` with the
+  length it was unpacked with, or whatever was passed to the public
+  `PMIx_Data_decompress`, which checks only for a NULL pointer. So each
+  of the two entry points begins with
+  `if (NULL == in || len < sizeof(uint32_t)) return false;`, which keeps
+  the prefix read inside the blob and `len - 4` from wrapping, and
+  `get_decompressed_size` applies the same test against `bo->size`.
   This is a contract on the *slot*, not a property of any one component:
-  a caller cannot know which component will answer, so all of them must
-  screen or none of the screening counts. `test/unit/compress_block`
-  drives every entry point with blobs of length 0..3 and with NULL for
-  exactly this reason.
+  a caller cannot know which component will answer, so every component
+  must apply it. `test/unit/compress_block` drives every entry point with
+  blobs of length 0..3 and with NULL for exactly this reason.
 - `compress` returns `false` (declines) when the input is shorter than
   `compress_limit`, when it is `>= UINT32_MAX` (the length would not fit
   the 4-byte prefix), or when the compressed result is **not** smaller

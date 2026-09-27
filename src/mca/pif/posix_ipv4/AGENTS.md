@@ -110,8 +110,8 @@ name `"posix_ipv4"`, single `.pmix_mca_open_component = if_posix_open`.
   - The walk clamps `rem` to the buffer that was actually allocated. The
     comment itself claims a platform (Linux) that reports the space the
     entries *would* have needed rather than the space they used; take
-    that at face value and `ifc_len` bytes of `memcpy` become a heap
-    overflow in both directions.
+    that at face value and an `ifc_len`-byte `memcpy` reads and writes
+    past the buffer that was allocated.
 - **CIDR, not netmask** — `if_mask` is a prefix length via `prefix()`,
   the same helper duplicated in `bsdx_ipv4`. Keep them consistent.
 - The per-address `if_index` is assigned per *address*, so an interface

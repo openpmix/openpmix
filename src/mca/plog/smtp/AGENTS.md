@@ -102,8 +102,8 @@ attribute key it handles is `PMIX_LOG_EMAIL` (`pmix.log.email`).
    `PMIX_ERR_BAD_PARAM`), and picks up the nested `input[]` array — after
    confirming the value really is a `PMIX_DATA_ARRAY` of `PMIX_INFO`.
    That check is not paranoia: the type is whatever the client that sent
-   the `PMIx_Log` said it was (see the framework `AGENTS.md`), and this
-   one is dereferenced twice before it is walked.
+   the `PMIx_Log` packed (see the framework `AGENTS.md`), and this one is
+   dereferenced twice before it is walked.
 2. Reads `PMIX_LOG_TIMESTAMP` from the directives.
 3. If no email item is present, returns `PMIX_ERR_TAKE_NEXT_OPTION` —
    correctly deferring to other modules.

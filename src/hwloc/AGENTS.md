@@ -364,15 +364,15 @@ Two consequences that are load-bearing:
   `pmix_hwloc_locality_payload()` claims a string on its `hwloc:` prefix
   or on its leading two-letter type code; everything after that is
   whatever the caller or the host environment's `PMIX_LOCALITY_STRING`
-  happened to contain. `pmix_hwloc_get_relative_locality` therefore has
-  to survive two shapes it used to walk straight into. `PMIx_Argv_split`
+  happened to contain. `pmix_hwloc_get_relative_locality` therefore
+  checks for two shapes it used to mishandle. `PMIx_Argv_split`
   **drops empty fields**, so a payload that is empty or all separators
   (`"hwloc:"`, `"hwloc:::"`) splits to *nothing* and yields a NULL array
-  rather than an empty one — `set1[0]` was a NULL dereference. And the
-  bitmap is read from offset 2 of each token, so a token shorter than its
-  two-letter code was read past the end of its own allocation. Two
-  processes with no tokens in common share the node and nothing else,
-  which is the honest answer for both.
+  rather than an empty one — so the array is checked for NULL before
+  `set1[0]` is read. And the bitmap is read from offset 2 of each token,
+  so a token shorter than its two-letter code is skipped rather than
+  read. Two processes with no tokens in common share the node and
+  nothing else, which is the honest answer for both.
 - **A device uuid names the node the device is on, not the node reading
   the topology.** `pmix_hwloc_get_devices()` takes the hostname as a
   *required* parameter and `build_device_uuid()` uses it — neither reads
@@ -536,7 +536,8 @@ Two consequences that are load-bearing:
   `sizeof(string)`.** The print handler formats object names, attributes and
   cpusets into one fixed stack buffer. Never hand a length constant that is
   not the buffer's own size — the two silently drifted apart once and a
-  machine wide enough to need the full length smashed the stack (item 11).
+  machine wide enough to need the full length wrote past the end of the
+  buffer (item 11).
 - **`hwloc_bitmap_weight()` returns `-1` on an infinitely-set bitmap**, not a
   count. Any bitmap that has been through `hwloc_bitmap_fill()` is infinite.
   Assigning that to a `size_t` yields `SIZE_MAX` and every arithmetic use
@@ -574,9 +575,9 @@ not lost and so a future refactor does not silently reintroduce them:
    `cpuset->source` without a NULL check** — both compared the source with
    `strncasecmp` before validating it, so a cpuset carrying a bitmap but no
    source segfaulted. `generate_locality_string` did not check the `cpuset`
-   pointer itself either. Both are reachable only through the public
-   `PMIx_server_generate_*_string` APIs, i.e. from arbitrary host-environment
-   input, so the crash was reachable from outside the library. They now
+   pointer itself either. Both are reached through the public
+   `PMIx_server_generate_*_string` APIs, so they have to screen whatever
+   the host environment passes. They now
    return `PMIX_ERR_BAD_PARAM`, matching what `pmix_hwloc_compute_distances`
    already did, and set the output string to NULL on every failure path
    (the `TAKE_NEXT_OPTION` path previously left the caller's pointer
@@ -620,7 +621,7 @@ A second audit (July 2026) of the same directory found these:
     wrapped; the `data_array` walker in `bfrops` accumulated `SIZE_MAX` per
     element. It now reports the length of the cpuset's list-format string,
     which is what actually goes on the wire.
-11. **Stack buffer overflow in the topology print handler.**
+11. **The topology print handler passed a length larger than its buffer.**
     `print_hwloc_obj` declared `char string[1024]` and then passed
     `PMIX_HWLOC_MAX_STRING` (2048) as the length to
     `hwloc_bitmap_snprintf`. A machine with enough PUs for the machine-level
@@ -724,9 +725,9 @@ A third audit (August 2026) added these:
     for both; covered by `test_unnamed_osdev` in
     [`test/unit/hwloc_devices.c`](../../test/unit/hwloc_devices.c) and by
     `test_compute_distances_bad_params`.
-20. **`pmix_hwloc_get_relative_locality` walked a NULL argv and read past
-    the end of short tokens.** See the pitfall above; covered by
-    `test_relative_locality`.
+20. **`pmix_hwloc_get_relative_locality` did not handle a NULL argv or
+    tokens shorter than their two-letter code.** See the pitfall above;
+    covered by `test_relative_locality`.
 21. **A topology adopted from shared memory ignored `share`.** See the
     pitfall above.
 22. **The deprecated `PMIX_TOPOLOGY` arm did not screen a NULL pointer**,

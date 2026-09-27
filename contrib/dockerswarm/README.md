@@ -40,7 +40,7 @@ is only the nickname.
 | `run-client-tests.sh` | Runs the `src/client` API surface across the swarm, so the ranks sit behind **different** PMIx servers. This is the multi-node case for the client library: everything in `src/client` either answers locally or round-trips to a server, and a singleton exercises none of the second half. See §12. |
 | `run-common-tests.sh` | Runs the `src/common` role-shared APIs (query, log, job control, allocation, monitoring, IOF) across the swarm. This is the multi-node case for the shared layer: like `src/client`, almost everything in `src/common` either answers locally or round-trips to a server or host, and the monitor's local/remote split cannot even be entered on one node. See §13. |
 | `run-class-tests.sh` | Runs `test/unit/class` in the two configurations a developer's own `make check` does not cover: **Linux**, and **`--disable-debug`** with default symbol visibility. Deliberately *not* a multi-node test — see §11. |
-| `run-mca-tests.sh` | Runs `test/unit/mca` plus the hostile MCA-parameter cases in the `--enable-mca-dso` configuration, where the component repository is actually exercised. See §14. |
+| `run-mca-tests.sh` | Runs `test/unit/mca` plus the malformed MCA-parameter cases in the `--enable-mca-dso` configuration, where the component repository is actually exercised. See §14. |
 | `run-bfrops-tests.sh` | Runs the `src/mca/bfrops` unit programs on Linux in an optimized `--enable-mca-dso` build, **and** moves one value of every PMIx data type between ranks on *different* nodes. The only place the peer-assigned bfrops module and the negotiated buffer type are observable at all. See §15. |
 | `run-gds-tests.sh` | Runs the `src/mca/gds` datastore suite. See §16. |
 | `run-ptl-tests.sh` | Runs `src/mca/ptl` -- the transport itself -- over real sockets between real hosts: interface selection, node-local rendezvous discovery, a tool attaching across nodes, the inbound message-size ceiling, and an exhausted listener port range. See §17. |
@@ -778,7 +778,7 @@ directory reaches `getcwd`, `geteuid`, the home directory, `syslog` and
    nothing — precisely the failure a static build hides. The stage fails
    below ten.
 4. **Malformed MCA parameters must not be memory errors.** Each case
-   runs `pmix_info --all` with one hostile value and asserts the process
+   runs `pmix_info --all` with one malformed value and asserts the process
    **survives** — an exit status above 128 is a signal and fails. What it
    prints is deliberately not checked: a malformed MCA parameter is an
    ordinary user mistake, and the only contract is that it may not take

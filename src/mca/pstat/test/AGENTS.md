@@ -74,8 +74,8 @@ readers differ. Concretely:
   double that answers a different set of processes than the component it
   stands in for is not testing the thing it is standing in for.
 
-  The rules this shared code encodes — the untrusted monitor value, who
-  owns the answer list on the synchronous path, why a reader's
+  The rules this shared code encodes — type-checking the monitor value,
+  who owns the answer list on the synchronous path, why a reader's
   `PMIX_ERR_NOT_FOUND` is skipped rather than fatal, why every
   `PMIx_Info_list_convert()` result is destructed after it is added, and
   why a refused `PMIx_Notify_event` releases its own caddy — are written

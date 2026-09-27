@@ -539,18 +539,19 @@ add or edit an entry point:
    which reads the same three qualifiers — and which is *also* reached
    from `pmix_server_query`, i.e. from qualifiers a client packed and this
    process unpacked off the wire. A check that runs in the requestor's
-   process buys the server nothing: it is the peer's own honesty being
-   verified by the peer. Mistyping `PMIX_NSPACE` there segfaulted the
-   server outright. When you harden one of these, find every reader of the
-   value and put the check at the one they share.
+   process does not run in the server, so the server's reader needs its
+   own: `pmix_parse_localquery` now checks the type of `PMIX_NSPACE` and
+   the other qualifiers itself. When you harden one of these, find every
+   reader of the value and put the check at the one they share.
 
    The same applies to a field that is simply **absent**.
    `pmix_parse_localquery` walks each query's `keys` array to its NULL
    terminator, and the `PMIX_QUERY` unpacker leaves `keys` NULL for a
-   peer that declared zero of them. `PMIx_Query_info_nb` screened that
-   and `pmix_parse_localquery` did not, so a keyless query arriving over
-   the wire was a NULL dereference in the server. Screening a value's
-   type and screening that it exists at all are the same obligation.
+   query that declared zero of them. `PMIx_Query_info_nb` screened that
+   and `pmix_parse_localquery` did not; it now checks for a NULL `keys`
+   before walking it, which covers a keyless query unpacked in the
+   server. Screening a value's type and screening that it exists at all
+   are the same obligation.
 9. **A completion must happen exactly once, on every path.** The two
    failure modes are symmetric and both appear here. *Never* — a request
    that returns without invoking the callback hangs the blocking wrapper

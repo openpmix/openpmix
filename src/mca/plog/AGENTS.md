@@ -235,12 +235,11 @@ last branch assigned.
 **A module's `data[]` is client-supplied in the ordinary case.** A
 client's `PMIx_Log` arguments are packed, sent to its server, and
 unpacked straight into the array the server hands down here — so the
-`pmix_value_t` type is whatever the client said it was, and nothing in
+`pmix_value_t` type is whatever the client packed, and nothing in
 `src/common/pmix_log.c` or the server dispatch checks that
-`PMIX_LOG_STDOUT` carries a string. Reading `value.data.string` without
-first confirming `PMIX_STRING == value.type` hands `strlen()` an
-integer, and one malformed request kills the server for every process on
-the node. Every module here checks; keep it that way, and mark a
+`PMIX_LOG_STDOUT` carries a string. Read `value.data.string` only after
+confirming `PMIX_STRING == value.type`. Every module here checks; keep
+it that way, and mark a
 malformed entry complete so the next module does not read it the same
 wrong way.
 

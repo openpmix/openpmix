@@ -117,7 +117,7 @@ the client/tool and the server branch, so a second module walking the
 same array does not log it again. Malformed entries (see below) are
 marked too.
 
-### The value's type is not to be trusted
+### Check the value's type before reading it
 
 `PMIX_LOG_STDOUT` / `PMIX_LOG_STDERR` are documented as carrying a
 `char*`, but the `pmix_value_t` a server sees came off a socket from a

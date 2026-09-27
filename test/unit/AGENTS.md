@@ -339,12 +339,11 @@ to write down.
 `test_random_bytes_through_every_unpacker` is the wider net still, and
 it earned its place: it found two defects that reading did not. A data
 array's element count sized the receiver's allocation with nothing
-relating it to the size of the message, so a twenty-byte payload asking
-for 2^40 elements got what it asked for and the process was OOM-killed;
-and a query's qualifier count allocated, failed, and then unpacked into
-the NULL. Its seeds are fixed and its generator is a plain LCG so any
-failure is reproducible — if you find one, print the seed and the
-payload rather than adding a one-off case.
+bounding it by the size of the message; and a query's qualifier count
+allocated, failed, and then unpacked into the NULL. Its seeds are fixed
+and its generator is a plain LCG so any failure is reproducible — if you
+find one, print the seed and the payload rather than adding a one-off
+case.
 
 Note what a failure of that stage looks like: the process dies with the
 buffered stdout unflushed, so you get **no output at all** and exit 137
@@ -355,9 +354,9 @@ not a missing test.
 corruption planted by one input is normally noticed by the allocator
 several inputs later, so a harness that forks per input throws the
 evidence away with the child. That is not hypothetical: the scratch
-version of this fuzzer forked, ran clean for hours against a remote heap
-overflow, and only surfaced it once folded in here. Do not "isolate" the
-cases.
+version of this fuzzer forked, ran clean for hours against a heap
+corruption it later found, and only surfaced it once folded in here. Do
+not "isolate" the cases.
 
 Two cases assemble a malformed message by hand, and they do it through a
 byte accumulator rather than through `PMIx_Data_embed()`. **`PMIx_Data_embed()`
@@ -532,10 +531,9 @@ The **empty group id** takes an unfixed library down with SIGSEGV rather
 than failing it (exit 139 with the buffered output lost — the signature
 described under `bfrops_malformed`). A zero-length string unpacks to a
 NULL pointer and reports success, and `get_tracker` `strcmp`s the id
-against every block on the list and then `strdup`s it. So
-`PMIx_Group_construct("")` from any local client killed the server's
-progress thread and every client on the node with it. The client library
-screens a NULL pointer, which an empty string is not.
+against every block on the list and then `strdup`s it. So the handler
+has to screen an empty id itself: the client library screens a NULL
+pointer, which an empty string is not.
 
 The **late-registration pair** is the only thing in the suite that
 reaches `pmix_server_grp_check_pending()`. `check_definition_complete`
@@ -658,7 +656,7 @@ the way the switchyard does, to pin down that a locally computed distance
 array is handed to the completion callback with a **release function**
 rather than freed on the next line. That callback only thread-shifts, so
 the reply is packed from the array after the handler has returned, and
-freeing it there put freed heap on the wire.
+freeing it there meant the reply was packed from freed memory.
 
 It is the one program here that reports **SKIP**, and the reason is worth
 copying rather than avoiding: hwloc needs at least one OS device to
@@ -947,15 +945,16 @@ raw TCP sockets to its own listener, stalls them, and then makes a
 blocking server call that can only complete if the progress thread is
 still running. The server reads each connect-ack on that thread, before
 any credential is checked, and it used to read with blocking `recv()`
-calls from the moment it accepted a connection — so one idle connection
-stopped the whole server. It now reads the connect-ack as its bytes
-arrive. See [`src/mca/ptl/base/AGENTS.md`](../../src/mca/ptl/base/AGENTS.md).
+calls from the moment it accepted a connection — so the progress thread
+waited on whichever connection it was reading. It now reads the
+connect-ack as its bytes arrive. See
+[`src/mca/ptl/base/AGENTS.md`](../../src/mca/ptl/base/AGENTS.md).
 
 **Every stall case runs with `ptl_base_connect_ack_timeout` set to 0.**
 Leave it that way. A timeout can end a stall, so with one enabled these
 cases would pass for the timeout's sake - which is exactly how an earlier
-version passed its "partial" case while a peer could still freeze the
-server for the length of the timeout. With it disabled, only never
+version passed its "partial" case while the server still blocked on the
+connection for the length of the timeout. With it disabled, only never
 waiting can pass them:
 
 - **idle**, **one byte** and **partial** (three bytes of a header): the
