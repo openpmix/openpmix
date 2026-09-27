@@ -238,7 +238,12 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
      * reader comparing the two should not have to work out that the
      * difference does not matter. */
     chain->range = range;
-    pmix_prep_event_chain(chain, chain->info, ninfo, false);
+    rc = pmix_prep_event_chain(chain, chain->info, ninfo, false);
+    if (PMIX_SUCCESS != rc) {
+        /* drop the event, as the client does */
+        PMIX_RELEASE(chain);
+        goto error;
+    }
 
     if (PMIX_RANGE_LOCAL != range && pmix_atomic_check_bool(&pmix_globals.connected) &&
         !(PMIX_CHECK_NSPACE(peer->nptr->nspace, pmix_client_globals.myserver->nptr->nspace) &&

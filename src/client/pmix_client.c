@@ -189,8 +189,13 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
             goto error;
         }
     }
-    /* prep the chain for processing */
-    pmix_prep_event_chain(chain, chain->info, ninfo, false);
+    /* prep the chain for processing - drop the event if a
+     * directive has an unexpected datatype */
+    rc = pmix_prep_event_chain(chain, chain->info, ninfo, false);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(chain);
+        goto error;
+    }
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "%s pmix:client_notify_recv - processing event %s, calling errhandler",

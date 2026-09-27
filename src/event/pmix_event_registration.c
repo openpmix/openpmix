@@ -466,31 +466,51 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
                 PMIX_INFO_XFER(&chain->info[n], &ncd->info[n]);
                 if (PMIX_CHECK_KEY(&ncd->info[n], PMIX_EVENT_NON_DEFAULT)) {
                     chain->nondefault = true;
-                } else if (PMIX_CHECK_KEY(&ncd->info[n], PMIX_EVENT_AFFECTED_PROC)) {
-                    PMIX_PROC_CREATE(chain->affected, 1);
-                    if (NULL == chain->affected) {
-                        PMIX_RELEASE(chain);
-                        chain = NULL;
-                        break;
-                    }
-                    chain->naffected = 1;
-                    memcpy(chain->affected, ncd->info[n].value.data.proc, sizeof(pmix_proc_t));
-                } else if (PMIX_CHECK_KEY(&ncd->info[n], PMIX_EVENT_AFFECTED_PROCS)) {
-                    chain->naffected = ncd->info[n].value.data.darray->size;
-                    PMIX_PROC_CREATE(chain->affected, chain->naffected);
-                    if (NULL == chain->affected) {
+                } else if (PMIX_CHECK_KEY(&ncd->info[n], PMIX_EVENT_AFFECTED_PROC) ||
+                           PMIX_CHECK_KEY(&ncd->info[n], PMIX_EVENT_AFFECTED_PROCS)) {
+                    /* verify the datatype (see pmix_event.h) */
+                    if (NULL != chain->affected) {
+                        PMIX_PROC_FREE(chain->affected, chain->naffected);
+                        chain->affected = NULL;
                         chain->naffected = 0;
+                    }
+                    if (PMIX_CHECK_KEY(&ncd->info[n], PMIX_EVENT_AFFECTED_PROC) &&
+                        PMIX_EVENT_VALUE_IS_PROC(&ncd->info[n].value)) {
+                        PMIX_PROC_CREATE(chain->affected, 1);
+                        if (NULL == chain->affected) {
+                            PMIX_RELEASE(chain);
+                            chain = NULL;
+                            break;
+                        }
+                        chain->naffected = 1;
+                        memcpy(chain->affected, ncd->info[n].value.data.proc,
+                               sizeof(pmix_proc_t));
+                    } else if (PMIX_CHECK_KEY(&ncd->info[n], PMIX_EVENT_AFFECTED_PROCS) &&
+                               PMIX_EVENT_VALUE_IS_PROC_ARRAY(&ncd->info[n].value)) {
+                        if (0 < ncd->info[n].value.data.darray->size) {
+                            PMIX_PROC_CREATE(chain->affected,
+                                             ncd->info[n].value.data.darray->size);
+                            if (NULL == chain->affected) {
+                                PMIX_RELEASE(chain);
+                                chain = NULL;
+                                break;
+                            }
+                            chain->naffected = ncd->info[n].value.data.darray->size;
+                            memcpy(chain->affected, ncd->info[n].value.data.darray->array,
+                                   chain->naffected * sizeof(pmix_proc_t));
+                        }
+                    } else {
+                        /* unexpected datatype - skip this event */
                         PMIX_RELEASE(chain);
                         chain = NULL;
                         break;
                     }
-                    memcpy(chain->affected, ncd->info[n].value.data.darray->array,
-                           chain->naffected * sizeof(pmix_proc_t));
                 }
             }
             if (NULL == chain) {
-                /* we ran out of memory processing this event - skip
-                 * it and continue checking the remaining cache */
+                /* we ran out of memory processing this event, or a
+                 * directive had an unexpected datatype - skip it and
+                 * continue checking the remaining cache */
                 continue;
             }
         }
@@ -581,13 +601,10 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
             } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_EVENT_CUSTOM_RANGE)) {
                 /* provides an array of pmix_proc_t identifying the procs
                  * that are to receive this notification, or a single pmix_proc_t  */
-                if (PMIX_DATA_ARRAY == cd->info[n].value.type
-                    && NULL != cd->info[n].value.data.darray
-                    && NULL != cd->info[n].value.data.darray->array) {
+                if (PMIX_EVENT_VALUE_IS_PROC_ARRAY(&cd->info[n].value)) {
                     parray = (pmix_proc_t *) cd->info[n].value.data.darray->array;
                     nprocs = cd->info[n].value.data.darray->size;
-                } else if (PMIX_PROC == cd->info[n].value.type
-                           && NULL != cd->info[n].value.data.proc) {
+                } else if (PMIX_EVENT_VALUE_IS_PROC(&cd->info[n].value)) {
                     parray = cd->info[n].value.data.proc;
                     nprocs = 1;
                 } else {
@@ -596,6 +613,10 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
                     goto ack;
                 }
             } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_EVENT_AFFECTED_PROC)) {
+                if (!PMIX_EVENT_VALUE_IS_PROC(&cd->info[n].value)) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto ack;
+                }
                 cd->affected = cd->info[n].value.data.proc;
                 cd->naffected = 1;
                 ixfer = PMIX_NEW(pmix_info_caddy_t);
@@ -603,6 +624,10 @@ void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
                 ixfer->ninfo = 1;
                 pmix_list_append(&xfer, &ixfer->super);
             } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_EVENT_AFFECTED_PROCS)) {
+                if (!PMIX_EVENT_VALUE_IS_PROC_ARRAY(&cd->info[n].value)) {
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto ack;
+                }
                 cd->affected = (pmix_proc_t *) cd->info[n].value.data.darray->array;
                 cd->naffected = cd->info[n].value.data.darray->size;
                 ixfer = PMIX_NEW(pmix_info_caddy_t);
