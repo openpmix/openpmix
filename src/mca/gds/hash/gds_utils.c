@@ -668,13 +668,12 @@ pmix_status_t pmix_gds_hash_store_qualified(pmix_hash_table_t *ht,
     pmix_kval_t kv;
     pmix_status_t rc;
 
-    /* the value contains a pmix_data_array_t whose first position
-     * contains the key-value being stored, followed by one or more
-     * qualifiers. These data can arrive from a peer, so verify the
-     * shape before indexing it - an empty array would otherwise read
-     * iptr[0] out of bounds and ask for SIZE_MAX qualifiers */
+    /* the value contains a pmix_data_array_t of pmix_info_t whose
+     * first position contains the key-value being stored, followed by
+     * one or more qualifiers - verify its datatype and size */
     if (PMIX_DATA_ARRAY != value->type ||
         NULL == value->data.darray ||
+        PMIX_INFO != value->data.darray->type ||
         NULL == value->data.darray->array ||
         0 == value->data.darray->size) {
         return PMIX_ERR_BAD_PARAM;
