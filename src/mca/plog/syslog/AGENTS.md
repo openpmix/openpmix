@@ -137,7 +137,7 @@ Entries already marked `PMIX_INFO_OP_IS_COMPLETE` are skipped, and each
 entry this module delivers is marked with `PMIX_INFO_OP_COMPLETED`. An
 entry whose value is not a `PMIX_STRING` is rejected with a
 `PMIX_ERROR_LOG` and marked complete rather than handed to `syslog()`'s
-`%s` — see the framework `AGENTS.md` on why that type is not trustworthy.
+`%s` — see the framework `AGENTS.md` on why that type is checked.
 `PMIX_LOG_SYSLOG_PRI` is read with `PMIx_Value_get_number` for the same
 reason, and `PMIX_LOG_TIMESTAMP` is only taken when it really is a
 `PMIX_TIME`.

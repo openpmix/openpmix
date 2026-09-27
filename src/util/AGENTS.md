@@ -721,8 +721,8 @@ Two things a caller must know, neither of which this function can fix:
   `PMIX_ERR_INVALID_CRED`, which is what you want. A *TCP* socket is
   worse than that: Linux answers `SO_PEERCRED` on one with success and an
   overflow uid, so the function reports `PMIX_SUCCESS` over credentials
-  that identify nobody. Do not use this to authenticate a peer you did
-  not reach over a Unix socket.
+  that identify nobody. Call it only on a descriptor connected over a
+  Unix socket.
 - **The out-parameters are written only on `PMIX_SUCCESS`.** Every error
   return leaves them exactly as the caller had them.
 
@@ -1043,15 +1043,15 @@ path, not `"."`; and the argument list must end in `NULL`, which
 `__pmix_attribute_sentinel__` makes a compiler diagnostic rather than the
 segfault the header threatens.
 
-### `pmix_os_dirpath` — the session directories, and who may swap them
+### `pmix_os_dirpath` — the session directories, held by descriptor
 
 Creates and recursively destroys directory trees. Its callers are the
 `ptl` rendezvous/session directories and the `pmix_iof` per-rank output
-directories, which means the paths that reach it have **fully predictable
-names under a world-writable root** (`/tmp` by default), where anything
-may already be sitting at a name, or be renamed away between two calls.
-The whole file is written for that, and it is why the code looks more
-roundabout than "stat then chmod" or "readdir then unlink".
+directories, which means the paths that reach it have **fixed names
+under a shared root** (`/tmp` by default). The code does not assume what
+is at a name, or that a name still refers to the same object on the next
+call. The whole file is written that way, and it is why the code looks
+more roundabout than "stat then chmod" or "readdir then unlink".
 
 - **Act through a descriptor, never through a re-resolved path.**
   `dirpath_check_existing()` opens the final component
@@ -1060,8 +1060,8 @@ roundabout than "stat then chmod" or "readdir then unlink".
   descriptor its walk ends on, so the object inspected is the object
   modified.
   `dirpath_destroy_at()` walks with `fstatat`/`openat`/`unlinkat`
-  relative to a descriptor it already holds, so an entry cannot be
-  swapped between being classified and being removed. `O_NOFOLLOW` and
+  relative to a descriptor it already holds, so the entry it classifies
+  is the entry it removes. `O_NOFOLLOW` and
   `AT_SYMLINK_NOFOLLOW` keep a symlink an entry to be unlinked rather
   than a path to be followed. If you add an operation here, add it in
   that style. `pmix_os_dirpath_destroy()` holds the directory's
@@ -1070,7 +1070,7 @@ roundabout than "stat then chmod" or "readdir then unlink".
   directory that was emptied (a `st_dev`/`st_ino` check). A
   subdirectory gets the same identity check between `fstatat()` and
   the `openat()` it recurses through, since `O_NOFOLLOW` declines a
-  symlink swapped in there but not a different directory.
+  symlink at that name but not a different directory.
 - **A trailing separator defeats `O_NOFOLLOW`.** `open("link/",
   O_DIRECTORY | O_NOFOLLOW)` opens the link's *target* on both Linux and
   macOS, because the separator makes the kernel resolve the final
@@ -1081,11 +1081,12 @@ roundabout than "stat then chmod" or "readdir then unlink".
   trailing separator leaves. A new whole-path entry point needs it.
 - **Destroy reports what it did not do.** An entry `fstatat()` cannot
   classify (a directory readable but not searchable), an emptied
-  subdirectory or base that cannot be removed, and a base swapped during
-  the walk all come back as `PMIX_ERROR`. The exceptions are in
-  `dirpath_rmdir_error_is_benign()`: `ENOENT` (someone else removed it),
-  and `ENOTEMPTY`/`EEXIST` *only when there is a callback*, since only a
-  callback can have chosen to keep something. Without one, a directory
+  subdirectory or base that cannot be removed, and a base that fails the
+  identity check after the walk all come back as `PMIX_ERROR`. The
+  exceptions are in `dirpath_rmdir_error_is_benign()`: `ENOENT` (someone
+  else removed it), and `ENOTEMPTY`/`EEXIST` *only when there is a
+  callback*, since only a callback can have chosen to keep something.
+  Without one, a directory
   still holding something was not destroyed. No caller in this tree or
   in PRRTE's `session_dir.c` checks the return today; the header is
   installed, so the answer is still owed.
@@ -1101,10 +1102,10 @@ roundabout than "stat then chmod" or "readdir then unlink".
   symlink at the last component but does follow one at every component
   before it, and the tree-building loop accepts `EEXIST` on an
   intermediate component without asking what it is - by design, since an
-  intermediate need only be traversable. So a symlink already sitting
-  midway through a predictable session path still redirects the leaf
-  that gets created. That is why `pmix_os_dirpath_create_under()` and
-  `_open_file_under()` exist, and why they take the trusted prefix and
+  intermediate need only be traversable. So these entry points resolve
+  every component above the leaf in the ordinary way. That is why
+  `pmix_os_dirpath_create_under()` and
+  `_open_file_under()` exist, and why they take the caller's prefix and
   the composed tail as *separate arguments* rather than one path: only
   the tail can be walked with `O_NOFOLLOW` at every step. Which of the
   three entry points a caller wants is decided in
@@ -1322,8 +1323,8 @@ who composed which part of the name:
   effective uid, and otherwise shows `dir-owner` and refuses it
   (`PMIX_ERR_SILENT` from `create_under`, `EPERM` from
   `open_file_under`). The names are PMIx's own, so an existing one should
-  have been made by an earlier rank or an earlier run of the same user;
-  one that was not is left over from someone else. A component the walk
+  have been made by an earlier rank or an earlier run of the same user,
+  and that is the only case the walk accepts. A component the walk
   itself created is not checked. The mode is deliberately not examined:
   PRRTE also refuses a group-writable session directory, but these are
   output directories, and a user opening their own output up to their
@@ -1362,18 +1363,16 @@ its neighbour were doing. Open once and use `fchmod()`/`fstat()`, the way
 
 **And when you come back to a file later, check it is the one you made.**
 A descriptor opened by name is only as good as the name, and the
-`O_NOFOLLOW` behind it protects the last component and nothing above it.
-`lchown()` on a segment's backing path declined a symlink at the last
-component and nothing else: the directories above it are resolved
-normally, and a hard link is not a symlink at all, so the name can come
-to lead to a file other than the one that was created, and chown/chmod
-then change that file instead. `pmix_shmem_segment_create()` therefore
-records the device and inode of the file it made, and
+`O_NOFOLLOW` behind it covers the last component and nothing above it.
+`lchown()` on a path likewise declines only a symlink at the last
+component: the directories above it are resolved normally, and a hard
+link is not a symlink at all, so a name alone does not establish that it
+still leads to the file that was created. `pmix_shmem_segment_create()`
+therefore records the device and inode of the file it made, and
 `open_created_file()` in [`pmix_shmem.c`](pmix_shmem.c) lets chown/chmod
 act only on a regular file with that identity and a link count of one.
 A caller-side ownership check ("still owned by our euid") is not a
-substitute: for a caller running as root, an unrelated root-owned file
-passes it too.
+substitute: it identifies the file's owner, not the file.
 
 ### `pmix_shmem` — a created segment reads as zero
 
@@ -1392,8 +1391,7 @@ over-estimated — extent up front.
 go, so a path collides only with a file left behind by a server that
 died; but the path carries a pid, and pids get reused, and `ftruncate()`
 to the same or a smaller size would leave that file's bytes in place.
-`O_EXCL` declines whatever is there — a symlink included, which
-`O_CREAT | O_TRUNC` would have followed and truncated — and the helper
+`O_EXCL` declines whatever is there, a symlink included, and the helper
 then reclaims a leftover with `unlink()` and retries once, exactly as
 `write_rndz_file()` does. A change that only declines breaks a server
 whose pid was reused; both halves are covered by
@@ -1790,7 +1788,7 @@ interesting arm here.
 **The invariant `guess_strlen` has to hold is not "estimate the length".
 It is "bound the length *and* consume exactly the arguments the format
 names".** Those are one obligation, not two, and getting either half
-wrong is memory-unsafe:
+wrong is a memory error:
 
 - Under-count and `vsprintf` — which has no bound argument — runs off the
   end of the buffer the caller just allocated from that count. A field
@@ -1985,7 +1983,7 @@ flush).
 A deep review of this directory fixed the following, each landed as its
 own commit. Recorded so they are not re-introduced by a future edit.
 
-- **`pmix_hash.c` qualifier array — heap overflow + wrong index.** When
+- **`pmix_hash.c` qualifier array — wrong index.** When
   the info array mixes non-qualifier and qualifier entries, the store
   loop wrote `qarray[n].index` (loop var, indexing all infos) instead of
   `qarray[m].index` (compacted qualifier counter) — an out-of-bounds

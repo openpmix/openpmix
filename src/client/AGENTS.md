@@ -1237,8 +1237,8 @@ return, not a SIGSEGV):*
   twice. A NULL or zero-length array failed one step later at
   `iarray[0]`. Covered by `test/unit/run_grpbadinfo.pl`.
 
-*Wire-supplied (another process's or the server's word, so even less ours
-to assume):*
+*Wire-supplied (packed by another process or by the server, so the type
+tag has to be checked here too):*
 
 - `invite_observer()` took `PMIX_EVENT_AFFECTED_PROC` straight to
   `PMIX_CHECK_PROCID`, which dereferences it.
@@ -1246,9 +1246,9 @@ to assume):*
   `PMIX_GROUP_ID` to `strcmp()` without checking it was a string.
 - `construct_cbfunc()` read the group-info blob the *server* sent —
   `grpinfo.value.data.darray->array` — and then, in the nested form,
-  `iptr[m].value.data.darray->array` per element, all unchecked. A peer
-  that sends anything else here (an older one, or a broken one) crashes
-  the client.
+  `iptr[m].value.data.darray->array` per element, all unchecked. It now
+  checks each type tag and rejects any other shape, such as one an older
+  peer might send.
 
 *The one that was not in this directory at all:*
 
@@ -1300,8 +1300,8 @@ change here. Two clusters survived the earlier sweeps:
 
 - **`info_cbfunc()` read `PMIX_GROUP_MEMBERSHIP` and `PMIX_GROUP_ID`
   unchecked.** On the join path this array is a copy of the *leader's*
-  `PMIX_GROUP_CONSTRUCT_COMPLETE` event (see `join_complete`), so it is
-  another process's word — and `add_group()` is handed the results.
+  `PMIX_GROUP_CONSTRUCT_COMPLETE` event (see `join_complete`), so it was
+  packed by another process — and `add_group()` is handed the results.
   Same class as the fourth sweep's findings, in the one place they missed.
 - **The three `PMIX_QUALIFIED_VALUE` unwrap sites in `pmix_client_get.c`**
   reached `kv->value->data.darray->array` and then `iptr[0]` on nothing
@@ -1894,16 +1894,16 @@ them to the `_nb` callback, which copies what it wants to keep.
   field-for-field, and "pack it anyway, the count is zero" is not a no-op
   on this wire.
 
-*Crashes on wire- or caller-supplied input:*
+*Unchecked wire- or caller-supplied input:*
 
 - `pmix_server_process_grpinfo()` read `pinfo[0]` and dereferenced
   `pinfo[0].value.data.proc` on nothing more than the key matching
   `PMIX_PROCID`. All three of its callers — this file's
   `construct_cbfunc()`, `pmix_server_setup.c` and `pmix_server_group.c` —
-  hand it an array that came off the wire, so neither the length nor the
-  union member was theirs to assume. The guard went into the helper, where
-  it covers all three; `construct_cbfunc()` additionally now requires a
-  non-empty array, which it was already checking for non-NULL.
+  hand it an array unpacked from a message, so the helper now checks both
+  the length and the union member before reading. The guard went into the
+  helper, where it covers all three; `construct_cbfunc()` additionally now
+  requires a non-empty array, which it was already checking for non-NULL.
 - `invite_setup()` fetched each wildcard's job size **twice** — once to
   size `cb->members` and once to fill it — and wrote the second pass's
   count into the first pass's allocation. An elastic job that grew between
@@ -2313,8 +2313,9 @@ sweep's rule about `procs`/`nprocs` meeting a different payload type.
 - **`direcv()` sized a `PMIX_DEVICE_DIST_CREATE` from the wire and did not
   check it**, then unpacked into it. This is the same site class the ninth
   sweep closed for the wire-sized `PMIX_PROC_CREATE` in
-  `wait_peers_cbfunc()`: the peer's word decides the allocation, so the
-  NULL is as much "more than we can hold" as it is a short heap.
+  `wait_peers_cbfunc()`: the wire count sizes the allocation, so a NULL
+  can mean an oversized count as well as a short heap, and both are now
+  an error return.
 - **`direcv()` reported the count the peer promised, not the one that
   arrived.** `pmix_bfrops_base_unpack()` writes the number it actually
   filled back through `num_vals` and returns `PMIX_SUCCESS` when the
@@ -2484,11 +2485,12 @@ whenever this file gains something: `PMIx_Group_construct` and
   entry above for what the leader does and does not receive from its own
   notification.
 
-*Crashes on wire-supplied input — not in this directory:*
+*Unchecked wire-supplied values — not in this directory:*
 
-- **The group bookkeeping in `pmix_invoke_local_event_hdlr` trusted three
-  unions.** `PMIX_GROUP_MEMBERSHIP`, `PMIX_GROUP_ID` and
-  `PMIX_EVENT_AFFECTED_PROC` were read on the key alone, in the one place
+- **The group bookkeeping in `pmix_invoke_local_event_hdlr` read three
+  unions without checking their type tags.** `PMIX_GROUP_MEMBERSHIP`,
+  `PMIX_GROUP_ID` and `PMIX_EVENT_AFFECTED_PROC` were read on the key
+  alone, in the one place
   in [`src/event`](../event/AGENTS.md) that touches a `pmix_value_t`
   union — and this is the same event the handlers in this file screen
   field by field, so half of one delivery path was checked and the other
@@ -2775,21 +2777,20 @@ that aliases `myserver` gives back `myserver`'s.
 ### The wire counts the client's own recv handlers read
 
 `src/server/AGENTS.md` records the round-trip screen — `cnt = n; if (0 >
-cnt || (size_t) cnt != n)` — for any peer-supplied count used before, or
-without, the unpack that would otherwise guard it. The client has the
-same shape twice, and the reasoning transfers unchanged because it is
-`PMIx_Info_create()`'s missing overflow guard that does the damage, not
-anything about roles:
+cnt || (size_t) cnt != n)` — for any wire count used before, or without,
+the unpack that would otherwise bound it. The client applies the same
+screen in two places, and the reasoning transfers unchanged because it is
+about `PMIx_Info_create()`'s size arithmetic, which assumes a count in
+range, not about roles:
 
 - `pmix_client_notify_recv` sizes `ninfo + 2`, and
   `pmix_invoke_local_event_hdlr` later writes the handler name and
-  callback object at `info[ninfo]` and `info[ninfo+1]`. A count near
-  `SIZE_MAX` wraps that sum to a one- or zero-element array and those
-  seeds land off the end of it.
+  callback object at `info[ninfo]` and `info[ninfo+1]`. The screen keeps
+  that sum from wrapping, so both slots are inside the array.
 - `client_iof_handler` sizes `ninfo` and separately reads a request id it
-  hands to `pmix_pointer_array_get_item()`, which takes an `int` — an id
-  that does not fit truncates into some *other* request's slot and
-  delivers the package to the wrong callback.
+  hands to `pmix_pointer_array_get_item()`, which takes an `int`. The id
+  is range-checked so it cannot truncate into some *other* request's
+  slot and reach the wrong callback.
 
 ### Refuted here, so you need not re-derive it
 

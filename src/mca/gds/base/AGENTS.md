@@ -299,9 +299,10 @@ Two further things worth knowing before reviving it:
   node's modex, discarded. The sizing loop that consumed those counts
   assigned rather than accumulated (`=`, not `+=`), so the native-vs-keymap
   decision was made on the last key alone. And `modex_unpack_kval()`
-  indexed the map with a `uint32` taken straight off the wire and no
-  bound against the map's length — a remote out-of-bounds read whose NULL
-  check was performed on the already-out-of-bounds element.
+  indexed the map with a `uint32` taken straight off the wire, with no
+  check against the map's length; its NULL check was made on the
+  element it had already indexed. Any revival must check that index
+  against the map's length before using it.
 
 The small-payload corner that a keymap *did* still win — a node whose
 bucket fell under `pmix_compress_base.compress_limit` and was therefore

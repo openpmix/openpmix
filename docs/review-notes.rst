@@ -61,7 +61,7 @@ thread.  The only module that implements one is ``psec/dummy_handshake``,
 a test module built only under ``--enable-dummy-handshake``; ``native``,
 ``munge`` and ``none`` use credentials, and the two replies the server
 writes around that point are four bytes each.  Redesigning the psec
-handshake interface would harden a path no production build reaches, so
+handshake interface would rework a path no production build reaches, so
 it stays as it is, bounded by ``ptl_base_connect_ack_timeout``, and
 ``src/mca/ptl/base/AGENTS.md`` says why.  Revisit if a real handshake-model
 module appears.
@@ -811,7 +811,7 @@ was infrastructure to protect against a program that calls a server API
 from a client, which is a user error that has not occurred in production
 in the life of the library.
 
-The whole crash surface was one defect in one macro.
+The whole class of crash was one defect in one macro.
 ``PMIX_LIST_STATIC_INIT`` left the sentinel's ``next`` and ``prev`` NULL,
 so a statically initialized list was not an empty list, it was an
 unwalkable one — and every ``PMIX_LIST_FOREACH`` and ``pmix_list_append``
@@ -1195,13 +1195,12 @@ decision, not an oversight.
   ``gds/hash`` has the length in ``val->data.bo.size`` and still cannot
   hand it over.
 
-  What remains reachable is narrow: it needs a caller-owned string that
-  really does carry the ``"blob:"`` tag and is truncated behind it, which
-  is not something a peer can produce — those arrive through the bounded
-  ``unpack``.  The review had already made the tag test exact, so a plain
-  node list whose first node begins with ``blob`` is no longer taken for
-  a blob and walked past its end, which was the case a host could trigger
-  with ordinary data.
+  What remains is narrow: it needs a caller-owned string that really
+  does carry the ``"blob:"`` tag and is truncated behind it.  Values
+  unpacked from a buffer come through the bounded ``unpack``.  The review
+  had already made the tag test exact, so a plain node list whose first
+  node begins with ``blob`` is no longer taken for a blob and walked past
+  its end, which had happened with ordinary host data.
 
   Closing it properly means plumbing a length through the deprecated
   signatures, and **that is the direction** ``pmix_regex2_t`` **was
@@ -1209,7 +1208,7 @@ decision, not an oversight.
   one cannot express a bounded buffer; a caller that is in a position to
   supply a length is in a position to use regex2, and widening the
   deprecated signatures would spend ABI-visible work making the
-  superseded interface almost safe.  Deprecated APIs are supported
+  superseded interface almost bounded.  Deprecated APIs are supported
   indefinitely here, which is a promise to keep them *working*, not a
   promise to keep developing them.
 
@@ -1339,7 +1338,7 @@ not "fixed" by a later reader.
   hand the pointer straight to ``strlen``, which reads as an asymmetry
   now that both *decompress* entry points screen for NULL — but the two
   directions take different data.  A decompressor is handed a length and
-  a buffer a peer declared; a compressor is handed a string the caller
+  a buffer unpacked from a message; a compressor is handed a string the caller
   just built and owns.  No caller in the tree can produce a NULL there,
   and a component answering ``false`` for one would report "I declined
   to compress" for what is really a caller bug, hiding it.  Add the

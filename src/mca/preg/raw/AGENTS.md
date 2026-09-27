@@ -63,16 +63,16 @@ regex2 as `raw:<string>` when a caller comes in through
 
 ## Gotchas
 
-- **A `pmix_regex2_t` reaching `parse_regex` is a claim, not a fact.**
-  Off the wire it is a type, a length, and that many bytes: `bfrops`
-  copies exactly `len` bytes out of the buffer, appends no NUL, and
-  leaves `bytes` NULL when the peer declared `len` of zero. `raw`'s own
-  `generate_regex` counts the terminator into `len`, so a well-formed
-  value carries one — but a peer's need not, and `strdup` on bytes that
-  do not is a read off the end of the unpacked allocation. It segfaults
-  in practice, not in theory: `test/unit/preg.c`'s
-  `test_regex2_from_the_wire` crashed the library outright before the
-  check existed. The same reasoning applies to any component added here.
+- **`parse_regex` checks for the terminator rather than assuming it.**
+  Off the wire a `pmix_regex2_t` is a type, a length, and that many
+  bytes: `bfrops` copies exactly `len` bytes out of the buffer, appends
+  no NUL, and leaves `bytes` NULL when `len` is zero. `raw`'s own
+  `generate_regex` counts the terminator into `len`, so a value it
+  produced carries one; `parse_regex` confirms a NUL ends the bytes
+  before it calls `strdup`. `test/unit/preg.c`'s
+  `test_regex2_from_the_wire` covers a value without one and fails if
+  the check is removed. The same reasoning applies to any component
+  added here.
 - Do not add "cleverness" to `raw`. Its whole value is that it is a
   transparent, always-available identity transform. If you want smarter
   encoding, add a new component with a new tag.

@@ -1315,15 +1315,13 @@ stored ahead of an array and, when it is smaller than the storage
 offered, writes that smaller number back through `num_vals` and returns
 `PMIX_SUCCESS`. So the three collective handlers' `cnt = nprocs;
 PMIX_BFROPS_UNPACK(..., procs, &cnt, PMIX_PROC)` says nothing about how
-many procs actually arrived unless `cnt` is read back. Left unchecked,
-the tail of the array stays as `PMIX_PROC_CREATE` left it - an empty
-nspace, which `PMIX_CHECK_NSPACE` reads as a *wildcard* - so phantom
-participants go up to the host and match any peer
-`pmix_server_trk_peer_lost` walks; and in `pmix_server_connect` the
-undrained bytes are then read by the optional-trailer loop as
-directives and forwarded to the host. Every PMIx client back to v3.2
-packs both arrays in one call, so a conforming peer always agrees and
-the screen costs nothing.
+many procs actually arrived unless `cnt` is read back, so the handlers
+read it back and require it to equal `nprocs`. An unfilled tail would
+stay as `PMIX_PROC_CREATE` left it - an empty nspace, which
+`PMIX_CHECK_NSPACE` reads as a *wildcard* - and in `pmix_server_connect`
+any undrained bytes would be read by the optional-trailer loop as
+directives. Every PMIx client back to v3.2 packs both arrays in one
+call, so the two counts always agree and the check costs nothing.
 
 **Never build the modex bucket anywhere but `pmix_server_collect_data`.**
 `pmix_server_execute_collective` used to assemble it inline, and the copy
@@ -1749,12 +1747,11 @@ already with the host; the sweep skips those.
 **An invalid namespace off the wire is not inert — it is a wildcard.**
 `PMIX_CHECK_NSPACE` short-circuits to `true` when *either* name is
 invalid, and an empty string is invalid, so a `PMIx_Get` naming one
-matches every tracker it is compared against. `create_local_tracker`
-would join it to whatever tracker carried the same rank (answering that
-requester with an unrelated proc's data), and — the worse direction —
-every later request for that rank in a real namespace would join the
-bogus tracker in turn. `pmix_server_get` therefore screens the unpacked
-namespace with `PMIx_Nspace_invalid` before anything compares against it.
+would match every tracker it is compared against: `create_local_tracker`
+would join it to whatever tracker carried the same rank, and every later
+request for that rank in a real namespace would join its tracker in
+turn. `pmix_server_get` therefore screens the unpacked namespace with
+`PMIx_Nspace_invalid` before anything compares against it.
 The same reasoning applies to any handler that takes a namespace off the
 wire and then uses `PMIX_CHECK_NSPACE` on it.
 
@@ -1848,13 +1845,13 @@ to `PMIX_SERVER_QUEUE_REPLY` on the buffer it had just released.
 
 **A group id off the wire can be NULL, and everything here treats it as a
 string.** The string unpacker spells "zero length" as a NULL pointer and
-reports success, so `PMIx_Group_construct("")` from any local client
-reached `get_tracker`, which `strcmp`s the id against every block on
+reports success, so `PMIx_Group_construct("")` arrives here with a NULL
+id - and `get_tracker` `strcmp`s the id against every block on
 `grp_collectives` and then `strdup`s it into a new one. The client
-library screens a NULL pointer, which an empty string is not — and a
-screen there would not help anyway, since the value arrives from a peer.
-`pmix_server_group` rejects it before anything else looks at it. Same
-class as the invalid-namespace screen in `pmix_server_get.c`.
+library screens a NULL pointer, which an empty string is not, and the
+value is unpacked here, so the screen belongs here: `pmix_server_group`
+rejects a NULL id before anything else looks at it. Same class as the
+invalid-namespace screen in `pmix_server_get.c`.
 
 **Driving a completion claims the block, and `host_called` is what says
 so.** The name is now narrower than the meaning: the flag marks the local
@@ -2070,7 +2067,7 @@ parse each rank out of a comma-delimited `PMIX_LOCAL_PEERS` string with a
 bare `strtoul`, so an unparseable field silently becomes rank 0 and a
 value above `UINT32_MAX` truncates. That string is written by the host
 through `register_nspace` and read back out of our own datastore — it is
-not peer-supplied — and both twins behave identically, so a screen added
+not read off the wire — and both twins behave identically, so a screen added
 to one would be an asymmetry rather than a fix. Add all four sites or
 none.
 
@@ -2531,13 +2528,12 @@ is the only place they get screened.
 **Every count these handlers read off the wire needs the round-trip
 screen**, for the reasons set out under "What *does* need screening"
 below. `pmix_server_iofdereg` is the `+ 1` shape: it sizes its array as
-`ninfo + 1` so it can seed `PMIX_IOF_STOP` in the last slot itself, so a
-count near `SIZE_MAX` wraps that sum to zero and writes the seed at
-`info[SIZE_MAX]`. `pmix_server_iof_handler`, `iofreg` and `iofstdin`
-are the plainer shape, but `iofreg` also copies its proc array again
-afterwards walking the `size_t` rather than the `int32_t` the unpack
-consumed. Covered by `test/unit/iof_output.c`, whose wrap case kills an
-unfixed library rather than failing it.
+`ninfo + 1` so it can seed `PMIX_IOF_STOP` in the last slot itself, so
+the count is screened before that sum is formed. `pmix_server_iof_handler`,
+`iofreg` and `iofstdin` are the plainer shape, but `iofreg` also copies
+its proc array again afterwards walking the `size_t` rather than the
+`int32_t` the unpack consumed. Covered by `test/unit/iof_output.c`, whose
+wrap case aborts rather than fails if the screen is removed.
 
 ## Inventory collection
 
@@ -2740,9 +2736,10 @@ Two suites cover the halves:
   `pmix_server_get` directly against a registered nspace whose job size
   exceeds its local size, and asserts the classification and that nothing
   is left parked on `local_reqs`. It also drives the handler from a
-  hand-packed buffer whose info count is a lie - one that wraps the
-  allocation and one that merely truncates - and those cases kill an
-  unfixed library rather than failing it. Read its header for what it
+  hand-packed buffer whose info count does not match its contents - one
+  that wraps the allocation size and one that merely truncates - and
+  those cases abort rather than fail if the screen is removed. Read its
+  header for what it
   pins down and what it deliberately cannot reproduce.
 - [`test/unit/server_dmodex.c`](../../test/unit/server_dmodex.c) covers
   `PMIx_Store_internal` and the `remote_pnd` deferral above, including
@@ -2754,14 +2751,15 @@ Two suites cover the halves:
   buffers — the malformed-count screens, the appended `PMIX_LOG_SOURCE` /
   `PMIX_LOG_TIMESTAMP` directives, and the RFC precedence rule that a
   repeated cleanup directory upgrades the entry already on the epilog.
-  The bad-directive-count case aborts rather than fails against an
-  unfixed library, the same bargain `test/unit/iof_output.c` makes. It
+  The bad-directive-count case aborts rather than fails if the screen is
+  removed, the same bargain `test/unit/iof_output.c` makes. It
   also drives `pmix_server_query` with mistyped query qualifiers — the
   server unpacks those off the wire, so it cannot rely on the screening
-  `PMIx_Query_info_nb` does in the *requestor's* process; a mistyped
-  `PMIX_NSPACE` segfaulted the server until `pmix_parse_localquery`
-  grew its own check. Its `get_credential` case is the one place in the
-  suite that reads a *reply* back: `PMIX_SERVER_QUEUE_REPLY` never arms
+  `PMIx_Query_info_nb` does in the *requestor's* process, and
+  `pmix_parse_localquery` checks each qualifier's type itself (a
+  mistyped `PMIX_NSPACE` is one of the cases). Its `get_credential` case
+  is the one place in the suite that reads a *reply* back:
+  `PMIX_SERVER_QUEUE_REPLY` never arms
   the send event for a peer whose `sd` is negative, so the message comes
   to rest on `peer->send_msg` and a single process can unpack what the
   server actually packed. That peer must be a stand-in, not
@@ -2772,8 +2770,8 @@ Two suites cover the halves:
   `pmix_server_group` from hand-packed wire buffers against a host stub
   that declines every request — declining is what makes each case leave
   `grp_collectives` empty, since the refusal arm answers every
-  participant and tears the block down. Its empty-group-id case takes an
-  unfixed library down with SIGSEGV rather than failing it, and its
+  participant and tears the block down. Its empty-group-id case ends in
+  SIGSEGV rather than a FAIL line if the screen is removed, and its
   late-registration pair is the only thing in the suite that reaches
   `pmix_server_grp_check_pending`: the block parks, the namespace
   registers, and the block must then go up to the host. Its driver
@@ -2786,8 +2784,8 @@ Two suites cover the halves:
   reach the host in the order the completion arms read them back. Its
   helper thread-shifts, because the handler touches
   `pmix_server_globals.collectives` and must not be called from `main()`.
-  The info-count case aborts rather than fails against an unfixed
-  library. Its host stub *declines* the fence on purpose — accepting
+  The info-count case aborts rather than fails if the screen is removed.
+  Its host stub *declines* the fence on purpose — accepting
   would leave the completion to the test, and queueing a reply to a peer
   with no socket is not something a single-process program can do.
   A further case builds three trackers in a known list order and drives
@@ -2854,9 +2852,9 @@ Two suites cover the halves:
   the aggregate walk inserts, and one with no node map at all — and reads
   the replies back off `send_msg`, per the `test/unit/server_control.c`
   idiom. The colon-bearing namespace is what holds the aggregate walk's
-  counting pass and its filling pass against each other; against an
-  unfixed library that case reports the wrong peer count and may take the
-  process down on the out-of-bounds write first. The bare namespace pins
+  counting pass and its filling pass against each other; with the
+  `strrchr` split or the fill bound removed, that case reports the wrong
+  peer count or aborts. The bare namespace pins
   the "known namespace, no nodes assigned" answer that
   `docs/how-things-work/resolve.rst` requires to be a success.
 - [`test/unit/event_chain.c`](../../test/unit/event_chain.c) drives
@@ -2967,134 +2965,117 @@ misbehave by design).
   `PMIX_ERR_BAD_PARAM`, so the near-universal shape here — `if (0 < n)
   { PMIX_INFO_CREATE(array, n); cnt = n; unpack into array; }` — fails
   cleanly when the allocation fails, whether from real memory pressure or
-  from an absurd count off the wire. Do not sprinkle NULL checks through
+  from an oversized wire count. Do not sprinkle NULL checks through
   these handlers; it was audited and refuted.
 - **What *does* need screening is a wire count used before, or without,
   the unpack.** Every count arrives as a `size_t` and is then consumed
-  through the `int32_t` that `PMIX_BFROPS_UNPACK` takes, so a peer can
-  send one that truncates to zero or to a negative number. That is
-  harmless wherever the only use is sizing an array the unpack
-  immediately guards. Two handlers here are not that. `pmix_server_log`
-  indexes the directive array to append `PMIX_LOG_SOURCE` *before*
-  anything is unpacked into it (a negative index off a NULL array) and
-  hands `(info, ninfo)` to `plog` even when the unpack was skipped;
-  `pmix_server_register_events` walks its code array `ncodes` times while
-  only `cnt` entries were unpacked into it, and that array comes from a
-  bare `malloc`, so the tail is uninitialized rather than constructed
-  (an info array is safe here precisely because `PMIX_INFO_CREATE`
-  constructs every element). Both now reject a count that does not
-  survive the round trip. Apply the same test to any new handler that
+  through the `int32_t` that `PMIX_BFROPS_UNPACK` takes, so a count can
+  truncate to zero or to a negative number. That needs nothing further
+  wherever the only use is sizing an array the unpack immediately
+  guards. Two handlers here are not that. `pmix_server_log` indexes the
+  directive array to append `PMIX_LOG_SOURCE` *before* anything is
+  unpacked into it and hands `(info, ninfo)` to `plog` even when the
+  unpack was skipped; `pmix_server_register_events` walks its code array
+  `ncodes` times while only `cnt` entries were unpacked into it, and that
+  array comes from a bare `malloc`, so the tail is uninitialized rather
+  than constructed (an info array needs no such care precisely because
+  `PMIX_INFO_CREATE` constructs every element). Both reject a count that
+  does not survive the round trip. Apply the same test to any new handler that
   reads a count before it reads the array, or that walks the `size_t`
   rather than the `int32_t` afterwards.
 
-  Know *why* an oversized count is dangerous and not merely wasteful:
-  `PMIx_Info_create` computes `n * sizeof(pmix_info_t)` with no overflow
-  guard and then **constructs every one of the `n` elements**. A count
-  large enough to wrap that product therefore yields a short allocation
-  whose constructor loop runs straight off the end - so the crash happens
-  inside the allocation, before any of the "the unpack screens a NULL
-  destination" reasoning gets a chance to apply. `PMIX_PROC_CREATE` and
-  the other `_CREATE` macros are built the same way. That is why the
-  round-trip screen belongs on any count a peer controls, not only on the
-  ones with a visible `+ 2`. `pmix_server_get` needed it for exactly this
+  Know *why* an oversized count needs the screen and not merely a NULL
+  check: `PMIx_Info_create` computes `n * sizeof(pmix_info_t)` with no
+  overflow guard and then **constructs every one of the `n` elements**,
+  inside the allocation call. So the count has to be bounded before the
+  create; the "the unpack screens a NULL destination" reasoning applies
+  only once the allocation has returned. `PMIX_PROC_CREATE` and the other
+  `_CREATE` macros are built the same way. That is why the round-trip
+  screen belongs on every count read off the wire, not only on the ones
+  with a visible `+ 2`. `pmix_server_get` carries it for exactly this
   reason, and its wire count is covered by `test/unit/server_get.c`.
 
-  **The collective handlers are the third case, and the worst of them.**
-  Fence and connect both size their info array as `ninf + 2` and then
-  seed two slots at `info[ninf]` and `info[ninf+1]` — *before* anything
-  is unpacked into it. A wire count near `SIZE_MAX` wraps that `+ 2` down
-  to a one- or zero-element array (`PMIx_Info_create` answers NULL for
-  zero, which is caught, but not for one), and the seeds are then written
-  at `info[SIZE_MAX]`. That is an out-of-bounds write a local client
-  drives directly, and there is no unpack in front of it to screen
-  anything. The proc count in the same message is the mirror image: it is
-  multiplied by `sizeof(pmix_proc_t)` to size the proc array, and it is
-  the `size_t` — not the `int32_t` the unpack consumed — that the `qsort`
-  and the `PMIX_PROC_FREE` afterwards walk. Fence, connect and disconnect
-  now all screen both counts with the same round-trip test. Covered by
-  `test/unit/server_fence.c` and `test/unit/server_connect.c`, whose
-  info-count cases kill an unfixed library rather than failing it. **Any
-  new collective handler that seeds slots past the unpacked ones owes the
-  same screen**. The group handler was the fourth: it builds its array as
-  `ninfo = ninf + 1` and seeds `PMIX_LOCAL_COLLECTIVE_STATUS` at
-  `info[ninf]` before the unpack, so a count near `SIZE_MAX` wrapped that
-  to a zero-element array — `PMIx_Info_create` answers NULL, which
-  nothing checked — and wrote the seed at `info[SIZE_MAX]`. Its proc
-  count had the mirror problem. Both now carry the round-trip screen.
+  **The collective handlers are the third case.** Fence and connect both
+  size their info array as `ninf + 2` and then seed two slots at
+  `info[ninf]` and `info[ninf+1]` — *before* anything is unpacked into
+  it. So the `+ 2` must not wrap, and there is no unpack in front of the
+  seeds to catch it if it did. The proc count in the same message is the
+  mirror image: it is multiplied by `sizeof(pmix_proc_t)` to size the
+  proc array, and it is the `size_t` — not the `int32_t` the unpack
+  consumed — that the `qsort` and the `PMIX_PROC_FREE` afterwards walk.
+  Fence, connect and disconnect all screen both counts with the same
+  round-trip test. Covered by `test/unit/server_fence.c` and
+  `test/unit/server_connect.c`, whose info-count cases abort rather than
+  fail if the screen is removed. **Any new collective handler that seeds
+  slots past the unpacked ones owes the same screen**. The group handler
+  is the fourth: it builds its array as `ninfo = ninf + 1` and seeds
+  `PMIX_LOCAL_COLLECTIVE_STATUS` at `info[ninf]` before the unpack, and
+  its proc count has the same shape as the others. Both carry the
+  round-trip screen.
 
-  **The two event handlers were another.** `pmix_server_register_events`
-  screened its code count and not its info count, and
-  `pmix_server_event_recvd_from_client` screened neither - and the
-  latter has the `+ 1` shape, sizing its array as `ninfo + 1` so the
+  **The two event handlers are two more.** `pmix_server_register_events`
+  screens its code count and its info count, and
+  `pmix_server_event_recvd_from_client` screens its info count, which has
+  the `+ 1` shape: it sizes its array as `ninfo + 1` so the
   `PMIX_SERVER_INTERNAL_NOTIFY` marker can be seeded in the last slot.
-  With `sizeof(pmix_info_t) == 552`, the count `2^61` wraps the product
-  to exactly zero; `malloc(0)` hands back a live pointer, so the
-  constructor loop then walks `2^61` elements off the end of it. Both
-  now carry the screen, and `test/unit/server_events.c` crashes an
-  unfixed library on either one.
+  The product can wrap to exactly zero, and `malloc(0)` returns a live
+  pointer, so a NULL check on the result does not catch it.
+  `test/unit/server_events.c` covers both counts and fails if either
+  screen is removed.
 
-  **The two fabric handlers were another.** `pmix_server_fabric_register`
+  **The two fabric handlers are another.** `pmix_server_fabric_register`
   sizes the query caddy's info array from the wire count, and
   `pmix_server_device_dists` sizes the *server* caddy's - and `qdes` and
-  `cddes` both walk that `size_t` when they free. Neither screened it,
-  and neither checked what `PMIX_INFO_CREATE` handed back. Covered by
-  `test/unit/server_fabric.c`, whose two count cases crash an unfixed
-  library.
+  `cddes` both walk that `size_t` when they free. Both screen the count
+  and check what `PMIX_INFO_CREATE` handed back. Covered by
+  `test/unit/server_fabric.c`, whose two count cases fail if either check
+  is removed.
 
-  **The classic commands in `pmix_server_ops.c` were the last group
-  without it.** Publish, lookup and unpublish all size their array as
+  **The classic commands in `pmix_server_ops.c` carry it too.** Publish,
+  lookup and unpublish all size their array as
   `ninfo + 2` so they can seed `PMIX_USERID` and `PMIX_GRPID` in the last
   two slots, and spawn sizes an info array and an app array straight from
   the wire — `PMIx_App_create` multiplies and constructs exactly as
   `PMIx_Info_create` does, and `scaddes` then walks the `size_t` when it
-  frees. `pmix_server_abort` is the sixth and was the last to get it: its
+  frees. `pmix_server_abort` is the sixth: its
   proc count sizes a `PMIX_PROC_CREATE`, and `PMIx_Proc_create` has the
   same unguarded `n * sizeof(pmix_proc_t)` followed by a construct loop
   over all `n`, with `scaddes` walking the same `size_t` at
-  `PMIX_PROC_FREE`. All six counts now carry the screen. The key counts
+  `PMIX_PROC_FREE`. All six counts carry the screen. The key counts
   in lookup and unpublish deliberately do **not**: each key is unpacked
-  one at a time inside the loop, so an absurd `nkeys` simply runs the
+  one at a time inside the loop, so an oversized `nkeys` simply runs the
   buffer dry and fails on the first short read — it never reaches an
   allocator. A key that arrives as a NULL string does not need a screen
   either: `PMIx_Argv_append_nosize` refuses a `NULL` arg with
   `PMIX_ERR_BAD_PARAM` rather than reaching `strdup`.
 
-  **What none of the three collective families screens is the count the
-  unpack came back with**, and that was examined and left alone.
-  `PMIX_BFROPS_UNPACK` fills `min(packed, provided)` and reports success,
-  so a client that declares 100 procs and sends 2 gets a tracker whose
-  `pcs` tail is 98 default-constructed entries with an empty namespace.
-  Nothing corrupts: the namespace walk in `pmix_server_new_tracker`
-  compares with `strcmp`, so an empty name matches no registered
-  namespace rather than wildcarding onto every one, and each such entry
-  merely marks the tracker non-local. The collective then never completes
-  and the client hangs itself. Fence, connect and disconnect all behave
-  this way, so a screen added to one would be an asymmetry rather than a
-  fix; if you add one, add all three.
+  **The three collective families also check the count the unpack came
+  back with.** `PMIX_BFROPS_UNPACK` fills `min(packed, provided)` and
+  reports success, so fence, connect, disconnect and group each read
+  `cnt` back and require it to equal the declared `nprocs` — see "A wire
+  array can be SHORTER than the count that introduced it" above. A
+  default-constructed tail entry carries an empty namespace, and
+  `PMIX_CHECK_NSPACE` reads that as a wildcard.
 
-  **That decision turns on "nothing corrupts", so do not carry it to a
-  handler where the tail becomes state somebody else reads.**
-  `pmix_server_job_ctrl` walks its declared `ntargets` and *creates* a
-  `pmix_namespace_t` for any target namespace it does not recognize, so
-  each default-constructed entry appended one named `""` to
-  `pmix_globals.nspaces` for the life of the server — and unlike
-  `pmix_server_new_tracker`'s `strcmp`, most of the list walks in this
-  directory use `PMIX_CHECK_NSPACE`, which reports an empty name as
-  matching *every* namespace and would stop at the phantom. It also
-  handed the host that many `pmix_proc_t`s of which most were never
-  sent. It now trusts the count the unpack came back with — and frees
-  the array with the count it was *allocated* with when that count is
-  zero, since `PMIX_PROC_FREE` does nothing for `n == 0`. The test for
-  which rule applies is not "is this a collective" but "does anything
-  outlive the request".
+  **`pmix_server_job_ctrl` follows the same rule for its targets.** It
+  *creates* a `pmix_namespace_t` for any target namespace it does not
+  recognize, so a default-constructed entry would add one named `""` to
+  `pmix_globals.nspaces` for the life of the server — and most of the
+  list walks in this directory use `PMIX_CHECK_NSPACE`, which reports an
+  empty name as matching *every* namespace. It walks the count the unpack
+  came back with rather than the declared `ntargets` — and frees the
+  array with the count it was *allocated* with when that count is zero,
+  since `PMIX_PROC_FREE` does nothing for `n == 0`. The test for whether
+  a tail matters is not "is this a collective" but "does anything outlive
+  the request".
 
   Note also what the unpack itself protects you from, so you screen for
   the right reason. `pmix_bfrops_base_unpack` reads the count the
   *packer* wrote and unpacks `min(packed, provided)`, reporting success
   whenever the storage was big enough. So handing it a `cnt` larger than
   the array on the wire is harmless — `pmix_server_publish` passed
-  `ninfo + 1` where its two siblings pass `ninfo`, and that over-read
-  never did anything. What it did do was make the guard around the
+  `ninfo + 1` where its two siblings pass `ninfo`, and the extra slot
+  was never filled. What it did do was make the guard around the
   unpack (`0 < cd->ninfo`, always true) fire for a publish carrying no
   info objects at all, where the buffer is already exhausted; gate on
   the wire count, not on the array size that carries your extra slot.
@@ -3120,14 +3101,12 @@ misbehave by design).
   `PMIX_LOOKUPNB_CMD` and `PMIX_UNPUBLISHNB_CMD` all carry an effective
   user id on the wire, and all three handlers seed `PMIX_USERID` and
   `PMIX_GRPID` into the info array the host will store the data under.
-  The group id was already read from `peer->info` and the user id was
-  not, which left half of an access-control pair as a claim the
-  requestor restates on every command — a peer could publish or look up
-  as any uid it liked, whatever the connection handshake had established.
-  The handshake is what makes `peer->info` the right source: it refuses a
-  peer that claims a uid or gid other than the one the host registered it
-  with (`src/mca/ptl/base/ptl_base_connection_hdlr.c`), so that pair is
-  vouched for by the host rather than asserted per request. The wire
+  Both values are read from `peer->info`, so the pair is the one the
+  connection handshake established rather than one restated on every
+  command. The handshake is what makes `peer->info` the right source: it
+  requires the uid and gid a peer presents to match the ones the host
+  registered it with (`src/mca/ptl/base/ptl_base_connection_hdlr.c`), so
+  that pair comes from the host rather than from each request. The wire
   field stays and is still unpacked — the message layout is frozen, and
   there is no version number that would let a reader tell a peer built
   before its removal from one built after — but its value is discarded.
@@ -3136,32 +3115,30 @@ misbehave by design).
   structure, and several sites here read `array[0]` and `array[1]`
   positionally on the strength of a comment. Check the array is non-NULL
   and long enough first: `_register_nspace` and `_register_resources` both
-  did not, and neither is reachable only from trusted code - a host is
-  free to get this wrong.
+  did not, and a host is free to get this wrong.
 
-  **The same applies with more force to anything a *client* handed you.**
-  An info array a handler unpacked off the wire carries whatever type tag
-  the peer chose, so reading its union without checking that tag is
-  reading a pointer the peer picked. `pmix_server_register_events` took
-  `PMIX_EVENT_AFFECTED_PROC` and `PMIX_EVENT_AFFECTED_PROCS` straight out
-  of it, so a mistyped one had the server copy a `pmix_proc_t` out of a
-  scalar or dereference that scalar as a `pmix_data_array_t`; the group
-  branch of `pmix_server_event_recvd_from_client` did the same with
-  `PMIX_GROUP_ID` and `strcmp`'d the result. Confirm the value's type -
-  and, for a data array, its *element* type, or a correctly-tagged array
-  of some other type walks past its end. This is the client-side twin of
-  the `pmix_parse_localquery` screen.
+  **The same applies to anything a *client* handed you.** An info array a
+  handler unpacked off the wire carries the type tag its sender packed,
+  so check that tag before reading the union.
+  `pmix_server_register_events` checks it on `PMIX_EVENT_AFFECTED_PROC`
+  and `PMIX_EVENT_AFFECTED_PROCS` before reading a `pmix_proc_t` or a
+  `pmix_data_array_t` out of them, and the group branch of
+  `pmix_server_event_recvd_from_client` checks `PMIX_GROUP_ID` before its
+  `strcmp`. Confirm the value's type - and, for a data array, its
+  *element* type, since a correctly-tagged array of some other type has a
+  different element size. This is the client-side twin of the
+  `pmix_parse_localquery` screen.
 
   **The same rule covers a field that is missing rather than mistyped.**
   `pmix_server_query` hands its unpacked queries to `pmix_parse_localquery`,
   which walks each one's `keys` array to a NULL terminator — and the
   `PMIX_QUERY` unpacker leaves `keys` at the NULL its constructor set
-  whenever the peer declared zero of them, reporting success. So a query
-  naming no keys at all was a NULL dereference on the progress thread.
-  `PMIx_Query_info_nb` had always screened it, which buys a server
-  nothing: that check runs in the *requestor's* process. The screen now
-  sits in `pmix_parse_localquery`, beside the qualifier one and for the
-  same reason — put it where every reader passes, not at one entry point.
+  whenever the sender declared zero of them, reporting success. So a
+  query naming no keys at all arrives with a NULL `keys`.
+  `PMIx_Query_info_nb` screens that too, but its check runs in the
+  *requestor's* process, so the server keeps its own: the screen sits in
+  `pmix_parse_localquery`, beside the qualifier one and for the same
+  reason — put it where every reader passes, not at one entry point.
 - **The registration entry points build global state, so a failed
   allocation must not be left on a global list.** `_register_nspace` and
   `_register_client` both `strdup` the namespace name straight into a
@@ -3282,11 +3259,11 @@ misbehave by design).
   deliberate.** A job-control request may name a job this server has not
   been told about yet, and the epilog directives need somewhere to hang;
   `_register_nspace` looks the namespace up by name and reuses the entry
-  when registration eventually arrives. It is not a leak and not a
-  phantom — for a target the peer actually sent. See the note above on
-  why the walk must use the count the unpack came back with: the same
-  code reached with a declared count larger than the packed array
-  created a namespace named `""`, which is a phantom and does corrupt.
+  when registration eventually arrives. It is not a leak — for a target
+  the request actually carried. See the note above on why the walk uses
+  the count the unpack came back with: an entry the message did not fill
+  would carry the empty name `""`, which `PMIX_CHECK_NSPACE` treats as a
+  wildcard.
 - **An epilog list's duplicate scan must read the list it appends to.**
   `pmix_server_job_ctrl` applies three of them per target — ignores,
   cleanup directories, cleanup files — and they are near-copies of one
@@ -3328,8 +3305,8 @@ misbehave by design).
   `pmix_server_job_ctrl` could see the paths inside one. A value naming
   no path at all — `","` — was worse than any of them: `PMIx_Argv_split`
   returns **NULL** rather than an empty array for a string with no
-  tokens, and the epilog indexed it, so a client could take the server
-  down at job termination with one directive. `epi_cache_files` /
+  tokens, and the epilog indexed it, so such a value has to be refused
+  when it arrives rather than met at job termination. `epi_cache_files` /
   `epi_cache_dirs` expand at registration and refuse a value that names
   nothing; `pmix_server_job_ctrl` is the only thing in the tree that
   builds an epilog entry, so after that no entry carries a comma and the
@@ -3360,35 +3337,31 @@ misbehave by design).
   an entry already registered — the existing more-permissive-wins rule
   decides it: recursive removes everything empty would have and the
   files besides, so recursive dominates and clears the empty flag.
-- **The epilog removes what a client named *as* that client, and the
-  identity it uses had better be initialized.** `pmix_epilog_t::uid` and
-  `::gid` were written by the connection handler
-  (`src/mca/ptl/base/ptl_base_connection_hdlr.c`, four sites) and read
-  nowhere, so `pmix_execute_epilog` unlinked and rmdir'd whatever path a
-  client named as whatever user the server happened to be — free rein
-  over a node for any client of a privileged system-level server.
-  `pmix_execute_epilog` now walks under the recorded identity, which
-  hands the decision to the kernel and so gets symlinks and `..` right
-  without a check of ours racing the filesystem. Two routes:
+- **The epilog removes what a client named *as* that client, so the
+  identity it uses must be initialized.** `pmix_epilog_t::uid` and
+  `::gid` are written by the connection handler
+  (`src/mca/ptl/base/ptl_base_connection_hdlr.c`, four sites), and
+  `pmix_execute_epilog` walks under that recorded identity. That hands
+  the decision to the kernel and so gets symlinks and `..` right without
+  a check of ours racing the filesystem. Two routes:
 
   - **We are already that user** — the ordinary per-user server — so
     walk in place. This compares our own process credentials, not
-    anything on disk, so there is no time-of-check window: only another
-    thread calling `seteuid()` could invalidate it and nothing here
-    does.
-  - **We are not**, so `fork()` and drop in the child
+    anything on disk, so nothing can change between the check and the
+    walk: only another thread calling `seteuid()` could invalidate it and
+    nothing here does.
+  - **We are not**, so `fork()` and switch identity in the child
     (`setgroups(0, NULL)`, then `setgid`, then `setuid` — group before
-    user, because dropping the uid first takes with it the privilege
-    needed to change the gid, and `setuid()` does not touch the
-    supplementary groups on its own). Only a privileged server can drop
-    to somebody else, which is exactly the server this is for; an
-    unprivileged one fails the drop and the child exits having done
-    nothing, which is right, because the kernel would have refused those
-    unlinks anyway.
+    user, because changing the uid first gives up the ability to change
+    the gid, and `setuid()` does not touch the supplementary groups on
+    its own). Only a server permitted to change its identity can switch
+    to somebody else, which is exactly the server this is for; any other
+    fails the switch and the child exits having done nothing, which is
+    right, because the kernel would have refused those unlinks anyway.
 
   **A child rather than `seteuid()` on the spot**, because credentials
   are per-process: glibc implements the POSIX semantics with a broadcast
-  to every thread, so dropping here would run the whole server as the
+  to every thread, so switching here would run the whole server as the
   client for the length of the walk. The epilog runs at job termination
   and never on a hot path, so the fork is affordable and the window
   simply does not exist. Every path out of the child is `_exit()`, never
@@ -3403,18 +3376,14 @@ misbehave by design).
   set `SIGCHLD` to `SIG_IGN`, and then our child is reaped out from
   under us.
 
-  **Neither `nscon` nor `pcon` assigned those two members**, so until a
-  handshake wrote them they held whatever the allocator had left there —
-  fine while nothing read them, and not fine at all in a function that
-  unlinks files. `PMIX_NEW` and `PMIX_CONSTRUCT` zero an object now,
-  which makes that particular failure repeatable and **no less
-  dangerous**: a uid of zero is root, so the skipped member would have
-  named the one identity that must never be assumed. Both constructors
-  default them to `geteuid()`/`getegid()`, which makes an epilog nobody
-  vouched for behave exactly as it always has and reserves the drop for
-  a peer the host actually registered an identity for. **A member no
-  constructor assigns is zero, and here zero is a claim** — do not read
-  the zeroing as a default that spares you writing one.
+  **Both constructors, `nscon` and `pcon`, assign those two members**,
+  defaulting them to `geteuid()`/`getegid()`. An epilog with no
+  registered identity therefore runs as the server itself, and the
+  identity switch is reserved for a peer the host actually registered an
+  identity for. `PMIX_NEW` and `PMIX_CONSTRUCT` zero an object, but uid 0
+  is a real identity, so the zeroing is not a usable default here. **A
+  member no constructor assigns is zero, and here zero names a user** —
+  do not read the zeroing as a default that spares you writing one.
 - **A job-control cleanup request is staged and then committed, and it
   has to stay that way.** The three epilog lists outlive the request —
   they live as long as the namespace or the peer — and nothing gives a

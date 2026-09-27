@@ -158,7 +158,7 @@ Fires every `tv` seconds:
   touches, which only alerts if the timer fires more than once.
 - **`stat` is a TOCTOU** (the source carries a `coverity[TOCTOU]`
   annotation): the file can change between the `stat` and any action.
-  That is acceptable for a liveness heuristic — do not "harden" it into
+  That is acceptable for a liveness heuristic — do not rework it into
   something that assumes the stat is authoritative.
 - Priority 20 is marked "irrelevant"; routing is by `monitor->key`, so the
   number does not arbitrate against `heartbeat`.

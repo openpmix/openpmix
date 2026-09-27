@@ -53,7 +53,7 @@ data arrays tagged with a `*_SAMPLE_TIME`, exactly like `plinux`.
 **Keep it that way.** These two functions are the same code in two files,
 so a defect found in one is a defect in the other, and a fix applied to
 one and not the other silently gives macOS and Linux different behavior
-for the same request. The rules they encode — the untrusted monitor
+for the same request. The rules they encode — type-checking the monitor
 value, who owns the answer list on the synchronous path, why a reader's
 `PMIX_ERR_NOT_FOUND` is skipped rather than fatal, why every
 `PMIx_Info_list_convert()` result is destructed after it is added, and

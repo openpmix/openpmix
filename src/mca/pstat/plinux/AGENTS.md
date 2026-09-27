@@ -98,7 +98,7 @@ with no results.
 error.
 
 **Everything `query` reads out of `monitor` and `directives` is
-untrusted.** For a client request both arrays came off the wire and
+type-checked first.** For a client request both arrays came off the wire and
 nothing between `pmix_server_monitor()`'s unpack and here inspects them.
 `PMIx_Check_key` compares only the key, so the *type* has to be checked
 before the union is read: `monitor_fields()` is the one place that
@@ -106,8 +106,8 @@ unwraps `monitor->value` into the field array (`PMIX_UNDEF` means "every
 field in this category", `PMIX_DATA_ARRAY` is the real list, anything
 else is `PMIX_ERR_BAD_PARAM`), and `PMIX_MONITOR_ID` is checked for both
 type and a `NULL` string before it is `strdup`ed. The framework guide's
-"The info array is untrusted" note is the same rule applied one level
-down.
+"Check a value's declared type before reading it" note is the same rule
+applied one level down.
 
 After each synchronous `update()` call, `query` checks `cb.status`
 before touching the list — see "Who owns the answer list" in the
@@ -235,7 +235,7 @@ standalone commit — do not paper over them):
   buffer. Real `/proc` content does not currently produce any of those
   shapes, which is why this was never seen — the bounds are there so a
   future kernel format, a container's synthesized `/proc`, or a new
-  caller cannot turn a parsing surprise into an out-of-bounds read.
+  caller is still parsed within the buffer.
   `isalnum`/`isspace` take their argument as an `unsigned char` for the
   same reason: a plain `char` is signed here.
 - The `PMIX_PROC_PERCENT_CPU` (`pctcpu`) flag is parsed by the base helper

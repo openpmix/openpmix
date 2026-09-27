@@ -425,7 +425,7 @@ value tagged `PMIX_DATA_ARRAY` whose `data.darray` is NULL is malformed
 yet trivially constructible, and it used to segfault the library:
 `pmix_bfrops_base_tma_copy_darray()` read `src->type` and `src->size`
 with no guard, so every `PMIX_INFO_XFER`, every `value_xfer`, and every
-pack that copies first was exposed. It now returns the same empty array
+pack that copies first reached the fault. It now returns the same empty array
 it already produced for a zero-length or NULL-elements source — "absent"
 is a state this function could always express; it simply never checked
 for the one spelling of it that arrives as a NULL pointer.
@@ -461,18 +461,17 @@ Regression coverage: `test/unit/run_grpbadinfo.pl` drives
 The second case is the one that exercises this file.
 
 The same reasoning applies to what arrives from a *peer* rather than
-from a caller, and there the stakes are higher because there is no
-caller to blame. See "Nothing here may read outside the buffer it was
-given" in [`base/AGENTS.md`](base/AGENTS.md): a count that outruns its
-payload and a flexible integer truncated mid-encoding were both
-unbounded over-reads, and both are three-byte messages.
+from a caller: every count and every flexible integer is checked
+against the bytes remaining before it is used. See "Nothing here may
+read outside the buffer it was given" in
+[`base/AGENTS.md`](base/AGENTS.md).
 
 ## Testing
 
 | Where | What it covers |
 |-------|----------------|
 | [`test/unit/bfrops_darray.c`](../../../test/unit/bfrops_darray.c) | every registered data type used as a data-array element, held across construct / pack / unpack / copy |
-| [`test/unit/bfrops_malformed.c`](../../../test/unit/bfrops_malformed.c) | truncated, lying and malformed input; the flexible-integer encoding boundaries |
+| [`test/unit/bfrops_malformed.c`](../../../test/unit/bfrops_malformed.c) | truncated, inconsistent and malformed input; the flexible-integer encoding boundaries |
 | [`test/unit/bfrops_get_number.c`](../../../test/unit/bfrops_get_number.c) | `PMIx_Value_get_number` numeric conversions, as properties over every source/destination pair |
 | [`test/unit/bfrops_null_object.c`](../../../test/unit/bfrops_null_object.c) | every value-level operation against a value that names a pointer-backed type and carries no object |
 | [`test/unit/nested_darray.c`](../../../test/unit/nested_darray.c) | array nesting and the `max_array_depth` cap |

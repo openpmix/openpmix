@@ -125,28 +125,27 @@ anything is read that depends on it.
   call it "earlier", so the check reads the fields itself rather than
   asking that macro.
 
-### Everything in the connect-ack is untrusted
+### Every field of the connect-ack is checked as it is read
 
-The connection handler runs **before** the credential is validated.
-Anything that can open a TCP connection to the listener gets to drive
-these macros. Two consequences:
+The connection handler runs **before** the credential is validated, so
+it makes no assumption about what it is given. It checks:
 
 - The message size is bounded by `PMIX_MAX_CRED_SIZE` before it is
   allocated.
 - Every `GET_*` macro bounds itself against `cnt`, the bytes remaining.
   `GET_BLOB` in particular must check the caller's length against `cnt`:
-  the credential length is a `uint32_t` off the wire, and a peer that
-  claims more than it sent would otherwise read past the buffer *and*
-  underflow `cnt`, which then lets every later field read out of bounds
-  too. If you add a field, bound it the same way, and add the truncated
-  case to `test/unit/ptl_handshake.c`.
+  the credential length is a `uint32_t` off the wire, and a length
+  larger than the bytes remaining is refused. The same check keeps `cnt`
+  from underflowing, which is what keeps every later field inside the
+  buffer. If you add a field, bound it the same way, and add the
+  truncated case to `test/unit/ptl_handshake.c`.
 - The optional trailing `pmix_info_t` blob (field 10) carries its own
   element **count** as the first thing `PMIX_BFROPS_UNPACK` reads out of
   it, and that count is off the wire too. Bound it against the blob's own
   byte length before handing it to `PMIX_INFO_CREATE` — a packed
   `pmix_info_t` is never smaller than a byte, so a count larger than the
-  bytes received is malformed, and passing it on either over-allocates or
-  returns a NULL array the follow-on unpack then walks off of. **Both**
+  bytes received is malformed and is refused before anything is
+  allocated from it. **Both**
   the client path (`pmix_ptl_base_connection_handler`) and the tool path
   (`process_tool_request`) parse this blob and both must apply the guard;
   the client path silently lacked it for a time. Check the unpack return
@@ -202,11 +201,10 @@ Four functions, in this order, all on the progress thread:
 ### The inbound connect-ack never blocks the server's progress thread
 
 `pmix_ptl_base_connection_handler` runs **on the progress thread, before
-the credential is checked**, for a socket that anything able to reach the
-listener can open. Every client of this server waits while it runs. It
-is not "only startup": that is true of the peer connecting, not of the
-server, which reaches this code whenever anyone connects. So the
-connect-ack is never waited for:
+the credential is checked**. Every client of this server waits while it
+runs. It is not "only startup": that is true of the peer connecting, not
+of the server, which reaches this code whenever a connection arrives. So
+the connect-ack is never waited for:
 
 - **The accepted socket is non-blocking**, set in
   `connection_event_handler` before anything reads it. An accepted
@@ -214,10 +212,10 @@ connect-ack is never waited for:
   never does on Linux, so do not rely on inheritance; a socket that
   cannot be made non-blocking is closed rather than used.
 - **The pending connection is a one-shot read event**, not an
-  immediately-active one. A peer that connects and sends nothing — a
-  port probe, a misbehaving local process, or a tool suspended with ^Z
-  between its `connect()` and its first send — costs the progress thread
-  nothing, and a peer that closes without sending still wakes the event,
+  immediately-active one. A connection that sends nothing — a tool
+  suspended with ^Z between its `connect()` and its first send, for
+  example — costs the progress thread nothing, and a peer that closes
+  without sending still wakes the event,
   so the handler's error path reclaims the socket.
 - **The handler reads what has arrived and keeps its place.**
   `read_connect_ack` fills `pnd->hdr` and then `pnd->msg`, counting bytes
@@ -229,9 +227,9 @@ connect-ack is never waited for:
   payload, put the socket into blocking mode and parse.
 
 A blocking read bounded by a receive timeout is **not** a substitute:
-that was the intermediate version, and it still let a peer that sent a
-few bytes and stalled freeze the whole server for the length of the
-timeout, as often as it cared to reconnect.
+that was the intermediate version, and it still held the progress thread
+for the length of the timeout whenever a connection sent part of a
+connect-ack and stopped.
 
 **`pmix_ptl_base.pending_connections`** holds every `pnd` whose
 connect-ack is still arriving — `pmix_pending_connection_t` is a list
@@ -243,9 +241,8 @@ things take it off:
 2. `connect_ack_expired`, when `ptl_base_connect_ack_timeout` (seconds;
    default 5; 0 disables it) passes before the whole connect-ack has
    arrived. The listener arms that timer at accept. Without it an idle
-   connection costs nothing but a descriptor — but it holds that
-   descriptor for as long as it likes, and anything that can reach the
-   listener can open more;
+   connection costs nothing but a descriptor, but it keeps that
+   descriptor until finalize;
 3. `pmix_ptl_base_stop_listening`, at finalize, which is what closes
    them when the timeout is disabled. Both finalize paths stop the
    progress thread first, so neither event can be running.
@@ -257,7 +254,7 @@ item that is still on a list aborts a debug build.
 **What is still blocking, and bounded by the same timeout.** Once the
 connect-ack is in, the replies to it and the psec server handshake
 (`PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`) are blocking exchanges on the same
-socket, still before the connection is trusted. The handler sets
+socket, still before the connection is complete. The handler sets
 `SO_RCVTIMEO` from `connect_ack_timeout` when it puts the socket into
 blocking mode, and the option stays until the socket goes non-blocking
 for steady-state traffic. That bound only works because
@@ -449,9 +446,10 @@ the session tmpdir. Things to keep straight:
 `pmix_ptl_base_df_search` (behind `trysearch` in `connect_to_peer`) and
 `query_servers` (behind `PMIX_QUERY_AVAIL_SERVERS`) walk a directory tree
 for `pmix.*` contact files. **That tree is the system tmpdir, which
-defaults to `$TMPDIR` or `/tmp` — anyone on the node can write there**,
-so everything found in it is untrusted, including what kind of file it
-is. Three rules, each of which was once broken:
+defaults to `$TMPDIR` or `/tmp` and is shared by everything on the
+node**, so the walk makes no assumption about what it finds there,
+including what kind of file each entry is. Three rules, each of which
+was once broken:
 
 - **Only a real directory is descended into.** An entry is classified
   with `lstat()`; a symbolic link is never followed to a directory. A
@@ -460,11 +458,10 @@ is. Three rules, each of which was once broken:
   exponential — the walk never came back. A link to a regular file is
   still read.
 - **Only a regular file is read.** `fopen()` on a FIFO blocks until
-  something opens the other end, so one `pmix.*` FIFO hung every tool
-  searching that directory. The walk skips anything that is not a
+  something opens the other end. The walk skips anything that is not a
   regular file, and `open_conn_file()` then opens the file
-  `O_NONBLOCK` and checks the *descriptor* with `fstat()`, so the entry
-  cannot be swapped for a FIFO between the check and the open. A file
+  `O_NONBLOCK` and checks the *descriptor* with `fstat()`, so the type
+  checked is the type of the file actually opened. A file
   the caller named explicitly (`PMIX_TOOL_ATTACHMENT_FILE`, a rendezvous
   file) is still opened with plain `fopen()` — naming a FIFO there is
   the caller's own choice.
@@ -781,9 +778,9 @@ Two regimes, described in the framework doc. What matters *here*:
 | `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: tools connecting across nodes, discovery by pid/nspace, remote-connection interface selection |
 
 Anything in here that can be expressed as a pure function of its inputs
-should get a unit test — the parsers and the handshake macros both
-could, and did, hide out-of-bounds reads for years because nothing
-exercised them with input the library had not written itself.
+should get a unit test — the parsers and the handshake macros both went
+years with missing length checks, because nothing exercised them with
+input the library had not written itself.
 
 ## Building
 
