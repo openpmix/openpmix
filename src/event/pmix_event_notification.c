@@ -301,6 +301,34 @@ relcd:
     PMIX_RELEASE(chain);
 }
 
+/* Verify the datatype of the proc-valued directives in an event
+ * notification - see pmix_event.h */
+static pmix_status_t screen_proc_directives(const pmix_info_t info[], size_t ninfo)
+{
+    size_t n;
+
+    if (NULL == info) {
+        return PMIX_SUCCESS;
+    }
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC)) {
+            if (!PMIX_EVENT_VALUE_IS_PROC(&info[n].value)) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROCS)) {
+            if (!PMIX_EVENT_VALUE_IS_PROC_ARRAY(&info[n].value)) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_CUSTOM_RANGE)) {
+            if (!PMIX_EVENT_VALUE_IS_PROC(&info[n].value) &&
+                !PMIX_EVENT_VALUE_IS_PROC_ARRAY(&info[n].value)) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 /* as a client, we pass the notification to our server */
 pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_t *source,
                                           pmix_data_range_t range, const pmix_info_t info[],
@@ -322,6 +350,12 @@ pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_
                         pmix_client_globals.myserver->info->pname.nspace,
                         pmix_client_globals.myserver->info->pname.rank, PMIx_Error_string(status),
                         PMIx_Data_range_string(range));
+
+    rc = screen_proc_directives(info, ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
 
     holdcd = true;
     if (0 < ninfo) {
@@ -1674,6 +1708,12 @@ pmix_status_t pmix_server_notify_event_proxy(pmix_status_t status, const pmix_pr
                         "pmix_server: notify client of event %s range %s",
                         PMIx_Error_string(status), PMIx_Data_range_string(range));
 
+    /* verify the datatype of the proc-valued directives */
+    if (PMIX_SUCCESS != screen_proc_directives(info, ninfo)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     cd = PMIX_NEW(pmix_notify_caddy_t);
     if (NULL == cd) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
@@ -1864,37 +1904,64 @@ pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain, const pmix_info_t
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_CUSTOM_RANGE)) {
                 /* provides an array of pmix_proc_t identifying the procs
                  * that are to receive this notification, or a single pmix_proc_t  */
-                if (PMIX_DATA_ARRAY == info[n].value.type && NULL != info[n].value.data.darray
-                    && NULL != info[n].value.data.darray->array) {
-                    chain->ntargets = info[n].value.data.darray->size;
-                    PMIX_PROC_CREATE(chain->targets, chain->ntargets);
-                    memcpy(chain->targets, info[n].value.data.darray->array,
-                           chain->ntargets * sizeof(pmix_proc_t));
-                } else if (PMIX_PROC == info[n].value.type) {
+                if (NULL != chain->targets) {
+                    /* replace any earlier value */
+                    PMIX_PROC_FREE(chain->targets, chain->ntargets);
+                    chain->targets = NULL;
+                    chain->ntargets = 0;
+                }
+                if (PMIX_EVENT_VALUE_IS_PROC_ARRAY(&info[n].value)) {
+                    if (0 < info[n].value.data.darray->size) {
+                        PMIX_PROC_CREATE(chain->targets, info[n].value.data.darray->size);
+                        if (NULL == chain->targets) {
+                            return PMIX_ERR_NOMEM;
+                        }
+                        chain->ntargets = info[n].value.data.darray->size;
+                        memcpy(chain->targets, info[n].value.data.darray->array,
+                               chain->ntargets * sizeof(pmix_proc_t));
+                    }
+                } else if (PMIX_EVENT_VALUE_IS_PROC(&info[n].value)) {
+                    PMIX_PROC_CREATE(chain->targets, 1);
+                    if (NULL == chain->targets) {
+                        return PMIX_ERR_NOMEM;
+                    }
                     chain->ntargets = 1;
-                    PMIX_PROC_CREATE(chain->targets, chain->ntargets);
                     memcpy(chain->targets, info[n].value.data.proc, sizeof(pmix_proc_t));
                 } else {
                     /* this is an error */
                     PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                     return PMIX_ERR_BAD_PARAM;
                 }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC)) {
-                PMIX_PROC_CREATE(chain->affected, 1);
-                if (NULL == chain->affected) {
-                    return PMIX_ERR_NOMEM;
-                }
-                chain->naffected = 1;
-                memcpy(chain->affected, info[n].value.data.proc, sizeof(pmix_proc_t));
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROCS)) {
-                chain->naffected = info[n].value.data.darray->size;
-                PMIX_PROC_CREATE(chain->affected, chain->naffected);
-                if (NULL == chain->affected) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROCS)) {
+                if (NULL != chain->affected) {
+                    PMIX_PROC_FREE(chain->affected, chain->naffected);
+                    chain->affected = NULL;
                     chain->naffected = 0;
-                    return PMIX_ERR_NOMEM;
                 }
-                memcpy(chain->affected, info[n].value.data.darray->array,
-                       chain->naffected * sizeof(pmix_proc_t));
+                if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC) &&
+                    PMIX_EVENT_VALUE_IS_PROC(&info[n].value)) {
+                    PMIX_PROC_CREATE(chain->affected, 1);
+                    if (NULL == chain->affected) {
+                        return PMIX_ERR_NOMEM;
+                    }
+                    chain->naffected = 1;
+                    memcpy(chain->affected, info[n].value.data.proc, sizeof(pmix_proc_t));
+                } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROCS) &&
+                           PMIX_EVENT_VALUE_IS_PROC_ARRAY(&info[n].value)) {
+                    if (0 < info[n].value.data.darray->size) {
+                        PMIX_PROC_CREATE(chain->affected, info[n].value.data.darray->size);
+                        if (NULL == chain->affected) {
+                            return PMIX_ERR_NOMEM;
+                        }
+                        chain->naffected = info[n].value.data.darray->size;
+                        memcpy(chain->affected, info[n].value.data.darray->array,
+                               chain->naffected * sizeof(pmix_proc_t));
+                    }
+                } else {
+                    PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                    return PMIX_ERR_BAD_PARAM;
+                }
             }
         }
     }

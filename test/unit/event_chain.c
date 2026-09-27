@@ -104,6 +104,7 @@
 #define EVUT_CODE_PROCLOCAL -9010
 #define EVUT_CODE_OBSERVER  -9011
 #define EVUT_CODE_OBSERVER2 -9012
+#define EVUT_CODE_MALFORMED -9013
 #define EVUT_CODE_BLOCKING  -9013
 
 static int npass = 0;
@@ -1433,6 +1434,113 @@ static void test_blocking_from_progress_thread(void)
     PMIx_Deregister_event_handler(ref, NULL, NULL);
 }
 
+/* ------------------------------------------------------------------ */
+/* proc-valued directives of an unexpected datatype are refused      */
+/* ------------------------------------------------------------------ */
+
+/* Proc-valued event directives must have the expected datatype:
+ * PMIX_EVENT_AFFECTED_PROC a PMIX_PROC, PMIX_EVENT_AFFECTED_PROCS a data
+ * array of PMIX_PROC, and PMIX_EVENT_CUSTOM_RANGE either. This process is
+ * a server, so PMIx_Notify_event takes the same path as an event a client
+ * sends. */
+static void notify_bad(const char *label, pmix_info_t *info)
+{
+    pmix_status_t code = EVUT_CODE_MALFORMED;
+    pmix_proc_t src;
+    pmix_status_t rc;
+    char msg[256];
+
+    PMIX_LOAD_PROCID(&src, "malformed-src", 0);
+    rc = PMIx_Notify_event(code, &src, PMIX_RANGE_LOCAL, info, 1, NULL, NULL);
+    snprintf(msg, sizeof(msg), "malformed event refused: %s", label);
+    report(msg, PMIX_ERR_BAD_PARAM == rc);
+}
+
+static void test_malformed_procs(void)
+{
+    pmix_status_t code = EVUT_CODE_MALFORMED;
+    pmix_info_t info;
+    pmix_data_array_t darray;
+    pmix_proc_t src, procs[2];
+    pmix_event_chain_t *chain;
+    uint64_t u64 = 0x4141414141414141ULL;
+    uint8_t bytes[64];
+    pmix_status_t rc;
+
+    memset(bytes, 0x41, sizeof(bytes));
+
+    /* an integer where a data array of procs is expected */
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_AFFECTED_PROCS, &u64, PMIX_UINT64);
+    notify_bad("AFFECTED_PROCS as an integer", &info);
+    PMIX_INFO_DESTRUCT(&info);
+
+    /* a data array whose elements are not procs */
+    darray.type = PMIX_UINT8;
+    darray.size = sizeof(bytes);
+    darray.array = bytes;
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_AFFECTED_PROCS, &darray, PMIX_DATA_ARRAY);
+    notify_bad("AFFECTED_PROCS as an array of bytes", &info);
+    PMIX_INFO_DESTRUCT(&info);
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_CUSTOM_RANGE, &darray, PMIX_DATA_ARRAY);
+    notify_bad("CUSTOM_RANGE as an array of bytes", &info);
+    PMIX_INFO_DESTRUCT(&info);
+
+    /* an integer where a single proc belongs */
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_AFFECTED_PROC, &u64, PMIX_UINT64);
+    notify_bad("AFFECTED_PROC as an integer", &info);
+    PMIX_INFO_DESTRUCT(&info);
+
+    /* the well-formed shapes still go through */
+    PMIX_LOAD_PROCID(&procs[0], "malformed-src", 1);
+    PMIX_LOAD_PROCID(&procs[1], "malformed-src", 2);
+    darray.type = PMIX_PROC;
+    darray.size = 2;
+    darray.array = procs;
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_AFFECTED_PROCS, &darray, PMIX_DATA_ARRAY);
+    PMIX_LOAD_PROCID(&src, "malformed-src", 0);
+    rc = PMIx_Notify_event(code, &src, PMIX_RANGE_LOCAL, &info, 1, NULL, NULL);
+    report("well-formed AFFECTED_PROCS is accepted", PMIX_SUCCESS == rc);
+    PMIX_INFO_DESTRUCT(&info);
+
+    /* pmix_prep_event_chain, which the client and tool receive paths
+     * use, applies the same checks */
+    chain = PMIX_NEW(pmix_event_chain_t);
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_AFFECTED_PROCS, &darray, PMIX_DATA_ARRAY);
+    rc = pmix_prep_event_chain(chain, &info, 1, false);
+    report("prep reads a well-formed AFFECTED_PROCS",
+           PMIX_SUCCESS == rc && 2 == chain->naffected
+               && PMIX_CHECK_PROCID(&chain->affected[1], &procs[1]));
+    PMIX_INFO_DESTRUCT(&info);
+    PMIX_RELEASE(chain);
+
+    darray.size = 0;
+    darray.array = NULL;
+    chain = PMIX_NEW(pmix_event_chain_t);
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_AFFECTED_PROCS, &darray, PMIX_DATA_ARRAY);
+    rc = pmix_prep_event_chain(chain, &info, 1, false);
+    report("prep accepts an empty AFFECTED_PROCS as naming nobody",
+           PMIX_SUCCESS == rc && 0 == chain->naffected);
+    PMIX_INFO_DESTRUCT(&info);
+    PMIX_RELEASE(chain);
+
+    chain = PMIX_NEW(pmix_event_chain_t);
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_AFFECTED_PROCS, &u64, PMIX_UINT64);
+    rc = pmix_prep_event_chain(chain, &info, 1, false);
+    report("prep refuses AFFECTED_PROCS as an integer", PMIX_ERR_BAD_PARAM == rc);
+    PMIX_INFO_DESTRUCT(&info);
+    PMIX_RELEASE(chain);
+
+    darray.type = PMIX_UINT8;
+    darray.size = sizeof(bytes);
+    darray.array = bytes;
+    chain = PMIX_NEW(pmix_event_chain_t);
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_CUSTOM_RANGE, &darray, PMIX_DATA_ARRAY);
+    rc = pmix_prep_event_chain(chain, &info, 1, false);
+    report("prep refuses CUSTOM_RANGE as an array of bytes", PMIX_ERR_BAD_PARAM == rc);
+    PMIX_INFO_DESTRUCT(&info);
+    PMIX_RELEASE(chain);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -1475,6 +1583,9 @@ int main(int argc, char **argv)
 
     /* library-internal observers */
     test_observer();
+
+    /* events carrying proc directives of an unexpected datatype */
+    test_malformed_procs();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
