@@ -274,9 +274,21 @@ typedef struct {
 } pmix_rshift_caddy_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_rshift_caddy_t);
 
+/* The datatypes a proc-valued event directive may take:
+ * PMIX_EVENT_AFFECTED_PROC is a PMIX_PROC, PMIX_EVENT_AFFECTED_PROCS is a
+ * data array of PMIX_PROC, and PMIX_EVENT_CUSTOM_RANGE may be either. An
+ * empty array is accepted. */
+#define PMIX_EVENT_VALUE_IS_PROC(v) \
+    (PMIX_PROC == (v)->type && NULL != (v)->data.proc)
+#define PMIX_EVENT_VALUE_IS_PROC_ARRAY(v)                                      \
+    (PMIX_DATA_ARRAY == (v)->type && NULL != (v)->data.darray &&              \
+     PMIX_PROC == (v)->data.darray->type &&                                     \
+     (0 == (v)->data.darray->size || NULL != (v)->data.darray->array))
+
 /* prepare a chain for processing by cycling across provided
  * info structs and translating those supported by the event
- * system into the chain object*/
+ * system into the chain object. Returns PMIX_ERR_BAD_PARAM for a
+ * proc-valued directive of an unexpected datatype (see above) */
 PMIX_EXPORT pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain, const pmix_info_t *info,
                                                 size_t ninfo, bool xfer);
 
