@@ -221,12 +221,11 @@ translation unit provides can only mislead.)
 any of the list scans above matches whichever entry happens to be first.
 That is why the entry points reject `PMIX_NSPACE_INVALID(nspace)` rather
 than merely `NULL == nspace`: without it, a proc carrying an empty
-nspace would be forked with another job's cached envars — its transport
-security key included — and a `deregister_nspace("")` would release some
-other job's ports. Note that `allocate`/`setup_local_network` scan
-`pmix_globals.nspaces` with plain `strcmp`, which has no such wildcard;
-closing the door on an invalid nspace is what keeps the two styles
-agreeing.
+nspace would be forked with another job's cached envars, and a
+`deregister_nspace("")` would release some other job's ports. Note that
+`allocate`/`setup_local_network` scan `pmix_globals.nspaces` with plain
+`strcmp`, which has no such wildcard; rejecting an invalid nspace is
+what keeps the two styles agreeing.
 
 **`PMIX_DEVICE_ID` is documented as a string**, and the library reads it
 that way elsewhere (`pmix_hwloc.c` takes `info->value.data.string`). A

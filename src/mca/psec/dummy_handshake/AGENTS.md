@@ -116,12 +116,10 @@ suspecting this component.
 
 ## Gotchas
 
-- **The size word is read off the socket before it is trusted.**
+- **The size word is checked before it is used.**
   `client_hndshk` compares it to the expected length first and only then
-  `malloc`s, because the value comes from the far end: sizing an
-  allocation from it directly means a bogus length turns into a failed
-  `malloc` and a write through NULL. Keep the check ahead of the
-  allocation.
+  `malloc`s, so the allocation is only ever sized from a length that
+  matched. Keep the check ahead of the allocation.
 - **The length is sent as a raw host-format `size_t`**, as is the status
   word, so this component only interoperates between peers of identical
   width and endianness. That is acceptable for a test harness and is not

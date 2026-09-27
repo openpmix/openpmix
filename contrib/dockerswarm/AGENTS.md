@@ -144,9 +144,9 @@ two disagree, the README wins, and please fix this file.
 - **Run a fuzz harness in ONE process, not one process per input.**
   Heap corruption planted by input N is usually noticed by the allocator
   at input N+k, so a harness that forks per input discards the evidence
-  with the child. The bfrops fuzz stage found a remote heap overflow
-  only after it was folded into `test/unit/bfrops_malformed.c` and run
-  in-process; the scratch version that forked had been running against
+  with the child. The bfrops fuzz stage found a heap overflow in the
+  unpacker only after it was folded into `test/unit/bfrops_malformed.c`
+  and run in-process; the scratch version that forked had been running against
   the same defect and reporting clean.
 
 - **The shared volume is mounted READ-ONLY in the node containers.**

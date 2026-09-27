@@ -426,13 +426,13 @@ that returns false if either side is `NULL`. So a field is recognized
 only under its canonical `PMIX_*` string; there is no registered-alias
 resolution anywhere on this path.
 
-**The info array is untrusted.** For a request that came from a client it
-is the data array unpacked off the wire, and nothing between the unpack
-and these helpers validates it. `PMIx_Check_key` only compares the key —
-it says nothing about `value.type`. Any helper that *reads* a value (as
-the disk/net helpers do for the ID keys) must check the declared type
-first: reading `value.data.string` out of a value the sender typed as an
-integer hands a wild pointer to `strdup`. The ID collection in
+**Check a value's declared type before reading it.** For a request that
+came from a client the info array is the data array unpacked off the
+wire, and nothing between the unpack and these helpers validates it.
+`PMIx_Check_key` only compares the key — it says nothing about
+`value.type`. Any helper that *reads* a value (as the disk/net helpers do
+for the ID keys) must check the declared type first, and read
+`value.data.string` only from a value typed as a string. The ID collection in
 `pstat_base_fns.c` does this check; a component that reads a value out of
 this array directly must do the same.
 

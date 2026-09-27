@@ -374,7 +374,7 @@ The listener's accept handler
 the real work on the progress thread:
 
 1. Read the handshake header + payload (socket temporarily in **blocking**
-   mode), guarded by `PMIX_MAX_CRED_SIZE` / taint limits.
+   mode), guarded by the `PMIX_MAX_CRED_SIZE` size limit.
 2. Parse it with the `PMIX_PTL_GET_*` macros
    ([`base/ptl_base_handshake.h`](base/ptl_base_handshake.h)): psec name,
    credential, a **flag** (`pmix_rnd_flag_t`, 0–10) identifying the kind
@@ -419,9 +419,8 @@ reorder. `test/unit/ptl_handshake.c` drives the pair directly and will
 catch a change made to one half and not the other.
 
 Note that **every field here arrives before the credential has been
-validated** — this runs on a socket anyone who can reach the listener
-may open. Each `GET_*` macro therefore bounds itself against the number
-of bytes actually received, and a new field must do the same.
+validated**. Each `GET_*` macro therefore bounds itself against the
+number of bytes actually received, and a new field must do the same.
 
 ## The listener (`base/ptl_base_listener.c`)
 
@@ -452,8 +451,8 @@ be reached:
 `pmix_ptl_base_create_listener` does everything above — bind, publish the
 URI, write the rendezvous files — and `pmix_ptl_base_start_listening`
 registers the accept event on the progress thread. They used to be one
-call, and that put the moment an outside process could schedule work on
-the progress thread in the *middle* of the caller's init.
+call, and that armed the accept event — so connection handling could
+start on the progress thread — in the *middle* of the caller's init.
 
 The reason it matters is that `pmix_rte_init` ends by starting the
 progress thread, so everything `PMIx_server_init` and `PMIx_tool_init` do
@@ -538,8 +537,8 @@ to break this framework:
    Do not borrow the same excuse for the listener's side. "It is only
    startup" is true of the *connecting* peer and false of the server: the
    inbound handshake runs on the server's progress thread, at any moment,
-   while that thread is serving every other client, for a port anything
-   can open. So the server reads the connect-ack as its bytes arrive and
+   while that thread is serving every other client. So the server reads
+   the connect-ack as its bytes arrive and
    never waits for them; only the replies and psec handshake after it are
    blocking, bounded by `ptl_base_connect_ack_timeout` — see
    [`base/AGENTS.md`](base/AGENTS.md).

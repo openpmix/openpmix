@@ -90,9 +90,9 @@ covered.
 ## Nothing here may read outside the buffer it was given
 
 Every byte the unpacker sees came off a socket, including the count that
-says how many values follow. A peer can be truncated, can be running a
-different version than it claimed, or can send arbitrary bytes. The
-contract is:
+says how many values follow. A message can be truncated, can come from
+a different version than the peer claimed, or can simply be malformed.
+The contract is:
 
 > Returning an error is fine. Returning a wrong value is tolerable.
 > Reading outside the buffer is not.
@@ -109,20 +109,18 @@ handed `pmix_bfrops_base_decode_int` an `avail_size` that reached zero
 and kept going.
 
 **The flexible integer decoder's length is decided by the data.** A byte
-with the continuation flag set means "read one more", so the last
-readable byte of a truncated value is an invitation to read past the
-end. `flex_unpack_integer()` bounded its loop with `flex_size - 1`,
-which is `SIZE_MAX` when the available size is zero — an unbounded
-over-read that a three-byte message could trigger, and did (it
-segfaults against a guard page). It now refuses an empty region outright
-and reports truncation rather than assembling a value out of whatever
-bytes happened to be there.
+with the continuation flag set means "read one more", so the decoder has
+to stop at the last readable byte of a truncated value whatever that
+byte's flag says. `flex_unpack_integer()` bounded its loop with
+`flex_size - 1`, which is `SIZE_MAX` when the available size is zero, so
+that bound never applied. It now refuses an empty region outright and
+reports truncation rather than assembling a value out of whatever bytes
+happened to be there.
 
-**A length off the wire must not buy an allocation.** The count that
-says how many elements an array holds is packed by the peer, and it
-sized the receiver's allocation directly: a twenty-byte message asking
-for 2^40 int64s got exactly that, and the OOM killer ended the process.
-A count larger than the bytes remaining in the buffer cannot be
+**A length off the wire is bounded before it sizes an allocation.** The
+count that says how many elements an array holds is packed by the peer,
+and it used to size the receiver's allocation directly. A count larger
+than the bytes remaining in the buffer cannot be
 describing anything the peer actually sent, because every element of
 almost every type costs at least one byte to encode - so that is the
 bound, and it needs no per-type knowledge and no arbitrary constant.
@@ -137,8 +135,8 @@ reasoning attached; if you add a third sparse encoding, add it there.
 Separately, **every allocation sized from the wire needs its NULL
 check**. Twelve of them did not have one, and the pattern was uniform:
 allocate, then `m = <the wire-supplied count>`, then unpack into the
-pointer. When the allocator declines - which an absurd count makes it
-do - that is a write through NULL.
+pointer. When the allocator declines, the unpacker must return an
+error rather than write through NULL.
 
 [`test/unit/bfrops_malformed.c`](../../../../test/unit/bfrops_malformed.c)
 covers this, including a stage that truncates a well-formed message at
@@ -196,18 +194,18 @@ Coverage: `test/unit/compress_block.c` packs a hand-built
 Recorded because each is a shape that will recur, not for history's
 sake.
 
-- **`flex_unpack_integer()` read past the end of the buffer**
+- **`flex_unpack_integer()` did not stop at the end of the buffer**
   (`bfrop_base_squash.c`). `flex_size - 1` underflowed for a zero-length
   source, and the caller
   (`pmix_bfrops_base_unpack_general_int`) produced zero-length sources
-  whenever the wire claimed more values than it sent. Remotely
-  triggerable crash. Both ends fixed: the decoder refuses an empty
-  region and signals truncation, and the loop bound no longer wraps.
+  whenever the count exceeded the values in the message. Both ends
+  fixed: the decoder refuses an empty region and signals truncation, and
+  the loop bound no longer wraps.
 - **A typeless array desynchronized the stream** (`bfrop_base_pack.c` /
   `bfrop_base_unpack.c`). `pack_darray()` wrote a `PMIX_UNDEF` type tag
   *and* a size; `unpack_darray()` treated the tag as a terminator and
   never read the size. Everything after it in the message was misread.
-  Reachable without malice: copying a value whose `darray` pointer was
+  Reached in ordinary use: copying a value whose `darray` pointer was
   NULL produces exactly such a descriptor. The packer now emits the
   marker the unpacker reads.
 - **`copy_darray()` freed the element block twice** for
@@ -225,7 +223,8 @@ sake.
 - **Eighteen registered types could not back a data array**
   (`bfrop_base_tma.h`). See the six-operations table above.
 - **`PMIX_POINTER` arrays were allocated one byte per element and copied
-  eight** (`bfrop_base_tma.h`) — an over-read of the whole block.
+  eight** (`bfrop_base_tma.h`) — the copy ran eight times the block's
+  length.
 - **`copy_darray()` cast `pmix_data_buffer_t*` to `pmix_buffer_t*`.**
   They are not layout-compatible: `pmix_buffer_t` leads with a
   `pmix_object_t` and a type field. Use `PMIx_Data_copy_payload()` for
@@ -279,7 +278,7 @@ on review:
   sites in `src/client`'s `get_data()` carried this as a known gap for
   four sweeps before it was closed **here**, which is the point worth
   keeping: there are thirty-odd callers in the tree and every one was
-  equally exposed, so a screen at any of them was the wrong place for
+  equally affected, so a screen at any of them was the wrong place for
   it. This is the same rule as "put the screen in the `_tma_` inline,
   not in the `PMIx_` wrapper" below.
 - **Range constants.** `check_int64()` bounded `PMIX_PID` and
@@ -346,7 +345,7 @@ Two details worth keeping:
   result — the group code among them. Zeroing the destination instead
   would reintroduce the crash one layer up.
 
-`pmix_bfrops_base_value_unload()` had a related but distinct hole. It
+`pmix_bfrops_base_value_unload()` had a related but distinct gap. It
 documents that "simple" types are copied into storage the *caller*
 supplies, and rejects a NULL `*data` for those — but the list it checks
 against was missing `PMIX_JOB_STATE`, so that one type reached a
@@ -396,7 +395,7 @@ under which the daemon is failing everywhere at once. The accumulator is
 what makes that argument unnecessary rather than merely defensible: one
 test, at the end, where the caller is already looking.
 
-It also closes the hole that the forty checks would **not** have closed.
+It also closes the gap that the forty checks would **not** have closed.
 `PMIx_Info_list_add()` used to call `PMIX_INFO_LOAD`, which is
 `(void) PMIx_Info_load(...)`, and append the entry regardless — so a
 value that failed to load went onto the list under a report of success,
@@ -435,17 +434,16 @@ representation is *larger than the whole union*: `pmix_pdata_t` is 808
 bytes.
 
 `unpack_val()` hands `&val->data` to the per-type unpacker for anything
-its switch does not name, so a peer that tagged a value with one of
-those got that unpacker to write up to 784 bytes past the end of the
-value — and `unpack_kval()`, `unpack_info()` and `unpack_pdata()` all
-unpack into a value they have just `calloc`'d. **A heap buffer overflow
-whose length and contents come off the wire.** `pack_val()`
-had the mirror of it, reading 552 bytes out of a 24-byte union.
+its switch does not name, and each of those six unpackers writes a
+structure larger than the whole union — into a value that
+`unpack_kval()`, `unpack_info()` and `unpack_pdata()` have just
+`calloc`'d. `pack_val()` had the mirror of it, reading a whole structure
+out of a 24-byte union.
 
 Both directions now refuse those six types, and a `_Static_assert` per
 type keeps the list honest against the union's size in both directions —
 so if the union grows, or a type that fits stops fitting, the build
-fails here instead of the heap failing in the field.
+fails here instead of at run time.
 
 **Two things about how it was found are worth more than the defect.**
 
@@ -491,7 +489,7 @@ Registered in `bfrop_base_frame.c`, all under `pmix_bfrops_base_`:
 |-----------|---------|
 | `initial_size` | starting allocation of a new buffer |
 | `threshold_size` | size at which `buffer_extend` stops doubling and grows additively |
-| `max_array_depth` | how deeply data arrays may nest before pack and unpack refuse; 0 disables the cap. A couple of bytes of message buys a stack frame, so this is what stops a peer from sinking the stack — see the depth tests in [`test/unit/nested_darray.c`](../../../../test/unit/nested_darray.c) |
+| `max_array_depth` | how deeply data arrays may nest before pack and unpack refuse; 0 disables the cap. Each nesting level is a couple of bytes of message and one stack frame to unpack, so this cap is what bounds unpack's stack depth — see the depth tests in [`test/unit/nested_darray.c`](../../../../test/unit/nested_darray.c) |
 | `default_type` | described vs. non-described for new buffers; described is the default in `PMIX_ENABLE_DEBUG` builds |
 
 ## Threading
@@ -508,7 +506,7 @@ let two threads mutate it at once.
 | Where | What it covers |
 |-------|----------------|
 | [`test/unit/bfrops_darray.c`](../../../../test/unit/bfrops_darray.c) | every registered type as a data-array element, held across construct / pack / unpack / copy; the typeless-array marker; nested data buffers |
-| [`test/unit/bfrops_malformed.c`](../../../../test/unit/bfrops_malformed.c) | truncated and lying input; flexible-integer boundaries |
+| [`test/unit/bfrops_malformed.c`](../../../../test/unit/bfrops_malformed.c) | truncated and inconsistent input; flexible-integer boundaries |
 | [`test/unit/bfrops_get_number.c`](../../../../test/unit/bfrops_get_number.c) | `PMIx_Value_get_number` as two properties over every (source, destination) pair |
 | [`test/unit/bfrops_null_object.c`](../../../../test/unit/bfrops_null_object.c) | every pointer-backed type through every value-level operation with no object attached |
 | [`test/unit/bfrops_helpers.c`](../../../../test/unit/bfrops_helpers.c) | the public `PMIx_Argv_*` / `PMIx_Info_list_*` / construct-create-load-free helpers on degenerate input, and on ordinary input so the guards did not cost anything |

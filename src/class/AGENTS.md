@@ -107,7 +107,7 @@ Rules that trip people up:
   intermittent, and it does not make zero the right value. A count that
   must start at `SIZE_MAX` so an unsent operation cannot look complete, a
   sentinel that is `UINT32_MAX` because zero is a real value, a uid that
-  must be `geteuid()` because zero is **root** — every one of those is
+  must be `geteuid()` because zero names a real user — every one of those is
   still wrong if the constructor skips it, and now wrong the same way
   every time. **When you add a member to one of these structs, add it to
   the constructor in the same change**; `test/unit/check_ctor_coverage.py`
@@ -558,7 +558,7 @@ went straight to `addr[ring->head]` — so a ring that had only been
 `PMIX_NEW`'d or `PMIX_CONSTRUCT`'d, or one already destructed,
 dereferenced the NULL `addr` instead of declining. Given this class's
 consumers are out of tree (see above), that is the least forgivable place
-to leave a hole. It now returns NULL when there is no storage, which is
+to miss a guard. It now returns NULL when there is no storage, which is
 the same answer as "the ring was not full" — an unfortunate conflation,
 but the only value the signature has to give, and strictly better than
 the fault. All three accessors also tolerate a NULL ring now.

@@ -15,9 +15,9 @@ data in per-process hash tables like [`hash`](../hash/AGENTS.md), the local
 PMIx server builds the job's data structures *inside an mmap'd segment* and
 lets every local client map that same segment at the same virtual address —
 so N local clients share one physical copy of the job data and pay no
-per-client unpack/store cost. Clients are meant to treat what they map as
-**read-only**, though nothing currently enforces that; see "Clients are
-read-only" under the invariants below for what that costs. Read the framework
+per-client unpack/store cost. Clients treat what they map as
+**read-only**, and the data region is write-protected once attached; see
+"Clients are read-only" under the Gotchas below. Read the framework
 [`AGENTS.md`](../AGENTS.md) first; this file covers only what is specific to
 `shmem3`.
 
@@ -1060,15 +1060,12 @@ Recorded so the next review does not re-derive them.
 - **Nothing in `gds` checks `darray->type` before casting an array to
   `pmix_info_t *`.** Neither component does, for any of the `*_INFO_ARRAY`
   keys: the key is taken to imply the element type. That is a project-wide
-  convention, not an oversight here. `get_local_job_data_info()` was a
-  genuinely different case and is now guarded — it probed element zero of
-  **every** data array, whatever its key, looking for a session id, so a
-  host-supplied array of some other type was read as a `pmix_info_t`.
-  `PMIx_Check_key()` stops at the first differing byte, so most such
-  arrays are read one byte past their start and no further; it takes an
-  array whose leading bytes actually spell `pmix.session.id` to carry the
-  read on into `info[0].value`, 512 bytes into what may be a 16-byte
-  allocation. `test/unit/gds_datastore` sends exactly that.
+  convention, not an oversight here. `get_local_job_data_info()` is a
+  genuinely different case and is guarded: it probes element zero of
+  **every** data array, whatever its key, looking for a session id, so it
+  first checks that the array's type is `PMIX_INFO` before reading an
+  element as a `pmix_info_t`. `test/unit/gds_datastore` covers an array
+  of another type whose leading bytes spell `pmix.session.id`.
 
 ## Testing
 
@@ -1096,5 +1093,5 @@ rather than absent.
 
 That is as far as one process goes: a fence, a second modex generation, a
 client attach at a fixed address, and every cross-node path still belong
-to `run-gds-tests.sh`. But the segment build itself, and the untrusted
+to `run-gds-tests.sh`. But the segment build itself, and the malformed
 job-level input that reaches it, now run in `make check` on Linux.

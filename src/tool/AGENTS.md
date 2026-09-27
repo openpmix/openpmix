@@ -347,8 +347,8 @@ key the job had deleted — and a *launcher* or *scheduler* tool, which
 also posts a wildcard recv for its own clients, matched the notice with
 that wildcard, handed it to its own switchyard, answered on the reserved
 tag, and spun with the server forever. See `test/unit/tool_delete.c`, and
-the reserved-tag screen in `pmix_server_message_handler` that now bounds
-the damage.
+the reserved-tag screen in `pmix_server_message_handler`, which now
+drops a reserved-tag message without answering it.
 
 Because that helper also constructs the held-delete list, its two
 partners belong to `PMIx_tool_init`/`_finalize` as well:

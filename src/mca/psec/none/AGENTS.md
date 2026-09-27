@@ -74,7 +74,7 @@ pmix_psec_module_t pmix_none_module = {
 
 ## Gotchas
 
-- **This module intentionally provides no security.** Its `validate_cred`
+- **This module intentionally performs no authentication.** Its `validate_cred`
   accepts anything. That is the entire point, but it means a
   configuration that selects `none` has opted out of authentication —
   never make `none` easier to reach than the explicit opt-in gate already
@@ -82,7 +82,7 @@ pmix_psec_module_t pmix_none_module = {
 - **Priority 0 plus the opt-in gate are two independent guards.** Even if
   `none` is in the actives list, its rock-bottom priority keeps
   `assign_module(NULL)` from ever returning it; a peer must ask for it by
-  name. Do not raise its priority or loosen the `component_open` check
-  without understanding you are widening a security hole.
+  name. Do not raise its priority or loosen the `component_open` check:
+  together they keep "no authentication" an explicit choice.
 - Like `native`, `none` uses the credential model, so both `*_handshake`
   slots are `NULL` and must stay so.

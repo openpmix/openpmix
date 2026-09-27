@@ -115,18 +115,15 @@ screen rather than open-coding the loop — see the framework
   same terms as `native` — the test walks the *active* module list
   rather than a fixed one, precisely so that costs nothing to arrange.
 - **`munge_decode()` takes a NUL-terminated C string; the credential
-  arrives as counted bytes.** On the connection path the blob is whatever
-  the peer sent — `ptl` `malloc`s `len` bytes and `memcpy`s them, with no
-  terminator guaranteed — so handing `cred->bytes` straight to
-  `munge_decode` lets a peer make it `strlen()` past the end of a heap
-  allocation — confirmed under valgrind, which reports the invalid read
-  at `strlen` directly beneath `munge_decode` for an unterminated input.
+  arrives as counted bytes.** On the connection path `ptl` `malloc`s
+  `len` bytes and `memcpy`s them, with no terminator guaranteed, so
+  `cred->bytes` cannot be passed to `munge_decode` as it stands.
   `validate_cred` therefore rejects a `NULL`, empty, or unterminated
   credential with `PMIX_ERR_INVALID_CRED` before decoding. Keep that
   check ahead of any future decode call. Note that a *malformed* buffer
-  is not a reproducer: MUNGE refuses anything that does not look like a
-  credential before it measures it, so the overread needs a buffer it
-  keeps parsing.
+  does not exercise the check: MUNGE refuses anything that does not look
+  like a credential before it measures it, so a test needs an
+  unterminated buffer MUNGE keeps parsing.
 - **A failed `munge_encode` must leave `mycred` NULL, not dangling.** The
   refresh path frees the cached credential before asking for a new one;
   if the encode then fails and `mycred` still points at the freed block,

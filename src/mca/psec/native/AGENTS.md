@@ -81,8 +81,8 @@ according to the protocol:
   credential with `PMIX_ERR_INVALID_CRED`.
 
 - **`PMIX_PROTOCOL_UNDEF`**: rejects with `PMIX_ERR_INVALID_CRED`. A peer
-  whose transport was never established offers no credential format to
-  trust, so there is nothing here that can be validated.
+  whose transport was never established has no credential format, so
+  there is nothing here that can be validated.
 
 It then compares the recovered `euid`/`egid` against the values recorded
 for the peer (`pr->info->uid` / `pr->info->gid`) and returns
@@ -106,12 +106,10 @@ credential.
   (`PMIX_PROTOCOL_V1`), which is gone along with the v1.x peers that were
   its only users. Every connection is TCP and is validated from the
   credential bytes.
-- **The `PMIX_PROTOCOL_UNDEF` rejection is explicit on purpose.** It used
-  to fall through to the `uid`/`gid` comparison and be rejected only
-  because `euid`/`egid` were still their `(uid_t) -1` initializers.
-  "Cleaning up" those initializers to `0` would have turned an
-  unauthenticated peer into a successful validation against a `root`
-  registration. Do not reintroduce the implicit form.
+- **The `PMIX_PROTOCOL_UNDEF` rejection is explicit on purpose.** It does
+  not rely on the `(uid_t) -1` initializers of `euid`/`egid` failing the
+  `uid`/`gid` comparison. Keep it explicit; do not reintroduce the
+  implicit form.
 - Because `native` uses the credential model, both `*_handshake` slots are
   `NULL` and must stay so — the framework would misread a non-`NULL`
   `server_handshake` as "this module wants a live handshake."
