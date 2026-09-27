@@ -170,6 +170,48 @@ int main(int argc, char **argv)
     PMIX_INFO_DESTRUCT(&monitor);
 
     /* ------------------------------------------------------------------
+     * Only the process that started a monitor may cancel it - not
+     * another process, nor another rank of the same job. The op is
+     * planted directly, as a periodic monitor leaves it, so that no timer
+     * is involved.
+     */
+    {
+        pmix_pstat_op_t *op;
+        pmix_proc_t other;
+        bool present;
+
+        op = PMIX_NEW(pmix_pstat_op_t);
+        PMIx_Load_procid(&op->requestor, requestor.nspace, requestor.rank);
+        op->id = strdup("mine");
+        op->rate = 5;
+        pmix_list_append(&pmix_pstat_base.ops, &op->super);
+
+        PMIx_Load_procid(&other, "pstat.query.other", 0);
+        PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_CANCEL, "mine", PMIX_STRING);
+        rc = pmix_pstat.query(&other, &monitor, PMIX_SUCCESS, NULL, 0, &results, &nresults);
+        present = (1 == pmix_list_get_size(&pmix_pstat_base.ops));
+        report("cancel: another process cannot cancel a monitor it did not start",
+               PMIX_SUCCESS == rc && present);
+
+        /* same nspace, different rank: still somebody else */
+        PMIx_Load_procid(&other, requestor.nspace, requestor.rank + 1);
+        rc = pmix_pstat.query(&other, &monitor, PMIX_SUCCESS, NULL, 0, &results, &nresults);
+        present = (1 == pmix_list_get_size(&pmix_pstat_base.ops));
+        report("cancel: another rank of the same job cannot cancel it either",
+               PMIX_SUCCESS == rc && present);
+
+        rc = pmix_pstat.query(&requestor, &monitor, PMIX_SUCCESS, NULL, 0, &results, &nresults);
+        present = (0 < pmix_list_get_size(&pmix_pstat_base.ops));
+        report("cancel: the process that started it can", PMIX_SUCCESS == rc && !present);
+        PMIX_INFO_DESTRUCT(&monitor);
+        if (present) {
+            /* leave the list as the rest of the test expects it */
+            op = (pmix_pstat_op_t *) pmix_list_remove_first(&pmix_pstat_base.ops);
+            PMIX_RELEASE(op);
+        }
+    }
+
+    /* ------------------------------------------------------------------
      * The monitor's value carries the list of fields being asked for as
      * a data array. Anything else is malformed - and must not be read as
      * one.
