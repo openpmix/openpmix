@@ -1291,9 +1291,15 @@ static pmix_status_t query(pmix_proc_t *requestor,
         PMIX_LIST_FOREACH(op, &pmix_pstat_base.ops, pmix_pstat_op_t) {
             /* an op only carries an id if the request that created it
              * supplied one - a rate with no PMIX_MONITOR_ID is legal and
-             * leaves it NULL, so it can never match a cancel */
+             * leaves it NULL, so it can never match a cancel. A monitor
+             * is cancelled only by the process that started it, compared
+             * exactly rather than with PMIX_CHECK_NSPACE, which treats
+             * an empty namespace as a wildcard */
             if (NULL != op->id &&
-                0 == strcmp(monitor->value.data.string, op->id)) {
+                0 == strcmp(monitor->value.data.string, op->id) &&
+                NULL != requestor &&
+                0 == strncmp(op->requestor.nspace, requestor->nspace, PMIX_MAX_NSLEN) &&
+                op->requestor.rank == requestor->rank) {
                 // terminate this operation
                 pmix_list_remove_item(&pmix_pstat_base.ops, &op->super);
                 PMIX_RELEASE(op);
