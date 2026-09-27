@@ -573,8 +573,8 @@ above are read as regression tests rather than decoration:
   with the caller's token index**, matching the wrong flag and reading
   out of bounds for a list longer than the table.
 - **`pmix_mca_base_component_repository_init()` parsed `project@path`
-  with an unbounded copy loop** and no check that the `@` existed —
-  a stack buffer overflow driven by a user-settable MCA parameter.
+  with an unbounded copy loop** and no check that the `@` existed, so a
+  long or `@`-less entry ran past the stack buffer it was copied into.
 - **`process_repository_item()` `free()`d its caller's project string**
   on the out-of-memory path; the caller passes a stack buffer.
 - **`ri_constructor()` left `ri_project`, `ri_base`, `ri_name` and
@@ -617,14 +617,14 @@ which said nothing about the list ownership described above.
 
 A fourth sweep, over the parameter-file and value-parsing path, found:
 
-- **The override file could be defeated by the environment.** When the
+- **The override file did not always take precedence over the
+  environment.** When the
   override file named a variable by a **deprecated synonym**, the
   promotion to `SOURCE_OVERRIDE` landed only on the synonym, so the
   environment check that follows saw an ordinary file value and let a
-  user's `PMIX_MCA_*` setting win. A site administrator's "this is not
-  negotiable" file was therefore enforced or not depending on which
-  spelling of the name they happened to write — and the reported source
-  said `FILE` either way. Covered now by
+  `PMIX_MCA_*` setting win. An override file therefore took precedence
+  or not depending on which spelling of the name it used — and the
+  reported source said `FILE` either way. Covered now by
   `test/unit/mca/mca_base_paramfile.c`, which drives real files through
   a private temporary directory.
 
@@ -698,10 +698,10 @@ rather than merely be confused:
   deregistered entries.** Neither has storage. Prefer
   `pmix_mca_base_var_get_value()`, which resolves through.
 - **Test the sign of a `_register()` return, never `!= PMIX_SUCCESS`.**
-- **Every MCA parameter value is untrusted input.** They arrive
-  from the environment, from files under the user's control, and from
-  command lines. Parse them defensively — the two buffer bugs above were
-  both in parameter parsing.
+- **Parse every MCA parameter value defensively.** They arrive from the
+  environment, from files, and from command lines, in any form. Bound
+  every copy and check for every separator you rely on — the two buffer
+  bugs above were both in parameter parsing.
 - **Preserve the "no thread-shifting" property.** If a new code path
   needs MCA state at run time, cache the value at registration instead of
   reaching into the variable system from the progress thread.

@@ -98,12 +98,12 @@ see it in packet dumps:
   behavior so a corrupt or foreign blob can still be retried by another
   scheme.
 - **What is on the other side of `decompress_string` reads the blob's
-  length prefix out of the first four bytes.** A peer may legitimately
+  length prefix out of the first four bytes.** A value may legitimately
   declare a length of zero, in which case `bfrops` unpacked nothing and
-  left `bytes` NULL, or a length shorter than that prefix. `zstd` and
-  `lz4` screen for both; `zlib` and `zlibng` did not until recently, and
-  the payload-sizing subtraction underflows for anything shorter than
-  four bytes. Screening here means this component does not depend on
+  left `bytes` NULL. `parse_regex` refuses a NULL or zero-length payload
+  itself, with `PMIX_ERR_BAD_PARAM`, since that is not a blob this
+  component ever wrote. Every `pcompress` component also refuses a
+  payload shorter than the prefix, so this component does not depend on
   which `pcompress` component answered.
 - The module name `"compress"` is the on-the-wire type tag, and
   `preg_base_legacy.c` keys its `blob:` serialization on that exact

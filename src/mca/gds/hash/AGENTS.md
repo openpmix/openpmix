@@ -197,8 +197,8 @@ below.
   the caller asked for the key to be absent and it is.
 - **Scope routing is the contract.** The `INTERNAL`/`REMOTE`/`LOCAL`/`GLOBAL`
   → table mapping in `store` must stay in lockstep with the scope filtering
-  in `fetch`; a change to one without the other silently loses or leaks
-  data across the local/remote boundary.
+  in `fetch`; a change to one without the other silently loses data or
+  returns it outside the local/remote scope it was stored under.
 - **`internal` doubles as the job-level table.** Job-wide values live under
   `PMIX_RANK_WILDCARD` in `trk->internal`, alongside a proc's own copy of
   its data. Fetches for `rank=WILDCARD` read job-level data; do not assume

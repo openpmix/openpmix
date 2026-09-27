@@ -86,11 +86,10 @@ decide two booleans: **seckeys** and **envars**. Then:
 
   The fallback path is reached whenever `/dev/urandom` cannot be opened
   or short-reads — a chroot or container with a restricted `/dev`, or a
-  process out of descriptors — and nothing downstream ever reports that
-  the key it is using is the weaker kind. So `transports_use_rand`
-  **seeds once and keeps drawing from that stream**: it used to re-seed
-  from `time(NULL)` on every call, which handed two jobs allocated
-  inside the same second the identical "unique" key. It also fills both
+  process out of descriptors. So `transports_use_rand` **seeds once and
+  keeps drawing from that stream**: it used to re-seed from `time(NULL)`
+  on every call, which handed two jobs allocated inside the same second
+  the same key. It also fills both
   halves of each 64-bit word, because `pmix_rand` returns 32 bits at a
   time and the caller is asking for 128. `pnet/tcp`'s `generate_key` is
   the same code and carries the same fix.

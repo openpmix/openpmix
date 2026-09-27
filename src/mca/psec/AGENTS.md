@@ -470,14 +470,13 @@ make`.
   `PMIx_Argv_split()` NULL-dereference lived in all five copies.
 - **Fill `*info` through `&(*info)[n]`.** `info[n]` compiles, is correct
   only for `n == 0`, and corrupts the caller's stack for anything else.
-- **Treat a credential that arrived from a peer as untrusted bytes.** It
-  is a counted `pmix_byte_object_t` that `ptl` `malloc`s and `memcpy`s
-  straight off the wire — nothing guarantees a NUL terminator or a
-  minimum length. `native` checks that the blob is long enough to hold a
-  `uid_t` and a `gid_t` before reading them; `munge` checks that the blob
-  is NUL-terminated before handing it to `munge_decode()`, which would
-  otherwise `strlen()` past the end of the allocation. A new module owes
-  its own equivalent check.
+- **Check the length and form of a received credential before reading
+  it.** It is a counted `pmix_byte_object_t` that `ptl` `malloc`s and
+  `memcpy`s straight off the wire — nothing guarantees a NUL terminator
+  or a minimum length. `native` checks that the blob is long enough to
+  hold a `uid_t` and a `gid_t` before reading them; `munge` checks that
+  the blob is NUL-terminated before handing it to `munge_decode()`, which
+  takes a C string. A new module owes its own equivalent check.
 - **A new mechanism is a new component, not a new API.** Prefer expressing
   optional behavior as a `PMIX_CRED_TYPE`-style directive on the existing
   create/validate calls; add a whole component only for a genuinely new

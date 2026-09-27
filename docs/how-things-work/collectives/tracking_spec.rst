@@ -60,8 +60,8 @@ A tracker records, among other things:
 When a local client calls the collective, the server locates or creates
 the matching tracker and appends the caller's caddy to ``local_cbs``.
 
-The counter-based completion test and its vulnerability
--------------------------------------------------------
+The counter-based completion test and its flaw
+----------------------------------------------
 
 Historically, local completion has been decided by comparing a count of
 contributions against the expected local count. In the current code the
@@ -205,7 +205,7 @@ with the host handoff* below).
 Note the asymmetry with the current implementation, which in every case
 both decrements the expected count *and* removes any prior contribution.
 Case A above forbids both of those adjustments; that is the specific
-change that fixes the vulnerability.
+change that fixes the flaw.
 
 A graceful finalize is not a departure
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -388,7 +388,7 @@ collective - must honor that mark.
 **Group operations have the same requirement.** The group
 construct/destruct trackers (``grp_block_t`` / ``grp_trk_t`` on
 ``grp_collectives``) use the same counter-based accounting and are
-subject to the same vulnerability. They must adopt the identity-based
+subject to the same flaw. They must adopt the identity-based
 model and must be traversed by the lost-connection handler, which today
 walks only the ``collectives`` list.
 

@@ -398,17 +398,16 @@ golden rule does not usually bite here.
   sets `is_tsafe` owns the synchronization for any process-local state its
   `fetch` walks — see the `is_tsafe` section in
   [`shmem3/AGENTS.md`](shmem3/AGENTS.md).
-- **Treat every job-level value as untrusted.** The `pmix_info_t` array a
-  module is handed comes from a host environment (which is not this
-  project) or off the wire from a peer (which may be a different release).
-  A key does not guarantee its documented type, an array does not
-  guarantee a non-zero size, and a `char *` in a value union does not
-  guarantee a string. This is where the August 2026 review of this
-  framework found most of what it found — a `PMIX_GDS_MODULE` that was
-  not a usable string, a `PMIX_HOSTNAME` that was not a string, an empty
-  `PMIX_QUALIFIED_VALUE` whose `size - 1` became `SIZE_MAX`, and a
-  server-supplied key-index table indexed past its own announced length.
-  Check the shape before indexing it.
+- **Check the shape of every job-level value before using it.** The
+  `pmix_info_t` array a module is handed comes from a host environment
+  (which is not this project) or off the wire from a peer (which may be a
+  different release). A key does not guarantee its documented type, an
+  array does not guarantee a non-zero size, and a `char *` in a value
+  union does not guarantee a string. The checks this framework carries
+  for that: `PMIX_GDS_MODULE` must be a usable string, `PMIX_HOSTNAME`
+  must be a string, an empty `PMIX_QUALIFIED_VALUE` is rejected before
+  `size - 1` is computed, and a key-index table is indexed only within
+  its announced length. Check the shape before indexing it.
 - **A module's `store_modex` callback must report `PMIX_SUCCESS` for a
   blob it consumed.** See [`base/AGENTS.md`](base/AGENTS.md) — returning
   the unpack end-of-buffer code instead silently drops every proc after

@@ -222,27 +222,23 @@ two. Their failure behavior is worth knowing:
 
 ### The decoder validates the framing byte for byte, and must
 
-`pmix_preg_base_legacy_decode` reads bytes a peer supplied, so it treats
-every field of the layout as something to *confirm* rather than to step
-over: the tag must be the literal `"blob:"` and nothing longer, the label
-must be there, `"size="` must be there, and the digits must be followed by
-`":"` and a NUL. Each of those checks earns its place — none is
-defensive decoration:
+`pmix_preg_base_legacy_decode` treats every field of the layout as
+something to *confirm* rather than to step over: the tag must be the
+literal `"blob:"` and nothing longer, the label must be there, `"size="`
+must be there, and the digits must be followed by `":"` and a NUL. Each
+of those checks earns its place — none is decoration:
 
 - **The tag test is exact, not a prefix test.** A prefix test also claims
   a plain node list whose first node happens to begin with `blob`, and
-  everything after the tag is then read looking for a label that is not
-  there — off the end of a string the caller owns, in the `SIZE_MAX` case
-  where there is no bound to stop it. A genuine blob always carries the
-  tag verbatim, so exactness costs nothing.
+  the decoder then searches that list for a label it does not contain.
+  A genuine blob always carries the tag verbatim, so exactness costs
+  nothing.
 - **The bound on the payload is a subtraction.** Written the natural way,
-  `payload_offset + len > avail`, it is the *peer's* declared length that
-  overflows the sum: a `size=` near `SIZE_MAX` wraps it back to a small
-  number, the value is accepted, and `SIZE_MAX` reaches
-  `pmix_compress.decompress_string` as the byte count of a buffer a few
-  dozen bytes long. `len > avail - offset` cannot wrap, and the offset is
-  known to be within `avail` because it was reached by stepping over a NUL
-  the code had already found inside the bound.
+  `payload_offset + len > avail`, the sum wraps when the declared `size=`
+  is near `SIZE_MAX`, and the check then passes. `len > avail - offset`
+  cannot wrap, and the offset is known to be within `avail` because it
+  was reached by stepping over a NUL the code had already found inside
+  the bound.
 - **The colon and NUL after the digits are checked before being stepped
   over.** Skipping two bytes that are something else leaves the payload
   pointer inside the framing, and the value is then accepted with a
@@ -272,11 +268,10 @@ the buffer. Every other caller holds a bare `char *` and passes
 a signature that predates the current API. `gds/hash` has the length
 right there in `val->data.bo.size` and still cannot hand it over.
 
-What is left of that, now that the tag test is exact, is narrow: a string
-that really does carry the `"blob:"` tag but was truncated before its
-framing completes can be read a few bytes past its end. It takes a
-caller-owned value that claims to be a blob and is not one — not an
-ordinary list, and not anything that arrived from a peer, since those come
+For those `SIZE_MAX` callers the decoder relies on the string being
+complete. An ordinary list does not carry the `"blob:"` tag, now that
+the tag test is exact, and a caller holding a value that does is
+expected to hold its whole framing. Values read from a buffer come
 through `unpack`, which *is* bounded. Do not "fix" it by removing the
 bound from `unpack`.
 
@@ -285,8 +280,8 @@ That is a decision rather than an omission, recorded under "Will not be
 done" in `docs/review-notes.rst`: `pmix_regex2_t` exists precisely
 because the old interface cannot express a bounded buffer, so a caller
 in a position to supply a length is in a position to use regex2. Widening
-the deprecated signatures would spend ABI-visible work making the
-superseded interface almost safe. PMIx supports a deprecated API
+the deprecated signatures would spend ABI-visible work adding a bound
+to the superseded interface. PMIx supports a deprecated API
 indefinitely, which is a promise to keep it working — not a promise to
 keep developing it.
 
@@ -330,8 +325,8 @@ rules, this order is frozen — append only, never reorder. The deprecated
 `memcpy` the serialized form's exact byte length into the buffer,
 embedded NULs and all — it carries its own length, so it gets no bfrops
 framing — or, when the value has no recognizable framing, as a plain
-`PMIX_STRING`. The unpack side is reading peer-supplied bytes, so it
-bounds every read against what remains in the buffer; keep it that way.
+`PMIX_STRING`. The unpack side bounds every read against what remains
+in the buffer; keep it that way.
 
 ## Threading
 
@@ -377,11 +372,11 @@ help-content golden rule does not usually bite here.
   form.
 - Your encoding may contain embedded NUL bytes; that is what `len` is
   for. Never `strlen` a `regex->bytes`.
-- **Validate the `pmix_regex2_t` you are handed before you use it.** It
-  is a peer's claim about a peer's bytes: `bfrops` copies exactly `len`
-  bytes off the buffer, appends no terminator, and leaves `bytes` NULL
-  when `len` is zero. Whatever your encoding needs to be true of a
-  payload — a minimum length, a terminator, a magic number — check it in
+- **Validate the `pmix_regex2_t` you are handed before you use it.**
+  `bfrops` copies exactly `len` bytes off the buffer, appends no
+  terminator, and leaves `bytes` NULL when `len` is zero. Whatever your
+  encoding needs to be true of a payload — a minimum length, a
+  terminator, a magic number — check it in
   `parse_regex` rather than in whatever you hand the bytes to.
 - Preserve value ordering across generate→parse, and remember the
   encoding must be indifferent to the delimiter: the same code path
