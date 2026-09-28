@@ -386,11 +386,31 @@ the real work on the progress thread:
    registered nspace+rank; a **tool/launcher** goes through the two-step
    `process_tool_request` (which may call the host's `tool_connected` to
    get an nspace assigned, then `process_cbfunc` sends it back).
-4. Assign the peer's compat modules (`psec`, `bfrops`, `gds`), validate
-   the credential (`PMIX_PSEC_VALIDATE_CONNECTION`), tell the host via
-   `client_connected2`, then `_cnct_complete` sends back the status +
-   the peer's array index, runs the security handshake if the psec module
-   asked for one, arms events, and flushes any cached notifications.
+4. **Validate first.** The peer's credential is checked
+   (`PMIX_PSEC_VALIDATE_CONNECTION_WITH`, naming the psec module the peer
+   asked for) on a peer object attached to nothing shared, before
+   anything is recorded or anyone is asked: not the namespace's modules
+   or version, not a clients-array slot, not the info blob (and the pid
+   and real ids it carries), not the host. A tool is validated in
+   `process_tool_request` against the uid/gid it claimed, before its
+   namespace is looked up and before the host's `tool_connected`; a
+   failure is answered in the first reply the tool reads, where the
+   host's status would be. Only a psec module that authenticates with a
+   live handshake is left to its fixed place later in the exchange (after
+   `client_connected2` for a client, after the identity replies for a
+   tool) - moving it would change the wire order older peers read. Then
+   the namespace's compat modules are set, `client_connected2` is called,
+   and `_cnct_complete` sends back the status + the peer's array index,
+   runs the security handshake if the psec module asked for one, arms
+   events, and flushes any cached notifications.
+
+**A namespace's compat modules are set by the first peer to connect.**
+They are shared by every peer of the namespace - what the server packs
+for one it packs for all - so a later peer never replaces them. One whose
+wire format (bfrops module, buffer type) differs is refused; one whose
+psec or gds differs is served with its own (`peer->gds` holds a peer's
+own gds). `test/unit/ptl_validate_first.c` covers the ordering and this
+rule on both paths.
 
 **`PMIX_PSEC_VALIDATE_CONNECTION` can return
 `PMIX_ERR_READY_FOR_HANDSHAKE`, and that is a request, not a rejection.**
