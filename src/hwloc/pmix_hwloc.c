@@ -348,7 +348,9 @@ static pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
         goto tryxml;
     }
 
-    if (0 > (fd = open(file, O_RDONLY))) {
+    /* O_NONBLOCK so that a FIFO at the name cannot block the open, and
+     * the final component is not followed if it is a symlink */
+    if (0 > (fd = open(file, O_RDONLY | O_NONBLOCK | O_NOFOLLOW))) {
         free(file);
         /* it may be that a tool has connected to a remote
          * daemon, in which case the file won't be found.
@@ -357,6 +359,19 @@ static pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
         goto tryself;
     }
     free(file);
+    /* adopt only a regular file that belongs to us or to root, and that
+     * holds at least the region we are told to map */
+    {
+        struct stat sbuf;
+        if (0 != fstat(fd, &sbuf) || !S_ISREG(sbuf.st_mode) ||
+            (sbuf.st_uid != geteuid() && 0 != sbuf.st_uid) ||
+            0 > sbuf.st_size || (uint64_t) sbuf.st_size < (uint64_t) size) {
+            pmix_output_verbose(2, pmix_hwloc_output,
+                                "%s:%s shmem file not adoptable", __FILE__, __func__);
+            close(fd);
+            goto tryself;
+        }
+    }
     rc = hwloc_shmem_topology_adopt((hwloc_topology_t *) &pmix_globals.topology.topology, fd, 0,
                                     (void *) addr, size, 0);
     /* the topology has been mmap'd, so the fd is no longer
