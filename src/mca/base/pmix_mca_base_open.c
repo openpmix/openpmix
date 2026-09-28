@@ -103,10 +103,13 @@ int pmix_mca_base_open(const char *add_path)
     pmix_mca_base_system_default_path = strdup(pmix_pinstall_dirs.pmixlibdir);
     PMIx_Argv_append_nosize(&paths, pmix_mca_base_system_default_path);
 #if PMIX_WANT_HOME_CONFIG_FILES
+    /* only when there is a home directory to put it under */
     value = (char *) pmix_home_directory(geteuid());
-    pmix_asprintf(&pmix_mca_base_user_default_path,
-                  "%s" PMIX_PATH_SEP ".pmix" PMIX_PATH_SEP "components", value);
-    PMIx_Argv_append_nosize(&paths, pmix_mca_base_user_default_path);
+    if (NULL != value) {
+        pmix_asprintf(&pmix_mca_base_user_default_path,
+                      "%s" PMIX_PATH_SEP ".pmix" PMIX_PATH_SEP "components", value);
+        PMIx_Argv_append_nosize(&paths, pmix_mca_base_user_default_path);
+    }
 #endif
 
     var_id = pmix_mca_base_var_register("pmix", "mca", "base", "component_path",
