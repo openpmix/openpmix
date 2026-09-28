@@ -1039,8 +1039,12 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
 
     /* pass the requester's identity to the host - the array this makes
-     * is ours as well, even when no directives were sent */
+     * is ours as well, even when no directives were sent. The up-call has
+     * no process argument, so the requester is named in the directives */
     rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_server_add_requester_proc(peer, &cd->info, &cd->ninfo);
+    }
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1191,8 +1195,12 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
     /* add the directive to stop forwarding */
     PMIX_INFO_LOAD(&cd->info[ninfo], PMIX_IOF_STOP, NULL, PMIX_BOOL);
-    /* and the requester's identity */
+    /* and the requester's identity, naming it as well - the up-call has
+     * no process argument */
     rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_server_add_requester_proc(peer, &cd->info, &cd->ninfo);
+    }
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
