@@ -1074,6 +1074,9 @@ static void client_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     if (0 == buf->bytes_used) {
         return;
     }
+    if (!pmix_iof_sender_is_upstream(pr)) {
+        return;
+    }
     PMIX_BYTE_OBJECT_CONSTRUCT(&bo);
 
     cnt = 1;

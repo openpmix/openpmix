@@ -595,6 +595,8 @@ typedef struct pmix_peer_t {
     bool stdin_producer;     // peer has pushed stdin to us, and is therefore
                              // somebody IOF flow control has to reach when the
                              // host tells us to stop taking stdin
+    bool upstream;           // we opened this connection - the peer is a
+                             // server we connected to
     pmix_event_t send_event; /**< registration with event thread for send events */
     bool send_ev_active;
     pmix_event_t recv_event; /**< registration with event thread for recv events */

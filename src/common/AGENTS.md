@@ -74,6 +74,18 @@ and relays to every peer flagged `stdin_producer`; a launcher is both a
 server and a tool, so a chain of them carries the request back to
 whoever holds the actual input stream.
 
+Forwarded output (`PMIX_PTL_TAG_IOF`) and flow control
+(`PMIX_PTL_TAG_IOF_CONTROL`) only travel down, from a server to a process
+it serves. Every receive handler for either tag — in `pmix_iof.c`,
+`pmix_server_iof.c`, `pmix_client.c` and `pmix_tool.c` — first calls
+`pmix_iof_sender_is_upstream()`, which accepts a message only from a
+peer this process connected to (`peer->upstream`, set in
+`pmix_ptl_base_complete_connection()`) or from itself (a server's
+delivery to itself loops back through the posted recvs). A process that
+is also a server receives on the same tags from the peers that connected
+to it, so the posted recv alone does not say who sent the message.
+`test/unit/iof_sender.c` covers both directions.
+
 Three rules that are load-bearing here:
 
 - **Nothing is buffered on behalf of a suspended stream.** A suspension
