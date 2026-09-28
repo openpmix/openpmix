@@ -115,7 +115,17 @@ some info key is `PMIX_SETUP_APP_ENVARS` — otherwise it returns
 
 ### `process_param_file` (helper)
 
-Parses one MCA param file and, for each variable, decides how to
+Opens the file once (`O_NONBLOCK`, so a FIFO at the name cannot block the
+open), checks it with `fstat` — it must be a regular file, and the user's
+`~/.openmpi/mca-params.conf` must belong to that user — and parses that
+same descriptor through `pmix_mca_base_parse_paramfile_stream()`. Parsing
+by name would open the path a second time and could read something other
+than what was checked. A symlink is followed; its target is what must
+pass. A file that is absent or fails the check is skipped, as a missing
+one always was. `test/unit/pmdl_paramfile.c` covers each case, in a
+child per case because the result is cached per user.
+
+It then parses the MCA param file and, for each variable, decides how to
 re-prefix it before forwarding, using the framework's shared classifiers:
 `pmix_pmdl_base_check_pmix_param` → `PMIX_MCA_<var>`,
 `pmix_pmdl_base_check_prte_param` → `PRTE_MCA_<var>`, otherwise assume it
