@@ -520,6 +520,43 @@ int main(int argc, char **argv)
     settle();
     report("the notified event is cached", cache_occupied());
 
+    /* --- group events only a server raises ---------------------------
+     *
+     * A client joins, accepts or declines through the group commands and
+     * its server raises the event for it; the invitation's outcome is
+     * raised by the leader's server. So a client raising any of these
+     * itself is refused, and the host never hears of it. The application's
+     * own announcement of a new leader is not one of them. */
+    {
+        pmix_info_t grp;
+        pmix_status_t grpcodes[] = {
+            PMIX_GROUP_INVITED, PMIX_GROUP_INVITE_ACCEPTED, PMIX_GROUP_INVITE_DECLINED,
+            PMIX_GROUP_INVITE_FAILED, PMIX_GROUP_CONSTRUCT_COMPLETE,
+            PMIX_GROUP_CONSTRUCT_ABORT, PMIX_GROUP_LEADER_FAILED, PMIX_GROUP_MEMBER_FAILED
+        };
+        size_t c;
+        bool allrefused = true;
+
+        PMIX_INFO_LOAD(&grp, PMIX_GROUP_ID, "seut-grp", PMIX_STRING);
+        for (c = 0; c < sizeof(grpcodes) / sizeof(grpcodes[0]); c++) {
+            drain_queued();
+            rc = do_notify(grpcodes[c], PMIX_RANGE_LOCAL, 1, 1, &grp);
+            if (PMIX_ERR_NO_PERMISSIONS != rc) {
+                fprintf(stdout, "    %s from a client was not refused: %s\n",
+                        PMIx_Error_string(grpcodes[c]), PMIx_Error_string(rc));
+                allrefused = false;
+            }
+        }
+        report("a client may not raise a group event only servers raise", allrefused);
+        drain_queued();
+        rc = do_notify(PMIX_GROUP_LEADER_SELECTED, PMIX_RANGE_LOCAL, 1, 1, &grp);
+        report("a client may still announce a new leader",
+               PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+        PMIX_INFO_DESTRUCT(&grp);
+        settle();
+        drain_queued();
+    }
+
     /* --- a member leaves a group only for itself ---------------------
      *
      * The stand-in sends as the server's own identity. A departure that
