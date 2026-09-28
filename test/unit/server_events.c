@@ -520,6 +520,34 @@ int main(int argc, char **argv)
     settle();
     report("the notified event is cached", cache_occupied());
 
+    /* --- a member leaves a group only for itself ---------------------
+     *
+     * The stand-in sends as the server's own identity. A departure that
+     * names someone else is refused - the host is not told of it - and
+     * one that names the sender is taken as before. */
+    {
+        pmix_info_t left[2];
+        pmix_proc_t other;
+
+        PMIX_LOAD_PROCID(&other, "seut-other", 5);
+        PMIX_INFO_LOAD(&left[0], PMIX_GROUP_ID, "seut-grp", PMIX_STRING);
+        PMIX_INFO_LOAD(&left[1], PMIX_EVENT_AFFECTED_PROC, &other, PMIX_PROC);
+        drain_queued();
+        rc = do_notify(PMIX_GROUP_LEFT, PMIX_RANGE_LOCAL, 2, 2, left);
+        report("a departure naming another proc is refused", PMIX_ERR_NO_PERMISSIONS == rc);
+        PMIX_INFO_DESTRUCT(&left[1]);
+
+        PMIX_INFO_LOAD(&left[1], PMIX_EVENT_AFFECTED_PROC, &pmix_globals.myid, PMIX_PROC);
+        drain_queued();
+        rc = do_notify(PMIX_GROUP_LEFT, PMIX_RANGE_LOCAL, 2, 2, left);
+        report("a departure naming its sender is accepted",
+               PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+        PMIX_INFO_DESTRUCT(&left[0]);
+        PMIX_INFO_DESTRUCT(&left[1]);
+        settle();
+        drain_queued();
+    }
+
     /* --- a host-completed registration acks before it replays ------- */
     drain_queued();
     report("a system-code event is parked in the cache", seed_event(SEUT_SYSCODE));

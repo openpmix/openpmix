@@ -1078,6 +1078,16 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                 }
             }
         }
+        /* a process leaves a group only for itself, so the departing proc
+         * is the event's source - named or not. An event naming some
+         * other proc changes nothing here. The comparison is exact: a
+         * wildcard nspace or rank names nobody in particular */
+        if (NULL == affected) {
+            affected = &chain->source;
+        } else if (0 != strncmp(affected->nspace, chain->source.nspace, PMIX_MAX_NSLEN) ||
+                   affected->rank != chain->source.rank) {
+            affected = NULL;
+        }
         if (NULL != grpid && NULL != affected) {
             /* this shifts a live membership array down underneath anything
              * reading it from the caller's thread (a collective expanding a

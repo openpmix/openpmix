@@ -1820,6 +1820,15 @@ fault paths `pmix_server_grp_peer_lost` (connection dropped) and
 `pmix_server_grp_member_left` (voluntary `PMIx_Group_leave`) both funnel
 to `account_departed`.
 
+A `PMIX_GROUP_LEFT` notification reaches `pmix_server_grp_member_left`
+only for its sender. `pmix_server_event_recvd_from_client` takes the
+departing proc from `PMIX_EVENT_AFFECTED_PROC`, or from the sender when
+none is named, and refuses one that names anyone but the sender with
+`PMIX_ERR_NO_PERMISSIONS` - before the host is told, since PRRTE updates
+its own group registry from the same field. The comparison is exact
+(`strncmp` and `==`): `PMIX_CHECK_PROCID` would let a wildcard name
+anyone. Covered in `test/unit/server_events.c`.
+
 Releasing a block destructs its `grp_trk_t`s and their `local_cbs`,
 which is why the fence-family instinct — detach the current `cd`, then
 release — reads as correct here. **It is not, once the local phase is
