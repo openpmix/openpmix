@@ -390,12 +390,19 @@ PMIX_EXPORT void pmix_iof_release_pending(const char *nspace);
  * not set. Nothing is buffered on behalf of a suspended stream.
  *
  * pmix_iof_flow_control_handler() is the PMIX_PTL_TAG_IOF_CONTROL recv
- * callback; it unpacks such a request and hands it to the above.
+ * callback; it unpacks such a request and hands it to the above. Like
+ * the PMIX_PTL_TAG_IOF handlers, it acts only on a message from a server
+ * this process connected to (see pmix_iof_sender_is_upstream).
  */
 PMIX_EXPORT pmix_status_t pmix_iof_flow_control(const pmix_proc_t *source,
                                                 pmix_iof_channel_t channel,
                                                 bool xoff,
                                                 const pmix_info_t directives[], size_t ndirs);
+/* true if "peer" may send this process forwarded output or flow control:
+ * a server it connected to, or itself (a server's delivery to itself
+ * loops back through the posted recvs). Forwarded output and flow
+ * control only ever travel down, from a server to a process it serves */
+PMIX_EXPORT bool pmix_iof_sender_is_upstream(struct pmix_peer_t *peer);
 PMIX_EXPORT void pmix_iof_flow_control_handler(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                                                pmix_buffer_t *buf, void *cbdata);
 
