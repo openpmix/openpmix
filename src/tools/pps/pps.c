@@ -293,6 +293,7 @@ static pmix_status_t set_connection(pmix_cli_result_t *results,
          * rendezvous file holding the pid */
         char *leftover, *param;
         pid_t pid;
+        unsigned long ulpid;
         leftover = NULL;
         pid = strtol(opt->values[0], &leftover, 10);
         if (NULL == leftover || 0 == strlen(leftover)) {
@@ -314,7 +315,9 @@ static pmix_status_t set_connection(pmix_cli_result_t *results,
                 PMIX_INFO_FREE(info, 1);
                 return PMIX_ERR_BAD_PARAM;
             }
-            if (1 != fscanf(fp, "%lu", (unsigned long *) &pid)) {
+            /* the file must hold one pid that fits a pid_t */
+            if (1 != fscanf(fp, "%lu", &ulpid) || 0 == ulpid ||
+                (unsigned long) (pid_t) ulpid != ulpid) {
                 pmix_show_help("help-pquery.txt", "bad-file", true, "pps",
                                "--pid", opt->values[0], param);
                 fclose(fp);
@@ -322,6 +325,7 @@ static pmix_status_t set_connection(pmix_cli_result_t *results,
                 return PMIX_ERR_BAD_PARAM;
             }
             fclose(fp);
+            pid = (pid_t) ulpid;
             PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pid, PMIX_PID);
         } else {
             pmix_show_help("help-pquery.txt", "bad-option-input", true,
