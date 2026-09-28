@@ -40,6 +40,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include <stdio.h>
+
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_object.h"
@@ -116,6 +118,15 @@ PMIX_EXPORT int pmix_mca_base_var_group_get_internal(const int group_index,
  * Parse a parameter file.
  */
 PMIX_EXPORT int pmix_mca_base_parse_paramfile(const char *paramfile, pmix_list_t *list);
+
+/**
+ * \internal
+ *
+ * Parse a parameter file the caller has already opened; "paramfile" is
+ * the name reported for it. See pmix_util_keyval_parse_stream().
+ */
+PMIX_EXPORT int pmix_mca_base_parse_paramfile_stream(FILE *fp, const char *paramfile,
+                                                     pmix_list_t *list);
 
 /**
  * \internal
