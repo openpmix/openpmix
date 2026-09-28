@@ -550,10 +550,9 @@ nothing.
   its reply handler — has to free it explicitly, on the send-failure path
   as well as in the handler.
 - **Never unpack a wire count straight into the caller's
-  out-parameter.** The screen itself is the tree-wide one — require the
-  `size_t` off the wire to survive the round trip through the `int32_t`
-  the unpack consumes it as, `cnt = ninfo; if (0 > cnt || (size_t) cnt !=
-  ninfo)`, and check the allocation it sizes (see
+  out-parameter.** The check itself is the tree-wide one —
+  `pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)` before the count sizes
+  anything, and a check of the allocation it sizes (see
   [`src/server/AGENTS.md`](../server/AGENTS.md)). What is specific to
   this directory is *where the count lands*. `frecv()` in
   [`pmix_client_fabric.c`](pmix_client_fabric.c) unpacked it directly
@@ -2782,16 +2781,15 @@ that aliases `myserver` gives back `myserver`'s.
 
 ### The wire counts the client's own recv handlers read
 
-`src/server/AGENTS.md` records the round-trip screen — `cnt = n; if (0 >
-cnt || (size_t) cnt != n)` — for any wire count used before, or without,
-the unpack that would otherwise bound it. The client applies the same
-screen in two places, and the reasoning transfers unchanged because it is
-about `PMIx_Info_create()`'s size arithmetic, which assumes a count in
-range, not about roles:
+`src/server/AGENTS.md` records the count check —
+`pmix_bfrop_count_fits(buf, n, TYPE)` — that every wire count passes
+before it sizes an allocation. Every recv handler here that sizes an
+array from the wire applies it. Two of them also rely on its `int32_t`
+half for the arithmetic that follows:
 
 - `pmix_client_notify_recv` sizes `ninfo + 2`, and
   `pmix_invoke_local_event_hdlr` later writes the handler name and
-  callback object at `info[ninfo]` and `info[ninfo+1]`. The screen keeps
+  callback object at `info[ninfo]` and `info[ninfo+1]`. The check keeps
   that sum from wrapping, so both slots are inside the array.
 - `client_iof_handler` sizes `ninfo` and separately reads a request id it
   hands to `pmix_pointer_array_get_item()`, which takes an `int`. The id

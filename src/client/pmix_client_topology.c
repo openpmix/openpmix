@@ -24,6 +24,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_error.h"
@@ -262,6 +263,12 @@ static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
         goto complete;
     }
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+    if (PMIX_UNLIKELY(!pmix_bfrop_count_fits(buf, cb->nvals, PMIX_DEVICE_DIST))) {
+        cb->nvals = 0;
+        rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto complete;
     }

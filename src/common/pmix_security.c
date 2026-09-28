@@ -22,6 +22,7 @@
 #include "pmix_common.h"
 #include "include/pmix_server.h"
 
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/psec/psec.h"
 #include "src/mca/ptl/ptl.h"
@@ -111,10 +112,10 @@ static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         status = rc;
         goto complete;
     }
-    /* the count sizes an allocation, so it must survive the round trip
-     * through the int32_t the unpack takes it as */
+    /* the buffer must hold that many packed infos before the count
+     * sizes an allocation */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
         ninfo = 0;
         status = PMIX_ERR_BAD_PARAM;
         goto complete;
@@ -441,10 +442,10 @@ static void valid_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
-    /* the count sizes an allocation, so it must survive the round trip
-     * through the int32_t the unpack takes it as */
+    /* the buffer must hold that many packed infos before the count
+     * sizes an allocation */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
         ninfo = 0;
         status = PMIX_ERR_BAD_PARAM;
         goto complete;
