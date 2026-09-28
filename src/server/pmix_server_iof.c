@@ -106,15 +106,10 @@ void pmix_server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
         PMIX_ERROR_LOG(rc);
         return;
     }
-    /* this count came off the wire and is about to be multiplied by
-     * sizeof(pmix_info_t) to size an allocation whose element
-     * constructors then walk it, so a value large enough to wrap that
-     * product runs off the end of a short block before any NULL check
-     * gets a say. Require it to survive the round trip through the
-     * int32_t the unpack consumes it as - the screen the fence and
-     * event handlers use */
+    /* the buffer must hold that many packed elements before the count
+     * sizes an allocation - see pmix_bfrop_count_fits() */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
     }
@@ -974,7 +969,7 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
      * pmix_server_iof_handler. This one is copied again below, walking
      * the size_t rather than the int32_t the unpack consumed */
     cnt = cd->nprocs;
-    if (0 > cnt || (size_t) cnt != cd->nprocs) {
+    if (!pmix_bfrop_count_fits(buf, cd->nprocs, PMIX_PROC)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -998,7 +993,7 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
         goto exit;
     }
     cnt = cd->ninfo;
-    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, cd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1138,14 +1133,10 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
-    /* screen the count before the "+ 1" below: a wire value near
-     * SIZE_MAX wraps that sum down to zero, PMIx_Info_create answers
-     * NULL for a zero-element array, and the stop directive would then
-     * be seeded at info[SIZE_MAX]. The same wrap can happen inside the
-     * allocator's "ninfo * sizeof(pmix_info_t)". This is the screen the
-     * group and collective handlers carry for the same shape */
+    /* check the count before the "+ 1" below, which sizes the array
+     * the stop directive is seeded into */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1305,7 +1296,7 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
     /* screen the count before it sizes an allocation - see the note in
      * pmix_server_iof_handler */
     cnt = cd->nprocs;
-    if (0 > cnt || (size_t) cnt != cd->nprocs) {
+    if (!pmix_bfrop_count_fits(buf, cd->nprocs, PMIX_PROC)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto error;
@@ -1332,7 +1323,7 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
         goto error;
     }
     cnt = cd->ninfo;
-    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, cd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto error;

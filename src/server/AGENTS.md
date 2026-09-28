@@ -2568,8 +2568,8 @@ a verbose line whose arguments are evaluated whether or not the channel
 is open. Same rule as the process-set entry points above; the entry point
 is the only place they get screened.
 
-**Every count these handlers read off the wire needs the round-trip
-screen**, for the reasons set out under "What *does* need screening"
+**Every count these handlers read off the wire needs the count
+check**, for the reasons set out under "What *does* need screening"
 below. `pmix_server_iofdereg` is the `+ 1` shape: it sizes its array as
 `ninfo + 1` so it can seed `PMIX_IOF_STOP` in the last slot itself, so
 the count is screened before that sum is formed. `pmix_server_iof_handler`,
@@ -3003,19 +3003,29 @@ misbehave by design).
   that lookup, creates and appends the namespace itself. Verified by
   instrumenting both sites. Do not "fix" the dead branch on the theory
   that the lookup can fail.
-- **An unchecked `PMIX_*_CREATE` followed straight by an unpack is not a
-  bug.** `pmix_bfrops_base_unpack` screens `NULL == dst` and returns
-  `PMIX_ERR_BAD_PARAM`, so the near-universal shape here — `if (0 < n)
-  { PMIX_INFO_CREATE(array, n); cnt = n; unpack into array; }` — fails
-  cleanly when the allocation fails, whether from real memory pressure or
-  from an oversized wire count. Do not sprinkle NULL checks through
-  these handlers; it was audited and refuted.
-- **What *does* need screening is a wire count used before, or without,
-  the unpack.** Every count arrives as a `size_t` and is then consumed
-  through the `int32_t` that `PMIX_BFROPS_UNPACK` takes, so a count can
-  truncate to zero or to a negative number. That needs nothing further
-  wherever the only use is sizing an array the unpack immediately
-  guards. Two handlers here are not that. `pmix_server_log` indexes the
+- **An unchecked `PMIX_*_CREATE` result followed straight by an unpack
+  needs no NULL check.** `pmix_bfrops_base_unpack` screens `NULL == dst`
+  and returns `PMIX_ERR_BAD_PARAM`, so the near-universal shape here —
+  `if (0 < n) { PMIX_INFO_CREATE(array, n); cnt = n; unpack into array;
+  }` — fails cleanly when the allocation fails. Do not sprinkle NULL
+  checks through these handlers.
+- **Every wire count that sizes an allocation goes through
+  `pmix_bfrop_count_fits(buf, n, TYPE)` first**, where `TYPE` is the
+  element type about to be unpacked. It is true only if `n` fits the
+  `int32_t` that `PMIX_BFROPS_UNPACK` takes *and* the unread part of
+  `buf` can hold `n` elements of `TYPE` at their smallest packed size
+  (the per-type minimums are in `min_packed_size()` in
+  `src/mca/bfrops/base/bfrop_base_fns.c`). A failed check returns
+  `PMIX_ERR_BAD_PARAM` before anything is allocated. The NULL check
+  above is not a substitute: an allocation that succeeds is constructed
+  element by element before the unpack reads a byte, so a count must be
+  related to the bytes that actually arrived before it reaches the
+  `_CREATE`. Covered by `test/unit/server_control.c` and
+  `test/unit/bfrops_helpers.c`.
+- **The `int32_t` half of that check matters on its own wherever a count
+  is used before, or without, the unpack.** A `size_t` count consumed
+  through the `int32_t` unpack count can truncate to zero or to a
+  negative number. Two handlers here are not the plain shape. `pmix_server_log` indexes the
   directive array to append `PMIX_LOG_SOURCE` *before* anything is
   unpacked into it and hands `(info, ninfo)` to `plog` even when the
   unpack was skipped; `pmix_server_register_events` walks its code array
@@ -3023,7 +3033,7 @@ misbehave by design).
   array comes from a bare `malloc`, so the tail is uninitialized rather
   than constructed (an info array needs no such care precisely because
   `PMIX_INFO_CREATE` constructs every element). Both reject a count that
-  does not survive the round trip. Apply the same test to any new handler that
+  does not pass the check. Apply the same test to any new handler that
   reads a count before it reads the array, or that walks the `size_t`
   rather than the `int32_t` afterwards.
 
@@ -3033,8 +3043,8 @@ misbehave by design).
   inside the allocation call. So the count has to be bounded before the
   create; the "the unpack screens a NULL destination" reasoning applies
   only once the allocation has returned. `PMIX_PROC_CREATE` and the other
-  `_CREATE` macros are built the same way. That is why the round-trip
-  screen belongs on every count read off the wire, not only on the ones
+  `_CREATE` macros are built the same way. That is why the count
+  check belongs on every count read off the wire, not only on the ones
   with a visible `+ 2`. `pmix_server_get` carries it for exactly this
   reason, and its wire count is covered by `test/unit/server_get.c`.
 
@@ -3047,14 +3057,14 @@ misbehave by design).
   proc array, and it is the `size_t` — not the `int32_t` the unpack
   consumed — that the `qsort` and the `PMIX_PROC_FREE` afterwards walk.
   Fence, connect and disconnect all screen both counts with the same
-  round-trip test. Covered by `test/unit/server_fence.c` and
+  count check. Covered by `test/unit/server_fence.c` and
   `test/unit/server_connect.c`, whose info-count cases abort rather than
   fail if the screen is removed. **Any new collective handler that seeds
   slots past the unpacked ones owes the same screen**. The group handler
   is the fourth: it builds its array as `ninfo = ninf + 1` and seeds
   `PMIX_LOCAL_COLLECTIVE_STATUS` at `info[ninf]` before the unpack, and
   its proc count has the same shape as the others. Both carry the
-  round-trip screen.
+  count check.
 
   **The two event handlers are two more.** `pmix_server_register_events`
   screens its code count and its info count, and
