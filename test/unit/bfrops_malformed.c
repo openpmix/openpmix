@@ -26,6 +26,8 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix.h"
 #include "include/pmix_server.h"
+#include "src/include/pmix_globals.h"
+#include "src/mca/bfrops/base/base.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -592,6 +594,66 @@ static void test_a_value_cannot_carry_an_oversized_type(void)
 
 /* ------------------------------------------------------------------ */
 
+/* The v21 and v3 wire formats carry two deprecated types, an info array
+ * and a modex blob, each preceded by its element count. That count must
+ * be bounded by the bytes left in the message before it sizes an
+ * allocation. The type values and the modex layout are private to those
+ * components, so they are mirrored here. */
+#define UT_PMIX_MODEX      29
+#define UT_PMIX_INFO_ARRAY 44
+
+typedef struct {
+    char nspace[PMIX_MAX_NSLEN + 1];
+    int rank;
+    uint8_t *blob;
+    size_t size;
+} ut_modex_data_t;
+
+static void test_legacy_counts_bounded(const char *version)
+{
+    pmix_bfrops_module_t *mod;
+    pmix_buffer_t buf;
+    pmix_info_array_t arr;
+    ut_modex_data_t modex;
+    size_t huge = (size_t) 1 << 50;
+    int32_t n;
+    pmix_status_t rc;
+    char label[128];
+
+    mod = pmix_bfrops_base_assign_module(version);
+    if (NULL == mod) {
+        fprintf(stdout, "  SKIP: bfrops %s not available\n", version);
+        return;
+    }
+
+    /* [count 1][size huge] and nothing after it */
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    rc = mod->pack(&buf, &huge, 1, PMIX_SIZE);
+    memset(&arr, 0, sizeof(arr));
+    n = 1;
+    if (PMIX_SUCCESS == rc) {
+        rc = mod->unpack(&buf, &arr, &n, UT_PMIX_INFO_ARRAY);
+    }
+    snprintf(label, sizeof(label), "%s: an info-array size larger than the message is refused",
+             version);
+    report(label, PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc && NULL == arr.array);
+    PMIX_DESTRUCT(&buf);
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    rc = mod->pack(&buf, &huge, 1, PMIX_SIZE);
+    memset(&modex, 0, sizeof(modex));
+    n = 1;
+    if (PMIX_SUCCESS == rc) {
+        rc = mod->unpack(&buf, &modex, &n, UT_PMIX_MODEX);
+    }
+    snprintf(label, sizeof(label), "%s: a modex size larger than the message is refused",
+             version);
+    report(label, PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc && NULL == modex.blob);
+    PMIX_DESTRUCT(&buf);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -618,6 +680,8 @@ int main(int argc, char **argv)
     test_element_count_cannot_exceed_the_message();
     test_a_value_cannot_carry_an_oversized_type();
     test_random_bytes_through_every_unpacker();
+    test_legacy_counts_bounded("v21");
+    test_legacy_counts_bounded("v3");
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
