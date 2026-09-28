@@ -140,6 +140,9 @@ client or tool, it tells the host who is asking, so that the host can decide
 what that process may see or do:
 
 * The requester's ``pmix_proc_t`` is passed as the up-call's process argument.
+  ``iof_pull`` and ``register_events`` have no process argument, so for them
+  the requester is named in the directives or info with ``PMIX_REQUESTOR``,
+  in place of any ``PMIX_REQUESTOR`` the requester supplied.
 * The up-call's info or directives array carries exactly one ``PMIX_USERID``
   and one ``PMIX_GRPID``. For ``query`` they are in the qualifiers of every
   query.

@@ -369,6 +369,13 @@ PMIX_EXPORT void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t 
 PMIX_EXPORT pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info,
                                                        size_t *ninfo);
 
+/* For an up-call that has no process argument (iof_pull, register_events):
+ * name the requesting peer in the array with PMIX_REQUESTOR, in place of
+ * any the requester supplied. Replaces the array exactly as
+ * pmix_server_add_requester_id does. */
+PMIX_EXPORT pmix_status_t pmix_server_add_requester_proc(pmix_peer_t *peer, pmix_info_t **info,
+                                                         size_t *ninfo);
+
 PMIX_EXPORT pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_info_cbfunc_t cbfunc, void *cbdata);
 

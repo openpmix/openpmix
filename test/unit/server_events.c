@@ -134,16 +134,31 @@ static int nfail = 0;
  * it when it chooses. */
 static pmix_op_cbfunc_t host_regcb = NULL;
 static void *host_regcbdata = NULL;
+/* how many times the info named the requester as PMIX_REQUESTOR, and
+ * whether it named the process that registered - the stand-in, which
+ * sends as the server's own identity */
+static size_t host_nrequestor = 0;
+static bool host_requestor_ok = false;
 
 static pmix_status_t stub_register_events(pmix_status_t *codes, size_t ncodes,
                                           const pmix_info_t info[], size_t ninfo,
                                           pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    size_t n;
+
     (void) codes;
     (void) ncodes;
-    (void) info;
-    (void) ninfo;
 
+    host_nrequestor = 0;
+    host_requestor_ok = false;
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_REQUESTOR)) {
+            ++host_nrequestor;
+            host_requestor_ok = (PMIX_PROC == info[n].value.type &&
+                                 NULL != info[n].value.data.proc &&
+                                 PMIX_CHECK_PROCID(info[n].value.data.proc, &pmix_globals.myid));
+        }
+    }
     host_regcb = cbfunc;
     host_regcbdata = cbdata;
     return PMIX_SUCCESS;
@@ -593,6 +608,8 @@ int main(int argc, char **argv)
     rc = do_register_acked(1, syscodes);
     report("the host is asked to forward the system code",
            PMIX_SUCCESS == rc && NULL != host_regcb);
+    report("the host is told which process registered",
+           1 == host_nrequestor && host_requestor_ok);
     report("nothing is sent while the host still holds the request",
            0 == queued_count());
 
