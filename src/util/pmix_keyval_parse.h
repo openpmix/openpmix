@@ -25,6 +25,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include <stdio.h>
+
 BEGIN_C_DECLS
 
 PMIX_EXPORT extern int pmix_util_keyval_parse_lineno;
@@ -74,6 +76,22 @@ typedef void (*pmix_keyval_parse_fn_t)(const char *file, int lineno,
  */
 PMIX_EXPORT int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback,
                                        void *cbdata);
+
+/**
+ * Parse a file the caller has already opened, exactly as
+ * pmix_util_keyval_parse() parses a named one. This is for a caller that
+ * checks what it opened (with fstat) before reading it: parsing by name
+ * would open the path again, and could find something else there.
+ *
+ * @param fp       Stream to read to its end. It is not closed.
+ * @param filename Name to report in messages and hand to the callback.
+ *
+ * @return PMIX_SUCCESS, or PMIX_ERR_OUT_OF_RESOURCE as for
+ *         pmix_util_keyval_parse().
+ */
+PMIX_EXPORT int pmix_util_keyval_parse_stream(FILE *fp, const char *filename,
+                                              pmix_keyval_parse_fn_t callback,
+                                              void *cbdata);
 
 /**
  * Ready this file's process-global state (the serializing lock).
