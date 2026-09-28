@@ -234,6 +234,13 @@ borrows the first one's apps and directives with `copied` left false —
 pfexec releases the caddy it is given, and the arrays belong to the one
 holding the requester's callback. Covered by `test/unit/tool_relay`.
 
+The fork/exec'd job runs as this process's user, so `pmix_server_spawn`
+takes that arm only for a requester whose `info->uid` is our euid, and
+answers anyone else `PMIX_ERR_NO_PERMISSIONS` before unpacking the
+request. A host `spawn` is not subject to that check: the host decides
+for itself, and is handed the requester's identity to do it with.
+Covered by the foreign-peer case in `test/unit/pfexec_iof`.
+
 **`PMIX_SUCCESS` from an up-call transfers ownership of the caddy to the
 host.** This is the arm most easily lost, because it is usually the one
 that needs no code: the handler returns and the host's callback does the
