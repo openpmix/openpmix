@@ -47,6 +47,7 @@
 #include <event.h>
 
 #include "src/class/pmix_list.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/gds.h"
 #include "src/mca/ptl/base/base.h"
@@ -285,18 +286,10 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* This count comes off the wire under the client's control, and the
-     * usual "the unpack screens a NULL destination" argument does not
-     * cover it: PMIx_Info_create multiplies it by sizeof(pmix_info_t)
-     * without an overflow guard and then *constructs* that many elements,
-     * so a value large enough to wrap the product yields a short
-     * allocation the constructor loop immediately runs off the end of.
-     * The directive scan below walks the size_t as well, rather than the
-     * int32_t the unpack consumed. Require the count to survive the round
-     * trip through that int32_t - the same screen fence, connect and
-     * register_events apply - which bounds it well clear of the wrap. */
+    /* check the count before it sizes an allocation - the directive
+     * scan below walks this size_t. See pmix_bfrop_count_fits() */
     cnt = cd->ninfo;
-    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, cd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         cd->ninfo = 0;

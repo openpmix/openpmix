@@ -1691,16 +1691,11 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     pmix_output_verbose(2, pmix_server_globals.fence_output,
                         "recvd fence from %s with %d procs",
                         PMIX_PEER_PRINT(cd->peer), (int) nprocs);
-    /* there must be at least one as the client has to at least provide
-     * their own namespace. Bound it from above as well, by the same
-     * round trip through the int32_t the unpack consumes it as: this
-     * count is multiplied by sizeof(pmix_proc_t) to size the allocation
-     * below, and a wire value large enough to wrap that product yields a
-     * short allocation whose element constructors then run off the end.
-     * It also keeps "cnt" from silently naming a different number of
-     * procs than the qsort and the free below walk. */
+    /* there must be at least one as the client has to at least
+     * provide their own namespace, and the buffer must hold that many
+     * packed procs. The qsort and the free below walk this count */
     cnt = nprocs;
-    if (nprocs < 1 || 0 > cnt || (size_t) cnt != nprocs) {
+    if (nprocs < 1 || !pmix_bfrop_count_fits(buf, nprocs, PMIX_PROC)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -1737,17 +1732,11 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     if (PMIX_SUCCESS != rc) {
         goto cleanup;
     }
-    /* This count comes off the wire, so screen it before it is used to
-     * size an allocation and then to index that allocation. Two slots are
-     * seeded at info[ninf] and info[ninf+1] *before* anything is unpacked,
-     * so a count near SIZE_MAX wraps "ninf + 2" down to a one-element
-     * array and writes the seeds far outside it; the same wrap can happen
-     * inside the allocator's "ninfo * sizeof(pmix_info_t)". Requiring the
-     * count to survive the round trip through the int32_t that the unpack
-     * below consumes it as - the screen pmix_server_register_events
-     * uses - bounds it well clear of both. */
+    /* two slots are seeded at info[ninf] and info[ninf+1] before
+     * anything is unpacked, so check the count here: the buffer must
+     * hold that many packed infos */
     cnt = ninf;
-    if (0 > cnt || (size_t) cnt != ninf) {
+    if (!pmix_bfrop_count_fits(buf, ninf, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
