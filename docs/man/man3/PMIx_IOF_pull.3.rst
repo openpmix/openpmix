@@ -227,7 +227,14 @@ environment with the caller's ``PMIX_USERID`` and ``PMIX_GRPID``, and the host
 decides whether the caller may receive that output. Nothing is forwarded to the
 caller until the host approves; output produced before then is held and
 delivered once it does. If the host refuses, the request fails with the host's
-status (for example ``PMIX_ERR_NO_PERMISSIONS``).
+status (for example ``PMIX_ERR_NO_PERMISSIONS``). The host is also told which
+process is asking, through ``PMIX_REQUESTOR``.
+
+Output that a server receives before anyone has registered for it is held for
+the first request that is approved for it, and delivered to that request only.
+A request registered after that receives the output from that point on; the
+server does not keep output that has already been delivered in case another
+request arrives later.
 
 
 .. include:: /man/no-blocking-in-progress-thread.rst

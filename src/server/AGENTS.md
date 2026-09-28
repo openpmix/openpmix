@@ -3200,7 +3200,11 @@ misbehave by design).
   register_events, query (on every query's qualifiers), both resolve
   handlers (on the query they build), log (host path only), alloc,
   job_control, monitor, get/validate credential, iofreg, iofdereg, stdin,
-  session_control and resource_block. The tool-connection up-call gets its
+  session_control and resource_block. Two up-calls have no process
+  argument - `iof_pull` (registration and the `PMIX_IOF_STOP` deregistration)
+  and `register_events` - so they also get `pmix_server_add_requester_proc()`,
+  which names the requester with `PMIX_REQUESTOR`, replacing any it sent.
+  The tool-connection up-call gets its
   pair from the handshake in `ptl_base_connection_hdlr.c`, overwriting any
   the tool sent - that up-call records who the tool *is*, so a chosen group
   does not apply to it. A new handler that makes an up-call for a peer owes

@@ -797,8 +797,12 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
          * dead code, and worse than dead: reached, it would leave the
          * codes marked active without giving the interest back */
 
-        /* pass the requester's identity to the host */
+        /* pass the requester's identity to the host - the up-call has no
+         * process argument, so the requester is named in the info */
         rc = pmix_server_add_requester_id(peer, &info, &ninfo);
+        if (PMIX_SUCCESS == rc) {
+            rc = pmix_server_add_requester_proc(peer, &info, &ninfo);
+        }
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             undo_activations(codes, nactive);

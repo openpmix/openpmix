@@ -38,7 +38,8 @@
  *      the host decides, and its
  *      slot is reused             -> the answer leaves the new request
  *                                    alone
- *   the directives                -> carry the requester's uid and gid
+ *   the directives                -> carry the requester's uid and gid,
+ *                                    and name it with PMIX_REQUESTOR
  */
 
 #include "src/include/pmix_config.h"
@@ -86,6 +87,8 @@ static size_t pull_nuid = 0;
 static size_t pull_ngid = 0;
 static uint32_t pull_uid = 0;
 static uint32_t pull_gid = 0;
+static size_t pull_nrequestor = 0;
+static pmix_proc_t pull_requestor;
 
 /* Record the request and hold on to the callback: the case decides when
  * the host answers */
@@ -105,7 +108,15 @@ static pmix_status_t stub_iof_pull(const pmix_proc_t procs[], size_t nprocs,
     pull_cbdata = cbdata;
     pull_nuid = 0;
     pull_ngid = 0;
+    pull_nrequestor = 0;
+    memset(&pull_requestor, 0, sizeof(pull_requestor));
     for (n = 0; n < ndirs; n++) {
+        if (PMIX_CHECK_KEY(&directives[n], PMIX_REQUESTOR)) {
+            ++pull_nrequestor;
+            if (PMIX_PROC == directives[n].value.type && NULL != directives[n].value.data.proc) {
+                memcpy(&pull_requestor, directives[n].value.data.proc, sizeof(pmix_proc_t));
+            }
+        }
         if (PMIX_CHECK_KEY(&directives[n], PMIX_USERID)) {
             ++pull_nuid;
             pull_uid = directives[n].value.data.uint32;
@@ -320,6 +331,9 @@ static void test_approved(void)
     report("a pull is accepted and handed to the host", PMIX_SUCCESS == rc && pull_called);
     report("the host is given the requester's uid and gid",
            1 == pull_nuid && 1 == pull_ngid && IPA_UID == pull_uid && IPA_GID == pull_gid);
+    report("and is told which process is asking",
+           1 == pull_nrequestor && PMIX_CHECK_NSPACE(pull_requestor.nspace, IPA_REQ_NSPACE) &&
+           0 == pull_requestor.rank);
     req = find_req(p);
     report("the request holds its slot but matches nothing yet",
            NULL != req && PMIX_FWD_NO_CHANNELS == req->channels);
