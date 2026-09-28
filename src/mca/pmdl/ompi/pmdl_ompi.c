@@ -14,7 +14,10 @@
 
 #include "src/include/pmix_config.h"
 
+#include <fcntl.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
@@ -234,12 +237,21 @@ static pmix_status_t add_prefixed_envar(pmix_list_t *ilist, const char *prefix,
     return rc;
 }
 
-static pmix_status_t process_param_file(char *file, pmix_list_t *ilist)
+/* Read a param file, or skip it. It is opened once and checked through
+ * that descriptor - it must be a regular file and, when "owner" is not
+ * (uid_t) -1, belong to that user - and the same descriptor is parsed, so
+ * what was checked is what is read. A symlink is followed, and its target
+ * is what must pass. A file that is absent or does not pass contributes
+ * nothing. */
+static pmix_status_t process_param_file(char *file, uid_t owner, pmix_list_t *ilist)
 {
     pmix_list_t params;
     pmix_mca_base_var_file_value_t *fv;
     pmix_status_t rc;
     const char *prefix;
+    struct stat buf;
+    FILE *fp;
+    int fd;
 
     if (NULL == file) {
         /* every caller builds the name with pmix_os_path(), which
@@ -249,8 +261,27 @@ static pmix_status_t process_param_file(char *file, pmix_list_t *ilist)
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
+    /* O_NONBLOCK so that a FIFO at the name cannot hold up the open */
+    fd = open(file, O_RDONLY | O_NONBLOCK);
+    if (0 > fd) {
+        return PMIX_SUCCESS;
+    }
+    if (0 != fstat(fd, &buf) || !S_ISREG(buf.st_mode) ||
+        ((uid_t) -1 != owner && buf.st_uid != owner)) {
+        pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                            "pmdl:ompi: skipping param file %s", file);
+        close(fd);
+        return PMIX_SUCCESS;
+    }
+    fp = fdopen(fd, "r");
+    if (NULL == fp) {
+        close(fd);
+        return PMIX_SUCCESS;
+    }
+
     PMIX_CONSTRUCT(&params, pmix_list_t);
-    pmix_mca_base_parse_paramfile(file, &params);
+    pmix_mca_base_parse_paramfile_stream(fp, file, &params);
+    fclose(fp);
     PMIX_LIST_FOREACH (fv, &params, pmix_mca_base_var_file_value_t) {
         /* a single param file can hold values directed at any of the
          * three libraries, and each one has to carry the prefix its
@@ -328,7 +359,7 @@ static pmix_status_t build_cache(uint32_t uid, pmdl_cache_t **out)
     if (NULL != (evar = getenv("OMPIHOME"))) {
         /* look for the default MCA param file */
         file = pmix_os_path(false, evar, "etc", "openmpi-mca-params.conf", NULL);
-        rc = process_param_file(file, &cache->results);
+        rc = process_param_file(file, (uid_t) -1, &cache->results);
         free(file);
         if (PMIX_SUCCESS != rc) {
             goto error;
@@ -344,8 +375,9 @@ static pmix_status_t build_cache(uint32_t uid, pmdl_cache_t **out)
     /* try to get their home directory */
     home = pmix_home_directory(uid);
     if (NULL != home) {
+        /* the user's own file, so it must be theirs */
         file = pmix_os_path(false, home, ".openmpi", "mca-params.conf", NULL);
-        rc = process_param_file(file, &cache->results);
+        rc = process_param_file(file, (uid_t) uid, &cache->results);
         free(file);
         if (PMIX_SUCCESS != rc) {
             goto error;

@@ -551,10 +551,10 @@ static int process_line(const char *filename, int lineno, char *work,
     return parse_assignment(filename, lineno, p, original, callback, cbdata);
 }
 
-int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback,
-                           void *cbdata)
+/* read fp to its end. Called with keyval_mutex held */
+static int parse_stream(FILE *fp, const char *filename, pmix_keyval_parse_fn_t callback,
+                        void *cbdata)
 {
-    FILE *fp;
     char *line = NULL;
     char *work = NULL;
     size_t linelen = 0;
@@ -563,26 +563,6 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
     int lineno = 0;
     int rc = PMIX_SUCCESS;
     int ret = PMIX_SUCCESS;
-
-    pmix_mutex_lock(&keyval_mutex);
-
-    fp = fopen(filename, "r");
-    if (NULL == fp) {
-        /* Our caller treats PMIX_ERR_NOT_FOUND as "there is no such file,
-         * carry on", which is right for the default parameter files since
-         * most systems have none of them.  It is not right for a file that
-         * is there and could not be read - a permission problem or an
-         * exhausted descriptor table discards every parameter in it and
-         * looks exactly like the file never existing.  Keep the return
-         * code, since failing startup over an unreadable optional dotfile
-         * would be worse, but do not let it pass without a word. */
-        if (ENOENT != errno) {
-            pmix_output(0, "keyval parser: cannot read file %s: %s", filename,
-                        strerror(errno));
-        }
-        ret = PMIX_ERR_NOT_FOUND;
-        goto cleanup;
-    }
 
     while (PMIX_SUCCESS == (rc = read_line(fp, &line, &linelen))) {
         char *start = line;
@@ -620,11 +600,55 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
         ret = rc;
     }
 
+    free(line);
+    free(work);
+    return ret;
+}
+
+int pmix_util_keyval_parse_stream(FILE *fp, const char *filename,
+                                  pmix_keyval_parse_fn_t callback, void *cbdata)
+{
+    int ret;
+
+    if (NULL == fp || NULL == filename) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    pmix_mutex_lock(&keyval_mutex);
+    ret = parse_stream(fp, filename, callback, cbdata);
+    pmix_mutex_unlock(&keyval_mutex);
+    return ret;
+}
+
+int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback,
+                           void *cbdata)
+{
+    FILE *fp;
+    int ret = PMIX_SUCCESS;
+
+    pmix_mutex_lock(&keyval_mutex);
+
+    fp = fopen(filename, "r");
+    if (NULL == fp) {
+        /* Our caller treats PMIX_ERR_NOT_FOUND as "there is no such file,
+         * carry on", which is right for the default parameter files since
+         * most systems have none of them.  It is not right for a file that
+         * is there and could not be read - a permission problem or an
+         * exhausted descriptor table discards every parameter in it and
+         * looks exactly like the file never existing.  Keep the return
+         * code, since failing startup over an unreadable optional dotfile
+         * would be worse, but do not let it pass without a word. */
+        if (ENOENT != errno) {
+            pmix_output(0, "keyval parser: cannot read file %s: %s", filename,
+                        strerror(errno));
+        }
+        ret = PMIX_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+
+    ret = parse_stream(fp, filename, callback, cbdata);
     fclose(fp);
 
 cleanup:
-    free(line);
-    free(work);
     pmix_mutex_unlock(&keyval_mutex);
 
     return ret;

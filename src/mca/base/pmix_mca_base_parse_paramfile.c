@@ -42,6 +42,11 @@ int pmix_mca_base_parse_paramfile(const char *paramfile, pmix_list_t *list)
     return pmix_util_keyval_parse(paramfile, save_value, list);
 }
 
+int pmix_mca_base_parse_paramfile_stream(FILE *fp, const char *paramfile, pmix_list_t *list)
+{
+    return pmix_util_keyval_parse_stream(fp, paramfile, save_value, list);
+}
+
 int pmix_mca_base_internal_env_store(pmix_list_t *list)
 {
     return pmix_util_keyval_save_internal_envars(save_value, list);
