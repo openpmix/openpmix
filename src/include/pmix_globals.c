@@ -69,9 +69,8 @@
 const char* PMIX_PROXY_VERSION = PMIX_PROXY_VERSION_STRING;
 const char* PMIX_PROXY_BUGREPORT = PMIX_PROXY_BUGREPORT_STRING;
 
-static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd,
-                            pmix_epilog_t *epi);
-static bool dirpath_is_empty(const char *path);
+static void dirpath_destroy_at(int fd, const char *path, pmix_cleanup_dir_t *cd,
+                               pmix_epilog_t *epi);
 
 static void nsenvcon(pmix_nspace_env_cache_t *p)
 {
@@ -904,8 +903,7 @@ static void epilog_walk(pmix_epilog_t *epi)
 {
     pmix_cleanup_file_t *cf;
     pmix_cleanup_dir_t *cd;
-    DIR *tst;
-    int rc;
+    int rc, fd;
 
     /* Every entry on these two lists carries exactly one path.
      * pmix_server_job_ctrl is the only thing in the tree that builds
@@ -927,12 +925,22 @@ static void epilog_walk(pmix_epilog_t *epi)
         }
     }
 
-    /* now cleanup the directories */
+    /* now cleanup the directories. Each is opened without following a
+     * symlink at its final component, and walked through descriptors -
+     * see dirpath_destroy_at */
     PMIX_LIST_FOREACH (cd, &epi->cleanup_dirs, pmix_cleanup_dir_t) {
-        tst = opendir(cd->path);
-        if (NULL != tst) {
-            closedir(tst);
-            dirpath_destroy(cd->path, cd, epi);
+        if (NULL == cd->path || epilog_ignored(epi, cd->path)) {
+            continue;
+        }
+        fd = open(cd->path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        if (0 > fd) {
+            continue;
+        }
+        dirpath_destroy_at(fd, cd->path, cd, epi);
+        /* rmdir removes only an empty directory, and never follows a
+         * symlink at the final component */
+        if (!cd->leave_topdir) {
+            (void) rmdir(cd->path);
         }
     }
 }
@@ -1077,24 +1085,24 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
     epilog_drain(epi);
 }
 
-static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *epi)
+/* Empty the directory fd refers to, as far as cd asks. Takes ownership
+ * of fd. Every entry is classified and removed relative to the open
+ * descriptor (fstatat/openat/unlinkat), never by re-resolving its path,
+ * so a symlink is removed as a link rather than followed, and an entry
+ * swapped between being classified and being acted on is left alone.
+ * path is used only to compare against the ignore list. */
+static void dirpath_destroy_at(int fd, const char *path, pmix_cleanup_dir_t *cd,
+                               pmix_epilog_t *epi)
 {
-    DIR *dp, *tst;
+    DIR *dp;
     struct dirent *ep;
+    struct stat buf, childbuf;
     char *filenm;
+    int childfd;
 
-    if (NULL == path) { /* protect against error */
-        return;
-    }
-
-    /* if this path is to be ignored, then do so */
-    if (epilog_ignored(epi, path)) {
-        return;
-    }
-
-    /* Open up the directory */
-    dp = opendir(path);
+    dp = fdopendir(fd);
     if (NULL == dp) {
+        close(fd);
         return;
     }
 
@@ -1106,89 +1114,68 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
             continue;
         }
 
-        /* Create a pathname.  This is not always needed, but it makes
-         * for cleaner code just to create it here.  Note that we are
-         * allocating memory here, so we need to free it later on.
-         */
+        /* the ignore list holds whole paths, so build this entry's */
         filenm = pmix_os_path(false, path, ep->d_name, NULL);
         if (NULL == filenm) {
             /* the assembled name is longer than PMIX_PATH_MAX, or we are
-             * out of memory - either way we cannot name this entry, and
-             * the ignore-list comparison below would hand the NULL to
-             * strcmp() */
+             * out of memory - either way we cannot tell whether it is to
+             * be ignored, so leave it */
             continue;
         }
-
-        /* if this path is to be ignored, then do so */
         if (epilog_ignored(epi, filenm)) {
             free(filenm);
             continue;
         }
 
-        /* Check to see if it is a directory */
-        tst = opendir(filenm);
-        if (NULL != tst) {
-            closedir(tst);
-            /* Both flags descend, for different reasons:
-             * PMIX_CLEANUP_RECURSIVE to destroy the subdirectory, and
-             * PMIX_CLEANUP_EMPTY because the empty directories it is
-             * looking for may be at any depth - and because a directory
-             * holding nothing but empty ones becomes empty itself once
-             * they are gone, which is what makes the walk bottom-up.
-             * Given neither, we were not told to touch a subdirectory at
-             * all, so it is left where it is. */
-            if (cd->recurse || cd->empty) {
-                dirpath_destroy(filenm, cd, epi);
-            }
+        if (0 != fstatat(dirfd(dp), ep->d_name, &buf, AT_SYMLINK_NOFOLLOW)) {
             free(filenm);
-        } else {
-            /* Files are removed right here - except under
-             * PMIX_CLEANUP_EMPTY, where the files are precisely what we
-             * were told to leave behind. Note this is also what stops
-             * that mode from emptying a directory and then removing it:
-             * the rmdir below only fires on a directory that is already
-             * empty. */
-            if (!cd->empty) {
-                unlink(filenm);
-            }
-            free(filenm);
+            continue;
         }
+
+        if (!S_ISDIR(buf.st_mode)) {
+            /* Files - and symlinks, whatever they point at - are removed
+             * right here, except under PMIX_CLEANUP_EMPTY, where the files
+             * are precisely what we were told to leave behind. Note this
+             * is also what stops that mode from emptying a directory and
+             * then removing it: a directory is only removed once it is
+             * already empty. */
+            if (!cd->empty) {
+                (void) unlinkat(dirfd(dp), ep->d_name, 0);
+            }
+            free(filenm);
+            continue;
+        }
+
+        /* Both flags descend, for different reasons:
+         * PMIX_CLEANUP_RECURSIVE to destroy the subdirectory, and
+         * PMIX_CLEANUP_EMPTY because the empty directories it is looking
+         * for may be at any depth - and because a directory holding
+         * nothing but empty ones becomes empty itself once they are gone,
+         * which is what makes the walk bottom-up. Given neither, we were
+         * not told to touch a subdirectory at all, so it is left where it
+         * is. */
+        if (cd->recurse || cd->empty) {
+            childfd = openat(dirfd(dp), ep->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+            if (0 <= childfd) {
+                /* O_NOFOLLOW refuses a symlink swapped in since the
+                 * fstatat, but not another directory renamed into place -
+                 * so descend only into the one that was classified */
+                if (0 == fstat(childfd, &childbuf) &&
+                    childbuf.st_dev == buf.st_dev &&
+                    childbuf.st_ino == buf.st_ino) {
+                    dirpath_destroy_at(childfd, filenm, cd, epi);
+                    /* removes it only if it is now empty */
+                    (void) unlinkat(dirfd(dp), ep->d_name, AT_REMOVEDIR);
+                } else {
+                    close(childfd);
+                }
+            }
+        }
+        free(filenm);
     }
 
     /* Done with this directory */
     closedir(dp);
-
-    /* If the directory is empty, then remove it unless we
-     * were told to leave it */
-    if (0 == strcmp(path, cd->path) && cd->leave_topdir) {
-        return;
-    }
-    if (dirpath_is_empty(path)) {
-        rmdir(path);
-    }
-}
-
-static bool dirpath_is_empty(const char *path)
-{
-    DIR *dp;
-    struct dirent *ep;
-
-    if (NULL != path) { /* protect against error */
-        dp = opendir(path);
-        if (NULL != dp) {
-            while ((ep = readdir(dp))) {
-                if ((0 != strcmp(ep->d_name, ".")) && (0 != strcmp(ep->d_name, ".."))) {
-                    closedir(dp);
-                    return false;
-                }
-            }
-            closedir(dp);
-            return true;
-        }
-        return false;
-    }
-
-    return true;
 }
 
 int pmix_event_assign(struct event *ev, pmix_event_base_t *evbase, int fd, short arg,
