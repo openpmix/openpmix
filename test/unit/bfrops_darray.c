@@ -17,6 +17,10 @@
  * the whole registered type table and holds those four operations against
  * each other, which is the only way that class of mismatch shows up.
  *
+ * One type is the exception to "the count survives the round trip": a
+ * pointer means nothing outside the process that packed it, so an array
+ * of PMIX_POINTER carries no values and unpacks with no elements.
+ *
  * It also covers two specific wire behaviours that a per-type sweep does
  * not reach: an array whose element type is PMIX_UNDEF (the "no array
  * here" marker, which pack and unpack must spell identically or the rest
@@ -135,7 +139,8 @@ static void test_pack_unpack_every_type(void)
                 fprintf(stdout, "    %s: unpack failed: %s\n",
                         PMIx_Data_type_string(all_types[i]), PMIx_Error_string(rc));
                 ok = 0;
-            } else if (out.type != all_types[i] || NELEMENTS != out.size) {
+            } else if (out.type != all_types[i] ||
+                       (PMIX_POINTER == all_types[i] ? 0 : NELEMENTS) != out.size) {
                 fprintf(stdout, "    %s: unpacked as type %d size %lu\n",
                         PMIx_Data_type_string(all_types[i]), (int) out.type,
                         (unsigned long) out.size);

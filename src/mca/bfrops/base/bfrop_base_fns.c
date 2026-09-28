@@ -860,9 +860,11 @@ bool pmix_bfrop_too_small(pmix_buffer_t *buffer, size_t bytes_reqd)
  * its length plus the terminator. Older wire formats pack larger, so
  * these are lower bounds for every peer.
  *
- * Zero means the type has no per-element minimum: PMIX_POINTER packs a
- * single sentinel for a whole array, and an array of empty data arrays
- * packs to less than a byte per element.
+ * Zero means the type has no per-element minimum, and its counts are
+ * checked only against the int32_t limit. PMIX_POINTER packs a single
+ * sentinel for a whole array (unpack_darray() hands such an array back
+ * empty), and an array of data arrays packs nothing after its first
+ * untyped element.
  */
 static size_t min_packed_size(pmix_data_type_t type)
 {
