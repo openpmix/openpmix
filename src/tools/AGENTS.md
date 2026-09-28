@@ -165,8 +165,11 @@ query (qualified by `PMIX_NSPACE`) and prints the returned
 
 The proc-table result is a `pmix_data_array_t*` of `pmix_proc_info_t`;
 `get_proc_array()` defends against a server that returns something else
-(e.g. a stub `query_fn`) by type-checking and degrading to "no process
-information available" rather than dereferencing. The data-array
+(e.g. a stub `query_fn`) by checking both the value type and the data
+array's element type (`PMIX_PROC_INFO`), and degrading to "no process
+information available" rather than dereferencing. A namespace list that
+`PMIx_Argv_split` turns into nothing (`""` or `","`) is reported as no
+active namespaces. The data-array
 consumption mirrors [`examples/debugger.c`](../../examples/debugger.c).
 
 Historical note: `pps` used to be a skeleton — everything below `main()`
@@ -232,11 +235,21 @@ crashing:
   developer's machine may have live PMIx servers (stale `pmix.*`
   rendezvous files in `$TMPDIR`) that make those paths non-deterministic.
 
-When adding a tool, add its no-connect invocation to that script. Testing
-the connecting tools (`pquery`, `palloc`, `pctrl`, `plookup`, `pevent`)
-end-to-end needs a server; model that on `test/simple/simptest` +
-`test/unit/run_*.pl` and keep it out of the default `make check` unless it
-is fully self-contained.
+- [`test/unit/tool_replies.c`](../../test/unit/tool_replies.c) is
+  self-contained: it is a PMIx server whose query upcall answers with the
+  wrong shape, and it runs `pps` and `pquery` against itself with `--uri`,
+  failing any run that dies on a signal. It is the model for testing a
+  connecting tool's handling of what its server says. Note that
+  attribute-support queries (`pattrs --host-fns`, `--host`) are answered
+  by the server library from its own registrations and never reach the
+  host's `query` upcall, so this shape cannot feed `pattrs` a malformed
+  answer.
+
+When adding a tool, add its no-connect invocation to `run_tools.pl`.
+Testing the other connecting tools (`palloc`, `pctrl`, `plookup`,
+`pevent`) end-to-end needs a server; model it on `tool_replies.c`, or on
+`test/simple/simptest` + `test/unit/run_*.pl`, and keep it out of the
+default `make check` unless it is fully self-contained.
 
 ## Fixed defects (July 2026 review)
 

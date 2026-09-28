@@ -215,6 +215,7 @@ static pmix_proc_info_t *get_proc_array(myquery_data_t *mq, size_t *np)
     }
     if (PMIX_DATA_ARRAY != mq->info[0].value.type ||
         NULL == mq->info[0].value.data.darray ||
+        PMIX_PROC_INFO != mq->info[0].value.data.darray->type ||
         NULL == mq->info[0].value.data.darray->array) {
         return NULL;
     }
@@ -495,6 +496,11 @@ int main(int argc, char *argv[])
 
     nspaces = PMIx_Argv_split(myquery_data.info[0].value.data.string, ',');
     PMIX_INFO_FREE(myquery_data.info, myquery_data.ninfo);
+    if (NULL == nspaces) {
+        /* an empty list, or nothing but separators */
+        fprintf(stderr, "No active namespaces were found\n");
+        goto done;
+    }
 
     /* for each active namespace, query and print its process table */
     for (n = 0; NULL != nspaces[n]; n++) {

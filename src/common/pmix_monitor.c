@@ -786,9 +786,22 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         results->ninfo = 0;
         goto complete;
     }
+    /* the count sizes an allocation, so it must survive the round trip
+     * through the int32_t the unpack takes it as */
+    cnt = results->ninfo;
+    if (0 > cnt || (size_t) cnt != results->ninfo) {
+        results->status = PMIX_ERR_BAD_PARAM;
+        results->ninfo = 0;
+        goto complete;
+    }
     if (0 < results->ninfo) {
         results->infocopy = true;
         PMIX_INFO_CREATE(results->info, results->ninfo);
+        if (NULL == results->info) {
+            results->status = PMIX_ERR_NOMEM;
+            results->ninfo = 0;
+            goto complete;
+        }
         cnt = results->ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, results->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
@@ -821,13 +834,13 @@ static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbd
                         "pmix:monitor acb cback");
 
     cb->status = status;
-    if (0 < ninfo) {
+    if (0 < ninfo && NULL != info) {
         // we ignore the info that was provided as that data belongs
         // to the original caller
         cb->infocopy = true;
         PMIX_INFO_CREATE(cb->info, ninfo);
-        cb->ninfo = ninfo;
-        for (n = 0; n < ninfo; n++) {
+        cb->ninfo = (NULL == cb->info) ? 0 : ninfo;
+        for (n = 0; n < cb->ninfo; n++) {
             PMIX_INFO_XFER(&cb->info[n], &info[n]);
         }
     } else {

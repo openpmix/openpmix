@@ -2059,6 +2059,7 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
              * array reaches it as a read past the end of the allocation */
             if (PMIX_DATA_ARRAY != grpinfo.value.type ||
                 NULL == grpinfo.value.data.darray ||
+                PMIX_INFO != grpinfo.value.data.darray->type ||
                 NULL == grpinfo.value.data.darray->array ||
                 0 == grpinfo.value.data.darray->size) {
                 PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
@@ -2086,6 +2087,7 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
                      * per entry */
                     if (PMIX_DATA_ARRAY != iptr[m].value.type ||
                         NULL == iptr[m].value.data.darray ||
+                        PMIX_INFO != iptr[m].value.data.darray->type ||
                         NULL == iptr[m].value.data.darray->array ||
                         0 == iptr[m].value.data.darray->size) {
                         PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);

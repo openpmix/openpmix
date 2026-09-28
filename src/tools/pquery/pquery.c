@@ -444,7 +444,7 @@ int main(int argc, char **argv)
             fprintf(stdout, "\n");
             if (PMIX_STRING == mq.info[n].value.type) {
                 ans = PMIx_Argv_split(mq.info[n].value.data.string, ',');
-                for (m=0; NULL != ans[m]; m++) {
+                for (m=0; NULL != ans && NULL != ans[m]; m++) {
                     if (NULL == (attr = pmix_attributes_reverse_lookup(ans[m]))) {
                         fprintf(stdout, "    %s\n", ans[m]);
                     } else {
