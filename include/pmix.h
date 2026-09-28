@@ -626,8 +626,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
  *                           before timing out and returning an error
  *            PMIX_USERID - the expected effective userid of the credential
  *                          to be validated
- *            PMIX_GROUPID - the expected effective group id of the credential
- *                          to be validated
+ *            PMIX_GRPID - the expected effective group id of the credential
+ *                         to be validated
  *
  * ninfo - number of elements in the info array
  *
