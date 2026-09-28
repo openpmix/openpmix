@@ -1820,6 +1820,21 @@ fault paths `pmix_server_grp_peer_lost` (connection dropped) and
 `pmix_server_grp_member_left` (voluntary `PMIx_Group_leave`) both funnel
 to `account_departed`.
 
+**Clients may not raise the group events only servers raise.** A client
+joins, accepts or declines through the group commands, and its server
+raises the event for it; an invitation's outcome is raised by the
+leader's server. So `pmix_server_event_recvd_from_client` refuses, with
+`PMIX_ERR_NO_PERMISSIONS` and before the host is told,
+`PMIX_GROUP_INVITED`, `_INVITE_ACCEPTED`, `_INVITE_DECLINED`,
+`_INVITE_FAILED`, `_MEMBERSHIP_UPDATE`, `_CONSTRUCT_ABORT`,
+`_CONSTRUCT_COMPLETE`, `_LEADER_FAILED` and `_MEMBER_FAILED` from any
+client (`server_only_group_event()`). Clients built before the server ran
+invitations raised some of these themselves, so such a client can no
+longer take part in an invite/join construct; that was accepted. What a
+client may still raise is `PMIX_GROUP_LEFT` (below) and
+`PMIX_GROUP_LEADER_SELECTED`, which the application raises and the library
+does not act on. Covered in `test/unit/server_events.c`.
+
 A `PMIX_GROUP_LEFT` notification reaches `pmix_server_grp_member_left`
 only for its sender. `pmix_server_event_recvd_from_client` takes the
 departing proc from `PMIX_EVENT_AFFECTED_PROC`, or from the sender when
