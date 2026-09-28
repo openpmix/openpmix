@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -252,6 +253,82 @@ restore:
     free(oldprefix);
 }
 
+/* A stream's file is created fresh, readable by its owner only, and is
+ * never reached through a symbolic link at its name: a new stream
+ * replaces the link with a file of its own, and an appending stream
+ * refuses it. Either way the file the link pointed at is left alone. */
+static void test_output_file_not_through_link(void)
+{
+    pmix_output_stream_t lds;
+    char *olddir = NULL, *oldprefix = NULL;
+    char dir[PMIX_PATH_MAX], target[PMIX_PATH_MAX + 32], link[PMIX_PATH_MAX + 64];
+    char buf[256];
+    struct stat st;
+    const char *prefix = "util-output-link-";
+    int id, fd;
+    ssize_t n;
+    FILE *fp;
+
+    snprintf(dir, sizeof(dir), "%s/util-output.XXXXXX", pmix_tmp_directory());
+    if (NULL == mkdtemp(dir)) {
+        report("output_file_link: scratch directory", 0);
+        return;
+    }
+    snprintf(target, sizeof(target), "%s/target", dir);
+    snprintf(link, sizeof(link), "%s/%slink.txt", dir, prefix);
+    pmix_output_set_output_file_info(dir, prefix, &olddir, &oldprefix);
+
+    /* a fresh stream, then an appending one, each over a link */
+    for (int append = 0; append < 2; append++) {
+        fp = fopen(target, "w");
+        if (NULL == fp) {
+            report("output_file_link: target created", 0);
+            break;
+        }
+        fputs("ORIGINAL\n", fp);
+        fclose(fp);
+        unlink(link);
+        if (0 != symlink(target, link)) {
+            report("output_file_link: link created", 0);
+            break;
+        }
+
+        PMIX_CONSTRUCT(&lds, pmix_output_stream_t);
+        lds.lds_want_file = true;
+        lds.lds_want_file_append = (0 != append);
+        lds.lds_file_suffix = strdup("link.txt");
+        id = pmix_output_open(&lds);
+        PMIX_DESTRUCT(&lds);
+        if (0 <= id) {
+            pmix_output(id, "WRITTEN-BY-STREAM");
+            pmix_output_close(id);
+        }
+
+        memset(buf, 0, sizeof(buf));
+        fd = open(target, O_RDONLY);
+        n = (0 <= fd) ? read(fd, buf, sizeof(buf) - 1) : -1;
+        if (0 <= fd) {
+            close(fd);
+        }
+        report(append ? "output_file_link: an appending stream leaves the link's target alone"
+                      : "output_file_link: a new stream leaves the link's target alone",
+               0 < n && 0 == strcmp(buf, "ORIGINAL\n"));
+
+        if (!append) {
+            report("output_file_link: a new stream writes a file of its own, mode 0600",
+                   0 == lstat(link, &st) && S_ISREG(st.st_mode) &&
+                       0600 == (st.st_mode & 0777));
+        }
+    }
+
+    unlink(link);
+    unlink(target);
+    rmdir(dir);
+    pmix_output_set_output_file_info(olddir, oldprefix, NULL, NULL);
+    free(olddir);
+    free(oldprefix);
+}
+
 /* ------------------------------------------------------------------ */
 /* pmix_output_set/get_verbosity                                       */
 /* ------------------------------------------------------------------ */
@@ -319,6 +396,7 @@ int main(int argc, char **argv)
     test_output_close_disabled_reclaims_slot();
     test_output_syslog_stream_is_marked();
     test_output_file_shared_between_streams();
+    test_output_file_not_through_link();
     test_output_verbosity();
     test_output_file_info();
 

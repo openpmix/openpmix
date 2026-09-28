@@ -34,6 +34,7 @@
 #    include <syslog.h>
 #endif
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <string.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
@@ -45,6 +46,7 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_printf.h"
 
 /*
@@ -720,13 +722,29 @@ static int open_file(int i)
         }
         snprintf(filename, PMIX_PATH_MAX, "%s/%s%s", output_dir, file_prefix,
                  file_suffix);
-        flags = O_CREAT | O_RDWR;
-        if (!pmix_output_info[i].ldi_file_want_append) {
-            flags |= O_TRUNC;
-        }
 
-        /* Actually open the file */
-        pmix_output_info[i].ldi_fd = open(filename, flags, 0644);
+        /* Actually open the file. A new file is created fresh, replacing
+         * anything left at the name, and is readable by its owner only.
+         * An existing file is appended to only if it is a regular file
+         * of ours with a single link. Neither open follows a symbolic
+         * link at the name. */
+        if (!pmix_output_info[i].ldi_file_want_append) {
+            pmix_output_info[i].ldi_fd = pmix_os_dirpath_create_file(filename, O_RDWR, 0600,
+                                                                     NULL, NULL);
+        } else {
+            flags = O_CREAT | O_RDWR;
+            pmix_output_info[i].ldi_fd = pmix_os_dirpath_open_file(filename, flags, 0600);
+            if (0 <= pmix_output_info[i].ldi_fd) {
+                struct stat st;
+
+                if (0 != fstat(pmix_output_info[i].ldi_fd, &st) || !S_ISREG(st.st_mode) ||
+                    st.st_uid != geteuid() || 1 != st.st_nlink) {
+                    close(pmix_output_info[i].ldi_fd);
+                    pmix_output_info[i].ldi_fd = -1;
+                    errno = EPERM;
+                }
+            }
+        }
         free(filename); /* release the filename in all cases */
         if (-1 == pmix_output_info[i].ldi_fd) {
             /* leave the stream in use: the session directory may simply
