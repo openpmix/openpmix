@@ -1324,6 +1324,7 @@ static pmix_status_t unpack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t
     pmix_status_t ret;
     pmix_data_type_t t;
     size_t sm;
+    void *sentinel = NULL;
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrop_unpack: %d data arrays", *num_vals);
@@ -1362,12 +1363,23 @@ static pmix_status_t unpack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t
             /* nothing else to do */
             continue;
         }
+        if (PMIX_POINTER == ptr[i].type) {
+            /* a pointer means nothing outside the process that packed
+             * it, so the packer sends one sentinel for the whole array
+             * and no element values. Consume the sentinel and hand back
+             * an array with no elements */
+            ptr[i].size = 0;
+            m = 1;
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &sentinel, &m, PMIX_POINTER, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                return ret;
+            }
+            continue;
+        }
         /* the buffer must still hold that many elements of the array's
-         * type. PMIX_POINTER and PMIX_DATA_ARRAY have no per-element
-         * minimum - PMIX_POINTER packs a single sentinel byte for the
-         * whole array, and an array of arrays whose elements are all
-         * empty is one type tag in total - so for them this checks
-         * only that the count fits an int32_t */
+         * type. An array of data arrays has no per-element minimum -
+         * nothing after its first untyped element is packed - so for it
+         * this checks only that the count fits an int32_t */
         if (!pmix_bfrop_count_fits(buffer, ptr[i].size, ptr[i].type)) {
             ptr[i].size = 0;
             return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
