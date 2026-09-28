@@ -215,11 +215,15 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->lkcbfunc = NULL;
     p->spcbfunc = NULL;
     p->cbdata = NULL;
+    p->iofreq = NULL;
 }
 static void scaddes(pmix_setup_caddy_t *p)
 {
     if (NULL != p->peer) {
         PMIX_RELEASE(p->peer);
+    }
+    if (NULL != p->iofreq) {
+        PMIX_RELEASE(p->iofreq);
     }
     PMIX_PROC_FREE(p->procs, p->nprocs);
     if (p->copied) {

@@ -369,10 +369,32 @@ of those clients then has no job-level data for a namespace it just
 connected to. Fail the collective instead; the reply loop below hands
 every participant the status and the tracker is torn down as usual.
 
+**An IOF pull matches nothing until the host approves it.** The host
+decides whether a requester may have a source's output - the requester's
+`PMIX_USERID` and `PMIX_GRPID` are in the directives it is handed, and a
+source in another namespace is legitimate (a debugger pulling the output
+of the job it is attached to). `pmix_server_iofreg` still adds the
+`pmix_iof_req_t` *before* the up-call, because its slot index is the refid
+the client is told, but with `PMIX_FWD_NO_CHANNELS`: every matching path
+goes through `pmix_iof_process_iof`, which drops a request whose channels
+do not overlap, and `clone_iof_reqs` skips one with none. `_iofreg` sets
+the real channels on the host's success, then replays the cache - so
+output that arrived while the host was deciding, which found no match and
+was cached, is delivered in order rather than lost. That is why the entry
+is reserved early rather than added on approval: it keeps the refid
+stable without the approval arm having to allocate.
+
+`_iofreg` acts only if the slot still holds *its* request: the requester
+can finalize while the host decides (`pmix_server_purge_events` removes
+its entries), and the slot can then be given to another request. The
+caddy holds a retain on the request (`cd->iofreq`), so the pointer
+comparison is safe. A source must also name a valid namespace - an empty
+one names no job for the host to approve, and `PMIX_CHECK_NSPACE` would
+match it against every source.
+
 **Taking a refused registration back out must not depend on the reply.**
-`pmix_server_iofreg` adds the `pmix_iof_req_t` *before* the host up-call,
-because the refid has to be in hand to report, and `_iofreg` is the arm
-that undoes it when the host refuses asynchronously. That removal sat
+`_iofreg` is the arm that undoes a registration when the host refuses
+asynchronously. That removal sat
 below the reply construction, so an allocation failure there left the
 entry in `pmix_globals.iof_requests` - pinning the requestor's peer with
 its retain for the life of the server and going on matching output for a
