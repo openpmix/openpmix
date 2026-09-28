@@ -780,6 +780,14 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
     if (NULL == pmix_host_server.spawn && !pmix_pfexec_globals.initialized) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
+    /* Without a host, the children are started by this process, as this
+     * process's user - so only a peer of that same user may ask for it */
+    if (NULL == pmix_host_server.spawn &&
+        (NULL == peer->info || peer->info->uid != geteuid())) {
+        pmix_output_verbose(2, pmix_server_globals.spawn_output,
+                            "refusing SPAWN: requestor is not our user");
+        return PMIX_ERR_NO_PERMISSIONS;
+    }
 
     /* setup */
     cd = PMIX_NEW(pmix_setup_caddy_t);
