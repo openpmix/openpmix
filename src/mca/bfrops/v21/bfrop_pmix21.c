@@ -696,9 +696,9 @@ static pmix_status_t pmix21_bfrop_unpack_array(pmix_pointer_array_t *regtypes,
             return ret;
         }
         if (0 < ptr[i].size) {
-            /* each element takes at least one byte of the buffer, and the
-             * count is handed on as an int32_t */
-            if (INT32_MAX < ptr[i].size || pmix_bfrop_too_small(buffer, ptr[i].size)) {
+            /* the buffer must still hold that many packed elements, and
+             * the count is handed on as an int32_t */
+            if (!pmix_bfrop_count_fits(buffer, ptr[i].size, PMIX_INFO)) {
                 ptr[i].size = 0;
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }

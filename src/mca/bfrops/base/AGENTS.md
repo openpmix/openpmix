@@ -39,7 +39,7 @@ registers it, simultaneously.**
 | [`bfrop_base_cmp.c`](bfrop_base_cmp.c) | per-type comparison behind `pmix_bfrops_base_value_cmp` |
 | [`bfrop_base_squash.c`](bfrop_base_squash.c) | the flexible (base-7 varint) integer codec used by every modern component |
 | [`bfrop_base_get_number.c`](bfrop_base_get_number.c) | `PMIx_Value_get_number` and its per-type range/precision checks |
-| [`bfrop_base_fns.c`](bfrop_base_fns.c) | buffer helpers (`buffer_extend`, `too_small`, store/get data type), value load/unload/xfer, and a block of **public** `PMIx_Info_list_*` / `PMIx_Value_get_size` APIs |
+| [`bfrop_base_fns.c`](bfrop_base_fns.c) | buffer helpers (`buffer_extend`, `too_small`, `count_fits`, store/get data type), value load/unload/xfer, and a block of **public** `PMIx_Info_list_*` / `PMIx_Value_get_size` APIs |
 | [`bfrop_base_macro_backers.c`](bfrop_base_macro_backers.c) | the out-of-line bodies behind the public inline `PMIx_*` utility macros (`PMIx_Argv_*`, `PMIx_Value_*`, `PMIx_Info_*`, `PMIx_Load_key`, …) |
 | [`bfrop_base_tma.h`](bfrop_base_tma.h) | the inline TMA (custom-allocator) implementations that nearly everything above delegates to with `tma == NULL` |
 
@@ -130,19 +130,34 @@ reports truncation rather than assembling a value out of whatever bytes
 happened to be there.
 
 **A length off the wire is bounded before it sizes an allocation.** The
-count that says how many elements an array holds is packed by the peer,
-and it used to size the receiver's allocation directly. A count larger
-than the bytes remaining in the buffer cannot be
-describing anything the peer actually sent, because every element of
-almost every type costs at least one byte to encode - so that is the
-bound, and it needs no per-type knowledge and no arbitrary constant.
+count that says how many elements an array holds is packed by the peer.
+A byte count (a blob, a string, an endpoint) is checked with
+`pmix_bfrop_too_small(buffer, n)`. An element count is checked with
+`pmix_bfrop_count_fits(buffer, n, type)`: the count must fit the
+`int32_t` an unpack takes, and the unread part of the buffer must hold
+`n` elements of `type` at their smallest packed size.
 
-Two element types are genuinely sparser and are exempted, or ordinary
-arrays of them stop unpacking: `PMIX_POINTER` packs one sentinel byte
-for the whole array (there is no sense shipping addresses between
-processes), and an array of arrays whose elements are all empty is a
-single type tag in total. The exemption is in the code with that
-reasoning attached; if you add a third sparse encoding, add it there.
+Those minimums are in `min_packed_size()` in `bfrop_base_fns.c`. They
+come from the most compact wire format (v4 and later, where every
+integer can pack into one byte), so they are lower bounds for every
+peer, older formats included. The rules behind them: every field of a
+structured type costs at least one byte, and a string packed from a
+fixed-length array (a key, an nspace) costs at least two - its length
+plus the terminator. So a `pmix_info_t` is at least 4 bytes (key,
+directives, value type), a `pmix_proc_t` at least 3. A type the table
+does not name gets 1. **If you change how a type packs, check its entry
+- a minimum that is too high rejects valid messages.**
+
+Three types have no per-element minimum, and the helper checks only the
+`int32_t` bound for them: `PMIX_UNDEF`, `PMIX_POINTER`, which packs one
+sentinel byte for the whole array (there is no sense shipping addresses
+between processes), and `PMIX_DATA_ARRAY`, because an array of arrays
+whose elements are all empty is a single type tag in total. If you add
+another sparse encoding, give it a 0 in the table.
+
+Every handler in `src/server`, `src/client`, `src/tool` and
+`src/common` that sizes an array from a wire count calls the same
+helper before the `_CREATE`; see `src/server/AGENTS.md`.
 
 Separately, **every allocation sized from the wire needs its NULL
 check**. Twelve of them did not have one, and the pattern was uniform:

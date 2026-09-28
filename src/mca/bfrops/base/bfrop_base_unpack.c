@@ -1081,7 +1081,7 @@ pmix_status_t pmix_bfrops_base_unpack_app(pmix_pointer_array_t *regtypes, pmix_b
             return ret;
         }
         if (0 < ptr[i].ninfo) {
-            if (pmix_bfrop_too_small(buffer, ptr[i].ninfo)) {
+            if (!pmix_bfrop_count_fits(buffer, ptr[i].ninfo, PMIX_INFO)) {
                 ptr[i].ninfo = 0;
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }
@@ -1362,22 +1362,13 @@ static pmix_status_t unpack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t
             /* nothing else to do */
             continue;
         }
-        /* The element count came off the wire, and nothing so far has
-         * related it to how much wire there actually is - so a handful
-         * of bytes can ask this to allocate an arbitrary amount. For
-         * almost every element type each element costs at least one
-         * byte to encode, which makes "more elements than bytes
-         * remaining" a count that cannot describe anything the peer
-         * actually sent.
-         *
-         * Two types are genuinely sparser than that and must NOT be
-         * bounded this way, or ordinary arrays of them stop unpacking:
-         * PMIX_POINTER packs a single sentinel byte for the whole array
-         * (there is no sense in shipping addresses between processes),
-         * and an array of arrays whose elements are all empty is one
-         * type tag in total. */
-        if (PMIX_POINTER != ptr[i].type && PMIX_DATA_ARRAY != ptr[i].type &&
-            pmix_bfrop_too_small(buffer, ptr[i].size)) {
+        /* the buffer must still hold that many elements of the array's
+         * type. PMIX_POINTER and PMIX_DATA_ARRAY have no per-element
+         * minimum - PMIX_POINTER packs a single sentinel byte for the
+         * whole array, and an array of arrays whose elements are all
+         * empty is one type tag in total - so for them this checks
+         * only that the count fits an int32_t */
+        if (!pmix_bfrop_count_fits(buffer, ptr[i].size, ptr[i].type)) {
             ptr[i].size = 0;
             return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
         }
@@ -1483,7 +1474,7 @@ pmix_status_t pmix_bfrops_base_unpack_query(pmix_pointer_array_t *regtypes, pmix
             return ret;
         }
         if (0 < ptr[i].nqual) {
-            if (pmix_bfrop_too_small(buffer, ptr[i].nqual)) {
+            if (!pmix_bfrop_count_fits(buffer, ptr[i].nqual, PMIX_INFO)) {
                 ptr[i].nqual = 0;
                 return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
             }

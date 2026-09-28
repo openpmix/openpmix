@@ -279,7 +279,7 @@ component safely rejects a newer type.
 | `bfrop_base_cmp.c` | per-type comparison helpers behind `pmix_bfrops_base_value_cmp` |
 | `bfrop_base_squash.c` | the **flexible integer** codec: `encode_int`/`decode_int`/`get_max_size` and the base-7 varint (`flex_pack_integer`) used by modern components |
 | `bfrop_base_get_number.c` | `PMIx_Value_get_number` and its per-numeric-type range/precision `check_*` helpers |
-| `bfrop_base_fns.c` | buffer helpers (`buffer_extend`, `too_small`, `store`/`get_data_type`), `value_load`/`value_unload`/`value_xfer`/`value_destruct`, and a large block of **public** `PMIx_Info_list_*` / `PMIx_Value_get_size` / `PMIx_Info_get_size` utility APIs |
+| `bfrop_base_fns.c` | buffer helpers (`buffer_extend`, `too_small`, `count_fits`, `store`/`get_data_type`), `value_load`/`value_unload`/`value_xfer`/`value_destruct`, and a large block of **public** `PMIx_Info_list_*` / `PMIx_Value_get_size` / `PMIx_Info_get_size` utility APIs |
 | `bfrop_base_macro_backers.c` | the out-of-line function bodies **backing the public inline PMIx utility macros** — `PMIx_Load_key`, `PMIx_Check_key`, the `PMIx_Argv_*` family, `PMIx_Value_*` / `PMIx_Info_*` construct/xfer/etc. |
 | `bfrop_base_tma.h` | inline "TMA" (custom memory-allocator) variants of the buffer/value helpers; the non-TMA public entry points pass `tma == NULL` to use the default heap |
 
