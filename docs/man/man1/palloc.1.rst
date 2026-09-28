@@ -84,9 +84,7 @@ OPTIONS
 
 * ``-w`` | ``--nodelist <arg0>``: Comma-delimited list of ranges of specific nodes being requested [e.g., host0[1-5],host128]. Can also pass the argument as a filename using the "file:<path>" syntax. Ordering of names and/or duplicate names are ignored.
 
-* ``--uid <arg0>``: Assign the resulting allocation to the specified user ID
-
-* ``--gid <arg0>``: Assign the resulting allocation to the specified group ID
+* ``--gid <arg0>``: Assign the resulting allocation to the specified group, given as a group ID or a group name |mdash| typically the account the allocation is charged to. The host environment decides whether you may use that group.
 
 * ``-t`` | ``--time <arg0>``: Time limit on the assigned allocation.
 
