@@ -217,6 +217,7 @@ int main(int argc, char **argv)
          * "file:PATH" pointing at a rendezvous file holding the pid */
         char *leftover, *param;
         pid_t pid;
+        unsigned long ulpid;
         leftover = NULL;
         pid = strtol(opt->values[0], &leftover, 10);
         if (NULL == leftover || 0 == strlen(leftover)) {
@@ -241,10 +242,9 @@ int main(int argc, char **argv)
                 PMIX_INFO_FREE(info, 1);
                 exit(PMIX_ERR_BAD_PARAM);
             }
-            rc = fscanf(fp, "%lu", (unsigned long *) &pid);
-            if (1 != rc) {
-                /* if we were unable to obtain the single conversion we
-                 * require, then error out */
+            rc = fscanf(fp, "%lu", &ulpid);
+            if (1 != rc || 0 == ulpid || (unsigned long) (pid_t) ulpid != ulpid) {
+                /* the file must hold one pid that fits a pid_t */
                 pmix_show_help("help-pquery.txt", "bad-file", true, pmix_tool_basename,
                                "--pid", opt->values[0], param);
                 fclose(fp);
@@ -252,6 +252,7 @@ int main(int argc, char **argv)
                 exit(PMIX_ERR_BAD_PARAM);
             }
             fclose(fp);
+            pid = (pid_t) ulpid;
             PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pid, PMIX_PID);
         } else { /* a string that's neither an integer nor starts with 'file:' */
             pmix_show_help("help-pquery.txt", "bad-option-input", true,

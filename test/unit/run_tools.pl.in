@@ -69,6 +69,7 @@ my %bin = (
     pmix_info => "$tdir/pmix_info/pmix_info",
     pmixcc    => "$tdir/wrapper/pmixcc",
     pattrs    => "$tdir/pattrs/pattrs",
+    pquery    => "$tdir/pquery/pquery",
 );
 foreach my $name (sort keys %bin) {
     unless (-x $bin{$name}) {
@@ -119,6 +120,22 @@ $fails += run("pattrs --server-fns", [$bin{pattrs}, "--server-fns"],
               0, qr/SERVER SUPPORTED FUNCTIONS/);
 $fails += run("pattrs --tool-fns", [$bin{pattrs}, "--tool-fns"],
               0, qr/TOOL SUPPORTED FUNCTIONS/);
+
+# --pid file:PATH must hold one pid that fits a pid_t. A value that does
+# not is reported as an unreadable file before any connection is tried.
+{
+    my $pidfile = "/tmp/pmix_run_tools_pid.$$";
+    if (open(my $fh, '>', $pidfile)) {
+        print $fh "99999999999999\n";
+        close($fh);
+        $fails += run("pquery --pid file: out of range",
+                      [$bin{pquery}, "--pid", "file:$pidfile", "pmix.qry.ns"],
+                      undef, qr/unable to read the necessary info/);
+        unlink($pidfile);
+    } else {
+        print "SKIP [pquery --pid file:]: cannot create $pidfile\n";
+    }
+}
 
 if ($fails) {
     print "\n$fails tool smoke-test(s) FAILED\n";
