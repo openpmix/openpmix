@@ -943,7 +943,7 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_status_t rc;
     pmix_setup_caddy_t *cd;
     pmix_iof_req_t *req;
-    size_t refid;
+    size_t refid, n;
     int idx;
 
     pmix_output_verbose(2, pmix_server_globals.iof_output, "recvd IOF PULL request from client");
@@ -981,6 +981,14 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->procs, &cnt, PMIX_PROC);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+    /* every source must name a valid namespace - the host is asked to
+     * approve these sources, and an empty namespace names no job */
+    for (n = 0; n < cd->nprocs; n++) {
+        if (PMIx_Nspace_invalid(cd->procs[n].nspace)) {
+            rc = PMIX_ERR_BAD_PARAM;
             goto exit;
         }
     }
@@ -1060,7 +1068,12 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
         }
         memcpy(req->procs, cd->procs, req->nprocs * sizeof(pmix_proc_t));
     }
-    req->channels = cd->channels;
+    /* the request takes its slot now, since its index is the refid the
+     * client is told to use - but with no channels, so it matches no
+     * output until the host approves it. Output that arrives meanwhile is
+     * cached, and replayed to the requester once it is approved - see
+     * _iofreg */
+    req->channels = PMIX_FWD_NO_CHANNELS;
     req->remote_id = refid;
     /* the index this hands back is the refid the client is told to use,
      * so a failed add must refuse the registration rather than report a
@@ -1074,6 +1087,11 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
     req->local_id = (size_t) idx;
     cd->ncodes = req->local_id;
+    /* hold our own reference, so the approval can tell whether the slot
+     * still holds this request - the requester may finalize meanwhile,
+     * which removes it, and the slot can then be reused */
+    PMIX_RETAIN(req);
+    cd->iofreq = req;
 
     /* ask the host to execute the request */
     rc = pmix_host_server.iof_pull(cd->procs, cd->nprocs,

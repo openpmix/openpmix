@@ -1119,23 +1119,26 @@ static void _iofreg(int sd, short args, void *cbdata)
         return;
     }
 
-    /* Take a refused registration back out first, before anything that
-     * can fail. pmix_server_iofreg added the request ahead of the up-call
-     * because the refid has to be in hand to report, and this is the arm
-     * that undoes it when the host refuses asynchronously. Doing it below
-     * the reply meant an allocation failure there left the entry in the
-     * array, where it pinned the requestor's peer with its retain for the
-     * life of the server and went on matching output for a pull that was
-     * never granted - the same defect the synchronous refusal had. Clear
-     * the slot before releasing, so the array never holds a stale
+    /* pmix_server_iofreg put the request in its slot ahead of the up-call,
+     * because the refid has to be in hand to report, but with no channels
+     * so that it matched nothing. Act on the host's answer now - but only
+     * if the slot still holds that request: the requester may have
+     * finalized while the host was deciding, which removes it, and the
+     * slot may since have been given to another request. Take a refused
+     * registration back out first, before anything that can fail, and
+     * clear the slot before releasing, so the array never holds a stale
      * pointer. */
-    if (PMIX_SUCCESS != cd->status) {
-        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests,
-                                                             cd->ncodes);
+    req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests,
+                                                         cd->ncodes);
+    if (NULL == req || req != cd->iofreq) {
+        req = NULL;
+    } else if (PMIX_SUCCESS != cd->status) {
         pmix_pointer_array_set_item(&pmix_globals.iof_requests, cd->ncodes, NULL);
-        if (NULL != req) {
-            PMIX_RELEASE(req);
-        }
+        PMIX_RELEASE(req);
+        req = NULL;
+    } else {
+        /* approved - the request now matches output */
+        req->channels = cd->channels;
     }
 
     /* setup the reply to the requestor */
@@ -1172,11 +1175,9 @@ static void _iofreg(int sd, short args, void *cbdata)
 
     /* if the request succeeded, then process any cached IO - doing it here
      * guarantees that the IO will be received AFTER the client gets the
-     * refid response */
+     * refid response. This includes whatever arrived while the host was
+     * deciding, in the order it arrived */
     if (PMIX_SUCCESS == cd->status) {
-        /* get the request */
-        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests,
-                                                             cd->ncodes);
         if (NULL != req) {
             PMIX_LIST_FOREACH_SAFE (iof, inxt, &pmix_server_globals.iof, pmix_iof_cache_t) {
                 rc = pmix_iof_process_iof(iof->channel, &iof->source, iof->bo, iof->info,
