@@ -382,8 +382,6 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
     size_t size = 0;
     bool release = false;
     pmix_envar_list_item_t *ev;
-    pmix_proc_t proc;
-    pmix_kval_t *kv;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:opa:setup_local with %lu info", (unsigned long) ninfo);
@@ -421,26 +419,11 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
             cnt = 1;
             PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &ev->envar, &cnt, PMIX_ENVAR);
             while (PMIX_SUCCESS == rc) {
+                /* the envars - the transport key among them - are kept
+                 * here, on the namespace's pnet cache, and set in each of
+                 * the job's children by setup_fork. They are not job
+                 * data: nothing but that child's environment needs them */
                 pmix_list_append(&ns->envars, &ev->super);
-                /* if this is the transport key, save it.  An envar packs
-                 * its name and value independently, so either can arrive
-                 * NULL from a blob we did not build ourselves */
-                if (NULL != ev->envar.envar && NULL != ev->envar.value
-                    && 0 == strcmp(ev->envar.envar,
-                                   "OMPI_MCA_orte_precondition_transports")) {
-                    /* add it to the job-level info */
-                    PMIX_LOAD_PROCID(&proc, ns->ns->nspace, PMIX_RANK_WILDCARD);
-                    PMIX_KVAL_NEW(kv, PMIX_CREDENTIAL);
-                    if (NULL != kv && NULL != kv->value) {
-                        kv->value->type = PMIX_STRING;
-                        kv->value->data.string = strdup(ev->envar.value);
-                        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_INTERNAL, kv);
-                        PMIX_RELEASE(kv); // maintain refcount
-                        if (PMIX_SUCCESS != rc) {
-                            PMIX_ERROR_LOG(rc);
-                        }
-                    }
-                }
                 /* get the next envar */
                 ev = PMIX_NEW(pmix_envar_list_item_t);
                 cnt = 1;
