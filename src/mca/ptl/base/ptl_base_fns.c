@@ -63,7 +63,7 @@ static void retry_wait(const struct timeval *tv);
 static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t *sz,
                                        pmix_info_t *iptr, size_t niptr);
 static pmix_status_t parse_conn_file(char *filename, bool optional, bool found_by_search,
-                                     pmix_list_t *connections);
+                                     bool regular_only, pmix_list_t *connections);
 static bool search_candidate(const char *path, bool *isdir);
 
 pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char **evar)
@@ -250,21 +250,16 @@ void pmix_ptl_base_parse_version(const char *vers, uint8_t *major,
 
 /* Open a connection file for reading.
  *
- * A file the caller named is opened as it always was. One we came across
- * while walking a directory is another matter: the directories searched
- * default to $TMPDIR or /tmp, which any local user can write to, and
- * fopen() on a FIFO with no writer never returns - so one "pmix.*" FIFO
- * planted there hung every tool that went looking for a server. Such a
- * file is opened non-blocking and kept only if it is a regular file.
- * Checking the open descriptor rather than the name leaves no window in
- * which the entry can be swapped for a FIFO after it was checked. */
-static FILE *open_conn_file(const char *filename, bool found_by_search)
+ * A file the caller named is opened with fopen(). A file found by walking
+ * a directory, or at one of the fixed rendezvous names, is opened
+ * non-blocking and kept only if the open descriptor is a regular file. */
+static FILE *open_conn_file(const char *filename, bool regular_only)
 {
     int fd, flags;
     struct stat st;
     FILE *fp;
 
-    if (!found_by_search) {
+    if (!regular_only) {
         return fopen(filename, "r");
     }
     fd = open(filename, O_RDONLY | O_NONBLOCK);
@@ -315,11 +310,18 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
                                            bool optional,
                                            pmix_list_t *connections)
 {
-    return parse_conn_file(filename, optional, false, connections);
+    return parse_conn_file(filename, optional, false, false, connections);
+}
+
+pmix_status_t pmix_ptl_base_parse_rndz_file(char *filename,
+                                            bool optional,
+                                            pmix_list_t *connections)
+{
+    return parse_conn_file(filename, optional, false, true, connections);
 }
 
 static pmix_status_t parse_conn_file(char *filename, bool optional, bool found_by_search,
-                                     pmix_list_t *connections)
+                                     bool regular_only, pmix_list_t *connections)
 {
     FILE *fp;
     char *srvr, *p = NULL;
@@ -376,7 +378,7 @@ static pmix_status_t parse_conn_file(char *filename, bool optional, bool found_b
     }
 
 process:
-    fp = open_conn_file(filename, found_by_search);
+    fp = open_conn_file(filename, regular_only);
     if (NULL == fp) {
         if (!optional) {
             if (EACCES == errno) {
@@ -402,7 +404,7 @@ process:
         tv.tv_sec = 0;
         tv.tv_usec = 10000; // use 0.01 sec as default
         retry_wait(&tv);
-        fp = open_conn_file(filename, found_by_search);
+        fp = open_conn_file(filename, regular_only);
         if (NULL == fp) {
             return PMIX_ERR_UNREACH;
         }
@@ -518,7 +520,7 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
              * happened to list after it */
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "pmix:tool: reading file %s", newdir);
-            rc = parse_conn_file(newdir, optional, true, connections);
+            rc = parse_conn_file(newdir, optional, true, true, connections);
             if (PMIX_ERR_NOMEM == rc) {
                 free(newdir);
                 closedir(cur_dirp);
