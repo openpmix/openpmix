@@ -69,6 +69,7 @@ static char *topo_file = NULL;
 static char *testcpuset = NULL;
 static int pmix_hwloc_output = -1;
 static int pmix_hwloc_verbose = 0;
+static unsigned long max_cpu_index = 1048575;
 
 static size_t shmemsize = 0;
 static size_t shmemaddr;
@@ -131,6 +132,11 @@ pmix_status_t pmix_hwloc_register(void)
                                       "Cpuset for testing purposes",
                                       PMIX_MCA_BASE_VAR_TYPE_STRING,
                                       &testcpuset);
+
+    (void) pmix_mca_base_var_register("pmix", "pmix", "hwloc", "max_cpu_index",
+                                      "Largest processor index accepted in a cpuset list (default: 1048575)",
+                                      PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_LONG,
+                                      &max_cpu_index);
 
     return PMIX_SUCCESS;
 }
@@ -874,6 +880,43 @@ pmix_status_t pmix_hwloc_generate_cpuset_string(const pmix_cpuset_t *cpuset,
     return PMIX_SUCCESS;
 }
 
+bool pmix_hwloc_cpulist_ok(const char *list)
+{
+    const char *p = list;
+    char *next;
+    unsigned long val;
+
+    if (NULL == list) {
+        return false;
+    }
+    /* walk the numbers the way hwloc_bitmap_list_sscanf does: skip empty
+     * ranges, read a number in any base strtoul accepts, then step over
+     * the one character that follows it. A "N-" range is open-ended and
+     * costs nothing, so only the numbers themselves are bounded */
+    while ('\0' != *p) {
+        while (',' == *p || ' ' == *p) {
+            ++p;
+        }
+        if ('\0' == *p) {
+            break;
+        }
+        errno = 0;
+        val = strtoul(p, &next, 0);
+        if (next == p) {
+            /* hwloc refuses this too */
+            return false;
+        }
+        if (ERANGE == errno || val > max_cpu_index) {
+            return false;
+        }
+        if ('\0' == *next) {
+            break;
+        }
+        p = next + 1;
+    }
+    return true;
+}
+
 pmix_status_t pmix_hwloc_parse_cpuset_string(const char *cpuset_string, pmix_cpuset_t *cpuset)
 {
     const char *src;
@@ -900,6 +943,9 @@ pmix_status_t pmix_hwloc_parse_cpuset_string(const char *cpuset_string, pmix_cpu
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     ++src;  /* advance past the ':' delimiter */
+    if (!pmix_hwloc_cpulist_ok(src)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     cpuset->source = strdup("hwloc");
     cpuset->bitmap = hwloc_bitmap_alloc();
@@ -1179,7 +1225,7 @@ pmix_status_t pmix_hwloc_get_relative_locality(const char *locality1,
          * past the end of its own allocation. Only the first token is
          * vouched for by locality_payload; the rest are whatever the string
          * carried */
-        if (2 > strlen(set1[n1])) {
+        if (2 > strlen(set1[n1]) || !pmix_hwloc_cpulist_ok(&set1[n1][2])) {
             rc = PMIX_ERR_BAD_PARAM;
             continue;
         }
@@ -1187,7 +1233,7 @@ pmix_status_t pmix_hwloc_get_relative_locality(const char *locality1,
         hwloc_bitmap_list_sscanf(bit1, &set1[n1][2]);
         /* find the matching type in set2 */
         for (n2 = 0; NULL != set2[n2]; n2++) {
-            if (2 > strlen(set2[n2])) {
+            if (2 > strlen(set2[n2]) || !pmix_hwloc_cpulist_ok(&set2[n2][2])) {
                 rc = PMIX_ERR_BAD_PARAM;
                 continue;
             }

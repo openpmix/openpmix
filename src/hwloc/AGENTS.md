@@ -60,7 +60,8 @@ that history survive and you must respect them:
    component — so the environment variable is
    `PMIX_MCA_pmix_hwloc_hole_kind` and the launcher form is
    `--pmixmca pmix_hwloc_hole_kind <value>`. Likewise
-   `pmix_hwloc_verbose`, `pmix_hwloc_topo_file`, `pmix_hwloc_test_cpuset`.
+   `pmix_hwloc_verbose`, `pmix_hwloc_topo_file`, `pmix_hwloc_test_cpuset`,
+   `pmix_hwloc_max_cpu_index`.
    An earlier revision of this file gave the shorter
    `PMIX_MCA_hwloc_hole_kind`, which does not exist — and an unrecognized
    MCA parameter is accepted **in silence**, leaving you on the default
@@ -104,6 +105,17 @@ matched by the 5-char `strncasecmp(..., "hwloc", 5)` test:
 `pmix_hwloc_generate_cpuset_string` prepends the `hwloc:` tag to its string
 form (`"hwloc:0-3"`) so `parse_cpuset_string` can re-check provenance from
 the string alone.
+
+**Every list string is screened with `pmix_hwloc_cpulist_ok()` before
+`hwloc_bitmap_list_sscanf`.** hwloc sizes the bitmap by the largest index it
+is given, so each number in the list must be no larger than
+`pmix_hwloc_max_cpu_index` (default 1048575). The three places a list is
+parsed — `pmix_hwloc_unpack_cpuset`, `pmix_hwloc_parse_cpuset_string` and
+the token loop in `pmix_hwloc_get_relative_locality` — all call it. The
+screen walks the string the way hwloc does (`strtoul` base 0, one separator
+character after each number), so a hex or signed number is bounded too; an
+open-ended `"N-"` range bounds only `N`. A new parse site calls it as well.
+`test_cpuset_index_limit` in `test/unit/hwloc_datatype.c` covers it.
 
 **The locality strings do not.** `pmix_hwloc_generate_locality_string`
 returns bare tokens — a real one off a 4-core Mac is

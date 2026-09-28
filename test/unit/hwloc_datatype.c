@@ -528,6 +528,73 @@ static void test_cpuset_parse_bad_input(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* processor indices in a cpuset list are bounded                     */
+/* ------------------------------------------------------------------ */
+
+/* hwloc sizes a bitmap by the largest index it is handed, so every list
+ * string is screened against pmix_hwloc_max_cpu_index (default 1048575)
+ * first - on the wire, in PMIx_Parse_cpuset_string and in a locality
+ * string. Indices up to the limit, and an open-ended "N-" range, still
+ * parse. */
+static bool cpuset_round_trip(unsigned idx)
+{
+    pmix_cpuset_t src, dst;
+    pmix_data_buffer_t buf;
+    int32_t count = 1;
+    bool ok;
+
+    PMIX_CPUSET_CONSTRUCT(&src);
+    PMIX_CPUSET_CONSTRUCT(&dst);
+    PMIx_Data_buffer_construct(&buf);
+    src.source = strdup("hwloc");
+    src.bitmap = hwloc_bitmap_alloc();
+    hwloc_bitmap_set((hwloc_bitmap_t) src.bitmap, 0);
+    hwloc_bitmap_set((hwloc_bitmap_t) src.bitmap, idx);
+    ok = (PMIX_SUCCESS == PMIx_Data_pack(NULL, &buf, &src, 1, PMIX_PROC_CPUSET) &&
+          PMIX_SUCCESS == PMIx_Data_unpack(NULL, &buf, &dst, &count, PMIX_PROC_CPUSET) &&
+          NULL != dst.bitmap &&
+          hwloc_bitmap_isequal((hwloc_bitmap_t) src.bitmap, (hwloc_bitmap_t) dst.bitmap));
+    PMIx_Cpuset_destruct(&src);
+    PMIx_Cpuset_destruct(&dst);
+    PMIx_Data_buffer_destruct(&buf);
+    return ok;
+}
+
+static bool parses(const char *spec)
+{
+    pmix_cpuset_t cpuset;
+    pmix_status_t rc;
+
+    PMIX_CPUSET_CONSTRUCT(&cpuset);
+    rc = PMIx_Parse_cpuset_string(spec, &cpuset);
+    if (PMIX_SUCCESS == rc) {
+        PMIx_Cpuset_destruct(&cpuset);
+        return true;
+    }
+    return false;
+}
+
+static void test_cpuset_index_limit(void)
+{
+    pmix_locality_t loc = 0;
+    pmix_status_t rc;
+
+    report("cpuset index at the limit survives pack/unpack", cpuset_round_trip(1048575));
+    report("cpuset index past the limit is refused on unpack", !cpuset_round_trip(2000000));
+
+    report("parse accepts indices up to the limit", parses("hwloc:0-3,1048575"));
+    report("parse accepts an open-ended range", parses("hwloc:5-"));
+    report("parse refuses an index past the limit", !parses("hwloc:0,4294967294"));
+    report("parse refuses a range ending past the limit", !parses("hwloc:0-1048576"));
+    report("parse refuses a hex index past the limit", !parses("hwloc:0x100000"));
+    report("parse refuses a negative index", !parses("hwloc:0,-1"));
+
+    rc = PMIx_Get_relative_locality("NM4294967294:CR0", "NM4294967294:CR0", &loc);
+    report("relative locality skips a token past the limit",
+           PMIX_SUCCESS != rc || !(loc & PMIX_LOCALITY_SHARE_NUMA));
+}
+
+/* ------------------------------------------------------------------ */
 /* printing a topology far wider than the render buffer                */
 /* ------------------------------------------------------------------ */
 
@@ -1352,6 +1419,7 @@ int main(int argc, char **argv)
     test_cpuset_get_size();
     test_cpuset_get_size_unbound();
     test_cpuset_parse_bad_input();
+    test_cpuset_index_limit();
     test_cpuset_string_bad_source();
     test_relative_locality();
     test_empty_topology_value();
