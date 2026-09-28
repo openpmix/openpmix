@@ -22,6 +22,7 @@ util_fd
 util_few
 util_getcwd
 util_getid
+util_idname
 util_vmem
 hash_perf
 util_keyval

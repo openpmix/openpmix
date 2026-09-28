@@ -251,6 +251,8 @@ result directly:
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because
   the library's progress engine has been stopped.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| ``nspace`` is ``NULL`` or empty.
+* ``PMIX_ERR_NOT_FOUND`` |mdash| a ``PMIX_USERID`` or ``PMIX_GRPID`` was given
+  as a name that does not resolve to a user or group.
 * ``PMIX_ERR_WOULD_BLOCK`` |mdash| the blocking form was called from the
   library's own progress thread (for example, from inside a
   :ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>` upcall), where
@@ -278,6 +280,12 @@ been registered with its ``nlocalprocs`` count.
 
 Large ``PMIX_NODE_MAP`` and ``PMIX_PROC_MAP`` values are commonly generated in
 compressed form using ``PMIx_generate_regex2`` prior to registration.
+
+The job's ``PMIX_USERID`` and ``PMIX_GRPID`` may be given either as numbers
+(``uint32_t``) or as a user and group name (``char*``), at the top level of
+``info`` or inside an info array such as ``PMIX_JOB_INFO_ARRAY``. The library
+resolves a name when the namespace is registered, and stores and reports only
+the number. The ``info`` array itself is not changed.
 
 
 .. include:: /man/no-blocking-in-progress-thread.rst

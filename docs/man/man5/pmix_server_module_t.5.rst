@@ -150,9 +150,12 @@ what that process may see or do:
   connected. Any ``PMIX_USERID`` the requester put in its own request is
   removed.
 * ``PMIX_GRPID`` is the requester's choice if its request names one (the
-  first ``uint32_t`` value) |mdash| typically the group, or account, the work
-  is to be charged to. Otherwise it is the group ID established when the
-  process connected. The library does not check that the requester belongs to
+  first one given) |mdash| typically the group, or account, the work is to be
+  charged to. The requester may give it as a number or as a group name; the
+  library resolves a name and always passes a ``uint32_t`` to the host. A
+  group that cannot be resolved fails the request (``PMIX_ERR_NOT_FOUND``
+  for an unknown name) rather than charging the work elsewhere. Otherwise it
+  is the group ID established when the process connected. The library does not check that the requester belongs to
   a group it names: the host decides whether the requester may use it, and
   refuses the request (for example with ``PMIX_ERR_NO_PERMISSIONS``) if not.
 

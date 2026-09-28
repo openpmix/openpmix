@@ -153,9 +153,10 @@ operation. However, any provided attributes must be passed to the host
 environment for processing, and the PMIx library is required to add the
 ``PMIX_USERID`` and ``PMIX_GRPID`` attributes of the client process making the
 request. A request may name a ``PMIX_GRPID`` of its own |mdash| the group, or
-account, the allocation is to be charged to; the library passes it in place of
-the process's group, and the host environment decides whether the requester
-may use it. ``PMIX_USERID`` is always the requesting process's own.
+account, the allocation is to be charged to, given as a number or a group
+name; the library passes it (as a number) in place of the process's group, and
+the host environment decides whether the requester may use it. A group name
+that does not resolve fails the request with ``PMIX_ERR_NOT_FOUND``. ``PMIX_USERID`` is always the requesting process's own.
 
 Host environments that implement support for this operation are required to
 support the following attributes:

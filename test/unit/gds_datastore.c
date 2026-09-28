@@ -1324,9 +1324,11 @@ static pmix_peer_t *mkgdspeer(const char *nspace, pmix_rank_t nprocs,
  *     The segment sizing pass read element zero of every data array as
  *     one, so PMIX_CHECK_KEY walked up to PMIX_MAX_KEYLEN bytes past an
  *     eight-byte allocation.
- *   - PMIX_USERID as a string. add_nspace read the union directly, so
- *     the low half of a pointer became the job's uid AND set chown,
- *     which the segment's backing files were then handed to.
+ *   - PMIX_USERID as a value that is neither a number nor a name (a byte
+ *     object). add_nspace read the union directly, so the low half of a
+ *     pointer became the job's uid AND set chown, which the segment's
+ *     backing files were then handed to. (A string is a user name, which
+ *     registration resolves - or refuses, if it names nobody.)
  *   - a session array, so the session segment is built too.
  */
 static void test_shmem3_job_segment(void)
@@ -1369,7 +1371,10 @@ static void test_shmem3_job_segment(void)
     PMIX_INFO_LOAD(&info[2], PMIX_PROC_MAP, procmap, PMIX_STRING);
     PMIX_INFO_LOAD(&info[3], PMIX_UNIV_SIZE, &univ, PMIX_UINT32);
     /* PMIX_USERID with a value that is not a uid */
-    PMIX_INFO_LOAD(&info[4], PMIX_USERID, "not-a-uid", PMIX_STRING);
+    {
+        pmix_byte_object_t notuid = {.bytes = (char *) "not-a-uid", .size = 9};
+        PMIX_INFO_LOAD(&info[4], PMIX_USERID, &notuid, PMIX_BYTE_OBJECT);
+    }
     /* a data array of bytes, not of infos */
     PMIX_DATA_ARRAY_CREATE(array, sizeof(impostor), PMIX_BYTE);
     memcpy(array->array, impostor, sizeof(impostor));

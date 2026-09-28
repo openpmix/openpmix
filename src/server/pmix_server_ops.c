@@ -69,6 +69,7 @@
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_idname.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_output.h"
@@ -243,31 +244,38 @@ pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info
 {
     pmix_info_t *old = *info, *new;
     size_t n, m, nold = *ninfo;
-    bool have_gid = false;
-    uint32_t id;
+    uint32_t id, gid;
+    pmix_status_t rc;
 
     if (NULL == peer || NULL == peer->info) {
         return PMIX_ERR_BAD_PARAM;
+    }
+    /* the group is the requester's choice if it named one - by number or
+     * by name. A group it named that cannot be resolved refuses the
+     * request rather than quietly charging it to another */
+    gid = (uint32_t) peer->info->gid;
+    for (n = 0; n < nold; n++) {
+        if (PMIx_Check_key(old[n].key, PMIX_GRPID)) {
+            rc = pmix_util_gid_from_value(&old[n].value, &gid);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            break;
+        }
     }
     new = PMIx_Info_create(nold + 2);
     if (NULL == new) {
         return PMIX_ERR_NOMEM;
     }
-    /* move every entry except a uid the requester supplied, and all but
-     * the first well-formed gid - the entries are moved, not copied, so
-     * the old block is released below without destructing them */
+    /* move every entry except the uid and gid the requester supplied -
+     * the entries are moved, not copied, so the old block is released
+     * below without destructing them */
     m = 0;
     for (n = 0; n < nold; n++) {
-        if (PMIx_Check_key(old[n].key, PMIX_USERID)) {
+        if (PMIx_Check_key(old[n].key, PMIX_USERID) ||
+            PMIx_Check_key(old[n].key, PMIX_GRPID)) {
             PMIx_Info_destruct(&old[n]);
             continue;
-        }
-        if (PMIx_Check_key(old[n].key, PMIX_GRPID)) {
-            if (have_gid || PMIX_UINT32 != old[n].value.type) {
-                PMIx_Info_destruct(&old[n]);
-                continue;
-            }
-            have_gid = true;
         }
         memcpy(&new[m], &old[n], sizeof(pmix_info_t));
         ++m;
@@ -275,16 +283,109 @@ pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info
     id = (uint32_t) peer->info->uid;
     PMIx_Info_load(&new[m], PMIX_USERID, &id, PMIX_UINT32);
     ++m;
-    if (!have_gid) {
-        id = (uint32_t) peer->info->gid;
-        PMIx_Info_load(&new[m], PMIX_GRPID, &id, PMIX_UINT32);
-        ++m;
-    }
+    PMIx_Info_load(&new[m], PMIX_GRPID, &gid, PMIX_UINT32);
+    ++m;
     if (NULL != old) {
         PMIx_Info_free(old, 0);
     }
     *info = new;
     *ninfo = m;
+    return PMIX_SUCCESS;
+}
+
+/* nested info arrays are followed no deeper than this */
+#define PMIX_SERVER_IDS_MAXDEPTH 8
+
+static bool is_id_key(const pmix_info_t *info)
+{
+    return (PMIx_Check_key(info->key, PMIX_USERID) || PMIx_Check_key(info->key, PMIX_GRPID));
+}
+
+static bool is_info_array(const pmix_info_t *info)
+{
+    return (PMIX_DATA_ARRAY == info->value.type && NULL != info->value.data.darray &&
+            PMIX_INFO == info->value.data.darray->type && NULL != info->value.data.darray->array);
+}
+
+/* true if the array, or an info array nested in it, gives a PMIX_USERID or
+ * PMIX_GRPID by name */
+static bool has_id_name(const pmix_info_t *info, size_t ninfo, int depth)
+{
+    size_t n;
+
+    for (n = 0; n < ninfo; n++) {
+        if (is_id_key(&info[n]) && PMIX_STRING == info[n].value.type) {
+            return true;
+        }
+        if (depth < PMIX_SERVER_IDS_MAXDEPTH && is_info_array(&info[n]) &&
+            has_id_name((pmix_info_t *) info[n].value.data.darray->array,
+                        info[n].value.data.darray->size, depth + 1)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* resolve every PMIX_USERID and PMIX_GRPID given by name, in an array we own */
+static pmix_status_t resolve_id_names(pmix_info_t *info, size_t ninfo, int depth)
+{
+    pmix_status_t rc;
+    uint32_t id;
+    size_t n;
+
+    for (n = 0; n < ninfo; n++) {
+        if (is_id_key(&info[n]) && PMIX_STRING == info[n].value.type) {
+            if (PMIx_Check_key(info[n].key, PMIX_USERID)) {
+                rc = pmix_util_uid_from_string(info[n].value.data.string, &id);
+            } else {
+                rc = pmix_util_gid_from_string(info[n].value.data.string, &id);
+            }
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            PMIx_Value_destruct(&info[n].value);
+            PMIx_Value_load(&info[n].value, &id, PMIX_UINT32);
+        } else if (depth < PMIX_SERVER_IDS_MAXDEPTH && is_info_array(&info[n])) {
+            rc = resolve_id_names((pmix_info_t *) info[n].value.data.darray->array,
+                                  info[n].value.data.darray->size, depth + 1);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_server_normalize_ids(const pmix_info_t *info, size_t ninfo,
+                                        pmix_info_t **out, size_t *nout)
+{
+    pmix_info_t *copy;
+    pmix_status_t rc;
+    size_t n;
+
+    *out = NULL;
+    *nout = 0;
+    if (NULL == info || 0 == ninfo || !has_id_name(info, ninfo, 0)) {
+        return PMIX_SUCCESS;
+    }
+    copy = PMIx_Info_create(ninfo);
+    if (NULL == copy) {
+        return PMIX_ERR_NOMEM;
+    }
+    for (n = 0; n < ninfo; n++) {
+        rc = PMIx_Info_xfer(&copy[n], &info[n]);
+        if (PMIX_SUCCESS != rc) {
+            PMIx_Info_free(copy, ninfo);
+            return rc;
+        }
+    }
+    rc = resolve_id_names(copy, ninfo, 0);
+    if (PMIX_SUCCESS != rc) {
+        PMIx_Info_free(copy, ninfo);
+        return rc;
+    }
+    *out = copy;
+    *nout = ninfo;
     return PMIX_SUCCESS;
 }
 
