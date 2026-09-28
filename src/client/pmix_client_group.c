@@ -57,6 +57,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/runtime/pmix_progress_threads.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 
@@ -201,7 +202,11 @@ static pmix_status_t add_group(const char *grpid,
  * shape is ours to assume. A contribution we cannot make sense of is skipped
  * rather than failed: the construct has already completed by the time we are
  * called, and the members that did send usable data should stay usable. */
-static void store_endpts(const pmix_info_t info[], size_t ninfo, size_t ctxid)
+static bool in_membership(const pmix_proc_t *proc, const pmix_proc_t *members,
+                          size_t nmembers);
+
+static void store_endpts(const pmix_info_t info[], size_t ninfo, size_t ctxid,
+                         const pmix_proc_t *members, size_t nmembers)
 {
     size_t n, m, nel;
     pmix_info_t *iptr, *piptr;
@@ -239,6 +244,10 @@ static void store_endpts(const pmix_info_t info[], size_t ninfo, size_t ctxid)
             continue;
         }
         memcpy(&procid, iptr[0].value.data.proc, sizeof(pmix_proc_t));
+        /* only a member of the group contributes to it */
+        if (!in_membership(&procid, members, nmembers)) {
+            continue;
+        }
         if (PMIX_CHECK_PROCID(&procid, &pmix_globals.myid) && SIZE_MAX == ctxid) {
             /* our own contribution, and with no ID to qualify it there is
              * nothing to add: it is already in our store, plain, exactly as
@@ -1242,6 +1251,114 @@ static void join_complete(pmix_group_tracker_t *cb, pmix_status_t status,
     }
 }
 
+/* Exactly this process: a wildcard nspace or rank names nobody in
+ * particular, so PMIX_CHECK_PROCID's leniency is wrong here */
+static bool same_proc(const pmix_proc_t *a, const pmix_proc_t *b)
+{
+    return (0 == strncmp(a->nspace, b->nspace, PMIX_MAX_NSLEN) && a->rank == b->rank);
+}
+
+static bool in_membership(const pmix_proc_t *proc, const pmix_proc_t *members,
+                          size_t nmembers)
+{
+    size_t m;
+
+    for (m = 0; NULL != members && m < nmembers; m++) {
+        if (same_proc(proc, &members[m])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Did this group event come from the watched operation's leader, or from
+ * our own server? Those are the only two that raise one. */
+static bool from_leader_or_server(const pmix_proc_t *source, const pmix_proc_t *leader)
+{
+    pmix_proc_t server;
+
+    if (NULL == source) {
+        return false;
+    }
+    if (same_proc(source, leader)) {
+        return true;
+    }
+    if (NULL == pmix_client_globals.myserver || NULL == pmix_client_globals.myserver->info ||
+        NULL == pmix_client_globals.myserver->info->pname.nspace) {
+        return false;
+    }
+    PMIX_LOAD_PROCID(&server, pmix_client_globals.myserver->info->pname.nspace,
+                     pmix_client_globals.myserver->info->pname.rank);
+    return same_proc(source, &server);
+}
+
+/* The group a PMIX_GROUP_CONSTRUCT_COMPLETE describes, as members of it
+ * record it: the membership sorted, so every member holds the same view.
+ * The members are returned for store_endpts; they point into info. */
+static void record_group(const pmix_info_t info[], size_t ninfo, size_t ctxid,
+                         const pmix_proc_t **membersp, size_t *nmembersp)
+{
+    const pmix_proc_t *members = NULL;
+    size_t n, nmembers = 0;
+    const char *grpid = NULL;
+    pmix_group_t *grp, *gp;
+
+    *membersp = NULL;
+    *nmembersp = 0;
+    /* the key does not establish the type - check it before reading the
+     * union */
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_MEMBERSHIP)) {
+            if (PMIX_DATA_ARRAY == info[n].value.type &&
+                NULL != info[n].value.data.darray &&
+                PMIX_PROC == info[n].value.data.darray->type &&
+                NULL != info[n].value.data.darray->array) {
+                members = (const pmix_proc_t *) info[n].value.data.darray->array;
+                nmembers = info[n].value.data.darray->size;
+            }
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ID)) {
+            if (PMIX_STRING == info[n].value.type && NULL != info[n].value.data.string) {
+                grpid = info[n].value.data.string;
+            }
+        }
+    }
+    if (NULL == members || 0 == nmembers || NULL == grpid) {
+        return;
+    }
+    *membersp = members;
+    *nmembersp = nmembers;
+
+    /* the caller's thread reads this list - see the grouplock note in
+     * src/client/pmix_client_ops.h */
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+    grp = NULL;
+    PMIX_LIST_FOREACH(gp, &pmix_client_globals.groups, pmix_group_t) {
+        if (NULL != gp->grpid && 0 == strcmp(grpid, gp->grpid)) {
+            grp = gp;
+            break;
+        }
+    }
+    if (NULL == grp) {
+        grp = PMIX_NEW(pmix_group_t);
+        if (NULL != grp) {
+            PMIX_PROC_CREATE(grp->members, nmembers);
+            grp->grpid = strdup(grpid);
+            if (NULL == grp->members || NULL == grp->grpid) {
+                /* better to know nothing of the group than to record it
+                 * half-built for every later operation to read */
+                PMIX_RELEASE(grp);
+            } else {
+                memcpy(grp->members, members, nmembers * sizeof(pmix_proc_t));
+                qsort(grp->members, nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
+                grp->nmbrs = nmembers;
+                grp->ctxid = ctxid;
+                pmix_list_append(&pmix_client_globals.groups, &grp->super);
+            }
+        }
+    }
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+}
+
 /* Watch observer: fires on a termination-type event (to catch the leader's
  * loss) or on the construct resolving (to complete the join and end the
  * watch). Runs ahead of the event chain, so unlike the handler this replaced
@@ -1256,7 +1373,8 @@ static void leader_watch_observer(pmix_status_t status, const pmix_proc_t *sourc
     const pmix_proc_t *departed = NULL;
     const char *grpid = NULL;
     size_t n, ctxid = SIZE_MAX;
-    PMIX_HIDE_UNUSED_PARAMS(source);
+    const pmix_proc_t *members = NULL;
+    size_t nmembers = 0;
 
     if (PMIX_UNLIKELY(NULL == cb || cb->completed)) {
         return;
@@ -1289,20 +1407,22 @@ static void leader_watch_observer(pmix_status_t status, const pmix_proc_t *sourc
 
     /* the construct resolved - this is what the join was waiting for, and the
      * leader is no longer critical, so complete the caller and end the watch.
-     * A CONSTRUCT_COMPLETE/ABORT with no group id is treated as ours. */
+     * The outcome counts only if it names this group and comes from its
+     * leader or our server: any other process can raise an event with these
+     * codes, and one naming no group is nobody's outcome. */
     if (PMIX_GROUP_CONSTRUCT_COMPLETE == status || PMIX_GROUP_CONSTRUCT_ABORT == status) {
-        if (NULL == grpid || 0 == strcmp(grpid, cb->grpid)) {
+        if (NULL != grpid && 0 == strcmp(grpid, cb->grpid) &&
+            from_leader_or_server(source, &cb->members[0])) {
             cb->completed = true;
             if (PMIX_GROUP_CONSTRUCT_COMPLETE == status) {
-                /* absorb the endpoint data the members contributed. It is
-                 * deliberately not passed on to the caller as a "result" of
-                 * the join - it is not something the join produced, it is
-                 * group data to be found later through PMIx_Get */
-                store_endpts(info, ninfo, ctxid);
+                /* record the group, then absorb the endpoint data its members
+                 * contributed. The data is deliberately not passed on to the
+                 * caller as a "result" of the join - it is not something the
+                 * join produced, it is group data to be found later through
+                 * PMIx_Get */
+                record_group(info, ninfo, ctxid, &members, &nmembers);
+                store_endpts(info, ninfo, ctxid, members, nmembers);
             }
-            /* the group itself was already recorded in
-             * pmix_client_globals.groups by the bookkeeping that runs at the
-             * top of pmix_invoke_local_event_hdlr, ahead of this sweep */
             join_complete(cb,
                           (PMIX_GROUP_CONSTRUCT_COMPLETE == status) ? PMIX_SUCCESS
                                                                     : PMIX_GROUP_CONSTRUCT_ABORT,
@@ -1318,7 +1438,10 @@ static void leader_watch_observer(pmix_status_t status, const pmix_proc_t *sourc
      * its construction has failed" is exactly this case), and end the watch */
     if (PMIX_PROC_TERMINATED == status || PMIX_ERR_PROC_ABORTED == status ||
         PMIX_ERR_PROC_TERM_WO_SYNC == status) {
-        if (NULL != departed && PMIX_CHECK_PROCID(departed, &cb->members[0])) {
+        /* the leader's host reports its loss on the leader's behalf, so
+         * the leader is the source - or our server reports it */
+        if (NULL != departed && same_proc(departed, &cb->members[0]) &&
+            from_leader_or_server(source, &cb->members[0])) {
             cb->completed = true;
             emit_leader_failed(cb->grpid, &cb->members[0]);
             join_complete(cb, PMIX_GROUP_LEADER_FAILED, NULL, 0);
