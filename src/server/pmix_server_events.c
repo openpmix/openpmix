@@ -1043,6 +1043,30 @@ complete:
  * we notify all relevant local clients AND (assuming a range other
  * than LOCAL) deliver to our host, requesting that they send it
  * to all peer servers in the current session */
+/* Group events that only a server raises - for a group operation it is
+ * running, or for a member it lost - and that no client sends. A client
+ * that joins, accepts or declines does so through the group commands, and
+ * its server raises the event for it. The two a client does send are
+ * PMIX_GROUP_LEFT (checked below) and PMIX_GROUP_LEADER_SELECTED, which
+ * the application raises and the library does not act on. */
+static bool server_only_group_event(pmix_status_t code)
+{
+    switch (code) {
+    case PMIX_GROUP_INVITED:
+    case PMIX_GROUP_INVITE_ACCEPTED:
+    case PMIX_GROUP_INVITE_DECLINED:
+    case PMIX_GROUP_INVITE_FAILED:
+    case PMIX_GROUP_MEMBERSHIP_UPDATE:
+    case PMIX_GROUP_CONSTRUCT_ABORT:
+    case PMIX_GROUP_CONSTRUCT_COMPLETE:
+    case PMIX_GROUP_LEADER_FAILED:
+    case PMIX_GROUP_MEMBER_FAILED:
+        return true;
+    default:
+        return false;
+    }
+}
+
 pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer_t *buf,
                                                   pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -1069,6 +1093,11 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->status, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    if (server_only_group_event(cd->status)) {
+        rc = PMIX_ERR_NO_PERMISSIONS;
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
