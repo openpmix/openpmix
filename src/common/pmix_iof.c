@@ -3207,6 +3207,22 @@ pmix_status_t pmix_iof_flow_control(const pmix_proc_t *source,
     return PMIX_SUCCESS;
 }
 
+bool pmix_iof_sender_is_upstream(struct pmix_peer_t *pr)
+{
+    pmix_peer_t *peer = (pmix_peer_t *) pr;
+
+    if (NULL == peer) {
+        return false;
+    }
+    if (peer == pmix_globals.mypeer || peer->upstream) {
+        return true;
+    }
+    pmix_output_verbose(2, pmix_client_globals.iof_output,
+                        "%s iof: ignoring IOF message from a peer we did not connect to",
+                        PMIX_NAME_PRINT(&pmix_globals.myid));
+    return false;
+}
+
 /* recv callback for PMIX_PTL_TAG_IOF_CONTROL - our server telling us to
  * suspend or resume the stdin we are feeding it */
 void pmix_iof_flow_control_handler(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
@@ -3220,6 +3236,10 @@ void pmix_iof_flow_control_handler(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr
     int32_t cnt;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
+
+    if (!pmix_iof_sender_is_upstream(peer)) {
+        return;
+    }
 
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &source, &cnt, PMIX_PROC);
