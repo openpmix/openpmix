@@ -111,8 +111,21 @@ static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         status = rc;
         goto complete;
     }
+    /* the count sizes an allocation, so it must survive the round trip
+     * through the int32_t the unpack takes it as */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo) {
+        ninfo = 0;
+        status = PMIX_ERR_BAD_PARAM;
+        goto complete;
+    }
     if (0 < ninfo) {
         PMIX_INFO_CREATE(info, ninfo);
+        if (NULL == info) {
+            ninfo = 0;
+            status = PMIX_ERR_NOMEM;
+            goto complete;
+        }
         cnt = ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
@@ -124,6 +137,11 @@ static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
 
 complete:
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:security cback from server releasing");
+    /* nothing is transferred alongside a failure, so a credential that
+     * was unpacked before something after it failed is still ours */
+    if (PMIX_SUCCESS != status) {
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    }
     /* release the caller */
     if (NULL != cd->credcbfunc) {
         /* the payload goes with it - the object must NOT be destructed */
@@ -423,8 +441,21 @@ static void valid_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
+    /* the count sizes an allocation, so it must survive the round trip
+     * through the int32_t the unpack takes it as */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo) {
+        ninfo = 0;
+        status = PMIX_ERR_BAD_PARAM;
+        goto complete;
+    }
     if (0 < ninfo) {
         PMIX_INFO_CREATE(info, ninfo);
+        if (NULL == info) {
+            ninfo = 0;
+            status = PMIX_ERR_NOMEM;
+            goto complete;
+        }
         cnt = ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
