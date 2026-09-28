@@ -154,7 +154,12 @@ order:
    every client mmaps the *same* physical pages the server wrote. (There
    used to be a `topo_in_shmem` flag set here; it gated the finalize-time
    cleanup of a segment only the *server* ever creates, so it made that
-   cleanup unreachable — see item 9.)
+   cleanup unreachable — see item 9.) The file is opened with
+   `O_NONBLOCK | O_NOFOLLOW` and adopted only if `fstat` says it is a
+   regular file, owned by our euid or by root, at least `_SIZE` bytes
+   long; otherwise the client goes on to discover its own topology, as it
+   does when the open fails. `test/unit/hwloc_adopt.c` has a real client
+   meet a FIFO, a symlink and a short file at the name.
 3. **XML string** — `PMIX_HWLOC_XML_V2`, then `PMIX_HWLOC_XML_V1`
    (`hwloc_topology_set_xmlbuffer` + load). The v1 fallback exists to
    talk to peers built against hwloc 1.x.
