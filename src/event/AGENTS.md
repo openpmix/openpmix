@@ -155,12 +155,15 @@ Invariants that keep this machine alive:
   (it short-circuits to `complete`), but nothing downstream does —
   don't invoke handlers on a chain without the reserved slots.
 
-Two side effects piggyback on delivery in
-`pmix_invoke_local_event_hdlr`: a `PMIX_GROUP_CONSTRUCT_COMPLETE` event
-adds the group (id, sorted membership, context id) to
-`pmix_client_globals.groups`, and `PMIX_GROUP_LEFT` removes the
-departing member — keep these in sync with the group code in
-`src/client/pmix_client_group.c` and `src/common/pmix_pgroup.c`. The
+One side effect piggybacks on delivery in `pmix_invoke_local_event_hdlr`:
+`PMIX_GROUP_LEFT` removes the departing member from
+`pmix_client_globals.groups` — keep it in sync with the group code in
+`src/client/pmix_client_group.c` and `src/common/pmix_pgroup.c`.
+`PMIX_GROUP_CONSTRUCT_COMPLETE` is **not** recorded here any more: any
+process could raise one, so the group is added by the construct watch of
+the invite or join waiting for it, once the event is known to name that
+group and come from its leader or our server (`record_group()` in
+`pmix_client_group.c`). The
 departing member is always the event's source: `PMIx_Group_leave` names
 itself, and its server refuses a departure naming anyone else. So the
 `PMIX_GROUP_LEFT` side effect removes the source (when

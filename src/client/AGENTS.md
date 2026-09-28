@@ -457,8 +457,8 @@ nothing.
 
   *No error after the arming.* `setup_leader_watch()` hands the observer
   registry a tracker carrying the caller's `cbfunc`/`cbdata`, and from that
-  moment the watch fires on any `PMIX_GROUP_CONSTRUCT_COMPLETE` or `_ABORT`
-  naming its group id — or naming none at all, which it treats as its own.
+  moment the watch fires on a `PMIX_GROUP_CONSTRUCT_COMPLETE` or `_ABORT`
+  that names its group id and comes from its leader or our server.
   An `_nb` entry point that then returns an error has told the caller no
   callback is coming, and the caller is entitled to free what `cbdata`
   points at; for the blocking wrappers that object is a
@@ -830,8 +830,8 @@ regression coverage in `test/unit/client_api.c`.
 
 - **`pmix_client_globals.groups` had no lock**, but is not confined to
   one thread: the progress thread appends to it (`add_group` from
-  `construct_cbfunc`, and the `PMIX_GROUP_CONSTRUCT_COMPLETE` handler in
-  `src/event/pmix_event_notification.c`) and *edits a live membership
+  `construct_cbfunc`, and `record_group()` from the construct watch) and
+  *edits a live membership
   array in place* (the `PMIX_GROUP_LEFT` handler shifts a departed proc
   out), while the caller's thread reads and removes from it in
   `PMIx_Group_leave_nb`, `PMIx_Group_destruct_nb`, and every collective
@@ -1847,17 +1847,23 @@ Coverage is `test/unit/run_grpinviteendpts.pl`, and the absence of a
 covers the caller's own rank as well as its peers, which is what
 discriminates the case above.
 
-**The leader is the one member that learns none of this from an event, so
-the invite path fills in `results`.** `PMIx_Notify_event` hands a client's
-own notification to its local chain rather than round-tripping it (the
-server does not echo one back), so a leader that named itself among the
-invitees does see its own `PMIX_GROUP_CONSTRUCT_COMPLETE` — that is what
-registers the group in `pmix_client_globals.groups` for it, through the
-bookkeeping at the top of `pmix_invoke_local_event_hdlr`. What it has no
-watch for is `store_endpts()`, which is why `announce_step()` calls that
-one directly. And a leader that did *not* name itself is not a target of
-its own event at all, so the chain drops it at the target check and it
-learns nothing.
+**Who a construct outcome is taken from.** The leader's server runs the
+invitation and raises its outcome with the leader as the source (the
+leader arms a construct watch on itself, `setup_leader_watch(grp,
+&pmix_globals.myid, ...)`, so it learns the outcome like every other
+member). A watch acts on `PMIX_GROUP_CONSTRUCT_COMPLETE` or `_ABORT` only
+when the event names the watch's group and comes from the watched leader
+or from our own server - compared exactly, not with `PMIX_CHECK_PROCID`,
+which lets a wildcard match anyone. An event naming no group is nobody's
+outcome. Only then does the watch record the group (`record_group()`,
+sorted membership) and store the contributions (`store_endpts()`), and
+`store_endpts()` stores only contributors in the group's membership. A
+termination ends the watch only when it names the leader and comes from
+the leader (hosts report a loss with the lost process as the source, as
+PRRTE does) or from our server. An acceptor that names no leader arms no
+watch, so it has no outcome to act on and records nothing. Covered by
+`test/unit/group_event_source.c`, which forks a real joiner and raises
+outcomes at it under chosen sources.
 
 Either way the caller of `PMIx_Group_invite` was handed nothing: the
 `results`/`nresults` pair its man page documents came back empty on every
