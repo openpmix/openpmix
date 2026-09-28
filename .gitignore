@@ -307,6 +307,7 @@ test/unit/resolve_api
 test/unit/spawn_api
 test/unit/server_get
 test/unit/server_group
+test/unit/server_invite
 test/unit/server_control
 test/unit/server_events
 test/unit/server_fence

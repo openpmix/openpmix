@@ -1835,6 +1835,18 @@ client may still raise is `PMIX_GROUP_LEFT` (below) and
 `PMIX_GROUP_LEADER_SELECTED`, which the application raises and the library
 does not act on. Covered in `test/unit/server_events.c`.
 
+**The leader's server counts an answer only for the invitation it
+answers.** `invite_observer()` takes an acceptance or decline only if it
+names the invitation's group (`pmix_server_group_join` puts
+`PMIX_GROUP_ID` on every answer it raises) and comes from a member,
+matched exactly. It keeps an acceptance's `PMIX_PROC_INFO_ARRAY`
+contribution only if the contribution names the accepting member - every
+member stores it under the name it carries. A `PMIX_PROC_TERMINATED`
+counts only if its source is the lost process (as a host raises it) or
+this server. Without the group check, the event cache replayed one
+invitation's answers into the next one registered. Covered by
+`test/unit/server_invite.c`.
+
 A `PMIX_GROUP_LEFT` notification reaches `pmix_server_grp_member_left`
 only for its sender. `pmix_server_event_recvd_from_client` takes the
 departing proc from `PMIX_EVENT_AFFECTED_PROC`, or from the sender when
