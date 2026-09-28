@@ -192,6 +192,12 @@ PMIX_EXPORT void pmix_ptl_base_abandon_connects(void);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
                                                        bool optional,
                                                        pmix_list_t *connections);
+/* As pmix_ptl_base_parse_uri_file, for a file at one of the fixed
+ * rendezvous names (pmix.sys.<host>, pmix.sched.<host>,
+ * pmix.sysctrlr.<host>): the file is used only if it is a regular file */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_rndz_file(char *filename,
+                                                        bool optional,
+                                                        pmix_list_t *connections);
 
 PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_connection(char *uri,
                                                          struct sockaddr_storage *connection,
