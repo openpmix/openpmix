@@ -24,6 +24,7 @@
 #include "include/pmix_server.h"
 
 #include "src/common/pmix_attributes.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/pmix_threads.h"
@@ -113,6 +114,12 @@ static void ssnctrlcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
         results->status = rc;
+        results->ninfo = 0;
+        goto complete;
+    }
+    if (!pmix_bfrop_count_fits(buf, results->ninfo, PMIX_INFO)) {
+        results->status = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(results->status);
         results->ninfo = 0;
         goto complete;
     }

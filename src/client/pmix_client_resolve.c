@@ -49,6 +49,7 @@
 #include <event.h>
 
 #include "src/class/pmix_list.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/gds.h"
 #include "src/mca/ptl/base/base.h"
@@ -1071,6 +1072,12 @@ static void wait_peers_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
             PMIX_ERROR_LOG(rc);
             cd->nprocs = 0;
             ret = rc;
+            goto done;
+        }
+        if (PMIX_UNLIKELY(!pmix_bfrop_count_fits(buf, cd->nprocs, PMIX_PROC))) {
+            cd->nprocs = 0;
+            ret = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(ret);
             goto done;
         }
         if (0 < cd->nprocs) {

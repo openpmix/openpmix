@@ -50,6 +50,7 @@
 #include <event.h>
 
 #include "src/class/pmix_list.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/gds.h"
 #include "src/mca/ptl/ptl.h"
@@ -2115,6 +2116,12 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     } else if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
+        goto report;
+    }
+    if (PMIX_UNLIKELY(!pmix_bfrop_count_fits(buf, nmembers, PMIX_PROC))) {
+        ret = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(ret);
+        nmembers = 0;
         goto report;
     }
     if (0 < nmembers) {

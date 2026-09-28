@@ -31,6 +31,7 @@
 #include "pmix_common.h"
 #include "include/pmix_server.h"
 
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/common/pmix_pfexec.h"
 #include "src/mca/ptl/ptl.h"
@@ -3263,6 +3264,10 @@ void pmix_iof_flow_control_handler(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ndirs, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        return;
+    }
+    if (!pmix_bfrop_count_fits(buf, ndirs, PMIX_INFO)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
     }
     if (0 < ndirs) {

@@ -53,6 +53,7 @@
 #include "src/util/pmix_environ.h"
 
 #include "pnet_tcp.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/pnet/base/base.h"
 
 #define PMIX_TCP_SETUP_APP_KEY "pmix.tcp.setup.app.key"
@@ -793,6 +794,11 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr, pmix_inf
         if (0 == nkvals) {
             /* nothing in this blob to cache */
             continue;
+        }
+        if (!pmix_bfrop_count_fits(&bkt, nkvals, PMIX_KVAL)) {
+            rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
+            return rc;
         }
         /* setup the info array */
         PMIX_INFO_CONSTRUCT(&stinfo);
