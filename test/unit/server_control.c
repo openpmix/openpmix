@@ -1400,6 +1400,10 @@ int main(int argc, char **argv)
         char tdir[] = "/tmp/pmix-ctlut-e-XXXXXX";
         char tdir2[] = "/tmp/pmix-ctlut-r-XXXXXX";
         char tdir3[] = "/tmp/pmix-ctlut-p-XXXXXX";
+        char tdir4[] = "/tmp/pmix-ctlut-l-XXXXXX";
+        char tdir5[] = "/tmp/pmix-ctlut-o-XXXXXX";
+        char linkp[300], outp[300], *outside;
+        struct stat sb;
         char *base;
         char demptyp[300], dfullp[300], dnestp[300], fkeepp[300];
         pmix_info_t at[3];
@@ -1514,6 +1518,68 @@ int main(int argc, char **argv)
 
             unlink(fkeepp);
             rmdir(dfullp);
+            rmdir(base);
+        }
+        drain_epilog_dirs();
+        drain_epilog_files();
+
+        /* A symlink inside the tree is an entry, not a directory: the
+         * recursive walk removes the link and leaves what it points at
+         * alone. And a registered path that is itself a symlink is not
+         * followed at all. */
+        base = mkdtemp(tdir4);
+        outside = mkdtemp(tdir5);
+        if (NULL == base || NULL == outside) {
+            report("made scratch trees for the symlink case", false);
+        } else {
+            snprintf(outp, sizeof(outp), "%s/precious", outside);
+            snprintf(linkp, sizeof(linkp), "%s/link", base);
+            snprintf(fkeepp, sizeof(fkeepp), "%s/gone", base);
+            fp = fopen(outp, "w");
+            if (NULL != fp) {
+                fclose(fp);
+            }
+            fp = fopen(fkeepp, "w");
+            if (NULL != fp) {
+                fclose(fp);
+            }
+            report("symlink scratch tree built",
+                   0 == symlink(outside, linkp) && 0 == access(outp, F_OK));
+
+            PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP_DIR, base, PMIX_STRING);
+            PMIX_INFO_LOAD(&at[1], PMIX_CLEANUP_RECURSIVE, &yes, PMIX_BOOL);
+            rc = do_job_ctrl(at, 2);
+            report("the symlink-case directory registered", PMIX_OPERATION_SUCCEEDED == rc);
+            PMIX_INFO_DESTRUCT(&at[0]);
+            PMIX_INFO_DESTRUCT(&at[1]);
+
+            pmix_execute_epilog(&pmix_globals.mypeer->nptr->epilog);
+            report("recursive cleanup does not follow a symlink out of the tree",
+                   0 == access(outp, F_OK));
+            report("recursive cleanup removes the symlink itself", 0 != lstat(linkp, &sb));
+            report("recursive cleanup still removes the tree", 0 != access(base, F_OK));
+            drain_epilog_dirs();
+
+            /* the registered path itself a symlink to the outside tree */
+            unlink(linkp);
+            rmdir(base);
+            if (0 == symlink(outside, base)) {
+                PMIX_INFO_LOAD(&at[0], PMIX_REGISTER_CLEANUP_DIR, base, PMIX_STRING);
+                PMIX_INFO_LOAD(&at[1], PMIX_CLEANUP_RECURSIVE, &yes, PMIX_BOOL);
+                rc = do_job_ctrl(at, 2);
+                PMIX_INFO_DESTRUCT(&at[0]);
+                PMIX_INFO_DESTRUCT(&at[1]);
+                pmix_execute_epilog(&pmix_globals.mypeer->nptr->epilog);
+                report("a registered directory that is a symlink is not followed",
+                       PMIX_OPERATION_SUCCEEDED == rc && 0 == access(outp, F_OK));
+                unlink(base);
+            } else {
+                report("made the registered symlink", false);
+            }
+
+            unlink(fkeepp);
+            unlink(outp);
+            rmdir(outside);
             rmdir(base);
         }
         drain_epilog_dirs();

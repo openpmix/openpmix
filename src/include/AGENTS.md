@@ -167,11 +167,18 @@ Its banner says it all: *"THIS FILE IS INCLUDED SOLELY TO INSTANTIATE
 AND INIT/FINALIZE THE GLOBAL CLASSES."* It is almost entirely
 `PMIX_CLASS_INSTANCE(...)` definitions with their con/destructors, plus:
 
-- `pmix_execute_epilog()` / `dirpath_destroy()` / `dirpath_is_empty()` —
-  the post-termination cleanup that unlinks files and recursively removes
+- `pmix_execute_epilog()` / `dirpath_destroy_at()` — the
+  post-termination cleanup that unlinks files and recursively removes
   directories registered in a `pmix_epilog_t`. This is the one place
   here that does real filesystem work; tread carefully (it calls
-  `unlink`/`rmdir`).
+  `unlink`/`rmdir`). A registered directory is opened with `O_NOFOLLOW`
+  and walked through descriptors (`fstatat(AT_SYMLINK_NOFOLLOW)`,
+  `openat(O_NOFOLLOW)` plus a dev/ino re-check, `unlinkat`), the same
+  way `pmix_os_dirpath_destroy()` walks: a symlink inside the tree is
+  removed as a link, never followed, and a registered path that is itself
+  a symlink is left alone. Paths are still built for each entry, but only
+  to compare against the ignore list. `test/unit/server_control.c`
+  covers both symlink cases.
 - Thin libevent wrappers `pmix_event_assign()` / `pmix_event_new()`
   (the `pmix_event_*` macros they back live in `pmix_types.h`).
 - `pmix_event_del_checked()` — the one wrapper here that is **not**
