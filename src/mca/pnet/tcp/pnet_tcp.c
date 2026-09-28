@@ -1253,9 +1253,14 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo, pmix_in
             /* this is our inventory in the form of a blob. The array is
              * handed to every active module in turn, so load it without
              * taking the bytes away from our caller */
+            if (PMIX_BYTE_OBJECT != info[n].value.type) {
+                PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
+                continue;
+            }
             PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &bkt, info[n].value.data.bo.bytes,
                                           info[n].value.data.bo.size);
             /* first is the host this came from */
+            hostname = NULL;
             cnt = 1;
             PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &hostname, &cnt, PMIX_STRING);
             if (PMIX_SUCCESS != rc) {
@@ -1263,6 +1268,10 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo, pmix_in
                 /* must _not_ destruct bkt as we don't
                  * own the bytes! */
                 return rc;
+            }
+            if (NULL == hostname) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                return PMIX_ERR_BAD_PARAM;
             }
             /* do we already have this node? */
             nd = NULL;
@@ -1324,6 +1333,8 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo, pmix_in
                 PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(pmix_globals.mypeer, &pbkt, pbo.bytes, pbo.size);
                 /* unpack the name of the device */
+                device = NULL;
+                address = NULL;
                 cnt = 1;
                 PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, &device, &cnt, PMIX_STRING);
                 if (PMIX_SUCCESS != rc) {
@@ -1345,6 +1356,16 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo, pmix_in
                     /* must _not_ destruct bkt as we don't
                      * own the bytes! */
                     return rc;
+                }
+                if (NULL == device || NULL == address) {
+                    /* an entry naming no device or no address describes
+                     * nothing we can use */
+                    free(device);
+                    free(address);
+                    PMIX_DESTRUCT(&pbkt);
+                    cnt = 1;
+                    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &pbo, &cnt, PMIX_BYTE_OBJECT);
+                    continue;
                 }
                 /* store this on the node */
                 res = PMIX_NEW(tcp_device_t);
