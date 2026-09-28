@@ -198,6 +198,11 @@ Error constants that may be returned include:
   tool is not connected to one.
 * ``PMIX_ERR_NOMEM`` |mdash| the library was unable to allocate memory for
   the request.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| a source in ``procs`` does not name a
+  namespace.
+* ``PMIX_ERR_NO_PERMISSIONS`` |mdash| the host environment refused to let the
+  caller receive output from the named sources. A host may report its refusal
+  with another status.
 
 Any other negative value indicates an appropriate error condition. PMIx
 error constants are defined in ``pmix_common.h``.
@@ -212,7 +217,17 @@ processes, use :ref:`PMIx_IOF_push(3) <man3-PMIx_IOF_push>`.
 
 Use of ``PMIX_RANK_WILDCARD`` to request the output of all processes in a
 namespace is supported but should be used with care due to the bandwidth and
-memory footprint it can incur.
+memory footprint it can incur. Every source must name a namespace; a request
+naming a source with an empty namespace is refused with
+``PMIX_ERR_BAD_PARAM``.
+
+The sources may belong to any job |mdash| a debugger pulling the output of the
+job it is attached to, for example. The server passes the request to its host
+environment with the caller's ``PMIX_USERID`` and ``PMIX_GRPID``, and the host
+decides whether the caller may receive that output. Nothing is forwarded to the
+caller until the host approves; output produced before then is held and
+delivered once it does. If the host refuses, the request fails with the host's
+status (for example ``PMIX_ERR_NO_PERMISSIONS``).
 
 
 .. include:: /man/no-blocking-in-progress-thread.rst

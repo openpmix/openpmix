@@ -495,6 +495,14 @@ from a set of source processes; the ``PMIX_IOF_STOP`` directive instead removes
 the server from the distribution list. Note that ``stdin`` cannot be pulled with
 this call. Completion is reported through a ``pmix_op_cbfunc_t``.
 
+When the request comes from a client or tool, the directives carry the
+requester's ``PMIX_USERID`` and ``PMIX_GRPID`` (see *The requester's identity*
+above), and the host decides whether the requester may receive output from
+the named sources, which may be in any namespace. The server forwards nothing
+for the request until the host reports success; output that arrives before
+then is held and delivered once the request is approved. If the host refuses,
+the request is discarded.
+
 push_stdin
 ^^^^^^^^^^
 
