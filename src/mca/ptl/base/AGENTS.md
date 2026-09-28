@@ -127,8 +127,11 @@ anything is read that depends on it.
 
 ### Every field of the connect-ack is checked as it is read
 
-The connection handler runs **before** the credential is validated, so
-it makes no assumption about what it is given. It checks:
+The connect-ack is parsed **before** the credential is validated - the
+credential is one of its fields - so the parse makes no assumption about
+what it is given. Everything past the parse waits for validation,
+including the info blob (see "Validate first" in
+[`../AGENTS.md`](../AGENTS.md)). It checks:
 
 - The message size is bounded by `PMIX_MAX_CRED_SIZE` before it is
   allocated.

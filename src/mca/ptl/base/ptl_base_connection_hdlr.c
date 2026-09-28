@@ -62,6 +62,9 @@ typedef struct {
     pmix_status_t reply;
     pmix_pending_connection_t *pnd;
     pmix_peer_t *peer;
+    /* the psec module the peer was validated with - which need not be
+     * the one its namespace carries */
+    pmix_psec_module_t *psec;
     pmix_info_t *info;
     size_t ninfo;
 } cnct_hdlr_t;
@@ -72,6 +75,7 @@ static void chcon(cnct_hdlr_t *p)
     p->reply = PMIX_SUCCESS;
     p->pnd = NULL;
     p->peer = NULL;
+    p->psec = NULL;
     p->info = NULL;
     p->ninfo = 0;
 }
@@ -108,7 +112,7 @@ static void _cnct_complete(int sd, short args, void *cbdata)
     }
 
     /* If needed, perform the handshake. The macro will update reply */
-    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(ch->reply, ch->peer);
+    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED_WITH(ch->reply, ch->psec, ch->peer);
 
     /* It is possible that connection validation failed */
     if (PMIX_SUCCESS != ch->reply) {
@@ -303,6 +307,9 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     pmix_data_array_t darray;
     pmix_peer_t *stale;
     bool counted = false;
+    pmix_psec_module_t *psec = NULL;
+    pmix_bfrops_module_t *bfrops = NULL;
+    pmix_gds_base_module_t *gds = NULL;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -555,6 +562,69 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         goto error;
     }
 
+    /* The modules this peer asked for. Nothing is attached to the
+     * namespace - which the job's other peers share - or recorded
+     * anywhere else until the peer has been validated, so hold them
+     * here */
+    psec = pmix_psec_base_assign_module(pnd->psec);
+    bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
+    if (NULL != pnd->gds) {
+        PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);
+        gds = pmix_gds_base_assign_module(&ginfo, 1);
+        PMIX_INFO_DESTRUCT(&ginfo);
+    } else {
+        gds = pmix_gds_base_assign_module(NULL, 0);
+    }
+    if (NULL == psec || NULL == bfrops || NULL == gds) {
+        goto error;
+    }
+
+    /* The tracker for this peer, attached to nothing yet. Validation
+     * reads only the identity the rank was registered with, the protocol
+     * and the socket. */
+    peer = PMIX_NEW(pmix_peer_t);
+    if (NULL == peer) {
+        goto error;
+    }
+    /* not in the clients array - the error path must not empty a slot */
+    peer->index = -1;
+    memcpy(&peer->proc_type, &pnd->proc_type, sizeof(pmix_proc_type_t));
+    peer->protocol = pnd->protocol;
+    PMIX_RETAIN(info);
+    peer->info = info;
+    peer->sd = pnd->sd;
+
+    /* validate the connection before anything is done for it */
+    cred.bytes = pnd->cred;
+    cred.size = pnd->len;
+    PMIX_PSEC_VALIDATE_CONNECTION_WITH(reply, psec, peer, NULL, 0, NULL, NULL, &cred);
+    /* PMIX_ERR_READY_FOR_HANDSHAKE is not a failure - it is how a psec
+     * module that authenticates with a live exchange rather than with a
+     * credential asks us to run that exchange. We carry it in ch->reply
+     * so that _cnct_complete can report it to the client and then drive
+     * the handshake; bailing out here would leave the handshake half of
+     * psec permanently unreachable */
+    if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "validation of client connection failed");
+        goto error;
+    }
+
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "client connection validated");
+
+    /* The namespace's wire format is shared by all of its peers - what
+     * the server packs for one it packs for every one. The first peer to
+     * connect sets it, and a later one that disagrees cannot be served. */
+    if (NULL != nptr->compat.bfrops &&
+        (nptr->compat.bfrops != bfrops || nptr->compat.type != pnd->buffer_type)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "client %s:%u wire format %s does not match its namespace's %s",
+                            pnd->proc.nspace, pnd->proc.rank, pnd->bfrops,
+                            nptr->compat.bfrops->version);
+        goto error;
+    }
+
     /* save the version in the namespace object */
     if (0 == nptr->version.major) {
         nptr->version.major = pnd->proc_type.major;
@@ -589,25 +659,13 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     /* a peer can connect on multiple sockets since it can fork/exec
      * a child that also calls PMIX_Init, so add it here if necessary.
-     * Create the tracker for this peer */
-    peer = PMIX_NEW(pmix_peer_t);
-    if (NULL == peer) {
-        goto error;
-    }
-
-    /* Assign the upper half of the tag space for sendrecvs */
+     * Assign the upper half of the tag space for sendrecvs */
     peer->dyn_tags_start    = PMIX_PTL_TAG_DYNAMIC + (UINT32_MAX - PMIX_PTL_TAG_DYNAMIC)/2 + 1;
     peer->dyn_tags_end      = UINT32_MAX;
     peer->dyn_tags_current  = peer->dyn_tags_start;
-    /* mark that this peer is a client of the given type */
-    memcpy(&peer->proc_type, &pnd->proc_type, sizeof(pmix_proc_type_t));
-    /* save the protocol */
-    peer->protocol = pnd->protocol;
     /* add in the nspace pointer */
     PMIX_RETAIN(nptr);
     peer->nptr = nptr;
-    PMIX_RETAIN(info);
-    peer->info = info;
     /* update the epilog fields */
     peer->epilog.uid = info->uid;
     peer->epilog.gid = info->gid;
@@ -616,41 +674,27 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     nptr->epilog.gid = info->gid;
     info->proc_cnt++; /* increase number of processes on this rank */
     counted = true;
-    peer->sd = pnd->sd;
     if (0 > (peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer))) {
         goto error;
     }
     info->peerid = peer->index;
 
-    /* set the sec module to match this peer */
-    peer->nptr->compat.psec = pmix_psec_base_assign_module(pnd->psec);
-    if (NULL == peer->nptr->compat.psec) {
-        goto error;
+    /* The namespace's modules are set by the first of its peers to
+     * connect, and not replaced by a later one */
+    if (NULL == nptr->compat.bfrops) {
+        nptr->compat.bfrops = bfrops;
+        nptr->compat.type = pnd->buffer_type;
     }
-
-    /* set the bfrops module to match this peer */
-    peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
-    if (NULL == peer->nptr->compat.bfrops) {
-        goto error;
+    if (NULL == nptr->compat.psec) {
+        nptr->compat.psec = psec;
     }
-    /* and the buffer type to match */
-    peer->nptr->compat.type = pnd->buffer_type;
-
-    /* set the gds module to match this peer */
-    if (NULL != pnd->gds) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);
-        peer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
-        PMIX_INFO_DESTRUCT(&ginfo);
-    } else {
-        peer->nptr->compat.gds = pmix_gds_base_assign_module(NULL, 0);
-    }
-    if (NULL == peer->nptr->compat.gds) {
-        goto error;
+    if (NULL == nptr->compat.gds) {
+        nptr->compat.gds = gds;
     }
     /* track this client's GDS module on the peer itself, so a later
      * per-client fallback (PMIX_GDS_FALLBACK_CMD) can change it without
      * affecting the other peers sharing this nspace */
-    peer->gds = peer->nptr->compat.gds;
+    peer->gds = gds;
 
     /* if we haven't previously stored the wire format for this
      * nspace, do so now. This is what PMIx_Data_pack/unpack fall back
@@ -751,27 +795,6 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     free(msg); // can now release the data buffer
     msg = NULL;
 
-    /* validate the connection */
-    cred.bytes = pnd->cred;
-    cred.size = pnd->len;
-    PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
-    /* PMIX_ERR_READY_FOR_HANDSHAKE is not a failure - it is how a psec
-     * module that authenticates with a live exchange rather than with a
-     * credential asks us to run that exchange. We carry it in ch->reply
-     * so that _cnct_complete can report it to the client and then drive
-     * the handshake; bailing out here would leave the handshake half of
-     * psec permanently unreachable */
-    if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "validation of client connection failed");
-        PMIx_Info_list_release(ilist);
-        goto error;
-    }
-
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "client connection validated");
-
-
     // prep for processing
     ch = PMIX_NEW(cnct_hdlr_t);
     if (NULL == ch) {
@@ -782,6 +805,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     ch->peer = peer;
     ch->pnd = pnd;
     ch->reply = reply;
+    ch->psec = psec;
 
     PMIx_Info_list_add(ilist, PMIX_USERID, &info->uid, PMIX_UINT32);
     PMIx_Info_list_add(ilist, PMIX_GRPID, &info->gid, PMIX_UINT32);
@@ -983,6 +1007,9 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     pmix_byte_object_t cred;
     pmix_iof_req_t *req = NULL;
     bool nspace_listed = false;
+    bool wire_ok = true;
+    pmix_bfrops_module_t *bfrops;
+    pmix_gds_base_module_t *gds;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(cd);
@@ -1109,37 +1136,52 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* Get the appropriate compatibility modules based on the info
      * provided by the tool during the initial connection request.
      *
-     * These have to be (re)assigned here rather than only in
-     * process_tool_request, because the namespace this peer ends up on
-     * need not be the object that ran: if the host registered this
-     * namespace during its tool_connected upcall, we adopted its object
-     * instead, and a host-registered namespace carries no compat
-     * modules - nothing has connected through it yet. Leaving bfrops
-     * unset that way is not a degraded mode, it is a NULL dereference on
-     * the first message the tool sends. */
-    peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
-    if (NULL == peer->nptr->compat.bfrops) {
-        goto error;
-    }
-    peer->nptr->compat.type = pnd->buffer_type;
-    peer->nptr->compat.psec = pmix_psec_base_assign_module(pnd->psec);
-    if (NULL == peer->nptr->compat.psec) {
-        goto error;
-    }
-    /* set the gds */
+     * These are attached here rather than in process_tool_request,
+     * because the namespace this peer ends up on need not be the object
+     * that ran: if the host registered this namespace during its
+     * tool_connected upcall, we adopted its object instead, and a
+     * host-registered namespace carries no compat modules - nothing has
+     * connected through it yet. Leaving bfrops unset that way is not a
+     * degraded mode, it is a NULL dereference on the first message the
+     * tool sends.
+     *
+     * As on the client path, the namespace's modules are set by the first
+     * of its peers to connect, and its wire format is shared by all of
+     * them - so a tool that disagrees with it is refused, at the point
+     * where it would be told the outcome of its validation. */
+    bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
     PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);
-    peer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
+    gds = pmix_gds_base_assign_module(&ginfo, 1);
     PMIX_INFO_DESTRUCT(&ginfo);
-    if (NULL == peer->nptr->compat.gds) {
+    if (NULL == bfrops || NULL == gds || NULL == pnd->psecmod) {
         goto error;
+    }
+    if (NULL != peer->nptr->compat.bfrops &&
+        (peer->nptr->compat.bfrops != bfrops ||
+         peer->nptr->compat.type != pnd->buffer_type)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "tool wire format %s does not match its namespace's %s",
+                            pnd->bfrops, peer->nptr->compat.bfrops->version);
+        wire_ok = false;
+    } else {
+        if (NULL == peer->nptr->compat.bfrops) {
+            peer->nptr->compat.bfrops = bfrops;
+            peer->nptr->compat.type = pnd->buffer_type;
+        }
+        if (NULL == peer->nptr->compat.psec) {
+            peer->nptr->compat.psec = (pmix_psec_module_t *) pnd->psecmod;
+        }
+        if (NULL == peer->nptr->compat.gds) {
+            peer->nptr->compat.gds = gds;
+        }
     }
     /* track this peer's GDS module on the peer itself (see the client
      * connection path for rationale) */
-    peer->gds = peer->nptr->compat.gds;
+    peer->gds = gds;
 
     /* if we haven't previously stored the wire format for this
      * nspace, do so now - see the client path above */
-    if (!peer->nptr->version_stored) {
+    if (wire_ok && !peer->nptr->version_stored) {
         PMIX_INFO_LOAD(&ginfo, PMIX_BFROPS_MODULE, peer->nptr->compat.bfrops->version, PMIX_STRING);
         PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, peer->nptr, &ginfo, 1);
         PMIX_INFO_DESTRUCT(&ginfo);
@@ -1162,16 +1204,26 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     req->remote_id = 0; // default ID for tool during init
     req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
 
-    /* validate the connection */
-    cred.bytes = pnd->cred;
-    cred.size = pnd->len;
-    PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
-    /* as on the client path above, PMIX_ERR_READY_FOR_HANDSHAKE is a
-     * request to run a live exchange, not a rejection */
-    if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "validation of tool credentials failed: %s",
-                            PMIx_Error_string(reply));
+    /* The credential was validated before anything was done for the
+     * tool (process_tool_request). Only a module that authenticates with
+     * a live handshake is left to validate here, where its exchange has
+     * always taken place. */
+    if (!wire_ok) {
+        reply = PMIX_ERR_NOT_SUPPORTED;
+    } else if (pnd->validated) {
+        reply = PMIX_SUCCESS;
+    } else {
+        cred.bytes = pnd->cred;
+        cred.size = pnd->len;
+        PMIX_PSEC_VALIDATE_CONNECTION_WITH(reply, (pmix_psec_module_t *) pnd->psecmod, peer,
+                                           NULL, 0, NULL, NULL, &cred);
+        /* as on the client path above, PMIX_ERR_READY_FOR_HANDSHAKE is a
+         * request to run a live exchange, not a rejection */
+        if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "validation of tool credentials failed: %s",
+                                PMIx_Error_string(reply));
+        }
     }
 
     /* communicate the result to the other side */
@@ -1183,7 +1235,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     }
 
     /* If needed perform the handshake. The macro will update reply */
-    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(reply, peer);
+    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED_WITH(reply, (pmix_psec_module_t *) pnd->psecmod, peer);
 
     /* If verification wasn't successful - stop here */
     if (PMIX_SUCCESS != reply) {
@@ -1320,12 +1372,70 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     pmix_info_t *iptr;
     pmix_data_array_t darray;
     pmix_pfexec_child_t *child;
+    pmix_psec_module_t *psec;
+    pmix_bfrops_module_t *bfrops;
+    pmix_peer_t *vpeer;
+    pmix_rank_info_t *vinfo;
+    pmix_byte_object_t cred;
+    uint32_t u32;
 
     if (!pmix_ptl_base.allow_foreign_tools) {
         if (pnd->uid != pmix_globals.uid) {
             // reject this connection
             return PMIX_ERR_NOT_SUPPORTED;
         }
+    }
+
+    /* Validate the tool before anything is done for it - before its info
+     * is unpacked, its namespace looked up or built, or the host asked to
+     * give it an identity. The credential vouches for the uid and gid the
+     * tool claimed, so that is the identity it is checked against. A
+     * module that authenticates with a live handshake cannot be run here:
+     * its exchange has a fixed place later in the connection, after the
+     * identity replies (see process_cbfunc). */
+    psec = pmix_psec_base_assign_module(pnd->psec);
+    if (NULL == psec) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    pnd->psecmod = psec;
+    if (NULL != psec->validate_cred) {
+        vpeer = PMIX_NEW(pmix_peer_t);
+        vinfo = PMIX_NEW(pmix_rank_info_t);
+        if (NULL == vpeer || NULL == vinfo) {
+            if (NULL != vpeer) {
+                PMIX_RELEASE(vpeer);
+            }
+            if (NULL != vinfo) {
+                PMIX_RELEASE(vinfo);
+            }
+            return PMIX_ERR_NOMEM;
+        }
+        vinfo->pname.nspace = strdup(pnd->proc.nspace);
+        vinfo->pname.rank = pnd->proc.rank;
+        vinfo->uid = pnd->uid;
+        vinfo->gid = pnd->gid;
+        vpeer->info = vinfo;
+        vpeer->index = -1;
+        memcpy(&vpeer->proc_type, &pnd->proc_type, sizeof(pmix_proc_type_t));
+        vpeer->protocol = pnd->protocol;
+        vpeer->sd = pnd->sd;
+        cred.bytes = pnd->cred;
+        cred.size = pnd->len;
+        PMIX_PSEC_VALIDATE_CONNECTION_WITH(rc, psec, vpeer, NULL, 0, NULL, NULL, &cred);
+        /* the socket is the connection's, not this scratch peer's */
+        vpeer->sd = -1;
+        PMIX_RELEASE(vpeer);
+        if (PMIX_SUCCESS != rc) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "validation of tool credentials failed: %s",
+                                PMIx_Error_string(rc));
+            /* the outcome of its request is the first thing a tool
+             * reads, so that is where it is told */
+            u32 = htonl((uint32_t) rc);
+            (void) pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+            return rc;
+        }
+        pnd->validated = true;
     }
 
     peer = PMIX_NEW(pmix_peer_t);
@@ -1492,16 +1602,16 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
      * already holding its own reference, so all we add is the peer's. */
     PMIX_RETAIN(nptr);
     peer->nptr = nptr;
-    /* select their bfrops compat module so we can unpack
-     * any provided pmix_info_t structs */
-    peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
-    if (NULL == peer->nptr->compat.bfrops) {
+    /* the tool's wire format, to unpack the info it sent. It is not
+     * attached to the namespace here - that may be one other peers
+     * already share - but in process_cbfunc, once the connection is
+     * committed */
+    bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
+    if (NULL == bfrops) {
         rc = PMIX_ERR_NOT_AVAILABLE;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    /* set the buffer type */
-    peer->nptr->compat.type = pnd->buffer_type;
 
     n = 0;
     /* if info structs need to be passed along, then unpack them */
@@ -1510,8 +1620,9 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         int32_t foo;
         PMIX_CONSTRUCT(&buf, pmix_buffer_t);
         PMIX_LOAD_BUFFER_NON_DESTRUCT(peer, &buf, mg, cnt); // allocates no memory
+        buf.type = pnd->buffer_type;
         foo = 1;
-        PMIX_BFROPS_UNPACK(rc, peer, &buf, &sz, &foo, PMIX_SIZE);
+        rc = bfrops->unpack(&buf, &sz, &foo, PMIX_SIZE);
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
             /* too short to hold even the count - see PMIX_PTL_LEGACY_PAD */
             sz = 0;
@@ -1532,7 +1643,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         if (0 < sz) {
             foo = (int32_t) sz;
             PMIX_INFO_CREATE(iptr, sz);
-            PMIX_BFROPS_UNPACK(rc, peer, &buf, iptr, &foo, PMIX_INFO);
+            rc = bfrops->unpack(&buf, iptr, &foo, PMIX_INFO);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_INFO_FREE(iptr, sz);

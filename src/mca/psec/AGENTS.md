@@ -253,21 +253,25 @@ carried in the `ptl` handshake rather than in the payload:
    `psec->name` into the handshake blob alongside the credential produced
    by `PMIX_PSEC_CREATE_CRED`.
 2. On accept, the server parses that name out of the handshake
-   (`pnd->psec`) and calls
-   `peer->nptr->compat.psec = pmix_psec_base_assign_module(pnd->psec)`
-   in [`ptl_base_connection_hdlr.c`](../ptl/base/ptl_base_connection_hdlr.c).
-   If the server has no matching active module, the connection is
-   refused.
-3. The server then validates via the **`PMIX_PSEC_VALIDATE_CONNECTION`**
-   macro ([`psec.h`](psec.h)), which encodes the single-shot-vs-handshake
-   branch:
+   (`pnd->psec`) and calls `pmix_psec_base_assign_module(pnd->psec)` in
+   [`ptl_base_connection_hdlr.c`](../ptl/base/ptl_base_connection_hdlr.c),
+   holding the module locally: nothing is attached to the peer's
+   namespace until the peer has been validated (the namespace's
+   `compat.psec` is then set by the first peer to connect). If the server
+   has no matching active module, the connection is refused.
+3. The server then validates via the
+   **`PMIX_PSEC_VALIDATE_CONNECTION_WITH`** macro ([`psec.h`](psec.h)),
+   which names that module rather than taking it from the namespace, on a
+   peer carrying only its identity (`info`), protocol and socket - so a
+   module's `validate_cred` must read nothing else from the peer. The
+   macro encodes the single-shot-vs-handshake branch:
    - if the module has a `validate_cred`, call it;
    - else if it has a `server_handshake`, set the reply to
      `PMIX_ERR_READY_FOR_HANDSHAKE` (a signal, not an error);
    - else return `PMIX_ERR_NOT_SUPPORTED` (a module with neither is
      invalid).
 4. The server sends that reply status back, then runs
-   **`PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`**, which invokes
+   **`PMIX_PSEC_SERVER_HANDSHAKE_IFNEED_WITH`**, which invokes
    `server_handshake` *only* when the reply was
    `PMIX_ERR_READY_FOR_HANDSHAKE`. The client mirror is
    `pmix_ptl_base_client_handshake`, which calls

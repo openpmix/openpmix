@@ -139,13 +139,18 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
     (r) = (p)->nptr->compat.psec->validate_cred((struct pmix_peer_t *) (p), (d), (nd), (in), \
                                                 (nin), c)
 
-#define PMIX_PSEC_VALIDATE_CONNECTION(r, p, d, nd, in, nin, c)                                     \
+/* Validate a connecting peer with the module "m" it asked for. The
+ * connection handler validates before the peer is attached to its
+ * namespace, so the module is named here rather than taken from the
+ * namespace - which another peer may already have set. The module reads
+ * only the peer's info (the identity it was registered or connected as),
+ * protocol and socket. */
+#define PMIX_PSEC_VALIDATE_CONNECTION_WITH(r, m, p, d, nd, in, nin, c)                             \
     do {                                                                                           \
         pmix_status_t _r;                                                                          \
         /* if a credential is available, then check it */                                          \
-        if (NULL != (p)->nptr->compat.psec->validate_cred) {                                       \
-            _r = (p)->nptr->compat.psec->validate_cred((struct pmix_peer_t *) (p), (d), (nd),      \
-                                                       (in), (nin), c);                            \
+        if (NULL != (m)->validate_cred) {                                                          \
+            _r = (m)->validate_cred((struct pmix_peer_t *) (p), (d), (nd), (in), (nin), c);        \
             if (PMIX_SUCCESS != _r) {                                                              \
                 pmix_output_verbose(2, pmix_globals.debug_output,                                  \
                                     "validation of credential failed: %s", PMIx_Error_string(_r)); \
@@ -153,7 +158,7 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
                 pmix_output_verbose(2, pmix_globals.debug_output, "credential validated");         \
             }                                                                                      \
             (r) = _r;                                                                              \
-        } else if (NULL != (p)->nptr->compat.psec->server_handshake) {                             \
+        } else if (NULL != (m)->server_handshake) {                                                \
             /* request the handshake if the security mode calls for it */                          \
             pmix_output_verbose(2, pmix_globals.debug_output, "requesting handshake");             \
             _r = PMIX_ERR_READY_FOR_HANDSHAKE;                                                     \
@@ -164,19 +169,25 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
         }                                                                                          \
     } while (0)
 
-#define PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(r, p)                                             \
-    do {                                                                                    \
-        if (PMIX_ERR_READY_FOR_HANDSHAKE == (r)) {                                          \
-            pmix_status_t _r;                                                               \
-            /* execute the handshake if the security mode calls for it */                   \
-            pmix_output_verbose(2, pmix_globals.debug_output, "executing handshake");       \
-            if (PMIX_SUCCESS != (_r = (p)->nptr->compat.psec->server_handshake((p)->sd))) { \
-                PMIX_ERROR_LOG(_r);                                                         \
-            }                                                                               \
-            /* Update the reply status */                                                   \
-            (r) = _r;                                                                       \
-        }                                                                                   \
+#define PMIX_PSEC_VALIDATE_CONNECTION(r, p, d, nd, in, nin, c) \
+    PMIX_PSEC_VALIDATE_CONNECTION_WITH(r, (p)->nptr->compat.psec, p, d, nd, in, nin, c)
+
+#define PMIX_PSEC_SERVER_HANDSHAKE_IFNEED_WITH(r, m, p)                               \
+    do {                                                                              \
+        if (PMIX_ERR_READY_FOR_HANDSHAKE == (r)) {                                    \
+            pmix_status_t _r;                                                         \
+            /* execute the handshake if the security mode calls for it */             \
+            pmix_output_verbose(2, pmix_globals.debug_output, "executing handshake"); \
+            if (PMIX_SUCCESS != (_r = (m)->server_handshake((p)->sd))) {              \
+                PMIX_ERROR_LOG(_r);                                                   \
+            }                                                                         \
+            /* Update the reply status */                                             \
+            (r) = _r;                                                                 \
+        }                                                                             \
     } while (0)
+
+#define PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(r, p) \
+    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED_WITH(r, (p)->nptr->compat.psec, p)
 
 /****    COMPONENT STRUCTURE DEFINITION    ****/
 
