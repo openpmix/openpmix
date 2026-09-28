@@ -1726,9 +1726,38 @@ static void invite_timeout(int sd, short args, void *cbdata)
     invite_complete(inv);
 }
 
-/* A response to an invitation, or the loss of an invitee. Attribution is
- * by identity: a termination names the departed proc in
- * PMIX_EVENT_AFFECTED_PROC rather than being sourced from it. */
+/* Exactly this process: a wildcard nspace or rank names nobody in
+ * particular, so PMIX_CHECK_PROCID's leniency is wrong here */
+static bool same_proc(const pmix_proc_t *a, const pmix_proc_t *b)
+{
+    return (0 == strncmp(a->nspace, b->nspace, PMIX_MAX_NSLEN) && a->rank == b->rank);
+}
+
+/* Is this contribution the responder's own? Each one names its
+ * contributor in its first entry, and every member stores the values
+ * under that name - so a contribution naming anyone else is refused */
+static bool own_contribution(const pmix_info_t *contrib, const pmix_proc_t *responder)
+{
+    const pmix_info_t *iptr;
+
+    if (PMIX_DATA_ARRAY != contrib->value.type || NULL == contrib->value.data.darray ||
+        PMIX_INFO != contrib->value.data.darray->type ||
+        NULL == contrib->value.data.darray->array ||
+        0 == contrib->value.data.darray->size) {
+        return false;
+    }
+    iptr = (const pmix_info_t *) contrib->value.data.darray->array;
+    return (PMIX_CHECK_KEY(&iptr[0], PMIX_PROCID) && PMIX_PROC == iptr[0].value.type &&
+            NULL != iptr[0].value.data.proc && same_proc(iptr[0].value.data.proc, responder));
+}
+
+/* A response to an invitation, or the loss of an invitee.
+ *
+ * An answer counts only if it names this invitation's group and comes from
+ * one of its members - its source is the member, set by that member's
+ * server. A termination names the departed proc in
+ * PMIX_EVENT_AFFECTED_PROC, and counts only if it was raised by that proc's
+ * host on its behalf (the proc is the source) or by this server. */
 static void invite_observer(pmix_status_t status, const pmix_proc_t *source,
                             const pmix_info_t info[], size_t ninfo,
                             const pmix_proc_t *affected, size_t naffected,
@@ -1736,6 +1765,7 @@ static void invite_observer(pmix_status_t status, const pmix_proc_t *source,
 {
     pmix_server_invite_t *inv = (pmix_server_invite_t *) cbobject;
     const pmix_proc_t *responder = source;
+    const char *grpid = NULL;
     size_t n, i;
 
     PMIX_HIDE_UNUSED_PARAMS(affected, naffected);
@@ -1743,7 +1773,7 @@ static void invite_observer(pmix_status_t status, const pmix_proc_t *source,
     /* an answer that was already in flight when the invitation resolved
      * arrives after invite_done() has retired it - there is nothing left
      * for it to count */
-    if (inv->completed || inv->defunct) {
+    if (inv->completed || inv->defunct || NULL == source) {
         return;
     }
     if (PMIX_PROC_TERMINATED == status) {
@@ -1756,16 +1786,25 @@ static void invite_observer(pmix_status_t status, const pmix_proc_t *source,
                 break;
             }
         }
-        if (NULL == responder) {
+        if (NULL == responder ||
+            !(same_proc(source, responder) || same_proc(source, &pmix_globals.myid))) {
+            return;
+        }
+    } else {
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ID) &&
+                PMIX_STRING == info[n].value.type) {
+                grpid = info[n].value.data.string;
+                break;
+            }
+        }
+        if (NULL == grpid || 0 != strcmp(grpid, inv->grpid)) {
             return;
         }
     }
-    if (NULL == responder) {
-        return;
-    }
 
     for (i = 0; i < inv->nmembers; i++) {
-        if (!PMIX_CHECK_PROCID(responder, &inv->members[i])) {
+        if (!same_proc(responder, &inv->members[i])) {
             continue;
         }
         if (inv->answered[i]) {
@@ -1775,12 +1814,13 @@ static void invite_observer(pmix_status_t status, const pmix_proc_t *source,
         ++inv->nanswered;
         if (PMIX_GROUP_INVITE_ACCEPTED == status) {
             inv->responded[i] = true;
-            /* keep whatever contribution the acceptance carried - the
+            /* keep the contribution the acceptance carried - the
              * accepting member's own server built it from that member's
-             * committed data */
+             * committed data, and it must name that member */
             for (n = 0; n < ninfo; n++) {
                 if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_INFO_ARRAY) &&
-                    inv->nendpts <= inv->nmembers) {
+                    inv->nendpts <= inv->nmembers &&
+                    own_contribution(&info[n], responder)) {
                     PMIX_INFO_XFER(&inv->endpts[inv->nendpts], (pmix_info_t *) &info[n]);
                     ++inv->nendpts;
                 }
@@ -2152,6 +2192,12 @@ pmix_status_t pmix_server_group_join(pmix_server_caddy_t *cd,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    if (NULL == grpid) {
+        /* an answer has to say which invitation it answers */
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &code, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
@@ -2189,8 +2235,10 @@ pmix_status_t pmix_server_group_join(pmix_server_caddy_t *cd,
         }
     }
 
-    /* aim it at the leader alone, exactly as the client did */
-    n = 0;
+    /* aim it at the leader alone, exactly as the client did, and name the
+     * group it answers - the leader's server counts an answer only toward
+     * the invitation for that group */
+    n = 1;
     if (haveleader) {
         range = PMIX_RANGE_CUSTOM;
         ++n;
@@ -2200,21 +2248,21 @@ pmix_status_t pmix_server_group_join(pmix_server_caddy_t *cd,
     if (haveendpts) {
         ++n;
     }
-    if (0 < n) {
-        PMIX_INFO_CREATE(info, n);
-        if (NULL == info) {
-            rc = PMIX_ERR_NOMEM;
-            goto done;
-        }
-        ninfo = n;
-        n = 0;
-        if (haveleader) {
-            PMIX_INFO_LOAD(&info[n], PMIX_EVENT_CUSTOM_RANGE, &leader, PMIX_PROC);
-            ++n;
-        }
-        if (haveendpts) {
-            PMIX_INFO_XFER(&info[n], &endpts);
-        }
+    PMIX_INFO_CREATE(info, n);
+    if (NULL == info) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
+    ninfo = n;
+    n = 0;
+    PMIX_INFO_LOAD(&info[n], PMIX_GROUP_ID, grpid, PMIX_STRING);
+    ++n;
+    if (haveleader) {
+        PMIX_INFO_LOAD(&info[n], PMIX_EVENT_CUSTOM_RANGE, &leader, PMIX_PROC);
+        ++n;
+    }
+    if (haveendpts) {
+        PMIX_INFO_XFER(&info[n], &endpts);
     }
 
     PMIX_LOAD_PROCID(&source, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
