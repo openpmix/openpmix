@@ -160,7 +160,13 @@ Two side effects piggyback on delivery in
 adds the group (id, sorted membership, context id) to
 `pmix_client_globals.groups`, and `PMIX_GROUP_LEFT` removes the
 departing member — keep these in sync with the group code in
-`src/client/pmix_client_group.c` and `src/common/pmix_pgroup.c`.
+`src/client/pmix_client_group.c` and `src/common/pmix_pgroup.c`. The
+departing member is always the event's source: `PMIx_Group_leave` names
+itself, and its server refuses a departure naming anyone else. So the
+`PMIX_GROUP_LEFT` side effect removes the source (when
+`PMIX_EVENT_AFFECTED_PROC` is absent, or names the source exactly) and
+leaves the membership alone for an event naming anyone else.
+`test/unit/event_chain.c` covers both.
 
 **Everything those two read came off the wire, so the key does not
 establish the type.** They read a `pmix_value_t` union, and they used
