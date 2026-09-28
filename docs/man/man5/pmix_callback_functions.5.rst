@@ -232,7 +232,7 @@ Reports the result of validating a credential via
 is ``PMIX_SUCCESS`` if the credential is valid, or an error code describing why
 it was rejected. The ``info`` array (``ninfo`` elements) carries any associated
 authorization information |mdash| commonly including the effective
-``PMIX_USERID`` and ``PMIX_GROUPID`` of the credential's holder. The array is
+``PMIX_USERID`` and ``PMIX_GRPID`` of the credential's holder. The array is
 owned by the library and must not be altered or released by the recipient.
 
 
