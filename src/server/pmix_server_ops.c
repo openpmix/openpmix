@@ -288,6 +288,42 @@ pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info
     return PMIX_SUCCESS;
 }
 
+pmix_status_t pmix_server_add_requester_proc(pmix_peer_t *peer, pmix_info_t **info,
+                                             size_t *ninfo)
+{
+    pmix_info_t *old = *info, *new;
+    size_t n, m, nold = *ninfo;
+    pmix_proc_t proc;
+
+    if (NULL == peer || NULL == peer->info) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    new = PMIx_Info_create(nold + 1);
+    if (NULL == new) {
+        return PMIX_ERR_NOMEM;
+    }
+    /* move every entry except a PMIX_REQUESTOR the requester supplied -
+     * moved, not copied, as in pmix_server_add_requester_id */
+    m = 0;
+    for (n = 0; n < nold; n++) {
+        if (PMIx_Check_key(old[n].key, PMIX_REQUESTOR)) {
+            PMIx_Info_destruct(&old[n]);
+            continue;
+        }
+        memcpy(&new[m], &old[n], sizeof(pmix_info_t));
+        ++m;
+    }
+    PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
+    PMIx_Info_load(&new[m], PMIX_REQUESTOR, &proc, PMIX_PROC);
+    ++m;
+    if (NULL != old) {
+        PMIx_Info_free(old, 0);
+    }
+    *info = new;
+    *ninfo = m;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
                                   pmix_op_cbfunc_t cbfunc,
                                   void *cbdata)
