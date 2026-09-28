@@ -184,9 +184,13 @@ keep it aligned with `pmix_pnet_module_t`:
   the `PMIX_PEER_IS_GATEWAY` guards in `tcp_init` and `tcp_finalize`
   cannot disagree about which lists exist.
 
-- **`generate_key` seeds once and keeps drawing from that stream.** It
-  used to re-seed from `time(NULL)` on every call, which handed two jobs
+- **`generate_key` reads the key from `/dev/urandom`**, as `pnet/opa`
+  does. Only when that cannot be read does it fall back to `pmix_rand`,
+  seeded once from the time and pid and then drawn from; it used to
+  re-seed from `time(NULL)` on every call, which handed two jobs
   allocated in the same second the identical "unique" key.
+  `test/unit/pnet_tcp_ports.c` checks that a key cannot be rebuilt from
+  that seed.
 
 ## Gotchas
 
