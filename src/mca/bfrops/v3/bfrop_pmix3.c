@@ -701,6 +701,12 @@ static pmix_status_t pmix3_bfrop_unpack_array(pmix_pointer_array_t *regtypes, pm
             return ret;
         }
         if (0 < ptr[i].size) {
+            /* each element takes at least one byte of the buffer, and the
+             * count is handed on as an int32_t */
+            if (INT32_MAX < ptr[i].size || pmix_bfrop_too_small(buffer, ptr[i].size)) {
+                ptr[i].size = 0;
+                return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
+            }
             ptr[i].array = (pmix_info_t *) pmix_calloc(ptr[i].size, sizeof(pmix_info_t));
             if (NULL == ptr[i].array) {
                 ptr[i].size = 0;
@@ -742,6 +748,12 @@ static pmix_status_t pmix3_bfrop_unpack_modex(pmix_pointer_array_t *regtypes, pm
             return ret;
         }
         if (0 < ptr[i].size) {
+            /* the blob is in the buffer, and its length is handed on as an
+             * int32_t */
+            if (INT32_MAX < ptr[i].size || pmix_bfrop_too_small(buffer, ptr[i].size)) {
+                ptr[i].size = 0;
+                return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
+            }
             ptr[i].blob = (uint8_t *) pmix_calloc(ptr[i].size, sizeof(uint8_t));
             if (NULL == ptr[i].blob) {
                 ptr[i].size = 0;
