@@ -163,6 +163,8 @@ static void _register_nspace(int sd, short args, void *cbdata)
     size_t idpos;
     pmix_info_t *jupdates = NULL;
     size_t njupdates = 0;
+    pmix_info_t *hostinfo, *resolved = NULL;
+    size_t nhostinfo, nresolved = 0;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
@@ -171,6 +173,20 @@ static void _register_nspace(int sd, short args, void *cbdata)
                         cd->proc.nspace);
 
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    /* a user or group the host gave by name is resolved here, and only the
+     * number is used from here on. The host's array is not ours to change,
+     * so work from a resolved copy and give the host its own back below */
+    hostinfo = cd->info;
+    nhostinfo = cd->ninfo;
+    rc = pmix_server_normalize_ids(cd->info, cd->ninfo, &resolved, &nresolved);
+    if (PMIX_SUCCESS != rc) {
+        goto release;
+    }
+    if (NULL != resolved) {
+        cd->info = resolved;
+        cd->ninfo = nresolved;
+    }
 
     /* see if we already have this nspace */
     nptr = NULL;
@@ -591,6 +607,11 @@ release:
      * not. Every exit from the update branch above reaches here. */
     if (NULL != jupdates) {
         free(jupdates);
+    }
+    if (NULL != resolved) {
+        PMIx_Info_free(resolved, nresolved);
+        cd->info = hostinfo;
+        cd->ninfo = nhostinfo;
     }
     cd->opcbfunc(rc, cd->cbdata);
     PMIX_RELEASE(cd);

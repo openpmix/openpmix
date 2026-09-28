@@ -29,8 +29,6 @@
 #include "pmix_common.h"
 #include "include/pmix_server.h"
 
-#include <errno.h>
-#include <grp.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -47,6 +45,7 @@
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_cmd_line.h"
+#include "src/util/pmix_idname.h"
 #include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
@@ -198,34 +197,6 @@ static void defhandler(size_t evhdlr_registration_id, pmix_status_t status,
 }
 
 
-/* The group to charge an allocation to, given as a number or a group
- * name. False if it is neither. */
-static bool parse_gid(const char *arg, uint32_t *gid)
-{
-    struct group *grp;
-    unsigned long val;
-    char *end;
-
-    if (NULL == arg || '\0' == arg[0]) {
-        return false;
-    }
-    errno = 0;
-    val = strtoul(arg, &end, 10);
-    if ('\0' == *end && '-' != arg[0]) {
-        if (0 != errno || (unsigned long) UINT32_MAX < val) {
-            return false;
-        }
-        *gid = (uint32_t) val;
-        return true;
-    }
-    grp = getgrnam(arg);
-    if (NULL == grp) {
-        return false;
-    }
-    *gid = (uint32_t) grp->gr_gid;
-    return true;
-}
-
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
@@ -286,7 +257,7 @@ int main(int argc, char **argv)
 
     /* the group to charge the allocation to - checked before we connect */
     if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_GID))) {
-        if (!parse_gid(opt->values[0], &reqgid)) {
+        if (PMIX_SUCCESS != pmix_util_gid_from_string(opt->values[0], &reqgid)) {
             fprintf(stderr, "%s: \"%s\" is not a group ID or group name\n",
                     argv[0], opt->values[0]);
             exit(1);
