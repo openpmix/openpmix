@@ -417,10 +417,15 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
     cd->cbdata = cbdata;
     /* unpack the array of keys */
     for (i = 0; i < nkeys; i++) {
+        sptr = NULL;
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, peer, buf, &sptr, &cnt, PMIX_STRING);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        if (NULL == sptr) {
+            rc = PMIX_ERR_BAD_PARAM;
             goto cleanup;
         }
         rc = PMIx_Argv_append_nosize(&cd->keys, sptr);
@@ -550,10 +555,15 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
     cd->cbdata = cbdata;
     /* unpack the array of keys */
     for (i = 0; i < nkeys; i++) {
+        sptr = NULL;
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, peer, buf, &sptr, &cnt, PMIX_STRING);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        if (NULL == sptr) {
+            rc = PMIX_ERR_BAD_PARAM;
             goto cleanup;
         }
         rc = PMIx_Argv_append_nosize(&cd->keys, sptr);

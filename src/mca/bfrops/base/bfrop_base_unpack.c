@@ -91,6 +91,9 @@ pmix_status_t pmix_bfrops_base_unpack(pmix_pointer_array_t *regtypes, pmix_buffe
                             (void *) buffer, dst, (long unsigned int) *num_vals, (int) type);
         return PMIX_ERR_UNPACK_INADEQUATE_SPACE;
     }
+    if (0 > *num_vals) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     /** Unpack the declared number of values
      * REMINDER: it is possible that the buffer is corrupted and that
@@ -125,6 +128,10 @@ pmix_status_t pmix_bfrops_base_unpack(pmix_pointer_array_t *regtypes, pmix_buffe
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrop_unpack: found %d values for %d provided storage", local_num,
                         *num_vals);
+    if (0 > local_num) {
+        *num_vals = 0;
+        return PMIX_ERR_UNPACK_FAILURE;
+    }
 
     /** if the storage provided is inadequate, set things up
      * to unpack as much as we can and to return an error code
