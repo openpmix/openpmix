@@ -62,6 +62,13 @@ PMIX_EXPORT pmix_status_t pmix_hwloc_generate_cpuset_string(const pmix_cpuset_t 
 /* get cpuset from its string representation */
 PMIX_EXPORT pmix_status_t pmix_hwloc_parse_cpuset_string(const char *cpuset_string, pmix_cpuset_t *cpuset);
 
+/* true if every processor index in the hwloc list-format string "list"
+ * is no larger than the pmix_hwloc_max_cpu_index MCA parameter. Every
+ * list string is screened with this before it is given to
+ * hwloc_bitmap_list_sscanf, which sizes the bitmap by the largest index
+ * it is handed */
+PMIX_EXPORT bool pmix_hwloc_cpulist_ok(const char *list);
+
 /* Get locality string */
 PMIX_EXPORT pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, char **loc);
 

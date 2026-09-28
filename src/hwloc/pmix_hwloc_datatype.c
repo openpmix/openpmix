@@ -87,6 +87,11 @@ pmix_status_t pmix_hwloc_unpack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *dest,
          * like a real binding. pmix_hwloc_parse_cpuset_string screens the
          * same call for the same reason, and leaves nothing half-built
          * behind - a caller given an error has no reason to destruct. */
+        if (!pmix_hwloc_cpulist_ok(tmp)) {
+            dest->bitmap = NULL;
+            free(tmp);
+            return PMIX_ERR_BAD_PARAM;
+        }
         dest->bitmap = hwloc_bitmap_alloc();
         if (0 != hwloc_bitmap_list_sscanf(dest->bitmap, tmp)) {
             hwloc_bitmap_free(dest->bitmap);
