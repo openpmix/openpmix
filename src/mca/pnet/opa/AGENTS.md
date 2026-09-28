@@ -110,10 +110,13 @@ Runs on each daemon during `PMIx_server_setup_local_support`, after
 info array for `PMIX_PNET_OPA_BLOB`, decompresses it if needed, and
 unpacks a stream of `PMIX_ENVAR`s. Each envar is appended to the
 namespace's `ns->envars` cache (so the base `setup_fork` will inject it
-into every child). As a special case, when it sees the
-`OMPI_MCA_orte_precondition_transports` envar it also stores the value as
-a `PMIX_CREDENTIAL` job-level key (`PMIX_GDS_STORE_KV` on the wildcard
-rank) so it is queryable as job info, not just an envar.
+into every child). That includes the transport key,
+`OMPI_MCA_orte_precondition_transports`, and it goes nowhere else: it is
+**not** stored as job data (it once was, as a `PMIX_CREDENTIAL`
+job-level key). Open MPI's PSM2 MTL asks for that key first and falls
+back to the environment variable, so it still finds the key.
+`test/unit/pnet_opa_seckey.c` checks that the job holds no
+`PMIX_CREDENTIAL` after setup.
 
 ### `setup_fork`
 
