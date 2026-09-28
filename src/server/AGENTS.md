@@ -3274,13 +3274,13 @@ misbehave by design).
   site: a repeat of the same `PMIX_CLEANUP_IGNORE` was never recognized,
   so every job-control request carrying one appended another copy to a
   list that lives as long as the namespace or peer and that
-  `dirpath_destroy` walks once per file; and an ignore naming a path
+  `dirpath_destroy_at` walks once per file; and an ignore naming a path
   already registered for cleanup was dropped, so the epilog deleted a
   file the client had asked it to leave alone.
 
   Recording the ignore was only half of that, and the other half was in
   `pmix_execute_epilog` (`src/include/pmix_globals.c`). `ignores` was
-  consulted *only* by `dirpath_destroy`, for the directory it is
+  consulted *only* by `dirpath_destroy_at`, for the directory it is
   descending and for each file inside it; the `cleanup_files` loop
   unlinked every path on its list without asking. So the ignore that now
   gets recorded still had no effect on the case it was written for, and
@@ -3296,7 +3296,7 @@ misbehave by design).
   documented as comma-delimited lists, and the expansion used to happen
   only in `pmix_execute_epilog` — so every comparison in between was
   made against the unexpanded string, and three separate things silently
-  stopped working for a list of more than one path. `dirpath_destroy`
+  stopped working for a list of more than one path. `dirpath_destroy_at`
   strcmp's an ignore against a filename it has just constructed, so an
   ignore of `"/a,/b"` protected neither; it decides
   `PMIX_CLEANUP_LEAVE_TOPDIR` by comparing the directory it is
@@ -3316,14 +3316,15 @@ misbehave by design).
   the directories that held them; empty removes only the directories
   that are empty and leaves every file alone. A request naming both has
   not said what it wants, and is refused with
-  `PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES`. `dirpath_destroy`
+  `PMIX_ERR_CONFLICTING_CLEANUP_DIRECTIVES`. `dirpath_destroy_at`
   (`src/include/pmix_globals.c`) descends under *either* flag — the
   empty mode has to, because the empty directories it is looking for may
   be at any depth, and because a directory holding nothing but empty
   ones becomes empty itself once they are gone, which is what makes the
   walk bottom-up. What stops that mode from emptying a directory and
-  then removing it is simply that it never unlinks: the `rmdir` at the
-  foot only fires on a directory that is already empty. Given neither
+  then removing it is simply that it never unlinks: a directory is
+  removed (`unlinkat(AT_REMOVEDIR)`, or `rmdir` for the top) only once it
+  is already empty. Given neither
   flag, a subdirectory is left where it is.
 
   `PMIX_CLEANUP_EMPTY` was defined, documented and advertised by
