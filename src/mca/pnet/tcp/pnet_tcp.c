@@ -44,7 +44,6 @@
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/mca/preg/preg.h"
-#include "src/util/pmix_alfg.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
@@ -329,68 +328,6 @@ static void tcp_finalize(void)
     PMIX_LIST_DESTRUCT(&nodes);
 }
 
-/* some network users may want to encrypt their communications
- * as a means of securing them, or include a token in their
- * messaging headers for some minimal level of security. This
- * is far from perfect, but is provided to illustrate how it
- * can be done. The resulting info is placed into the
- * app_context's env array so it will automatically be pushed
- * into the environment of every MPI process when launched.
- *
- * In a more perfect world, there would be some privileged place
- * to store the crypto key and the encryption would occur
- * in a non-visible driver - but we don't have a mechanism
- * for doing so.
- */
-
-/* the key is drawn from /dev/urandom; the generator below is used only
- * when that cannot be read - a chroot or a container with a restricted
- * /dev, or a process out of descriptors - as pnet/opa does */
-static inline void generate_key(uint64_t *unique_key)
-{
-    static pmix_rng_buff_t rng;
-    static bool seeded = false;
-    uint32_t hi, lo;
-    ssize_t nread;
-    int fd;
-
-    fd = open("/dev/urandom", O_RDONLY);
-    if (0 <= fd) {
-        nread = read(fd, (char *) unique_key, 2 * sizeof(uint64_t));
-        close(fd);
-        if ((ssize_t) (2 * sizeof(uint64_t)) == nread) {
-            return;
-        }
-    }
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:tcp: falling back to a generated key");
-
-    if (!seeded) {
-        /* seed once and keep drawing from that stream. Re-seeding from
-         * the clock on every call would hand two jobs allocated within
-         * the same second the identical "unique" key, which is the one
-         * thing this is supposed to avoid.
-         *
-         * pmix_srand() wants a 32-bit seed, so fold the full width of
-         * the time_t into 32 bits rather than silently truncating it -
-         * that lets every bit of the clock contribute and remains
-         * well-defined whether time_t is 32 or 64 bits wide. Mixing in
-         * our pid separates two servers started in the same second */
-        uint64_t now = (uint64_t) time(NULL);
-        uint32_t seed = (uint32_t) now ^ (uint32_t) (now >> 32) ^ (uint32_t) getpid();
-        pmix_srand(&rng, seed);
-        seeded = true;
-    }
-    /* pmix_rand returns 32 bits at a time, so fill each half of the
-     * key separately rather than leaving the top half zero */
-    hi = pmix_rand(&rng);
-    lo = pmix_rand(&rng);
-    unique_key[0] = ((uint64_t) hi << 32) | (uint64_t) lo;
-    hi = pmix_rand(&rng);
-    lo = pmix_rand(&rng);
-    unique_key[1] = ((uint64_t) hi << 32) | (uint64_t) lo;
-}
-
 /* when allocate is called, we look at our table of available static
  * ports and carve out the number the request asked for, tracking the
  * assignment against the namespace so the ports come back when the job
@@ -405,14 +342,13 @@ static inline void generate_key(uint64_t *unique_key)
 static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist)
 {
-    uint64_t unique_key[2];
     size_t n, nreqs = 0;
     int ports_per_node = 0;
     pmix_kval_t *kv;
     pmix_status_t rc;
     pmix_info_t *requests = NULL;
     char **reqs, *cptr;
-    bool allocated = false, seckey = false, envars = false;
+    bool allocated = false, envars = false;
     tcp_port_tracker_t *trk;
     tcp_available_ports_t *avail, *aptr;
     pmix_list_t mylist;
@@ -434,8 +370,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    /* check directives to see if a crypto key and/or
-     * network resource allocations requested */
+    /* check directives to see if envars and/or network resource
+     * allocations were requested */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ENVARS)
             || PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ALL)) {
@@ -510,8 +446,6 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
                 return PMIX_ERR_BAD_PARAM;
             }
             idkey = requests[n].value.data.string;
-        } else if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_FABRIC_SEC_KEY, PMIX_MAX_KEYLEN)) {
-            seckey = PMIX_INFO_TRUE(&requests[n]);
         }
     }
 
@@ -539,18 +473,18 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     /* note that they might not provide
      * the network type (letting it fall to a default component
      * based on priority), and they are not required to provide
-     * a plane. In addition, they are allowed to simply request
-     * a network security key without asking for endpts */
+     * a plane */
 
     if (NULL != type && 0 == ports_per_node) {
-        /* they named a fabric type but asked for no endpoints. As the
-         * note above says, that is allowed - a caller may want nothing
-         * but a security key - so there is simply nothing to allocate
-         * here. Handing this to process_request instead would have it
-         * decline with an error that aborts the whole framework fan-out */
+        /* they named a fabric type but asked for no endpoints, so there
+         * is nothing for us to allocate. Decline rather than handing this
+         * to process_request, which would decline with an error that
+         * aborts the whole framework fan-out */
         pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                             "pnet:tcp:allocate no endpoints requested for nspace %s",
                             nptr->nspace);
+        PMIX_LIST_DESTRUCT(&mylist);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
     } else if (NULL != type) {
         /* if it is tcp or udp, then this is something we should process */
         if (0 == strcasecmp(type, "tcp")) {
@@ -769,34 +703,6 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             PMIX_LIST_DESTRUCT(&mylist);
             return PMIX_ERR_TAKE_NEXT_OPTION;
         }
-    }
-
-    if (seckey) {
-        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                            "pnet:tcp: generate seckey");
-        generate_key(unique_key);
-        kv = PMIX_NEW(pmix_kval_t);
-        if (NULL == kv) {
-            PMIX_LIST_DESTRUCT(&mylist);
-            return PMIX_ERR_NOMEM;
-        }
-        kv->key = strdup(PMIX_ALLOC_FABRIC_SEC_KEY);
-        kv->value = (pmix_value_t *) pmix_calloc(1, sizeof(pmix_value_t));
-        if (NULL == kv->value) {
-            PMIX_RELEASE(kv);
-            PMIX_LIST_DESTRUCT(&mylist);
-            return PMIX_ERR_NOMEM;
-        }
-        kv->value->type = PMIX_BYTE_OBJECT;
-        kv->value->data.bo.bytes = (char *) malloc(2 * sizeof(uint64_t));
-        if (NULL == kv->value->data.bo.bytes) {
-            PMIX_RELEASE(kv);
-            PMIX_LIST_DESTRUCT(&mylist);
-            return PMIX_ERR_NOMEM;
-        }
-        memcpy(kv->value->data.bo.bytes, unique_key, 2 * sizeof(uint64_t));
-        kv->value->data.bo.size = 2 * sizeof(uint64_t);
-        pmix_list_append(&mylist, &kv->super);
     }
 
     n = pmix_list_get_size(&mylist);
