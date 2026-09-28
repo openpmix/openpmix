@@ -994,11 +994,26 @@ static void _setup_app(int sd, short args, void *cbdata)
     pmix_list_t ilist;
     pmix_kval_t *kv;
     size_t n;
+    pmix_info_t *hostinfo, *resolved = NULL;
+    size_t nhostinfo, nresolved = 0;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_CONSTRUCT(&ilist, pmix_list_t);
+
+    /* a user or group the host gave by name is resolved here, and only the
+     * number is used from here on - see _register_nspace */
+    hostinfo = cd->info;
+    nhostinfo = cd->ninfo;
+    rc = pmix_server_normalize_ids(cd->info, cd->ninfo, &resolved, &nresolved);
+    if (PMIX_SUCCESS != rc) {
+        goto depart;
+    }
+    if (NULL != resolved) {
+        cd->info = resolved;
+        cd->ninfo = nresolved;
+    }
 
     /* pass to the network libraries */
     if (PMIX_SUCCESS != (rc = pmix_pnet.allocate(cd->nspace, cd->info, cd->ninfo, &ilist))) {
@@ -1064,6 +1079,11 @@ depart:
 
     /* cleanup memory */
     PMIX_LIST_DESTRUCT(&ilist);
+    if (NULL != resolved) {
+        PMIx_Info_free(resolved, nresolved);
+        cd->info = hostinfo;
+        cd->ninfo = nhostinfo;
+    }
     if (NULL != cd->nspace) {
         free(cd->nspace);
     }

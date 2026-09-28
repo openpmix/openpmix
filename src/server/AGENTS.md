@@ -3185,6 +3185,19 @@ misbehave by design).
   owns, and make sure the caddy's "owns it" flag is set afterwards even
   when the requester sent no array at all.
 
+  **A user or group may be given by name, and is resolved to its number
+  where it enters the library** - after that, only the number is used,
+  internally and with the host. The entry points: requests from peers
+  (`pmix_server_add_requester_id`, which resolves a named `PMIX_GRPID` and
+  refuses one that does not resolve), and the host's own
+  `PMIx_server_register_nspace` and `PMIx_server_setup_application`
+  (`pmix_server_normalize_ids`, which works from a resolved copy of the
+  host's array, following nested info arrays, and hands the host its own
+  array back before releasing the caddy). `src/util/pmix_idname.c` does the
+  lookups (`getpwnam_r`/`getgrnam_r`). Code past those points - the gds
+  components, `pmdl` - reads a plain number. A new entry point that
+  accepts either attribute owes the same conversion.
+
   **The host, not the library, decides whether a requester may use a group
   it names.** Only the host knows the site's accounting rules and which
   directory is authoritative for membership. So the library never acts on

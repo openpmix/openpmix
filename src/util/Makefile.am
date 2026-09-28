@@ -55,6 +55,7 @@ headers = \
         pmix_show_help.h \
         pmix_path.h \
         pmix_getid.h \
+        pmix_idname.h \
         pmix_strnlen.h \
         pmix_shmem.h \
         pmix_vmem.h \
@@ -88,6 +89,7 @@ sources = \
         pmix_show_help_content.c \
         pmix_path.c \
         pmix_getid.c \
+        pmix_idname.c \
         pmix_shmem.c \
         pmix_vmem.c \
         pmix_hash.c \

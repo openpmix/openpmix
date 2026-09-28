@@ -57,6 +57,7 @@ interface list).
 | `pmix_fd.{c,h}` | fd read/write, cloexec, type predicates, peer name, mass-close | needs pipes/sockets |
 | `pmix_few.{c,h}` | fork/exec/waitpid a child | needs a child |
 | `pmix_getid.{c,h}` | peer uid/gid over a socket (`SO_PEERCRED`/`getpeereid`) | needs a socketpair |
+| `pmix_idname.{c,h}` | a `PMIX_USERID`/`PMIX_GRPID` given as a number or a name, resolved to the number (`getpwnam_r`/`getgrnam_r`); callers are the points where either attribute enters the library - see `src/server/AGENTS.md` | the numeric paths are pure; names need the process's own passwd/group entries |
 | `pmix_shmem.{c,h}` / `pmix_vmem.{c,h}` | mmap-backed shared-memory segment; `/proc/self/maps` hole finder (Linux) | `pad_to_page` pure; the hole scan runs anywhere against a synthetic map; rest need mmap |
 | `pmix_pty.{c,h}` / `pmix_tty.{c,h}` | openpty/forkpty wrappers; termios/winsize helpers | need real pty/tty |
 | `pmix_alfg.{c,h}` | additive lagged-Fibonacci RNG (from Open MPI's `opal_rand`) | pure/deterministic |
