@@ -851,6 +851,74 @@ bool pmix_bfrop_too_small(pmix_buffer_t *buffer, size_t bytes_reqd)
     return false;
 }
 
+/*
+ * The fewest bytes one element of the given type occupies in a packed
+ * buffer, taken from the most compact wire format (v4 and later, whose
+ * integers are variable-length encoded). Every field of a structured
+ * type contributes at least one byte, and a string packed from a
+ * fixed-length array (a key or an nspace) contributes at least two -
+ * its length plus the terminator. Older wire formats pack larger, so
+ * these are lower bounds for every peer.
+ *
+ * Zero means the type has no per-element minimum: PMIX_POINTER packs a
+ * single sentinel for a whole array, and an array of empty data arrays
+ * packs to less than a byte per element.
+ */
+static size_t min_packed_size(pmix_data_type_t type)
+{
+    switch (type) {
+    case PMIX_PROC:
+        /* nspace + rank */
+        return 3;
+    case PMIX_INFO:
+        /* key + directives + value type */
+        return 4;
+    case PMIX_KVAL:
+        /* key + value type */
+        return 2;
+    case PMIX_PDATA:
+        /* proc + key + value type */
+        return 6;
+    case PMIX_QUERY:
+        /* key count + qualifier count */
+        return 2;
+    case PMIX_APP:
+        /* cmd + argc + envc + cwd + maxprocs + ninfo */
+        return 6;
+    case PMIX_RESOURCE_UNIT:
+        /* type + count */
+        return 2;
+    case PMIX_DEVICE_DIST:
+        /* uuid + osname + type + mindist + maxdist */
+        return 5;
+    case PMIX_UNDEF:
+    case PMIX_POINTER:
+    case PMIX_DATA_ARRAY:
+        return 0;
+    default:
+        return 1;
+    }
+}
+
+bool pmix_bfrop_count_fits(pmix_buffer_t *buffer, size_t count, pmix_data_type_t type)
+{
+    size_t bytes_remaining_packed, minsize;
+
+    /* the count is handed to the unpack as an int32_t */
+    if ((size_t) INT32_MAX < count) {
+        return false;
+    }
+    minsize = min_packed_size(type);
+    if (0 == count || 0 == minsize) {
+        return true;
+    }
+    if (buffer->pack_ptr < buffer->unpack_ptr) {
+        return false;
+    }
+    bytes_remaining_packed = buffer->pack_ptr - buffer->unpack_ptr;
+    return (count <= bytes_remaining_packed / minsize);
+}
+
 pmix_status_t pmix_bfrop_store_data_type(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                          pmix_data_type_t type)
 {

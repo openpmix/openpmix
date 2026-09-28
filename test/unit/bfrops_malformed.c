@@ -646,6 +646,118 @@ static void test_a_value_cannot_carry_an_oversized_type(void)
 
 /* ------------------------------------------------------------------ */
 
+/* pmix_bfrop_count_fits() relates an element count to the bytes still
+ * unread, at the smallest packed size of the element type. These pin
+ * down its boundaries: the count that exactly fills the buffer is
+ * accepted and one more is refused, the bound tracks the unpack
+ * pointer, the int32_t limit applies to every type, and the types with
+ * no per-element minimum are bounded only by that limit. */
+static void test_count_fits_boundaries(void)
+{
+    pmix_buffer_t buf;
+    char bytes[12];
+    int ok = 1;
+
+    memset(bytes, 0, sizeof(bytes));
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &buf, bytes, sizeof(bytes));
+
+    /* a packed pmix_info_t takes at least 4 bytes, a pmix_proc_t 3, and
+     * a type with no entry of its own 1 */
+    ok &= pmix_bfrop_count_fits(&buf, 0, PMIX_INFO);
+    ok &= pmix_bfrop_count_fits(&buf, 3, PMIX_INFO);
+    ok &= !pmix_bfrop_count_fits(&buf, 4, PMIX_INFO);
+    ok &= pmix_bfrop_count_fits(&buf, 4, PMIX_PROC);
+    ok &= !pmix_bfrop_count_fits(&buf, 5, PMIX_PROC);
+    ok &= pmix_bfrop_count_fits(&buf, 12, PMIX_BYTE);
+    ok &= !pmix_bfrop_count_fits(&buf, 13, PMIX_BYTE);
+    ok &= pmix_bfrop_count_fits(&buf, 12, PMIX_STATUS);
+    ok &= !pmix_bfrop_count_fits(&buf, 13, PMIX_STATUS);
+
+    /* no per-element minimum: only the int32_t limit */
+    ok &= pmix_bfrop_count_fits(&buf, (size_t) INT32_MAX, PMIX_POINTER);
+    ok &= pmix_bfrop_count_fits(&buf, (size_t) INT32_MAX, PMIX_DATA_ARRAY);
+    ok &= !pmix_bfrop_count_fits(&buf, (size_t) INT32_MAX + 1, PMIX_POINTER);
+    ok &= !pmix_bfrop_count_fits(&buf, (size_t) INT32_MAX + 1, PMIX_DATA_ARRAY);
+    ok &= !pmix_bfrop_count_fits(&buf, SIZE_MAX, PMIX_BYTE);
+
+    /* only the unread part of the buffer counts */
+    buf.unpack_ptr = buf.base_ptr + 8;
+    ok &= pmix_bfrop_count_fits(&buf, 1, PMIX_INFO);
+    ok &= !pmix_bfrop_count_fits(&buf, 2, PMIX_INFO);
+    buf.unpack_ptr = buf.pack_ptr;
+    ok &= pmix_bfrop_count_fits(&buf, 0, PMIX_INFO);
+    ok &= !pmix_bfrop_count_fits(&buf, 1, PMIX_BYTE);
+
+    /* the buffer does not own the bytes */
+    buf.base_ptr = NULL;
+    buf.pack_ptr = NULL;
+    buf.unpack_ptr = NULL;
+    PMIX_DESTRUCT(&buf);
+
+    report("an element count is bounded by the unread bytes at the "
+           "type's smallest packed size", ok);
+}
+
+/* A packed pmix_info_t takes at least four bytes, so an info count
+ * larger than a quarter of the bytes that follow it is refused before
+ * anything is allocated - even where it is no larger than the byte
+ * count itself. Checked at the two places the base unpacker sizes an
+ * info array from a count nested inside another type: a query's
+ * qualifiers, and a data array of pmix_info_t. */
+static void test_nested_info_counts_bounded(void)
+{
+    pmix_data_buffer_t buf;
+    pmix_query_t query;
+    pmix_data_array_t darray;
+    pmix_status_t rc;
+    int32_t cnt, one = 1, nkeys = 0;
+    uint16_t etype = PMIX_INFO;
+    size_t nelem = 100;
+    wire_acc_t acc = {NULL, 0};
+    int ok;
+
+    /* [count of queries][no keys][nqual][nqual bytes of padding] */
+    ok = append_bare(&acc, &one, PMIX_INT32) && append_bare(&acc, &nkeys, PMIX_INT32) &&
+         append_bare(&acc, &nelem, PMIX_SIZE) && append_raw(&acc, nelem);
+    if (!ok) {
+        free(acc.bytes);
+        report("a qualifier count larger than the qualifiers that fit is refused", 0);
+        return;
+    }
+    load_wire(&buf, (const unsigned char *) acc.bytes, acc.len);
+    free(acc.bytes);
+    acc.bytes = NULL;
+    acc.len = 0;
+    PMIX_QUERY_CONSTRUCT(&query);
+    cnt = 1;
+    rc = PMIx_Data_unpack(NULL, &buf, &query, &cnt, PMIX_QUERY);
+    report("a qualifier count larger than the qualifiers that fit is refused",
+           PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc && NULL == query.qualifiers &&
+           0 == query.nqual);
+    PMIX_QUERY_DESTRUCT(&query);
+    PMIX_DATA_BUFFER_DESTRUCT(&buf);
+
+    /* [count of arrays][element type][element count][that many bytes] */
+    ok = append_bare(&acc, &one, PMIX_INT32) && append_bare(&acc, &etype, PMIX_UINT16) &&
+         append_bare(&acc, &nelem, PMIX_SIZE) && append_raw(&acc, nelem);
+    if (!ok) {
+        free(acc.bytes);
+        report("an info data array larger than the infos that fit is refused", 0);
+        return;
+    }
+    load_wire(&buf, (const unsigned char *) acc.bytes, acc.len);
+    free(acc.bytes);
+    memset(&darray, 0, sizeof(darray));
+    cnt = 1;
+    rc = PMIx_Data_unpack(NULL, &buf, &darray, &cnt, PMIX_DATA_ARRAY);
+    report("an info data array larger than the infos that fit is refused",
+           PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc && NULL == darray.array);
+    PMIX_DATA_BUFFER_DESTRUCT(&buf);
+}
+
+/* ------------------------------------------------------------------ */
+
 /* The v21 and v3 wire formats carry two deprecated types, an info array
  * and a modex blob, each preceded by its element count. That count must
  * be bounded by the bytes left in the message before it sizes an
@@ -742,6 +854,8 @@ int main(int argc, char **argv)
     test_element_count_sign();
     test_legacy_counts_bounded("v21");
     test_legacy_counts_bounded("v3");
+    test_count_fits_boundaries();
+    test_nested_info_counts_bounded();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
