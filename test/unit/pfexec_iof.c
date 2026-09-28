@@ -256,6 +256,125 @@ static bool spawn_inheriting(void)
     return true;
 }
 
+/* A spawn request that arrives from a peer is fork/exec'd by this
+ * launcher, as this launcher's user, only when the peer is that same
+ * user. The request is driven through pmix_server_spawn() on the
+ * progress thread, from a stand-in peer whose uid is not ours; the job it
+ * asks for would leave a marker file behind. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    const char *marker;
+    pmix_status_t status;
+} foreign_req_t;
+
+static void foreign_done(pmix_status_t status, char nspace[], void *cbdata)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
+
+    (void) status;
+    (void) nspace;
+    if (NULL != cd) {
+        PMIX_RELEASE(cd);
+    }
+}
+
+static void do_foreign_spawn(int sd, short args, void *cbdata)
+{
+    foreign_req_t *r = (foreign_req_t *) cbdata;
+    pmix_peer_t *peer;
+    pmix_server_caddy_t *cd;
+    pmix_buffer_t buf;
+    pmix_app_t app;
+    size_t ninfo = 0, napps = 1;
+    char *cmd = NULL;
+    pmix_status_t rc;
+
+    (void) sd;
+    (void) args;
+
+    /* the same namespace as ours, so it packs as we do - but a uid that
+     * is not ours */
+    peer = PMIX_NEW(pmix_peer_t);
+    PMIX_RETAIN(pmix_globals.mypeer->nptr);
+    peer->nptr = pmix_globals.mypeer->nptr;
+    peer->info = PMIX_NEW(pmix_rank_info_t);
+    peer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
+    peer->info->pname.rank = 1;
+    peer->info->uid = geteuid() + 1;
+    peer->info->gid = getegid();
+    memcpy(&peer->proc_type, &pmix_globals.mypeer->proc_type, sizeof(pmix_proc_type_t));
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_BFROPS_ASSIGN_TYPE(pmix_globals.mypeer, &buf);
+    PMIX_APP_CONSTRUCT(&app);
+    app.cmd = strdup("/bin/sh");
+    PMIx_Argv_append_nosize(&app.argv, "/bin/sh");
+    PMIx_Argv_append_nosize(&app.argv, "-c");
+    if (0 > asprintf(&cmd, "echo ran > %s", r->marker)) {
+        cmd = NULL;
+    }
+    PMIx_Argv_append_nosize(&app.argv, (NULL == cmd) ? "true" : cmd);
+    free(cmd);
+    app.maxprocs = 1;
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &ninfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &napps, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &app, 1, PMIX_APP);
+    }
+    PMIX_APP_DESTRUCT(&app);
+
+    if (PMIX_SUCCESS == rc) {
+        cd = PMIX_NEW(pmix_server_caddy_t);
+        PMIX_RETAIN(peer);
+        cd->peer = peer;
+        rc = pmix_server_spawn(peer, &buf, foreign_done, cd);
+        if (PMIX_SUCCESS != rc) {
+            /* the switchyard owns the caddy on a non-success return */
+            PMIX_RELEASE(cd);
+        }
+    }
+    PMIX_DESTRUCT(&buf);
+    PMIX_RELEASE(peer);
+    r->status = rc;
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+static void test_foreign_spawn(void)
+{
+    foreign_req_t req;
+    char marker[] = "/tmp/pmix-pfexec-foreign-XXXXXX";
+    int fd, i;
+    bool ran = false;
+
+    fd = mkstemp(marker);
+    if (0 > fd) {
+        report("made a marker name for the foreign spawn case", false);
+        return;
+    }
+    close(fd);
+    unlink(marker);
+
+    memset(&req, 0, sizeof(req));
+    PMIX_CONSTRUCT_LOCK(&req.lock);
+    req.marker = marker;
+    PMIX_THREADSHIFT(&req, do_foreign_spawn);
+    PMIX_WAIT_THREAD(&req.lock);
+    PMIX_DESTRUCT_LOCK(&req.lock);
+
+    report("a spawn request from another user's peer is refused",
+           PMIX_ERR_NO_PERMISSIONS == req.status);
+    /* give a job that was started anyway the time to leave its mark */
+    for (i = 0; i < 20 && !ran; i++) {
+        usleep(100000);
+        ran = (0 == access(marker, F_OK));
+    }
+    report("the refused job never ran", !ran);
+    unlink(marker);
+}
+
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
@@ -376,6 +495,11 @@ int main(int argc, char **argv)
            collect_until(rfd, buf, sizeof(buf), OUT_MARK));
     report("inherited channels: stderr appears",
            collect_until(efd, buf, sizeof(buf), ERR_MARK));
+    drain(rfd);
+    drain(efd);
+
+    /* ---- a peer of another user cannot have us fork/exec for it ---- */
+    test_foreign_spawn();
     drain(rfd);
     drain(efd);
 
