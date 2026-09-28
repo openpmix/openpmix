@@ -72,7 +72,6 @@ PMIx Allocation Request tool
                                      [e.g., host0[1-5],host128]. Can also pass the argument as a filename
                                      using the "file:<path>" syntax. Ordering of names and/or duplicate
                                      names are ignored.
-   --uid <arg0>                      Assign the resulting allocation to the specified user ID
    --gid <arg0>                      Assign the resulting allocation to the specified group ID
 -t|--time <arg0>                     Time limit on the assigned allocation.
    --signal <arg0>[@arg1]            Send all processes executing within the allocated session the specified signal
@@ -243,10 +242,6 @@ Comma-delimited list of ranges of specific nodes being requested
 [e.g., host0[1-5],host128]. Can also pass the argument as a filename
 using the "file:<path>" syntax. Ordering of names and/or duplicate
 names are ignored.
-#
-[uid]
-Assign the resulting allocation to the specified user ID. Value
-can be provided as either an integer or a username
 #
 [gid]
 Assign the resulting allocation to the specified group ID. Value
