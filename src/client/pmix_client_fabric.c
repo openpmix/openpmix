@@ -50,6 +50,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
@@ -180,7 +181,7 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
     }
     if (0 < ninfo) {
         cnt = (int32_t) ninfo;
-        if (PMIX_UNLIKELY(0 > cnt || (size_t) cnt != ninfo)) {
+        if (PMIX_UNLIKELY(!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO))) {
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
             rc = PMIX_ERR_BAD_PARAM;
             goto complete;
