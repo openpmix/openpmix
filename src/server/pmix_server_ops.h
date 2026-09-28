@@ -352,6 +352,20 @@ PMIX_EXPORT pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_bu
 
 PMIX_EXPORT void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t *buf);
 
+/* Mark an array about to be passed up to the host with the identity of
+ * the peer the request came from, so it holds exactly one PMIX_USERID and
+ * one PMIX_GRPID:
+ *  - PMIX_USERID is always the uid recorded for the peer at connection;
+ *    any the requester supplied is dropped.
+ *  - PMIX_GRPID is the requester's choice if it supplied one (the first
+ *    uint32 one - a group to charge the work to, which the host decides
+ *    whether to accept); otherwise the gid recorded at connection.
+ * The array is replaced by a new one - *info and *ninfo are updated, and
+ * the old array is released - so the caller must own it. A NULL/zero
+ * array is fine and comes back holding just the pair. */
+PMIX_EXPORT pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info,
+                                                       size_t *ninfo);
+
 PMIX_EXPORT pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_info_cbfunc_t cbfunc, void *cbdata);
 

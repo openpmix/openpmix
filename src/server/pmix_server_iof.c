@@ -1030,6 +1030,15 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
         goto exit;
     }
 
+    /* pass the requester's identity to the host - the array this makes
+     * is ours as well, even when no directives were sent */
+    rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    cd->copied = true;
+
     /* add this peer/source/channel combination */
     req = PMIX_NEW(pmix_iof_req_t);
     if (NULL == req) {
@@ -1164,6 +1173,12 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
     /* add the directive to stop forwarding */
     PMIX_INFO_LOAD(&cd->info[ninfo], PMIX_IOF_STOP, NULL, PMIX_BOOL);
+    /* and the requester's identity */
+    rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
 
     /* unpack the handler ID */
     cnt = 1;
@@ -1368,6 +1383,15 @@ pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
         PMIX_ERROR_LOG(rc);
         goto error;
     }
+
+    /* pass the requester's identity to the host - the array this makes
+     * is ours as well, even when no directives were sent */
+    rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    cd->copied = true;
 
     /* pass the data to the host */
     pmix_strncpy(source.nspace, peer->nptr->nspace, PMIX_MAX_NSLEN);

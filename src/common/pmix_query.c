@@ -259,7 +259,9 @@ static pmix_status_t request_help(pmix_query_caddy_t *cd)
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:query handed to RM");
         cd->host_called = true;
-        rc = pmix_host_server.query(&pmix_globals.myid,
+        /* on behalf of the process that asked, if it was not us */
+        rc = pmix_host_server.query((NULL != cd->requestor) ? cd->requestor
+                                                            : &pmix_globals.myid,
                                     cd->queries, cd->nqueries,
                                     finalstep, (void*)cd);
         return rc;
@@ -298,6 +300,8 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
     pmix_proc_t proc;
     bool rank_given;
     pmix_querylist_t *qry;
+    /* a server answering for one of its peers answers about that peer */
+    pmix_proc_t *me = (NULL != cd->requestor) ? cd->requestor : &pmix_globals.myid;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     // setup the list of unresolved queries
@@ -363,12 +367,12 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
         } else {
             /* set the proc */
             if (PMIX_RANK_INVALID == proc.rank && 0 == strlen(proc.nspace)) {
-                /* use our id */
-                cb.proc = &pmix_globals.myid;
+                /* use the requester's id */
+                cb.proc = me;
             } else {
                 if (0 == strlen(proc.nspace)) {
-                    /* use our nspace */
-                    PMIX_LOAD_NSPACE(proc.nspace, pmix_globals.myid.nspace);
+                    /* use the requester's nspace */
+                    PMIX_LOAD_NSPACE(proc.nspace, me->nspace);
                 }
                 if (PMIX_RANK_INVALID == proc.rank) {
                     /* user the wildcard rank */

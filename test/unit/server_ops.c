@@ -25,11 +25,19 @@
  *   publish                  -> the host is given the uid the connection
  *                               handshake established, NOT the one the
  *                               command carried
+ *   publish naming a
+ *      PMIX_USERID of its own -> the host is given one uid and one gid,
+ *                               the handshake's
  *   lookup answered with
  *      PMIX_OPERATION_SUCCEEDED -> PMIX_ERR_NOT_SUPPORTED
  *   spawn carrying no
  *      job-level directives  -> the IOF directives are still parsed, so a
- *                               tool's child job is forwarded to it
+ *                               tool's child job is forwarded to it, and
+ *                               the host is given only the requester's
+ *                               uid and gid
+ *   spawn the host declines  -> the host's status comes back, and the
+ *                               request's directives and apps are
+ *                               released once
  *
  * What this file cannot reach: anything that needs a peer with a live
  * socket, and the multi-node half of IOF inheritance. Those are covered
@@ -86,11 +94,15 @@ static char *abort_msg = NULL;
 static bool publish_fired = false;
 static uint32_t publish_uid = 0;
 static bool publish_uid_found = false;
+static size_t publish_nuid = 0;
+static size_t publish_ngid = 0;
 
 static bool lookup_fired = false;
 
 static bool spawn_fired = false;
-static size_t spawn_ninfo = 0;
+static size_t spawn_ninfo = 0;   /* not counting the requester's identity */
+static size_t spawn_nident = 0;  /* PMIX_USERID and PMIX_GRPID entries */
+static bool spawn_refuse = false;
 
 static pmix_status_t stub_abort(const pmix_proc_t *proc, void *server_object,
                                 int status, const char msg[],
@@ -128,10 +140,15 @@ static pmix_status_t stub_publish(const pmix_proc_t *proc,
     publish_fired = true;
     publish_uid_found = false;
     publish_uid = 0;
+    publish_nuid = 0;
+    publish_ngid = 0;
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_USERID)) {
             publish_uid_found = true;
             publish_uid = info[n].value.data.uint32;
+            ++publish_nuid;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GRPID)) {
+            ++publish_ngid;
         }
     }
     if (NULL != cbfunc) {
@@ -164,13 +181,27 @@ static pmix_status_t stub_spawn(const pmix_proc_t *proc,
                                 const pmix_app_t apps[], size_t napps,
                                 pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {
+    size_t n;
+
     (void) proc;
-    (void) job_info;
     (void) apps;
     (void) napps;
 
     spawn_fired = true;
-    spawn_ninfo = ninfo;
+    spawn_ninfo = 0;
+    spawn_nident = 0;
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&job_info[n], PMIX_USERID) ||
+            PMIX_CHECK_KEY(&job_info[n], PMIX_GRPID)) {
+            ++spawn_nident;
+        } else {
+            ++spawn_ninfo;
+        }
+    }
+    if (spawn_refuse) {
+        /* a host that declines the request: the callback is not called */
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
     /* the namespace of the job we "started" - the only channel for it is
      * this callback, which is why PMIX_OPERATION_SUCCEEDED is not an
      * answer a host may give here */
@@ -219,6 +250,7 @@ typedef struct {
     size_t ninfo;       /* the count to put on the wire */
     size_t ninfo_real;  /* how many info structs actually to pack */
     bool as_tool;       /* present the requestor as a tool */
+    bool claim_uid;     /* publish: include a PMIX_USERID of our own */
     pmix_status_t status;
 } opsut_req_t;
 
@@ -271,7 +303,12 @@ static pmix_status_t pack_publish(pmix_buffer_t *buf, opsut_req_t *r)
     }
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &r->ninfo, 1, PMIX_SIZE);
     for (n = 0; PMIX_SUCCESS == rc && n < r->ninfo_real; n++) {
-        PMIX_INFO_LOAD(&info, "server-ops-ut.key", "value", PMIX_STRING);
+        if (r->claim_uid && 0 == n) {
+            uint32_t claimed = OPSUT_CLAIMED_UID;
+            PMIX_INFO_LOAD(&info, PMIX_USERID, &claimed, PMIX_UINT32);
+        } else {
+            PMIX_INFO_LOAD(&info, "server-ops-ut.key", "value", PMIX_STRING);
+        }
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &info, 1, PMIX_INFO);
         PMIX_INFO_DESTRUCT(&info);
     }
@@ -312,11 +349,17 @@ static pmix_status_t pack_spawn(pmix_buffer_t *buf, opsut_req_t *r)
 {
     pmix_status_t rc;
     pmix_app_t app;
-    size_t napps = 1;
+    pmix_info_t info;
+    size_t napps = 1, n;
 
-    /* the job-level directive count - zero here, which is the case under
-     * test: PMIx_Spawn(NULL, 0, ...) is a legal request */
+    /* the job-level directives - zero of them is a legal request
+     * (PMIx_Spawn(NULL, 0, ...)) */
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &r->ninfo, 1, PMIX_SIZE);
+    for (n = 0; PMIX_SUCCESS == rc && n < r->ninfo_real; n++) {
+        PMIX_INFO_LOAD(&info, "server-ops-ut.spawnkey", "value", PMIX_STRING);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &info, 1, PMIX_INFO);
+        PMIX_INFO_DESTRUCT(&info);
+    }
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
@@ -419,13 +462,15 @@ static void do_cmd(int sd, short args, void *cbdata)
     PMIX_WAKEUP_THREAD(&r->lock);
 }
 
-static pmix_status_t drive(opsut_cmd_t cmd, size_t nprocs, size_t nprocs_real,
-                           size_t ninfo, size_t ninfo_real, bool as_tool)
+static pmix_status_t drive_claim(opsut_cmd_t cmd, size_t nprocs, size_t nprocs_real,
+                                 size_t ninfo, size_t ninfo_real, bool as_tool,
+                                 bool claim_uid)
 {
     opsut_req_t req;
     pmix_status_t rc;
 
     memset(&req, 0, sizeof(req));
+    req.claim_uid = claim_uid;
     PMIX_CONSTRUCT_LOCK(&req.lock);
     req.cmd = cmd;
     req.nprocs = nprocs;
@@ -438,6 +483,12 @@ static pmix_status_t drive(opsut_cmd_t cmd, size_t nprocs, size_t nprocs_real,
     rc = req.status;
     PMIX_DESTRUCT_LOCK(&req.lock);
     return rc;
+}
+
+static pmix_status_t drive(opsut_cmd_t cmd, size_t nprocs, size_t nprocs_real,
+                           size_t ninfo, size_t ninfo_real, bool as_tool)
+{
+    return drive_claim(cmd, nprocs, nprocs_real, ninfo, ninfo_real, as_tool, false);
 }
 
 /* The spawn completion thread-shifts, so let anything queued behind us
@@ -534,6 +585,14 @@ int main(int argc, char **argv)
     report("publish seeded a user id", publish_fired && publish_uid_found);
     report("publish used the handshake's uid, not the command's",
            publish_uid == myuid && publish_uid != OPSUT_CLAIMED_UID);
+    report("publish carried exactly one uid and one gid",
+           1 == publish_nuid && 1 == publish_ngid);
+
+    /* --- a publish that names a uid of its own among its info --- */
+    rc = drive_claim(OPSUT_PUBLISH, 0, 0, 2, 2, false, true);
+    report("publish naming its own uid is accepted", PMIX_SUCCESS == rc);
+    report("the host was given the handshake's uid in its place",
+           1 == publish_nuid && 1 == publish_ngid && publish_uid == myuid);
 
     /* --- a lookup the host answers atomically --- *
      * PMIX_OPERATION_SUCCEEDED means "done, and I will not call your
@@ -564,7 +623,8 @@ int main(int argc, char **argv)
      * never saw a line of its job's output. */
     rc = drive(OPSUT_SPAWN, 0, 0, 0, 0, true);
     report("a spawn with no directives is accepted", PMIX_SUCCESS == rc);
-    report("it reached the host with no directives", spawn_fired && 0 == spawn_ninfo);
+    report("it reached the host with only the requester's identity",
+           spawn_fired && 0 == spawn_ninfo && 2 == spawn_nident);
     channels = child_iof_channels();
     report("a tool's child job has its stdout forwarded",
            0 != (channels & PMIX_FWD_STDOUT_CHANNEL));
@@ -572,6 +632,17 @@ int main(int argc, char **argv)
            0 != (channels & PMIX_FWD_STDERR_CHANNEL));
     report("a tool's child job has its stddiag forwarded",
            0 != (channels & PMIX_FWD_STDDIAG_CHANNEL));
+
+    /* --- a spawn the host declines --- *
+     * the request's directives and apps are released exactly once on
+     * the way out */
+    spawn_fired = false;
+    spawn_refuse = true;
+    rc = drive(OPSUT_SPAWN, 0, 0, 1, 1, false);
+    spawn_refuse = false;
+    report("a spawn the host declines returns the host's status",
+           PMIX_ERR_NOT_SUPPORTED == rc);
+    report("the declined spawn reached the host", spawn_fired);
 
     if (NULL != abort_msg) {
         free(abort_msg);

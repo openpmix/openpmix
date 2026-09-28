@@ -759,10 +759,12 @@ static void qcon(pmix_query_caddy_t *p)
     p->relcbfunc = NULL;
     p->credcbfunc = NULL;
     p->validcbfunc = NULL;
+    p->requestor = NULL;
 }
 static void qdes(pmix_query_caddy_t *p)
 {
     PMIX_DESTRUCT_LOCK(&p->lock);
+    PMIX_PROC_FREE(p->requestor, 1);
     PMIX_BYTE_OBJECT_DESTRUCT(&p->bo);
     PMIX_QUERY_FREE(p->queries, p->nqueries);
     PMIX_PROC_FREE(p->targets, p->ntargets);
