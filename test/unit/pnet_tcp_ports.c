@@ -340,6 +340,81 @@ static void test_seckey_only(void)
  * holds exactly two rounds' worth only fits if deregistration releases
  * both of them, and the first group only matches at all if the
  * "type:plane:count" parse finds the plane */
+/* An inventory blob is "<host>" then one byte object per device, each
+ * holding "<device>" and "<address>". Build one, with any of the three
+ * strings left NULL. */
+static bool inventory_blob(const char *host, const char *dev, const char *addr,
+                           pmix_byte_object_t *out)
+{
+    pmix_data_buffer_t outer, inner;
+    pmix_byte_object_t bo;
+    char *s;
+    bool ok;
+
+    PMIX_DATA_BUFFER_CONSTRUCT(&outer);
+    PMIX_DATA_BUFFER_CONSTRUCT(&inner);
+    s = (char *) host;
+    ok = (PMIX_SUCCESS == PMIx_Data_pack(NULL, &outer, &s, 1, PMIX_STRING));
+    s = (char *) dev;
+    ok = ok && (PMIX_SUCCESS == PMIx_Data_pack(NULL, &inner, &s, 1, PMIX_STRING));
+    s = (char *) addr;
+    ok = ok && (PMIX_SUCCESS == PMIx_Data_pack(NULL, &inner, &s, 1, PMIX_STRING));
+    ok = ok && (PMIX_SUCCESS == PMIx_Data_unload(&inner, &bo));
+    ok = ok && (PMIX_SUCCESS == PMIx_Data_pack(NULL, &outer, &bo, 1, PMIX_BYTE_OBJECT));
+    if (ok) {
+        PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+    }
+    ok = ok && (PMIX_SUCCESS == PMIx_Data_unload(&outer, out));
+    PMIX_DATA_BUFFER_DESTRUCT(&inner);
+    PMIX_DATA_BUFFER_DESTRUCT(&outer);
+    return ok;
+}
+
+static pmix_status_t deliver_blob(const char *host, const char *dev, const char *addr)
+{
+    pmix_info_t info;
+    pmix_byte_object_t bo;
+    pmix_status_t rc;
+
+    if (!inventory_blob(host, dev, addr, &bo)) {
+        return PMIX_ERROR;
+    }
+    PMIX_INFO_LOAD(&info, "pmix.tcp.inventory", &bo, PMIX_BYTE_OBJECT);
+    PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+    rc = PMIx_server_deliver_inventory(&info, 1, NULL, 0, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&info);
+    return rc;
+}
+
+/* inventory arrives from the host, which relays it from other nodes: a
+ * blob naming no host, or a device with no name or address, or a value
+ * that is not a blob at all, is refused or skipped - and an ordinary
+ * inventory is still taken afterwards */
+static void test_malformed_inventory(void)
+{
+    pmix_info_t info;
+    pmix_status_t rc;
+
+    PMIX_INFO_LOAD(&info, "pmix.tcp.inventory", "not-a-blob", PMIX_STRING);
+    rc = PMIx_server_deliver_inventory(&info, 1, NULL, 0, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&info);
+    report("an inventory value that is not a blob is survived", true);
+    (void) rc;
+
+    rc = deliver_blob(NULL, "eth0", "10.0.0.1");
+    report("an inventory naming no host is refused",
+           PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc);
+
+    rc = deliver_blob("node-b", "eth0", NULL);
+    report("a device with no address is survived", true);
+    (void) rc;
+
+    /* a blocking delivery reports completion as OPERATION_SUCCEEDED */
+    rc = deliver_blob("node-a", "eth0", "10.0.0.1");
+    report("a well-formed inventory is still accepted",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+}
+
 static void test_default_allocation(void)
 {
     tcp_result_t res;
@@ -463,6 +538,7 @@ int main(int argc, char **argv)
     test_exhaustion();
     test_seckey_only();
     test_default_allocation();
+    test_malformed_inventory();
 
     PMIx_server_finalize();
 

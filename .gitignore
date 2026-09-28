@@ -345,6 +345,7 @@ test/unit/ptl_stalled_peer
 test/unit/ptl_recv_timeout
 test/unit/client_connect_fail
 test/unit/tool_delete
+test/unit/tool_replies
 test/unit/tool_nspace
 test/unit/tool_alt_uris
 test/unit/tool_rndz

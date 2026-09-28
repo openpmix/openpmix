@@ -194,6 +194,7 @@ int main(int argc, char **argv)
     };
     pmix_query_t query;
     pmix_regattr_t *reg;
+    pmix_data_array_t *darray;
     char **ans = NULL;
     bool clientfns, serverfns, toolfns, hostfns;
     char *client, *server, *tool, *host;
@@ -456,14 +457,25 @@ int main(int argc, char **argv)
         /* print out the returned value(s) */
         if (PMIX_CHECK_KEY(&query.qualifiers[0], PMIX_HOST_FUNCTIONS)) {
             pmix_attributes_print_headers(&ans, PMIX_HOST_FUNCTIONS);
+            /* a comma-delimited string, bare or as the first element of
+             * an info array */
+            ptr = NULL;
             if (PMIX_DATA_ARRAY == mq.info[0].value.type) {
-                info = (pmix_info_t *) mq.info[0].value.data.darray->array;
-                ptr = info[0].value.data.string;
-            } else {
+                darray = mq.info[0].value.data.darray;
+                if (NULL != darray && PMIX_INFO == darray->type &&
+                    NULL != darray->array && 0 < darray->size) {
+                    info = (pmix_info_t *) darray->array;
+                    if (PMIX_STRING == info[0].value.type) {
+                        ptr = info[0].value.data.string;
+                    }
+                }
+            } else if (PMIX_STRING == mq.info[0].value.type) {
                 ptr = mq.info[0].value.data.string;
             }
-            ans = PMIx_Argv_split(ptr, ',');
-            for (m = 0; NULL != ans[m]; m++) {
+            if (NULL != ptr) {
+                ans = PMIx_Argv_split(ptr, ',');
+            }
+            for (m = 0; NULL != ans && NULL != ans[m]; m++) {
                 fprintf(stderr, "%s\n", ans[m]);
             }
             PMIx_Argv_free(ans);
@@ -473,8 +485,20 @@ int main(int argc, char **argv)
             memset(line, '=', PMIX_PRINT_ATTR_COLUMN_WIDTH);
             line[PMIX_PRINT_ATTR_COLUMN_WIDTH - 1] = '\0';
             if (PMIX_DATA_ARRAY == mq.info[0].value.type) {
-                info = (pmix_info_t *) mq.info[0].value.data.darray->array;
-                for (m = 0; m < mq.info[0].value.data.darray->size; m++) {
+                /* an info array, one entry per function, each holding an
+                 * array of that function's attributes */
+                darray = mq.info[0].value.data.darray;
+                if (NULL == darray || PMIX_INFO != darray->type || NULL == darray->array) {
+                    darray = NULL;
+                }
+                info = (NULL == darray) ? NULL : (pmix_info_t *) darray->array;
+                for (m = 0; NULL != darray && m < darray->size; m++) {
+                    if (PMIX_DATA_ARRAY != info[m].value.type ||
+                        NULL == info[m].value.data.darray ||
+                        PMIX_REGATTR != info[m].value.data.darray->type ||
+                        NULL == info[m].value.data.darray->array) {
+                        continue;
+                    }
                     reg = (pmix_regattr_t *) info[m].value.data.darray->array;
                     pmix_attributes_print_attrs(&ans, info[m].key, reg,
                                                 info[m].value.data.darray->size);
@@ -483,11 +507,12 @@ int main(int argc, char **argv)
                     PMIx_Argv_append_nosize(&ans, line);
                     PMIx_Argv_append_nosize(&ans, "   ");
                 }
-            } else {
+            } else if (PMIX_REGATTR == mq.info[0].value.type &&
+                       NULL != mq.info[0].value.data.ptr) {
                 reg = (pmix_regattr_t *) mq.info[0].value.data.ptr;
                 pmix_attributes_print_attrs(&ans, mq.info[0].key, reg, 1);
             }
-            for (m = 0; NULL != ans[m]; m++) {
+            for (m = 0; NULL != ans && NULL != ans[m]; m++) {
                 fprintf(stderr, "%s\n", ans[m]);
             }
             PMIx_Argv_free(ans);
