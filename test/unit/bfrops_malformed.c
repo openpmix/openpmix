@@ -712,6 +712,13 @@ int main(int argc, char **argv)
     (void) argc;
     (void) argv;
 
+    /* The literal wire images below carry no data-type descriptors -
+     * they are what one peer sends another. A debug build describes its
+     * buffers by default, and would then read the first byte of each
+     * image as a type code and refuse it before the decoder under test
+     * ever ran. */
+    setenv("PMIX_MCA_bfrops_base_default_type", "1", 1);
+
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
