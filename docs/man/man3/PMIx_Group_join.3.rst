@@ -142,6 +142,13 @@ Two cases have no construct outcome to wait for, and so complete as soon as the
 notification to the leader has been issued, with ``results`` empty: declining the
 invitation (``PMIX_GROUP_DECLINE``), and accepting without naming a ``leader``.
 
+Only an outcome that names the group being joined, and that comes from the named
+``leader`` or from this process's own server, is taken as the construct's
+outcome; any other event carrying those codes is ignored. Only such an outcome
+records the group for this process and stores the contributed endpoint data,
+and only for the group's members. An acceptance that names no ``leader`` has no
+outcome to take, so it records neither.
+
 .. note::
 
    Prior to the introduction of the ``PMIX_CAP_GROUP_JOIN_COMPLETES`` capability
