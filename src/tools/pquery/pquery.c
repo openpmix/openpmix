@@ -406,10 +406,14 @@ int main(int argc, char **argv)
     PMIX_QUERY_CREATE(queries, nqueries);
     m = 0;
     PMIX_LIST_FOREACH (qry, &querylist, pmix_querylist_t) {
-        /* move the queries across */
+        /* move the queries across - the list item's destructor frees
+         * whatever it still points at, so it must point at nothing */
         queries[m].keys = qry->query.keys;
         queries[m].nqual = qry->query.nqual;
         queries[m].qualifiers = qry->query.qualifiers;
+        qry->query.keys = NULL;
+        qry->query.nqual = 0;
+        qry->query.qualifiers = NULL;
         ++m;
     }
     PMIX_LIST_DESTRUCT(&querylist);
