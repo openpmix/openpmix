@@ -238,7 +238,8 @@ int pmix_mca_base_component_repository_add(const char *project,
     do {
         if (0 != pmix_pdl_foreachfile(dir, process_repository_item, (void*)project) &&
             !(0 == strcmp(dir, pmix_mca_base_system_default_path) ||
-              0 == strcmp(dir, pmix_mca_base_user_default_path))) {
+              (NULL != pmix_mca_base_user_default_path &&
+               0 == strcmp(dir, pmix_mca_base_user_default_path)))) {
             // It is not an error if a directory fails to add (e.g.,
             // if it doesn't exist).  But we should warn about it as
             // it is something related to "show_load_errors"
