@@ -108,6 +108,18 @@ checked `pack_ptr == unpack_ptr` once, before the loop, and thereafter
 handed `pmix_bfrops_base_decode_int` an `avail_size` that reached zero
 and kept going.
 
+**The count has a sign, and zero is a count.** `pmix_bfrops_base_unpack`
+refuses a negative count off the wire (`PMIX_ERR_UNPACK_FAILURE`) and a
+negative `*num_vals` from its caller (`PMIX_ERR_BAD_PARAM`). A count of
+zero is legal - `pack` writes one for an empty array - and the unpack
+then succeeds with `*num_vals` set to zero and **nothing written to
+`dest`**. A caller that asked for one value and did not check the count
+it got back is holding whatever its variable held before: initialize the
+destination (`char *s = NULL`) and test it, rather than assume a success
+filled it. A loop that unpacks into the same variable each pass resets
+it every pass, or a zero count hands on the previous pass's value - which
+may already have been freed.
+
 **The flexible integer decoder's length is decided by the data.** A byte
 with the continuation flag set means "read one more", so the decoder has
 to stop at the last readable byte of a truncated value whatever that

@@ -272,6 +272,58 @@ static void test_negative_string_length(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* the element count itself                                            */
+/* ------------------------------------------------------------------ */
+
+/* A negative element count on the wire is refused, and the caller's
+ * count is not left negative. A zero count is legal - the packer writes
+ * one for an empty array - and succeeds without touching the output, so
+ * a caller that asked for one value must check the count it gets back.
+ * The buffers are undescribed, as they are between peers, so nothing but
+ * the count stands between the bytes and the caller. */
+static void test_element_count_sign(void)
+{
+    pmix_bfrops_module_t *mod = pmix_globals.mypeer->nptr->compat.bfrops;
+    pmix_buffer_t buf;
+    pmix_status_t rc;
+    int32_t val = 7, dest = 7, cnt;
+    char *str = NULL;
+
+    /* strings, because a negative count of them needs no payload to
+     * look complete */
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    rc = mod->pack(&buf, &str, -5, PMIX_STRING);
+    cnt = 1;
+    if (PMIX_SUCCESS == rc) {
+        rc = mod->unpack(&buf, &str, &cnt, PMIX_STRING);
+    }
+    report("a negative element count is refused", PMIX_SUCCESS != rc && 0 == cnt);
+    PMIX_DESTRUCT(&buf);
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    rc = mod->pack(&buf, &val, 1, PMIX_INT32);
+    cnt = -1;
+    dest = 0;
+    if (PMIX_SUCCESS == rc) {
+        rc = mod->unpack(&buf, &dest, &cnt, PMIX_INT32);
+    }
+    report("a negative caller count is refused", PMIX_SUCCESS != rc && 0 == dest);
+    PMIX_DESTRUCT(&buf);
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    rc = mod->pack(&buf, NULL, 0, PMIX_STRING);
+    cnt = 1;
+    if (PMIX_SUCCESS == rc) {
+        rc = mod->unpack(&buf, &str, &cnt, PMIX_STRING);
+    }
+    report("a zero element count unpacks nothing", PMIX_SUCCESS == rc && 0 == cnt && NULL == str);
+    PMIX_DESTRUCT(&buf);
+}
+
+/* ------------------------------------------------------------------ */
 /* well-formed values must still decode exactly                        */
 /* ------------------------------------------------------------------ */
 
@@ -680,6 +732,7 @@ int main(int argc, char **argv)
     test_element_count_cannot_exceed_the_message();
     test_a_value_cannot_carry_an_oversized_type();
     test_random_bytes_through_every_unpacker();
+    test_element_count_sign();
     test_legacy_counts_bounded("v21");
     test_legacy_counts_bounded("v3");
 
