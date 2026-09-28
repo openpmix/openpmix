@@ -464,15 +464,20 @@ static pmix_status_t check_connections(pmix_list_t *connections)
 
 static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
                              pmix_rank_t *rank, char **suri, char **alts,
-                             bool optional, char *filename)
+                             bool optional, bool rndz, char *filename)
 {
     pmix_list_t connections;
     pmix_status_t rc;
     pmix_connection_t *cn;
 
-    /* try to read the file */
+    /* try to read the file - one of the fixed rendezvous names is used
+     * only if it is a regular file */
     PMIX_CONSTRUCT(&connections, pmix_list_t);
-    rc = pmix_ptl_base_parse_uri_file(filename, optional, &connections);
+    if (rndz) {
+        rc = pmix_ptl_base_parse_rndz_file(filename, optional, &connections);
+    } else {
+        rc = pmix_ptl_base_parse_uri_file(filename, optional, &connections);
+    }
     if (PMIX_SUCCESS == rc) {
         rc = check_connections(&connections);
         if (PMIX_SUCCESS != rc) {
@@ -1041,7 +1046,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         if (0 == strncmp(pmix_ptl_base.uri, "file:", 5)) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tool:tool getting connection info from %s", pmix_ptl_base.uri);
-            rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, &pmix_ptl_base.uri[5]);
+            rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, false, &pmix_ptl_base.uri[5]);
             if (PMIX_SUCCESS != rc) {
                 goto cleanup;
             }
@@ -1070,7 +1075,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
 
     /* if they gave us a rendezvous file, use it */
     if (NULL != rendfile) {
-        rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, rendfile);
+        rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, false, rendfile);
         if (PMIX_SUCCESS != rc) {
             /* they gave us a specific rendfile and we couldn't read it,
              * so we have no URI to connect to - whether or not the
@@ -1092,7 +1097,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "ptl:tool:tool looking for system server at %s", filename);
                 // this is always optional as we are going to fallback to non-system servers
-                rc = tryfile(peer, &nspace, &rank, &suri, &alts, true, filename);
+                rc = tryfile(peer, &nspace, &rank, &suri, &alts, true, true, filename);
                 free(filename);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
@@ -1107,7 +1112,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                 }
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "ptl:tool:tool looking for system server at %s", filename);
-                rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, filename);
+                rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, true, filename);
                 free(filename);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
@@ -1127,7 +1132,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                 }
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "ptl:tool:tool looking for scheduler at %s", filename);
-                rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, filename);
+                rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, true, filename);
                 free(filename);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SCHEDULER);
@@ -1147,7 +1152,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                 }
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "ptl:tool:tool looking for system controller at %s", filename);
-                rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, filename);
+                rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, true, filename);
                 free(filename);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SYS_CTRLR);

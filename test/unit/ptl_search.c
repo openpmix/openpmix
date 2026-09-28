@@ -6,32 +6,29 @@
  *
  * $HEADER$
  *
- * Unit tests for the rendezvous-file directory walks.
+ * Unit tests for the rendezvous-file directory walks and the fixed
+ * rendezvous names.
  *
  * A tool that is not told where its server is searches for one: it walks
  * the system tmpdir for "pmix.*" contact files, and so does a
- * PMIX_QUERY_AVAIL_SERVERS query. That directory defaults to $TMPDIR or
- * /tmp - somewhere any local user can write - and both walks used to
- * trust what they found there:
+ * PMIX_QUERY_AVAIL_SERVERS query. Both walks:
  *
- *  - a FIFO named like a contact file was opened with fopen(), which
- *    blocks until something opens the other end, so the walk never
- *    returned;
- *  - a symbolic link to a directory was descended into, so a link back
- *    up the tree ("ln -s . a") made the walk revisit everything beneath
- *    it at every level until the path length ran out, and two such links
- *    made that exponential;
- *  - the first contact file that could not be read or parsed ended the
- *    search with an error, hiding any valid file readdir() listed after
- *    it. A server killed partway thru writing its file leaves exactly
- *    that behind.
+ *  - keep an entry only if it is a regular file, so a FIFO named like a
+ *    contact file is skipped rather than opened with fopen();
+ *  - never follow a symbolic link to a directory, so a link back up the
+ *    tree ("ln -s . a") is not descended into;
+ *  - skip a contact file that cannot be read or parsed and carry on, so a
+ *    valid file readdir() lists after it is still found.
  *
  * The directory built here holds all three next to one valid contact
  * file, and both walks must come back promptly having found that one
  * file. A watchdog turns a hang into a failure rather than a stalled
  * "make check". There are thirty unreadable files so that a readdir()
- * order listing the valid file first - which would let the old abort
- * pass unnoticed - is unlikely.
+ * order listing the valid file first is unlikely.
+ *
+ * The fixed rendezvous names (pmix.sys.<host> and friends) are read with
+ * pmix_ptl_base_parse_rndz_file(), which applies the same regular-file
+ * rule: a FIFO, or a link to a character device, is refused promptly.
  */
 
 #include "src/include/pmix_config.h"
@@ -73,7 +70,7 @@ static void report(const char *name, int passed, const char *detail)
 
 static void watchdog(int sig)
 {
-    static const char msg[] = "  FAIL: directory walk did not return - hung\n";
+    static const char msg[] = "  FAIL: a walk or rendezvous read did not return - hung\n";
     PMIX_HIDE_UNUSED_PARAMS(sig);
     /* async-signal-safe only */
     (void) !write(STDOUT_FILENO, msg, sizeof(msg) - 1);
@@ -147,6 +144,38 @@ static void test_df_search(void)
                NULL != cn->nspace && 0 == strcmp(cn->nspace, "goodns"),
                (NULL == cn->nspace) ? "NULL" : cn->nspace);
     }
+    PMIX_LIST_DESTRUCT(&connections);
+}
+
+static void test_rndz_file(void)
+{
+    char path[PMIX_PATH_MAX + 128];
+    pmix_list_t connections;
+    pmix_status_t rc;
+
+    /* a FIFO at a rendezvous name is refused, not waited on */
+    snprintf(path, sizeof(path), "%s/pmix.test.fifo", searchdir);
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    rc = pmix_ptl_base_parse_rndz_file(path, true, &connections);
+    report("rndz file: a FIFO is refused", PMIX_SUCCESS != rc, "accepted");
+    PMIX_LIST_DESTRUCT(&connections);
+
+    /* so is a link to a device that never reaches end of file */
+    snprintf(path, sizeof(path), "%s/pmix.test.zero", searchdir);
+    if (0 == symlink("/dev/zero", path)) {
+        PMIX_CONSTRUCT(&connections, pmix_list_t);
+        rc = pmix_ptl_base_parse_rndz_file(path, true, &connections);
+        report("rndz file: a link to /dev/zero is refused", PMIX_SUCCESS != rc, "accepted");
+        PMIX_LIST_DESTRUCT(&connections);
+    }
+
+    /* and a regular file is read as before */
+    snprintf(path, sizeof(path), "%s/pmix.test.good", searchdir);
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    rc = pmix_ptl_base_parse_rndz_file(path, true, &connections);
+    report("rndz file: a regular contact file is read",
+           PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&connections),
+           PMIx_Error_string(rc));
     PMIX_LIST_DESTRUCT(&connections);
 }
 
@@ -241,6 +270,7 @@ int main(int argc, char **argv)
     alarm(WATCHDOG_SECS);
     test_df_search();
     test_query_servers();
+    test_rndz_file();
     alarm(0);
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
