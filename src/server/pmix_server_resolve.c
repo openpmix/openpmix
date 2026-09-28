@@ -71,6 +71,7 @@ pmix_status_t pmix_server_resolve_peers(pmix_server_caddy_t *cd,
     char *nodename = NULL;
     char *nd, *str = NULL;
     pmix_info_t *iptr;
+    pmix_proc_t proc;
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
@@ -138,9 +139,17 @@ pmix_status_t pmix_server_resolve_peers(pmix_server_caddy_t *cd,
 
     // if the host supports the "query" interface, then
     // pass this up to the host for processing as it has
-    // the latest information
+    // the latest information - on behalf of the requester
     if (NULL != pmix_host_server.query) {
-        rc = pmix_host_server.query(&pmix_globals.myid,
+        rc = pmix_server_add_requester_id(cd->peer, &cd->query->qualifiers,
+                                          &cd->query->nqual);
+        if (PMIX_SUCCESS != rc) {
+            /* the switchyard releases the caddy, and cd->query with it */
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        PMIX_LOAD_PROCID(&proc, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+        rc = pmix_host_server.query(&proc,
                                     cd->query, 1,
                                     cbfunc, (void*)cd);
         if (PMIX_SUCCESS == rc) {
@@ -507,6 +516,7 @@ pmix_status_t pmix_server_resolve_node(pmix_server_caddy_t *cd,
     pmix_status_t rc;
     pmix_info_t *iptr;
     char *str = NULL;
+    pmix_proc_t proc;
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
@@ -545,9 +555,17 @@ pmix_status_t pmix_server_resolve_node(pmix_server_caddy_t *cd,
 
     // if the host supports the "query" interface, then
     // pass this up to the host for processing as it has
-    // the latest information
+    // the latest information - on behalf of the requester
     if (NULL != pmix_host_server.query) {
-        rc = pmix_host_server.query(&pmix_globals.myid,
+        rc = pmix_server_add_requester_id(cd->peer, &cd->query->qualifiers,
+                                          &cd->query->nqual);
+        if (PMIX_SUCCESS != rc) {
+            /* the switchyard releases the caddy, and cd->query with it */
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        PMIX_LOAD_PROCID(&proc, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+        rc = pmix_host_server.query(&proc,
                                     cd->query, 1,
                                     cbfunc, (void*)cd);
         if (PMIX_SUCCESS == rc) {
