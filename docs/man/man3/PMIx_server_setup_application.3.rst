@@ -193,6 +193,11 @@ which of those the calling role initialized. Support for harvesting
 environment variables and providing local configuration information is optional
 per the Standard; a conforming library may return no data.
 
+A ``PMIX_USERID`` or ``PMIX_GRPID`` in ``info`` may be given as a number
+(``uint32_t``) or as a user or group name (``char*``). The library resolves a
+name before using it, and fails the request with ``PMIX_ERR_NOT_FOUND`` if it
+does not resolve. The ``info`` array itself is not changed.
+
 
 .. seealso::
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,

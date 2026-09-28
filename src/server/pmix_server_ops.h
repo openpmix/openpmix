@@ -360,14 +360,30 @@ PMIX_EXPORT void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t 
  * one PMIX_GRPID:
  *  - PMIX_USERID is always the uid recorded for the peer at connection;
  *    any the requester supplied is dropped.
- *  - PMIX_GRPID is the requester's choice if it supplied one (the first
- *    uint32 one - a group to charge the work to, which the host decides
- *    whether to accept); otherwise the gid recorded at connection.
- * The array is replaced by a new one - *info and *ninfo are updated, and
- * the old array is released - so the caller must own it. A NULL/zero
- * array is fine and comes back holding just the pair. */
+ *  - PMIX_GRPID is the requester's choice if it supplied one - a group to
+ *    charge the work to, which the host decides whether to accept - given
+ *    as a number or a group name, and always passed on as a uint32;
+ *    otherwise the gid recorded at connection. Only the first supplied
+ *    PMIX_GRPID counts. If it cannot be resolved the array is left as it
+ *    was and the error is returned (PMIX_ERR_NOT_FOUND for an unknown
+ *    name, PMIX_ERR_BAD_PARAM for a value of the wrong type).
+ * The pair is appended at the end of the array. The array is replaced by
+ * a new one - *info and *ninfo are updated, and the old array is released
+ * - so the caller must own it. A NULL/zero array is fine and comes back
+ * holding just the pair. */
 PMIX_EXPORT pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info,
                                                        size_t *ninfo);
+
+/* A PMIX_USERID or PMIX_GRPID may be given as a name, and is resolved to its
+ * number where it enters the library, so that only the number is used from
+ * there on - internally and with the host. For an array the host passed in,
+ * which is not ours to change: if it (or an info array nested in it) gives
+ * either one by name, *out is a copy with the names resolved, which the
+ * caller releases with PMIx_Info_free(*out, *nout); otherwise *out is NULL
+ * and the array can be used as it is. A name that does not resolve returns
+ * PMIX_ERR_NOT_FOUND. */
+PMIX_EXPORT pmix_status_t pmix_server_normalize_ids(const pmix_info_t *info, size_t ninfo,
+                                                    pmix_info_t **out, size_t *nout);
 
 /* For an up-call that has no process argument (iof_pull, register_events):
  * name the requesting peer in the array with PMIX_REQUESTOR, in place of

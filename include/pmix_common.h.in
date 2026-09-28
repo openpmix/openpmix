@@ -288,9 +288,15 @@ typedef uint32_t pmix_rank_t;
 
 /* identification attributes */
 #define PMIX_REALUID                        "pmix.ruid"             // (uint32_t) real user id
-#define PMIX_USERID                         "pmix.euid"             // (uint32_t) effective user id
+#define PMIX_USERID                         "pmix.euid"             // (uint32_t) effective user id. May also be given as
+                                                                    //        a user name (char*), which the PMIx library
+                                                                    //        resolves where it is given: the value stored,
+                                                                    //        returned, and passed to a host is the number
 #define PMIX_REALGID                        "pmix.rgid"             // (uint32_t) real group id
-#define PMIX_GRPID                          "pmix.egid"             // (uint32_t) effective group id
+#define PMIX_GRPID                          "pmix.egid"             // (uint32_t) effective group id. May also be given as
+                                                                    //        a group name (char*), which the PMIx library
+                                                                    //        resolves where it is given: the value stored,
+                                                                    //        returned, and passed to a host is the number
 #define PMIX_REQUESTOR                      "pmix.requestor"        // (pmix_proc_t*) ID of the process requesting the
                                                                     //         specified operation. Used when relaying
                                                                     //         a request to the PMIx library on behalf

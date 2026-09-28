@@ -30,8 +30,11 @@
  *         a uid and gid of its own -> the uid is replaced by the
  *                                    connection's, the gid is kept, and
  *                                    everything else is kept in order
- *      a gid that is not a
- *         uint32, or a second gid  -> dropped
+ *      a gid given as a group name -> resolved to its number
+ *      a gid that cannot be
+ *         resolved                 -> the request is refused, and the
+ *                                    array left as it was
+ *      a second gid                -> dropped
  *   query the server cannot
  *      answer itself            -> the host is given the requester's proc
  *                                  and, in the qualifiers, one uid and
@@ -50,9 +53,11 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/server/pmix_server_ops.h"
 
+#include <grp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define RID_NSPACE      "reqid-ut-client"
 #define RID_RANK        3
@@ -324,6 +329,8 @@ static void test_helper(void)
     pmix_info_t *info = NULL;
     size_t ninfo = 0;
     uint32_t claimed = RID_CLAIMED, other = RID_CLAIMED + 1;
+    bool flag = true;
+    struct group *gr;
     pmix_status_t rc;
     int ok;
 
@@ -346,20 +353,40 @@ static void test_helper(void)
           0 == strcmp("one", info[0].value.data.string) &&
           PMIx_Check_key(info[1].key, "reqid-ut.second") &&
           0 == strcmp("two", info[1].value.data.string) &&
-          PMIx_Check_key(info[2].key, PMIX_GRPID) && RID_CLAIMED == info[2].value.data.uint32 &&
-          PMIx_Check_key(info[3].key, PMIX_USERID) && RID_UID == info[3].value.data.uint32);
+          PMIx_Check_key(info[2].key, PMIX_USERID) && RID_UID == info[2].value.data.uint32 &&
+          PMIx_Check_key(info[3].key, PMIX_GRPID) && RID_CLAIMED == info[3].value.data.uint32);
     report("a supplied uid is replaced, a supplied gid kept, the rest kept in order", ok);
+    PMIX_INFO_FREE(info, ninfo);
+
+    gr = getgrgid(getegid());
+    if (NULL != gr && NULL != gr->gr_name) {
+        ninfo = 1;
+        PMIX_INFO_CREATE(info, ninfo);
+        PMIX_INFO_LOAD(&info[0], PMIX_GRPID, gr->gr_name, PMIX_STRING);
+        rc = pmix_server_add_requester_id(requester, &info, &ninfo);
+        ok = (PMIX_SUCCESS == rc && 2 == ninfo && NULL != info &&
+              PMIx_Check_key(info[1].key, PMIX_GRPID) && PMIX_UINT32 == info[1].value.type &&
+              (uint32_t) getegid() == info[1].value.data.uint32);
+        report("a gid given as a group name is passed on as its number", ok);
+        PMIX_INFO_FREE(info, ninfo);
+    } else {
+        fprintf(stdout, "  SKIP: this process's group has no name\n");
+    }
+
+    ninfo = 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    PMIX_INFO_LOAD(&info[0], PMIX_GRPID, "reqid-ut-no-such-group", PMIX_STRING);
+    rc = pmix_server_add_requester_id(requester, &info, &ninfo);
+    ok = (PMIX_ERR_NOT_FOUND == rc && 1 == ninfo && NULL != info &&
+          PMIx_Check_key(info[0].key, PMIX_GRPID) && PMIX_STRING == info[0].value.type);
+    report("a gid naming no group is refused, and the array left as it was", ok);
     PMIX_INFO_FREE(info, ninfo);
 
     ninfo = 1;
     PMIX_INFO_CREATE(info, ninfo);
-    PMIX_INFO_LOAD(&info[0], PMIX_GRPID, "not-a-number", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[0], PMIX_GRPID, &flag, PMIX_BOOL);
     rc = pmix_server_add_requester_id(requester, &info, &ninfo);
-    ok = (PMIX_SUCCESS == rc && 2 == ninfo && NULL != info &&
-          PMIx_Check_key(info[0].key, PMIX_USERID) && RID_UID == info[0].value.data.uint32 &&
-          PMIx_Check_key(info[1].key, PMIX_GRPID) && PMIX_UINT32 == info[1].value.type &&
-          RID_GID == info[1].value.data.uint32);
-    report("a gid that is not a uint32 is replaced by the connection's", ok);
+    report("a gid of the wrong type is refused", PMIX_ERR_BAD_PARAM == rc && 1 == ninfo);
     PMIX_INFO_FREE(info, ninfo);
 
     ninfo = 2;
@@ -368,8 +395,8 @@ static void test_helper(void)
     PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &other, PMIX_UINT32);
     rc = pmix_server_add_requester_id(requester, &info, &ninfo);
     ok = (PMIX_SUCCESS == rc && 2 == ninfo && NULL != info &&
-          PMIx_Check_key(info[0].key, PMIX_GRPID) && RID_CLAIMED == info[0].value.data.uint32 &&
-          PMIx_Check_key(info[1].key, PMIX_USERID) && RID_UID == info[1].value.data.uint32);
+          PMIx_Check_key(info[0].key, PMIX_USERID) && RID_UID == info[0].value.data.uint32 &&
+          PMIx_Check_key(info[1].key, PMIX_GRPID) && RID_CLAIMED == info[1].value.data.uint32);
     report("of two supplied gids only the first is kept", ok);
     PMIX_INFO_FREE(info, ninfo);
 }

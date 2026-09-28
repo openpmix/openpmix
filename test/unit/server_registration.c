@@ -44,6 +44,11 @@
  *      a NULL sentinel, so the walk dereferences NULL. That crash lands
  *      on the progress thread after the call returned, so those cases run
  *      in a forked child.
+ *
+ *   6. A host may give a job's PMIX_USERID and PMIX_GRPID by name. They
+ *      are resolved when the namespace is registered, so what is stored -
+ *      and what a process later reads back - is the number. A name that
+ *      does not resolve fails the registration.
  */
 
 #include "src/include/pmix_config.h"
@@ -56,6 +61,8 @@
 #include "src/mca/gds/gds.h"
 #include "src/server/pmix_server_ops.h"
 
+#include <grp.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -182,6 +189,67 @@ static void fetch_hostname(int sd, short args, void *cbdata)
     PMIX_DESTRUCT(&cb);
 
     PMIX_WAKEUP_THREAD(&f->lock);
+}
+
+/* ------------------------------------------------------------------ *
+ * 6. a job's user and group given by name
+ * ------------------------------------------------------------------ */
+
+#define IDNS "regut-idname"
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    const char *key;
+    bool found;
+    pmix_data_type_t type;
+    uint32_t id;
+} idchk_t;
+
+static void fetch_jobid(int sd, short args, void *cbdata)
+{
+    idchk_t *c = (idchk_t *) cbdata;
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, IDNS, PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = (char *) c->key;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    if (PMIX_SUCCESS == rc) {
+        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+        if (NULL != kv && NULL != kv->value) {
+            c->found = true;
+            c->type = kv->value->type;
+            if (PMIX_UINT32 == kv->value->type) {
+                c->id = kv->value->data.uint32;
+            }
+        }
+    }
+    cb.proc = NULL;
+    cb.key = NULL;
+    PMIX_DESTRUCT(&cb);
+
+    PMIX_WAKEUP_THREAD(&c->lock);
+}
+
+static void check_stored_id(const char *key, uint32_t *id, bool *isnum)
+{
+    idchk_t c;
+
+    memset(&c, 0, sizeof(c));
+    c.key = key;
+    PMIX_CONSTRUCT_LOCK(&c.lock);
+    PMIX_THREADSHIFT(&c, fetch_jobid);
+    PMIX_WAIT_THREAD(&c.lock);
+    PMIX_DESTRUCT_LOCK(&c.lock);
+    *isnum = c.found && PMIX_UINT32 == c.type;
+    *id = c.id;
 }
 
 /* ------------------------------------------------------------------ *
@@ -468,6 +536,43 @@ int main(int argc, char **argv)
         report("an IOF request with no requestor was recorded", 0 <= c.idx);
         report("purging a departing namespace leaves our own request alone",
                c.survived);
+    }
+
+    /* --- a job's user and group given by name --- */
+    {
+        struct passwd *pw = getpwuid(geteuid());
+        struct group *gr = getgrgid(getegid());
+        pmix_info_t idinfo[2];
+        uint32_t id = 0;
+        bool isnum = false;
+
+        if (NULL != pw && NULL != pw->pw_name && NULL != gr && NULL != gr->gr_name) {
+            PMIX_INFO_LOAD(&idinfo[0], PMIX_USERID, pw->pw_name, PMIX_STRING);
+            PMIX_INFO_LOAD(&idinfo[1], PMIX_GRPID, gr->gr_name, PMIX_STRING);
+            PMIX_LOAD_NSPACE(ns, IDNS);
+            rc = PMIx_server_register_nspace(ns, 1, idinfo, 2, NULL, NULL);
+            report("a job whose user and group are given by name registers",
+                   PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+            report("the host's array is left as it was",
+                   PMIX_STRING == idinfo[0].value.type && PMIX_STRING == idinfo[1].value.type);
+            PMIX_INFO_DESTRUCT(&idinfo[0]);
+            PMIX_INFO_DESTRUCT(&idinfo[1]);
+            progress_barrier();
+
+            check_stored_id(PMIX_USERID, &id, &isnum);
+            report("the job's user is stored as its number", isnum && (uint32_t) geteuid() == id);
+            check_stored_id(PMIX_GRPID, &id, &isnum);
+            report("the job's group is stored as its number", isnum && (uint32_t) getegid() == id);
+        } else {
+            fprintf(stdout, "  SKIP: this process's user or group has no name\n");
+        }
+
+        PMIX_INFO_LOAD(&idinfo[0], PMIX_GRPID, "regut-no-such-group", PMIX_STRING);
+        PMIX_LOAD_NSPACE(ns, "regut-idname-bad");
+        rc = PMIx_server_register_nspace(ns, 1, idinfo, 1, NULL, NULL);
+        report("a job whose group name does not resolve is refused", PMIX_ERR_NOT_FOUND == rc);
+        PMIX_INFO_DESTRUCT(&idinfo[0]);
+        progress_barrier();
     }
 
     /* an ordinary deregistration still works */
