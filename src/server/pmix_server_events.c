@@ -1154,7 +1154,18 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer
                 affected = cd->info[n].value.data.proc;
             }
         }
-        if (NULL != grpid && NULL != affected) {
+        /* a process leaves a group only for itself: the departing proc
+         * is the sender, whether or not it is named. The comparison is
+         * exact - a wildcard nspace or rank names nobody in particular */
+        if (NULL == affected) {
+            affected = &cd->source;
+        } else if (0 != strncmp(affected->nspace, cd->source.nspace, PMIX_MAX_NSLEN) ||
+                   affected->rank != cd->source.rank) {
+            rc = PMIX_ERR_NO_PERMISSIONS;
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+        if (NULL != grpid) {
             pmix_server_grp_member_left(grpid, affected);
         }
     }
