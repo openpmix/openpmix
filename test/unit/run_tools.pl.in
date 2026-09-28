@@ -16,7 +16,8 @@
 #   pmixcc  -showme:*               (compiler wrapper; never connects)
 #   pattrs  --client/server/tool-fns (uses PMIX_TOOL_DO_NOT_CONNECT)
 # The server-connecting tools (pquery, palloc, pctrl, plookup, pevent) are
-# intentionally left out: a developer's machine may have live PMIx servers
+# intentionally left out, apart from option checks that fail before any
+# connection is tried: a developer's machine may have live PMIx servers
 # or stale pmix.* rendezvous files in $TMPDIR that make those paths
 # non-deterministic. Connecting tools belong in a simptest-based harness.
 
@@ -70,6 +71,7 @@ my %bin = (
     pmixcc    => "$tdir/wrapper/pmixcc",
     pattrs    => "$tdir/pattrs/pattrs",
     pquery    => "$tdir/pquery/pquery",
+    palloc    => "$tdir/palloc/palloc",
 );
 foreach my $name (sort keys %bin) {
     unless (-x $bin{$name}) {
@@ -136,6 +138,18 @@ $fails += run("pattrs --tool-fns", [$bin{pattrs}, "--tool-fns"],
         print "SKIP [pquery --pid file:]: cannot create $pidfile\n";
     }
 }
+
+# palloc checks its options before it connects to anything. There is no
+# --uid option, and --gid must name a group, by number or by name.
+$fails += run("palloc --uid is not an option",
+              [$bin{palloc}, "--uid", "5", "-N", "1"],
+              undef, qr/unrecognized option/);
+$fails += run("palloc --gid unknown group",
+              [$bin{palloc}, "--gid", "pmix-run-tools-no-such-group", "-N", "1"],
+              1, qr/is not a group ID or group name/);
+$fails += run("palloc --gid trailing junk",
+              [$bin{palloc}, "--gid", "12abc", "-N", "1"],
+              1, qr/is not a group ID or group name/);
 
 if ($fails) {
     print "\n$fails tool smoke-test(s) FAILED\n";
