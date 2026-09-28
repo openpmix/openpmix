@@ -149,11 +149,30 @@ does not name gets 1. **If you change how a type packs, check its entry
 - a minimum that is too high rejects valid messages.**
 
 Three types have no per-element minimum, and the helper checks only the
-`int32_t` bound for them: `PMIX_UNDEF`, `PMIX_POINTER`, which packs one
-sentinel byte for the whole array (there is no sense shipping addresses
-between processes), and `PMIX_DATA_ARRAY`, because an array of arrays
-whose elements are all empty is a single type tag in total. If you add
-another sparse encoding, give it a 0 in the table.
+`int32_t` bound for them: `PMIX_UNDEF`, `PMIX_POINTER` and
+`PMIX_DATA_ARRAY`.
+
+- **An array of `PMIX_POINTER` unpacks with no elements.** A pointer
+  means nothing outside the process that packed it, so the packer sends
+  one sentinel byte for the whole array and no values. `unpack_darray()`
+  consumes the sentinel and returns size 0 with no allocation, whatever
+  count was sent. Nothing in the tree builds a pointer array to send;
+  pointer-typed attributes (`PMIX_EVENT_RETURN_OBJECT`,
+  `PMIX_EVENT_BASE`, `PMIX_TOPOLOGY`, ...) are hand-offs inside one
+  process, packed only when an info array that holds one is forwarded.
+- **An array of `PMIX_DATA_ARRAY` is bounded only by `int32_t`.** The
+  packer writes each element as at least a type tag and a size up to the
+  first element with no type, which is a one-byte terminator, and
+  **packs nothing after it** - the unpacker zeroes the rest. So a
+  legitimate array of any count can pack to a single byte, and neither
+  the bytes that follow nor any fixed limit bounds the count without
+  refusing valid data. That is a deliberate decision, not an oversight.
+  The packer's habit of dropping everything after an untyped element
+  cannot change either: an older unpacker stops at that tag, and would
+  read any elements packed after it as the next item.
+
+If you add another sparse encoding, give it a 0 in the table and decide
+at its allocation site how its count is bounded.
 
 Every handler in `src/server`, `src/client`, `src/tool` and
 `src/common` that sizes an array from a wire count calls the same
