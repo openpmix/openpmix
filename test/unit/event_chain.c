@@ -80,6 +80,7 @@
 #include "include/pmix.h"
 #include "include/pmix_server.h"
 
+#include "src/client/pmix_client_ops.h"
 #include "src/event/pmix_event.h"
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
@@ -262,6 +263,102 @@ static pmix_status_t notify_nocache(pmix_status_t code, pmix_info_t *xtra, size_
         PMIX_INFO_DESTRUCT(&info[n]);
     }
     return rc;
+}
+
+/* ------------------------------------------------------------------ */
+/* PMIX_GROUP_LEFT                                                     */
+/* ------------------------------------------------------------------ */
+
+/* A member leaves a group only for itself, so the departing proc is the
+ * event's source. An event naming some other proc leaves the local
+ * membership alone; one naming its source (or naming nobody) removes
+ * the source. */
+static bool group_has(const char *grpid, const pmix_proc_t *proc)
+{
+    pmix_group_t *gp;
+    size_t m;
+    bool found = false;
+
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+    PMIX_LIST_FOREACH (gp, &pmix_client_globals.groups, pmix_group_t) {
+        if (0 != strcmp(gp->grpid, grpid)) {
+            continue;
+        }
+        for (m = 0; m < gp->nmbrs; m++) {
+            if (PMIX_CHECK_NSPACE(gp->members[m].nspace, proc->nspace) &&
+                gp->members[m].rank == proc->rank) {
+                found = true;
+            }
+        }
+    }
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+    return found;
+}
+
+static pmix_status_t notify_left(const char *grpid, const pmix_proc_t *affected)
+{
+    pmix_info_t info[2];
+    size_t ninfo = 0;
+    pmix_status_t rc;
+
+    PMIX_INFO_LOAD(&info[ninfo], PMIX_GROUP_ID, grpid, PMIX_STRING);
+    ++ninfo;
+    if (NULL != affected) {
+        PMIX_INFO_LOAD(&info[ninfo], PMIX_EVENT_AFFECTED_PROC, affected, PMIX_PROC);
+        ++ninfo;
+    }
+    rc = notify_nocache(PMIX_GROUP_LEFT, info, ninfo);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    if (1 < ninfo) {
+        PMIX_INFO_DESTRUCT(&info[1]);
+    }
+    return rc;
+}
+
+static void test_group_left(void)
+{
+    pmix_status_t code = PMIX_GROUP_LEFT;
+    pmix_group_t *gp;
+    pmix_proc_t other;
+    size_t id;
+    int before;
+
+    fprintf(stdout, "\n-- PMIX_GROUP_LEFT changes membership only for its source --\n");
+
+    PMIX_LOAD_PROCID(&other, "evut-other", 3);
+    gp = PMIX_NEW(pmix_group_t);
+    gp->grpid = strdup("evut-grp");
+    PMIX_PROC_CREATE(gp->members, 2);
+    gp->nmbrs = 2;
+    PMIX_LOAD_PROCID(&gp->members[0], pmix_globals.myid.nspace, pmix_globals.myid.rank);
+    PMIX_LOAD_PROCID(&gp->members[1], other.nspace, other.rank);
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+    pmix_list_append(&pmix_client_globals.groups, &gp->super);
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+
+    counted = 0;
+    id = reghdlr(&code, 1, NULL, 0, count_hdlr);
+    report("registered a PMIX_GROUP_LEFT handler", SIZE_MAX != id);
+
+    /* we are the source, and name someone else as leaving */
+    before = counted;
+    notify_left("evut-grp", &other);
+    wait_for_count(&counted, before + 1);
+    report("an event naming another member does not remove it",
+           group_has("evut-grp", &other));
+
+    /* we are the source, and name ourselves */
+    before = counted;
+    notify_left("evut-grp", &pmix_globals.myid);
+    wait_for_count(&counted, before + 1);
+    report("an event naming its source removes the source",
+           !group_has("evut-grp", &pmix_globals.myid) && group_has("evut-grp", &other));
+
+    PMIx_Deregister_event_handler(id, NULL, NULL);
+    pmix_mutex_lock(&pmix_client_globals.grouplock);
+    pmix_list_remove_item(&pmix_client_globals.groups, &gp->super);
+    pmix_mutex_unlock(&pmix_client_globals.grouplock);
+    PMIX_RELEASE(gp);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1557,6 +1654,7 @@ int main(int argc, char **argv)
 
     /* pure predicate checks */
     test_check_affected();
+    test_group_left();
     test_check_range();
 
     /* must run before anything registers, so the default entry really is
