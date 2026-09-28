@@ -674,6 +674,9 @@ typedef struct {
     pmix_credential_cbfunc_t credcbfunc;
     pmix_validation_cbfunc_t validcbfunc;
     void *cbdata;
+    /* the process a server is answering on behalf of - NULL when the
+     * request is our own */
+    pmix_proc_t *requestor;
 } pmix_query_caddy_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
 

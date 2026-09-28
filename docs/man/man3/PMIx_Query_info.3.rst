@@ -101,6 +101,16 @@ environment are cached so that subsequent retrievals can succeed with minimal
 overhead; include the ``PMIX_QUERY_REFRESH_CACHE`` qualifier to bypass the cache
 and obtain fresh values.
 
+A query that names no namespace (through ``PMIX_NSPACE`` or ``PMIX_PROCID``) is
+about the caller's own job. When the server passes a query to its host, it
+identifies the caller: the host is given the caller's process identifier, and
+each query's qualifiers carry the caller's ``PMIX_USERID`` as established when
+it connected (in place of any the caller supplied) and a ``PMIX_GRPID`` |mdash|
+the caller's own if a query names one, otherwise the one established when it
+connected. The host decides what the caller may see - a query about another
+job's data is legitimate (a debugger asking about the job it is attached to,
+for example).
+
 ``PMIx_Query_info`` is normally called between initialization
 (:ref:`PMIx_Init(3) <man3-PMIx_Init>`) and finalization
 (:ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>`). As an exception, the blocking form

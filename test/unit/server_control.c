@@ -62,6 +62,13 @@
  *      Read back from the peer's send queue, which is where a reply to a
  *      socketless peer comes to rest.
  *
+ *   log, job control, credentials: the host is told who is asking
+ *      Each up-call carries one PMIX_USERID and one PMIX_GRPID in its
+ *      directives. The uid is always the one the peer connected with; the
+ *      gid is the request's own if it names one (a group to charge the
+ *      work to), else the connection's. The directive counts the log
+ *      cases check leave that pair out.
+ *
  *   query: the counts and the keys array both arrive off the wire
  *      The query count sizes PMIX_QUERY_CREATE, which multiplies it by
  *      sizeof(pmix_query_t) with no overflow guard and then constructs
@@ -223,7 +230,48 @@ static void skip(const char *name, const char *why)
     fprintf(stdout, "  SKIP: %s (%s)\n", name, why);
 }
 
-/* what the host's log2 entry point was handed */
+/* The requester's PMIX_USERID and PMIX_GRPID in an array handed to the
+ * host: how many of each, and their values. Every up-call made for a
+ * client carries exactly one of each, from the pair recorded for the peer
+ * when it connected. */
+typedef struct {
+    size_t nuid;
+    size_t ngid;
+    uint32_t uid;
+    uint32_t gid;
+} ctlut_ident_t;
+
+/* count the entries that are not the identity, and record the identity */
+static size_t count_ident(const pmix_info_t *info, size_t ninfo, ctlut_ident_t *id)
+{
+    size_t n, nother = 0;
+
+    memset(id, 0, sizeof(*id));
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_USERID)) {
+            ++id->nuid;
+            id->uid = info[n].value.data.uint32;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GRPID)) {
+            ++id->ngid;
+            id->gid = info[n].value.data.uint32;
+        } else {
+            ++nother;
+        }
+    }
+    return nother;
+}
+
+/* true if the identity is the standin peer's, once each */
+static bool ident_is_requester(const ctlut_ident_t *id)
+{
+    return 1 == id->nuid && 1 == id->ngid &&
+           (uint32_t) pmix_globals.mypeer->info->uid == id->uid &&
+           (uint32_t) pmix_globals.mypeer->info->gid == id->gid;
+}
+
+/* what the host's log2 entry point was handed - the directive count
+ * leaves out the requester's identity, which is recorded apart */
+static ctlut_ident_t log_ident;
 static bool log_fired = false;
 static size_t log_ndata = 0;
 static size_t log_ndirs = 0;
@@ -241,7 +289,7 @@ static pmix_status_t stub_log2(const pmix_proc_t *client,
 
     log_fired = true;
     log_ndata = ndata;
-    log_ndirs = ndirs;
+    log_ndirs = count_ident(directives, ndirs, &log_ident);
     log_saw_source = false;
     log_saw_timestamp = false;
     for (n = 0; n < ndirs; n++) {
@@ -284,6 +332,7 @@ static void qry_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
  * which the server answers itself */
 static bool jobctrl_fired = false;
 static size_t jobctrl_ntargets = 0;
+static ctlut_ident_t jobctrl_ident;
 static pmix_status_t stub_job_control(const pmix_proc_t *requestor,
                                       const pmix_proc_t targets[], size_t ntargets,
                                       const pmix_info_t directives[], size_t ndirs,
@@ -291,13 +340,12 @@ static pmix_status_t stub_job_control(const pmix_proc_t *requestor,
 {
     (void) requestor;
     (void) targets;
-    (void) directives;
-    (void) ndirs;
     (void) cbfunc;
     (void) cbdata;
 
     jobctrl_fired = true;
     jobctrl_ntargets = ntargets;
+    (void) count_ident(directives, ndirs, &jobctrl_ident);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
@@ -312,6 +360,7 @@ static void op_stub(pmix_status_t status, void *cbdata)
  * this is exactly what the contract permits - and it is what a server
  * that parked the data rather than packing it cannot survive. */
 static bool cred_fired = false;
+static ctlut_ident_t cred_ident;
 
 /* Overwrite through a volatile pointer: a plain memset over a local the
  * function never reads again is dead code the compiler may drop, and the
@@ -339,10 +388,9 @@ static pmix_status_t stub_get_credential(const pmix_proc_t *proc,
     char bytes[4] = {'c', 'r', 'e', 'd'};
 
     (void) proc;
-    (void) directives;
-    (void) ndirs;
 
     cred_fired = true;
+    (void) count_ident(directives, ndirs, &cred_ident);
     if (cred_refuse) {
         /* pmix_credential_cbfunc_t's contract: PMIX_SUCCESS if a
          * credential could be assigned, "or else an appropriate error
@@ -988,6 +1036,26 @@ int main(int argc, char **argv)
     report("well-formed log kept the caller's data", 1 == log_ndata);
     report("well-formed log appended the source", 2 == log_ndirs && log_saw_source);
     report("well-formed log added no timestamp", !log_saw_timestamp);
+    report("well-formed log carried the requester's uid and gid",
+           ident_is_requester(&log_ident));
+
+    /* --- a record naming a uid and gid of its own ------------------------ *
+     * the uid is replaced, the gid is the requester's choice and is kept */
+    {
+        pmix_info_t claimdirs[2];
+        uint32_t claimed = 7777;
+
+        PMIX_INFO_LOAD(&claimdirs[0], PMIX_USERID, &claimed, PMIX_UINT32);
+        PMIX_INFO_LOAD(&claimdirs[1], PMIX_GRPID, &claimed, PMIX_UINT32);
+        rc = do_log(0, 1, &data, 1, 2, claimdirs, 2);
+        report("log naming its own uid and gid accepted", PMIX_SUCCESS == rc);
+        report("the host was given the connection's uid and the record's gid",
+               1 == log_ident.nuid && 1 == log_ident.ngid &&
+               (uint32_t) pmix_globals.mypeer->info->uid == log_ident.uid &&
+               claimed == log_ident.gid && 1 == log_ndirs && log_saw_source);
+        PMIX_INFO_DESTRUCT(&claimdirs[0]);
+        PMIX_INFO_DESTRUCT(&claimdirs[1]);
+    }
 
     /* --- a record carrying a timestamp gets that appended too --------- */
     rc = do_log(1234567, 1, &data, 1, 1, dirs, 1);
@@ -1161,6 +1229,8 @@ int main(int argc, char **argv)
         cred_refuse = false;
         report("refused credential request accepted", PMIX_SUCCESS == rc);
         report("refused credential request reached the host", cred_fired);
+        report("credential request carried the requester's uid and gid",
+               ident_is_requester(&cred_ident));
 
         reply = take_queued_reply();
         report("a refused credential request is still answered", NULL != reply);
@@ -1660,6 +1730,8 @@ int main(int argc, char **argv)
          * the one the peer declared - the tail of that array is
          * default-constructed, not sent */
         report("over-declared request still reached the host", jobctrl_fired);
+        report("job control carried the requester's uid and gid",
+               ident_is_requester(&jobctrl_ident));
         report("host was handed the count that actually arrived",
                1 == jobctrl_ntargets);
         after = count_empty_nspaces();

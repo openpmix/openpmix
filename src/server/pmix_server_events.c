@@ -797,6 +797,13 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
          * dead code, and worse than dead: reached, it would leave the
          * codes marked active without giving the interest back */
 
+        /* pass the requester's identity to the host */
+        rc = pmix_server_add_requester_id(peer, &info, &ninfo);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            undo_activations(codes, nactive);
+            goto cleanup;
+        }
         /* need to ensure the arrays don't go away until after the
          * host RM is done with them */
         scd = PMIX_NEW(pmix_setup_caddy_t);

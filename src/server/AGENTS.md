@@ -3149,20 +3149,61 @@ misbehave by design).
   `pmix_server_job_ctrl` destructed its four cleanup lists mid-function
   *and* again at its exit label, under a comment asserting the practice
   was harmless. Destruct each local list exactly once, on the way out.
-- **The identity that decides access to published data comes from
-  `peer->info`, never from the command.** `PMIX_PUBLISHNB_CMD`,
-  `PMIX_LOOKUPNB_CMD` and `PMIX_UNPUBLISHNB_CMD` all carry an effective
-  user id on the wire, and all three handlers seed `PMIX_USERID` and
-  `PMIX_GRPID` into the info array the host will store the data under.
-  Both values are read from `peer->info`, so the pair is the one the
-  connection handshake established rather than one restated on every
-  command. The handshake is what makes `peer->info` the right source: it
+- **Every up-call made for a peer tells the host who is asking.** The
+  host is the one that authorizes a request, so it is given the
+  requester's `pmix_proc_t` as the up-call's process argument, and the
+  requester's `PMIX_USERID` and `PMIX_GRPID` in the up-call's info or
+  directives array - exactly one of each. `pmix_server_add_requester_id()`
+  (in `pmix_server_ops.c`) does the second half. The uid is always the one
+  in `peer->info`; any the requester sent is dropped. The gid is the
+  requester's if it sent one (the first `uint32`) - many sites charge work
+  to a group, and a user may ask for a request to be charged to a group
+  other than the one it started with - and otherwise the one in
+  `peer->info`. It replaces the array, so call it on an array the caddy
+  owns, and make sure the caddy's "owns it" flag is set afterwards even
+  when the requester sent no array at all.
+
+  **The host, not the library, decides whether a requester may use a group
+  it names.** Only the host knows the site's accounting rules and which
+  directory is authoritative for membership. So the library never acts on
+  a named group itself: everything it does for a request - epilog cleanup
+  (its identity comes from the handshake), a host-less spawn (run as the
+  server's own user, and only for a requester of that user), IOF, local
+  monitoring - uses the connection's identity. Follow-on work after the
+  host completes a request runs only on the host's success. A new
+  library-side action that wants to act as a group has to check
+  membership itself, or refuse.
+
+  It is called by publish, lookup, unpublish, spawn (host path only),
+  register_events, query (on every query's qualifiers), both resolve
+  handlers (on the query they build), log (host path only), alloc,
+  job_control, monitor, get/validate credential, iofreg, iofdereg, stdin,
+  session_control and resource_block. The tool-connection up-call gets its
+  pair from the handshake in `ptl_base_connection_hdlr.c`, overwriting any
+  the tool sent - that up-call records who the tool *is*, so a chosen group
+  does not apply to it. A new handler that makes an up-call for a peer owes
+  the same call; the list of up-calls the Standard requires it for is in
+  `docs/man/man5/pmix_server_module_t.5.rst`.
+
+  Two placement rules. Add the pair *before* anything that must not fail
+  afterwards - job_control adds it before staging cleanup directives, and
+  counts the two entries when it decides whether a request carried
+  nothing but cleanup (`cnt + 2 == cd->ninfo`). And a query is answered for
+  the requester: `pmix_server_query` records it in the query caddy's
+  `requestor`, `request_help` passes it as `proct`, and
+  `pmix_parse_localquery` defaults a query that names no namespace to the
+  requester's job rather than the server's. Other jobs' data is not
+  refused - a debugger legitimately asks about the job it is attached to;
+  deciding who may see what is the host's job.
+
+  `peer->info` is the right source because the connection handshake
   requires the uid and gid a peer presents to match the ones the host
-  registered it with (`src/mca/ptl/base/ptl_base_connection_hdlr.c`), so
-  that pair comes from the host rather than from each request. The wire
-  field stays and is still unpacked — the message layout is frozen, and
-  there is no version number that would let a reader tell a peer built
-  before its removal from one built after — but its value is discarded.
+  registered it with (`src/mca/ptl/base/ptl_base_connection_hdlr.c`).
+  `PMIX_PUBLISHNB_CMD`, `PMIX_LOOKUPNB_CMD` and `PMIX_UNPUBLISHNB_CMD`
+  still carry an effective user id on the wire, and it is still unpacked -
+  the message layout is frozen, and there is no version number that would
+  let a reader tell a peer built before its removal from one built after -
+  but its value is discarded.
 - **Screen the shape of anything the host hands you before indexing it.**
   A `pmix_info_t` carrying a `PMIX_DATA_ARRAY` is a host-supplied
   structure, and several sites here read `array[0]` and `array[1]`

@@ -135,6 +135,43 @@ server library and must not be freed by the host. Conversely, data the host
 returns through a completion callback is owned by the host, which may release it
 once the callback returns.
 
+**The requester's identity.** When the library makes an up-call on behalf of a
+client or tool, it tells the host who is asking, so that the host can decide
+what that process may see or do:
+
+* The requester's ``pmix_proc_t`` is passed as the up-call's process argument.
+* The up-call's info or directives array carries exactly one ``PMIX_USERID``
+  and one ``PMIX_GRPID``. For ``query`` they are in the qualifiers of every
+  query.
+* ``PMIX_USERID`` is always the user ID established when the process
+  connected. Any ``PMIX_USERID`` the requester put in its own request is
+  removed.
+* ``PMIX_GRPID`` is the requester's choice if its request names one (the
+  first ``uint32_t`` value) |mdash| typically the group, or account, the work
+  is to be charged to. Otherwise it is the group ID established when the
+  process connected. The library does not check that the requester belongs to
+  a group it names: the host decides whether the requester may use it, and
+  refuses the request (for example with ``PMIX_ERR_NO_PERMISSIONS``) if not.
+
+Work the library does itself for a request |mdash| cleanup registered through
+``job_control``, a spawn it launches when the host provides no ``spawn``
+entry, forwarding of output, local monitoring |mdash| always uses the identity
+established at connection, never a group named in the request. What the
+library does after the host completes a request happens only when the host
+reports success.
+
+This applies to ``publish``, ``lookup``, ``unpublish``, ``spawn``,
+``register_events``, ``query`` (including the queries behind
+:ref:`PMIx_Resolve_peers(3) <man3-PMIx_Resolve_peers>` and
+:ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>`), ``tool_connected`` and
+``tool_connected2``, ``log`` and ``log2``, ``allocate``, ``job_control``,
+``monitor``, ``get_credential``, ``validate_credential``, ``iof_pull``,
+``push_stdin``, ``session_control`` and ``resource_block``.
+
+When the host itself calls a PMIx API that is serviced through its own module,
+the requester is the host: the up-call carries the server's own process
+identifier and the library adds nothing to the caller's arrays.
+
 
 ABI STABILITY
 -------------
@@ -374,7 +411,12 @@ query
 ``query`` (``pmix_server_query_fn_t``) |mdash| Services
 :ref:`PMIx_Query_info(3) <man3-PMIx_Query_info>`. The host answers an array of
 ``pmix_query_t`` requests on behalf of the identified process and returns the
-results through a ``pmix_info_cbfunc_t``.
+results through a ``pmix_info_cbfunc_t``. ``proct`` is the process that asked,
+and each query's qualifiers carry its ``PMIX_USERID`` and ``PMIX_GRPID`` (see
+*The requester's identity* above). A query that names no namespace is about
+the requester's own job. The same entry point services the queries behind
+:ref:`PMIx_Resolve_peers(3) <man3-PMIx_Resolve_peers>` and
+:ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>`.
 
 tool_connected
 ^^^^^^^^^^^^^^

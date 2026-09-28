@@ -65,6 +65,7 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
     int32_t cnt;
     pmix_status_t rc;
     pmix_query_caddy_t *cd;
+    size_t n;
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
@@ -112,6 +113,25 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
             return rc;
         }
     }
+    /* the query is answered on behalf of the requester: a query that names
+     * no namespace is about the requester's own job, and the host is told
+     * who is asking - its proc and, in every query's qualifiers, its uid
+     * and gid */
+    for (n = 0; n < cd->nqueries; n++) {
+        rc = pmix_server_add_requester_id(peer, &cd->queries[n].qualifiers,
+                                          &cd->queries[n].nqual);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(cd);
+            return rc;
+        }
+    }
+    PMIX_PROC_CREATE(cd->requestor, 1);
+    if (NULL == cd->requestor) {
+        PMIX_RELEASE(cd);
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_LOAD_PROCID(cd->requestor, peer->info->pname.nspace, peer->info->pname.rank);
     PMIX_THREADSHIFT(cd, pmix_parse_localquery);
     return PMIX_SUCCESS;
 }
@@ -243,6 +263,12 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
                             "pmix:server not gateway");
         cd->cbfunc.opcbfn = cbfunc;
         cd->cbdata = cbdata;
+        /* pass the requester's identity to the host */
+        rc = pmix_server_add_requester_id(peer, &cd->directives, &cd->ndirs);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
         if (NULL != pmix_host_server.log2) {
             pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
                                 "pmix:server using log2 upcall");
@@ -339,6 +365,13 @@ pmix_status_t pmix_server_alloc(pmix_peer_t *peer, pmix_buffer_t *buf,
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
+    }
+
+    /* pass the requester's identity to the host */
+    rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
     }
 
     /* setup the requesting peer name */
@@ -713,6 +746,14 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
             goto exit;
         }
     }
+    /* pass the requester's identity to the host. Added before the
+     * cleanup directives are staged, since nothing may fail once they
+     * are committed - and so the two entries are counted below */
+    rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
 
     /* if this includes a request for post-termination cleanup, we handle
      * that request ourselves */
@@ -937,8 +978,9 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                            pmix_list_get_end(&epicd->epi->cleanup_files),
                            &epicd->newfiles);
         }
-        if ((size_t) cnt == cd->ninfo) {
-            /* nothing more to do */
+        if ((size_t) cnt + 2 == cd->ninfo) {
+            /* nothing but cleanup directives and the requester's
+             * identity - nothing more to do */
             rc = PMIX_OPERATION_SUCCEEDED;
             goto exit;
         }
@@ -1048,6 +1090,14 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
             goto exit;
         }
     }
+    /* pass the requester's identity to the host - the array this makes
+     * is ours as well, even when no directives were sent */
+    rc = pmix_server_add_requester_id(peer, &cb->directives, &cb->ndirs);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    cb->dircopy = true;
 
     // pass this over to be processed
     PMIX_THREADSHIFT(cb, pmix_monitor_processing);
@@ -1106,6 +1156,13 @@ pmix_status_t pmix_server_get_credential(pmix_peer_t *peer, pmix_buffer_t *buf,
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
+    }
+
+    /* pass the requester's identity to the host */
+    rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
     }
 
     /* setup the requesting peer name */
@@ -1188,6 +1245,13 @@ pmix_status_t pmix_server_validate_credential(pmix_peer_t *peer, pmix_buffer_t *
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
+    }
+
+    /* pass the requester's identity to the host */
+    rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
     }
 
     /* setup the requesting peer name */
@@ -1279,6 +1343,15 @@ pmix_status_t pmix_server_session_ctrl(pmix_server_caddy_t *cd,
             goto exit;
         }
     }
+
+    /* pass the requester's identity to the host - the array this makes
+     * is ours as well, even when no info was sent */
+    rc = pmix_server_add_requester_id(cd->peer, &scd->info, &scd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    scd->infocopy = true;
 
     /* setup the requesting peer name */
     pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
@@ -1393,6 +1466,15 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
             goto exit;
         }
     }
+
+    /* pass the requester's identity to the host - the array this makes
+     * is ours as well, even when no info was sent */
+    rc = pmix_server_add_requester_id(cd->peer, &scd->info, &scd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    scd->copied = true;
 
     /* setup the requesting peer name */
     pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
