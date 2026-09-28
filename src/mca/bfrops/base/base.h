@@ -1113,6 +1113,14 @@ PMIX_EXPORT char *pmix_bfrop_buffer_extend(pmix_buffer_t *bptr, size_t bytes_to_
 
 PMIX_EXPORT bool pmix_bfrop_too_small(pmix_buffer_t *buffer, size_t bytes_reqd);
 
+/* Check an element count taken from a buffer before an array is sized
+ * by it. True if the count fits the int32_t an unpack takes and the
+ * unread part of the buffer is large enough to hold that many elements
+ * of the given type at their smallest packed size. A count of zero
+ * always fits. */
+PMIX_EXPORT bool pmix_bfrop_count_fits(pmix_buffer_t *buffer, size_t count,
+                                       pmix_data_type_t type);
+
 PMIX_EXPORT pmix_status_t pmix_bfrop_store_data_type(pmix_pointer_array_t *regtypes,
                                                      pmix_buffer_t *buffer, pmix_data_type_t type);
 
