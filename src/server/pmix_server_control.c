@@ -1435,7 +1435,7 @@ pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
                                         pmix_op_cbfunc_t cbfunc)
 {
     pmix_proc_t p;
-    char *nspace;
+    char *nspace = NULL;
     int cnt;
     pmix_status_t rc;
     pmix_cb_t cb;
@@ -1449,6 +1449,9 @@ pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
+    }
+    if (NULL == nspace) {
+        return PMIX_ERR_BAD_PARAM;
     }
     PMIX_LOAD_NSPACE(p.nspace, nspace);
     free(nspace);

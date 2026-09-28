@@ -198,6 +198,16 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         goto error;
     }
 
+    /* the count sizes an allocation with room for two more, so require
+     * it to survive the round trip through the int32_t the unpack takes
+     * it as - the same screen pmix_client_notify_recv applies */
+    cnt = ninfo;
+    if (0 > cnt || (size_t) cnt != ninfo) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_RELEASE(chain);
+        goto error;
+    }
     /* we always leave space for event hdlr name and a callback object */
     chain->nallocated = ninfo + 2;
     PMIX_INFO_CREATE(chain->info, chain->nallocated);

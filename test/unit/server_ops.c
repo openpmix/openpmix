@@ -202,6 +202,7 @@ typedef enum {
     OPSUT_ABORT,
     OPSUT_PUBLISH,
     OPSUT_LOOKUP,
+    OPSUT_LOOKUP_EMPTY_KEY,
     OPSUT_SPAWN
 } opsut_cmd_t;
 
@@ -281,7 +282,8 @@ static pmix_status_t pack_lookup(pmix_buffer_t *buf, opsut_req_t *r)
 {
     pmix_status_t rc;
     char *key = (char *) "server-ops-ut.key";
-    size_t nkeys = 1;
+    bool empty = (OPSUT_LOOKUP_EMPTY_KEY == r->cmd);
+    size_t nkeys = empty ? 2 : 1;
 
     rc = pack_uid(buf);
     if (PMIX_SUCCESS != rc) {
@@ -294,6 +296,13 @@ static pmix_status_t pack_lookup(pmix_buffer_t *buf, opsut_req_t *r)
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &key, 1, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
         return rc;
+    }
+    if (empty) {
+        /* a second key carrying a count of zero strings */
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, NULL, 0, PMIX_STRING);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
     }
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &r->ninfo, 1, PMIX_SIZE);
     return rc;
@@ -348,6 +357,7 @@ static void do_cmd(int sd, short args, void *cbdata)
         rc = pack_publish(&buf, r);
         break;
     case OPSUT_LOOKUP:
+    case OPSUT_LOOKUP_EMPTY_KEY:
         rc = pack_lookup(&buf, r);
         break;
     default:
@@ -389,6 +399,7 @@ static void do_cmd(int sd, short args, void *cbdata)
         rc = pmix_server_publish(cd->peer, &buf, NULL, cd);
         break;
     case OPSUT_LOOKUP:
+    case OPSUT_LOOKUP_EMPTY_KEY:
         rc = pmix_server_lookup(cd->peer, &buf, NULL, cd);
         break;
     default:
@@ -534,6 +545,14 @@ int main(int argc, char **argv)
     rc = drive(OPSUT_LOOKUP, 0, 0, 0, 0, false);
     report("lookup refuses an atomic completion", PMIX_ERR_NOT_SUPPORTED == rc);
     report("the lookup did reach the host", lookup_fired);
+
+    /* --- a lookup whose second key arrives with a count of zero --- *
+     * the unpack succeeds and writes nothing, so the key must be seen as
+     * missing rather than read from whatever the variable last held */
+    lookup_fired = false;
+    rc = drive(OPSUT_LOOKUP_EMPTY_KEY, 0, 0, 0, 0, false);
+    report("lookup refuses a key sent with a count of zero", PMIX_ERR_BAD_PARAM == rc);
+    report("the malformed lookup did not reach the host", !lookup_fired);
 
     /* --- a spawn carrying no job-level directives --- *
      * PMIx_Spawn(NULL, 0, apps, napps, ...) is a legal request and

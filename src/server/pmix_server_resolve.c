@@ -69,7 +69,7 @@ pmix_status_t pmix_server_resolve_peers(pmix_server_caddy_t *cd,
     int32_t cnt;
     pmix_status_t rc;
     char *nodename = NULL;
-    char *nd, *str;
+    char *nd, *str = NULL;
     pmix_info_t *iptr;
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
@@ -506,7 +506,7 @@ pmix_status_t pmix_server_resolve_node(pmix_server_caddy_t *cd,
     int32_t cnt;
     pmix_status_t rc;
     pmix_info_t *iptr;
-    char *str;
+    char *str = NULL;
 
     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
         return PMIX_ERR_NOT_AVAILABLE;
