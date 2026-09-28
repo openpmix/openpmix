@@ -1117,7 +1117,8 @@ PMIX_EXPORT bool pmix_bfrop_too_small(pmix_buffer_t *buffer, size_t bytes_reqd);
  * by it. True if the count fits the int32_t an unpack takes and the
  * unread part of the buffer is large enough to hold that many elements
  * of the given type at their smallest packed size. A count of zero
- * always fits. */
+ * always fits. PMIX_POINTER and PMIX_DATA_ARRAY have no per-element
+ * minimum, so for them only the int32_t limit is checked. */
 PMIX_EXPORT bool pmix_bfrop_count_fits(pmix_buffer_t *buffer, size_t count,
                                        pmix_data_type_t type);
 

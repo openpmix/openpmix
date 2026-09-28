@@ -756,6 +756,141 @@ static void test_nested_info_counts_bounded(void)
     PMIX_DATA_BUFFER_DESTRUCT(&buf);
 }
 
+/* A pointer means nothing outside the process that packed it, so an
+ * array of PMIX_POINTER carries one sentinel byte and no values, and
+ * unpacks with no elements whatever count it declares. An array of data
+ * arrays can pack to a single byte at any count, so its count is bounded
+ * only by the int32_t an unpack takes. */
+static void unpack_one_darray(const wire_acc_t *acc, pmix_data_array_t *out,
+                              pmix_status_t *rc)
+{
+    pmix_data_buffer_t buf;
+    int32_t cnt = 1;
+
+    load_wire(&buf, (const unsigned char *) acc->bytes, acc->len);
+    memset(out, 0, sizeof(*out));
+    *rc = PMIx_Data_unpack(NULL, &buf, out, &cnt, PMIX_DATA_ARRAY);
+    PMIX_DATA_BUFFER_DESTRUCT(&buf);
+}
+
+static void test_sparse_array_counts(void)
+{
+    pmix_data_array_t out, in, *inner;
+    pmix_data_buffer_t buf;
+    pmix_status_t rc;
+    int32_t one = 1, cnt, vals[2] = {1, 2};
+    uint16_t etype, undef = PMIX_UNDEF;
+    uint8_t sentinel = 1;
+    size_t huge = (size_t) INT32_MAX, toobig = (size_t) INT32_MAX + 1, five = 5;
+    char *trailer = "trailing-data";
+    wire_acc_t acc = {NULL, 0};
+    int ok;
+
+    /* [count of arrays][PMIX_POINTER][huge][the one sentinel] */
+    etype = PMIX_POINTER;
+    ok = append_bare(&acc, &one, PMIX_INT32) && append_bare(&acc, &etype, PMIX_UINT16) &&
+         append_bare(&acc, &huge, PMIX_SIZE) && append_bare(&acc, &sentinel, PMIX_UINT8);
+    if (ok) {
+        unpack_one_darray(&acc, &out, &rc);
+        ok = (PMIX_SUCCESS == rc && PMIX_POINTER == out.type && 0 == out.size &&
+              NULL == out.array);
+        PMIX_DATA_ARRAY_DESTRUCT(&out);
+    }
+    free(acc.bytes);
+    acc.bytes = NULL;
+    acc.len = 0;
+    report("a pointer array unpacks with no elements", ok);
+
+    /* [count of arrays][PMIX_POINTER][5] and no sentinel */
+    ok = append_bare(&acc, &one, PMIX_INT32) && append_bare(&acc, &etype, PMIX_UINT16) &&
+         append_bare(&acc, &five, PMIX_SIZE);
+    if (ok) {
+        unpack_one_darray(&acc, &out, &rc);
+        ok = (PMIX_SUCCESS != rc && NULL == out.array);
+        PMIX_DATA_ARRAY_DESTRUCT(&out);
+    }
+    free(acc.bytes);
+    acc.bytes = NULL;
+    acc.len = 0;
+    report("a pointer array with no sentinel is refused", ok);
+
+    /* [count of arrays][PMIX_DATA_ARRAY][INT32_MAX + 1][terminator] */
+    etype = PMIX_DATA_ARRAY;
+    ok = append_bare(&acc, &one, PMIX_INT32) && append_bare(&acc, &etype, PMIX_UINT16) &&
+         append_bare(&acc, &toobig, PMIX_SIZE) && append_bare(&acc, &undef, PMIX_UINT16);
+    if (ok) {
+        unpack_one_darray(&acc, &out, &rc);
+        ok = (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc && NULL == out.array);
+        PMIX_DATA_ARRAY_DESTRUCT(&out);
+    }
+    free(acc.bytes);
+    acc.bytes = NULL;
+    acc.len = 0;
+    report("an array of arrays whose count does not fit an int32_t is refused", ok);
+
+    /* a well-formed pointer array followed by more data: no elements,
+     * and the next item still unpacks */
+    PMIX_DATA_ARRAY_CONSTRUCT(&in, 3, PMIX_POINTER);
+    PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+    rc = PMIx_Data_pack(NULL, &buf, &in, 1, PMIX_DATA_ARRAY);
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_Data_pack(NULL, &buf, &trailer, 1, PMIX_STRING);
+    }
+    memset(&out, 0, sizeof(out));
+    if (PMIX_SUCCESS == rc) {
+        cnt = 1;
+        rc = PMIx_Data_unpack(NULL, &buf, &out, &cnt, PMIX_DATA_ARRAY);
+    }
+    ok = (PMIX_SUCCESS == rc && PMIX_POINTER == out.type && 0 == out.size &&
+          NULL == out.array);
+    if (ok) {
+        char *got = NULL;
+        cnt = 1;
+        rc = PMIx_Data_unpack(NULL, &buf, &got, &cnt, PMIX_STRING);
+        ok = (PMIX_SUCCESS == rc && NULL != got && 0 == strcmp(got, trailer));
+        free(got);
+    }
+    report("a packed pointer array unpacks empty and stays in step", ok);
+    PMIX_DATA_ARRAY_DESTRUCT(&out);
+    PMIX_DATA_BUFFER_DESTRUCT(&buf);
+    PMIX_DATA_ARRAY_DESTRUCT(&in);
+
+    /* three arrays of which the second is untyped, followed by more
+     * data: the count is kept and the next item still unpacks */
+    PMIX_DATA_ARRAY_CONSTRUCT(&in, 3, PMIX_DATA_ARRAY);
+    inner = (pmix_data_array_t *) in.array;
+    PMIX_DATA_ARRAY_CONSTRUCT(&inner[0], 2, PMIX_INT32);
+    memcpy(inner[0].array, vals, sizeof(vals));
+    PMIX_DATA_ARRAY_CONSTRUCT(&inner[2], 2, PMIX_INT32);
+    memcpy(inner[2].array, vals, sizeof(vals));
+    PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+    rc = PMIx_Data_pack(NULL, &buf, &in, 1, PMIX_DATA_ARRAY);
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_Data_pack(NULL, &buf, &trailer, 1, PMIX_STRING);
+    }
+    memset(&out, 0, sizeof(out));
+    if (PMIX_SUCCESS == rc) {
+        cnt = 1;
+        rc = PMIx_Data_unpack(NULL, &buf, &out, &cnt, PMIX_DATA_ARRAY);
+    }
+    inner = (pmix_data_array_t *) out.array;
+    ok = (PMIX_SUCCESS == rc && PMIX_DATA_ARRAY == out.type && 3 == out.size &&
+          NULL != inner && PMIX_INT32 == inner[0].type && 2 == inner[0].size &&
+          0 == memcmp(inner[0].array, vals, sizeof(vals)) &&
+          PMIX_UNDEF == inner[1].type && PMIX_UNDEF == inner[2].type);
+    if (ok) {
+        char *got = NULL;
+        cnt = 1;
+        rc = PMIx_Data_unpack(NULL, &buf, &got, &cnt, PMIX_STRING);
+        ok = (PMIX_SUCCESS == rc && NULL != got && 0 == strcmp(got, trailer));
+        free(got);
+    }
+    report("an array of arrays keeps its count and stays in step", ok);
+    PMIX_DATA_ARRAY_DESTRUCT(&out);
+    PMIX_DATA_BUFFER_DESTRUCT(&buf);
+    PMIX_DATA_ARRAY_DESTRUCT(&in);
+}
+
 /* ------------------------------------------------------------------ */
 
 /* The v21 and v3 wire formats carry two deprecated types, an info array
@@ -856,6 +991,7 @@ int main(int argc, char **argv)
     test_legacy_counts_bounded("v3");
     test_count_fits_boundaries();
     test_nested_info_counts_bounded();
+    test_sparse_array_counts();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
