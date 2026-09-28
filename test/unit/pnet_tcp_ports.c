@@ -72,6 +72,7 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/threads/pmix_threads.h"
+#include "src/util/pmix_alfg.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_environ.h"
 
@@ -81,6 +82,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define TCP_SETUP_APP_KEY "pmix.tcp.setup.app.key"
 #define FABRIC_ID         "unit.tcp"
@@ -106,6 +108,8 @@ typedef struct {
     pmix_status_t status;
     bool gotblob;  // our blob key came back
     bool gotkey;   // a security key is inside it
+    uint8_t key[16]; // the key, when it is 16 bytes long
+    bool keylen_ok;
     size_t nkv;    // the kval count the blob declares
     size_t nfound; // how many it actually carries
     int nports;    // ports named by the first entry keyed by our fabric id
@@ -135,6 +139,11 @@ static void examine(tcp_result_t *res, pmix_byte_object_t *bo)
         ++res->nfound;
         if (PMIX_CHECK_KEY(kv, PMIX_ALLOC_FABRIC_SEC_KEY)) {
             res->gotkey = true;
+            if (PMIX_BYTE_OBJECT == kv->value->type &&
+                sizeof(res->key) == kv->value->data.bo.size) {
+                memcpy(res->key, kv->value->data.bo.bytes, sizeof(res->key));
+                res->keylen_ok = true;
+            }
         } else if (0 == strncmp(kv->key, FABRIC_ID, PMIX_MAX_KEYLEN) && 0 == res->nports
                    && PMIX_STRING == kv->value->type && NULL != kv->value->data.string) {
             /* the ports are the first thing filed under the fabric id */
@@ -322,9 +331,42 @@ static void test_exhaustion(void)
     drop("tcp-after");
 }
 
+/* could this key have come from the library's own generator, seeded
+ * with a time since "start" and our pid? Each key is two draws of two
+ * words, so walk the first few dozen keys of every such stream */
+static bool key_from_seeded_stream(const uint8_t *key, time_t start)
+{
+    pmix_rng_buff_t rng;
+    uint64_t guess[2];
+    uint32_t hi, lo;
+    time_t t;
+    int k;
+
+    for (t = start - 2; t <= time(NULL) + 1; t++) {
+        uint64_t now = (uint64_t) t;
+        pmix_srand(&rng, (uint32_t) now ^ (uint32_t) (now >> 32) ^ (uint32_t) getpid());
+        for (k = 0; k < 64; k++) {
+            hi = pmix_rand(&rng);
+            lo = pmix_rand(&rng);
+            guess[0] = ((uint64_t) hi << 32) | (uint64_t) lo;
+            hi = pmix_rand(&rng);
+            lo = pmix_rand(&rng);
+            guess[1] = ((uint64_t) hi << 32) | (uint64_t) lo;
+            if (0 == memcmp(guess, key, sizeof(guess))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static time_t start_time;
+
 static void test_seckey_only(void)
 {
     tcp_result_t res;
+    uint8_t first[16];
+    bool havefirst;
 
     ask("tcp-key", "tcp", 0, true, &res);
     report("a key-only request is honored without endpoints",
@@ -332,14 +374,19 @@ static void test_seckey_only(void)
     report("the key-only request yields a key and no ports",
            res.gotkey && 0 == res.nports);
     drop("tcp-key");
+
+    report("the key is 16 bytes", res.keylen_ok);
+    havefirst = res.keylen_ok;
+    memcpy(first, res.key, sizeof(first));
+    report("the key cannot be rebuilt from the time and our pid",
+           havefirst && !key_from_seeded_stream(first, start_time));
+
+    ask("tcp-key2", "tcp", 0, true, &res);
+    drop("tcp-key2");
+    report("a second job is given a different key",
+           havefirst && res.keylen_ok && 0 != memcmp(first, res.key, sizeof(first)));
 }
 
-/* a request naming neither type nor plane falls back to the configured
- * default allocation, which here is two groups - so one call builds two
- * trackers for the same job. Cycling it three times through a pool that
- * holds exactly two rounds' worth only fits if deregistration releases
- * both of them, and the first group only matches at all if the
- * "type:plane:count" parse finds the plane */
 /* An inventory blob is "<host>" then one byte object per device, each
  * holding "<device>" and "<address>". Build one, with any of the three
  * strings left NULL. */
@@ -415,6 +462,12 @@ static void test_malformed_inventory(void)
            PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
 }
 
+/* a request naming neither type nor plane falls back to the configured
+ * default allocation, which here is two groups - so one call builds two
+ * trackers for the same job. Cycling it three times through a pool that
+ * holds exactly two rounds' worth only fits if deregistration releases
+ * both of them, and the first group only matches at all if the
+ * "type:plane:count" parse finds the plane */
 static void test_default_allocation(void)
 {
     tcp_result_t res;
@@ -514,6 +567,8 @@ int main(int argc, char **argv)
     /* two groups, so one request builds two trackers - and the first of
      * them names a plane, which is the part the parser used to lose */
     setenv("PMIX_MCA_pnet_tcp_default_network_allocation", "tcp:plane0:2;udp:2", 1);
+
+    start_time = time(NULL);
 
     /* the port allocator only runs for the gateway role */
     PMIX_INFO_LOAD(&sinfo, PMIX_SERVER_GATEWAY, &flag, PMIX_BOOL);

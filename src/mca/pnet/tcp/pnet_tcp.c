@@ -343,11 +343,27 @@ static void tcp_finalize(void)
  * for doing so.
  */
 
+/* the key is drawn from /dev/urandom; the generator below is used only
+ * when that cannot be read - a chroot or a container with a restricted
+ * /dev, or a process out of descriptors - as pnet/opa does */
 static inline void generate_key(uint64_t *unique_key)
 {
     static pmix_rng_buff_t rng;
     static bool seeded = false;
     uint32_t hi, lo;
+    ssize_t nread;
+    int fd;
+
+    fd = open("/dev/urandom", O_RDONLY);
+    if (0 <= fd) {
+        nread = read(fd, (char *) unique_key, 2 * sizeof(uint64_t));
+        close(fd);
+        if ((ssize_t) (2 * sizeof(uint64_t)) == nread) {
+            return;
+        }
+    }
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet:tcp: falling back to a generated key");
 
     if (!seeded) {
         /* seed once and keep drawing from that stream. Re-seeding from
