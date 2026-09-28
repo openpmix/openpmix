@@ -48,6 +48,7 @@
 #include <event.h>
 
 #include "src/class/pmix_list.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/ptl/ptl.h"
 #include "src/threads/pmix_threads.h"
@@ -661,14 +662,10 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         goto report;
     }
     if (0 < ndata) {
-        /* the count came off the wire and is consumed below as the
-         * int32_t the unpack takes, so require it to survive that round
-         * trip before it sizes anything - the screen the handlers in
-         * pmix_client.c and src/server use. Relying on the allocation to
-         * fail first is an argument about the allocator, not an
-         * invariant. */
+        /* the buffer must hold that many packed pdata before the count
+         * sizes anything */
         cnt = (int32_t) ndata;
-        if (PMIX_UNLIKELY(0 > cnt || (size_t) cnt != ndata)) {
+        if (PMIX_UNLIKELY(!pmix_bfrop_count_fits(buf, ndata, PMIX_PDATA))) {
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
             ret = PMIX_ERR_BAD_PARAM;
             ndata = 0;

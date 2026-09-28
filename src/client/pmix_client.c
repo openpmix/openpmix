@@ -151,20 +151,11 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
         goto error;
     }
 
-    /* This count came off the wire, and two things downstream trust it
-     * without an unpack in front of them to screen it: the "+ 2" below
-     * is multiplied by sizeof(pmix_info_t) to size an allocation whose
-     * element constructors then walk it, and pmix_invoke_local_event_hdlr
-     * writes the handler name and callback object at info[ninfo] and
-     * info[ninfo+1]. A count near SIZE_MAX wraps that sum down to a
-     * one- or zero-element array, and those two seeds are then written
-     * off the end of it.
-     *
-     * Require the count to survive the round trip through the int32_t
-     * the unpack consumes it as - the same screen the server-side
-     * handlers use; see src/server/AGENTS.md. */
+    /* the buffer must hold that many packed infos. The array is sized
+     * ninfo + 2, and pmix_invoke_local_event_hdlr writes the handler
+     * name and callback object at info[ninfo] and info[ninfo+1] */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_RELEASE(chain);
@@ -1103,16 +1094,10 @@ static void client_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         PMIX_ERROR_LOG(rc);
         return;
     }
-    /* both of these came off the wire. The count is about to size an
-     * allocation whose element constructors walk it, so a value large
-     * enough to wrap that product runs off the end of a short block
-     * before the unpack's NULL screen gets a say; and the request id is
-     * consumed below as the int that pmix_pointer_array_get_item takes,
-     * so one that does not fit truncates to some other request's slot
-     * and hands this package to the wrong callback. Require both to
-     * survive the round trip - see src/server/AGENTS.md. */
+    /* the buffer must hold that many packed infos, and the request id
+     * is used below as the int that pmix_pointer_array_get_item takes */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo || refid > (size_t) INT_MAX) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO) || refid > (size_t) INT_MAX) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
     }

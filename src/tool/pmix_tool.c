@@ -198,11 +198,10 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         goto error;
     }
 
-    /* the count sizes an allocation with room for two more, so require
-     * it to survive the round trip through the int32_t the unpack takes
-     * it as - the same screen pmix_client_notify_recv applies */
+    /* the buffer must hold that many packed infos. The array is sized
+     * with room for two more, as in pmix_client_notify_recv */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_RELEASE(chain);
@@ -343,6 +342,10 @@ static void tool_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        return;
+    }
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
     }
     if (0 < ninfo) {
