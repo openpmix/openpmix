@@ -191,7 +191,6 @@ typedef struct {
 #define PMIX_CLI_EXCLUDE                "exclude"                   // required, short is 'x'
 #define PMIX_CLI_WAIT_ALL_NODES         "wait-all-nodes"            // none
 #define PMIX_CLI_NODELIST               "nodelist"                  // required, short is 'w'
-#define PMIX_CLI_UID                    "uid"                       // required
 #define PMIX_CLI_GID                    "gid"                       // required
 #define PMIX_CLI_TIME                   "time"                      // required, short is 't'
 #define PMIX_CLI_SIGNAL                 "signal"                    // required

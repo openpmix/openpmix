@@ -29,6 +29,8 @@
 #include "pmix_common.h"
 #include "include/pmix_server.h"
 
+#include <errno.h>
+#include <grp.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -79,7 +81,6 @@ static struct option pallocptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_EXCLUDE, PMIX_ARG_REQD, 'x'),
     PMIX_OPTION_DEFINE(PMIX_CLI_WAIT_ALL_NODES, PMIX_ARG_NONE),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_NODELIST, PMIX_ARG_REQD, 'w'),
-    PMIX_OPTION_DEFINE(PMIX_CLI_UID, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_GID, PMIX_ARG_REQD),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_TIME, PMIX_ARG_REQD, 't'),
     PMIX_OPTION_DEFINE(PMIX_CLI_SIGNAL, PMIX_ARG_REQD),
@@ -197,6 +198,34 @@ static void defhandler(size_t evhdlr_registration_id, pmix_status_t status,
 }
 
 
+/* The group to charge an allocation to, given as a number or a group
+ * name. False if it is neither. */
+static bool parse_gid(const char *arg, uint32_t *gid)
+{
+    struct group *grp;
+    unsigned long val;
+    char *end;
+
+    if (NULL == arg || '\0' == arg[0]) {
+        return false;
+    }
+    errno = 0;
+    val = strtoul(arg, &end, 10);
+    if ('\0' == *end && '-' != arg[0]) {
+        if (0 != errno || (unsigned long) UINT32_MAX < val) {
+            return false;
+        }
+        *gid = (uint32_t) val;
+        return true;
+    }
+    grp = getgrnam(arg);
+    if (NULL == grp) {
+        return false;
+    }
+    *gid = (uint32_t) grp->gr_gid;
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
@@ -211,7 +240,8 @@ int main(int argc, char **argv)
     pmix_rank_t rank = 0;
     char hostname[PMIX_PATH_MAX], *kptr;
     bool donotwait = false;
-    uint32_t ui32;
+    bool have_gid = false;
+    uint32_t ui32, reqgid = 0;
     uint64_t ui64;
     pmix_alloc_directive_t directive = PMIX_ALLOC_NEW;
     pmix_lock_t lock;
@@ -252,6 +282,16 @@ int main(int argc, char **argv)
                 pmix_expose_param(opt->values[n]);
             }
         }
+    }
+
+    /* the group to charge the allocation to - checked before we connect */
+    if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_GID))) {
+        if (!parse_gid(opt->values[0], &reqgid)) {
+            fprintf(stderr, "%s: \"%s\" is not a group ID or group name\n",
+                    argv[0], opt->values[0]);
+            exit(1);
+        }
+        have_gid = true;
     }
 
     /* if we were given the pid of a starter, then direct that
@@ -422,19 +462,8 @@ int main(int argc, char **argv)
         }
     }
 
-    if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_UID))) {
-        ui32 = strtoul(opt->values[0], NULL, 10);
-        PMIX_INFO_LIST_ADD(rc, options, PMIX_USERID, &ui32, PMIX_UINT32);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "PMIx info list add failed: %s\n", PMIx_Error_string(rc));
-            PMIX_INFO_LIST_RELEASE(options);
-            goto done;
-        }
-    }
-
-    if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_GID))) {
-        ui32 = strtoul(opt->values[0], NULL, 10);
-        PMIX_INFO_LIST_ADD(rc, options, PMIX_GRPID, &ui32, PMIX_UINT32);
+    if (have_gid) {
+        PMIX_INFO_LIST_ADD(rc, options, PMIX_GRPID, &reqgid, PMIX_UINT32);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "PMIx info list add failed: %s\n", PMIx_Error_string(rc));
             PMIX_INFO_LIST_RELEASE(options);
