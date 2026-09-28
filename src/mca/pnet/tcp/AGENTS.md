@@ -99,12 +99,15 @@ keep it aligned with `pmix_pnet_module_t`:
   `tcp_available_ports_t` entries on an `available` list, expanding the
   ranges with `pmix_util_parse_range_options`.
 - **`allocate`** (gateway only) reads a `PMIX_ALLOC_FABRIC` array for the
-  requested `type` / `plane` / endpoint count / id-key / seckey, finds a
+  requested `type` / `plane` / endpoint count / id-key, finds a
   matching `tcp_available_ports_t`, and calls `process_request` to carve
   out `ports_per_node` ports into a `tcp_port_tracker_t`. Results (the
   id-key, the allocated port list, the type, and any plane) are packed
   into a blob keyed `PMIX_TCP_SETUP_APP_KEY` and appended to `ilist`. It
-  can also harvest envars and generate a random security key.
+  can also harvest envars. It does **not** generate a fabric security
+  key: a `PMIX_ALLOC_FABRIC_SEC_KEY` request is ignored. (It once made a
+  placeholder key as an example, which only caused confusion with the
+  framework's dedicated example component.)
 - **`process_request`** pulls free ports out of the source pool (nulling
   each slot it takes) and joins them into a comma string; the tracker's
   destructor `ttdes` **returns those ports to the pool** when the job is
@@ -154,14 +157,14 @@ keep it aligned with `pmix_pnet_module_t`:
   and when there is nothing in the pool to satisfy one. `opa` and `nvd`
   decline the same way.
 
-- **A request may name a fabric type and ask for zero endpoints.** The
-  header comment above `allocate` says callers "are allowed to simply
-  request a network security key without asking for endpts", so that
-  case must not reach `process_request` — it declines a zero count with
+- **A request may name a fabric type and ask for zero endpoints.**
+  There is then nothing for `tcp` to allocate, so `allocate` declines
+  with `PMIX_ERR_TAKE_NEXT_OPTION`. That case must not reach
+  `process_request` — it declines a zero count with
   `PMIX_ERR_NOT_SUPPORTED`, and the base's `allocate` fan-out aborts on
   any status other than `PMIX_SUCCESS` / `PMIX_ERR_NOT_AVAILABLE` /
   `PMIX_ERR_TAKE_NEXT_OPTION`, so one bad decline stops every other
-  component from running.
+  component from running. `test/unit/pnet_tcp_ports.c` covers it.
 
 - **A module whose `init` fails is never added to `actives`, so its
   `finalize` never runs.** `pmix_pnet_base_select` skips it (that is the
@@ -183,14 +186,6 @@ keep it aligned with `pmix_pnet_module_t`:
   `PMIx_server_finalize` before `pmix_globals.mypeer` is released — so
   the `PMIX_PEER_IS_GATEWAY` guards in `tcp_init` and `tcp_finalize`
   cannot disagree about which lists exist.
-
-- **`generate_key` reads the key from `/dev/urandom`**, as `pnet/opa`
-  does. Only when that cannot be read does it fall back to `pmix_rand`,
-  seeded once from the time and pid and then drawn from; it used to
-  re-seed from `time(NULL)` on every call, which handed two jobs
-  allocated in the same second the identical "unique" key.
-  `test/unit/pnet_tcp_ports.c` checks that a key cannot be rebuilt from
-  that seed.
 
 ## Gotchas
 
