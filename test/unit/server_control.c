@@ -1009,6 +1009,17 @@ int main(int argc, char **argv)
     report("log rejects an unusable directive count", PMIX_ERR_BAD_PARAM == rc);
     report("log did not hand the host a bogus directive count", !log_fired);
 
+    /* --- counts that fit an int32_t but not the bytes that follow ----- */
+    rc = do_log(0, 100000, &data, 1, 1, dirs, 1);
+    report("log rejects an info count larger than the message",
+           PMIX_ERR_BAD_PARAM == rc);
+    report("log did not hand the host an oversized info count", !log_fired);
+
+    rc = do_log(0, 1, &data, 1, 100000, dirs, 1);
+    report("log rejects a directive count larger than the message",
+           PMIX_ERR_BAD_PARAM == rc);
+    report("log did not hand the host an oversized directive count", !log_fired);
+
     PMIX_INFO_DESTRUCT(&data);
     PMIX_INFO_DESTRUCT(&dirs[0]);
 
@@ -1045,6 +1056,11 @@ int main(int argc, char **argv)
          * there rather than after */
         rc = do_query_count((size_t) 0x80000000UL);
         report("query rejects an unusable query count", PMIX_ERR_BAD_PARAM == rc);
+
+        /* nothing follows the count, so no query fits */
+        rc = do_query_count(100000);
+        report("query rejects a query count larger than the message",
+               PMIX_ERR_BAD_PARAM == rc);
 
         /* a query naming no keys at all reaches the key walk in
          * pmix_parse_localquery, which has no terminator to find */
@@ -1659,6 +1675,13 @@ int main(int argc, char **argv)
                !jobctrl_fired);
         report("rejected target count created no phantom namespace",
                before == count_empty_nspaces());
+
+        /* a count that fits an int32_t but not the bytes that follow */
+        rc = do_job_ctrl_targets(100000, 1);
+        report("job control rejects a target count larger than the message",
+               PMIX_ERR_BAD_PARAM == rc);
+        report("job control did not hand the host an oversized target count",
+               !jobctrl_fired);
     }
 
     /* --- a target that names no namespace at all -------------------- */

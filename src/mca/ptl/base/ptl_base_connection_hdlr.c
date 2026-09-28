@@ -723,14 +723,9 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
             PMIx_Info_list_release(ilist);
             goto error;
         }
-        /* nblob came off the wire before the credential was validated - a
-         * packed pmix_info_t is never smaller than a byte, so a count
-         * larger than the blob we actually received is malformed and must
-         * not be handed to PMIX_INFO_CREATE (a huge value over-allocates,
-         * or fails and leaves iblob NULL for the unpack below to walk off
-         * of). This mirrors the guard on the tool path in
-         * process_tool_request(). */
-        if (nblob > len) {
+        /* the blob must still hold nblob packed pmix_info_t. This
+         * mirrors the check on the tool path in process_tool_request() */
+        if (!pmix_bfrop_count_fits(&buf, nblob, PMIX_INFO)) {
             rc = PMIX_ERR_BAD_PARAM;
             PMIX_ERROR_LOG(rc);
             PMIx_Info_list_release(ilist);
@@ -1631,10 +1626,8 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             PMIx_Info_list_release(ilist);
             goto cleanup;
         }
-        /* the count came off the wire - a packed pmix_info_t is never
-         * smaller than a byte, so anything larger than the bytes we
-         * actually received is malformed and must not be allocated */
-        if (sz > cnt) {
+        /* the payload must still hold sz packed pmix_info_t */
+        if (!pmix_bfrop_count_fits(&buf, sz, PMIX_INFO)) {
             rc = PMIX_ERR_BAD_PARAM;
             PMIX_ERROR_LOG(rc);
             PMIx_Info_list_release(ilist);

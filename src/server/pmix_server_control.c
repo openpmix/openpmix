@@ -87,16 +87,10 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_RELEASE(cd);
         return rc;
     }
-    /* the count arrives off the wire and is carried in a size_t, while the
-     * allocation below multiplies it by sizeof(pmix_query_t) with no
-     * overflow guard and then constructs every one of the elements it
-     * claimed - so a count large enough to wrap that product yields a
-     * short allocation whose constructor loop runs straight off the end,
-     * before the unpack gets a chance to screen anything. Require the
-     * count to survive the round trip through the int32_t the unpack
-     * consumes it as, which bounds it well clear of the wrap */
+    /* the buffer must hold that many packed elements before the count
+     * sizes an allocation - see pmix_bfrop_count_fits() */
     cnt = cd->nqueries;
-    if (0 > cnt || (size_t) cnt != cd->nqueries) {
+    if (!pmix_bfrop_count_fits(buf, cd->nqueries, PMIX_QUERY)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cd);
@@ -177,15 +171,11 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
-    /* the count arrives off the wire and is carried in a size_t while
-     * every use of it goes through the int32_t unpack count, so screen
-     * the truncation here. Unlike its siblings, this handler acts on
-     * cd->ninfo even when the unpack below is skipped - it hands the
-     * pair straight to plog - so a count that survives as zero would
-     * walk a NULL array. The directive count below is worse still: it
-     * indexes the array before anything is unpacked into it */
+    /* the buffer must hold that many packed infos. This handler hands
+     * (info, ninfo) to plog even when the unpack below is skipped, and
+     * the directive count below is checked the same way */
     cnt = cd->ninfo;
-    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, cd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -209,7 +199,7 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
         goto exit;
     }
     cnt = cd->ndirs;
-    if (0 > cnt || (size_t) cnt != cd->ndirs) {
+    if (!pmix_bfrop_count_fits(buf, cd->ndirs, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -335,7 +325,7 @@ pmix_status_t pmix_server_alloc(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* screen the count before it reaches the allocator - see the note in
      * pmix_server_query above */
     cnt = cd->ninfo;
-    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, cd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -586,7 +576,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* screen the count before it reaches the allocator - see the note in
      * pmix_server_query above */
     cnt = cd->ntargets;
-    if (0 > cnt || (size_t) cnt != cd->ntargets) {
+    if (!pmix_bfrop_count_fits(buf, cd->ntargets, PMIX_PROC)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -708,7 +698,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* screen the count before it reaches the allocator - see the note in
      * pmix_server_query above */
     cnt = cd->ninfo;
-    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, cd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1039,7 +1029,7 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* screen the count before it reaches the allocator - see the note in
      * pmix_server_query above */
     cnt = cb->ndirs;
-    if (0 > cnt || (size_t) cnt != cb->ndirs) {
+    if (!pmix_bfrop_count_fits(buf, cb->ndirs, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1102,7 +1092,7 @@ pmix_status_t pmix_server_get_credential(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* screen the count before it reaches the allocator - see the note in
      * pmix_server_query above */
     cnt = cd->ninfo;
-    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, cd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1184,7 +1174,7 @@ pmix_status_t pmix_server_validate_credential(pmix_peer_t *peer, pmix_buffer_t *
     /* screen the count before it reaches the allocator - see the note in
      * pmix_server_query above */
     cnt = cd->ninfo;
-    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, cd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1270,7 +1260,7 @@ pmix_status_t pmix_server_session_ctrl(pmix_server_caddy_t *cd,
     /* screen the count before it reaches the allocator - see the note in
      * pmix_server_query above */
     cnt = scd->ninfo;
-    if (0 > cnt || (size_t) cnt != scd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, scd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1358,7 +1348,7 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
     /* screen the count before it reaches the allocator - see the note in
      * pmix_server_query above */
     cnt = scd->nunits;
-    if (0 > cnt || (size_t) cnt != scd->nunits) {
+    if (!pmix_bfrop_count_fits(buf, scd->nunits, PMIX_RESOURCE_UNIT)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1384,7 +1374,7 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
     /* screen the count before it reaches the allocator - see the note in
      * pmix_server_query above */
     cnt = scd->ninfo;
-    if (0 > cnt || (size_t) cnt != scd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, scd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;

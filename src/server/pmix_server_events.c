@@ -538,14 +538,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* The count arrives off the wire in a size_t while the unpack below
-     * consumes it through an int32_t, so screen the truncation here.
-     * Every loop in this function walks the array for "ncodes" entries
-     * while only "cnt" of them were ever unpacked into it - and unlike an
-     * info array, this one comes from a bare malloc, so the entries past
-     * the unpack are uninitialized rather than constructed */
+    /* the buffer must hold that many packed codes before the count
+     * sizes an allocation. Every loop in this function walks the array
+     * for ncodes entries */
     cnt = ncodes;
-    if (0 > cnt || (size_t) cnt != ncodes) {
+    if (!pmix_bfrop_count_fits(buf, ncodes, PMIX_STATUS)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -572,17 +569,10 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    /* The same round-trip screen this count needs for the same reason the
-     * code count above needs it, and for one more: PMIx_Info_create
-     * computes "ninfo * sizeof(pmix_info_t)" with no overflow guard and
-     * then constructs every one of the ninfo elements, so a count that
-     * wraps that product yields a short allocation whose constructor loop
-     * runs straight off the end. The crash happens inside the allocation,
-     * before the unpack gets a chance to screen anything, and a local
-     * client drives it directly. The directive scan below also walks the
-     * size_t rather than the int32_t the unpack consumed. */
+    /* the same check for the info count. The directive scan below
+     * walks this size_t */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
@@ -1117,20 +1107,11 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
-    /* Screen the count before it sizes an allocation. This handler has
-     * the shape the collective handlers were fixed for: the array is
-     * sized "ninfo + 1" so the internal-notify marker can be seeded in
-     * the last slot, and PMIx_Info_create computes
-     * "n * sizeof(pmix_info_t)" with no overflow guard before
-     * constructing every one of the n elements - so a count that wraps
-     * that product (2^61 wraps it to exactly zero, for which malloc
-     * hands back a live pointer) gives a short allocation whose
-     * constructor loop runs off the end. A local client drives this
-     * straight off the wire. The round trip through the int32_t the
-     * unpack consumes also keeps the two loops below, which walk the
-     * size_t, from reading past what was actually unpacked. */
+    /* check the count before it sizes an allocation. The array is
+     * sized ninfo + 1 so the internal-notify marker can be seeded in the
+     * last slot, and the two loops below walk this size_t */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
