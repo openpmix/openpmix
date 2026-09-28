@@ -1909,7 +1909,7 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
     /* this count sizes an allocation and then indexes it, and it came off
      * the wire - the same screen every other handler here applies */
     cnt = nprocs;
-    if (nprocs < 1 || 0 > cnt || (size_t) cnt != nprocs) {
+    if (nprocs < 1 || !pmix_bfrop_count_fits(buf, nprocs, PMIX_PROC)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto done;
@@ -2346,17 +2346,11 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto error;
     }
-    /* Screen the count before it sizes an allocation. PMIx_Proc_create
-     * multiplies it by sizeof(pmix_proc_t) with no overflow guard and then
-     * constructs that many elements, so a wire value large enough to wrap
-     * the product yields a short allocation the constructor loop runs off
-     * the end of. It is also the size_t - not the int32_t the unpack
-     * consumes - that the memcpy in get_tracker and the PMIX_PROC_FREE
-     * below walk. Requiring the count to survive the round trip through
-     * that int32_t bounds it well clear of both, and is the same screen
-     * the fence, connect and disconnect handlers apply. */
+    /* the buffer must hold that many packed procs before the count
+     * sizes an allocation. The memcpy in get_tracker and the
+     * PMIX_PROC_FREE below walk this size_t */
     cnt = nprocs;
-    if (0 > cnt || (size_t) cnt != nprocs) {
+    if (!pmix_bfrop_count_fits(buf, nprocs, PMIX_PROC)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         nprocs = 0;
@@ -2401,15 +2395,11 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto error;
     }
-    /* Same screen, and this handler needs it more than most: the status
-     * slot is seeded at info[ninf] *before* anything is unpacked into the
-     * array, so a count near SIZE_MAX wraps "ninf + 1" to zero - for which
-     * PMIx_Info_create answers NULL - and the seed is then written at
-     * info[SIZE_MAX]. There is no unpack in front of it to screen
-     * anything, and a local client drives it directly. The directive scan
-     * below walks the size_t as well. */
+    /* the status slot is seeded at info[ninf] before anything is
+     * unpacked, and the directive scan below walks this size_t - so
+     * check the count here */
     cnt = ninf;
-    if (0 > cnt || (size_t) cnt != ninf) {
+    if (!pmix_bfrop_count_fits(buf, ninf, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto error;

@@ -115,17 +115,10 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
-    /* Screen the count before it sizes an allocation. PMIx_Info_create
-     * multiplies it by sizeof(pmix_info_t) with no overflow guard and
-     * then constructs every one of the elements it claimed, so a count
-     * that wraps that product gives a short allocation whose constructor
-     * loop runs off the end - the crash happens inside the allocation,
-     * before the unpack gets a chance to screen anything. qdes also
-     * walks this size_t when it frees. Require the count to survive the
-     * round trip through the int32_t the unpack consumes it as; see
-     * src/server/AGENTS.md. */
+    /* check the count before it sizes an allocation - qdes walks this
+     * size_t when it frees. See pmix_bfrop_count_fits() */
     cnt = qcd->ninfo;
-    if (0 > cnt || (size_t) cnt != qcd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, qcd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -350,7 +343,7 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
     /* the same screen, for the same reasons - and this array is parked on
      * the server caddy, whose destructor walks the size_t when it frees */
     cnt = cd->ninfo;
-    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, cd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         cd->ninfo = 0;

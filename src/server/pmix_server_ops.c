@@ -169,15 +169,10 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto error;
     }
-    /* screen the count before it sizes an allocation: PMIx_Proc_create
-     * computes "n * sizeof(pmix_proc_t)" with no overflow guard and then
-     * constructs every one of the n elements, so a count large enough to
-     * wrap that product yields a short allocation whose constructor loop
-     * runs straight off the end - and scaddes walks the same size_t again
-     * when it frees. This is the round-trip screen the publish and spawn
-     * handlers below carry for exactly the same reason. */
+    /* check the count before it sizes an allocation - scaddes walks
+     * the same size_t when it frees. See pmix_bfrop_count_fits() */
     cnt = cd->nprocs;
-    if (0 > cnt || (size_t) cnt != cd->nprocs) {
+    if (!pmix_bfrop_count_fits(buf, cd->nprocs, PMIX_PROC)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto error;
@@ -285,14 +280,10 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* screen the count before it sizes an allocation: PMIx_Info_create
-     * computes "n * sizeof(pmix_info_t)" with no overflow guard and then
-     * constructs every one of the n elements, so a count large enough to
-     * wrap that product yields a short allocation whose constructor loop
-     * runs straight off the end. This is the round-trip screen the
-     * collective and IOF handlers carry for the same reason. */
+    /* the buffer must hold that many packed elements before the count
+     * sizes an allocation - see pmix_bfrop_count_fits() */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -445,7 +436,7 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* screen the count before it sizes an allocation - see the note in
      * pmix_server_publish */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
@@ -583,7 +574,7 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* screen the count before it sizes an allocation - see the note in
      * pmix_server_publish */
     cnt = ninfo;
-    if (0 > cnt || (size_t) cnt != ninfo) {
+    if (!pmix_bfrop_count_fits(buf, ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
@@ -811,7 +802,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
      * pmix_server_publish. The parser below also walks this size_t rather
      * than the int32_t the unpack consumed */
     cnt = cd->ninfo;
-    if (0 > cnt || (size_t) cnt != cd->ninfo) {
+    if (!pmix_bfrop_count_fits(buf, cd->ninfo, PMIX_INFO)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cd);
@@ -860,7 +851,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
      * as PMIx_Info_create does, and scaddes walks this size_t when it
      * frees the array */
     cnt = cd->napps;
-    if (0 > cnt || (size_t) cnt != cd->napps) {
+    if (!pmix_bfrop_count_fits(buf, cd->napps, PMIX_APP)) {
         rc = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(rc);
         goto cleanup;
