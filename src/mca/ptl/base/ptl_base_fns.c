@@ -938,6 +938,7 @@ pmix_status_t pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
     }
 
     pmix_atomic_set_bool(&pmix_globals.connected);
+    peer->upstream = true;
 
     pmix_ptl_base_set_nonblocking(peer->sd);
 

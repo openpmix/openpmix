@@ -411,6 +411,7 @@ static void pcon(pmix_peer_t *p)
     p->protocol = PMIX_PROTOCOL_UNDEF;
     p->finalized = false;
     p->stdin_producer = false;
+    p->upstream = false;
     p->info = NULL;
     p->proc_cnt = 0;
     p->index = 0;
