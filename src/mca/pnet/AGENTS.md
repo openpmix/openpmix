@@ -41,7 +41,11 @@ opportunity to:
 - **Set up the local network** on each compute-node daemon after the job
   is registered — unpack whatever blob `allocate` produced and cache it
   as job-level info / envars (`setup_local_network`, driven by
-  `PMIx_server_setup_local_support`).
+  `PMIx_server_setup_local_support`). **Envar directives stay on the
+  namespace's pnet envar cache** for `setup_fork` to set in each of that
+  job's children; they are never stored as job info, where another
+  namespace could read them. Job info is for what the job's processes
+  query, such as endpoints.
 - **Inject envars into a child** just before fork/exec (`setup_fork`) —
   the namespace-wide ones the base replays from its cache, and the
   per-rank ones each module contributes, notably naming the NIC a process
