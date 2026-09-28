@@ -3003,7 +3003,7 @@ typedef void (*pmix_credential_cbfunc_t)(pmix_status_t status,
  *        The precise contents of the array will depend on the host SMS and
  *        its associated security system. At the minimum, it is expected (but
  *        not required) that the array will contain entries for the PMIX_USERID
- *        and PMIX_GROUPID of the client described in the credential.
+ *        and PMIX_GRPID of the client described in the credential.
  *
  * ninfo - number of elements in the info array
  *
