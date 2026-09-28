@@ -14,15 +14,20 @@ AM_TESTS_ENVIRONMENT = . $(abs_top_builddir)/test/pmix_test_env.sh;
 
 check_PROGRAMS = mca_base_var mca_base_var_enum mca_base_component \
     mca_base_show_load_errors mca_base_framework mca_base_paramfile \
-    mca_base_select
+    mca_base_select mca_base_nohome
 
 TESTS = mca_base_var mca_base_var_enum mca_base_component \
     mca_base_show_load_errors mca_base_framework mca_base_paramfile \
-    mca_base_select
+    mca_base_select mca_base_nohome
 
 mca_base_var_SOURCES = mca_base_var.c
 mca_base_var_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 mca_base_var_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+mca_base_nohome_SOURCES = mca_base_nohome.c
+mca_base_nohome_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+mca_base_nohome_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 mca_base_var_enum_SOURCES = mca_base_var_enum.c
@@ -58,4 +63,4 @@ mca_base_select_LDADD = \
 clean-local:
 	rm -f mca_base_var mca_base_var_enum mca_base_component \
 	    mca_base_show_load_errors mca_base_framework mca_base_paramfile \
-    mca_base_select
+    mca_base_select mca_base_nohome

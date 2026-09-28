@@ -331,10 +331,16 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     }
 
 #if PMIX_WANT_HOME_CONFIG_FILES
-    ret = pmix_asprintf(&pmix_mca_base_var_files,
-                   "%s" PMIX_PATH_SEP ".pmix" PMIX_PATH_SEP "mca-params.conf%c%s" PMIX_PATH_SEP
-                   "pmix-mca-params.conf",
-                   home, ',', pmix_pinstall_dirs.sysconfdir);
+    if (NULL != home) {
+        ret = pmix_asprintf(&pmix_mca_base_var_files,
+                       "%s" PMIX_PATH_SEP ".pmix" PMIX_PATH_SEP "mca-params.conf%c%s" PMIX_PATH_SEP
+                       "pmix-mca-params.conf",
+                       home, ',', pmix_pinstall_dirs.sysconfdir);
+    } else {
+        /* no home directory, so only the system file */
+        ret = pmix_asprintf(&pmix_mca_base_var_files, "%s" PMIX_PATH_SEP "pmix-mca-params.conf",
+                       pmix_pinstall_dirs.sysconfdir);
+    }
 #else
     ret = pmix_asprintf(&pmix_mca_base_var_files, "%s" PMIX_PATH_SEP "pmix-mca-params.conf",
                    pmix_pinstall_dirs.sysconfdir);
