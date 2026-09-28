@@ -122,6 +122,12 @@ Four things about a stream's lifetime are easy to get wrong, and were.
   stream and gets reissued, and one arm of `do_open()` did not set the
   descriptor either, so a recycled slot could start life pointed at a
   descriptor that had been closed.
+- **A stream's file is created with `pmix_os_dirpath_create_file()`.**
+  A new stream gets a fresh file, mode 0600, replacing anything left at
+  the name; an appending stream opens with `pmix_os_dirpath_open_file()`
+  and uses the file only if it is a regular file owned by this user with
+  one link. Neither follows a symbolic link at the name.
+  `test_output_file_not_through_link` in `util_output.c` covers both.
 
 **The syslog support was dead in every build ever shipped.** All of it
 was compiled behind `HAVE_SYSLOG`, and nothing in this tree defines that
