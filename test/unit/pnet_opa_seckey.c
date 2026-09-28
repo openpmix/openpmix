@@ -257,6 +257,50 @@ static pmix_status_t register_nspace(void)
     return rc;
 }
 
+/* Is anything stored as job data under PMIX_CREDENTIAL for this job?
+ * The datastore belongs to the progress thread, so ask from there. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    const char *nspace;
+    bool found;
+} credq_t;
+
+static void do_credq(int sd, short args, void *cbdata)
+{
+    credq_t *q = (credq_t *) cbdata;
+    pmix_proc_t wildcard;
+    pmix_cb_t cb;
+    pmix_status_t rc;
+
+    (void) sd;
+    (void) args;
+    PMIX_LOAD_PROCID(&wildcard, q->nspace, PMIX_RANK_WILDCARD);
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = &wildcard;
+    cb.key = PMIX_CREDENTIAL;
+    cb.scope = PMIX_INTERNAL;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    q->found = (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&cb.kvs));
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+    PMIX_WAKEUP_THREAD(&q->lock);
+}
+
+static bool job_holds_credential(const char *nspace)
+{
+    credq_t q;
+
+    memset(&q, 0, sizeof(q));
+    PMIX_CONSTRUCT_LOCK(&q.lock);
+    q.nspace = nspace;
+    PMIX_THREADSHIFT(&q, do_credq);
+    PMIX_WAIT_THREAD(&q.lock);
+    PMIX_DESTRUCT_LOCK(&q.lock);
+    return q.found;
+}
+
 int main(int argc, char **argv)
 {
     pmix_info_t *blob = NULL;
@@ -319,6 +363,9 @@ int main(int argc, char **argv)
     PMIx_Argv_free(env);
     env = NULL;
     PMIX_INFO_DESTRUCT(&directive);
+    /* the key reaches the child through its environment only - it is
+     * not job data another process could read */
+    ok(!job_holds_credential(TESTNS), "the key is not stored as job data");
 
     /* --- the key, asked for through the deprecated network array --- */
 
