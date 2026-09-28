@@ -174,6 +174,8 @@ error:
         if (0 <= ch->peer->index) {
             pmix_pointer_array_set_item(&pmix_server_globals.clients, ch->peer->index, NULL);
         }
+        /* the socket is closed once, below */
+        ch->peer->sd = -1;
         PMIX_RELEASE(ch->peer);
     }
     CLOSE_THE_SOCKET(ch->pnd->sd);
@@ -860,6 +862,9 @@ error:
                 info->peerid = -1;
             }
         }
+        /* the socket is closed once, below - releasing a peer closes the
+         * one it holds */
+        peer->sd = -1;
         PMIX_RELEASE(peer);
     }
     CLOSE_THE_SOCKET(pnd->sd);
