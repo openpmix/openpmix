@@ -1674,13 +1674,12 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     PMIx_Info_list_add_unique(ilist, PMIX_VERSION_INFO,
                               pnd->version, PMIX_STRING, true);
 
-    /* provide the user id */
+    /* provide the user id and group id from the handshake, in place of
+     * any the tool put in its own info */
     PMIx_Info_list_add_unique(ilist, PMIX_USERID,
-                              &pnd->uid, PMIX_UINT32, false);
-
-    /* and the group id */
+                              &pnd->uid, PMIX_UINT32, true);
     PMIx_Info_list_add_unique(ilist, PMIX_GRPID,
-                              &pnd->gid, PMIX_UINT32, false);
+                              &pnd->gid, PMIX_UINT32, true);
 
     /* if we have it, pass along their ID */
     if (!pnd->need_id) {

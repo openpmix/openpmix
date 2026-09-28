@@ -320,6 +320,7 @@ test/unit/server_op_replies
 test/unit/server_ops
 test/unit/server_fabric
 test/unit/server_resolve
+test/unit/server_requester_id
 test/unit/server_setup
 test/unit/info_support
 test/unit/rndz_stale

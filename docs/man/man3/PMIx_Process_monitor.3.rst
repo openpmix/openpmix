@@ -193,9 +193,9 @@ General directives that may accompany any action include:
 * ``PMIX_RANGE`` (pmix_data_range_t) |mdash| non-default range to use when
   generating the associated event for this monitoring action.
 
-When a monitoring request involves other nodes, the library adds the
-``PMIX_USERID`` and ``PMIX_GRPID`` of the requesting process to the directives it
-passes to its host environment.
+When the library passes a monitoring request to its host environment, the
+directives carry the ``PMIX_USERID`` and ``PMIX_GRPID`` of the requesting
+process (see :ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>`).
 
 
 RESOURCE USAGE ATTRIBUTES

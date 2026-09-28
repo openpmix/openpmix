@@ -238,6 +238,56 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
+pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info,
+                                           size_t *ninfo)
+{
+    pmix_info_t *old = *info, *new;
+    size_t n, m, nold = *ninfo;
+    bool have_gid = false;
+    uint32_t id;
+
+    if (NULL == peer || NULL == peer->info) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    new = PMIx_Info_create(nold + 2);
+    if (NULL == new) {
+        return PMIX_ERR_NOMEM;
+    }
+    /* move every entry except a uid the requester supplied, and all but
+     * the first well-formed gid - the entries are moved, not copied, so
+     * the old block is released below without destructing them */
+    m = 0;
+    for (n = 0; n < nold; n++) {
+        if (PMIx_Check_key(old[n].key, PMIX_USERID)) {
+            PMIx_Info_destruct(&old[n]);
+            continue;
+        }
+        if (PMIx_Check_key(old[n].key, PMIX_GRPID)) {
+            if (have_gid || PMIX_UINT32 != old[n].value.type) {
+                PMIx_Info_destruct(&old[n]);
+                continue;
+            }
+            have_gid = true;
+        }
+        memcpy(&new[m], &old[n], sizeof(pmix_info_t));
+        ++m;
+    }
+    id = (uint32_t) peer->info->uid;
+    PMIx_Info_load(&new[m], PMIX_USERID, &id, PMIX_UINT32);
+    ++m;
+    if (!have_gid) {
+        id = (uint32_t) peer->info->gid;
+        PMIx_Info_load(&new[m], PMIX_GRPID, &id, PMIX_UINT32);
+        ++m;
+    }
+    if (NULL != old) {
+        PMIx_Info_free(old, 0);
+    }
+    *info = new;
+    *ninfo = m;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
                                   pmix_op_cbfunc_t cbfunc,
                                   void *cbdata)
@@ -247,7 +297,7 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
     int32_t cnt;
     size_t ninfo;
     pmix_proc_t proc;
-    uint32_t uid, gid;
+    uint32_t uid;
 
     pmix_output_verbose(2, pmix_server_globals.pub_output, "recvd PUBLISH");
 
@@ -271,8 +321,6 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    uid = peer->info->uid;
-    gid = peer->info->gid;
     /* unpack the number of info objects */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
@@ -288,23 +336,21 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* we will be adding two: the user id and the group id */
     cd = PMIX_NEW(pmix_setup_caddy_t);
     if (NULL == cd) {
         return PMIX_ERR_NOMEM;
     }
     cd->opcbfunc = cbfunc;
     cd->cbdata = cbdata;
-    cd->ninfo = ninfo + 2;
-    PMIX_INFO_CREATE(cd->info, cd->ninfo);
-    if (NULL == cd->info) {
-        rc = PMIX_ERR_NOMEM;
-        goto cleanup;
+    cd->ninfo = ninfo;
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        if (NULL == cd->info) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
     }
-    /* unpack the array of info objects - gate on the count that came off
-     * the wire, not on the array size, which carries our own extra slot.
-     * With no info objects there is nothing left in the buffer, so the
-     * unpack the old gate always ran failed the whole publish. */
+    /* unpack the array of info objects */
     if (0 < ninfo) {
         cnt = ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
@@ -313,12 +359,14 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
             goto cleanup;
         }
     }
-    pmix_strncpy(cd->info[cd->ninfo - 2].key, PMIX_USERID, PMIX_MAX_KEYLEN);
-    cd->info[cd->ninfo - 2].value.type = PMIX_UINT32;
-    cd->info[cd->ninfo - 2].value.data.uint32 = uid;
-    pmix_strncpy(cd->info[cd->ninfo - 1].key, PMIX_GRPID, PMIX_MAX_KEYLEN);
-    cd->info[cd->ninfo - 1].value.type = PMIX_UINT32;
-    cd->info[cd->ninfo - 1].value.data.uint32 = gid;
+    /* the host decides access to published data by the requester's
+     * identity, so pass the pair recorded for this peer at connection,
+     * in place of any the requester supplied */
+    rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
 
     /* call the local server */
     pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
@@ -366,7 +414,7 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
     char *sptr;
     size_t ninfo;
     pmix_proc_t proc;
-    uint32_t uid, gid;
+    uint32_t uid;
 
     pmix_output_verbose(2, pmix_server_globals.pub_output, "recvd LOOKUP");
 
@@ -390,8 +438,6 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    uid = peer->info->uid;
-    gid = peer->info->gid;
     /* unpack the number of keys */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &nkeys, &cnt, PMIX_SIZE);
@@ -441,12 +487,13 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    /* we will be adding two: the user id and the group id */
-    cd->ninfo = ninfo + 2;
-    PMIX_INFO_CREATE(cd->info, cd->ninfo);
-    if (NULL == cd->info) {
-        rc = PMIX_ERR_NOMEM;
-        goto cleanup;
+    cd->ninfo = ninfo;
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        if (NULL == cd->info) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
     }
     /* unpack the array of info objects */
     if (0 < ninfo) {
@@ -457,12 +504,14 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
             goto cleanup;
         }
     }
-    pmix_strncpy(cd->info[cd->ninfo - 2].key, PMIX_USERID, PMIX_MAX_KEYLEN);
-    cd->info[cd->ninfo - 2].value.type = PMIX_UINT32;
-    cd->info[cd->ninfo - 2].value.data.uint32 = uid;
-    pmix_strncpy(cd->info[cd->ninfo - 1].key, PMIX_GRPID, PMIX_MAX_KEYLEN);
-    cd->info[cd->ninfo - 1].value.type = PMIX_UINT32;
-    cd->info[cd->ninfo - 1].value.data.uint32 = gid;
+    /* the host decides access to published data by the requester's
+     * identity, so pass the pair recorded for this peer at connection,
+     * in place of any the requester supplied */
+    rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
 
     /* call the local server */
     pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
@@ -504,7 +553,7 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
     size_t i, nkeys, ninfo;
     char *sptr;
     pmix_proc_t proc;
-    uint32_t uid, gid;
+    uint32_t uid;
 
     pmix_output_verbose(2, pmix_server_globals.pub_output, "recvd UNPUBLISH");
 
@@ -528,8 +577,6 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    uid = peer->info->uid;
-    gid = peer->info->gid;
     /* unpack the number of keys */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &nkeys, &cnt, PMIX_SIZE);
@@ -579,12 +626,13 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    /* we will be adding two: the user id and the group id */
-    cd->ninfo = ninfo + 2;
-    PMIX_INFO_CREATE(cd->info, cd->ninfo);
-    if (NULL == cd->info) {
-        rc = PMIX_ERR_NOMEM;
-        goto cleanup;
+    cd->ninfo = ninfo;
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        if (NULL == cd->info) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
     }
     /* unpack the array of info objects */
     if (0 < ninfo) {
@@ -595,12 +643,14 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
             goto cleanup;
         }
     }
-    pmix_strncpy(cd->info[cd->ninfo - 2].key, PMIX_USERID, PMIX_MAX_KEYLEN);
-    cd->info[cd->ninfo - 2].value.type = PMIX_UINT32;
-    cd->info[cd->ninfo - 2].value.data.uint32 = uid;
-    pmix_strncpy(cd->info[cd->ninfo - 1].key, PMIX_GRPID, PMIX_MAX_KEYLEN);
-    cd->info[cd->ninfo - 1].value.type = PMIX_UINT32;
-    cd->info[cd->ninfo - 1].value.data.uint32 = gid;
+    /* the host decides access to published data by the requester's
+     * identity, so pass the pair recorded for this peer at connection,
+     * in place of any the requester supplied */
+    rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
 
     /* call the local server */
     pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
@@ -874,6 +924,12 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
     cd->copied = true;
 
     if (NULL != pmix_host_server.spawn) {
+        /* pass the requester's identity to the host */
+        rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
         /* call the local server */
         PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
         rc = pmix_host_server.spawn(&proc, cd->info, cd->ninfo,
