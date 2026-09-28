@@ -84,6 +84,9 @@ typedef struct {
     pmix_lookup_cbfunc_t lkcbfunc;
     pmix_spawn_cbfunc_t spcbfunc;
     void *cbdata;
+    /* an IOF pull registration waiting for the host's approval - retained,
+     * so the approval can tell whether its slot still holds it */
+    pmix_iof_req_t *iofreq;
 } pmix_setup_caddy_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_setup_caddy_t);
 
