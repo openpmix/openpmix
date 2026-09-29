@@ -65,5 +65,6 @@ Table of contents
    code-of-conduct
    license
    security
+   security-plan
    news/index
    man/index
