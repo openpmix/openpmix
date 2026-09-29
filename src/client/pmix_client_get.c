@@ -876,6 +876,44 @@ static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
 /* this callback is coming from the ptl recv, and thus
  * is occurring inside of our progress thread - hence, no
  * need to thread shift */
+/* A server that holds our groups answers a get for a proc named by its
+ * group ID and group rank with that member's data, under the member's own
+ * name - see pmix_client_server_has_groups(). Find the member in the
+ * reply, consuming nothing, so the waiters can be answered from what the
+ * reply stores. A reply for a proc named directly carries no process of
+ * another namespace */
+static bool member_in_reply(pmix_buffer_t *buf, const pmix_proc_t *asked, pmix_proc_t *member)
+{
+    char *mark = buf->unpack_ptr;
+    pmix_byte_object_t bo;
+    pmix_buffer_t pbkt;
+    pmix_proc_t proct;
+    pmix_status_t rc;
+    int32_t cnt = 1;
+    bool found = false;
+
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &bo, &cnt, PMIX_BYTE_OBJECT);
+    while (!found && PMIX_SUCCESS == rc) {
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+        PMIX_LOAD_BUFFER(pmix_client_globals.myserver, &pbkt, bo.bytes, bo.size);
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &pbkt, &proct, &cnt, PMIX_PROC);
+        if (PMIX_SUCCESS == rc && PMIX_RANK_IS_VALID(proct.rank) &&
+            0 != strncmp(proct.nspace, asked->nspace, PMIX_MAX_NSLEN)) {
+            memcpy(member, &proct, sizeof(pmix_proc_t));
+            found = true;
+        }
+        PMIX_DESTRUCT(&pbkt);
+        if (!found) {
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &bo, &cnt,
+                               PMIX_BYTE_OBJECT);
+        }
+    }
+    buf->unpack_ptr = mark;
+    return found;
+}
+
 static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                           pmix_buffer_t *buf, void *cbdata)
 {
@@ -886,7 +924,8 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     int32_t cnt;
     pmix_kval_t *kv;
     pmix_get_logic_t *lg;
-    pmix_proc_t rproc;
+    pmix_proc_t rproc, member;
+    bool bymember = false;
     /* job-level values this reply carried that were handed back rather
      * than stored - see the accept_kvs_resp contract */
     pmix_list_t jobvals;
@@ -956,6 +995,9 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
      * the buffer will include a copy of the data. If
      * it is the shmem component, it will contain just
      * the memory address info */
+    if (pmix_client_server_has_groups()) {
+        bymember = member_in_reply(buf, &lg->p, &member);
+    }
     PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_globals.mypeer, buf, &jobvals);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         /* what the payload could not be stored as is precisely what every
@@ -995,8 +1037,9 @@ done:
                 }
                 continue;
             }
-            /* we have the data for this proc - see if we can find the key */
-            cb->proc = &rproc;
+            /* we have the data for this proc - see if we can find the key.
+             * A proc named by its group is stored under the member's name */
+            cb->proc = bymember ? &member : &rproc;
             cb->scope = PMIX_SCOPE_UNDEF;
             pmix_output_verbose(2, pmix_client_globals.get_output,
                                 "pmix: get_nb searching for key %s for rank %s", cb->key,

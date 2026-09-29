@@ -152,6 +152,9 @@ returned.
   case is determined by the host environment.)
 * ``PMIX_ERR_BAD_PARAM`` |mdash| a required argument was invalid (e.g., a ``NULL``
   or over-length group identifier).
+* ``PMIX_ERR_NOT_FOUND`` |mdash| no group by that name is known.
+* ``PMIX_ERR_NOT_A_MEMBER`` |mdash| the calling process is not a member of the
+  group.
 * ``PMIX_ERR_TIMEOUT`` |mdash| the group did not destruct within the time specified
   by ``PMIX_TIMEOUT``.
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the host environment does not support group

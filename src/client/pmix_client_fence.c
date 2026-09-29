@@ -190,7 +190,8 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
     }
 
     /* verify that the calling process is among the fence participants */
-    if (!pmix_client_proc_is_included(rgs, nrg)) {
+    if (!pmix_client_server_has_groups() &&
+        !pmix_client_proc_is_included(rgs, nrg)) {
         if (created) {
             PMIX_PROC_FREE(rgs, nrg);
         }
