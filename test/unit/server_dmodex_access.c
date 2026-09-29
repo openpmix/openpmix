@@ -410,6 +410,9 @@ static void test_requesting(pmix_peer_t *a0, pmix_peer_t *a1, pmix_peer_t *b0)
            PMIX_SUCCESS == rc && 3 == ncalls && !again.fired && B_UID == calls[2].uid);
     answer(&calls[2], PMIX_ERR_NO_PERMISSIONS);
 
+    rc = do_get(a1, NS_REMOTE, 0, &again);
+    report("an approved requester is answered from the copy",
+           PMIX_SUCCESS == rc && 3 == ncalls && again.fired && PMIX_SUCCESS == again.status);
     report("an approved requester may be answered from the copy",
            pmix_server_peer_may_use_copy(a1, remote));
     report("one not approved may not", !pmix_server_peer_may_use_copy(b0, remote));

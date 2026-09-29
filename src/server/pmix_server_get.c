@@ -582,7 +582,11 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
      * client that the host RM hasn't told us about yet. Fortunately,
      * we do know how many clients to expect, so first check to see if
      * all clients have been registered with us */
-    if (!nptr->all_registered) {
+    /* A namespace the host never registered here - one created to hold
+     * data fetched for a requester - will never have local clients to
+     * wait for, so its data is looked for below like any remote proc's.
+     * Waiting parked every later request for it for good */
+    if (!nptr->all_registered && nptr->access.registered) {
         pmix_output_verbose(2, pmix_server_globals.get_output,
                            "%s:%d NSPACE %s not all registered - delay %d",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank,
