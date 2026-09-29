@@ -287,6 +287,15 @@ The job's ``PMIX_USERID`` and ``PMIX_GRPID`` may be given either as numbers
 resolves a name when the namespace is registered, and stores and reports only
 the number. The ``info`` array itself is not changed.
 
+These identify the job's *owner*, and ``PMIX_ACCESS_PERMISSIONS`` (holding
+``PMIX_ACCESS_USERIDS`` and/or ``PMIX_ACCESS_GRPIDS``, whose entries may also be
+names) names further users and groups allowed to access the job. The library
+records both when the namespace is registered; a later registration that names a
+list replaces it, and one that does not keeps it. If no owner is given, the job
+belongs to the user its clients are registered with. A malformed
+``PMIX_ACCESS_PERMISSIONS`` fails the registration with ``PMIX_ERR_BAD_PARAM``.
+See :doc:`/security-plan` for how the library uses them.
+
 
 .. include:: /man/no-blocking-in-progress-thread.rst
 

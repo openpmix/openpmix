@@ -301,20 +301,94 @@ static bool is_id_key(const pmix_info_t *info)
     return (PMIx_Check_key(info->key, PMIX_USERID) || PMIx_Check_key(info->key, PMIX_GRPID));
 }
 
+/* PMIX_ACCESS_USERIDS / PMIX_ACCESS_GRPIDS - a list of ids, each of which
+ * may be a name */
+static bool is_id_list_key(const pmix_info_t *info)
+{
+    return (PMIx_Check_key(info->key, PMIX_ACCESS_USERIDS) ||
+            PMIx_Check_key(info->key, PMIX_ACCESS_GRPIDS));
+}
+
+static bool is_user_key(const pmix_info_t *info)
+{
+    return (PMIx_Check_key(info->key, PMIX_USERID) ||
+            PMIx_Check_key(info->key, PMIX_ACCESS_USERIDS));
+}
+
+/* an id list given by name: one string, or a data array of strings */
+static bool is_named_id_list(const pmix_info_t *info)
+{
+    if (!is_id_list_key(info)) {
+        return false;
+    }
+    if (PMIX_STRING == info->value.type) {
+        return true;
+    }
+    return (PMIX_DATA_ARRAY == info->value.type && NULL != info->value.data.darray &&
+            PMIX_STRING == info->value.data.darray->type);
+}
+
+static pmix_status_t resolve_one(const pmix_info_t *info, const char *name, uint32_t *id)
+{
+    if (is_user_key(info)) {
+        return pmix_util_uid_from_string(name, id);
+    }
+    return pmix_util_gid_from_string(name, id);
+}
+
+/* replace an id list given by name with the same list as numbers */
+static pmix_status_t resolve_id_list(pmix_info_t *info)
+{
+    pmix_data_array_t *da, *nda;
+    char **names;
+    uint32_t *ids, id;
+    pmix_status_t rc;
+    size_t n;
+
+    if (PMIX_STRING == info->value.type) {
+        rc = resolve_one(info, info->value.data.string, &id);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        PMIx_Value_destruct(&info->value);
+        return PMIx_Value_load(&info->value, &id, PMIX_UINT32);
+    }
+    da = info->value.data.darray;
+    nda = PMIx_Data_array_create(da->size, PMIX_UINT32);
+    if (NULL == nda) {
+        return PMIX_ERR_NOMEM;
+    }
+    names = (char **) da->array;
+    ids = (uint32_t *) nda->array;
+    for (n = 0; n < da->size; n++) {
+        rc = resolve_one(info, (NULL == names) ? NULL : names[n], &ids[n]);
+        if (PMIX_SUCCESS != rc) {
+            PMIx_Data_array_free(nda);
+            return rc;
+        }
+    }
+    PMIx_Value_destruct(&info->value);
+    info->value.type = PMIX_DATA_ARRAY;
+    info->value.data.darray = nda;
+    return PMIX_SUCCESS;
+}
+
 static bool is_info_array(const pmix_info_t *info)
 {
     return (PMIX_DATA_ARRAY == info->value.type && NULL != info->value.data.darray &&
             PMIX_INFO == info->value.data.darray->type && NULL != info->value.data.darray->array);
 }
 
-/* true if the array, or an info array nested in it, gives a PMIX_USERID or
- * PMIX_GRPID by name */
+/* true if the array, or an info array nested in it, gives a user or group
+ * by name - PMIX_USERID, PMIX_GRPID, or an entry of PMIX_ACCESS_USERIDS or
+ * PMIX_ACCESS_GRPIDS */
 static bool has_id_name(const pmix_info_t *info, size_t ninfo, int depth)
 {
     size_t n;
 
     for (n = 0; n < ninfo; n++) {
-        if (is_id_key(&info[n]) && PMIX_STRING == info[n].value.type) {
+        if ((is_id_key(&info[n]) && PMIX_STRING == info[n].value.type) ||
+            is_named_id_list(&info[n])) {
             return true;
         }
         if (depth < PMIX_SERVER_IDS_MAXDEPTH && is_info_array(&info[n]) &&
@@ -326,7 +400,7 @@ static bool has_id_name(const pmix_info_t *info, size_t ninfo, int depth)
     return false;
 }
 
-/* resolve every PMIX_USERID and PMIX_GRPID given by name, in an array we own */
+/* resolve every user and group given by name, in an array we own */
 static pmix_status_t resolve_id_names(pmix_info_t *info, size_t ninfo, int depth)
 {
     pmix_status_t rc;
@@ -345,6 +419,11 @@ static pmix_status_t resolve_id_names(pmix_info_t *info, size_t ninfo, int depth
             }
             PMIx_Value_destruct(&info[n].value);
             PMIx_Value_load(&info[n].value, &id, PMIX_UINT32);
+        } else if (is_named_id_list(&info[n])) {
+            rc = resolve_id_list(&info[n]);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
         } else if (depth < PMIX_SERVER_IDS_MAXDEPTH && is_info_array(&info[n])) {
             rc = resolve_id_names((pmix_info_t *) info[n].value.data.darray->array,
                                   info[n].value.data.darray->size, depth + 1);
@@ -1006,6 +1085,23 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;
+        }
+        /* a user or group given by name - an owner, or an entry of the
+         * job's access list - is resolved here, where it enters */
+        {
+            pmix_info_t *resolved = NULL;
+            size_t nresolved = 0;
+
+            rc = pmix_server_normalize_ids(cd->info, cd->ninfo, &resolved, &nresolved);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                goto cleanup;
+            }
+            if (NULL != resolved) {
+                PMIX_INFO_FREE(cd->info, cd->ninfo);
+                cd->info = resolved;
+                cd->ninfo = nresolved;
+            }
         }
     }
     /* run a quick check of the directives to see if any IOF
