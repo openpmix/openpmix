@@ -121,18 +121,17 @@ The following attributes are relevant to this operation. There are no required
 attributes; implementations may internally integrate with a security environment
 (for example, contacting a *munge* server).
 
-* ``PMIX_USERID`` (uint32_t) |mdash| the expected effective user id of the
-  credential to be validated.
-* ``PMIX_GRPID`` (uint32_t) |mdash| the expected effective group id of the
-  credential to be validated.
 * ``PMIX_TIMEOUT`` (int) |mdash| maximum time, in seconds, to wait for validation
   before timing out and returning an error. Optional for host environments that
   support the operation.
 
 Implementations that support the operation but cannot directly process the
-request pass the caller's attributes to the host environment; in that case the
-``PMIX_USERID`` and ``PMIX_GRPID`` attributes are required to be included in the
-array passed from the PMIx library to the host.
+request pass the caller's attributes to the host environment. The library then
+adds the ``PMIX_USERID`` and ``PMIX_GRPID`` of the *caller* |mdash| the process
+asking for the validation |mdash| as the Standard requires, in place of any the
+caller supplied (see :ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>`).
+They identify who is asking, not who holds the credential; the credential
+holder's user and group IDs are among the results.
 
 
 RETURN VALUE
