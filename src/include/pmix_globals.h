@@ -365,6 +365,25 @@ typedef struct {
     .raw = false                    \
 }
 
+/* Who may access a namespace's data and act on it - see
+ * docs/security-plan.rst and pmix_server_access_permitted(). Kept by a
+ * server only. */
+typedef enum {
+    PMIX_OWNER_UNKNOWN = 0,   // nobody named an owner - the server's own identity stands in
+    PMIX_OWNER_FROM_CLIENT,   // taken from the first client the host registered
+    PMIX_OWNER_REGISTERED     // given by the host's registration, or by a tool's connection
+} pmix_owner_source_t;
+
+typedef struct {
+    pmix_owner_source_t source;
+    uid_t uid;                // the owner
+    gid_t gid;
+    uint32_t *uids;           // PMIX_ACCESS_USERIDS: other users allowed
+    size_t nuids;
+    uint32_t *gids;           // PMIX_ACCESS_GRPIDS: groups whose members are allowed
+    size_t ngids;
+} pmix_access_t;
+
 /* objects used by servers for tracking active nspaces */
 typedef struct {
     pmix_list_item_t super;
@@ -409,6 +428,7 @@ typedef struct {
                             // for setting up the local node for this nspace/application
     pmix_iof_flags_t iof_flags;   // output formatting flags
     pmix_list_t sinks;   // IOF write events for output to files or directories
+    pmix_access_t access; // who may access this namespace - see pmix_access_t
 } pmix_namespace_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_namespace_t);
 

@@ -3185,6 +3185,30 @@ misbehave by design).
   owns, and make sure the caddy's "owns it" flag is set afterwards even
   when the requester sent no array at all.
 
+  **Who may access a job is decided by user and group, not namespace** -
+  see `docs/security-plan.rst`. Each `pmix_namespace_t` carries a
+  `pmix_access_t`: the owner uid/gid, where the owner came from
+  (`pmix_owner_source_t`), and the extra users and groups allowed.
+  - Recorded by `pmix_server_access_set()` from the host's
+    `register_nspace` info (`PMIX_USERID`, `PMIX_GRPID`,
+    `PMIX_ACCESS_PERMISSIONS` or its `PMIX_ACCESS_USERIDS` /
+    `PMIX_ACCESS_GRPIDS`, top level or in a `PMIX_JOB_INFO_ARRAY`). A
+    malformed entry fails the registration; a registration that does
+    not name a list keeps the one already held.
+  - With no owner registered, `_register_client` makes the client's user
+    the owner, and a tool's namespace belongs to the user it connected as
+    (`pmix_server_access_set_owner()`; a weaker source never replaces a
+    stronger one). With no owner at all, the server's own user stands in.
+  - The one rule is `pmix_server_access_permitted(uid, gid, nptr)` (and
+    `pmix_server_peer_permitted()` for a connected peer): root, the
+    server's own user, the owner, a listed user, or a member of a listed
+    group. Group membership comes from `pmix_server_access_groups()`,
+    one cached lookup per user (`pmix_server_access_group_timeout`), and
+    is consulted only when the job lists groups. Never write a second
+    version of the rule at a call site.
+  - The host is never subject to it - only requests from clients and
+    tools are.
+
   **A user or group may be given by name, and is resolved to its number
   where it enters the library** - after that, only the number is used,
   internally and with the host. The entry points: requests from peers

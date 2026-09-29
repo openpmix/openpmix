@@ -454,13 +454,19 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_GET_REFRESH_CACHE              "pmix.get.refresh"      // (bool) when retrieving data for a remote process, refresh the existing
                                                                     //        local data cache for the process in case new values have been
                                                                     //        put and committed by it since the last refresh
-#define PMIX_ACCESS_PERMISSIONS             "pmix.aperms"           // (pmix_data_array_t*) Define access permissions for the published
-                                                                    //        data. The value shall contain an array of pmix_info_t structs
-                                                                    //        containing the specified permissions.
+#define PMIX_ACCESS_PERMISSIONS             "pmix.aperms"           // (pmix_data_array_t*) Define access permissions for published
+                                                                    //        data or, in the job-level info of PMIx_Spawn and
+                                                                    //        PMIx_server_register_nspace, for a job. The value shall
+                                                                    //        contain an array of pmix_info_t structs containing the
+                                                                    //        specified permissions.
 #define PMIX_ACCESS_USERIDS                 "pmix.auids"            // (pmix_data_array_t*) Array of effective UIDs that are allowed to
-                                                                    //        access the published data
-#define PMIX_ACCESS_GRPIDS                  "pmix.agids"            // (pmix_data_array_t*) Array of effective GIDs that are allowed to
-                                                                    //        access the published data
+                                                                    //        access the published data or the job. An entry may be
+                                                                    //        given as a user name (char*), which the PMIx library
+                                                                    //        resolves where it is given.
+#define PMIX_ACCESS_GRPIDS                  "pmix.agids"            // (pmix_data_array_t*) Array of effective GIDs whose members are
+                                                                    //        allowed to access the published data or the job. An
+                                                                    //        entry may be given as a group name (char*), which the
+                                                                    //        PMIx library resolves where it is given.
 #define PMIX_WAIT_FOR_CONNECTION            "pmix.wait.conn"        // (bool) wait until the specified connection has been made
 #define PMIX_QUALIFIED_VALUE                "pmix.qual.val"         // (pmix_data_array_t*) Value being provided consists of the primary
                                                                     //        key-value pair in first position, followed by one or more

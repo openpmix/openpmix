@@ -518,6 +518,14 @@ constants are defined in ``pmix_common.h``.
 NOTES
 -----
 
+A job belongs to the user who spawned it, and by default only that user can
+access its data and act on it. To allow others, include
+``PMIX_ACCESS_PERMISSIONS`` in ``job_info``: a ``pmix_data_array_t`` of
+``pmix_info_t`` holding ``PMIX_ACCESS_USERIDS`` and/or ``PMIX_ACCESS_GRPIDS``,
+each a data array of user or group IDs (``uint32_t``) or names (``char*``). A
+server resolves names when it receives the request, and passes the list to its
+host, which records it with the job. See :doc:`/security-plan`.
+
 A launcher process (such as an intermediate launcher started by a tool) that is
 not connected to a PMIx server defaults to launching the applications via a local
 fork/exec, allowing tools to maintain a single code path for both the connected

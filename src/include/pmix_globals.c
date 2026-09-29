@@ -184,7 +184,15 @@ static void nscon(pmix_namespace_t *p)
     PMIX_CONSTRUCT(&p->departed, pmix_list_t);
     pmix_iof_init_flags(&p->iof_flags);
     PMIX_CONSTRUCT(&p->sinks, pmix_list_t);
-
+    /* no owner until the host names one or registers a client; until
+     * then the server's own identity stands in (see pmix_access_t) */
+    p->access.source = PMIX_OWNER_UNKNOWN;
+    p->access.uid = geteuid();
+    p->access.gid = getegid();
+    p->access.uids = NULL;
+    p->access.nuids = 0;
+    p->access.gids = NULL;
+    p->access.ngids = 0;
 }
 static void nsdes(pmix_namespace_t *p)
 {
@@ -210,6 +218,12 @@ static void nsdes(pmix_namespace_t *p)
         free(p->iof_flags.directory);
     }
     PMIX_LIST_DESTRUCT(&p->sinks);
+    if (NULL != p->access.uids) {
+        free(p->access.uids);
+    }
+    if (NULL != p->access.gids) {
+        free(p->access.gids);
+    }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namespace_t,
                                 pmix_list_item_t,

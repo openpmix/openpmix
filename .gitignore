@@ -321,6 +321,7 @@ test/unit/server_ops
 test/unit/server_fabric
 test/unit/server_resolve
 test/unit/server_requester_id
+test/unit/server_access
 test/unit/iof_pull_approval
 test/unit/server_setup
 test/unit/info_support
