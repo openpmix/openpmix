@@ -96,6 +96,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
                                       pmix_server_caddy_t *cd, bool diffnspace, pmix_scope_t scope,
                                       pmix_modex_cbfunc_t cbfunc, void *cbdata);
 static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char *key,
+                                          const pmix_peer_t *peer,
                                           pmix_info_t info[], size_t ninfo,
                                           pmix_modex_cbfunc_t cbfunc, void *cbdata,
                                           pmix_dmdx_local_t **lcd, pmix_dmdx_request_t **rq);
@@ -192,7 +193,8 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank, char *key,
     }
     /* we cannot do anything further, so just track this request
      * for now */
-    rc = create_local_tracker(nspace, rank, key, cd->info, cd->ninfo, cbfunc, cbdata, &lcd, &req);
+    rc = create_local_tracker(nspace, rank, key, cd->peer, cd->info, cd->ninfo, cbfunc, cbdata,
+                              &lcd, &req);
     if (PMIX_ERR_NOMEM == rc || NULL == lcd) {
         return rc;
     }
@@ -504,6 +506,21 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
      * the host RM. Since we are hopeful of getting an answer,
      * we add the nspace to our list of known nspaces so the
      * info has a "landing zone" upon return */
+
+    /* A job not registered here whose data we hold only because another
+     * requester fetched it: its holder decides who may have it, and has
+     * said so only for the identities it approved. Anyone else is asked
+     * about as though we held nothing - see docs/security-plan.rst */
+    if (NULL != nptr && !nptr->access.registered &&
+        !pmix_server_peer_may_use_copy(cd->peer, nptr)) {
+        pmix_output_verbose(5, pmix_server_globals.get_output,
+                            "%s GET FOR %s: REQUESTER NOT APPROVED - ASKING ITS HOLDER",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), nspace);
+        if (localonly) {
+            return PMIX_ERR_NOT_FOUND;
+        }
+        goto request;
+    }
 
     if (NULL == nptr) {
         if (localonly) {
@@ -889,6 +906,7 @@ request:
 }
 
 static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char *key,
+                                          const pmix_peer_t *peer,
                                           pmix_info_t info[], size_t ninfo,
                                           pmix_modex_cbfunc_t cbfunc, void *cbdata,
                                           pmix_dmdx_local_t **ld, pmix_dmdx_request_t **rq)
@@ -907,6 +925,12 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char 
     lcd = NULL;
     PMIX_LIST_FOREACH (cd, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
         if (!PMIX_CHECK_NSPACE(nspace, cd->proc.nspace) || rank != cd->proc.rank) {
+            continue;
+        }
+        /* shared only by the same requester identity - the server holding
+         * the data decides for that identity */
+        if (cd->uid != peer->info->uid || cd->gid != peer->info->gid ||
+            0 != strncmp(cd->reqns, peer->info->pname.nspace, PMIX_MAX_NSLEN)) {
             continue;
         }
         lcd = cd;
@@ -939,6 +963,16 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char 
         for (n = 0; n < ninfo; n++) {
             PMIX_INFO_XFER(&lcd->info[n], &info[n]);
         }
+    }
+    /* whose request this is - and the host is told, by the connection's
+     * identity rather than anything the requester put in its directives */
+    lcd->uid = peer->info->uid;
+    lcd->gid = peer->info->gid;
+    PMIX_LOAD_NSPACE(lcd->reqns, peer->info->pname.nspace);
+    rc = pmix_server_access_identify(peer, &lcd->info, &lcd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(lcd);
+        return rc;
     }
     pmix_list_append(&pmix_server_globals.local_reqs, &lcd->super);
     rc = PMIX_ERR_NOT_FOUND; // indicates that we created a new request tracker
@@ -1556,6 +1590,19 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
     /* construct this unconditionally so that every error path jumping to
      * the 'complete' label releases it (and its retained namespace
      * references) in one place */
+    /* The server holding this job's data answered for this tracker's
+     * requester identity. If the job is not registered here, remember
+     * that it approved them: they - and only they, besides the job's own
+     * processes, root and our own user - may be answered from the copy
+     * we are about to keep. See docs/security-plan.rst */
+    if (PMIX_SUCCESS == caddy->status && !nptr->access.registered &&
+        0 != strncmp(caddy->lcd->reqns, nptr->nspace, PMIX_MAX_NSLEN)) {
+        rc = pmix_server_access_approve(nptr, caddy->lcd->uid, caddy->lcd->gid);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+
     PMIX_CONSTRUCT(&nspaces, pmix_list_t);
     if (PMIX_SUCCESS == caddy->status) {
         /* cycle across all outstanding local requests and collect their

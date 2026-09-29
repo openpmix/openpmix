@@ -3276,6 +3276,29 @@ misbehave by design).
     `pmix_server_access_filter_peers()`: strict (refuse) when the
     requester named the targets, filtering when it asked for every local
     process.
+  - **Data held on another node is decided by the server holding it.**
+    A dmodex tracker (`pmix_dmdx_local_t`) belongs to one requester
+    identity - uid, gid and requester namespace - and `create_local_tracker`
+    shares it only within that identity. Its `info` is stamped by
+    `pmix_server_access_identify()` with the connection's uid and gid and
+    the requester's proc, replacing any the client sent: the holder judges
+    group membership, so a group the requester merely names must not count
+    (other up-calls pass the requester's chosen accounting gid instead).
+    The holder applies `pmix_server_access_check_remote()` in `_dmodex_req`
+    and again when a parked request is answered from the commit path in
+    `pmix_server_fence.c` - a request with no identity (the host asking for
+    itself, or `PMIx_server_dmodex_request`) is answered as before.
+  - **A copy of another server's job data answers only whom that server
+    approved.** `_process_dmdx_reply` records the tracker's identity on a
+    namespace the host never registered (`pmix_server_access_approve()`);
+    `pmix_server_peer_may_use_copy()` admits those, the job's own
+    processes, root, our own user, and anyone reading the server's own
+    namespace. Any other GET for it is sent to `request` as though we held
+    nothing, a refresh or resolve answers `PMIX_ERR_NOT_FOUND`, and a query
+    goes to the host. A new place that answers from a namespace's data
+    owes the same: `_may_use_copy` applies `pmix_server_peer_permitted` to
+    a registered job and the approvals to a copy, but what to do when it
+    says no - refuse, fetch, or ask the host - is the caller's.
 
   **A user or group may be given by name, and is resolved to its number
   where it enters the library** - after that, only the number is used,

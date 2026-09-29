@@ -96,6 +96,16 @@ static void _dmodex_req(int sd, short args, void *cbdata)
         return;
     }
 
+    /* the requester the host names, if any, must be allowed this job's
+     * data - see docs/security-plan.rst */
+    rc = pmix_server_access_check_remote(nptr, cd->info, cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        pmix_output_verbose(2, pmix_server_globals.base_output,
+                            "%s DMODEX FOR %s REFUSED: %s", PMIX_NAME_PRINT(&pmix_globals.myid),
+                            PMIX_NAME_PRINT(&cd->proc), PMIx_Error_string(rc));
+        goto cleanup;
+    }
+
     /* They are asking for job level data for this process */
     if (PMIX_RANK_WILDCARD == cd->proc.rank) {
         /* fetch the job-level info for this nspace */
@@ -258,6 +268,14 @@ void pmix_server_fail_remote_pnd(pmix_peer_t *peer, pmix_proc_t *proc,
 PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
                                                      pmix_dmodex_response_fn_t cbfunc, void *cbdata)
 {
+    return PMIx_server_dmodex_request2(proc, NULL, 0, cbfunc, cbdata);
+}
+
+PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request2(const pmix_proc_t *proc,
+                                                      const pmix_info_t info[], size_t ninfo,
+                                                      pmix_dmodex_response_fn_t cbfunc,
+                                                      void *cbdata)
+{
     pmix_setup_caddy_t *cd;
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
@@ -269,7 +287,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
     }
 
     /* protect against bozo */
-    if (NULL == cbfunc || NULL == proc) {
+    if (NULL == cbfunc || NULL == proc || (NULL == info && 0 < ninfo)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -283,6 +301,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
     }
     pmix_strncpy(cd->proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
     cd->proc.rank = proc->rank;
+    /* the caller keeps the directives valid until we call back */
+    cd->info = (pmix_info_t *) info;
+    cd->ninfo = ninfo;
     cd->cbfunc = cbfunc;
     cd->cbdata = cbdata;
 

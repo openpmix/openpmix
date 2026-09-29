@@ -1558,6 +1558,11 @@ pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
     if (!pmix_server_peer_may_access_nspace(cd->peer, p.nspace)) {
         return PMIX_ERR_NO_PERMISSIONS;
     }
+    /* and a copy of another server's job data only if that server
+     * approved the requester - otherwise we hold nothing for it */
+    if (!pmix_server_peer_may_use_copy_nspace(cd->peer, p.nspace)) {
+        return PMIX_ERR_NOT_FOUND;
+    }
 
     /* retrieve the data for the specific rank they are asking about */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);

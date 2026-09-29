@@ -319,11 +319,19 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
         }
         if (dcd->cd->proc.rank == info->pname.rank) {
             pmix_list_remove_item(&pmix_server_globals.remote_pnd, &dcd->super);
+            data = NULL;
+            sz = 0;
+            /* a request parked before we knew this job is checked now -
+             * see docs/security-plan.rst */
+            rc = pmix_server_access_check_remote(nptr, dcd->cd->info, dcd->cd->ninfo);
+            if (PMIX_SUCCESS != rc) {
+                dcd->cd->cbfunc(rc, NULL, 0, dcd->cd->cbdata);
+                PMIX_RELEASE(dcd);
+                continue;
+            }
             /* we can now fulfill this request - collect the
              * remote/global data from this proc - note that there
              * may not be a contribution */
-            data = NULL;
-            sz = 0;
             PMIX_CONSTRUCT(&cb, pmix_cb_t);
             cb.proc = &proc;
             cb.scope = PMIX_REMOTE;
