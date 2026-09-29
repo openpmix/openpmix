@@ -624,10 +624,10 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
  *        caller may wish to pass. Typical usage might include:
  *            PMIX_TIMEOUT - how long to wait (in seconds) for validation
  *                           before timing out and returning an error
- *            PMIX_USERID - the expected effective userid of the credential
- *                          to be validated
- *            PMIX_GRPID - the expected effective group id of the credential
- *                         to be validated
+ *        When the request is passed to the host, the library adds the
+ *        caller's own PMIX_USERID and PMIX_GRPID to it (see
+ *        pmix_server_module_t(5)). They identify the caller, not the
+ *        holder of the credential - the holder's are among the results.
  *
  * ninfo - number of elements in the info array
  *
