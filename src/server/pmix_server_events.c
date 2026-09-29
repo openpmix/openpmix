@@ -1068,6 +1068,58 @@ static bool server_only_group_event(pmix_status_t code)
     }
 }
 
+static bool have_custom_range(const pmix_info_t *info, size_t ninfo)
+{
+    size_t n;
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_CUSTOM_RANGE)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Aim a PMIX_GROUP_LEFT at the rest of the group, from the membership we
+ * hold. The array keeps its last slot free for the internal-notify
+ * marker, so it grows by one */
+static pmix_status_t add_group_range(pmix_notify_caddy_t *cd, const char *grpid,
+                                     const pmix_proc_t *leaving)
+{
+    pmix_proc_t *others = NULL;
+    pmix_info_t *info;
+    pmix_data_array_t darray;
+    pmix_status_t rc;
+    size_t nothers = 0, n;
+
+    rc = pmix_server_grp_others(grpid, leaving, &others, &nothers);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    PMIX_INFO_CREATE(info, cd->ninfo + 1);
+    if (NULL == info) {
+        if (NULL != others) {
+            PMIX_PROC_FREE(others, nothers);
+        }
+        return PMIX_ERR_NOMEM;
+    }
+    /* everything the client sent, then the range, then the free slot */
+    for (n = 0; n < cd->ninfo - 1; n++) {
+        PMIX_INFO_XFER(&info[n], &cd->info[n]);
+    }
+    darray.type = PMIX_PROC;
+    darray.array = others;
+    darray.size = nothers;
+    PMIX_INFO_LOAD(&info[cd->ninfo - 1], PMIX_EVENT_CUSTOM_RANGE, &darray, PMIX_DATA_ARRAY);
+    if (NULL != others) {
+        PMIX_PROC_FREE(others, nothers);
+    }
+    PMIX_INFO_FREE(cd->info, cd->ninfo);
+    cd->info = info;
+    cd->ninfo += 1;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer_t *buf,
                                                   pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -1187,7 +1239,30 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer
             goto exit;
         }
         if (NULL != grpid) {
-            pmix_server_grp_member_left(grpid, affected);
+            pmix_proc_t leaver;
+            char *gid;
+
+            /* both point into cd->info, which add_group_range replaces */
+            PMIX_XFER_PROCID(&leaver, affected);
+            gid = strdup(grpid);
+            if (NULL == gid) {
+                rc = PMIX_ERR_NOMEM;
+                goto exit;
+            }
+            /* A client that relies on us for the membership (v7.0 on)
+             * names no range - the rest of the group is the range, and
+             * we are the ones who know it. A client that does not belong
+             * to a group we hold is told so, as its own list told it */
+            if (PMIX_RANGE_CUSTOM == cd->range && !have_custom_range(cd->info, ninfo)) {
+                rc = add_group_range(cd, gid, &leaver);
+                if (PMIX_SUCCESS != rc) {
+                    free(gid);
+                    goto exit;
+                }
+            }
+            pmix_server_grp_member_left(gid, &leaver);
+            pmix_server_grp_remove_member(gid, &leaver);
+            free(gid);
         }
     }
 

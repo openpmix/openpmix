@@ -277,6 +277,25 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    /* A proc named by its group ID and group rank - see
+     * pmix_server_grpmbr.c. A get is for one proc, so the whole group
+     * cannot be asked for */
+    if (NULL != pmix_server_grp_find(nspace)) {
+        pmix_proc_t gproc, *mbr = NULL;
+        size_t nmbr = 0;
+
+        if (PMIX_RANK_WILDCARD == rank) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+        PMIX_LOAD_PROCID(&gproc, nspace, rank);
+        rc = pmix_server_grp_expand(&gproc, 1, &mbr, &nmbr);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        PMIX_LOAD_NSPACE(nspace, mbr[0].nspace);
+        rank = mbr[0].rank;
+        PMIX_PROC_FREE(mbr, nmbr);
+    }
     PMIX_LOAD_PROCID(&proc, nspace, rank);
 
     /* retrieve any provided info structs */

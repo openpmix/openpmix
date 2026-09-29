@@ -1160,6 +1160,11 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
 
     // ensure all local clients have been deregistered
     remove_client(nptr, NULL);
+    /* and forget the groups no local process is part of any more. Done
+     * here, once per job, rather than as each client goes: a host
+     * deregisters every client as it exits, and each sweep walks every
+     * group's membership */
+    pmix_server_grp_sweep();
 
     /* perform any epilog */
     pmix_execute_epilog(&nptr->epilog);

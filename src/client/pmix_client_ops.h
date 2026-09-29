@@ -122,9 +122,19 @@ PMIX_EXPORT void pmix_parse_localquery(int sd, short args, void *cbdata);
  * repointing pmix_client_globals.myserver is the case that matters. */
 PMIX_EXPORT void pmix_client_commit_resync(void);
 
+/* Does our server hold the membership of our groups (v7.0 on)? Then we
+ * keep none: a group named by its ID goes to the server as written, the
+ * server expands it and checks we are among the participants, and a
+ * destruct or leave names only the group. See src/server/pmix_server_grpmbr.c */
+PMIX_EXPORT bool pmix_client_server_has_groups(void);
+
+/* Expand the group references in a proc array from the groups we hold.
+ * When our server holds them instead, the array comes back as given */
 PMIX_EXPORT pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t insize,
                                                           pmix_proc_t **outprocs, size_t *outsize);
 
+/* Are we among the (expanded) participants? Not asked when our server
+ * holds the groups - it expands, and so it checks */
 PMIX_EXPORT bool pmix_client_proc_is_included(const pmix_proc_t *procs, size_t nprocs);
 
 /* The three pieces of "this role holds data a server may take back".
