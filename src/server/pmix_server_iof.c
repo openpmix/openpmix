@@ -562,6 +562,17 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
     pmix_iof_req_t *req, *nreq;
     size_t m, ninherited = 0;
     int i, limit, idx;
+    pmix_namespace_t *ns, *child = NULL;
+
+    /* the child job - its permissions decide who may follow into it. A
+     * job the host never registered with us has no owner here, so only
+     * root and our own user can */
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(ns->nspace, nspace)) {
+            child = ns;
+            break;
+        }
+    }
 
     /* the array grows as we add to it, so bound the walk to what was
      * there when we started - a clone can never be its own parent */
@@ -594,6 +605,11 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
             }
         }
         if (m >= req->nprocs) {
+            continue;
+        }
+        /* the subscription follows into the child job only if its
+         * requester may access that job - see docs/security-plan.rst */
+        if (!pmix_server_peer_permitted(req->requestor, child)) {
             continue;
         }
 

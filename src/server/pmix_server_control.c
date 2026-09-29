@@ -132,6 +132,8 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
         return PMIX_ERR_NOMEM;
     }
     PMIX_LOAD_PROCID(cd->requestor, peer->info->pname.nspace, peer->info->pname.rank);
+    PMIX_RETAIN(peer);
+    cd->reqpeer = peer;
     PMIX_THREADSHIFT(cd, pmix_parse_localquery);
     return PMIX_SUCCESS;
 }
@@ -812,6 +814,24 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
         }
     }
     if (0 < cnt) {
+        /* Cleanup put on a job's epilog runs as that job's user, so the
+         * requester must be allowed every job it targets - see
+         * docs/security-plan.rst. A job the host never registered with us
+         * has no owner here, and only root and our own user may. With no
+         * targets the cleanup is on the requester's own job */
+        for (n = 0; NULL != cd->targets && n < cd->ntargets; n++) {
+            nptr = NULL;
+            PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
+                if (0 == strcmp(tmp->nspace, cd->targets[n].nspace)) {
+                    nptr = tmp;
+                    break;
+                }
+            }
+            if (!pmix_server_peer_permitted(peer, nptr)) {
+                rc = PMIX_ERR_NO_PERMISSIONS;
+                goto exit;
+            }
+        }
         /* Stage the whole request against every target epilog before any
          * of it is applied. The lists we would be appending to live as
          * long as the namespace or the peer, so anything put on one
@@ -1533,6 +1553,10 @@ pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
+    }
+    /* the requester must be allowed that job's data */
+    if (!pmix_server_peer_may_access_nspace(cd->peer, p.nspace)) {
+        return PMIX_ERR_NO_PERMISSIONS;
     }
 
     /* retrieve the data for the specific rank they are asking about */

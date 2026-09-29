@@ -327,6 +327,8 @@ final status and value are delivered to ``cbfunc``.
   |mdash| see `NOTES`_.
 * ``PMIX_ERR_EXISTS_OUTSIDE_SCOPE`` |mdash| the requested key exists, but was
   posted in a scope that does not include the requester.
+* ``PMIX_ERR_NO_PERMISSIONS`` |mdash| the caller's user may not access the job
+  the data belongs to. See :doc:`/security-plan`.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid argument was supplied |mdash| for
   example, an over-length key, or the ``PMIX_GET_STATIC_VALUES`` directive with a
   ``NULL`` storage location.
