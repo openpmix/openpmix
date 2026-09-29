@@ -541,6 +541,7 @@ static void server_teardown(void)
     }
     PMIX_DESTRUCT(&pmix_server_globals.peer_cache);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.nspaces);
+    pmix_server_access_finalize();
     PMIX_LIST_DESTRUCT(&pmix_server_globals.collectives);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.remote_pnd);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.local_reqs);

@@ -1475,6 +1475,8 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
                 return PMIX_ERR_NOMEM;
             }
             nptr->nspace = strdup(pnd->proc.nspace);
+            /* the tool's job belongs to the user it connected as */
+            pmix_server_access_set_owner(nptr, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
             /* save the version */
             nptr->version.major = pnd->proc_type.major;
             nptr->version.minor = pnd->proc_type.minor;
@@ -1579,6 +1581,8 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             // must have been given one
             nptr->nspace = strdup(pnd->proc.nspace);
         }
+        /* the tool's job belongs to the user it connected as */
+        pmix_server_access_set_owner(nptr, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
         /* save the version */
         nptr->version.major = pnd->proc_type.major;
         nptr->version.minor = pnd->proc_type.minor;

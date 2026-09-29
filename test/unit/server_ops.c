@@ -55,6 +55,7 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/threads/pmix_threads.h"
 
+#include <pwd.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -103,6 +104,10 @@ static bool spawn_fired = false;
 static size_t spawn_ninfo = 0;   /* not counting the requester's identity */
 static size_t spawn_nident = 0;  /* PMIX_USERID and PMIX_GRPID entries */
 static bool spawn_refuse = false;
+/* the uid a spawn's PMIX_ACCESS_PERMISSIONS reached the host with, and
+ * whether it arrived as a number */
+static bool spawn_access_numeric = false;
+static uint32_t spawn_access_uid = 0;
 
 static pmix_status_t stub_abort(const pmix_proc_t *proc, void *server_object,
                                 int status, const char msg[],
@@ -190,12 +195,27 @@ static pmix_status_t stub_spawn(const pmix_proc_t *proc,
     spawn_fired = true;
     spawn_ninfo = 0;
     spawn_nident = 0;
+    spawn_access_numeric = false;
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&job_info[n], PMIX_USERID) ||
             PMIX_CHECK_KEY(&job_info[n], PMIX_GRPID)) {
             ++spawn_nident;
         } else {
             ++spawn_ninfo;
+        }
+        if (PMIX_CHECK_KEY(&job_info[n], PMIX_ACCESS_PERMISSIONS) &&
+            PMIX_DATA_ARRAY == job_info[n].value.type &&
+            NULL != job_info[n].value.data.darray &&
+            PMIX_INFO == job_info[n].value.data.darray->type &&
+            1 == job_info[n].value.data.darray->size) {
+            pmix_info_t *p = (pmix_info_t *) job_info[n].value.data.darray->array;
+            if (PMIX_CHECK_KEY(&p[0], PMIX_ACCESS_USERIDS) &&
+                PMIX_DATA_ARRAY == p[0].value.type &&
+                PMIX_UINT32 == p[0].value.data.darray->type &&
+                1 == p[0].value.data.darray->size) {
+                spawn_access_numeric = true;
+                spawn_access_uid = ((uint32_t *) p[0].value.data.darray->array)[0];
+            }
         }
     }
     if (spawn_refuse) {
@@ -251,6 +271,7 @@ typedef struct {
     size_t ninfo_real;  /* how many info structs actually to pack */
     bool as_tool;       /* present the requestor as a tool */
     bool claim_uid;     /* publish: include a PMIX_USERID of our own */
+    const char *access_user; /* spawn: a job directive allowing this user, by name */
     pmix_status_t status;
 } opsut_req_t;
 
@@ -356,6 +377,23 @@ static pmix_status_t pack_spawn(pmix_buffer_t *buf, opsut_req_t *r)
      * (PMIx_Spawn(NULL, 0, ...)) */
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &r->ninfo, 1, PMIX_SIZE);
     for (n = 0; PMIX_SUCCESS == rc && n < r->ninfo_real; n++) {
+        if (NULL != r->access_user && 0 == n) {
+            /* PMIX_ACCESS_PERMISSIONS { PMIX_ACCESS_USERIDS: [ name ] } */
+            pmix_data_array_t *names, perms;
+            pmix_info_t entry;
+            PMIX_DATA_ARRAY_CREATE(names, 1, PMIX_STRING);
+            ((char **) names->array)[0] = strdup(r->access_user);
+            PMIX_INFO_LOAD(&entry, PMIX_ACCESS_USERIDS, names, PMIX_DATA_ARRAY);
+            PMIX_DATA_ARRAY_FREE(names);
+            perms.type = PMIX_INFO;
+            perms.size = 1;
+            perms.array = &entry;
+            PMIX_INFO_LOAD(&info, PMIX_ACCESS_PERMISSIONS, &perms, PMIX_DATA_ARRAY);
+            PMIX_INFO_DESTRUCT(&entry);
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &info, 1, PMIX_INFO);
+            PMIX_INFO_DESTRUCT(&info);
+            continue;
+        }
         PMIX_INFO_LOAD(&info, "server-ops-ut.spawnkey", "value", PMIX_STRING);
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &info, 1, PMIX_INFO);
         PMIX_INFO_DESTRUCT(&info);
@@ -462,6 +500,9 @@ static void do_cmd(int sd, short args, void *cbdata)
     PMIX_WAKEUP_THREAD(&r->lock);
 }
 
+/* for the next spawn driven: a job directive allowing this user, by name */
+static const char *access_user_name = NULL;
+
 static pmix_status_t drive_claim(opsut_cmd_t cmd, size_t nprocs, size_t nprocs_real,
                                  size_t ninfo, size_t ninfo_real, bool as_tool,
                                  bool claim_uid)
@@ -471,6 +512,7 @@ static pmix_status_t drive_claim(opsut_cmd_t cmd, size_t nprocs, size_t nprocs_r
 
     memset(&req, 0, sizeof(req));
     req.claim_uid = claim_uid;
+    req.access_user = access_user_name;
     PMIX_CONSTRUCT_LOCK(&req.lock);
     req.cmd = cmd;
     req.nprocs = nprocs;
@@ -632,6 +674,26 @@ int main(int argc, char **argv)
            0 != (channels & PMIX_FWD_STDERR_CHANNEL));
     report("a tool's child job has its stddiag forwarded",
            0 != (channels & PMIX_FWD_STDDIAG_CHANNEL));
+
+    /* --- a spawn allowing another user by name --- *
+     * the name is resolved where it enters, so the host is given the
+     * number */
+    {
+        struct passwd *pw = getpwuid(geteuid());
+
+        if (NULL != pw && NULL != pw->pw_name) {
+            spawn_fired = false;
+            access_user_name = pw->pw_name;
+            rc = drive(OPSUT_SPAWN, 0, 0, 1, 1, false);
+            access_user_name = NULL;
+            report("a spawn allowing a user by name is accepted", PMIX_SUCCESS == rc);
+            report("the host is given that user as a number",
+                   spawn_fired && spawn_access_numeric &&
+                   (uint32_t) geteuid() == spawn_access_uid);
+        } else {
+            fprintf(stdout, "  SKIP: this process's user has no name\n");
+        }
+    }
 
     /* --- a spawn the host declines --- *
      * the request's directives and apps are released exactly once on
