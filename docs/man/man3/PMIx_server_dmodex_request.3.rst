@@ -132,8 +132,14 @@ intended for use by a host RM daemon acting on behalf of a remote peer; the
 data returned reflects the information posted by the library's own local
 clients.
 
+It names no requester, so the library cannot check that the process the
+data is for may access it. A host that has the requester's identity - from
+the ``direct_modex`` up-call of the requesting server - should pass it with
+:ref:`PMIx_server_dmodex_request2(3) <man3-PMIx_server_dmodex_request2>`.
+
 
 .. seealso::
+   :ref:`PMIx_server_dmodex_request2(3) <man3-PMIx_server_dmodex_request2>`,
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
    :ref:`PMIx_Put(3) <man3-PMIx_Put>`,
    :ref:`PMIx_Commit(3) <man3-PMIx_Commit>`,

@@ -325,6 +325,9 @@ static void lmcon(pmix_dmdx_local_t *p)
     p->info = NULL;
     p->ninfo = 0;
     p->requested = false;
+    p->uid = (uid_t) -1;
+    p->gid = (gid_t) -1;
+    memset(p->reqns, 0, sizeof(pmix_nspace_t));
 }
 static void lmdes(pmix_dmdx_local_t *p)
 {

@@ -194,6 +194,9 @@ static void nscon(pmix_namespace_t *p)
     p->access.nuids = 0;
     p->access.gids = NULL;
     p->access.ngids = 0;
+    p->access.apv_uids = NULL;
+    p->access.apv_gids = NULL;
+    p->access.napv = 0;
 }
 static void nsdes(pmix_namespace_t *p)
 {
@@ -224,6 +227,12 @@ static void nsdes(pmix_namespace_t *p)
     }
     if (NULL != p->access.gids) {
         free(p->access.gids);
+    }
+    if (NULL != p->access.apv_uids) {
+        free(p->access.apv_uids);
+    }
+    if (NULL != p->access.apv_gids) {
+        free(p->access.apv_gids);
     }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namespace_t,
