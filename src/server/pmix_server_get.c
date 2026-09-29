@@ -298,6 +298,24 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     }
     PMIX_LOAD_PROCID(&proc, nspace, rank);
 
+    /* the requester must be allowed the target job's data - see
+     * docs/security-plan.rst. A job the host has not registered with us
+     * is checked where its data is held */
+    nptr = NULL;
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(nspace, ns->nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (!pmix_server_peer_may_access(cd->peer, nptr)) {
+        pmix_output_verbose(2, pmix_server_globals.get_output,
+                            "%s GET for %s refused: requester %s may not access it",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), nspace,
+                            PMIX_PNAME_PRINT(&cd->peer->info->pname));
+        return PMIX_ERR_NO_PERMISSIONS;
+    }
+
     /* retrieve any provided info structs */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &cd->ninfo, &cnt, PMIX_SIZE);
@@ -1369,6 +1387,19 @@ static void check_req(pmix_namespace_t *nptr,
         PMIX_RETAIN(pmix_globals.mypeer);
         scd.peer = pmix_globals.mypeer;
         PMIX_LIST_FOREACH_SAFE(req, rnext, &ptr->loc_reqs, pmix_dmdx_request_t) {
+            /* the namespace may have been registered since this request
+             * was accepted, so each requester is checked now. Every
+             * request here came from pmix_server_get, whose cbdata is the
+             * requester's server caddy */
+            if (NULL != req->cbdata &&
+                !pmix_server_peer_may_access(((pmix_server_caddy_t *) req->cbdata)->peer, nptr)) {
+                if (NULL != req->cbfunc) {
+                    req->cbfunc(PMIX_ERR_NO_PERMISSIONS, NULL, 0, req->cbdata, NULL, NULL);
+                }
+                pmix_list_remove_item(&ptr->loc_reqs, &req->super);
+                PMIX_RELEASE(req);
+                continue;
+            }
             diffnspace = !PMIX_CHECK_NSPACE(nptr->nspace, req->lcd->proc.nspace);
             // if the rank is undef, then only ask for the one key - otherwise,
             // return all keys for that rank. This is an optimization as we

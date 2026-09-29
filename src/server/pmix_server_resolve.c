@@ -204,6 +204,13 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
     // second qualifier in the query has the nodename
     nd = cd->query->qualifiers[1].value.data.string;
 
+    /* the requester must be allowed the job it names - with none named,
+     * the jobs it may not access are left out below */
+    if (0 < pmix_nslen(nspace) && !pmix_server_peer_may_access_nspace(cd->peer, nspace)) {
+        ret = PMIX_ERR_NO_PERMISSIONS;
+        goto done;
+    }
+
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     proc.rank = PMIX_RANK_UNDEF;
     cb.proc = &proc;
@@ -229,6 +236,9 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
 
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (!pmix_server_peer_may_access(cd->peer, ns)) {
+                continue;
+            }
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
             /* restart each namespace from UNDEF: the wildcard retry below
              * mutates proc.rank, and leaving it mutated denied every
@@ -610,6 +620,13 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
     // restrict our search to already available info
     PMIX_INFO_LOAD(&info, PMIX_OPTIONAL, NULL, PMIX_BOOL);
 
+    /* as in the peers twin: the named job must be allowed, and with none
+     * named the jobs the requester may not access are left out */
+    if (0 < pmix_nslen(nspace) && !pmix_server_peer_may_access_nspace(cd->peer, nspace)) {
+        ret = PMIX_ERR_NO_PERMISSIONS;
+        goto done;
+    }
+
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     proc.rank = PMIX_RANK_WILDCARD;
     cb.proc = &proc;
@@ -621,6 +638,9 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
     if (0 == pmix_nslen(nspace)) {
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (!pmix_server_peer_may_access(cd->peer, ns)) {
+                continue;
+            }
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
             if (PMIX_SUCCESS != rc) {

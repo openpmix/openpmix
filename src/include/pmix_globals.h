@@ -375,6 +375,11 @@ typedef enum {
 } pmix_owner_source_t;
 
 typedef struct {
+    /* the host registered this job with us (PMIx_server_register_nspace
+     * or _client), or it is a tool's own job - so this server holds its
+     * permissions. A namespace created only as a place to keep data
+     * fetched for it from elsewhere is not registered */
+    bool registered;
     pmix_owner_source_t source;
     uid_t uid;                // the owner
     gid_t gid;
@@ -697,6 +702,10 @@ typedef struct {
     /* the process a server is answering on behalf of - NULL when the
      * request is our own */
     pmix_proc_t *requestor;
+    /* the connected peer that proc is - retained - so what the server
+     * answers from its own data can be checked against the jobs asked
+     * about. NULL when the request is our own */
+    pmix_peer_t *reqpeer;
 } pmix_query_caddy_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
 
