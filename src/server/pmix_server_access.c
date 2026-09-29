@@ -26,6 +26,7 @@
 
 #include "pmix_common.h"
 #include "src/class/pmix_list.h"
+#include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_output.h"
 
@@ -226,7 +227,92 @@ bool pmix_server_peer_permitted(const pmix_peer_t *peer, const pmix_namespace_t 
     if (NULL == peer || NULL == peer->info) {
         return false;
     }
+    /* a job's own processes always access their own job, and the
+     * server's own namespace describes the server, not anyone's job */
+    if (NULL != nptr && (peer->nptr == nptr ||
+                         (NULL != pmix_globals.mypeer && pmix_globals.mypeer->nptr == nptr))) {
+        return true;
+    }
     return pmix_server_access_permitted(peer->info->uid, peer->info->gid, nptr);
+}
+
+bool pmix_server_peer_may_access_nspace(const pmix_peer_t *peer, const char *nspace)
+{
+    pmix_namespace_t *ns;
+
+    if (NULL == nspace || PMIx_Nspace_invalid(nspace)) {
+        return true;
+    }
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (NULL != ns->nspace && 0 == strcmp(nspace, ns->nspace)) {
+            return pmix_server_peer_may_access(peer, ns);
+        }
+    }
+    return true;
+}
+
+bool pmix_server_peer_may_access(const pmix_peer_t *peer, const pmix_namespace_t *nptr)
+{
+    /* a job the host never registered with us has no permissions here
+     * to judge by - data for it comes from the host, and is checked
+     * where it is held */
+    if (NULL == nptr || !nptr->access.registered) {
+        return true;
+    }
+    return pmix_server_peer_permitted(peer, nptr);
+}
+
+/* ------------------------------------------------------------------ */
+/* acting on local processes                                           */
+/* ------------------------------------------------------------------ */
+
+pmix_peer_t *pmix_server_access_find_peer(const pmix_proc_t *proc)
+{
+    pmix_peer_t *peer;
+    int n;
+
+    if (NULL == proc) {
+        return NULL;
+    }
+    for (n = 0; n < pmix_server_globals.clients.size; n++) {
+        peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
+        /* a tool acting as a server lists the server it connected to
+         * among its clients - that is not a requester to restrict */
+        if (NULL == peer || peer == pmix_client_globals.myserver ||
+            NULL == peer->info || NULL == peer->info->pname.nspace) {
+            continue;
+        }
+        if (PMIX_CHECK_NSPACE(peer->info->pname.nspace, proc->nspace) &&
+            peer->info->pname.rank == proc->rank) {
+            return peer;
+        }
+    }
+    return NULL;
+}
+
+pmix_status_t pmix_server_access_filter_peers(const pmix_proc_t *requestor, pmix_list_t *peers,
+                                              bool strict)
+{
+    pmix_peer_t *rpeer;
+    pmix_peerlist_t *pl, *plnext;
+
+    /* a request that is not from one of our clients or tools is our
+     * host's own, and the host is not restricted */
+    rpeer = pmix_server_access_find_peer(requestor);
+    if (NULL == rpeer) {
+        return PMIX_SUCCESS;
+    }
+    PMIX_LIST_FOREACH_SAFE (pl, plnext, peers, pmix_peerlist_t) {
+        if (pmix_server_peer_permitted(rpeer, pl->peer->nptr)) {
+            continue;
+        }
+        if (strict) {
+            return PMIX_ERR_NO_PERMISSIONS;
+        }
+        pmix_list_remove_item(peers, &pl->super);
+        PMIX_RELEASE(pl);
+    }
+    return PMIX_SUCCESS;
 }
 
 /* ------------------------------------------------------------------ */
@@ -393,6 +479,7 @@ pmix_status_t pmix_server_access_set(pmix_namespace_t *nptr, const pmix_info_t *
         return PMIX_ERR_BAD_PARAM;
     }
     if (NULL == info || 0 == ninfo) {
+        nptr->access.registered = true;
         return PMIX_SUCCESS;
     }
     /* work on a copy, so a malformed entry changes nothing */
@@ -407,6 +494,7 @@ pmix_status_t pmix_server_access_set(pmix_namespace_t *nptr, const pmix_info_t *
         free(acc.gids);
         return rc;
     }
+    nptr->access.registered = true;
     nptr->access.source = acc.source;
     nptr->access.uid = acc.uid;
     nptr->access.gid = acc.gid;
@@ -426,6 +514,7 @@ void pmix_server_access_set_owner(pmix_namespace_t *nptr, uid_t uid, gid_t gid,
     if (NULL == nptr) {
         return;
     }
+    nptr->access.registered = true;
     /* a weaker source never overrides a stronger one */
     if (source < nptr->access.source) {
         return;

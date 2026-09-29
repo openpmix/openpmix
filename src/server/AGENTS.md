@@ -3254,7 +3254,28 @@ misbehave by design).
     is consulted only when the job lists groups. Never write a second
     version of the rule at a call site.
   - The host is never subject to it - only requests from clients and
-    tools are.
+    tools are. A request with no connected client or tool behind it
+    (`pmix_server_access_find_peer()` finds none) is the host's. So is a
+    request the server makes of itself: its `peer->info->pname` is
+    `pmix_globals.myid`.
+  - Pick the right one of the three at a call site:
+    `pmix_server_peer_permitted()` to *act* on a job (cleanup, monitoring,
+    IOF inheritance); `pmix_server_peer_may_access()` / `_nspace()` to
+    *answer* with a job's data (GET, refresh, query, resolve). The second
+    lets through a namespace the host never registered here
+    (`access.registered` false) - a GET or dmodex for a remote job creates
+    one to hold what arrives, it has no permissions to judge by, and the
+    server holding the data does the checking. Using `_permitted` there
+    refuses every remote-data request made by an ordinary user.
+  - Both allow a job's own processes and the server's own namespace
+    before applying the rule.
+  - A GET parked on a namespace that is not yet registered was let
+    through; `check_req` checks each parked requester again when the
+    registration lands. A new place that parks a request owes the same.
+  - Monitoring filters its peer list with
+    `pmix_server_access_filter_peers()`: strict (refuse) when the
+    requester named the targets, filtering when it asked for every local
+    process.
 
   **A user or group may be given by name, and is resolved to its number
   where it enters the library** - after that, only the number is used,

@@ -36,6 +36,11 @@
  * real output - what is under test is which subscriptions get created
  * and for whom, and no spawn is needed to establish that. (Nor could one
  * be: test/simple/simptest cannot host a spawn - see src/server/AGENTS.md.)
+ *
+ * A subscription follows into the child job only if its requester may
+ * access that job - see docs/security-plan.rst. The watchers built here
+ * are root unless a case says otherwise, so only the access cases turn
+ * on who they are.
  */
 
 #include "src/include/pmix_config.h"
@@ -282,6 +287,87 @@ static void test_spawn_parser(void)
     PMIX_RELEASE(tool);
 }
 
+/* A child owned by another user, naming allowed_uid in its access list
+ * when that is not zero */
+static pmix_status_t register_child_owned(const char *nspace, const char *parent_ns,
+                                          uint32_t owner, uint32_t allowed_uid)
+{
+    pmix_info_t info[4], entry;
+    pmix_data_array_t *ids, perms;
+    pmix_proc_t parent;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t one = 1;
+    size_t n, ninfo = 3;
+
+    /* see register_child() above for why this is not the caller's string */
+    PMIX_LOAD_NSPACE(ns, nspace);
+    PMIX_LOAD_PROCID(&parent, parent_ns, 0);
+    PMIX_INFO_LOAD(&info[0], PMIX_PARENT_ID, &parent, PMIX_PROC);
+    PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[2], PMIX_USERID, &owner, PMIX_UINT32);
+    if (0 != allowed_uid) {
+        PMIX_DATA_ARRAY_CREATE(ids, 1, PMIX_UINT32);
+        ((uint32_t *) ids->array)[0] = allowed_uid;
+        PMIX_INFO_LOAD(&entry, PMIX_ACCESS_USERIDS, ids, PMIX_DATA_ARRAY);
+        PMIX_DATA_ARRAY_FREE(ids);
+        perms.type = PMIX_INFO;
+        perms.size = 1;
+        perms.array = &entry;
+        PMIX_INFO_LOAD(&info[3], PMIX_ACCESS_PERMISSIONS, &perms, PMIX_DATA_ARRAY);
+        PMIX_INFO_DESTRUCT(&entry);
+        ninfo = 4;
+    }
+
+    rc = PMIx_server_register_nspace(ns, 0, info, ninfo, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    for (n = 0; n < ninfo; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    return rc;
+}
+
+/* ids no real account should have */
+#define INH_WATCHER_UID 4242
+#define INH_OWNER_UID   5151
+
+static void test_inherit_access(void)
+{
+    pmix_peer_t *watcher, *client;
+    int count;
+
+    watcher = mkpeer("acctoolns", 0, true);
+    watcher->info->uid = INH_WATCHER_UID;
+    watcher->info->gid = INH_WATCHER_UID;
+    client = mkpeer("accparentjob", 0, false);
+    watch_job(watcher, "accparentjob", PMIX_FWD_STDOUT_CHANNEL, 5);
+
+    if (PMIX_SUCCESS != register_child_owned("accchild-private", "accparentjob",
+                                             INH_OWNER_UID, 0) ||
+        PMIX_SUCCESS != register_child_owned("accchild-shared", "accparentjob",
+                                             INH_OWNER_UID, INH_WATCHER_UID)) {
+        report("access: could not register the child namespaces", false);
+        goto done;
+    }
+
+    run_spawn_iof(client, true, PMIX_FWD_NO_CHANNELS, "accchild-private");
+    find_watch("accchild-private", &count);
+    report("access: a watcher may not follow into another user's job", 0 == count);
+    drop_watches("accchild-private");
+
+    run_spawn_iof(client, true, PMIX_FWD_NO_CHANNELS, "accchild-shared");
+    find_watch("accchild-shared", &count);
+    report("access: a watcher follows into a job that names it", 1 == count);
+    drop_watches("accchild-shared");
+
+done:
+    drop_watches("accparentjob");
+    PMIX_RELEASE(watcher);
+    PMIX_RELEASE(client);
+}
+
 static void test_inheritance(void)
 {
     pmix_peer_t *watcher, *client;
@@ -523,6 +609,7 @@ int main(int argc, char **argv)
     test_spawn_parser();
     test_inheritance();
     test_delivery_ancestry();
+    test_inherit_access();
 
     PMIx_server_finalize();
 

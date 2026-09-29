@@ -383,8 +383,20 @@ PMIX_EXPORT pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_i
  * the access list, or a member of a group in it. */
 PMIX_EXPORT bool pmix_server_access_permitted(uid_t uid, gid_t gid, const pmix_namespace_t *nptr);
 
-/* the same for a connected peer, by the identity it connected with */
+/* the same for a connected peer, by the identity it connected with - and
+ * a job's own processes, and anyone reading the server's own namespace,
+ * are always allowed */
 PMIX_EXPORT bool pmix_server_peer_permitted(const pmix_peer_t *peer, const pmix_namespace_t *nptr);
+
+/* For data this server answers itself: as pmix_server_peer_permitted, but a
+ * namespace the host never registered with us (see pmix_access_t.registered)
+ * is not ours to judge, and is allowed - its data comes from the host */
+PMIX_EXPORT bool pmix_server_peer_may_access(const pmix_peer_t *peer,
+                                             const pmix_namespace_t *nptr);
+
+/* the same, by namespace name - an empty or unknown name is allowed, since
+ * it names no job this server holds */
+PMIX_EXPORT bool pmix_server_peer_may_access_nspace(const pmix_peer_t *peer, const char *nspace);
 
 /* Record the owner and access list a host registration gives for nptr -
  * PMIX_USERID, PMIX_GRPID and PMIX_ACCESS_PERMISSIONS (or its
@@ -399,6 +411,17 @@ PMIX_EXPORT pmix_status_t pmix_server_access_set(pmix_namespace_t *nptr, const p
  * never replaces a stronger one (see pmix_owner_source_t) */
 PMIX_EXPORT void pmix_server_access_set_owner(pmix_namespace_t *nptr, uid_t uid, gid_t gid,
                                               pmix_owner_source_t source);
+
+/* the connected client or tool that proc is, or NULL */
+PMIX_EXPORT pmix_peer_t *pmix_server_access_find_peer(const pmix_proc_t *proc);
+
+/* Of a list of local processes (pmix_peerlist_t) to act on for requestor,
+ * keep those whose jobs it may access. With strict - the requester named
+ * them - any it may not access fails the request with
+ * PMIX_ERR_NO_PERMISSIONS instead. A requestor that is not one of our
+ * clients or tools is the host, which is not restricted. */
+PMIX_EXPORT pmix_status_t pmix_server_access_filter_peers(const pmix_proc_t *requestor,
+                                                          pmix_list_t *peers, bool strict);
 
 /* every group the user belongs to, looked up once and cached - see
  * pmix_server_globals.access_group_timeout. The array belongs to the

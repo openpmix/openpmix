@@ -324,6 +324,7 @@ test/unit/server_resolve
 test/unit/server_requester_id
 test/unit/server_access
 test/unit/server_group_members
+test/unit/server_access_checks
 test/unit/iof_pull_approval
 test/unit/server_setup
 test/unit/info_support

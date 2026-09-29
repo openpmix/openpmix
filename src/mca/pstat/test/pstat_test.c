@@ -1021,6 +1021,14 @@ static pmix_status_t query(pmix_proc_t *requestor,
         }
 
 processprocs:
+        /* only the processes of jobs the requester may access - see
+         * docs/security-plan.rst. Named targets it may not access
+         * refuse the request; "all of our processes" leaves them out */
+        rc = pmix_server_access_filter_peers(requestor, &op->peers, tgtprocsgiven);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.cbdata = PMIx_Info_list_start();
         op->cb = &cb;
