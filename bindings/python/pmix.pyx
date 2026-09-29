@@ -4921,6 +4921,33 @@ cdef class PMIxServer(PMIxClient):
             pybo = (data, sz)
         return rc, pybo
 
+    def dmodex_request2(self, proc, dicts:list):
+        global active
+        cdef pmix_proc_t p;
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef size_t sz
+        pmix_copy_nspace(p.nspace, proc['nspace'])
+        p.rank = proc['rank']
+        pybo = (None, 0)
+        # the directives - the requester's identity - stay valid until the
+        # callback, which we wait for
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &sz, dicts)
+        if PMIX_SUCCESS != rc:
+            return rc, pybo
+        active.clear()
+        rc = PMIx_server_dmodex_request2(&p, info, sz, dmodx_cbfunc, NULL);
+        if PMIX_SUCCESS == rc:
+            active.wait()
+            rc = active.get_status()
+            # transfer the data to the dictionary
+            (data, sz2) = active.fetch_data()
+            pybo = (data, sz2)
+        if 0 < sz:
+            pmix_free_info(info, sz)
+        return rc, pybo
+
     def setup_application(self, ns:str, dicts):
         global active
         cdef pmix_nspace_t nspace;

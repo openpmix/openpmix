@@ -217,21 +217,28 @@ server asks its host, which fetches it from the server that holds it
 (*direct modex*). The check is made **by the server that holds the
 data**, because that server has the job's permissions:
 
-* The requesting server gives its host the requester's identity in the
-  ``direct_modex`` up-call.
+* The requesting server names the requester in its ``direct_modex``
+  up-call - ``PMIX_REQUESTOR``, ``PMIX_USERID`` and ``PMIX_GRPID``, the
+  user and group being those established when the requester connected.
+  Requesters of different identities are sent up separately; requesters
+  of one identity share a fetch.
 * The host passes that identity to the holding server through
   ``PMIx_server_dmodex_request2``, a new form of
   ``PMIx_server_dmodex_request`` that takes an info array (every PMIx
   API carries one).
 * The holding server applies the rule and answers, or refuses with
-  ``PMIX_ERR_NO_PERMISSIONS``. Its answer also carries the job's owner
-  and access list, so the requesting server can apply the same rule to
-  later requests it answers from its copy.
+  ``PMIX_ERR_NO_PERMISSIONS``.
+* The requesting server keeps a copy of what it receives, and remembers
+  which identities the holding server approved. From that copy it
+  answers only those, the job's own processes, root, and its own user;
+  any other requester is asked about as though the copy were not there,
+  and gets its own fetch. This applies to ``PMIx_Get``, to a refresh of
+  a client's cache, and to query and resolve answered from the copy.
 
 A host that still uses ``PMIx_server_dmodex_request`` passes no
-requester identity, and the holding server answers as it does today. A
-capability flag tells a host whether the library provides
-``PMIx_server_dmodex_request2``.
+requester identity, and the holding server answers as it does today.
+The capability flag ``PMIX_CAP_DMODEX_REQUEST2`` tells a host that the
+library provides ``PMIx_server_dmodex_request2``.
 
 Output files and shared memory
 ------------------------------
@@ -275,8 +282,8 @@ Compatibility
   connection, so nothing changes for them.
 * **Hosts** can detect the library's support through capability flags
   in ``pmix_version.h``: ``PMIX_CAP_REQUESTER_ID`` (the requester's
-  identity on up-calls) is present now; flags for access control and for
-  ``PMIx_server_dmodex_request2`` will be added with those features.
+  identity on up-calls) and ``PMIX_CAP_DMODEX_REQUEST2``
+  (``PMIx_server_dmodex_request2``).
 
 What a host needs to do
 -----------------------
@@ -325,13 +332,17 @@ Status
      - The server library applies the rule to what it answers itself:
        job and process data, query and resolve, monitoring of local
        processes, cleanup directives, and IOF inheritance.
-     - Done (in review)
+     - Done
    * - 3
      - ``PMIx_server_dmodex_request2``; the requester's identity on the
-       ``direct_modex`` up-call; the check at the holding server. PRRTE
-       registers each job's owner (``PMIX_USERID``, ``PMIX_GRPID``) with
-       ``PMIx_server_register_nspace``.
-     - Planned
+       ``direct_modex`` up-call; the check at the holding server; the
+       requesting server answers from its copy only the requesters the
+       holder approved. PRRTE registers each job's owner
+       (``PMIX_USERID``, ``PMIX_GRPID``) with
+       ``PMIx_server_register_nspace``, carries the requester's identity
+       on its direct-modex relay, and uses
+       ``PMIx_server_dmodex_request2``.
+     - Done (in review)
    * - 4
      - Output file ownership and modes; server-mediated job data for
        requesters the shared-memory file mode does not admit.

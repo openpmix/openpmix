@@ -794,6 +794,18 @@ PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
                                                      pmix_dmodex_response_fn_t cbfunc,
                                                      void *cbdata);
 
+/* The same, with directives. The host passes the identity of the process
+ * the request is for - PMIX_REQUESTOR, PMIX_USERID and PMIX_GRPID, as the
+ * requesting server gave them in its direct_modex up-call - and the PMIx
+ * server answers only a requester allowed the target job's data, returning
+ * PMIX_ERR_NO_PERMISSIONS through the cbfunc otherwise. The info array must
+ * remain valid until the cbfunc is called. With no requester named, this
+ * behaves as PMIx_server_dmodex_request */
+PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request2(const pmix_proc_t *proc,
+                                                      const pmix_info_t info[], size_t ninfo,
+                                                      pmix_dmodex_response_fn_t cbfunc,
+                                                      void *cbdata);
+
 /* define a callback function for the setup_application API. The returned info
  * array is owned by the PMIx server library and will be free'd when the
  * provided cbfunc is called. */

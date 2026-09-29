@@ -210,6 +210,12 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
         ret = PMIX_ERR_NO_PERMISSIONS;
         goto done;
     }
+    /* a copy of another server's job data answers only a requester that
+     * server approved - for anyone else we hold nothing */
+    if (0 < pmix_nslen(nspace) && !pmix_server_peer_may_use_copy_nspace(cd->peer, nspace)) {
+        ret = PMIX_ERR_NOT_FOUND;
+        goto done;
+    }
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     proc.rank = PMIX_RANK_UNDEF;
@@ -236,7 +242,8 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
 
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-            if (!pmix_server_peer_may_access(cd->peer, ns)) {
+            if (!pmix_server_peer_may_access(cd->peer, ns) ||
+                !pmix_server_peer_may_use_copy(cd->peer, ns)) {
                 continue;
             }
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
@@ -626,6 +633,10 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
         ret = PMIX_ERR_NO_PERMISSIONS;
         goto done;
     }
+    if (0 < pmix_nslen(nspace) && !pmix_server_peer_may_use_copy_nspace(cd->peer, nspace)) {
+        ret = PMIX_ERR_NOT_FOUND;
+        goto done;
+    }
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     proc.rank = PMIX_RANK_WILDCARD;
@@ -638,7 +649,8 @@ void pmix_server_locally_resolve_node(int sd, short args, void *cbdata)
     if (0 == pmix_nslen(nspace)) {
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-            if (!pmix_server_peer_may_access(cd->peer, ns)) {
+            if (!pmix_server_peer_may_access(cd->peer, ns) ||
+                !pmix_server_peer_may_use_copy(cd->peer, ns)) {
                 continue;
             }
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);

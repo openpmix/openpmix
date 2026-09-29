@@ -104,6 +104,12 @@ typedef struct {
     pmix_info_t *info;    // array of info structs for this request
     size_t ninfo;         // number of info structs
     bool requested;       // the host has already been asked for this target
+    /* who is asking: requests are shared only by requesters of the same
+     * uid, gid and job, since the server holding the data decides for
+     * that identity - see docs/security-plan.rst */
+    uid_t uid;
+    gid_t gid;
+    pmix_nspace_t reqns;
 } pmix_dmdx_local_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
 
@@ -411,6 +417,36 @@ PMIX_EXPORT pmix_status_t pmix_server_access_set(pmix_namespace_t *nptr, const p
  * never replaces a stronger one (see pmix_owner_source_t) */
 PMIX_EXPORT void pmix_server_access_set_owner(pmix_namespace_t *nptr, uid_t uid, gid_t gid,
                                               pmix_owner_source_t source);
+
+/* Data held on another node - see docs/security-plan.rst. A job not
+ * registered here whose data we fetched from the server holding it records
+ * the requester identities that server approved (pmix_access_t apv_*) */
+PMIX_EXPORT pmix_status_t pmix_server_access_approve(pmix_namespace_t *nptr, uid_t uid, gid_t gid);
+
+/* May the peer be answered from what we hold for nptr? For a registered job,
+ * pmix_server_peer_permitted. For one we only hold a copy of, the job's own
+ * processes, root, our own user, and the identities its holder approved -
+ * anyone else must be asked about by the holder */
+PMIX_EXPORT bool pmix_server_peer_may_use_copy(const pmix_peer_t *peer,
+                                               const pmix_namespace_t *nptr);
+
+/* the same, by namespace name - a name we hold nothing for is allowed,
+ * since there is nothing here to answer from */
+PMIX_EXPORT bool pmix_server_peer_may_use_copy_nspace(const pmix_peer_t *peer, const char *nspace);
+
+/* The holder's check for a remote requester, named in a direct-modex
+ * request by PMIX_USERID, PMIX_GRPID and PMIX_REQUESTOR: success when no
+ * requester is named (the host asking for itself), for the job's own
+ * processes, or when the rule allows; else PMIX_ERR_NO_PERMISSIONS */
+PMIX_EXPORT pmix_status_t pmix_server_access_check_remote(const pmix_namespace_t *nptr,
+                                                          const pmix_info_t *info, size_t ninfo);
+
+/* Name the requester on directives going to our host for a direct modex:
+ * any PMIX_USERID, PMIX_GRPID or PMIX_REQUESTOR already there is replaced
+ * by the peer's connection uid and gid and its process ID. The array is
+ * replaced; the old one freed */
+PMIX_EXPORT pmix_status_t pmix_server_access_identify(const pmix_peer_t *peer, pmix_info_t **info,
+                                                      size_t *ninfo);
 
 /* the connected client or tool that proc is, or NULL */
 PMIX_EXPORT pmix_peer_t *pmix_server_access_find_peer(const pmix_proc_t *proc);

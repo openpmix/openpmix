@@ -387,6 +387,12 @@ typedef struct {
     size_t nuids;
     uint32_t *gids;           // PMIX_ACCESS_GRPIDS: groups whose members are allowed
     size_t ngids;
+    /* For a job not registered here, whose data this server fetched from
+     * the server holding it: the requester identities (uid/gid pairs)
+     * that server approved. Only they are answered from our copy */
+    uint32_t *apv_uids;
+    uint32_t *apv_gids;
+    size_t napv;
 } pmix_access_t;
 
 /* objects used by servers for tracking active nspaces */

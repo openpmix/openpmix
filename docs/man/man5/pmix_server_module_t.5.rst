@@ -174,6 +174,17 @@ This applies to ``publish``, ``lookup``, ``unpublish``, ``spawn``,
 ``monitor``, ``get_credential``, ``validate_credential``, ``iof_pull``,
 ``push_stdin``, ``session_control`` and ``resource_block``.
 
+``direct_modex`` is made for the target process, and may stand for several
+local requesters that share one identity; its info array names that
+identity with ``PMIX_REQUESTOR``, ``PMIX_USERID`` and ``PMIX_GRPID``, each
+exactly once. Here ``PMIX_GRPID`` is always the group ID established at
+connection, never one named in the request: the server that holds the data
+decides by group membership, and a group the requester merely names must
+not count. The host passes these on to the holding server with
+:ref:`PMIx_server_dmodex_request2(3) <man3-PMIx_server_dmodex_request2>`.
+Requesters of different identities are sent up separately. See
+:doc:`/security-plan`.
+
 When the host itself calls a PMIx API that is serviced through its own module,
 the requester is the host: the up-call carries the server's own process
 identifier and the library adds nothing to the caller's arrays.
