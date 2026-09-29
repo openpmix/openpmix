@@ -5,18 +5,15 @@
 #
 # Additional copyrights may follow
 
-# Exercise the group-construct membership check. A single persistent server
-# (test/simple/simptest) forks one client (test/simple/simpgrpmember) that
-# connects and calls PMIx_Group_construct with a participant array that
-# deliberately excludes itself. Because the construct is not an "add
-# members" or "bootstrap" operation, every participant must be listed and
-# the caller must be among them; the call must fail with
-# PMIX_ERR_NOT_A_MEMBER. From v7.0 the server, which holds the group
-# membership, makes the check; a client with an older server makes it
-# itself. A regression that drops the check (or wrongly rejects a
-# legitimate caller) makes the client exit non-zero, or wedges the run
-# until the timeout fires. See src/server/pmix_server_grpmbr.c,
-# src/client/pmix_client_group.c and #3850.
+# Exercise a group named by its ID - PMIX_RANK_WILDCARD for every member,
+# or a group rank for one - in a fence, a get, a leave and a destruct. A
+# single persistent server (test/simple/simptest) forks three clients
+# (test/simple/simpgrpref), which construct a group, name it in those
+# calls, and check the answers; from v7.0 the server holds the group's
+# membership and expands the reference - the clients keep none. A client
+# that sees a wrong answer exits non-zero; a reference the server fails to
+# expand wedges the run until the timeout fires. See
+# src/server/pmix_server_grpmbr.c.
 
 use strict;
 
@@ -37,7 +34,7 @@ my $mymcapaths = join(":", @myfullpaths);
 $ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
 
 # simptest forks its client from the current directory using a relative
-# path ("./simpgrpmember"), so run from the directory that holds both
+# path ("./simpgrpref"), so run from the directory that holds both
 # binaries.
 my $wdir = $mybuilddir . "/test/simple";
 chdir $wdir;
@@ -61,7 +58,7 @@ foreach my $p (@paths) {
 
 # Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise
 # arm a Perl alarm so a wedged run can never hang "make check" forever.
-my @cmd = ("./simptest", "-e", "./simpgrpmember");
+my @cmd = ("./simptest", "-n", "3", "-e", "./simpgrpref");
 my $use_alarm = 0;
 if ("" ne $timeout_cmd) {
     unshift(@cmd, split(' ', $timeout_cmd));
@@ -107,19 +104,18 @@ if (0 != $status) {
     exit($status == 0 ? 1 : $status);
 }
 
-# Confirm the run actually exercised the check rather than passing
-# vacuously: the client only prints this line after PMIx_Group_construct
-# returned PMIX_ERR_NOT_A_MEMBER, and simptest only prints its own line
-# after the client has gone.
-my $client_ok  = ($output =~ /rejected the not-a-member group construct OK/);
+# Confirm the run actually exercised the references rather than passing
+# vacuously: each client prints this line only once every check passed and
+# it finalized, and simptest prints its own line only after they have gone.
+my $nok = () = ($output =~ /group references resolved OK/g);
 my $server_done = ($output =~ /Test finished OK!/);
-if (!$client_ok) {
-    print "FAIL: client did not reject the not-a-member group construct\n";
+if (3 != $nok) {
+    print "FAIL: $nok of 3 clients resolved their group references\n";
     exit(1);
 }
 if (!$server_done) {
-    print "FAIL: server did not finish cleanly after the client ran\n";
+    print "FAIL: server did not finish cleanly after the clients ran\n";
     exit(1);
 }
-print "PASS: client rejected the not-a-member group construct\n";
+print "PASS: every client resolved its group references\n";
 exit(0);

@@ -759,6 +759,45 @@ PMIX_EXPORT void pmix_server_grp_check_pending(void);
  * carries into the next PMIx_server_init in this process. */
 PMIX_EXPORT void pmix_server_grp_finalize(void);
 
+/* The membership of the groups this server's clients belong to - see
+ * pmix_server_grpmbr.c. A synchronous construct is recorded in the host's
+ * order; an invited group sorted (sort), as clients have always held it */
+PMIX_EXPORT pmix_status_t pmix_server_grp_record(const char *grpid, const pmix_proc_t *members,
+                                                 size_t nmembers, size_t ctxid, bool notterm,
+                                                 bool sort);
+PMIX_EXPORT pmix_group_t *pmix_server_grp_find(const char *grpid);
+PMIX_EXPORT void pmix_server_grp_drop(const char *grpid);
+/* a member left - and the group is dropped once no member is local */
+PMIX_EXPORT void pmix_server_grp_remove_member(const char *grpid, const pmix_proc_t *proc);
+/* drop the groups no local process is part of any more - once a job is
+ * deregistered */
+PMIX_EXPORT void pmix_server_grp_sweep(void);
+/* Replace each proc naming a recorded group - its ID with
+ * PMIX_RANK_WILDCARD for every member, or with a group rank for one - by
+ * the members it names, dropping duplicates. The array returned is the
+ * caller's, and is a copy even when nothing named a group. A group rank
+ * past the membership is PMIX_ERR_NOT_FOUND */
+PMIX_EXPORT pmix_status_t pmix_server_grp_expand(const pmix_proc_t *in, size_t nin,
+                                                 pmix_proc_t **out, size_t *nout);
+/* the same, replacing an array the caller owns (a PMIX_PROC_CREATE'd one) -
+ * unless it names no group, when it is left as it came */
+PMIX_EXPORT pmix_status_t pmix_server_grp_expand_procs(pmix_proc_t **procs, size_t *nprocs);
+/* Is the peer among the (expanded) participants - by its rank, or by its
+ * job with PMIX_RANK_WILDCARD, PMIX_RANK_LOCAL_NODE or
+ * PMIX_RANK_LOCAL_PEERS? A fence, connect, disconnect, or group construct
+ * or destruct is only for its participants, and a client that relies on
+ * us for its groups no longer checks for itself. The server, making the
+ * request for its host, always is */
+PMIX_EXPORT bool pmix_server_grp_is_participant(const pmix_peer_t *peer,
+                                                const pmix_proc_t *procs, size_t nprocs);
+/* the members of a group other than self, for a leave's range */
+PMIX_EXPORT pmix_status_t pmix_server_grp_others(const char *grpid, const pmix_proc_t *self,
+                                                 pmix_proc_t **out, size_t *nout);
+/* a group event delivered by the host */
+PMIX_EXPORT void pmix_server_grp_host_event(pmix_status_t status, const pmix_proc_t *source,
+                                            const pmix_info_t *info, size_t ninfo);
+PMIX_EXPORT void pmix_server_grpmbr_finalize(void);
+
 /* Does this entry belong somewhere other than a job's own job-level
  * table - a map, a realm array, a programming-model key, or a lone key
  * naming the session, node or app realm?

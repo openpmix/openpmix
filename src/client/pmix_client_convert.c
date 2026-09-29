@@ -27,6 +27,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/gds/base/base.h"
+#include "src/mca/ptl/base/base.h"
 
 /* Byte-equal namespaces, which is not what PMIX_CHECK_NSPACE answers.
  *
@@ -241,6 +242,17 @@ static pmix_status_t snapshot_groups(pmix_grpsnap_t **snap, size_t *nsnap)
     return PMIX_SUCCESS;
 }
 
+bool pmix_client_server_has_groups(void)
+{
+    pmix_peer_t *srv = pmix_client_globals.myserver;
+
+    if (NULL == srv || NULL == srv->info) {
+        /* not connected - a singleton has nobody else to hold them */
+        return false;
+    }
+    return !PMIX_PEER_IS_EARLIER(srv, 7, 0, 0);
+}
+
 pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t insize,
                                               pmix_proc_t **outprocs, size_t *outsize)
 {
@@ -252,6 +264,22 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
     uint32_t jsize;
     pmix_status_t rc;
     pmix_proc_t *procs, proc;
+
+    /* our server expands group references itself - send them as given */
+    if (pmix_client_server_has_groups()) {
+        *outprocs = NULL;
+        *outsize = 0;
+        if (0 < insize) {
+            PMIX_PROC_CREATE(procs, insize);
+            if (PMIX_UNLIKELY(NULL == procs)) {
+                return PMIX_ERR_NOMEM;
+            }
+            memcpy(procs, inprocs, insize * sizeof(pmix_proc_t));
+            *outprocs = procs;
+            *outsize = insize;
+        }
+        return PMIX_SUCCESS;
+    }
 
     PMIX_CONSTRUCT(&cache, pmix_list_t);
 

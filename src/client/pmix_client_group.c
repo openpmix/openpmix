@@ -539,7 +539,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             return rc;
         }
-        if (!pmix_client_proc_is_included(rgs, nrg)) {
+        if (!pmix_client_server_has_groups() &&
+            !pmix_client_proc_is_included(rgs, nrg)) {
             PMIX_PROC_FREE(rgs, nrg);
             return PMIX_ERR_NOT_A_MEMBER;
         }
@@ -707,6 +708,13 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* A server that holds our groups supplies the membership and the
+     * failure policy itself - we name only the group, and it tells us if
+     * we are not in one by that name */
+    if (pmix_client_server_has_groups()) {
+        goto pack;
+    }
+
     /* Find this group and take a copy of what we need from it. We hold the
      * lock only for the lookup and the copy: the progress thread can append
      * to this list, remove from it, and trim a departed proc out of a
@@ -768,6 +776,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
         }
     }
 
+pack:
     msg = PMIX_NEW(pmix_buffer_t);
     if (PMIX_UNLIKELY(NULL == msg)) {
         /* PMIX_BFROPS_PACK reads (b)->type in the macro body, so the pack
@@ -789,9 +798,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
         goto done;
     }
 
-    /* pack the membership - the server isn't storing it,
-     * so we have to send it so that the server can
-     * track when all local procs have participated */
+    /* pack the membership - none when the server holds it; an older
+     * server does not, and has to be told so that it can track when all
+     * local procs have participated */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nmbrs, 1, PMIX_SIZE);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -1328,6 +1337,10 @@ static void record_group(const pmix_info_t info[], size_t ninfo, size_t ctxid,
     }
     *membersp = members;
     *nmembersp = nmembers;
+    /* our server holds the membership - see pmix_client_server_has_groups() */
+    if (pmix_client_server_has_groups()) {
+        return;
+    }
 
     /* the caller's thread reads this list - see the grouplock note in
      * src/client/pmix_client_ops.h */
@@ -1928,7 +1941,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
      * event's info array: a custom range limited to the other members,
      * the identity of the departing proc, the group ID, and any
      * directives the caller provided. */
-    cb->ninfo = 3 + ninfo;
+    /* A server that holds our groups aims the event at the rest of the
+     * group itself, and tells us if we are not in one by that name - we
+     * send no range. Otherwise the range comes from our own record */
+    cb->ninfo = (pmix_client_server_has_groups() ? 2 : 3) + ninfo;
     PMIX_INFO_CREATE(cb->info, cb->ninfo);
     if (PMIX_UNLIKELY(NULL == cb->info)) {
         PMIX_RELEASE(cb);
@@ -1945,6 +1961,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
      * outside the lock: the allocations above are already done, and the
      * notification below must not be issued while holding it - the handler
      * it drives needs this same lock. */
+    n = 0;
+    nmbrs = 0;
+    if (pmix_client_server_has_groups()) {
+        goto notify;
+    }
+
     pmix_mutex_lock(&pmix_client_globals.grouplock);
     grpobj = NULL;
     PMIX_LIST_FOREACH(pgrp, &pmix_client_globals.groups, pmix_group_t) {
@@ -1997,6 +2019,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
     /* PMIX_INFO_LOAD deep-copies the array into the info */
     PMIX_INFO_LOAD(&cb->info[n], PMIX_EVENT_CUSTOM_RANGE, &darray, PMIX_DATA_ARRAY);
     ++n;
+
+notify:
     /* identify the departing process */
     PMIX_INFO_LOAD(&cb->info[n], PMIX_EVENT_AFFECTED_PROC, &pmix_globals.myid, PMIX_PROC);
     ++n;
@@ -2008,7 +2032,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
         PMIX_INFO_XFER(&cb->info[n], &info[m]);
         ++n;
     }
-    PMIX_PROC_FREE(range, nmbrs);
+    if (NULL != range) {
+        PMIX_PROC_FREE(range, nmbrs);
+    }
 
     /* generate the event - the callback fires once it has been locally
      * generated, which is when the operation is complete */
@@ -2498,6 +2524,11 @@ static pmix_status_t add_group(const char *grpid,
                                pmix_proc_t *members, size_t nmembers)
 {
     pmix_group_t *grp;
+
+    /* our server holds the membership - see pmix_client_server_has_groups() */
+    if (pmix_client_server_has_groups()) {
+        return PMIX_SUCCESS;
+    }
 
     /* the caller's thread reads this list, so the lookup and the append have
      * to be one atomic step - two racing completions would otherwise both

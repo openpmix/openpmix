@@ -34,10 +34,10 @@
 
 /* A PMIx_Group_construct that is not an "add members" or "bootstrap"
  * operation must list every participant in its procs array, and the caller
- * must be one of them. Verify the client rejects a construct in which the
- * caller does not appear: the membership check runs entirely on the client
- * side, before anything is sent to the server, and must return
- * PMIX_ERR_NOT_A_MEMBER. */
+ * must be one of them. Verify a construct in which the caller does not
+ * appear is rejected with PMIX_ERR_NOT_A_MEMBER - by the server, which
+ * holds group membership from v7.0, or by the client itself when its
+ * server is older. */
 int main(int argc, char **argv)
 {
     pmix_status_t rc;

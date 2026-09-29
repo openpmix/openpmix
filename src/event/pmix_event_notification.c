@@ -63,6 +63,10 @@ void pmix_internal_notify_event(int sd, short args, void *cbdata)
                             (NULL == source) ? PMIX_RANK_WILDCARD : source->rank,
                             PMIx_Error_string(scd->status));
 
+        /* a group forming, or losing a member, changes the membership
+         * this server holds for its clients - see pmix_server_grpmbr.c */
+        pmix_server_grp_host_event(scd->status, source, scd->info, scd->ninfo);
+
         rc = pmix_server_notify_client_of_event(scd->status, source, scd->range,
                                                 scd->info, scd->ninfo,
                                                 _ntfy_done, scd);

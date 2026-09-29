@@ -59,6 +59,7 @@ module where it cannot, and queue replies back. The file map:
 | `pmix_server_fence.c` | The fence collective (barrier + modex data exchange) **and the shared collective-tracker engine** — `pmix_server_get_tracker`, `pmix_server_new_tracker`, `pmix_server_collect_data`, `pmix_server_commit`, plus the two predicates every family consults: `pmix_server_trk_complete` and `pmix_server_set_collective_status`, and the family's lost-connection accounting `pmix_server_trk_peer_lost` (the group family's counterpart lives in `pmix_server_group.c`). Also `PMIx_server_collect_job_info`, the public API a host uses to pull packed job-level info for a set of procs. |
 | `pmix_server_connect.c` | The connect / disconnect collectives (built on the same tracker engine). |
 | `pmix_server_group.c` | The group collectives (construct/destruct/leave/invite) — a **two-level** block/tracker engine distinct from the fence tracker, plus the peer-lost / member-left fault paths. |
+| `pmix_server_grpmbr.c` | The membership of the groups this server's clients belong to (v7.0 on), and what it is used for: expanding a group named by its ID - in fence, connect, disconnect, group construct/destruct and get - and the participant check those collectives make. |
 | `pmix_server_get.c` | Server-side `PMIx_Get` and direct modex (dmodex): the local-satisfy-vs-remote-fetch decision tree, the `local_reqs` / `remote_pnd` deferred-request lists, and the registration-completion re-entry points. |
 | `pmix_server_resolve.c` | `resolve_peers` / `resolve_node` — prefer-the-host, else answer from local GDS on a thread-shifted local handler. |
 
@@ -1868,6 +1869,52 @@ counts only if its source is the lost process (as a host raises it) or
 this server. Without the group check, the event cache replayed one
 invitation's answers into the next one registered. Covered by
 `test/unit/server_invite.c`.
+
+**The server holds each group's membership for its clients (v7.0 on),**
+in `pmix_server_grpmbr.c`, and a v7.0 client connected to it keeps none
+(see `pmix_client_server_has_groups()` in `src/client`).
+- Recorded by `_grpcbfunc` when a synchronous construct succeeds, in the
+  host's order - a group rank counts across the order
+  `PMIX_GROUP_MEMBERSHIP` reports - with the failure policy
+  (`PMIX_GROUP_NOTIFY_TERMINATION`) it was built with; by
+  `invite_broadcast` on the leader's server; and, on any other server,
+  by `pmix_server_grp_host_event` from `pmix_internal_notify_event` when
+  the host delivers the `PMIX_GROUP_CONSTRUCT_COMPLETE` and one of the
+  members is our client. Invited groups are sorted, as clients have
+  always held them. Clients cannot raise that event (above), so the host
+  path is the only other way in.
+- A `PMIX_GROUP_LEFT` removes the member - both where it is raised and
+  where the host delivers it. A destruct drops the group whatever it
+  reports, and `pmix_server_grp_sweep` drops any group none of whose
+  members is still ours - once per job, when it is deregistered, not as
+  each client goes: a host deregisters every client as it exits, and a
+  sweep walks every group's membership.
+- `pmix_server_grp_expand_procs` replaces a group reference - the ID
+  with `PMIX_RANK_WILDCARD`, or with a group rank - by the members, in
+  fence, connect, disconnect and group construct/destruct, before the
+  tracker is built, so the host always sees expanded lists. Add-members
+  and bootstrap constructs, and followers, list only some participants
+  and are not expanded. `pmix_server_get` resolves a group rank to the
+  member; a wildcard there is `PMIX_ERR_BAD_PARAM`.
+- Those collectives then require the requester to be a participant
+  (`pmix_server_grp_is_participant`, answering `PMIX_ERR_NOT_A_MEMBER`),
+  with the same covering ranks the client library accepts. The client no
+  longer checks when its server holds the groups, so this is the check,
+  and it applies to clients of every version - do not exempt older
+  peers. Users asked for the error because a process taking part in a
+  collective it does not belong to is otherwise very hard to track down,
+  and an older client should get it too. (A pre-v7.0 client that names a
+  group it belongs to by ID, which it did not expand, is expanded here
+  when this server holds the group.) Namespaces are compared exactly:
+  `PMIX_CHECK_NSPACE` reads an empty name as a wildcard.
+- A destruct naming no procs - how a v7.0 client sends it - is given the
+  members and the failure policy from the record, and is
+  `PMIX_ERR_NOT_FOUND` for a group we do not hold. A `PMIX_GROUP_LEFT`
+  naming no range is aimed at the rest of the group from the record.
+- A client before v7.0, or one connected to an older server, expands and
+  checks for itself and sends the members; the server expands anything
+  left unexpanded. Covered by `test/unit/server_group_members.c` and,
+  end to end, `test/unit/run_grpref.pl`.
 
 A `PMIX_GROUP_LEFT` notification reaches `pmix_server_grp_member_left`
 only for its sender. `pmix_server_event_recvd_from_client` takes the
