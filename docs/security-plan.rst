@@ -116,16 +116,14 @@ that hosts a part of it. The same attributes already govern access to
 published data (``PMIx_Publish``), so users meet one vocabulary.
 
 **Group membership** is looked up once per user and cached, rather than
-on every request:
-
-* for a connected client or tool, on its connection, at the first check
-  that needs it;
-* for a requester on another node (see `Data held on another node`_), in
-  a server-wide table keyed by user ID, refreshed after an interval set
-  by an MCA parameter.
-
-A change to a user's groups takes effect for new connections, and for
-remote requesters once their cached entry is refreshed.
+on every request. The server keeps one table, keyed by user ID, for
+every requester - connected or on another node (see `Data held on
+another node`_). An entry is made the first time a check needs that
+user's groups, and only when the job's access list names groups. It is
+refreshed after the interval set by the MCA parameter
+``pmix_server_access_group_timeout`` (in seconds; default 300; 0 keeps
+entries for the life of the server), so a change to a user's groups
+takes effect within that time.
 
 What is covered
 ---------------
@@ -273,7 +271,7 @@ Status
      - Each job's owner and access list stored by the server library,
        from the host's registration; one check implementing the rule;
        group membership cached per user.
-     - Planned
+     - Done (in review)
    * - 2
      - The server library applies the rule to what it answers itself:
        job and process data, query and resolve, monitoring of local

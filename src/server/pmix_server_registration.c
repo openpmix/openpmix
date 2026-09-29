@@ -165,6 +165,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
     size_t njupdates = 0;
     pmix_info_t *hostinfo, *resolved = NULL;
     size_t nhostinfo, nresolved = 0;
+    bool created = false;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
@@ -213,6 +214,19 @@ static void _register_nspace(int sd, short args, void *cbdata)
             goto release;
         }
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+        created = true;
+    }
+    /* who owns the job and who else may access it - see
+     * docs/security-plan.rst. A malformed entry fails the registration,
+     * and a namespace this call created goes back off the list */
+    rc = pmix_server_access_set(nptr, cd->info, cd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        if (created) {
+            pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
+            PMIX_RELEASE(nptr);
+        }
+        goto release;
     }
     if (0 > cd->nlocalprocs) {
         /* An update revises what we already hold. If we hold nothing
@@ -1719,6 +1733,9 @@ static void _register_client(int sd, short args, void *cbdata)
         info->host_registered = true;
         pmix_list_append(&nptr->ranks, &info->super);
     }
+    /* with no owner named by the host, the job belongs to the user its
+     * clients run as - see pmix_access_t */
+    pmix_server_access_set_owner(nptr, cd->uid, cd->gid, PMIX_OWNER_FROM_CLIENT);
     /* see if we have everyone - note that nlocalprocs is set to
      * a default value to ensure we don't execute this
      * test until the host calls "register_nspace" */

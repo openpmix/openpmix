@@ -180,6 +180,7 @@ typedef struct {
     pmix_list_t iof_residuals;  // leftover bytes waiting for newline
     pmix_list_t psets;  // list of known psets and memberships
     size_t max_iof_cache; // max number of IOF messages to cache
+    int access_group_timeout; // seconds a user's cached group list stays current - 0 = forever
     bool tool_connections_allowed;
     char *tmpdir;             // temporary directory for this server
     char *system_tmpdir;      // system tmpdir
@@ -374,11 +375,46 @@ PMIX_EXPORT void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t 
 PMIX_EXPORT pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info,
                                                        size_t *ninfo);
 
-/* A PMIX_USERID or PMIX_GRPID may be given as a name, and is resolved to its
+/* Access to a namespace by user and group - see docs/security-plan.rst and
+ * pmix_server_access.c. All of these run on the progress thread.
+ *
+ * pmix_server_access_permitted: may the requester (uid, and its group gid)
+ * access nptr? True for root, the server's own user, the owner, a user in
+ * the access list, or a member of a group in it. */
+PMIX_EXPORT bool pmix_server_access_permitted(uid_t uid, gid_t gid, const pmix_namespace_t *nptr);
+
+/* the same for a connected peer, by the identity it connected with */
+PMIX_EXPORT bool pmix_server_peer_permitted(const pmix_peer_t *peer, const pmix_namespace_t *nptr);
+
+/* Record the owner and access list a host registration gives for nptr -
+ * PMIX_USERID, PMIX_GRPID and PMIX_ACCESS_PERMISSIONS (or its
+ * PMIX_ACCESS_USERIDS / PMIX_ACCESS_GRPIDS), at the top level or inside a
+ * PMIX_JOB_INFO_ARRAY. Names must already be resolved. An owner id that is
+ * not a number is ignored, as it always has been; a malformed access list
+ * returns PMIX_ERR_BAD_PARAM and changes nothing. */
+PMIX_EXPORT pmix_status_t pmix_server_access_set(pmix_namespace_t *nptr, const pmix_info_t *info,
+                                                 size_t ninfo);
+
+/* Set nptr's owner from a source of the given strength - a weaker source
+ * never replaces a stronger one (see pmix_owner_source_t) */
+PMIX_EXPORT void pmix_server_access_set_owner(pmix_namespace_t *nptr, uid_t uid, gid_t gid,
+                                              pmix_owner_source_t source);
+
+/* every group the user belongs to, looked up once and cached - see
+ * pmix_server_globals.access_group_timeout. The array belongs to the
+ * cache. */
+PMIX_EXPORT pmix_status_t pmix_server_access_groups(uid_t uid, const gid_t **groups,
+                                                    size_t *ngroups);
+
+/* release the group cache */
+PMIX_EXPORT void pmix_server_access_finalize(void);
+
+/* A PMIX_USERID or PMIX_GRPID - and each entry of a PMIX_ACCESS_USERIDS or
+ * PMIX_ACCESS_GRPIDS list - may be given as a name, and is resolved to its
  * number where it enters the library, so that only the number is used from
- * there on - internally and with the host. For an array the host passed in,
- * which is not ours to change: if it (or an info array nested in it) gives
- * either one by name, *out is a copy with the names resolved, which the
+ * there on - internally and with the host. For an array passed in that is
+ * not ours to change: if it (or an info array nested in it) gives any of
+ * them by name, *out is a copy with the names resolved, which the
  * caller releases with PMIx_Info_free(*out, *nout); otherwise *out is NULL
  * and the array can be used as it is. A name that does not resolve returns
  * PMIX_ERR_NOT_FOUND. */
