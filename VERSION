@@ -38,10 +38,10 @@ python_min_version=3.6
 
 # Exact versions of the GNU tools used to make official distribution
 # tarballs (contrib/make_dist_tarball requires these exact versions).
-m4_dist_version=1.4.17
-autoconf_dist_version=2.69
-automake_dist_version=1.16.2
-libtool_dist_version=2.4.6
+m4_dist_version=1.4.21
+autoconf_dist_version=2.73
+automake_dist_version=1.19
+libtool_dist_version=2.6.2
 
 # PMIx Standard Compliance Level
 # The major and minor numbers indicate the version
