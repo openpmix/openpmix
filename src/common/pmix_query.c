@@ -298,7 +298,7 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
     pmix_list_t unresolved;
     pmix_kval_t *kv, *kvnxt;
     pmix_proc_t proc;
-    bool rank_given;
+    bool rank_given, nocopy;
     pmix_querylist_t *qry;
     /* a server answering for one of its peers answers about that peer */
     pmix_proc_t *me = (NULL != cd->requestor) ? cd->requestor : &pmix_globals.myid;
@@ -361,6 +361,10 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
             rc = PMIX_ERR_NO_PERMISSIONS;
             goto badparam;
         }
+        /* nor from a copy of another server's job data the peer has not
+         * been approved for - the host answers that instead */
+        nocopy = (NULL != cd->reqpeer && 0 < pmix_nslen(proc.nspace) &&
+                  !pmix_server_peer_may_use_copy_nspace(cd->reqpeer, proc.nspace));
 
         /* setup to try a local "get" on the data to see if we already have it */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
@@ -421,7 +425,10 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
                 return;
 
             } else {
-                PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+                rc = PMIX_ERR_NOT_FOUND;
+                if (!nocopy) {
+                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+                }
                 if (PMIX_SUCCESS == rc) {
                     /* need to retain this result */
                     PMIX_LIST_FOREACH_SAFE (kv, kvnxt, &cb.kvs, pmix_kval_t) {

@@ -268,6 +268,7 @@ APIs (section 3)
    PMIx_server_deregister_resources.3.rst
    PMIx_Register_attributes.3.rst
    PMIx_server_dmodex_request.3.rst
+   PMIx_server_dmodex_request2.3.rst
    PMIx_server_collect_inventory.3.rst
    PMIx_server_deliver_inventory.3.rst
    PMIx_server_collect_job_info.3.rst

@@ -290,6 +290,173 @@ pmix_peer_t *pmix_server_access_find_peer(const pmix_proc_t *proc)
     return NULL;
 }
 
+/* ------------------------------------------------------------------ */
+/* data held on another node                                           */
+/* ------------------------------------------------------------------ */
+
+pmix_status_t pmix_server_access_approve(pmix_namespace_t *nptr, uid_t uid, gid_t gid)
+{
+    uint32_t *u, *g;
+    size_t n;
+
+    if (NULL == nptr) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    for (n = 0; n < nptr->access.napv; n++) {
+        if (nptr->access.apv_uids[n] == (uint32_t) uid &&
+            nptr->access.apv_gids[n] == (uint32_t) gid) {
+            return PMIX_SUCCESS;
+        }
+    }
+    u = (uint32_t *) realloc(nptr->access.apv_uids, (nptr->access.napv + 1) * sizeof(uint32_t));
+    if (NULL == u) {
+        return PMIX_ERR_NOMEM;
+    }
+    nptr->access.apv_uids = u;
+    g = (uint32_t *) realloc(nptr->access.apv_gids, (nptr->access.napv + 1) * sizeof(uint32_t));
+    if (NULL == g) {
+        return PMIX_ERR_NOMEM;
+    }
+    nptr->access.apv_gids = g;
+    u[nptr->access.napv] = (uint32_t) uid;
+    g[nptr->access.napv] = (uint32_t) gid;
+    nptr->access.napv++;
+    return PMIX_SUCCESS;
+}
+
+bool pmix_server_peer_may_use_copy(const pmix_peer_t *peer, const pmix_namespace_t *nptr)
+{
+    uid_t uid;
+    size_t n;
+
+    if (NULL == nptr) {
+        return false;
+    }
+    if (nptr->access.registered) {
+        return pmix_server_peer_permitted(peer, nptr);
+    }
+    if (NULL == peer || NULL == peer->info) {
+        return false;
+    }
+    /* the server's own namespace describes the server, and is anyone's */
+    if (NULL != pmix_globals.mypeer && pmix_globals.mypeer->nptr == nptr) {
+        return true;
+    }
+    /* a job's own processes, root and our own user need no one's say-so */
+    uid = peer->info->uid;
+    if (peer->nptr == nptr || 0 == uid || geteuid() == uid) {
+        return true;
+    }
+    for (n = 0; n < nptr->access.napv; n++) {
+        if (nptr->access.apv_uids[n] == (uint32_t) uid &&
+            nptr->access.apv_gids[n] == (uint32_t) peer->info->gid) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool pmix_server_peer_may_use_copy_nspace(const pmix_peer_t *peer, const char *nspace)
+{
+    pmix_namespace_t *ns;
+
+    if (NULL == nspace || PMIx_Nspace_invalid(nspace)) {
+        return true;
+    }
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (NULL != ns->nspace && 0 == strcmp(nspace, ns->nspace)) {
+            return pmix_server_peer_may_use_copy(peer, ns);
+        }
+    }
+    /* we hold nothing for it */
+    return true;
+}
+
+pmix_status_t pmix_server_access_check_remote(const pmix_namespace_t *nptr,
+                                              const pmix_info_t *info, size_t ninfo)
+{
+    uint32_t uid = 0, gid = 0;
+    const pmix_proc_t *requestor = NULL;
+    bool haveuid = false;
+    size_t n;
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_USERID)) {
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &uid, PMIX_UINT32)) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            haveuid = true;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GRPID)) {
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &gid, PMIX_UINT32)) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_REQUESTOR)) {
+            if (PMIX_PROC != info[n].value.type || NULL == info[n].value.data.proc) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            requestor = info[n].value.data.proc;
+        }
+    }
+    /* no requester named: the host is asking for itself */
+    if (!haveuid) {
+        return PMIX_SUCCESS;
+    }
+    /* a job's own processes read their own job */
+    if (NULL != requestor && NULL != nptr &&
+        0 == strncmp(requestor->nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+        return PMIX_SUCCESS;
+    }
+    if (pmix_server_access_permitted((uid_t) uid, (gid_t) gid, nptr)) {
+        return PMIX_SUCCESS;
+    }
+    return PMIX_ERR_NO_PERMISSIONS;
+}
+
+pmix_status_t pmix_server_access_identify(const pmix_peer_t *peer, pmix_info_t **info,
+                                          size_t *ninfo)
+{
+    pmix_info_t *iptr;
+    pmix_proc_t me;
+    uint32_t uid, gid;
+    size_t n, m, nkeep = 0;
+
+    if (NULL == peer || NULL == peer->info || NULL == peer->info->pname.nspace) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    for (n = 0; n < *ninfo; n++) {
+        if (!PMIX_CHECK_KEY(&(*info)[n], PMIX_USERID) &&
+            !PMIX_CHECK_KEY(&(*info)[n], PMIX_GRPID) &&
+            !PMIX_CHECK_KEY(&(*info)[n], PMIX_REQUESTOR)) {
+            ++nkeep;
+        }
+    }
+    PMIX_INFO_CREATE(iptr, nkeep + 3);
+    if (NULL == iptr) {
+        return PMIX_ERR_NOMEM;
+    }
+    m = 0;
+    for (n = 0; n < *ninfo; n++) {
+        if (!PMIX_CHECK_KEY(&(*info)[n], PMIX_USERID) &&
+            !PMIX_CHECK_KEY(&(*info)[n], PMIX_GRPID) &&
+            !PMIX_CHECK_KEY(&(*info)[n], PMIX_REQUESTOR)) {
+            PMIX_INFO_XFER(&iptr[m], &(*info)[n]);
+            ++m;
+        }
+    }
+    uid = (uint32_t) peer->info->uid;
+    gid = (uint32_t) peer->info->gid;
+    PMIX_LOAD_PROCID(&me, peer->info->pname.nspace, peer->info->pname.rank);
+    PMIX_INFO_LOAD(&iptr[m], PMIX_USERID, &uid, PMIX_UINT32);
+    PMIX_INFO_LOAD(&iptr[m + 1], PMIX_GRPID, &gid, PMIX_UINT32);
+    PMIX_INFO_LOAD(&iptr[m + 2], PMIX_REQUESTOR, &me, PMIX_PROC);
+    if (NULL != *info) {
+        PMIX_INFO_FREE(*info, *ninfo);
+    }
+    *info = iptr;
+    *ninfo = nkeep + 3;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_server_access_filter_peers(const pmix_proc_t *requestor, pmix_list_t *peers,
                                               bool strict)
 {
