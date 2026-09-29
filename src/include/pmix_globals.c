@@ -186,6 +186,7 @@ static void nscon(pmix_namespace_t *p)
     PMIX_CONSTRUCT(&p->sinks, pmix_list_t);
     /* no owner until the host names one or registers a client; until
      * then the server's own identity stands in (see pmix_access_t) */
+    p->access.registered = false;
     p->access.source = PMIX_OWNER_UNKNOWN;
     p->access.uid = geteuid();
     p->access.gid = getegid();
@@ -774,11 +775,15 @@ static void qcon(pmix_query_caddy_t *p)
     p->credcbfunc = NULL;
     p->validcbfunc = NULL;
     p->requestor = NULL;
+    p->reqpeer = NULL;
 }
 static void qdes(pmix_query_caddy_t *p)
 {
     PMIX_DESTRUCT_LOCK(&p->lock);
     PMIX_PROC_FREE(p->requestor, 1);
+    if (NULL != p->reqpeer) {
+        PMIX_RELEASE(p->reqpeer);
+    }
     PMIX_BYTE_OBJECT_DESTRUCT(&p->bo);
     PMIX_QUERY_FREE(p->queries, p->nqueries);
     PMIX_PROC_FREE(p->targets, p->ntargets);

@@ -354,6 +354,13 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
                 rank_given = true;
             }
         }
+        /* a server answering for a peer answers about a job the peer may
+         * access - see docs/security-plan.rst */
+        if (NULL != cd->reqpeer && 0 < pmix_nslen(proc.nspace) &&
+            !pmix_server_peer_may_access_nspace(cd->reqpeer, proc.nspace)) {
+            rc = PMIX_ERR_NO_PERMISSIONS;
+            goto badparam;
+        }
 
         /* setup to try a local "get" on the data to see if we already have it */
         PMIX_CONSTRUCT(&cb, pmix_cb_t);

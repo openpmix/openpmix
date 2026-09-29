@@ -363,6 +363,8 @@ delivered to ``cbfunc``. In both cases the possible completion statuses include:
 * ``PMIX_ERR_NOT_FOUND`` |mdash| none of the requested data was available.
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the host environment does not support this
   operation.
+* ``PMIX_ERR_NO_PERMISSIONS`` |mdash| the query names a job (``PMIX_NSPACE``)
+  the caller's user may not access. See :doc:`/security-plan`.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid argument was supplied |mdash| for
   example, ``nqueries`` of zero, a ``NULL`` ``queries`` array, or a conflicting
   combination of process-identifier qualifiers.

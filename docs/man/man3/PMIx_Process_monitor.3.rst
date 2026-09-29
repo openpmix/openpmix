@@ -328,6 +328,9 @@ was accepted for processing; the final status and any data are delivered to
 * ``PMIX_ERR_BAD_PARAM`` |mdash| an invalid argument was supplied |mdash| for
   example, a ``NULL`` ``monitor``, or a server attempting to use
   ``PMIX_SEND_HEARTBEAT``.
+* ``PMIX_ERR_NO_PERMISSIONS`` |mdash| the request names processes whose job
+  the caller's user may not access. A request for every process on a node
+  leaves those processes out instead. See :doc:`/security-plan`.
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the request involves other nodes but the host
   environment provides no monitoring support.
 * ``PMIX_ERR_UNREACH`` |mdash| the caller is not a server and its local PMIx server

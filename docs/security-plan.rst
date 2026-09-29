@@ -164,6 +164,51 @@ What is covered
      - extending, releasing, spawning into an allocation
      - host (by user, not by namespace)
 
+What the server library checks
+------------------------------
+
+Beyond the rule itself, a few things hold for every check the server
+library makes:
+
+* **A job's own processes** always access their own job.
+* **The server's own namespace** describes the server, not anyone's
+  job, and anyone may read it.
+* **A job the host has not registered with this server** - one known
+  here only because data for it arrived from elsewhere - has no
+  permissions here to judge by. Requests for its data are checked by
+  the server that holds it (see `Data held on another node`_). Acting
+  on such a job - cleanup, monitoring, following its output - is
+  allowed only for root and the server's own user.
+
+Where the checks are made:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Request
+     - Check
+   * - ``PMIx_Get``, and a refresh of the client's cached copy
+     - The requester must be allowed the target job. A request waiting
+       for a job to be registered is checked again once it is.
+   * - ``PMIx_Query_info`` naming a namespace (``PMIX_NSPACE``)
+     - The requester must be allowed that job.
+   * - ``PMIx_Resolve_peers``, ``PMIx_Resolve_nodes``
+     - Naming a job, the requester must be allowed it. Naming none, the
+       answer includes only the jobs the requester may access.
+   * - ``PMIx_Process_monitor`` of processes on this node
+     - Processes the request names must all belong to jobs the
+       requester may access, or the request is refused. A request for
+       every local process leaves out those the requester may not
+       access. Requests from the host are not restricted.
+   * - Cleanup directives (``PMIX_REGISTER_CLEANUP`` and its family)
+       on ``PMIx_Job_control``
+     - The cleanup runs as the target job's user, so the requester must
+       be allowed every job it names.
+   * - Output forwarding inherited by a spawned job
+     - A subscription to a job's output follows into the jobs it
+       spawns only if its requester may access each of them.
+
 Data held on another node
 -------------------------
 
@@ -218,7 +263,11 @@ Compatibility
 -------------
 
 * **A host that registers no owner** gets the fallback above: the user
-  its clients were registered with, then the server's own user.
+  its clients were registered with, then the server's own user. On a
+  node that hosts none of a job's processes there are no clients, so
+  there only root and the server's own user can access that job. A host
+  running as the same user as its jobs sees no change; a host running
+  as a service account should register each job's owner.
 * **A host that does not pass ``PMIX_ACCESS_PERMISSIONS``** at
   registration gets owner-only access for every job, which is the
   default.
@@ -266,28 +315,29 @@ Status
        accepted; IOF pulls forwarded only after the host approves.
        PRRTE approves an IOF pull only for root, the DVM's user, or the
        job's owner.
-     - Done (PRRTE part in review)
+     - Done
    * - 1
      - Each job's owner and access list stored by the server library,
        from the host's registration; one check implementing the rule;
        group membership cached per user.
-     - Done (in review)
+     - Done
    * - 2
      - The server library applies the rule to what it answers itself:
        job and process data, query and resolve, monitoring of local
-       processes, cleanup directives, and IOF inheritance. A requester
-       must be a participant in a fence or connect it asks for.
-     - Planned
+       processes, cleanup directives, and IOF inheritance.
+     - Done (in review)
    * - 3
      - ``PMIx_server_dmodex_request2``; the requester's identity on the
-       ``direct_modex`` up-call; the check at the holding server.
+       ``direct_modex`` up-call; the check at the holding server. PRRTE
+       registers each job's owner (``PMIX_USERID``, ``PMIX_GRPID``) with
+       ``PMIx_server_register_nspace``.
      - Planned
    * - 4
      - Output file ownership and modes; server-mediated job data for
        requesters the shared-memory file mode does not admit.
      - Planned
    * - 5
-     - PRRTE: records and distributes each job's owner and access list,
+     - PRRTE: records and distributes each job's access list,
        accepts ``PMIX_ACCESS_PERMISSIONS`` at spawn, applies the rule to
        the operations it performs, carries requester identity on
        relays, and uses ``PMIx_server_dmodex_request2``.
