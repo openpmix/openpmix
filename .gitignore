@@ -254,6 +254,7 @@ test/python/run_server.sh
 test/simple/pmitest
 test/simple/simpcycle
 test/simple/simpgrpmember
+test/simple/simpgrpref
 test/simple/simpgrpdie
 test/simple/simpgrpddie
 test/simple/simpgrpleader
@@ -322,6 +323,7 @@ test/unit/server_fabric
 test/unit/server_resolve
 test/unit/server_requester_id
 test/unit/server_access
+test/unit/server_group_members
 test/unit/iof_pull_approval
 test/unit/server_setup
 test/unit/info_support
@@ -387,6 +389,7 @@ test/unit/run_simpcycle.pl
 test/unit/run_toolcycle.pl
 test/unit/run_toolswitch.pl
 test/unit/run_grpmember.pl
+test/unit/run_grpref.pl
 test/unit/run_grpinvite.pl
 test/unit/run_grpinviteendpts.pl
 test/unit/run_grpbadinfo.pl

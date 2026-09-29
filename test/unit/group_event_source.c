@@ -28,8 +28,10 @@
  *   may complete the join, record the group or store any data;
  *
  *   then the leader's completion, carrying one contribution from a member
- *   and one from a process outside the group - which completes the join,
- *   records the group, and stores only the member's data.
+ *   and one from a process outside the group - which completes the join
+ *   and stores only the member's data. The group is recorded by the
+ *   server, which holds the membership of its clients' groups (v7.0 on) -
+ *   the client keeps none of its own.
  *
  * The client reports each check itself and exits with the number that
  * failed.
@@ -40,6 +42,8 @@
 #include "include/pmix_server.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
+#include "src/server/pmix_server_ops.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_argv.h"
 
 #include <signal.h>
@@ -165,7 +169,12 @@ static int run_client(int readyfd, int gofd)
         usleep(50000);
     }
     check(joined && PMIX_SUCCESS == join_status, "the leader's completion ends the join");
-    check(group_recorded(), "and records the group");
+    if (pmix_client_server_has_groups()) {
+        /* the server holds the membership - checked there */
+        check(!group_recorded(), "and leaves the group's membership to its server");
+    } else {
+        check(group_recorded(), "and records the group");
+    }
     check(data_stored(&leader), "and stores a member's contribution");
     check(!data_stored(&outsider), "but not a contribution from outside the group");
 
@@ -277,6 +286,29 @@ static void raise_outcome(pmix_status_t code, const pmix_proc_t *source, bool na
     }
 }
 
+/* The server's record of the group: its two members, sorted, as an
+ * invited group has always been held. The event is handled on the
+ * progress thread; give it the moment it needs */
+static bool server_holds_group(const pmix_proc_t *leader)
+{
+    pmix_group_t *grp = NULL;
+    pmix_proc_t members[2];
+    int i;
+
+    PMIX_LOAD_PROCID(&members[0], leader->nspace, leader->rank);
+    PMIX_LOAD_PROCID(&members[1], GES_NSPACE, 0);
+    qsort(members, 2, sizeof(pmix_proc_t), pmix_util_compare_proc);
+    for (i = 0; i < 40 && NULL == grp; i++) {
+        grp = pmix_server_grp_find(GES_GROUP);
+        if (NULL == grp) {
+            usleep(50000);
+        }
+    }
+    return NULL != grp && 2 == grp->nmbrs &&
+           PMIX_CHECK_PROCID(&grp->members[0], &members[0]) &&
+           PMIX_CHECK_PROCID(&grp->members[1], &members[1]);
+}
+
 int main(int argc, char **argv)
 {
     char **client_env = NULL, *client_argv[5], fdbuf[2][16];
@@ -284,6 +316,7 @@ int main(int argc, char **argv)
     pmix_proc_t p0, leader, forger, outsider;
     pid_t child, r;
     char c = 'g';
+    bool srvok = false;
 
     setvbuf(stdout, NULL, _IONBF, 0);
     if (4 == argc && 0 == strcmp(argv[1], "client")) {
@@ -353,6 +386,7 @@ int main(int argc, char **argv)
     if (1 != write(gopipe[1], &c, 1)) {
         goto reap;
     }
+    srvok = server_holds_group(&leader);
 
 reap:
     close(gopipe[1]);
@@ -370,6 +404,12 @@ reap:
         status = 1 << 8;
     }
     PMIx_server_finalize();
+    if (!srvok) {
+        fprintf(stdout, "  FAIL: the server records the group, with its members\n");
+        status = 1 << 8;
+    } else {
+        fprintf(stdout, "  PASS: the server records the group, with its members\n");
+    }
     if (!WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
         fprintf(stdout, "\nFAILED\n");
         return 1;

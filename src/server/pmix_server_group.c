@@ -692,6 +692,22 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
     }
 
 reply:
+    /* this server now holds the group's membership for its clients - see
+     * pmix_server_grpmbr.c. Recorded before anyone is answered, so a
+     * member that goes on to name the group finds it */
+    if (PMIX_GROUP_CONSTRUCT == op && PMIX_SUCCESS == scd->status &&
+        NULL != members && 0 < nmembers) {
+        rc = pmix_server_grp_record(id, members, nmembers, ctxid_given ? ctxid : SIZE_MAX,
+                                    grp_notify_termination(blk), false);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    } else if (PMIX_GROUP_DESTRUCT == op) {
+        /* a destruct ends the group whatever it reports, as it does for
+         * each member */
+        pmix_server_grp_drop(id);
+    }
+
     // because bootstrap will have added multiple blocks to the collectives
     // for each bootstrap operation, cycle across the list to find them all -
     // a host that treats them as one operation answers only one of them, and
@@ -1355,6 +1371,7 @@ static void invites_init(void)
  * that the list starts a new cycle empty. */
 void pmix_server_grp_finalize(void)
 {
+    pmix_server_grpmbr_finalize();
     if (!invites_initialized) {
         return;
     }
@@ -1527,6 +1544,13 @@ static void invite_broadcast(pmix_server_invite_t *inv)
     for (i = 0; i < inv->nendpts; i++) {
         PMIX_INFO_XFER(&info[n], &inv->endpts[i]);
         ++n;
+    }
+
+    /* record it for our clients before they hear of it - see
+     * pmix_server_grpmbr.c */
+    rc = pmix_server_grp_record(inv->grpid, members, nmembers, inv->ctxid, false, true);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
     }
 
     invite_raise(inv, PMIX_GROUP_CONSTRUCT_COMPLETE, info, n);
@@ -2308,6 +2332,9 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     grp_trk_t *trk;
     bool bootstrap = false;
     bool follower = false;
+    bool addmembers = false;
+    bool havenotterm = false;
+    pmix_group_t *grp;
     uint32_t tmo = 0;
 
     pmix_output_verbose(2, pmix_server_globals.group_output,
@@ -2404,10 +2431,11 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         goto error;
     }
-    /* Two slots beyond what the client sent: the status seed, and this
+    /* Three slots beyond what the client sent: the status seed, this
      * process's own contribution, which this server now builds rather
-     * than taking from the client - see below. */
-    ninfo = ninf + 2;
+     * than taking from the client - see below - and, for a destruct, the
+     * failure policy the group was constructed with. */
+    ninfo = ninf + 3;
     PMIX_INFO_CREATE(info, ninfo);
     if (NULL == info) {
         rc = PMIX_ERR_NOMEM;
@@ -2475,6 +2503,12 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             // bootstrap is being given
             bootstrap = true;
 
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ADD_MEMBERS)) {
+            addmembers = true;
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_NOTIFY_TERMINATION)) {
+            havenotterm = true;
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
             // bound how long we wait for all local participants to contribute
             /* A value that will not convert is reported, not dropped:
@@ -2487,6 +2521,45 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                 goto error;
             }
         }
+    }
+
+    /* The group's members, as this server holds them - see
+     * pmix_server_grpmbr.c. A destruct from a client that relies on us for
+     * the membership (v7.0 on) names no procs: the group supplies them,
+     * and the failure policy it was constructed with unless the destruct
+     * gives its own. Otherwise a participant may be named as a group -
+     * except in an "add members" or bootstrap construct, which lists only
+     * some of its participants, or by a follower, which lists none */
+    if (PMIX_GROUP_DESTRUCT == op && 0 == nprocs) {
+        grp = pmix_server_grp_find(grpid);
+        if (NULL == grp || 0 == grp->nmbrs) {
+            rc = PMIX_ERR_NOT_FOUND;
+            goto error;
+        }
+        PMIX_PROC_CREATE(procs, grp->nmbrs);
+        if (NULL == procs) {
+            rc = PMIX_ERR_NOMEM;
+            goto error;
+        }
+        memcpy(procs, grp->members, grp->nmbrs * sizeof(pmix_proc_t));
+        nprocs = grp->nmbrs;
+        follower = false;
+        if (grp->notterm && !havenotterm) {
+            PMIX_INFO_LOAD(&info[ninfo], PMIX_GROUP_NOTIFY_TERMINATION, NULL, PMIX_BOOL);
+            ++ninfo;
+        }
+    } else if (!follower && !bootstrap && !addmembers) {
+        rc = pmix_server_grp_expand_procs(&procs, &nprocs);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
+    }
+    /* the requester must be one of the participants. The client library
+     * checks this too, except when it relies on us for its groups */
+    if (!follower && !bootstrap && !addmembers &&
+        !pmix_server_grp_is_participant(peer, procs, nprocs)) {
+        rc = PMIX_ERR_NOT_A_MEMBER;
+        goto error;
     }
 
     /* find/create the local tracker for this operation */

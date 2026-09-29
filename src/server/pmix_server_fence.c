@@ -1723,6 +1723,18 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         rc = PMIX_ERR_BAD_PARAM;
         goto cleanup;
     }
+    /* a participant may be named as a group we hold - see
+     * pmix_server_grpmbr.c */
+    rc = pmix_server_grp_expand_procs(&procs, &nprocs);
+    if (PMIX_SUCCESS != rc) {
+        goto cleanup;
+    }
+    /* the requester must be one of the participants. The client library
+     * checks this too, except when it relies on us for its groups */
+    if (!pmix_server_grp_is_participant(cd->peer, procs, nprocs)) {
+        rc = PMIX_ERR_NOT_A_MEMBER;
+        goto cleanup;
+    }
     /* sort the array */
     qsort(procs, nprocs, sizeof(pmix_proc_t), pmix_util_compare_proc);
 

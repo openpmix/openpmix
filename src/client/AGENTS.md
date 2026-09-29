@@ -170,6 +170,16 @@ and torn down in `PMIx_Finalize`. The load-bearing fields:
   expand group references in collective calls. **Always hold `grouplock`
   across a traversal and across any use of a group's `members`** — unlike
   `pending_requests`, this list is not confined to the progress thread.
+  **It stays empty when the server is v7.0 or later**
+  (`pmix_client_server_has_groups()`): that server holds the membership
+  (`src/server/pmix_server_grpmbr.c`), so the client sends group
+  references as the caller wrote them, skips `pmix_client_proc_is_included`
+  (the server checks and answers `PMIX_ERR_NOT_A_MEMBER`), destructs and
+  leaves naming only the group, and finds the answer to a `PMIx_Get` of a
+  group rank under the member's name in the reply (`member_in_reply` in
+  `pmix_client_get.c`). The list, and every path that reads it, remains
+  for a server that predates v7.0. A new path that needs a group's
+  membership must either ask the server or keep that fallback.
 - **`peers`** (`pmix_pointer_array_t`) — cached peer objects for data ops.
 - **`iof_stdout` / `iof_stderr`** — the two static IOF sinks for forwarded
   output.

@@ -209,7 +209,8 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
 
     /* PMIx_Connect requires that all participants be listed in the
      * input array, so verify that the calling process is among them */
-    if (!pmix_client_proc_is_included(rgs, nrg)) {
+    if (!pmix_client_server_has_groups() &&
+        !pmix_client_proc_is_included(rgs, nrg)) {
         PMIX_PROC_FREE(rgs, nrg);
         return PMIX_ERR_NOT_A_MEMBER;
     }
@@ -511,7 +512,8 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t n
 
     /* PMIx_Disconnect requires that all participants be listed in the
      * input array, so verify that the calling process is among them */
-    if (!pmix_client_proc_is_included(rgs, nrg)) {
+    if (!pmix_client_server_has_groups() &&
+        !pmix_client_proc_is_included(rgs, nrg)) {
         PMIX_PROC_FREE(rgs, nrg);
         return PMIX_ERR_NOT_A_MEMBER;
     }
