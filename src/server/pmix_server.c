@@ -28,6 +28,7 @@
 #include "include/pmix_server.h"
 
 #include "src/include/pmix_globals.h"
+#include "src/common/pmix_iof.h"
 
 #ifdef HAVE_STRING_H
 #    include <string.h>
@@ -547,6 +548,11 @@ static void server_teardown(void)
     PMIX_LIST_DESTRUCT(&pmix_server_globals.local_reqs);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.gdata);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.events);
+    /* Close the jobs' output sinks while the residual list they flush
+     * into still exists - it goes below, and the namespaces holding the
+     * sinks only in rte_finalize. Before the epilog, so what is still
+     * held reaches the files first */
+    pmix_iof_close_sinks();
     // the list will be destructed in rte_finalize, but do the
     // epilog here
     PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {

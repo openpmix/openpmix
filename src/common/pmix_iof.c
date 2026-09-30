@@ -2694,6 +2694,16 @@ static void flush_sink_residuals(pmix_iof_sink_t *sink)
     }
 }
 
+void pmix_iof_close_sinks(void)
+{
+    pmix_namespace_t *ns;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        PMIX_LIST_DESTRUCT(&ns->sinks);
+        PMIX_CONSTRUCT(&ns->sinks, pmix_list_t);
+    }
+}
+
 void pmix_iof_static_dump_output(pmix_iof_sink_t *sink)
 {
     bool dump;

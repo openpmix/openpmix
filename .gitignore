@@ -327,6 +327,7 @@ test/unit/server_group_members
 test/unit/server_access_checks
 test/unit/server_dmodex_access
 test/unit/iof_pull_approval
+test/unit/iof_finalize_sinks
 test/unit/server_setup
 test/unit/info_support
 test/unit/rndz_stale
