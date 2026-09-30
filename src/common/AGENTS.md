@@ -407,6 +407,15 @@ Two rules to keep when touching it:
   [`test/unit/iof_pattern.c`](../../test/unit/iof_pattern.c) on both
   sides of each power of ten.
 
+**Sinks are closed at finalize before the residual list goes.** A sink
+flushes its partial line from `pmix_server_globals.iof_residuals` into its
+file when it is destructed, and the namespaces holding the sinks are
+released only in `rte_finalize` - after `PMIx_server_finalize` and
+`PMIx_tool_finalize` destruct that list. Both call
+`pmix_iof_close_sinks()` first; without it every server that had written
+a job's output to a file crashed on its way out
+(`test/unit/iof_finalize_sinks.c`).
+
 `pmix_iof_check_pattern()` exists so a launcher can reject a bad pattern
 while the user is still looking at their command line. It shares its
 walker with the expander on purpose: a pattern the check accepts must

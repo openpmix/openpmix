@@ -334,6 +334,12 @@ PMIX_EXPORT pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_io
  * Writes with write(2) and gives up on the first short write - anything
  * left is discarded rather than retried. */
 PMIX_EXPORT void pmix_iof_static_dump_output(pmix_iof_sink_t *sink);
+
+/* Close every namespace's output sinks, writing out what they still hold.
+ * A server or launcher calls this at finalize before it destructs
+ * pmix_server_globals.iof_residuals, which the sinks flush into - the
+ * namespaces themselves are released only afterwards. */
+PMIX_EXPORT void pmix_iof_close_sinks(void);
 PMIX_EXPORT void pmix_iof_write_handler(int fd, short event, void *cbdata);
 PMIX_EXPORT bool pmix_iof_stdin_check(int fd);
 PMIX_EXPORT void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata);
