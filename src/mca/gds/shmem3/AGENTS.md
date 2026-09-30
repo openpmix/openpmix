@@ -277,7 +277,7 @@ undo by accident:
   that was the largest avoidable cost in building one.
 
   **The exclusive create is load-bearing**, not tidiness. Segments are
-  unlinked when their last holder lets go, so a backing path collides only
+  unlinked when the server lets go, so a backing path collides only
   with a file some earlier server left behind when it died — but the path
   is built from the pid, and pids get reused. Reusing that file would leave
   its bytes in place, since `ftruncate()` to the same or a smaller size
@@ -674,10 +674,32 @@ creates a fresh segment named after the generation (the backing path is
 built from the nspace, pid and name, so the name has to differ or they
 collide).
 
-Handing off is safe because the backing file is reference counted —
-dropping the server's handle leaves a client that still has it mapped
-with a valid mapping, and the file survives until the last holder lets
-go (`shmem_destruct` in `src/util/pmix_shmem.c`).
+Handing off is safe because dropping the server's handle unlinks the
+backing file but leaves a client that still has it mapped with a valid
+mapping - only the name goes (`pmix_shmem_segment_detach` in
+`src/util/pmix_shmem.c`). A client that had not yet opened the old
+generation fails to, and falls back like any client the file's mode does
+not admit (below).
+
+### Who may open a segment
+
+Only the server writes a segment; clients open the backing file
+read-only and map it read-only (`src/util/pmix_shmem.c`).
+`shmem3_segment_fix_perms()` gives the file to the job's owner - the
+`PMIX_USERID`/`PMIX_GRPID` the host registered - at `0400`, or `0440` for
+the first group the job's access list names, and never grants write. A
+server that is not root cannot give the file away; it keeps it, and sets
+the group if it can. See `docs/security-plan.rst`.
+
+A client the mode does not admit - of another user's job (a multi-job
+fence hands a client other jobs' modex segments), or of a job the server
+could not give the file to - fails to open it. `shmem3_attach()` turns
+that `PMIX_ERR_FILE_OPEN_FAILURE` into `PMIX_ERR_TAKE_NEXT_OPTION`, like a
+fixed-address map that could not be placed: inside `PMIx_Init` the client
+switches to `hash`; after it, that segment's realm is marked incomplete
+and its lookups go to the server, which applies the access rule. The
+testing-only parameter `force_attach_denied` produces that failure;
+`test/unit/run_gds_fallback.pl` uses it.
 
 The client tells generations apart by the **backing path**, which the
 seg blob already carries, so this is not a wire-format change and needs

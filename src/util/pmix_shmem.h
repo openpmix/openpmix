@@ -56,11 +56,6 @@ typedef struct pmix_shmem_t {
     /** True if this mapping was placed over a caller-held reservation,
      *  and so must be given back to it rather than simply unmapped. */
     bool in_reservation;
-    /** True while this handle holds a reference on the segment's shared
-     *  reference count. Only pmix_shmem_segment_attach() takes one - the
-     *  internal attach that stamps a freshly created segment does not -
-     *  so detach has to know which kind of attachment it is undoing. */
-    bool holds_ref;
     /** Size of shared-memory segment. */
     size_t size;
     /** Address of shared memory segment header. */
@@ -71,7 +66,9 @@ typedef struct pmix_shmem_t {
     char backing_path[PMIX_PATH_MAX];
     /** True once pmix_shmem_segment_create() has recorded the identity of
      *  the file it made, below. The name in backing_path can come to mean
-     *  some other file afterwards; this is what the file really was. */
+     *  some other file afterwards; this is what the file really was. It
+     *  also marks the creator's handle: the only one that maps the segment
+     *  writable, and the one whose detach removes the backing file. */
     bool have_backing_id;
     dev_t backing_dev;
     ino_t backing_ino;
@@ -99,12 +96,11 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_shmem_t);
  * go in), not hand-maintained. A number someone has to remember to bump is
  * a number that will not get bumped.
  *
- * A created segment is NOT attached and holds NO reference: the file
- * exists, its header is stamped, and nothing is mapped. The creator has
- * to call pmix_shmem_segment_attach() like anybody else if it means to
- * keep the segment alive, because the reference count is the only thing
- * that does - the first holder to let go of a segment nobody else has
- * taken removes the backing file.
+ * A created segment is NOT attached: the file exists, its header is
+ * stamped, and nothing is mapped. The creator attaches it with
+ * pmix_shmem_segment_attach() like anybody else, and gets the only
+ * writable mapping; when the creator detaches, the backing file is
+ * removed.
  *
  * On failure nothing is left behind: any file this call created is
  * removed again, and the handle's backing path is cleared.
@@ -137,10 +133,15 @@ pmix_shmem_segment_create(
  * gds/shmem3 puts the creator's shmem->size on the wire for exactly this
  * reason.
  *
- * On success the handle holds a reference on the segment; give it back
- * with pmix_shmem_segment_detach() or by releasing the handle. On
- * failure nothing is mapped, no reference is held, and the address
- * fields read NULL.
+ * The creator's handle maps the segment read-write. Any other handle
+ * opens the backing file read-only and maps it read-only: only the
+ * creator writes a segment, so the file's mode need grant no one else
+ * write access. A reader that cannot open the file - its mode does not
+ * admit it - gets PMIX_ERR_FILE_OPEN_FAILURE, and is expected to get the
+ * data some other way.
+ *
+ * Undo with pmix_shmem_segment_detach() or by releasing the handle. On
+ * failure nothing is mapped and the address fields read NULL.
  *
  * A handle maps one segment at a time: this refuses a handle that is
  * already attached with PMIX_ERR_BAD_PARAM rather than replacing what
@@ -157,13 +158,10 @@ pmix_shmem_segment_attach(
 /**
  * Drop this process's mapping of the segment.
  *
- * This releases the reference pmix_shmem_segment_attach() took, so the
- * two are a matched pair and a handle that is detached explicitly leaves
- * the shared count where a handle that is simply released would. Dropping
- * the LAST reference unlinks the backing file - that is what makes a
- * segment disappear once every holder has let go of it, and it means a
- * handle whose detach was the last one cannot attach again: the segment
- * is gone, which is the point.
+ * For the creator's handle this also unlinks the backing file: once the
+ * process that made the segment lets it go, nobody else is to attach.
+ * Readers already mapping it keep a valid mapping - only the name goes.
+ * A reader's detach removes nothing.
  *
  * Detaching a handle that never completed a public attach - including
  * one whose attach failed - releases nothing, so it is safe to call on
@@ -181,10 +179,9 @@ pmix_shmem_segment_detach(
  * valid mapping afterwards, which is what lets one generation of a
  * segment be handed off while readers are still on the previous one.
  *
- * Ordinarily nothing calls this - dropping the last reference through
- * pmix_shmem_segment_detach() does it - and the exception is a caller
- * unwinding a segment it created but never managed to attach, which no
- * reference count knows about.
+ * Ordinarily nothing calls this - the creator's detach does it - and the
+ * exception is a caller unwinding a segment it created but never managed
+ * to attach.
  *
  * The handle's backing path is cleared either way, so the handle no
  * longer names a file after this returns.
@@ -228,11 +225,9 @@ pmix_shmem_segment_chown(
  * answers: only the file this handle created, reached through a
  * descriptor, is changed.
  *
- * Note what the mode has to allow. A peer maps the segment MAP_SHARED
- * from a descriptor it opened O_RDWR - it writes the reference count,
- * even when it never writes the data - so a mode that denies write to
- * the processes meant to read the segment does not make it read-only to
- * them, it makes it unopenable.
+ * Readers open the file read-only, so a mode need grant them only read
+ * access - and should grant no one but the creator write access. The
+ * creator's own mapping was made when it attached, and is unaffected.
  */
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_chmod(
@@ -243,16 +238,13 @@ pmix_shmem_segment_chmod(
 /**
  * Drop write access to the segment's data region.
  *
- * The internal header is deliberately left writable: it carries the
- * reference count that attach and detach maintain, so a reader that
- * could not write it could not let go of the segment either.
- *
- * For a reader this turns "nothing here writes to the segment" from an
- * assumption into something the MMU enforces - a stray write becomes a
- * SIGSEGV at the instruction that did it, rather than corruption
- * another process trips over later. It is one-way: there is no
- * unprotect, because a segment a reader has protected is one it has no
- * business writing again.
+ * A reader's mapping is read-only already, so for it this changes
+ * nothing. For a writable mapping whose holder is done writing it turns
+ * "nothing here writes to the segment" from an assumption into something
+ * the MMU enforces - a stray write becomes a SIGSEGV at the instruction
+ * that did it, rather than corruption another process trips over later.
+ * It is one-way: there is no unprotect. The header page is left as it
+ * was.
  *
  * The geometry lives here rather than at the call site on purpose. The
  * data region does not start at the mapping's base - it begins a

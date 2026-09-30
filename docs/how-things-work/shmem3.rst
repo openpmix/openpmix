@@ -72,7 +72,7 @@ Where the code lives:
      - Contents
    * - ``src/util/pmix_shmem.[ch]``
      - Segment create/attach/detach/protect, the segment header and its
-       layout stamp, the reference count.
+       layout stamp; who maps a segment writable, and who removes it.
    * - ``src/util/pmix_vmem.[ch]``
      - Locating a free address range, and reserving one.
    * - ``src/mca/gds/shmem3/gds_shmem3.h``
@@ -175,7 +175,7 @@ A segment is a file under the session/nspace tmpdir, mapped
 
     +--------------------------------------------------+  <- hdr_address
     | pmix_shmem_header_t                              |
-    |   ref_count (atomic), magic, layout_id           |
+    |   (unused), magic, layout_id                     |
     |   ... padded out to a page boundary ...          |
     +--------------------------------------------------+  <- data_address
     | shared_{job,session,modex}_data_t                |
@@ -190,10 +190,18 @@ A segment is a file under the session/nspace tmpdir, mapped
     +--------------------------------------------------+
 
 The header is deliberately outside the data region. It carries the
-**reference count** that attach and detach maintain, which is what lets
-one generation of a segment be handed off while readers are still on it:
-the backing file survives until the last holder lets go, and dropping
-the last reference unlinks it.
+layout stamp, and a field once used for a shared reference count, kept
+so the layout does not move.
+
+**Only the server writes a segment.** It creates the backing file and
+maps it read-write; clients open it read-only and map it read-only. The
+file is given to the job's owner at mode ``0400`` - ``0440`` for a group
+the job's access list names - and never grants write. When the server
+drops a segment it unlinks the backing file; a client that still has it
+mapped keeps a valid mapping, which is what lets one generation of a
+segment be handed off while readers are still on it. A client the file's
+mode does not admit falls back to getting the data from the server, where
+the access rule is applied (see :doc:`/security-plan`).
 
 .. important::
 
@@ -613,10 +621,9 @@ behind it cannot grow, so a larger second modex overran it and aborted
 the server — taking the daemon, and the job, with it.
 ``examples/modex_twice.c`` reproduces that from four nodes up.
 
-The handoff is safe because the backing file is reference counted:
-dropping the server's handle leaves a client that still has it mapped
-with a valid mapping, and the file survives until the last holder lets
-go.
+The handoff is safe because dropping the server's handle unlinks only
+the backing file's name: a client that still has it mapped keeps a valid
+mapping. A client that had not yet opened it fails to, and falls back.
 
 .. note::
 

@@ -1573,6 +1573,11 @@ shmem3_attach(
          * the modex. */
         rc = PMIX_ERR_NOT_AVAILABLE;
     }
+    if (PMIX_UNLIKELY(pmix_gds_shmem3_force_attach_denied)) {
+        /* Testing only: the status a backing file whose mode does not
+         * admit this client produces */
+        rc = PMIX_ERR_FILE_OPEN_FAILURE;
+    }
     if (PMIX_UNLIKELY(pmix_gds_shmem3_force_modex_attach_failure &&
                       PMIX_GDS_SHMEM3_MODEX_ID == shmem3_id)) {
         /* Testing only: fail just this segment. Unlike the parameter
@@ -1593,6 +1598,17 @@ shmem3_attach(
                 "%s: could not attach segment at required address 0x%zx; "
                 "falling back to the next GDS module",
                 __func__, (size_t)req_addr
+            );
+            rc = PMIX_ERR_TAKE_NEXT_OPTION;
+        }
+        else if (PMIX_ERR_FILE_OPEN_FAILURE == rc) {
+            // The backing file's mode does not admit us - it belongs to
+            // another user, or the server could not give it to ours. The
+            // server holds the same data and answers for it, applying
+            // the access rule as it does; take it from there.
+            PMIX_GDS_SHMEM3_VOUT(
+                "%s: cannot open segment backing file; falling back to "
+                "the next GDS module", __func__
             );
             rc = PMIX_ERR_TAKE_NEXT_OPTION;
         }
@@ -1782,7 +1798,16 @@ shmem3_segment_attach_and_init(
 }
 
 /**
- * Updates backing file permissions based on PMIx directives.
+ * Give the backing file to the job's owner, readable by its owner - and by
+ * a group the job's access list names - and by no one else.
+ *
+ * Only the server writes a segment; clients open it read-only (see
+ * pmix_shmem_segment_attach), so no mode here grants write access, and
+ * our own mapping was made before the mode changed. A client the mode
+ * does not admit - of another user's job, or of a job this server could
+ * not give the file to - fails to open it and takes the data from the
+ * server instead, where the access rule is applied. See
+ * docs/security-plan.rst.
  */
 static pmix_status_t
 shmem3_segment_fix_perms(
@@ -1790,24 +1815,29 @@ shmem3_segment_fix_perms(
     pmix_shmem_t *shmem3
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    // Update segment ownership and permissions?
-    if (job->chown || job->chgrp) {
-        const uid_t uid = job->chown ? job->uid : (uid_t)-1;
-        const gid_t gid = job->chgrp ? job->gid : (gid_t)-1;
+    uid_t uid = job->chown ? job->uid : (uid_t)-1;
+    gid_t gid = job->chgrp ? job->gid : (gid_t)-1;
+    bool listed = false;
 
+    /* a group the owner allowed is the one to give read access to */
+    if (NULL != job->nspace && 0 < job->nspace->access.ngids) {
+        gid = (gid_t)job->nspace->access.gids[0];
+        listed = true;
+    }
+    if ((uid_t)-1 != uid || (gid_t)-1 != gid) {
         rc = pmix_shmem_segment_chown(shmem3, uid, gid);
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
+        if (PMIX_SUCCESS != rc && (uid_t)-1 != uid && (gid_t)-1 != gid) {
+            /* A server not running as root cannot give the file away, but
+             * may still be able to set its group */
+            rc = pmix_shmem_segment_chown(shmem3, (uid_t)-1, gid);
         }
-
-        rc = pmix_shmem_segment_chmod(
-            shmem3, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP
-        );
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
+        if (PMIX_SUCCESS != rc) {
+            listed = false;
         }
+    }
+    rc = pmix_shmem_segment_chmod(shmem3, listed ? (S_IRUSR | S_IRGRP) : S_IRUSR);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
     }
     return rc;
 }
@@ -2196,8 +2226,8 @@ shmem3_segment_create_and_attach(
      * break. */
     if (PMIX_UNLIKELY(PMIX_SUCCESS != shmem3_segment_fix_perms(job, shmem3))) {
         PMIX_GDS_SHMEM3_VOUT(
-            "%s: could not set ownership/permissions on %s; a client that "
-            "cannot open it will fall back to another GDS module",
+            "%s: could not set permissions on %s; a client that cannot "
+            "open it will fall back to another GDS module",
             __func__, shmem3->backing_path
         );
     }
