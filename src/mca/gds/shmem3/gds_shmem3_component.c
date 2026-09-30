@@ -81,6 +81,8 @@ bool pmix_gds_shmem3_force_client_attach_failure = false;
 
 bool pmix_gds_shmem3_force_modex_attach_failure = false;
 
+bool pmix_gds_shmem3_force_attach_denied = false;
+
 bool pmix_gds_shmem3_force_update_attach_failure = false;
 
 /* One gibibyte per slot. Nothing is committed, so the cost of being
@@ -142,6 +144,20 @@ gds_shmem3_component_register(void)
         "exercised. Do not set this in production.",
         PMIX_MCA_BASE_VAR_TYPE_BOOL,
         &pmix_gds_shmem3_force_client_attach_failure
+    );
+    if (varidx < 0) {
+        return PMIX_ERROR;
+    }
+
+    varidx = pmix_mca_base_component_var_register(
+        &pmix_mca_gds_shmem3_component.super,
+        "force_attach_denied",
+        "(Testing only) Force a client's attach of every segment to fail "
+        "as though its backing file's mode did not admit the client - "
+        "the failure a client of another user's job meets. Do not set "
+        "this in production.",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_gds_shmem3_force_attach_denied
     );
     if (varidx < 0) {
         return PMIX_ERROR;

@@ -43,7 +43,9 @@
  * pmix_object_t, no class-derived type, nothing behind PMIX_ENABLE_DEBUG.
  * If this struct can shift, it cannot be used to detect a shift. */
 typedef struct pmix_shmem_header_t {
-    /** Reference count. */
+    /** Unused. Readers once kept a shared reference count here, which
+     *  meant every reader had to open the file for writing; the creator
+     *  now removes the file itself. Kept so the layout does not move. */
     pmix_atomic_int32_t ref_count;
     /** Identifies this as a PMIx segment. */
     uint32_t magic;
@@ -61,36 +63,27 @@ data_addr_from_base(
     return (void *)((uintptr_t)base_addr + header_offset);
 }
 
-static inline void
-inc_ref_count(
-    pmix_shmem_header_t *header
-) {
-    (void)pmix_atomic_fetch_add_32(&header->ref_count, 1);
-}
-
-static inline bool
-dec_ref_count(
-    pmix_shmem_header_t *header
-) {
-    return 0 == pmix_atomic_sub_fetch_32(&header->ref_count, 1);
-}
-
+/* Only the process that creates a segment writes to it. Everyone else
+ * opens the file read-only and maps it read-only, so the file's mode
+ * never has to grant anyone but its creator write access - and a reader
+ * cannot change what every other reader sees. */
 static pmix_status_t
 segment_attach(
     pmix_shmem_t *shmem,
     uintptr_t desired_base_address,
-    pmix_shmem_flags_t flags
+    pmix_shmem_flags_t flags,
+    bool writable
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
     void *mmap_addr = MAP_FAILED;
 
     /* A handle maps one segment at a time, and re-using an attached one
      * has to be refused rather than absorbed. The failure path below
-     * hands the handle to pmix_shmem_segment_detach(), which for an
-     * attached handle drops its reference and, if it was the last one,
-     * takes the backing file with it - so a second attach that merely
-     * failed to find an address would have destroyed the segment the
-     * caller was already holding. Detach first, then attach again. */
+     * hands the handle to pmix_shmem_segment_detach(), which for the
+     * creator's handle takes the backing file with it - so a second
+     * attach that merely failed to find an address would have destroyed
+     * the segment the caller was already holding. Detach first, then
+     * attach again. */
     if (shmem->attached) {
         return PMIX_ERR_BAD_PARAM;
     }
@@ -98,7 +91,8 @@ segment_attach(
     /* opened relative to its directory rather than by name - see
      * pmix_os_dirpath_open_file() - so a symlink at the backing path
      * does not send the attach at some unrelated file */
-    const int fd = pmix_os_dirpath_open_file(shmem->backing_path, O_RDWR, 0);
+    const int fd = pmix_os_dirpath_open_file(shmem->backing_path,
+                                             writable ? O_RDWR : O_RDONLY, 0);
     if (-1 == fd) {
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
         if (0 < pmix_output_get_verbosity(pmix_gds_base_framework.framework_output)) {
@@ -136,7 +130,7 @@ segment_attach(
     }
     mmap_addr = mmap(
         (void *)desired_base_address, shmem->size,
-        PROT_READ | PROT_WRITE, mmap_flags, fd, 0
+        writable ? (PROT_READ | PROT_WRITE) : PROT_READ, mmap_flags, fd, 0
     );
     if (MAP_FAILED == mmap_addr) {
         // EEXIST: the requested address is occupied. Report it as "not
@@ -195,7 +189,7 @@ add_internal_segment_header(
     pmix_status_t rc = PMIX_SUCCESS;
     // The base address here is inconsequential because this is a temporary,
     // internal attachment site that should not be exposed to the caller.
-    rc = segment_attach(shmem, (uintptr_t)NULL, 0);
+    rc = segment_attach(shmem, (uintptr_t)NULL, 0, true);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -338,16 +332,17 @@ pmix_shmem_segment_attach(
     pmix_shmem_flags_t flags,
     uint32_t expected_layout_id
 ) {
+    /* the creator writes what it stores; everyone else only reads */
     pmix_status_t rc = segment_attach(
-        shmem, desired_base_address, flags
+        shmem, desired_base_address, flags, shmem->have_backing_id
     );
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
 
     // The mapping succeeded, which says nothing about whether we can read
-    // what is in it. Check the stamp BEFORE taking a reference or letting
-    // the caller near the data: the whole point is to reject a segment
+    // what is in it. Check the stamp BEFORE letting the caller near the
+    // data: the whole point is to reject a segment
     // written by a process that lays these structures out differently, and
     // every read past this point assumes they match.
     const pmix_shmem_header_t *header = (pmix_shmem_header_t *)shmem->hdr_address;
@@ -363,9 +358,6 @@ pmix_shmem_segment_attach(
         (void)pmix_shmem_segment_detach(shmem);
         return PMIX_ERR_NOT_SUPPORTED;
     }
-
-    inc_ref_count(shmem->hdr_address);
-    shmem->holds_ref = true;
     return rc;
 }
 
@@ -376,17 +368,14 @@ pmix_shmem_segment_detach(
     int rc = 0;
 
     if (shmem && shmem->attached) {
-        /* Give back the reference pmix_shmem_segment_attach() took, so a
-         * handle that is detached explicitly leaves the shared count in
-         * the same place a handle that is simply released does. Skipped
-         * for the internal attach that stamps a freshly created segment,
-         * which never took one. Must happen before the unmap: the count
-         * lives in the mapping being dropped. */
-        if (shmem->holds_ref) {
-            shmem->holds_ref = false;
-            if (dec_ref_count(shmem->hdr_address)) {
-                (void)pmix_shmem_segment_unlink(shmem);
-            }
+        /* The creator's detach removes the backing file: nobody else is
+         * to attach once the process that created the segment has let it
+         * go. Readers still mapping it keep a valid mapping - only the
+         * name goes. A reader's detach removes nothing. The internal
+         * attach that stamps a new segment runs before have_backing_id
+         * is set, so it does not take the file with it. */
+        if (shmem->have_backing_id) {
+            (void)pmix_shmem_segment_unlink(shmem);
         }
         if (shmem->in_reservation) {
             /* This range was carved out of a reservation the caller is
@@ -492,9 +481,9 @@ pmix_shmem_segment_protect_data(
     if (NULL == shmem || !shmem->attached) {
         return PMIX_ERR_BAD_PARAM;
     }
-    /* The header page stays writable - inc/dec_ref_count() live there,
-     * and a reader still has to be able to detach. Everything from the
-     * data region on is what a reader has no business touching. */
+    /* A reader maps the segment read-only to begin with, so for it this
+     * changes nothing; it is kept for a writable mapping whose holder is
+     * done writing. The header page is left as it was. */
     const size_t header_offset = pmix_shmem_utils_pad_to_page(
         sizeof(pmix_shmem_header_t)
     );
@@ -591,7 +580,6 @@ shmem_construct(
 ) {
     s->attached = false;
     s->in_reservation = false;
-    s->holds_ref = false;
     s->size = 0;
     s->hdr_address = NULL;
     s->data_address = NULL;
@@ -606,10 +594,10 @@ static void
 shmem_destruct(
     pmix_shmem_t *s
 ) {
-    /* Detach does the whole of it - drop our reference, unlink the
-     * backing file if it was the last one, unmap - so that releasing a
-     * handle and detaching it explicitly cannot come to different
-     * answers. A handle that is not attached holds nothing. */
+    /* Detach does the whole of it - unmap, and for the creator unlink the
+     * backing file - so that releasing a handle and detaching it
+     * explicitly cannot come to different answers. A handle that is not
+     * attached holds nothing. */
     (void)pmix_shmem_segment_detach(s);
     /* a segment that was created but never unlinked by us - the last
      * holder may have been some other process - leaves the directory */

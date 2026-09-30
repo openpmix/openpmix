@@ -445,12 +445,16 @@ Formatting and destination of the forwarded output:
   The named directory is used as given; the ``<jobid>`` and ``rank.<rank>``
   directories beneath it (and any directory levels a
   ``PMIX_IOF_FILE_PATTERN`` expands to) are created by PMIx, and one that
-  already exists is used only if it belongs to the user.
-  The named directory is used as given; the ``<jobid>`` and ``rank.<rank>``
-  directories beneath it (and any directory levels a
-  ``PMIX_IOF_FILE_PATTERN`` expands to) are PMIx's own, and one that
-  already exists is used only if it belongs to the user and is not writable
-  by group or other.
+  already exists is used only if it belongs to the user the server runs
+  as.
+
+  Output files - for this attribute and ``PMIX_IOF_OUTPUT_TO_FILE`` - are
+  readable only by the job's owner (mode ``0600``), or also by the first
+  group the job's ``PMIX_ACCESS_PERMISSIONS`` names (``0640``). A server
+  that cannot give the files to the job's owner makes them readable by
+  the owner's group, or failing that by everyone. An output file that is
+  not a regular file with a single name is not written. See
+  :doc:`/security-plan`.
 * ``PMIX_IOF_FILE_PATTERN`` (bool) |mdash| treat the ``PMIX_IOF_OUTPUT_TO_FILE``
   value as a pattern, suppressing the automatic annotation by nspace, rank, or
   other parameters.

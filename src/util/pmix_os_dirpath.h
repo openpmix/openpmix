@@ -106,6 +106,20 @@ PMIX_EXPORT int pmix_os_dirpath_create_under(const char *root, const char *tail,
                                              const mode_t mode);
 
 /**
+ * Give the directories of `tail` beneath a trusted root to group `gid` -
+ * each component in turn, and only those this process owns (which is to
+ * say, those it created); any other is left as it is.
+ *
+ * Walked the way pmix_os_dirpath_create_under() walks, declining a symlink
+ * at every component. A component whose group cannot be set is left as it
+ * is: whoever is to read what lies below is refused by the kernel.
+ *
+ * @retval 0    Every component was reached.
+ * @retval -1   errno says why.
+ */
+PMIX_EXPORT int pmix_os_dirpath_chgrp_under(const char *root, const char *tail, gid_t gid);
+
+/**
  * Open (or create) a file beneath a trusted root, declining a symlink at
  * every component of the part PMIx composes - the file included.
  *

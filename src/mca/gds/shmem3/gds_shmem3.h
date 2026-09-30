@@ -155,6 +155,7 @@ PMIX_EXPORT extern bool pmix_gds_shmem3_offset_placement;
  * in production.
  */
 PMIX_EXPORT extern bool pmix_gds_shmem3_force_modex_attach_failure;
+PMIX_EXPORT extern bool pmix_gds_shmem3_force_attach_denied;
 
 /**
  * Testing-only MCA parameter. When true, a client's attach is forced to
