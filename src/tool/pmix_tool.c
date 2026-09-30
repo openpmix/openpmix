@@ -1923,6 +1923,9 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_LIST_DESTRUCT(&pmix_server_globals.local_reqs);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.gdata);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.events);
+    /* the jobs' output sinks flush into iof_residuals when they close, and
+     * the namespaces holding them are released after it is gone */
+    pmix_iof_close_sinks();
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.psets);
