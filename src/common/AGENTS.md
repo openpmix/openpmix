@@ -407,6 +407,20 @@ Two rules to keep when touching it:
   [`test/unit/iof_pattern.c`](../../test/unit/iof_pattern.c) on both
   sides of each power of ten.
 
+**Who owns and reads an output file is settled through its descriptor**
+(`output_perms()`, `output_fd()`; see `docs/security-plan.rst`).
+`output_perms()` decides once per job from `nptr->access`: the owner, the
+group to give read access to (the first one the access list names, else
+the owner's), and the mode for the directories we create - `0700`/`0750`
+when we run as the owner, `0755` otherwise, since the owner must be able
+to reach files whose own modes decide who reads them. `output_fd()` then
+vets and settles each file: it must be a regular file with one link
+(the name is ours, but may sit in a directory the owner controls), it is
+opened without `O_TRUNC` and emptied only after that check, and it is
+given to the owner (`0600`, `0640` with a listed group), or failing that
+to the group (`0640`), or left `0644` so the owner can still read it. A
+new place that opens an output file goes through both.
+
 **Sinks are closed at finalize before the residual list goes.** A sink
 flushes its partial line from `pmix_server_globals.iof_residuals` into its
 file when it is destructed, and the namespaces holding the sinks are

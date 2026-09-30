@@ -331,6 +331,53 @@ int pmix_os_dirpath_create_under(const char *root, const char *tail,
     return rc;
 }
 
+int pmix_os_dirpath_chgrp_under(const char *root, const char *tail, gid_t gid)
+{
+    char **parts;
+    int fd, next, i, len, save;
+    struct stat buf;
+
+    if (NULL == tail || '\0' == tail[0]) {
+        errno = EINVAL;
+        return -1;
+    }
+    fd = open_trusted_root(root);
+    if (0 > fd) {
+        return -1;
+    }
+    parts = PMIx_Argv_split(tail, path_sep[0]);
+    if (NULL == parts) {
+        close(fd);
+        errno = EINVAL;
+        return -1;
+    }
+    len = PMIx_Argv_count(parts);
+    for (i = 0; i < len; ++i) {
+        /* opened for reading, not only to traverse: fchown() is not
+         * available on the traverse-only kind */
+        next = openat(fd, parts[i], O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        save = errno;
+        close(fd);
+        if (0 > next) {
+            PMIx_Argv_free(parts);
+            errno = save;
+            return -1;
+        }
+        fd = next;
+        /* only what this process owns - which is what it created */
+        if (0 == fstat(fd, &buf) && buf.st_uid == geteuid() && buf.st_gid != gid) {
+            if (0 != fchown(fd, (uid_t) -1, gid)) {
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "PATH %s/%s: SETTING GROUP FAILED: %s",
+                                    root, parts[i], strerror(errno));
+            }
+        }
+    }
+    PMIx_Argv_free(parts);
+    close(fd);
+    return 0;
+}
+
 int pmix_os_dirpath_open_file_under(const char *root, const char *tail,
                                     int flags, mode_t mode)
 {

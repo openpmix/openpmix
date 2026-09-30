@@ -1100,6 +1100,90 @@ static ssize_t pattern_literal_head(const char *pattern)
     return head;
 }
 
+/* Who is to read a job's output files, and what can be arranged - see
+ * docs/security-plan.rst. By default only the job's owner reads them. A
+ * group the owner allowed in the job's access list may too. */
+typedef struct {
+    uid_t owner;
+    gid_t group;    /* a group the access list names, else the owner's */
+    bool listed;    /* the group is one the access list names */
+    mode_t dmode;   /* for the directories we create */
+} pmix_iof_perms_t;
+
+static void output_perms(const pmix_namespace_t *nptr, pmix_iof_perms_t *op)
+{
+    bool known = (PMIX_OWNER_UNKNOWN != nptr->access.source);
+
+    op->owner = known ? nptr->access.uid : geteuid();
+    op->listed = (0 < nptr->access.ngids);
+    if (op->listed) {
+        op->group = (gid_t) nptr->access.gids[0];
+    } else {
+        op->group = known ? nptr->access.gid : getegid();
+    }
+    /* Running as the owner, the directories can be the owner's alone.
+     * Otherwise the owner has to be able to reach the files below them -
+     * whose own modes decide who reads them - so they can be entered. */
+    if (op->owner == geteuid()) {
+        op->dmode = op->listed ? (S_IRWXU | S_IRGRP | S_IXGRP) : S_IRWXU;
+    } else {
+        op->dmode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+    }
+}
+
+/* Settle who owns and reads an output file we just opened, through its
+ * descriptor. Owner-only when the file belongs to the job's owner - we
+ * run as the owner, or can give it to them - and readable by a group the
+ * access list names. When the file cannot be given to the owner, it is
+ * made readable by the group (a listed one, else the owner's own) if we
+ * can set that, and by everyone otherwise, so the owner can still read
+ * their output.
+ *
+ * Only a regular file with a single name is written: the name is one we
+ * composed, but it may sit in a directory the job's owner controls, and
+ * a file reached through a second name is some other file. The file is
+ * opened without O_TRUNC and emptied here, once it has passed. Returns the
+ * descriptor, or -1 having closed it. */
+static int output_fd(int fd, const pmix_iof_perms_t *op)
+{
+    struct stat buf;
+    mode_t mode = S_IRUSR | S_IWUSR;
+
+    if (0 > fd) {
+        return fd;
+    }
+    if (0 != fstat(fd, &buf) || !S_ISREG(buf.st_mode) || 1 != buf.st_nlink) {
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "IOF: output file is not a regular file with one name - not written");
+        close(fd);
+        return -1;
+    }
+    /* opened without O_TRUNC so that nothing is emptied before this check */
+    if (0 != ftruncate(fd, 0)) {
+        close(fd);
+        return -1;
+    }
+    if (op->owner == geteuid()) {
+        if (op->listed && 0 == fchown(fd, (uid_t) -1, op->group)) {
+            mode |= S_IRGRP;
+        }
+    } else if (0 == fchown(fd, op->owner, op->group)) {
+        if (op->listed) {
+            mode |= S_IRGRP;
+        }
+    } else if (0 == fchown(fd, (uid_t) -1, op->group)) {
+        mode |= S_IRGRP;
+    } else {
+        mode |= S_IRGRP | S_IROTH;
+    }
+    if (0 != fchmod(fd, mode)) {
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "IOF: setting the mode of an output file failed: %s",
+                            strerror(errno));
+    }
+    return fd;
+}
+
 /* Create the directories a composed output name needs, then open it.
  *
  * The caller's own prefix is created as one path, exactly as it was
@@ -1112,7 +1196,7 @@ static ssize_t pattern_literal_head(const char *pattern)
  *
  * `name` is modified in place while the directory part is taken off it,
  * and is put back before returning. */
-static int open_composed_output(const char *pattern, char *name, mode_t dmode)
+static int open_composed_output(const char *pattern, char *name, const pmix_iof_perms_t *op)
 {
     ssize_t head = pattern_literal_head(pattern);
     char *root, *tail, *sep;
@@ -1142,7 +1226,7 @@ static int open_composed_output(const char *pattern, char *name, mode_t dmode)
      * every pattern naming a directory that did not already exist fail to
      * open, with mkdir reporting ENOENT for the prefix itself. */
     if (0 < head) {
-        rc = pmix_os_dirpath_create(root, dmode);
+        rc = pmix_os_dirpath_create(root, op->dmode);
         if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
             PMIX_ERROR_LOG(rc);
             free(root);
@@ -1154,7 +1238,12 @@ static int open_composed_output(const char *pattern, char *name, mode_t dmode)
     sep = strrchr(tail, '/');
     if (NULL != sep) {
         *sep = '\0';
-        rc = pmix_os_dirpath_create_under(root, tail, dmode);
+        rc = pmix_os_dirpath_create_under(root, tail, op->dmode);
+        /* a group the owner allowed has to be able to reach the file */
+        if ((PMIX_SUCCESS == rc || PMIX_ERR_EXISTS == rc) && op->listed &&
+            op->owner == geteuid()) {
+            (void) pmix_os_dirpath_chgrp_under(root, tail, op->group);
+        }
         *sep = '/';
         if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -1163,10 +1252,9 @@ static int open_composed_output(const char *pattern, char *name, mode_t dmode)
         }
     }
 
-    fd = pmix_os_dirpath_open_file_under(root, tail,
-                                         O_CREAT | O_RDWR | O_TRUNC, 0644);
+    fd = pmix_os_dirpath_open_file_under(root, tail, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     free(root);
-    return fd;
+    return output_fd(fd, op);
 }
 
 /* How wide the zero-padded rank field has to be for a job of this size.
@@ -1202,11 +1290,13 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
     int numdigs, fdout;
     pmix_iof_sink_t *snk;
     pmix_proc_t src;
+    pmix_iof_perms_t op;
 
     pmix_output_verbose(5, pmix_server_globals.iof_output,
                         "IOF SETUP %s %u",
                         nptr->nspace, rank);
     PMIX_LOAD_PROCID(&src, nptr->nspace, rank);
+    output_perms(nptr, &op);
 
     numdigs = pmix_iof_rank_digits(nptr->nprocs);
 
@@ -1232,19 +1322,21 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
          * to name, and naming one that does not exist yet is the ordinary
          * case - and only the namespace and rank levels below it are walked
          * a component at a time. */
-        rc = pmix_os_dirpath_create(nptr->iof_flags.directory,
-                                    S_IRWXU | S_IRGRP | S_IXGRP);
+        rc = pmix_os_dirpath_create(nptr->iof_flags.directory, op.dmode);
         if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
             PMIX_ERROR_LOG(rc);
             free(outdir);
             return NULL;
         }
-        rc = pmix_os_dirpath_create_under(nptr->iof_flags.directory, outdir,
-                                          S_IRWXU | S_IRGRP | S_IXGRP);
+        rc = pmix_os_dirpath_create_under(nptr->iof_flags.directory, outdir, op.dmode);
         if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
             PMIX_ERROR_LOG(rc);
             free(outdir);
             return NULL;
+        }
+        /* a group the owner allowed has to be able to reach the files */
+        if (op.listed && op.owner == geteuid()) {
+            (void) pmix_os_dirpath_chgrp_under(nptr->iof_flags.directory, outdir, op.group);
         }
         if (PMIX_FWD_STDOUT_CHANNEL & stream ||
             nptr->iof_flags.merge) {
@@ -1255,8 +1347,10 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 free(outdir);
                 return NULL;
             }
-            fdout = pmix_os_dirpath_open_file_under(nptr->iof_flags.directory, outfile,
-                                                    O_CREAT | O_RDWR | O_TRUNC, 0644);
+            fdout = output_fd(pmix_os_dirpath_open_file_under(nptr->iof_flags.directory, outfile,
+                                                              O_CREAT | O_RDWR,
+                                                              S_IRUSR | S_IWUSR),
+                              &op);
             free(outfile);
             if (0 > fdout) {
                 /* couldn't be opened */
@@ -1290,8 +1384,10 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 free(outdir);
                 return NULL;
             }
-            fdout = pmix_os_dirpath_open_file_under(nptr->iof_flags.directory, outfile,
-                                                    O_CREAT | O_RDWR | O_TRUNC, 0644);
+            fdout = output_fd(pmix_os_dirpath_open_file_under(nptr->iof_flags.directory, outfile,
+                                                              O_CREAT | O_RDWR,
+                                                              S_IRUSR | S_IWUSR),
+                              &op);
             free(outfile);
             if (0 > fdout) {
                 /* couldn't be opened */
@@ -1353,8 +1449,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
              * then fail to open the file in the one the pattern actually
              * named. Those expanded levels are composed here rather than
              * given to us, so they are built a component at a time. */
-            fdout = open_composed_output(nptr->iof_flags.file, outfile,
-                                         S_IRWXU | S_IRGRP | S_IXGRP);
+            fdout = open_composed_output(nptr->iof_flags.file, outfile, &op);
             free(outfile);
             if (0 > fdout) {
                 /* couldn't be opened */
@@ -1396,8 +1491,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 return NULL;
             }
             /* see the note on the stdout sink above */
-            fdout = open_composed_output(nptr->iof_flags.file, outfile,
-                                         S_IRWXU | S_IRGRP | S_IXGRP);
+            fdout = open_composed_output(nptr->iof_flags.file, outfile, &op);
             free(outfile);
             if (0 > fdout) {
                 /* couldn't be opened */
