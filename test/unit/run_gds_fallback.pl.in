@@ -7,10 +7,13 @@
 # Additional copyrights may follow
 
 # Exercise the graceful GDS fallback. The gds/shmem3 client-side segment
-# attach is forced to fail (via the testing-only MCA parameter
-# gds_shmem3_force_client_attach_failure); each client must then fall back
-# to the next-priority GDS module (typically hash) and still complete
-# PMIx_Init, so the job runs to completion and pmix_test exits 0.
+# attach is forced to fail, twice over: once as a fixed-address map that
+# could not be placed (gds_shmem3_force_client_attach_failure), and once
+# as a backing file whose mode does not admit the client
+# (gds_shmem3_force_attach_denied) - what a client meets when the file
+# belongs to another user. Each client must then fall back to the
+# next-priority GDS module (typically hash) and still complete PMIx_Init,
+# so the job runs to completion and pmix_test exits 0.
 #
 # On platforms where gds/shmem3 does not activate -- e.g. those without
 # /proc/self/maps -- shmem3 is never selected, the force-failure switch
@@ -36,9 +39,6 @@ foreach my $path (@splitstr) {
 my $mymcapaths = join(":", @myfullpaths);
 $ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
 
-# Force shmem3 clients to fail their fixed-address attach so the fallback
-# path is taken when shmem3 is the selected module.
-$ENV{'PMIX_MCA_gds_shmem3_force_client_attach_failure'} = "1";
 
 # Turn on gds verbosity so we can confirm from the output which GDS modules
 # were actually used (and thus whether the fallback really fired).
@@ -63,6 +63,13 @@ foreach my $p (@paths) {
         }
     }
 }
+
+sub run_case {
+my ($param) = @_;
+# Force shmem3 clients to fail their attach so the fallback path is taken
+# when shmem3 is the selected module.
+$ENV{"PMIX_MCA_gds_shmem3_$param"} = "1";
+print "=== $param\n";
 
 # Prefix the external timeout(1)/gtimeout(1) when we found one; it can
 # escalate signals on a hang. When none is available, arm a Perl alarm
@@ -112,7 +119,7 @@ print "CODE $status\n";
 # clients can only finish PMIx_Init if the fallback works.
 if (0 != $status) {
     print "FAIL: pmix_test did not complete (exit $status)\n";
-    exit($status == 0 ? 1 : $status);
+    return ($status == 0 ? 1 : $status);
 }
 
 # Confirm the fallback actually fired rather than passing vacuously. If
@@ -125,11 +132,20 @@ my $used_shmem3 = ($output =~ /JOB INFO WITH shmem3/);
 my $fell_back   = ($output =~ /JOB INFO WITH hash/);
 if ($used_shmem3 && !$fell_back) {
     print "FAIL: shmem3 was used but no GDS fallback was observed\n";
-    exit(1);
+    return 1;
 }
 if ($used_shmem3) {
     print "PASS: observed shmem3 -> hash GDS fallback\n";
 } else {
     print "PASS: gds/shmem3 not active here; fallback not exercised\n";
 }
-exit(0);
+return 0;
+}
+
+my $rc = 0;
+foreach my $param ("force_client_attach_failure", "force_attach_denied") {
+    my $r = run_case($param);
+    delete $ENV{"PMIX_MCA_gds_shmem3_$param"};
+    $rc = $r if (0 != $r && 0 == $rc);
+}
+exit($rc);

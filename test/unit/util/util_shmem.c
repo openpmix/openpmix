@@ -33,6 +33,8 @@
 #    include <unistd.h>
 #endif
 #include <fcntl.h>
+#include <setjmp.h>
+#include <signal.h>
 #ifdef HAVE_SYS_STAT_H
 #    include <sys/stat.h>
 #endif
@@ -218,101 +220,129 @@ static void test_chmod_does_not_follow_a_symlink(void)
     unlink(other);
 }
 
-/* attach() takes a reference on the count that lives inside the segment;
- * detach() has to give it back. It did not - only the destructor did, and
- * only for a handle that was still attached - so a handle that was
- * detached explicitly left its reference standing for the life of the
- * node. The count is what decides when the backing file goes away, so the
- * visible consequence is a file nobody will ever remove, at a name built
- * from a pid, and pids get reused.
- *
- * Assert it through the file, since the count itself is private: after
- * the only holder detaches, the backing file must be gone. */
-static void test_detach_releases_the_reference(void)
+/* The creator's detach removes the backing file: once the process that
+ * made a segment lets it go, nobody else is to attach. It has to happen
+ * on an explicit detach and not only when the handle is released, or a
+ * detached creator leaves a file nobody will ever remove, at a name built
+ * from a pid, and pids get reused. */
+static void test_creator_detach_removes_the_file(void)
 {
     char seg[512];
     pmix_shmem_t *shmem;
     struct stat sb;
     int rc;
 
-    snprintf(seg, sizeof(seg), "%s/refcount.seg", tmpbase);
+    snprintf(seg, sizeof(seg), "%s/creator.seg", tmpbase);
     unlink(seg);
 
     shmem = PMIX_NEW(pmix_shmem_t);
     if (NULL == shmem) {
-        report("refcount: fixture", 0);
+        report("creator: fixture", 0);
         return;
     }
     rc = pmix_shmem_segment_create(shmem, 4096, seg, 1);
     if (PMIX_SUCCESS != rc) {
-        report("refcount: fixture", 0);
+        report("creator: fixture", 0);
         PMIX_RELEASE(shmem);
         return;
     }
+    /* the create stamps the segment through an attach of its own, and
+     * undoing that must not take the file */
+    report("creator: file present after create", 0 == stat(seg, &sb));
     rc = pmix_shmem_segment_attach(shmem, (uintptr_t) NULL, 0, 1);
-    report("refcount: attach", PMIX_SUCCESS == rc);
+    report("creator: attach", PMIX_SUCCESS == rc);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(shmem);
         unlink(seg);
         return;
     }
-    /* still the only holder, so the file is still there */
-    report("refcount: file present while attached", 0 == stat(seg, &sb));
+    report("creator: file present while attached", 0 == stat(seg, &sb));
 
     rc = pmix_shmem_segment_detach(shmem);
-    report("refcount: detach", PMIX_SUCCESS == rc);
-    report("refcount: last detach unlinks the backing file",
+    report("creator: detach", PMIX_SUCCESS == rc);
+    report("creator: detach removes the backing file",
            0 != stat(seg, &sb) && ENOENT == errno);
 
     PMIX_RELEASE(shmem);
     unlink(seg);
 }
 
-/* The internal attach that stamps a freshly created segment must NOT be
- * counted as a holder: it is undone with the same detach, and a detach
- * that released a reference nobody took would drive the count negative -
- * so the first real holder to let go would find it non-zero and leave the
- * file behind forever.
- *
- * A create leaves the segment unattached, so this is observable as: after
- * create alone, one attach followed by one detach still empties it. */
-static void test_create_takes_no_reference(void)
+static sigjmp_buf fault_env;
+
+static void on_fault(int sig)
+{
+    (void) sig;
+    siglongjmp(fault_env, 1);
+}
+
+/* Only the creator writes a segment. A reader opens the backing file
+ * read-only and maps it read-only, so a mode that grants the reader only
+ * read admits it - and a write through its mapping faults rather than
+ * changing what every other reader sees. A reader's detach removes
+ * nothing; the file stays until the creator lets it go. */
+static void test_reader_is_read_only(void)
 {
     char seg[512];
-    pmix_shmem_t *creator, *holder;
+    pmix_shmem_t *creator, *reader;
+    struct sigaction sa, osegv, obus;
+    volatile int faulted = 0;
     struct stat sb;
     int rc;
 
-    snprintf(seg, sizeof(seg), "%s/stamp.seg", tmpbase);
+    snprintf(seg, sizeof(seg), "%s/reader.seg", tmpbase);
     unlink(seg);
 
     creator = PMIX_NEW(pmix_shmem_t);
-    holder = PMIX_NEW(pmix_shmem_t);
-    if (NULL == creator || NULL == holder) {
-        report("stamp: fixture", 0);
+    reader = PMIX_NEW(pmix_shmem_t);
+    if (NULL == creator || NULL == reader) {
+        report("reader: fixture", 0);
         return;
     }
-    rc = pmix_shmem_segment_create(creator, 4096, seg, 1);
-    if (PMIX_SUCCESS != rc) {
-        report("stamp: fixture", 0);
+    if (PMIX_SUCCESS != pmix_shmem_segment_create(creator, 4096, seg, 1) ||
+        PMIX_SUCCESS != pmix_shmem_segment_attach(creator, (uintptr_t) NULL, 0, 1)) {
+        report("reader: fixture", 0);
         goto done;
     }
-    /* a second handle on the same segment, as a peer process would have */
-    holder->size = creator->size;
-    pmix_string_copy(holder->backing_path, seg, PMIX_PATH_MAX);
+    /* the creator's mapping is writable */
+    ((volatile char *) creator->data_address)[0] = 'x';
+    /* readers are granted read access only */
+    rc = pmix_shmem_segment_chmod(creator, S_IRUSR);
+    report("reader: chmod to read-only", PMIX_SUCCESS == rc);
 
-    rc = pmix_shmem_segment_attach(holder, (uintptr_t) NULL, 0, 1);
+    /* a second handle on the same segment, as a peer process would have */
+    reader->size = creator->size;
+    pmix_string_copy(reader->backing_path, seg, PMIX_PATH_MAX);
+    rc = pmix_shmem_segment_attach(reader, (uintptr_t) NULL, 0, 1);
+    report("reader: a read-only file admits a reader", PMIX_SUCCESS == rc);
     if (PMIX_SUCCESS != rc) {
-        report("stamp: fixture", 0);
         goto done;
     }
-    (void) pmix_shmem_segment_detach(holder);
-    report("stamp: creator's internal attach is not a reference",
-           0 != stat(seg, &sb) && ENOENT == errno);
+    report("reader: sees what the creator wrote",
+           'x' == ((volatile char *) reader->data_address)[0]);
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = on_fault;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGSEGV, &sa, &osegv);
+    sigaction(SIGBUS, &sa, &obus);
+    if (0 == sigsetjmp(fault_env, 1)) {
+        ((volatile char *) reader->data_address)[1] = 'y';
+    } else {
+        faulted = 1;
+    }
+    sigaction(SIGSEGV, &osegv, NULL);
+    sigaction(SIGBUS, &obus, NULL);
+    report("reader: a write through its mapping faults", faulted);
+    report("reader: and changes nothing", 'y' != ((volatile char *) creator->data_address)[1]);
+
+    (void) pmix_shmem_segment_detach(reader);
+    report("reader: its detach leaves the file", 0 == stat(seg, &sb));
+    (void) pmix_shmem_segment_detach(creator);
+    report("reader: the creator's detach removes it", 0 != stat(seg, &sb) && ENOENT == errno);
 
 done:
     PMIX_RELEASE(creator);
-    PMIX_RELEASE(holder);
+    PMIX_RELEASE(reader);
     unlink(seg);
 }
 
@@ -622,8 +652,8 @@ int main(int argc, char **argv)
     test_create_does_not_follow_a_symlink();
     test_create_reclaims_a_stale_file();
     test_chmod_does_not_follow_a_symlink();
-    test_detach_releases_the_reference();
-    test_create_takes_no_reference();
+    test_creator_detach_removes_the_file();
+    test_reader_is_read_only();
     test_failed_create_leaves_no_file();
     test_attach_on_attached_handle_is_refused();
     test_perms_refuse_a_swapped_directory();

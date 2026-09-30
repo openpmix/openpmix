@@ -243,19 +243,34 @@ library provides ``PMIx_server_dmodex_request2``.
 Output files and shared memory
 ------------------------------
 
-**Output files.** Output written to files is owned by the job's owner
-where the server can arrange it, and is created with mode 0600. If the
-access list names groups, the files are made readable by the first
-listed group, where the server can set that group. File modes can
-express only an owner and one group, so further users and groups in
-the list are not applied to files. Access control lists are not used,
-as they are not portable.
+**Output files** (``PMIX_IOF_OUTPUT_TO_FILE``,
+``PMIX_IOF_OUTPUT_TO_DIRECTORY``). By default only the job's owner reads
+them:
 
-**Shared-memory job data** (``gds/shmem3``). Its backing files belong
-to the job's owner and group and are not readable by anyone else. A
-requester allowed by the access list but not by the file mode receives
-the job's data from the server, where the rule is applied, rather than
-by attaching the shared segment.
+* When the file belongs to the owner - the server runs as the owner, or
+  runs as root and gives the file to them - it is created with mode
+  ``0600``, and the directories the server creates for it ``0700``.
+* If the access list names groups, the files are made readable by the
+  first listed group (``0640``, directories ``0750``), where the server
+  can set that group. File modes can express only an owner and one group,
+  so further users and groups in the list are not applied to files.
+  Access control lists are not used, as they are not portable.
+* A server that cannot give the file to the owner - one running as a
+  service account other than root - makes it readable by the owner's own
+  group (``0640``) if it can set that group, and otherwise leaves it
+  readable by everyone (``0644``), so the owner can still read their
+  output. Its directories are then ``0755``: they must let the owner
+  reach the files, whose own modes decide who reads them.
+* An output file that is not a regular file with a single name is not
+  written.
+
+**Shared-memory job data** (``gds/shmem3``). Only the server writes a
+segment: clients open its backing file read-only and map it read-only.
+The file belongs to the job's owner, with mode ``0400`` - ``0440`` for
+the first group the access list names - and never grants write access.
+A client the mode does not admit - of another user's job, or of a job
+whose file the server could not give to its owner - receives the job's
+data from the server instead, where the rule is applied.
 
 Not covered
 -----------
@@ -342,11 +357,12 @@ Status
        ``PMIx_server_register_nspace``, carries the requester's identity
        on its direct-modex relay, and uses
        ``PMIx_server_dmodex_request2``.
-     - Done (in review)
+     - Done
    * - 4
      - Output file ownership and modes; server-mediated job data for
-       requesters the shared-memory file mode does not admit.
-     - Planned
+       requesters the shared-memory file mode does not admit, with
+       shared-memory segments read-only to their readers.
+     - Done (in review)
    * - 5
      - PRRTE: records and distributes each job's access list,
        accepts ``PMIX_ACCESS_PERMISSIONS`` at spawn, applies the rule to
