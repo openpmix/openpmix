@@ -816,7 +816,16 @@ static pmix_status_t monitor_fields(const pmix_info_t *monitor,
     if (PMIX_UNDEF == monitor->value.type) {
         return PMIX_SUCCESS;
     }
-    /* the fields must be a data array of pmix_info_t */
+    /* A data array holding nothing asks for every field, as a NULL array
+     * does - whatever element type it declares, since it has no elements
+     * to read. Callers have long asked for "everything" with an empty
+     * array typed PMIX_PROC or PMIX_STRING (the examples do), and refusing
+     * that broke every one of them */
+    if (PMIX_DATA_ARRAY == monitor->value.type &&
+        (NULL == monitor->value.data.darray || 0 == monitor->value.data.darray->size)) {
+        return PMIX_SUCCESS;
+    }
+    /* otherwise the fields must be a data array of pmix_info_t */
     if (PMIX_DATA_ARRAY != monitor->value.type ||
         NULL == monitor->value.data.darray ||
         PMIX_INFO != monitor->value.data.darray->type ||
