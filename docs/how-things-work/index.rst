@@ -25,5 +25,6 @@ find information on that subject here.
    regex.rst
    cmd_line.rst
    ptl.rst
+   authentication/index.rst
    pstat.rst
    python_nonblocking.rst
