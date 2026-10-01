@@ -148,6 +148,13 @@ directives, value type), a `pmix_proc_t` at least 3. A type the table
 does not name gets 1. **If you change how a type packs, check its entry
 - a minimum that is too high rejects valid messages.**
 
+`pmix_bfrops_base_pack_info()` clears `PMIX_INFO_RELAYED` from the
+directives it packs unless this process is a server. Only a server relays
+a request for another process, so only a server's library may send a
+relayed `PMIX_USERID`/`PMIX_GRPID`; this is where that is enforced, for
+every wire version at once (see `pmix_server_add_requester_id()`). It
+drops the bit's meaning, not its space - the packed form is unchanged.
+
 Three types have no per-element minimum, and the helper checks only the
 `int32_t` bound for them: `PMIX_UNDEF`, `PMIX_POINTER` and
 `PMIX_DATA_ARRAY`.

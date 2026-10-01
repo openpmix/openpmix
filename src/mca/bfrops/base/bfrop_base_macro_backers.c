@@ -296,6 +296,16 @@ bool PMIx_Info_is_persistent(const pmix_info_t *p)
     return pmix_bfrops_base_tma_info_is_persistent(p, NULL);
 }
 
+void PMIx_Info_relayed(pmix_info_t *p)
+{
+    pmix_bfrops_base_tma_info_relayed(p, NULL);
+}
+
+bool PMIx_Info_is_relayed(const pmix_info_t *p)
+{
+    return pmix_bfrops_base_tma_info_is_relayed(p, NULL);
+}
+
 pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
                              const pmix_info_t *src)
 {

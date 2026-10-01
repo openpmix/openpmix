@@ -57,6 +57,18 @@ The requester's identity is the one established when it connected to
 the server (the connection handshake verifies it against the host's
 registration). It is not something the request itself can claim.
 
+A request can pass through more than one server: a host relays what one
+of its clients or tools asked for to another server - a workflow
+manager to the resource manager, a launcher to a scheduler. The identity
+is fixed where the request entered, and a relaying host passes it on
+with its ``PMIX_USERID`` and ``PMIX_GRPID`` marked ``PMIX_INFO_RELAYED``
+(:ref:`PMIx_Info_relayed(3) <man3-PMIx_Info_relayed>`). The next server
+keeps them, so the operation is judged by who asked for it rather than
+by the relaying process. Only a PMIx server's library sends the mark -
+any other process's library clears it - so a process that is not a
+server speaks only for itself. A server trusts the account a relaying
+server gives.
+
 Terms
 -----
 

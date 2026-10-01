@@ -222,6 +222,7 @@ PMIX_MAN3 = \
 	PMIx_Info_is_end.3 \
 	PMIx_Info_is_optional.3 \
 	PMIx_Info_is_persistent.3 \
+	PMIx_Info_is_relayed.3 \
 	PMIx_Info_is_qualifier.3 \
 	PMIx_Info_is_required.3 \
 	PMIx_Info_set_end.3 \
@@ -233,6 +234,7 @@ PMIX_MAN3 = \
 	PMIx_Info_true.3 \
 	PMIx_Info_optional.3 \
 	PMIx_Info_persistent.3 \
+	PMIx_Info_relayed.3 \
 	PMIx_Info_processed.3 \
 	PMIx_Info_qualifier.3 \
 	PMIx_Info_required.3 \
