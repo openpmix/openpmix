@@ -72,7 +72,11 @@ with its own network) and confirms it over an AF_UNIX socket.  Its server
 half is bounded by one ``ptl_base_connect_ack_timeout`` deadline for the
 whole exchange, not per read, and stops waiting as soon as the peer's TCP
 connection closes; the interface stays blocking.  ``psec/dummy_handshake``
-and ``psec/none`` were removed, as neither authenticated anyone.
+and ``psec/none`` were removed, as neither authenticated anyone, and so
+was the handshake-only model ``dummy_handshake`` alone used: every module
+now has to validate a credential, a handshake runs only when
+``validate_cred`` asks for one, and a tool's runs before the host is told
+of it - never after the identity replies.
 
 **The connecting side's half was fixed.**  ``pmix_tool_retry_attach`` -
 behind ``PMIx_tool_attach_to_server``, a tool connecting to its parent at
