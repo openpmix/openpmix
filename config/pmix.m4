@@ -1438,23 +1438,6 @@ AC_DEFINE_UNQUOTED([PMIX_ENABLE_PTY_SUPPORT], [$PMIX_ENABLE_PTY_SUPPORT],
                    [Whether user wants PTY support or not])
 
 #
-# psec/dummy_handshake
-#
-
-AC_MSG_CHECKING([if want build psec/dummy_handshake])
-AC_ARG_ENABLE(dummy-handshake,
-              AS_HELP_STRING([--enable-dummy-handshake],
-                             [Enables psec dummy component intended to check the PTL handshake scenario (default: disabled)]))
-if test "$enable_dummy_handshake" != "yes"; then
-    AC_MSG_RESULT([no])
-    eval "DISABLE_psec_dummy_handshake=1"
-else
-    AC_MSG_RESULT([yes])
-    eval "DISABLE_psec_dummy_handshake=0"
-fi
-AM_CONDITIONAL(MCA_BUILD_PSEC_DUMMY_HANDSHAKE, test "$DISABLE_psec_dummy_handshake" = "0")
-
-#
 # Do we want to force-build all the test and environment-specific
 # components so they can be compile-checked?
 #

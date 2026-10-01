@@ -18,9 +18,16 @@ rules, and MCA concepts described there all apply here and are not
 repeated. This file covers what is specific to `psec`: what the framework
 is for, the two credential models it supports, how a module is negotiated
 between two peers during the connection handshake, and the contract every
-component must honor. Each component subdirectory (`native/`, `none/`,
-`munge/`, `ssl/`, `dummy_handshake/`) carries its own `AGENTS.md` with
-component-specific detail.
+component must honor. Each component subdirectory (`native/`, `munge/`,
+`ssl/`) carries its own `AGENTS.md` with component-specific detail.
+
+**Every component authenticates.** There is no "no security" module and
+no test-only one: `psec/none` (which accepted every peer) and
+`psec/dummy_handshake` (which swapped a fixed string) were removed, and
+neither should come back. A build or deployment that cannot authenticate
+a peer refuses it. Do not add a component whose `validate_cred` or
+handshake can succeed without establishing who the peer is - not as a
+default, not behind an MCA parameter, not for testing.
 
 ## What PSEC does
 
@@ -102,7 +109,7 @@ The common model. The credential is a self-contained blob:
 - Server side: `validate_cred` inspects the blob (and/or the socket) and
   returns `PMIX_SUCCESS` or `PMIX_ERR_INVALID_CRED`.
 
-`munge`, `ssl` and `none` use only this model (they leave both
+`munge` and `ssl` use only this model (they leave both
 `*_handshake` pointers `NULL`). `native` uses it too, and adds a
 handshake for the connections its credential cannot decide — see "Both"
 below.
@@ -113,9 +120,11 @@ The rare model, for protocols that need live socket I/O during setup.
 A module leaves `validate_cred` `NULL` and instead supplies
 `server_handshake` (and a matching `client_handshake`). The framework
 detects the absence of `validate_cred` and drives the handshake instead
-(see the macro logic below). `dummy_handshake` is the only in-tree
-component that uses this model; it exists precisely to exercise and
-test the `ptl` handshake code path.
+(see the macro logic below). No in-tree component uses this model; the
+interface keeps it for a protocol that cannot be expressed as a
+credential. On the tool path such a handshake runs late - after the
+identity replies, where the wire order fixes it - so nothing exercises
+that placement today.
 
 ### Both: a credential completed by a handshake
 
@@ -311,8 +320,8 @@ call sites in
 [`ptl_base_connection_hdlr.c`](../ptl/base/ptl_base_connection_hdlr.c)
 once tested the result with a bare `if (PMIX_SUCCESS != reply) goto
 error;`, which aborted the connection between step 3 and step 4 and made
-the entire handshake half of `psec` unreachable — `dummy_handshake` could
-not complete a single connection. The test must be
+the entire handshake half of `psec` unreachable - no handshake-model
+module could complete a single connection. The test must be
 
 ```c
 if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
@@ -321,8 +330,9 @@ if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
 so that the signal survives to reach `PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`,
 which is what converts it into a real status.
 
-So `validate_cred == NULL` is not an oversight in `dummy_handshake`: it
-is the switch that tells the framework to take the handshake path. Keep
+So `validate_cred == NULL` in a handshake-only module is not an
+oversight: it is the switch that tells the framework to take the
+handshake path. Keep
 that invariant in mind before "filling in" a `NULL` slot. (A module with
 a `validate_cred` reaches the same path by returning the signal itself.)
 
@@ -371,16 +381,15 @@ Default priorities come from each component's `component_query`:
 
 | Component | Priority | Model | Active when |
 |-----------|----------|-------|-------------|
-| `dummy_handshake` | 100 | handshake | built only with `--enable-dummy-handshake`; always active when built |
 | `munge` | 80 | single-shot | built only if `--with-munge` was given and libmunge is found; `init` succeeds only if the `munged` daemon issues a credential |
 | `native` | 10 | single-shot + handshake | always (no `configure.m4`, no gate); authenticates **peers on this host's kernel**, containers included |
 | `ssl` | 5 | single-shot | built only with `--with-openssl`; active only when `psec_ssl_ca_file` or a cert/key pair is configured; authenticates remote peers by X.509 certificate |
-| `none` | 0 | single-shot (no-op) | **only** if the `psec` MCA value explicitly names `none` (its `component_open` checks) |
 
 Because the list is priority-ordered and `assign_module(NULL)` returns
-the highest-priority module, in a stock build (`dummy_handshake` off,
-`none` not requested) a peer that does not name a mechanism gets `munge`
-if it initialized, otherwise `native`.
+the highest-priority module, a peer that does not name a mechanism gets
+`munge` if it initialized, otherwise `native`. `PMIX_MCA_psec` naming
+only components that are not available leaves the actives list empty,
+and init fails with `no-plugins` rather than running unauthenticated.
 
 ## MCA parameters
 
@@ -392,9 +401,8 @@ which components are opened/considered. As a convenience,
 [`pmix_init.c`](../../../src/runtime/pmix_init.c) copies the
 `PMIX_SECURITY_MODE` environment variable into `PMIX_MCA_psec` at
 startup, and clients pass their selected mechanism to
-`assign_module` via that same `PMIX_SECURITY_MODE` env var. The `none`
-component reads this variable directly in its `component_open` to decide
-whether it is allowed to participate. Per the top-level guidance, prefer
+`assign_module` via that same `PMIX_SECURITY_MODE` env var. Per the
+top-level guidance, prefer
 adding an attribute honored by `create_cred`/`validate_cred` (they
 already take a directives array) over hard-coding new behavior.
 
@@ -425,8 +433,9 @@ lock.** Because `pmix_security.c` runs `create_cred`/`validate_cred`
 inline on whichever thread called the public API, two application threads
 can be inside the same module function at the same time — there is no
 progress thread serializing them the way there is for most of the
-library. A module that keeps no state (`native`, `none`) is fine as
-written. `munge` caches a credential in a file static and refreshes it on
+library. A module that keeps nothing between calls is fine as written;
+`native`'s only shared state is its handshake socket directory, which only
+a server's progress thread touches. `munge` caches a credential in a file static and refreshes it on
 every use, so two concurrent `PMIx_Get_credential()` calls would both
 free it; it guards that state with a file-scope `pmix_mutex_t`. Any new
 module that caches anything must do the same. This is not a hot path —
@@ -444,18 +453,15 @@ src/mca/psec/
 │   ├── psec_base_select.c    query components, build priority-ordered actives list
 │   └── psec_base_fns.c       get_available_modules + assign_module (name lookup)
 ├── native/                   uid/gid from the kernel: TCP socket owner, else an AF_UNIX handshake (default, always available)
-├── none/                     no-op module (opt-in only)
 ├── munge/                    MUNGE credentials (conditional on libmunge)
-├── ssl/                      X.509-signed credentials for remote peers (conditional on OpenSSL)
-└── dummy_handshake/          test-only multi-step handshake (opt-in build)
+└── ssl/                      X.509-signed credentials for remote peers (conditional on OpenSSL)
 ```
 
 ## Building
 
-`native` and `none` have no `configure.m4` and are always compiled into
-`libpmix`; they are wired through the generated `base/static-components.h`
-(which in a stock build lists exactly `native` and `none`). The other two
-are conditional:
+`native` has no `configure.m4` and is always compiled into `libpmix`; it
+is wired through the generated `base/static-components.h` (which in a
+stock build lists exactly `native`). The other two are conditional:
 
 - **`munge`** ships a [`configure.m4`](munge/configure.m4) that is
   **opt-in**: it runs `OAC_CHECK_PACKAGE` for `munge.h` / `libmunge`
@@ -470,9 +476,6 @@ are conditional:
   the same way: `--with-openssl[=DIR]` runs `OAC_CHECK_PACKAGE` for
   `openssl/evp.h` / `libcrypto`, and `--enable-test-build` builds it
   against `ssl/testbuild_ssl.h`, a stand-in whose every call fails.
-- **`dummy_handshake`** has no `configure.m4`; it is gated by the
-  Automake conditional `MCA_BUILD_PSEC_DUMMY_HANDSHAKE`, set by
-  `--enable-dummy-handshake` (default: disabled) in `config/pmix.m4`.
 
 The framework's only `show_help` topic (`no-plugins`) lives in
 `help-pmix-runtime.txt`, but `native` ships `help-psec-native.txt`, so the
