@@ -733,7 +733,6 @@ static void pccon(pmix_pending_connection_t *p)
     p->proc_type.release = PMIX_RELEASE_WILDCARD;
     p->proc_type.flag = 0;
     p->psecmod = NULL;
-    p->validated = false;
 }
 static void pcdes(pmix_pending_connection_t *p)
 {

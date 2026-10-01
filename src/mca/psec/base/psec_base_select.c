@@ -85,6 +85,16 @@ pmix_status_t pmix_psec_base_select(void)
         }
         nmodule = (pmix_psec_module_t *) module;
 
+        /* a security mechanism creates and validates credentials - one
+         * that cannot would admit peers it never checked */
+        if (NULL == nmodule->create_cred || NULL == nmodule->validate_cred) {
+            pmix_output_verbose(5, pmix_psec_base_framework.framework_output,
+                                "mca:psec:select: Skipping component [%s]. It does not "
+                                "create and validate credentials",
+                                component->pmix_mca_component_name);
+            continue;
+        }
+
         /* give the module a chance to init */
         if (NULL != nmodule->init && PMIX_SUCCESS != nmodule->init()) {
             /* failed to init, so skip it */

@@ -1576,13 +1576,10 @@ static pmix_status_t cnct_field(pmix_ptl_connect_op_t *op)
         return cnct_expect(op, PMIX_CNCT_SEC_STATUS, sizeof(uint32_t));
 
     case PMIX_CNCT_SEC_STATUS:
+        /* the outcome of our request - any handshake ran ahead of the
+         * identity replies, and no server asks for one here */
         reply = (pmix_status_t) u32;
-        if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
-            rc = cnct_psec_handshake(op);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-        } else if (PMIX_SUCCESS != reply) {
+        if (PMIX_SUCCESS != reply) {
             return reply;
         }
         return PMIX_OPERATION_SUCCEEDED;
@@ -2090,19 +2087,11 @@ pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp)
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, peer->info->pname.nspace,
                         peer->info->pname.rank);
 
-    /* get the returned status from the security handshake */
+    /* get the outcome of our request - any handshake ran ahead of the
+     * identity replies, and no server asks for one here */
     PMIX_PTL_RECV_U32(peer->sd, reply);
     if (PMIX_SUCCESS != reply) {
-        /* see if they want us to do the handshake */
-        if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
-            PMIX_PSEC_CLIENT_HANDSHAKE(reply, peer, peer->sd);
-            if (PMIX_SUCCESS != reply) {
-                return reply;
-            }
-            /* if the handshake succeeded, then fall thru to the next step */
-        } else {
-            return reply;
-        }
+        return reply;
     }
 
     return PMIX_SUCCESS;

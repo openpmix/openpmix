@@ -1138,6 +1138,40 @@ static void native_unverified(void)
 
 /* ---------------------------------------------------------------- */
 
+/* A module that cannot validate a credential is not a security
+ * mechanism: a peer asking for one is refused, even if the module offers
+ * a handshake. The handshake-only model, which ran such a module's
+ * exchange instead, is gone - it is what let a module that checked
+ * nothing admit a peer */
+static pmix_status_t no_handshake(struct pmix_peer_t *peer, int sd)
+{
+    (void) peer;
+    (void) sd;
+    return PMIX_SUCCESS;
+}
+
+static void no_credential_module(void)
+{
+    pmix_psec_module_t handshake_only = {.name = "handshake_only",
+                                         .client_handshake = no_handshake,
+                                         .server_handshake = no_handshake};
+    pmix_peer_t *peer;
+    pmix_byte_object_t cred;
+    pmix_status_t rc;
+
+    peer = PMIX_NEW(pmix_peer_t);
+    peer->protocol = PMIX_PROTOCOL_V2;
+    peer->info = PMIX_NEW(pmix_rank_info_t);
+    make_cred(&cred, geteuid(), getegid());
+    PMIX_PSEC_VALIDATE_CONNECTION_WITH(rc, &handshake_only, peer, NULL, 0, NULL, NULL, &cred);
+    report("a module with no validate_cred is refused, handshake or not",
+           PMIX_ERR_NOT_SUPPORTED == rc);
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    PMIX_RELEASE(peer->info);
+    peer->info = NULL;
+    PMIX_RELEASE(peer);
+}
+
 static void available_modules(void)
 {
     char *avail;
@@ -1203,6 +1237,7 @@ int main(int argc, char **argv)
     native_unconfirmed();
     native_handshake();
     native_unverified();
+    no_credential_module();
 
     (void) pmix_mca_base_framework_close(&pmix_psec_base_framework);
 

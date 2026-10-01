@@ -395,14 +395,14 @@ the real work on the progress thread:
    `process_tool_request` against the uid/gid it claimed, before its
    namespace is looked up and before the host's `tool_connected`; a
    failure is answered in the first reply the tool reads, where the
-   host's status would be. Only a psec module that authenticates with a
-   live handshake is left to its fixed place later in the exchange (after
-   `client_connected2` for a client, after the identity replies for a
-   tool) - moving it would change the wire order older peers read. Then
+   host's status would be. A tool whose credential asks for a handshake
+   runs it right there, before the host is asked anything; the security
+   status it reads after its identity replies is only the outcome. Then
    the namespace's compat modules are set, `client_connected2` is called,
    and `_cnct_complete` sends back the status + the peer's array index,
-   runs the security handshake if the psec module asked for one, arms
-   events, and flushes any cached notifications.
+   runs the security handshake if the psec module asked for one (the
+   client path's place for it), arms events, and flushes any cached
+   notifications.
 
 **A namespace's compat modules are set by the first peer to connect.**
 They are shared by every peer of the namespace - what the server packs
@@ -414,21 +414,21 @@ rule on both paths.
 
 **`PMIX_PSEC_VALIDATE_CONNECTION` can return
 `PMIX_ERR_READY_FOR_HANDSHAKE`, and that is a request, not a rejection.**
-A psec module that authenticates with a live exchange rather than with a
-credential leaves `validate_cred` NULL, and the macro reports that by
-handing back `PMIX_ERR_READY_FOR_HANDSHAKE`; the status has to survive
-all the way to `PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`, which runs the
-exchange and overwrites it with the real result. Both call sites here —
-the client path and the tool path — must therefore test
+A psec module whose credential cannot decide on its own (`native`, for a
+peer the kernel's TCP table cannot see) hands back
+`PMIX_ERR_READY_FOR_HANDSHAKE` from `validate_cred`; the status has to
+survive until the module's server handshake runs and overwrites it with
+the real result. Both call sites here — the client path and the tool
+path — must therefore test
 
 ```c
 if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
 ```
 
 rather than `PMIX_SUCCESS != reply` alone. They once did the latter, and
-the effect was that no handshake-model module could complete a single
-connection. Nothing caught it because the only such module was a test
-component built solely on request. `psec/native` now asks for a
+the effect was that no module that asked for a handshake could complete
+a single connection. Nothing caught it because the only such module was
+then a test component built solely on request. `psec/native` now asks for a
 handshake whenever the kernel cannot name a TCP peer's owner, and
 `test/unit/run_native_handshake.pl` drives that through a real server.
 See [`psec/AGENTS.md`](../psec/AGENTS.md).
