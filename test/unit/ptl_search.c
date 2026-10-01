@@ -36,6 +36,8 @@
 #include "include/pmix.h"
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/bfrops/base/base.h"
+#include "src/mca/psec/base/base.h"
 #include "src/mca/ptl/base/base.h"
 
 #include <signal.h>
@@ -179,6 +181,120 @@ static void test_rndz_file(void)
     PMIX_LIST_DESTRUCT(&connections);
 }
 
+/* A server's file names the wire formats and security mechanisms it
+ * accepts; a process that finds it there takes the highest of its own the
+ * server lists, refuses to try when there is none, and - for a server too
+ * old to list them - goes by the server's version */
+static void test_compat(void)
+{
+    char path[PMIX_PATH_MAX + 128];
+    pmix_list_t connections;
+    pmix_connection_t *cn, scratch;
+    pmix_peer_t *peer;
+    pmix_psec_module_t *native;
+    pmix_status_t rc;
+
+    snprintf(path, sizeof(path), "%s/pmix.test.compat", searchdir);
+    write_file("pmix.test.compat", "pmix-server.1;tcp4://127.0.0.1:1\n7.0.0\n1\n0:0\nnow\n"
+                     "bfrops:v41,v21\npsec:native\n");
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    rc = pmix_ptl_base_parse_rndz_file(path, true, &connections);
+    cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+    report("compat: the server's wire formats and mechanisms are read",
+           PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&connections) &&
+               NULL != cn->bfrops && 0 == strcmp(cn->bfrops, "v41,v21") &&
+               NULL != cn->psec && 0 == strcmp(cn->psec, "native"),
+           PMIx_Error_string(rc));
+    PMIX_LIST_DESTRUCT(&connections);
+    unlink(path);
+
+    snprintf(path, sizeof(path), "%s/pmix.test.old", searchdir);
+    write_file("pmix.test.old", "pmix-server.1;tcp4://127.0.0.1:1\n5.0.9\n1\n0:0\nnow\n");
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    rc = pmix_ptl_base_parse_rndz_file(path, true, &connections);
+    cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+    report("compat: an older server's file has none to read",
+           PMIX_SUCCESS == rc && NULL == cn->bfrops && NULL == cn->psec, PMIx_Error_string(rc));
+    PMIX_LIST_DESTRUCT(&connections);
+    unlink(path);
+
+    /* a server peer that is not our primary - our own modules stay put */
+    native = pmix_psec_base_assign_module("native");
+    peer = PMIX_NEW(pmix_peer_t);
+    peer->nptr = PMIX_NEW(pmix_namespace_t);
+    PMIX_CONSTRUCT(&scratch, pmix_connection_t);
+    scratch.uri = strdup("tcp4://127.0.0.1:1");
+
+#define RESET()                                                                 \
+    do {                                                                        \
+        peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);      \
+        peer->nptr->compat.psec = native;                                      \
+        free(scratch.bfrops);                                                   \
+        scratch.bfrops = NULL;                                                  \
+        free(scratch.psec);                                                     \
+        scratch.psec = NULL;                                                    \
+        PMIX_SET_PEER_VERSION(peer, "7.0.0", 2, 0);                             \
+    } while (0)
+
+    RESET();
+    scratch.bfrops = strdup("v99,v41,v21");
+    rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);
+    report("compat: the highest wire format both have is taken",
+           PMIX_SUCCESS == rc && 0 == strcmp(peer->nptr->compat.bfrops->version, "v41"),
+           PMIx_Error_string(rc));
+    report("compat: a server that is not the primary leaves our own format alone",
+           pmix_globals.mypeer->nptr->compat.bfrops != peer->nptr->compat.bfrops, "changed");
+
+    RESET();
+    scratch.bfrops = strdup("v98,v99");
+    rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);
+    report("compat: no wire format in common - the connection is not attempted",
+           PMIX_ERR_NOT_SUPPORTED == rc, PMIx_Error_string(rc));
+
+    RESET();
+    PMIX_SET_PEER_VERSION(peer, "5.0.9", 2, 0);
+    rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);
+    report("compat: an older server that lists none is matched by its version",
+           PMIX_SUCCESS == rc && 0 == strcmp(peer->nptr->compat.bfrops->version, "v41"),
+           PMIx_Error_string(rc));
+
+    RESET();
+    rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);
+    report("compat: a server as new as us that lists none keeps our newest",
+           PMIX_SUCCESS == rc &&
+               peer->nptr->compat.bfrops == pmix_bfrops_base_assign_module(NULL),
+           PMIx_Error_string(rc));
+
+    RESET();
+    scratch.psec = strdup("no-such-mechanism,native");
+    rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);
+    report("compat: our security mechanism is kept when the server lists it",
+           PMIX_SUCCESS == rc && native == peer->nptr->compat.psec, PMIx_Error_string(rc));
+
+    /* an older server lists no mechanism: munge if we have it, else
+     * native - whatever we would have picked for ourselves */
+    RESET();
+    peer->nptr->compat.psec = NULL;
+    rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);
+    report("compat: an older server that lists no mechanism gets munge or native",
+           PMIX_SUCCESS == rc && NULL != peer->nptr->compat.psec &&
+               (0 == strcmp(peer->nptr->compat.psec->name, "munge") ||
+                0 == strcmp(peer->nptr->compat.psec->name, "native")) &&
+               peer->nptr->compat.psec == pmix_psec_base_assign_module("munge,native"),
+           PMIx_Error_string(rc));
+
+    RESET();
+    scratch.psec = strdup("no-such-mechanism");
+    rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);
+    report("compat: no security mechanism in common - the connection is not attempted",
+           PMIX_ERR_NOT_SUPPORTED == rc, PMIx_Error_string(rc));
+#undef RESET
+
+    PMIX_DESTRUCT(&scratch);
+    peer->nptr->compat.psec = NULL;
+    PMIX_RELEASE(peer);
+}
+
 static void test_query_servers(void)
 {
     pmix_query_t query;
@@ -271,6 +387,7 @@ int main(int argc, char **argv)
     test_df_search();
     test_query_servers();
     test_rndz_file();
+    test_compat();
     alarm(0);
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);

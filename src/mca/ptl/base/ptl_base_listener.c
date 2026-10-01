@@ -52,6 +52,7 @@
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/psec/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_error.h"
@@ -505,11 +506,35 @@ static bool rndz_reclaim(const char *name, void *cbdata)
 
 /* On success, *dirfd is left holding a descriptor on the file's
  * directory, which pmix_ptl_close uses to remove the file */
+/* The lines that tell a process finding us through a file which wire
+ * formats and security mechanisms we accept a connection with - each
+ * tagged, after every line a released reader takes by position. Empty
+ * when there is nothing to list. The caller frees it */
+static char *compat_lines(void)
+{
+    char *bfrops, *psec, *lines = NULL;
+
+    bfrops = pmix_bfrops_base_get_available_modules();
+    psec = pmix_psec_base_get_available_modules();
+    if (0 > pmix_asprintf(&lines, "%s%s%s%s%s%s",
+                          (NULL == bfrops) ? "" : PMIX_PTL_BFROPS_TAG,
+                          (NULL == bfrops) ? "" : bfrops,
+                          (NULL == bfrops) ? "" : "\n",
+                          (NULL == psec) ? "" : PMIX_PTL_PSEC_TAG,
+                          (NULL == psec) ? "" : psec,
+                          (NULL == psec) ? "" : "\n")) {
+        lines = NULL;
+    }
+    free(bfrops);
+    free(psec);
+    return lines;
+}
+
 static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role,
                                      bool *dir_created, bool *file_created, int *dirfd_out)
 {
     int fd, dirfd;
-    char *dirname, *tmp;
+    char *dirname, *tmp, *compat;
     const char *base;
     time_t mytime;
     int rc;
@@ -612,18 +637,22 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     /* output the information */
     mytime = time(NULL);
     /* The five lines every release reads by position come first and are
-     * unchanged; our other addresses follow them, tagged, where no older
-     * reader looks. They cannot go in the URI itself: every released
-     * parser refuses a URI carrying more than one address, and a client
-     * refused that way quietly runs as a singleton. */
-    if (0 > pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n%s%s%s",
+     * unchanged; our other addresses, wire formats and security
+     * mechanisms follow them, tagged, where no older reader looks. The
+     * addresses cannot go in the URI itself: every released parser
+     * refuses a URI carrying more than one address, and a client refused
+     * that way quietly runs as a singleton. */
+    compat = compat_lines();
+    if (0 > pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n%s%s%s%s",
                           uri, PMIX_VERSION, (unsigned long)pmix_globals.pid,
                           (unsigned long)pmix_globals.uid,
                           (unsigned long)pmix_globals.gid,
                           ctime(&mytime),
                           (NULL == pmix_ptl_base.alt_uris) ? "" : PMIX_PTL_ALT_URIS_TAG,
                           (NULL == pmix_ptl_base.alt_uris) ? "" : pmix_ptl_base.alt_uris,
-                          (NULL == pmix_ptl_base.alt_uris) ? "" : "\n")) {
+                          (NULL == pmix_ptl_base.alt_uris) ? "" : "\n",
+                          (NULL == compat) ? "" : compat)) {
+        free(compat);
         /* nothing has been written, so do not leave an empty file behind
          * for a peer to read as a server that died partway thru */
         close(fd);
@@ -632,6 +661,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
         *file_created = false;
         return PMIX_ERR_NOMEM;
     }
+    free(compat);
     /* a short write leaves a file a peer will read as truncated, which
      * is indistinguishable from the creator having died partway thru
      * writing it - so treat it exactly like a failure */
@@ -1416,6 +1446,12 @@ complete:
                  * other addresses we listen on */
                 if (NULL != pmix_ptl_base.alt_uris) {
                     fprintf(fp, "%s%s\n", PMIX_PTL_ALT_URIS_TAG, pmix_ptl_base.alt_uris);
+                }
+                /* and the wire formats and security mechanisms we accept */
+                leftover = compat_lines();
+                if (NULL != leftover) {
+                    fprintf(fp, "%s", leftover);
+                    free(leftover);
                 }
                 fclose(fp);
                 /* record the name of the file we actually wrote, which is

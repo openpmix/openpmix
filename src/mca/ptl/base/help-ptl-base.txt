@@ -185,3 +185,38 @@ version of the PMIx library this process does not support:
 
 This version of PMIx can only connect to servers using PMIx v3.2 or
 later. The connection has been refused.
+#
+[no-common-module]
+This process cannot connect to the PMIx server at:
+
+  Server:  %s
+
+because the two have no %s in common:
+
+  Server offers:     %s
+  This process has:  %s
+
+The connection was not attempted. Make at least one of the same %s
+available to both - for example, by not excluding them with the
+PMIX_MCA_%s parameter on either side.
+#
+[server-closed-no-reply]
+The PMIx server at:
+
+  %s
+
+closed the connection without answering this process's request to
+connect.
+
+The usual reason is that the server runs a different PMIx release and
+does not have the wire format or security mechanism this process
+offered. This process was given only the server's address, which does
+not say what the server accepts, so it offered its own newest.
+
+Give this process the server's rendezvous or report-URI file instead of
+its address, as:
+
+  file:<path>
+
+That file says which release the server runs and, from recent releases
+on, exactly what it accepts - so this process can choose a match.

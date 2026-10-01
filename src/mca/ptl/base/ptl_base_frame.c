@@ -823,6 +823,8 @@ static void ccon(pmix_connection_t *p)
     p->uri = NULL;
     p->version = NULL;
     p->alt_uris = NULL;
+    p->bfrops = NULL;
+    p->psec = NULL;
 }
 static void dcon(pmix_connection_t *p)
 {
@@ -836,6 +838,8 @@ static void dcon(pmix_connection_t *p)
         free(p->version);
     }
     free(p->alt_uris);
+    free(p->bfrops);
+    free(p->psec);
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_connection_t,
                                 pmix_list_item_t,
