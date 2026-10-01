@@ -77,17 +77,18 @@ typedef pmix_status_t (*pmix_psec_base_module_create_cred_fn_t)(struct pmix_peer
  * after the server has answered the connection with
  * PMIX_ERR_READY_FOR_HANDSHAKE. `peer` is the server being connected to.
  *
- * A module may use the credential interface, the handshake interface, or
- * both: one whose validate_cred cannot decide on the credential alone
- * returns PMIX_ERR_READY_FOR_HANDSHAKE and finishes the job in its
- * handshake. A module that never asks for a handshake leaves both
- * handshake slots NULL. */
+ * Every module creates and validates a credential. A handshake is only
+ * ever a continuation of that: a module whose validate_cred cannot decide
+ * on the credential alone returns PMIX_ERR_READY_FOR_HANDSHAKE and
+ * finishes the job in its handshake. A module that never asks for one
+ * leaves both handshake slots NULL. */
 typedef pmix_status_t (*pmix_psec_base_module_client_hndshk_fn_t)(struct pmix_peer_t *peer,
                                                                   int sd);
 
 /****    SERVER-SIDE FUNCTIONS    ****/
 /**
- * Validate a client's credential - the credential could be a string
+ * Validate a client's credential - required of every module. The
+ * credential could be a string
  * or an array of bytes, which is why we include the length. The directives
  * contain information provided by the requestor to aid in the validation
  * process - e.g., the uid/gid of the process seeking validation, or
@@ -167,7 +168,8 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
 #define PMIX_PSEC_VALIDATE_CONNECTION_WITH(r, m, p, d, nd, in, nin, c)                             \
     do {                                                                                           \
         pmix_status_t _r;                                                                          \
-        /* if a credential is available, then check it */                                          \
+        /* every module validates a credential; one that cannot is not a                         \
+         * security mechanism, and the peer is refused */                                          \
         if (NULL != (m)->validate_cred) {                                                          \
             _r = (m)->validate_cred((struct pmix_peer_t *) (p), (d), (nd), (in), (nin), c);        \
             if (PMIX_ERR_READY_FOR_HANDSHAKE == _r && NULL == (m)->server_handshake) {           \
@@ -184,13 +186,7 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
                 pmix_output_verbose(2, pmix_globals.debug_output, "credential validated");         \
             }                                                                                      \
             (r) = _r;                                                                              \
-        } else if (NULL != (m)->server_handshake) {                                                \
-            /* request the handshake if the security mode calls for it */                          \
-            pmix_output_verbose(2, pmix_globals.debug_output, "requesting handshake");             \
-            _r = PMIX_ERR_READY_FOR_HANDSHAKE;                                                     \
-            (r) = _r;                                                                              \
         } else {                                                                                   \
-            /* this is not allowed */                                                              \
             (r) = PMIX_ERR_NOT_SUPPORTED;                                                          \
         }                                                                                          \
     } while (0)
