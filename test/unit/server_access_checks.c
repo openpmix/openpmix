@@ -722,6 +722,7 @@ static void test_cleanup(void)
 
 int main(int argc, char **argv)
 {
+    pmix_user_t *user;
     static pmix_server_module_t mymodule = {0};
     pmix_status_t rc;
 
@@ -756,6 +757,16 @@ int main(int argc, char **argv)
         return 1;
     }
     requester->index = pmix_pointer_array_add(&pmix_server_globals.clients, requester);
+    /* the requester's user belongs to its group. It has no account for the
+     * server to look that up in, so record it the way a lookup would */
+    user = pmix_server_user_get((uid_t) ACC_REQ_UID);
+    if (NULL == user || NULL == (user->gids = (gid_t *) malloc(sizeof(gid_t)))) {
+        fprintf(stderr, "could not record the requester's groups\n");
+        PMIx_server_finalize();
+        return 1;
+    }
+    user->gids[0] = (gid_t) ACC_REQ_GID;
+    user->ngids = 1;
 
     test_rule();
     test_get();

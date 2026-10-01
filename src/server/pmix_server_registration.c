@@ -228,6 +228,10 @@ static void _register_nspace(int sd, short args, void *cbdata)
         }
         goto release;
     }
+    /* the job's owner is a user this server now knows */
+    if (PMIX_OWNER_UNKNOWN != nptr->access.source) {
+        pmix_server_user_add(nptr->access.uid);
+    }
     if (0 > cd->nlocalprocs) {
         /* An update revises what we already hold. If we hold nothing
          * for this namespace, there is nothing to revise, and the
