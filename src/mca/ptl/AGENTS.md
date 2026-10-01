@@ -427,8 +427,10 @@ if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
 
 rather than `PMIX_SUCCESS != reply` alone. They once did the latter, and
 the effect was that no handshake-model module could complete a single
-connection. Nothing caught it because the only such module,
-`psec/dummy_handshake`, is built solely under `--enable-dummy-handshake`.
+connection. Nothing caught it because the only such module was a test
+component built solely on request. `psec/native` now asks for a
+handshake whenever the kernel cannot name a TCP peer's owner, and
+`test/unit/run_native_handshake.pl` drives that through a real server.
 See [`psec/AGENTS.md`](../psec/AGENTS.md).
 
 The `PMIX_PTL_PUT_*` (build) and `PMIX_PTL_GET_*` (parse) macro pairs are

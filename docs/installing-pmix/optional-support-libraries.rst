@@ -115,8 +115,8 @@ costs you that capability and nothing else.
      - Builds the ``psec/munge`` component, which authenticates PMIx
        connections using MUNGE credentials. **Opt-in only:** unlike the
        rest of this table, an installed MUNGE is not detected on its own
-       |mdash| the option must be given. Without it, the other ``psec``
-       components (``native``, ``none``) remain available.
+       |mdash| the option must be given. Without it, ``native`` (always
+       built) authenticates peers on the server's own host.
    * - `OpenSSL <https://www.openssl.org/>`_ (1.1.1 or later)
      - ``--with-openssl``
      - Builds the ``psec/ssl`` component, which authenticates **remote**
