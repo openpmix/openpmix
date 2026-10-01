@@ -516,6 +516,14 @@ AC_DEFUN([PMIX_SETUP_CORE],[
                       #endif
                       ])
 
+    # The kernel's socket-diagnostics interface, which is how
+    # pmix_util_getid_tcp() learns who owns the far end of a local TCP
+    # connection on Linux
+    AC_CHECK_HEADERS([linux/netlink.h linux/sock_diag.h linux/inet_diag.h], [], [],
+                     [AC_INCLUDES_DEFAULT
+                      #include <sys/socket.h>
+                      ])
+
     # Needed to work around Darwin requiring sys/socket.h for
     # net/if.h
     AC_CHECK_HEADERS([net/if.h], [], [],

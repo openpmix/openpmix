@@ -111,7 +111,12 @@ The request is serviced by the host environment if it supports the operation;
 otherwise, the PMIx library attempts to validate the credential itself using an
 internal security (``psec``) plugin. A client or tool that is not connected to a
 local server, and a server whose host provides no credential support, are both
-handled by the internal plugins.
+handled by the internal plugins. Note that the ``native`` plugin cannot validate
+a credential presented this way: its credential is only the identity its creator
+claims, which ``native`` confirms by asking the operating system who owns a
+connection - and a credential handed to this API arrives on none, so it is
+refused. A credential from the ``ssl`` or ``munge`` plugins carries its own proof
+and can be validated this way.
 
 
 DIRECTIVES

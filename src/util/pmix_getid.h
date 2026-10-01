@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,6 +32,25 @@ BEGIN_C_DECLS
  * platform that offers no way to ask. Only a connected AF_UNIX socket
  * gives a meaningful answer - see src/util/AGENTS.md. */
 PMIX_EXPORT pmix_status_t pmix_util_getid(int sd, uid_t *uid, gid_t *gid);
+
+/* Ask the kernel which user owns the far end of the connected TCP
+ * socket `sd`, and write it to *uid. This works only when that far end
+ * is a socket on this host: the answer comes from the kernel's own table
+ * of TCP connections, looked up by the connection's addresses and ports,
+ * so it is the uid that created the peer's socket - not anything the
+ * peer said. The kernel does not record a group, so none is returned.
+ *
+ * Returns:
+ *   PMIX_SUCCESS            *uid holds the owner
+ *   PMIX_ERR_NOT_FOUND      no established connection with that address
+ *                           pair exists in this host's table - the peer is
+ *                           on another host or in another network
+ *                           namespace, or has already gone away
+ *   PMIX_ERR_NOT_SUPPORTED  this platform offers no way to ask
+ *   PMIX_ERR_BAD_PARAM      `sd` is not a connected IPv4/IPv6 socket
+ *
+ * *uid is written only on PMIX_SUCCESS. */
+PMIX_EXPORT pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid);
 
 END_C_DECLS
 
