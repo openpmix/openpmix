@@ -110,7 +110,8 @@ reachable in ``pmix_ptl_base_setup_listener``
    an integer pipe fd, or a named file. The other addresses, if any, are
    stored as ``PMIX_MYSERVER_ALT_URIS`` - a comma-delimited list of
    ``tcp4://host:port`` / ``tcp6://host:port`` - and follow the version
-   in a report file on a line tagged ``alturis:``.
+   in a report file on a line tagged ``alturis:``. A report file also
+   carries the ``bfrops:`` and ``psec:`` lines described below.
 #. **Drop rendezvous files.** Depending on the server's role and flags,
    write well-known contact files that a client or tool can later
    discover in the tmpdir tree:
@@ -137,7 +138,11 @@ reachable in ``pmix_ptl_base_setup_listener``
    Each file contains the URI, the server's version, its PID, its
    ``uid:gid``, and a timestamp, and then - only when the server listens
    on more than one address - a line tagged ``alturis:`` listing the
-   others. The ``pmix_ptl_base`` state struct
+   others. Two more tagged lines follow: ``bfrops:`` lists the wire
+   formats (``bfrops`` components) the server accepts and ``psec:`` its
+   security mechanisms, each comma-delimited in the server's priority
+   order and limited by its MCA parameters. Readers find every tagged
+   line by its tag; older readers stop before them. The ``pmix_ptl_base`` state struct
    records (via its ``created_*`` flags) exactly which files and
    directories this process created, so ``pmix_ptl_close`` can remove
    precisely those at shutdown and nothing that belongs to a peer.
@@ -189,6 +194,36 @@ most specific to least:
 
 ``PMIX_TOOL_CONNECT_OPTIONAL`` decides whether failing to find a server is
 an error or simply leaves the tool unconnected.
+
+Choosing what to speak
+~~~~~~~~~~~~~~~~~~~~~~
+
+The connect request names one wire format and one security mechanism, and
+the server either accepts them or drops the connection; it never says what
+it would accept instead. A client is told by the variable its server set
+(``PMIX_SERVER_URIvNN``). A tool is started by no server, so it learns from
+the server's file:
+
+* if the file has ``bfrops:`` and ``psec:`` lines, the tool uses the
+  highest of its own wire formats that the server lists, and keeps its
+  security mechanism if the server lists it, or else takes the highest of
+  its own that the server does. With nothing in common it does not try to
+  connect, and says why;
+* a file from a server too old to write those lines has only the server's
+  version. The tool then uses the highest of its wire formats named for a
+  release no later than the server's. That assumes the server runs every
+  format up to its own, which an MCA parameter on the server can make
+  untrue, so it is a fallback for older servers only. For the security
+  mechanism it uses ``munge`` if it has it, else ``native`` - never
+  ``ssl``, which no such server has;
+* a URI given directly carries neither, and the tool uses its newest. If
+  the server then closes the connection without answering - what a server
+  does with a format or mechanism it lacks - the tool suggests giving it
+  the server's file instead, as ``file:<path>``.
+
+For a tool's first server the choice becomes the tool's own, as a client's
+does. A server it attaches to later gets its own choice, which leaves how
+the tool speaks to its other servers unchanged.
 
 A server may be reachable at more than one address: the rendezvous file's
 ``alturis:`` line, or a ``PMIX_SERVER_ALT_URIS`` directive given with the

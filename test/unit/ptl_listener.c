@@ -320,6 +320,44 @@ static char *tagged_line(const char *path, const char *tag, int *lineno)
     return found;
 }
 
+/* The report file tells a process that finds us through it which wire
+ * formats and security mechanisms we accept - exactly the ones this
+ * server runs, after whatever restriction its MCA parameters put on
+ * them. That restriction is the case a guess from our version gets
+ * wrong */
+static void compat_lines_child(void)
+{
+    pmix_info_t info;
+    char path[PMIX_PATH_MAX + 16];
+    char *bf, *ps;
+    int line;
+    bool ok;
+
+    setenv("PMIX_MCA_bfrops", "v41,v21", 1);
+    snprintf(path, sizeof(path), "%s/compat.txt", tmpdir);
+    unlink(path);
+    PMIX_INFO_LOAD(&info, PMIX_TCP_REPORT_URI, path, PMIX_STRING);
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, &info, 1)) {
+        _exit(CHILD_FAIL);
+    }
+    bf = tagged_line(path, "bfrops:", &line);
+    ps = tagged_line(path, "psec:", &line);
+    ok = (NULL != bf && 0 == strcmp(bf, "v41,v21"));
+    if (!ok) {
+        fprintf(stderr, "bfrops line is \"%s\", expected \"v41,v21\"\n",
+                (NULL == bf) ? "(missing)" : bf);
+    }
+    if (NULL == ps || NULL == strstr(ps, "native")) {
+        fprintf(stderr, "psec line is \"%s\", expected one naming native\n",
+                (NULL == ps) ? "(missing)" : ps);
+        ok = false;
+    }
+    free(bf);
+    free(ps);
+    PMIx_server_finalize();
+    _exit(ok ? CHILD_PASS : CHILD_FAIL);
+}
+
 static void alternates_child(void)
 {
     pmix_info_t info[3];
@@ -454,6 +492,8 @@ int main(int argc, char **argv)
     run_case("a PMIX_TCP_IPV4_PORT past 65535 is refused", big_port_child);
     run_case("an empty PMIX_TCP_REPORT_URI leaves stdin alone", empty_report_uri_child);
     run_case("a report file named by directive is removed at finalize", report_uri_file_child);
+    run_case("the report file lists the wire formats and security mechanisms this server runs",
+             compat_lines_child);
     run_case("remote connections listen on, and advertise, every public interface",
              alternates_child);
     run_case("without remote connections there are no alternates", no_alternates_child);

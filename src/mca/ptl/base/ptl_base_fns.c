@@ -43,7 +43,9 @@
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/runtime/pmix_progress_threads.h"
+#include "src/client/pmix_client_ops.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/psec/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
@@ -306,6 +308,127 @@ static bool search_candidate(const char *path, bool *isdir)
     return S_ISREG(st.st_mode);
 }
 
+/* Our highest wire format named for a release no later than major.minor -
+ * the guess for a server whose file does not say which it accepts. A
+ * component is named for the release that introduced it ("v41"), so this
+ * assumes the server still runs every one up to its own, which the
+ * server's own bfrops selection may not. NULL when we have none that old */
+static pmix_bfrops_module_t *bfrops_by_version(unsigned major, unsigned minor)
+{
+    pmix_bfrops_base_active_module_t *active;
+    const char *name, *ptr;
+    unsigned cmaj, cmin;
+
+    PMIX_LIST_FOREACH (active, &pmix_bfrops_globals.actives, pmix_bfrops_base_active_module_t) {
+        name = active->component->base.pmix_mca_component_name;
+        ptr = strrchr(name, 'v');
+        if (NULL == ptr || !isdigit((unsigned char) ptr[1])) {
+            continue;
+        }
+        cmaj = (unsigned) (ptr[1] - '0');
+        cmin = isdigit((unsigned char) ptr[2]) ? (unsigned) (ptr[2] - '0') : 0;
+        if (cmaj < major || (cmaj == major && cmin <= minor)) {
+            return active->component->assign_module();
+        }
+    }
+    return NULL;
+}
+
+pmix_status_t pmix_ptl_base_select_compat(struct pmix_peer_t *pr, pmix_connection_t *cn)
+{
+    pmix_peer_t *peer = (pmix_peer_t *) pr;
+    pmix_bfrops_module_t *bfrops = NULL;
+    pmix_psec_module_t *psec = NULL, *cur;
+    char *ours, **list;
+    bool primary;
+    uint8_t major;
+    int n;
+
+    if (NULL == peer || NULL == peer->nptr || NULL == cn) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    primary = (peer == pmix_client_globals.myserver);
+
+    /* the wire format: the highest of ours the server lists */
+    if (NULL != cn->bfrops) {
+        bfrops = pmix_bfrops_base_assign_module(cn->bfrops);
+        if (NULL == bfrops) {
+            ours = pmix_bfrops_base_get_available_modules();
+            pmix_show_help("help-ptl-base.txt", "no-common-module", true, cn->uri,
+                           "wire format (bfrops component)", cn->bfrops,
+                           (NULL == ours) ? "none" : ours, "wire formats", "bfrops");
+            free(ours);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+    } else {
+        /* an older server says only its version - go by that, if it is
+         * older than we are */
+        major = PMIX_PEER_MAJOR_VERSION(peer);
+        if (0 != major && PMIX_MAJOR_WILDCARD != major &&
+            (PMIX_VERSION_MAJOR > major ||
+             (PMIX_VERSION_MAJOR == major && PMIX_VERSION_MINOR > PMIX_PEER_MINOR_VERSION(peer)))) {
+            bfrops = bfrops_by_version(major, PMIX_PEER_MINOR_VERSION(peer));
+        }
+    }
+    if (NULL != bfrops) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: speaking %s to server %s (server lists %s)",
+                            bfrops->version, cn->uri, (NULL == cn->bfrops) ? "none" : cn->bfrops);
+        peer->nptr->compat.bfrops = bfrops;
+        if (primary) {
+            pmix_globals.mypeer->nptr->compat.bfrops = bfrops;
+        }
+    }
+
+    /* the security mechanism: ours if the server lists it, otherwise the
+     * highest of ours that it does. An older server's list is unknown, so
+     * take the mechanisms every release serves a local peer with - munge
+     * if we have it, else native. Never ssl, which no older server has */
+    if (NULL == cn->psec) {
+        psec = pmix_psec_base_assign_module("munge,native");
+        if (NULL == psec) {
+            ours = pmix_psec_base_get_available_modules();
+            pmix_show_help("help-ptl-base.txt", "no-common-module", true, cn->uri,
+                           "security mechanism (psec component)",
+                           "(none listed - an older server takes munge or native)",
+                           (NULL == ours) ? "none" : ours, "security mechanisms", "psec");
+            free(ours);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        peer->nptr->compat.psec = psec;
+        if (primary) {
+            pmix_globals.mypeer->nptr->compat.psec = psec;
+        }
+    } else {
+        cur = (NULL != peer->nptr->compat.psec) ? peer->nptr->compat.psec
+                                                : pmix_globals.mypeer->nptr->compat.psec;
+        list = PMIx_Argv_split(cn->psec, ',');
+        for (n = 0; NULL != cur && NULL != list && NULL != list[n]; n++) {
+            if (0 == strcmp(list[n], cur->name)) {
+                psec = cur;
+                break;
+            }
+        }
+        PMIx_Argv_free(list);
+        if (NULL == psec) {
+            psec = pmix_psec_base_assign_module(cn->psec);
+        }
+        if (NULL == psec) {
+            ours = pmix_psec_base_get_available_modules();
+            pmix_show_help("help-ptl-base.txt", "no-common-module", true, cn->uri,
+                           "security mechanism (psec component)", cn->psec,
+                           (NULL == ours) ? "none" : ours, "security mechanisms", "psec");
+            free(ours);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        peer->nptr->compat.psec = psec;
+        if (primary) {
+            pmix_globals.mypeer->nptr->compat.psec = psec;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
                                            bool optional,
                                            pmix_list_t *connections)
@@ -333,6 +456,9 @@ static pmix_status_t parse_conn_file(char *filename, bool optional, bool found_b
     pmix_rank_t rank;
     char *uri = NULL;
     char *alt = NULL, *line;
+    char *bfrops = NULL, *psec = NULL, **dest;
+    const char *tag;
+    size_t taglen;
 
     /* if we cannot open the file, then the server must not
      * be configured to support tool connections, or this
@@ -420,15 +546,29 @@ process:
 
     /* see if this file contains the server's version */
     p = pmix_getline(fp);
-    /* and whether it lists other addresses the server listens on. They
-     * follow every line a released reader takes by position, and are found
-     * by their tag rather than by where they fall */
+    /* and whether it lists other addresses the server listens on, and the
+     * wire formats and security mechanisms it accepts. They follow every
+     * line a released reader takes by position, and are found by their
+     * tag rather than by where they fall. The first of each counts */
     alt = NULL;
     if (NULL != p) {
-        while (NULL == alt && NULL != (line = pmix_getline(fp))) {
-            if (0 == strncmp(line, PMIX_PTL_ALT_URIS_TAG, strlen(PMIX_PTL_ALT_URIS_TAG)) &&
-                '\0' != line[strlen(PMIX_PTL_ALT_URIS_TAG)]) {
-                alt = strdup(line + strlen(PMIX_PTL_ALT_URIS_TAG));
+        while (NULL != (line = pmix_getline(fp))) {
+            if (0 == strncmp(line, PMIX_PTL_ALT_URIS_TAG, strlen(PMIX_PTL_ALT_URIS_TAG))) {
+                tag = PMIX_PTL_ALT_URIS_TAG;
+                dest = &alt;
+            } else if (0 == strncmp(line, PMIX_PTL_BFROPS_TAG, strlen(PMIX_PTL_BFROPS_TAG))) {
+                tag = PMIX_PTL_BFROPS_TAG;
+                dest = &bfrops;
+            } else if (0 == strncmp(line, PMIX_PTL_PSEC_TAG, strlen(PMIX_PTL_PSEC_TAG))) {
+                tag = PMIX_PTL_PSEC_TAG;
+                dest = &psec;
+            } else {
+                free(line);
+                continue;
+            }
+            taglen = strlen(tag);
+            if (NULL == *dest && '\0' != line[taglen]) {
+                *dest = strdup(line + taglen);
             }
             free(line);
         }
@@ -447,6 +587,8 @@ process:
                 free(p);
             }
             free(alt);
+            free(bfrops);
+            free(psec);
             return PMIX_ERR_NOMEM;
         }
         cn->nspace = nspace;
@@ -454,9 +596,13 @@ process:
         cn->uri = uri;
         cn->version = p;
         cn->alt_uris = alt;
+        cn->bfrops = bfrops;
+        cn->psec = psec;
         pmix_list_append(connections, &cn->super);
     } else {
         free(alt);
+        free(bfrops);
+        free(psec);
         if (NULL != nspace) {
             free(nspace);
         }
@@ -692,6 +838,24 @@ static pmix_status_t send_connect_ack(pmix_peer_t *peer,
     return PMIX_SUCCESS;
 }
 
+/* A server that does not have the wire format or security mechanism we
+ * named closes the connection without a word. When we were handed only
+ * its address there was nothing to choose from - no version, no list of
+ * what it accepts - so say how to give us that: its file. A server whose
+ * version we know was found through a file or the environment already */
+static void hint_closed_no_reply(pmix_peer_t *peer, const char *uri)
+{
+    static bool warned = false;
+    uint8_t major = PMIX_PEER_MAJOR_VERSION(peer);
+
+    if (warned || (0 != major && PMIX_MAJOR_WILDCARD != major)) {
+        return;
+    }
+    warned = true;
+    pmix_show_help("help-ptl-base.txt", "server-closed-no-reply", true,
+                   (NULL == uri) ? "(the URI given)" : uri);
+}
+
 /* we receive a connection acknowledgment from the server,
  * consisting of nothing more than a status report. If success,
  * then we initiate authentication method */
@@ -716,6 +880,9 @@ static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
     /* receive the status reply */
     rc = pmix_ptl_base_recv_blocking(peer->sd, (char *) &u32, sizeof(uint32_t));
     if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_UNREACH == rc) {
+            hint_closed_no_reply(peer, pmix_ptl_base.uri);
+        }
         if (sockopt) {
             /* return the socket to normal */
             if (0 != setsockopt(peer->sd, SOL_SOCKET, SO_RCVTIMEO, &save, sz)) {
@@ -1449,6 +1616,9 @@ static void cnct_recv(int sd, short args, void *cbdata)
         if (0 == n) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:base:connect: server closed the connection");
+            if (PMIX_CNCT_STATUS == op->state) {
+                hint_closed_no_reply(op->peer, op->suri);
+            }
             cnct_finish(op, PMIX_ERR_UNREACH);
             return;
         }
@@ -1648,6 +1818,8 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
     pmix_ptl_hdr_t hdr;
     size_t sdsize, csize;
     pmix_byte_object_t cred;
+    pmix_psec_module_t *psec;
+    pmix_bfrops_module_t *bfmod;
 
     sdsize = *sz;
 
@@ -1656,9 +1828,18 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
     hdr.pindex = -1;
     hdr.tag = UINT32_MAX;
 
-    /* add the name of our active sec module - we selected it
-     * in pmix_client.c prior to entering here */
-    sec = pmix_globals.mypeer->nptr->compat.psec->name;
+    /* Speak to this server with the security mechanism and wire format
+     * chosen for it - from what its file said it accepts, when we found
+     * it through one (pmix_ptl_base_select_compat). For our primary
+     * server those are our own; a tool attaching to another server may
+     * need older ones for it alone */
+    psec = (NULL != peer->nptr && NULL != peer->nptr->compat.psec)
+               ? peer->nptr->compat.psec : pmix_globals.mypeer->nptr->compat.psec;
+    bfmod = (NULL != peer->nptr && NULL != peer->nptr->compat.bfrops)
+                ? peer->nptr->compat.bfrops : pmix_globals.mypeer->nptr->compat.bfrops;
+
+    /* add the name of our active sec module */
+    sec = psec->name;
     sdsize += strlen(sec) + 1;
 
     /* a security module was assigned to us during rte_init based
@@ -1667,7 +1848,8 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
      * get a credential, if the security system provides one. Not
      * every psec module will do so, thus we must first check */
     PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
-    PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer, NULL, 0, NULL, 0, &cred);
+    rc = psec->create_cred((struct pmix_peer_t *) pmix_globals.mypeer, NULL, 0, NULL, NULL,
+                           &cred);
     if (PMIX_SUCCESS != rc) {
         PMIX_BYTE_OBJECT_DESTRUCT(&cred);
         return rc;
@@ -1682,7 +1864,7 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
     sdsize += strlen(PMIX_VERSION) + 1;
 
     /* add our active bfrops module name */
-    bfrops = pmix_globals.mypeer->nptr->compat.bfrops->version;
+    bfrops = bfmod->version;
     sdsize += strlen(bfrops) + 1;
     /* and the type of buffer we are using */
     bftype = pmix_globals.mypeer->nptr->compat.type;
@@ -1695,9 +1877,11 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
     /* if we were given info structs to pass to the server, pack them */
     if (NULL != iptr) {
         PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &niptr, 1, PMIX_SIZE);
+        /* in the wire format we name, which the server unpacks it with */
+        buf.type = bftype;
+        rc = bfmod->pack(&buf, &niptr, 1, PMIX_SIZE);
         if (PMIX_SUCCESS == rc) {
-            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, iptr, niptr, PMIX_INFO);
+            rc = bfmod->pack(&buf, iptr, niptr, PMIX_INFO);
         }
         if (PMIX_SUCCESS != rc) {
             /* we cannot send a partial blob - the far end computes the
