@@ -197,7 +197,9 @@ Four functions, in this order, all on the progress thread:
    exists to satisfy.
 4. **`_cnct_complete`** (client path) or the tail of `process_cbfunc`
    (tool path) — reply with the status and the peer's array index, run
-   the psec server handshake if the module asked for one, set the socket
+   the psec server handshake if the module asked for one (client path
+   only: a tool's ran in `process_tool_request`, and the security status
+   `process_cbfunc` sends it is only the outcome), set the socket
    non-blocking, arm the recv/send events, and flush cached
    notifications.
 

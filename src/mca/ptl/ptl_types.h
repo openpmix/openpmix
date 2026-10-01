@@ -377,12 +377,8 @@ typedef struct {
     gid_t gid;
     pmix_proc_type_t proc_type;
     /* the psec module (pmix_psec_module_t *) the peer asked to be
-     * validated with, and whether its credential has already been
-     * validated - a tool's is, before anything else is done for it,
-     * unless the module authenticates with a live handshake, which runs
-     * at its fixed place later in the exchange */
+     * validated with */
     void *psecmod;
-    bool validated;
 } pmix_pending_connection_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
 
