@@ -69,11 +69,11 @@ test what it exists to test.
 - **`create_cred`** returns a throwaway credential — the literal bytes
   `"dymmy_cred"` (the misspelling is in the source). It is essentially
   ignored; the real exchange is the handshake.
-- **`server_hndshk(int sd)`** sends the length of a fixed magic string
+- **`server_hndshk(peer, sd)`** sends the length of a fixed magic string
   (`"PMIX_PSEC_DUMMY_HANDSHAKE_STRING"`) then the string itself over the
   socket using `pmix_ptl_base_send_blocking`, then reads back a status
   word from the client with `pmix_ptl_base_recv_blocking`.
-- **`client_hndshk(int sd)`** reads the length, checks it against the
+- **`client_hndshk(peer, sd)`** reads the length, checks it against the
   expected magic string's length *before* allocating anything from it,
   then reads and compares the bytes (returning `PMIX_ERR_HANDSHAKE_FAILED`
   on mismatch) and sends `PMIX_SUCCESS` back to the server.

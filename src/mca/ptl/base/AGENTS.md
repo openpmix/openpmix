@@ -267,12 +267,22 @@ expired, not "no data yet", so the function returns `PMIX_ERR_TIMEOUT`
 there and cycles only for a socket that really is non-blocking. It used
 to cycle unconditionally, which turned every receive timeout into an
 unbounded wait — the outbound `handshake_wait_time` never expired
-either. The psec exchange itself stays blocking, and deliberately: its
-interface is `server_handshake(int sd)`, and the only module that
-implements one is the test module `psec/dummy_handshake`, built only
-under `--enable-dummy-handshake`. No production build reaches it, so it
-is not worth redesigning that interface for; revisit if a real
-handshake-model module ever appears.
+either. The psec exchange itself stays blocking: its interface is
+`server_handshake(peer, sd)`, a blocking exchange by definition. Two
+modules implement one: the test module `psec/dummy_handshake`, and
+`psec/native`, which runs its local-socket handshake only for a peer the
+kernel's TCP table cannot see (a container with its own network). native
+bounds the whole exchange by one `connect_ack_timeout` deadline, and
+stops waiting the moment the peer's TCP connection closes, so a peer that
+cannot reach the socket costs nothing; one that stalls holds the progress
+thread for that timeout at most. Making the exchange event-driven means changing
+the psec interface again.
+
+On the **tool path** a credential module's handshake runs inside
+`process_tool_request`, before anything is done for the tool: the tool's
+first status is `READY_FOR_HANDSHAKE`, and the identity the module
+settles on is copied from the scratch peer back into `pnd`. The
+`allow_foreign_tools` check runs after that, on the settled uid.
 
 `test/unit/ptl_stalled_peer.c` runs every stall case with the timeout
 **disabled**, so only the non-blocking read can pass them, and gives the
