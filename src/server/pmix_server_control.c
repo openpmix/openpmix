@@ -433,6 +433,35 @@ typedef struct {
 } pmix_srvr_epi_upgrade_t;
 static PMIX_CLASS_INSTANCE(pmix_srvr_epi_upgrade_t, pmix_list_item_t, NULL, NULL);
 
+/* Is path already registered for cleanup on this list by this identity?
+ * An entry is removed as the peer that asked for it, so another peer's
+ * entry for the same path is a different entry - it must neither stand in
+ * for this one nor be widened by it */
+static bool epi_has_file_as(pmix_list_t *list, const char *path, uid_t uid, gid_t gid)
+{
+    pmix_cleanup_file_t *cf;
+
+    PMIX_LIST_FOREACH (cf, list, pmix_cleanup_file_t) {
+        if (uid == cf->uid && gid == cf->gid && 0 == strcmp(cf->path, path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static pmix_cleanup_dir_t *epi_find_dir_as(pmix_list_t *list, const char *path, uid_t uid,
+                                           gid_t gid)
+{
+    pmix_cleanup_dir_t *cd;
+
+    PMIX_LIST_FOREACH (cd, list, pmix_cleanup_dir_t) {
+        if (uid == cd->uid && gid == cd->gid && 0 == strcmp(cd->path, path)) {
+            return cd;
+        }
+    }
+    return NULL;
+}
+
 /* Is path already named on this list of cleanup files? Every entry
  * carries a non-NULL path by construction, so the strcmp is unguarded. */
 static bool epi_has_file(pmix_list_t *list, const char *path)
@@ -573,6 +602,9 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_srvr_epi_upgrade_t *upg;
     pmix_cleanup_file_t *cf, *cfptr;
     pmix_cleanup_dir_t *cdir, *cdir2, *cdirptr;
+    bool unknown_target = false;
+    uid_t uid;
+    gid_t gid;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "recvd job control request from client");
@@ -671,22 +703,14 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 }
             }
             if (NULL == nptr) {
-                nptr = PMIX_NEW(pmix_namespace_t);
-                if (NULL == nptr) {
-                    rc = PMIX_ERR_NOMEM;
-                    goto exit;
-                }
-                nptr->nspace = strdup(cd->targets[n].nspace);
-                if (NULL == nptr->nspace) {
-                    /* every lookup in this directory strcmp's that member,
-                     * so a namespace carrying a NULL name is a permanent
-                     * segfault of the progress thread - do not put a
-                     * half-built one on the global list */
-                    PMIX_RELEASE(nptr);
-                    rc = PMIX_ERR_NOMEM;
-                    goto exit;
-                }
-                pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+                /* a job we do not know has no epilog to put cleanup on,
+                 * and a peer naming one must not make us invent it - that
+                 * left a namespace on our list for the life of the server,
+                 * with no owner, for anyone to fill. The host may still
+                 * know the target, so the request goes on to it; cleanup
+                 * aimed there is refused below */
+                unknown_target = true;
+                continue;
             }
             /* if the rank is wildcard, then we use the epilog for the nspace */
             if (PMIX_RANK_WILDCARD == cd->targets[n].rank) {
@@ -814,11 +838,16 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
         }
     }
     if (0 < cnt) {
-        /* Cleanup put on a job's epilog runs as that job's user, so the
-         * requester must be allowed every job it targets - see
-         * docs/security-plan.rst. A job the host never registered with us
-         * has no owner here, and only root and our own user may. With no
+        /* Cleanup is removed as the peer that asked for it (each entry
+         * records who), and is put only on the epilogs of jobs that peer
+         * is allowed to act on - see docs/security-plan.rst. With no
          * targets the cleanup is on the requester's own job */
+        if (unknown_target) {
+            rc = PMIX_ERR_NOT_FOUND;
+            goto exit;
+        }
+        uid = peer->info->uid;
+        gid = peer->info->gid;
         for (n = 0; NULL != cd->targets && n < cd->ntargets; n++) {
             nptr = NULL;
             PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
@@ -894,8 +923,9 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
         /* now look at the directories */
         PMIX_LIST_FOREACH (cdir, &cachedirs, pmix_cleanup_dir_t) {
             PMIX_LIST_FOREACH (epicd, &epicache, pmix_srvr_epi_caddy_t) {
-                /* scan the existing list of directories for any duplicate */
-                cdir2 = epi_find_dir(&epicd->epi->cleanup_dirs, cdir->path);
+                /* scan the existing list of directories for any duplicate
+                 * registered by the same peer identity */
+                cdir2 = epi_find_dir_as(&epicd->epi->cleanup_dirs, cdir->path, uid, gid);
                 if (NULL != cdir2) {
                     /* duplicate - check for difference in flags per RFC
                      * precedence rules. The entry that has to absorb the
@@ -942,13 +972,16 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 cdirptr->recurse = recurse;
                 cdirptr->empty = empty;
                 cdirptr->leave_topdir = leave_topdir;
+                cdirptr->uid = uid;
+                cdirptr->gid = gid;
                 pmix_list_append(&epicd->newdirs, &cdirptr->super);
             }
         }
         PMIX_LIST_FOREACH (cf, &cachefiles, pmix_cleanup_file_t) {
             PMIX_LIST_FOREACH (epicd, &epicache, pmix_srvr_epi_caddy_t) {
-                /* scan the existing list of files for any duplicate */
-                if (epi_has_file(&epicd->epi->cleanup_files, cf->path) ||
+                /* scan the existing list of files for any duplicate
+                 * registered by the same peer identity */
+                if (epi_has_file_as(&epicd->epi->cleanup_files, cf->path, uid, gid) ||
                     epi_has_file(&epicd->newfiles, cf->path)) {
                     continue;
                 }
@@ -964,6 +997,8 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                     rc = PMIX_ERR_NOMEM;
                     goto exit;
                 }
+                cfptr->uid = uid;
+                cfptr->gid = gid;
                 pmix_list_append(&epicd->newfiles, &cfptr->super);
             }
         }

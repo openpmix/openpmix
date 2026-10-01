@@ -666,12 +666,6 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     /* add in the nspace pointer */
     PMIX_RETAIN(nptr);
     peer->nptr = nptr;
-    /* update the epilog fields */
-    peer->epilog.uid = info->uid;
-    peer->epilog.gid = info->gid;
-    /* ensure the nspace epilog is updated too */
-    nptr->epilog.uid = info->uid;
-    nptr->epilog.gid = info->gid;
     info->proc_cnt++; /* increase number of processes on this rank */
     counted = true;
     if (0 > (peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer))) {
@@ -1119,11 +1113,6 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     memcpy(&peer->proc_type, &pnd->proc_type, sizeof(pmix_proc_type_t));
     /* save the protocol */
     peer->protocol = pnd->protocol;
-    /* save the uid/gid */
-    peer->epilog.uid = peer->info->uid;
-    peer->epilog.gid = peer->info->gid;
-    nptr->epilog.uid = peer->info->uid;
-    nptr->epilog.gid = peer->info->gid;
     peer->proc_cnt = 1;
     peer->sd = pnd->sd;
 
