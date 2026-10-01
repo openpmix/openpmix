@@ -68,6 +68,7 @@
 #define PMIX_CAP_CLI_MATCH       21
 #define PMIX_CAP_REQUESTER_ID    22
 #define PMIX_CAP_DMODEX_REQUEST2 23
+#define PMIX_CAP_ACCESS_CHECK    24
 
 
 /*****    DEPRECATED    *****/

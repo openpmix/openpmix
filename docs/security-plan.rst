@@ -115,15 +115,23 @@ The host passes the list on when it registers the job, on every node
 that hosts a part of it. The same attributes already govern access to
 published data (``PMIx_Publish``), so users meet one vocabulary.
 
-**Group membership** is looked up once per user and cached, rather than
-on every request. The server keeps one table, keyed by user ID, for
-every requester - connected or on another node (see `Data held on
-another node`_). An entry is made the first time a check needs that
-user's groups, and only when the job's access list names groups. It is
-refreshed after the interval set by the MCA parameter
-``pmix_server_access_group_timeout`` (in seconds; default 300; 0 keeps
-entries for the life of the server), so a change to a user's groups
-takes effect within that time.
+**Group membership** is the groups a user belongs to by its account -
+its primary group and its supplementary groups - and not the group a
+process happens to be running as. The server keeps a record of each user
+it knows, keyed by user ID. The host registers each user
+(``PMIx_server_register_resources`` with ``PMIX_USERID``), and may give
+the groups it belongs to with it (``PMIX_GRPID``, as an array), in which
+case the server looks nothing up. Otherwise the server looks the groups
+up once, when the user becomes known: the host registers it or a job it
+owns, or it connects as a tool.
+Root and the server's own user are never recorded - they need no groups.
+A requester the server was never told about - one on another node (see
+`Data held on another node`_) - is recorded at its first check. A check
+that finds the user in none of the job's groups looks them up again
+before refusing, so a user added to a group is admitted from its next
+request. A record is dropped when the host deregisters that user
+(``PMIx_server_deregister_resources`` with ``PMIX_USERID``), and at
+finalize.
 
 What is covered
 ---------------
@@ -297,8 +305,9 @@ Compatibility
   connection, so nothing changes for them.
 * **Hosts** can detect the library's support through capability flags
   in ``pmix_version.h``: ``PMIX_CAP_REQUESTER_ID`` (the requester's
-  identity on up-calls) and ``PMIX_CAP_DMODEX_REQUEST2``
-  (``PMIx_server_dmodex_request2``).
+  identity on up-calls), ``PMIX_CAP_DMODEX_REQUEST2``
+  (``PMIx_server_dmodex_request2``) and ``PMIX_CAP_ACCESS_CHECK``
+  (``pmix_server_access_check()``).
 
 What a host needs to do
 -----------------------
@@ -311,7 +320,17 @@ What a host needs to do
 * Apply the rule to the operations it performs for clients and tools -
   job control, abort, stdin, IOF pull approval, queries it answers,
   monitoring of other nodes, sessions and allocations - using the
-  requester identity the library passes in each up-call.
+  requester identity the library passes in each up-call. A host linked
+  with the library applies exactly the library's rule by keeping its own
+  copies and calling ``pmix_server_access_check()`` (declared in the
+  installed ``src/server/pmix_server_ops.h``) from its own thread: a
+  ``pmix_access_t`` for each job, loaded with
+  ``pmix_server_access_load()`` from the info it registers the job with,
+  and a ``pmix_user_t`` for each requester. None of these touch the
+  library's state. When the host drops a user it deregisters it from the
+  library too, so the two stay in step. The ``PMIX_GRPID`` in an up-call
+  is the group the requester chose to charge the work to and is not
+  verified: it is not an input to the rule.
 * Carry the requester's identity when it relays a request to another of
   its daemons.
 * Answer direct-modex requests with ``PMIx_server_dmodex_request2``,
@@ -364,8 +383,10 @@ Status
        shared-memory segments read-only to their readers.
      - Done (in review)
    * - 5
-     - PRRTE: records and distributes each job's access list,
-       accepts ``PMIX_ACCESS_PERMISSIONS`` at spawn, applies the rule to
-       the operations it performs, carries requester identity on
-       relays, and uses ``PMIx_server_dmodex_request2``.
-     - Planned
+     - ``pmix_server_access_check()``, the rule as a function a host
+       calls with its own copies of a job's access list and the
+       requester's groups; users registered and deregistered by the host;
+       group membership looked up again before refusing. PRRTE carries each job's access list (``--rtos
+       users=,groups=``, and ``PMIX_ACCESS_PERMISSIONS`` at spawn) and
+       applies the rule to the operations it performs.
+     - Done (in review)
