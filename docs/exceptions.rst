@@ -434,6 +434,19 @@ Info Struct Functions
 
      bool PMIx_Info_is_persistent(const pmix_info_t *p);
 
+* Mark a ``PMIX_USERID`` or ``PMIX_GRPID`` as relayed for the process that made
+  the request:
+
+  .. code-block:: c
+
+     void PMIx_Info_relayed(pmix_info_t *p);
+
+* Check if the info struct is marked as relayed:
+
+  .. code-block:: c
+
+     bool PMIx_Info_is_relayed(const pmix_info_t *p);
+
 * Get the size of a ``pmix_info_t`` structure:
 
   .. code-block:: c
@@ -1067,6 +1080,7 @@ Constants
   non-zero status
 * ``PMIX_INFO_QUALIFIER``  (value: 0x00000008): Info is a qualifier to the primary value
 * ``PMIX_INFO_PERSISTENT`` (value: 0x00000010): Do not release included value
+* ``PMIX_INFO_RELAYED`` (value: 0x00000020): Identity relayed for the process that made the request
 
 
 .. note:: OpenPMIx version |opmix_ver| renamed the  ``PMIX_DEBUG_WAIT_FOR_NOTIFY``

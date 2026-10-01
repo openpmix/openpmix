@@ -245,16 +245,43 @@ pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info
     pmix_info_t *old = *info, *new;
     size_t n, m, nold = *ninfo;
     uint32_t id, gid;
+    bool uid_relayed = false, gid_relayed = false;
     pmix_status_t rc;
 
     if (NULL == peer || NULL == peer->info) {
         return PMIX_ERR_BAD_PARAM;
     }
-    /* the group is the requester's choice if it named one - by number or
-     * by name. A group it named that cannot be resolved refuses the
-     * request rather than quietly charging it to another */
+    /* A server relaying a request for the process that made it marks the
+     * PMIX_USERID and PMIX_GRPID it was given as relayed - its peer's
+     * server stamped them where the request entered - and they are kept.
+     * Only a server's library sends the mark (see the bfrops info packer),
+     * so anyone else speaks for itself. */
+    id = (uint32_t) peer->info->uid;
+    for (n = 0; n < nold; n++) {
+        if (PMIx_Check_key(old[n].key, PMIX_USERID) && PMIx_Info_is_relayed(&old[n])) {
+            rc = pmix_util_uid_from_value(&old[n].value, &id);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            uid_relayed = true;
+            break;
+        }
+    }
+    /* the group is a relayed one, else the requester's choice if it named
+     * one - by number or by name. A group it named that cannot be resolved
+     * refuses the request rather than quietly charging it to another */
     gid = (uint32_t) peer->info->gid;
     for (n = 0; n < nold; n++) {
+        if (PMIx_Check_key(old[n].key, PMIX_GRPID) && PMIx_Info_is_relayed(&old[n])) {
+            rc = pmix_util_gid_from_value(&old[n].value, &gid);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            gid_relayed = true;
+            break;
+        }
+    }
+    for (n = 0; !gid_relayed && n < nold; n++) {
         if (PMIx_Check_key(old[n].key, PMIX_GRPID)) {
             rc = pmix_util_gid_from_value(&old[n].value, &gid);
             if (PMIX_SUCCESS != rc) {
@@ -280,10 +307,15 @@ pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info
         memcpy(&new[m], &old[n], sizeof(pmix_info_t));
         ++m;
     }
-    id = (uint32_t) peer->info->uid;
     PMIx_Info_load(&new[m], PMIX_USERID, &id, PMIX_UINT32);
+    if (uid_relayed) {
+        PMIx_Info_relayed(&new[m]);
+    }
     ++m;
     PMIx_Info_load(&new[m], PMIX_GRPID, &gid, PMIX_UINT32);
+    if (gid_relayed) {
+        PMIx_Info_relayed(&new[m]);
+    }
     ++m;
     if (NULL != old) {
         PMIx_Info_free(old, 0);

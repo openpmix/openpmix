@@ -1004,6 +1004,24 @@ void pmix_bfrops_base_tma_info_persistent(pmix_info_t *p,
 }
 
 static inline
+void pmix_bfrops_base_tma_info_relayed(pmix_info_t *p,
+                                       pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    PMIX_SET_BIT(p->flags, PMIX_INFO_RELAYED);
+}
+
+static inline
+bool pmix_bfrops_base_tma_info_is_relayed(const pmix_info_t *p,
+                                          pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    return PMIX_CHECK_BIT_IS_SET(p->flags, PMIX_INFO_RELAYED);
+}
+
+static inline
 pmix_status_t pmix_bfrops_base_tma_info_xfer(pmix_info_t *dest,
                                              const pmix_info_t *src,
                                              pmix_tma_t *tma)

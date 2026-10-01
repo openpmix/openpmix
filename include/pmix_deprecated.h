@@ -502,6 +502,13 @@ PMIX_EXPORT void PMIx_Info_persistent(pmix_info_t *p);
 /* check if the info struct is persistent */
 PMIX_EXPORT bool PMIx_Info_is_persistent(const pmix_info_t *p);
 
+/* mark a PMIX_USERID or PMIX_GRPID as being relayed for the process that
+ * made the request - see PMIX_INFO_RELAYED */
+PMIX_EXPORT void PMIx_Info_relayed(pmix_info_t *p);
+
+/* check if the info struct is marked as relayed */
+PMIX_EXPORT bool PMIx_Info_is_relayed(const pmix_info_t *p);
+
 /* Constructing arrays of pmix_info_t for passing to an API can
  * be tedious since the pmix_info_t itself is not a "list object".
  * Since this is a very frequent operation, a set of APIs has been
