@@ -3623,13 +3623,16 @@ misbehave by design).
   an entry already registered — the existing more-permissive-wins rule
   decides it: recursive removes everything empty would have and the
   files besides, so recursive dominates and clears the empty flag.
-- **The epilog removes what a client named *as* that client, so the
-  identity it uses must be initialized.** `pmix_epilog_t::uid` and
-  `::gid` are written by the connection handler
-  (`src/mca/ptl/base/ptl_base_connection_hdlr.c`, four sites), and
-  `pmix_execute_epilog` walks under that recorded identity. That hands
-  the decision to the kernel and so gets symlinks and `..` right without
-  a check of ours racing the filesystem. Two routes:
+- **The epilog removes each entry *as the peer that asked for it*.**
+  Every `pmix_cleanup_file_t` and `pmix_cleanup_dir_t` records the
+  authenticated uid and gid of its requester (`peer->info`), set when
+  `pmix_server_job_ctrl` stages it, and `pmix_execute_epilog` makes one
+  walk per distinct identity over that identity's entries only. One
+  epilog can hold several identities - a job's takes requests from
+  anyone permitted to act on the job - and each must be held to its own
+  rights. That hands the decision to the kernel and so gets symlinks and
+  `..` right without a check of ours racing the filesystem. Two routes,
+  per identity:
 
   - **We are already that user** — the ordinary per-user server — so
     walk in place. This compares our own process credentials, not
@@ -3662,14 +3665,26 @@ misbehave by design).
   set `SIGCHLD` to `SIG_IGN`, and then our child is reaped out from
   under us.
 
-  **Both constructors, `nscon` and `pcon`, assign those two members**,
-  defaulting them to `geteuid()`/`getegid()`. An epilog with no
-  registered identity therefore runs as the server itself, and the
-  identity switch is reserved for a peer the host actually registered an
-  identity for. `PMIX_NEW` and `PMIX_CONSTRUCT` zero an object, but uid 0
-  is a real identity, so the zeroing is not a usable default here. **A
-  member no constructor assigns is zero, and here zero names a user** —
-  do not read the zeroing as a default that spares you writing one.
+  **An entry with no recorded identity is never acted on.** Both entry
+  constructors set uid and gid to `(uid_t) -1`, and the walk skips that.
+  The epilog used to carry one identity for everything on it, defaulted
+  to `geteuid()` - so cleanup on a job no client had connected from ran
+  as the server, root on a root server, whoever had asked. `PMIX_NEW` and
+  `PMIX_CONSTRUCT` zero an object, but uid 0 is a real identity, so the
+  zeroing is not a usable default here. **A member no constructor
+  assigns is zero, and here zero names a user** — do not read the
+  zeroing as a default that spares you writing one.
+- **Another peer's entry is a different entry.** Duplicate detection and
+  the more-permissive-wins widening match a registered entry only when
+  path *and* identity match (`epi_has_file_as`, `epi_find_dir_as`), so
+  one user can neither stand in for another's entry nor turn it
+  recursive. Ignores are matched by path alone: an ignore only spares
+  data, whoever registered it.
+- **Job control never invents a namespace.** A target naming a job we do
+  not know used to get a `pmix_namespace_t` created and listed - for
+  every job-control request, cleanup or not - with no owner, for anyone
+  to fill. Now the request goes to the host unchanged, and cleanup aimed
+  at an unknown job is refused with `PMIX_ERR_NOT_FOUND`.
 - **A job-control cleanup request is staged and then committed, and it
   has to stay that way.** The three epilog lists outlive the request —
   they live as long as the namespace or the peer — and nothing gives a

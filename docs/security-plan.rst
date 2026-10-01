@@ -225,8 +225,10 @@ Where the checks are made:
        which is checked for that user.
    * - Cleanup directives (``PMIX_REGISTER_CLEANUP`` and its family)
        on ``PMIx_Job_control``
-     - The cleanup runs as the target job's user, so the requester must
-       be allowed every job it names.
+     - The requester must be allowed every job it names, and the
+       cleanup runs as the requester - each entry records who asked -
+       never as the job's user or the server. A job the server does not
+       know is refused.
    * - Output forwarding inherited by a spawned job
      - A subscription to a job's output follows into the jobs it
        spawns only if its requester may access each of them.

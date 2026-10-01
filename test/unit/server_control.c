@@ -822,6 +822,53 @@ static size_t count_empty_nspaces(void)
     return n;
 }
 
+/* A request naming one target and carrying info */
+static pmix_status_t do_job_ctrl_one_info(const char *nspace, pmix_rank_t rank,
+                                          pmix_info_t *info, size_t ninfo)
+{
+    pmix_buffer_t *buf;
+    pmix_proc_t target;
+    pmix_status_t rc;
+    size_t one = 1;
+
+    jobctrl_fired = false;
+    buf = PMIX_NEW(pmix_buffer_t);
+    if (NULL == buf) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_LOAD_PROCID(&target, nspace, rank);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &one, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &target, 1, PMIX_PROC);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS == rc && 0 < ninfo) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, info, ninfo, PMIX_INFO);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+    rc = pmix_server_job_ctrl(standin(), buf, NULL, NULL);
+    PMIX_RELEASE(buf);
+    return rc;
+}
+
+/* Is there a namespace of this name on our list? */
+static bool nspace_listed(const char *name)
+{
+    pmix_namespace_t *ns;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (NULL != ns->nspace && 0 == strcmp(ns->nspace, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* How many entries sit on our own namespace's epilog ignore list. */
 static size_t count_epilog_ignores(void)
 {
@@ -1671,18 +1718,20 @@ int main(int argc, char **argv)
         drain_epilog_dirs();
         drain_epilog_files();
 
-        /* The privilege drop. We are unprivileged, so naming any other
-         * uid is a drop we cannot make - and the right answer to that is
-         * to remove nothing at all, rather than to remove it as
-         * ourselves, which is the behavior pmix_execute_epilog exists to
-         * stop. Point the epilog at a uid that is not ours and check the
-         * file survives; then put the identity back and check the same
-         * file goes, so the case cannot pass by simply never working. */
+        /* The privilege drop. Each entry is removed as the peer that
+         * registered it. We are unprivileged, so any other uid is a drop
+         * we cannot make - and the right answer to that is to remove
+         * nothing at all, rather than to remove it as ourselves, which is
+         * the behavior pmix_execute_epilog exists to stop. Give the
+         * registered entry a uid that is not ours and check the file
+         * survives; then register it again as ourselves and check the
+         * same file goes, so the case cannot pass by simply never
+         * working. */
         base = mkdtemp(tdir3);
         if (NULL == base) {
             report("made a scratch file for the privilege case", false);
         } else {
-            uid_t saveuid = pmix_globals.mypeer->nptr->epilog.uid;
+            pmix_cleanup_file_t *entry;
 
             snprintf(fkeepp, sizeof(fkeepp), "%s/owned", base);
             fp = fopen(fkeepp, "w");
@@ -1693,13 +1742,18 @@ int main(int argc, char **argv)
             rc = do_job_ctrl(at, 1);
             report("the privilege-case file registered", PMIX_OPERATION_SUCCEEDED == rc);
             PMIX_INFO_DESTRUCT(&at[0]);
+            entry = (pmix_cleanup_file_t *) pmix_list_get_last(
+                &pmix_globals.mypeer->nptr->epilog.cleanup_files);
+            report("a cleanup entry records the identity of its requester",
+                   NULL != entry && geteuid() == entry->uid && getegid() == entry->gid);
 
             /* nobody's real uid, and certainly not ours */
-            pmix_globals.mypeer->nptr->epilog.uid = saveuid + 1;
+            if (NULL != entry) {
+                entry->uid = geteuid() + 1;
+            }
             pmix_execute_epilog(&pmix_globals.mypeer->nptr->epilog);
             report("a cleanup we cannot drop for removes nothing",
                    0 == access(fkeepp, F_OK));
-            pmix_globals.mypeer->nptr->epilog.uid = saveuid;
 
             /* and the same request under our own identity does go through,
              * so the case above is not passing on a broken epilog */
@@ -1767,6 +1821,79 @@ int main(int argc, char **argv)
         report("an empty-namespace target did not reach the host", !jobctrl_fired);
         report("an empty-namespace target created no namespace",
                before == count_empty_nspaces());
+    }
+
+    /* --- cleanup is removed as the peer that asked for it --------- */
+    {
+        char tdir4[PMIX_PATH_MAX], fpath[PMIX_PATH_MAX + 32];
+        pmix_epilog_t *epi = &pmix_globals.mypeer->nptr->epilog;
+        pmix_cleanup_file_t *orphan;
+        pmix_cleanup_dir_t *cdir;
+        char *dbase;
+        FILE *fp;
+        size_t nentries;
+        bool yes = true, widened = false;
+        pmix_info_t ci[2];
+
+        snprintf(tdir4, sizeof(tdir4), "%s/srvctl4.XXXXXX",
+                 (NULL == getenv("TMPDIR")) ? "/tmp" : getenv("TMPDIR"));
+        dbase = mkdtemp(tdir4);
+        if (NULL == dbase) {
+            report("made a scratch directory for the identity cases", false);
+        } else {
+            /* an entry nobody vouched for is never acted on - it used to run
+             * as the server, root on a root server */
+            snprintf(fpath, sizeof(fpath), "%s/orphan", dbase);
+            fp = fopen(fpath, "w");
+            if (NULL != fp) {
+                fclose(fp);
+            }
+            orphan = PMIX_NEW(pmix_cleanup_file_t);
+            orphan->path = strdup(fpath);
+            pmix_list_append(&epi->cleanup_files, &orphan->super);
+            pmix_execute_epilog(epi);
+            report("a cleanup entry with no recorded identity removes nothing",
+                   0 == access(fpath, F_OK));
+            unlink(fpath);
+
+            /* another peer's entry for the same directory is its own: a
+             * second requester neither stands in for it nor widens it */
+            PMIX_INFO_LOAD(&ci[0], PMIX_REGISTER_CLEANUP_DIR, dbase, PMIX_STRING);
+            rc = do_job_ctrl(ci, 1);
+            PMIX_INFO_DESTRUCT(&ci[0]);
+            cdir = (pmix_cleanup_dir_t *) pmix_list_get_last(&epi->cleanup_dirs);
+            if (PMIX_OPERATION_SUCCEEDED == rc && NULL != cdir) {
+                cdir->uid = geteuid() + 1; /* as if someone else had asked */
+            }
+            PMIX_INFO_LOAD(&ci[0], PMIX_REGISTER_CLEANUP_DIR, dbase, PMIX_STRING);
+            PMIX_INFO_LOAD(&ci[1], PMIX_CLEANUP_RECURSIVE, &yes, PMIX_BOOL);
+            rc = do_job_ctrl(ci, 2);
+            PMIX_INFO_DESTRUCT(&ci[0]);
+            PMIX_INFO_DESTRUCT(&ci[1]);
+            nentries = pmix_list_get_size(&epi->cleanup_dirs);
+            PMIX_LIST_FOREACH (cdir, &epi->cleanup_dirs, pmix_cleanup_dir_t) {
+                if (geteuid() + 1 == cdir->uid && cdir->recurse) {
+                    widened = true;
+                }
+            }
+            report("another peer's identical cleanup is a separate entry",
+                   PMIX_OPERATION_SUCCEEDED == rc && 2 == nentries);
+            report("another peer's request does not widen an entry to recursive", !widened);
+            drain_epilog_dirs();
+            rmdir(dbase);
+        }
+
+        /* a job we do not know: no namespace is invented for it, and
+         * cleanup aimed at it is refused */
+        PMIX_INFO_LOAD(&ci[0], PMIX_REGISTER_CLEANUP, "/nonexistent/pmix-v02", PMIX_STRING);
+        rc = do_job_ctrl_one_info("no-such-job-v02", PMIX_RANK_WILDCARD, ci, 1);
+        PMIX_INFO_DESTRUCT(&ci[0]);
+        report("cleanup aimed at an unknown job is refused", PMIX_ERR_NOT_FOUND == rc);
+        report("cleanup aimed at an unknown job invented no namespace",
+               !nspace_listed("no-such-job-v02"));
+        rc = do_job_ctrl_one("no-such-job-v02b", PMIX_RANK_WILDCARD);
+        report("job control naming an unknown job invents no namespace",
+               !nspace_listed("no-such-job-v02b"));
     }
 
     /* --- the host's abort up-call --------------------------------- */
