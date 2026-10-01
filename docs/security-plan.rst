@@ -208,7 +208,9 @@ Where the checks are made:
      - Processes the request names must all belong to jobs the
        requester may access, or the request is refused. A request for
        every local process leaves out those the requester may not
-       access. Requests from the host are not restricted.
+       access. Requests from the host are not restricted, except one it
+       relays from another node naming the requester's ``PMIX_USERID``,
+       which is checked for that user.
    * - Cleanup directives (``PMIX_REGISTER_CLEANUP`` and its family)
        on ``PMIx_Job_control``
      - The cleanup runs as the target job's user, so the requester must
@@ -386,7 +388,9 @@ Status
      - ``pmix_server_access_check()``, the rule as a function a host
        calls with its own copies of a job's access list and the
        requester's groups; users registered and deregistered by the host;
-       group membership looked up again before refusing. PRRTE carries each job's access list (``--rtos
+       group membership looked up again before refusing; a monitor
+       request relayed from another node checked for the requester it
+       names. PRRTE carries each job's access list (``--rtos
        users=,groups=``, and ``PMIX_ACCESS_PERMISSIONS`` at spawn) and
        applies the rule to the operations it performs.
      - Done (in review)

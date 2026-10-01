@@ -523,9 +523,14 @@ PMIX_EXPORT pmix_peer_t *pmix_server_access_find_peer(const pmix_proc_t *proc);
  * keep those whose jobs it may access. With strict - the requester named
  * them - any it may not access fails the request with
  * PMIX_ERR_NO_PERMISSIONS instead. A requestor that is not one of our
- * clients or tools is the host, which is not restricted. */
+ * clients or tools is the host, which is not restricted - unless the
+ * request's directives name a PMIX_USERID, the user a host relaying a
+ * request from another node makes it for, whom the rule is then applied
+ * to. */
 PMIX_EXPORT pmix_status_t pmix_server_access_filter_peers(const pmix_proc_t *requestor,
-                                                          pmix_list_t *peers, bool strict);
+                                                          const pmix_info_t *directives,
+                                                          size_t ndirs, pmix_list_t *peers,
+                                                          bool strict);
 
 /* release the server's user records */
 PMIX_EXPORT void pmix_server_access_finalize(void);
