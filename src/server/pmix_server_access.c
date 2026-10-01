@@ -636,20 +636,40 @@ pmix_status_t pmix_server_access_identify(const pmix_peer_t *peer, pmix_info_t *
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_server_access_filter_peers(const pmix_proc_t *requestor, pmix_list_t *peers,
-                                              bool strict)
+pmix_status_t pmix_server_access_filter_peers(const pmix_proc_t *requestor,
+                                              const pmix_info_t *directives, size_t ndirs,
+                                              pmix_list_t *peers, bool strict)
 {
     pmix_peer_t *rpeer;
     pmix_peerlist_t *pl, *plnext;
+    uint32_t uid = 0;
+    bool have_uid = false;
+    size_t n;
 
     /* a request that is not from one of our clients or tools is our
-     * host's own, and the host is not restricted */
+     * host's own, and the host is not restricted - unless it says whom it
+     * makes the request for, as a host relaying a request from another
+     * node does (PMIX_MONITOR_PROXY, with the PMIX_USERID the requester's
+     * own server gave it) */
     rpeer = pmix_server_access_find_peer(requestor);
     if (NULL == rpeer) {
-        return PMIX_SUCCESS;
+        for (n = 0; NULL != directives && n < ndirs; n++) {
+            if (PMIx_Check_key(directives[n].key, PMIX_USERID)) {
+                have_uid = (PMIX_SUCCESS ==
+                            PMIx_Value_get_number(&directives[n].value, &uid, PMIX_UINT32));
+                if (!have_uid) {
+                    return PMIX_ERR_BAD_PARAM;
+                }
+                break;
+            }
+        }
+        if (!have_uid) {
+            return PMIX_SUCCESS;
+        }
     }
     PMIX_LIST_FOREACH_SAFE (pl, plnext, peers, pmix_peerlist_t) {
-        if (pmix_server_peer_permitted(rpeer, pl->peer->nptr)) {
+        if (NULL != rpeer ? pmix_server_peer_permitted(rpeer, pl->peer->nptr)
+                          : pmix_server_access_permitted((uid_t) uid, pl->peer->nptr)) {
             continue;
         }
         if (strict) {
