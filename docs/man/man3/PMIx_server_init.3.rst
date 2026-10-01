@@ -147,7 +147,13 @@ Role and support attributes
   ``PMIX_TCP_IF_EXCLUDE``. Its URI names the first; the others are stored as
   ``PMIX_MYSERVER_ALT_URIS`` and listed in its contact files, where tools
   finding the server by file, PID or namespace try them if the URI's address
-  cannot be reached.
+  cannot be reached. A remote tool must authenticate with a mechanism that
+  works across hosts: the default ``native`` mechanism confirms a peer's
+  identity by asking the server's own kernel who owns the connection, so
+  it refuses any peer on another host. Use ``ssl`` - PMIx configured
+  ``--with-openssl``, the server given ``psec_ssl_ca_file``, and the tool
+  given ``psec_ssl_cert_file``/``psec_ssl_key_file`` and
+  ``PMIX_MCA_psec=ssl`` - or ``munge``.
 * ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` (bool) |mdash| mark the rendezvous
   files as readable by all users and allow tools running under user IDs other
   than that of the server to connect. Defaults to ``false``: without it, a

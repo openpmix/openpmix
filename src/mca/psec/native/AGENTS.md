@@ -25,6 +25,7 @@ this file covers only what is specific to `native`. It uses the
 | `psec_native.h` | Declares the component and module symbols. |
 | `psec_native_component.c` | Component struct + `component_query` (priority **10**, always available). |
 | `psec_native.c` | The module: `init`/`finalize` + `create_cred` / `validate_cred`. |
+| `help-psec-native.txt` | Why a connection was refused: `unverified-peer`, `foreign-group`. |
 
 ## When it is selected
 
@@ -84,6 +85,25 @@ according to the protocol:
   whose transport was never established has no credential format, so
   there is nothing here that can be validated.
 
+**Then it confirms the peer's identity with the kernel**, before
+comparing anything (`check_os_identity()`):
+
+- `pmix_util_getid_tcp()` ([`src/util/pmix_getid.c`](../../../util/pmix_getid.c))
+  looks the peer's end of `pr->sd` up in the host's own TCP table and
+  returns the uid that created that socket. The claimed `euid` must equal
+  it.
+- A **tool** names its own group — nobody registered one for it — and no
+  kernel table records a socket's group, so a tool's claimed `egid` must
+  also be a group its (kernel-confirmed) user holds: its primary group or
+  one listing it as a member. Root holds every group. A client's group was
+  registered by the host, and is compared against that below.
+- If the kernel cannot answer — the peer is on another host or in another
+  network namespace, the platform has no way to ask, or there is no
+  connection at all (`PMIx_Validate_credential`) — the credential is
+  refused, with the `unverified-peer` help once. native serves peers on
+  this host; a remote peer authenticates with [`ssl`](../ssl/AGENTS.md)
+  or `munge`.
+
 It then compares the recovered `euid`/`egid` against the values recorded
 for the peer (`pr->info->uid` / `pr->info->gid`) and returns
 `PMIX_ERR_INVALID_CRED` on any mismatch. On success it fills `*info` with
@@ -101,11 +121,24 @@ credential.
   local server share an ABI, but it is not safe across differing
   endianness or integer widths. Do not "reuse" this format for a remote
   or cross-platform mechanism — add a new component instead.
-- **There is no socket-credential path any more.** The
+- **The identity comes from the connection.** The
   `SO_PEERCRED`/`getpeereid()` branch served the `usock` transport
   (`PMIX_PROTOCOL_V1`), which is gone along with the v1.x peers that were
-  its only users. Every connection is TCP and is validated from the
-  credential bytes.
+  its only users. Every connection is now TCP, and `check_os_identity()`
+  confirms the uid in the credential against the owner of the peer's
+  socket. The wire format is unchanged, so older clients connect as
+  before. **Keep `check_os_identity()` ahead of the comparisons in
+  `validate_cred`.**
+- **Only a live connection has an owner.** `pmix_util_getid_tcp()`
+  answers only for an `ESTABLISHED` entry that matches all four addresses
+  and ports; a `TIME_WAIT`/`FIN_WAIT` entry carries no owner (Linux
+  reports uid 0 for it).
+- **Remote peers are refused.** native confirms identity through the
+  local kernel, so it serves only peers on this host. A deployment that
+  accepts remote tool connections (`PMIX_SERVER_REMOTE_CONNECTIONS`) uses
+  `ssl` or `munge`. On a platform `pmix_util_getid_tcp()` does not
+  support (anything but Linux and macOS today), native refuses every
+  peer; supporting such a platform means adding a lookup for it.
 - **The `PMIX_PROTOCOL_UNDEF` rejection is explicit on purpose.** It does
   not rely on the `(uid_t) -1` initializers of `euid`/`egid` failing the
   `uid`/`gid` comparison. Keep it explicit; do not reintroduce the

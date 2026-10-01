@@ -56,7 +56,7 @@ interface list).
 | `pmix_path.{c,h}` / `pmix_os_path.{c,h}` / `pmix_os_dirpath.{c,h}` / `pmix_getcwd.{c,h}` | path search/resolution, path assembly, dir-tree create/destroy, cwd | `os_path` pure; rest need a tmpdir |
 | `pmix_fd.{c,h}` | fd read/write, cloexec, type predicates, peer name, mass-close | needs pipes/sockets |
 | `pmix_few.{c,h}` | fork/exec/waitpid a child | needs a child |
-| `pmix_getid.{c,h}` | peer uid/gid over a socket (`SO_PEERCRED`/`getpeereid`) | needs a socketpair |
+| `pmix_getid.{c,h}` | peer uid/gid over an AF_UNIX socket (`SO_PEERCRED`/`getpeereid`); owner of a local TCP peer (the kernel's TCP table) | needs a socketpair / a loopback connection |
 | `pmix_idname.{c,h}` | a `PMIX_USERID`/`PMIX_GRPID` given as a number or a name, resolved to the number (`getpwnam_r`/`getgrnam_r`); callers are the points where either attribute enters the library - see `src/server/AGENTS.md` | the numeric paths are pure; names need the process's own passwd/group entries |
 | `pmix_shmem.{c,h}` / `pmix_vmem.{c,h}` | mmap-backed shared-memory segment; `/proc/self/maps` hole finder (Linux) | `pad_to_page` pure; the hole scan runs anywhere against a synthetic map; rest need mmap |
 | `pmix_pty.{c,h}` / `pmix_tty.{c,h}` | openpty/forkpty wrappers; termios/winsize helpers | need real pty/tty |
@@ -734,8 +734,43 @@ Two things a caller must know, neither of which this function can fix:
   return leaves them exactly as the caller had them.
 
 [`test/unit/util/util_getid.c`](../../test/unit/util/util_getid.c) covers
-it over a `socketpair()`, and skips (77) on a platform that answers
+it over a `socketpair()`, and skips its cases on a platform that answers
 `PMIX_ERR_NOT_SUPPORTED`.
+
+### `pmix_util_getid_tcp` — who owns the far end of a local TCP connection
+
+This one has a caller, and it is the one that matters: `psec/native`
+authenticates every connection with it (see
+[`src/mca/psec/native/AGENTS.md`](../mca/psec/native/AGENTS.md)). A TCP
+socket carries no credentials, so the peer's socket is looked up in the
+kernel's own table by the connection's four values — its address and
+port are our peer address, its remote address and port are ours — and
+the table says which uid created it. There is one route per platform,
+each compiled only there: Linux asks `sock_diag` netlink for that one
+socket and falls back to scanning `/proc/net/tcp{,6}`; macOS reads the
+`net.inet.tcp.pcblist64` sysctl. Anything else answers
+`PMIX_ERR_NOT_SUPPORTED`.
+
+Three rules, each of which a plausible "simplification" breaks:
+
+- **Only an `ESTABLISHED` entry is an answer.** A `TIME_WAIT`/`FIN_WAIT`
+  entry carries no owner, and Linux reports uid 0 for it. A connection
+  whose peer has closed answers `PMIX_ERR_NOT_FOUND`;
+  `test_tcp_peer_gone` pins it.
+- **All four values must match what comes back.** Linux's exact lookup
+  falls back to a *listening* socket when no connection matches.
+- **A v4-mapped pair is IPv4.** A dual-stack listener holds an IPv4 peer
+  as `::ffff:a.b.c.d`, while the peer's own socket may be `AF_INET`; the
+  lookup unwraps the pair and, on the `/proc` route, searches both
+  tables.
+
+Every case in the test connects the process to itself, where the right
+answer and a lookup of the wrong end of the connection are the same
+number. `test_tcp_other_user` is the one that tells them apart — a child
+drops to another uid before creating its socket — and it needs root, so
+it runs in the Linux container rather than on a developer's Mac. To
+exercise the `/proc` route on Linux, configure with
+`ac_cv_header_linux_inet_diag_h=no`.
 
 ### `pmix_error` — two lookups over a table you do not write
 
