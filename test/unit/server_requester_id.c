@@ -35,6 +35,11 @@
  *         resolved                 -> the request is refused, and the
  *                                    array left as it was
  *      a second gid                -> dropped
+ *      a uid and gid marked
+ *         PMIX_INFO_RELAYED        -> kept, still marked (a server
+ *                                    relaying for the process that made
+ *                                    the request); an unmarked one is
+ *                                    replaced as before
  *   query the server cannot
  *      answer itself            -> the host is given the requester's proc
  *                                  and, in the qualifiers, one uid and
@@ -399,6 +404,66 @@ static void test_helper(void)
           PMIx_Check_key(info[1].key, PMIX_GRPID) && RID_CLAIMED == info[1].value.data.uint32);
     report("of two supplied gids only the first is kept", ok);
     PMIX_INFO_FREE(info, ninfo);
+
+    /* a server relaying a request passes on the identity of the process
+     * that made it, marked as relayed - kept, and still marked */
+    ninfo = 2;
+    PMIX_INFO_CREATE(info, ninfo);
+    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &claimed, PMIX_UINT32);
+    PMIx_Info_relayed(&info[0]);
+    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &other, PMIX_UINT32);
+    PMIx_Info_relayed(&info[1]);
+    rc = pmix_server_add_requester_id(requester, &info, &ninfo);
+    ok = (PMIX_SUCCESS == rc && 2 == ninfo && NULL != info &&
+          PMIx_Check_key(info[0].key, PMIX_USERID) && RID_CLAIMED == info[0].value.data.uint32 &&
+          PMIx_Info_is_relayed(&info[0]) &&
+          PMIx_Check_key(info[1].key, PMIX_GRPID) && RID_CLAIMED + 1 == info[1].value.data.uint32 &&
+          PMIx_Info_is_relayed(&info[1]));
+    report("a relayed uid and gid are kept, still marked", ok);
+    PMIX_INFO_FREE(info, ninfo);
+
+    /* only what is marked is kept */
+    ninfo = 2;
+    PMIX_INFO_CREATE(info, ninfo);
+    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &claimed, PMIX_UINT32);
+    PMIx_Info_relayed(&info[0]);
+    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &other, PMIX_UINT32);
+    rc = pmix_server_add_requester_id(requester, &info, &ninfo);
+    ok = (PMIX_SUCCESS == rc && 2 == ninfo && NULL != info &&
+          RID_CLAIMED == info[0].value.data.uint32 && PMIx_Info_is_relayed(&info[0]) &&
+          RID_CLAIMED + 1 == info[1].value.data.uint32 && !PMIx_Info_is_relayed(&info[1]));
+    report("a relayed uid with an unmarked gid: the gid is the requester's choice", ok);
+    PMIX_INFO_FREE(info, ninfo);
+
+    ninfo = 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &claimed, PMIX_UINT32);
+    rc = pmix_server_add_requester_id(requester, &info, &ninfo);
+    ok = (PMIX_SUCCESS == rc && 2 == ninfo && NULL != info &&
+          RID_UID == info[0].value.data.uint32 && !PMIx_Info_is_relayed(&info[0]));
+    report("an unmarked uid is still replaced", ok);
+    PMIX_INFO_FREE(info, ninfo);
+
+    /* this process is a server, and a server's library sends the mark */
+    {
+        pmix_data_buffer_t buf;
+        pmix_info_t in, out;
+        int32_t cnt = 1;
+
+        PMIX_INFO_LOAD(&in, PMIX_USERID, &claimed, PMIX_UINT32);
+        PMIx_Info_relayed(&in);
+        PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+        PMIX_INFO_CONSTRUCT(&out);
+        rc = PMIx_Data_pack(NULL, &buf, &in, 1, PMIX_INFO);
+        if (PMIX_SUCCESS == rc) {
+            rc = PMIx_Data_unpack(NULL, &buf, &out, &cnt, PMIX_INFO);
+        }
+        report("a server's library sends the relayed mark",
+               PMIX_SUCCESS == rc && PMIx_Info_is_relayed(&out));
+        PMIX_INFO_DESTRUCT(&out);
+        PMIX_INFO_DESTRUCT(&in);
+        PMIX_DATA_BUFFER_DESTRUCT(&buf);
+    }
 }
 
 static void test_query(void)

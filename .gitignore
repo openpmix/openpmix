@@ -322,6 +322,7 @@ test/unit/server_ops
 test/unit/server_fabric
 test/unit/server_resolve
 test/unit/server_requester_id
+test/unit/info_relayed
 test/unit/server_access
 test/unit/server_group_members
 test/unit/server_access_checks

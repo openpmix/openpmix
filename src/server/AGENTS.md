@@ -3223,14 +3223,20 @@ misbehave by design).
   requester's `pmix_proc_t` as the up-call's process argument, and the
   requester's `PMIX_USERID` and `PMIX_GRPID` in the up-call's info or
   directives array - exactly one of each. `pmix_server_add_requester_id()`
-  (in `pmix_server_ops.c`) does the second half. The uid is always the one
-  in `peer->info`; any the requester sent is dropped. The gid is the
+  (in `pmix_server_ops.c`) does the second half. The uid is the one in
+  `peer->info`; any the requester sent is dropped. The gid is the
   requester's if it sent one (the first `uint32`) - many sites charge work
   to a group, and a user may ask for a request to be charged to a group
   other than the one it started with - and otherwise the one in
-  `peer->info`. It replaces the array, so call it on an array the caddy
-  owns, and make sure the caddy's "owns it" flag is set afterwards even
-  when the requester sent no array at all.
+  `peer->info`. The exception is a relay: a uid or gid marked
+  `PMIX_INFO_RELAYED` is the identity of the process that made the request,
+  fixed by the server where it entered and passed on by a host relaying it,
+  and is kept, still marked. Only a server's library sends the mark - the
+  bfrops info packer clears it in any other process - and that one place is
+  the whole of the enforcement, so do not add a second wire path for info
+  that skips `pmix_bfrops_base_pack_info()`. It replaces the array, so
+  call it on an array the caddy owns, and make sure the caddy's "owns it"
+  flag is set afterwards even when the requester sent no array at all.
 
   **Who may access a job is decided by user and group, not namespace** -
   see `docs/security-plan.rst`. Each `pmix_namespace_t` carries a
