@@ -10,8 +10,12 @@
 /* Access to a namespace by user and group - see docs/security-plan.rst.
  *
  * A namespace has an owner (pmix_access_t in pmix_globals.h) and may
- * name further users and groups allowed to access it. Everything here
- * runs on the progress thread. */
+ * name further users and groups allowed to access it; a user
+ * (pmix_user_t) belongs to groups. Everything here runs on the progress
+ * thread, except the functions that touch nothing but their arguments -
+ * pmix_server_access_check(), pmix_server_access_load() and the
+ * pmix_user_t and pmix_access_t helpers - which a host keeping its own
+ * copies calls from its own. */
 
 #include "src/include/pmix_config.h"
 
@@ -19,7 +23,6 @@
 #include <pwd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
@@ -28,66 +31,71 @@
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
+#include "src/util/pmix_idname.h"
 #include "src/util/pmix_output.h"
 
 #include "pmix_server_ops.h"
 
 /* ------------------------------------------------------------------ */
-/* group membership, cached per user                                   */
+/* users, and the groups they belong to                                */
 /* ------------------------------------------------------------------ */
 
-typedef struct {
-    pmix_list_item_t super;
-    uid_t uid;
-    gid_t *groups;
-    size_t ngroups;
-    time_t stamp;
-} pmix_access_groups_t;
-
-static void agcon(pmix_access_groups_t *p)
+static void ucon(pmix_user_t *p)
 {
     p->uid = 0;
-    p->groups = NULL;
-    p->ngroups = 0;
-    p->stamp = 0;
+    p->gids = NULL;
+    p->ngids = 0;
 }
-static void agdes(pmix_access_groups_t *p)
+static void udes(pmix_user_t *p)
 {
-    if (NULL != p->groups) {
-        free(p->groups);
-    }
+    free(p->gids);
 }
-static PMIX_CLASS_INSTANCE(pmix_access_groups_t, pmix_list_item_t, agcon, agdes);
+PMIX_CLASS_INSTANCE(pmix_user_t, pmix_list_item_t, ucon, udes);
 
-static pmix_list_t group_cache;
-static bool group_cache_constructed = false;
+/* The users this server knows - see pmix_server_user_get(). Progress
+ * thread only; a host keeps its own */
+static pmix_list_t users;
+static bool users_constructed = false;
 
 /* the most groups one user may be found to belong to */
-#define PMIX_ACCESS_MAX_GROUPS 65536
+#define PMIX_ACCESS_MAX_GROUPS 65535
 
-/* Look up every group the user belongs to, primary and supplementary. A
- * user with no passwd entry belongs to none that can be found. */
-static void lookup_groups(uid_t uid, gid_t **out, size_t *nout)
+pmix_user_t *pmix_server_user_create(uid_t uid)
+{
+    pmix_user_t *user = PMIX_NEW(pmix_user_t);
+
+    if (NULL != user) {
+        user->uid = uid;
+    }
+    return user;
+}
+
+pmix_status_t pmix_server_user_refresh(pmix_user_t *user)
 {
     struct passwd pw, *res = NULL;
     long bufsz;
     char *buf;
+    gid_t *gids;
     int ng, n, rc, i;
 
-    *out = NULL;
-    *nout = 0;
-
+    if (NULL == user) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     bufsz = sysconf(_SC_GETPW_R_SIZE_MAX);
     if (0 >= bufsz) {
         bufsz = 16384;
     }
     buf = (char *) malloc((size_t) bufsz);
     if (NULL == buf) {
-        return;
+        return PMIX_ERR_NOMEM;
     }
-    if (0 != getpwuid_r(uid, &pw, buf, (size_t) bufsz, &res) || NULL == res) {
+    if (0 != getpwuid_r(user->uid, &pw, buf, (size_t) bufsz, &res) || NULL == res) {
+        /* no account - no groups to be found */
         free(buf);
-        return;
+        free(user->gids);
+        user->gids = NULL;
+        user->ngids = 0;
+        return PMIX_SUCCESS;
     }
 
     for (ng = 64; ng <= PMIX_ACCESS_MAX_GROUPS; ng *= 2) {
@@ -108,12 +116,14 @@ static void lookup_groups(uid_t uid, gid_t **out, size_t *nout)
         rc = getgrouplist(pw.pw_name, pw.pw_gid, list, &n);
 #endif
         if (0 <= rc && 0 <= n && n <= ng) {
-            *out = (gid_t *) malloc(((size_t) n + 1) * sizeof(gid_t));
-            if (NULL != *out) {
+            gids = (gid_t *) malloc(((size_t) n + 1) * sizeof(gid_t));
+            if (NULL != gids) {
                 for (i = 0; i < n; i++) {
-                    (*out)[i] = (gid_t) list[i];
+                    gids[i] = (gid_t) list[i];
                 }
-                *nout = (size_t) n;
+                free(user->gids);
+                user->gids = gids;
+                user->ngids = (uint16_t) n;
             }
             free(list);
             break;
@@ -121,52 +131,198 @@ static void lookup_groups(uid_t uid, gid_t **out, size_t *nout)
         free(list);
     }
     free(buf);
+    return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_server_access_groups(uid_t uid, const gid_t **groups, size_t *ngroups)
+pmix_user_t *pmix_server_user_get(uid_t uid)
 {
-    pmix_access_groups_t *ag, *found = NULL;
-    time_t now = time(NULL);
+    pmix_user_t *user;
 
-    if (!group_cache_constructed) {
-        PMIX_CONSTRUCT(&group_cache, pmix_list_t);
-        group_cache_constructed = true;
+    if (!users_constructed) {
+        PMIX_CONSTRUCT(&users, pmix_list_t);
+        users_constructed = true;
     }
-    PMIX_LIST_FOREACH (ag, &group_cache, pmix_access_groups_t) {
-        if (ag->uid == uid) {
-            found = ag;
+    PMIX_LIST_FOREACH (user, &users, pmix_user_t) {
+        if (user->uid == uid) {
+            return user;
+        }
+    }
+    user = pmix_server_user_create(uid);
+    if (NULL != user) {
+        pmix_list_append(&users, &user->super);
+    }
+    return user;
+}
+
+void pmix_server_user_add(uid_t uid)
+{
+    pmix_user_t *user;
+
+    /* root and our own user are allowed everything - their groups are
+     * never needed */
+    if (0 == uid || geteuid() == uid) {
+        return;
+    }
+    if (!users_constructed) {
+        PMIX_CONSTRUCT(&users, pmix_list_t);
+        users_constructed = true;
+    }
+    PMIX_LIST_FOREACH (user, &users, pmix_user_t) {
+        if (user->uid == uid) {
+            return;
+        }
+    }
+    user = pmix_server_user_create(uid);
+    if (NULL == user) {
+        return;
+    }
+    (void) pmix_server_user_refresh(user);
+    pmix_list_append(&users, &user->super);
+}
+
+pmix_status_t pmix_server_user_register(uid_t uid, const gid_t *gids, size_t ngids)
+{
+    pmix_user_t *user = NULL, *u;
+    gid_t *copy;
+
+    if (NULL == gids) {
+        /* the host did not say - find out ourselves */
+        pmix_server_user_add(uid);
+        return PMIX_SUCCESS;
+    }
+    if (0 == uid || geteuid() == uid) {
+        return PMIX_SUCCESS;
+    }
+    if (UINT16_MAX < ngids) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (!users_constructed) {
+        PMIX_CONSTRUCT(&users, pmix_list_t);
+        users_constructed = true;
+    }
+    PMIX_LIST_FOREACH (u, &users, pmix_user_t) {
+        if (u->uid == uid) {
+            user = u;
             break;
         }
     }
-    if (NULL != found && 0 < pmix_server_globals.access_group_timeout &&
-        now - found->stamp >= (time_t) pmix_server_globals.access_group_timeout) {
-        /* stale - look it up again */
-        free(found->groups);
-        found->groups = NULL;
-        found->ngroups = 0;
-        lookup_groups(uid, &found->groups, &found->ngroups);
-        found->stamp = now;
+    copy = (gid_t *) malloc((0 < ngids ? ngids : 1) * sizeof(gid_t));
+    if (NULL == copy) {
+        return PMIX_ERR_NOMEM;
     }
-    if (NULL == found) {
-        found = PMIX_NEW(pmix_access_groups_t);
-        if (NULL == found) {
+    if (0 < ngids) {
+        memcpy(copy, gids, ngids * sizeof(gid_t));
+    }
+    if (NULL == user) {
+        user = pmix_server_user_create(uid);
+        if (NULL == user) {
+            free(copy);
             return PMIX_ERR_NOMEM;
         }
-        found->uid = uid;
-        lookup_groups(uid, &found->groups, &found->ngroups);
-        found->stamp = now;
-        pmix_list_append(&group_cache, &found->super);
+        pmix_list_append(&users, &user->super);
     }
-    *groups = found->groups;
-    *ngroups = found->ngroups;
+    /* the host's word replaces what we had - no lookup of our own */
+    free(user->gids);
+    user->gids = copy;
+    user->ngids = (uint16_t) ngids;
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_server_gids_from_value(const pmix_value_t *val, gid_t **gids, size_t *ngids)
+{
+    pmix_data_array_t *da;
+    pmix_value_t elem;
+    uint32_t id;
+    size_t n, esize;
+    gid_t *out;
+    pmix_status_t rc;
+
+    *gids = NULL;
+    *ngids = 0;
+    if (PMIX_DATA_ARRAY != val->type) {
+        rc = pmix_util_gid_from_value(val, &id);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        out = (gid_t *) malloc(sizeof(gid_t));
+        if (NULL == out) {
+            return PMIX_ERR_NOMEM;
+        }
+        out[0] = (gid_t) id;
+        *gids = out;
+        *ngids = 1;
+        return PMIX_SUCCESS;
+    }
+    da = val->data.darray;
+    if (NULL == da || 0 == da->size) {
+        return PMIX_SUCCESS;
+    }
+    if (NULL == da->array) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    switch (da->type) {
+    case PMIX_STRING:
+        esize = sizeof(char *);
+        break;
+    case PMIX_UINT32:
+    case PMIX_INT32:
+        esize = 4;
+        break;
+    case PMIX_UINT:
+    case PMIX_INT:
+        esize = sizeof(int);
+        break;
+    case PMIX_UINT64:
+    case PMIX_INT64:
+        esize = 8;
+        break;
+    case PMIX_UINT16:
+    case PMIX_INT16:
+        esize = 2;
+        break;
+    default:
+        return PMIX_ERR_BAD_PARAM;
+    }
+    out = (gid_t *) malloc(da->size * sizeof(gid_t));
+    if (NULL == out) {
+        return PMIX_ERR_NOMEM;
+    }
+    for (n = 0; n < da->size; n++) {
+        memset(&elem, 0, sizeof(elem));
+        elem.type = da->type;
+        memcpy(&elem.data, (char *) da->array + n * esize, esize);
+        rc = pmix_util_gid_from_value(&elem, &id);
+        if (PMIX_SUCCESS != rc) {
+            free(out);
+            return rc;
+        }
+        out[n] = (gid_t) id;
+    }
+    *gids = out;
+    *ngids = da->size;
+    return PMIX_SUCCESS;
+}
+
+void pmix_server_user_remove(uid_t uid)
+{
+    pmix_user_t *user, *next;
+
+    if (!users_constructed) {
+        return;
+    }
+    PMIX_LIST_FOREACH_SAFE (user, next, &users, pmix_user_t) {
+        if (user->uid == uid) {
+            pmix_list_remove_item(&users, &user->super);
+            PMIX_RELEASE(user);
+        }
+    }
 }
 
 void pmix_server_access_finalize(void)
 {
-    if (group_cache_constructed) {
-        PMIX_LIST_DESTRUCT(&group_cache);
-        group_cache_constructed = false;
+    if (users_constructed) {
+        PMIX_LIST_DESTRUCT(&users);
+        users_constructed = false;
     }
 }
 
@@ -174,52 +330,79 @@ void pmix_server_access_finalize(void)
 /* the rule                                                            */
 /* ------------------------------------------------------------------ */
 
-bool pmix_server_access_permitted(uid_t uid, gid_t gid, const pmix_namespace_t *nptr)
+static bool in_groups(const pmix_user_t *user, const pmix_access_t *job)
 {
-    const gid_t *groups;
-    size_t n, m, ngroups;
-    uid_t owner;
+    size_t n, m;
 
-    /* root, and the account the server itself runs as */
+    for (m = 0; NULL != user->gids && m < user->ngids; m++) {
+        for (n = 0; n < job->ngids; n++) {
+            if ((uint32_t) user->gids[m] == job->gids[n]) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+pmix_status_t pmix_server_access_check(pmix_user_t *requester, const pmix_access_t *job)
+{
+    uid_t uid, owner;
+    size_t n;
+
+    if (NULL == requester) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    uid = requester->uid;
+    /* root, and the account this process runs as */
+    if (0 == uid || geteuid() == uid) {
+        return PMIX_SUCCESS;
+    }
+    if (NULL == job) {
+        return PMIX_ERR_NO_PERMISSIONS;
+    }
+    /* the owner - with no owner known, our own identity stands in, and
+     * that was answered above */
+    owner = (PMIX_OWNER_UNKNOWN == job->source) ? geteuid() : job->uid;
+    if (uid == owner) {
+        return PMIX_SUCCESS;
+    }
+    /* users the owner allowed */
+    for (n = 0; n < job->nuids; n++) {
+        if ((uint32_t) uid == job->uids[n]) {
+            return PMIX_SUCCESS;
+        }
+    }
+    /* groups the owner allowed - and if the user is in none of them, its
+     * groups may have changed since they were last looked up (or never
+     * have been), so look again before refusing */
+    if (0 == job->ngids) {
+        return PMIX_ERR_NO_PERMISSIONS;
+    }
+    if (in_groups(requester, job)) {
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_SUCCESS == pmix_server_user_refresh(requester) && in_groups(requester, job)) {
+        return PMIX_SUCCESS;
+    }
+    return PMIX_ERR_NO_PERMISSIONS;
+}
+
+bool pmix_server_access_permitted(uid_t uid, const pmix_namespace_t *nptr)
+{
+    pmix_user_t *user;
+
+    /* root and our own user need no record */
     if (0 == uid || geteuid() == uid) {
         return true;
     }
     if (NULL == nptr) {
         return false;
     }
-    /* the owner - with no owner known, the server's identity stands in,
-     * and that was answered above */
-    owner = (PMIX_OWNER_UNKNOWN == nptr->access.source) ? geteuid() : nptr->access.uid;
-    if (uid == owner) {
-        return true;
-    }
-    /* users the owner allowed */
-    for (n = 0; n < nptr->access.nuids; n++) {
-        if ((uint32_t) uid == nptr->access.uids[n]) {
-            return true;
-        }
-    }
-    /* groups the owner allowed - the requester's own group first, then
-     * every group its user belongs to */
-    if (0 == nptr->access.ngids) {
+    user = pmix_server_user_get(uid);
+    if (NULL == user) {
         return false;
     }
-    for (n = 0; n < nptr->access.ngids; n++) {
-        if ((uint32_t) gid == nptr->access.gids[n]) {
-            return true;
-        }
-    }
-    if (PMIX_SUCCESS != pmix_server_access_groups(uid, &groups, &ngroups)) {
-        return false;
-    }
-    for (m = 0; m < ngroups; m++) {
-        for (n = 0; n < nptr->access.ngids; n++) {
-            if ((uint32_t) groups[m] == nptr->access.gids[n]) {
-                return true;
-            }
-        }
-    }
-    return false;
+    return (PMIX_SUCCESS == pmix_server_access_check(user, &nptr->access));
 }
 
 bool pmix_server_peer_permitted(const pmix_peer_t *peer, const pmix_namespace_t *nptr)
@@ -233,7 +416,7 @@ bool pmix_server_peer_permitted(const pmix_peer_t *peer, const pmix_namespace_t 
                          (NULL != pmix_globals.mypeer && pmix_globals.mypeer->nptr == nptr))) {
         return true;
     }
-    return pmix_server_access_permitted(peer->info->uid, peer->info->gid, nptr);
+    return pmix_server_access_permitted(peer->info->uid, nptr);
 }
 
 bool pmix_server_peer_may_access_nspace(const pmix_peer_t *peer, const char *nspace)
@@ -375,7 +558,7 @@ bool pmix_server_peer_may_use_copy_nspace(const pmix_peer_t *peer, const char *n
 pmix_status_t pmix_server_access_check_remote(const pmix_namespace_t *nptr,
                                               const pmix_info_t *info, size_t ninfo)
 {
-    uint32_t uid = 0, gid = 0;
+    uint32_t uid = 0;
     const pmix_proc_t *requestor = NULL;
     bool haveuid = false;
     size_t n;
@@ -386,10 +569,6 @@ pmix_status_t pmix_server_access_check_remote(const pmix_namespace_t *nptr,
                 return PMIX_ERR_BAD_PARAM;
             }
             haveuid = true;
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GRPID)) {
-            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &gid, PMIX_UINT32)) {
-                return PMIX_ERR_BAD_PARAM;
-            }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_REQUESTOR)) {
             if (PMIX_PROC != info[n].value.type || NULL == info[n].value.data.proc) {
                 return PMIX_ERR_BAD_PARAM;
@@ -406,7 +585,7 @@ pmix_status_t pmix_server_access_check_remote(const pmix_namespace_t *nptr,
         0 == strncmp(requestor->nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
         return PMIX_SUCCESS;
     }
-    if (pmix_server_access_permitted((uid_t) uid, (gid_t) gid, nptr)) {
+    if (pmix_server_access_permitted((uid_t) uid, nptr)) {
         return PMIX_SUCCESS;
     }
     return PMIX_ERR_NO_PERMISSIONS;
@@ -635,44 +814,84 @@ static pmix_status_t set_from(pmix_access_t *acc, const pmix_info_t *info, size_
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_server_access_set(pmix_namespace_t *nptr, const pmix_info_t *info,
-                                     size_t ninfo)
+void pmix_server_access_construct(pmix_access_t *acc)
 {
-    pmix_access_t acc;
+    memset(acc, 0, sizeof(*acc));
+    acc->registered = false;
+    acc->source = PMIX_OWNER_UNKNOWN;
+    acc->uid = geteuid();
+    acc->gid = getegid();
+}
+
+void pmix_server_access_destruct(pmix_access_t *acc)
+{
+    free(acc->uids);
+    free(acc->gids);
+    free(acc->apv_uids);
+    free(acc->apv_gids);
+    pmix_server_access_construct(acc);
+}
+
+pmix_status_t pmix_server_access_load(pmix_access_t *acc, const pmix_info_t *info, size_t ninfo)
+{
+    pmix_access_t tmp;
+    pmix_info_t *resolved = NULL;
+    size_t nresolved = 0;
     pmix_status_t rc;
     bool uids_given = false, gids_given = false;
 
-    if (NULL == nptr) {
+    if (NULL == acc) {
         return PMIX_ERR_BAD_PARAM;
     }
     if (NULL == info || 0 == ninfo) {
-        nptr->access.registered = true;
+        acc->registered = true;
         return PMIX_SUCCESS;
     }
-    /* work on a copy, so a malformed entry changes nothing */
-    acc = nptr->access;
-    acc.uids = NULL;
-    acc.nuids = 0;
-    acc.gids = NULL;
-    acc.ngids = 0;
-    rc = set_from(&acc, info, ninfo, 0, &uids_given, &gids_given);
+    /* a host may name users and groups; only their numbers are kept */
+    rc = pmix_server_normalize_ids(info, ninfo, &resolved, &nresolved);
     if (PMIX_SUCCESS != rc) {
-        free(acc.uids);
-        free(acc.gids);
         return rc;
     }
-    nptr->access.registered = true;
-    nptr->access.source = acc.source;
-    nptr->access.uid = acc.uid;
-    nptr->access.gid = acc.gid;
+    if (NULL != resolved) {
+        info = resolved;
+        ninfo = nresolved;
+    }
+    /* work on a copy, so a malformed entry changes nothing */
+    tmp = *acc;
+    tmp.uids = NULL;
+    tmp.nuids = 0;
+    tmp.gids = NULL;
+    tmp.ngids = 0;
+    rc = set_from(&tmp, info, ninfo, 0, &uids_given, &gids_given);
+    if (NULL != resolved) {
+        PMIx_Info_free(resolved, nresolved);
+    }
+    if (PMIX_SUCCESS != rc) {
+        free(tmp.uids);
+        free(tmp.gids);
+        return rc;
+    }
+    acc->registered = true;
+    acc->source = tmp.source;
+    acc->uid = tmp.uid;
+    acc->gid = tmp.gid;
     /* a list the registration did not mention is kept as it was */
     if (uids_given) {
-        replace_ids(&nptr->access.uids, &nptr->access.nuids, acc.uids, acc.nuids);
+        replace_ids(&acc->uids, &acc->nuids, tmp.uids, tmp.nuids);
     }
     if (gids_given) {
-        replace_ids(&nptr->access.gids, &nptr->access.ngids, acc.gids, acc.ngids);
+        replace_ids(&acc->gids, &acc->ngids, tmp.gids, tmp.ngids);
     }
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_server_access_set(pmix_namespace_t *nptr, const pmix_info_t *info,
+                                     size_t ninfo)
+{
+    if (NULL == nptr) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    return pmix_server_access_load(&nptr->access, info, ninfo);
 }
 
 void pmix_server_access_set_owner(pmix_namespace_t *nptr, uid_t uid, gid_t gid,
@@ -689,4 +908,7 @@ void pmix_server_access_set_owner(pmix_namespace_t *nptr, uid_t uid, gid_t gid,
     nptr->access.uid = uid;
     nptr->access.gid = gid;
     nptr->access.source = source;
+    /* a user this server now knows - a tool, or the user a job's clients
+     * run as */
+    pmix_server_user_add(uid);
 }

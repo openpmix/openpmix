@@ -87,6 +87,11 @@ The ``key`` of each ``info`` element selects the entries to remove. An element
 whose value is **not** a data array selects by key alone: every registered entry
 carrying that key is removed.
 
+A ``PMIX_USERID`` element (uint32_t, or a user name as a string) is the
+exception: it drops the server's record of that user, and of the groups it
+belongs to, however the server came to hold one. A host deregisters a user once
+nothing it runs or serves belongs to that user any longer.
+
 An element whose value **is** a ``pmix_data_array_t`` of ``pmix_info_t`` narrows
 the removal. Two kinds of member are recognized within it:
 

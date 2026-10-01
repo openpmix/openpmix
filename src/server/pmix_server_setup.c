@@ -48,6 +48,7 @@
 #include "src/mca/preg/preg.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_idname.h"
 #include "src/util/pmix_output.h"
 
 #include "pmix_server_ops.h"
@@ -82,12 +83,54 @@ static void _register_resources(int sd, short args, void *cbdata)
     char *nspace;
     pmix_proc_t *proc;
     pmix_scope_t scope;
+    uint32_t user_id = 0;
+    gid_t *user_gids = NULL;
+    size_t user_ngids = 0;
+    bool have_user = false, have_gids = false;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_CONSTRUCT(&grpinfo, pmix_list_t);
     PMIX_CONSTRUCT(&endpts, pmix_list_t);
+
+    /* A user this server is to know (PMIX_USERID), and - in a PMIX_GRPID
+     * in the same call - the groups it belongs to, so the server need not
+     * look them up itself. See pmix_server_user_register() */
+    for (n = 0; n < cd->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&cd->info[n], PMIX_USERID)) {
+            rc = pmix_util_uid_from_value(&cd->info[n].value, &user_id);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                ret = rc;
+                goto release;
+            }
+            have_user = true;
+        }
+    }
+    if (have_user) {
+        for (n = 0; n < cd->ninfo; n++) {
+            if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GRPID)) {
+                rc = pmix_server_gids_from_value(&cd->info[n].value, &user_gids, &user_ngids);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    ret = rc;
+                    goto release;
+                }
+                have_gids = true;
+                break;
+            }
+        }
+        rc = pmix_server_user_register((uid_t) user_id, have_gids ? user_gids : NULL,
+                                       user_ngids);
+        free(user_gids);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            ret = rc;
+            goto release;
+        }
+    }
+
     for (n = 0; n < cd->ninfo; n++) {
         if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GROUP_INFO_ARRAY) ||
             PMIX_CHECK_KEY(&cd->info[n], PMIX_GROUP_INFO)) {
@@ -154,6 +197,12 @@ static void _register_resources(int sd, short args, void *cbdata)
                 continue;
             }
             pbo = &cd->info[n].value.data.bo;
+
+        } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_USERID) ||
+                   (have_user && PMIX_CHECK_KEY(&cd->info[n], PMIX_GRPID))) {
+            /* the user registered above - an identity, not data for the
+             * jobs, so it goes nowhere else */
+            continue;
 
         } else {
             /* Remember which entries these are. The fan-out below has to
@@ -888,6 +937,19 @@ static void _deregister_resources(int sd, short args, void *cbdata)
                 PMIX_RELEASE(kv);
                 retracted = true;
             }
+        } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_USERID)) {
+            /* the host is done with this user - drop our record of it */
+            uint32_t uid;
+
+            rc = pmix_util_uid_from_value(&cd->info[n].value, &uid);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                if (PMIX_SUCCESS == ret) {
+                    ret = rc;
+                }
+                continue;
+            }
+            pmix_server_user_remove((uid_t) uid);
         } else {
             PMIX_LIST_FOREACH_SAFE (kv, knext, &pmix_server_globals.gdata, pmix_kval_t) {
                 if (PMIX_CHECK_KEY(kv, cd->info[n].key)) {
