@@ -124,6 +124,8 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_topo_obj_t,
 static void cfcon(pmix_cleanup_file_t *p)
 {
     p->path = NULL;
+    p->uid = (uid_t) -1;
+    p->gid = (gid_t) -1;
 }
 static void cfdes(pmix_cleanup_file_t *p)
 {
@@ -139,6 +141,8 @@ static void cdcon(pmix_cleanup_dir_t *p)
     p->recurse = false;
     p->empty = false;
     p->leave_topdir = false;
+    p->uid = (uid_t) -1;
+    p->gid = (gid_t) -1;
 }
 static void cddes(pmix_cleanup_dir_t *p)
 {
@@ -163,20 +167,6 @@ static void nscon(pmix_namespace_t *p)
     p->local_app_fini_fired = false;
     PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
     memset(&p->compat, 0, sizeof(p->compat));
-    /* Default the epilog's identity to our own. Nothing assigns these
-     * two but the connection handler, and only for a peer that actually
-     * completed a handshake. That was harmless for as long as nothing
-     * read them; pmix_execute_epilog now does, and a function that
-     * unlinks files must not act as an identity nobody vouched for.
-     * PMIX_NEW zeroes what it hands back, which does not help here and
-     * is the reason to be explicit: uid 0 is root, so the value a
-     * skipped assignment would leave is the one identity that must
-     * never be assumed. Our own identity
-     * is the honest default: it makes an epilog nobody vouched for
-     * behave exactly as it always has, and reserves the privilege drop
-     * for a peer the host actually registered a uid and gid for. */
-    p->epilog.uid = geteuid();
-    p->epilog.gid = getegid();
     PMIX_CONSTRUCT(&p->epilog.cleanup_dirs, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.cleanup_files, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.ignores, pmix_list_t);
@@ -450,10 +440,6 @@ static void pcon(pmix_peer_t *p)
     p->send_msg = NULL;
     p->recv_msg = NULL;
     p->commit_cnt = 0;
-    /* see the note in nscon above - our own identity is the default, so
-     * an epilog nobody vouched for behaves as it always has */
-    p->epilog.uid = geteuid();
-    p->epilog.gid = getegid();
     PMIX_CONSTRUCT(&p->epilog.cleanup_dirs, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.cleanup_files, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.ignores, pmix_list_t);
@@ -923,13 +909,13 @@ static bool epilog_ignored(pmix_epilog_t *epi, const char *path)
     return false;
 }
 
-/* The removals themselves. Runs either directly or inside a forked
- * child that has dropped to the requesting client's identity - see
+/* The removals one identity asked for. Runs either directly or inside a
+ * forked child that has dropped to that identity - see
  * pmix_execute_epilog below - so it must touch nothing but the
  * filesystem: no event base, no allocation the parent would have to see,
- * and no change to the lists, which the caller drains once the walk is
- * over so that a second call finds nothing to do. */
-static void epilog_walk(pmix_epilog_t *epi)
+ * and no change to the lists, which the caller drains once every
+ * identity's walk is over so that a second call finds nothing to do. */
+static void epilog_walk(pmix_epilog_t *epi, uid_t uid, gid_t gid)
 {
     pmix_cleanup_file_t *cf;
     pmix_cleanup_dir_t *cd;
@@ -946,6 +932,9 @@ static void epilog_walk(pmix_epilog_t *epi)
 
     /* start with any specified files */
     PMIX_LIST_FOREACH (cf, &epi->cleanup_files, pmix_cleanup_file_t) {
+        if (uid != cf->uid || gid != cf->gid) {
+            continue;
+        }
         if (!epilog_ignored(epi, cf->path)) {
             rc = unlink(cf->path);
             if (0 > rc) {
@@ -959,6 +948,9 @@ static void epilog_walk(pmix_epilog_t *epi)
      * symlink at its final component, and walked through descriptors -
      * see dirpath_destroy_at */
     PMIX_LIST_FOREACH (cd, &epi->cleanup_dirs, pmix_cleanup_dir_t) {
+        if (uid != cd->uid || gid != cd->gid) {
+            continue;
+        }
         if (NULL == cd->path || epilog_ignored(epi, cd->path)) {
             continue;
         }
@@ -992,14 +984,17 @@ static void epilog_drain(pmix_epilog_t *epi)
     }
 }
 
-/* Remove what a client asked us to remove, as that client.
+/* Remove what each peer asked us to remove, as that peer.
  *
- * The paths come off the wire from a peer, and the epilog records the
- * uid and gid the *host* registered that peer with - the same vouched-for
- * pair the connection handshake refuses to let a peer misstate. Until
- * this was written both members were set and never read, so a PMIx server
- * running with privilege unlinked whatever path a client named, as
- * whatever user the server happened to be.
+ * The paths come off the wire, and every entry records the authenticated
+ * uid and gid of the peer whose request put it there
+ * (pmix_server_job_ctrl). The entries on one epilog can come from several
+ * peers - a job's epilog takes requests from anyone permitted to act on
+ * the job - so each identity gets a walk of its own, over its own entries
+ * only. An entry with no recorded identity is never acted on: the epilog
+ * used to carry one identity for everything on it, defaulting to the
+ * server's own, so a request on a job no client had connected from ran
+ * as the server - as root, on a root server.
  *
  * Doing the walk under the client's own identity hands the decision to
  * the kernel, which is the only thing that gets symlinks, "..", and every
@@ -1028,33 +1023,32 @@ static void epilog_drain(pmix_epilog_t *epi)
  * never on a hot path, so a fork per privileged cleanup is affordable and
  * the window simply does not exist.
  */
-void pmix_execute_epilog(pmix_epilog_t *epi)
+/* One identity's walk: in place when we already are that identity, else
+ * in a child that drops to it */
+static void epilog_run_as(pmix_epilog_t *epi, uid_t uid, gid_t gid)
 {
 #if defined(HAVE_FORK) && defined(HAVE_WAITPID)
     pid_t pid, r;
     int status;
 #endif
 
-    if (0 == pmix_list_get_size(&epi->cleanup_files) &&
-        0 == pmix_list_get_size(&epi->cleanup_dirs)) {
-        /* nothing registered - do not pay for any of the below */
+    if ((uid_t) -1 == uid || (gid_t) -1 == gid) {
+        /* nobody vouched for these entries - see above */
         return;
     }
-
-    if (geteuid() == epi->uid && getegid() == epi->gid) {
-        epilog_walk(epi);
-        epilog_drain(epi);
+    if (geteuid() == uid && getegid() == gid) {
+        epilog_walk(epi, uid, gid);
         return;
     }
 
 #if defined(HAVE_FORK) && defined(HAVE_WAITPID)
     pid = fork();
     if (0 > pid) {
-        /* we cannot get to the client's identity, and doing the removals
-         * as ourselves is the behavior this function exists to stop */
+        /* we cannot get to the requester's identity, and doing the
+         * removals as ourselves is the behavior this function exists to
+         * stop */
         pmix_output_verbose(10, pmix_globals.debug_output,
                             "epilog: cannot fork to drop privileges: %s", strerror(errno));
-        epilog_drain(epi);
         return;
     }
     if (0 == pid) {
@@ -1065,30 +1059,31 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
 #ifdef HAVE_SETGROUPS
         /* setuid() does not touch the supplementary groups, so without
          * this the child keeps *our* group memberships and can reach a
-         * file the client cannot. Dropping them all rather than adopting
-         * the client's own set errs toward removing too little, which is
-         * the safe direction for a deletion - and the epilog records only
-         * a uid and a gid, so the client's set is not ours to look up
-         * here anyway (getpwuid() in a forked child would reach NSS). */
+         * file the requester cannot. Dropping them all rather than
+         * adopting the requester's own set errs toward removing too
+         * little, which is the safe direction for a deletion - and an
+         * entry records only a uid and a gid, so the requester's set is
+         * not ours to look up here anyway (getpwuid() in a forked child
+         * would reach NSS). */
         if (0 != setgroups(0, NULL)) {
             _exit(1);
         }
 #endif
         /* group first: once the uid is gone so is the privilege needed
          * to change the gid */
-        if (0 != setgid(epi->gid)) {
+        if (0 != setgid(gid)) {
             _exit(1);
         }
-        if (0 != setuid(epi->uid)) {
+        if (0 != setuid(uid)) {
             _exit(1);
         }
         /* a drop that silently did not take would have us doing the
          * removals with our original identity, in a child, which is the
          * whole thing we are avoiding */
-        if (geteuid() != epi->uid || getuid() != epi->uid) {
+        if (geteuid() != uid || getuid() != uid) {
             _exit(1);
         }
-        epilog_walk(epi);
+        epilog_walk(epi, uid, gid);
         _exit(0);
     }
 
@@ -1103,14 +1098,69 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
         r = waitpid(pid, &status, 0);
     } while (0 > r && EINTR == errno);
     if (pid == r && WIFEXITED(status) && 0 != WEXITSTATUS(status)) {
-        /* the child could not become the client and so removed nothing.
-         * That is the correct outcome, but it is also the one that looks
-         * exactly like a cleanup that quietly did not happen, so say so */
+        /* the child could not become the requester and so removed
+         * nothing. That is the correct outcome, but it is also the one
+         * that looks exactly like a cleanup that quietly did not happen,
+         * so say so */
         pmix_output_verbose(10, pmix_globals.debug_output,
                             "epilog: could not assume uid %lu gid %lu - nothing removed",
-                            (unsigned long) epi->uid, (unsigned long) epi->gid);
+                            (unsigned long) uid, (unsigned long) gid);
     }
+#else
+    PMIX_HIDE_UNUSED_PARAMS(epi);
 #endif
+}
+
+/* Has an entry ahead of `stop` on the epilog's lists - files first, then
+ * directories - already named this identity? Its walk covered them all */
+static bool epilog_identity_seen(pmix_epilog_t *epi, pmix_list_item_t *stop, uid_t uid,
+                                 gid_t gid)
+{
+    pmix_cleanup_file_t *cf;
+    pmix_cleanup_dir_t *cd;
+
+    PMIX_LIST_FOREACH (cf, &epi->cleanup_files, pmix_cleanup_file_t) {
+        if (&cf->super == stop) {
+            return false;
+        }
+        if (uid == cf->uid && gid == cf->gid) {
+            return true;
+        }
+    }
+    PMIX_LIST_FOREACH (cd, &epi->cleanup_dirs, pmix_cleanup_dir_t) {
+        if (&cd->super == stop) {
+            return false;
+        }
+        if (uid == cd->uid && gid == cd->gid) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void pmix_execute_epilog(pmix_epilog_t *epi)
+{
+    pmix_cleanup_file_t *cf;
+    pmix_cleanup_dir_t *cd;
+
+    if (0 == pmix_list_get_size(&epi->cleanup_files) &&
+        0 == pmix_list_get_size(&epi->cleanup_dirs)) {
+        /* nothing registered - do not pay for any of the below */
+        return;
+    }
+
+    /* one walk per identity that registered anything, in the order the
+     * identities first appear */
+    PMIX_LIST_FOREACH (cf, &epi->cleanup_files, pmix_cleanup_file_t) {
+        if (!epilog_identity_seen(epi, &cf->super, cf->uid, cf->gid)) {
+            epilog_run_as(epi, cf->uid, cf->gid);
+        }
+    }
+    PMIX_LIST_FOREACH (cd, &epi->cleanup_dirs, pmix_cleanup_dir_t) {
+        if (!epilog_identity_seen(epi, &cd->super, cd->uid, cd->gid)) {
+            epilog_run_as(epi, cd->uid, cd->gid);
+        }
+    }
 
     epilog_drain(epi);
 }
