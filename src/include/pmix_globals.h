@@ -297,10 +297,11 @@ typedef struct pmix_personality_t {
     pmix_gds_base_module_t *gds;
 } pmix_personality_t;
 
-/* define a set of structs for tracking post-termination cleanup */
+/* define a set of structs for tracking post-termination cleanup. Each
+ * file and directory entry carries the identity of the peer that asked
+ * for it, and is removed as that identity - never as the epilog's owner,
+ * and never as the server */
 typedef struct pmix_epilog_t {
-    uid_t uid;
-    gid_t gid;
     pmix_list_t cleanup_dirs;
     pmix_list_t cleanup_files;
     pmix_list_t ignores;
@@ -309,6 +310,10 @@ typedef struct pmix_epilog_t {
 typedef struct {
     pmix_list_item_t super;
     char *path;
+    /* who asked - (uid_t) -1 until set, and an entry still carrying it is
+     * never acted on. Unused on an ignore */
+    uid_t uid;
+    gid_t gid;
 } pmix_cleanup_file_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_cleanup_file_t);
 
@@ -323,6 +328,9 @@ typedef struct {
     bool recurse;
     bool empty;
     bool leave_topdir;
+    /* who asked - as for pmix_cleanup_file_t */
+    uid_t uid;
+    gid_t gid;
 } pmix_cleanup_dir_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_cleanup_dir_t);
 
