@@ -6,8 +6,9 @@ Optional support libraries
 Beyond the :ref:`required support libraries
 <label-install-required-support-libraries>`, PMIx will use a number of
 further libraries **if it finds them at configure time**, and will build
-without them otherwise. MUNGE is the one exception: it is searched for
-only when ``--with-munge`` asks for it (see below).
+without them otherwise. MUNGE and OpenSSL are the exceptions: each is
+searched for only when ``--with-munge`` or ``--with-openssl`` asks for it
+(see below).
 
 None of these is needed to produce a working PMIx. Each one either
 enables a capability that some sites want and others do not, or makes
@@ -116,6 +117,14 @@ costs you that capability and nothing else.
        rest of this table, an installed MUNGE is not detected on its own
        |mdash| the option must be given. Without it, the other ``psec``
        components (``native``, ``none``) remain available.
+   * - `OpenSSL <https://www.openssl.org/>`_ (1.1.1 or later)
+     - ``--with-openssl``
+     - Builds the ``psec/ssl`` component, which authenticates **remote**
+       tools with X.509 certificates. ``native`` authenticates only peers
+       on the server's own host, so a server that accepts tools from other
+       hosts needs this (or MUNGE). **Opt-in only**, like MUNGE: OpenSSL
+       is installed nearly everywhere, and building the component adds
+       ``libcrypto`` to every program that links ``libpmix``.
    * - `libesmtp <https://libesmtp.github.io/>`_
      - ``--with-smtp``
      - Builds the ``plog/smtp`` component, which can emit log messages by

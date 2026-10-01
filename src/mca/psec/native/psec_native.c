@@ -13,6 +13,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
 #    include <sys/types.h>
@@ -22,7 +24,10 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_fd.h"
+#include "src/util/pmix_getid.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_show_help.h"
 
 #include "psec_native.h"
 #include "src/mca/psec/base/base.h"
@@ -109,6 +114,65 @@ complete:
     return PMIX_SUCCESS;
 }
 
+/* A native connection is authenticated by the owner of the peer's end of
+ * the connection, which the kernel records for every socket and which we
+ * look up for a peer on this host. The uid in the credential must match
+ * it. The gid is not recorded by the kernel, so a tool - which names its
+ * own group rather than having one registered for it by the host - must
+ * also belong to the group it names.
+ *
+ * native serves peers on this host only. A peer the kernel does not
+ * report - one on another host, or in another network namespace - is
+ * refused; remote peers use a mechanism that works across hosts (ssl,
+ * munge). */
+static pmix_status_t check_os_identity(pmix_peer_t *pr, uid_t euid, gid_t egid)
+{
+    static bool warned = false;
+    pmix_status_t rc;
+    uid_t owner;
+
+    rc = pmix_util_getid_tcp(pr->sd, &owner);
+    if (PMIX_SUCCESS == rc) {
+        if (owner != euid) {
+            pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
+                                "psec: native credential claims uid %lu but the connection "
+                                "belongs to uid %lu",
+                                (unsigned long) euid, (unsigned long) owner);
+            return PMIX_ERR_INVALID_CRED;
+        }
+        if (PMIX_PEER_IS_TOOL(pr) &&
+            !(owner == geteuid() && egid == getegid()) &&
+            !pmix_psec_base_gid_held(owner, egid)) {
+            pmix_show_help("help-psec-native.txt", "foreign-group", true,
+                           (unsigned long) owner, (unsigned long) egid);
+            return PMIX_ERR_INVALID_CRED;
+        }
+        return PMIX_SUCCESS;
+    }
+
+    if (0 > pr->sd) {
+        /* not a connection - a credential passed to
+         * PMIx_Validate_credential, with no connection to check it
+         * against */
+        pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
+                            "psec: native credential for uid %lu has no "
+                            "connection to check against",
+                            (unsigned long) euid);
+        return PMIX_ERR_INVALID_CRED;
+    }
+
+    /* say why once; a remote tool that retries would otherwise repeat it */
+    if (!warned) {
+        pmix_show_help("help-psec-native.txt", "unverified-peer", true,
+                       pmix_fd_get_peer_name(pr->sd), (unsigned long) euid,
+                       (PMIX_ERR_NOT_FOUND == rc) ? "the peer is not a process on this host"
+                       : (PMIX_ERR_NOT_SUPPORTED == rc) ? "this platform offers no way to ask"
+                                                        : "the connection is not a TCP connection");
+        warned = true;
+    }
+    return PMIX_ERR_INVALID_CRED;
+}
+
 static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
                                    size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                    const pmix_byte_object_t *cred)
@@ -164,6 +228,12 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     } else {
         /* don't recognize the protocol */
         return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* confirm the identity with the kernel before comparing it with
+     * anything */
+    if (PMIX_SUCCESS != check_os_identity(pr, euid, egid)) {
+        return PMIX_ERR_INVALID_CRED;
     }
 
     /* check uid */

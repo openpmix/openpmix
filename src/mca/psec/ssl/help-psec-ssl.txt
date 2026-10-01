@@ -1,0 +1,67 @@
+# -*- text -*-
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+#
+# $HEADER$
+#
+# This is the US/English help file for the ssl security component
+#
+[bad-file]
+The ssl security component could not use a file it was configured with:
+
+  File:    %s
+  Problem: %s
+
+Check the psec_ssl_* MCA parameters.
+#
+[key-permissions]
+The ssl security component will not use this private key, because it is
+accessible to users other than its owner, or because this process does
+not own it:
+
+  %s
+
+The key must be owned by this process's user and readable by that user
+alone:
+
+  chmod 600 %s
+#
+[bad-key]
+The ssl security component could not read a private key from:
+
+  %s
+
+The key must be in PEM form and must not be protected by a passphrase:
+PMIx has nobody to ask for one.
+#
+[bad-cert]
+The ssl security component could not use the certificate file:
+
+  File:    %s
+  Problem: %s
+
+psec_ssl_cert_file must hold this process's certificate first, followed
+by any intermediate certificates, in PEM form - and the first
+certificate must belong to the key in psec_ssl_key_file.
+#
+[bad-ca]
+The ssl security component could not load any certificate authority or
+revocation list from:
+
+  %s
+
+The file must hold one or more PEM certificates (psec_ssl_ca_file) or
+PEM revocation lists (psec_ssl_crl_file).
+#
+[bad-skew]
+The ssl security component was given a psec_ssl_max_skew of %d. It must
+be a positive number of seconds: a credential is accepted only that
+long either side of the time it was made.
+#
+[half-identity]
+The ssl security component was given only one of psec_ssl_cert_file
+and psec_ssl_key_file. A process needs both to authenticate itself -
+the certificate that says who it is, and the key that proves it.

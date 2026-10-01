@@ -383,6 +383,7 @@ test/unit/pmdl_paramfile
 test/unit/plog_gsys
 test/unit/plog_routing
 test/unit/psec_credentials
+test/unit/psec_ssl_auth
 test/unit/threads_primitives
 test/unit/pif_discovery
 test/unit/server_extprogress
