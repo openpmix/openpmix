@@ -134,20 +134,22 @@ static char *build_ack(bool tool, bool goodcred, const char *bfrops, uint8_t bft
 {
     pmix_ptl_hdr_t hdr;
     pmix_proc_t proc;
-    char credbytes[sizeof(uid_t) + sizeof(gid_t)];
+    char credbytes[sizeof(uid_t) + sizeof(gid_t) + 5];
     uid_t euid = geteuid();
     gid_t egid = getegid();
     char *msg;
     size_t csize, payload;
     uint8_t flag;
 
-    /* a native credential over TCP is the effective uid then gid - a bad
-     * one claims a uid this process does not have */
-    if (!goodcred) {
-        euid += 1;
-    }
+    /* A native credential over TCP is the effective uid then gid, then a
+     * trailer: "PNX1" and a length byte naming no kernel. native takes
+     * the uid from the owner of the connection, not from the claim, so a
+     * claim of another uid is not a bad credential - a malformed trailer
+     * is */
     memcpy(credbytes, &euid, sizeof(uid_t));
     memcpy(credbytes + sizeof(uid_t), &egid, sizeof(gid_t));
+    memcpy(credbytes + sizeof(uid_t) + sizeof(gid_t), goodcred ? "PNX1" : "XXXX", 4);
+    credbytes[sizeof(uid_t) + sizeof(gid_t) + 4] = 0;
 
     PMIX_LOAD_PROCID(&proc, VF_NSPACE, 0);
     payload = strlen(VF_PSEC) + 1 + sizeof(uint32_t) + sizeof(credbytes) + 1;

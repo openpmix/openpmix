@@ -52,6 +52,14 @@ x-node: &node
   tty: true
   volumes:
     - pmix-build:/opt/prte:ro
+    - pmix-auth:/pmix-auth
+  # Every node is its own network namespace on one shared kernel - which is
+  # what a container on a real host looks like to psec/native. A server
+  # cannot see a peer on another node in its TCP table, so the peer proves
+  # its identity over a local socket the server makes beneath this shared
+  # directory. See docs/how-things-work/authentication/native.rst.
+  environment:
+    PMIX_MCA_psec_native_socket_dir: /pmix-auth
 
 services:
   node1:
@@ -112,3 +120,7 @@ volumes:
   pmix-build:
     name: ${PMIX_SWARM:-pmix}-build
     external: true
+  # Shared, read-write, by every node: where psec/native's servers make the
+  # sockets a peer on another node authenticates over. Compose creates and
+  # names it per project, so two swarms do not share one.
+  pmix-auth:
