@@ -186,7 +186,6 @@ typedef struct {
     pmix_list_t iof_residuals;  // leftover bytes waiting for newline
     pmix_list_t psets;  // list of known psets and memberships
     size_t max_iof_cache; // max number of IOF messages to cache
-    int access_group_timeout; // seconds a user's cached group list stays current - 0 = forever
     bool tool_connections_allowed;
     char *tmpdir;             // temporary directory for this server
     char *system_tmpdir;      // system tmpdir
@@ -382,12 +381,81 @@ PMIX_EXPORT pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_i
                                                        size_t *ninfo);
 
 /* Access to a namespace by user and group - see docs/security-plan.rst and
- * pmix_server_access.c. All of these run on the progress thread.
+ * pmix_server_access.c.
  *
- * pmix_server_access_permitted: may the requester (uid, and its group gid)
- * access nptr? True for root, the server's own user, the owner, a user in
- * the access list, or a member of a group in it. */
-PMIX_EXPORT bool pmix_server_access_permitted(uid_t uid, gid_t gid, const pmix_namespace_t *nptr);
+ * A host applies the same rule to what it does for clients and tools by
+ * keeping its own copies - a pmix_access_t for each job, built with
+ * pmix_server_access_load() from the info it registers the job with, and a
+ * pmix_user_t for each requester - and calling pmix_server_access_check()
+ * with them from its own thread. Those functions, and the pmix_user_t and
+ * pmix_access_t helpers, touch nothing but their arguments; everything
+ * else here runs on the progress thread. PMIX_CAP_ACCESS_CHECK says they
+ * exist. */
+
+/* A user, and every group it belongs to - primary and supplementary */
+typedef struct {
+    pmix_list_item_t super;
+    uid_t uid;
+    gid_t *gids;
+    uint16_t ngids;
+} pmix_user_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_user_t);
+
+/* A new user record for uid, its groups not yet looked up -
+ * pmix_server_access_check() looks them up when it needs them */
+PMIX_EXPORT pmix_user_t *pmix_server_user_create(uid_t uid);
+
+/* Look the user's groups up again. A user with no account belongs to
+ * none. */
+PMIX_EXPORT pmix_status_t pmix_server_user_refresh(pmix_user_t *user);
+
+/* The rule: may requester access job? PMIX_SUCCESS for root, the user
+ * this process runs as, the job's owner (our own user when it has none),
+ * a user its access list names, or a member of a group it names - else
+ * PMIX_ERR_NO_PERMISSIONS. A requester found in none of the job's groups
+ * has its groups looked up again, in place, in case they changed, before
+ * it is refused. */
+PMIX_EXPORT pmix_status_t pmix_server_access_check(pmix_user_t *requester,
+                                                   const pmix_access_t *job);
+
+/* A job's owner and access list for a host's own copy: construct it,
+ * load it from the info the job is registered with (PMIX_USERID,
+ * PMIX_GRPID, PMIX_ACCESS_PERMISSIONS or its PMIX_ACCESS_USERIDS /
+ * PMIX_ACCESS_GRPIDS, at the top level or in a PMIX_JOB_INFO_ARRAY; names
+ * are resolved), and destruct it. A malformed access list returns
+ * PMIX_ERR_BAD_PARAM and changes nothing; a list the info does not name
+ * is kept as it was. */
+PMIX_EXPORT void pmix_server_access_construct(pmix_access_t *acc);
+PMIX_EXPORT pmix_status_t pmix_server_access_load(pmix_access_t *acc, const pmix_info_t *info,
+                                                  size_t ninfo);
+PMIX_EXPORT void pmix_server_access_destruct(pmix_access_t *acc);
+
+/* The server's user records. A user is added, its groups looked up then,
+ * when the host registers it (PMIx_server_register_resources with
+ * PMIX_USERID), registers a job it owns, or when it connects as a tool -
+ * once per user, and never for root or our own user, who need no groups.
+ * pmix_server_user_get() returns the record, making one whose groups are
+ * looked up at its first check for a requester nobody registered (one on
+ * another node). Records are kept until the host deregisters the user -
+ * pmix_server_user_remove(), on PMIx_server_deregister_resources naming
+ * the PMIX_USERID - or the server finalizes. */
+PMIX_EXPORT void pmix_server_user_add(uid_t uid);
+
+/* A user the host registers (PMIx_server_register_resources with
+ * PMIX_USERID): with gids - the groups the host says it belongs to, from a
+ * PMIX_GRPID in the same call - the record takes them, replacing any it
+ * had, and nothing is looked up; without, as pmix_server_user_add() */
+PMIX_EXPORT pmix_status_t pmix_server_user_register(uid_t uid, const gid_t *gids, size_t ngids);
+
+/* The groups a PMIX_GRPID names: one group, or a data array of them, each a
+ * number or a name. *gids is allocated; the caller frees it */
+PMIX_EXPORT pmix_status_t pmix_server_gids_from_value(const pmix_value_t *val, gid_t **gids,
+                                                      size_t *ngids);
+PMIX_EXPORT pmix_user_t *pmix_server_user_get(uid_t uid);
+PMIX_EXPORT void pmix_server_user_remove(uid_t uid);
+
+/* pmix_server_access_check for nptr, with the server's record for uid */
+PMIX_EXPORT bool pmix_server_access_permitted(uid_t uid, const pmix_namespace_t *nptr);
 
 /* the same for a connected peer, by the identity it connected with - and
  * a job's own processes, and anyone reading the server's own namespace,
@@ -459,13 +527,7 @@ PMIX_EXPORT pmix_peer_t *pmix_server_access_find_peer(const pmix_proc_t *proc);
 PMIX_EXPORT pmix_status_t pmix_server_access_filter_peers(const pmix_proc_t *requestor,
                                                           pmix_list_t *peers, bool strict);
 
-/* every group the user belongs to, looked up once and cached - see
- * pmix_server_globals.access_group_timeout. The array belongs to the
- * cache. */
-PMIX_EXPORT pmix_status_t pmix_server_access_groups(uid_t uid, const gid_t **groups,
-                                                    size_t *ngroups);
-
-/* release the group cache */
+/* release the server's user records */
 PMIX_EXPORT void pmix_server_access_finalize(void);
 
 /* A PMIX_USERID or PMIX_GRPID - and each entry of a PMIX_ACCESS_USERIDS or

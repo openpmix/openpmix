@@ -296,7 +296,11 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_GRPID                          "pmix.egid"             // (uint32_t) effective group id. May also be given as
                                                                     //        a group name (char*), which the PMIx library
                                                                     //        resolves where it is given: the value stored,
-                                                                    //        returned, and passed to a host is the number
+                                                                    //        returned, and passed to a host is the number.
+                                                                    //        Given with PMIX_USERID to
+                                                                    //        PMIx_server_register_resources, it may instead be
+                                                                    //        a pmix_data_array_t of group ids (or names): the
+                                                                    //        groups that user belongs to
 #define PMIX_REQUESTOR                      "pmix.requestor"        // (pmix_proc_t*) ID of the process requesting the
                                                                     //         specified operation. Used when relaying
                                                                     //         a request to the PMIx library on behalf

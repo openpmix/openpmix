@@ -3246,13 +3246,39 @@ misbehave by design).
     the owner, and a tool's namespace belongs to the user it connected as
     (`pmix_server_access_set_owner()`; a weaker source never replaces a
     stronger one). With no owner at all, the server's own user stands in.
-  - The one rule is `pmix_server_access_permitted(uid, gid, nptr)` (and
-    `pmix_server_peer_permitted()` for a connected peer): root, the
+  - The one rule is `pmix_server_access_check(user, access)`: root, the
     server's own user, the owner, a listed user, or a member of a listed
-    group. Group membership comes from `pmix_server_access_groups()`,
-    one cached lookup per user (`pmix_server_access_group_timeout`), and
-    is consulted only when the job lists groups. Never write a second
-    version of the rule at a call site.
+    group. `pmix_server_access_permitted(uid, nptr)` applies it to a
+    namespace with the server's record for the user, and
+    `pmix_server_peer_permitted()` to a connected peer. Never write a
+    second version of the rule at a call site.
+  - A user's groups (`pmix_user_t`) are those of its account. A host that
+    registers the user gives them too (`PMIX_GRPID` as an array, with
+    `PMIX_USERID`, to `register_resources` - `pmix_server_user_register()`)
+    and nothing is looked up; otherwise they are looked up once when the
+    user becomes known (`pmix_server_user_add()`: the host registers it or
+    a job it owns, or it connects as a tool - root and our own user
+    excepted, as they need no groups). Either way they are looked up again
+    whenever a check would otherwise refuse -
+    so there is no timeout to tune, and a user added to a group gets in
+    on its next request. A requester nobody told us about (a remote one)
+    gets its record at its first check (`pmix_server_user_get()`). The
+    process's own gid is not consulted.
+  - The server's user records (`pmix_server_user_get()`) live until the
+    host deregisters the user (`PMIx_server_deregister_resources` with
+    `PMIX_USERID`) or the server finalizes - never on a refcount, because
+    nothing pairs up the ways a user arrives (a registration, a tool, a
+    remote requester). A namespace holds its owner's uid, never a pointer
+    to a record.
+  - A host applies the same rule by keeping its OWN copies - a
+    `pmix_access_t` per job (`pmix_server_access_load()` from its
+    registration info) and a `pmix_user_t` per requester - and calling
+    `pmix_server_access_check()` from its own thread. Those functions touch
+    nothing but their arguments; keep them that way. The server's records
+    belong to the progress thread and are never handed to a host.
+    `PMIX_CAP_ACCESS_CHECK` advertises them. Never use an up-call's
+    `PMIX_GRPID` as an identity: it is the group the requester chose to
+    charge the work to, and is not verified.
   - The host is never subject to it - only requests from clients and
     tools are. A request with no connected client or tool behind it
     (`pmix_server_access_find_peer()` finds none) is the host's. So is a

@@ -390,15 +390,6 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_server_globals.max_iof_cache);
 
-    /* how long a user's group memberships are cached for access checks */
-    pmix_server_globals.access_group_timeout = 300;
-    (void) pmix_mca_base_var_register("pmix", "pmix", "server", "access_group_timeout",
-                                      "Seconds for which the groups a user belongs to are "
-                                      "cached when deciding access to a job by group "
-                                      "[0 = for the life of the server]",
-                                      PMIX_MCA_BASE_VAR_TYPE_INT,
-                                      &pmix_server_globals.access_group_timeout);
-
     (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "progress_thread_cpus",
                                       "Comma-delimited list of ranges of CPUs to which"
                                       "the internal PMIx progress thread is to be bound",
