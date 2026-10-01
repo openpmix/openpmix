@@ -634,6 +634,36 @@ publishes the URI into `gds`, and drops rendezvous files.
   addresses (it skips otherwise - an IPv6-enabled build on a host with
   global IPv6 addresses exercises it).
 
+- **A process that finds a server through a file learns from it what to
+  speak.** The connect message names one wire format (bfrops component)
+  and one security mechanism (psec component), and the server takes them
+  or drops the connection - it never answers with what it would accept.
+  A client is told by its environment (`PMIX_SERVER_URIxy`,
+  `pmix_ptl_base_set_peer`); nothing starts a tool, so the server writes
+  `PMIX_PTL_BFROPS_TAG` (`bfrops:`) and `PMIX_PTL_PSEC_TAG` (`psec:`)
+  lines - its active components, in priority order, as its MCA
+  parameters left them - after the other lines of every rendezvous file
+  and the report-URI file. Older readers ignore them. Wherever a file is
+  read (`tryfile`, `trysearch`, and the client's look for a system server),
+  `pmix_ptl_base_select_compat()` takes the highest of ours the server
+  lists, keeps our psec if the server lists it, and refuses to try at all
+  (`no-common-module`) when there is no match. For a server too old to
+  write the lines it falls back to the server's version - the highest of
+  our formats named for a release no later than the server's - which a
+  restricted server can make wrong; that is the legacy case only. Its
+  security mechanism is then munge if we have it, else native, and never
+  ssl (no older server has it); with neither, the connection is not
+  attempted. A bare
+  URI carries neither, so we send our newest, as always; if the server
+  then closes without sending a status, `hint_closed_no_reply()` (both the
+  blocking and the event-driven reader) suggests `file:<path>`, once, and
+  only when the server's version is unknown. The choice goes
+  on the server's peer, and on ours only for the primary server - which
+  is why `construct_message` builds the connect message from the
+  server's peer, not from `pmix_globals.mypeer`. `test/unit/ptl_search.c`
+  covers the parse and the selection, `test/unit/ptl_listener.c` the
+  lines a server restricted to `v41,v21` writes.
+
 - **The port scan opens a socket per attempt.** Close it before moving to
   the next port, and detect the case where the whole range is taken —
   `listen()` on an unbound socket succeeds and silently gets a port of

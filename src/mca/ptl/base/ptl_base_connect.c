@@ -485,6 +485,14 @@ static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
             return rc;
         }
         cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+        peer->protocol = PMIX_PROTOCOL_V2;
+        PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+        /* speak a wire format and security mechanism the server accepts */
+        rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, cn);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_LIST_DESTRUCT(&connections);
+            return rc;
+        }
         *nspace = cn->nspace;
         cn->nspace = NULL;
         *rank = cn->rank;
@@ -493,8 +501,6 @@ static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
         free(*alts);
         *alts = cn->alt_uris;
         cn->alt_uris = NULL;
-        peer->protocol = PMIX_PROTOCOL_V2;
-        PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
     }
     PMIX_LIST_DESTRUCT(&connections);
     return rc;
@@ -521,6 +527,12 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
         cn = (pmix_connection_t *) pmix_list_get_first(&connections);
         peer->protocol = PMIX_PROTOCOL_V2;
         PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+        /* speak a wire format and security mechanism the server accepts */
+        rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, cn);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_LIST_DESTRUCT(&connections);
+            return rc;
+        }
         *nspace = cn->nspace;
         cn->nspace = NULL;
         *rank = cn->rank;
