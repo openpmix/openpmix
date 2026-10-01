@@ -59,6 +59,8 @@ RST_SOURCE_FILES   = \
         $(srcdir)/building-apps/*.rst \
         $(srcdir)/developers/*.rst \
         $(srcdir)/how-things-work/*.rst \
+        $(srcdir)/how-things-work/collectives/*.rst \
+        $(srcdir)/how-things-work/inheritance/*.rst \
         $(srcdir)/how-things-work/schedulers/*.rst \
         $(srcdir)/how-things-work/sets_groups/*.rst \
         $(srcdir)/installing-pmix/*.rst \
