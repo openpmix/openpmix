@@ -95,6 +95,20 @@ PMIX_EXPORT bool pmix_psec_base_check_directives(const char *name,
                                                  const pmix_info_t directives[],
                                                  size_t ndirs);
 
+/**
+ * Whether the user `uid` may act as the group `gid`: its primary group,
+ * or a group that lists the user as a member. Root may act as any group.
+ *
+ * A peer names its own group, and nothing a mechanism can check records
+ * one - neither the kernel's socket table (native) nor an X.509
+ * certificate (ssl) - so a mechanism that has authenticated the *user*
+ * asks this before believing the *group*. Consults the passwd and group
+ * databases, so it can block on a directory service; call it only where
+ * a peer's group has not been vouched for some other way. A uid with no
+ * passwd entry holds no group.
+ */
+PMIX_EXPORT bool pmix_psec_base_gid_held(uid_t uid, gid_t gid);
+
 END_C_DECLS
 
 #endif

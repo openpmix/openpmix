@@ -19,7 +19,7 @@ repeated. This file covers what is specific to `psec`: what the framework
 is for, the two credential models it supports, how a module is negotiated
 between two peers during the connection handshake, and the contract every
 component must honor. Each component subdirectory (`native/`, `none/`,
-`munge/`, `dummy_handshake/`) carries its own `AGENTS.md` with
+`munge/`, `ssl/`, `dummy_handshake/`) carries its own `AGENTS.md` with
 component-specific detail.
 
 ## What PSEC does
@@ -102,7 +102,7 @@ The common model. The credential is a self-contained blob:
 - Server side: `validate_cred` inspects the blob (and/or the socket) and
   returns `PMIX_SUCCESS` or `PMIX_ERR_INVALID_CRED`.
 
-`native`, `munge`, and `none` all use this model (they leave both
+`native`, `munge`, `ssl` and `none` all use this model (they leave both
 `*_handshake` pointers `NULL`).
 
 ### Multi-step handshake (`client_handshake` + `server_handshake`)
@@ -342,7 +342,8 @@ Default priorities come from each component's `component_query`:
 |-----------|----------|-------|-------------|
 | `dummy_handshake` | 100 | handshake | built only with `--enable-dummy-handshake`; always active when built |
 | `munge` | 80 | single-shot | built only if `--with-munge` was given and libmunge is found; `init` succeeds only if the `munged` daemon issues a credential |
-| `native` | 10 | single-shot | always (no `configure.m4`, no gate) |
+| `native` | 10 | single-shot | always (no `configure.m4`, no gate); authenticates **local peers only** |
+| `ssl` | 5 | single-shot | built only with `--with-openssl`; active only when `psec_ssl_ca_file` or a cert/key pair is configured; authenticates remote peers by X.509 certificate |
 | `none` | 0 | single-shot (no-op) | **only** if the `psec` MCA value explicitly names `none` (its `component_open` checks) |
 
 Because the list is priority-ordered and `assign_module(NULL)` returns
@@ -411,9 +412,10 @@ src/mca/psec/
 │   ├── psec_base_frame.c     open/close, framework decl, class instance (no MCA params)
 │   ├── psec_base_select.c    query components, build priority-ordered actives list
 │   └── psec_base_fns.c       get_available_modules + assign_module (name lookup)
-├── native/                   uid/gid-over-socket credential (default, always available)
+├── native/                   uid/gid credential, checked against the kernel's socket owner (default, always available)
 ├── none/                     no-op module (opt-in only)
 ├── munge/                    MUNGE credentials (conditional on libmunge)
+├── ssl/                      X.509-signed credentials for remote peers (conditional on OpenSSL)
 └── dummy_handshake/          test-only multi-step handshake (opt-in build)
 ```
 
@@ -433,13 +435,17 @@ are conditional:
   the `#if PMIX_TESTBUILD` stub block at the top of `psec_munge.c`
   (activated by `--enable-test-build`) — that block is not used in real
   builds.
+- **`ssl`** ships a [`configure.m4`](ssl/configure.m4) that is opt-in in
+  the same way: `--with-openssl[=DIR]` runs `OAC_CHECK_PACKAGE` for
+  `openssl/evp.h` / `libcrypto`, and `--enable-test-build` builds it
+  against `ssl/testbuild_ssl.h`, a stand-in whose every call fails.
 - **`dummy_handshake`** has no `configure.m4`; it is gated by the
   Automake conditional `MCA_BUILD_PSEC_DUMMY_HANDSHAKE`, set by
   `--enable-dummy-handshake` (default: disabled) in `config/pmix.m4`.
 
-`psec` ships **no `show_help` file of its own** — the only `show_help` it
-uses (`no-plugins`) lives in `help-pmix-runtime.txt` — so the
-regenerate-the-help-content golden rule does not bite here. Editing a
+The framework's only `show_help` topic (`no-plugins`) lives in
+`help-pmix-runtime.txt`, but `native` ships `help-psec-native.txt`, so the
+regenerate-the-help-content golden rule does apply to that component. Editing a
 `Makefile.am` needs only a plain `make`; adding or removing a *component
 directory*, or changing a `configure.m4`, changes the build wiring
 resolved by `configure`, so re-run `./autogen.pl && ./configure … &&

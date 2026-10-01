@@ -359,6 +359,22 @@ pmdl_paramfile_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 pmdl_paramfile_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+# psec/ssl: X.509 certificate authentication. The test mints its own CAs,
+# certificates and hand-built credentials, so it links OpenSSL itself and is
+# built only where the component was built against the real library. See
+# the header comment in psec_ssl_auth.c.
+if PMIX_HAVE_PSEC_SSL
+check_PROGRAMS += psec_ssl_auth
+TESTS += psec_ssl_auth
+endif
+psec_ssl_auth_SOURCES = \
+        psec_ssl_auth.c
+psec_ssl_auth_CPPFLAGS = $(psec_ssl_CPPFLAGS)
+psec_ssl_auth_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(psec_ssl_LDFLAGS)
+psec_ssl_auth_LDADD = \
+    $(top_builddir)/src/libpmix.la \
+    $(psec_ssl_LIBS)
+
 pmdl_envars_SOURCES = \
         pmdl_envars.c
 pmdl_envars_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)

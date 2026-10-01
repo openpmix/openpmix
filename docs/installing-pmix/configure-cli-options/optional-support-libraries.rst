@@ -6,9 +6,9 @@ CLI Options for optional support libraries
 The following ``configure`` command line options are for PMIx's
 :ref:`optional support libraries
 <label-install-optional-support-libraries>` |mdash| libraries PMIx will
-use if it finds them, and build without if it does not. The one
-exception is ``--with-munge``, which is opt-in only: nothing looks for
-MUNGE unless that option is given.
+use if it finds them, and build without if it does not. The
+exceptions are ``--with-munge`` and ``--with-openssl``, which are opt-in
+only: nothing looks for MUNGE or OpenSSL unless the option is given.
 
 Compression
 -----------
@@ -55,6 +55,23 @@ Other capabilities
   ``psec/native`` mechanism, so building it changes how every PMIx
   connection on that installation is authenticated. Ask for it
   explicitly, or do not get it.
+
+* ``--with-openssl[=VALUE]``:
+
+  Specifies where to find `OpenSSL <https://www.openssl.org/>`_ (1.1.1 or
+  later), and builds the ``psec/ssl`` component, which authenticates
+  remote tools with X.509 certificates. The default ``psec/native``
+  mechanism authenticates only peers on the server's own host, so a
+  server that accepts connections from tools on other hosts
+  (``PMIX_SERVER_REMOTE_CONNECTIONS``) needs this or MUNGE.
+
+  Like MUNGE, this is **opt-in only**. The component is compiled into
+  ``libpmix`` like any other, so building it adds ``libcrypto`` to
+  everything that links PMIx. It is active at run time only where it is
+  configured, through the ``psec_ssl_*`` MCA parameters (see
+  ``pmix_info --param psec ssl``), and it ranks below ``native``, so
+  local connections are unaffected. A remote tool selects it with
+  ``PMIX_MCA_psec=ssl``.
 
 * ``--with-smtp[=VALUE]``:
 
