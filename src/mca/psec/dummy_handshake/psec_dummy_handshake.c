@@ -37,8 +37,8 @@ static void simple_finalize(void);
 static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
                                  size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                  pmix_byte_object_t *cred);
-static pmix_status_t client_hndshk(int sd);
-static pmix_status_t server_hndshk(int sd);
+static pmix_status_t client_hndshk(struct pmix_peer_t *peer, int sd);
+static pmix_status_t server_hndshk(struct pmix_peer_t *peer, int sd);
 
 pmix_psec_module_t pmix_dummy_handshake_module = {.name = "dummy_handshake",
                                                   /** init/finalize */
@@ -84,11 +84,12 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t server_hndshk(int sd)
+static pmix_status_t server_hndshk(struct pmix_peer_t *peer, int sd)
 {
     pmix_status_t rc, status = PMIX_SUCCESS;
     char *hndshk_msg = NULL;
     size_t size;
+    PMIX_HIDE_UNUSED_PARAMS(peer);
 
     pmix_output_verbose(2, pmix_psec_base_framework.framework_output, "psec: simple server_hndshk");
 
@@ -120,11 +121,12 @@ exit:
     return rc;
 }
 
-static pmix_status_t client_hndshk(int sd)
+static pmix_status_t client_hndshk(struct pmix_peer_t *peer, int sd)
 {
     char *hndshk_msg = NULL;
     size_t size;
     pmix_status_t rc, status = PMIX_SUCCESS;
+    PMIX_HIDE_UNUSED_PARAMS(peer);
 
     pmix_output_verbose(2, pmix_psec_base_framework.framework_output, "psec: simple client_hndshk");
 

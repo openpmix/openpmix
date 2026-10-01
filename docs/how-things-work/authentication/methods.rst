@@ -5,7 +5,8 @@ This page surveys the methods used in the field to authenticate the user
 ID (uid) and group ID (gid) of a process running inside a container when
 that process opens a TCP connection to a process running outside it. It
 describes each method's mechanism, what it actually proves, and where it
-breaks. It describes general techniques, not what PMIx implements today.
+breaks. It describes general techniques; :doc:`native` describes what
+PMIx's default mechanism does.
 
 
 The Problem

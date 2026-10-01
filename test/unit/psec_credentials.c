@@ -52,14 +52,22 @@
  *    never established (PMIX_PROTOCOL_UNDEF), for which there is
  *    neither a socket to interrogate nor a credential format to trust.
  *
- * 4. That native confirms the identity in a credential with the kernel.
- *    native checks the uid in the credential against the owner of the
- *    peer's end of the connection, so every peer here is given a real
- *    loopback TCP connection. A credential whose uid differs from the
- *    connection's owner is refused, as is a tool's claim of a group its
- *    user does not hold, and a credential with no connection behind it:
- *    native serves peers on this host only; remote peers use ssl or
- *    munge.
+ * 4. That native takes a peer's identity from the kernel, not from the
+ *    credential. native looks up the owner of the peer's end of the
+ *    connection, so every peer here is given a real loopback TCP
+ *    connection. An identity the host registered must match that owner;
+ *    one the peer only claimed is replaced by it. A tool's claim of a
+ *    group its user does not hold is refused, as is a credential with no
+ *    connection behind it.
+ *
+ * 5. What native does when the kernel cannot name the owner - a peer in
+ *    a container with a network of its own, which a closed connection
+ *    stands in for here. A credential from a release that predates the
+ *    local-socket check is taken at its word, or refused, as
+ *    psec_native_legacy_auth says. A current one asks for the
+ *    local-socket handshake - unless it names another host's kernel,
+ *    which is refused outright. The handshake itself is then run end to
+ *    end, its two halves on two threads over a loopback connection.
  *
  * Like the pstat tests, this needs the MCA up but no server:
  * pmix_init_util() establishes the install dirs, the variable system and
@@ -76,15 +84,19 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/base/pmix_base.h"
+#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/class/pmix_list.h"
 #include "src/mca/psec/base/base.h"
 #include "src/runtime/pmix_init_util.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/un.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #ifdef HAVE_SYS_TYPES_H
@@ -231,13 +243,49 @@ static bool loopback_pair(int *client, int *server)
     return true;
 }
 
-/* A native credential for the given identity, built by hand */
+/* A native credential for the given identity, built by hand the way a
+ * release that predates the local-socket check builds it: the uid and
+ * gid, and nothing after them */
 static void make_cred(pmix_byte_object_t *cred, uid_t uid, gid_t gid)
 {
     cred->size = sizeof(uid_t) + sizeof(gid_t);
     cred->bytes = (char *) malloc(cred->size);
     memcpy(cred->bytes, &uid, sizeof(uid_t));
     memcpy(cred->bytes + sizeof(uid_t), &gid, sizeof(gid_t));
+}
+
+/* The same, with the trailer a current release appends: "PNX1", a length
+ * byte, and that many bytes naming the peer's kernel */
+static void make_trailer_cred(pmix_byte_object_t *cred, uid_t uid, gid_t gid,
+                              const char *magic, const char *kid, size_t claimed_len)
+{
+    size_t idlen = (NULL == kid) ? 0 : strlen(kid);
+    char *ptr;
+
+    cred->size = sizeof(uid_t) + sizeof(gid_t) + 4 + 1 + idlen;
+    cred->bytes = (char *) malloc(cred->size);
+    memcpy(cred->bytes, &uid, sizeof(uid_t));
+    memcpy(cred->bytes + sizeof(uid_t), &gid, sizeof(gid_t));
+    ptr = cred->bytes + sizeof(uid_t) + sizeof(gid_t);
+    memcpy(ptr, magic, 4);
+    ptr[4] = (char) claimed_len;
+    if (0 < idlen) {
+        memcpy(ptr + 5, kid, idlen);
+    }
+}
+
+/* the storage behind one of native's MCA variables - it aliases the
+ * component's own, so a write through it changes what native reads */
+static void *native_param(const char *name)
+{
+    void *storage = NULL;
+    int idx;
+
+    idx = pmix_mca_base_var_find("pmix", "psec", "native", name);
+    if (0 > idx || PMIX_SUCCESS != pmix_mca_base_var_get_value(idx, &storage, NULL, NULL)) {
+        return NULL;
+    }
+    return storage;
 }
 
 /* Drive one module's create/validate pair twice, whatever module it is.
@@ -432,9 +480,11 @@ static void native_round_trip(void)
         return;
     }
     report("native module is available", 1);
-    report("native uses the credential model",
+    /* a credential, completed by a handshake when the kernel cannot
+     * name the owner of the connection */
+    report("native has both a credential and a handshake",
            NULL != mod->create_cred && NULL != mod->validate_cred
-               && NULL == mod->client_handshake && NULL == mod->server_handshake);
+               && NULL != mod->client_handshake && NULL != mod->server_handshake);
 
     /* stand up a peer that is a V2 (tcp) connection from ourselves -
      * which is what native is built to authenticate */
@@ -456,7 +506,13 @@ static void native_round_trip(void)
     rc = mod->create_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
     report("create_cred succeeds", PMIX_SUCCESS == rc);
     report("create_cred returns a credential",
-           NULL != cred.bytes && (sizeof(uid_t) + sizeof(gid_t)) == cred.size);
+           NULL != cred.bytes && (sizeof(uid_t) + sizeof(gid_t) + 5) <= cred.size);
+    report("create_cred marks it as able to run the local-socket check",
+           NULL != cred.bytes && (sizeof(uid_t) + sizeof(gid_t) + 5) <= cred.size
+               && 0 == memcmp(cred.bytes + sizeof(uid_t) + sizeof(gid_t), "PNX1", 4)
+               && sizeof(uid_t) + sizeof(gid_t) + 5
+                          + (uint8_t) cred.bytes[sizeof(uid_t) + sizeof(gid_t) + 4]
+                      == cred.size);
     report("create_cred names itself",
            1 == nresults && NULL != find_key(results, nresults, PMIX_CRED_TYPE));
     if (NULL != results) {
@@ -505,7 +561,25 @@ static void native_round_trip(void)
     cred.size = 0;
     rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
     report("validate_cred rejects an empty credential", PMIX_ERR_INVALID_CRED == rc);
-    cred.size = sizeof(uid_t) + sizeof(gid_t);
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    /* a trailer is ours, and holds what it says it holds - or the
+     * credential is refused */
+    make_trailer_cred(&cred, geteuid(), getegid(), "XXXX", "abc", 3);
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report("validate_cred rejects a trailer that is not native's", PMIX_ERR_INVALID_CRED == rc);
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    make_trailer_cred(&cred, geteuid(), getegid(), "PNX1", "abc", 200);
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report("validate_cred rejects a trailer longer than the credential",
+           PMIX_ERR_INVALID_CRED == rc);
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    make_cred(&cred, geteuid(), getegid());
+    cred.size = sizeof(uid_t) + sizeof(gid_t) + 2;
+    cred.bytes = (char *) realloc(cred.bytes, cred.size);
+    memcpy(cred.bytes + sizeof(uid_t) + sizeof(gid_t), "PN", 2);
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report("validate_cred rejects a truncated trailer", PMIX_ERR_INVALID_CRED == rc);
 
     /* a NULL credential on a V2 peer is equally inadmissible */
     rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, NULL);
@@ -568,14 +642,14 @@ static void native_round_trip(void)
 }
 
 /* Credentials whose identity does not match the connection. Each is
- * presented over a connection this process owns, so the check that
- * refuses it is native's comparison with the kernel's answer. */
+ * presented over a connection this process owns, so what decides it is
+ * the kernel's answer about who owns that connection. */
 static void native_identity_checks(void)
 {
     pmix_psec_module_t *mod;
     pmix_peer_t *peer;
     pmix_byte_object_t cred;
-    pmix_info_t *results = NULL;
+    pmix_info_t *results = NULL, *ptr;
     size_t nresults = 0;
     pmix_status_t rc;
     uid_t other_uid;
@@ -598,15 +672,17 @@ static void native_identity_checks(void)
         return;
     }
 
-    /* Someone else's uid - root's, unless that is us. The claim agrees
-     * with the registration, which is all the old check looked at, so
-     * only the kernel's answer can turn it away */
+    /* Someone else's uid - root's, unless that is us. A client the host
+     * registered as that user, and whose credential claims to be it, is
+     * still not it: only the kernel's answer can turn it away */
     other_uid = (0 == geteuid()) ? (uid_t) 4242 : (uid_t) 0;
+    peer->info->host_registered = true;
     peer->info->uid = other_uid;
     peer->info->gid = getegid();
     make_cred(&cred, other_uid, getegid());
     rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
-    report("validate_cred refuses a claim of another user's uid", PMIX_ERR_INVALID_CRED == rc);
+    report("validate_cred refuses a client registered as another user",
+           PMIX_ERR_INVALID_CRED == rc);
     if (NULL != results) {
         PMIX_INFO_FREE(results, nresults);
         results = NULL;
@@ -614,19 +690,71 @@ static void native_identity_checks(void)
     }
     PMIX_BYTE_OBJECT_DESTRUCT(&cred);
 
-    /* the same claim, but not agreeing with the registration either */
+    /* A client registered as us whose credential claims someone else is
+     * judged by the connection, not by the claim - inside a user
+     * namespace the claim is the uid there, which is not ours */
     peer->info->uid = geteuid();
     make_cred(&cred, other_uid, getegid());
     rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
-    report("validate_cred refuses a claim that disagrees with the registration",
-           PMIX_ERR_INVALID_CRED == rc);
+    report("validate_cred judges a registered client by its connection, not its claim",
+           PMIX_SUCCESS == rc && geteuid() == peer->info->uid);
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+        results = NULL;
+        nresults = 0;
+    }
     PMIX_BYTE_OBJECT_DESTRUCT(&cred);
 
-    /* A tool names its own group - nobody registered one for it - so a
-     * gid its user does not hold has to be refused. A gid with no group
-     * entry at all is held by nobody but root */
+    /* A registered client must hold the group it was registered with */
     if (0 != geteuid()) {
-        PMIX_SET_PROC_TYPE(&peer->proc_type, PMIX_PROC_TOOL);
+        other_gid = (gid_t) 54321;
+#ifdef HAVE_GRP_H
+        while (NULL != getgrgid(other_gid) || getegid() == other_gid || getgid() == other_gid) {
+            other_gid++;
+        }
+#endif
+        peer->info->gid = other_gid;
+        make_cred(&cred, geteuid(), getegid());
+        rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+        report("validate_cred refuses a client whose group is not the registered one",
+               PMIX_ERR_INVALID_CRED == rc);
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+        /* ...unless it can have its group attested: the claimed group
+         * may be the one inside a user namespace */
+        make_trailer_cred(&cred, geteuid(), getegid(), "PNX1", NULL, 0);
+        rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+        report("validate_cred asks a current client with an unconfirmed group for the handshake",
+               PMIX_ERR_READY_FOR_HANDSHAKE == rc);
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+        peer->info->gid = getegid();
+    }
+
+    /* An identity nobody registered - a tool's - is only a claim, and
+     * the owner of the connection replaces it. Claiming to be root
+     * gets a tool nothing but its own uid */
+    peer->info->host_registered = false;
+    peer->info->uid = other_uid;
+    peer->info->gid = getegid();
+    make_cred(&cred, other_uid, getegid());
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report("validate_cred replaces a tool's claimed uid with the connection's owner",
+           PMIX_SUCCESS == rc && geteuid() == peer->info->uid);
+    ptr = (NULL == results) ? NULL : find_key(results, nresults, PMIX_USERID);
+    report("validate_cred reports the uid it settled on",
+           NULL != ptr && PMIX_UINT32 == ptr->value.type
+               && (uint32_t) geteuid() == ptr->value.data.uint32);
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+        results = NULL;
+        nresults = 0;
+    }
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    /* A tool names its own group - nobody registered one for it - and
+     * the kernel records none for a TCP socket, so a gid its user does
+     * not hold has to be refused. A gid with no group entry at all is
+     * held by nobody but root */
+    if (0 != geteuid()) {
         other_gid = (gid_t) 54321;
 #ifdef HAVE_GRP_H
         while (NULL != getgrgid(other_gid) || getegid() == other_gid || getgid() == other_gid) {
@@ -640,6 +768,11 @@ static void native_identity_checks(void)
         report("validate_cred refuses a tool's claim of a group it does not hold",
                PMIX_ERR_INVALID_CRED == rc);
         PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+        make_trailer_cred(&cred, geteuid(), other_gid, "PNX1", NULL, 0);
+        rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+        report("validate_cred asks a current tool with an unconfirmed group for the handshake",
+               PMIX_ERR_READY_FOR_HANDSHAKE == rc && other_gid == peer->info->gid);
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
 
         /* and the same tool claiming its own group is fine */
         peer->info->gid = getegid();
@@ -652,24 +785,320 @@ static void native_identity_checks(void)
             nresults = 0;
         }
         PMIX_BYTE_OBJECT_DESTRUCT(&cred);
-        PMIX_SET_PROC_TYPE(&peer->proc_type, PMIX_PROC_CLIENT);
     }
 
-    /* a connection whose far end has closed has no owner */
+    close(client);
+    PMIX_RELEASE(peer->info);
+    peer->info = NULL;
+    PMIX_RELEASE(peer); /* closes peer->sd */
+}
+
+/* When the kernel cannot name the owner of the connection. A connection
+ * whose far end has closed has no owner, which is what a peer in a
+ * container with its own network looks like from here. */
+static void native_unconfirmed(void)
+{
+    pmix_psec_module_t *mod;
+    pmix_peer_t *peer;
+    pmix_byte_object_t cred;
+    pmix_info_t *results = NULL;
+    size_t nresults = 0;
+    pmix_status_t rc;
+    bool *legacy;
+    int client;
+
+    mod = pmix_psec_base_assign_module("native");
+    legacy = (bool *) native_param("legacy_auth");
+    report("native's legacy_auth parameter is registered", NULL != legacy);
+    if (NULL == mod || NULL == legacy) {
+        return;
+    }
+    report("legacy_auth defaults to true", *legacy);
+    peer = PMIX_NEW(pmix_peer_t);
+    peer->protocol = PMIX_PROTOCOL_V2;
+    peer->info = PMIX_NEW(pmix_rank_info_t);
+    peer->info->host_registered = true;
     peer->info->uid = geteuid();
     peer->info->gid = getegid();
+    if (!loopback_pair(&client, &peer->sd)) {
+        report("unconfirmed cases: loopback connection", 0);
+        PMIX_RELEASE(peer->info);
+        peer->info = NULL;
+        PMIX_RELEASE(peer);
+        return;
+    }
     close(client);
-    client = -1;
     usleep(100000);
+
+    /* an older release, which has no other way to say who it is */
     make_cred(&cred, geteuid(), getegid());
+    *legacy = true;
     rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
-    report("validate_cred refuses a connection whose peer has closed",
+    report("an older peer the kernel cannot confirm is accepted on its claim when allowed",
+           PMIX_SUCCESS == rc);
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+        results = NULL;
+        nresults = 0;
+    }
+    *legacy = false;
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report("an older peer the kernel cannot confirm is refused when not allowed",
            PMIX_ERR_INVALID_CRED == rc);
+    *legacy = true;
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    /* even when allowed, an older peer's claim must agree with the
+     * registration */
+    make_cred(&cred, (0 == geteuid()) ? (uid_t) 4242 : (uid_t) 0, getegid());
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report("an older peer's claim must match its registration", PMIX_ERR_INVALID_CRED == rc);
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    /* a current release is asked to prove itself over a local socket -
+     * whatever legacy_auth says */
+    make_trailer_cred(&cred, geteuid(), getegid(), "PNX1", NULL, 0);
+    *legacy = false;
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report("a current peer the kernel cannot confirm is asked for the handshake",
+           PMIX_ERR_READY_FOR_HANDSHAKE == rc);
+    *legacy = true;
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    /* ...unless it says it runs on another host's kernel, where no
+     * local socket can reach it */
+    make_trailer_cred(&cred, geteuid(), getegid(), "PNX1", "another-hosts-kernel", 20);
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+#if defined(__linux__) || defined(__APPLE__)
+    report("a current peer on another host is refused", PMIX_ERR_INVALID_CRED == rc);
+#else
+    /* with no way to name our own kernel, every peer might be local */
+    report("a current peer on another host is asked for the handshake",
+           PMIX_ERR_READY_FOR_HANDSHAKE == rc);
+#endif
     PMIX_BYTE_OBJECT_DESTRUCT(&cred);
 
     PMIX_RELEASE(peer->info);
     peer->info = NULL;
     PMIX_RELEASE(peer); /* closes peer->sd */
+}
+
+/* The local-socket handshake, end to end. The server half runs here and
+ * the client half on a thread, over a loopback connection - the client
+ * half needs nothing but the socket */
+typedef struct {
+    pmix_psec_module_t *mod;
+    int sd;
+    bool close_after;
+    pmix_status_t rc;
+} hs_client_t;
+
+static void *hs_client(void *arg)
+{
+    hs_client_t *c = (hs_client_t *) arg;
+
+    c->rc = c->mod->client_handshake(NULL, c->sd);
+    if (c->close_after) {
+        /* as ptl does when a handshake fails */
+        close(c->sd);
+        c->sd = -1;
+    }
+    return NULL;
+}
+
+/* A peer that does reach the socket, and then sends the nonce one byte a
+ * second. Every byte arrives well inside any per-read timeout, so only a
+ * deadline over the whole handshake stops the server waiting for it */
+static bool read_full(int sd, void *buf, size_t len)
+{
+    size_t got = 0;
+    ssize_t rd;
+
+    while (got < len) {
+        rd = recv(sd, (char *) buf + got, len - got, 0);
+        if (0 >= rd) {
+            return false;
+        }
+        got += (size_t) rd;
+    }
+    return true;
+}
+
+static char *read_str(int sd)
+{
+    uint32_t u32;
+    char *str;
+
+    if (!read_full(sd, &u32, sizeof(u32)) || 0 == ntohl(u32) || 4096 < ntohl(u32)) {
+        return NULL;
+    }
+    str = (char *) malloc(ntohl(u32));
+    if (!read_full(sd, str, ntohl(u32))) {
+        free(str);
+        return NULL;
+    }
+    return str;
+}
+
+static void *hs_trickler(void *arg)
+{
+    hs_client_t *c = (hs_client_t *) arg;
+    unsigned char nonce[32];
+    struct sockaddr_un addr;
+    uint32_t u32;
+    char *base = NULL, *rel = NULL;
+    int usd = -1;
+    size_t n;
+
+    c->rc = PMIX_ERROR;
+    if (!read_full(c->sd, &u32, sizeof(u32)) || sizeof(nonce) != ntohl(u32) ||
+        !read_full(c->sd, nonce, sizeof(nonce)) || NULL == (base = read_str(c->sd)) ||
+        NULL == (rel = read_str(c->sd))) {
+        goto done;
+    }
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s", base, rel);
+    usd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (0 > usd || 0 != connect(usd, (struct sockaddr *) &addr, sizeof(addr))) {
+        goto done;
+    }
+    for (n = 0; n < sizeof(nonce); n++) {
+        /* stop once the server has answered on the TCP connection */
+        struct timeval tv = {1, 0};
+        fd_set fds;
+        FD_ZERO(&fds);
+        FD_SET(c->sd, &fds);
+        if (0 < select(c->sd + 1, &fds, NULL, NULL, &tv)) {
+            break;
+        }
+        if (1 != send(usd, &nonce[n], 1, 0)) {
+            break;
+        }
+    }
+    c->rc = PMIX_SUCCESS;
+done:
+    if (0 <= usd) {
+        close(usd);
+    }
+    free(base);
+    free(rel);
+    return NULL;
+}
+
+static pmix_status_t run_handshake(pmix_psec_module_t *mod, pmix_peer_t *peer, bool close_after,
+                                   pmix_status_t *client_rc)
+{
+    /* a NULL client module means the trickling peer */
+    pmix_psec_module_t *server = pmix_psec_base_assign_module("native");
+    hs_client_t c;
+    pthread_t thr;
+    pmix_status_t rc;
+    int client;
+
+    *client_rc = PMIX_ERROR;
+    if (!loopback_pair(&client, &peer->sd)) {
+        return PMIX_ERR_UNREACH;
+    }
+    c.mod = mod;
+    c.sd = client;
+    c.close_after = close_after;
+    c.rc = PMIX_ERROR;
+    if (0 != pthread_create(&thr, NULL, (NULL == mod) ? hs_trickler : hs_client, &c)) {
+        close(client);
+        close(peer->sd);
+        peer->sd = -1;
+        return PMIX_ERROR;
+    }
+    rc = server->server_handshake((struct pmix_peer_t *) peer, peer->sd);
+    pthread_join(thr, NULL);
+    *client_rc = c.rc;
+    if (0 <= c.sd) {
+        close(c.sd);
+    }
+    close(peer->sd);
+    peer->sd = -1;
+    return rc;
+}
+
+static void native_handshake(void)
+{
+    pmix_psec_module_t *mod;
+    pmix_peer_t *peer;
+    pmix_status_t rc, crc;
+    char **sockdir;
+    gid_t other_gid;
+
+    mod = pmix_psec_base_assign_module("native");
+    sockdir = (char **) native_param("socket_dir");
+    report("native's socket_dir parameter is registered", NULL != sockdir);
+    if (NULL == mod || NULL == sockdir) {
+        return;
+    }
+    peer = PMIX_NEW(pmix_peer_t);
+    peer->protocol = PMIX_PROTOCOL_V2;
+    peer->info = PMIX_NEW(pmix_rank_info_t);
+
+    /* a client the host registered as us */
+    peer->info->host_registered = true;
+    peer->info->uid = geteuid();
+    peer->info->gid = getegid();
+    rc = run_handshake(mod, peer, false, &crc);
+    report("handshake confirms a client registered as its own user",
+           PMIX_SUCCESS == rc && PMIX_SUCCESS == crc);
+
+    /* a client registered as somebody else is refused - and told so */
+    peer->info->uid = (0 == geteuid()) ? (uid_t) 4242 : (uid_t) 0;
+    rc = run_handshake(mod, peer, false, &crc);
+    report("handshake refuses a client registered as another user",
+           PMIX_ERR_INVALID_CRED == rc && PMIX_ERR_INVALID_CRED == crc);
+
+    /* a tool's claimed identity is replaced by the one the socket
+     * reports - its uid, and its group unless it claimed one it holds */
+    peer->info->host_registered = false;
+    peer->info->uid = (0 == geteuid()) ? (uid_t) 4242 : (uid_t) 0;
+    other_gid = (gid_t) 54321;
+#ifdef HAVE_GRP_H
+    while (NULL != getgrgid(other_gid) || getegid() == other_gid || getgid() == other_gid) {
+        other_gid++;
+    }
+#endif
+    peer->info->gid = (0 == geteuid()) ? getegid() : other_gid;
+    rc = run_handshake(mod, peer, false, &crc);
+    report("handshake replaces a tool's claimed identity with the socket's",
+           PMIX_SUCCESS == rc && PMIX_SUCCESS == crc && geteuid() == peer->info->uid
+               && getegid() == peer->info->gid);
+
+    /* the peer sees the server's directory somewhere else */
+    *sockdir = strdup("/nonexistent-pmix-native-dir");
+    peer->info->host_registered = true;
+    peer->info->uid = geteuid();
+    peer->info->gid = getegid();
+    rc = run_handshake(mod, peer, true, &crc);
+    report("handshake fails cleanly when the peer cannot reach the socket",
+           PMIX_ERR_INVALID_CRED == rc && PMIX_SUCCESS != crc);
+    free(*sockdir);
+    *sockdir = NULL;
+
+    /* a peer that sends its nonce a byte a second takes 32 seconds; the
+     * server must give up at the handshake deadline (5 seconds by default)
+     * whatever the peer does in between */
+    {
+        struct timeval t0, t1;
+        double secs;
+
+        gettimeofday(&t0, NULL);
+        rc = run_handshake(NULL, peer, false, &crc);
+        gettimeofday(&t1, NULL);
+        secs = (double) (t1.tv_sec - t0.tv_sec) + (double) (t1.tv_usec - t0.tv_usec) / 1e6;
+        fprintf(stdout, "    trickling peer refused after %.1f seconds\n", secs);
+        report("handshake gives up on a trickling peer at one deadline for the whole exchange",
+               PMIX_ERR_INVALID_CRED == rc && PMIX_SUCCESS == crc && 8.0 > secs);
+    }
+
+    PMIX_RELEASE(peer->info);
+    peer->info = NULL;
+    PMIX_RELEASE(peer);
 }
 
 /* A credential with no connection behind it - which is what
@@ -764,6 +1193,8 @@ int main(int argc, char **argv)
     active_modules_round_trip();
     native_round_trip();
     native_identity_checks();
+    native_unconfirmed();
+    native_handshake();
     native_unverified();
 
     (void) pmix_mca_base_framework_close(&pmix_psec_base_framework);

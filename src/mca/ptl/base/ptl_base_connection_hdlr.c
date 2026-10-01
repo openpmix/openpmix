@@ -1374,20 +1374,18 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     pmix_byte_object_t cred;
     uint32_t u32;
 
-    if (!pmix_ptl_base.allow_foreign_tools) {
-        if (pnd->uid != pmix_globals.uid) {
-            // reject this connection
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-    }
-
     /* Validate the tool before anything is done for it - before its info
      * is unpacked, its namespace looked up or built, or the host asked to
      * give it an identity. The credential vouches for the uid and gid the
-     * tool claimed, so that is the identity it is checked against. A
-     * module that authenticates with a live handshake cannot be run here:
-     * its exchange has a fixed place later in the connection, after the
-     * identity replies (see process_cbfunc). */
+     * tool claimed, so that is the identity it is checked against - and a
+     * module that establishes the tool's identity some other way (the
+     * owner of its socket) replaces the claim with what it found. A
+     * module that authenticates only with a live handshake cannot be run
+     * here: its exchange has a fixed place later in the connection, after
+     * the identity replies (see process_cbfunc). One whose credential
+     * check asks for a handshake to finish the job runs it here, ahead of
+     * those replies - only a tool that sent such a credential knows to
+     * expect it. */
     psec = pmix_psec_base_assign_module(pnd->psec);
     if (NULL == psec) {
         return PMIX_ERR_NOT_SUPPORTED;
@@ -1417,6 +1415,25 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         cred.bytes = pnd->cred;
         cred.size = pnd->len;
         PMIX_PSEC_VALIDATE_CONNECTION_WITH(rc, psec, vpeer, NULL, 0, NULL, NULL, &cred);
+        if (PMIX_ERR_READY_FOR_HANDSHAKE == rc) {
+            u32 = htonl((uint32_t) rc);
+            rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+            if (PMIX_SUCCESS == rc) {
+                /* the handshake tells the tool its outcome itself */
+                rc = psec->server_handshake((struct pmix_peer_t *) vpeer, pnd->sd);
+            }
+            if (PMIX_SUCCESS != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "security handshake for tool failed: %s",
+                                    PMIx_Error_string(rc));
+                vpeer->sd = -1;
+                PMIX_RELEASE(vpeer);
+                return rc;
+            }
+        }
+        /* the identity validation settled on */
+        pnd->uid = vinfo->uid;
+        pnd->gid = vinfo->gid;
         /* the socket is the connection's, not this scratch peer's */
         vpeer->sd = -1;
         PMIX_RELEASE(vpeer);
@@ -1431,6 +1448,15 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             return rc;
         }
         pnd->validated = true;
+    }
+
+    /* a tool of another user is refused unless allowed - judged on the
+     * identity it was validated as, where it was */
+    if (!pmix_ptl_base.allow_foreign_tools) {
+        if (pnd->uid != pmix_globals.uid) {
+            // reject this connection
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
     }
 
     peer = PMIX_NEW(pmix_peer_t);

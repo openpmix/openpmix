@@ -9,26 +9,69 @@
 #
 # This is the US/English help file for the native security component
 #
-[unverified-peer]
+[remote-peer]
 A process at %s asked to connect to this PMIx server using the "native"
-security mechanism, claiming to be uid %lu. The operating system could
-not confirm who owns that connection, so the request was refused:
+security mechanism, claiming to be uid %lu. That process is on another
+host, so the request was refused.
 
-  Reason:  %s
+The native mechanism confirms a peer's identity through this host's
+kernel, so it serves only peers on this host - containers included. A
+peer elsewhere uses a mechanism that works across hosts:
 
-The native mechanism confirms a peer's identity by asking this host's
-kernel which user owns the far end of the connection, so it serves only
-peers on this host (and in the same network namespace). A peer
-elsewhere uses a mechanism that works across hosts:
+  * munge - PMIx configured --with-munge, with munged running on every
+    node; or
 
   * ssl - the peer presents an X.509 certificate issued by a CA this
     server trusts (PMIx configured --with-openssl; see the psec_ssl_*
-    MCA parameters), and selects it with PMIX_MCA_psec=ssl; or
+    MCA parameters), and selects it with PMIX_MCA_psec=ssl.
+#
+[legacy-peer]
+A process at %s asked to connect to this PMIx server using the "native"
+security mechanism, claiming to be uid %lu. It uses an older PMIx
+release, and the operating system could not confirm who owns the
+connection, so the request was refused.
 
-  * munge - PMIx configured --with-munge, with munged running on every
-    node.
+This server accepts the claim of an older release only when the MCA
+parameter psec_native_legacy_auth is true. Either set it, or rebuild the
+peer against a newer PMIx release - which can prove its identity over a
+local socket when the kernel cannot confirm it.
 #
 [foreign-group]
 A process owned by uid %lu asked to connect to this PMIx server as a
 tool, claiming group id %lu. That user does not belong to that group, so
 the request was refused.
+#
+[handshake-failed]
+A process at %s asked to connect to this PMIx server using the "native"
+security mechanism. The kernel could not report who owns that
+connection - usually because the process is in a container with a
+network of its own - so the server asked it to confirm its identity over
+a local socket at:
+
+  %s
+
+That did not succeed, and the request was refused:
+
+  Reason:  %s
+
+The process must be able to reach that path. When it runs in a
+container, mount the directory holding it into the container. Set the
+MCA parameter psec_native_socket_dir on the server to choose where that
+directory is, and on the process to say where it appears to the process
+if that differs.
+#
+[socket-unreachable]
+This process could not confirm its identity to the PMIx server it is
+connecting to. The server asked for that to be done over a local
+socket, at:
+
+  %s
+
+which could not be reached:
+
+  Reason:  %s
+
+The server created that socket beneath the directory %s. When this
+process runs in a container, that directory must be mounted into it. If
+it appears here at a different path, set the MCA parameter
+psec_native_socket_dir (PMIX_MCA_psec_native_socket_dir) to that path.

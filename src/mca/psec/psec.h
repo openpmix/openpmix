@@ -73,11 +73,17 @@ typedef pmix_status_t (*pmix_psec_base_module_create_cred_fn_t)(struct pmix_peer
                                                                 pmix_byte_object_t *cred);
 
 /**
- * Perform the client-side handshake. Note that it is not required
- * (and indeed, would be rare) for a protocol to use both the
- * credential and handshake interfaces. It is acceptable, therefore,
- * for one of them to be NULL */
-typedef pmix_status_t (*pmix_psec_base_module_client_hndshk_fn_t)(int sd);
+ * Perform the client-side handshake over the connected socket `sd`,
+ * after the server has answered the connection with
+ * PMIX_ERR_READY_FOR_HANDSHAKE. `peer` is the server being connected to.
+ *
+ * A module may use the credential interface, the handshake interface, or
+ * both: one whose validate_cred cannot decide on the credential alone
+ * returns PMIX_ERR_READY_FOR_HANDSHAKE and finishes the job in its
+ * handshake. A module that never asks for a handshake leaves both
+ * handshake slots NULL. */
+typedef pmix_status_t (*pmix_psec_base_module_client_hndshk_fn_t)(struct pmix_peer_t *peer,
+                                                                  int sd);
 
 /****    SERVER-SIDE FUNCTIONS    ****/
 /**
@@ -97,11 +103,14 @@ typedef pmix_status_t (*pmix_psec_base_module_validate_cred_fn_t)(struct pmix_pe
                                                                   const pmix_byte_object_t *cred);
 
 /**
- * Perform the server-side handshake. Note that it is not required
- * (and indeed, would be rare) for a protocol to use both the
- * credential and handshake interfaces. It is acceptable, therefore,
- * for one of them to be NULL */
-typedef pmix_status_t (*pmix_psec_base_module_server_hndshk_fn_t)(int sd);
+ * Perform the server-side handshake with the connecting `peer` over the
+ * socket `sd`. The peer is the one validate_cred was given, so the
+ * handshake can check the identity it was registered or connected as -
+ * and, like validate_cred, may replace an identity the peer only claimed
+ * (one the host did not register) with the one it establishes. See
+ * the client-side handshake for when a module has one. */
+typedef pmix_status_t (*pmix_psec_base_module_server_hndshk_fn_t)(struct pmix_peer_t *peer,
+                                                                  int sd);
 
 /**
  * Base structure for a PSEC module
@@ -133,7 +142,17 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
 #define PMIX_PSEC_CREATE_CRED(r, p, d, nd, in, nin, c) \
     (r) = (p)->nptr->compat.psec->create_cred((struct pmix_peer_t *) (p), (d), (nd), (in), (nin), c)
 
-#define PMIX_PSEC_CLIENT_HANDSHAKE(r, p, sd) (r) = (p)->nptr->compat.psec->client_handshake(sd)
+/* A server asks for a handshake only from a peer whose module has one,
+ * but the answer comes off the wire - refuse rather than call through a
+ * NULL slot if it is ever asked of one that does not */
+#define PMIX_PSEC_CLIENT_HANDSHAKE(r, p, sd)                                              \
+    do {                                                                                  \
+        if (NULL == (p)->nptr->compat.psec->client_handshake) {                           \
+            (r) = PMIX_ERR_NOT_SUPPORTED;                                                 \
+        } else {                                                                          \
+            (r) = (p)->nptr->compat.psec->client_handshake((struct pmix_peer_t *) (p), sd); \
+        }                                                                                 \
+    } while (0)
 
 #define PMIX_PSEC_VALIDATE_CRED(r, p, d, nd, in, nin, c)                                     \
     (r) = (p)->nptr->compat.psec->validate_cred((struct pmix_peer_t *) (p), (d), (nd), (in), \
@@ -151,7 +170,14 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
         /* if a credential is available, then check it */                                          \
         if (NULL != (m)->validate_cred) {                                                          \
             _r = (m)->validate_cred((struct pmix_peer_t *) (p), (d), (nd), (in), (nin), c);        \
-            if (PMIX_SUCCESS != _r) {                                                              \
+            if (PMIX_ERR_READY_FOR_HANDSHAKE == _r && NULL == (m)->server_handshake) {           \
+                /* a request for a handshake the module cannot run */                              \
+                _r = PMIX_ERR_NOT_SUPPORTED;                                                       \
+            }                                                                                      \
+            if (PMIX_ERR_READY_FOR_HANDSHAKE == _r) {                                              \
+                pmix_output_verbose(2, pmix_globals.debug_output,                                  \
+                                    "credential needs a handshake to complete validation");        \
+            } else if (PMIX_SUCCESS != _r) {                                                       \
                 pmix_output_verbose(2, pmix_globals.debug_output,                                  \
                                     "validation of credential failed: %s", PMIx_Error_string(_r)); \
             } else {                                                                               \
@@ -178,7 +204,8 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
             pmix_status_t _r;                                                         \
             /* execute the handshake if the security mode calls for it */             \
             pmix_output_verbose(2, pmix_globals.debug_output, "executing handshake"); \
-            if (PMIX_SUCCESS != (_r = (m)->server_handshake((p)->sd))) {              \
+            if (PMIX_SUCCESS != (_r = (m)->server_handshake((struct pmix_peer_t *) (p), \
+                                                            (p)->sd))) {              \
                 PMIX_ERROR_LOG(_r);                                                   \
             }                                                                         \
             /* Update the reply status */                                             \
@@ -218,7 +245,7 @@ typedef struct pmix_psec_base_component_t pmix_psec_base_component_t;
  * the same three by pasting its name, so the two cannot drift apart.
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
-#define PMIX_MCA_psec_MAJOR_VERSION   1
+#define PMIX_MCA_psec_MAJOR_VERSION   2
 #define PMIX_MCA_psec_MINOR_VERSION   0
 #define PMIX_MCA_psec_RELEASE_VERSION 0
 

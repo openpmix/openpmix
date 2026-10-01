@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -33,10 +33,17 @@
 #include "psec_native.h"
 #include "src/mca/psec/psec.h"
 
+static pmix_status_t component_register(void);
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
 static pmix_psec_module_t *assign_module(void);
+
+pmix_psec_native_params_t pmix_psec_native_params = {
+    .socket_dir = NULL,
+    .legacy_auth = true,
+    .force_handshake = false
+};
 
 /*
  * Instantiate the public struct with all of our public information
@@ -54,6 +61,7 @@ pmix_psec_base_component_t pmix_mca_psec_native_component = {
                                    PMIX_RELEASE_VERSION),
 
         /* Component open and close functions */
+        .pmix_mca_register_component_params = component_register,
         .pmix_mca_open_component = component_open,
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
@@ -61,6 +69,34 @@ pmix_psec_base_component_t pmix_mca_psec_native_component = {
     .assign_module = assign_module
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, psec, native)
+
+static int component_register(void)
+{
+    pmix_mca_base_component_t *c = &pmix_mca_psec_native_component.base;
+
+    (void) pmix_mca_base_component_var_register(
+        c, "socket_dir",
+        "Directory under which a server creates the local sockets it uses to confirm "
+        "the identity of a peer when the kernel cannot report the owner of its TCP "
+        "connection - for example, a peer in a container with its own network. Each "
+        "server makes a directory of its own beneath it. A peer sets this to where "
+        "that same directory appears to it, if that differs. Default: the server's "
+        "temporary directory",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, &pmix_psec_native_params.socket_dir);
+    (void) pmix_mca_base_component_var_register(
+        c, "legacy_auth",
+        "Accept a peer using a PMIx release that predates the local socket check on "
+        "the user and group it claims, when the kernel cannot confirm them. When false, "
+        "such a peer is refused",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL, &pmix_psec_native_params.legacy_auth);
+    (void) pmix_mca_base_component_var_register(
+        c, "force_handshake",
+        "(Testing only) Never ask the kernel who owns a peer's TCP connection, so that "
+        "every peer able to confirm its identity over a local socket is asked to - as a "
+        "peer in a container with its own network is. Do not set this in production",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL, &pmix_psec_native_params.force_handshake);
+    return PMIX_SUCCESS;
+}
 
 static int component_open(void)
 {
