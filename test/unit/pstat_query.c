@@ -242,6 +242,26 @@ int main(int argc, char **argv)
     }
     PMIX_INFO_DESTRUCT(&monitor);
 
+    /* So does an empty array, whatever element type it declares - it has
+     * no elements to read, and callers ask for "everything" that way */
+    {
+        pmix_data_array_t empty = {.type = PMIX_PROC, .size = 0, .array = NULL};
+
+        PMIX_INFO_CONSTRUCT(&monitor);
+        PMIX_LOAD_KEY(monitor.key, PMIX_MONITOR_NET_RESOURCE_USAGE);
+        monitor.value.type = PMIX_DATA_ARRAY;
+        monitor.value.data.darray = &empty;
+        results = NULL;
+        nresults = 0;
+        rc = pmix_pstat.query(&requestor, &monitor, PMIX_SUCCESS, NULL, 0, &results, &nresults);
+        report("fields: an empty array of any type means every field", PMIX_SUCCESS == rc);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+        }
+        /* the array is ours, not the info's */
+        monitor.value.type = PMIX_UNDEF;
+    }
+
     /* ------------------------------------------------------------------
      * The monitor fields and the target procs must be data arrays of
      * the expected datatype. The payload is a pair of well-formed
