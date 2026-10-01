@@ -268,10 +268,10 @@ there and cycles only for a socket that really is non-blocking. It used
 to cycle unconditionally, which turned every receive timeout into an
 unbounded wait — the outbound `handshake_wait_time` never expired
 either. The psec exchange itself stays blocking: its interface is
-`server_handshake(peer, sd)`, a blocking exchange by definition. Two
-modules implement one: the test module `psec/dummy_handshake`, and
-`psec/native`, which runs its local-socket handshake only for a peer the
-kernel's TCP table cannot see (a container with its own network). native
+`server_handshake(peer, sd)`, a blocking exchange by definition. The one
+module that implements one is `psec/native`, which runs its local-socket
+handshake only for a peer the kernel's TCP table cannot see (a container
+with its own network). native
 bounds the whole exchange by one `connect_ack_timeout` deadline, and
 stops waiting the moment the peer's TCP connection closes, so a peer that
 cannot reach the socket costs nothing; one that stalls holds the progress

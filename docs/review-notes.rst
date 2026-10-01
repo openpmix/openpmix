@@ -66,6 +66,14 @@ it stays as it is, bounded by ``ptl_base_connect_ack_timeout``, and
 ``src/mca/ptl/base/AGENTS.md`` says why.  Revisit if a real handshake-model
 module appears.
 
+*Update, 2026-10-01:* one did.  ``psec/native`` now asks for a handshake
+whenever the kernel cannot name a TCP peer's owner (a peer in a container
+with its own network) and confirms it over an AF_UNIX socket.  Its server
+half is bounded by one ``ptl_base_connect_ack_timeout`` deadline for the
+whole exchange, not per read, and stops waiting as soon as the peer's TCP
+connection closes; the interface stays blocking.  ``psec/dummy_handshake``
+and ``psec/none`` were removed, as neither authenticated anyone.
+
 **The connecting side's half was fixed.**  ``pmix_tool_retry_attach`` -
 behind ``PMIx_tool_attach_to_server``, a tool connecting to its parent at
 init, and a server attaching upstream - ran the whole connect on the
@@ -1442,14 +1450,6 @@ not "fixed" by a later reader.
   ``show_help`` naming it and the request is then declined — declined,
   rather than failed, because a hard error out of ``allocate`` aborts
   the base's fan-out for every other component too.
-* ``psec/dummy_handshake`` **sends its length and status words as raw
-  host-format** ``size_t`` / ``pmix_status_t``.  That means it only
-  interoperates between peers of identical width and endianness, which
-  would be a wire-format defect in a real mechanism.  It is not one
-  here: the component exists solely to exercise the ``ptl``/``psec``
-  handshake plumbing, is built only under ``--enable-dummy-handshake``,
-  and is documented as not a pattern to copy.  Do not "fix" it by
-  inventing a wire encoding for a test harness.
 * ``pmix_psec_base_select`` **sets** ``pmix_psec_globals.selected``
   **before it can fail.**  A select that ends with an empty actives list
   returns ``PMIX_ERR_SILENT`` with the flag already true, so a second
