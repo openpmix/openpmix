@@ -3301,7 +3301,12 @@ misbehave by design).
   - Monitoring filters its peer list with
     `pmix_server_access_filter_peers()`: strict (refuse) when the
     requester named the targets, filtering when it asked for every local
-    process.
+    process. A requester that is not connected here is the host - unless
+    the directives carry a `PMIX_USERID`: a host relaying a monitor
+    request from another node (`PMIX_MONITOR_PROXY`) passes on the
+    directives the requester's own server stamped, and the rule is applied
+    to that user. Without it every relayed request ran unrestricted on
+    every node but the requester's own.
   - **Data held on another node is decided by the server holding it.**
     A dmodex tracker (`pmix_dmdx_local_t`) belongs to one requester
     identity - uid, gid and requester namespace - and `create_local_tracker`
