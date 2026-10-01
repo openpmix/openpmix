@@ -63,8 +63,8 @@ out-of-memory and finalize-race arms; a multi-namespace
 stdin, late finalize reply); the ``PMIx_Init`` debugger-wait teardown;
 leak validation of the process-set and resolve examples; ``pps`` against
 a live process table; the compressed half of ``preg``; ``psensor/file``
-drop counts; a ``pcompress`` module that fails to start; a blocking
-``psec`` handshake; ``psec/munge``'s failed encode; ``plog/smtp`` (never
+drop counts; a ``pcompress`` module that fails to start; a
+handshake-only ``psec`` module; ``psec/munge``'s failed encode; ``plog/smtp`` (never
 run at all); the ``pnet`` fabric calls; ``pnet/simptest``'s end-to-end
 launch; the TSD finalize ordering; ``gds/shmem3`` on macOS; the
 client-side tombstone generation; and three ``src/hwloc`` findings.
@@ -293,24 +293,22 @@ Coverage gaps
   capped monitor), because a request can be given an allowance no run
   can spend; there is no equivalent for "must not alert on the first
   look".
-* **A handshake-model psec module's exchange is not exercised.**
-  ``PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`` runs inside the ``ptl``
-  connection handler, on the progress thread, with the socket still in
-  blocking mode.  It used to be unbounded, and this entry used to say
-  the fix belonged in ``ptl`` "the way ``handshake_wait_time`` already
-  bounds the connect-ack" — which was never true: that parameter only
-  applies on the *connecting* side, defaults to no bound, and was
-  retried away by ``pmix_ptl_base_recv_blocking`` in any case.  The
-  inbound connect-ack was unbounded too.  The handler now sets
-  ``SO_RCVTIMEO`` from ``ptl_base_connect_ack_timeout`` before its first
-  read, and the option stays on the socket until it goes non-blocking,
-  which is after the psec exchange — so a stalled handshake peer is now
-  bounded by the same timeout, and the exchange stays blocking because no
-  production build can reach it (see the closed entry in
-  :doc:`review-notes`).  What is still missing is
-  coverage: the only handshake-model module is ``dummy_handshake``,
-  built only under ``--enable-dummy-handshake``, so nothing runs that
-  exchange against a stalled peer.
+* **A handshake-only psec module's path is not exercised.**  A module
+  that leaves ``validate_cred`` ``NULL`` gets
+  ``PMIX_ERR_READY_FOR_HANDSHAKE`` from
+  ``PMIX_PSEC_VALIDATE_CONNECTION`` every time, and on the tool path its
+  exchange runs late - in ``process_cbfunc``, after the identity replies.
+  No in-tree module works that way any more: ``psec/dummy_handshake``,
+  the only one, was removed together with ``psec/none``, since neither
+  authenticated anyone.  The handshake itself *is* covered: ``native``
+  asks for one whenever the kernel cannot name a TCP peer's owner, and
+  ``test/unit/run_native_handshake.pl`` (clients, tools, a tool attach)
+  and ``test/unit/psec_credentials.c`` (including a peer that trickles
+  its answer, held to the one ``ptl_base_connect_ack_timeout`` deadline)
+  drive it.  What nothing reaches is the late tool-path placement and
+  the ``validate_cred == NULL`` branch of the macro.  Either keep them
+  for a future handshake-only mechanism and give them a test, or remove
+  them from the psec interface.
 * ``psec/munge``'s **failed-encode path is still not executed.**  The
   rest of the component now is: ``test/unit/psec_credentials.c`` drives
   every *active* credential module rather than a fixed list, so on a

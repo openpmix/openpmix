@@ -150,11 +150,11 @@ static void check_directives(void)
     PMIX_INFO_DESTRUCT(&dir[0]);
 
     /* named within a list */
-    PMIX_INFO_LOAD(&dir[0], PMIX_CRED_TYPE, "munge,native,none", PMIX_STRING);
+    PMIX_INFO_LOAD(&dir[0], PMIX_CRED_TYPE, "munge,native", PMIX_STRING);
     report("named in list accepts",
            pmix_psec_base_check_directives("native", dir, 1));
     report("absent from list declines",
-           !pmix_psec_base_check_directives("dummy_handshake", dir, 1));
+           !pmix_psec_base_check_directives("ssl", dir, 1));
     PMIX_INFO_DESTRUCT(&dir[0]);
 
     /* a partial name must not match - the comparison is exact */
@@ -1154,6 +1154,13 @@ static void available_modules(void)
     /* an unknown mechanism cannot be assigned */
     report("unknown mechanism is not assigned",
            NULL == pmix_psec_base_assign_module("no-such-mechanism"));
+
+    /* nor can one that authenticates nobody - psec/none accepted every
+     * peer and psec/dummy_handshake swapped a fixed string, and neither
+     * may come back */
+    report("there is no 'none' mechanism", NULL == pmix_psec_base_assign_module("none"));
+    report("there is no 'dummy_handshake' mechanism",
+           NULL == pmix_psec_base_assign_module("dummy_handshake"));
 
     /* with no preference expressed, the highest-priority module wins */
     report("no preference still yields a module",

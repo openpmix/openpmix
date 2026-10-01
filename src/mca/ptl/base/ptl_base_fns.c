@@ -1150,8 +1150,7 @@ pmix_status_t pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
  * What it cannot make event-driven is a psec handshake: that interface is
  * server_handshake()/client_handshake(), a blocking exchange by
  * definition, and it is run as one here, bounded by the same wait. native
- * runs one only when the server cannot see who owns our TCP connection,
- * and the opt-in psec/dummy_handshake test module always does. */
+ * runs one only when the server cannot see who owns our TCP connection. */
 
 typedef enum {
     PMIX_CNCT_CONNECTING,
