@@ -199,8 +199,12 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                 pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
                 peer->protocol = PMIX_PROTOCOL_V2;
                 PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
-                /* go ahead and try to connect */
-                rc = pmix_ptl_base_make_connection(peer, cn->uri, iptr, niptr);
+                /* speak a wire format and security mechanism it accepts,
+                 * then go ahead and try to connect */
+                rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, cn);
+                if (PMIX_SUCCESS == rc) {
+                    rc = pmix_ptl_base_make_connection(peer, cn->uri, iptr, niptr);
+                }
                 if (PMIX_SUCCESS == rc) {
                     /* don't free nspace/uri - we will use them below */
                     nspace = cn->nspace;

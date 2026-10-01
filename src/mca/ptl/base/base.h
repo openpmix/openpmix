@@ -146,6 +146,15 @@ PMIX_EXPORT extern pmix_ptl_base_t pmix_ptl_base;
  * falls, so more lines may yet follow or precede it. */
 #define PMIX_PTL_ALT_URIS_TAG "alturis:"
 
+/* Tag the lines of the same files that list the wire formats (bfrops
+ * components) and security mechanisms (psec components) the server can
+ * accept a connection with, comma-delimited in its priority order. A
+ * process that finds a server through a file - one the server did not
+ * start, so no environment tells it what to use - takes the highest of
+ * its own that the server lists. */
+#define PMIX_PTL_BFROPS_TAG "bfrops:"
+#define PMIX_PTL_PSEC_TAG   "psec:"
+
 typedef struct {
     pmix_list_item_t super;
     int sd;
@@ -154,8 +163,23 @@ typedef struct {
     char *uri;
     char *version;
     char *alt_uris;  // the server's other addresses, if its file listed any
+    char *bfrops;    // the server's wire formats, if its file listed them
+    char *psec;      // the server's security mechanisms, if its file listed them
 } pmix_connection_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_connection_t);
+
+/* Choose the wire format and security mechanism `peer` - a server found
+ * through `cn` - will be spoken to with: the highest of ours that the
+ * server lists (our own mechanism if it is listed). A server whose file
+ * lists none (an older release) is matched by its version for the wire
+ * format, which assumes it runs every format named for a release up to
+ * its own, and gets munge if we have it, else native - never ssl, which
+ * no older server has. Returns PMIX_ERR_NOT_SUPPORTED when the two have
+ * nothing in common, so the connection is not attempted.
+ * For our primary server our own modules change with the server's, as a
+ * client's do when its server's environment names them. */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_select_compat(struct pmix_peer_t *peer,
+                                                     pmix_connection_t *cn);
 
 /* API stubs */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_notification_cbfunc(pmix_ptl_cbfunc_t cbfunc);
