@@ -1,0 +1,140 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# Exercise psec/native's local-socket handshake through a real server.
+#
+# On a development host the kernel can always name the owner of a
+# loopback TCP connection, so the handshake - the path a peer in a
+# container with its own network takes - is never reached on its own.
+# psec_native_force_handshake makes the server skip that lookup, so every
+# peer confirms its identity over an AF_UNIX socket instead. Two cases:
+#
+#   client - simptest forks simpcycle, which connects as a registered
+#            client (the handshake runs after the connect reply);
+#   tool   - simptoolcycle cycles a tool through init/finalize (the
+#            handshake runs first, before the server asks anything of its
+#            host);
+#   attach - tool_server_switch attaches a tool to further servers, which
+#            reads the server's replies from socket events rather than
+#            with blocking calls.
+#
+# Each must complete, and the server's verbose output must show the
+# handshake ran - otherwise the case would pass without testing anything.
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen
+# hands us every possible component directory in
+# PMIX_COMPONENT_LIBRARY_PATHS; turn each into an absolute path to the
+# built component so the MCA base can find them without a prior install.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# the mechanism under test, the switch that sends every peer through its
+# handshake, and the output that says the handshake ran
+$ENV{'PMIX_MCA_psec'} = "native";
+$ENV{'PMIX_MCA_psec_native_force_handshake'} = "1";
+$ENV{'PMIX_MCA_psec_base_verbose'} = "2";
+
+# both programs fork or re-exec from their own directory
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+
+# find the timeout or gtimeout cmd so we can bound the run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+sub run_case {
+    my ($name, @cmd) = @_;
+    my $use_alarm = 0;
+
+    print "=== $name\n";
+    if ("" ne $timeout_cmd) {
+        unshift(@cmd, split(' ', $timeout_cmd));
+    } else {
+        $use_alarm = 1;
+    }
+    print "@cmd\n";
+
+    # Run the test in a child we control, merging its stderr into stdout,
+    # and slurp the output. The alarm (when armed) bounds the wait and lets
+    # us kill a wedged child.
+    my $pid = open(my $fh, "-|");
+    defined($pid) or die "cannot fork: $!";
+    if (0 == $pid) {
+        open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+        exec(@cmd) or die "cannot exec $cmd[0]: $!";
+    }
+    my $output = "";
+    my $timed_out = 0;
+    eval {
+        local $SIG{ALRM} = sub { die "alarm\n"; };
+        alarm(600) if $use_alarm;
+        local $/;
+        $output = <$fh>;
+        alarm(0);
+    };
+    if ($@) {
+        $timed_out = 1;
+        kill('KILL', $pid);
+    }
+    close($fh);
+    $output = "" unless defined($output);
+    my $status = $timed_out ? 1 : ($? >> 8);
+    if ($timed_out) {
+        $output .= "\nFAIL: $name exceeded the 600s time limit\n";
+    }
+    print $output . "\n";
+    print "CODE $status\n";
+
+    if (0 != $status) {
+        print "FAIL: $name did not complete (exit $status)\n";
+        return ($status == 0 ? 1 : $status);
+    }
+    my $ran = () = $output =~ /native local socket peer is uid/g;
+    if (0 == $ran) {
+        print "FAIL: $name completed without running the local-socket handshake\n";
+        return 1;
+    }
+    if ($output =~ /could not confirm its identity|did not succeed, and the request was refused/) {
+        print "FAIL: $name reported a failed handshake\n";
+        return 1;
+    }
+    print "PASS: $name confirmed $ran peer(s) over a local socket\n";
+    return 0;
+}
+
+my $rc = 0;
+my $r = run_case("client", "./simptest", "-e", "./simpcycle");
+$rc = $r if (0 != $r && 0 == $rc);
+$r = run_case("tool", "./simptoolcycle");
+$rc = $r if (0 != $r && 0 == $rc);
+$r = run_case("attach", "./tool_server_switch");
+$rc = $r if (0 != $r && 0 == $rc);
+exit($rc);

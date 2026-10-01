@@ -210,6 +210,17 @@ two disagree, the README wins, and please fix this file.
   up a DVM of its own, and handing it `--dvm-uri` fails the command line
   with an unrelated-looking usage error.
 
+- **A tool on one node authenticates to a server on another over a
+  shared directory.** Every node is its own network namespace on one
+  kernel, so `psec/native` cannot find a peer on another node in its TCP
+  table and falls back to an AF_UNIX handshake. The compose file mounts
+  the read-write `pmix-auth` volume at `/pmix-auth` on every node and
+  sets `PMIX_MCA_psec_native_socket_dir=/pmix-auth` in every container,
+  which is what lets the cross-node tool stages connect. A container
+  recreated without that volume refuses every cross-node tool. While a
+  server that ran a handshake is up, its `pmix-native.*` directory is
+  visible in `/pmix-auth`.
+
 - **The build volume outlives your branch.** `pmix-build` persists
   across runs and across checkouts, so a tree in it can be older than
   the source you are testing. When results make no sense, check what is

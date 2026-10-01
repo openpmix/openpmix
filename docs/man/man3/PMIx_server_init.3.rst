@@ -149,8 +149,10 @@ Role and support attributes
   finding the server by file, PID or namespace try them if the URI's address
   cannot be reached. A remote tool must authenticate with a mechanism that
   works across hosts: the default ``native`` mechanism confirms a peer's
-  identity by asking the server's own kernel who owns the connection, so
-  it refuses any peer on another host. Use ``ssl`` - PMIx configured
+  identity through the server's own kernel, so it refuses a peer on
+  another host (one using a release that predates its local-socket check
+  is accepted on its claimed identity while ``psec_native_legacy_auth`` is
+  ``true``). Use ``ssl`` - PMIx configured
   ``--with-openssl``, the server given ``psec_ssl_ca_file``, and the tool
   given ``psec_ssl_cert_file``/``psec_ssl_key_file`` and
   ``PMIX_MCA_psec=ssl`` - or ``munge``.

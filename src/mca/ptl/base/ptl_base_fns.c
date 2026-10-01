@@ -981,10 +981,10 @@ pmix_status_t pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
  * timer, ptl_base_handshake_wait_time, bounds the whole connect.
  *
  * What it cannot make event-driven is a psec handshake: that interface is
- * server_handshake(int sd)/client_handshake(int sd), a blocking exchange
- * by definition, and it is run as one here, bounded by the same wait. No
- * production psec module has a handshake - only the opt-in
- * psec/dummy_handshake test module does. */
+ * server_handshake()/client_handshake(), a blocking exchange by
+ * definition, and it is run as one here, bounded by the same wait. native
+ * runs one only when the server cannot see who owns our TCP connection,
+ * and the opt-in psec/dummy_handshake test module always does. */
 
 typedef enum {
     PMIX_CNCT_CONNECTING,
@@ -1359,6 +1359,16 @@ static pmix_status_t cnct_field(pmix_ptl_connect_op_t *op)
                 return reply;
             }
             return cnct_expect(op, PMIX_CNCT_PINDEX, sizeof(uint32_t));
+        }
+        if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
+            /* a tool's credential the server could not decide on alone -
+             * settled by a handshake ahead of everything else, after
+             * which the server sends the status of our request */
+            rc = cnct_psec_handshake(op);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            return cnct_expect(op, PMIX_CNCT_STATUS, sizeof(uint32_t));
         }
         if (PMIX_SUCCESS != reply) {
             return reply;
@@ -1858,6 +1868,19 @@ pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp)
     pmix_nspace_t nspace;
     pmix_rank_t rank;
     pmix_status_t reply, rc;
+    uint32_t u32;
+
+    /* A credential the server could not decide on alone is settled by a
+     * handshake ahead of everything else - the server then tells us the
+     * outcome of our request as usual */
+    if (PMIX_ERR_READY_FOR_HANDSHAKE == rp) {
+        PMIX_PSEC_CLIENT_HANDSHAKE(rc, peer, peer->sd);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        PMIX_PTL_RECV_U32(peer->sd, u32);
+        rp = (pmix_status_t) u32;
+    }
 
     /* if the status indicates an error, then we are done */
     if (PMIX_SUCCESS != rp) {

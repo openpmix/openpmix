@@ -102,8 +102,10 @@ The common model. The credential is a self-contained blob:
 - Server side: `validate_cred` inspects the blob (and/or the socket) and
   returns `PMIX_SUCCESS` or `PMIX_ERR_INVALID_CRED`.
 
-`native`, `munge`, `ssl` and `none` all use this model (they leave both
-`*_handshake` pointers `NULL`).
+`munge`, `ssl` and `none` use only this model (they leave both
+`*_handshake` pointers `NULL`). `native` uses it too, and adds a
+handshake for the connections its credential cannot decide — see "Both"
+below.
 
 ### Multi-step handshake (`client_handshake` + `server_handshake`)
 
@@ -115,9 +117,33 @@ detects the absence of `validate_cred` and drives the handshake instead
 component that uses this model; it exists precisely to exercise and
 test the `ptl` handshake code path.
 
-Per the header, it would be "rare" for a module to use *both* the
-credential and the handshake interfaces — one of the two pairs is
-normally `NULL`.
+### Both: a credential completed by a handshake
+
+A module may supply all four. Its `validate_cred` decides what it can and
+returns `PMIX_ERR_READY_FOR_HANDSHAKE` for what it cannot; the framework
+then runs its `server_handshake` exactly as for a handshake-only module.
+`native` does this: when the kernel cannot name the owner of a TCP
+connection, the peer proves its identity over an AF_UNIX socket. See
+[`native/AGENTS.md`](native/AGENTS.md).
+
+Two rules make that safe:
+
+- **Only ask a peer that can answer.** A peer's module may come from an
+  older release whose `client_handshake` is `NULL`. The request must be
+  keyed on something only a capable peer sends — `native` uses a trailer
+  on its credential. `PMIX_PSEC_CLIENT_HANDSHAKE` refuses rather than
+  call through a `NULL` slot, but an old client's copy of that macro
+  does not.
+- **On the tool path the handshake runs early.** `process_tool_request`
+  validates a tool before anything is done for it. A `validate_cred`
+  that asks for a handshake there gets it at once — the tool's first
+  status is `READY_FOR_HANDSHAKE` — and the identity the module settles
+  on (written to the scratch peer's `info`) replaces the claimed one in
+  `pnd` before the host hears of the tool. A handshake-*only* module
+  still runs later, after the identity replies.
+
+`PMIX_PSEC_VALIDATE_CONNECTION_WITH` turns a `READY_FOR_HANDSHAKE` from a
+module with no `server_handshake` into `PMIX_ERR_NOT_SUPPORTED`.
 
 ## Module interface (`pmix_psec_module_t`)
 
@@ -130,9 +156,9 @@ unused pointers stay `NULL`, and the framework macros guard on them.
 | `init` | `(void) -> pmix_status_t` | both | one-time module init at selection; return non-success to disqualify the module (e.g. `munge` checks the local `munged` daemon is reachable) |
 | `finalize` | `(void) -> void` | both | module tear-down, invoked by `pmix_psec_close` for each active module at framework close (e.g. `munge_finalize` frees the cached credential) |
 | `create_cred` | `(peer, directives, ndirs, &info, &ninfo, cred)` | client | build a credential blob for this process |
-| `client_handshake` | `(int sd)` | client | run the client half of a live handshake over socket `sd` |
-| `validate_cred` | `(peer, directives, ndirs, &info, &ninfo, cred)` | server | check a received credential; `NULL` signals "I need a handshake instead" |
-| `server_handshake` | `(int sd)` | server | run the server half of a live handshake over socket `sd` |
+| `client_handshake` | `(peer, sd)` | client | run the client half of a live handshake over socket `sd`; `peer` is the server |
+| `validate_cred` | `(peer, directives, ndirs, &info, &ninfo, cred)` | server | check a received credential, or return `PMIX_ERR_READY_FOR_HANDSHAKE`; `NULL` signals "always a handshake instead" |
+| `server_handshake` | `(peer, sd)` | server | run the server half of a live handshake with `peer` over socket `sd`; may settle the peer's identity like `validate_cred` |
 
 The `directives`/`info` pairs carry the attribute arrays required of
 every PMIx interface: `directives` are caller inputs (e.g.
@@ -297,7 +323,12 @@ which is what converts it into a real status.
 
 So `validate_cred == NULL` is not an oversight in `dummy_handshake`: it
 is the switch that tells the framework to take the handshake path. Keep
-that invariant in mind before "filling in" a `NULL` slot.
+that invariant in mind before "filling in" a `NULL` slot. (A module with
+a `validate_cred` reaches the same path by returning the signal itself.)
+
+The handshake slots took only the socket until the psec interface went
+to 2.0.0; they now take the peer as well, so a handshake can see the
+identity the peer was registered or connected as.
 
 ## The `PMIX_PSEC_*` macros ([`psec.h`](psec.h))
 
@@ -342,7 +373,7 @@ Default priorities come from each component's `component_query`:
 |-----------|----------|-------|-------------|
 | `dummy_handshake` | 100 | handshake | built only with `--enable-dummy-handshake`; always active when built |
 | `munge` | 80 | single-shot | built only if `--with-munge` was given and libmunge is found; `init` succeeds only if the `munged` daemon issues a credential |
-| `native` | 10 | single-shot | always (no `configure.m4`, no gate); authenticates **local peers only** |
+| `native` | 10 | single-shot + handshake | always (no `configure.m4`, no gate); authenticates **peers on this host's kernel**, containers included |
 | `ssl` | 5 | single-shot | built only with `--with-openssl`; active only when `psec_ssl_ca_file` or a cert/key pair is configured; authenticates remote peers by X.509 certificate |
 | `none` | 0 | single-shot (no-op) | **only** if the `psec` MCA value explicitly names `none` (its `component_open` checks) |
 
@@ -412,7 +443,7 @@ src/mca/psec/
 │   ├── psec_base_frame.c     open/close, framework decl, class instance (no MCA params)
 │   ├── psec_base_select.c    query components, build priority-ordered actives list
 │   └── psec_base_fns.c       get_available_modules + assign_module (name lookup)
-├── native/                   uid/gid credential, checked against the kernel's socket owner (default, always available)
+├── native/                   uid/gid from the kernel: TCP socket owner, else an AF_UNIX handshake (default, always available)
 ├── none/                     no-op module (opt-in only)
 ├── munge/                    MUNGE credentials (conditional on libmunge)
 ├── ssl/                      X.509-signed credentials for remote peers (conditional on OpenSSL)
@@ -459,7 +490,9 @@ make`.
   treat it like the `preg` tag or a `bfrops` version.
 - **`validate_cred == NULL` means "handshake."** Do not fill it in for a
   handshake-style module, and do not null it out for a credential-style
-  one — `PMIX_PSEC_VALIDATE_CONNECTION` branches on exactly this.
+  one — `PMIX_PSEC_VALIDATE_CONNECTION` branches on exactly this. A
+  credential module that sometimes needs a handshake returns
+  `PMIX_ERR_READY_FOR_HANDSHAKE` from `validate_cred` instead.
 - **Match `create_cred` to `validate_cred` and `client_handshake` to
   `server_handshake`.** The two ends of a connection may be built from
   different PMIx releases; a change to what one side emits must be a
