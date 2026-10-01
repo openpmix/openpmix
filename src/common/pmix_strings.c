@@ -195,6 +195,9 @@ PMIX_EXPORT char *PMIx_Info_directives_string(pmix_info_directives_t directives)
             PMIx_Argv_append_nosize(&tmp, "PERSISTENT");
         }
     }
+    if (PMIX_INFO_RELAYED & directives) {
+        PMIx_Argv_append_nosize(&tmp, "RELAYED");
+    }
     if (NULL != tmp) {
         ret = PMIx_Argv_join(tmp, ':');
         PMIx_Argv_free(tmp);

@@ -2053,6 +2053,10 @@ typedef uint32_t pmix_info_directives_t;
 #define PMIX_INFO_REQD_PROCESSED    0x00000004      // reqd attribute has been processed
 #define PMIX_INFO_QUALIFIER         0x00000008      // info is a qualifier to the primary value
 #define PMIX_INFO_PERSISTENT        0x00000010      // do not release included value
+#define PMIX_INFO_RELAYED           0x00000020      // a PMIX_USERID or PMIX_GRPID a server is relaying for
+                                                    // the process that made the request - kept, rather than
+                                                    // replaced with the relaying server's own. Honored only
+                                                    // when set by a PMIx server library
 /* the top 16-bits are reserved for internal use by
  * implementers - these may be changed inside the
  * PMIx library */

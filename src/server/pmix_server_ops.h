@@ -364,15 +364,18 @@ PMIX_EXPORT void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t 
 /* Mark an array about to be passed up to the host with the identity of
  * the peer the request came from, so it holds exactly one PMIX_USERID and
  * one PMIX_GRPID:
- *  - PMIX_USERID is always the uid recorded for the peer at connection;
- *    any the requester supplied is dropped.
- *  - PMIX_GRPID is the requester's choice if it supplied one - a group to
- *    charge the work to, which the host decides whether to accept - given
- *    as a number or a group name, and always passed on as a uint32;
- *    otherwise the gid recorded at connection. Only the first supplied
- *    PMIX_GRPID counts. If it cannot be resolved the array is left as it
- *    was and the error is returned (PMIX_ERR_NOT_FOUND for an unknown
- *    name, PMIX_ERR_BAD_PARAM for a value of the wrong type).
+ *  - PMIX_USERID is the uid recorded for the peer at connection; any the
+ *    requester supplied is dropped - unless it is marked
+ *    PMIX_INFO_RELAYED, a server relaying the request for the process that
+ *    made it, and then it is kept, still marked.
+ *  - PMIX_GRPID likewise, if relayed. Otherwise it is the requester's
+ *    choice if it supplied one - a group to charge the work to, which the
+ *    host decides whether to accept - given as a number or a group name,
+ *    and always passed on as a uint32; otherwise the gid recorded at
+ *    connection. Only the first supplied PMIX_GRPID counts. If it cannot
+ *    be resolved the array is left as it was and the error is returned
+ *    (PMIX_ERR_NOT_FOUND for an unknown name, PMIX_ERR_BAD_PARAM for a
+ *    value of the wrong type).
  * The pair is appended at the end of the array. The array is replaced by
  * a new one - *info and *ninfo are updated, and the old array is released
  * - so the caller must own it. A NULL/zero array is fine and comes back

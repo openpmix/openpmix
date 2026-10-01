@@ -25,6 +25,7 @@ C Syntax
    #define PMIX_INFO_REQD_PROCESSED    0x00000004   // reqd attribute has been processed
    #define PMIX_INFO_QUALIFIER         0x00000008   // info is a qualifier to the primary value
    #define PMIX_INFO_PERSISTENT        0x00000010   // do not release included value
+   #define PMIX_INFO_RELAYED           0x00000020   // identity relayed for the requesting process
    /* the top 16-bits are reserved for internal use */
    #define PMIX_INFO_DIR_RESERVED      0xffff0000
 
@@ -63,6 +64,9 @@ denoting a particular characteristic of that structure. Defined values include:
    * - `PMIX_INFO_PERSISTENT`
      - 0x00000010
      - The included :ref:`pmix_value_t <man5-pmix_value_t>` must not be free'd
+   * - `PMIX_INFO_RELAYED`
+     - 0x00000020
+     - A ``PMIX_USERID`` or ``PMIX_GRPID`` a server is relaying for the process that made the request, to be kept rather than replaced with the relaying process's own identity. Honored only when sent by a PMIx server library - see :ref:`PMIx_Info_relayed(3) <man3-PMIx_Info_relayed>`
    * - `PMIX_INFO_DIR_RESERVED`
      - 0xffff0000
      - The top 16-bits are reserved for internal use by implementers - these may be changed inside the PMIx library
