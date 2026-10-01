@@ -395,7 +395,7 @@ Status
      - Output file ownership and modes; server-mediated job data for
        requesters the shared-memory file mode does not admit, with
        shared-memory segments read-only to their readers.
-     - Done (in review)
+     - Done
    * - 5
      - ``pmix_server_access_check()``, the rule as a function a host
        calls with its own copies of a job's access list and the
@@ -405,4 +405,4 @@ Status
        names. PRRTE carries each job's access list (``--rtos
        users=,groups=``, and ``PMIX_ACCESS_PERMISSIONS`` at spawn) and
        applies the rule to the operations it performs.
-     - Done (in review)
+     - Done
