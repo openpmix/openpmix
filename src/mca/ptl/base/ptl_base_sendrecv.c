@@ -43,6 +43,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/psensor/psensor.h"
+#include "src/mca/pstat/base/base.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
@@ -223,6 +224,11 @@ static void lost_connection(pmix_peer_t *peer)
         } else if (!PMIX_PEER_IS_TOOL(peer)) {
             /* cleanup any sensors that are monitoring them */
             pmix_psensor.stop(peer, NULL);
+        }
+        /* end the resource monitors this peer asked for, and stop
+         * sampling it in anyone else's - its pid is no longer its own */
+        if (peer != pmix_client_globals.myserver) {
+            pmix_pstat_base_peer_lost((struct pmix_peer_t *) peer);
         }
         complete_recvs(peer);
         if (!pmix_globals.mypeer->finalized && !peer->finalized) {

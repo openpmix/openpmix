@@ -64,6 +64,12 @@ typedef struct {
 
 PMIX_EXPORT extern pmix_pstat_base_t pmix_pstat_base;
 
+/* A peer has left this server: the periodic monitors it asked for end
+ * with it (once no clone of it under the same name is still connected).
+ * Called on the progress thread by the connection teardown; a no-op
+ * unless the framework is open. */
+PMIX_EXPORT void pmix_pstat_base_peer_lost(struct pmix_peer_t *peer);
+
 typedef struct {
     bool cmdline;
     bool pctcpu;
@@ -136,6 +142,21 @@ typedef struct {
     memset(a, 1, sizeof(pmix_ndstats_t))
 
 
+/* One process, or set of processes, a monitor samples. A process is known
+ * by its pid - the one the host recorded for a PMIx process it launched
+ * (PMIX_PROC_PID), or one the requester named - and it is read from the
+ * kernel. Nothing the process said about itself is used. */
+typedef struct {
+    pmix_list_item_t super;
+    bool named;         // a PMIx process: name is valid
+    pmix_proc_t name;
+    pid_t pid;          // -1: every process of owner on this node
+    uid_t owner;        // the uid the process must belong to when sampled;
+                        // (uid_t) -1: any (a PMIx process whose job has no
+                        // recorded owner)
+} pmix_pstat_target_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pstat_target_t);
+
 typedef struct {
     pmix_list_item_t super;
     pmix_proc_t requestor;
@@ -145,7 +166,7 @@ typedef struct {
     bool active;
     uint32_t rate;
     pmix_status_t eventcode;
-    pmix_list_t peers;
+    pmix_list_t targets;  // pmix_pstat_target_t: the processes to sample
     char **disks;
     char **nets;
     pmix_procstats_t pstats;
@@ -195,31 +216,44 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pstat_op_t);
         pmix_event_add(&(p)->ev, &(p)->tv);                                     \
     } while (0)
 
-/* An op outlives the request that built it: a periodic monitor holds its
- * peer list until it is cancelled or the framework closes, while the
- * peers themselves are released the moment their client disconnects or
- * its namespace is deregistered. A borrowed pointer would therefore be
- * dangling by the next timer fire, so the list takes a reference on each
- * peer it records. pmix_peerlist_t itself has no destructor, so the
- * matching release is in opdes() in pstat_base_frame.c - the two have to
- * move together. */
-#define PMIX_PSTAT_APPEND_PEER_UNIQUE(pl, pr)                                   \
-    do {                                                                        \
-        bool f = false;                                                         \
-        pmix_peerlist_t *_p;                                                    \
-        PMIX_LIST_FOREACH(_p, pl, pmix_peerlist_t) {                            \
-            if (_p->peer == (pr)) {                                             \
-                f = true;                                                       \
-                break;                                                          \
-            }                                                                   \
-        }                                                                       \
-        if (!f) {                                                               \
-            _p = PMIX_NEW(pmix_peerlist_t);                                     \
-            PMIX_RETAIN(pr);                                                    \
-            _p->peer = (pr);                                                    \
-            pmix_list_append(pl, &(_p->super));                                 \
-        }                                                                       \
-    } while (0)
+/* Build the processes a PMIX_MONITOR_PROC_RESOURCE_USAGE request covers,
+ * from its directives, applying who may see what:
+ *   - PMIX_MONITOR_TARGET_PROCS: PMIx processes of this node, by the pid
+ *     the host recorded for each (PMIX_PROC_PID; a process with none is
+ *     skipped). The requester must be allowed each job it names;
+ *   - PMIX_MONITOR_TARGET_PIDS: processes of this node, which the
+ *     requester must own (as the kernel reports it). A pid of -1 is every
+ *     process with the requester's uid;
+ *   - neither: every PMIx process of this node with a recorded pid, in the
+ *     jobs the requester may access.
+ * The host is the requester for a request that is not from one of our
+ * clients or tools, and is not restricted - see
+ * pmix_server_access_requester(). Named targets the requester may not see
+ * fail the request with PMIX_ERR_NO_PERMISSIONS. */
+PMIX_EXPORT pmix_status_t pmix_pstat_base_targets(const pmix_proc_t *requestor,
+                                                  const pmix_info_t directives[], size_t ndirs,
+                                                  pmix_list_t *targets);
+
+/* The uid that owns process pid, as the kernel reports it. Returns
+ * PMIX_ERR_NOT_FOUND for no such process, PMIX_ERR_NOT_SUPPORTED where
+ * this platform offers no way to ask */
+PMIX_EXPORT pmix_status_t pmix_pstat_base_pid_owner(pid_t pid, uid_t *owner);
+
+/* A component's sampler for one process: add its statistics to answer.
+ * PMIX_ERR_NOT_FOUND means the process is gone, or is not the one the
+ * target means - skipped, not an error */
+typedef pmix_status_t (*pmix_pstat_base_sample_fn_t)(void *answer,
+                                                     const pmix_pstat_target_t *tgt,
+                                                     pid_t pid, pmix_procstats_t *pst);
+
+/* Sample every process an op covers, with the component's sampler. A
+ * target of every process of a uid is looked up afresh each time, as
+ * processes come and go */
+PMIX_EXPORT pmix_status_t pmix_pstat_base_sample_targets(void *answer, pmix_pstat_op_t *op,
+                                                         pmix_pstat_base_sample_fn_t fn);
+
+/* Every process on this node owned by uid. The caller frees *pids */
+PMIX_EXPORT pmix_status_t pmix_pstat_base_pids_of(uid_t uid, pid_t **pids, size_t *npids);
 
 PMIX_EXPORT void pmix_pstat_parse_procstats(pmix_procstats_t *pst,
                                             pmix_info_t *info, size_t sz);

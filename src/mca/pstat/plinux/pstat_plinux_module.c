@@ -31,6 +31,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -155,15 +156,84 @@ static float convert_value(char *value)
     return fval;
 }
 
-static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
+/* Open /proc/<pid> as a directory, if the process there belongs to
+ * owner ((uid_t) -1: anyone). We read with our own privilege, so the
+ * owner check is what keeps a sample to the process it is meant to be -
+ * a pid the host recorded outlives its process and is reused. Everything
+ * read afterwards is read relative to this descriptor, which keeps naming
+ * the process that was checked: if it exits, the reads fail rather than
+ * reaching whatever takes the pid next. The directory's owner is the
+ * process's effective uid (root for a process that is not dumpable).
+ * Returns -1 when there is no such process of owner's. */
+static int open_proc(pid_t pid, uid_t owner)
+{
+    char path[64];
+    struct stat st;
+    int dirfd;
+
+    if (0 >= pid ||
+        sizeof(path) <= (size_t) pmix_snprintf(path, sizeof(path), "/proc/%d", (int) pid)) {
+        return -1;
+    }
+    dirfd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (0 > dirfd) {
+        return -1;
+    }
+    if (0 != fstat(dirfd, &st) || ((uid_t) -1 != owner && st.st_uid != owner)) {
+        pmix_output_verbose(5, pmix_pstat_base_framework.framework_output,
+                            "pstat: pid %d is not a process of uid %lu - not sampled",
+                            (int) pid, (unsigned long) owner);
+        close(dirfd);
+        return -1;
+    }
+    return dirfd;
+}
+
+/* one of the process's files, opened relative to its /proc directory */
+static FILE *open_proc_file(int dirfd, const char *name)
+{
+    int fd;
+    FILE *fp;
+
+    fd = openat(dirfd, name, O_RDONLY | O_CLOEXEC);
+    if (0 > fd) {
+        return NULL;
+    }
+    fp = fdopen(fd, "r");
+    if (NULL == fp) {
+        close(fd);
+    }
+    return fp;
+}
+
+static pmix_status_t proc_stat_at(void *answer, const pmix_pstat_target_t *tgt, pid_t pid,
+                                  pmix_procstats_t *pst, int dirfd);
+
+static pmix_status_t proc_stat(void *answer, const pmix_pstat_target_t *tgt, pid_t pid,
                                pmix_procstats_t *pst)
+{
+    pmix_status_t rc;
+    int dirfd;
+
+    dirfd = open_proc(pid, tgt->owner);
+    if (0 > dirfd) {
+        /* gone, or not the owner's - our caller skips it, as it does a
+         * process that exited while a monitor was running */
+        return PMIX_ERR_NOT_FOUND;
+    }
+    rc = proc_stat_at(answer, tgt, pid, pst, dirfd);
+    close(dirfd);
+    return rc;
+}
+
+static pmix_status_t proc_stat_at(void *answer, const pmix_pstat_target_t *tgt, pid_t pid,
+                                  pmix_procstats_t *pst, int dirfd)
 {
     pmix_proc_t proc;
     pmix_status_t rc;
     char data[4096], state[2];
     int fd;
     int32_t i32;
-    size_t numchars;
     char *ptr, *eptr;
     int len;
     unsigned long long itime;
@@ -180,15 +250,17 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     time(&sample_time);
     cache = PMIx_Info_list_start();
 
-    // start with the proc ID
-    PMIx_Load_procid(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-    rc = PMIx_Info_list_add(cache, PMIX_PROCID, &proc, PMIX_PROC);
-    if (PMIX_SUCCESS != rc) {
-        PMIx_Info_list_release(cache);
-        return rc;
+    // start with the proc ID, for a PMIx process
+    if (tgt->named) {
+        PMIx_Load_procid(&proc, tgt->name.nspace, tgt->name.rank);
+        rc = PMIx_Info_list_add(cache, PMIX_PROCID, &proc, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            PMIx_Info_list_release(cache);
+            return rc;
+        }
     }
     // add the pid
-    rc = PMIx_Info_list_add(cache, PMIX_PROC_PID, &peer->info->pid, PMIX_PID);
+    rc = PMIx_Info_list_add(cache, PMIX_PROC_PID, &pid, PMIX_PID);
     if (PMIX_SUCCESS != rc) {
         PMIx_Info_list_release(cache);
         return rc;
@@ -200,14 +272,8 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
         return rc;
     }
 
-    /* create the stat filename for this proc */
-    numchars = pmix_snprintf(data, sizeof(data), "/proc/%d/stat", peer->info->pid);
-    if (numchars >= sizeof(data)) {
-        PMIx_Info_list_release(cache);
-        return PMIX_ERROR;
-    }
-
-    if (0 > (fd = open(data, O_RDONLY))) {
+    /* the process's stat file */
+    if (0 > (fd = openat(dirfd, "stat", O_RDONLY | O_CLOEXEC))) {
         /* can't access this file - most likely, this means we
          * aren't really on a supported system, or the proc no
          * longer exists. Report it as "not found" rather than a
@@ -380,15 +446,9 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     }
     /* that's all we care about from this data - ignore the rest */
 
-    /* now create the status filename for this proc */
+    /* now the status file */
     memset(data, 0, sizeof(data));
-    numchars = pmix_snprintf(data, sizeof(data), "/proc/%d/status", peer->info->pid);
-    if (numchars >= sizeof(data)) {
-        PMIx_Info_list_release(cache);
-        return PMIX_ERROR;
-    }
-
-    if (NULL == (fp = fopen(data, "r"))) {
+    if (NULL == (fp = open_proc_file(dirfd, "status"))) {
         /* ignore this */
         goto complete;
     }
@@ -434,15 +494,9 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     }
     fclose(fp);
 
-    /* now create the smaps filename for this proc */
+    /* now the smaps file */
     memset(data, 0, sizeof(data));
-    numchars = pmix_snprintf(data, sizeof(data), "/proc/%d/smaps", peer->info->pid);
-    if (numchars >= sizeof(data)) {
-        PMIx_Info_list_release(cache);
-        return PMIX_ERROR;
-    }
-
-    if (NULL == (fp = fopen(data, "r"))) {
+    if (NULL == (fp = open_proc_file(dirfd, "smaps"))) {
         /* ignore this */
         goto complete;
     }
@@ -1042,7 +1096,6 @@ static void update(int sd, short args, void *cbdata)
 {
     pmix_pstat_op_t *op = (pmix_pstat_op_t*)cbdata;
     void *answer, *ilist;
-    pmix_peerlist_t *plist;
     pmix_status_t rc;
     pmix_data_array_t darray;
     pmix_cb_t *cb;
@@ -1090,20 +1143,10 @@ static void update(int sd, short args, void *cbdata)
 
     // check for pstat request
     if (0 != memcmp(&op->pstats, &zproc, sizeof(pmix_procstats_t))) {
-        PMIX_LIST_FOREACH(plist, &op->peers, pmix_peerlist_t) {
-            rc = proc_stat(answer, plist->peer, &op->pstats);
-            if (PMIX_ERR_NOT_FOUND == rc) {
-                /* the process is gone - its /proc entry disappeared
-                 * between our being handed the peer and our reading it.
-                 * That is ordinary, and the remaining peers still have
-                 * data to report, so skip it rather than abandoning the
-                 * whole sample */
-                continue;
-            }
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                goto error;
-            }
+        rc = pmix_pstat_base_sample_targets(answer, op, proc_stat);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto error;
         }
     }
 
@@ -1267,13 +1310,8 @@ static pmix_status_t query(pmix_proc_t *requestor,
 {
     pmix_info_t *iptr;
     size_t sz;
-    size_t n, m;
-    int k;
-    pmix_peer_t *ptr;
-    pmix_proc_t proc, *procs;
-    pmix_node_pid_t *ppid;
+    size_t n;
     pmix_status_t rc;
-    bool tgtprocsgiven;
     pmix_data_array_t darray;
     pmix_pstat_op_t *op;
     pmix_netstats_t znet;
@@ -1354,7 +1392,6 @@ static pmix_status_t query(pmix_proc_t *requestor,
 
     // see what data we are being asked to collect
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_PROC_RESOURCE_USAGE)) {
-        tgtprocsgiven = false;
         // see which values are to be returned
         rc = monitor_fields(monitor, &iptr, &sz);
         if (PMIX_SUCCESS != rc) {
@@ -1363,100 +1400,8 @@ static pmix_status_t query(pmix_proc_t *requestor,
         }
         pmix_pstat_parse_procstats(&op->pstats, iptr, sz);
 
-        // we already know this request involves us since it was checked
-        // before calling us, so see which of our processes are included
-        if (NULL == directives) {
-            // all of our processes are included - no ID or rate can be included
-            for (k=0; k < pmix_server_globals.clients.size; k++) {
-                ptr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, k);
-                if (NULL == ptr) {
-                    continue;
-                }
-                PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, ptr);
-            }
-            goto processprocs;
-        }
-
-        // check for specific procs and directives
-        for (n=0; n < ndirs; n++) {
-            if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_TARGET_PROCS)) {
-                if (PMIX_DATA_ARRAY != directives[n].value.type ||
-                    NULL == directives[n].value.data.darray ||
-                    PMIX_PROC != directives[n].value.data.darray->type ||
-                    NULL == directives[n].value.data.darray->array) {
-                    PMIX_RELEASE(op);
-                    return PMIX_ERR_BAD_PARAM;
-                }
-                tgtprocsgiven = true;
-                // they specified the procs
-                procs = (pmix_proc_t*)directives[n].value.data.darray->array;
-                sz = directives[n].value.data.darray->size;
-                for (m=0; m < sz; m++) {
-                    for (k=0; k < pmix_server_globals.clients.size; k++) {
-                        ptr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, k);
-                        if (NULL == ptr) {
-                            continue;
-                        }
-                        PMIx_Load_procid(&proc, ptr->info->pname.nspace, ptr->info->pname.rank);
-                        if (PMIx_Check_procid(&procs[m], &proc)) {
-                            PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, ptr);
-                            break;
-                       }
-                    }
-                }
-            }
-
-            if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_TARGET_PIDS)) {
-                if (PMIX_DATA_ARRAY != directives[n].value.type ||
-                    NULL == directives[n].value.data.darray ||
-                    PMIX_NODE_PID != directives[n].value.data.darray->type ||
-                    NULL == directives[n].value.data.darray->array) {
-                    PMIX_RELEASE(op);
-                    return PMIX_ERR_BAD_PARAM;
-                }
-                tgtprocsgiven = true;
-                // is our node included?
-                ppid = (pmix_node_pid_t*)directives[n].value.data.darray->array;
-                sz = directives[n].value.data.darray->size;
-                for (m=0; m < sz; m++) {
-                    // see if this node is us
-                    if (ppid[m].nodeid == pmix_globals.nodeid ||
-                        pmix_check_local(ppid[m].hostname)) {
-                        // is this one of our procs?
-                        for (k=0; k < pmix_server_globals.clients.size; k++) {
-                            ptr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, k);
-                            if (NULL == ptr) {
-                                continue;
-                            }
-                            if (ppid[m].pid == ptr->info->pid) {
-                                PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, ptr);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // when we come out of the loop, it is possible that we were not
-        // given any target procs via any of the attributes. In this case,
-        // we assume that we are to take all local procs
-        if (!tgtprocsgiven) {
-            for (k=0; k < pmix_server_globals.clients.size; k++) {
-                ptr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, k);
-                if (NULL == ptr) {
-                    continue;
-                }
-                PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, ptr);
-            }
-        }
-
-processprocs:
-        /* only the processes of jobs the requester may access - see
-         * docs/security-plan.rst. Named targets it may not access
-         * refuse the request; "all of our processes" leaves them out */
-        rc = pmix_server_access_filter_peers(requestor, directives, ndirs, &op->peers,
-                                             tgtprocsgiven);
+        // which processes, and which of them the requester may see
+        rc = pmix_pstat_base_targets(requestor, directives, ndirs, &op->targets);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(op);
             return rc;

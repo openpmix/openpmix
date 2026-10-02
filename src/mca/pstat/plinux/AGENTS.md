@@ -74,11 +74,13 @@ framework guide. Its shape:
    `..._NET_...`. Each block:
    - parses its requested fields out of `monitor->value` (a data array)
      with the corresponding base helper;
-   - for the proc block, resolves the **target peers** — from
-     `PMIX_MONITOR_TARGET_PROCS` / `PMIX_MONITOR_TARGET_PIDS`, or, if
-     neither was given, *all* local clients — using
-     `PMIX_PSTAT_APPEND_PEER_UNIQUE` against
-     `pmix_server_globals.clients`;
+   - for the proc block, builds the **targets** with
+     `pmix_pstat_base_targets()` (see "Which processes a monitor
+     samples" in [`../AGENTS.md`](../AGENTS.md)). `proc_stat` opens
+     `/proc/<pid>` as a directory, refuses it unless its owner is the
+     target's, and reads `stat`, `status` and `smaps` relative to that
+     descriptor, so a process that exits and a pid that is reused both
+     fail the read rather than reaching another process;
    - runs `update()` synchronously via a stack `op->cb` to produce the
      immediate `*results`;
    - if a rate was given, appends the op to `pmix_pstat_base.ops` and arms

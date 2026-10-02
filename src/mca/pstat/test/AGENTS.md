@@ -57,8 +57,8 @@ readers differ. Concretely:
 - **`query`**, **`monitor_fields`** and **`update`** are the *same code*
   as `plinux`'s — not merely the same shape. Same cancel fast-path, same
   op construction, same `PMIX_MONITOR_ID` / `PMIX_MONITOR_RESOURCE_RATE`
-  parsing and validation, same four monitor-key branches, same peer
-  selection against `pmix_server_globals.clients`, same
+  parsing and validation, same four monitor-key branches, same target
+  resolution through `pmix_pstat_base_targets()`, same
   synchronous-`op->cb` collection and error reporting, same periodic
   timer arming, and the same `PMIX_RANGE_CUSTOM` notification targeted at
   the requestor.
@@ -89,8 +89,9 @@ readers differ. Concretely:
 The four readers have the same signatures and emit the same attributes as
 `plinux`'s, but with hard-coded values and no file I/O:
 
-- **`proc_stat`** — for the given peer, emits the real proc ID / pid /
-  hostname (those *are* known), then fixed values for each requested
+- **`proc_stat`** — for the given target, emits the real proc ID (for a
+  PMIx process) / pid / hostname (those *are* known), then fixed values
+  for each requested
   field: state `"R"`, cmdline `"test-stats"`, a `1234.5678` timeval,
   priority 5, 10 threads, CPU 2, and fixed floats for peak-vsize / vsize /
   RSS / PSS. Tagged with a real `PMIX_PROC_SAMPLE_TIME`.
