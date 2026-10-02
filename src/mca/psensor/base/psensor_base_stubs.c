@@ -14,7 +14,9 @@
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 
+#include "src/include/pmix_globals.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 
 #include "src/mca/psensor/base/base.h"
 
@@ -83,4 +85,69 @@ pmix_status_t pmix_psensor_base_stop(pmix_peer_t *requestor, char *id)
     }
 
     return ret;
+}
+
+/* one peer's count of live monitors */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_peer_t *peer; // not retained - each claim's tracker holds it
+    int count;
+} psensor_claim_t;
+static PMIX_CLASS_INSTANCE(psensor_claim_t, pmix_list_item_t, NULL, NULL);
+
+pmix_status_t pmix_psensor_base_claim(pmix_peer_t *peer)
+{
+    psensor_claim_t *cl, *found = NULL;
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    pmix_mutex_lock(&pmix_psensor_base.lock);
+    PMIX_LIST_FOREACH (cl, &pmix_psensor_base.claims, psensor_claim_t) {
+        if (cl->peer == peer) {
+            found = cl;
+            break;
+        }
+    }
+    if (NULL == found) {
+        found = PMIX_NEW(psensor_claim_t);
+        if (NULL == found) {
+            rc = PMIX_ERR_NOMEM;
+            goto done;
+        }
+        found->peer = peer;
+        found->count = 0;
+        pmix_list_append(&pmix_psensor_base.claims, &found->super);
+    }
+    if (found->count >= pmix_psensor_base.max_per_peer) {
+        pmix_output_verbose(2, pmix_psensor_base_framework.framework_output,
+                            "psensor: %s already holds %d monitors - refused",
+                            PMIX_PEER_PRINT(peer), found->count);
+        if (0 == found->count) {
+            pmix_list_remove_item(&pmix_psensor_base.claims, &found->super);
+            PMIX_RELEASE(found);
+        }
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
+        goto done;
+    }
+    ++found->count;
+
+done:
+    pmix_mutex_unlock(&pmix_psensor_base.lock);
+    return rc;
+}
+
+void pmix_psensor_base_unclaim(pmix_peer_t *peer)
+{
+    psensor_claim_t *cl;
+
+    pmix_mutex_lock(&pmix_psensor_base.lock);
+    PMIX_LIST_FOREACH (cl, &pmix_psensor_base.claims, psensor_claim_t) {
+        if (cl->peer == peer) {
+            if (0 == --cl->count) {
+                pmix_list_remove_item(&pmix_psensor_base.claims, &cl->super);
+                PMIX_RELEASE(cl);
+            }
+            break;
+        }
+    }
+    pmix_mutex_unlock(&pmix_psensor_base.lock);
 }
