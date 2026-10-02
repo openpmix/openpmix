@@ -317,9 +317,10 @@ pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info
         PMIx_Info_relayed(&new[m]);
     }
     ++m;
-    if (NULL != old) {
-        PMIx_Info_free(old, 0);
-    }
+    /* only the block is left to release - its entries were moved or
+     * destructed above. PMIx_Info_free will not do it: given no
+     * elements, it frees nothing */
+    free(old);
     *info = new;
     *ninfo = m;
     return PMIX_SUCCESS;
@@ -528,9 +529,10 @@ pmix_status_t pmix_server_add_requester_proc(pmix_peer_t *peer, pmix_info_t **in
     PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
     PMIx_Info_load(&new[m], PMIX_REQUESTOR, &proc, PMIX_PROC);
     ++m;
-    if (NULL != old) {
-        PMIx_Info_free(old, 0);
-    }
+    /* only the block is left to release - its entries were moved or
+     * destructed above. PMIx_Info_free will not do it: given no
+     * elements, it frees nothing */
+    free(old);
     *info = new;
     *ninfo = m;
     return PMIX_SUCCESS;
