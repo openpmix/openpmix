@@ -44,7 +44,10 @@ pmix_psensor_base_module_t pmix_psensor = {
 pmix_psensor_base_t pmix_psensor_base = {
     .actives = PMIX_LIST_STATIC_INIT(pmix_psensor_base.actives),
     .evbase = NULL,
-    .selected = false
+    .selected = false,
+    .lock = PMIX_MUTEX_STATIC_INIT,
+    .claims = PMIX_LIST_STATIC_INIT(pmix_psensor_base.claims),
+    .max_per_peer = 16
 };
 
 static bool use_separate_thread = false;
@@ -56,6 +59,12 @@ static int pmix_psensor_register(pmix_mca_base_register_flag_t flags)
                                       "Use a separate thread for monitoring local procs",
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                       &use_separate_thread);
+    (void) pmix_mca_base_var_register("pmix", "psensor", "base", "max_monitors_per_peer",
+                                      "Most liveness monitors (heartbeat and file) one "
+                                      "process may hold at once; each is sampled on a timer "
+                                      "by the server (default: 16)",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_psensor_base.max_per_peer);
     return PMIX_SUCCESS;
 }
 

@@ -73,6 +73,7 @@ typedef struct {
     pmix_proc_t source;
     pmix_info_t *info;
     size_t ninfo;
+    bool claimed;  // holds one of the requestor's monitors - see pmix_psensor_base_claim
 } file_tracker_t;
 static void ft_constructor(file_tracker_t *ft)
 {
@@ -99,10 +100,14 @@ static void ft_constructor(file_tracker_t *ft)
     PMIX_PROC_CONSTRUCT(&ft->source);
     ft->info = NULL;
     ft->ninfo = 0;
+    ft->claimed = false;
 }
 static void ft_destructor(file_tracker_t *ft)
 {
     if (NULL != ft->requestor) {
+        if (ft->claimed) {
+            pmix_psensor_base_unclaim(ft->requestor);
+        }
         PMIX_RELEASE(ft->requestor);
     }
     if (NULL != ft->id) {
@@ -282,6 +287,14 @@ static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error, const pm
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* each requestor may hold only so many monitors */
+    rc = pmix_psensor_base_claim(requestor);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(ft);
+        return rc;
+    }
+    ft->claimed = true;
+
     /* need to push into our event base to add this to our trackers */
     pmix_event_assign(&ft->cdev, pmix_psensor_base.evbase, -1, EV_WRITE, add_tracker, ft);
     PMIX_POST_OBJECT(ft);
@@ -383,6 +396,18 @@ static void file_sample(int sd, short args, void *cbdata)
                              pmix_globals.myid.rank, ft->file);
         /* the timer re-arms itself, so we simply come back and look
          * again in case this file shows up */
+        return;
+    }
+    /* We stat with our own privilege, so only a file the requestor owns
+     * is watched. Any other is treated exactly as one that is not there:
+     * nothing is counted and nothing is raised. A file monitor may name a
+     * file that does not exist yet, which is why this is checked on every
+     * sample rather than once at the start. */
+    if (buf.st_uid != ft->requestor->info->uid) {
+        pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
+                             "[%s:%d] %s is not owned by uid %lu - not watched",
+                             pmix_globals.myid.nspace, pmix_globals.myid.rank, ft->file,
+                             (unsigned long) ft->requestor->info->uid);
         return;
     }
 
