@@ -206,12 +206,27 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
     DEBUG_WAKEUP_THREAD(&x->lock);
 }
 
+/* nobody waits for the inventory to be delivered, so its completion
+ * releases what was handed over */
+static void dlopcbfunc(pmix_status_t status, void *cbdata)
+{
+    myxfer_t *x = (myxfer_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
+    PMIX_RELEASE(x);
+}
+
 static void dlcbfunc(int sd, short flags, void *cbdata)
 {
     myxfer_t *x = (myxfer_t *) cbdata;
+    pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, flags);
 
-    PMIx_server_deliver_inventory(x->info, x->ninfo, NULL, 0, opcbfunc, (void *) x);
+    rc = PMIx_server_deliver_inventory(x->info, x->ninfo, NULL, 0, dlopcbfunc, (void *) x);
+    if (PMIX_SUCCESS != rc) {
+        /* the completion will not be called */
+        PMIX_RELEASE(x);
+    }
 }
 
 static void infocbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
