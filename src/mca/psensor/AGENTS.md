@@ -343,6 +343,25 @@ Two consequences to keep in mind when editing a sampler:
   callback runs. That delete is safe precisely because it is made on the
   base's own thread.
 
+### How many monitors a process may hold
+
+Every monitor is a timer the server services for as long as the monitor
+lives, so each process may hold at most
+`psensor_base_max_monitors_per_peer` of them (default 16), heartbeat and
+file together. A component calls `pmix_psensor_base_claim(requestor)`
+once it has validated a request and before it hands the tracker to the
+monitor thread, and fails the request with `PMIX_ERR_OUT_OF_RESOURCE`
+when the claim is refused; the tracker records that it holds a claim
+(`claimed`), and its destructor gives it back with
+`pmix_psensor_base_unclaim()` before releasing the requestor.
+
+The count lives in the base, under its own mutex, because the two ends
+run on different threads: `start` on the main progress thread, and the
+destructor wherever the last reference goes - the monitor thread, or the
+library's progress thread when an alert's notification completes. The
+count is keyed by the peer pointer, which is safe because every claim's
+tracker retains that peer.
+
 ## Monitor directives the components honor
 
 The `monitor` argument's **key** selects the component (above); its

@@ -56,6 +56,7 @@ typedef struct {
     pmix_proc_t source;
     pmix_info_t *info;
     size_t ninfo;
+    bool claimed;  // holds one of the requestor's monitors - see pmix_psensor_base_claim
     bool stopped;
 } pmix_heartbeat_trkr_t;
 
@@ -77,11 +78,15 @@ static void ft_constructor(pmix_heartbeat_trkr_t *ft)
     PMIX_PROC_CONSTRUCT(&ft->source);
     ft->info = NULL;
     ft->ninfo = 0;
+    ft->claimed = false;
     ft->stopped = false;
 }
 static void ft_destructor(pmix_heartbeat_trkr_t *ft)
 {
     if (NULL != ft->requestor) {
+        if (ft->claimed) {
+            pmix_psensor_base_unclaim(ft->requestor);
+        }
         PMIX_RELEASE(ft->requestor);
     }
     if (NULL != ft->id) {
@@ -264,6 +269,14 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
         pmix_list_prepend(&pmix_ptl_base.posted_recvs, &rcv->super);
         pmix_mca_psensor_heartbeat_component.recv_active = true;
     }
+
+    /* each requestor may hold only so many monitors */
+    rc = pmix_psensor_base_claim(requestor);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(ft);
+        return rc;
+    }
+    ft->claimed = true;
 
     /* need to push into our event base to add this to our trackers */
     pmix_event_assign(&ft->cdev, pmix_psensor_base.evbase, -1, EV_WRITE, add_tracker, ft);

@@ -84,7 +84,12 @@ the tracker — a property no one is required to preserve.
    of the three watch flags is set, release the tracker and return
    `PMIX_ERR_BAD_PARAM`. A file monitor needs both *how often* to look and
    *what* to look at.
-4. Thread-shift to `add_tracker`, which appends the tracker and arms a
+4. **Claim one of the requestor's monitors** with
+   `pmix_psensor_base_claim()`; past the limit it is
+   `PMIX_ERR_OUT_OF_RESOURCE`. The tracker's destructor gives the claim
+   back (see "How many monitors a process may hold" in the framework
+   [`AGENTS.md`](../AGENTS.md)).
+5. Thread-shift to `add_tracker`, which appends the tracker and arms a
    **persistent** timer (`file_sample`) at `tv`. It is persistent for a
    reason — see "The tracker timer is persistent" in the framework
    [`AGENTS.md`](../AGENTS.md); `file_sample` must never re-arm it.
@@ -103,6 +108,14 @@ Fires every `tv` seconds:
   persistent timer brings us back to look again. Note the consequence: a
   file that is *deleted* after being watched also stops the count rather
   than tripping it. That is deliberate, not an oversight.
+- **Only a file the requestor owns is watched.** The `stat` runs with the
+  server's privilege, so once it succeeds `st_uid` must equal the
+  requestor's uid; any other file is handled exactly like a missing one —
+  nothing counted, nothing raised. `start` accepts such a file all the
+  same: a request is answered alike whether the file exists, and whoever
+  owns it. The check runs on every sample because the file may not exist
+  yet when the monitor starts. `stat` follows symlinks, so it is the
+  target's owner that counts.
 - **The first sample only records a baseline** (`sampled`) and returns.
   There is nothing to compare against yet, and the constructor's zeroes
   are values a real file can genuinely have — a monitor watching the size

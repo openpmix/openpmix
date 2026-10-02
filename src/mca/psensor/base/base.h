@@ -24,6 +24,7 @@
 #include "src/mca/mca.h"
 
 #include "src/mca/psensor/psensor.h"
+#include "src/threads/pmix_mutex.h"
 
 BEGIN_C_DECLS
 
@@ -39,6 +40,11 @@ typedef struct {
     pmix_list_t actives;
     pmix_event_base_t *evbase;
     bool selected;
+    /* how many monitors each peer holds, across every component - see
+     * pmix_psensor_base_claim() */
+    pmix_mutex_t lock;
+    pmix_list_t claims;
+    int max_per_peer;
 } pmix_psensor_base_t;
 
 typedef struct {
@@ -56,6 +62,15 @@ PMIX_EXPORT pmix_status_t pmix_psensor_base_start(pmix_peer_t *requestor, pmix_s
                                                   const pmix_info_t directives[], size_t ndirs);
 
 PMIX_EXPORT pmix_status_t pmix_psensor_base_stop(pmix_peer_t *requestor, char *id);
+
+/* Count one more monitor held by peer, unless it already holds
+ * psensor_base_max_monitors_per_peer of them - then
+ * PMIX_ERR_OUT_OF_RESOURCE. A component claims before it builds a
+ * tracker, and the tracker releases the claim when it is destructed; the
+ * tracker retains the peer, so the peer outlives its claims. Either may
+ * be called from any thread. */
+PMIX_EXPORT pmix_status_t pmix_psensor_base_claim(pmix_peer_t *peer);
+PMIX_EXPORT void pmix_psensor_base_unclaim(pmix_peer_t *peer);
 
 END_C_DECLS
 #endif
