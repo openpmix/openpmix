@@ -140,7 +140,8 @@ The ``monitor`` argument may carry any of the following actions:
   (equivalent to calling :ref:`PMIx_Heartbeat(3) <man3-PMIx_Heartbeat>`). A server
   is not permitted to use this action and receives ``PMIX_ERR_BAD_PARAM``.
 * ``PMIX_MONITOR_FILE`` (char*) |mdash| register to monitor the named file for signs
-  of life.
+  of life. Only a file the caller owns is watched (see
+  `LIVENESS MONITORS`_).
 * ``PMIX_MONITOR_PROC_RESOURCE_USAGE`` / ``PMIX_MONITOR_NODE_RESOURCE_USAGE`` /
   ``PMIX_MONITOR_DISK_RESOURCE_USAGE`` / ``PMIX_MONITOR_NET_RESOURCE_USAGE``
   (pmix_data_array_t*) |mdash| report usage of the resources specified in the
@@ -206,6 +207,25 @@ General directives that may accompany any action include:
 When the library passes a monitoring request to its host environment, the
 directives carry the ``PMIX_USERID`` and ``PMIX_GRPID`` of the requesting
 process (see :ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>`).
+
+
+LIVENESS MONITORS
+-----------------
+
+Heartbeat and file monitors watch the process that requested them, and are run
+by that process's PMIx server.
+
+* **A file monitor watches only a file the caller owns.** The server examines
+  the file with its own privileges, so a file owned by any other user is treated
+  exactly as a file that does not exist: the request succeeds, and the monitor
+  never raises an alert for it. Ownership is checked each time the file is
+  examined, so a monitor may name a file that is created later.
+* **Each process may hold a limited number of liveness monitors**, heartbeat and
+  file monitors together - 16 by default, set by the
+  ``psensor_base_max_monitors_per_peer`` MCA parameter. A request beyond the
+  limit fails with ``PMIX_ERR_OUT_OF_RESOURCE``. A monitor stops counting
+  against the limit when it is cancelled, when a file monitor raises its alert,
+  or when the process disconnects.
 
 
 WHICH PROCESSES ARE MONITORED
@@ -387,6 +407,8 @@ was accepted for processing; the final status and any data are delivered to
   was relayed by a host without the requester's ``PMIX_USERID``. A request for
   every process on a node leaves out the processes the caller may not see
   instead. See `WHICH PROCESSES ARE MONITORED`_ and :doc:`/security-plan`.
+* ``PMIX_ERR_OUT_OF_RESOURCE`` |mdash| the caller already holds the most
+  liveness monitors it may (see `LIVENESS MONITORS`_).
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the request involves other nodes but the host
   environment provides no monitoring support.
 * ``PMIX_ERR_UNREACH`` |mdash| the caller is not a server and its local PMIx server
