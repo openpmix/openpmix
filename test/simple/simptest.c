@@ -343,6 +343,7 @@ int main(int argc, char **argv)
     size_t ninfo;
     mylock_t mylock;
     pmix_status_t code;
+    pmix_value_t value;
     sigset_t unblock;
 
     /* smoke test */
@@ -535,6 +536,15 @@ int main(int argc, char **argv)
             child = PMIX_NEW(wait_tracker_t);
             child->pid = pid;
             pmix_list_append(&children, &child->super);
+            /* record the pid, as a launcher does - it is how the server
+             * finds the process to sample for a resource monitor */
+            PMIX_VALUE_LOAD(&value, &pid, PMIX_PID);
+            rc = PMIx_Store_internal(&proc, PMIX_PROC_PID, &value);
+            PMIX_VALUE_DESTRUCT(&value);
+            if (PMIX_SUCCESS != rc) {
+                fprintf(stderr, "Storing the pid of rank %d failed: %s\n", n,
+                        PMIx_Error_string(rc));
+            }
         }
     }
     PMIx_Argv_free(client_argv);

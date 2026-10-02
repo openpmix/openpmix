@@ -117,8 +117,12 @@ The **directives** that shape a request:
      - sample **periodically** every N seconds (uint32) instead of once
    * - ``PMIX_MONITOR_TARGET_PROCS``
      - array of ``pmix_proc_t`` restricting which processes to sample
+       (each at the pid its host recorded; a wildcard rank is every local
+       rank of the job)
    * - ``PMIX_MONITOR_TARGET_PIDS``
-     - array of ``pmix_node_pid_t`` (node + pid) restricting the sample
+     - array of ``pmix_node_pid_t`` (node + pid) restricting the sample;
+       the requester must own each pid, and ``-1`` is every process the
+       requester owns
    * - ``PMIX_MONITOR_TARGET_NODES`` / ``PMIX_MONITOR_TARGET_NODEIDS``
      - restrict to named nodes / node IDs (used for scope resolution)
    * - ``PMIX_MONITOR_LOCAL_ONLY``
@@ -215,7 +219,7 @@ The request object and its two collection modes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Each request becomes a ``pmix_pstat_op_t`` (defined in
-``src/mca/pstat/base/base.h``) that records the target peers, the
+``src/mca/pstat/base/base.h``) that records the target processes, the
 selected fields (four all-``bool`` "which fields?" structs —
 ``pmix_procstats_t``, ``pmix_ndstats_t``, ``pmix_netstats_t``,
 ``pmix_dkstats_t``), the optional device-ID filters, and — for a periodic
@@ -224,8 +228,8 @@ monitor — a libevent timer and interval.
 A component's ``query`` fills the op (using the base parse helpers
 ``pmix_pstat_parse_procstats`` / ``_ndstats`` / ``_netstats`` /
 ``_dkstats`` to translate the requested-field array into the bool
-structs), selects the target peers with
-``PMIX_PSTAT_APPEND_PEER_UNIQUE``, and then drives a single collection
+structs), builds the target processes with ``pmix_pstat_base_targets()``
+(see below), and then drives a single collection
 function, ``update()``, which runs in one of two modes distinguished by
 whether ``op->cb`` is set:
 
@@ -242,6 +246,30 @@ whether ``op->cb`` is set:
   and instead of returning it, delivers it asynchronously with
   ``PMIx_Notify_event(op->eventcode, ...)`` targeted at the requestor,
   then re-arms the timer.
+
+Which processes are sampled, and for whom
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A process is found by its pid and read from the kernel; nothing a
+process reported about itself is used.
+
+* A process named in ``PMIX_MONITOR_TARGET_PROCS`` - or covered when no
+  targets are given - is sampled at the pid its host recorded for it
+  with ``PMIx_Store_internal(..., PMIX_PROC_PID, ...)``. A process with no
+  recorded pid is skipped. A host that wants its processes monitored must
+  therefore record their pids, as PRRTE does.
+* A pid named in ``PMIX_MONITOR_TARGET_PIDS`` must be owned by the
+  requester; ``-1`` means every process the requester owns on that node.
+* The requester must be allowed to access each job it names (the same
+  rule ``PMIx_Get`` applies), and "every process" covers only the jobs it
+  may access. The host is not restricted for its own requests; a request
+  it relays from another node (``PMIX_MONITOR_PROXY``) must carry the
+  requester's ``PMIX_USERID`` and is held to that user, and is refused
+  without one.
+* Each process must still belong to the expected owner when it is read,
+  since a recorded pid outlives its process and can be reused.
+
+A periodic monitor ends when the process that asked for it disconnects.
 
 A one-shot op is released immediately after the synchronous pass; a
 periodic op lives on ``pmix_pstat_base.ops`` until a
