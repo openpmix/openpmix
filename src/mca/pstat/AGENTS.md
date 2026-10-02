@@ -32,8 +32,8 @@ from the local operating system and returns them as `pmix_info_t` data.
 It answers four broad questions about the local node:
 
 - **Per-process** usage — CPU time, %CPU, priority, thread count, virtual
-  size, RSS, PSS, process state, etc. (for processes the local PMIx
-  server is hosting).
+  size, RSS, PSS, process state, etc. (for processes on the local node -
+  see "Which processes a monitor samples" below).
 - **Node** usage — load averages and the various memory/swap totals.
 - **Disk** usage — read/write counters from the block devices.
 - **Network** usage — per-interface byte/packet/error counters.
@@ -137,11 +137,13 @@ act on directly:
 | `PMIX_MONITOR_RESOURCE_RATE` | sample **periodically** every N seconds (uint32) rather than once |
 | `PMIX_MONITOR_TARGET_PROCS` | array of `pmix_proc_t` restricting which processes to sample |
 | `PMIX_MONITOR_TARGET_PIDS` | array of `pmix_node_pid_t` (node+pid) restricting the sample |
+| `PMIX_MONITOR_PROXY` / `PMIX_USERID` | a request the host relays from another node, and the user it is for |
 
 (Other monitor directives — `PMIX_MONITOR_LOCAL_ONLY`,
-`PMIX_MONITOR_TARGET_NODES`, `PMIX_MONITOR_PROXY`, `PMIX_SEND_HEARTBEAT`,
-heartbeat handling — are interpreted *above* the framework in
-`pmix_monitor.c` and never reach `query`.)
+`PMIX_MONITOR_TARGET_NODES`, `PMIX_SEND_HEARTBEAT`, heartbeat handling —
+are interpreted *above* the framework in `pmix_monitor.c`.
+`PMIX_MONITOR_PROXY` is read there too, to route the request, and again
+here, to decide whom it is for.)
 
 ## How a monitoring request flows
 
@@ -190,32 +192,54 @@ cancelled). Both paths are driven by the same per-request state object,
 | `active` | true once the periodic timer is armed |
 | `rate` | seconds between samples (0 ⇒ one-shot) |
 | `eventcode` | the status code to raise on each periodic update |
-| `peers` | `pmix_peerlist_t` list of the local processes to sample — **each entry holds a reference on its peer** |
+| `targets` | `pmix_pstat_target_t` list of the processes to sample (see below) |
 | `disks` / `nets` | argv of specific disk / network IDs to report (NULL ⇒ all) |
 | `pstats` / `dkstats` / `netstats` / `ndstats` | which individual fields to collect |
 | `cb` | non-NULL during a **synchronous** collection pass (see below) |
 
 The op's constructor/destructor live in `pstat_base_frame.c`
 (`PMIX_CLASS_INSTANCE(pmix_pstat_op_t, ...)`); the destructor deletes an
-armed timer and frees the id/disks/nets/peers, so releasing an op is the
-clean way to tear a monitor down.
+armed timer and frees the id/disks/nets/targets, so releasing an op is
+the clean way to tear a monitor down.
 
-**The peer list owns references.** An op outlives the request that built
-it — a periodic monitor lives until it is cancelled or the framework
-closes — while the `pmix_peer_t` objects it points at are released the
-moment their client disconnects or its namespace is deregistered
-(`pmix_server_globals.clients` holds the only other reference). A
-borrowed pointer would therefore be dangling by the next timer fire, and
-`update()` reads `peer->info->pid` on every sample. So
-`PMIX_PSTAT_APPEND_PEER_UNIQUE` takes a `PMIX_RETAIN` on the peer and
-`opdes()` releases it. `pmix_peerlist_t` has no destructor of its own —
-it is used nowhere but here — so those two are the whole pairing and
-have to move together. Keeping the peer alive also keeps `peer->info`
-alive, which the peer's own destructor releases.
+### Which processes a monitor samples
 
-A retained peer whose process is gone is not a problem: its `/proc` (or
-`libproc`) entry has disappeared, the component's per-process reader
-reports `PMIX_ERR_NOT_FOUND`, and `update()` skips it.
+A process is known by its **pid**, and read from the kernel. Nothing a
+process said about itself - in particular the pid a client puts in its
+connect-ack - is used to find it. `pmix_pstat_base_targets()` builds the
+op's target list from the directives, and is the only place that decides
+who may see what:
+
+| Request | Processes | Who may ask |
+|---------|-----------|-------------|
+| `PMIX_MONITOR_TARGET_PROCS` | each named PMIx process of this node, at the pid its host recorded with `PMIx_Store_internal(PMIX_PROC_PID)`; a wildcard rank is every local rank; a process with no recorded pid is skipped | the job access rule, per named job; naming one the requester may not access refuses the request |
+| `PMIX_MONITOR_TARGET_PIDS` | each pid on this node | the requester must own it (as the kernel reports it), or the request is refused; a pid of `-1` is every process with the requester's uid, looked up afresh at each sample |
+| neither | every PMIx process of this node with a recorded pid | only jobs the requester may access; others are left out |
+
+The requester is resolved by `pmix_server_access_requester()`: one of our
+clients or tools; or the user a relayed request names in `PMIX_USERID`;
+or, for a request from neither, the host itself, which is not restricted.
+A request marked `PMIX_MONITOR_PROXY` that names no `PMIX_USERID` is
+refused - it would otherwise pass as the host's own.
+
+Each target also carries the **owner** its process must have when it is
+read: the uid the host registered the process as
+(`PMIx_server_register_client`) for a named process, the requester for a
+pid. A
+recorded pid outlives its process and is reused, so the components check
+it on every sample - `plinux` opens `/proc/<pid>` as a directory, checks
+its owner, and reads the rest relative to that descriptor; `pmacos`
+checks `pbi_uid` and compares the start time again after sampling. A
+process that is gone, or no longer the owner's, is `PMIX_ERR_NOT_FOUND`
+and skipped. The loop over targets is the base's
+`pmix_pstat_base_sample_targets()`; a component supplies only the
+per-process sampler.
+
+Targets hold no server objects, so a client disconnecting cannot leave
+an op pointing at freed memory. What does end with a client is the
+periodic monitors it asked for: the connection teardown calls
+`pmix_pstat_base_peer_lost()`, which releases them once no clone of the
+requester (same name) is still connected.
 
 ### Who owns the answer list (get this wrong and it is a double free)
 
@@ -411,7 +435,7 @@ key turns on a *field to report for the chosen devices*. An empty
 `disks`/`nets` argv (`NULL`) means "all devices." The ID list is a **set**
 — it is built with `PMIx_Argv_append_unique_nosize`, so a caller that
 names the same device twice gets it reported once, the same way
-`PMIX_PSTAT_APPEND_PEER_UNIQUE` dedups the op's peer filter.
+`pmix_pstat_base_targets()` dedups the op's process targets by pid.
 
 Note the asymmetry between the two "nothing was specified" cases, which
 is deliberate but easy to get backwards: a **NULL** `info` pointer means
@@ -443,10 +467,6 @@ this array directly must do the same.
   the interval to `s` seconds, mark the op active, and add the timer. Note
   the `PMIX_POST_OBJECT(p)` memory barrier before the op is handed to the
   event engine.
-- **`PMIX_PSTAT_APPEND_PEER_UNIQUE(pl, pr)`** — append a `pmix_peer_t` to
-  an op's `peers` list only if it is not already present (dedup), wrapping
-  it in a `pmix_peerlist_t` and taking a reference on the peer. The
-  matching release is in `opdes()`.
 
 ## Base infrastructure in detail
 
@@ -607,8 +627,10 @@ Remember the top-level golden rules that bite here:
   `pmix_pstat_base_module_t` and a priority. Return no module / a failure
   when the component cannot run in this environment.
 - Implement `query` following the established shape: parse the request
-  into a `pmix_pstat_op_t` with the base helpers, select target peers with
-  `PMIX_PSTAT_APPEND_PEER_UNIQUE`, run `update()` synchronously through
+  into a `pmix_pstat_op_t` with the base helpers, build its targets with
+  `pmix_pstat_base_targets()`, sample them in `update()` with
+  `pmix_pstat_base_sample_targets()` and a per-process reader that
+  checks each target's owner, run `update()` synchronously through
   `op->cb` for the immediate answer, and — if a rate was given — append
   the op to `pmix_pstat_base.ops` and arm the timer with
   `PMIX_PSTAT_OP_START`. Honor `PMIX_MONITOR_CANCEL`.

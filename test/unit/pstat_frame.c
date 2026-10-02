@@ -113,50 +113,30 @@ static void cycle(const char *which)
     free(label);
 }
 
-/* An op's peer list has to OWN the peers it records. A periodic monitor
- * outlives the client it is sampling: the server releases that client's
- * pmix_peer_t the moment the connection drops, and nothing else holds
- * it. With a borrowed pointer the next timer fire read peer->info->pid
- * out of freed memory - so PMIX_PSTAT_APPEND_PEER_UNIQUE takes a
- * reference and opdes() gives it back. Both halves are checked here,
- * because either one alone is a bug: without the retain it is a
- * use-after-free, without the release it is a leak. */
-static void op_peer_refs(void)
+/* An op owns the processes it samples. Each is a pid read from the
+ * kernel, not a server peer, so nothing about a client disconnecting can
+ * leave the op pointing at freed memory - and releasing the op must give
+ * its targets back. */
+static void op_targets(void)
 {
     pmix_pstat_op_t *op;
-    pmix_peer_t *peer;
+    pmix_pstat_target_t *tgt;
 
     op = PMIX_NEW(pmix_pstat_op_t);
-    peer = PMIX_NEW(pmix_peer_t);
-    report("op: a fresh peer starts with one reference",
-           1 == peer->super.obj_reference_count);
+    report("op: a fresh op has no targets", 0 == pmix_list_get_size(&op->targets));
 
-    PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, peer);
-    report("op: appending a peer takes a reference on it",
-           2 == peer->super.obj_reference_count &&
-           1 == pmix_list_get_size(&op->peers));
-
-    /* the macro dedups, and must not take a second reference when it
-     * declines to add a second entry */
-    PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, peer);
-    report("op: re-appending the same peer changes nothing",
-           2 == peer->super.obj_reference_count &&
-           1 == pmix_list_get_size(&op->peers));
-
-    /* the client disconnects - the server drops the only other
-     * reference, and the op's is what keeps the object alive for the
-     * next sample */
-    PMIX_RELEASE(peer);
-    report("op: the peer outlives its client disconnecting",
-           1 == peer->super.obj_reference_count);
+    tgt = PMIX_NEW(pmix_pstat_target_t);
+    report("op: a fresh target names no process and any owner",
+           !tgt->named && 0 == tgt->pid && (uid_t) -1 == tgt->owner);
+    pmix_list_append(&op->targets, &tgt->super);
 
     /* hold a probe reference so we can watch the op give its own back
      * rather than merely not crashing */
-    PMIX_RETAIN(peer);
+    PMIX_RETAIN(tgt);
     PMIX_RELEASE(op);
-    report("op: releasing the op releases its peers",
-           1 == peer->super.obj_reference_count);
-    PMIX_RELEASE(peer);
+    report("op: releasing the op releases its targets",
+           1 == tgt->super.super.obj_reference_count);
+    PMIX_RELEASE(tgt);
 }
 
 /* A periodic op's timer belongs to the framework's event base, and it is
@@ -292,7 +272,7 @@ int main(int argc, char **argv)
 
     cycle("first cycle");
     cycle("second cycle");
-    op_peer_refs();
+    op_targets();
     op_timer_lifetime();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);

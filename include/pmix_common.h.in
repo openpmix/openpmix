@@ -1210,12 +1210,13 @@ typedef uint32_t pmix_rank_t;
                                                                     //            by the attribute.
 #define PMIX_MONITOR_TARGET_PROCS           "pmix.monitor.tgtproc"  // (pmix_data_array_t*) Arrray of process IDs specifying the processes to be monitored.
                                                                     //            Can include a PMIX_RANK_WILDCARD to indicate that all processes from a given
-                                                                    //            namespace are to be included. If omitted, then all processesin the session will
-                                                                    //            be monitored. May be included multiple times to fully specify all processes to
-                                                                    //            be included.
+                                                                    //            namespace are to be included. If omitted, then all processes in the session
+                                                                    //            that the requester may access will be monitored. May be included multiple
+                                                                    //            times to fully specify all processes to be included.
 #define PMIX_MONITOR_TARGET_PIDS            "pmix.monitor.tgtpid"   // (pmix_data_array_t*) Array of pmix_node_pid_t structures to be monitored. Can include a
                                                                     //            structure containing a hostname with a pid value of -1 to indicate all
-                                                                    //            processes on that node are to be included. May be included multiple times to
+                                                                    //            processes on that node owned by the requester are to be included. The
+                                                                    //            requester must own each process named. May be included multiple times to
                                                                     //            fully specify all processes to be included.
 #define PMIX_MONITOR_TARGET_NODES           "pmix.monitor.tgtnode"  // (pmix_data_array_t*) Array of string host names to be monitored
 #define PMIX_MONITOR_TARGET_NODEIDS         "pmix.monitor.tgtndids" // (pmix_data_array_t*) Array of uint32_t node IDs to be monitored
