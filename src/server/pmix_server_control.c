@@ -1100,6 +1100,9 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
 
     /* unpack what is to be monitored */
     cb->info = PMIx_Info_create(1);
+    /* the count is what lets the caddy free the array - PMIx_Info_free
+     * releases nothing when told there are no elements */
+    cb->ninfo = 1;
     cb->infocopy = true;
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, cb->info, &cnt, PMIX_INFO);
