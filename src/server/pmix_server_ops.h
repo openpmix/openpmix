@@ -522,18 +522,22 @@ PMIX_EXPORT pmix_status_t pmix_server_access_identify(const pmix_peer_t *peer, p
 /* the connected client or tool that proc is, or NULL */
 PMIX_EXPORT pmix_peer_t *pmix_server_access_find_peer(const pmix_proc_t *proc);
 
-/* Of a list of local processes (pmix_peerlist_t) to act on for requestor,
- * keep those whose jobs it may access. With strict - the requester named
- * them - any it may not access fails the request with
- * PMIX_ERR_NO_PERMISSIONS instead. A requestor that is not one of our
- * clients or tools is the host, which is not restricted - unless the
- * request's directives name a PMIX_USERID, the user a host relaying a
- * request from another node makes it for, whom the rule is then applied
- * to. */
-PMIX_EXPORT pmix_status_t pmix_server_access_filter_peers(const pmix_proc_t *requestor,
-                                                          const pmix_info_t *directives,
-                                                          size_t ndirs, pmix_list_t *peers,
-                                                          bool strict);
+/* Who a request acting on processes is for.
+ *   - a connected client or tool: *peer is it, *uid its user;
+ *   - a request the host relays for a user (its directives carry
+ *     PMIX_USERID): *uid is that user;
+ *   - otherwise the host's own: *host is set and *uid is our own user.
+ * A request marked as relayed (PMIX_MONITOR_PROXY) that does not say for
+ * whom is refused with PMIX_ERR_NO_PERMISSIONS - it would otherwise pass
+ * as the host's own, which is not restricted. */
+PMIX_EXPORT pmix_status_t pmix_server_access_requester(const pmix_proc_t *requestor,
+                                                       const pmix_info_t *directives,
+                                                       size_t ndirs, pmix_peer_t **peer,
+                                                       bool *host, uid_t *uid);
+
+/* May that requester act on this job? The host may act on any */
+PMIX_EXPORT bool pmix_server_access_requester_may(pmix_peer_t *peer, bool host, uid_t uid,
+                                                  pmix_namespace_t *nptr);
 
 /* release the server's user records */
 PMIX_EXPORT void pmix_server_access_finalize(void);

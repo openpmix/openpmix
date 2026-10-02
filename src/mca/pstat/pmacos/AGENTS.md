@@ -44,7 +44,7 @@ run-time `#ifdef`.
 
 `init`/`finalize` are no-ops. `query`, `monitor_fields` and the periodic
 `update` are copied verbatim from `plinux` — they implement the framework
-contract (request dispatch, target-peer resolution, the synchronous
+contract (request dispatch, target resolution, the synchronous
 `op->cb` pass, the periodic timer/event path, and `PMIX_MONITOR_CANCEL`)
 with no platform-specific content. All the macOS specifics live in the
 four readers, each of which appends one or more `PMIX_*_RESOURCE_USAGE`
@@ -70,7 +70,10 @@ drifted.
   that serves as the existence check: libproc stops answering for a pid
   the instant the process exits, and a periodic monitor samples processes
   that come and go, so a short read there returns `PMIX_ERR_NOT_FOUND`
-  and `update()` skips that peer. This is the Darwin equivalent of
+  and `update()` skips that target. The same record's `pbi_uid` must be
+  the target's owner, and the start time is compared again once the
+  sample is taken, since libproc has no handle that pins a process. This
+  is the Darwin equivalent of
   `plinux` failing to open `/proc/<pid>/stat`, and it has to be done
   *before* anything is appended: without it a dead process still produced
   a record — a process ID, a pid and a sample time with no statistics

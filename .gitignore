@@ -326,6 +326,7 @@ test/unit/info_relayed
 test/unit/server_access
 test/unit/server_group_members
 test/unit/server_access_checks
+test/unit/pstat_peers
 test/unit/server_dmodex_access
 test/unit/iof_pull_approval
 test/unit/iof_file_perms

@@ -43,12 +43,11 @@
  *   resolve_peers              -> naming another user's job refused; with
  *                                 none named, that job left out
  *   resolve_node               -> naming another user's job refused
- *   monitoring                 -> the local processes of a job the
- *                                 requester may not access are left out,
- *                                 or refuse the request when it named
- *                                 them; the host is not restricted,
- *                                 except for a request it relays from
- *                                 another node naming the user it is for
+ *   monitoring                 -> who a request is for: a client, the
+ *                                 host (not restricted), or the user a
+ *                                 relayed request names, which is held to
+ *                                 that user's jobs; a relayed request
+ *                                 naming no user refused
  *   cleanup directives         -> on another user's job refused, on a
  *                                 listed one accepted
  */
@@ -584,93 +583,50 @@ static void test_query_resolve(void)
 /* monitoring local processes                                          */
 /* ------------------------------------------------------------------ */
 
-static void add_target(pmix_list_t *peers, const char *nsname)
-{
-    pmix_peerlist_t *pl;
-
-    pl = PMIX_NEW(pmix_peerlist_t);
-    pl->peer = make_peer(nsname, 0, ACC_OTHER_UID, ACC_OTHER_GID);
-    pmix_list_append(peers, &pl->super);
-}
-
-static void clear_targets(pmix_list_t *peers)
-{
-    pmix_peerlist_t *pl;
-
-    while (NULL != (pl = (pmix_peerlist_t *) pmix_list_remove_first(peers))) {
-        PMIX_RELEASE(pl->peer);
-        PMIX_RELEASE(pl);
-    }
-}
-
-static bool holds(pmix_list_t *peers, const char *nsname)
-{
-    pmix_peerlist_t *pl;
-
-    PMIX_LIST_FOREACH (pl, peers, pmix_peerlist_t) {
-        if (PMIX_CHECK_NSPACE(pl->peer->info->pname.nspace, nsname)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static void test_monitor(void)
 {
-    pmix_list_t peers;
+    pmix_peer_t *rpeer;
     pmix_proc_t rproc;
     pmix_info_t relay[2];
     uint32_t requid = ACC_REQ_UID;
+    bool host;
+    uid_t uid;
     pmix_status_t rc;
 
-    PMIX_CONSTRUCT(&peers, pmix_list_t);
+    /* a connected client is its own requester */
     PMIX_LOAD_PROCID(&rproc, NS_REQ, 0);
+    rc = pmix_server_access_requester(&rproc, NULL, 0, &rpeer, &host, &uid);
+    report("monitoring: a client is the requester",
+           PMIX_SUCCESS == rc && requester == rpeer && !host && ACC_REQ_UID == uid);
+    report("monitoring: a client may see its own job and a job naming it, not another user's",
+           pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_REQ)) &&
+               pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_SHARED)) &&
+               !pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_OTHER)));
 
-    add_target(&peers, NS_REQ);
-    add_target(&peers, NS_OTHER);
-    add_target(&peers, NS_SHARED);
-    rc = pmix_server_access_filter_peers(&rproc, NULL, 0, &peers, false);
-    report("monitoring every local process leaves out another user's",
-           PMIX_SUCCESS == rc && 2 == pmix_list_get_size(&peers) && holds(&peers, NS_REQ) &&
-               holds(&peers, NS_SHARED) && !holds(&peers, NS_OTHER));
-    clear_targets(&peers);
-
-    add_target(&peers, NS_REQ);
-    add_target(&peers, NS_OTHER);
-    rc = pmix_server_access_filter_peers(&rproc, NULL, 0, &peers, true);
-    report("monitoring named processes of another user's job is refused",
-           PMIX_ERR_NO_PERMISSIONS == rc);
-    clear_targets(&peers);
-
-    add_target(&peers, NS_OTHER);
-    rc = pmix_server_access_filter_peers(&pmix_globals.myid, NULL, 0, &peers, true);
-    report("the host may monitor any process",
-           PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&peers));
-    clear_targets(&peers);
+    /* the host's own request */
+    rc = pmix_server_access_requester(&pmix_globals.myid, NULL, 0, &rpeer, &host, &uid);
+    report("monitoring: the host may see any job",
+           PMIX_SUCCESS == rc && NULL == rpeer && host &&
+               pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_OTHER)));
 
     /* a request the host relays from another node, for the requester's
      * user - the requester is not connected here */
     PMIX_LOAD_PROCID(&rproc, "acc2-remote", 0);
     PMIX_INFO_LOAD(&relay[0], PMIX_MONITOR_PROXY, &rproc, PMIX_PROC);
     PMIX_INFO_LOAD(&relay[1], PMIX_USERID, &requid, PMIX_UINT32);
-    add_target(&peers, NS_REQ);
-    add_target(&peers, NS_OTHER);
-    add_target(&peers, NS_SHARED);
-    rc = pmix_server_access_filter_peers(&rproc, relay, 2, &peers, false);
-    report("a relayed request for every local process leaves out another user's",
-           PMIX_SUCCESS == rc && 2 == pmix_list_get_size(&peers) && holds(&peers, NS_REQ) &&
-               holds(&peers, NS_SHARED) && !holds(&peers, NS_OTHER));
-    clear_targets(&peers);
+    rc = pmix_server_access_requester(&rproc, relay, 2, &rpeer, &host, &uid);
+    report("monitoring: a relayed request is held to the user it is for",
+           PMIX_SUCCESS == rc && NULL == rpeer && !host && ACC_REQ_UID == uid &&
+               pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_REQ)) &&
+               pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_SHARED)) &&
+               !pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_OTHER)));
 
-    add_target(&peers, NS_OTHER);
-    rc = pmix_server_access_filter_peers(&rproc, relay, 2, &peers, true);
-    report("a relayed request naming another user's processes is refused",
+    /* relayed, but not saying for whom - it must not pass as the host's */
+    rc = pmix_server_access_requester(&rproc, relay, 1, &rpeer, &host, &uid);
+    report("monitoring: a relayed request that does not name its user is refused",
            PMIX_ERR_NO_PERMISSIONS == rc);
-    clear_targets(&peers);
     PMIX_INFO_DESTRUCT(&relay[0]);
     PMIX_INFO_DESTRUCT(&relay[1]);
-
-    PMIX_DESTRUCT(&peers);
 }
 
 /* ------------------------------------------------------------------ */

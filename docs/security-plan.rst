@@ -217,12 +217,17 @@ Where the checks are made:
      - Naming a job, the requester must be allowed it. Naming none, the
        answer includes only the jobs the requester may access.
    * - ``PMIx_Process_monitor`` of processes on this node
-     - Processes the request names must all belong to jobs the
-       requester may access, or the request is refused. A request for
-       every local process leaves out those the requester may not
+     - Processes named by ``PMIX_MONITOR_TARGET_PROCS`` must all belong
+       to jobs the requester may access, or the request is refused; each
+       is read at the process ID its host recorded (``PMIX_PROC_PID``).
+       Processes named by ``PMIX_MONITOR_TARGET_PIDS`` must all be owned
+       by the requester, and -1 means every process it owns. A request
+       for every local process leaves out those the requester may not
        access. Requests from the host are not restricted, except one it
-       relays from another node naming the requester's ``PMIX_USERID``,
-       which is checked for that user.
+       relays from another node (``PMIX_MONITOR_PROXY``), which must name
+       the requester's ``PMIX_USERID`` and is checked for that user, and
+       is refused without it. Each process must still belong to the
+       expected user when it is read.
    * - Cleanup directives (``PMIX_REGISTER_CLEANUP`` and its family)
        on ``PMIx_Job_control``
      - The requester must be allowed every job it names, and the

@@ -215,7 +215,7 @@ static void opcon(pmix_pstat_op_t *p)
     p->tv.tv_usec = 0;
     p->active = false;
     p->rate = 0;
-    PMIX_CONSTRUCT(&p->peers, pmix_list_t);
+    PMIX_CONSTRUCT(&p->targets, pmix_list_t);
     p->disks = NULL;
     p->nets = NULL;
     PMIX_PROCSTATS_INIT(&p->pstats);
@@ -226,22 +226,13 @@ static void opcon(pmix_pstat_op_t *p)
 }
 static void opdes(pmix_pstat_op_t *p)
 {
-    pmix_peerlist_t *pl, *plnext;
-
     if (p->active) {
         pmix_event_del(&p->ev);
     }
     if (NULL != p->id) {
         free(p->id);
     }
-    /* the list holds a reference on every peer it records - see
-     * PMIX_PSTAT_APPEND_PEER_UNIQUE in base.h, which takes it */
-    PMIX_LIST_FOREACH_SAFE(pl, plnext, &p->peers, pmix_peerlist_t) {
-        pmix_list_remove_item(&p->peers, &pl->super);
-        PMIX_RELEASE(pl->peer);
-        PMIX_RELEASE(pl);
-    }
-    PMIX_LIST_DESTRUCT(&p->peers);
+    PMIX_LIST_DESTRUCT(&p->targets);
     if (NULL != p->disks) {
         PMIx_Argv_free(p->disks);
     }
@@ -252,3 +243,14 @@ static void opdes(pmix_pstat_op_t *p)
 PMIX_CLASS_INSTANCE(pmix_pstat_op_t,
                     pmix_list_item_t,
                     opcon, opdes);
+
+static void tgtcon(pmix_pstat_target_t *p)
+{
+    p->named = false;
+    PMIX_PROC_CONSTRUCT(&p->name);
+    p->pid = 0;
+    p->owner = (uid_t) -1;
+}
+PMIX_CLASS_INSTANCE(pmix_pstat_target_t,
+                    pmix_list_item_t,
+                    tgtcon, NULL);

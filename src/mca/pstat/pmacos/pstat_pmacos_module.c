@@ -122,13 +122,13 @@ static const char *proc_state_string(uint32_t status)
     }
 }
 
-static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
+static pmix_status_t proc_stat(void *answer, const pmix_pstat_target_t *tgt, pid_t pid,
                                pmix_procstats_t *pst)
 {
     pmix_proc_t proc;
     pmix_status_t rc;
     struct proc_taskinfo pti;
-    struct proc_bsdinfo bsd;
+    struct proc_bsdinfo bsd, bsd2;
     char comm[256];
     int nb;
     float fval;
@@ -149,23 +149,36 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
      * pid and a sample time with no statistics behind them - which a
      * caller cannot tell apart from a process that simply had no
      * fields requested. */
-    nb = proc_pidinfo(peer->info->pid, PROC_PIDTBSDINFO, 0, &bsd, sizeof(bsd));
+    nb = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bsd, sizeof(bsd));
     if ((int) sizeof(bsd) != nb) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    /* We read with our own privilege, so the owner check is what keeps a
+     * sample to the process it is meant to be - a pid the host recorded
+     * outlives its process and is reused. libproc has no handle that pins
+     * a process, so the start time read here is compared again once the
+     * sample is taken (below) */
+    if ((uid_t) -1 != tgt->owner && bsd.pbi_uid != tgt->owner) {
+        pmix_output_verbose(5, pmix_pstat_base_framework.framework_output,
+                            "pstat: pid %d is not a process of uid %lu - not sampled",
+                            (int) pid, (unsigned long) tgt->owner);
         return PMIX_ERR_NOT_FOUND;
     }
 
     time(&sample_time);
     cache = PMIx_Info_list_start();
 
-    // start with the proc ID
-    PMIx_Load_procid(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-    rc = PMIx_Info_list_add(cache, PMIX_PROCID, &proc, PMIX_PROC);
-    if (PMIX_SUCCESS != rc) {
-        PMIx_Info_list_release(cache);
-        return rc;
+    // start with the proc ID, for a PMIx process
+    if (tgt->named) {
+        PMIx_Load_procid(&proc, tgt->name.nspace, tgt->name.rank);
+        rc = PMIx_Info_list_add(cache, PMIX_PROCID, &proc, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            PMIx_Info_list_release(cache);
+            return rc;
+        }
     }
     // add the pid
-    rc = PMIx_Info_list_add(cache, PMIX_PROC_PID, &peer->info->pid, PMIX_PID);
+    rc = PMIx_Info_list_add(cache, PMIX_PROC_PID, &pid, PMIX_PID);
     if (PMIX_SUCCESS != rc) {
         PMIx_Info_list_release(cache);
         return rc;
@@ -179,7 +192,7 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
 
     /* pull the task-level info: CPU time, thread count, priority, and
      * virtual/resident sizes */
-    nb = proc_pidinfo(peer->info->pid, PROC_PIDTASKINFO, 0, &pti, sizeof(pti));
+    nb = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &pti, sizeof(pti));
     if ((int) sizeof(pti) == nb) {
         if (pst->time) {
             /* pti reports CPU time in nanoseconds. Split it with integer
@@ -245,7 +258,7 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     /* the command name */
     if (pst->cmdline) {
         memset(comm, 0, sizeof(comm));
-        if (0 < proc_name(peer->info->pid, comm, sizeof(comm))) {
+        if (0 < proc_name(pid, comm, sizeof(comm))) {
             rc = PMIx_Info_list_add(cache, PMIX_CMD_LINE, comm, PMIX_STRING);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Info_list_release(cache);
@@ -257,6 +270,15 @@ static pmix_status_t proc_stat(void *answer, pmix_peer_t *peer,
     /* NOTE: macOS does not expose an inexpensive per-process last-CPU
      * (pctcpu/cpu) or proportional/peak virtual size (pss/pkvsize), so
      * those fields are simply not reported here. */
+
+    /* still the same process? One that exited while we read, its pid
+     * taken by another, would have given us a mix of the two */
+    nb = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bsd2, sizeof(bsd2));
+    if ((int) sizeof(bsd2) != nb || bsd2.pbi_start_tvsec != bsd.pbi_start_tvsec ||
+        bsd2.pbi_start_tvusec != bsd.pbi_start_tvusec || bsd2.pbi_uid != bsd.pbi_uid) {
+        PMIx_Info_list_release(cache);
+        return PMIX_ERR_NOT_FOUND;
+    }
 
     // record the sample time
     rc = PMIx_Info_list_add(cache, PMIX_PROC_SAMPLE_TIME, &sample_time, PMIX_TIME);
@@ -790,7 +812,6 @@ static void update(int sd, short args, void *cbdata)
 {
     pmix_pstat_op_t *op = (pmix_pstat_op_t *) cbdata;
     void *answer, *ilist;
-    pmix_peerlist_t *plist;
     pmix_status_t rc;
     pmix_data_array_t darray;
     pmix_cb_t *cb;
@@ -838,20 +859,10 @@ static void update(int sd, short args, void *cbdata)
 
     // check for pstat request
     if (0 != memcmp(&op->pstats, &zproc, sizeof(pmix_procstats_t))) {
-        PMIX_LIST_FOREACH(plist, &op->peers, pmix_peerlist_t) {
-            rc = proc_stat(answer, plist->peer, &op->pstats);
-            if (PMIX_ERR_NOT_FOUND == rc) {
-                /* the process is gone - libproc stopped answering for it
-                 * between our being handed the peer and our reading it.
-                 * That is ordinary, and the remaining peers still have
-                 * data to report, so skip it rather than abandoning the
-                 * whole sample */
-                continue;
-            }
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                goto error;
-            }
+        rc = pmix_pstat_base_sample_targets(answer, op, proc_stat);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto error;
         }
     }
 
@@ -1011,13 +1022,8 @@ static pmix_status_t query(pmix_proc_t *requestor,
 {
     pmix_info_t *iptr;
     size_t sz;
-    size_t n, m;
-    int k;
-    pmix_peer_t *ptr;
-    pmix_proc_t proc, *procs;
-    pmix_node_pid_t *ppid;
+    size_t n;
     pmix_status_t rc;
-    bool tgtprocsgiven;
     pmix_data_array_t darray;
     pmix_pstat_op_t *op;
     pmix_netstats_t znet;
@@ -1098,7 +1104,6 @@ static pmix_status_t query(pmix_proc_t *requestor,
 
     // see what data we are being asked to collect
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_PROC_RESOURCE_USAGE)) {
-        tgtprocsgiven = false;
         // see which values are to be returned
         rc = monitor_fields(monitor, &iptr, &sz);
         if (PMIX_SUCCESS != rc) {
@@ -1107,100 +1112,8 @@ static pmix_status_t query(pmix_proc_t *requestor,
         }
         pmix_pstat_parse_procstats(&op->pstats, iptr, sz);
 
-        // we already know this request involves us since it was checked
-        // before calling us, so see which of our processes are included
-        if (NULL == directives) {
-            // all of our processes are included - no ID or rate can be included
-            for (k = 0; k < pmix_server_globals.clients.size; k++) {
-                ptr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, k);
-                if (NULL == ptr) {
-                    continue;
-                }
-                PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, ptr);
-            }
-            goto processprocs;
-        }
-
-        // check for specific procs and directives
-        for (n = 0; n < ndirs; n++) {
-            if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_TARGET_PROCS)) {
-                if (PMIX_DATA_ARRAY != directives[n].value.type ||
-                    NULL == directives[n].value.data.darray ||
-                    PMIX_PROC != directives[n].value.data.darray->type ||
-                    NULL == directives[n].value.data.darray->array) {
-                    PMIX_RELEASE(op);
-                    return PMIX_ERR_BAD_PARAM;
-                }
-                tgtprocsgiven = true;
-                // they specified the procs
-                procs = (pmix_proc_t *) directives[n].value.data.darray->array;
-                sz = directives[n].value.data.darray->size;
-                for (m = 0; m < sz; m++) {
-                    for (k = 0; k < pmix_server_globals.clients.size; k++) {
-                        ptr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, k);
-                        if (NULL == ptr) {
-                            continue;
-                        }
-                        PMIx_Load_procid(&proc, ptr->info->pname.nspace, ptr->info->pname.rank);
-                        if (PMIx_Check_procid(&procs[m], &proc)) {
-                            PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, ptr);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_TARGET_PIDS)) {
-                if (PMIX_DATA_ARRAY != directives[n].value.type ||
-                    NULL == directives[n].value.data.darray ||
-                    PMIX_NODE_PID != directives[n].value.data.darray->type ||
-                    NULL == directives[n].value.data.darray->array) {
-                    PMIX_RELEASE(op);
-                    return PMIX_ERR_BAD_PARAM;
-                }
-                tgtprocsgiven = true;
-                // is our node included?
-                ppid = (pmix_node_pid_t *) directives[n].value.data.darray->array;
-                sz = directives[n].value.data.darray->size;
-                for (m = 0; m < sz; m++) {
-                    // see if this node is us
-                    if (ppid[m].nodeid == pmix_globals.nodeid ||
-                        pmix_check_local(ppid[m].hostname)) {
-                        // is this one of our procs?
-                        for (k = 0; k < pmix_server_globals.clients.size; k++) {
-                            ptr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, k);
-                            if (NULL == ptr) {
-                                continue;
-                            }
-                            if (ppid[m].pid == ptr->info->pid) {
-                                PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, ptr);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // when we come out of the loop, it is possible that we were not
-        // given any target procs via any of the attributes. In this case,
-        // we assume that we are to take all local procs
-        if (!tgtprocsgiven) {
-            for (k = 0; k < pmix_server_globals.clients.size; k++) {
-                ptr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, k);
-                if (NULL == ptr) {
-                    continue;
-                }
-                PMIX_PSTAT_APPEND_PEER_UNIQUE(&op->peers, ptr);
-            }
-        }
-
-processprocs:
-        /* only the processes of jobs the requester may access - see
-         * docs/security-plan.rst. Named targets it may not access
-         * refuse the request; "all of our processes" leaves them out */
-        rc = pmix_server_access_filter_peers(requestor, directives, ndirs, &op->peers,
-                                             tgtprocsgiven);
+        // which processes, and which of them the requester may see
+        rc = pmix_pstat_base_targets(requestor, directives, ndirs, &op->targets);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(op);
             return rc;

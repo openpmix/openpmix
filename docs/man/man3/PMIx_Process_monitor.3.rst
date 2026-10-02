@@ -168,9 +168,17 @@ Action-specific directives (placed in the ``directives`` array) include:
 * ``PMIX_MONITOR_RESOURCE_RATE`` (uint32_t) |mdash| report resource usage every N
   seconds.
 * ``PMIX_MONITOR_TARGET_PROCS`` (pmix_data_array_t*) |mdash| array of process IDs
-  identifying the processes to be monitored.
+  identifying the processes to be monitored. A rank of
+  ``PMIX_RANK_WILDCARD`` includes every process of that namespace. Each
+  process is sampled at the pid its host recorded for it
+  (``PMIX_PROC_PID``); a process with none is skipped. The caller must be
+  permitted to access each namespace it names, or the request is refused.
+  If no targets are given, every process on the node of a job the caller
+  may access is monitored.
 * ``PMIX_MONITOR_TARGET_PIDS`` (pmix_data_array_t*) |mdash| array of
-  ``pmix_node_pid_t`` structures to be monitored.
+  ``pmix_node_pid_t`` structures to be monitored. The caller must own each
+  process named, or the request is refused. A pid of -1 includes every
+  process on that node owned by the caller.
 * ``PMIX_MONITOR_TARGET_NODES`` (pmix_data_array_t*) |mdash| array of string host
   names to be monitored.
 * ``PMIX_MONITOR_TARGET_NODEIDS`` (pmix_data_array_t*) |mdash| array of ``uint32_t``
@@ -189,13 +197,59 @@ General directives that may accompany any action include:
 * ``PMIX_MONITOR_LOCAL_ONLY`` (bool) |mdash| restrict data collection to the local
   host, regardless of any provided targets.
 * ``PMIX_MONITOR_PROXY`` (pmix_proc_t*) |mdash| the process on whose behalf the
-  monitoring is being requested, if different from the caller.
+  monitoring is being requested, if different from the caller. A host that
+  relays a request this way must also pass the ``PMIX_USERID`` of that process
+  (see `WHICH PROCESSES ARE MONITORED`_).
 * ``PMIX_RANGE`` (pmix_data_range_t) |mdash| non-default range to use when
   generating the associated event for this monitoring action.
 
 When the library passes a monitoring request to its host environment, the
 directives carry the ``PMIX_USERID`` and ``PMIX_GRPID`` of the requesting
 process (see :ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>`).
+
+
+WHICH PROCESSES ARE MONITORED
+-----------------------------
+
+A request for process resource usage (``PMIX_MONITOR_PROC_RESOURCE_USAGE``)
+is answered on each node by that node's PMIx server. The server finds each
+process by its process ID and reads its statistics from the operating system.
+It does not use the process ID a client reports about itself.
+
+Which processes are included, and who may ask for them:
+
+* **Processes named with** ``PMIX_MONITOR_TARGET_PROCS``. Each is sampled at the
+  process ID its host recorded for it with ``PMIx_Store_internal`` under
+  ``PMIX_PROC_PID``. A process whose host recorded no process ID is skipped, so a
+  host that wants its processes monitored must record them. The caller must be
+  allowed to access each namespace it names, under the job access rule
+  described in :doc:`/security-plan`; if it is not, the request fails with
+  ``PMIX_ERR_NO_PERMISSIONS``.
+* **Processes named with** ``PMIX_MONITOR_TARGET_PIDS``. The caller must own each
+  process it names, as the operating system reports it; if it does not, the
+  request fails with ``PMIX_ERR_NO_PERMISSIONS``. A process ID of -1 includes
+  every process on that node owned by the caller, found again at each periodic
+  sample.
+* **No targets given.** Every process on the node, in a job the caller may
+  access, whose host recorded its process ID. Processes of other jobs are left
+  out without an error.
+
+Who the caller is:
+
+* A client or tool is checked as the user it connected as.
+* The host environment, making a request on its own behalf, is not restricted.
+* A request the host relays from another node carries ``PMIX_MONITOR_PROXY``.
+  It must also carry the ``PMIX_USERID`` the requester's own server supplied,
+  and it is checked as that user. A relayed request without ``PMIX_USERID`` is
+  refused with ``PMIX_ERR_NO_PERMISSIONS``.
+
+Each process must still belong to the expected user each time it is read |mdash|
+the user its host registered it as, or the caller for a process named by
+process ID. A process that has exited, or whose process ID now belongs to
+another user, is left out of the results.
+
+A periodic monitor ends when the process that requested it disconnects from
+its server.
 
 
 RESOURCE USAGE ATTRIBUTES
@@ -329,8 +383,10 @@ was accepted for processing; the final status and any data are delivered to
   example, a ``NULL`` ``monitor``, or a server attempting to use
   ``PMIX_SEND_HEARTBEAT``.
 * ``PMIX_ERR_NO_PERMISSIONS`` |mdash| the request names processes whose job
-  the caller's user may not access. A request for every process on a node
-  leaves those processes out instead. See :doc:`/security-plan`.
+  the caller's user may not access, or process IDs the caller does not own, or
+  was relayed by a host without the requester's ``PMIX_USERID``. A request for
+  every process on a node leaves out the processes the caller may not see
+  instead. See `WHICH PROCESSES ARE MONITORED`_ and :doc:`/security-plan`.
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the request involves other nodes but the host
   environment provides no monitoring support.
 * ``PMIX_ERR_UNREACH`` |mdash| the caller is not a server and its local PMIx server

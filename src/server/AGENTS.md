@@ -3304,15 +3304,16 @@ misbehave by design).
   - A GET parked on a namespace that is not yet registered was let
     through; `check_req` checks each parked requester again when the
     registration lands. A new place that parks a request owes the same.
-  - Monitoring filters its peer list with
-    `pmix_server_access_filter_peers()`: strict (refuse) when the
-    requester named the targets, filtering when it asked for every local
-    process. A requester that is not connected here is the host - unless
-    the directives carry a `PMIX_USERID`: a host relaying a monitor
-    request from another node (`PMIX_MONITOR_PROXY`) passes on the
-    directives the requester's own server stamped, and the rule is applied
-    to that user. Without it every relayed request ran unrestricted on
-    every node but the requester's own.
+  - Monitoring resolves its requester with
+    `pmix_server_access_requester()` and judges each job with
+    `pmix_server_access_requester_may()`; `pmix_pstat_base_targets()`
+    refuses a request naming a job it may not access and leaves such jobs
+    out of "every process". A requester that is not connected here is the
+    host - unless the directives carry a `PMIX_USERID`: a host relaying a
+    monitor request from another node (`PMIX_MONITOR_PROXY`) passes on
+    the directives the requester's own server stamped, and the rule is
+    applied to that user. A `PMIX_MONITOR_PROXY` request with no
+    `PMIX_USERID` is refused rather than run as the host's own.
   - **Data held on another node is decided by the server holding it.**
     A dmodex tracker (`pmix_dmdx_local_t`) belongs to one requester
     identity - uid, gid and requester namespace - and `create_local_tracker`
