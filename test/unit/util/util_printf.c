@@ -279,6 +279,36 @@ static void test_vasprintf_null_string_arg(void)
 
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* pmix_util_printable                                                 */
+/* ------------------------------------------------------------------ */
+
+static void test_printable(void)
+{
+    char *out;
+
+    out = pmix_util_printable("plain text\twith a tab");
+    report("printable: ordinary text and a tab are kept",
+           NULL != out && 0 == strcmp(out, "plain text\twith a tab"));
+    free(out);
+
+    out = pmix_util_printable("\x1b[2Jred\nnext\x7f");
+    report("printable: escape, newline and DEL are written out",
+           NULL != out && 0 == strcmp(out, "\\x1b[2Jred\\x0anext\\x7f"));
+    free(out);
+
+    out = pmix_util_printable("h\xc3\xa9llo");
+    report("printable: bytes above 0x7f are kept", NULL != out &&
+           0 == strcmp(out, "h\xc3\xa9llo"));
+    free(out);
+
+    out = pmix_util_printable("");
+    report("printable: an empty string stays empty", NULL != out && '\0' == out[0]);
+    free(out);
+
+    report("printable: NULL in, NULL out", NULL == pmix_util_printable(NULL));
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -301,6 +331,7 @@ int main(int argc, char **argv)
     test_snprintf_zero_size();
     test_snprintf_size_one();
     test_vasprintf_null_string_arg();
+    test_printable();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;

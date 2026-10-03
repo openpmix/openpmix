@@ -42,6 +42,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_cmd_line.h"
 #include "src/util/pmix_keyval_parse.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 #define PMIX_PRINT_ATTR_COLUMN_WIDTH   141
@@ -184,7 +185,7 @@ int main(int argc, char **argv)
     mylock_t mylock;
     pmix_cli_result_t results;
     pmix_cli_item_t *opt;
-    char **fns = NULL, *ptr;
+    char **fns = NULL, *ptr, *shown;
     size_t n, m;
     myquery_data_t mq = {
         .lock = PMIX_LOCK_STATIC_INIT,
@@ -476,7 +477,11 @@ int main(int argc, char **argv)
                 ans = PMIx_Argv_split(ptr, ',');
             }
             for (m = 0; NULL != ans && NULL != ans[m]; m++) {
-                fprintf(stderr, "%s\n", ans[m]);
+                /* built from what the host registered - see
+                 * pmix_util_printable() */
+                shown = pmix_util_printable(ans[m]);
+                fprintf(stderr, "%s\n", (NULL == shown) ? "?" : shown);
+                free(shown);
             }
             PMIx_Argv_free(ans);
             ans = NULL;
@@ -513,7 +518,11 @@ int main(int argc, char **argv)
                 pmix_attributes_print_attrs(&ans, mq.info[0].key, reg, 1);
             }
             for (m = 0; NULL != ans && NULL != ans[m]; m++) {
-                fprintf(stderr, "%s\n", ans[m]);
+                /* built from what the host registered - see
+                 * pmix_util_printable() */
+                shown = pmix_util_printable(ans[m]);
+                fprintf(stderr, "%s\n", (NULL == shown) ? "?" : shown);
+                free(shown);
             }
             PMIx_Argv_free(ans);
             ans = NULL;

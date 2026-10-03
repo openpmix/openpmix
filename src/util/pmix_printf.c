@@ -479,3 +479,34 @@ int pmix_vsnprintf(char *str, size_t size, const char *fmt, va_list ap)
     return length;
 #endif
 }
+
+char *pmix_util_printable(const char *s)
+{
+    static const char hex[] = "0123456789abcdef";
+    const unsigned char *p;
+    size_t len = 0;
+    char *out, *q;
+
+    if (NULL == s) {
+        return NULL;
+    }
+    for (p = (const unsigned char *) s; '\0' != *p; p++) {
+        len += ((0x20 > *p && '\t' != *p) || 0x7f == *p) ? 4 : 1;
+    }
+    out = (char *) malloc(len + 1);
+    if (NULL == out) {
+        return NULL;
+    }
+    for (p = (const unsigned char *) s, q = out; '\0' != *p; p++) {
+        if ((0x20 > *p && '\t' != *p) || 0x7f == *p) {
+            *q++ = '\\';
+            *q++ = 'x';
+            *q++ = hex[*p >> 4];
+            *q++ = hex[*p & 0x0f];
+        } else {
+            *q++ = (char) *p;
+        }
+    }
+    *q = '\0';
+    return out;
+}

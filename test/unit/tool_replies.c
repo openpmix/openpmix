@@ -20,6 +20,11 @@
  * a namespace list of nothing but separators, and a process table that
  * is an array of bytes. Each tool is run against it with --uri, and must
  * exit rather than die on a signal.
+ *
+ * What a tool prints of the server's answer reaches the user's terminal,
+ * so a control character in it is written out as "\xNN" rather than
+ * passed through: a namespace name carrying an escape sequence must not
+ * appear in pps's output as one.
  */
 
 #include "src/include/pmix_config.h"
@@ -171,6 +176,44 @@ static void run_tool(const char *label, const char *uri, const char *tool,
     }
 }
 
+/* run one tool against us, keeping what it writes in buf */
+static bool run_tool_capture(const char *uri, const char *tool, char *buf, size_t size)
+{
+    char path[1024], out[] = "/tmp/pmix-tool-replies-XXXXXX";
+    pid_t pid;
+    int status = 0, i, fd;
+    ssize_t got;
+
+    snprintf(path, sizeof(path), "%s/%s/%s", PMIX_TEST_TOOLS_DIR, tool, tool);
+    if (0 != access(path, X_OK) || 0 > (fd = mkstemp(out))) {
+        return false;
+    }
+    pid = fork();
+    if (0 > pid) {
+        close(fd);
+        unlink(out);
+        return false;
+    }
+    if (0 == pid) {
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        execl(path, tool, "--uri", uri, (char *) NULL);
+        _exit(126);
+    }
+    for (i = 0; i < 600 && pid != waitpid(pid, &status, WNOHANG); i++) {
+        usleep(100000);
+    }
+    if (600 == i) {
+        kill(pid, SIGKILL);
+        waitpid(pid, &status, 0);
+    }
+    got = pread(fd, buf, size - 1, 0);
+    buf[(0 < got) ? got : 0] = '\0';
+    close(fd);
+    unlink(out);
+    return (0 < got);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -205,6 +248,20 @@ int main(int argc, char **argv)
 
     nspace_answer = "tool-replies-job";
     run_tool("pps survives a process table that is not one", uri, "pps", NULL, NULL);
+
+    {
+        static char outbuf[16384];
+
+        nspace_answer = "tool-replies\x1b[2Jjob";
+        if (run_tool_capture(uri, "pps", outbuf, sizeof(outbuf))) {
+            report("pps shows a namespace name's escape character as text",
+                   NULL == strchr(outbuf, '\x1b') && NULL != strstr(outbuf, "\\x1b[2Jjob"),
+                   "raw escape character in the output");
+        } else {
+            report("pps shows a namespace name's escape character as text", 0,
+                   "could not run pps");
+        }
+    }
 
     PMIx_server_finalize();
 
