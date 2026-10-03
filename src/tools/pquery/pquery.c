@@ -180,7 +180,7 @@ int main(int argc, char **argv)
     char **qprs;
     char *strt, *endp, *kptr;
     pmix_infolist_t *iptr;
-    char *str, *result, **ans;
+    char *str, *result, **ans, *shown;
     pmix_query_t *queries;
     pmix_rank_t rank = 0;
     char hostname[PMIX_PATH_MAX];
@@ -437,7 +437,10 @@ int main(int argc, char **argv)
         /* print out the returned value(s) */
         for (n = 0; n < mq.ninfo; n++) {
             if (NULL == (attr = pmix_attributes_reverse_lookup(mq.info[n].key))) {
-                fprintf(stdout, "%s: ", mq.info[n].key);
+                /* the server's to supply - see pmix_util_printable() */
+                shown = pmix_util_printable(mq.info[n].key);
+                fprintf(stdout, "%s: ", (NULL == shown) ? "?" : shown);
+                free(shown);
             } else {
                 fprintf(stdout, "%s: ", attr);
             }
@@ -446,7 +449,9 @@ int main(int argc, char **argv)
                 ans = PMIx_Argv_split(mq.info[n].value.data.string, ',');
                 for (m=0; NULL != ans && NULL != ans[m]; m++) {
                     if (NULL == (attr = pmix_attributes_reverse_lookup(ans[m]))) {
-                        fprintf(stdout, "    %s\n", ans[m]);
+                        shown = pmix_util_printable(ans[m]);
+                        fprintf(stdout, "    %s\n", (NULL == shown) ? "?" : shown);
+                        free(shown);
                     } else {
                         fprintf(stdout, "    %s\n", attr);
                     }
@@ -454,7 +459,9 @@ int main(int argc, char **argv)
                 PMIx_Argv_free(ans);
             } else {
                 result = PMIx_Value_string(&mq.info[n].value);
-                fprintf(stderr, "  %s\n", (NULL == result) ? "NULL" : result);
+                shown = pmix_util_printable(result);
+                fprintf(stderr, "  %s\n", (NULL == shown) ? "NULL" : shown);
+                free(shown);
                 free(result);
             }
         }
