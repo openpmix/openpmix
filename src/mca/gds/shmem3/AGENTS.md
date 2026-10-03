@@ -336,7 +336,7 @@ not interchangeable:
 | quantity | sizes | where it comes from |
 |---|---|---|
 | **elements** | the table itself, and the per-rank structures its elements point at | the modex: `job->nspace->nprocs`. The job segment: one per `PMIX_PROC_INFO_ARRAY`, plus one if there is any plain job-level key |
-| **key/value pairs** | the stored values, and the key index describing them | the modex: estimated from the blob. The job segment: the infos inside each proc array, plus each plain key |
+| **key/value pairs** | the stored values, and the key index describing them | the modex: the values from the whole contribution (`job->modex_bytes`), the distinct keys from the first proc's blob. The job segment: the infos inside each proc array, plus each plain key |
 
 Both estimates used to feed the *pair* count into the table, so a 32-rank
 job built a table with tens of thousands of elements — each of which had
