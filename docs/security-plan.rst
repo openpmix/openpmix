@@ -305,7 +305,12 @@ Not covered
 -----------
 
 * **Event notification.** The process raising an event chooses who
-  receives it through the event's range.
+  receives it through the event's range. The one exception is
+  ``PMIX_DEBUGGER_RELEASE``, which lets a process held for a debugger
+  continue: a server accepts it from a client or tool only if the rule
+  above permits that requester for the job of every process the event can
+  reach. A job the server has not had registered is left to the host,
+  which relays the event.
 * **Published data** (``PMIx_Publish`` / ``PMIx_Lookup``). The host's
   data server already governs it per published item with
   ``PMIX_ACCESS_PERMISSIONS``.

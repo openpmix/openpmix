@@ -80,6 +80,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* A stand-in for a connected client that has no socket. The server's
  * handlers are driven with it as the requesting peer, so a reply queued to
@@ -317,6 +318,10 @@ static pmix_status_t do_register_acked(size_t ncodes, pmix_status_t *codes)
     return rc;
 }
 
+/* Drive one PMIX_NOTIFY_CMD from a given peer */
+static pmix_status_t do_notify_as(pmix_peer_t *peer, pmix_status_t status,
+                                  pmix_data_range_t range, size_t ninfo, pmix_info_t *info);
+
 /* Drive one PMIX_NOTIFY_CMD: status, range, directive count, directives. */
 static pmix_status_t do_notify(pmix_status_t status, pmix_data_range_t range,
                                size_t declared_ninfo, size_t ninfo, pmix_info_t *info)
@@ -450,6 +455,146 @@ static bool relay_is_our_event(pmix_buffer_t *buf, pmix_data_range_t *range)
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buf, range, &cnt, PMIX_DATA_RANGE);
     return (PMIX_SUCCESS == rc);
+}
+
+static pmix_status_t do_notify_as(pmix_peer_t *peer, pmix_status_t status,
+                                  pmix_data_range_t range, size_t ninfo, pmix_info_t *info)
+{
+    pmix_buffer_t *buf;
+    pmix_status_t rc;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &status, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &range, 1, PMIX_DATA_RANGE);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS == rc && 0 < ninfo) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, info, ninfo, PMIX_INFO);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+    rc = pmix_server_event_recvd_from_client(peer, buf, NULL, NULL);
+    PMIX_RELEASE(buf);
+    return rc;
+}
+
+/* ------------------------------------------------------------------ */
+/* who may release a process held for a debugger                       */
+/* ------------------------------------------------------------------ */
+
+/* register a two-rank job owned by uid/gid, both ranks local */
+static pmix_status_t reg_job(const char *name, uid_t uid, gid_t gid)
+{
+    pmix_info_t info[2];
+    pmix_nspace_t ns;
+    pmix_proc_t proc;
+    pmix_status_t rc;
+    uint32_t u32;
+    pmix_rank_t r;
+
+    u32 = (uint32_t) uid;
+    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &u32, PMIX_UINT32);
+    u32 = (uint32_t) gid;
+    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &u32, PMIX_UINT32);
+    PMIX_LOAD_NSPACE(ns, name);
+    rc = PMIx_server_register_nspace(ns, 2, info, 2, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        return rc;
+    }
+    for (r = 0; r < 2; r++) {
+        PMIX_LOAD_PROCID(&proc, name, r);
+        rc = PMIx_server_register_client(&proc, uid, gid, NULL, NULL, NULL);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            return rc;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+/* a connected client of another user's job, as far as the tables go */
+static pmix_peer_t *stranger_peer(const char *nsname, uid_t uid, gid_t gid)
+{
+    pmix_namespace_t *ns, *nptr = NULL;
+    pmix_peer_t *p;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (NULL != ns->nspace && 0 == strcmp(ns->nspace, nsname)) {
+            nptr = ns;
+        }
+    }
+    if (NULL == nptr) {
+        return NULL;
+    }
+    if (NULL == nptr->compat.bfrops) {
+        memcpy(&nptr->compat, &pmix_globals.mypeer->nptr->compat, sizeof(pmix_personality_t));
+    }
+    p = PMIX_NEW(pmix_peer_t);
+    PMIX_RETAIN(nptr);
+    p->nptr = nptr;
+    memcpy(&p->proc_type, &pmix_globals.mypeer->proc_type, sizeof(pmix_proc_type_t));
+    p->info = PMIX_NEW(pmix_rank_info_t);
+    p->info->pname.nspace = strdup(nsname);
+    p->info->pname.rank = 0;
+    p->info->uid = uid;
+    p->info->gid = gid;
+    return p;
+}
+
+static pmix_status_t release_from(pmix_peer_t *peer, pmix_data_range_t range,
+                                  const char *nspace)
+{
+    pmix_info_t info;
+    pmix_proc_t target;
+    pmix_status_t rc;
+
+    if (NULL == nspace) {
+        return do_notify_as(peer, PMIX_DEBUGGER_RELEASE, range, 0, NULL);
+    }
+    PMIX_LOAD_PROCID(&target, nspace, 0);
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_CUSTOM_RANGE, &target, PMIX_PROC);
+    rc = do_notify_as(peer, PMIX_DEBUGGER_RELEASE, range, 1, &info);
+    PMIX_INFO_DESTRUCT(&info);
+    return rc;
+}
+
+/* A release lets a process held for a debugger go on, so it is taken
+ * only from a peer whose user may act on that process's job - the job's
+ * owner, a user it allowed, root, or the server's own user. A job the host
+ * never registered here is the host's to judge: the release passes on to
+ * it. A release with no targets reaches every job here, so every one of
+ * them has to pass. */
+static void test_debugger_release(void)
+{
+    uid_t other = geteuid() + 1;
+    gid_t ogrp = getegid() + 1;
+    pmix_peer_t *stranger;
+
+    if (PMIX_SUCCESS != reg_job("seut-mine", geteuid(), getegid()) ||
+        PMIX_SUCCESS != reg_job("seut-theirs", other, ogrp) ||
+        NULL == (stranger = stranger_peer("seut-theirs", other, ogrp))) {
+        report("debugger release: setup", 0);
+        return;
+    }
+    report("another user's peer may not release my job's process",
+           PMIX_ERR_NO_PERMISSIONS == release_from(stranger, PMIX_RANGE_CUSTOM, "seut-mine"));
+    report("it may release its own job's process",
+           PMIX_SUCCESS == release_from(stranger, PMIX_RANGE_CUSTOM, "seut-theirs"));
+    report("a job not registered here is left to the host",
+           PMIX_SUCCESS == release_from(stranger, PMIX_RANGE_CUSTOM, "seut-elsewhere"));
+    report("a release with no targets may not reach my job",
+           PMIX_ERR_NO_PERMISSIONS == release_from(stranger, PMIX_RANGE_LOCAL, NULL));
+    report("a release to its own namespace is allowed",
+           PMIX_SUCCESS == release_from(stranger, PMIX_RANGE_NAMESPACE, NULL));
+    report("the server's own user may release any job's process",
+           PMIX_SUCCESS == release_from(standin(), PMIX_RANGE_CUSTOM, "seut-theirs"));
+    PMIX_RELEASE(stranger);
 }
 
 int main(int argc, char **argv)
@@ -626,6 +771,8 @@ int main(int argc, char **argv)
         PMIX_RELEASE(relay);
     }
 
+    drain_queued();
+    test_debugger_release();
     drain_queued();
     PMIX_INFO_DESTRUCT(&dir);
     release_standin();
