@@ -298,7 +298,10 @@ spawning debugger daemons alongside it.
   individual processes.
 * ``PMIX_DEBUG_STOP_IN_INIT`` (varies) |mdash| stop the specified rank(s) inside
   ``PMIx_Init`` and notify that they are ready to be debugged. Same value forms
-  as ``PMIX_DEBUG_STOP_ON_EXEC``.
+  as ``PMIX_DEBUG_STOP_ON_EXEC``. A stopped process continues when it receives
+  a ``PMIX_DEBUGGER_RELEASE`` event. The server accepts that event from a client
+  or tool only if its user may access the job of every process the event can
+  reach - see :doc:`/security-plan`.
 * ``PMIX_DEBUG_STOP_IN_APP`` (varies) |mdash| direct the specified rank(s) to
   stop at an application-defined point and notify that they are ready to be
   debugged. Same value forms as ``PMIX_DEBUG_STOP_ON_EXEC``.
