@@ -27,6 +27,10 @@
  *    finalize, because the name finalize removes was taken from the MCA
  *    parameter before the directive could replace it.
  *
+ *  - a PMIX_TCP_REPORT_URI is written only as a regular file with a single
+ *    name: a symlink at the name is not followed and a second hard link is
+ *    not written through, while an existing regular file is replaced.
+ *
  *  - with remote connections accepted, the listener bound only the first
  *    public interface, so a remote tool on any other network could not
  *    reach the server at all. It now listens on each of them and records
@@ -243,6 +247,113 @@ static void report_uri_file_child(void)
         _exit(CHILD_FAIL);
     }
     _exit(CHILD_PASS);
+}
+
+/* Write a known line to path. */
+static int put_marker(const char *path)
+{
+    FILE *fp = fopen(path, "w");
+
+    if (NULL == fp) {
+        return -1;
+    }
+    fprintf(fp, "marker\n");
+    fclose(fp);
+    return 0;
+}
+
+/* Does path still hold exactly the marker? */
+static bool has_marker(const char *path)
+{
+    char line[64] = {0};
+    FILE *fp = fopen(path, "r");
+    bool ok;
+
+    if (NULL == fp) {
+        return false;
+    }
+    ok = (NULL != fgets(line, sizeof(line), fp) && 0 == strcmp(line, "marker\n") &&
+          NULL == fgets(line, sizeof(line), fp));
+    fclose(fp);
+    return ok;
+}
+
+static void report_uri_symlink_child(void)
+{
+    pmix_info_t info;
+    char target[PMIX_PATH_MAX + 16], lnk[PMIX_PATH_MAX + 16];
+    bool ok;
+
+    snprintf(target, sizeof(target), "%s/target.txt", tmpdir);
+    snprintf(lnk, sizeof(lnk), "%s/link.txt", tmpdir);
+    unlink(target);
+    unlink(lnk);
+    if (0 != put_marker(target) || 0 != symlink(target, lnk)) {
+        _exit(CHILD_FAIL);
+    }
+    PMIX_INFO_LOAD(&info, PMIX_TCP_REPORT_URI, lnk, PMIX_STRING);
+    (void) PMIx_server_init(&mymodule, &info, 1);
+    ok = has_marker(target);
+    if (!ok) {
+        fprintf(stderr, "the report was written through a symlink\n");
+    }
+    unlink(lnk);
+    unlink(target);
+    _exit(ok ? CHILD_PASS : CHILD_FAIL);
+}
+
+static void report_uri_hardlink_child(void)
+{
+    pmix_info_t info;
+    char target[PMIX_PATH_MAX + 16], lnk[PMIX_PATH_MAX + 16];
+    bool ok;
+
+    snprintf(target, sizeof(target), "%s/target.txt", tmpdir);
+    snprintf(lnk, sizeof(lnk), "%s/link.txt", tmpdir);
+    unlink(target);
+    unlink(lnk);
+    if (0 != put_marker(target) || 0 != link(target, lnk)) {
+        _exit(CHILD_FAIL);
+    }
+    PMIX_INFO_LOAD(&info, PMIX_TCP_REPORT_URI, lnk, PMIX_STRING);
+    (void) PMIx_server_init(&mymodule, &info, 1);
+    ok = has_marker(target);
+    if (!ok) {
+        fprintf(stderr, "the report was written through a second hard link\n");
+    }
+    unlink(lnk);
+    unlink(target);
+    _exit(ok ? CHILD_PASS : CHILD_FAIL);
+}
+
+static void report_uri_replace_child(void)
+{
+    pmix_info_t info;
+    char path[PMIX_PATH_MAX + 16];
+    char line[256] = {0};
+    FILE *fp;
+    bool ok;
+
+    snprintf(path, sizeof(path), "%s/uri.txt", tmpdir);
+    unlink(path);
+    if (0 != put_marker(path)) {
+        _exit(CHILD_FAIL);
+    }
+    PMIX_INFO_LOAD(&info, PMIX_TCP_REPORT_URI, path, PMIX_STRING);
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, &info, 1)) {
+        unlink(path);
+        _exit(CHILD_FAIL);
+    }
+    /* the URI, and nothing left of what was there before */
+    fp = fopen(path, "r");
+    ok = (NULL != fp && NULL != fgets(line, sizeof(line), fp) &&
+          0 != strcmp(line, "marker\n") && NULL != strstr(line, ";"));
+    if (NULL != fp) {
+        fclose(fp);
+    }
+    PMIx_server_finalize();
+    unlink(path);
+    _exit(ok ? CHILD_PASS : CHILD_FAIL);
 }
 
 /* ---- listening on every public interface ------------------------- */
@@ -492,6 +603,10 @@ int main(int argc, char **argv)
     run_case("a PMIX_TCP_IPV4_PORT past 65535 is refused", big_port_child);
     run_case("an empty PMIX_TCP_REPORT_URI leaves stdin alone", empty_report_uri_child);
     run_case("a report file named by directive is removed at finalize", report_uri_file_child);
+    run_case("a report file is not written through a symlink", report_uri_symlink_child);
+    run_case("a report file is not written through a second hard link",
+             report_uri_hardlink_child);
+    run_case("an existing report file is replaced", report_uri_replace_child);
     run_case("the report file lists the wire formats and security mechanisms this server runs",
              compat_lines_child);
     run_case("remote connections listen on, and advertise, every public interface",
