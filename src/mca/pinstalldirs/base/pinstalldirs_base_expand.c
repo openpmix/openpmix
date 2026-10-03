@@ -37,7 +37,8 @@
             end_pos = start_pos + strlen("${" #fieldname "}");                                     \
             if (0 > pmix_asprintf(&retval, "%s%s%s", tmp, pmix_pinstall_dirs.ompiname + destdir_offset, \
                              end_pos)) {                                                           \
-                pmix_output(0, "NOMEM");                                                           \
+                free(tmp);                                                                         \
+                return NULL;                                                                       \
             }                                                                                      \
             free(tmp);                                                                             \
             changed = true;                                                                        \
@@ -47,12 +48,17 @@
             end_pos = start_pos + strlen("@{" #fieldname "}");                                     \
             if (0 > pmix_asprintf(&retval, "%s%s%s", tmp, pmix_pinstall_dirs.ompiname + destdir_offset, \
                              end_pos)) {                                                           \
-                pmix_output(0, "NOMEM");                                                           \
+                free(tmp);                                                                         \
+                return NULL;                                                                       \
             }                                                                                      \
             free(tmp);                                                                             \
             changed = true;                                                                        \
         }                                                                                          \
     } while (0)
+
+/* The directories nest only a few deep - prefix, exec_prefix, libdir,
+ * pkglibdir - so expansion settles within a handful of passes. */
+#define PMIX_PINSTALL_DIRS_MAX_PASSES 32
 
 /*
  * Read the lengthy comment below to understand the value of the
@@ -128,8 +134,18 @@ static char *pmix_pinstall_dirs_expand_internal(const char *input, bool is_setup
     if (needs_expand) {
         bool changed = false;
         char *start_pos, *end_pos, *tmp;
+        int passes = 0;
 
         do {
+            /* a directory defined in terms of itself - prefix set to
+             * "${prefix}/x" - never stops changing, so give up after
+             * more passes than any real nesting of these needs */
+            if (PMIX_PINSTALL_DIRS_MAX_PASSES < ++passes) {
+                pmix_output(0, "pinstalldirs: \"%s\" does not stop expanding - "
+                               "an installation directory is defined in terms of itself",
+                            input);
+                break;
+            }
             changed = false;
             EXPAND_STRING(prefix);
             EXPAND_STRING(exec_prefix);
