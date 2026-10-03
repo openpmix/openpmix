@@ -781,7 +781,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
                         // mismatch
                         PMIx_Info_list_release(ilist);
                         pmix_show_help("help-ptl-base.txt", "mismatch-id", true,
-                                       "group", iblob[n].value.data.uint32, info->uid);
+                                       "group", iblob[n].value.data.uint32, info->gid);
                         goto error;
                     }
                 }
