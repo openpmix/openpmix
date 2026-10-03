@@ -468,6 +468,27 @@ qualifiers (`PMIX_INFO_IS_QUALIFIER`) can be smaller than `nquals`: index
 the destination array by the compacted counter, not the loop variable
 (this was the bug fixed in July 2026 — see below).
 
+**Non-reserved keys are reference counted.** Each `pmix_dstor_t` and
+each qualifier entry that names a key in the process-global index holds
+one reference to it (`key_hold()` / `key_drop()` in `pmix_hash.c`), and
+the key's entry is freed when the count reaches zero. That is what keeps
+a persistent DVM's dictionary from growing with every job's keys. Three
+rules follow:
+
+- **Anything that keeps a key index must hold a reference.** Today that
+  is only stored values and qualifiers. A new holder that skips it will
+  find its key freed under it - or replaced by another key.
+- **Freed numbers are reused.** The next key registered takes the number
+  a released key gave back, so the index stays as large as the most keys
+  alive at once, however many jobs come and go. That is safe only while
+  every holder is counted: an uncounted holder would read whatever key
+  was given its number next. Index numbers never leave the process.
+- **Only the progress thread touches the global index.** That is why the
+  free needs no lock: the application-thread lookups read `dict_by_id`
+  (the fixed reserved snapshot) or a `gds/shmem3` segment's own index.
+  Only the global index is counted - a table with no TMA uses it, and a
+  segment's index goes away with the segment.
+
 Four invariants in here are easy to break and hard to see broken.
 
 - **A wildcard removal with a `NULL` key must empty the table, not just
