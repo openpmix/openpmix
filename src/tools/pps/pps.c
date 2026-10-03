@@ -223,6 +223,19 @@ static pmix_proc_info_t *get_proc_array(myquery_data_t *mq, size_t *np)
     return (pmix_proc_info_t *) mq->info[0].value.data.darray->array;
 }
 
+/* The names in a process table are the server's to supply, so they are
+ * shown through pmix_util_printable() - replaced in place, since the
+ * table is released as a whole afterward */
+static void make_printable(char **str)
+{
+    char *shown;
+
+    if (NULL != *str && NULL != (shown = pmix_util_printable(*str))) {
+        free(*str);
+        *str = shown;
+    }
+}
+
 static void print_proctable(const char *nspace, pmix_proc_info_t *pi, size_t np)
 {
     size_t n;
@@ -351,9 +364,10 @@ int main(int argc, char *argv[])
 {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_info_t *info;
-    size_t ninfo, n;
+    size_t ninfo, n, m;
     pmix_query_t *query;
     myquery_data_t myquery_data;
+    char *shown;
     mylock_t mylock;
     pmix_cli_result_t results;
     pmix_cli_item_t *opt;
@@ -507,20 +521,31 @@ int main(int argc, char *argv[])
         myquery_data_t mq;
         rc = query_proctable(nspaces[n], &mq);
         if (PMIX_SUCCESS != rc) {
+            shown = pmix_util_printable(nspaces[n]);
             fprintf(stderr, "Namespace %s: query failed: %s\n",
-                    nspaces[n], PMIx_Error_string(rc));
+                    (NULL == shown) ? "?" : shown, PMIx_Error_string(rc));
+            free(shown);
             /* the callback may still have handed us partial results */
             PMIX_INFO_FREE(mq.info, mq.ninfo);
             continue;
         }
         pi = get_proc_array(&mq, &np);
+        shown = pmix_util_printable(nspaces[n]);
         if (NULL == pi) {
-            printf("\nNamespace %s (no process information available)\n", nspaces[n]);
-        } else if (nodes) {
-            print_nodes(nspaces[n], pi, np);
+            printf("\nNamespace %s (no process information available)\n",
+                   (NULL == shown) ? "?" : shown);
         } else {
-            print_proctable(nspaces[n], pi, np);
+            for (m = 0; m < np; m++) {
+                make_printable(&pi[m].hostname);
+                make_printable(&pi[m].executable_name);
+            }
+            if (nodes) {
+                print_nodes((NULL == shown) ? "?" : shown, pi, np);
+            } else {
+                print_proctable((NULL == shown) ? "?" : shown, pi, np);
+            }
         }
+        free(shown);
         PMIX_INFO_FREE(mq.info, mq.ninfo);
     }
     PMIx_Argv_free(nspaces);
