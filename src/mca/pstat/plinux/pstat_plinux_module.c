@@ -74,12 +74,11 @@ const pmix_pstat_base_module_t pmix_pstat_plinux_module = {
 #define PMIX_STAT_MAX_LENGTH 1024
 
 /* Local functions */
-static char *local_getline(FILE *fp);
+static char *local_getline(FILE *fp, char *input);
 static char *local_stripper(char *data);
 static void local_getfields(char *data, char ***fields);
 
 /* Local data */
-static char input[PMIX_STAT_MAX_LENGTH];
 
 static pmix_status_t plinux_module_init(void)
 {
@@ -229,6 +228,7 @@ static pmix_status_t proc_stat(void *answer, const pmix_pstat_target_t *tgt, pid
 static pmix_status_t proc_stat_at(void *answer, const pmix_pstat_target_t *tgt, pid_t pid,
                                   pmix_procstats_t *pst, int dirfd)
 {
+    char line[PMIX_STAT_MAX_LENGTH];
     pmix_proc_t proc;
     pmix_status_t rc;
     char data[4096], state[2];
@@ -314,8 +314,9 @@ static pmix_status_t proc_stat_at(void *answer, const pmix_pstat_target_t *tgt, 
     /* step over the paren */
     ptr++;
 
-    /* find the ending paren */
-    if (NULL == (eptr = strchr(ptr, ')'))) {
+    /* find the ending paren - the last one, since the command name is
+     * the process's own to choose and may contain one itself */
+    if (NULL == (eptr = strrchr(ptr, ')'))) {
         /* no end to cmd => something wrong with data, return error */
         PMIx_Info_list_release(cache);
         return PMIX_ERR_BAD_PARAM;
@@ -454,7 +455,7 @@ static pmix_status_t proc_stat_at(void *answer, const pmix_pstat_target_t *tgt, 
     }
 
     /* parse it according to proc(3) */
-    while (NULL != (dptr = local_getline(fp))) {
+    while (NULL != (dptr = local_getline(fp, line))) {
         if (NULL == (value = local_stripper(dptr))) {
             /* cannot process */
             continue;
@@ -503,7 +504,7 @@ static pmix_status_t proc_stat_at(void *answer, const pmix_pstat_target_t *tgt, 
 
     /* parse it to find lines that start with "Pss" */
     fval = 0.0;
-    while (NULL != (dptr = local_getline(fp))) {
+    while (NULL != (dptr = local_getline(fp, line))) {
         if (NULL == (value = local_stripper(dptr))) {
             /* cannot process */
             continue;
@@ -551,6 +552,7 @@ static pmix_status_t disk_stat(void *answer,
                                char **disks,
                                pmix_dkstats_t *dkst)
 {
+    char line[PMIX_STAT_MAX_LENGTH];
     FILE *fp;
     char *dptr;
     char **fields = NULL;
@@ -571,7 +573,7 @@ static pmix_status_t disk_stat(void *answer,
     }
 
     /* read the file one line at a time */
-    while (NULL != (dptr = local_getline(fp))) {
+    while (NULL != (dptr = local_getline(fp, line))) {
         /* parse to extract the fields */
         fields = NULL;
         local_getfields(dptr, &fields);
@@ -763,6 +765,7 @@ static pmix_status_t disk_stat(void *answer,
 static pmix_status_t net_stat(void *answer, char**nets,
                               pmix_netstats_t *netst)
 {
+    char line[PMIX_STAT_MAX_LENGTH];
     FILE *fp;
     char *dptr, *ptr;
     char **fields;
@@ -783,11 +786,11 @@ static pmix_status_t net_stat(void *answer, char**nets,
     }
 
     /* skip the first two lines as they are headers */
-    local_getline(fp);
-    local_getline(fp);
+    local_getline(fp, line);
+    local_getline(fp, line);
 
     /* read the file one line at a time */
-    while (NULL != (dptr = local_getline(fp))) {
+    while (NULL != (dptr = local_getline(fp, line))) {
         /* the interface is at the start of the line */
         if (NULL == (ptr = strchr(dptr, ':'))) {
             continue;
@@ -932,6 +935,7 @@ static pmix_status_t net_stat(void *answer, char**nets,
 
 static pmix_status_t node_stat(void *ilist, pmix_ndstats_t *ndst)
 {
+    char line[PMIX_STAT_MAX_LENGTH];
     int fd;
     FILE *fp;
     char data[4096], *ptr, *value, *dptr, *eptr;
@@ -993,7 +997,7 @@ static pmix_status_t node_stat(void *ilist, pmix_ndstats_t *ndst)
     }
 
     /* read the file one line at a time */
-    while (NULL != (dptr = local_getline(fp))) {
+    while (NULL != (dptr = local_getline(fp, line))) {
         if (NULL == (value = local_stripper(dptr))) {
             /* cannot process */
             continue;
@@ -1653,7 +1657,10 @@ static pmix_status_t query(pmix_proc_t *requestor,
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-static char *local_getline(FILE *fp)
+/* input is the caller's, PMIX_STAT_MAX_LENGTH bytes: the sampler can
+ * run on its own thread while a query is answered on the progress
+ * thread, so the line read cannot live in shared storage */
+static char *local_getline(FILE *fp, char *input)
 {
     char *ptr;
     size_t len;
@@ -1737,6 +1744,12 @@ static void local_getfields(char *dptr, char ***fields)
         /* find the end of this alpha string */
         while ('\0' != *end && isalnum((unsigned char) *end)) {
             end++;
+        }
+        if ('\0' == *end) {
+            /* the line ends with this field - it is the hanging one
+             * stored below, and stepping past the terminator here would
+             * read beyond the line */
+            break;
         }
         /* terminate it */
         *end = '\0';

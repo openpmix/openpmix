@@ -33,10 +33,15 @@
 #include "src/mca/pstat/pstat.h"
 #include "src/server/pmix_server_ops.h"
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <unistd.h>
+#if defined(__linux__)
+#    include <sys/prctl.h>
+#endif
 
 #define NS_MINE  "pstp-mine"  // owned by us
 #define NS_OTHER "pstp-other" // owned by another uid
@@ -461,6 +466,82 @@ static void test_pids(pmix_peer_t *me)
     call_done(&c);
 }
 
+#if defined(__linux__)
+/* A process names its own command, and that name sits in parentheses in
+ * /proc/<pid>/stat - so a name that holds a ")" of its own must not cut
+ * the parse short. The child renames itself; its sample must report the
+ * whole name, and its own pid. */
+static void test_paren_command(pmix_peer_t *me)
+{
+    static const char name[] = "pp) 9 Z";
+    char path[64], comm[64] = {0};
+    call_t c;
+    pmix_data_array_t *da;
+    pmix_info_t *fields;
+    bool gotname = false, gotpid = false;
+    pid_t child, pid;
+    FILE *fp;
+    size_t n, m;
+    int tries, status;
+
+    child = fork();
+    if (0 > child) {
+        report("paren command: fork", 0);
+        return;
+    }
+    if (0 == child) {
+        (void) prctl(PR_SET_NAME, name, 0, 0, 0);
+        pause();
+        _exit(0);
+    }
+    /* wait for the rename to take */
+    snprintf(path, sizeof(path), "/proc/%d/comm", (int) child);
+    for (tries = 0; tries < 500; tries++) {
+        if (NULL != (fp = fopen(path, "r"))) {
+            if (NULL != fgets(comm, sizeof(comm), fp)) {
+                comm[strcspn(comm, "\n")] = '\0';
+            }
+            fclose(fp);
+            if (0 == strcmp(comm, name)) {
+                break;
+            }
+        }
+        usleep(10000);
+    }
+
+    call_init(&c, me->info->pname.nspace, me->info->pname.rank);
+    c.dirs = target_pid(child);
+    c.ndirs = 1;
+    c.query = true;
+    on_progress(do_call, &c);
+    for (n = 0; NULL != c.results && n < c.nresults; n++) {
+        if (!PMIx_Check_key(c.results[n].key, PMIX_PROC_RESOURCE_USAGE) ||
+            PMIX_DATA_ARRAY != c.results[n].value.type) {
+            continue;
+        }
+        da = c.results[n].value.data.darray;
+        fields = (pmix_info_t *) da->array;
+        for (m = 0; m < da->size; m++) {
+            if (PMIx_Check_key(fields[m].key, PMIX_CMD_LINE) &&
+                PMIX_STRING == fields[m].value.type &&
+                0 == strcmp(fields[m].value.data.string, name)) {
+                gotname = true;
+            } else if (PMIx_Check_key(fields[m].key, PMIX_PROC_PID) &&
+                       PMIX_SUCCESS == PMIx_Value_get_number(&fields[m].value, &pid, PMIX_PID) &&
+                       child == pid) {
+                gotpid = true;
+            }
+        }
+    }
+    report("a command name holding \")\" is read whole", PMIX_SUCCESS == c.rc && gotname);
+    report("and the sample is the process's own", PMIX_SUCCESS == c.rc && gotpid);
+    PMIX_INFO_FREE(c.dirs, c.ndirs);
+    call_done(&c);
+    kill(child, SIGKILL);
+    (void) waitpid(child, &status, 0);
+}
+#endif
+
 static void test_relay(void)
 {
     call_t c;
@@ -572,6 +653,9 @@ int main(int argc, char **argv)
     test_named();
     test_jobs(stranger);
     test_pids(me);
+#if defined(__linux__)
+    test_paren_command(me);
+#endif
     test_relay();
     test_departure(me);
 
