@@ -32,6 +32,10 @@
 #ifdef HAVE_SYSLOG_H
 #    include <syslog.h>
 #endif
+/* the level bits of a priority - spelled out where syslog.h does not */
+#ifndef LOG_PRIMASK
+#    define LOG_PRIMASK 0x07
+#endif
 #include <stdarg.h>
 
 #include "src/mca/bfrops/bfrops.h"
@@ -214,6 +218,10 @@ static pmix_status_t write_local(const pmix_proc_t *source, time_t timestamp,
 {
     char tod[48];
     size_t len;
+
+    /* the caller chooses how severe the message is, not where syslog
+     * files it: the facility is the one this process opened the log with */
+    severity &= LOG_PRIMASK;
 
     pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
                         "plog:syslog:mylog function called with severity %d", severity);
