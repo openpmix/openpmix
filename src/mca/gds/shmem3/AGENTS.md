@@ -228,8 +228,10 @@ The core mechanism is a **bump allocator over shared memory**, the
   times). All PMIx list/hash-table structures for the job are then
   allocated *inside* the segment through the TMA, so the pointers they
   contain are valid at the chosen base address. The TMA `free` is a no-op
-  (it is a bump allocator); overflowing a segment `abort()`s with a
-  guidance message — size segments generously.
+  (it is a bump allocator). Overflowing a job or session segment
+  `abort()`s with a guidance message — size those generously. A modex
+  segment is the exception: see "A modex that outgrows its segment"
+  below.
 - **Client (reader).** The server packs, per segment, a *seg blob*
   containing the backing-file path, size, and the **header address** it was
   mapped at. These are bundled into
@@ -425,7 +427,8 @@ fixed capacity whatever it would hold — a 2048-entry lookup and a
 1024-slot pointer array, ~169 KB for an index holding one key. It is
 now sized by `pmix_keyindex_init(ki, nkeys)`, and **the `nkeys` passed
 there has to be the one the estimate reserved for**: the allocator
-cannot grow, so an index that rehashes runs off the end of the segment.
+cannot grow, so an index that rehashes runs off the end of the segment
+(in a job segment, an abort; in a modex segment, a rebuild).
 That cut the floor to ~12 KB and fixed a latent overrun in the other
 direction — past ~2055 distinct keys the old fixed lookup rehashed
 inside the bump allocator, past what the estimate had covered. Three
@@ -645,7 +648,7 @@ terabytes of empty space.
 
 | Parameter | Type | Meaning |
 |-----------|------|---------|
-| `gds_shmem3_segment_size_multiplier` | double (default `1.0`) | scales the computed segment sizes; raise it if a job overflows a segment (which aborts). |
+| `gds_shmem3_segment_size_multiplier` | double (default `1.0`) | scales the computed segment sizes; raise it if a job overflows a job or session segment (which aborts). A modex segment that overflows is rebuilt larger instead. |
 | `gds_shmem3_arena_slot_size` | size_t (default 1 GiB) | address space reserved per modex slot. `0` disables the arena and restores independent placement. Virtual address space only — nothing is committed. |
 | `gds_shmem3_arena_modex_slots` | size_t (default `4`, capped at 32) | how many modex generations the arena can hold at once. More than one is live only where deltas are in play; past the last slot a generation is placed outside the arena. |
 | `gds_shmem3_offset_placement` | bool (default `true`) | place segments a quarter of the way into the biggest hole instead of at its midpoint. |
@@ -680,6 +683,37 @@ mapping - only the name goes (`pmix_shmem_segment_detach` in
 `src/util/pmix_shmem.c`). A client that had not yet opened the old
 generation fails to, and falls back like any client the file's mode does
 not admit (below).
+
+### A modex that outgrows its segment
+
+A modex segment is sized before any of the contribution is unpacked, and
+the estimate can be wrong: a great many small keys cost far more than
+their packed size. So a modex build does not abort when its segment
+fills.
+
+- `modex_smdata_construct()` marks the segment's allocator
+  `recoverable`. A full segment then fails the allocation and sets
+  `exhausted`, instead of calling `abort()`.
+- `server_store_modex_cb()` checks `exhausted` after every store and
+  returns `PMIX_ERR_SILENT`. It checks the flag, not `rc`, because not
+  every failed allocation below `pmix_hash_store()` comes back as an
+  error.
+- `server_store_modex()` then throws the build away
+  (`release_modex_build()`), puts `modex_generation` back, doubles
+  `job->modex_scale`, rewinds the buffer and walks it again. It stops
+  when the generation fits or a segment that size cannot be created; the
+  second is a failed fence, not a dead server.
+
+This is safe only because the generation being built is unpublished. No
+reader can reach it until `publish_modex_generation()` runs at the end
+of a successful walk. Do not publish part of a generation early.
+
+Any failed walk also empties the build slot. An occupied slot is what
+tells the next walk that a generation is already under way, so a
+half-built one left there would be carried into the next fence.
+
+A repeated walk repeats its side effects. The only one today is the
+deleted-key notice to local clients, which is idempotent.
 
 ### Who may open a segment
 
@@ -1010,9 +1044,12 @@ as success.
   Anything that changes how the address is chosen, packed, or reattached
   must keep both ends in agreement, and must preserve the
   `PMIX_ERR_TAKE_NEXT_OPTION` fallback for the address-mismatch case.
-- **Size segments generously.** Overflow `abort()`s the process; the
-  pre-sizing math plus `segment_size_multiplier` is the only guard. Prefer
-  raising the multiplier over shaving the estimates.
+- **Size segments generously.** Overflowing a job or session segment
+  `abort()`s the process; the pre-sizing math plus
+  `segment_size_multiplier` is the only guard there. Prefer raising the
+  multiplier over shaving the estimates. A modex segment is rebuilt
+  rather than aborted, but every rebuild is another full walk of the
+  contribution, so its estimate still matters.
 - **`store`/`assemb_kvs_req`/`accept_kvs_resp` are `NULL` on purpose.**
   They rely on the framework macros' fallback to the local module; do not
   "complete the interface" by pointing them at half-implemented functions.
@@ -1113,7 +1150,11 @@ job back out of the segment, and deregister. Where the component is not
 available it prints `SKIP` and passes, so the case is honest on macOS
 rather than absent.
 
-That is as far as one process goes: a fence, a second modex generation, a
-client attach at a fixed address, and every cross-node path still belong
-to `run-gds-tests.sh`. But the segment build itself, and the malformed
+`test_shmem3_modex_outgrows_estimate()` stores a contribution whose first
+blob holds one key and whose second holds thousands, so the segment sized
+from them is too small. It checks that the rebuild stores every key and
+that the next generation still builds behind it.
+
+That is as far as one process goes: a fence, a client attach at a fixed
+address, and every cross-node path still belong to `run-gds-tests.sh`. But the segment build itself, and the malformed
 job-level input that reaches it, now run in `make check` on Linux.
