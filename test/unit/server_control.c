@@ -1043,6 +1043,97 @@ static void test_abort_upcall(void)
     report("PMIX_OPERATION_SUCCEEDED reads as success", PMIX_SUCCESS == rc);
 }
 
+/* ---- monitor: a request answered by the host ----------------------- *
+ * A monitor request naming another node goes to the host, and the
+ * server's caddy then holds two arrays in turn: the monitor argument it
+ * unpacked from the client, and the results that replace it. Both are
+ * the caddy's to free. The stub answers from its own allocation and
+ * frees it only when told the server is done with it, as a host must. */
+#define CTLUT_MONKEY "ctlut.mon.result"
+static pmix_info_t *mon_answer = NULL;
+static volatile bool mon_done = false;
+static pmix_status_t mon_status = PMIX_ERROR;
+static bool mon_saw_answer = false;
+
+static void mon_release(void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
+    PMIX_INFO_FREE(mon_answer, 1);
+    mon_answer = NULL;
+}
+
+static pmix_status_t stub_monitor(const pmix_proc_t *requestor, const pmix_info_t *monitor,
+                                  pmix_status_t error, const pmix_info_t directives[],
+                                  size_t ndirs, pmix_info_cbfunc_t cbfunc, void *cbdata)
+{
+    uint32_t v = 42;
+    PMIX_HIDE_UNUSED_PARAMS(requestor, monitor, error, directives, ndirs);
+
+    PMIX_INFO_CREATE(mon_answer, 1);
+    PMIX_INFO_LOAD(&mon_answer[0], CTLUT_MONKEY, &v, PMIX_UINT32);
+    cbfunc(PMIX_SUCCESS, mon_answer, 1, cbdata, mon_release, NULL);
+    return PMIX_SUCCESS;
+}
+
+static void mon_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                       pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
+    mon_status = status;
+    mon_saw_answer = (1 == ninfo && NULL != info && PMIX_CHECK_KEY(&info[0], CTLUT_MONKEY));
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+    mon_done = true;
+}
+
+static void test_monitor_host_reply(void)
+{
+    pmix_buffer_t *buf;
+    pmix_info_t monitor, dir;
+    pmix_data_array_t da;
+    char *nodes[1] = {"ctlut-elsewhere"};
+    pmix_status_t rc, err = PMIX_SUCCESS;
+    size_t ndirs = 1;
+    int tries;
+
+    PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_PROC_RESOURCE_USAGE, NULL, PMIX_BOOL);
+    da.type = PMIX_STRING;
+    da.size = 1;
+    da.array = nodes;
+    PMIX_INFO_LOAD(&dir, PMIX_MONITOR_TARGET_NODES, &da, PMIX_DATA_ARRAY);
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &monitor, 1, PMIX_INFO);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &err, 1, PMIX_STATUS);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ndirs, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &dir, 1, PMIX_INFO);
+    }
+    PMIX_INFO_DESTRUCT(&monitor);
+    PMIX_INFO_DESTRUCT(&dir);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        report("monitor: request packed", 0);
+        return;
+    }
+    mon_done = false;
+    rc = pmix_server_monitor(standin(), buf, mon_cbfunc, NULL);
+    PMIX_RELEASE(buf);
+    report("monitor: a request for another node is accepted", PMIX_SUCCESS == rc);
+    for (tries = 0; PMIX_SUCCESS == rc && !mon_done && tries < 500; tries++) {
+        usleep(10000);
+    }
+    report("monitor: the host's answer reaches the requester",
+           mon_done && PMIX_SUCCESS == mon_status && mon_saw_answer);
+    report("monitor: the host is told the server is done with its answer",
+           NULL == mon_answer);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -1062,6 +1153,7 @@ int main(int argc, char **argv)
     mymodule.job_control = stub_job_control;
     mymodule.get_credential = stub_get_credential;
     mymodule.abort = stub_abort;
+    mymodule.monitor = stub_monitor;
 
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {
@@ -1898,6 +1990,7 @@ int main(int argc, char **argv)
 
     /* --- the host's abort up-call --------------------------------- */
     test_abort_upcall();
+    test_monitor_host_reply();
 
     release_standin();
     PMIx_server_finalize();
