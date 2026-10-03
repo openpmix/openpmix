@@ -47,6 +47,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/common/pmix_attributes.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -658,6 +659,68 @@ static void test_register_attributes(void)
     check(NULL == PMIx_Get_attribute_name(NULL), "PMIx_Get_attribute_name(NULL) safe");
 }
 
+/* The public attribute lookups run on the caller's thread while the
+ * progress thread registers new keys - growing, and reallocating, the
+ * process's key table. They read only the fixed table of reserved
+ * attributes, so the two can run together. */
+static volatile bool lookups_stop = false;
+static volatile bool lookups_wrong = false;
+
+static void *lookup_loop(void *arg)
+{
+    const char *s;
+    (void) arg;
+
+    while (!lookups_stop) {
+        s = PMIx_Get_attribute_name(PMIX_JOB_SIZE);
+        if (NULL == s || 0 != strcmp(s, "PMIX_JOB_SIZE")) {
+            lookups_wrong = true;
+        }
+        s = PMIx_Get_attribute_string("PMIX_JOB_SIZE");
+        if (NULL == s || 0 != strcmp(s, PMIX_JOB_SIZE)) {
+            lookups_wrong = true;
+        }
+    }
+    return NULL;
+}
+
+static void test_attribute_lookups(pmix_proc_t *myproc)
+{
+    pthread_t thr;
+    pmix_value_t val;
+    char key[64];
+    const char *s;
+    uint32_t u32 = 1;
+    int n;
+
+    s = PMIx_Get_attribute_string("PMIX_JOB_SIZE");
+    check(NULL != s && 0 == strcmp(s, PMIX_JOB_SIZE),
+          "PMIx_Get_attribute_string maps a reserved name to its string");
+    s = PMIx_Get_attribute_name(PMIX_JOB_SIZE);
+    check(NULL != s && 0 == strcmp(s, "PMIX_JOB_SIZE"),
+          "PMIx_Get_attribute_name maps it back");
+    s = PMIx_Get_attribute_string("pmix_job_size");
+    check(NULL != s && 0 == strcmp(s, PMIX_JOB_SIZE),
+          "the name is matched regardless of case");
+    s = PMIx_Get_attribute_string("cmn.ut.user.key");
+    check(NULL != s && 0 == strcmp(s, "cmn.ut.user.key"),
+          "a key that is not reserved is its own string");
+
+    if (0 != pthread_create(&thr, NULL, lookup_loop, NULL)) {
+        check(0, "could not start the lookup thread");
+        return;
+    }
+    PMIX_VALUE_LOAD(&val, &u32, PMIX_UINT32);
+    for (n = 0; n < 20000; n++) {
+        snprintf(key, sizeof(key), "cmn.ut.key.%d", n);
+        (void) PMIx_Store_internal(myproc, key, &val);
+    }
+    lookups_stop = true;
+    pthread_join(thr, NULL);
+    PMIX_VALUE_DESTRUCT(&val);
+    check(!lookups_wrong, "lookups stay right while new keys are registered");
+}
+
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
@@ -697,6 +760,7 @@ int main(int argc, char **argv)
     test_out_parameters();
     test_credential_ownership();
     test_register_attributes();
+    test_attribute_lookups(&myproc);
 
     rc = PMIx_Finalize(NULL, 0);
     if (PMIX_SUCCESS != rc) {
