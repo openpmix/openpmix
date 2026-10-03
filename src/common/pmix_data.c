@@ -489,6 +489,11 @@ pmix_status_t PMIx_Data_unload(pmix_data_buffer_t *buffer, pmix_byte_object_t *p
         /* we cannot just set the pointer as it might be
          * partway in a malloc'd region */
         payload->bytes = (char *) malloc(payload->size);
+        if (NULL == payload->bytes) {
+            /* the buffer is left as it was, so nothing is lost */
+            payload->size = 0;
+            return PMIX_ERR_NOMEM;
+        }
         memcpy(payload->bytes, buffer->unpack_ptr, payload->size);
     }
 
