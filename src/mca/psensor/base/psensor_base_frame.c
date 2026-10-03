@@ -50,13 +50,19 @@ pmix_psensor_base_t pmix_psensor_base = {
     .max_per_peer = 16
 };
 
-static bool use_separate_thread = false;
+/* A file monitor's stat() can block for as long as a file system stops
+ * answering, and on the library's progress thread that would stall every
+ * client of the server - so the monitors run on a thread of their own
+ * unless told otherwise */
+static bool use_separate_thread = true;
 
 static int pmix_psensor_register(pmix_mca_base_register_flag_t flags)
 {
     (void) flags;
     (void) pmix_mca_base_var_register("pmix", "psensor", "base", "use_separate_thread",
-                                      "Use a separate thread for monitoring local procs",
+                                      "Run the liveness monitors on a thread of their own, "
+                                      "started by the first monitor, rather than on the "
+                                      "library's progress thread (default: true)",
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                       &use_separate_thread);
     (void) pmix_mca_base_var_register("pmix", "psensor", "base", "max_monitors_per_peer",
@@ -90,9 +96,10 @@ static int pmix_psensor_base_close(void)
      *   destructors delete their timers and pmix_event_del reads the base
      *   out of the event.
      *
-     * In the default configuration there is no separate thread to pause:
-     * evbase is the library's shared base, which PMIx_server_finalize has
-     * already stopped before it closes any framework. */
+     * There is no thread of ours to pause if no monitor ever started one,
+     * or if psensor_base_use_separate_thread is off - then evbase is the
+     * library's shared base, which PMIx_server_finalize has already
+     * stopped before it closes any framework. */
     if (use_separate_thread && NULL != pmix_psensor_base.evbase) {
         (void) pmix_progress_thread_pause("PSENSOR");
     }
@@ -131,29 +138,11 @@ static int pmix_psensor_base_open(pmix_mca_base_open_flag_t flags)
     /* construct the list of modules */
     PMIX_CONSTRUCT(&pmix_psensor_base.actives, pmix_list_t);
 
+    /* With a thread of our own, it is started by the first monitor - see
+     * pmix_psensor_base_get_evbase(). A server that is never asked to
+     * monitor anything never has it. */
     if (use_separate_thread) {
-        /* create an event base and progress thread for us */
-        pmix_psensor_base.evbase = pmix_progress_thread_init("PSENSOR");
-        if (NULL == pmix_psensor_base.evbase) {
-            PMIX_LIST_DESTRUCT(&pmix_psensor_base.actives);
-            return PMIX_ERROR;
-        }
-        /* and start it. init() builds the base and the thread object but
-         * leaves the engine parked - pmix_init.c starts the library's own
-         * thread in a separate step for the same reason. Without this the
-         * base exists and trackers arm their timers on it quite happily,
-         * and nothing ever runs them: no heartbeat window is ever checked
-         * and no file is ever sampled, so the monitors silently never
-         * fire. The tracker a start posted would not even reach its
-         * component's list, since add_tracker runs on this base too. */
-        rc = pmix_progress_thread_start("PSENSOR");
-        if (PMIX_SUCCESS != rc) {
-            (void) pmix_progress_thread_stop("PSENSOR");
-            pmix_psensor_base.evbase = NULL;
-            PMIX_LIST_DESTRUCT(&pmix_psensor_base.actives);
-            return rc;
-        }
-
+        pmix_psensor_base.evbase = NULL;
     } else {
         pmix_psensor_base.evbase = pmix_globals.evbase;
     }
@@ -167,12 +156,38 @@ static int pmix_psensor_base_open(pmix_mca_base_open_flag_t flags)
          * and the actives list to leak. No component has run yet, so
          * there are no trackers to race with here. */
         PMIX_LIST_DESTRUCT(&pmix_psensor_base.actives);
-        if (use_separate_thread) {
-            (void) pmix_progress_thread_stop("PSENSOR");
-        }
         pmix_psensor_base.evbase = NULL;
     }
     return rc;
+}
+
+pmix_event_base_t *pmix_psensor_base_get_evbase(void)
+{
+    pmix_event_base_t *evbase;
+    pmix_status_t rc;
+
+    if (NULL != pmix_psensor_base.evbase || !use_separate_thread) {
+        return pmix_psensor_base.evbase;
+    }
+    /* the first monitor: start our thread. init() builds the base and the
+     * thread object but leaves the engine parked - pmix_init.c starts the
+     * library's own thread in a separate step for the same reason. Without
+     * the start the base exists, trackers arm their timers on it quite
+     * happily, and nothing ever runs them: no heartbeat window is ever
+     * checked and no file is ever sampled. The tracker a start posts would
+     * not even reach its component's list, since add_tracker runs on this
+     * base too. */
+    evbase = pmix_progress_thread_init("PSENSOR");
+    if (NULL == evbase) {
+        return NULL;
+    }
+    rc = pmix_progress_thread_start("PSENSOR");
+    if (PMIX_SUCCESS != rc) {
+        (void) pmix_progress_thread_stop("PSENSOR");
+        return NULL;
+    }
+    pmix_psensor_base.evbase = evbase;
+    return evbase;
 }
 
 PMIX_MCA_BASE_VERSIONED_FRAMEWORK_DECLARE(pmix, psensor, "PMIx Monitoring Sensors", pmix_psensor_register,
