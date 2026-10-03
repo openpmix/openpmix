@@ -1427,9 +1427,25 @@ complete:
                     goto sockerror;
                 }
             } else {
-                /* must be a file */
-                FILE *fp;
-                fp = fopen(pmix_ptl_base.report_uri, "w");
+                /* must be a file - a regular one with a single name. A
+                 * symlink at the name is not followed, and the file is
+                 * opened without O_TRUNC so that nothing is emptied until
+                 * it has passed that check */
+                FILE *fp = NULL;
+                struct stat sbuf;
+                int fd;
+                fd = pmix_os_dirpath_open_file(pmix_ptl_base.report_uri,
+                                               O_WRONLY | O_CREAT,
+                                               S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP
+                                               | S_IROTH | S_IWOTH);
+                if (0 <= fd) {
+                    if (0 != fstat(fd, &sbuf) || !S_ISREG(sbuf.st_mode) ||
+                        1 != sbuf.st_nlink || 0 != ftruncate(fd, 0) ||
+                        NULL == (fp = fdopen(fd, "w"))) {
+                        close(fd);
+                        fp = NULL;
+                    }
+                }
                 if (NULL == fp) {
                     pmix_output(0, "Impossible to open the file %s in write mode\n",
                                 pmix_ptl_base.report_uri);
