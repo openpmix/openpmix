@@ -154,10 +154,21 @@ A few behaviors are intentional and are not, by themselves, vulnerabilities:
   channel is outside the model, rather than a finding on its own. A way to
   obtain that access — to reach another user's rendezvous socket, session
   directory, or shared-memory segment — is in scope.
-* **A namespace is a trust domain.** A client that legitimately authenticates
-  may ask its server for the things its namespace is entitled to. What *is* a
-  vulnerability is a client reaching across that line: reading another
-  namespace's or another user's data, or driving an operation on their behalf.
+* **Access is decided by user, not by namespace.** A client or tool may read
+  a job's data, pull its output, and monitor or signal its processes when its
+  *user* is permitted to: root, the server's own user, the job's owner, or a
+  user or group the owner named with `PMIX_ACCESS_PERMISSIONS`. Crossing
+  namespaces is therefore normal — connected jobs, debuggers, and workflow
+  tools do it routinely — and is not by itself a finding. What *is* a
+  vulnerability is a requester reaching what its user is not permitted:
+  another user's job data, output, or processes, or an operation driven on
+  their behalf. So is a requester being taken for a user it is not. The rule,
+  and what a host environment must supply for it, are described in
+  [Access control by user and group](https://docs.openpmix.org/en/latest/security-plan.html).
+  The host environment itself is not restricted, and two things are governed
+  differently: the process raising an event chooses who receives it through
+  the event's range, and published data (`PMIx_Publish`) is governed per item
+  by the host's data server.
 * **Running a PMIx server as root.** A server started as root with paths it
   was handed by a user can damage what those paths point at; that risk belongs
   to whoever configured it that way. A privilege escalation reachable by an
