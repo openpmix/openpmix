@@ -388,6 +388,7 @@ test/unit/psec_credentials
 test/unit/psec_ssl_auth
 test/unit/threads_primitives
 test/unit/pif_discovery
+test/unit/pinstalldirs_expand
 test/unit/server_extprogress
 test/unit/pfexec_params
 test/unit/pfexec_iof
