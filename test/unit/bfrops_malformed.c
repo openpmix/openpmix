@@ -953,6 +953,33 @@ static void test_legacy_counts_bounded(const char *version)
     PMIX_DESTRUCT(&buf);
 }
 
+/* A value of type PMIX_POINTER carries only a sentinel on the wire. The
+ * value it unpacks into must hold no pointer afterward, whatever its
+ * storage held before. */
+static void test_pointer_value_unpacks_null(void)
+{
+    pmix_data_buffer_t buf;
+    pmix_value_t in, out;
+    pmix_status_t rc;
+    int32_t cnt = 1;
+    int local = 0;
+    bool ok;
+
+    PMIX_VALUE_CONSTRUCT(&in);
+    in.type = PMIX_POINTER;
+    in.data.ptr = &local;
+    PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+    rc = PMIx_Data_pack(NULL, &buf, &in, 1, PMIX_VALUE);
+    memset(&out, 0, sizeof(out));
+    out.data.ptr = (void *) &cnt;   /* not what a received value may hold */
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_Data_unpack(NULL, &buf, &out, &cnt, PMIX_VALUE);
+    }
+    ok = (PMIX_SUCCESS == rc && PMIX_POINTER == out.type && NULL == out.data.ptr);
+    report("a received pointer value holds no pointer", ok);
+    PMIX_DATA_BUFFER_DESTRUCT(&buf);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -992,6 +1019,7 @@ int main(int argc, char **argv)
     test_count_fits_boundaries();
     test_nested_info_counts_bounded();
     test_sparse_array_counts();
+    test_pointer_value_unpacks_null();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
