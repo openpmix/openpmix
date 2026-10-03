@@ -980,6 +980,65 @@ static void test_pointer_value_unpacks_null(void)
     PMIX_DATA_BUFFER_DESTRUCT(&buf);
 }
 
+/* An app's argv and env are unpacked into arrays allocated once from
+ * the counts that precede them: every element survives the trip, and a
+ * count the payload cannot hold is refused. */
+static void test_app_argv(void)
+{
+    pmix_data_buffer_t buf;
+    pmix_app_t in, out;
+    pmix_status_t rc;
+    int32_t cnt = 1;
+    int big = 1000000;
+    char arg[32];
+    bool ok;
+    int n;
+
+    PMIX_APP_CONSTRUCT(&in);
+    in.cmd = strdup("prog");
+    for (n = 0; n < 1000; n++) {
+        snprintf(arg, sizeof(arg), "arg%d", n);
+        PMIx_Argv_append_nosize(&in.argv, arg);
+    }
+    PMIx_Argv_append_nosize(&in.env, "A=1");
+    PMIx_Argv_append_nosize(&in.env, "B=2");
+    PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+    rc = PMIx_Data_pack(NULL, &buf, &in, 1, PMIX_APP);
+    memset(&out, 0, sizeof(out));
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_Data_unpack(NULL, &buf, &out, &cnt, PMIX_APP);
+    }
+    ok = (PMIX_SUCCESS == rc && 1000 == PMIx_Argv_count(out.argv) &&
+          2 == PMIx_Argv_count(out.env) && 0 == strcmp(out.argv[999], "arg999") &&
+          0 == strcmp(out.env[1], "B=2"));
+    report("an app's argv and env survive the trip", ok);
+    PMIX_APP_DESTRUCT(&out);
+    PMIX_APP_DESTRUCT(&in);
+    PMIX_DATA_BUFFER_DESTRUCT(&buf);
+
+    /* [one app][cmd][argc far past what follows] */
+    {
+        wire_acc_t acc = {NULL, 0};
+        char *cmd = "prog";
+
+        ok = append_raw(&acc, 1) && append_bare(&acc, &cmd, PMIX_STRING) &&
+             append_bare(&acc, &big, PMIX_INT);
+        memset(&out, 0, sizeof(out));
+        rc = PMIX_ERROR;
+        if (ok) {
+            acc.bytes[0] = 1;   /* the count of apps, flex-encoded */
+            load_wire(&buf, (const unsigned char *) acc.bytes, acc.len);
+            cnt = 1;
+            rc = PMIx_Data_unpack(NULL, &buf, &out, &cnt, PMIX_APP);
+            PMIX_DATA_BUFFER_DESTRUCT(&buf);
+        }
+        free(acc.bytes);
+        report("an argv count the payload cannot hold is refused",
+               ok && PMIX_SUCCESS != rc && NULL == out.argv);
+        PMIX_APP_DESTRUCT(&out);
+    }
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -1020,6 +1079,7 @@ int main(int argc, char **argv)
     test_nested_info_counts_bounded();
     test_sparse_array_counts();
     test_pointer_value_unpacks_null();
+    test_app_argv();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
