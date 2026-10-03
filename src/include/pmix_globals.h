@@ -1230,6 +1230,9 @@ typedef struct {
     pmix_list_t iof_pending;
     size_t iof_pending_bytes;
     size_t iof_pending_limit;
+    /* most bytes of an unfinished output line held while waiting for the
+     * rest of it; a longer one is written out as it stands */
+    size_t iof_max_partial_line;
     /* How often, in milliseconds, to re-check whether our terminal has come
      * back to the foreground while our own stdin is suspended for being in
      * the background. See the note over stdin_resume_arm() in
