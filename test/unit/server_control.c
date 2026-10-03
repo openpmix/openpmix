@@ -1134,6 +1134,71 @@ static void test_monitor_host_reply(void)
            NULL == mon_answer);
 }
 
+/* ---- allocation: the host's results outlive the user's callback ---- *
+ * An answer handed to a callback with a release function belongs to the
+ * sender until that function is called, and the caller may call it after
+ * the callback returns. The stub host answers from its own allocation and
+ * frees it only in its release; the user's callback keeps the results
+ * without releasing them. */
+#define CTLUT_ALLOCKEY "ctlut.alloc.result"
+static pmix_info_t *alloc_answer = NULL;
+static volatile bool alloc_done = false;
+static bool alloc_host_released = false;
+static pmix_info_t *alloc_seen = NULL;
+static pmix_release_cbfunc_t alloc_relfn = NULL;
+static void *alloc_relcbdata = NULL;
+
+static void alloc_host_release(void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
+    PMIX_INFO_FREE(alloc_answer, 1);
+    alloc_answer = NULL;
+    alloc_host_released = true;
+}
+
+static pmix_status_t stub_allocate(const pmix_proc_t *client, pmix_alloc_directive_t directive,
+                                   const pmix_info_t data[], size_t ndata,
+                                   pmix_info_cbfunc_t cbfunc, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(client, directive, data, ndata);
+
+    PMIX_INFO_CREATE(alloc_answer, 1);
+    PMIX_INFO_LOAD(&alloc_answer[0], CTLUT_ALLOCKEY, "granted", PMIX_STRING);
+    cbfunc(PMIX_SUCCESS, alloc_answer, 1, cbdata, alloc_host_release, NULL);
+    return PMIX_SUCCESS;
+}
+
+static void alloc_keep(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                       pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(status, cbdata);
+    alloc_seen = (1 == ninfo) ? info : NULL;
+    alloc_relfn = release_fn;
+    alloc_relcbdata = release_cbdata;
+    alloc_done = true;
+}
+
+static void test_alloc_release(void)
+{
+    pmix_status_t rc;
+    int tries;
+
+    alloc_done = false;
+    rc = PMIx_Allocation_request_nb(PMIX_ALLOC_NEW, NULL, 0, alloc_keep, NULL);
+    for (tries = 0; PMIX_SUCCESS == rc && !alloc_done && tries < 500; tries++) {
+        usleep(10000);
+    }
+    report("allocation: the host's answer reaches the caller",
+           PMIX_SUCCESS == rc && alloc_done && NULL != alloc_seen);
+    report("allocation: the host keeps its answer until the caller releases it",
+           alloc_done && !alloc_host_released && NULL != alloc_seen &&
+               PMIX_CHECK_KEY(&alloc_seen[0], CTLUT_ALLOCKEY));
+    if (NULL != alloc_relfn) {
+        alloc_relfn(alloc_relcbdata);
+    }
+    report("allocation: the caller's release reaches the host", alloc_host_released);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -1154,6 +1219,7 @@ int main(int argc, char **argv)
     mymodule.get_credential = stub_get_credential;
     mymodule.abort = stub_abort;
     mymodule.monitor = stub_monitor;
+    mymodule.allocate = stub_allocate;
 
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {
@@ -1991,6 +2057,7 @@ int main(int argc, char **argv)
     /* --- the host's abort up-call --------------------------------- */
     test_abort_upcall();
     test_monitor_host_reply();
+    test_alloc_release();
 
     release_standin();
     PMIx_server_finalize();

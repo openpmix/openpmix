@@ -49,6 +49,10 @@ typedef struct {
     size_t nresults;
     pmix_info_cbfunc_t cbfunc;
     void *cbdata;
+    /* the host's release for the results it handed us - called when the
+     * caller says it is done with them, not before */
+    pmix_release_cbfunc_t relfn;
+    void *relcbdata;
 } pmix_alloc_caddy_t;
 static void acon(pmix_alloc_caddy_t *p)
 {
@@ -62,6 +66,8 @@ static void acon(pmix_alloc_caddy_t *p)
     p->nresults = 0;
     p->cbfunc = NULL;
     p->cbdata = NULL;
+    p->relfn = NULL;
+    p->relcbdata = NULL;
 }
 static void ades(pmix_alloc_caddy_t *p)
 {
@@ -267,9 +273,15 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request(pmix_alloc_directive_t directi
     return rc;
 }
 
+/* The caller is done with the results: only now may the host have them
+ * back. */
 static void myrel(void *cbdata)
 {
     pmix_alloc_caddy_t *acd = (pmix_alloc_caddy_t*)cbdata;
+
+    if (NULL != acd->relfn) {
+        acd->relfn(acd->relcbdata);
+    }
     PMIX_RELEASE(acd);
 }
 
@@ -278,13 +290,14 @@ static void mycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void
 {
     pmix_alloc_caddy_t *acd = (pmix_alloc_caddy_t*)cbdata;
 
+    acd->relfn = release_fn;
+    acd->relcbdata = release_cbdata;
     if (NULL != acd->cbfunc) {
+        /* the results are the host's until the caller calls myrel, which
+         * it may do after this returns */
         acd->cbfunc(status, info, ninfo, acd->cbdata, myrel, acd);
     } else {
-        PMIX_RELEASE(acd);
-    }
-    if (NULL != release_fn) {
-        release_fn(release_cbdata);
+        myrel(acd);
     }
 }
 
