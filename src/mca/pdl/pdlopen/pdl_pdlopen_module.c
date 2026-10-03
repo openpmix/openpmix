@@ -227,13 +227,16 @@ static int pdlopen_foreachfile(const char *search_path,
                 goto error;
             }
 
-            /* Stat the file */
+            /* Stat the file. An entry that cannot be - a symlink whose
+             * target is gone, a file removed since readdir() listed it -
+             * is passed over: it is not a component we could load, and
+             * giving up here would leave the rest of the directory
+             * unsearched */
             struct stat buf;
             /* coverity[TOCTOU] */
             if (stat(abs_name, &buf) < 0) {
                 free(abs_name);
-                ret = PMIX_ERR_IN_ERRNO;
-                goto error;
+                continue;
             }
 
             /* Skip if not a file */
