@@ -639,6 +639,33 @@ pmix_status_t pmix_pstat_base_targets(const pmix_proc_t *requestor,
     return PMIX_SUCCESS;
 }
 
+pmix_status_t pmix_pstat_base_may_add(const pmix_proc_t *requestor)
+{
+    pmix_pstat_op_t *op;
+    int held = 0;
+
+    if (NULL == requestor ||
+        (0 == strncmp(requestor->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN) &&
+         requestor->rank == pmix_globals.myid.rank)) {
+        return PMIX_SUCCESS;
+    }
+    /* compared exactly - PMIX_CHECK_NSPACE takes an empty namespace as
+     * a wildcard */
+    PMIX_LIST_FOREACH (op, &pmix_pstat_base.ops, pmix_pstat_op_t) {
+        if (0 == strncmp(op->requestor.nspace, requestor->nspace, PMIX_MAX_NSLEN) &&
+            op->requestor.rank == requestor->rank) {
+            ++held;
+        }
+    }
+    if (held >= pmix_pstat_base.max_per_peer) {
+        pmix_output_verbose(2, pmix_pstat_base_framework.framework_output,
+                            "pstat: %s already holds %d periodic monitors - refused",
+                            PMIX_NAME_PRINT(requestor), held);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    return PMIX_SUCCESS;
+}
+
 void pmix_pstat_base_peer_lost(struct pmix_peer_t *p)
 {
     pmix_peer_t *peer = (pmix_peer_t *) p;

@@ -1394,6 +1394,15 @@ static pmix_status_t query(pmix_proc_t *requestor,
         }
     }
 
+    // a monitor that repeats is one more timer we service until it ends
+    if (0 < op->rate) {
+        rc = pmix_pstat_base_may_add(requestor);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(op);
+            return rc;
+        }
+    }
+
     // see what data we are being asked to collect
     if (PMIx_Check_key(monitor->key, PMIX_MONITOR_PROC_RESOURCE_USAGE)) {
         // see which values are to be returned
