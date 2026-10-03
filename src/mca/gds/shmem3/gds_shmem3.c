@@ -633,6 +633,7 @@ job_construct(
     // Modex
     job->modex_shmem3_status = 0;
     job->modex_generation = 0;
+    job->modex_bytes = 0;
     job->modex_scale = 1;
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
@@ -3886,9 +3887,18 @@ store_job_info(
 /**
  * Returns size required to store modex data.
  *
- * An estimate - a great many small keys cost more than their packed size
- * suggests - which is why job->modex_scale exists: server_store_modex()
- * raises it and builds again when a segment runs out of room.
+ * Two different things are estimated here, from two different sizes.
+ * The VALUES of every proc in the contribution land in this one segment,
+ * so their storage is sized from the whole contribution (job->modex_bytes).
+ * The KEYS are registered once however many procs carry them, and procs
+ * normally carry the same ones, so the key index is sized from the first
+ * proc's blob (buff). Sizing the values from that blob as well, as this
+ * once did, came up short by roughly the number of procs.
+ *
+ * Both remain estimates - a great many small keys cost more than their
+ * packed size suggests - which is why job->modex_scale exists:
+ * server_store_modex() raises it and builds again when a segment runs out
+ * of room.
  */
 static pmix_gds_shmem3_modex_info_t
 get_modex_sizing_data(
@@ -3896,14 +3906,16 @@ get_modex_sizing_data(
     const pmix_buffer_t *buff
 ) {
     const size_t kval_size = sizeof(pmix_kval_t);
+    const size_t nbytes = (job->modex_bytes > buff->bytes_used)
+                        ? job->modex_bytes : buff->bytes_used;
     // The default values if not provided with modex size info. More fluff than
     // in other places because this calculation is more imprecise. In many ways
     // this is okay because mmap() implements demand paging.
     float fluff = 5.0;
     // Multiplier to fudge compression factor. zlib max compression is 5:1.
-    size_t segment_size = buff->bytes_used * 5;
-    // Get an estimate on the number of kvals we need to store.
-    const size_t nkvals = (segment_size / (float)kval_size) + kval_size;
+    size_t segment_size = nbytes * 5;
+    // Get an estimate on the number of distinct keys we need to store.
+    const size_t nkvals = ((buff->bytes_used * 5) / (float)kval_size) + kval_size;
     /* The modex table is keyed by RANK, not by key: pmix_hash_store()
      * looks up one pmix_proc_data_t per rank and hangs that rank's values
      * off it in a pointer array. So the table needs one element per rank
@@ -4309,6 +4321,7 @@ server_store_modex(pmix_buffer_t *buff,
     const size_t start = (size_t)(buff->unpack_ptr - buff->base_ptr);
     const uint32_t generation =
         atomic_load_explicit(&job->modex_generation, memory_order_relaxed);
+    job->modex_bytes = buff->bytes_used - start;
     job->modex_scale = 1;
     for (;;) {
         rc = pmix_gds_base_store_modex(buff, nspace, server_store_modex_cb,
@@ -4339,6 +4352,7 @@ server_store_modex(pmix_buffer_t *buff,
         job->modex_scale *= 2;
         buff->unpack_ptr = buff->base_ptr + start;
     }
+    job->modex_bytes = 0;
     job->modex_scale = 1;
 
     if (PMIX_SUCCESS != rc) {
