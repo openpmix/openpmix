@@ -33,6 +33,16 @@ BEGIN_C_DECLS
  * gives a meaningful answer - see src/util/AGENTS.md. */
 PMIX_EXPORT pmix_status_t pmix_util_getid(int sd, uid_t *uid, gid_t *gid);
 
+/* Ask the kernel for the pid of the process on the far end of the
+ * connected socket `sd`, as this process's pid namespace numbers it, and
+ * write it to *pid.
+ *
+ * Returns PMIX_SUCCESS, in which case *pid has been written;
+ * PMIX_ERR_NOT_FOUND if the descriptor has no pid to report - a TCP
+ * socket has none; or PMIX_ERR_NOT_SUPPORTED on a platform that offers
+ * no way to ask. *pid is written only on PMIX_SUCCESS. */
+PMIX_EXPORT pmix_status_t pmix_util_getpid(int sd, pid_t *pid);
+
 /* Ask the kernel which user owns the far end of the connected TCP
  * socket `sd`, and write it to *uid. This works only when that far end
  * is a socket on this host: the answer comes from the kernel's own table
