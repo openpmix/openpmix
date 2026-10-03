@@ -517,6 +517,10 @@ typedef struct {
      * generation.
      */
     pmix_atomic_uint32_t modex_generation;
+    /** Server only: bytes in the contribution store_modex() is walking.
+     *  The modex segment is sized from this, not from any one proc's
+     *  blob, because every proc of the namespace lands in that segment. */
+    size_t modex_bytes;
     /** Server only: how many times the estimate the modex segment is
      *  built at. 1, doubled each time a build runs out of room - see
      *  server_store_modex(). */
