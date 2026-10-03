@@ -328,6 +328,71 @@ static pmix_status_t build_modex_kv(pmix_buffer_t *out, const char *nspace,
     return rc;
 }
 
+/* Same envelope again, with a caller-chosen number of key/value pairs
+ * per proc: ranks[n] carries nkeys[n] distinct keys, "gds.modex.k<i>"
+ * holding i. */
+static pmix_status_t build_modex_nkv(pmix_buffer_t *out, const char *nspace,
+                                     pmix_rank_t *ranks, size_t *nkeys,
+                                     size_t nranks)
+{
+    pmix_buffer_t ranklevel, serverlevel, pbkt;
+    pmix_byte_object_t bo;
+    pmix_status_t rc;
+    pmix_proc_t proc;
+    pmix_kval_t kv;
+    pmix_value_t val;
+    bool compressed = false;
+    uint8_t collect = PMIX_COLLECT_YES;
+    char key[PMIX_MAX_KEYLEN + 1];
+    uint32_t value;
+    size_t n, k;
+
+    PMIX_CONSTRUCT(&ranklevel, pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &ranklevel, &collect, 1, PMIX_BYTE);
+    for (n = 0; PMIX_SUCCESS == rc && n < nranks; n++) {
+        PMIX_LOAD_PROCID(&proc, nspace, ranks[n]);
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, &proc, 1, PMIX_PROC);
+        for (k = 0; PMIX_SUCCESS == rc && k < nkeys[n]; k++) {
+            snprintf(key, sizeof(key), "gds.modex.k%zu", k);
+            value = (uint32_t) k;
+            PMIX_VALUE_LOAD(&val, &value, PMIX_UINT32);
+            kv.key = key;
+            kv.value = &val;
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &pbkt, &kv, 1, PMIX_KVAL);
+            PMIX_VALUE_DESTRUCT(&val);
+        }
+        if (PMIX_SUCCESS == rc) {
+            PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &ranklevel, &bo, 1,
+                             PMIX_BYTE_OBJECT);
+            PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+        }
+        PMIX_DESTRUCT(&pbkt);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_DESTRUCT(&ranklevel);
+        return rc;
+    }
+
+    PMIX_CONSTRUCT(&serverlevel, pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &serverlevel, &compressed, 1, PMIX_BOOL);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_UNLOAD_BUFFER(&ranklevel, bo.bytes, bo.size);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &serverlevel, &bo, 1,
+                         PMIX_BYTE_OBJECT);
+        PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+    }
+    PMIX_DESTRUCT(&ranklevel);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_UNLOAD_BUFFER(&serverlevel, bo.bytes, bo.size);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, out, &bo, 1, PMIX_BYTE_OBJECT);
+        PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+    }
+    PMIX_DESTRUCT(&serverlevel);
+    return rc;
+}
+
 /* Same envelope, but the rank-level block carries procs from more than
  * one nspace - which is what a fence spanning two local nspaces
  * produces, and what the nspace filter has to sort out. */
@@ -2004,6 +2069,173 @@ static void test_shmem3_modex_generations(void)
     PMIX_RELEASE(peer);
 }
 
+/* Fetch one modex key for a rank and say whether it holds the value
+ * build_modex_nkv() gave it. */
+static bool modex_key_reads_back(pmix_peer_t *peer, const char *nspace,
+                                 pmix_rank_t rank, size_t k)
+{
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    char key[PMIX_MAX_KEYLEN + 1];
+    bool ok = false;
+
+    snprintf(key, sizeof(key), "gds.modex.k%zu", k);
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, nspace, rank);
+    cb.proc = &proc;
+    cb.key = key;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    if (PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs)) {
+        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+        ok = (NULL != kv->value && PMIX_UINT32 == kv->value->type &&
+              (uint32_t) k == kv->value->data.uint32);
+    }
+    cb.key = NULL;
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+    return ok;
+}
+
+/* A modex segment is sized before anything is stored in it, from an
+ * estimate built on the first blob that arrives - and the allocator
+ * behind it cannot grow. So the estimate is only an estimate: a
+ * contribution whose later blobs are much larger than its first, or
+ * that carries a great many small keys, needs more than it reserved.
+ *
+ * The store has to succeed anyway, in a larger segment. Rank 2's blob
+ * here holds one key and rank 3's holds thousands, so a segment sized
+ * from rank 2 cannot hold rank 3. Every key of both ranks must read back
+ * afterwards, and the generation after it must still build - the
+ * replacement segment takes the same name and slot as the one it
+ * replaced.
+ */
+static void test_shmem3_modex_outgrows_estimate(void)
+{
+    pmix_gds_base_module_t *mod;
+    pmix_info_t *info, dir;
+    pmix_nspace_t ns;
+    pmix_peer_t *peer;
+    pmix_buffer_t *reply, buf;
+    pmix_server_trkr_t trk;
+    pmix_status_t rc;
+    pmix_rank_t remote[2] = {2, 3};
+    size_t nkeys[2] = {1, 5000};
+    size_t k;
+    bool all;
+    uint32_t nprocs = 4;
+    char *nodemap, *procmap;
+    pmix_list_t nslist;
+    pmix_nspace_caddy_t *nsc;
+    pmix_namespace_t *nsptr;
+    const char *nsname = "gds-modexbig";
+
+    fprintf(stdout, "\n-- shmem3 modex larger than its estimate --\n");
+
+    PMIX_INFO_LOAD(&dir, PMIX_GDS_MODULE, "shmem3", PMIX_STRING);
+    mod = pmix_gds_base_assign_module(&dir, 1);
+    PMIX_INFO_DESTRUCT(&dir);
+    if (NULL == mod || 0 != strcmp(mod->name, "shmem3")) {
+        fprintf(stdout, "    SKIP  shmem3 is not available in this build\n");
+        return;
+    }
+
+    /* two nodes, so ranks 2 and 3 are remote - see
+     * test_shmem3_modex_generations() */
+    if (0 > asprintf(&nodemap, "%s,gds-modexbig-node1", pmix_globals.hostname)) {
+        return;
+    }
+    procmap = strdup("0-1;2-3");
+
+    PMIX_INFO_CREATE(info, 3);
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_NODE_MAP, nodemap, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_PROC_MAP, procmap, PMIX_STRING);
+    PMIX_LOAD_NSPACE(ns, nsname);
+    rc = PMIx_server_register_nspace(ns, 2, info, 3, NULL, NULL);
+    PMIX_INFO_FREE(info, 3);
+    free(nodemap);
+    free(procmap);
+    if (!registered(rc)) {
+        report("a two-node job registers", false);
+        return;
+    }
+
+    peer = mkgdspeer(nsname, nprocs, mod);
+    reply = PMIX_NEW(pmix_buffer_t);
+    PMIX_GDS_REGISTER_JOB_INFO(rc, peer, reply);
+    PMIX_RELEASE(reply);
+    if (PMIX_SUCCESS != rc) {
+        report("its job segment builds", false);
+        PMIX_RELEASE(peer);
+        return;
+    }
+
+    memset(&trk, 0, sizeof(trk));
+    trk.collect_type = PMIX_COLLECT_YES;
+    PMIX_CONSTRUCT(&nslist, pmix_list_t);
+    nsc = PMIX_NEW(pmix_nspace_caddy_t);
+    PMIX_LIST_FOREACH (nsptr, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(nsptr->nspace, nsname)) {
+            PMIX_RETAIN(nsptr);
+            nsc->ns = nsptr;
+            break;
+        }
+    }
+    pmix_list_append(&nslist, &nsc->super);
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex_nkv(&buf, nsname, remote, nkeys, 2);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_GDS_STORE_MODEX(rc, peer, nsname, &buf, &trk);
+    }
+    PMIX_DESTRUCT(&buf);
+    report("a modex larger than its first blob suggests stores", PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "        (store_modex: %s)\n", PMIx_Error_string(rc));
+    }
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_GDS_MARK_MODEX_COMPLETE(rc, peer, &nslist, &buf);
+    PMIX_DESTRUCT(&buf);
+    report("it is published", PMIX_SUCCESS == rc);
+
+    report("the small blob's key reads back",
+           modex_key_reads_back(peer, nsname, 2, 0));
+    all = true;
+    for (k = 0; all && k < nkeys[1]; k++) {
+        all = modex_key_reads_back(peer, nsname, 3, k);
+    }
+    report("every key of the large blob reads back", all);
+    if (!all) {
+        fprintf(stdout, "        (first missing: gds.modex.k%zu)\n", k - 1);
+    }
+
+    /* the next generation builds behind it */
+    nkeys[0] = 2;
+    nkeys[1] = 1;
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    rc = build_modex_nkv(&buf, nsname, remote, nkeys, 2);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_GDS_STORE_MODEX(rc, peer, nsname, &buf, &trk);
+    }
+    PMIX_DESTRUCT(&buf);
+    report("the next generation stores", PMIX_SUCCESS == rc);
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_GDS_MARK_MODEX_COMPLETE(rc, peer, &nslist, &buf);
+    PMIX_DESTRUCT(&buf);
+    report("its new key reads back", modex_key_reads_back(peer, nsname, 2, 1));
+    report("the earlier generation still answers",
+           modex_key_reads_back(peer, nsname, 3, nkeys[1] + 100));
+
+    PMIX_LIST_DESTRUCT(&nslist);
+    PMIX_GDS_DEL_NSPACE(rc, nsname);
+    report("deregistering releases every generation", PMIX_SUCCESS == rc);
+    PMIX_RELEASE(peer);
+}
+
 /* Register a job whose session array carries a caller-supplied set of
  * keys - which is how a host that has not adopted
  * PMIx_server_register_session describes a session, and the only way it
@@ -2573,6 +2805,7 @@ int main(int argc, char **argv)
     test_shmem3_job_segment();
     test_shmem3_shared_session();
     test_shmem3_modex_generations();
+    test_shmem3_modex_outgrows_estimate();
     test_session_registration();
     test_session_update();
     test_session_update_via_job();
