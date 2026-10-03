@@ -998,14 +998,45 @@ pmix_status_t pmix_bfrops_base_unpack_proc(pmix_pointer_array_t *regtypes, pmix_
     return PMIX_SUCCESS;
 }
 
+/* Unpack nval strings into a NULL-terminated array, allocated once - the
+ * count came off the wire, so it is held against what the buffer can
+ * still hold before anything is allocated for it. */
+static pmix_status_t unpack_argv(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                 int32_t nval, char ***argv)
+{
+    pmix_status_t ret;
+    int32_t k, m;
+
+    if (0 >= nval) {
+        return (0 == nval) ? PMIX_SUCCESS : PMIX_ERR_UNPACK_FAILURE;
+    }
+    if (!pmix_bfrop_count_fits(buffer, (size_t) nval, PMIX_STRING)) {
+        return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
+    }
+    *argv = (char **) calloc((size_t) nval + 1, sizeof(char *));
+    if (NULL == *argv) {
+        return PMIX_ERR_NOMEM;
+    }
+    for (k = 0; k < nval; k++) {
+        m = 1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &(*argv)[k], &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        if (NULL == (*argv)[k]) {
+            return PMIX_ERROR;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_bfrops_base_unpack_app(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                           void *dest, int32_t *num_vals, pmix_data_type_t type)
 {
     pmix_app_t *ptr;
-    int32_t i, k, n, m;
+    int32_t i, n, m;
     pmix_status_t ret;
     int32_t nval;
-    char *tmp;
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrop_unpack: %d apps", *num_vals);
@@ -1038,18 +1069,9 @@ pmix_status_t pmix_bfrops_base_unpack_app(pmix_pointer_array_t *regtypes, pmix_b
             return ret;
         }
         /* unpack argv */
-        for (k = 0; k < nval; k++) {
-            m = 1;
-            tmp = NULL;
-            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &tmp, &m, PMIX_STRING, regtypes);
-            if (PMIX_SUCCESS != ret) {
-                return ret;
-            }
-            if (NULL == tmp) {
-                return PMIX_ERROR;
-            }
-            PMIx_Argv_append_nosize(&ptr[i].argv, tmp);
-            free(tmp);
+        ret = unpack_argv(regtypes, buffer, nval, &ptr[i].argv);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
         }
         /* unpack env */
         m = 1;
@@ -1057,18 +1079,9 @@ pmix_status_t pmix_bfrops_base_unpack_app(pmix_pointer_array_t *regtypes, pmix_b
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
-        for (k = 0; k < nval; k++) {
-            m = 1;
-            tmp = NULL;
-            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &tmp, &m, PMIX_STRING, regtypes);
-            if (PMIX_SUCCESS != ret) {
-                return ret;
-            }
-            if (NULL == tmp) {
-                return PMIX_ERROR;
-            }
-            PMIx_Argv_append_nosize(&ptr[i].env, tmp);
-            free(tmp);
+        ret = unpack_argv(regtypes, buffer, nval, &ptr[i].env);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
         }
         /* unpack cwd */
         m = 1;
