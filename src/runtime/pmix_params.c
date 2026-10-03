@@ -297,6 +297,18 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_globals.iof_pending_limit);
 
+    /* Output is written a line at a time, so a chunk that ends partway
+     * through one is held until the rest arrives - which, from a process
+     * that never writes a newline, is never. Past this many bytes the
+     * partial line is written out as it stands. */
+    pmix_globals.iof_max_partial_line = 65536;
+    (void) pmix_mca_base_var_register("pmix", "iof", NULL, "max_partial_line",
+                                      "Maximum bytes of an unfinished output line to hold "
+                                      "while waiting for its end; a longer one is written "
+                                      "out as it stands [default: 64KB]",
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+                                      &pmix_globals.iof_max_partial_line);
+
     /* How often to look at whether our terminal has come back to the
      * foreground, while our own stdin is suspended because it has not. A
      * library must not trap signals - the process-wide dispositions belong
