@@ -616,7 +616,8 @@ process:
     return rc;
 }
 
-pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t info[], size_t ninfo,
+pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, bool exact,
+                                      pmix_info_t info[], size_t ninfo,
                                       bool optional, pmix_list_t *connections)
 {
     char *newdir;
@@ -651,14 +652,17 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
         }
         /* if it is a directory, down search */
         if (isdir) {
-            pmix_ptl_base_df_search(newdir, prefix, info, ninfo, optional, connections);
+            pmix_ptl_base_df_search(newdir, prefix, exact, info, ninfo, optional, connections);
             free(newdir);
             continue;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "pmix:tool: checking %s vs %s", dir_entry->d_name, prefix);
-        /* see if it starts with our prefix */
-        if (0 == strncmp(dir_entry->d_name, prefix, strlen(prefix))) {
+        /* see if it is the file we want - by its whole name when a
+         * particular server was asked for, since one name can be the start
+         * of another ("tool.12" of "tool.123") */
+        if (exact ? (0 == strcmp(dir_entry->d_name, prefix))
+                  : (0 == strncmp(dir_entry->d_name, prefix, strlen(prefix)))) {
             /* try to read this file. One we cannot read or parse is
              * passed over rather than ending the search: a server killed
              * partway thru writing its file leaves exactly that behind,

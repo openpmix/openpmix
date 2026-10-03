@@ -508,15 +508,15 @@ static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
 
 static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
                                pmix_rank_t *rank, char **suri, char **alts,
-                               char *filename, pmix_info_t *iptr, size_t niptr,
-                               bool optional)
+                               char *filename, bool exact, pmix_info_t *iptr,
+                               size_t niptr, bool optional)
 {
     pmix_list_t connections;
     pmix_status_t rc;
     pmix_connection_t *cn;
 
     PMIX_CONSTRUCT(&connections, pmix_list_t);
-    rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir, filename, iptr, niptr,
+    rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir, filename, exact, iptr, niptr,
                                  optional, &connections);
     if (PMIX_SUCCESS == rc) {
         rc = check_connections(&connections);
@@ -1186,7 +1186,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tool:tool searching for given session server %s", filename);
-        rc = trysearch(peer, &nspace, &rank, &suri, &alts, filename, iptr, niptr, optional);
+        rc = trysearch(peer, &nspace, &rank, &suri, &alts, filename, true, iptr, niptr, optional);
         free(filename);
         if (PMIX_SUCCESS != rc) {
             /* since they gave us a specific pid and we couldn't
@@ -1205,7 +1205,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tool:tool searching for given nspace server %s", filename);
-        rc = trysearch(peer, &nspace, &rank, &suri, &alts, filename, iptr, niptr, optional);
+        rc = trysearch(peer, &nspace, &rank, &suri, &alts, filename, true, iptr, niptr, optional);
         free(filename);
         if (PMIX_SUCCESS != rc) {
             /* since they gave us a specific nspace and we couldn't
@@ -1239,7 +1239,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tool:tool searching for session server %s", filename);
-        rc = trysearch(peer, &nspace, &rank, &suri, &alts, filename, iptr, niptr, optional);
+        rc = trysearch(peer, &nspace, &rank, &suri, &alts, filename, false, iptr, niptr, optional);
         free(filename);
         if (PMIX_SUCCESS == rc) {
             PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
