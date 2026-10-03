@@ -43,6 +43,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <unistd.h>
 
 #include "include/pmix.h"
@@ -178,6 +179,53 @@ static bool spawn_talker(pmix_info_t *jinfo, size_t njinfo, pmix_nspace_t nspace
         fflush(out);
         return false;
     }
+    return true;
+}
+
+/* A descriptor this process holds is not handed to the child, however
+ * high its number. The child says whether it has one at HIGH_FD; that it
+ * says anything at all is the sign the descriptors it was meant to keep
+ * were kept. Returns false only for a failure to set the case up. */
+#define HIGH_FD 1500
+static bool spawn_fd_check(pmix_nspace_t nspace, bool *sealed)
+{
+    struct rlimit rl;
+    pmix_app_t app;
+    pmix_status_t rc;
+    char buf[BUFSIZE];
+    int fd;
+
+    if (0 != getrlimit(RLIMIT_NOFILE, &rl)) {
+        return false;
+    }
+    if (rl.rlim_cur <= HIGH_FD) {
+        if (RLIM_INFINITY != rl.rlim_max && rl.rlim_max <= HIGH_FD) {
+            return false;
+        }
+        rl.rlim_cur = HIGH_FD + 1;
+        if (0 != setrlimit(RLIMIT_NOFILE, &rl)) {
+            return false;
+        }
+    }
+    fd = dup2(fileno(out), HIGH_FD);
+    if (HIGH_FD != fd) {
+        return false;
+    }
+    PMIX_APP_CONSTRUCT(&app);
+    app.cmd = strdup("/bin/sh");
+    PMIx_Argv_append_nosize(&app.argv, "/bin/sh");
+    PMIx_Argv_append_nosize(&app.argv, "-c");
+    PMIx_Argv_append_nosize(&app.argv,
+                            "if [ -e /dev/fd/1500 ]; then echo FD-INHERITED; "
+                            "else echo FD-CLOSED; fi");
+    app.maxprocs = 1;
+    rc = PMIx_Spawn(NULL, 0, &app, 1, nspace);
+    PMIX_APP_DESTRUCT(&app);
+    close(HIGH_FD);
+    if (PMIX_SUCCESS != rc) {
+        return false;
+    }
+    *sealed = collect_until(rfd, buf, sizeof(buf), "FD-CLOSED");
     return true;
 }
 
@@ -497,6 +545,18 @@ int main(int argc, char **argv)
            collect_until(efd, buf, sizeof(buf), ERR_MARK));
     drain(rfd);
     drain(efd);
+
+    /* ---- the child inherits none of our descriptors ---- */
+    {
+        bool sealed = false;
+        if (spawn_fd_check(nspace, &sealed)) {
+            report("a descriptor we hold is closed in the child", sealed);
+        } else {
+            fprintf(out, "    SKIP  could not hold a descriptor at %d\n", HIGH_FD);
+        }
+        drain(rfd);
+        drain(efd);
+    }
 
     /* ---- a peer of another user cannot have us fork/exec for it ---- */
     test_foreign_spawn();
