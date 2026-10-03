@@ -1648,5 +1648,101 @@ class TestServerModuleRegistration(unittest.TestCase):
         self.assertIs(pmix.pmixservermodule['monitor'], second)
 
 
+class TestHandlerRegistry(unittest.TestCase):
+    """How an event or IOF upcall finds its Python handler by refid.
+
+    The library can call a handler before the registration that creates it
+    returns: registering replays a cached event, and pulling IOF delivers
+    held output, ahead of the acknowledgement.  While a registration is in
+    flight, an unknown refid is taken as that registration's.  The round
+    trip is checked by client.py, which needs the model event that init
+    raised to reach its handler during the registration.
+    """
+
+    def setUp(self):
+        # plain functions, so each is one object - every access to a bound
+        # method makes a new one, which assertIs would never match
+        def hdlr(*args):
+            return pmix.PMIX_EVENT_ACTION_COMPLETE, None
+
+        def other(*args):
+            return pmix.PMIX_EVENT_ACTION_COMPLETE, None
+
+        self.hdlr = hdlr
+        self.other = other
+
+    def pending(self, codes=None):
+        return {'hdlr': self.hdlr, 'refid': None, 'codes': codes}
+
+    def test_known_refid(self):
+        hdlrs = [{'refid': 3, 'hdlr': self.other}]
+        self.assertIs(pmix._hdlr_find(hdlrs, None, 3), self.other)
+
+    def test_unknown_refid_with_nothing_in_flight(self):
+        # a handler deregistered while its event was on the way
+        self.assertIsNone(pmix._hdlr_find([], None, 3))
+
+    def test_in_flight_registration_takes_an_unknown_refid(self):
+        hdlrs = [{'refid': 0, 'hdlr': self.other}]
+        p = self.pending()
+        self.assertIs(pmix._hdlr_find(hdlrs, p, 1), self.hdlr)
+        self.assertEqual(p['refid'], 1)
+        # recorded at once, so the next event for it is found directly
+        self.assertIs(pmix._hdlr_find(hdlrs, None, 1), self.hdlr)
+        # and a registration takes one refid, not every unknown one
+        self.assertIsNone(pmix._hdlr_find(hdlrs, p, 2))
+
+    def test_in_flight_registration_takes_only_its_codes(self):
+        p = self.pending(codes=[pmix.PMIX_MODEL_DECLARED])
+        self.assertIsNone(pmix._hdlr_find([], p, 1, pmix.PMIX_ERR_LOST_CONNECTION))
+        self.assertIs(pmix._hdlr_find([], p, 1, pmix.PMIX_MODEL_DECLARED), self.hdlr)
+
+    def test_a_default_registration_takes_any_code(self):
+        p = self.pending()
+        self.assertIs(pmix._hdlr_find([], p, 1, pmix.PMIX_ERR_LOST_CONNECTION), self.hdlr)
+
+    def test_settle_records_the_refid_once(self):
+        hdlrs = []
+        p = self.pending()
+        pmix._hdlr_settle(hdlrs, p, 4)
+        self.assertEqual(hdlrs, [{'refid': 4, 'hdlr': self.hdlr}])
+        # already taken during the registration - not recorded twice
+        hdlrs = []
+        p = self.pending()
+        pmix._hdlr_find(hdlrs, p, 4)
+        pmix._hdlr_settle(hdlrs, p, 4)
+        self.assertEqual(hdlrs, [{'refid': 4, 'hdlr': self.hdlr}])
+
+    def test_settle_corrects_a_refid_taken_in_error(self):
+        hdlrs = []
+        p = self.pending()
+        pmix._hdlr_find(hdlrs, p, 9)
+        pmix._hdlr_settle(hdlrs, p, 4)
+        self.assertEqual(hdlrs, [{'refid': 4, 'hdlr': self.hdlr}])
+
+    def test_settle_records_nothing_for_a_failed_registration(self):
+        hdlrs = []
+        p = self.pending()
+        pmix._hdlr_find(hdlrs, p, 9)
+        pmix._hdlr_settle(hdlrs, p, pmix.PMIX_ERR_EVENT_REGISTRATION)
+        self.assertEqual(hdlrs, [])
+
+    def test_drop(self):
+        hdlrs = [{'refid': 1, 'hdlr': self.hdlr}, {'refid': 2, 'hdlr': self.other}]
+        pmix._hdlr_drop(hdlrs, 1)
+        self.assertEqual(hdlrs, [{'refid': 2, 'hdlr': self.other}])
+        pmix._hdlr_drop(hdlrs, 7)
+        self.assertEqual(len(hdlrs), 1)
+
+    def test_event_and_iof_handlers_are_kept_apart(self):
+        # both refid spaces count from zero
+        self.assertIsNot(pmix.myhdlrs, pmix.myiofhdlrs)
+
+    def test_internal_state_is_not_exported(self):
+        for name in ('_hdlr_find', '_hdlr_settle', '_hdlr_drop',
+                     '_pending_evreg', '_pending_iofreg', '_reglock'):
+            self.assertNotIn(name, pmix.__all__)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

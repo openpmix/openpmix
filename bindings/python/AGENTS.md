@@ -277,22 +277,35 @@ every server operation (client connected, fence, publish, …). The chain:
    converts the C args to dicts/lists, looks the Python handler up in
    `pmixservermodule`, and calls it.
 
-Event and IOF handlers work similarly through the module-global list
-`myhdlrs` (a list of `{'refid', 'hdlr'}` dicts). `pyeventhandler` /
-`pyiofhandler` find the matching handler by `refid`. If the handler isn't
-registered yet (a race with registration), they retry via a
-`threading.Timer(0.001, …)`.
+Event and IOF handlers work similarly, through two module-global lists of
+`{'refid', 'hdlr'}` dicts: `myhdlrs` for events and `myiofhdlrs` for IOF.
+They are separate because the library numbers the two independently and
+both count from zero — one list handed events to an IOF handler that
+happened to share a refid. `pyeventhandler` / `pyiofhandler` find the
+handler with `_hdlr_find` (in `pmix.pxi`).
 
-**Only Python objects may cross that delay.** Everything the library
-hands an upcall — the `pmix_info_t` array, the results array, the
-payload — is released the instant the upcall returns, so the retry
-carries the *converted* dicts and lists, never the pointers. This used to
-stash the library's own arrays in a C caddy and free them from the timer:
-a use-after-free followed by a double free, plus a leak of the caddy. And
-the library's completion callback cannot be deferred with the rest — it
-must fire before the upcall returns, or the event chain stalls — so
-`pyeventhandler` completes the event with `PMIX_EVENT_NO_ACTION_TAKEN`
-and lets the retry deliver it to the handler for its own sake.
+**A handler can be called before its registration returns.** Registering
+an event handler replays any matching cached event, and `iof_pull`
+delivers any output already held, on the progress thread and ahead of the
+acknowledgement the registering thread is waiting on — so before the
+binding knows the refid. While a registration is in flight it is recorded
+in `_pending_evreg` / `_pending_iofreg` (one at a time, under `_reglock`),
+and `_hdlr_find` takes an unknown refid as that registration's and records
+it on the spot. `_hdlr_settle` reconciles the record with the refid the
+library returns. This replaced a one-shot `threading.Timer(0.001, …)`
+retry that ran on another thread: when it ran before the registering
+thread had reacquired the GIL and recorded the refid, it found no handler
+and the event was lost (`test/python/client.py` checks the model event
+reaches its handler during the registration).
+
+An upcall for a refid nobody holds — a handler deregistered while its
+event was on the way — still completes the event
+(`PMIX_EVENT_NO_ACTION_TAKEN`), as does one whose handler raises or whose
+arguments fail to convert: the library's completion callback must be
+called before the upcall returns, or the rest of the event chain never
+runs. The blocking deregistrations release the GIL, since an event being
+dispatched to Python needs it and the library finishes that dispatch
+before it answers.
 
 **Server-module keys** accepted by `setmodulefn` are the strings in its
 `permitted` list; the *wiring* names checked in `server_module_init` must
