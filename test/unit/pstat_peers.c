@@ -598,6 +598,56 @@ static void start_monitor(pmix_peer_t *me)
     call_done(&c);
 }
 
+/* Start a periodic monitor for requester; returns the query's status */
+static pmix_status_t start_periodic(const pmix_proc_t *requester)
+{
+    call_t c;
+    uint32_t rate = 3600;
+    pmix_status_t rc;
+
+    call_init(&c, requester->nspace, requester->rank);
+    PMIX_INFO_CREATE(c.dirs, 1);
+    PMIX_INFO_LOAD(&c.dirs[0], PMIX_MONITOR_RESOURCE_RATE, &rate, PMIX_UINT32);
+    c.ndirs = 1;
+    c.query = true;
+    on_progress(do_call, &c);
+    rc = c.rc;
+    PMIX_INFO_FREE(c.dirs, c.ndirs);
+    call_done(&c);
+    return rc;
+}
+
+/* Each periodic monitor is a timer this server services until it ends,
+ * so one requester may hold only pstat_base_max_monitors_per_peer of
+ * them. The host is not limited. */
+static void test_limit(pmix_peer_t *me)
+{
+    int saved = pmix_pstat_base.max_per_peer;
+    size_t before = pmix_list_get_size(&pmix_pstat_base.ops);
+    pmix_proc_t mine;
+    bool ok = true;
+    int n;
+
+    PMIX_LOAD_PROCID(&mine, me->info->pname.nspace, me->info->pname.rank);
+
+    pmix_pstat_base.max_per_peer = 3;
+    for (n = 0; n < 3; n++) {
+        ok = ok && (PMIX_SUCCESS == start_periodic(&mine));
+    }
+    report("a requester may hold monitors up to the limit",
+           ok && before + 3 == pmix_list_get_size(&pmix_pstat_base.ops));
+    report("one more is refused",
+           PMIX_ERR_OUT_OF_RESOURCE == start_periodic(&mine) &&
+               before + 3 == pmix_list_get_size(&pmix_pstat_base.ops));
+    report("the host is not limited",
+           PMIX_SUCCESS == start_periodic(&pmix_globals.myid) &&
+               before + 4 == pmix_list_get_size(&pmix_pstat_base.ops));
+    on_progress(lost, me);
+    report("the requester's monitors end with it",
+           before + 1 == pmix_list_get_size(&pmix_pstat_base.ops));
+    pmix_pstat_base.max_per_peer = saved;
+}
+
 static void test_departure(pmix_peer_t *me)
 {
     pmix_peer_t *clone;
@@ -658,6 +708,7 @@ int main(int argc, char **argv)
 #endif
     test_relay();
     test_departure(me);
+    test_limit(me);
 
     drop_peer(stranger);
     drop_peer(me);

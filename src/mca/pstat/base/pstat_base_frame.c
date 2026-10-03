@@ -58,7 +58,8 @@ pmix_pstat_base_module_t pmix_pstat = {
 };
 pmix_pstat_base_t pmix_pstat_base = {
     .evbase = NULL,
-    .ops = PMIX_LIST_STATIC_INIT(pmix_pstat_base.ops)
+    .ops = PMIX_LIST_STATIC_INIT(pmix_pstat_base.ops),
+    .max_per_peer = 16
 };
 
 static bool use_separate_thread = false;
@@ -70,6 +71,12 @@ static int pmix_pstat_register(pmix_mca_base_register_flag_t flags)
                                       "Use a separate thread for monitoring local procs resource usage",
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                       &use_separate_thread);
+    (void) pmix_mca_base_var_register("pmix", "pstat", "base", "max_monitors_per_peer",
+                                      "Most periodic resource monitors one process may hold "
+                                      "at once; each is sampled on a timer by the server "
+                                      "(default: 16)",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_pstat_base.max_per_peer);
     return PMIX_SUCCESS;
 }
 
