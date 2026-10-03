@@ -120,6 +120,7 @@ pmix_ptl_base_t pmix_ptl_base = {
     .wait_to_connect = 0,
     .handshake_wait_time = 60,
     .handshake_max_retries = 0,
+    .search_depth = 8,
     .connect_ack_timeout = 5,
     .max_write = INT_MAX
 };
@@ -287,6 +288,13 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      &pmix_ptl_base.handshake_max_retries);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_max_retries",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    (void) pmix_mca_base_var_register("pmix", "ptl", "base", "search_depth",
+                                      "How many directories below the system tmpdir a tool "
+                                      "descends when searching for a server's rendezvous file "
+                                      "(default: 8)",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_ptl_base.search_depth);
 
     (void) pmix_mca_base_var_register("pmix", "ptl", "base", "connect_ack_timeout",
                                       "Number of seconds a server gives an incoming connection to "

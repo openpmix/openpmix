@@ -127,6 +127,9 @@ struct pmix_ptl_base_t {
     int wait_to_connect;
     int handshake_wait_time;
     int handshake_max_retries;
+    /* how many directories below the system tmpdir a search for a
+     * server's rendezvous file descends - see pmix_ptl_base_df_search */
+    int search_depth;
     /* seconds a server gives an incoming connection to deliver its whole
      * connect-ack, and bound on each blocking read of the handshake that
      * follows it - see pmix_ptl_base_connection_handler */
