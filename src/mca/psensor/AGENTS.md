@@ -160,14 +160,19 @@ dispatches.
   (the `{ component, module, priority }` wrapper held on `actives`).
 - **`pmix_psensor_base_open`** decides where monitor timers run, governed
   by the framework MCA parameter **`pmix_psensor_base_use_separate_thread`**
-  (bool, default false):
-  - **false (default):** `pmix_psensor_base.evbase` is aliased to
+  (bool, default true):
+  - **true (default):** the monitors run on a dedicated progress thread
+    named `"PSENSOR"`, which the **first monitor** starts:
+    `pmix_psensor_base.evbase` stays `NULL` until a component calls
+    `pmix_psensor_base_get_evbase()`, which runs
+    `pmix_progress_thread_init` **and** `pmix_progress_thread_start`. A
+    server that is never asked to monitor anything never has the thread.
+    A file monitor's `stat` can block for as long as a file system stops
+    answering, and on the library's progress thread that would stall
+    every client of the server.
+  - **false:** `pmix_psensor_base.evbase` is aliased to
     `pmix_globals.evbase` — monitors share the library's main progress
     thread.
-  - **true:** a dedicated progress thread named `"PSENSOR"` is spun up via
-    `pmix_progress_thread_init` **and started** with
-    `pmix_progress_thread_start`, so file `stat`s and heartbeat
-    bookkeeping cannot perturb the main thread.
   It then constructs the `actives` list and opens all components, undoing
   its own setup if that fails (a framework whose open fails never has its
   close called).
@@ -203,17 +208,21 @@ pauses and stops in two separate places:
   tracker, whose destructor frees the base — has to come *after* the
   components have closed.
 
-`close` clears `pmix_psensor_base.evbase` either way. Note what actually
-makes a post-close `pmix_psensor.stop` harmless, because it is *not* that
-pointer: nothing checks it, and `event_assign()` silently substitutes
-libevent's `current_base` for a `NULL` one, so a caddy posted after close
-would land on a base that is no longer looping and simply leak. What
-saves it is that `close` destructs `actives` first — so
-`pmix_psensor_base_stop` walks an empty list and never reaches a module's
-`stop` at all. The same argument covers `start`. Do not "fix" this by
-adding a `NULL` check without also explaining why the empty-list argument
-stopped holding; and do not reorder `close` so the `actives` destruct
+`close` clears `pmix_psensor_base.evbase` either way, and with the
+thread started on demand that pointer is also `NULL` **before** the first
+monitor - while `actives` is fully populated. `pmix_psensor.stop` runs on
+every client disconnect, monitors or not, so each component's `stop`
+(and heartbeat's beat receipt) checks for a `NULL` `evbase` and returns:
+there is nothing to stop. Without that check, `event_assign()` silently
+substitutes libevent's `current_base` for a `NULL` one and the caddy
+lands on whatever base that is. After close, the same check holds, and
+so does the older argument: `close` destructs `actives` first, so
+`pmix_psensor_base_stop` walks an empty list and never reaches a
+module's `stop` at all. Do not reorder `close` so the `actives` destruct
 comes after the components close.
+
+`pmix_psensor_base_get_evbase()` needs no lock: a component calls it
+from `start`, which runs only on the library's progress thread.
 
 **`heartbeat_close` also un-posts the PTL recv it lazily posted.** That
 recv names a function in the component, and `ptl` closes *after* this
@@ -225,9 +234,10 @@ library, so a second `PMIx_server_init` in the same process would find it
 still set, never re-post, count no beats, and declare every monitored
 client dead on its first window.
 
-In the default configuration there is no separate thread to pause:
-`evbase` is the library's shared base, which `PMIx_server_finalize` has
-already stopped before it closes any framework.
+There is no thread of ours to pause if no monitor ever started one, or
+with `pmix_psensor_base_use_separate_thread` off: then `evbase` is the
+library's shared base, which `PMIx_server_finalize` has already stopped
+before it closes any framework.
 
 ### `base/psensor_base_select.c` — priority-ordered activation
 
@@ -435,11 +445,13 @@ src/mca/psensor/
 
 ## Threading
 
-Everything in `psensor` runs on a PMIx progress thread — either the main
-one or the dedicated `"PSENSOR"` thread, per
-`pmix_psensor_base_use_separate_thread`. Both configurations are
-exercised by `make check`: `test/unit/run_monitor.pl` runs its
-heartbeat-and-file scenario twice, once with the parameter set. The
+Everything in `psensor` runs on a PMIx progress thread — the dedicated
+`"PSENSOR"` thread the first monitor starts (the default), or the main
+one if `pmix_psensor_base_use_separate_thread` is false. Both
+configurations are exercised by `make check`: `test/unit/run_monitor.pl`
+runs its heartbeat-and-file scenario twice, once with the parameter set
+to 0. `test/unit/psensor_scope` holds the monitor thread up and checks
+that the server's progress thread still answers. The
 `start`/`stop` entry points
 may be entered from another thread, which is exactly why both components
 thread-shift onto `evbase` before touching their `trackers` list. The

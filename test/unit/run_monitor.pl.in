@@ -20,14 +20,15 @@
 # is live. If the monitor path is not wired to psensor, no alert is ever
 # generated and the client times out waiting - failing this test.
 #
-# The whole run is repeated with psensor_base_use_separate_thread set,
-# which moves every monitor timer off the library's progress thread and
-# onto a dedicated "PSENSOR" one. That configuration is otherwise never
-# exercised, and it was silently dead: the framework created the event
-# base but never started the thread, so trackers armed timers that
-# nothing ever ran and no alert was ever raised. It also runs the
-# framework's teardown against a live sampling thread, so a crash or hang
-# here is as meaningful as a missing alert.
+# The whole run is made twice: with the monitors on their own "PSENSOR"
+# thread, which the first monitor starts (the default), and with
+# psensor_base_use_separate_thread set to 0, which keeps them on the
+# library's progress thread. The separate thread was once silently dead:
+# the framework created the event base but never started the thread, so
+# trackers armed timers that nothing ever ran and no alert was ever
+# raised. The run also takes the framework's teardown through a live
+# sampling thread, so a crash or hang here is as meaningful as a missing
+# alert.
 
 use strict;
 
@@ -86,9 +87,9 @@ sub run_scenario {
 
     print "\n=== $label ===\n";
     if ($separate_thread) {
-        $ENV{'PMIX_MCA_psensor_base_use_separate_thread'} = "1";
-    } else {
         delete $ENV{'PMIX_MCA_psensor_base_use_separate_thread'};
+    } else {
+        $ENV{'PMIX_MCA_psensor_base_use_separate_thread'} = "0";
     }
 
     my @cmd = @basecmd;
