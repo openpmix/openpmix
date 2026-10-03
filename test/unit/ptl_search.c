@@ -26,6 +26,10 @@
  * "make check". There are thirty unreadable files so that a readdir()
  * order listing the valid file first is unlikely.
  *
+ * A walk descends only ptl_base_search_depth directories below where it
+ * starts, so a tree built deeper than any server places its files is not
+ * followed to the bottom.
+ *
  * A search for one particular server - by pid or by namespace - matches
  * the file's whole name, so asking for "tool.12" does not find "tool.123".
  *
@@ -198,6 +202,104 @@ static void test_df_search_exact(void)
     snprintf(path, sizeof(path), "%s/pmix.x.tool.123", dir);
     unlink(path);
     rmdir(dir);
+}
+
+/* Make dir/a/b/... levels deep, with a contact file named name at the
+ * bottom. The path is built in place: each level appends "/x". */
+static int make_chain(const char *dir, int levels, const char *name)
+{
+    char path[PMIX_PATH_MAX + 64];
+    size_t len;
+    FILE *fp;
+    int n;
+
+    len = strlen(dir);
+    if (len + 2 * (size_t) levels + strlen(name) + 2 > sizeof(path)) {
+        return -1;
+    }
+    memcpy(path, dir, len + 1);
+    for (n = 0; n < levels; n++) {
+        path[len++] = '/';
+        path[len++] = (char) ('a' + n);
+        path[len] = '\0';
+        if (0 != mkdir(path, 0700)) {
+            return -1;
+        }
+    }
+    path[len++] = '/';
+    memcpy(&path[len], name, strlen(name) + 1);
+    if (NULL == (fp = fopen(path, "w"))) {
+        return -1;
+    }
+    fputs("deepns.0;tcp4://127.0.0.1:4245\n4.2.0\n", fp);
+    fclose(fp);
+    return 0;
+}
+
+static void remove_chain(const char *dir, int levels, const char *name)
+{
+    char path[PMIX_PATH_MAX + 64];
+    size_t len;
+
+    len = strlen(dir);
+    if (len + 2 * (size_t) levels + strlen(name) + 2 > sizeof(path)) {
+        return;
+    }
+    memcpy(path, dir, len + 1);
+    for (int n = 0; n < levels; n++) {
+        path[len++] = '/';
+        path[len++] = (char) ('a' + n);
+    }
+    path[len] = '/';
+    memcpy(&path[len + 1], name, strlen(name) + 1);
+    unlink(path);
+    /* then each directory, deepest first */
+    while (1) {
+        path[len] = '\0';
+        rmdir(path);
+        if (len == strlen(dir)) {
+            break;
+        }
+        len -= 2;
+    }
+}
+
+static void test_df_search_depth(void)
+{
+    char dir[PMIX_PATH_MAX + 16];
+    pmix_list_t connections;
+    pmix_status_t rc;
+    int saved = pmix_ptl_base.search_depth;
+
+    pmix_ptl_base.search_depth = 2;
+
+    snprintf(dir, sizeof(dir), "%s.deep2", searchdir);
+    if (0 != mkdir(dir, 0700) || 0 != make_chain(dir, 2, "pmix.d.file")) {
+        report("df_search depth: setup", 0, "could not build the tree");
+    } else {
+        PMIX_CONSTRUCT(&connections, pmix_list_t);
+        rc = pmix_ptl_base_df_search(dir, "pmix.d.", false, NULL, 0, true, &connections);
+        report("df_search depth: a file as deep as the limit is found",
+               PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&connections),
+               PMIx_Error_string(rc));
+        PMIX_LIST_DESTRUCT(&connections);
+    }
+    remove_chain(dir, 2, "pmix.d.file");
+
+    snprintf(dir, sizeof(dir), "%s.deep3", searchdir);
+    if (0 != mkdir(dir, 0700) || 0 != make_chain(dir, 3, "pmix.d.file")) {
+        report("df_search depth: setup", 0, "could not build the tree");
+    } else {
+        PMIX_CONSTRUCT(&connections, pmix_list_t);
+        rc = pmix_ptl_base_df_search(dir, "pmix.d.", false, NULL, 0, true, &connections);
+        report("df_search depth: a file below the limit is not reached",
+               PMIX_SUCCESS != rc && 0 == pmix_list_get_size(&connections),
+               "found past the limit");
+        PMIX_LIST_DESTRUCT(&connections);
+    }
+    remove_chain(dir, 3, "pmix.d.file");
+
+    pmix_ptl_base.search_depth = saved;
 }
 
 static void test_rndz_file(void)
@@ -437,6 +539,7 @@ int main(int argc, char **argv)
     alarm(WATCHDOG_SECS);
     test_df_search();
     test_df_search_exact();
+    test_df_search_depth();
     test_query_servers();
     test_rndz_file();
     test_compat();
