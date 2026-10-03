@@ -104,6 +104,15 @@ PMIX_EXPORT void pmix_hash_register_key(uint32_t inid,
  * pmix_hash_register_key() - or the two sides will disagree. */
 PMIX_EXPORT void pmix_hash_keyindex_rebuild(pmix_keyindex_t *kidx);
 
+/* Discard the reference counts kept for the keys registered in the
+ * process-global index - called when that index is destroyed. */
+PMIX_EXPORT void pmix_hash_release_key_refs(void);
+
+/* How many stored values and qualifiers refer to the non-reserved key
+ * with this id in the process-global index, or UINT32_MAX if it is not
+ * counted (reserved, or counting has been given up). For tests. */
+PMIX_EXPORT uint32_t pmix_hash_key_refs(uint32_t id);
+
 /* Translate a key to its keyindex entry, registering the key (and thus
  * assigning it an index) if it is not already known. This is the form
  * the store path wants: storing a value is precisely the point at which
