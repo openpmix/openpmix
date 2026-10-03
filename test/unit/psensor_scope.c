@@ -16,6 +16,9 @@
  * process may hold at most psensor_base_max_monitors_per_peer monitors
  * across the heartbeat and file components.
  *
+ * The monitors run on a progress thread of their own, started by the
+ * first of them, so a stat() that blocks does not stall the server.
+ *
  * This runs a real server with a stub host module and calls psensor on
  * the progress thread, where the server calls it. The alerts are raised
  * with PMIX_RANGE_PROC_LOCAL, so this process's own handlers see them.
@@ -96,6 +99,27 @@ static void on_progress(void (*fn)(void *), void *arg)
 static void nothing(void *arg)
 {
     (void) arg;
+}
+
+/* wait for everything already posted to the monitor thread */
+static void monitor_barrier(void)
+{
+    pmix_event_base_t *fbase = pmix_psensor_base.evbase;
+    shift_t *s;
+
+    if (NULL == fbase) {
+        return;
+    }
+    s = PMIX_NEW(shift_t);
+    PMIX_CONSTRUCT_LOCK(&s->lock);
+    s->fn = nothing;
+    s->arg = NULL;
+    pmix_event_assign(&s->ev, fbase, -1, EV_WRITE, shifted, s);
+    PMIX_POST_OBJECT(s);
+    pmix_event_active(&s->ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&s->lock);
+    PMIX_DESTRUCT_LOCK(&s->lock);
+    PMIX_RELEASE(s);
 }
 
 /* ------------------------------------------------------------------ */
@@ -230,11 +254,13 @@ static void do_stop(void *arg)
     (void) pmix_psensor.stop((pmix_peer_t *) arg, NULL);
 }
 
-/* stop every monitor peer holds, and let the removal land */
+/* stop every monitor peer holds, and let the removal land on the
+ * monitor thread */
 static void stop_all(pmix_peer_t *peer)
 {
     on_progress(do_stop, peer);
     on_progress(nothing, NULL);
+    monitor_barrier();
 }
 
 /* ------------------------------------------------------------------ */
@@ -317,6 +343,70 @@ static void test_cap(pmix_peer_t *me, pmix_peer_t *other, const char *path)
     stop_all(other);
 }
 
+/* A stand-in for a stat() that does not return: it holds the monitor
+ * thread until told to let go */
+static volatile int hold_monitor_thread = 0;
+static volatile int monitor_thread_held = 0;
+static volatile int progress_ran = 0;
+
+static void blocker(int sd, short args, void *cbdata)
+{
+    (void) sd;
+    (void) args;
+    (void) cbdata;
+    monitor_thread_held = 1;
+    while (hold_monitor_thread) {
+        usleep(10000);
+    }
+}
+
+static void mark_progress(void *arg)
+{
+    (void) arg;
+    progress_ran = 1;
+}
+
+/* the monitors' thread is their own: holding it up does not hold up the
+ * server */
+static void test_isolation(void)
+{
+    pmix_event_base_t *fbase = pmix_psensor_base.evbase;
+    pmix_event_t ev;
+    shift_t *s;
+    int k;
+
+    report("monitors run on a thread of their own",
+           NULL != fbase && pmix_globals.evbase != fbase);
+    if (NULL == fbase) {
+        return;
+    }
+
+    hold_monitor_thread = 1;
+    pmix_event_assign(&ev, fbase, -1, EV_WRITE, blocker, NULL);
+    pmix_event_active(&ev, EV_WRITE, 1);
+    for (k = 0; k < 200 && !monitor_thread_held; k++) {
+        usleep(10000);
+    }
+
+    /* the server's progress thread must still answer */
+    s = PMIX_NEW(shift_t);
+    PMIX_CONSTRUCT_LOCK(&s->lock);
+    s->fn = mark_progress;
+    s->arg = NULL;
+    PMIX_THREADSHIFT(s, shifted);
+    for (k = 0; k < 200 && !progress_ran; k++) {
+        usleep(10000);
+    }
+    report("a monitor thread that is held up does not hold up the server",
+           monitor_thread_held && progress_ran);
+
+    hold_monitor_thread = 0;
+    PMIX_WAIT_THREAD(&s->lock);
+    PMIX_DESTRUCT_LOCK(&s->lock);
+    PMIX_RELEASE(s);
+    monitor_barrier();
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -363,7 +453,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    report("no monitor thread before the first monitor", NULL == pmix_psensor_base.evbase);
     test_owner(me, stranger, path);
+    test_isolation();
     test_cap(me, other, path);
 
     drop_peer(other);

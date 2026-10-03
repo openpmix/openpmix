@@ -63,6 +63,14 @@ PMIX_EXPORT pmix_status_t pmix_psensor_base_start(pmix_peer_t *requestor, pmix_s
 
 PMIX_EXPORT pmix_status_t pmix_psensor_base_stop(pmix_peer_t *requestor, char *id);
 
+/* The event base the monitors run on, starting the monitor thread if this
+ * is the first monitor (see psensor_base_use_separate_thread). NULL if the
+ * thread cannot be started. A component calls it when it hands a new
+ * tracker to the monitor thread; until then pmix_psensor_base.evbase may
+ * be NULL, meaning no monitor has ever started. Called only on the
+ * library's progress thread, as start is. */
+PMIX_EXPORT pmix_event_base_t *pmix_psensor_base_get_evbase(void);
+
 /* Count one more monitor held by peer, unless it already holds
  * psensor_base_max_monitors_per_peer of them - then
  * PMIX_ERR_OUT_OF_RESOURCE. A component claims before it builds a
