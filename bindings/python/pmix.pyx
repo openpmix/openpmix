@@ -33,7 +33,18 @@ include "pmix_constants.pxi"
 include "pmix.pxi"
 
 active = myLock()
+# Event handlers and IOF handlers, each as {'refid', 'hdlr'}. They are
+# kept apart because the library numbers the two independently - both
+# from zero - so one list would hand an event to an IOF handler that
+# shares its refid.
 myhdlrs = []
+myiofhdlrs = []
+# The event or IOF registration in flight, if any - see _hdlr_find.
+# _reglock admits one registration at a time, so a refid nobody holds
+# belongs to that one.
+_pending_evreg = None
+_pending_iofreg = None
+_reglock = threading.Lock()
 myname = {}
 
 
@@ -811,27 +822,16 @@ cdef void pyiofhandler(size_t iofhdlr_id, pmix_iof_channel_t channel,
     if NULL != payload:
         pmix_unload_bo(payload, pybytes)
 
-    # find the handler being called
-    found = False
-    rc = PMIX_ERR_NOT_FOUND
-    for h in myhdlrs:
-        try:
-            if iofhdlr_id == h['refid']:
-                found = True
-                # call user iof python handler
-                h['hdlr'](pyiof_id, pychannel, pysource, pybytes, pyinfo)
-        except:
-            traceback.print_exc()
-
-    # If we didn't find the handler, this event arrived before its
-    # registration completed - retry it in a moment. Everything the retry
-    # needs is converted to Python first: the info array belongs to the
-    # library and is gone the instant we return, so the caddy carries the
-    # converted list rather than the pointer
-    if not found:
-        pyretry = {'refid': pyiof_id, 'channel': pychannel,
-                   'source': pysource, 'payload': pybytes, 'info': pyinfo}
-        threading.Timer(0.001, iofhdlr_cache, [pyretry, rc]).start()
+    # find the handler being called. One we hold no record of was
+    # deregistered while this output was on its way - there is nobody to
+    # give it to.
+    hdlr = _hdlr_find(myiofhdlrs, _pending_iofreg, pyiof_id)
+    if hdlr is None:
+        return
+    try:
+        hdlr(pyiof_id, pychannel, pysource, pybytes, pyinfo)
+    except:
+        traceback.print_exc()
     return
 
 cdef void pyeventhandler(size_t evhdlr_registration_id,
@@ -867,6 +867,10 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
         rc = pmix_unload_info(info, ninfo, pyinfo)
         if PMIX_SUCCESS != rc:
             print("Unable to unload info structs")
+            if NULL != cbfunc:
+                noaction = PMIX_EVENT_NO_ACTION_TAKEN
+                with nogil:
+                    cbfunc(noaction, NULL, 0, NULL, NULL, cbdata)
             return
 
     # convert the inbound results from prior handlers
@@ -876,50 +880,53 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
         rc = pmix_unload_info(results, nresults, pyresults)
         if PMIX_SUCCESS != rc:
             print("Unable to unload prior results")
+            if NULL != cbfunc:
+                noaction = PMIX_EVENT_NO_ACTION_TAKEN
+                with nogil:
+                    cbfunc(noaction, NULL, 0, NULL, NULL, cbdata)
             return
 
-    # find the handler being called
-    found = False
-    rc = PMIX_ERR_NOT_FOUND
-    for h in myhdlrs:
-        try:
-            if evhdlr_registration_id == h['refid']:
-                found = True
-                # execute their handler
-                ret_status, pymyresults = h['hdlr'](pyev_id, status, pysource, pyinfo, pyresults)
-                # allocate and load pmix info structs from python list of dictionaries
-                myresults_ptr = &myresults
-                prc = pmix_alloc_info(myresults_ptr, &nmyresults, pymyresults)
-                if PMIX_SUCCESS != prc:
-                    print("Unable to load new results")
-                icbd = <pypmix_info_cbdata_t *> malloc(sizeof(pypmix_info_cbdata_t))
-                if icbd == NULL:
-                    print("Error allocating pypmix_info_cbdata_t")
-                icbd.info = myresults
-                icbd.ninfo = nmyresults
-                with nogil:
-                    cbfunc(ret_status, myresults, nmyresults, op_release, <void *>icbd, cbdata)
-        except:
-            pass
-
-    # If we didn't find the handler, this event arrived before its
-    # registration completed - retry it in a moment. As in pyiofhandler,
-    # only Python objects are carried across the delay: the info and
-    # results arrays belong to the library and are released as soon as
-    # this upcall returns.
-    #
-    # The library's completion callback cannot be deferred with them - it
-    # must be executed before we return, or the event chain stalls - so
-    # complete the event here with no results and let the retry deliver it
-    # to the handler for its own sake.
-    if not found:
+    # find the handler being called. One we hold no record of was
+    # deregistered while this event was on its way; the event still has
+    # to be completed, or the rest of its chain never runs.
+    hdlr = _hdlr_find(myhdlrs, _pending_evreg, pyev_id, int(status))
+    if hdlr is None:
         if NULL != cbfunc:
             noaction = PMIX_EVENT_NO_ACTION_TAKEN
             with nogil:
                 cbfunc(noaction, NULL, 0, NULL, NULL, cbdata)
-        pyretry = {'refid': pyev_id, 'status': status, 'source': pysource,
-                   'info': pyinfo, 'results': pyresults}
-        threading.Timer(0.001, event_cache_cb, [pyretry, rc]).start()
+        return
+
+    # execute their handler. One that raises has still been called, and
+    # the chain must still go on - it just reports no action
+    try:
+        ret_status, pymyresults = hdlr(pyev_id, status, pysource, pyinfo, pyresults)
+    except:
+        traceback.print_exc()
+        ret_status = PMIX_EVENT_NO_ACTION_TAKEN
+        pymyresults = None
+
+    # allocate and load pmix info structs from python list of dictionaries
+    myresults_ptr = &myresults
+    prc = pmix_alloc_info(myresults_ptr, &nmyresults, pymyresults)
+    if PMIX_SUCCESS != prc:
+        print("Unable to load new results")
+    if NULL == cbfunc:
+        if NULL != myresults:
+            pmix_free_info(myresults, nmyresults)
+        return
+    icbd = <pypmix_info_cbdata_t *> malloc(sizeof(pypmix_info_cbdata_t))
+    if icbd == NULL:
+        # complete the event without the results rather than lose it
+        if NULL != myresults:
+            pmix_free_info(myresults, nmyresults)
+        with nogil:
+            cbfunc(ret_status, NULL, 0, NULL, NULL, cbdata)
+        return
+    icbd.info = myresults
+    icbd.ninfo = nmyresults
+    with nogil:
+        cbfunc(ret_status, myresults, nmyresults, op_release, <void *>icbd, cbdata)
     return
 
 # Round-trip a value dict through the C conversion layer and back.
@@ -976,10 +983,11 @@ cdef class PMIxClient:
         self.topo.topology = NULL
 
     def __init__(self):
-        global myhdlrs, myname
+        global myhdlrs, myiofhdlrs, myname
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
         self.myproc.rank = <uint32_t>PMIX_RANK_UNDEF
         myhdlrs = []
+        myiofhdlrs = []
         myname = {}
 
     def initialized(self):
@@ -3166,6 +3174,7 @@ cdef class PMIxClient:
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t ninfo
+        cdef pmix_status_t regrc = PMIX_ERR_EVENT_REGISTRATION
 
         # convert the codes to an array of ints
         codes = NULL
@@ -3193,9 +3202,19 @@ cdef class PMIxClient:
                     PyMem_Free(codes)
                 return rc, -1
 
-        # pass our hdlr switchyard to the API
-        with nogil:
-             rc = PMIx_Register_event_handler(codes, ncodes, info, ninfo, pyeventhandler, NULL, NULL)
+        # pass our hdlr switchyard to the API. The library can call it
+        # before this returns - see _hdlr_find
+        global _pending_evreg
+        with _reglock:
+            _pending_evreg = {'hdlr': hdlr, 'refid': None,
+                             'codes': None if 0 == ncodes else list(pycodes)}
+            try:
+                with nogil:
+                     regrc = PMIx_Register_event_handler(codes, ncodes, info, ninfo, pyeventhandler, NULL, NULL)
+                _hdlr_settle(myhdlrs, _pending_evreg, regrc)
+            finally:
+                _pending_evreg = None
+        rc = regrc
 
         # cleanup
         if 0 < ninfo:
@@ -3208,7 +3227,6 @@ cdef class PMIxClient:
             return rc, -1
 
         # otherwise, this is our ref ID for this hdlr
-        myhdlrs.append({'refid': rc, 'hdlr': hdlr})
         return PMIX_SUCCESS, rc
 
     # cbfunc(status:int, cbdata) - deregistering from inside the very
@@ -3237,10 +3255,21 @@ cdef class PMIxClient:
             if PMIX_SUCCESS != crc:
                 if pypmix_nb_take(cd.idx) is not None:
                     pypmix_nb_cbdata_free(cd)
+                return crc
+            # the local record goes with it, as in the blocking form - the
+            # library will not call this handler again
+            _hdlr_drop(myhdlrs, ref)
             return crc
 
-        rc = PMIx_Deregister_event_handler(ref, NULL, NULL)
-        return rc
+        # without the GIL: an event being dispatched to one of our
+        # handlers needs it, and the library finishes that dispatch
+        # before it answers this
+        cref = ref
+        with nogil:
+            crc = PMIx_Deregister_event_handler(cref, NULL, NULL)
+        if PMIX_SUCCESS == crc:
+            _hdlr_drop(myhdlrs, ref)
+        return crc
 
     # cbfunc(status:int, cbdata) - reporting an event from inside an
     # event handler or a server module upcall needs the non-blocking
@@ -6571,7 +6600,7 @@ cdef class PMIxTool(PMIxServer):
         nprocs      = 0
         ndirs       = 0
         channel     = iof_channel
-        cdef pmix_status_t pmix_rc
+        cdef pmix_status_t pmix_rc = PMIX_ERR_EVENT_REGISTRATION
 
         # convert list of procs to array of pmix_proc_t's
         if pyprocs is not None:
@@ -6598,11 +6627,19 @@ cdef class PMIxTool(PMIxServer):
             pmix_free_procs(procs, nprocs)
             return rc, -1
 
-        # Call the library
-        with nogil:
-             pmix_rc = PMIx_IOF_pull(procs, nprocs, directives, ndirs, channel,
-                                     pyiofhandler,
-                                     NULL, NULL)
+        # Call the library. It can deliver output it already holds
+        # before this returns - see _hdlr_find
+        global _pending_iofreg
+        with _reglock:
+            _pending_iofreg = {'hdlr': hdlr, 'refid': None, 'codes': None}
+            try:
+                with nogil:
+                     pmix_rc = PMIx_IOF_pull(procs, nprocs, directives, ndirs, channel,
+                                             pyiofhandler,
+                                             NULL, NULL)
+                _hdlr_settle(myiofhdlrs, _pending_iofreg, pmix_rc)
+            finally:
+                _pending_iofreg = None
         rc = pmix_rc
         if 0 < nprocs:
             pmix_free_procs(procs, nprocs)
@@ -6614,7 +6651,6 @@ cdef class PMIxTool(PMIxServer):
             return rc, -1
 
         # otherwise, this is our ref ID for this hdlr
-        myhdlrs.append({'refid': rc, 'hdlr': hdlr})
         refid = rc
         rc = PMIX_SUCCESS
         return rc, refid
@@ -6649,12 +6685,7 @@ cdef class PMIxTool(PMIxServer):
                 return crc
             # the local record goes with it, exactly as in the blocking
             # form - the library will not call our handler again
-            n = 0
-            for h in myhdlrs:
-                if iofhdlr == h['refid']:
-                    del myhdlrs[n]
-                    break
-                n = n + 1
+            _hdlr_drop(myiofhdlrs, regid)
             return crc
 
         # allocate and load pmix info structs from python list of dictionaries
@@ -6663,23 +6694,14 @@ cdef class PMIxTool(PMIxServer):
         if PMIX_SUCCESS != rc:
             return rc
 
-        # call the library
-        rc = PMIx_IOF_deregister(iofhdlr, directives, ndirs, NULL, NULL)
+        # call the library - without the GIL, as in deregister_event_handler
+        with nogil:
+            crc = PMIx_IOF_deregister(iofhdlr, directives, ndirs, NULL, NULL)
+        rc = crc
         if 0 < ndirs:
             pmix_free_info(directives, ndirs)
         # remove our local hdlr
-        found = False
-        n = 0
-        for h in myhdlrs:
-            try:
-                if iofhdlr == h['refid']:
-                    found = True
-                    del myhdlrs[n]
-                    break
-                else:
-                    n = n + 1
-            except:
-                pass
+        _hdlr_drop(myiofhdlrs, regid)
         return rc
 
     # cbfunc(status:int, cbdata) - see deregister_nspace

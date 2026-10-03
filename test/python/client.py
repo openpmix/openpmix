@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from pmix import *
+import pmix
 import time
 import threading
 
@@ -95,6 +96,12 @@ def main():
     # register the model handler
     rc,mymodelhndlr = foo.register_event_handler([PMIX_MODEL_DECLARED], None, model_evhandler)
     print("REGISTER MODEL", foo.error_string(rc))
+    # The model event was raised inside init, before this handler existed,
+    # so the library replays it from its cache as part of the registration.
+    # The handler must have it by the time registration returns - not from
+    # a retry some time later, which could find no handler and drop it.
+    replayed = termEvent.is_set()
+    print("MODEL EVENT DELIVERED DURING REGISTRATION:", replayed)
 
     # try putting something
     print("PUT")
@@ -280,11 +287,18 @@ def main():
     timedout = not termEvent.wait(timeout=30)
     if timedout:
         print("MODEL EVENT TIMED OUT")
+    # deregistering drops the binding's record of the handler too
+    rc = foo.deregister_event_handler(mymodelhndlr)
+    print("DEREGISTER MODEL", foo.error_string(rc))
+    dropped = PMIX_SUCCESS == rc and \
+        all(mymodelhndlr != h['refid'] for h in pmix.myhdlrs)
+    if not dropped:
+        print("MODEL HANDLER STILL RECORDED AFTER DEREGISTRATION")
     # finalize
     info = []
     foo.finalize(info)
     print("Client finalize complete")
-    if timedout:
+    if timedout or not replayed or not dropped:
         exit(1)
 if __name__ == '__main__':
     main()
