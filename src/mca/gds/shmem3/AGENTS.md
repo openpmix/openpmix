@@ -1018,19 +1018,27 @@ as success.
   process's stack address into the object; shared objects must be built
   through the TMA (`PMIX_NEW(type, tma)`) so their addresses live in the
   segment. This is the single easiest way to corrupt the store.
-- **Clients are read-only, and the MMU now enforces it.** The server
-  writes; a client drops write access to the data region as the last
-  step of attaching (`pmix_shmem_segment_protect_data()`), so a
-  client-side write is a SIGSEGV on the instruction that did it rather
-  than corruption some other process trips over later. Do not add a
-  client-side write path — it will not silently work.
+- **Clients are read-only, and the kernel enforces it.** The server
+  writes; a client opens the backing file `O_RDONLY` and maps it
+  `PROT_READ`, and the file itself is `0400` (`0440` to a listed group)
+  - see "Who may open a segment". A client-side write is a SIGSEGV on the
+  instruction that did it rather than corruption some other process trips
+  over later. Do not add a client-side write path — it will not silently
+  work.
 
-  The internal header stays writable on purpose: it holds the reference
-  count that attach and detach maintain, and a reader that could not
-  write it could not let go of the segment. That is why the protection
-  starts at the data region, which begins a page-aligned header into the
-  mapping — the geometry lives in `pmix_shmem.c` rather than at the call
-  site so nobody has to rederive it.
+  The header's `ref_count` is no longer used: readers once maintained it,
+  which meant every reader opened the file for writing. The creator now
+  removes the file itself, and the field stays only so the header's
+  layout does not move.
+
+  **Only the server may ever be able to write a segment.** A reader
+  follows the pointers stored in it as it finds them, with no bounds
+  checks - the structures are built in place, not decoded. That is
+  correct only while nothing but the server can write the file, so keep
+  its mode free of write bits and keep the client mapping read-only. A
+  change to either - a wider mode, a group allowed to write, a client
+  mapping with `PROT_WRITE` - has to be weighed against that, not just
+  against whether clients still attach.
 
   Getting here took removing two writes a reader was making. A
   hash-table lookup used to record the table's key type, stamping one
