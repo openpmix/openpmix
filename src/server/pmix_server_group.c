@@ -2314,6 +2314,46 @@ done:
     return PMIX_SUCCESS;
 }
 
+/* Make a participant's PMIX_GROUP_INFO lead with the proc that sent it,
+ * as the name its values are stored under. A client from v6.0 on puts its
+ * own name first unless the caller already put a proc there; one before
+ * that sends the caller's array as given and left the server to name the
+ * sender. Either way the name used is the one this server knows the
+ * sender by: a leading PMIX_PROCID is replaced, and one is added where
+ * there is none. */
+static pmix_status_t set_contributor(pmix_info_t *grpinfo, const pmix_proc_t *sender)
+{
+    pmix_data_array_t *darray;
+    pmix_info_t *arr, *newarr;
+    size_t m, sz;
+
+    if (PMIX_DATA_ARRAY != grpinfo->value.type ||
+        NULL == (darray = grpinfo->value.data.darray) ||
+        PMIX_INFO != darray->type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    arr = (pmix_info_t *) darray->array;
+    sz = (NULL == arr) ? 0 : darray->size;
+    if (0 < sz && PMIX_CHECK_KEY(&arr[0], PMIX_PROCID)) {
+        PMIX_VALUE_DESTRUCT(&arr[0].value);
+        return PMIx_Value_load(&arr[0].value, sender, PMIX_PROC);
+    }
+    PMIX_INFO_CREATE(newarr, sz + 1);
+    if (NULL == newarr) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_INFO_LOAD(&newarr[0], PMIX_PROCID, sender, PMIX_PROC);
+    for (m = 0; m < sz; m++) {
+        PMIX_INFO_XFER(&newarr[m + 1], &arr[m]);
+    }
+    if (NULL != arr) {
+        PMIX_INFO_FREE(arr, darray->size);
+    }
+    darray->array = newarr;
+    darray->size = sz + 1;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                                 pmix_group_operation_t op)
 {
@@ -2331,6 +2371,7 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     grp_block_t *blk;
     grp_trk_t *trk;
     bool bootstrap = false;
+    pmix_proc_t self;
     bool follower = false;
     bool addmembers = false;
     bool havenotterm = false;
@@ -2466,10 +2507,21 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
      * also keeps anything the client never committed out of the exchange.
      * Drop theirs, closing the gap so the array stays contiguous. */
     ncontrib = 0;
+    PMIX_LOAD_PROCID(&self, peer->info->pname.nspace, peer->info->pname.rank);
     for (n = 0; n < ninf; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_INFO_ARRAY)) {
             PMIX_INFO_DESTRUCT(&info[n]);
             continue;
+        }
+        /* group info is stored, at every member, under the proc its
+         * first entry names - and that is the sender, whatever the
+         * array says */
+        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_INFO)) {
+            rc = set_contributor(&info[n], &self);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                goto error;
+            }
         }
         if (ncontrib != n) {
             PMIX_INFO_XFER(&info[ncontrib], &info[n]);
