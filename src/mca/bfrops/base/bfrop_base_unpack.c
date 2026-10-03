@@ -703,6 +703,14 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_b
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.regex2, &m, PMIX_REGEX2, regtypes);
             return ret;
 
+        case PMIX_POINTER:
+            /* only the packer's sentinel crosses the wire - an address
+             * means nothing in this process - so the value received holds
+             * no pointer, whatever the storage it lands in held before */
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, NULL, &m, PMIX_POINTER, regtypes);
+            val->data.ptr = NULL;
+            return ret;
+
         case PMIX_COMPRESSED_STRING: {
             /* A compressed string is a transport encoding, not a thing a
              * value is allowed to still be once it has been received. We
