@@ -310,6 +310,8 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     pmix_psec_module_t *psec = NULL;
     pmix_bfrops_module_t *bfrops = NULL;
     pmix_gds_base_module_t *gds = NULL;
+    pid_t kpid;
+    bool kpid_known;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -703,6 +705,14 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     }
 
     ilist = PMIx_Info_list_start();
+    /* The process's pid, as the kernel reports it for this socket, is the
+     * one this host can act on - it is in our pid namespace - and it is
+     * not the client's to state. A pid the client sends is used only where
+     * the kernel has none to give, as over TCP. */
+    kpid_known = (PMIX_SUCCESS == pmix_util_getpid(pnd->sd, &kpid));
+    if (kpid_known) {
+        info->pid = kpid;
+    }
     // if a blob was provided, then unpack it
     if (NULL != blob) {
         PMIX_CONSTRUCT(&buf, pmix_buffer_t);
@@ -739,8 +749,11 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
             // process the data
             for (n=0; n < nblob; n++) {
                 if (PMIx_Check_key(iblob[n].key, PMIX_PROC_PID)) {
-                    info->pid = iblob[n].value.data.pid;
-                    PMIx_Info_list_add(ilist, PMIX_PROC_PID, &info->pid, PMIX_PID);
+                    /* the kernel's answer, where it has one, is the pid
+                     * the host can act on - see below */
+                    if (!kpid_known) {
+                        info->pid = iblob[n].value.data.pid;
+                    }
 
                 } else if (PMIx_Check_key(iblob[n].key, PMIX_REALUID)) {
                     info->realuid = iblob[n].value.data.uint32;
@@ -796,6 +809,9 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     ch->reply = reply;
     ch->psec = psec;
 
+    if (0 < info->pid) {
+        PMIx_Info_list_add(ilist, PMIX_PROC_PID, &info->pid, PMIX_PID);
+    }
     PMIx_Info_list_add(ilist, PMIX_USERID, &info->uid, PMIX_UINT32);
     PMIx_Info_list_add(ilist, PMIX_GRPID, &info->gid, PMIX_UINT32);
     PMIx_Info_list_convert(ilist, &darray);
@@ -1332,6 +1348,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     pmix_rank_info_t *vinfo;
     pmix_byte_object_t cred;
     uint32_t u32;
+    pid_t kpid;
 
     /* Validate the tool before anything is done for it - before its info
      * is unpacked, its namespace looked up or built, or the host asked to
@@ -1665,9 +1682,13 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
                               pnd->version, PMIX_STRING, true);
 
     /* provide the user id and group id from the handshake, in place of
-     * any the tool put in its own info */
+     * any the tool put in its own info - and the pid, where the kernel
+     * reports one for this socket */
     PMIx_Info_list_add_unique(ilist, PMIX_USERID,
                               &pnd->uid, PMIX_UINT32, true);
+    if (PMIX_SUCCESS == pmix_util_getpid(pnd->sd, &kpid)) {
+        PMIx_Info_list_add_unique(ilist, PMIX_PROC_PID, &kpid, PMIX_PID, true);
+    }
     PMIx_Info_list_add_unique(ilist, PMIX_GRPID,
                               &pnd->gid, PMIX_UINT32, true);
 

@@ -6,7 +6,8 @@
  *
  * $HEADER$
  *
- * Unit tests for pmix_util_getid() and pmix_util_getid_tcp().
+ * Unit tests for pmix_util_getid(), pmix_util_getpid() and
+ * pmix_util_getid_tcp().
  *
  * pmix_util_getid() has no caller in PMIx and none in PRRTE, but
  * pmix_getid.h is installed and the symbol is exported, so it is API and
@@ -21,6 +22,11 @@
  * connection in every address shape the listener can hand us is owned by
  * us, and a connection whose peer has already closed answers
  * PMIX_ERR_NOT_FOUND.
+ *
+ * pmix_util_getpid() is what the server hands its host as a connecting
+ * process's pid. A child that connects to our AF_UNIX listener must be
+ * reported by its own pid, and a TCP connection - which carries none -
+ * must answer PMIX_ERR_NOT_FOUND rather than a number.
  *
  * Exit 0 if all tests pass, 1 otherwise, 77 to skip.
  */
@@ -40,6 +46,7 @@
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
+#include <sys/un.h>
 #include <sys/wait.h>
 
 #include "src/util/pmix_getid.h"
@@ -380,6 +387,66 @@ static void test_tcp_not_tcp(void)
     report("getid_tcp never wrote the out-param", (uid_t) 4242 == uid);
 }
 
+/* A child process connects to our AF_UNIX listener; the descriptor we
+ * accept must report the child's pid. */
+static void test_getpid_child(void)
+{
+    struct sockaddr_un sun;
+    char dir[] = "/tmp/pmix-getpid-XXXXXX";
+    int lsd, csd, ssd, status;
+    pid_t child, got = 0;
+    pmix_status_t rc;
+    char c;
+
+    if (NULL == mkdtemp(dir)) {
+        report("getpid: setup (mkdtemp failed)", 0);
+        return;
+    }
+    memset(&sun, 0, sizeof(sun));
+    sun.sun_family = AF_UNIX;
+    snprintf(sun.sun_path, sizeof(sun.sun_path), "%s/s", dir);
+    lsd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (0 > lsd || 0 != bind(lsd, (struct sockaddr *) &sun, sizeof(sun)) ||
+        0 != listen(lsd, 1)) {
+        report("getpid: setup (listener failed)", 0);
+        goto out;
+    }
+    child = fork();
+    if (0 > child) {
+        report("getpid: setup (fork failed)", 0);
+        goto out;
+    }
+    if (0 == child) {
+        csd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (0 > csd || 0 != connect(csd, (struct sockaddr *) &sun, sizeof(sun))) {
+            _exit(1);
+        }
+        /* hold the connection until the parent has asked */
+        (void) !read(csd, &c, 1);
+        _exit(0);
+    }
+    ssd = accept(lsd, NULL, NULL);
+    if (0 > ssd) {
+        report("getpid: setup (accept failed)", 0);
+    } else {
+        rc = pmix_util_getpid(ssd, &got);
+        if (PMIX_ERR_NOT_SUPPORTED == rc) {
+            fprintf(stdout, "    SKIP  pmix_util_getpid is not supported here\n");
+        } else {
+            report("getpid reports the connecting child's pid",
+                   PMIX_SUCCESS == rc && got == child);
+        }
+        close(ssd);
+    }
+    (void) waitpid(child, &status, 0);
+out:
+    if (0 <= lsd) {
+        close(lsd);
+    }
+    unlink(sun.sun_path);
+    rmdir(dir);
+}
+
 int main(int argc, char **argv)
 {
     int sd[2], c, s;
@@ -405,6 +472,7 @@ int main(int argc, char **argv)
         test_both_ends_agree();
         test_not_a_socket();
         test_closed_fd();
+        test_getpid_child();
     } else {
         fprintf(stdout, "pmix_util_getid is not supported here - skipping its cases\n");
     }
@@ -425,6 +493,14 @@ int main(int argc, char **argv)
     test_tcp_shape("v4-mapped IPv6", AF_INET6, true);
     test_tcp_peer_gone();
     test_tcp_other_user();
+    if (tcp_pair(AF_INET, false, &c, &s)) {
+        pid_t p = 0;
+        pmix_status_t rc = pmix_util_getpid(s, &p);
+        report("getpid on a TCP connection reports no pid",
+               PMIX_ERR_NOT_FOUND == rc || PMIX_ERR_NOT_SUPPORTED == rc);
+        close(c);
+        close(s);
+    }
 
 done:
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
