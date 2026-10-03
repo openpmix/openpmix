@@ -66,38 +66,49 @@ class myLock(threading.Event):
         for x in self.info:
             info.append(x)
 
-# Deliver an IOF event that arrived before its handler had finished
-# registering. Everything here is a plain Python object, converted by
-# pyiofhandler before it returned: the C structures the library handed it
-# were released the moment it did, so nothing may reference them by the
-# time this runs. (This used to stash the library's own pmix_info_t array
-# in a caddy and free it here - a use-after-free followed by a double
-# free - and leaked the caddy and its label besides.)
-def iofhdlr_cache(pyev, ret):
-    for h in myhdlrs:
-        if pyev['refid'] == h['refid']:
-            try:
-                h['hdlr'](pyev['refid'], pyev['channel'], pyev['source'],
-                          pyev['payload'], pyev['info'])
-            except:
-                traceback.print_exc()
-            return
-    # still not registered - the handler was never going to take it
-    return
+# Find the Python handler the library means by "refid".
+#
+# A handler can be called before the registration that creates it has
+# returned its refid: registering replays any matching cached event, and
+# pulling IOF delivers any output already held, on the progress thread
+# and ahead of the acknowledgement the caller is waiting on. So while a
+# registration is in flight ("pending" is its record), a refid we hold no
+# entry for is that registration's, and it is recorded there and then -
+# the handler sees the event at once rather than after a timed retry that
+# could run before the caller had recorded anything.
+#
+# "status" is the event's code, or None for IOF. A pending event handler
+# is matched only on a code it asked for, so an event still on its way
+# to a handler deregistered a moment ago is not handed to the new one.
+def _hdlr_find(hdlrs:list, pending, refid, status=None):
+    for h in hdlrs:
+        if refid == h['refid']:
+            return h['hdlr']
+    if pending is None or pending['refid'] is not None:
+        return None
+    if status is not None and pending['codes'] is not None and \
+       status not in pending['codes']:
+        return None
+    pending['refid'] = refid
+    hdlrs.append({'refid': refid, 'hdlr': pending['hdlr']})
+    return pending['hdlr']
 
-# The event counterpart of iofhdlr_cache. The library's completion
-# callback was already executed by pyeventhandler before it deferred, so
-# this only delivers the event to the Python handler
-def event_cache_cb(pyev, ret):
-    for h in myhdlrs:
-        if pyev['refid'] == h['refid']:
-            try:
-                h['hdlr'](pyev['refid'], pyev['status'], pyev['source'],
-                          pyev['info'], pyev['results'])
-            except:
-                traceback.print_exc()
+# Record the outcome of a registration once the library has returned it:
+# an entry for "rc", unless the registration failed - and none for any
+# refid _hdlr_find took on its behalf that the library did not give it
+def _hdlr_settle(hdlrs:list, pending, rc):
+    if pending['refid'] is not None and pending['refid'] != rc:
+        _hdlr_drop(hdlrs, pending['refid'])
+        pending['refid'] = None
+    if 0 > rc or pending['refid'] is not None:
+        return
+    hdlrs.append({'refid': rc, 'hdlr': pending['hdlr']})
+
+def _hdlr_drop(hdlrs:list, refid):
+    for n, h in enumerate(hdlrs):
+        if refid == h['refid']:
+            del hdlrs[n]
             return
-    return
 
 cdef void pmix_convert_locality(pmix_locality_t loc, pyloc:list):
     if PMIX_LOCALITY_NONLOCAL & loc:
