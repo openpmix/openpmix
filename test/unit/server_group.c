@@ -92,6 +92,10 @@ static void report(const char *name, int passed)
 static bool group_fired = false;
 static size_t group_ninfo = 0;
 static bool group_status_last = false;
+/* the PMIX_GROUP_INFO the host was given: its leading proc and size */
+static bool group_contrib_seen = false;
+static pmix_proc_t group_contrib;
+static size_t group_contrib_size = 0;
 static char *group_id = NULL;
 
 /* When set, the stub accepts the operation and parks the completion so the
@@ -115,6 +119,23 @@ static pmix_status_t stub_group(pmix_group_operation_t op, char grp[],
     group_fired = true;
     group_ninfo = ndirs;
     group_status_last = false;
+    group_contrib_seen = false;
+    for (size_t d = 0; NULL != directives && d < ndirs; d++) {
+        const pmix_info_t *gi;
+
+        if (!PMIX_CHECK_KEY(&directives[d], PMIX_GROUP_INFO) ||
+            PMIX_DATA_ARRAY != directives[d].value.type ||
+            NULL == directives[d].value.data.darray) {
+            continue;
+        }
+        gi = (const pmix_info_t *) directives[d].value.data.darray->array;
+        group_contrib_size = directives[d].value.data.darray->size;
+        if (0 < group_contrib_size && PMIX_CHECK_KEY(&gi[0], PMIX_PROCID) &&
+            PMIX_PROC == gi[0].value.type) {
+            memcpy(&group_contrib, gi[0].value.data.proc, sizeof(pmix_proc_t));
+            group_contrib_seen = true;
+        }
+    }
     if (NULL != directives && 0 < ndirs) {
         group_status_last = PMIX_CHECK_KEY(&directives[ndirs - 1],
                                            PMIX_LOCAL_COLLECTIVE_STATUS);
@@ -163,6 +184,12 @@ typedef struct {
      * a membership the rank-counting form cannot express */
     const pmix_proc_t *plist;
     bool bootstrap;     /* pack PMIX_GROUP_BOOTSTRAP rather than FT_COLLECTIVE */
+    /* when set, the first info is a PMIX_GROUP_INFO contribution led by
+     * this proc, as a client's own contribution is led by itself */
+    const pmix_proc_t *contributor;
+    /* the same, but with no leading proc at all - as a client before
+     * v6.0 sends the caller's array */
+    bool bare_contribution;
     pmix_status_t status;
 } grp_req_t;
 
@@ -231,7 +258,26 @@ static void do_group(int sd, short args, void *cbdata)
             return;
         }
         for (n = 0; n < r->ninf_real; n++) {
-            if (r->bootstrap) {
+            if (0 == n && r->bare_contribution) {
+                pmix_data_array_t *gi;
+                uint32_t gv = 7;
+
+                PMIX_DATA_ARRAY_CREATE(gi, 1, PMIX_INFO);
+                PMIX_INFO_LOAD((pmix_info_t *) gi->array, "grput.value", &gv, PMIX_UINT32);
+                PMIX_INFO_LOAD(&dirs[n], PMIX_GROUP_INFO, gi, PMIX_DATA_ARRAY);
+                PMIX_DATA_ARRAY_FREE(gi);
+            } else if (0 == n && NULL != r->contributor) {
+                pmix_data_array_t *gi;
+                pmix_info_t *gpi;
+                uint32_t gv = 7;
+
+                PMIX_DATA_ARRAY_CREATE(gi, 2, PMIX_INFO);
+                gpi = (pmix_info_t *) gi->array;
+                PMIX_INFO_LOAD(&gpi[0], PMIX_PROCID, r->contributor, PMIX_PROC);
+                PMIX_INFO_LOAD(&gpi[1], "grput.value", &gv, PMIX_UINT32);
+                PMIX_INFO_LOAD(&dirs[n], PMIX_GROUP_INFO, gi, PMIX_DATA_ARRAY);
+                PMIX_DATA_ARRAY_FREE(gi);
+            } else if (r->bootstrap) {
                 PMIX_INFO_LOAD(&dirs[n], PMIX_GROUP_BOOTSTRAP, &nboot, PMIX_SIZE);
             } else {
                 PMIX_INFO_LOAD(&dirs[n], PMIX_GROUP_FT_COLLECTIVE, &flag, PMIX_BOOL);
@@ -284,6 +330,33 @@ static pmix_status_t drive_group(const char *grpid, const char *pns,
     req.nprocs_real = nprocs_real;
     req.ninf = ninf;
     req.ninf_real = ninf_real;
+    group_fired = false;
+    PMIX_THREADSHIFT(&req, do_group);
+    PMIX_WAIT_THREAD(&req.lock);
+    rc = req.status;
+    PMIX_DESTRUCT_LOCK(&req.lock);
+    return rc;
+}
+
+/* Drive a construct whose group info names `contributor` as its sender.
+ * The caddy's peer is this server's own, so only its own name is the
+ * sender's. */
+static pmix_status_t drive_group_contrib(const char *grpid, const pmix_proc_t *contributor,
+                                         bool bare)
+{
+    grp_req_t req;
+    pmix_status_t rc;
+
+    memset(&req, 0, sizeof(req));
+    PMIX_CONSTRUCT_LOCK(&req.lock);
+    req.grpid = grpid;
+    req.pns = GRPUT_NSPACE;
+    req.nprocs = 1;
+    req.nprocs_real = 1;
+    req.ninf = 1;
+    req.ninf_real = 1;
+    req.contributor = contributor;
+    req.bare_contribution = bare;
     group_fired = false;
     PMIX_THREADSHIFT(&req, do_group);
     PMIX_WAIT_THREAD(&req.lock);
@@ -410,6 +483,7 @@ int main(int argc, char **argv)
     report("group rejects an oversized proc count", PMIX_ERR_BAD_PARAM == rc);
     report("oversized proc count parks nothing", nothing_parked());
 
+
     /* --- an array shorter than the count that introduced it --- *
      * The unpack reports SUCCESS when it finds fewer elements than the
      * count promised - it just writes back how many it found. Unchecked,
@@ -449,6 +523,38 @@ int main(int argc, char **argv)
     /* the host declined, so the handler answered every participant and
      * tore the block down - nothing may be left waiting */
     report("a refused construct parks nothing", nothing_parked());
+
+    /* --- group info is the sender's own --- *
+     * Every member stores a contribution's values under the proc its
+     * first entry names, and that has to be the proc that sent it: the
+     * host is given the sender's name whether the array named itself,
+     * named another proc, or - as a client before v6.0 sends it - named
+     * no proc at all. */
+    {
+        pmix_proc_t other;
+
+        rc = drive_group_contrib("grput.owncontrib", &pmix_globals.myid, false);
+        report("group info naming its sender reaches the host so named",
+               PMIX_SUCCESS == rc && group_fired && group_contrib_seen &&
+                   PMIX_CHECK_PROCID(&group_contrib, &pmix_globals.myid) &&
+                   2 == group_contrib_size);
+        report("own contribution parks nothing", nothing_parked());
+
+        PMIX_LOAD_PROCID(&other, GRPUT_NSPACE, 3);
+        rc = drive_group_contrib("grput.othercontrib", &other, false);
+        report("group info naming another proc reaches the host as the sender's",
+               PMIX_SUCCESS == rc && group_fired && group_contrib_seen &&
+                   PMIX_CHECK_PROCID(&group_contrib, &pmix_globals.myid) &&
+                   2 == group_contrib_size);
+        report("renamed contribution parks nothing", nothing_parked());
+
+        rc = drive_group_contrib("grput.barecontrib", NULL, true);
+        report("group info naming no proc reaches the host as the sender's",
+               PMIX_SUCCESS == rc && group_fired && group_contrib_seen &&
+                   PMIX_CHECK_PROCID(&group_contrib, &pmix_globals.myid) &&
+                   2 == group_contrib_size);
+        report("bare contribution parks nothing", nothing_parked());
+    }
 
     /* --- a participant namespace that registers late --- *
      * check_definition_complete gives up the moment it meets a
