@@ -52,6 +52,197 @@ static inline pmix_keyindex_t *get_keyindex_ptr(pmix_keyindex_t *input)
     return input ? input : &pmix_globals.keyindex;
 }
 
+/* ------------------------------------------------------------------ *
+ * Releasing keys nothing uses any more
+ *
+ * A key that is not a reserved attribute is registered in the process's
+ * key index the first time a value is stored under it, and used to stay
+ * there for the life of the process - in a persistent DVM, every key
+ * every job ever stored. So each such key is counted: one for every
+ * stored value (pmix_dstor_t) and every qualifier that refers to it by
+ * index, and nothing else does. When the count reaches zero the entry is
+ * freed and its index is handed to the next key registered, so the index
+ * never grows past the most keys alive at once - a persistent DVM sees
+ * the same keys come and go with every job. Reuse is safe only because
+ * every holder of an index is counted: anything that kept one without a
+ * reference would read whatever key was given the number next. Index
+ * numbers never leave the process.
+ *
+ * Only the process-global index is counted. It is the one a table with
+ * no allocator (tma) uses; a gds/shmem3 segment has an allocator and an
+ * index of its own, released with the segment. Reserved attributes are
+ * never released.
+ *
+ * Threading: the global index changes only on the progress thread, which
+ * is where everything in this file that stores or removes values runs.
+ * Nothing reads the index from another thread - a lookup on the
+ * application's thread uses dict_by_id, the fixed snapshot of the
+ * reserved attributes, or a segment's own index - so freeing an entry
+ * here cannot pull it from under a reader.
+ * ------------------------------------------------------------------ */
+static uint32_t *key_refs = NULL;
+static size_t nkey_refs = 0;
+/* numbers freed by key_retire(), for the next keys registered */
+static uint32_t *free_ids = NULL;
+static size_t nfree_ids = 0, free_ids_size = 0;
+/* set if a count could not be kept - from then on nothing is released */
+static bool key_refs_lost = false;
+
+static inline bool key_counted(uint32_t id, pmix_tma_t *tma)
+{
+    return (NULL == tma && !key_refs_lost && UINT32_MAX != id &&
+            (uint32_t) PMIX_INDEX_BOUNDARY <= id);
+}
+
+static void key_hold(uint32_t id, pmix_tma_t *tma)
+{
+    size_t slot, n;
+    uint32_t *grown;
+
+    if (!key_counted(id, tma)) {
+        return;
+    }
+    slot = (size_t) (id - (uint32_t) PMIX_INDEX_BOUNDARY);
+    if (slot >= nkey_refs) {
+        n = (slot + 1 < 2 * nkey_refs) ? 2 * nkey_refs : slot + 1024;
+        grown = (uint32_t *) realloc(key_refs, n * sizeof(uint32_t));
+        if (NULL == grown) {
+            /* a count we cannot keep is one we cannot trust to reach
+             * zero - keep every key from here on, as before */
+            key_refs_lost = true;
+            return;
+        }
+        memset(&grown[nkey_refs], 0, (n - nkey_refs) * sizeof(uint32_t));
+        key_refs = grown;
+        nkey_refs = n;
+    }
+    ++key_refs[slot];
+}
+
+/* Free a key's entry and drop it from the index - the reverse of the
+ * registration in lookup_key(). The slot is left empty, not reused. */
+static void key_retire(uint32_t id)
+{
+    pmix_keyindex_t *const ki = &pmix_globals.keyindex;
+    pmix_regattr_input_t *p;
+
+    if (NULL == ki->table) {
+        return;
+    }
+    p = (pmix_regattr_input_t *) pmix_pointer_array_get_item(ki->table, (int) id);
+    if (NULL == p) {
+        return;
+    }
+    if (NULL != ki->lookup && NULL != p->string) {
+        (void) pmix_hash_table_remove_value_ptr(ki->lookup, p->string, strlen(p->string));
+    }
+    pmix_pointer_array_set_item(ki->table, (int) id, NULL);
+    free(p->name);
+    free(p->string);
+    if (NULL != p->description) {
+        pmix_bfrops_base_tma_argv_free(p->description, NULL);
+    }
+    free(p);
+
+    /* offer the number to the next key - if it cannot be recorded it is
+     * simply not reused */
+    if (nfree_ids == free_ids_size) {
+        size_t n = (0 == free_ids_size) ? 64 : 2 * free_ids_size;
+        uint32_t *grown = (uint32_t *) realloc(free_ids, n * sizeof(uint32_t));
+        if (NULL == grown) {
+            return;
+        }
+        free_ids = grown;
+        free_ids_size = n;
+    }
+    free_ids[nfree_ids++] = id;
+}
+
+/* A freed number for a new key in the global index, or UINT32_MAX for
+ * none. Not once counting has been given up: a key whose count was lost
+ * is never freed, but nor is any number reused after that point. */
+static uint32_t key_reuse_id(void)
+{
+    if (key_refs_lost || 0 == nfree_ids) {
+        return UINT32_MAX;
+    }
+    return free_ids[--nfree_ids];
+}
+
+static void key_drop(uint32_t id, pmix_tma_t *tma)
+{
+    size_t slot;
+
+    if (!key_counted(id, tma)) {
+        return;
+    }
+    slot = (size_t) (id - (uint32_t) PMIX_INDEX_BOUNDARY);
+    if (slot >= nkey_refs || 0 == key_refs[slot]) {
+        /* never counted - nothing of ours to give back */
+        return;
+    }
+    if (0 == --key_refs[slot]) {
+        key_retire(id);
+    }
+}
+
+/* A key registered by a store that then failed is held by nothing */
+static void key_drop_if_unused(uint32_t id, pmix_tma_t *tma)
+{
+    size_t slot;
+
+    if (!key_counted(id, tma)) {
+        return;
+    }
+    slot = (size_t) (id - (uint32_t) PMIX_INDEX_BOUNDARY);
+    if (slot < nkey_refs && 0 != key_refs[slot]) {
+        return;
+    }
+    key_retire(id);
+}
+
+/* a stored value, and the key reference that goes with it */
+static pmix_dstor_t *dstor_new(uint32_t kid, pmix_tma_t *tma)
+{
+    pmix_dstor_t *d = pmix_dstor_new_tma(kid, tma);
+
+    if (NULL != d) {
+        key_hold(kid, tma);
+    }
+    return d;
+}
+
+static void dstor_release(pmix_dstor_t *d, pmix_tma_t *tma)
+{
+    uint32_t kid = d->index;
+
+    pmix_dstor_release_tma(d, tma);
+    key_drop(kid, tma);
+}
+
+uint32_t pmix_hash_key_refs(uint32_t id)
+{
+    size_t slot;
+
+    if (!key_counted(id, NULL)) {
+        return UINT32_MAX;
+    }
+    slot = (size_t) (id - (uint32_t) PMIX_INDEX_BOUNDARY);
+    return (slot < nkey_refs) ? key_refs[slot] : 0;
+}
+
+void pmix_hash_release_key_refs(void)
+{
+    free(key_refs);
+    key_refs = NULL;
+    nkey_refs = 0;
+    key_refs_lost = false;
+    free(free_ids);
+    free_ids = NULL;
+    nfree_ids = 0;
+    free_ids_size = 0;
+}
+
 /**
  * Data for a particular pmix process
  * The name association is maintained in the
@@ -136,7 +327,7 @@ static void pddes(pmix_proc_data_t *p)
     for (n=0; NULL != p->data && n < p->data->size; n++) {
         d = (pmix_dstor_t*)pmix_pointer_array_get_item(p->data, n);
         if (NULL != d) {
-            pmix_dstor_release_tma(d, tma);
+            dstor_release(d, tma);
             pmix_pointer_array_set_item(p->data, n, NULL);
         }
     }
@@ -154,6 +345,7 @@ static void pddes(pmix_proc_data_t *p)
                 if (NULL != q[nq].value) {
                     pmix_bfrops_base_tma_value_release(&q[nq].value, tma);
                 }
+                key_drop(q[nq].index, tma);
             }
             pmix_tma_free(tma, darray->array);
             pmix_tma_free(tma, darray);
@@ -220,6 +412,7 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     /* lookup the proc data object for this proc - create
      * it if we don't already have it */
     if (PMIX_UNLIKELY(NULL == (proc_data = lookup_proc(table, rank, true)))) {
+        key_drop_if_unused(kid, tma);
         return PMIX_ERR_NOMEM;
     }
 
@@ -276,8 +469,9 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     }
 
     /* we don't already have it, so create it */
-    hv = pmix_dstor_new_tma(kid, tma);
+    hv = dstor_new(kid, tma);
     if (PMIX_UNLIKELY(NULL == hv)) {
+        key_drop_if_unused(kid, tma);
         return PMIX_ERR_NOMEM;
     }
     if (NULL != qualifiers) {
@@ -290,7 +484,7 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
         if (0 < m) {
             darray = (pmix_data_array_t*)pmix_tma_malloc(tma, sizeof(pmix_data_array_t));
             if (PMIX_UNLIKELY(NULL == darray)) {
-                pmix_dstor_release_tma(hv, tma);
+                dstor_release(hv, tma);
                 return PMIX_ERR_NOMEM;
             }
             /* zero-initialize so a partially-filled array can be safely
@@ -298,7 +492,7 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
             darray->array = (pmix_qual_t*)pmix_tma_calloc(tma, m, sizeof(pmix_qual_t));
             if (PMIX_UNLIKELY(NULL == darray->array)) {
                 pmix_tma_free(tma, darray);
-                pmix_dstor_release_tma(hv, tma);
+                dstor_release(hv, tma);
                 return PMIX_ERR_NOMEM;
             }
             /* A pmix_qual_t is not one of the PMIx data types, so there
@@ -317,7 +511,7 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
                  * found again while the store reported success */
                 pmix_tma_free(tma, darray->array);
                 pmix_tma_free(tma, darray);
-                pmix_dstor_release_tma(hv, tma);
+                dstor_release(hv, tma);
                 return PMIX_ERR_OUT_OF_RESOURCE;
             }
             hv->qualindex = (uint32_t)idx;
@@ -332,15 +526,16 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
                                             PMIX_NAME_PRINT(&pmix_globals.myid),
                                             kin->key);
                         erase_qualifiers(proc_data, hv->qualindex);
-                        pmix_dstor_release_tma(hv, tma);
+                        dstor_release(hv, tma);
                         return PMIX_ERR_BAD_PARAM;
                     }
                     qarray[m].index = p->index;
+                    key_hold(p->index, tma);
                     rc = pmix_bfrops_base_tma_copy_value(&qarray[m].value, &qualifiers[n].value, PMIX_VALUE, tma);
                     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                         PMIX_ERROR_LOG(rc);
                         erase_qualifiers(proc_data, hv->qualindex);
-                        pmix_dstor_release_tma(hv, tma);
+                        dstor_release(hv, tma);
                         return rc;
                     }
                     ++m;
@@ -357,7 +552,7 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
             /* release the associated qualifiers */
             erase_qualifiers(proc_data, hv->qualindex);
         }
-        pmix_dstor_release_tma(hv, tma);
+        dstor_release(hv, tma);
         return rc;
     }
     if (PMIX_UNLIKELY(9 < pmix_output_get_verbosity(pmix_gds_base_framework.framework_output))) {
@@ -371,7 +566,14 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
                     (NULL == table->ht_label) ? "UNKNOWN" : table->ht_label);
         free(v);
     }
-    pmix_pointer_array_add(proc_data->data, hv);
+    if (PMIX_UNLIKELY(0 > pmix_pointer_array_add(proc_data->data, hv))) {
+        /* not added, so nothing would ever find it - or free it */
+        if (UINT32_MAX != hv->qualindex) {
+            erase_qualifiers(proc_data, hv->qualindex);
+        }
+        dstor_release(hv, tma);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     return PMIX_SUCCESS;
 }
 
@@ -760,6 +962,7 @@ pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table,
                             if (UINT32_MAX != d->qualindex) {
                                 erase_qualifiers(proc_data, d->qualindex);
                             }
+                            key_drop(d->index, tma);
                             pmix_tma_free(tma, d);
                             pmix_pointer_array_set_item(proc_data->data, n, NULL);
                             break;
@@ -800,6 +1003,7 @@ pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table,
                 if (UINT32_MAX != d->qualindex) {
                     erase_qualifiers(proc_data, d->qualindex);
                 }
+                key_drop(d->index, tma);
                 pmix_tma_free(tma, d);
                 pmix_pointer_array_set_item(proc_data->data, n, NULL);
             }
@@ -821,6 +1025,7 @@ pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table,
             if (UINT32_MAX != d->qualindex) {
                 erase_qualifiers(proc_data, d->qualindex);
             }
+            key_drop(d->index, tma);
             pmix_tma_free(tma, d);
             pmix_pointer_array_set_item(proc_data->data, n, NULL);
             break;
@@ -998,10 +1203,20 @@ void pmix_hash_register_key(uint32_t inid,
         return;
     }
     if (UINT32_MAX == inid) {
+        uint32_t id = UINT32_MAX;
+
+        /* a number a released key gave back, if there is one - only the
+         * global index releases keys; see key_retire() */
+        if (&pmix_globals.keyindex == keyindex) {
+            id = key_reuse_id();
+        }
+        if (UINT32_MAX == id) {
+            id = keyindex->next_id;
+            keyindex->next_id += 1;
+        }
         /* store the pointer in the array */
-        pmix_pointer_array_set_item(keyindex->table, (int)keyindex->next_id, ptr);
-        ptr->index = keyindex->next_id;
-        keyindex->next_id += 1;
+        pmix_pointer_array_set_item(keyindex->table, (int) id, ptr);
+        ptr->index = id;
         add_to_lookup(keyindex, ptr);
         return;
     }
@@ -1259,6 +1474,7 @@ static void erase_qualifiers(pmix_proc_data_t *proc,
         if (NULL != qarray[n].value) {
             pmix_bfrops_base_tma_value_release(&qarray[n].value, tma);
         }
+        key_drop(qarray[n].index, tma);
     }
     pmix_tma_free(tma, qarray);
     pmix_tma_free(tma, darray);
