@@ -40,6 +40,7 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_cmd_line.h"
 #include "src/util/pmix_keyval_parse.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 typedef struct {
@@ -115,7 +116,7 @@ int main(int argc, char **argv)
     int count, timeout;
     pmix_cli_result_t results;
     pmix_cli_item_t *opt;
-    char *ans;
+    char *ans, *shown;
     PMIX_HIDE_UNUSED_PARAMS(argc);
 
 
@@ -311,7 +312,10 @@ int main(int argc, char **argv)
     for (n = 0; n < ndata; n++) {
         fprintf(stderr, "Key: %s\n", pdata[n].key);
         ans = PMIx_Value_string(&pdata[n].value);
-        fprintf(stderr, "    %s\n", ans);
+        /* published by another process - see pmix_util_printable() */
+        shown = pmix_util_printable(ans);
+        fprintf(stderr, "    %s\n", (NULL == shown) ? "NULL" : shown);
+        free(shown);
         free(ans);
     }
     PMIX_PDATA_FREE(pdata, ndata);

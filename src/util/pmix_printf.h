@@ -154,6 +154,19 @@ __pmix_attribute_format__(__printf__, 2, 3);
 PMIX_EXPORT int pmix_vasprintf(char **ptr, const char *fmt, va_list ap)
 __pmix_attribute_format__(__printf__, 2, 0);
 
+/**
+ * A copy of a string fit to show on a terminal.
+ *
+ * @param s The string - typically one another process supplied.
+ *
+ * @retval A newly allocated copy in which every control character except
+ * a tab - newlines included, and DEL - is written as "\xNN", so the text
+ * cannot move the cursor, change the terminal's settings, or begin what
+ * looks like another line of output. Every other byte is copied as is.
+ * NULL only when s is NULL or memory is exhausted. The caller frees it.
+ */
+PMIX_EXPORT char *pmix_util_printable(const char *s);
+
 END_C_DECLS
 
 #endif /* PMIX_PRINTF_H */
