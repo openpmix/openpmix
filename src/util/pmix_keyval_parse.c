@@ -55,6 +55,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "pmix_common.h"
 #include "src/threads/pmix_threads.h"
@@ -643,6 +645,23 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
         }
         ret = PMIX_ERR_NOT_FOUND;
         goto cleanup;
+    }
+
+    /* A process running as root takes its settings only from a file root
+     * controls: one owned by root that no group or other user can write.
+     * Anything else is passed over, as a file that is not there would be,
+     * but said so. */
+    if (0 == geteuid()) {
+        struct stat st;
+
+        if (0 != fstat(fileno(fp), &st) || 0 != st.st_uid ||
+            0 != (st.st_mode & (S_IWGRP | S_IWOTH))) {
+            pmix_output(0, "keyval parser: ignoring file %s: running as root, and it is not "
+                           "a file only root can write", filename);
+            fclose(fp);
+            ret = PMIX_ERR_NOT_FOUND;
+            goto cleanup;
+        }
     }
 
     ret = parse_stream(fp, filename, callback, cbdata);
