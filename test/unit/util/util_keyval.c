@@ -21,6 +21,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
@@ -116,6 +118,9 @@ static int write_file(const char *contents)
     }
     fputs(contents, fp);
     fclose(fp);
+    /* the mode a parameter file is expected to have - when the test runs
+     * as root, a group- or world-writable file would be refused */
+    (void) chmod(tmpfile_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     return 0;
 }
 
@@ -134,6 +139,7 @@ static int write_file_raw(const char *contents, size_t len)
     }
     fwrite(contents, 1, len, fp);
     fclose(fp);
+    (void) chmod(tmpfile_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     return 0;
 }
 
@@ -572,6 +578,40 @@ static void test_long_lines(void)
     reset_seen();
 }
 
+/*
+ * A process running as root takes its settings only from a file that
+ * only root can write: one owned by root that no group or other user can
+ * write. Anything else is passed over as a missing file would be. As any
+ * other user there is nothing to check - the cases are skipped.
+ */
+static void test_root_trusts_only_root_files(void)
+{
+    int rc;
+
+    if (0 != geteuid()) {
+        fprintf(stdout, "  SKIP: the root-only file rule (not running as root)\n");
+        return;
+    }
+    rc = parse_text("alpha = one\n");
+    report("as root, a root-owned 0644 file is read", PMIX_SUCCESS == rc && 1 == nseen);
+
+    (void) chmod(tmpfile_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+    reset_seen();
+    rc = pmix_util_keyval_parse(tmpfile_path, collect, NULL);
+    report("as root, a group-writable file is passed over",
+           PMIX_ERR_NOT_FOUND == rc && 0 == nseen);
+
+    (void) chmod(tmpfile_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (0 == chown(tmpfile_path, 65534, (gid_t) -1)) {
+        reset_seen();
+        rc = pmix_util_keyval_parse(tmpfile_path, collect, NULL);
+        report("as root, a file owned by another user is passed over",
+               PMIX_ERR_NOT_FOUND == rc && 0 == nseen);
+        (void) !chown(tmpfile_path, 0, (gid_t) -1);
+    }
+    reset_seen();
+}
+
 int main(int argc, char **argv)
 {
     const char *tmpdir;
@@ -608,6 +648,7 @@ int main(int argc, char **argv)
     test_env_directive_edges();
     test_long_lines();
     test_finalize_drops_pending_envars();
+    test_root_trusts_only_root_files();
 
     pmix_util_keyval_parse_finalize();
     reset_seen();
