@@ -40,6 +40,9 @@
  * file would quietly compile the getpeereid() route on a platform that
  * wanted the other one, rather than say anything about it */
 #include <sys/socket.h>
+#ifdef HAVE_SYS_UN_H
+#    include <sys/un.h>
+#endif
 
 #include <errno.h>
 #include <fcntl.h>
@@ -165,6 +168,49 @@ pmix_status_t pmix_util_getid(int sd, uid_t *uid, gid_t *gid)
 #endif
 
     return PMIX_SUCCESS;
+}
+
+/* The peer's pid comes with its credentials where the credential struct
+ * carries one: Linux's struct ucred and OpenBSD's struct sockpeercred both
+ * do. macOS answers it separately, through LOCAL_PEERPID. */
+#if PMIX_HAVE_PEERCRED && (defined(HAVE_STRUCT_SOCKPEERCRED_UID) || \
+                           (defined(__linux__) && defined(HAVE_STRUCT_UCRED_UID)))
+#    define PMIX_HAVE_PEERCRED_PID 1
+#else
+#    define PMIX_HAVE_PEERCRED_PID 0
+#endif
+
+pmix_status_t pmix_util_getpid(int sd, pid_t *pid)
+{
+#if PMIX_HAVE_PEERCRED_PID
+    PMIX_PEERCRED_T cred;
+    socklen_t crlen = sizeof(cred);
+
+    if (getsockopt(sd, SOL_SOCKET, SO_PEERCRED, &cred, &crlen) < 0 ||
+        crlen < sizeof(cred)) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    /* a socket with no peer process behind it - TCP among them - reports
+     * no pid */
+    if (0 >= cred.pid) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    *pid = cred.pid;
+    return PMIX_SUCCESS;
+#elif defined(LOCAL_PEERPID) && defined(SOL_LOCAL)
+    pid_t p;
+    socklen_t len = sizeof(p);
+
+    if (getsockopt(sd, SOL_LOCAL, LOCAL_PEERPID, &p, &len) < 0 ||
+        len < sizeof(p) || 0 >= p) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    *pid = p;
+    return PMIX_SUCCESS;
+#else
+    PMIX_HIDE_UNUSED_PARAMS(sd, pid);
+    return PMIX_ERR_NOT_SUPPORTED;
+#endif
 }
 
 /* ------------------------------------------------------------------ *
