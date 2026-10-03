@@ -1080,6 +1080,65 @@ static bool have_custom_range(const pmix_info_t *info, size_t ninfo)
     return false;
 }
 
+/* May this peer release processes held for a debugger? A release reaches
+ * every process in its range that is waiting for one, so the peer's user
+ * has to be permitted to access the job of each process it can reach -
+ * the rule that governs signalling them. A job this server has not had
+ * registered by the host passes here: the host relays the release, and
+ * decides for it.
+ *
+ * What a release can reach depends on its range: the processes a custom
+ * range names (a wildcard namespace naming every job), the sender's own
+ * job or the sender alone, or - for any wider range - every job here. */
+static pmix_status_t release_permitted(pmix_peer_t *peer, pmix_data_range_t range,
+                                       const pmix_info_t *info, size_t ninfo)
+{
+    const pmix_proc_t *targets = NULL;
+    pmix_namespace_t *ns;
+    size_t n, ntargets = 0;
+    bool everyone = false;
+
+    if (PMIX_RANGE_PROC_LOCAL == range || PMIX_RANGE_NAMESPACE == range) {
+        return PMIX_SUCCESS;
+    }
+    for (n = 0; n < ninfo; n++) {
+        if (!PMIX_CHECK_KEY(&info[n], PMIX_EVENT_CUSTOM_RANGE)) {
+            continue;
+        }
+        if (PMIX_PROC == info[n].value.type && NULL != info[n].value.data.proc) {
+            targets = info[n].value.data.proc;
+            ntargets = 1;
+        } else if (PMIX_DATA_ARRAY == info[n].value.type &&
+                   NULL != info[n].value.data.darray &&
+                   PMIX_PROC == info[n].value.data.darray->type &&
+                   NULL != info[n].value.data.darray->array) {
+            targets = (const pmix_proc_t *) info[n].value.data.darray->array;
+            ntargets = info[n].value.data.darray->size;
+        } else {
+            return PMIX_ERR_BAD_PARAM;
+        }
+        break;
+    }
+    if (NULL == targets) {
+        everyone = true;
+    }
+    for (n = 0; !everyone && n < ntargets; n++) {
+        if (PMIx_Nspace_invalid(targets[n].nspace)) {
+            everyone = true;
+        } else if (!pmix_server_peer_may_access_nspace(peer, targets[n].nspace)) {
+            return PMIX_ERR_NO_PERMISSIONS;
+        }
+    }
+    if (everyone) {
+        PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (!pmix_server_peer_may_access(peer, ns)) {
+                return PMIX_ERR_NO_PERMISSIONS;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 /* Aim a PMIX_GROUP_LEFT at the rest of the group, from the membership we
  * hold. The array keeps its last slot free for the internal-notify
  * marker, so it grows by one */
@@ -1189,6 +1248,16 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer
     if (0 < ninfo) {
         cnt = ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+
+    /* a release lets a process held for a debugger go on - only from a
+     * peer whose user may act on that process's job */
+    if (PMIX_DEBUGGER_RELEASE == cd->status) {
+        rc = release_permitted(peer, cd->range, cd->info, ninfo);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto exit;
