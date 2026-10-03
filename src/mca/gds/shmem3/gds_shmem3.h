@@ -517,6 +517,10 @@ typedef struct {
      * generation.
      */
     pmix_atomic_uint32_t modex_generation;
+    /** Server only: how many times the estimate the modex segment is
+     *  built at. 1, doubled each time a build runs out of room - see
+     *  server_store_modex(). */
+    size_t modex_scale;
     /** Shared-memory object that maintains backing store for smmodex data. */
     pmix_shmem_t *modex_shmem3;
     /** Points to shared job data located in a shared-memory segment. */
