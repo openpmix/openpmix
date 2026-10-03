@@ -1694,79 +1694,68 @@ request:
 }
 
 /*****   LOCATE A GIVEN ATTRIBUTE    *****/
+
+/* These are reached from PMIx_Get_attribute_string and
+ * PMIx_Get_attribute_name, on whatever thread calls them, so they read
+ * the IMMUTABLE view of the reserved attributes (dict_by_id), never
+ * pmix_globals.keyindex - the progress thread grows that table, and
+ * reallocates it as it does. Only reserved attributes have a name that
+ * differs from their string, so nothing is lost: any other key is its
+ * own name. An id with no attribute (a retired one) is passed over. */
+static const pmix_regattr_input_t *find_reserved(const char *name, const char *string)
+{
+    pmix_pointer_array_t *const dict = pmix_globals.dict_by_id;
+    pmix_regattr_input_t *ra;
+
+    if (NULL == dict) {
+        return NULL;
+    }
+    for (int i = 0; i < dict->size; ++i) {
+        ra = (pmix_regattr_input_t *) pmix_pointer_array_get_item(dict, i);
+        if (NULL == ra) {
+            continue;
+        }
+        if (NULL != name && NULL != ra->name && 0 == strcasecmp(ra->name, name)) {
+            return ra;
+        }
+        if (NULL != string && NULL != ra->string && 0 == strcasecmp(ra->string, string)) {
+            return ra;
+        }
+    }
+    return NULL;
+}
+
 PMIX_EXPORT const char *pmix_attributes_lookup(const char *attr)
 {
-    pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
+    const pmix_regattr_input_t *ra;
 
     /* reached from the public PMIx_Get_attribute_string, so the name
      * is whatever the caller passed */
     if (NULL == attr) {
         return NULL;
     }
-    if (NULL == kidx->table) {
-        // we haven't been initialized yet - just return the string
-        return attr;
-    }
-
-    for (int i = 0; i < kidx->table->size; ++i) {
-        pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
-        if (NULL == ra) {
-            break;
-        }
-        if (0 == strcasecmp(ra->name, attr)) {
-            return ra->string;
-        }
-    }
-    return attr;
+    ra = find_reserved(attr, NULL);
+    return (NULL == ra) ? attr : ra->string;
 }
 
 PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
 {
-    pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
+    const pmix_regattr_input_t *ra;
 
     /* reached from the public PMIx_Get_attribute_name */
     if (NULL == attrstring) {
         return NULL;
     }
-    if (NULL == kidx->table) {
-        // we haven't been initialized yet - just return the string
-        return attrstring;
-    }
-
-    for (int i = 0; i < kidx->table->size; ++i) {
-        pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
-        if (NULL == ra) {
-            break;
-        }
-        if (0 == strcasecmp(ra->string, attrstring)) {
-            return ra->name;
-        }
-    }
-    return attrstring;
+    ra = find_reserved(NULL, attrstring);
+    return (NULL == ra) ? attrstring : ra->name;
 }
 
 PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr)
 {
-    pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
-
     if (NULL == attr) {
         return NULL;
     }
-    if (NULL == kidx->table) {
-        // we haven't been initialized yet - just return the string
-        return NULL;
-    }
-
-    for (int i = 0; i < kidx->table->size; ++i) {
-        pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
-        if (NULL == ra) {
-            break;
-        }
-        if (0 == strcasecmp(ra->name, attr)) {
-            return ra;
-        }
-    }
-    return NULL;
+    return find_reserved(attr, NULL);
 }
 
 /*****   PRINT QUERY FUNCTIONS RESULTS   *****/
