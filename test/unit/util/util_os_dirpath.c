@@ -570,6 +570,43 @@ static void test_under_declines_a_tail_symlink(void)
     rmdir(root);
 }
 
+/* The composed part names directories by value - a namespace, a rank -
+ * so ".." in it would climb out of the root it was told to stay under.
+ * Each walk refuses it, and nothing is built or opened above the root. */
+static void test_under_refuses_dot_dot(void)
+{
+    char root[512], above[600];
+    int rc, fd;
+
+    snprintf(root, sizeof(root), "%s/droot", tmpbase);
+    if (0 != mkdir(root, S_IRWXU)) {
+        report("dotdot: fixture", 0);
+        return;
+    }
+    snprintf(above, sizeof(above), "%s/escaped", tmpbase);
+
+    rc = pmix_os_dirpath_create_under(root, "../escaped/rank.0", S_IRWXU);
+    report("dotdot: create_under refuses a .. component", PMIX_SUCCESS != rc);
+    report("dotdot: nothing built above the root", !dir_exists(above));
+
+    fd = pmix_os_dirpath_open_file_under(root, "../escaped", O_CREAT | O_RDWR, 0644);
+    report("dotdot: open_file_under refuses a .. leaf", 0 > fd);
+    if (0 <= fd) {
+        close(fd);
+        unlink(above);
+    }
+    fd = pmix_os_dirpath_open_file_under(root, "..", O_RDONLY, 0);
+    report("dotdot: open_file_under refuses a bare ..", 0 > fd);
+    if (0 <= fd) {
+        close(fd);
+    }
+    report("dotdot: chgrp_under refuses a .. component",
+           0 != pmix_os_dirpath_chgrp_under(root, "..", getegid()));
+
+    rmdir(above);
+    rmdir(root);
+}
+
 /* More than one composed level below the root - which is what an IOF
  * pattern like "%h/%n/rank-%R" produces - has to be built a component at
  * a time all the way down, not just at the last one. A symlink at the
@@ -1256,6 +1293,7 @@ int main(int argc, char **argv)
     test_under_trusted_root_may_be_a_symlink();
     test_under_declines_a_tail_symlink();
     test_under_declines_a_midway_symlink();
+    test_under_refuses_dot_dot();
     test_under_existing_component_ours();
     test_create_new();
     test_create_existing();

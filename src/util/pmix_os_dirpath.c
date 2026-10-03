@@ -223,6 +223,14 @@ static bool dirpath_is_ours(int fd, const char *root, char **parts, int last,
  * one this walk created is ours by construction. `root` only names the
  * component in a refusal, and *reported says one was shown.
  */
+/* The part of a path PMIx composes beneath a root names directories by
+ * value - a namespace, a rank - so "." and ".." are never a component it
+ * means: ".." would leave the root it was asked to stay under. */
+static bool dot_component(const char *name)
+{
+    return (0 == strcmp(name, ".") || 0 == strcmp(name, ".."));
+}
+
 static int walk_tail(int fd, const char *root, const char *tail, bool create,
                      mode_t mode, int last_flags, bool *last_existed,
                      bool *reported)
@@ -244,6 +252,12 @@ static int walk_tail(int fd, const char *root, const char *tail, bool create,
     len = PMIx_Argv_count(parts);
 
     for (i = 0; i < len; ++i) {
+        if (dot_component(parts[i])) {
+            close(fd);
+            PMIx_Argv_free(parts);
+            errno = EINVAL;
+            return -1;
+        }
         existed = !create;
         if (create) {
             if (0 != mkdirat(fd, parts[i], mode)) {
@@ -353,6 +367,12 @@ int pmix_os_dirpath_chgrp_under(const char *root, const char *tail, gid_t gid)
     }
     len = PMIx_Argv_count(parts);
     for (i = 0; i < len; ++i) {
+        if (dot_component(parts[i])) {
+            close(fd);
+            PMIx_Argv_free(parts);
+            errno = EINVAL;
+            return -1;
+        }
         /* opened for reading, not only to traverse: fchown() is not
          * available on the traverse-only kind */
         next = openat(fd, parts[i], O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
@@ -399,6 +419,11 @@ int pmix_os_dirpath_open_file_under(const char *root, const char *tail,
     if (NULL == base) {
         /* the file sits directly in the root */
         base = tail;
+        if (dot_component(base)) {
+            close(fd);
+            errno = EINVAL;
+            return -1;
+        }
     } else {
         dir = (char *) malloc((size_t) (base - tail) + 1);
         if (NULL == dir) {
@@ -409,10 +434,10 @@ int pmix_os_dirpath_open_file_under(const char *root, const char *tail,
         memcpy(dir, tail, (size_t) (base - tail));
         dir[base - tail] = '\0';
         ++base;
-        if ('\0' == base[0]) {
+        if ('\0' == base[0] || dot_component(base)) {
             free(dir);
             close(fd);
-            errno = EISDIR;
+            errno = ('\0' == base[0]) ? EISDIR : EINVAL;
             return -1;
         }
         fd = walk_tail(fd, root, dir, false, 0, PMIX_O_TRAVERSE, NULL, NULL);
