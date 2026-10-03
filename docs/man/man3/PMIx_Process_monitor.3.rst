@@ -167,7 +167,11 @@ Action-specific directives (placed in the ``directives`` array) include:
 * ``PMIX_MONITOR_FILE_DROPS`` (uint32_t) |mdash| number of file checks that may be
   missed before the alarm is raised.
 * ``PMIX_MONITOR_RESOURCE_RATE`` (uint32_t) |mdash| report resource usage every N
-  seconds.
+  seconds. Each process may hold a limited number of such repeating requests
+  on its server - 16 by default, set by the ``pstat_base_max_monitors_per_peer``
+  MCA parameter - and one beyond the limit fails with
+  ``PMIX_ERR_OUT_OF_RESOURCE``. A repeating request stops counting against the
+  limit when it is cancelled or the process disconnects.
 * ``PMIX_MONITOR_TARGET_PROCS`` (pmix_data_array_t*) |mdash| array of process IDs
   identifying the processes to be monitored. A rank of
   ``PMIX_RANK_WILDCARD`` includes every process of that namespace. Each
@@ -408,7 +412,8 @@ was accepted for processing; the final status and any data are delivered to
   every process on a node leaves out the processes the caller may not see
   instead. See `WHICH PROCESSES ARE MONITORED`_ and :doc:`/security-plan`.
 * ``PMIX_ERR_OUT_OF_RESOURCE`` |mdash| the caller already holds the most
-  liveness monitors it may (see `LIVENESS MONITORS`_).
+  liveness monitors it may (see `LIVENESS MONITORS`_), or the most repeating
+  resource-usage requests (see ``PMIX_MONITOR_RESOURCE_RATE``).
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the request involves other nodes but the host
   environment provides no monitoring support.
 * ``PMIX_ERR_UNREACH`` |mdash| the caller is not a server and its local PMIx server

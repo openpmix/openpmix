@@ -60,6 +60,9 @@ PMIX_EXPORT extern pmix_pstat_base_component_t *pmix_pstat_base_component;
 typedef struct {
     pmix_event_base_t *evbase;
     pmix_list_t ops;
+    /* most periodic monitors one requester may hold - see
+     * pmix_pstat_base_may_add() */
+    int max_per_peer;
 } pmix_pstat_base_t;
 
 PMIX_EXPORT extern pmix_pstat_base_t pmix_pstat_base;
@@ -69,6 +72,12 @@ PMIX_EXPORT extern pmix_pstat_base_t pmix_pstat_base;
  * Called on the progress thread by the connection teardown; a no-op
  * unless the framework is open. */
 PMIX_EXPORT void pmix_pstat_base_peer_lost(struct pmix_peer_t *peer);
+
+/* May requestor start one more periodic monitor? PMIX_SUCCESS, or
+ * PMIX_ERR_OUT_OF_RESOURCE once it holds pstat_base_max_monitors_per_peer
+ * of them. The host's own requests are not limited. Called on the
+ * progress thread, which is where ops are added and removed. */
+PMIX_EXPORT pmix_status_t pmix_pstat_base_may_add(const pmix_proc_t *requestor);
 
 typedef struct {
     bool cmdline;
