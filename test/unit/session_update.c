@@ -204,6 +204,9 @@ static pmix_status_t register_job(void)
     PMIX_DATA_ARRAY_CREATE(array, 2, PMIX_INFO);
     memcpy(array->array, sptr, 2 * sizeof(pmix_info_t));
     free(sptr);
+    /* filled in field by field below, so it has to be constructed
+     * first - destruct reads its flags */
+    PMIX_INFO_CONSTRUCT(&info[4]);
     PMIX_LOAD_KEY(info[4].key, PMIX_SESSION_INFO_ARRAY);
     info[4].value.type = PMIX_DATA_ARRAY;
     info[4].value.data.darray = array;
