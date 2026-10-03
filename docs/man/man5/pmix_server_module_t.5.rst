@@ -560,6 +560,18 @@ this is NULL. Adds an ``info[]``/``ninfo`` array carrying additional information
 about the connecting client. The client is held blocked until the host invokes
 ``cbfunc``.
 
+The array carries:
+
+* ``PMIX_USERID`` and ``PMIX_GRPID`` - the identity the server established when
+  the client connected, which the security handshake checked against the
+  kernel and against the client's registration.
+* ``PMIX_PROC_PID`` - the pid the kernel reports for the connection, which is
+  in the host's pid namespace. Over a connection the kernel cannot see, such as
+  TCP, it is the pid the client sent.
+* ``PMIX_REALUID`` and ``PMIX_REALGID`` - the client's real (as opposed to
+  effective) user and group IDs **as the client reports them**. Nothing checks
+  these; a host that acts on them is taking the client's word.
+
 tool_connected2
 ^^^^^^^^^^^^^^^
 
@@ -569,6 +581,12 @@ namespace/rank assignment; the library prefers this member over
 ``tool_connected``. Unlike the original, it returns a ``pmix_status_t`` so the
 host can synchronously reject the connection. The assigned identifier is returned
 through a ``pmix_tool_connection_cbfunc_t``.
+
+The info array is what the tool sent, with ``PMIX_USERID``, ``PMIX_GRPID`` and
+- where the kernel reports one - ``PMIX_PROC_PID`` replaced by the values the
+server established for the connection, as for ``client_connected2``. Anything
+else in it, ``PMIX_REALUID`` and ``PMIX_REALGID`` included, is the tool's own
+account and is not checked.
 
 log2
 ^^^^
