@@ -295,6 +295,12 @@ static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error, const pm
     }
     ft->claimed = true;
 
+    /* the first monitor starts the monitor thread */
+    if (NULL == pmix_psensor_base_get_evbase()) {
+        PMIX_RELEASE(ft);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+
     /* need to push into our event base to add this to our trackers */
     pmix_event_assign(&ft->cdev, pmix_psensor_base.evbase, -1, EV_WRITE, add_tracker, ft);
     PMIX_POST_OBJECT(ft);
@@ -328,6 +334,12 @@ static void del_tracker(int sd, short flags, void *cbdata)
 static pmix_status_t stop(pmix_peer_t *requestor, char *id)
 {
     file_caddy_t *cd;
+
+    if (NULL == pmix_psensor_base.evbase) {
+        /* no monitor has ever started, or the framework has closed -
+         * either way there is nothing to stop */
+        return PMIX_SUCCESS;
+    }
 
     cd = PMIX_NEW(file_caddy_t);
     PMIX_RETAIN(requestor);

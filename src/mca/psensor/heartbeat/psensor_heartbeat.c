@@ -278,6 +278,12 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
     }
     ft->claimed = true;
 
+    /* the first monitor starts the monitor thread */
+    if (NULL == pmix_psensor_base_get_evbase()) {
+        PMIX_RELEASE(ft);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+
     /* need to push into our event base to add this to our trackers */
     pmix_event_assign(&ft->cdev, pmix_psensor_base.evbase, -1, EV_WRITE, add_tracker, ft);
     PMIX_POST_OBJECT(ft);
@@ -311,6 +317,12 @@ static void del_tracker(int sd, short flags, void *cbdata)
 static pmix_status_t heartbeat_stop(pmix_peer_t *requestor, char *id)
 {
     heartbeat_caddy_t *cd;
+
+    if (NULL == pmix_psensor_base.evbase) {
+        /* no monitor has ever started, or the framework has closed -
+         * either way there is nothing to stop */
+        return PMIX_SUCCESS;
+    }
 
     cd = PMIX_NEW(heartbeat_caddy_t);
     PMIX_RETAIN(requestor);
@@ -438,6 +450,13 @@ void pmix_psensor_heartbeat_recv_beats(struct pmix_peer_t *peer, pmix_ptl_hdr_t 
     pmix_psensor_beat_t *b;
 
     PMIX_HIDE_UNUSED_PARAMS(hdr, buf, cbdata);
+
+    /* the recv is posted by the first heartbeat monitor, which has
+     * started the monitor thread - but the framework may have closed
+     * since, and then there is nothing to count the beat against */
+    if (NULL == pmix_psensor_base.evbase) {
+        return;
+    }
 
     b = PMIX_NEW(pmix_psensor_beat_t);
     PMIX_RETAIN(peer);
