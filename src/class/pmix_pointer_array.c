@@ -419,12 +419,17 @@ static bool grow_table(pmix_pointer_array_t *table, int at_least)
     int i, new_size, new_size_int;
     void *p;
 
-    new_size = table->block_size * ((at_least + 1 + table->block_size - 1) / table->block_size);
-    if (new_size >= table->max_size) {
+    /* the next multiple of block_size above at_least - worked in a wider
+     * type, since at_least + block_size can pass INT_MAX */
+    long long want = ((long long) at_least + table->block_size) / table->block_size
+                     * table->block_size;
+    if (want >= table->max_size) {
         new_size = table->max_size;
         if (at_least >= table->max_size) {
             return false;
         }
+    } else {
+        new_size = (int) want;
     }
 
     p = (void **) pmix_tma_realloc(tma, table->addr, new_size * sizeof(void *));
