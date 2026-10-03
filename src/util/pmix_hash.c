@@ -132,14 +132,20 @@ static void pddes(pmix_proc_data_t *p)
     pmix_data_array_t *darray;
     pmix_tma_t *const tma = pmix_obj_get_tma(&p->super);
 
-    for (n=0; n < p->data->size; n++) {
+    /* either array may be missing if the allocator ran dry in pdcon() */
+    for (n=0; NULL != p->data && n < p->data->size; n++) {
         d = (pmix_dstor_t*)pmix_pointer_array_get_item(p->data, n);
         if (NULL != d) {
             pmix_dstor_release_tma(d, tma);
             pmix_pointer_array_set_item(p->data, n, NULL);
         }
     }
-    PMIX_RELEASE(p->data);
+    if (NULL != p->data) {
+        PMIX_RELEASE(p->data);
+    }
+    if (NULL == p->quals) {
+        return;
+    }
     for (n=0; n < p->quals->size; n++) {
         darray = (pmix_data_array_t*)pmix_pointer_array_get_item(p->quals, n);
         if (NULL != darray) {
@@ -934,7 +940,16 @@ static pmix_proc_data_t *lookup_proc(pmix_hash_table_t *jtable, uint32_t id, boo
         if (PMIX_UNLIKELY(NULL == proc_data)) {
             return NULL;
         }
-        pmix_hash_table_set_value_uint32(jtable, id, proc_data);
+        /* The constructor cannot report that its arrays were not
+         * allocated, and a record the table did not take would hold
+         * values nothing can find - so check both here. */
+        if (PMIX_UNLIKELY(NULL == proc_data->data || NULL == proc_data->data->addr ||
+                          NULL == proc_data->quals || NULL == proc_data->quals->addr ||
+                          PMIX_SUCCESS != pmix_hash_table_set_value_uint32(jtable, id,
+                                                                           proc_data))) {
+            PMIX_RELEASE(proc_data);
+            return NULL;
+        }
     }
 
     return proc_data;
