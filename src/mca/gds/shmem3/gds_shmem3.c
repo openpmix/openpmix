@@ -256,6 +256,14 @@ typedef struct {
     pmix_shmem_t *shmem3;
     /** Points to a value that maintains the next available address. */
     void **data_ptr;
+    /** A full segment fails the allocation instead of ending the process.
+     *  Set only where the owner can start over in a larger segment - see
+     *  server_store_modex(). */
+    bool recoverable;
+    /** A recoverable allocation has failed for want of space. Checked by
+     *  the owner after the build, so a caller that dropped the NULL still
+     *  cannot leave the segment looking complete. */
+    bool exhausted;
 } pmix_gds_shmem3_alloc_ctx_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem3_alloc_ctx_t);
 
@@ -265,6 +273,8 @@ shmem3_allocator_construct(
 ) {
     a->shmem3 = NULL;
     a->data_ptr = NULL;
+    a->recoverable = false;
+    a->exhausted = false;
 }
 
 static void
@@ -324,6 +334,26 @@ tma_set_curraddr(
     *(tma_get_alloc_ctx(tma)->data_ptr) = newaddr;
 }
 
+/**
+ * The segment cannot satisfy a request. Where the owner has said it can
+ * start over (ctx->recoverable), note it and let the allocation fail;
+ * everywhere else this is still the end of the process.
+ */
+static inline void
+tma_out_of_space(
+    pmix_tma_t *tma
+) {
+    pmix_gds_shmem3_alloc_ctx_t *const ctx = tma_get_alloc_ctx(tma);
+
+    errno = ENOMEM;
+    if (ctx->recoverable) {
+        ctx->exhausted = true;
+        return;
+    }
+    perror(EMSG_SHMEM3_OOM);
+    abort();
+}
+
 static inline bool
 tma_alloc_request_will_overflow(
     pmix_tma_t *tma,
@@ -347,9 +377,7 @@ tma_alloc_request_will_overflow(
               (bytes_used + alloc_size) > (backing_store->size - lost_capacity);
 
     if (PMIX_UNLIKELY(wo)) {
-        errno = ENOMEM;
-        perror(EMSG_SHMEM3_OOM);
-        abort();
+        tma_out_of_space(tma);
     }
     return wo;
 }
@@ -387,9 +415,8 @@ tma_carve(
     // as far as the capacity check is concerned. Adding it must not be what
     // wraps the sum.
     if (PMIX_UNLIKELY(SIZE_MAX - hdrsize < size)) {
-        errno = ENOMEM;
-        perror(EMSG_SHMEM3_OOM);
-        abort();
+        tma_out_of_space(tma);
+        return NULL;
     }
     if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, size + hdrsize))) {
         return NULL;
@@ -423,9 +450,8 @@ tma_calloc(
     // Same reasoning as tma_alloc_request_will_overflow(): a product that
     // wraps produces a small allocation for a large request.
     if (0 != nmemb && SIZE_MAX / nmemb < size) {
-        errno = ENOMEM;
-        perror(EMSG_SHMEM3_OOM);
-        abort();
+        tma_out_of_space(tma);
+        return NULL;
     }
     const size_t real_size = nmemb * size;
     if (0 == real_size) {
@@ -464,7 +490,9 @@ tma_realloc(
     if (new_size != old_size) {
         void *new_base = pmix_tma_malloc(tma, new_size);
         if (NULL == new_base) {
-            return ptr;
+            // As realloc(): the old block is untouched, and the caller is
+            // told it did not grow.
+            return NULL;
         }
         // Move min(new_size, old_size) into new space.
         memmove(new_base, ptr, new_size < old_size ? new_size : old_size);
@@ -605,6 +633,7 @@ job_construct(
     // Modex
     job->modex_shmem3_status = 0;
     job->modex_generation = 0;
+    job->modex_scale = 1;
     job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
     job->job_generation = 0;
@@ -660,6 +689,39 @@ emit_segment_usage_stats(
         "segment size=%zd, bytes used=%zd, utilization=%.2f %%",
         smname, shmem3_size, bytes_used, utilization
     );
+}
+
+/**
+ * Give back the modex BUILD slot: a generation that was never published.
+ *
+ * Readers reach a generation only through publish_modex_generation(), so
+ * nothing can have this one mapped, and it can be unmapped and its
+ * backing file removed outright. Leaves job->modex_shmem3 NULL.
+ */
+static void
+release_modex_build(
+    pmix_gds_shmem3_job_t *job
+) {
+    if (NULL == job->modex_shmem3) {
+        return;
+    }
+    if (NULL != job->smmodex &&
+        (job->modex_shmem3_status & PMIX_GDS_SHMEM3_MINE)) {
+        // Emit usage status before we potentially destroy the segment.
+        emit_segment_usage_stats(
+            job->modex_shmem3, &job->smmodex->tma,
+            get_shmem3_id_name(PMIX_GDS_SHMEM3_MODEX_ID)
+        );
+        // Points to a pmix_gds_shmem3_alloc_ctx_t.
+        PMIX_RELEASE(job->smmodex->tma.data_context);
+    }
+    /* Releases memory for the structures located in shared-memory.
+     * This will also unmap in case we need to later remap something
+     * in the address space covered by this. */
+    PMIX_RELEASE(job->modex_shmem3);
+    job->modex_shmem3 = NULL;
+    job->smmodex = NULL;
+    job->modex_shmem3_status = 0;
 }
 
 static void
@@ -726,25 +788,7 @@ job_destruct(
      * block below: both are held by chains, which gave them back above.
      * What is left is the modex BUILD slot - a generation that was being
      * assembled when this job went away and was never published. */
-    if (NULL != job->modex_shmem3) {
-        if (NULL != job->smmodex &&
-            (job->modex_shmem3_status & PMIX_GDS_SHMEM3_MINE)) {
-            // Emit usage status before we potentially destroy the segment.
-            emit_segment_usage_stats(
-                job->modex_shmem3, &job->smmodex->tma,
-                get_shmem3_id_name(PMIX_GDS_SHMEM3_MODEX_ID)
-            );
-            // Points to a pmix_gds_shmem3_alloc_ctx_t.
-            PMIX_RELEASE(job->smmodex->tma.data_context);
-        }
-        /* Releases memory for the structures located in shared-memory.
-         * This will also unmap in case we need to later remap something
-         * in the address space covered by this. */
-        PMIX_RELEASE(job->modex_shmem3);
-        job->modex_shmem3 = NULL;
-        job->smmodex = NULL;
-        job->modex_shmem3_status = 0;
-    }
+    release_modex_build(job);
 
     /* The arena goes last: releasing it unmaps everything inside it, so
      * every segment that was carved from it has to have let go first.
@@ -1230,6 +1274,9 @@ modex_smdata_construct(
     tma_set_curraddr(&job->smmodex->tma, addr_align(baseaddr, smmodex_size));
     // We can now safely get our TMA.
     pmix_tma_t *const tma = &job->smmodex->tma;
+    // Nothing reads this segment until it is published, so running out of
+    // room is answered by building a larger one - see server_store_modex().
+    tma_get_alloc_ctx(tma)->recoverable = true;
     // Now that we know the TMA, initialize smdata structures using it.
     job->smmodex->hashtab = PMIX_NEW(pmix_hash_table_t, tma);
     if (!job->smmodex->hashtab) {
@@ -1237,7 +1284,11 @@ modex_smdata_construct(
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    pmix_hash_table_init(job->smmodex->hashtab, htsize);
+    rc = pmix_hash_table_init(job->smmodex->hashtab, htsize);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
 
     // The indices stored in that table are meaningless without the
     // translation, and the translation cannot be the process-global one
@@ -3834,6 +3885,10 @@ store_job_info(
 
 /**
  * Returns size required to store modex data.
+ *
+ * An estimate - a great many small keys cost more than their packed size
+ * suggests - which is why job->modex_scale exists: server_store_modex()
+ * raises it and builds again when a segment runs out of room.
  */
 static pmix_gds_shmem3_modex_info_t
 get_modex_sizing_data(
@@ -3876,14 +3931,16 @@ get_modex_sizing_data(
     segment_size += nranks * pmix_hash_sizeof_proc_storage();
     /* The keyindex that translates the indices in that hash table lives
      * in this segment too, sized for the same nkvals we hand
-     * modex_smdata_construct() - the two have to agree, since the
-     * allocator cannot grow. Each distinct key then costs a record plus
-     * three copies of its own string. We cannot know the number of
-     * distinct keys without unpacking, so bound it by nkvals; the real
-     * count is normally far smaller.
+     * modex_smdata_construct() - the two have to agree, since an index
+     * that has to grow strands its old storage in a segment that cannot
+     * take it back. Each distinct key then costs a record plus three
+     * copies of its own string. We cannot know the number of distinct
+     * keys without unpacking, so bound it by what one proc's blob could
+     * hold; a later proc that brings many keys of its own is a larger
+     * segment's job (see job->modex_scale).
      *
      * The key *lengths* are bounded by the blob, not by PMIX_MAX_KEYLEN.
-     * Every key here arrived in the buffer being unpacked, so the key
+     * Every key here arrived in a buffer being unpacked, so the key
      * strings cannot total more than that buffer decompresses to.
      * Reserving 511 bytes for each instead made this one term roughly
      * fifty times the payload - by far the largest thing in this
@@ -3898,6 +3955,14 @@ get_modex_sizing_data(
     segment_size *= fluff;
     // Adjust (increase or decrease) segment size by the given parameter size.
     segment_size *= pmix_gds_shmem3_segment_size_multiplier;
+    // A size that cannot be represented cannot be created either; let the
+    // create fail rather than wrap to something small.
+    if (segment_size > SIZE_MAX / job->modex_scale) {
+        segment_size = SIZE_MAX;
+    }
+    else {
+        segment_size *= job->modex_scale;
+    }
 
     pmix_gds_shmem3_modex_info_t result = {
         .size = segment_size,
@@ -3981,6 +4046,19 @@ del_key(
         job->conni = NULL;
     }
     return PMIX_SUCCESS;
+}
+
+/**
+ * Has the modex generation being built run out of room?
+ */
+static inline bool
+modex_build_exhausted(
+    pmix_gds_shmem3_job_t *job
+) {
+    if (NULL == job->smmodex || NULL == job->smmodex->tma.data_context) {
+        return false;
+    }
+    return tma_get_alloc_ctx(&job->smmodex->tma)->exhausted;
 }
 
 static pmix_status_t
@@ -4070,6 +4148,9 @@ server_store_modex_cb(pmix_proc_t *proc,
         }
 
         rc = modex_smdata_construct(job, minfo.num_ht_elements, minfo.nkvals);
+        if (PMIX_UNLIKELY(modex_build_exhausted(job))) {
+            return PMIX_ERR_SILENT;
+        }
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -4150,6 +4231,15 @@ server_store_modex_cb(pmix_proc_t *proc,
                 job->smmodex->keyindex
             );
         }
+        /* A full segment is not an error to report: server_store_modex()
+         * builds a larger one and starts over. Check the allocator rather
+         * than rc - the store reports most of its failures, but not every
+         * failed allocation beneath it comes back as one. */
+        if (PMIX_UNLIKELY(modex_build_exhausted(job))) {
+            PMIX_DESTRUCT(&kv);
+            rc = PMIX_ERR_SILENT;
+            break;
+        }
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_DESTRUCT(&kv);
@@ -4158,6 +4248,9 @@ server_store_modex_cb(pmix_proc_t *proc,
         PMIX_DESTRUCT(&kv);
     }
 
+    if (PMIX_ERR_SILENT == rc) {
+        return rc;
+    }
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
     }
@@ -4182,13 +4275,92 @@ server_store_modex(pmix_buffer_t *buff,
                    const char *nspace,
                    void *cbdata)
 {
+    pmix_gds_shmem3_job_t *job = NULL;
+    pmix_status_t rc;
+
     PMIX_GDS_SHMEM3_VVOUT_HERE();
 
     PMIX_GDS_SHMEM3_VOUT(
         "%s:%s buff_size=%zd", __func__,
         PMIX_NAME_PRINT(&pmix_globals.myid), buff->bytes_used
     );
-    return pmix_gds_base_store_modex(buff, nspace, server_store_modex_cb, cbdata);
+    /* Without a namespace the walk stores into every job the payload
+     * names, and nothing here could say which of them to rebuild - so it
+     * is walked once, as it always was. The server always names one; see
+     * pmix_server_op_replies.c. */
+    if (NULL == nspace ||
+        PMIX_SUCCESS != pmix_gds_shmem3_get_job_tracker(nspace, false, &job)) {
+        return pmix_gds_base_store_modex(buff, nspace, server_store_modex_cb,
+                                         cbdata);
+    }
+
+    /* The segment this contribution goes into is sized before any of it
+     * is unpacked, and the allocator behind it cannot grow - so a
+     * contribution that needs more than the estimate is not stored by
+     * pressing on. Nothing can have read the generation being built: it
+     * reaches readers only when publish_modex_generation() runs at the end
+     * of a successful walk. So give the whole of it back and walk the
+     * same payload again into a segment twice the size, until it fits or
+     * a segment that size cannot be made.
+     *
+     * The walk is repeated from the start, so whatever it does besides
+     * storing is repeated too: a deleted key's notice goes to our local
+     * clients again, which they treat as the no-op it is. */
+    const size_t start = (size_t)(buff->unpack_ptr - buff->base_ptr);
+    const uint32_t generation =
+        atomic_load_explicit(&job->modex_generation, memory_order_relaxed);
+    job->modex_scale = 1;
+    for (;;) {
+        rc = pmix_gds_base_store_modex(buff, nspace, server_store_modex_cb,
+                                       cbdata);
+        if (PMIX_SUCCESS == rc || !modex_build_exhausted(job)) {
+            break;
+        }
+        PMIX_GDS_SHMEM3_VOUT(
+            "%s: modex generation %u for namespace=%s needs more than %zu B; "
+            "building it again at twice that",
+            __func__, job->modex_generation, nspace,
+            job->modex_shmem3->size
+        );
+        release_modex_build(job);
+        job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
+        if (NULL == job->modex_shmem3) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        /* The walk advances the counter when it starts a generation, and
+         * it is about to start this one again. */
+        atomic_store_explicit(&job->modex_generation, generation,
+                              memory_order_relaxed);
+        if (job->modex_scale > SIZE_MAX / 2) {
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            break;
+        }
+        job->modex_scale *= 2;
+        buff->unpack_ptr = buff->base_ptr + start;
+    }
+    job->modex_scale = 1;
+
+    if (PMIX_SUCCESS != rc) {
+        /* Whatever was left half-built must not become the start of the
+         * next generation: an occupied build slot is what tells the walk
+         * that a generation is already under way. */
+        if (pmix_gds_shmem3_has_status(job, PMIX_GDS_SHMEM3_MODEX_ID,
+                                       PMIX_GDS_SHMEM3_ATTACHED)) {
+            release_modex_build(job);
+        }
+        if (NULL == job->modex_shmem3) {
+            job->modex_shmem3 = PMIX_NEW(pmix_shmem_t);
+        }
+        /* nothing was published, so nothing took the number */
+        atomic_store_explicit(&job->modex_generation, generation,
+                              memory_order_relaxed);
+        if (PMIX_ERR_SILENT == rc) {
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 static pmix_status_t
