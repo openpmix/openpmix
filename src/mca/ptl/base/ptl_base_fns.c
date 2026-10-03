@@ -616,9 +616,13 @@ process:
     return rc;
 }
 
-pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, bool exact,
-                                      pmix_info_t info[], size_t ninfo,
-                                      bool optional, pmix_list_t *connections)
+/* depth is how many more directories below this one may be entered. The
+ * walk holds a directory stream open for every level it is in, and runs
+ * wherever its caller does - for a server's query, the progress thread -
+ * so a tree deeper than any server places its files is not followed. */
+static pmix_status_t df_search(char *dirname, char *prefix, bool exact,
+                               pmix_info_t info[], size_t ninfo,
+                               bool optional, pmix_list_t *connections, int depth)
 {
     char *newdir;
     DIR *cur_dirp;
@@ -650,9 +654,11 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, bool exact,
             free(newdir);
             continue;
         }
-        /* if it is a directory, down search */
+        /* if it is a directory, down search - as far as we may */
         if (isdir) {
-            pmix_ptl_base_df_search(newdir, prefix, exact, info, ninfo, optional, connections);
+            if (0 < depth) {
+                df_search(newdir, prefix, exact, info, ninfo, optional, connections, depth - 1);
+            }
             free(newdir);
             continue;
         }
@@ -684,6 +690,14 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, bool exact,
         return PMIX_ERR_NOT_FOUND;
     }
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, bool exact,
+                                      pmix_info_t info[], size_t ninfo,
+                                      bool optional, pmix_list_t *connections)
+{
+    return df_search(dirname, prefix, exact, info, ninfo, optional, connections,
+                     pmix_ptl_base.search_depth);
 }
 
 /* Convert the port field of a URI. It has to be the whole of what follows
@@ -2308,7 +2322,8 @@ nomem:
     PMIX_LIST_DESTRUCT(&mylist);
 }
 
-static void query_servers(char *dirname, pmix_list_t *servers)
+/* depth: as for df_search() above */
+static void query_servers(char *dirname, pmix_list_t *servers, int depth)
 {
     char *newdir, *dname;
     DIR *cur_dirp;
@@ -2352,9 +2367,11 @@ static void query_servers(char *dirname, pmix_list_t *servers)
             free(newdir);
             continue;
         }
-        /* if it is a directory, down search */
+        /* if it is a directory, down search - as far as we may */
         if (isdir) {
-            query_servers(newdir, servers);
+            if (0 < depth) {
+                query_servers(newdir, servers, depth - 1);
+            }
             free(newdir);
             continue;
         }
@@ -2395,7 +2412,7 @@ void pmix_ptl_base_query_servers(int sd, short args, void *cbdata)
 
     PMIX_CONSTRUCT(&servers, pmix_list_t);
 
-    query_servers(NULL, &servers);
+    query_servers(NULL, &servers, pmix_ptl_base.search_depth);
 
     /* convert the list to an array of pmix_info_t */
     cd->ninfo = pmix_list_get_size(&servers);
