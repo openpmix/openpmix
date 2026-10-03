@@ -184,6 +184,10 @@ colon-delimited path of files to search for MCA parameters.  Files to
 the left have lower precedence; files to the right are higher
 precedence.
 
+A process running as root reads a parameter file only if root owns it
+and no group or other user can write it. Any other file is passed over
+with a message, as though it were not there.
+
 .. note:: Keep in mind that, just like components, these parameter
           files are *only* relevant where they are "visible". Typically,
           these files are read by the host daemon responsible for
