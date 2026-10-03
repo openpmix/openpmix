@@ -59,6 +59,9 @@
 #ifdef HAVE_LIBUTIL_H
 #    include <libutil.h>
 #endif
+#if defined(__linux__)
+#    include <sys/syscall.h>
+#endif
 
 #include "include/pmix.h"
 #include "pmix_common.h"
@@ -1192,6 +1195,43 @@ static void child_fail(int fd, int exit_status, pmix_pfexec_child_err_t which, i
     _exit(exit_status);
 }
 
+/* Close every descriptor from 3 up except keep1 and keep2, with
+ * close_range(2), which does it in one call however high the limit is set
+ * - in a container that can be in the billions, and a close() for each
+ * is minutes. A single system call, so safe between fork() and exec().
+ * Returns false where it is not available - an older kernel says ENOSYS -
+ * and the caller closes them one at a time. */
+static bool close_all_but(int keep1, int keep2)
+{
+#if defined(__linux__) && defined(SYS_close_range)
+    int keep[2], nkeep = 0, i;
+    unsigned int from = 3;
+
+    if (3 <= keep1) {
+        keep[nkeep++] = keep1;
+    }
+    if (3 <= keep2 && keep2 != keep1) {
+        keep[nkeep++] = keep2;
+    }
+    if (2 == nkeep && keep[1] < keep[0]) {
+        i = keep[0];
+        keep[0] = keep[1];
+        keep[1] = i;
+    }
+    for (i = 0; i < nkeep; i++) {
+        if ((unsigned int) keep[i] > from &&
+            0 != syscall(SYS_close_range, from, (unsigned int) keep[i] - 1, 0)) {
+            return false;
+        }
+        from = (unsigned int) keep[i] + 1;
+    }
+    return (0 == syscall(SYS_close_range, from, ~0U, 0));
+#else
+    PMIX_HIDE_UNUSED_PARAMS(keep1, keep2);
+    return false;
+#endif
+}
+
 static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, int write_fd)
 {
     int errval;
@@ -1241,9 +1281,11 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
        close() loop rather than scanning /proc/self/fd with
        opendir/readdir: those allocate, and we are between fork() and
        execve() where only async-signal-safe calls are permitted. */
-    for (fd = 3; fd < fdmax; fd++) {
-        if (fd != write_fd && fd != child->keepalive[1]) {
-            close(fd);
+    if (!close_all_but(write_fd, child->keepalive[1])) {
+        for (fd = 3; fd < fdmax; fd++) {
+            if (fd != write_fd && fd != child->keepalive[1]) {
+                close(fd);
+            }
         }
     }
 
