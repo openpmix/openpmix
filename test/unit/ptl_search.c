@@ -26,6 +26,9 @@
  * "make check". There are thirty unreadable files so that a readdir()
  * order listing the valid file first is unlikely.
  *
+ * A search for one particular server - by pid or by namespace - matches
+ * the file's whole name, so asking for "tool.12" does not find "tool.123".
+ *
  * The fixed rendezvous names (pmix.sys.<host> and friends) are read with
  * pmix_ptl_base_parse_rndz_file(), which applies the same regular-file
  * rule: a FIFO, or a link to a character device, is refused promptly.
@@ -135,7 +138,7 @@ static void test_df_search(void)
     pmix_status_t rc;
 
     PMIX_CONSTRUCT(&connections, pmix_list_t);
-    rc = pmix_ptl_base_df_search(searchdir, "pmix.test.", NULL, 0, true, &connections);
+    rc = pmix_ptl_base_df_search(searchdir, "pmix.test.", false, NULL, 0, true, &connections);
     report("df_search: returns success past a FIFO, link loops and unreadable files",
            PMIX_SUCCESS == rc, PMIx_Error_string(rc));
     report("df_search: finds exactly the one valid contact file",
@@ -147,6 +150,54 @@ static void test_df_search(void)
                (NULL == cn->nspace) ? "NULL" : cn->nspace);
     }
     PMIX_LIST_DESTRUCT(&connections);
+}
+
+/* A search for a particular server takes only a file of exactly that
+ * name: one whose name merely begins with it belongs to another server. */
+static void test_df_search_exact(void)
+{
+    char dir[PMIX_PATH_MAX + 16], path[PMIX_PATH_MAX + 160];
+    pmix_list_t connections;
+    pmix_connection_t *cn;
+    pmix_status_t rc;
+    FILE *fp;
+
+    snprintf(dir, sizeof(dir), "%s.exact", searchdir);
+    if (0 != mkdir(dir, 0700)) {
+        report("df_search exact: setup", 0, "mkdir failed");
+        return;
+    }
+    snprintf(path, sizeof(path), "%s/pmix.x.tool.123", dir);
+    if (NULL != (fp = fopen(path, "w"))) {
+        fputs("otherns.0;tcp4://127.0.0.1:4243\n4.2.0\n", fp);
+        fclose(fp);
+    }
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    rc = pmix_ptl_base_df_search(dir, "pmix.x.tool.12", true, NULL, 0, true, &connections);
+    report("df_search exact: a longer name is not taken for the one asked for",
+           PMIX_SUCCESS != rc && 0 == pmix_list_get_size(&connections),
+           "matched by prefix");
+    PMIX_LIST_DESTRUCT(&connections);
+
+    snprintf(path, sizeof(path), "%s/pmix.x.tool.12", dir);
+    if (NULL != (fp = fopen(path, "w"))) {
+        fputs("wantns.0;tcp4://127.0.0.1:4244\n4.2.0\n", fp);
+        fclose(fp);
+    }
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    rc = pmix_ptl_base_df_search(dir, "pmix.x.tool.12", true, NULL, 0, true, &connections);
+    cn = (1 == pmix_list_get_size(&connections))
+             ? (pmix_connection_t *) pmix_list_get_first(&connections) : NULL;
+    report("df_search exact: the file of exactly that name is found",
+           PMIX_SUCCESS == rc && NULL != cn && NULL != cn->nspace &&
+               0 == strcmp(cn->nspace, "wantns"),
+           "wrong or missing connection");
+    PMIX_LIST_DESTRUCT(&connections);
+
+    unlink(path);
+    snprintf(path, sizeof(path), "%s/pmix.x.tool.123", dir);
+    unlink(path);
+    rmdir(dir);
 }
 
 static void test_rndz_file(void)
@@ -385,6 +436,7 @@ int main(int argc, char **argv)
     signal(SIGALRM, watchdog);
     alarm(WATCHDOG_SECS);
     test_df_search();
+    test_df_search_exact();
     test_query_servers();
     test_rndz_file();
     test_compat();
