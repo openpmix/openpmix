@@ -1829,6 +1829,38 @@ void pmix_event_timeout_cb(int fd, short flags, void *arg)
     }
 }
 
+/* A handler is given its own name and return object as the last two
+ * entries of the chain's info, and each handler takes the first match.
+ * The event's info comes from whoever raised it - for a client or tool,
+ * off the wire - so any such entries it carries are dropped here, before
+ * they could stand ahead of the ones added for the handler. The kept
+ * entries close up, and the two slots reserved for the handler items
+ * stay at the end. */
+static void strip_handler_items(pmix_event_chain_t *chain)
+{
+    size_t n, k = 0, had = chain->ninfo;
+
+    for (n = 0; n < chain->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&chain->info[n], PMIX_EVENT_RETURN_OBJECT) ||
+            PMIX_CHECK_KEY(&chain->info[n], PMIX_EVENT_HDLR_NAME)) {
+            PMIX_INFO_DESTRUCT(&chain->info[n]);
+            continue;
+        }
+        if (k != n) {
+            memcpy(&chain->info[k], &chain->info[n], sizeof(pmix_info_t));
+            memset(&chain->info[n], 0, sizeof(pmix_info_t));
+        }
+        ++k;
+    }
+    if (k == had) {
+        return;
+    }
+    chain->ninfo = k;
+    if (had + 2 == chain->nallocated) {
+        chain->nallocated = k + 2;
+    }
+}
+
 pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain, const pmix_info_t *info,
                                     size_t ninfo, bool xfer)
 {
@@ -1911,6 +1943,7 @@ pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain, const pmix_info_t
                 }
             }
         }
+        strip_handler_items(chain);
     }
     return PMIX_SUCCESS;
 }
