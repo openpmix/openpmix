@@ -48,6 +48,7 @@
 #include "src/threads/pmix_tsd.h"
 #include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_hash.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_net.h"
@@ -237,6 +238,9 @@ void pmix_rte_finalize(void)
         PMIX_RELEASE(pmix_globals.dict_by_name);
         pmix_globals.dict_by_name = NULL;
     }
+    /* the counts describe this index - drop them with it, so a value
+     * released after this point gives nothing back to a freed index */
+    pmix_hash_release_key_refs();
     PMIX_DESTRUCT(&pmix_globals.keyindex);
     free(pmix_globals.myidval.data.proc);
     pmix_globals.myidval.data.proc = NULL;

@@ -415,6 +415,176 @@ static void test_store_fetch_qualified(void)
 
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* keys are released when nothing stored refers to them                */
+/* ------------------------------------------------------------------ */
+
+static uint32_t key_id(const char *key)
+{
+    pmix_regattr_input_t *p = pmix_hash_find_key(UINT32_MAX, key, NULL);
+    return (NULL == p) ? UINT32_MAX : p->index;
+}
+
+/* A key that is not a reserved attribute is counted: once for each value
+ * stored under it and each qualifier that names it. When the last of
+ * those goes, the key leaves the dictionary and its number is handed to
+ * the next key registered - which must then read back as itself. */
+static void test_key_release(void)
+{
+    pmix_hash_table_t *t = new_table();
+    pmix_kval_t *kv;
+    pmix_info_t qual;
+    uint32_t id, id2, qid, qv = 3;
+
+    kv = make_kval_str("unit.kr.a", "one");
+    (void) pmix_hash_store(t, 0, kv, NULL, 0, NULL);
+    (void) pmix_hash_store(t, 1, kv, NULL, 0, NULL);
+    PMIX_RELEASE(kv);
+    id = key_id("unit.kr.a");
+    report("key_release: a key stored twice is counted twice",
+           UINT32_MAX != id && 2 == pmix_hash_key_refs(id));
+
+    (void) pmix_hash_remove_data(t, 0, "unit.kr.a", NULL);
+    report("key_release: removing one value leaves the key",
+           id == key_id("unit.kr.a") && 1 == pmix_hash_key_refs(id));
+    (void) pmix_hash_remove_data(t, 1, "unit.kr.a", NULL);
+    report("key_release: removing the last value releases the key",
+           UINT32_MAX == key_id("unit.kr.a"));
+
+    kv = make_kval_str("unit.kr.c", "three");
+    (void) pmix_hash_store(t, 0, kv, NULL, 0, NULL);
+    PMIX_RELEASE(kv);
+    id2 = key_id("unit.kr.c");
+    report("key_release: the next key takes the freed number",
+           id2 == id && 1 == pmix_hash_key_refs(id2));
+    {
+        pmix_list_t kvals;
+        pmix_kval_t *got;
+        pmix_status_t rc;
+
+        PMIX_CONSTRUCT(&kvals, pmix_list_t);
+        rc = pmix_hash_fetch(t, 0, "unit.kr.c", NULL, 0, &kvals, NULL);
+        got = (pmix_kval_t *) pmix_list_get_first(&kvals);
+        report("key_release: and reads back as itself",
+               PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&kvals) &&
+                   0 == strcmp(got->key, "unit.kr.c") &&
+                   PMIX_STRING == got->value->type &&
+                   0 == strcmp(got->value->data.string, "three"));
+        drain_list(&kvals);
+        PMIX_DESTRUCT(&kvals);
+        PMIX_CONSTRUCT(&kvals, pmix_list_t);
+        rc = pmix_hash_fetch(t, 0, "unit.kr.a", NULL, 0, &kvals, NULL);
+        report("key_release: while the released key finds nothing",
+               PMIX_SUCCESS != rc && pmix_list_is_empty(&kvals));
+        drain_list(&kvals);
+        PMIX_DESTRUCT(&kvals);
+    }
+    kv = make_kval_str("unit.kr.a", "again");
+    (void) pmix_hash_store(t, 0, kv, NULL, 0, NULL);
+    PMIX_RELEASE(kv);
+    report("key_release: the released key can be stored again",
+           UINT32_MAX != key_id("unit.kr.a") && id2 != key_id("unit.kr.a") &&
+               1 == pmix_hash_key_refs(key_id("unit.kr.a")));
+
+    /* a qualifier names its key too */
+    kv = make_kval_str("unit.kr.b", "two");
+    PMIX_INFO_LOAD(&qual, "unit.kr.qual", &qv, PMIX_UINT32);
+    PMIX_INFO_SET_QUALIFIER(&qual);
+    (void) pmix_hash_store(t, 0, kv, &qual, 1, NULL);
+    PMIX_RELEASE(kv);
+    PMIX_INFO_DESTRUCT(&qual);
+    qid = key_id("unit.kr.qual");
+    report("key_release: a qualifier's key is counted",
+           UINT32_MAX != qid && 1 == pmix_hash_key_refs(qid));
+
+    /* reserved attributes are not counted, and stay */
+    kv = make_kval_str(PMIX_HOSTNAME, "host");
+    (void) pmix_hash_store(t, 0, kv, NULL, 0, NULL);
+    PMIX_RELEASE(kv);
+    report("key_release: a reserved attribute is not counted",
+           UINT32_MAX == pmix_hash_key_refs(key_id(PMIX_HOSTNAME)));
+
+    /* removing everything - what an owner does before it releases the
+     * table, which does not own the records it points at - releases
+     * every key stored in it */
+    (void) pmix_hash_remove_data(t, PMIX_RANK_WILDCARD, NULL, NULL);
+    PMIX_RELEASE(t);
+    report("key_release: removing all data releases its keys",
+           UINT32_MAX == key_id("unit.kr.a") && UINT32_MAX == key_id("unit.kr.b") &&
+               UINT32_MAX == key_id("unit.kr.qual"));
+    report("key_release: and leaves the reserved attribute",
+           UINT32_MAX != key_id(PMIX_HOSTNAME));
+}
+
+/* Keys that come and go one at a time keep handing the same numbers
+ * round, so the index does not grow with how many there have been. */
+static void test_key_churn(void)
+{
+    pmix_hash_table_t *t = new_table();
+    pmix_kval_t *kv;
+    char key[64];
+    uint32_t id, lowest = UINT32_MAX, highest = 0;
+    int n;
+
+    for (n = 0; n < 1000; n++) {
+        snprintf(key, sizeof(key), "unit.kr.churn.%d", n);
+        kv = make_kval_str(key, "x");
+        (void) pmix_hash_store(t, 0, kv, NULL, 0, NULL);
+        PMIX_RELEASE(kv);
+        id = key_id(key);
+        if (id < lowest) {
+            lowest = id;
+        }
+        if (UINT32_MAX != id && id > highest) {
+            highest = id;
+        }
+        (void) pmix_hash_remove_data(t, 0, key, NULL);
+    }
+    report("key_churn: 1000 keys stored and removed in turn reuse their numbers",
+           UINT32_MAX != lowest && highest - lowest < 4);
+    (void) pmix_hash_remove_data(t, PMIX_RANK_WILDCARD, NULL, NULL);
+    PMIX_RELEASE(t);
+}
+
+/* What a persistent DVM needs: the keys a job stored go when the job is
+ * deregistered. */
+static void dereg_cb(pmix_status_t status, void *cbdata)
+{
+    pmix_lock_t *lock = (pmix_lock_t *) cbdata;
+    lock->status = status;
+    PMIX_WAKEUP_THREAD(lock);
+}
+
+static void test_job_keys_released(void)
+{
+    pmix_nspace_t ns;
+    pmix_proc_t proc;
+    pmix_value_t val;
+    pmix_lock_t lock;
+    pmix_status_t rc;
+    uint32_t u = 5;
+
+    PMIX_LOAD_NSPACE(ns, "unit-kr-job");
+    rc = PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        report("job_keys: register", 0);
+        return;
+    }
+    PMIX_LOAD_PROCID(&proc, "unit-kr-job", 0);
+    PMIX_VALUE_LOAD(&val, &u, PMIX_UINT32);
+    rc = PMIx_Store_internal(&proc, "unit.kr.job.key", &val);
+    PMIX_VALUE_DESTRUCT(&val);
+    report("job_keys: a job's key is registered when stored",
+           PMIX_SUCCESS == rc && UINT32_MAX != key_id("unit.kr.job.key"));
+
+    PMIX_CONSTRUCT_LOCK(&lock);
+    PMIx_server_deregister_nspace(ns, dereg_cb, &lock);
+    PMIX_WAIT_THREAD(&lock);
+    PMIX_DESTRUCT_LOCK(&lock);
+    report("job_keys: it is released when the job is deregistered",
+           UINT32_MAX == key_id("unit.kr.job.key"));
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -441,6 +611,9 @@ int main(int argc, char **argv)
     test_remove_wildcard_empties_the_table();
     test_multiple_ranks();
     test_store_fetch_qualified();
+    test_key_release();
+    test_key_churn();
+    test_job_keys_released();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
