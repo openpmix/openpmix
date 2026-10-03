@@ -107,6 +107,7 @@
 #define EVUT_CODE_OBSERVER2 -9012
 #define EVUT_CODE_MALFORMED -9013
 #define EVUT_CODE_BLOCKING  -9013
+#define EVUT_CODE_HDLRITEMS -9014
 
 static int npass = 0;
 static int nfail = 0;
@@ -1638,6 +1639,94 @@ static void test_malformed_procs(void)
     PMIX_RELEASE(chain);
 }
 
+/* ------------------------------------------------------------------ */
+/* the handler's own name and return object                            */
+/* ------------------------------------------------------------------ */
+
+/* A handler finds its name and return object in the info it is given,
+ * taking the first of each. They are added for it after the event's own
+ * info - so an event that brings either key of its own must not have it
+ * reach the handler, or it would be found first. */
+static void *hi_seen_obj = NULL;
+static char *hi_seen_name = NULL;
+static volatile bool hi_fired = false;
+
+static void hdlritems_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
+                           const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                           pmix_info_t *results, size_t nresults,
+                           pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    size_t n;
+    bool gotobj = false, gotname = false;
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
+
+    for (n = 0; n < ninfo; n++) {
+        if (!gotobj && PMIX_CHECK_KEY(&info[n], PMIX_EVENT_RETURN_OBJECT)) {
+            hi_seen_obj = info[n].value.data.ptr;
+            gotobj = true;
+        } else if (!gotname && PMIX_CHECK_KEY(&info[n], PMIX_EVENT_HDLR_NAME)) {
+            free(hi_seen_name);
+            hi_seen_name = strdup(info[n].value.data.string);
+            gotname = true;
+        }
+    }
+    hi_fired = true;
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
+    }
+}
+
+static void test_handler_items(void)
+{
+    pmix_status_t code = EVUT_CODE_HDLRITEMS;
+    pmix_info_t reginfo[2], xtra[2], *arr;
+    pmix_event_chain_t *chain;
+    int mine = 1, bogus = 2;
+    size_t id;
+    int tries;
+
+    PMIX_INFO_LOAD(&reginfo[0], PMIX_EVENT_RETURN_OBJECT, &mine, PMIX_POINTER);
+    PMIX_INFO_LOAD(&reginfo[1], PMIX_EVENT_HDLR_NAME, "evut-own", PMIX_STRING);
+    id = reghdlr(&code, 1, reginfo, 2, hdlritems_hdlr);
+    PMIX_INFO_DESTRUCT(&reginfo[1]);
+    if (SIZE_MAX == id) {
+        report("handler items: registration", 0);
+        return;
+    }
+    PMIX_INFO_LOAD(&xtra[0], PMIX_EVENT_RETURN_OBJECT, &bogus, PMIX_POINTER);
+    PMIX_INFO_LOAD(&xtra[1], PMIX_EVENT_HDLR_NAME, "evut-impostor", PMIX_STRING);
+    hi_fired = false;
+    (void) notify_nocache(code, xtra, 2);
+    PMIX_INFO_DESTRUCT(&xtra[1]);
+    for (tries = 0; !hi_fired && tries < 500; tries++) {
+        usleep(10000);
+    }
+    report("an event's own return object does not reach the handler",
+           hi_fired && &mine == hi_seen_obj);
+    report("an event's own handler name does not reach the handler",
+           hi_fired && NULL != hi_seen_name && 0 == strcmp(hi_seen_name, "evut-own"));
+    PMIx_Deregister_event_handler(id, NULL, NULL);
+    free(hi_seen_name);
+    hi_seen_name = NULL;
+
+    /* the receive paths prepare the chain in place: the entries close up
+     * and the two slots for the handler's items stay at the end */
+    chain = PMIX_NEW(pmix_event_chain_t);
+    chain->nallocated = 6;
+    PMIX_INFO_CREATE(chain->info, chain->nallocated);
+    arr = chain->info;
+    PMIX_INFO_LOAD(&arr[0], "evut.a", "a", PMIX_STRING);
+    PMIX_INFO_LOAD(&arr[1], PMIX_EVENT_RETURN_OBJECT, &bogus, PMIX_POINTER);
+    PMIX_INFO_LOAD(&arr[2], PMIX_EVENT_HDLR_NAME, "evut-impostor", PMIX_STRING);
+    PMIX_INFO_LOAD(&arr[3], "evut.b", "b", PMIX_STRING);
+    report("prep drops received handler items in place",
+           PMIX_SUCCESS == pmix_prep_event_chain(chain, chain->info, 4, false) &&
+               2 == chain->ninfo && 4 == chain->nallocated &&
+               PMIX_CHECK_KEY(&chain->info[0], "evut.a") &&
+               PMIX_CHECK_KEY(&chain->info[1], "evut.b"));
+    PMIX_RELEASE(chain);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -1684,6 +1773,7 @@ int main(int argc, char **argv)
 
     /* events carrying proc directives of an unexpected datatype */
     test_malformed_procs();
+    test_handler_items();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
