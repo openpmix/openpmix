@@ -2701,6 +2701,19 @@ static pmix_status_t write_output(const pmix_proc_t *name,
             }
         }
 
+        if (start < inputsize &&
+            inputsize - start >= pmix_globals.iof_max_partial_line) {
+            /* the line has run longer than we will hold - write what
+             * there is of it rather than keep waiting for its end */
+            bopass.bytes = &inputdata[start];
+            bopass.size = inputsize - start;
+            rc = write_output_line(name, channel, &myflags, stream,
+                                   copystdout, copystderr, &bopass);
+            if (copied) {
+                free(inputdata);
+            }
+            return rc;
+        }
         if (start < inputsize) {
             /* we have some residual that needs to be cached until
              * the rest of the line is seen */

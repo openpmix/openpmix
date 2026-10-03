@@ -28,6 +28,10 @@
  *    server flushed it at finalize (late, and out of order) and a client
  *    or tool never flushed it at all.
  *
+ * A partial line is held only up to iof_max_partial_line bytes: a source
+ * that never writes a newline must not be held without end, so a longer
+ * one is written out as it stands.
+ *
  * This drives the real path by standing a pipe up in place of stdout and
  * another in place of stderr, then handing the library output through
  * PMIx_server_IOF_deliver.
@@ -371,6 +375,31 @@ int main(int argc, char **argv)
     got = collect(rfd, buf, 15);
     report("the partial line is written out when the stream closes",
            15 == got && 0 == strcmp(buf, "no-newline-here"));
+
+    /* ---- a partial line is held only so far ---- */
+    {
+        size_t saved = pmix_globals.iof_max_partial_line;
+        static const char longline[] = "0123456789abcdefghijklmnopqrstuv"; /* 32 */
+
+        pmix_globals.iof_max_partial_line = 16;
+        PMIX_LOAD_PROCID(&src, "outtest", 5);
+        if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, "0123456789", 10)) {
+            PMIx_server_finalize();
+            return 1;
+        }
+        got = settle(rfd, buf);
+        report("a partial line under the limit is held", 0 == got);
+        if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, "abcdefghijklmnopqrstuv", 22)) {
+            PMIx_server_finalize();
+            return 1;
+        }
+        got = collect(rfd, buf, 32);
+        report("one that reaches the limit is written out as it stands",
+               32 == got && 0 == strcmp(buf, longline));
+        report("and nothing of it is still held",
+               0 == pmix_list_get_size(&pmix_server_globals.iof_residuals));
+        pmix_globals.iof_max_partial_line = saved;
+    }
 
     /* ---- stderr is a separate shared sink, and behaves the same ---- */
     PMIX_LOAD_PROCID(&src, "outtest", 3);
