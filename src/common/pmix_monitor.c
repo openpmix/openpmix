@@ -44,6 +44,20 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
 static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                 pmix_release_cbfunc_t release_fn, void *release_cbdata);
 
+/* The caddy's info array starts out as the monitor argument. A caller's
+ * own argument is only borrowed, but one the server unpacked from a
+ * client's request belongs to the caddy (infocopy) - so it has to be
+ * freed, not just dropped, before the array is replaced by the results. */
+static void drop_monitor_arg(pmix_cb_t *cb)
+{
+    if (cb->infocopy && NULL != cb->info) {
+        PMIX_INFO_FREE(cb->info, cb->ninfo);
+    }
+    cb->info = NULL;
+    cb->ninfo = 0;
+    cb->infocopy = false;
+}
+
 static void relcbfunc(void *cbdata)
 {
     pmix_cb_t *cd = (pmix_cb_t *) cbdata;
@@ -192,10 +206,11 @@ static void hostprocess(int sd, short args, void *cbdata)
             PMIX_INFO_XFER(&info[k], &scd->info[n]);
             ++k;
         }
+        // cb carries the original monitor argument, which the results
+        // replace; it also carries all the user provided cbdata etc, so
+        // let that continue along
+        drop_monitor_arg(cb);
         cb->infocopy = true;
-        // cb simply carries the original info array, so ignore it here
-        // however, cb carries all the user provided cbdata etc, so let
-        // that continue along
         cb->info = info;
         cb->ninfo = ninfo;
 
@@ -835,6 +850,8 @@ static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbd
                         "pmix:monitor acb cback");
 
     cb->status = status;
+    /* the monitor argument is replaced by the results */
+    drop_monitor_arg(cb);
     if (0 < ninfo && NULL != info) {
         // we ignore the info that was provided as that data belongs
         // to the original caller
@@ -844,13 +861,6 @@ static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbd
         for (n = 0; n < cb->ninfo; n++) {
             PMIX_INFO_XFER(&cb->info[n], &info[n]);
         }
-    } else {
-        /* the caddy's info array is the caller's monitor argument, so
-         * both the pointer AND the count must be cleared - dropping
-         * only the pointer hands the caller a NULL array with a
-         * non-zero length */
-        cb->info = NULL;
-        cb->ninfo = 0;
     }
 
     if (NULL != release_fn) {
