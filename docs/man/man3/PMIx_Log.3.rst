@@ -120,6 +120,22 @@ never names a component directly. Supported channels include:
   * ``PMIX_LOG_EMAIL_SERVER`` (char*) |mdash| hostname or IP address of the eSMTP server.
   * ``PMIX_LOG_EMAIL_SRVR_PORT`` (int32_t) |mdash| the port on which the email server is listening.
 
+  When the PMIx library sends the email itself (the ``smtp`` ``plog`` component), the site's MCA
+  parameters decide who it goes to and who it comes from:
+
+  * ``PMIX_LOG_EMAIL_ADDR`` is required, and every address in it must be one of the addresses in the
+    ``plog_smtp_to`` parameter (compared ignoring case). Otherwise the request fails with
+    ``PMIX_ERR_BAD_PARAM`` (no addresses given) or ``PMIX_ERR_NO_PERMISSIONS`` (an address not in the
+    list), and no email is sent.
+  * ``PMIX_LOG_EMAIL_SENDER_ADDR`` is ignored. The email comes from the ``plog_smtp_from_addr`` address,
+    and its ``From`` header names the process that made the request.
+  * ``PMIX_LOG_EMAIL_SERVER`` and ``PMIX_LOG_EMAIL_SRVR_PORT`` are ignored. The mail server is set by the
+    ``plog_smtp_server`` and ``plog_smtp_port`` parameters.
+  * Control characters in the subject are replaced with spaces.
+
+  The component is not used unless both ``plog_smtp_to`` and ``plog_smtp_from_addr`` are set. A host
+  environment that services ``PMIX_LOG_EMAIL`` itself sets its own rules.
+
 Additional channels defined for future use, whose availability depends on host environment support,
 include:
 
@@ -216,6 +232,10 @@ parameters (with current values) can be displayed with ``pmix_info``.
 
 * ``plog=<list>``, where ``<list>`` is a comma-delimited list of ``plog`` components to use. Note that
   "components" differ from "channels": a single component may service multiple channels.
+
+* ``plog_smtp_to=<list>``, a comma-delimited list of the email addresses a ``PMIX_LOG_EMAIL`` request may
+  name as recipients, and ``plog_smtp_from_addr=<address>``, the address every such email is sent from.
+  Both must be set for the ``smtp`` component to be used.
 
 * ``pmix_log_host_only=<true|false>``. When set to ``true``, the PMIx server library passes all log
   requests to its host environment for processing (via the ``pmix_server_log2_fn_t`` server module
