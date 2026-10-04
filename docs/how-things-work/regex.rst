@@ -344,7 +344,10 @@ length into the buffer, embedded NULs included — it carries its own
 length, so it gets no bfrops framing — or, when the value has no
 recognizable framing, as a plain ``PMIX_STRING``. The unpack side reads
 peer-supplied bytes, so it bounds every read against what remains in the
-buffer.
+buffer. It also refuses a plain string that carries the ``blob:`` tag:
+such a string cannot hold the framing that tag promises, and once
+received the value is read as a bare ``char *`` with nothing to bound
+it.
 
 
 Thread Safety
