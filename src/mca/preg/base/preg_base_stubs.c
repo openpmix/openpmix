@@ -184,7 +184,9 @@ pmix_status_t pmix_preg_base_unpack(pmix_buffer_t *buffer, char **regex)
     pmix_status_t rc;
     size_t avail, total;
     int32_t cnt = 1;
-    char *output;
+    char *output = NULL;
+
+    *regex = NULL;
 
     /* the same "bytes remaining to unpack" the bfrops guard uses */
     if (buffer->pack_ptr < buffer->unpack_ptr) {
@@ -203,17 +205,37 @@ pmix_status_t pmix_preg_base_unpack(pmix_buffer_t *buffer, char **regex)
              * something malformed behind it. Reading them as a string
              * would take the bfrops length prefix out of the middle of
              * the framing */
-            *regex = NULL;
             return rc;
         }
         /* must just be a string */
-        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buffer, regex, &cnt, PMIX_STRING);
-        return rc;
+        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buffer, &output, &cnt, PMIX_STRING);
+        if (PMIX_SUCCESS != rc || NULL == output) {
+            return rc;
+        }
+        total = strlen(output) + 1;
+
+        /* Once received, the value is a bare char* to everything that
+         * reads it - copy, pack, parse_nodes - and each of those decodes
+         * it with no bound but the string itself. So the string's own
+         * framing has to fit inside the string. A string can hold every
+         * layout but one: the blob layout puts NULs between its fields,
+         * so a string carrying the blob tag ends where the framing has
+         * barely begun, and the next decode of it reads on past the end
+         * of the allocation looking for the rest. No PMIx sends framing
+         * as a PMIX_STRING - pack puts it on the wire verbatim - so a
+         * string that carries our tag and does not hold its framing is
+         * malformed, and refused like any other malformed value. */
+        rc = pmix_preg_base_legacy_decode(output, total, &r2, &avail);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+            free(output);
+            return rc;
+        }
+        *regex = output;
+        return PMIX_SUCCESS;
     }
 
     output = (char *) malloc(total);
     if (NULL == output) {
-        *regex = NULL;
         return PMIX_ERR_NOMEM;
     }
     memcpy(output, buffer->unpack_ptr, total);

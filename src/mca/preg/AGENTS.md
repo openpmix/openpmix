@@ -275,6 +275,19 @@ expected to hold its whole framing. Values read from a buffer come
 through `unpack`, which *is* bounded. Do not "fix" it by removing the
 bound from `unpack`.
 
+**`unpack` is also what makes that expectation true of a received
+value**, because once it has handed the value back nothing downstream
+has a bound to apply. A framed value is copied at exactly the length the
+bounded decode measured. A value that arrived as a plain `PMIX_STRING`
+is decoded once more, bounded by its own `strlen + 1`, and refused if it
+carries our tag without holding the framing the tag promises. Only the
+blob tag can fail that way: its layout puts NULs between the fields,
+which a string cannot contain, so a string `"blob:"` ends where the
+framing begins and every later `SIZE_MAX` decode of it would read past
+the allocation. No PMIx sends framing as a string, so nothing legitimate
+is refused. `test_regex_string_framing` in `test/unit/preg.c` covers
+both the bare `unpack` and a whole `PMIX_VALUE`.
+
 **And do not plumb a length through the deprecated signatures either.**
 That is a decision rather than an omission, recorded under "Will not be
 done" in `docs/review-notes.rst`: `pmix_regex2_t` exists precisely

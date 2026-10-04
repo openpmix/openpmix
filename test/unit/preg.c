@@ -706,6 +706,78 @@ static void test_legacy_large(void)
 
 /* ------------------------------------------------------------------ */
 
+/* Once received, a PMIX_REGEX value is a bare char* to copy, pack and
+ * parse_nodes, and each decodes it with no bound but the string itself.
+ * A peer's plain string that carries the blob tag holds none of the
+ * framing the tag promises - the blob layout separates its fields with
+ * NULs, which a string cannot contain - so every one of those decodes
+ * would read past the end of it. It has to be refused on arrival. A
+ * string that carries the raw tag holds all of its framing and is fine. */
+static void test_regex_string_framing(void)
+{
+    pmix_buffer_t buf;
+    pmix_data_buffer_t dbuf;
+    pmix_value_t v, rcvd;
+    char *str, *unpacked = NULL;
+    size_t n;
+    int32_t cnt = 1;
+    pmix_status_t rc;
+    int ok = 1, patched = 0;
+
+    /* the bare string, read the way preg reads one */
+    str = "blob:";
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &str, 1, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        ok = 0;
+    } else if (PMIX_SUCCESS == pmix_preg.unpack(&buf, &unpacked) || NULL != unpacked) {
+        fprintf(stdout, "    the string \"blob:\" was accepted as a regex\n");
+        ok = 0;
+    }
+    free(unpacked);
+    unpacked = NULL;
+    PMIX_DESTRUCT(&buf);
+
+    str = "raw:node01,node02";
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &str, 1, PMIX_STRING);
+    if (PMIX_SUCCESS != rc || PMIX_SUCCESS != pmix_preg.unpack(&buf, &unpacked) ||
+        NULL == unpacked || 0 != strcmp(unpacked, str)) {
+        fprintf(stdout, "    a string carrying the raw tag was refused\n");
+        ok = 0;
+    }
+    free(unpacked);
+    PMIX_DESTRUCT(&buf);
+
+    /* and as a value: send the plain list "blob!", then make it the
+     * "blob:" a peer could have sent in its place */
+    PMIX_VALUE_CONSTRUCT(&v);
+    PMIX_VALUE_CONSTRUCT(&rcvd);
+    PMIX_DATA_BUFFER_CONSTRUCT(&dbuf);
+    if (PMIX_SUCCESS == PMIx_Value_load(&v, "blob!", PMIX_REGEX) &&
+        PMIX_SUCCESS == PMIx_Data_pack(NULL, &dbuf, &v, 1, PMIX_VALUE)) {
+        for (n = 0; n + 5 <= dbuf.bytes_used; n++) {
+            if (0 == memcmp(&dbuf.base_ptr[n], "blob!", 5)) {
+                dbuf.base_ptr[n + 4] = ':';
+                patched = 1;
+                break;
+            }
+        }
+    }
+    if (!patched) {
+        fprintf(stdout, "    could not build the value\n");
+        ok = 0;
+    } else if (PMIX_SUCCESS == PMIx_Data_unpack(NULL, &dbuf, &rcvd, &cnt, PMIX_VALUE)) {
+        fprintf(stdout, "    a PMIX_REGEX value holding the string \"blob:\" was accepted\n");
+        ok = 0;
+    }
+    PMIX_VALUE_DESTRUCT(&v);
+    PMIX_VALUE_DESTRUCT(&rcvd);
+    PMIX_DATA_BUFFER_DESTRUCT(&dbuf);
+
+    report("a received string's framing must fit within it", ok);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -751,6 +823,7 @@ int main(int argc, char **argv)
     test_legacy_release();
     test_legacy_malformed_not_split();
     test_legacy_large();
+    test_regex_string_framing();
 
     fprintf(stdout, "\nResults: %d passed, %d failed, %d skipped\n\n", npass, nfail, nskip);
 
