@@ -158,8 +158,11 @@ pmix_status_t pmix_preg_base_pack(pmix_buffer_t *buffer, const char *input)
              * copy of it on the wire for a peer to puzzle over */
             return rc;
         }
-        /* just pack it as a string */
-        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buffer, input, 1, PMIX_STRING);
+        /* just pack it as a string. The string packer takes an array of
+         * strings, so it is handed the address of the one we have -
+         * handing it the string itself has it read the first bytes of
+         * the list as a pointer */
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buffer, &input, 1, PMIX_STRING);
         return rc;
     }
 
