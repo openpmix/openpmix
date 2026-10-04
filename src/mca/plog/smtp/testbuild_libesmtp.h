@@ -28,6 +28,15 @@ typedef struct pmix_testbuild_smtp_recipient *smtp_recipient_t;
 
 typedef const char *(*smtp_messagecb_t)(void **buf, int *len, void *arg);
 
+struct smtp_status {
+    int code;
+    char *text;
+    int enh_class;
+    int enh_subject;
+    int enh_detail;
+};
+typedef struct smtp_status smtp_status_t;
+
 enum rfc2822_timeouts {
     Timeout_GREETING,
     Timeout_ENVELOPE,
@@ -95,6 +104,12 @@ static inline int smtp_start_session(smtp_session_t session)
 {
     (void) session;
     return 1;
+}
+
+static inline const smtp_status_t *smtp_message_transfer_status(smtp_message_t message)
+{
+    (void) message;
+    return NULL;
 }
 
 static inline void smtp_destroy_session(smtp_session_t session)

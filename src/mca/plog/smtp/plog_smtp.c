@@ -336,6 +336,8 @@ static pmix_status_t send_email(const char *msg, char **myaddrs,
     bool set_oldsig = false;
     smtp_session_t session = NULL;
     smtp_message_t message = NULL;
+    const smtp_status_t *status = NULL;
+    int reply = -1;
     message_status_t ms;
     pmix_plog_smtp_component_t *c = &pmix_mca_plog_smtp_component;
 
@@ -536,6 +538,18 @@ static pmix_status_t send_email(const char *msg, char **myaddrs,
         goto error;
     }
 
+    /* smtp_start_session reports only that the dialogue ran, not that
+       the server took the message - a timeout or a rejection still
+       returns success. The transfer status holds the server's final
+       reply to the message, or zero if it never got that far */
+    status = smtp_message_transfer_status(message);
+    reply = (NULL == status) ? 0 : status->code;
+    if (2 != reply / 100) {
+        err = PMIX_ERROR;
+        errmsg = "smtp_message_transfer_status";
+        goto error;
+    }
+
     /* Fall through */
 
 error:
@@ -562,8 +576,20 @@ error:
         char em[256];
 
         memset(em, 0, 256);
-        e = smtp_errno();
-        smtp_strerror(e, em, sizeof(em));
+        if (0 <= reply) {
+            /* the dialogue ran - report what the server last said */
+            e = reply;
+            if (0 == reply) {
+                snprintf(em, sizeof(em), "no reply to the message");
+            } else {
+                snprintf(em, sizeof(em), "server replied %d%s%s", reply,
+                         (NULL != status && NULL != status->text) ? " " : "",
+                         (NULL != status && NULL != status->text) ? status->text : "");
+            }
+        } else {
+            e = smtp_errno();
+            smtp_strerror(e, em, sizeof(em));
+        }
         pmix_show_help("help-pmix-plog.txt", "smtp:send_email failed", true,
                        "libesmtp library call failed", errmsg, em, e, msg);
     }

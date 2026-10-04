@@ -177,6 +177,13 @@ header block as-is — it does no CR/LF screening of its own. Hence:
   says. `connect()` itself is not covered: libesmtp makes a blocking
   connect, so an unreachable server waits out the kernel's TCP connect
   timeout.
+- **`smtp_start_session` succeeding does not mean the mail was sent.**
+  It returns non-zero whenever the dialogue ran — including when a step
+  timed out or the server rejected the message. Whether the server took
+  the message is in `smtp_message_transfer_status(message)`: its `code`
+  is the server's final reply, or 0 if the dialogue never reached it.
+  `send_email` succeeds only on a 2xx code, and the `show_help` report
+  then names the reply instead of `smtp_errno()` (which is 0 there).
 - **SIGPIPE is temporarily ignored** around the network I/O (saved and
   restored via `sigaction`) so a remote server hangup cannot kill the
   whole process. Preserve this if you refactor.
