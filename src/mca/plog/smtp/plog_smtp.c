@@ -27,9 +27,13 @@
 #include "pmix_config.h"
 #include "pmix_common.h"
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef HAVE_STRINGS_H
+#    include <strings.h>
+#endif
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
@@ -70,7 +74,7 @@ typedef enum {
 
 typedef struct {
     sent_flag_t sent_flag;
-    char *msg;
+    const char *msg;
     char *prev_string;
 } message_status_t;
 
@@ -88,22 +92,25 @@ static void finalize(void)
 }
 
 /*
- * Convert lone \n's to \r\n
+ * Convert lone \n's and lone \r's to \r\n, so that every line break
+ * in the result is a CRLF pair
  */
 static char *crnl(const char *orig)
 {
     size_t i, j, max, count;
     char *str;
 
-    /* Count how much space we need */
+    /* Count how much space we need - orig[i + 1] is at worst the
+     * terminator */
     count = max = strlen(orig);
     for (i = 0; i < max; ++i) {
-        if (orig[i] == '\n' && (0 == i || orig[i - 1] != '\r')) {
+        if ('\r' == orig[i] && '\n' != orig[i + 1]) {
+            ++count;
+        } else if ('\n' == orig[i] && (0 == i || '\r' != orig[i - 1])) {
             ++count;
         }
     }
 
-    /* Copy, changing \n to \r\n */
     str = malloc(count + 1);
     if (NULL == str) {
         return NULL;
@@ -112,13 +119,67 @@ static char *crnl(const char *orig)
         /* SMTP wants the CR ahead of the LF - writing a second '\n'
          * here just doubles the line break and never produces the CRLF
          * this function exists to produce */
-        if (orig[i] == '\n' && (0 == i || orig[i - 1] != '\r')) {
+        if ('\r' == orig[i]) {
             str[j++] = '\r';
+            if ('\n' != orig[i + 1]) {
+                str[j++] = '\n';
+            }
+        } else if ('\n' == orig[i]) {
+            if (0 == i || '\r' != orig[i - 1]) {
+                str[j++] = '\r';
+            }
+            str[j++] = '\n';
+        } else {
+            str[j++] = orig[i];
         }
-        str[j++] = orig[i];
     }
     str[j] = '\0';
     return str;
+}
+
+/*
+ * Copy a string for use as a header value, replacing each control
+ * character with a space so that the value stays on its one line.
+ * A value that goes inside a quoted phrase also may not carry a
+ * quote or a backslash.
+ */
+static char *header_text(const char *orig, bool quoted)
+{
+    char *str;
+    size_t i;
+    unsigned char c;
+
+    str = strdup(orig);
+    if (NULL == str) {
+        return NULL;
+    }
+    for (i = 0; '\0' != str[i]; i++) {
+        c = (unsigned char) str[i];
+        if (iscntrl(c)) {
+            str[i] = ' ';
+        } else if (quoted && ('"' == c || '\\' == c)) {
+            str[i] = '\'';
+        }
+    }
+    return str;
+}
+
+/*
+ * Remove leading and trailing white space in place
+ */
+static void trim(char *str)
+{
+    size_t len, start;
+
+    len = strlen(str);
+    while (0 < len && isspace((unsigned char) str[len - 1])) {
+        str[--len] = '\0';
+    }
+    for (start = 0; start < len && isspace((unsigned char) str[start]); start++) {
+    }
+    if (0 < start) {
+        memmove(str, str + start, len - start + 1);
+    }
 }
 
 /*
@@ -196,16 +257,80 @@ static const char *message_cb(void **buf, int *len, void *arg)
 }
 
 /*
- * Back-end function to actually send the email
+ * Pick the requested recipients out of the plog_smtp_to list. Every
+ * address in the comma-delimited "requested" list must match one of
+ * the configured ones (ignoring case and surrounding white space).
+ * The returned argv holds the configured spelling of each match.
  */
-static pmix_status_t send_email(char *msg, char *from, char *addrs,
-                                char *subject, time_t timestamp)
+static pmix_status_t select_recipients(const char *requested, char ***rcpts)
+{
+    char **allowed, **wanted;
+    char **out = NULL;
+    size_t i, j;
+    bool found;
+
+    *rcpts = NULL;
+    allowed = PMIx_Argv_split(pmix_mca_plog_smtp_component.to, ',');
+    wanted = PMIx_Argv_split(requested, ',');
+    if (NULL == allowed || NULL == wanted) {
+        PMIx_Argv_free(allowed);
+        PMIx_Argv_free(wanted);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    for (i = 0; NULL != allowed[i]; i++) {
+        trim(allowed[i]);
+    }
+    for (i = 0; NULL != wanted[i]; i++) {
+        trim(wanted[i]);
+        if ('\0' == wanted[i][0]) {
+            continue;
+        }
+        found = false;
+        for (j = 0; NULL != allowed[j]; j++) {
+            if ('\0' != allowed[j][0] &&
+                0 == strcasecmp(wanted[i], allowed[j])) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                                "SMTP: requested recipient is not in plog_smtp_to");
+            PMIx_Argv_free(allowed);
+            PMIx_Argv_free(wanted);
+            PMIx_Argv_free(out);
+            return PMIX_ERR_NO_PERMISSIONS;
+        }
+        if (PMIX_SUCCESS != PMIx_Argv_append_unique_nosize(&out, allowed[j])) {
+            PMIx_Argv_free(allowed);
+            PMIx_Argv_free(wanted);
+            PMIx_Argv_free(out);
+            return PMIX_ERR_NOMEM;
+        }
+    }
+    PMIx_Argv_free(allowed);
+    PMIx_Argv_free(wanted);
+    if (NULL == out) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    *rcpts = out;
+    return PMIX_SUCCESS;
+}
+
+/*
+ * Back-end function to actually send the email. The recipients come
+ * from select_recipients and the sender address is plog_smtp_from_addr;
+ * the From phrase names the process that made the request.
+ */
+static pmix_status_t send_email(const char *msg, char **myaddrs,
+                                const pmix_proc_t *source,
+                                const char *subject, time_t timestamp)
 {
     int i;
     pmix_status_t err = PMIX_SUCCESS;
     char *str = NULL;
-    char **myaddrs = NULL;
-    char *myfrom;
+    char *phrase = NULL;
+    char *subj = NULL;
     const char *errmsg = NULL;
     struct sigaction sig, oldsig;
     bool set_oldsig = false;
@@ -221,31 +346,30 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
     ms.msg = msg;
     ms.prev_string = NULL;
 
-    // check that we have recipients
-    if (NULL == addrs) {
-        if (NULL == c->to) {
-            // nope - nobody to send to
-            return PMIX_ERR_BAD_PARAM;
-        } else {
-            myaddrs = PMIx_Argv_split(c->to, ',');
-        }
-    } else {
-        myaddrs = PMIx_Argv_split(addrs, ',');
-    }
-    if (NULL == myaddrs) {
-        return PMIX_ERR_BAD_PARAM;
+    /* component_query does not select us without it, so this is
+     * only a guard */
+    if (NULL == c->from_addr) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
-    if (NULL == from) {
-        if (NULL == c->from_addr) {
-            // nope - nobody to send from
-            PMIx_Argv_free(myaddrs);
-            return PMIX_ERR_BAD_PARAM;
-        } else {
-            myfrom = c->from_addr;
-        }
+    /* the From phrase identifies the requester */
+    if (NULL != source) {
+        pmix_asprintf(&str, "%s (%s:%s)",
+                      (NULL != c->from_name) ? c->from_name : "PMIx Plog",
+                      source->nspace, PMIX_RANK_PRINT(source->rank));
     } else {
-        myfrom = from;
+        str = strdup((NULL != c->from_name) ? c->from_name : "PMIx Plog");
+    }
+    if (NULL != str) {
+        phrase = header_text(str, true);
+        free(str);
+        str = NULL;
+    }
+    subj = header_text((NULL != subject) ? subject : c->subject, false);
+    if (NULL == phrase || NULL == subj) {
+        free(phrase);
+        free(subj);
+        return PMIX_ERR_NOMEM;
     }
 
     /* Temporarily disable SIGPIPE so that if remote servers timeout
@@ -331,20 +455,11 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
     }
 
     // set the subject header
-    if (NULL == subject) {
-        str = c->subject;
-    } else {
-        str = subject;
-    }
-    if (0 == smtp_set_header(message, "Subject", str)) {
-        /* "str" is borrowed here, not owned - the error path frees it */
-        str = NULL;
+    if (0 == smtp_set_header(message, "Subject", subj)) {
         err = PMIX_ERROR;
         errmsg = "smtp_set_header SUBJECT";
         goto error;
     }
-    str = NULL;
-
 
     /* set the X-Mailer */
     pmix_asprintf(&str, "PMIx SMTP Plog v%d.%d.%d", c->super.pmix_mca_component_major_version,
@@ -356,9 +471,7 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
         goto error;
     }
 
-    if (0 == smtp_set_header(message, "From",
-                             (NULL != c->from_name ? c->from_name : myfrom),
-                              myfrom)) {
+    if (0 == smtp_set_header(message, "From", phrase, c->from_addr)) {
         err = PMIX_ERROR;
         errmsg = "smtp_set_header FROM";
         goto error;
@@ -407,10 +520,11 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
     /* Fall through */
 
 error:
-    PMIx_Argv_free(myaddrs);
     if (NULL != str) {
         free(str);
     }
+    free(phrase);
+    free(subj);
     /* the callback holds the last chunk it handed libesmtp, and nothing
      * calls it again once the session is over */
     if (NULL != ms.prev_string) {
@@ -440,8 +554,9 @@ error:
 static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
                            const pmix_info_t directives[], size_t ndirs)
 {
-    char *addrs = NULL, *msg = NULL, *scratch = NULL;
-    char *subject = NULL, *from = NULL;
+    char *msg = NULL, *scratch = NULL;
+    char *subject = NULL, *addrs = NULL;
+    char **rcpts = NULL;
     size_t n, mine = 0;
     time_t timestamp = 0;
     pmix_info_t *input = NULL;
@@ -450,7 +565,6 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     /* completion is tracked in the caller's array - see the plog
      * AGENTS.md on why that state is shared and mutable */
     pmix_info_t *dt = (pmix_info_t *) data;
-    PMIX_HIDE_UNUSED_PARAMS(source);
 
     /* if there is no data, then we don't handle it */
     if (NULL == data || 0 == ndata) {
@@ -499,18 +613,12 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    // check the array for input
+    /* check the array for input. The sender is the component's to
+     * set, so PMIX_LOG_EMAIL_SENDER_ADDR is not read */
     for (n=0; n < ninput; n++) {
         if (PMIx_Check_key(input[n].key, PMIX_LOG_EMAIL_ADDR)) {
             if (PMIX_STRING == input[n].value.type) {
                 addrs = input[n].value.data.string;
-            }
-            continue;
-        }
-
-        if (PMIx_Check_key(input[n].key, PMIX_LOG_EMAIL_SENDER_ADDR)) {
-            if (PMIX_STRING == input[n].value.type) {
-                from = input[n].value.data.string;
             }
             continue;
         }
@@ -563,7 +671,21 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    rc = send_email(msg, from, addrs, subject, timestamp);
+    /* the recipients must be named, and each must be one of the
+     * plog_smtp_to addresses */
+    if (NULL == addrs) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        free(scratch);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    rc = select_recipients(addrs, &rcpts);
+    if (PMIX_SUCCESS != rc) {
+        free(scratch);
+        return rc;
+    }
+
+    rc = send_email(msg, rcpts, source, subject, timestamp);
+    PMIx_Argv_free(rcpts);
     free(scratch);
     if (PMIX_SUCCESS == rc) {
         /* nobody else should send this a second time */

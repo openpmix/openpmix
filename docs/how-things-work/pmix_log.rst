@@ -349,20 +349,34 @@ describe the message.  ``mylog`` picks up that nested array and scans it
 for:
 
 * ``PMIX_LOG_EMAIL_ADDR`` — ``(char*)`` comma-delimited recipient list
-* ``PMIX_LOG_EMAIL_SENDER_ADDR`` — ``(char*)`` sender address
+  (required)
 * ``PMIX_LOG_EMAIL_SUBJECT`` — ``(char*)`` subject line
 * ``PMIX_LOG_MSG`` — the body, accepted as either a ``PMIX_STRING`` or a
   ``PMIX_BYTE_OBJECT``
 
-Recipient and sender fall back to the component's ``to`` / ``from_addr``
-MCA parameters when the request omits them.  The SMTP relay host and port
-come from the ``plog_smtp_server`` / ``plog_smtp_port`` MCA parameters,
-*not* from the request; the component's ``component_query`` resolves the
-server name with ``gethostbyname`` at selection time and disables the
-component (returns no module) if the name will not resolve.  Only one
-email per call and one body per email are permitted; both limits are
-enforced with a hard error return.  ``PMIX_LOG_TIMESTAMP`` (from the
-directives) is added as a ``Timestamp`` header when present.
+The MCA parameters decide who an email goes to and who it comes from:
+
+* ``plog_smtp_to`` lists the addresses a request may name. Every address
+  in ``PMIX_LOG_EMAIL_ADDR`` must match one of them, ignoring case and
+  surrounding white space, or the request fails with
+  ``PMIX_ERR_NO_PERMISSIONS`` and nothing is sent. The envelope carries
+  the configured spelling of each match. A request with no
+  ``PMIX_LOG_EMAIL_ADDR`` fails with ``PMIX_ERR_BAD_PARAM``.
+* ``plog_smtp_from_addr`` is the envelope sender and the ``From``
+  address. ``PMIX_LOG_EMAIL_SENDER_ADDR`` is not read. The ``From``
+  phrase is ``plog_smtp_from_name`` followed by the requester's
+  ``nspace:rank`` — the ``source`` the server took from the connection.
+* ``plog_smtp_server`` / ``plog_smtp_port`` name the SMTP relay;
+  ``PMIX_LOG_EMAIL_SERVER`` / ``PMIX_LOG_EMAIL_SRVR_PORT`` are not read.
+
+``component_query`` disables the component (returns no module) unless
+both ``plog_smtp_to`` and ``plog_smtp_from_addr`` are set, and when the
+server name will not resolve with ``getaddrinfo``.  Control characters in
+the subject and the ``From`` phrase become spaces, and the body's line
+breaks — lone CR, lone LF or CRLF — all go out as CRLF.  Only one email
+per call and one body per email are permitted; both limits are enforced
+with a hard error return.  ``PMIX_LOG_TIMESTAMP`` (from the directives)
+is added as a ``Timestamp`` header when present.
 
 Delivery is driven through libesmtp in ``send_email``: it temporarily
 ignores ``SIGPIPE`` around the network I/O (restoring the prior handler

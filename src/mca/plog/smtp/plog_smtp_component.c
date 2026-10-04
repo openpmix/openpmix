@@ -93,12 +93,12 @@ static pmix_status_t smtp_register(void)
 
     /* Email stuff */
     (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "to",
-                                                "Comma-delimited list of default email addresses to send to",
+                                                "Comma-delimited list of the email addresses a request may name as recipients (required)",
                                                 PMIX_MCA_BASE_VAR_TYPE_STRING,
                                                 &pmix_mca_plog_smtp_component.to);
 
     (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "from_addr",
-                                                "Email address that messages will be from",
+                                                "Email address that messages will be from (required)",
                                                 PMIX_MCA_BASE_VAR_TYPE_STRING,
                                                 &pmix_mca_plog_smtp_component.from_addr);
 
@@ -190,6 +190,18 @@ static pmix_status_t smtp_component_query(pmix_mca_base_module_t **module, int *
     *priority = 0;
     *module = NULL;
 
+    /* every email goes from the plog_smtp_from_addr sender to
+       recipients chosen from plog_smtp_to - without both there is
+       nothing this component can send */
+    if (NULL == pmix_mca_plog_smtp_component.to ||
+        '\0' == pmix_mca_plog_smtp_component.to[0] ||
+        NULL == pmix_mca_plog_smtp_component.from_addr ||
+        '\0' == pmix_mca_plog_smtp_component.from_addr[0]) {
+        pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
+                            "SMTP: plog_smtp_to and plog_smtp_from_addr "
+                            "must both be set; disabled");
+        return PMIX_ERR_NOT_FOUND;
+    }
 
     /* Since we have to open a socket later, check now that the server
        name resolves at all - if it does not, disable ourselves rather
