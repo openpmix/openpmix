@@ -355,7 +355,10 @@ this is a contract, not an implementation detail:
   than the input. This last check is why a caller can always trust that a
   `true` return actually saved space.
 - `decompress_string` treats a stored `raw_length` of `UINT32_MAX` as an
-  error sentinel and NUL-terminates the inflated string.
+  error sentinel and NUL-terminates the inflated string. `decompress`
+  refuses `UINT32_MAX` too — no compressor emits it — and both refuse any
+  payload that does not inflate to exactly `raw_length`; see
+  "Decompression" below.
 - **`get_decompressed_size` / `get_decompressed_strlen` return 0 to mean
   "I cannot answer."** That is what they return for a NULL or too-short
   blob, and it is the value `bfrops`' `decompressed_size()` /
@@ -373,6 +376,52 @@ node or re-expanded before crossing an endianness boundary; do not extend
 its use to a new cross-endian wire path without fixing the prefix to a
 defined byte order first (and remember the top-level interoperability
 rule: a new format means a new scheme, not a silent change to this one).
+
+## Decompression: grow as output arrives, then check the length
+
+`raw_length` is a claim about bytes that generally came off a peer's
+wire, so it must not decide how much memory is committed before anything
+has been decoded. Every component therefore inflates into a
+**`pmix_compress_base_outbuf_t`** (`base/pcompress_base_outbuf.c`)
+rather than a buffer `malloc`'d at the claimed size:
+
+| Call | What it does |
+|------|--------------|
+| `pmix_compress_base_outbuf_start(buf, inlen, claim)` | first guess: 4 × the compressed length, at least 4 KiB, never more than `claim + 1`. Refuses `claim == UINT32_MAX` |
+| `pmix_compress_base_outbuf_grow(buf)` | doubles the buffer, capped at `claim + 1`; `false` once it is there — the decoder has produced more than was claimed — or when `realloc` fails |
+| `pmix_compress_base_outbuf_finish(buf, produced, claim, &out)` | succeeds only if `produced == claim`; NUL-terminates at `[claim]` and hands the buffer over |
+| `pmix_compress_base_outbuf_release(buf)` | frees it on any failure path, including a failed `finish` |
+
+Each component's `doit()` is a loop around its library's streaming
+decoder — `inflate` with `Z_NO_FLUSH`, `ZSTD_decompressStream`,
+`LZ4F_decompress` — that calls `grow` whenever the decoder fills the
+buffer, and `finish` when the stream or frame ends. What that buys:
+
+- **Memory follows the payload, not the prefix.** A buffer grown by
+  doubling is never more than about twice what the payload really
+  produced, plus the first guess, which is bounded by the blob the caller
+  already holds. A prefix claiming 4 GiB over a 64-byte payload costs
+  4 KiB.
+- **The ceiling is `claim + 1`, not `claim`.** A decoder that fills that
+  last byte has produced more than was promised, so an over-long payload
+  is caught without asking the decoder to write past its buffer. The
+  string path needs the byte for its NUL anyway, which is why `finish`
+  always writes one: `decompress_string` does nothing further.
+- **The length check is exact in both directions.** A payload that
+  inflates to less than its claim is refused, not zero-padded, and one
+  that inflates to more is refused, not truncated.
+
+This replaced an expansion-ratio cap, which was rejected because no single
+cap fits every component: DEFLATE tops out near 1032:1 and zstd goes far
+higher, so a cap either fails to constrain zstd or rejects valid zlib
+output. Growing the buffer needs no ratio at all.
+
+`test/unit/compress_block` checks the policy directly
+(`test_outbuf_policy`), round-trips an 8 MB payload that compresses
+100–10000× so the buffer grows many times, and forges the prefix of a
+real blob in every direction — one more, one less, half, double, nearly
+4 GiB, zero — plus a payload cut short. All must be refused at both
+entry points.
 
 ## Selection and lifecycle
 
@@ -438,6 +487,7 @@ src/mca/pcompress/
 ├── base/
 │   ├── base.h                  Internal base API, pmix_compress_base state, helper macros
 │   ├── pcompress_base_frame.c  open/close/register, framework decl, base default module
+│   ├── pcompress_base_outbuf.c the decompressors' growable output buffer
 │   ├── pcompress_base_select.c single-component selection
 │   └── help-pcompress.txt      the "unavailable" show_help topic
 ├── zstd/                       zstd compressor (priority 90, preferred)

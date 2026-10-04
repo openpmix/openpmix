@@ -24,6 +24,8 @@
 
 #define Z_OK         0
 #define Z_STREAM_END 1
+#define Z_BUF_ERROR  (-5)
+#define Z_NO_FLUSH   0
 #define Z_FINISH     4
 
 typedef struct {
@@ -31,6 +33,7 @@ typedef struct {
     unsigned int avail_in;
     uint8_t *next_out;
     unsigned int avail_out;
+    unsigned long total_out;
 } zng_stream;
 
 static inline int zng_deflateInit(zng_stream *strm, int level)
