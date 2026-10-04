@@ -89,9 +89,11 @@ API names carry the `zng_` prefix (`zng_stream`, `zng_deflateInit`,
 - **`zlibng_decompress`** / **`decompress_string`** — both screen for a
   NULL buffer or a length below `sizeof(uint32_t)` (see the framework
   doc's blob-screening rule), then read the 4-byte length prefix and
-  inflate the remainder via the local `doit` (`zng_inflateInit` + one
-  `Z_FINISH` `zng_inflate`); the string variant treats `UINT32_MAX` as an
-  error sentinel and NUL-terminates.
+  inflate the remainder via the local `doit` — a `zng_inflate` loop into a
+  `pmix_compress_base_outbuf_t` that grows as output arrives and must end
+  at exactly the claimed length. The returned buffer is NUL-terminated one
+  past the claim, which is all the string variant needs; `UINT32_MAX`, the
+  error sentinel, is refused by the base helper.
 
 Because zlib-ng emits the standard DEFLATE format and this component uses
 the **same** 4-byte framing as `zlib`, blobs are interchangeable between
@@ -112,7 +114,8 @@ built with `zlib`, and vice versa.
   it: a truncated `avail_out` would leave the stream believing it had less
   room than was allocated while the local `len` still recorded the full
   amount, and the produced length computed from the two would overrun
-  `tmp`. `doit` screens both of its lengths for the same reason.
+  `tmp`. `doit` screens its input length for the same reason; its output
+  buffer is bounded by the 4-byte prefix.
 - **The level is `pcompress_zlibng_level`, and it defaults to 2** — where
   `zlib` defaults to 1. Both used to be a hard-coded 9; see
   [`../zlib/AGENTS.md`](../zlib/AGENTS.md) for why that was the wrong end of

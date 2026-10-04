@@ -145,19 +145,16 @@ static bool compress_string(char *instring, uint8_t **outbytes, size_t *nbytes)
     return lz4_compress((uint8_t *) instring, strlen(instring), outbytes, nbytes);
 }
 
-/* Inflate `inlen` bytes of frame into a freshly allocated buffer.
- *
- * `capacity` and `expected` are separate on purpose and are NOT always equal:
- * the string path allocates one byte more than the blob's stored length so it
- * has room to append the NUL that length deliberately does not count.  Folding
- * them into one argument makes the strict length check below reject every
- * string it ever compressed. */
-static bool doit(uint8_t **outbytes, size_t capacity, size_t expected,
-                 const uint8_t *inbytes, size_t inlen)
+/* Inflate `inlen` bytes of frame into a freshly allocated buffer that must
+ * come out at exactly `claim` bytes, NUL-terminated one past that (see
+ * pmix_compress_base_outbuf_t). The buffer is grown as output arrives, so
+ * a prefix that claims far more than the frame holds costs only what the
+ * frame really produces. */
+static bool doit(uint8_t **outbytes, uint32_t claim, const uint8_t *inbytes, size_t inlen)
 {
+    pmix_compress_base_outbuf_t out;
     LZ4F_dctx *dctx = NULL;
-    uint8_t *dest;
-    size_t rc, dstsize, srcsize;
+    size_t rc, dstsize, srcsize, used = 0, consumed = 0;
 
     /* set the default error answer */
     *outbytes = NULL;
@@ -172,32 +169,54 @@ static bool doit(uint8_t **outbytes, size_t capacity, size_t expected,
         return false;
     }
 
-    dest = (uint8_t *) malloc(capacity);
-    if (NULL == dest) {
+    if (!pmix_compress_base_outbuf_start(&out, inlen, claim)) {
         return false;
     }
-
     if (LZ4F_isError(LZ4F_createDecompressionContext(&dctx, LZ4F_VERSION))) {
-        free(dest);
+        pmix_compress_base_outbuf_release(&out);
         return false;
     }
 
-    /* The whole frame is in hand and the destination is big enough for all of
-     * it, so this decodes in one call.  A non-zero return means the decoder
-     * wants more input, which for a complete frame means the blob is
-     * truncated - refuse it rather than hand back a partial answer. */
-    dstsize = capacity;
-    srcsize = inlen;
-    rc = LZ4F_decompress(dctx, dest, &dstsize, inbytes, &srcsize, NULL);
+    for (;;) {
+        dstsize = out.size - used;
+        srcsize = inlen - consumed;
+        rc = LZ4F_decompress(dctx, out.bytes + used, &dstsize, inbytes + consumed,
+                             &srcsize, NULL);
+        if (LZ4F_isError(rc)) {
+            goto fail;
+        }
+        used += dstsize;
+        consumed += srcsize;
+        if (0 == rc) {
+            /* the frame is complete */
+            break;
+        }
+        if (used == out.size) {
+            if (!pmix_compress_base_outbuf_grow(&out)) {
+                goto fail;
+            }
+            continue;
+        }
+        if (consumed == inlen || (0 == dstsize && 0 == srcsize)) {
+            /* the decoder wants more input and there is none - a truncated
+             * frame - or it stopped moving with room on both sides */
+            goto fail;
+        }
+    }
     LZ4F_freeDecompressionContext(dctx);
 
-    if (LZ4F_isError(rc) || 0 != rc || dstsize != expected || srcsize != inlen) {
-        free(dest);
+    /* compress emits exactly one frame; anything after it is not ours */
+    if (consumed != inlen ||
+        !pmix_compress_base_outbuf_finish(&out, used, claim, outbytes)) {
+        pmix_compress_base_outbuf_release(&out);
         return false;
     }
-
-    *outbytes = dest;
     return true;
+
+fail:
+    LZ4F_freeDecompressionContext(dctx);
+    pmix_compress_base_outbuf_release(&out);
+    return false;
 }
 
 static bool lz4_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *inbytes, size_t inlen)
@@ -217,7 +236,7 @@ static bool lz4_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *in
     pmix_output_verbose(2, pmix_pcompress_base_framework.framework_output,
                         "DECOMPRESSING INPUT OF LEN %" PRIsize_t " OUTPUT %u", inlen, len2);
 
-    if (!doit(outbytes, len2, len2, inbytes + sizeof(uint32_t), inlen - sizeof(uint32_t))) {
+    if (!doit(outbytes, len2, inbytes + sizeof(uint32_t), inlen - sizeof(uint32_t))) {
         return false;
     }
     *outlen = len2;
@@ -235,21 +254,13 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
         return false;
     }
 
-    /* the first 4 bytes contains the uncompressed size */
+    /* the first 4 bytes contains the uncompressed size, which does not
+     * count the NUL; doit() terminates the result one byte past it, and
+     * refuses the UINT32_MAX error sentinel */
     memcpy(&len2, inbytes, sizeof(uint32_t));
-    if (UINT32_MAX == len2) {
-        /* the error sentinel the format reserves */
-        return false;
-    }
 
-    /* inflate into exactly the promised length, then add the terminator the
-     * stored length deliberately does not count */
-    if (!doit((uint8_t **) outstring, len2 + 1, len2, inbytes + sizeof(uint32_t),
-              len - sizeof(uint32_t))) {
-        return false;
-    }
-    (*outstring)[len2] = '\0';
-    return true;
+    return doit((uint8_t **) outstring, len2, inbytes + sizeof(uint32_t),
+                len - sizeof(uint32_t));
 }
 
 /* A blob produced by lz4_compress / compress_string carries the uncompressed

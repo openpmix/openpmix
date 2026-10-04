@@ -85,12 +85,15 @@ module should still implement both. See the framework doc.
   is where such an input belongs.
 - **`zlib_decompress`** — screens for a NULL buffer or a length below
   `sizeof(uint32_t)` (see the framework doc's blob-screening rule), reads
-  the leading 4-byte length, then calls the local `doit` helper
-  (`inflateInit` + a single `Z_FINISH` inflate into a buffer of exactly
-  that length) on the bytes past the prefix.
-- **`decompress_string`** — same screen, then the same inflate, but treats
-  a stored length of `UINT32_MAX` as an error sentinel, allocates one
-  extra byte, and forces a NUL terminator on the inflated string.
+  the leading 4-byte length, then calls the local `doit` helper on the
+  bytes past the prefix. `doit` inflates in a loop into a
+  `pmix_compress_base_outbuf_t`, growing it as output arrives, and
+  succeeds only if the stream ends having produced exactly the length the
+  prefix claims (see "Decompression" in the framework doc).
+- **`decompress_string`** — same screen and the same `doit`; the buffer
+  `doit` returns is already NUL-terminated one byte past the claim, and
+  the base helper refuses a stored length of `UINT32_MAX`, the error
+  sentinel.
 - **`get_decompressed_size`** / **`get_decompressed_strlen`** — read the
   leading 4-byte length prefix and return the inflated size *without*
   inflating: `_size` returns the raw byte count, `_strlen` returns it +1
@@ -120,9 +123,17 @@ module should still implement both. See the framework doc.
   believing it had less room than was allocated while the local `len` still
   recorded the full amount, and the produced length computed from the two
   would overrun `tmp` in the memcpy that lifts the payload out. `doit`
-  screens both of its lengths for the same reason. Nothing this framework
+  screens its input length for the same reason; its output buffer is
+  bounded by the 4-byte prefix and cannot exceed a `uInt`. Nothing this framework
   compresses is anywhere near the ceiling; the screens are there so the
   narrowing can never happen silently.
+- **A stream that ends early is a refusal, not a short answer.** `doit`
+  used to `memset` a buffer of the claimed length and accept any
+  `Z_STREAM_END`, so a payload that inflated to less than its prefix came
+  back as success, zero-padded — and on the string path an under-claim by
+  one byte came back with its last character overwritten by the NUL. The
+  exact-length check in `pmix_compress_base_outbuf_finish` is what stops
+  both; `test/unit/compress_block` forges the prefix in both directions.
 - **A foreign blob is refused, but by accident rather than by a magic
   check.** Unlike `zstd` and `lz4`, this component does not sniff a frame
   header — it does not need to, because the DEFLATE header's own checksum
