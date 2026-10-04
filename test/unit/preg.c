@@ -706,6 +706,104 @@ static void test_legacy_large(void)
 
 /* ------------------------------------------------------------------ */
 
+/* A PMIX_REGEX value is a byte object, and value copies move exactly
+ * bo.size bytes. One that comes off the wire must therefore arrive with
+ * its size set - it used to arrive with zero, and the first copy (any
+ * PMIx_Value_xfer, any store into the datastore) emptied it. Check both
+ * shapes a value can take: an encoded regex, and a plain list. */
+static int value_roundtrip(const char *what, const char *regex, const char *expect)
+{
+    pmix_data_buffer_t dbuf;
+    pmix_value_t v, rcvd, copy;
+    char **nodes = NULL, *rebuilt = NULL;
+    int32_t cnt = 1;
+    int ok = 0;
+
+    PMIX_VALUE_CONSTRUCT(&v);
+    PMIX_VALUE_CONSTRUCT(&rcvd);
+    PMIX_VALUE_CONSTRUCT(&copy);
+    PMIX_DATA_BUFFER_CONSTRUCT(&dbuf);
+
+    if (PMIX_SUCCESS != PMIx_Value_load(&v, regex, PMIX_REGEX) ||
+        PMIX_SUCCESS != PMIx_Data_pack(NULL, &dbuf, &v, 1, PMIX_VALUE) ||
+        PMIX_SUCCESS != PMIx_Data_unpack(NULL, &dbuf, &rcvd, &cnt, PMIX_VALUE)) {
+        fprintf(stdout, "    %s: could not load/pack/unpack the value\n", what);
+        goto done;
+    }
+    if (PMIX_REGEX != rcvd.type || NULL == rcvd.data.bo.bytes) {
+        fprintf(stdout, "    %s: received value has type %s and %s bytes\n", what,
+                PMIx_Data_type_string(rcvd.type),
+                NULL == rcvd.data.bo.bytes ? "no" : "some");
+        goto done;
+    }
+    if (rcvd.data.bo.size != v.data.bo.size ||
+        0 != memcmp(rcvd.data.bo.bytes, v.data.bo.bytes, v.data.bo.size)) {
+        fprintf(stdout, "    %s: received size %zu, sent %zu\n", what,
+                rcvd.data.bo.size, v.data.bo.size);
+        goto done;
+    }
+    if (PMIX_SUCCESS != PMIx_Value_xfer(&copy, &rcvd) || NULL == copy.data.bo.bytes ||
+        copy.data.bo.size != v.data.bo.size) {
+        fprintf(stdout, "    %s: a copy of the received value lost its bytes\n", what);
+        goto done;
+    }
+    if (PMIX_SUCCESS != pmix_preg.parse_nodes(copy.data.bo.bytes, &nodes)) {
+        fprintf(stdout, "    %s: the copy no longer parses\n", what);
+        goto done;
+    }
+    rebuilt = PMIx_Argv_join(nodes, ',');
+    ok = (NULL != rebuilt && 0 == strcmp(rebuilt, expect));
+    if (!ok) {
+        fprintf(stdout, "    %s: the copy parsed to \"%s\"\n", what,
+                NULL == rebuilt ? "(null)" : rebuilt);
+    }
+
+done:
+    PMIx_Argv_free(nodes);
+    free(rebuilt);
+    PMIX_VALUE_DESTRUCT(&v);
+    PMIX_VALUE_DESTRUCT(&rcvd);
+    PMIX_VALUE_DESTRUCT(&copy);
+    PMIX_DATA_BUFFER_DESTRUCT(&dbuf);
+    return ok;
+}
+
+static void test_regex_value_size(void)
+{
+    const char *small = "node01,node02,node03";
+    char **list = NULL, *large, *regex = NULL;
+    int n, ok = 1;
+
+    /* a plain list, which travels as a string */
+    ok = value_roundtrip("plain list", small, small) && ok;
+
+    /* whatever PMIx_generate_regex makes of a short list and a long one -
+     * on a build with a compressor the long one is a blob */
+    if (PMIX_SUCCESS == PMIx_generate_regex(small, &regex)) {
+        ok = value_roundtrip("encoded short list", regex, small) && ok;
+        free(regex);
+        regex = NULL;
+    } else {
+        ok = 0;
+    }
+    for (n = 0; n < 5000; n++) {
+        char tmp[32];
+        snprintf(tmp, sizeof(tmp), "node%05d", n);
+        PMIx_Argv_append_nosize(&list, tmp);
+    }
+    large = PMIx_Argv_join(list, ',');
+    PMIx_Argv_free(list);
+    if (PMIX_SUCCESS == PMIx_generate_regex(large, &regex)) {
+        ok = value_roundtrip("encoded long list", regex, large) && ok;
+        free(regex);
+    } else {
+        ok = 0;
+    }
+    free(large);
+
+    report("a received PMIX_REGEX value carries its size", ok);
+}
+
 /* Once received, a PMIX_REGEX value is a bare char* to copy, pack and
  * parse_nodes, and each decodes it with no bound but the string itself.
  * A peer's plain string that carries the blob tag holds none of the
@@ -823,6 +921,7 @@ int main(int argc, char **argv)
     test_legacy_release();
     test_legacy_malformed_not_split();
     test_legacy_large();
+    test_regex_value_size();
     test_regex_string_framing();
 
     fprintf(stdout, "\nResults: %d passed, %d failed, %d skipped\n\n", npass, nfail, nskip);

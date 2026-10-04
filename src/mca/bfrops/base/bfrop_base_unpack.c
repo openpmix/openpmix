@@ -29,6 +29,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/pcompress/base/base.h"
 #include "src/mca/preg/preg.h"
+#include "src/mca/preg/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
@@ -702,6 +703,22 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_b
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.regex2, &m, PMIX_REGEX2, regtypes);
             return ret;
+        case PMIX_REGEX:
+            /* A PMIX_REGEX value is a byte object, and everything that
+             * copies, stores or sizes one goes by bo.size - a value copy
+             * moves exactly that many bytes. The registered unpack for
+             * the type fills in only the pointer, because it has nowhere
+             * to put a length, so a received value used to arrive with a
+             * size of zero and was emptied by the first copy. Ask preg
+             * for the length along with the bytes.
+             *
+             * Still honor the registry, so a wire format that never had
+             * the type (v21, v3) refuses it exactly as it did before. */
+            if (NULL == pmix_pointer_array_get_item(regtypes, PMIX_REGEX)) {
+                pmix_output(0, "UNPACK-PMIX-VALUE: UNSUPPORTED TYPE %d", (int) val->type);
+                return PMIX_ERR_UNKNOWN_DATA_TYPE;
+            }
+            return pmix_preg_base_unpack_sized(buffer, &val->data.bo.bytes, &val->data.bo.size);
 
         case PMIX_POINTER:
             /* only the packer's sentinel crosses the wire - an address

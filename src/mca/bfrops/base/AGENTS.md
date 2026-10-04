@@ -523,7 +523,13 @@ of the two walks off the end of any array with more than one element.
 
 For a *scalar* value the two readings coincide, because `bo.bytes` is
 the first member of the union — which is why `PMIX_REGEX` values work
-correctly everywhere else and why this went unnoticed. It diverges only
+correctly everywhere else and why this went unnoticed. (A scalar value is
+not unpacked through the registered element function at all:
+`pmix_bfrops_base_unpack_val()` has a `PMIX_REGEX` arm that calls
+`pmix_preg_base_unpack_sized()`, because the element function has
+nowhere to put `bo.size` and every value copy goes by it. The arm still
+checks the type registry first, so `v21` and `v3`, which never had the
+type, refuse it as they always did.) It diverges only
 for arrays, and arrays of `PMIX_REGEX` are not constructible today
 (`data_array_construct()` has no arm for the type, so it returns an
 empty descriptor), so nothing currently reaches the divergence.

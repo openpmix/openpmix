@@ -86,6 +86,11 @@ PMIX_EXPORT pmix_status_t pmix_preg_base_pack(pmix_buffer_t *buffer, const char 
 
 PMIX_EXPORT pmix_status_t pmix_preg_base_unpack(pmix_buffer_t *buffer, char **regex);
 
+/* unpack, and also report how many bytes the value occupies - the length
+ * a PMIX_REGEX value's byte object must carry. 0 for a NULL value. */
+PMIX_EXPORT pmix_status_t pmix_preg_base_unpack_sized(pmix_buffer_t *buffer, char **regex,
+                                                       size_t *len);
+
 PMIX_EXPORT pmix_status_t pmix_preg_base_release(char *regexp);
 
 PMIX_EXPORT pmix_status_t pmix_preg_base_generate_regex(const char *input,
