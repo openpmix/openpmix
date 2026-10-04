@@ -91,6 +91,14 @@ static pmix_status_t smtp_register(void)
                                                 "SMTP server port", PMIX_MCA_BASE_VAR_TYPE_INT,
                                                 &pmix_mca_plog_smtp_component.port);
 
+    pmix_mca_plog_smtp_component.timeout = 30;
+    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "timeout",
+                                                "Seconds to wait for the SMTP server at each step of "
+                                                "sending an email (0 = the RFC 5321 values, which run "
+                                                "to several minutes)",
+                                                PMIX_MCA_BASE_VAR_TYPE_INT,
+                                                &pmix_mca_plog_smtp_component.timeout);
+
     /* Email stuff */
     (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "to",
                                                 "Comma-delimited list of the email addresses a request may name as recipients (required)",

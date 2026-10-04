@@ -50,6 +50,7 @@ registers these MCA parameters:
 |-------|-------|---------|
 | `plog_smtp_server` | `server` | `"localhost"` |
 | `plog_smtp_port` | `port` | `25` |
+| `plog_smtp_timeout` | `timeout` | `30` (seconds; `0` = libesmtp's RFC 5321 values) |
 | `plog_smtp_to` | `to` | (none — required) |
 | `plog_smtp_from_addr` | `from_addr` | (none — required) |
 | `plog_smtp_from_name` | `from_name` | `"PMIx Plog"` |
@@ -165,6 +166,17 @@ header block as-is — it does no CR/LF screening of its own. Hence:
 `Timestamp` headers, register the message-body callback, then
 `smtp_start_session`. Points worth knowing:
 
+- **The send runs on the progress thread.** `PMIx_Log` reports the plog
+  modules' status synchronously, so the dialogue with the mail server
+  happens inline. `plog_smtp_timeout` bounds each step of it: `send_email`
+  sets all five libesmtp timeouts (greeting, envelope, data, transfer,
+  data2) to that many seconds, ORed with
+  `Timeout_OVERRIDE_RFC2822_MINIMUM` — without the flag libesmtp raises
+  any value below the RFC 5321 minimums, which run to ten minutes for a
+  step. libesmtp's values are milliseconds, whatever its documentation
+  says. `connect()` itself is not covered: libesmtp makes a blocking
+  connect, so an unreachable server waits out the kernel's TCP connect
+  timeout.
 - **SIGPIPE is temporarily ignored** around the network I/O (saved and
   restored via `sigaction`) so a remote server hangup cannot kill the
   whole process. Preserve this if you refactor.
