@@ -11,16 +11,18 @@ series, in reverse chronological order.
                "reference tags" that mark the completion of some
                significant body of work rather than a regular cadence.
 
-               For this release, that work is threefold: completion of
+               For this release, that work is fourfold: completion of
                the Group family of APIs with the invite/join construction
                mode (see the
                :ref:`Group Construction <group-construction-label>`
                section of the documentation); a substantial reduction in
                the amount of data PMIx moves during startup, aided by a
-               new shared-memory datastore (``gds/shmem3``); and a
-               systematic review of every subtree under ``src`` that
-               closed a long list of crashes, leaks, and use-after-free
-               defects.
+               new shared-memory datastore (``gds/shmem3``); an access
+               model in which every job records its owner and the server
+               holding its data decides, request by request, who may see
+               it; and a systematic review of every subtree under ``src``
+               that closed a long list of crashes, leaks, and
+               use-after-free defects.
 
                Proper execution of the group construction modes, and of
                the session and allocation support described below,
@@ -46,6 +48,40 @@ Highlights
 * **New shared-memory datastore.** ``gds/shmem3`` replaces
   ``gds/shmem2``, with lock-free reads and the ability to update the
   data of a running job.
+
+* **Access control by user and group.** Every job records its owner --
+  named by the host, or the user its clients run as -- together with an
+  optional list of others who may read it. The server holding a job's
+  data decides who may have it, answering ``PMIX_ERR_NO_PERMISSIONS``
+  otherwise, and a job's output files and shared-memory segments belong
+  to its owner. ``PMIX_ACCESS_PERMISSIONS``, ``PMIX_ACCESS_USERIDS``,
+  and ``PMIX_ACCESS_GRPIDS`` -- until now accepted only for published
+  data -- name who else may read a job when they are given in the
+  job-level info of ``PMIx_Spawn`` or
+  ``PMIx_server_register_nspace``. ``PMIX_CAP_ACCESS_CHECK``.
+
+* **Up-calls name the requester.** Every call a server makes on a
+  peer's behalf now says who asked, with ``PMIX_REQUESTOR`` where the
+  up-call's signature cannot carry it, so a host can apply its own
+  policy to the request. ``PMIx_server_dmodex_request2`` takes an info
+  array for the same reason, and a host relaying an identity on
+  someone's behalf marks it ``PMIX_INFO_RELAYED``.
+  ``PMIX_CAP_REQUESTER_ID``, ``PMIX_CAP_DMODEX_REQUEST2``,
+  ``PMIX_CAP_INFO_RELAYED``.
+
+* **Connecting peers are authenticated with a credential,** and the
+  connection is validated before the server does anything else for it.
+  The new ``psec/ssl`` component authenticates a remote peer with X.509
+  certificates; ``psec/native`` confirms a local peer through the
+  kernel, falling back to an exchange over the socket where TCP leaves
+  it nothing to check. A server now tells a tool in its rendezvous file
+  which wire formats and security mechanisms it accepts.
+
+* **Monitoring is scoped to whoever asked for it.** ``pstat`` samples a
+  process by pid, as that process's owner, and only for a requester
+  permitted to see it. ``psensor`` watches only the requester's own
+  files, caps how many monitors one process may hold, and runs the
+  monitors on a thread of their own, started by the first request.
 
 * **Data can be deleted.** New ``PMIX_DEL_*`` scopes on ``PMIx_Put``
   remove a key, including from clients that cached it.
@@ -95,6 +131,17 @@ Highlights
   files are created exclusively and verified before they are reused or
   re-permissioned.
 
+* **Wire data is bounded before it is trusted.** Every count read off
+  the wire is checked against the bytes actually received before it
+  sizes an allocation, and the datatype of each element is verified
+  before it is read -- across ``bfrops``, ``gds``, ``pstat``, ``ptl``,
+  the event system, and the client, server, and tool message handlers.
+
+* **Email logging is configurable.** ``plog/smtp`` takes its recipients
+  and sender from MCA parameters, accepts ``PMIX_LOG_EMAIL_MSG`` as the
+  message body, bounds the SMTP dialogue with ``plog_smtp_timeout``,
+  and reports a message as sent only once the server has accepted it.
+
 * **pmix_info fixes.** ``--param`` and ``--show-version`` now honor the
   arguments their usage text documents.
 
@@ -129,6 +176,11 @@ Compatibility notes
   a client or tool connects only to servers from v3.2 on. Refusals
   report ``PMIX_ERR_OUTDATED``.
 
+* **A connecting peer must present a credential.** The handshake-only
+  model is gone, and with it the ``psec/none`` and
+  ``psec/dummy_handshake`` components. A host or tool that selected
+  either must choose ``native``, ``munge``, or ``ssl``.
+
 * **No silent singleton fallback.** ``PMIx_Init`` fails with
   ``PMIX_ERR_COMM_FAILURE`` when it cannot reach a server it was told
   about. ``PMIX_ERR_UNREACH`` now means no server was described.
@@ -162,6 +214,39 @@ Compatibility notes
   removed.
 
 * ``PMIX_COMPRESSED_STRING`` is deprecated.
+
+* A server answers a request for a job's data only when the requester
+  is permitted it, and returns ``PMIX_ERR_NO_PERMISSIONS`` when it is
+  not. A host that registers a namespace for another user should name
+  the owner, since a job with no owner named belongs to the user its
+  clients run as.
+
+* ``PMIX_USERID`` and ``PMIX_GRPID`` may now be given as a user or
+  group name as well as a number. ``palloc`` drops ``--uid`` and
+  accepts a group name for ``--gid``.
+
+* A tool searching for a server's rendezvous file descends at most
+  ``ptl_base_search_depth`` directories below the system tmpdir
+  (default 8), and matches a file it was told to look for by its whole
+  name rather than by prefix.
+
+* New limits: ``psensor_base_max_monitors_per_peer`` and
+  ``pstat_base_max_monitors_per_peer`` (each 16 by default) cap the
+  periodic monitors one process may hold, ``iof_max_partial_line``
+  (64KB) caps how long a partial output line is held before it is
+  written out as it stands, and ``pmix_hwloc_max_cpu_index`` bounds the
+  processor indices accepted in a cpuset list.
+
+* As root, PMIx reads only parameter files that root controls, and the
+  MCA home-directory defaults are omitted when the user has no home
+  directory.
+
+* ``pstat`` takes an empty field list to mean every field.
+
+* The Autotools versions used to build official release tarballs now
+  live in ``VERSION`` as ``*_dist_version`` fields rather than inside
+  ``contrib/make_dist_tarball``, and the required toolchain is m4
+  1.4.21, autoconf 2.73, automake 1.19, and libtool 2.6.2.
 
 A full list of individual changes will not be provided here,
 but will commence with the v7.0.1 release.
