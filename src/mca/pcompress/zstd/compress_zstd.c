@@ -135,18 +135,20 @@ static bool compress_string(char *instring, uint8_t **outbytes, size_t *nbytes)
     return zstd_compress((uint8_t *) instring, strlen(instring), outbytes, nbytes);
 }
 
-/* Inflate `inlen` bytes of frame into a freshly allocated buffer.
+/* Inflate `inlen` bytes of frame into a freshly allocated buffer that must
+ * come out at exactly `claim` bytes, NUL-terminated one past that (see
+ * pmix_compress_base_outbuf_t).
  *
- * `capacity` and `expected` are separate on purpose and are NOT always equal:
- * the string path allocates one byte more than the blob's stored length so it
- * has room to append the NUL that length deliberately does not count.  Folding
- * them into one argument makes the strict length check below reject every
- * string it ever compressed. */
-static bool doit(uint8_t **outbytes, size_t capacity, size_t expected,
-                 const uint8_t *inbytes, size_t inlen)
+ * This streams rather than calling ZSTD_decompress, because the one-shot
+ * call needs its whole destination up front - which means allocating
+ * whatever the prefix claims before a byte of the frame has been read. */
+static bool doit(uint8_t **outbytes, uint32_t claim, const uint8_t *inbytes, size_t inlen)
 {
-    uint8_t *dest;
-    size_t produced;
+    pmix_compress_base_outbuf_t out;
+    ZSTD_DCtx *dctx;
+    ZSTD_inBuffer in;
+    ZSTD_outBuffer o;
+    size_t rc;
 
     /* set the default error answer */
     *outbytes = NULL;
@@ -161,19 +163,61 @@ static bool doit(uint8_t **outbytes, size_t capacity, size_t expected,
         return false;
     }
 
-    dest = (uint8_t *) malloc(capacity);
-    if (NULL == dest) {
+    if (!pmix_compress_base_outbuf_start(&out, inlen, claim)) {
+        return false;
+    }
+    dctx = ZSTD_createDCtx();
+    if (NULL == dctx) {
+        pmix_compress_base_outbuf_release(&out);
         return false;
     }
 
-    produced = ZSTD_decompress(dest, capacity, inbytes, inlen);
-    if (ZSTD_isError(produced) || produced != expected) {
-        free(dest);
+    in.src = inbytes;
+    in.size = inlen;
+    in.pos = 0;
+    o.dst = out.bytes;
+    o.size = out.size;
+    o.pos = 0;
+
+    for (;;) {
+        rc = ZSTD_decompressStream(dctx, &o, &in);
+        if (ZSTD_isError(rc)) {
+            goto fail;
+        }
+        if (0 == rc) {
+            /* the frame is complete */
+            break;
+        }
+        if (o.pos < o.size) {
+            if (in.pos == in.size) {
+                /* the decoder wants more and there is none: truncated */
+                goto fail;
+            }
+            /* room on both sides; zstd itself errors out of a call
+             * sequence that makes no progress */
+            continue;
+        }
+        if (!pmix_compress_base_outbuf_grow(&out)) {
+            goto fail;
+        }
+        o.dst = out.bytes;
+        o.size = out.size;
+    }
+    ZSTD_freeDCtx(dctx);
+
+    /* compress emits exactly one frame; anything after it is not ours.
+     * ZSTD_decompress would have tried to read it as a further frame. */
+    if (in.pos != in.size ||
+        !pmix_compress_base_outbuf_finish(&out, o.pos, claim, outbytes)) {
+        pmix_compress_base_outbuf_release(&out);
         return false;
     }
-
-    *outbytes = dest;
     return true;
+
+fail:
+    ZSTD_freeDCtx(dctx);
+    pmix_compress_base_outbuf_release(&out);
+    return false;
 }
 
 static bool zstd_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *inbytes, size_t inlen)
@@ -193,7 +237,7 @@ static bool zstd_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *i
     pmix_output_verbose(2, pmix_pcompress_base_framework.framework_output,
                         "DECOMPRESSING INPUT OF LEN %" PRIsize_t " OUTPUT %u", inlen, len2);
 
-    if (!doit(outbytes, len2, len2, inbytes + sizeof(uint32_t), inlen - sizeof(uint32_t))) {
+    if (!doit(outbytes, len2, inbytes + sizeof(uint32_t), inlen - sizeof(uint32_t))) {
         return false;
     }
     *outlen = len2;
@@ -211,21 +255,13 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
         return false;
     }
 
-    /* the first 4 bytes contains the uncompressed size */
+    /* the first 4 bytes contains the uncompressed size, which does not
+     * count the NUL; doit() terminates the result one byte past it, and
+     * refuses the UINT32_MAX error sentinel */
     memcpy(&len2, inbytes, sizeof(uint32_t));
-    if (UINT32_MAX == len2) {
-        /* the error sentinel the format reserves */
-        return false;
-    }
 
-    /* inflate into exactly the promised length, then add the terminator the
-     * stored length deliberately does not count */
-    if (!doit((uint8_t **) outstring, len2 + 1, len2, inbytes + sizeof(uint32_t),
-              len - sizeof(uint32_t))) {
-        return false;
-    }
-    (*outstring)[len2] = '\0';
-    return true;
+    return doit((uint8_t **) outstring, len2, inbytes + sizeof(uint32_t),
+                len - sizeof(uint32_t));
 }
 
 /* A blob produced by zstd_compress / compress_string carries the uncompressed

@@ -17,6 +17,7 @@ headers += \
 
 libmca_pcompress_la_SOURCES += \
         base/pcompress_base_frame.c \
+        base/pcompress_base_outbuf.c \
         base/pcompress_base_select.c
 
 EXTRA_DIST = base/help-pcompress.txt

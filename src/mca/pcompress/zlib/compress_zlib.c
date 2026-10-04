@@ -161,48 +161,78 @@ static bool compress_string(char *instring, uint8_t **outbytes, size_t *nbytes)
     return zlib_compress((uint8_t *) instring, inlen, outbytes, nbytes);
 }
 
-static bool doit(uint8_t **outbytes, size_t len2, const uint8_t *inbytes, size_t inlen)
+/* Inflate `inlen` bytes of DEFLATE stream into a freshly allocated buffer
+ * that must come out at exactly `claim` bytes, NUL-terminated one past
+ * that (see pmix_compress_base_outbuf_t). The buffer is grown as output
+ * arrives, so a prefix that claims far more than the stream holds costs
+ * only what the stream really produces. */
+static bool doit(uint8_t **outbytes, uint32_t claim, const uint8_t *inbytes, size_t inlen)
 {
-    uint8_t *dest;
+    pmix_compress_base_outbuf_t out;
     z_stream strm;
+    size_t produced;
     int rc;
 
     /* set the default error answer */
     *outbytes = NULL;
 
-    /* avail_in and avail_out are uInt. Both lengths reaching here derive from
-     * a peer's declared sizes, so screen rather than narrow: a silent
-     * truncation would point the inflater at a fraction of the payload, or
-     * tell it there is less room than `dest` actually has. len2 cannot exceed
-     * UINT32_MAX - it came out of the 4-byte prefix - but inlen can. */
-    if (UINT_MAX < inlen || UINT_MAX < len2) {
+    /* avail_in and avail_out are uInt. inlen derives from a peer's declared
+     * size, so screen rather than narrow: a silent truncation would point
+     * the inflater at a fraction of the payload. The output buffer cannot
+     * exceed UINT32_MAX - it is bounded by the 4-byte prefix. */
+    if (UINT_MAX < inlen) {
         return false;
     }
 
-    /* setting destination to the fully decompressed size */
-    dest = (uint8_t *) malloc(len2);
-    if (NULL == dest) {
+    if (!pmix_compress_base_outbuf_start(&out, inlen, claim)) {
         return false;
     }
-    memset(dest, 0, len2);
 
     memset(&strm, 0, sizeof(strm));
     if (Z_OK != inflateInit(&strm)) {
-        free(dest);
+        pmix_compress_base_outbuf_release(&out);
         return false;
     }
     strm.avail_in = inlen;
     strm.next_in = (uint8_t *) inbytes;
-    strm.avail_out = len2;
-    strm.next_out = dest;
+    strm.avail_out = out.size;
+    strm.next_out = out.bytes;
 
-    rc = inflate(&strm, Z_FINISH);
-    inflateEnd(&strm);
-    if (Z_STREAM_END == rc) {
-        *outbytes = dest;
-        return true;
+    for (;;) {
+        rc = inflate(&strm, Z_NO_FLUSH);
+        if (Z_STREAM_END == rc) {
+            break;
+        }
+        if (Z_OK != rc && Z_BUF_ERROR != rc) {
+            /* a corrupt stream, or not DEFLATE at all */
+            goto fail;
+        }
+        if (0 != strm.avail_out) {
+            /* inflate returns short of the end only when one side ran
+             * dry, and it was not the output - so the input ran out
+             * before the stream did */
+            goto fail;
+        }
+        /* total_out is no larger than the buffer, which fits a uInt */
+        produced = strm.total_out;
+        if (!pmix_compress_base_outbuf_grow(&out)) {
+            goto fail;
+        }
+        strm.next_out = out.bytes + produced;
+        strm.avail_out = out.size - produced;
     }
-    free(dest);
+    produced = strm.total_out;
+    inflateEnd(&strm);
+
+    if (!pmix_compress_base_outbuf_finish(&out, produced, claim, outbytes)) {
+        pmix_compress_base_outbuf_release(&out);
+        return false;
+    }
+    return true;
+
+fail:
+    inflateEnd(&strm);
+    pmix_compress_base_outbuf_release(&out);
     return false;
 }
 
@@ -248,8 +278,10 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
 {
     uint32_t len2;
     size_t input_len;
-    bool rc;
     uint8_t *input;
+
+    /* set the default error answer */
+    *outstring = NULL;
 
     /* the caller's length is a claim about bytes that generally came off
      * a peer's wire, and the four-byte prefix read below is the first
@@ -257,34 +289,18 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
      * payload, which underflows for anything shorter. zstd and lz4 screen
      * this the same way; so does get_decompressed_size, just below. */
     if (NULL == inbytes || len < sizeof(uint32_t)) {
-        *outstring = NULL;
         return false;
     }
 
-    /* the first 4 bytes contains the uncompressed size */
+    /* the first 4 bytes contains the uncompressed size, which does not
+     * count the NUL; doit() terminates the result one byte past it, and
+     * refuses the UINT32_MAX error sentinel */
     memcpy(&len2, inbytes, sizeof(uint32_t));
-    if (len2 == UINT32_MAX) {
-        /* set the default error answer */
-        *outstring = NULL;
-        return false;
-    }
-    /* add one to hold the NUL terminator */
-    ++len2;
 
     /* decompress the bytes */
     input = (uint8_t *) (inbytes + sizeof(uint32_t)); // step over the size
     input_len = len - sizeof(uint32_t);
-    rc = doit((uint8_t **) outstring, len2, input, input_len);
-
-    if (rc) {
-        /* ensure this is NUL terminated! */
-        (*outstring)[len2 - 1] = '\0';
-        return true;
-    }
-
-    /* set the default error answer */
-    *outstring = NULL;
-    return false;
+    return doit((uint8_t **) outstring, len2, input, input_len);
 }
 
 /* A blob produced by zlib_compress / compress_string carries the

@@ -99,9 +99,13 @@ blob readable by anything that speaks LZ4.
 
 ## Decompression is strict on purpose
 
-`doit()` rejects the result unless **all** of these hold: the decoder
-returned 0 (frame complete, no more input wanted), it produced exactly the
-length the prefix promised, and it consumed exactly the bytes it was given.
+`doit()` calls `LZ4F_decompress` in a loop into a
+`pmix_compress_base_outbuf_t`, growing it as output arrives rather than
+allocating the claimed length up front (see "Decompression" in the
+framework doc). It rejects the result unless **all** of these hold: the
+decoder returned 0 (frame complete, no more input wanted), it produced
+exactly the length the prefix promised, and it consumed exactly the bytes
+it was given.
 A frame that decodes partially, or that leaves trailing bytes, is not one
 this component wrote. Loosening any of the three turns a truncated or
 foreign blob into a partial answer the caller cannot tell from a real one.
