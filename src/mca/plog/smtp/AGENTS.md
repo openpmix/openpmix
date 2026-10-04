@@ -79,7 +79,7 @@ declines selection. It then resolves
 **disables the component** (`*priority = 0; *module = NULL; return
 PMIX_ERR_NOT_FOUND`). This front-loads the failure so the module never
 tries to talk to an unresolvable server later. On success it returns
-priority **10** and the module. This is the canonical example of a `plog`
+the `plog_smtp_priority` value (default **10**) and the module. This is the canonical example of a `plog`
 component that opts out at query time based on the runtime environment.
 
 The addresses themselves are not kept — libesmtp resolves the name again
