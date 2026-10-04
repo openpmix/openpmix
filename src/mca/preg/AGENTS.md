@@ -288,6 +288,16 @@ the allocation. No PMIx sends framing as a string, so nothing legitimate
 is refused. `test_regex_string_framing` in `test/unit/preg.c` covers
 both the bare `unpack` and a whole `PMIX_VALUE`.
 
+`pmix_preg_base_unpack_sized()` is the same routine, and it also reports
+the length — the serialized length, or `strlen + 1` for a string. It is
+what `pmix_bfrops_base_unpack_val()` calls for a `PMIX_REGEX` value,
+whose byte object must carry a size: every copy of a value moves exactly
+`bo.size` bytes, so a received value used to arrive with a size of zero
+and the first copy - a `PMIx_Value_xfer`, or a `gds/hash` fetch, which
+copies the same way - emptied it. That is a
+bfrops-internal call, not a widened deprecated signature, so it does not
+cross the decision below.
+
 **And do not plumb a length through the deprecated signatures either.**
 That is a decision rather than an omission, recorded under "Will not be
 done" in `docs/review-notes.rst`: `pmix_regex2_t` exists precisely

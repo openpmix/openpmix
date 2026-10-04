@@ -347,7 +347,9 @@ peer-supplied bytes, so it bounds every read against what remains in the
 buffer. It also refuses a plain string that carries the ``blob:`` tag:
 such a string cannot hold the framing that tag promises, and once
 received the value is read as a bare ``char *`` with nothing to bound
-it.
+it. A received ``PMIX_REGEX`` value carries its length in
+``data.bo.size`` - the serialized length, or ``strlen + 1`` for a plain
+string.
 
 
 Thread Safety
