@@ -223,7 +223,7 @@ static pmix_status_t smtp_component_query(pmix_mca_base_module_t **module, int *
        the name again when it connects */
     freeaddrinfo(res);
 
-    *priority = 10;
+    *priority = pmix_mca_plog_smtp_component.priority;
     *module = (pmix_mca_base_module_t *) &pmix_plog_smtp_module;
     return PMIX_SUCCESS;
 }
