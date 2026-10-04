@@ -47,6 +47,10 @@ typedef struct {
     char *server;
     int port;
 
+    /* Seconds to wait at each step of the SMTP dialogue - zero leaves
+     * libesmtp's RFC 5321 values in place */
+    int timeout;
+
     /* To, From, Subject */
     char *to, *from_name, *from_addr, *subject;
 

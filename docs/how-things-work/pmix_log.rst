@@ -369,6 +369,11 @@ The MCA parameters decide who an email goes to and who it comes from:
 * ``plog_smtp_server`` / ``plog_smtp_port`` name the SMTP relay;
   ``PMIX_LOG_EMAIL_SERVER`` / ``PMIX_LOG_EMAIL_SRVR_PORT`` are not read.
 
+The email is sent inline, on the progress thread, so that ``PMIx_Log``
+can report whether it went. ``plog_smtp_timeout`` (default 30 seconds)
+bounds each step of the SMTP dialogue; ``0`` leaves libesmtp's RFC 5321
+values, which run to several minutes a step.
+
 ``component_query`` disables the component (returns no module) unless
 both ``plog_smtp_to`` and ``plog_smtp_from_addr`` are set, and when the
 server name will not resolve with ``getaddrinfo``.  Control characters in
