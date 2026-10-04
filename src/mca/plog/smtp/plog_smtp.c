@@ -413,6 +413,25 @@ static pmix_status_t send_email(const char *msg, char **myaddrs,
         goto error;
     }
 
+    /* The send runs on the progress thread, so bound how long each
+       step may wait. libesmtp takes milliseconds, and without the
+       override flag it raises anything below the RFC 5321 values
+       (up to ten minutes for a step) */
+    if (0 < c->timeout) {
+        static const int steps[] = {Timeout_GREETING, Timeout_ENVELOPE, Timeout_DATA,
+                                    Timeout_TRANSFER, Timeout_DATA2};
+        size_t k;
+
+        for (k = 0; k < sizeof(steps) / sizeof(steps[0]); k++) {
+            if (0 == smtp_set_timeout(session, steps[k] | Timeout_OVERRIDE_RFC2822_MINIMUM,
+                                      (long) c->timeout * 1000L)) {
+                err = PMIX_ERROR;
+                errmsg = "smtp_set_timeout";
+                goto error;
+            }
+        }
+    }
+
     /* Create the message */
     message = smtp_add_message(session);
     if (NULL == message) {

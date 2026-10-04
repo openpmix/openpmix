@@ -235,7 +235,9 @@ parameters (with current values) can be displayed with ``pmix_info``.
 
 * ``plog_smtp_to=<list>``, a comma-delimited list of the email addresses a ``PMIX_LOG_EMAIL`` request may
   name as recipients, and ``plog_smtp_from_addr=<address>``, the address every such email is sent from.
-  Both must be set for the ``smtp`` component to be used.
+  Both must be set for the ``smtp`` component to be used. ``plog_smtp_timeout=<seconds>`` (default 30)
+  bounds how long the component waits for the mail server at each step of sending; ``0`` uses the
+  RFC 5321 values, which run to several minutes.
 
 * ``pmix_log_host_only=<true|false>``. When set to ``true``, the PMIx server library passes all log
   requests to its host environment for processing (via the ``pmix_server_log2_fn_t`` server module
