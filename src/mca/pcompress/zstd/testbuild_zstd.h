@@ -53,4 +53,38 @@ static inline size_t ZSTD_decompress(void *dst, size_t dstCapacity, const void *
     return dstCapacity;
 }
 
+typedef struct ZSTD_DCtx_s ZSTD_DCtx;
+
+typedef struct {
+    const void *src;
+    size_t size;
+    size_t pos;
+} ZSTD_inBuffer;
+
+typedef struct {
+    void *dst;
+    size_t size;
+    size_t pos;
+} ZSTD_outBuffer;
+
+static inline ZSTD_DCtx *ZSTD_createDCtx(void)
+{
+    return NULL;
+}
+
+static inline size_t ZSTD_freeDCtx(ZSTD_DCtx *dctx)
+{
+    (void) dctx;
+    return 0;
+}
+
+static inline size_t ZSTD_decompressStream(ZSTD_DCtx *dctx, ZSTD_outBuffer *output,
+                                           ZSTD_inBuffer *input)
+{
+    (void) dctx;
+    (void) output;
+    (void) input;
+    return 0;
+}
+
 #endif /* PMIX_PCOMPRESS_ZSTD_TESTBUILD_H */

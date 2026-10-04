@@ -102,13 +102,17 @@ this one does not need to explain the convention.
 
 ## Contract details that are easy to get wrong
 
-- **`capacity` and `expected` in `doit()` are not the same thing.** The
-  string path allocates one byte more than the stored length so it can
-  append the NUL that length deliberately does not count, then requires
-  `ZSTD_decompress` to produce exactly `expected`. Folding the two into one
-  argument makes the strict length check reject every string the component
-  ever compressed — that bug was written and then caught by
-  `test/unit/compress_block`.
+- **`doit()` streams; it does not call `ZSTD_decompress`.** The one-shot
+  call needs its whole destination up front, which means allocating
+  whatever the prefix claims before a byte of the frame has been read.
+  `ZSTD_decompressStream` into a `pmix_compress_base_outbuf_t` grows the
+  buffer as output arrives instead (see "Decompression" in the framework
+  doc). It succeeds only when the frame is complete, every input byte was
+  consumed — the one-shot call would have read trailing bytes as a second
+  frame — and exactly the claimed length came out. The streaming context
+  keeps zstd's default window limit (2^27), which covers every frame
+  `ZSTD_compress` produces: it never picks a window larger than the input
+  needs, and no level picks one above 2^27.
 - **The economy rules are the framework's, not zstd's.** Decline below
   `pmix_compress_base.compress_limit`, decline at `>= UINT32_MAX` (the
   length would not fit the prefix), and decline when the result is not
@@ -129,6 +133,7 @@ exactly. It passes for `zlib`, `zlibng` and `zstd`, and skips (77) under
 `--enable-test-build`, where every component is a non-functional shim.
 
 `testbuild_zstd.h` is that shim for this component: it stubs
-`ZSTD_compressBound`/`ZSTD_compress`/`ZSTD_decompress`/`ZSTD_isError` so the
+`ZSTD_compressBound`/`ZSTD_compress`/`ZSTD_isError` and the streaming
+decompressor (`ZSTD_createDCtx`/`ZSTD_decompressStream`/`ZSTD_freeDCtx`) so the
 component compiles on a machine with no zstd headers. It performs no
 compression; a component built against it is not functional.

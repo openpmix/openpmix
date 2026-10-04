@@ -50,10 +50,9 @@ At a glance
 
 * :ref:`todo-fabric-async`
 
-**Deferred work — 3**
+**Deferred work — 2**
 
 * :ref:`todo-get-pointer-values`
-* :ref:`todo-compress-length-prefix`
 * :ref:`todo-fabric-inventory`
 
 **Coverage gaps — 21.**  No CI race detector; the switchyard's
@@ -136,31 +135,6 @@ progress thread.  The two shortcuts are safe because they point at
 process-lifetime globals.  Left as recorded behavior; the smaller,
 separable piece is making ``PMIX_VERSION_NUMERIC`` agree with its two
 neighbours.
-
-.. _todo-compress-length-prefix:
-
-The uncompressed-length prefix of a compressed blob is not bounded
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Found in the ``src/mca/pcompress`` review (2026-08-20) and left alone
-deliberately.
-
-Every component allocates the uncompressed length recorded in the
-blob's 4-byte prefix, *before* inflating anything.  No component checks
-that length against the size of the blob or any upper limit.  The
-allocation is sized from the prefix alone, and is released if the
-payload then fails to decode.  The review closed the case that was a
-memory error — a blob too short to hold the prefix at all — but not
-this one, which is a resource question rather than a correctness one.
-
-The obvious bound is a maximum expansion ratio, and that is exactly why
-it was not written: DEFLATE tops out near 1032:1 while zstd's is far
-higher, so any single cap either fails to constrain zstd or rejects
-valid zlib output.  A per-component cap is possible; whether it is
-worth the interoperability risk is a policy decision, not a bug fix.
-Note also that the caller has already read the whole blob into memory by
-the time it gets here, so the compressed size is bounded by what the PTL
-was willing to accept.
 
 .. _todo-fabric-inventory:
 

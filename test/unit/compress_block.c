@@ -80,6 +80,202 @@ static void fill_modexish(uint8_t *p, size_t len)
     }
 }
 
+/* The decompressors' output buffer: sized from the compressed length, grown
+ * as output arrives, and never past one byte beyond the claim. Checked
+ * directly because a component test can only see that a forged blob was
+ * refused, not how much memory was committed before it was. */
+static void test_outbuf_policy(void)
+{
+    pmix_compress_base_outbuf_t buf;
+    uint8_t *out;
+    size_t prev;
+    int ngrow;
+
+    /* a tiny blob claiming nearly 4 GiB must not get anything like it */
+    CHECK(pmix_compress_base_outbuf_start(&buf, 64, UINT32_MAX - 1),
+          "outbuf_start refused a legal claim");
+    CHECK(buf.size <= 64 * 1024,
+          "outbuf_start committed %zu bytes for a 64-byte blob", buf.size);
+    CHECK(buf.ceiling == (size_t) UINT32_MAX,
+          "ceiling is %zu, expected the claim plus one", buf.ceiling);
+    pmix_compress_base_outbuf_release(&buf);
+
+    /* the error sentinel is not a claim */
+    CHECK(!pmix_compress_base_outbuf_start(&buf, 64, UINT32_MAX),
+          "outbuf_start accepted the UINT32_MAX sentinel as a length");
+    pmix_compress_base_outbuf_release(&buf);
+
+    /* a claim below the first guess is allocated outright */
+    CHECK(pmix_compress_base_outbuf_start(&buf, 1000, 100), "outbuf_start failed");
+    CHECK(101 == buf.size, "a 100-byte claim got %zu bytes, expected 101", buf.size);
+    CHECK(!pmix_compress_base_outbuf_grow(&buf),
+          "outbuf_grow went past the claim's ceiling");
+    pmix_compress_base_outbuf_release(&buf);
+
+    /* growth doubles, lands exactly on the ceiling, then stops */
+    CHECK(pmix_compress_base_outbuf_start(&buf, 16, 1000000), "outbuf_start failed");
+    ngrow = 0;
+    prev = buf.size;
+    while (pmix_compress_base_outbuf_grow(&buf)) {
+        CHECK(buf.size > prev && buf.size <= 2 * prev,
+              "outbuf_grow went from %zu to %zu", prev, buf.size);
+        prev = buf.size;
+        ++ngrow;
+    }
+    CHECK(buf.size == buf.ceiling, "growth stopped at %zu short of the ceiling %zu",
+          buf.size, buf.ceiling);
+    CHECK(0 < ngrow, "a 1 MB claim from a 16-byte blob never grew");
+
+    /* finish insists on the exact claim */
+    out = (uint8_t *) 0x1;
+    CHECK(!pmix_compress_base_outbuf_finish(&buf, 999999, 1000000, &out),
+          "outbuf_finish accepted a short output");
+    CHECK(NULL == out, "a refused finish left an output pointer behind");
+    CHECK(!pmix_compress_base_outbuf_finish(&buf, 1000001, 1000000, &out),
+          "outbuf_finish accepted a long output");
+    pmix_compress_base_outbuf_release(&buf);
+
+    /* a decoder that finished in a buffer exactly the claim's size still
+     * gets its terminator */
+    CHECK(pmix_compress_base_outbuf_start(&buf, 1, 3), "outbuf_start failed");
+    buf.size = 3; // as if the first guess had been exactly the claim
+    memcpy(buf.bytes, "abc", 3);
+    CHECK(pmix_compress_base_outbuf_finish(&buf, 3, 3, &out),
+          "outbuf_finish refused an exact output");
+    if (NULL != out) {
+        CHECK(0 == strcmp((char *) out, "abc"), "finish did not NUL-terminate");
+        free(out);
+    }
+    pmix_compress_base_outbuf_release(&buf);
+}
+
+/* Re-label a blob's length prefix and hand it to both entry points; every
+ * claim that is not the payload's true length must be refused. */
+static void check_forged_claim(const uint8_t *zip, size_t ziplen, uint32_t claim,
+                               const char *what)
+{
+    uint8_t *forged, *back = NULL;
+    char *strback = NULL;
+    size_t backlen = 0;
+
+    forged = (uint8_t *) malloc(ziplen);
+    if (NULL == forged) {
+        fprintf(stderr, "out of memory\n");
+        ++errors;
+        return;
+    }
+    memcpy(forged, zip, ziplen);
+    memcpy(forged, &claim, sizeof(uint32_t));
+
+    if (pmix_compress.decompress(&back, &backlen, forged, ziplen)) {
+        CHECK(false, "decompress accepted a blob whose prefix %s", what);
+        free(back);
+    } else {
+        CHECK(0 == backlen, "refused blob whose prefix %s still reported %zu bytes",
+              what, backlen);
+    }
+    if (NULL != pmix_compress.decompress_string) {
+        if (pmix_compress.decompress_string(&strback, forged, ziplen)) {
+            CHECK(false, "decompress_string accepted a blob whose prefix %s", what);
+            free(strback);
+        } else {
+            CHECK(NULL == strback, "refused string blob whose prefix %s left a "
+                  "string behind", what);
+        }
+    }
+    free(forged);
+}
+
+/* A payload that compresses far better than the first guess the output
+ * buffer is sized from, so the decoder has to grow it repeatedly, then the
+ * same blob with its prefix forged in every direction. */
+static void test_claims(void)
+{
+    size_t len = 8 * 1024 * 1024, n, ziplen = 0, backlen = 0;
+    uint8_t *raw, *zip = NULL, *back = NULL;
+    char *strback = NULL;
+    uint32_t truth;
+
+    raw = (uint8_t *) malloc(len + 1);
+    if (NULL == raw) {
+        fprintf(stderr, "out of memory\n");
+        ++errors;
+        return;
+    }
+    for (n = 0; n < len; n++) {
+        raw[n] = (uint8_t) ('a' + (n % 23));
+    }
+    raw[len] = '\0';
+
+    if (!PMIx_Data_compress(raw, len, &zip, &ziplen)) {
+        CHECK(false, "declined an 8 MB run of repeated text");
+        free(raw);
+        return;
+    }
+    fprintf(stdout, "compressed %zu -> %zu (ratio %.6f)\n", len, ziplen,
+            (double) ziplen / (double) len);
+
+    CHECK(PMIx_Data_decompress(zip, ziplen, &back, &backlen),
+          "decompress refused a highly compressed blob it had just produced");
+    if (NULL != back) {
+        CHECK(backlen == len, "inflated to %zu bytes, expected %zu", backlen, len);
+        CHECK(0 == memcmp(back, raw, len), "round-trip altered a highly compressed payload");
+        free(back);
+        back = NULL;
+    }
+    free(zip);
+    zip = NULL;
+
+    if (NULL != pmix_compress.compress_string && NULL != pmix_compress.decompress_string &&
+        pmix_compress.compress_string((char *) raw, &zip, &ziplen)) {
+        CHECK(pmix_compress.decompress_string(&strback, zip, ziplen),
+              "decompress_string refused a highly compressed string");
+        if (NULL != strback) {
+            CHECK(0 == strcmp(strback, (char *) raw),
+                  "string round-trip altered a highly compressed payload");
+            free(strback);
+            strback = NULL;
+        }
+        free(zip);
+        zip = NULL;
+    }
+
+    if (!PMIx_Data_compress(raw, len, &zip, &ziplen)) {
+        free(raw);
+        return;
+    }
+    memcpy(&truth, zip, sizeof(uint32_t));
+
+    check_forged_claim(zip, ziplen, truth + 1, "claims one byte more than it holds");
+    check_forged_claim(zip, ziplen, truth - 1, "claims one byte less than it holds");
+    check_forged_claim(zip, ziplen, truth / 2, "claims half of what it holds");
+    check_forged_claim(zip, ziplen, truth * 2, "claims twice what it holds");
+    check_forged_claim(zip, ziplen, UINT32_MAX - 1, "claims nearly 4 GiB");
+    check_forged_claim(zip, ziplen, 0, "claims nothing");
+
+    /* the true claim over a payload cut short */
+    {
+        uint8_t *cut = NULL;
+        size_t cutlen = ziplen / 2;
+
+        CHECK(!pmix_compress.decompress(&cut, &backlen, zip, cutlen),
+              "decompress accepted a blob with half its payload missing");
+        if (NULL != cut) {
+            free(cut);
+        }
+        if (NULL != pmix_compress.decompress_string) {
+            CHECK(!pmix_compress.decompress_string(&strback, zip, cutlen),
+                  "decompress_string accepted a blob with half its payload missing");
+            if (NULL != strback) {
+                free(strback);
+                strback = NULL;
+            }
+        }
+    }
+
+    free(zip);
+    free(raw);
+}
 #endif
 
 int main(int argc, char **argv)
@@ -157,6 +353,10 @@ int main(int argc, char **argv)
     }
     free(zip);
     zip = NULL;
+
+    /* --- output that must grow, and prefixes that lie ------------------ */
+    test_outbuf_policy();
+    test_claims();
 
     /* --- below the limit: must decline --------------------------------- */
     if (0 < pmix_compress_base.compress_limit) {

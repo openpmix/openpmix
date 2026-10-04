@@ -22,6 +22,38 @@ Entries that stood on :doc:`todo` and have since been answered.  Each is
 kept with the reasoning that closed it, because in most cases the way it
 closed contradicted what the entry predicted.
 
+The uncompressed-length prefix of a compressed blob is not bounded
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in the ``src/mca/pcompress`` review (2026-08-20), closed
+2026-10-04.  Every component allocated the length in the blob's 4-byte
+prefix before inflating anything, and nothing checked that length against
+the size of the blob.
+
+It was left open because the obvious bound is a maximum expansion ratio,
+and no single ratio fits: DEFLATE tops out near 1032:1 while zstd goes far
+higher.  What closed it needs no ratio.  The decompressors now inflate
+into a buffer that starts at a guess sized from the *compressed* length
+and doubles as output arrives, capped one byte past the claim
+(``pmix_compress_base_outbuf_t``, in ``src/mca/pcompress/base``).  Memory
+follows what the payload really produces, not what its prefix says.
+
+Writing the length check that goes with it found a second defect:
+
+* ``zlib`` and ``zlibng`` accepted any stream that reached its end, so a
+  payload that inflated to *less* than its claim came back as success,
+  padded with zeros.
+* On the string path, an under-claim by one byte came back with the
+  string's last character overwritten by the NUL.
+
+``zstd`` and ``lz4`` already required the exact length.  All four now
+refuse a payload that inflates to anything but its claim, in either
+direction.
+
+``test/unit/compress_block`` forges the prefix of a real blob six ways
+and cuts a payload short.  Run against the old ``zlib`` and ``zlibng``
+code, it fails on seven counts.
+
 A blocking ``PMIx_IOF_pull`` hands back no handle
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
