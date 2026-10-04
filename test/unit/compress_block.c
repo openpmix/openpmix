@@ -34,6 +34,9 @@
 
 static pmix_server_module_t mymodule __pmix_attribute_unused__ = {0};
 
+/* Everything the test uses is compiled only where it runs: in a
+ * --enable-test-build main() is a SKIP and nothing below is referenced. */
+#if !PMIX_TESTBUILD
 static int errors = 0;
 
 #define CHECK(cond, ...)                        \
@@ -76,6 +79,8 @@ static void fill_modexish(uint8_t *p, size_t len)
         p[n++] = 0;
     }
 }
+
+#endif
 
 int main(int argc, char **argv)
 {
