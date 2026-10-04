@@ -90,7 +90,7 @@ int main(int argc, char **argv)
 #else
     char **nodes = NULL, **nodesout;
     char **procs = NULL, **procsout;
-    char *tmp, *regex, *ppn, *t1;
+    char *tmp, *regex = NULL, *ppn = NULL, *t1;
     int n, rk;
     int errors = 0;
     pmix_status_t rc;
@@ -123,6 +123,7 @@ int main(int argc, char **argv)
     }
     free(tmp);
     free(t1);
+    free(regex);
 
     rk = 0;
     for (n = 0; n < 10000; n++) {
@@ -148,6 +149,7 @@ int main(int argc, char **argv)
     }
     free(tmp);
     free(t1);
+    free(ppn);
 
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
