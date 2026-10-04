@@ -50,8 +50,8 @@ registers these MCA parameters:
 |-------|-------|---------|
 | `plog_smtp_server` | `server` | `"localhost"` |
 | `plog_smtp_port` | `port` | `25` |
-| `plog_smtp_to` | `to` | (none) |
-| `plog_smtp_from_addr` | `from_addr` | (none) |
+| `plog_smtp_to` | `to` | (none — required) |
+| `plog_smtp_from_addr` | `from_addr` | (none — required) |
 | `plog_smtp_from_name` | `from_name` | `"PMIx Plog"` |
 | `plog_smtp_subject` | `subject` | `"PMIx Plog"` |
 | `plog_smtp_body_prefix` | `body_prefix` | boilerplate intro text |
@@ -68,9 +68,13 @@ It also stashes the libesmtp version string via `smtp_version()`.
 > shown above). If you are chasing a report against an older release where
 > `plog_smtp_body_suffix` "does nothing," that is the cause.
 
-### `component_query` resolves the server
+### `component_query` checks the configuration and resolves the server
 
-Unlike the other components, `smtp`'s query does real work: it resolves
+Unlike the other components, `smtp`'s query does real work. It first
+requires both `plog_smtp_to` and `plog_smtp_from_addr` to be set and
+non-empty — every email goes from the one and to addresses picked from
+the other, so without both the component has nothing it can send and
+declines selection. It then resolves
 `component.server` with `getaddrinfo` and, if the name does not resolve,
 **disables the component** (`*priority = 0; *module = NULL; return
 PMIX_ERR_NOT_FOUND`). This front-loads the failure so the module never
@@ -109,19 +113,49 @@ attribute key it handles is `PMIX_LOG_EMAIL` (`pmix.log.email`).
    correctly deferring to other modules.
 4. Walks the nested array for:
    - `PMIX_LOG_EMAIL_ADDR` → recipient list (comma-delimited).
-   - `PMIX_LOG_EMAIL_SENDER_ADDR` → sender ("from").
    - `PMIX_LOG_EMAIL_SUBJECT` → subject.
    - `PMIX_LOG_MSG` → the body, accepted as either a `PMIX_STRING` or a
      `PMIX_BYTE_OBJECT` (more than one message is rejected with
      `PMIX_ERR_NOT_SUPPORTED`). A byte object carries a length, not a
      terminator, and everything downstream of here is `strlen`-based, so
      it is copied into a NUL-terminated scratch buffer first.
-5. If no message body was found, returns `PMIX_ERR_TAKE_NEXT_OPTION`;
-   otherwise calls `send_email(...)` and returns its status.
+5. If no message body was found, returns `PMIX_ERR_TAKE_NEXT_OPTION`.
+6. Requires `PMIX_LOG_EMAIL_ADDR` (`PMIX_ERR_BAD_PARAM` without it) and
+   hands it to `select_recipients`, then calls `send_email(...)` and
+   returns its status.
 
-Recipient/sender fall back to the component defaults (`to`, `from_addr`)
-when the request omits them; `send_email` returns `PMIX_ERR_BAD_PARAM` if
-even the defaults are absent.
+### Who the email goes to and comes from
+
+The site's MCA parameters decide both; the request only chooses among
+what they allow.
+
+- **Recipients.** `plog_smtp_to` is the list of addresses a request may
+  name. `select_recipients` splits both lists, trims white space, and
+  requires every requested address to match a configured one
+  (`strcasecmp`). One miss fails the whole request with
+  `PMIX_ERR_NO_PERMISSIONS` and nothing is sent. What it returns is the
+  *configured* spelling of each match, de-duplicated — so the strings that
+  reach `smtp_add_recipient` (and the generated `To:` header) are always
+  the site's own, never the request's.
+- **Sender.** The envelope sender and the `From:` address are both
+  `plog_smtp_from_addr`. `PMIX_LOG_EMAIL_SENDER_ADDR` is not read. The
+  `From:` phrase is `plog_smtp_from_name` followed by the requester's
+  `nspace:rank`, taken from `mylog`'s `source` — on a gateway server that
+  is the name bound to the client's connection (`pmix_server_log`), and on
+  a host relay it is the `PMIX_LOG_SOURCE` the relaying server appended.
+- **Server.** `plog_smtp_server` / `plog_smtp_port`.
+  `PMIX_LOG_EMAIL_SERVER` / `PMIX_LOG_EMAIL_SRVR_PORT` are not read.
+
+libesmtp copies every string it is given into the SMTP dialogue or the
+header block as-is — it does no CR/LF screening of its own. Hence:
+
+- the subject and the `From:` phrase go through `header_text`, which turns
+  every control character into a space (and, for the quoted phrase, a
+  `"` or `\` into `'`);
+- `crnl` turns *every* line break in the body — lone CR, lone LF, CRLF —
+  into CRLF. libesmtp splits the body into lines on CRLF only and
+  dot-stuffs each line that starts with `.`; a lone CR left in place would
+  be a line break that libesmtp does not see.
 
 ### `send_email` and the libesmtp flow
 
@@ -168,25 +202,14 @@ return-code contract correctly — a good template to copy.
 
 ## Gotchas
 
-- **`from_addr` vs. `from_name` vs. request sender.** The SMTP reverse
-  path uses `c->from_addr`; the `From` header uses `from_name` (display)
-  with the resolved `myfrom` address. A request's
-  `PMIX_LOG_EMAIL_SENDER_ADDR` overrides the address but not the display
-  name. If mail shows the wrong sender, this three-way interaction is
-  where to look.
 - **One email per call, one body per email.** Both are hard limits
   enforced with `PMIX_ERROR_LOG` + error return; don't relax them without
   reworking `send_email`, which assumes a single message.
-- **`str` in `send_email` is sometimes owned and sometimes borrowed.**
-  It holds `pmix_asprintf` results (owned, freed on the `error` path) and,
-  briefly, the subject — which belongs either to the component or to the
-  caller. It is set back to `NULL` the moment the subject header is set,
-  in both the success and the failure direction, so the single cleanup
-  path can free it unconditionally. Keep that discipline if you add
-  another header.
-- **The recipient argv is freed exactly once, on the `error` path**,
-  which every exit after the split flows through. The two `PMIX_ERR_BAD_PARAM`
-  returns above it are the exceptions, and the one that can be reached
-  with a split in hand frees it itself.
+- **`send_email` owns `str`, `phrase` and `subj`**, and the single
+  `error` cleanup path frees all three. `str` holds `pmix_asprintf`
+  results and is set back to `NULL` once freed, so a later failure does
+  not free it twice. Keep that discipline if you add another header.
+- **The recipient argv belongs to `mylog`**, which gets it from
+  `select_recipients` and frees it after `send_email` returns.
 - The component is entirely absent from the build when libesmtp is not
   installed — never assume its symbols exist elsewhere in `libpmix`.
