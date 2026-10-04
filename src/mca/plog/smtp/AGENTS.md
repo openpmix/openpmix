@@ -114,7 +114,8 @@ attribute key it handles is `PMIX_LOG_EMAIL` (`pmix.log.email`).
 4. Walks the nested array for:
    - `PMIX_LOG_EMAIL_ADDR` → recipient list (comma-delimited).
    - `PMIX_LOG_EMAIL_SUBJECT` → subject.
-   - `PMIX_LOG_MSG` → the body, accepted as either a `PMIX_STRING` or a
+   - `PMIX_LOG_EMAIL_MSG` (the key `PMIx_Log(3)` documents) or
+     `PMIX_LOG_MSG` → the body, accepted as either a `PMIX_STRING` or a
      `PMIX_BYTE_OBJECT` (more than one message is rejected with
      `PMIX_ERR_NOT_SUPPORTED`). A byte object carries a length, not a
      terminator, and everything downstream of here is `strlen`-based, so

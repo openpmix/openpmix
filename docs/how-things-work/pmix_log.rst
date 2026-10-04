@@ -351,8 +351,8 @@ for:
 * ``PMIX_LOG_EMAIL_ADDR`` — ``(char*)`` comma-delimited recipient list
   (required)
 * ``PMIX_LOG_EMAIL_SUBJECT`` — ``(char*)`` subject line
-* ``PMIX_LOG_MSG`` — the body, accepted as either a ``PMIX_STRING`` or a
-  ``PMIX_BYTE_OBJECT``
+* ``PMIX_LOG_EMAIL_MSG`` or ``PMIX_LOG_MSG`` — the body, accepted as
+  either a ``PMIX_STRING`` or a ``PMIX_BYTE_OBJECT``
 
 The MCA parameters decide who an email goes to and who it comes from:
 

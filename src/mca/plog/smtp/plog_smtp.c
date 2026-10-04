@@ -630,7 +630,10 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
             continue;
         }
 
-        if (PMIx_Check_key(input[n].key, PMIX_LOG_MSG)) {
+        /* PMIx_Log(3) names PMIX_LOG_EMAIL_MSG for the body - the
+         * generic PMIX_LOG_MSG is accepted as well */
+        if (PMIx_Check_key(input[n].key, PMIX_LOG_EMAIL_MSG) ||
+            PMIx_Check_key(input[n].key, PMIX_LOG_MSG)) {
             if (NULL != msg) {
                 // multiple messages are not supported
                 PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
