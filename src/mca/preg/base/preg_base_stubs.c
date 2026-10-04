@@ -180,6 +180,13 @@ pmix_status_t pmix_preg_base_pack(pmix_buffer_t *buffer, const char *input)
 
 pmix_status_t pmix_preg_base_unpack(pmix_buffer_t *buffer, char **regex)
 {
+    size_t len;
+
+    return pmix_preg_base_unpack_sized(buffer, regex, &len);
+}
+
+pmix_status_t pmix_preg_base_unpack_sized(pmix_buffer_t *buffer, char **regex, size_t *len)
+{
     pmix_regex2_t r2 = PMIX_REGEX2_STATIC_INIT;
     pmix_status_t rc;
     size_t avail, total;
@@ -187,6 +194,7 @@ pmix_status_t pmix_preg_base_unpack(pmix_buffer_t *buffer, char **regex)
     char *output = NULL;
 
     *regex = NULL;
+    *len = 0;
 
     /* the same "bytes remaining to unpack" the bfrops guard uses */
     if (buffer->pack_ptr < buffer->unpack_ptr) {
@@ -231,6 +239,7 @@ pmix_status_t pmix_preg_base_unpack(pmix_buffer_t *buffer, char **regex)
             return rc;
         }
         *regex = output;
+        *len = total;
         return PMIX_SUCCESS;
     }
 
@@ -241,6 +250,7 @@ pmix_status_t pmix_preg_base_unpack(pmix_buffer_t *buffer, char **regex)
     memcpy(output, buffer->unpack_ptr, total);
     buffer->unpack_ptr += total;
     *regex = output;
+    *len = total;
     return PMIX_SUCCESS;
 }
 
