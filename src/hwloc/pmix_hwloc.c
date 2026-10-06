@@ -687,7 +687,7 @@ sharetopo:
         int err = errno;
         if (1 < pmix_output_get_verbosity(pmix_hwloc_output)) {
             pmix_show_help("help-ploc.txt", "sys call fail", true,
-                           pmix_globals.hostname, "open(2)", "", strerror(err), err);
+                           pmix_globals.hostname, "open(2)", strerror(err), err);
         }
         free(shmemfile);
         shmemfile = NULL;

@@ -645,7 +645,7 @@ int main(int argc, char *argv[])
     /* if we still didn't find a match, abort */
     if (user_data_idx < 0) {
         char *flat = PMIx_Argv_join(argv, ' ');
-        pmix_show_help("help-pmixcc.txt", "no-options-support", true, base_argv0, flat, NULL);
+        pmix_show_help("help-pmixcc.txt", "no-options-support", true, base_argv0, flat);
         free(flat);
         exit(1);
     }
@@ -681,7 +681,7 @@ int main(int argc, char *argv[])
         /* make sure the language is supported */
         if (0 == strcmp(options_data[user_data_idx].req_file, "not supported")) {
             pmix_show_help("help-pmixcc.txt", "no-language-support", true,
-                           options_data[user_data_idx].language, base_argv0, NULL);
+                           options_data[user_data_idx].language, base_argv0);
             exit_status = 1;
             goto cleanup;
         }
@@ -697,7 +697,7 @@ int main(int argc, char *argv[])
             if (NULL == filename || 0 != stat(filename, &buf)) {
                 pmix_show_help("help-pmixcc.txt", "file-not-found", true, base_argv0,
                                options_data[user_data_idx].req_file,
-                               options_data[user_data_idx].language, NULL);
+                               options_data[user_data_idx].language);
             }
             free(filename);
         }
@@ -972,7 +972,7 @@ int main(int argc, char *argv[])
 
         tmp = pmix_path_findv(exec_argv[0], 0, environ, NULL);
         if (NULL == tmp) {
-            pmix_show_help("help-pmixcc.txt", "no-compiler-found", true, exec_argv[0], NULL);
+            pmix_show_help("help-pmixcc.txt", "no-compiler-found", true, exec_argv[0]);
             errno = 0;
             exit_status = 1;
         } else {
@@ -1002,11 +1002,11 @@ int main(int argc, char *argv[])
                     /* why the launch failed is in errno; status is a
                      * wait status and in this case was never set */
                     pmix_show_help("help-pmixcc.txt", "spawn-failed", true, exec_argv[0],
-                                   strerror(spawn_errno), myexec_command, NULL);
+                                   strerror(spawn_errno), myexec_command);
                 } else {
 #if 0
                     pmix_show_help("help-pmixcc.txt", "compiler-failed", true,
-                                   exec_argv[0], exit_status, myexec_command, NULL);
+                                   exec_argv[0], exit_status, myexec_command);
 #endif
                 }
                 free(myexec_command);
