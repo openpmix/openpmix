@@ -108,6 +108,14 @@ typedef struct private_ipv4_t {
 static private_ipv4_t *private_ipv4 = NULL;
 
 static pmix_tsd_key_t hostname_tsd_key;
+/* Whether hostname_tsd_key names a live key.  The key is deleted with every
+ * other registered key by pmix_tsd_keys_destruct() at the end of finalize,
+ * but the variable keeps its number - and pthreads hands a freed number to
+ * the next pthread_key_create(), in this library or the program using it.
+ * A pmix_net_get_hostname() after finalize then looked up whatever that new
+ * key held - another component's per-thread buffer - and wrote NI_MAXHOST
+ * bytes into it.  pmix_name_fns.c guards its print-buffer key the same way. */
+static pmix_atomic_bool_t hostname_key_valid = false;
 
 static void hostname_cleanup(void *value)
 {
@@ -121,6 +129,9 @@ static char *get_hostname_buffer(void)
     void *buffer;
     int ret;
 
+    if (!pmix_atomic_check_bool(&hostname_key_valid)) {
+        return NULL;
+    }
     ret = pmix_tsd_getspecific(hostname_tsd_key, &buffer);
     if (PMIX_SUCCESS != ret) {
         return NULL;
@@ -199,13 +210,29 @@ pmix_status_t pmix_net_setup_private_ipv4(void)
 
 int pmix_net_init(void)
 {
-    return pmix_tsd_key_create(&hostname_tsd_key, hostname_cleanup);
+    int ret;
+
+    if (pmix_atomic_check_bool(&hostname_key_valid)) {
+        /* already have a key - a second one would only leak a slot */
+        return PMIX_SUCCESS;
+    }
+    ret = pmix_tsd_key_create(&hostname_tsd_key, hostname_cleanup);
+    if (PMIX_SUCCESS == ret) {
+        pmix_atomic_set_bool(&hostname_key_valid);
+    }
+    return ret;
 }
 
 int pmix_net_finalize(void)
 {
     free(private_ipv4);
     private_ipv4 = NULL;
+
+    /* The key itself, and every thread's buffer, go with the rest of the
+     * registered keys in pmix_tsd_keys_destruct() later in finalize; stop
+     * using it from here, so that nothing reaches it once it is gone.  A
+     * subsequent pmix_net_init() creates a fresh one. */
+    pmix_atomic_unset_bool(&hostname_key_valid);
 
     return PMIX_SUCCESS;
 }
@@ -436,7 +463,10 @@ char *pmix_net_get_hostname(const struct sockaddr *addr)
     char *p;
 
     if (NULL == name) {
-        pmix_output(0, "pmix_net_get_hostname: malloc() failed");
+        /* no buffer after finalize is expected, and not worth saying */
+        if (pmix_atomic_check_bool(&hostname_key_valid)) {
+            pmix_output(0, "pmix_net_get_hostname: malloc() failed");
+        }
         return pmix_hostname_unknown;
     }
     memset(name, 0, NI_MAXHOST + 1);
