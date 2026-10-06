@@ -123,6 +123,16 @@ libpmix_util_la_SOURCES = $(headers) $(sources)
 pmixdir = $(pmixincludedir)/$(subdir)
 pmix_HEADERS = $(headers)
 
+# Every show_help call has to pass as many arguments as its topic has
+# conversions; the topic is the format string, so the compiler cannot check
+# that.  The generation rule above depends only on the converter script, so
+# editing a help file or a call site does not re-run it - check here, where
+# it runs every time.
+check-local:
+	$(PYTHON) $(abs_srcdir)/convert-help.py \
+		--root $(abs_top_srcdir) \
+		--check-only
+
 clean-local:
 	rm -f pmix_show_help_content.c pmix_show_help_content.lo
 

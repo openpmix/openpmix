@@ -11,6 +11,7 @@
 
 from __future__ import print_function
 import os
+import re
 import sys
 import argparse
 
@@ -492,6 +493,121 @@ def purge(parsed_data, citations, tool_help_files):
         exit(1)
     return result_data
 
+# printf conversions in a help topic; a '*' width or precision takes an
+# argument of its own
+FMT_SPEC = re.compile(r'%(?P<flags>[-+ #0]*)(?P<width>\*|\d+)?(?:\.(?P<prec>\*|\d+))?'
+                      r'(?:hh|h|ll|l|L|z|j|t|q)?(?P<conv>[diouxXeEfFgGaAcspn%])')
+
+
+def count_specs(lines):
+    n = 0
+    for line in lines:
+        for m in FMT_SPEC.finditer(line):
+            if '%' == m.group('conv'):
+                continue
+            n += 1
+            if '*' == m.group('width'):
+                n += 1
+            if '*' == m.group('prec'):
+                n += 1
+    return n
+
+
+def split_call_args(text, start):
+    """Split the argument list of the call whose '(' is at text[start] at its
+    top-level commas.  Returns (args, end) or (None, end) if the call cannot
+    be read to its closing parenthesis."""
+    depth = 0
+    i = start
+    args = []
+    cur = []
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c in '"\'':
+            # a string or character literal, escapes and all
+            q = c
+            j = i + 1
+            while j < n and text[j] != q:
+                j += 2 if text[j] == '\\' else 1
+            cur.append(text[i:j + 1])
+            i = j + 1
+            continue
+        if text.startswith('/*', i):
+            j = text.find('*/', i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        if text.startswith('//', i):
+            j = text.find('\n', i)
+            i = n if j < 0 else j
+            continue
+        if c in '([{':
+            depth += 1
+            if depth > 1:
+                cur.append(c)
+        elif c in ')]}':
+            depth -= 1
+            if depth == 0:
+                args.append(''.join(cur).strip())
+                return args, i
+            cur.append(c)
+        elif c == ',' and depth == 1:
+            args.append(''.join(cur).strip())
+            cur = []
+        else:
+            cur.append(c)
+        i += 1
+    return None, n
+
+
+def check_call_arguments(parsed_data, source_files, verbose=False):
+    """Every show_help call with a literal file and topic must pass exactly as
+    many arguments as the topic has conversions.  The topic is the format
+    string, so the compiler never sees it: too few arguments reads whatever
+    is in the registers and on the stack, and a %s among them dereferences
+    it.  Returns the number of mismatches found."""
+    topics = {}
+    for path, sections in parsed_data.items():
+        base = os.path.basename(path)
+        for topic, lines in sections.items():
+            # a topic that pulls in another's text cannot be counted here
+            if any(l.startswith('#include') for l in lines):
+                continue
+            topics[(base, topic)] = count_specs(lines)
+
+    bad = 0
+    for src in source_files:
+        with open(src) as f:
+            text = f.read()
+        for fn in ('pmix_show_help', 'pmix_show_help_string'):
+            for m in re.finditer(r'\b' + fn + r'\s*\(', text):
+                args, _ = split_call_args(text, m.end() - 1)
+                # filename, topic, want_error_header, then the arguments
+                if args is None or len(args) < 3:
+                    continue
+                fname, topic = args[0], args[1]
+                if not (fname.startswith('"') and topic.startswith('"')):
+                    continue
+                if any('__VA_ARGS__' in a for a in args):
+                    continue
+                key = (fname.strip('"'), topic.strip('"'))
+                if key not in topics:
+                    continue
+                given = len(args) - 3
+                want = topics[key]
+                if given != want:
+                    line = text.count('\n', 0, m.start()) + 1
+                    sys.stderr.write("ERROR: %s:%d: %s(%s, %s) passes %d argument%s; "
+                                     "the topic has %d conversion%s\n"
+                                     % (src, line, fn, fname, topic, given,
+                                        '' if 1 == given else 's', want,
+                                        '' if 1 == want else 's'))
+                    bad += 1
+    if 0 == bad and verbose:
+        print("Every show_help call passes as many arguments as its topic expects")
+    return bad
+
+
 def generate_c_code(parsed_data):
     # Generate C code with an array of filenames and their
     # corresponding INI sections.
@@ -534,8 +650,7 @@ def main():
                         required=True,
                         help="Root directory to search for help-*.txt files")
     parser.add_argument("--out",
-                        required=True,
-                        help="Output C file")
+                        help="Output C file (required unless --check-only)")
     parser.add_argument("--verbose",
                         action="store_true",
                         help="Enable verbose output")
@@ -545,8 +660,20 @@ def main():
     parser.add_argument("--dryrun",
                         action="store_true",
                         help="Do not write out resulting ini_array_name")
+    parser.add_argument("--check-only",
+                        action="store_true",
+                        help="Only check that every show_help call passes as many "
+                             "arguments as its topic expects; generate nothing")
 
     args = parser.parse_args()
+
+    # The generation rule depends solely on this script, so editing a help
+    # file or a call site does not re-run it.  --check-only lets "make check"
+    # run the argument check every time, independent of that staleness.
+    if args.check_only:
+        args.dryrun = True
+    elif args.out is None:
+        parser.error("--out is required unless --check-only is given")
 
     parsed_data = {}
     citations = []
@@ -567,6 +694,11 @@ def main():
     parse_help_files(tool_help_files, parsed_data, citations, args.verbose)
     parse_src_files(source_files, citations, args.verbose)
     parse_tool_files(tool_help_files, tool_source_files, cli_options, citations, args.verbose)
+    if args.check_only or args.purge:
+        if check_call_arguments(parsed_data, source_files + tool_source_files, args.verbose):
+            exit(1)
+    if args.check_only:
+        return
     if args.purge:
         outdata = purge(parsed_data, citations, tool_help_files)
     else:

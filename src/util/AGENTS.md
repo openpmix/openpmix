@@ -185,6 +185,16 @@ and breaks the build for whoever regenerates it next — which on a fresh
 clone is CI. Regenerate whenever you add, remove, or rename a
 `pmix_show_help*()` call, not only when you edit the text.
 
+**Each call has to pass as many arguments as its topic has conversions.**
+The topic text *is* the format string, so the compiler never sees it, and a
+call that passes too few reads whatever is in the registers or on the stack
+- with a `%s` among them, it dereferences it. `convert-help.py --check-only`
+(run by `make check`, and as part of `--purge` generation) counts each
+`pmix_show_help()`/`pmix_show_help_string()` call whose file and topic are
+literals against the topic's `printf` conversions, and fails on any
+difference. A topic that pulls in other text with `#include` is not counted.
+When you change a topic's conversions, change every call that shows it.
+
 `pmix_show_help` also aggregates duplicate notices (fired from a libevent
 timer) and can thread-shift delivery through the log path; the global
 `abd_tuples` list is manipulated without locking and assumes
