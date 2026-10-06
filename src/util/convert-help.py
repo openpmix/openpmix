@@ -445,23 +445,6 @@ def purge(parsed_data, citations, tool_help_files):
         result_sections = {}
         for section in sections:
             content_list = sections[section]
-            # check for duplicate entries
-            content = '\n'.join(content_list)
-            # search all other entries for a matching section
-            for (file2, sec) in parsed_data.items():
-                if file2 == filename:
-                    continue
-                for (sec2, cl) in sec.items():
-                    cnt = '\n'.join(cl)
-                    if sec == section:
-                        if content == cnt:
-                            # these are the same
-                            sys.stderr.write("DUPLICATE FOUND - SECTION: " + section + "\nFILES: " + filename + "\n       " + file2 + "\n")
-                            errorFound = True
-                        else:
-                            # same topic, different content
-                            sys.stderr.write("DUPLICATE SECTION WITH DIFFERENT CONTENT: " + section, "\nFILES: " + filename + "\n       " + file2 + "\n")
-                            errorFound = True
             # search code files for usage
             # protect special values
             if section == "help" or section == "version" or section == "usage":
@@ -560,6 +543,30 @@ def split_call_args(text, start):
     return None, n
 
 
+def check_citation_topics(parsed_data, citations, verbose=False):
+    """Every topic a show_help call names in one of our help files must exist
+    in that file.  A missing topic does not fail loudly: the lookup finds
+    nothing and the user is handed the "Sorry! ... I couldn't find that
+    topic" placeholder in place of the diagnostic.  Returns the number of
+    missing topics found."""
+    topics = {}
+    for path, sections in parsed_data.items():
+        topics.setdefault(os.path.basename(path), set()).update(sections.keys())
+    bad = 0
+    reported = set()
+    for (fil, topic) in citations:
+        if fil not in topics or topic in topics[fil] or (fil, topic) in reported:
+            continue
+        reported.add((fil, topic))
+        sys.stderr.write("ERROR: show_help names a topic its help file does not have\n")
+        sys.stderr.write("    File:  " + fil + "\n")
+        sys.stderr.write("    Topic: " + topic + "\n")
+        bad += 1
+    if 0 == bad and verbose:
+        print("Every topic a show_help call names exists in its help file")
+    return bad
+
+
 def check_call_arguments(parsed_data, source_files, verbose=False):
     """Every show_help call with a literal file and topic must pass exactly as
     many arguments as the topic has conversions.  The topic is the format
@@ -656,20 +663,20 @@ def main():
                         help="Enable verbose output")
     parser.add_argument("--purge",
                         action="store_true",
-                        help="Purge duplicates, update topic pointers as required")
+                        help="Fail on a help topic no code shows, and leave unused files out")
     parser.add_argument("--dryrun",
                         action="store_true",
                         help="Do not write out resulting ini_array_name")
     parser.add_argument("--check-only",
                         action="store_true",
-                        help="Only check that every show_help call passes as many "
-                             "arguments as its topic expects; generate nothing")
+                        help="Only check the show_help calls against the help files; "
+                             "generate nothing")
 
     args = parser.parse_args()
 
     # The generation rule depends solely on this script, so editing a help
     # file or a call site does not re-run it.  --check-only lets "make check"
-    # run the argument check every time, independent of that staleness.
+    # run the checks every time, independent of that staleness.
     if args.check_only:
         args.dryrun = True
     elif args.out is None:
@@ -693,11 +700,17 @@ def main():
     parse_help_files(help_files, parsed_data, citations, args.verbose)
     parse_help_files(tool_help_files, parsed_data, citations, args.verbose)
     parse_src_files(source_files, citations, args.verbose)
+    # the tools' own messages are shown from their sources
+    parse_src_files(tool_source_files, citations, args.verbose)
     parse_tool_files(tool_help_files, tool_source_files, cli_options, citations, args.verbose)
     if args.check_only or args.purge:
+        if check_citation_topics(parsed_data, citations, args.verbose):
+            exit(1)
         if check_call_arguments(parsed_data, source_files + tool_source_files, args.verbose):
             exit(1)
     if args.check_only:
+        # purge() fails on a topic no call shows
+        purge(parsed_data, citations, tool_help_files)
         return
     if args.purge:
         outdata = purge(parsed_data, citations, tool_help_files)
