@@ -185,6 +185,14 @@ and breaks the build for whoever regenerates it next — which on a fresh
 clone is CI. Regenerate whenever you add, remove, or rename a
 `pmix_show_help*()` call, not only when you edit the text.
 
+**Every call has to name a topic that exists, and every topic has to be
+shown by some call.** A missing topic does not fail: the lookup finds nothing
+and the user gets the "Sorry! ... I couldn't find that topic" placeholder in
+place of the diagnostic. `convert-help.py --check-only` (run by `make check`)
+fails on both - `check_citation_topics()` for a call naming a topic its help
+file lacks, `purge()` for a topic no call shows - so adding a call means
+adding its topic, and removing the last call to a topic means removing it.
+
 **Each call has to pass as many arguments as its topic has conversions.**
 The topic text *is* the format string, so the compiler never sees it, and a
 call that passes too few reads whatever is in the registers or on the stack
