@@ -14,6 +14,7 @@
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,6 +30,7 @@
 
 #include "src/runtime/pmix_init_util.h"
 #include "src/runtime/pmix_rte.h"
+#include "src/threads/pmix_tsd.h"
 #include "src/util/pmix_net.h"
 
 static int npass = 0;
@@ -343,6 +345,90 @@ static void test_isipv4public(void)
            !pmix_net_addr_isipv4public((struct sockaddr *) &sa6));
 }
 
+/* ------------------------------------------------------------------ */
+/* pmix_net_get_hostname after finalize                               */
+/* ------------------------------------------------------------------ */
+
+static const char *hostname_of(const char *ip)
+{
+    struct sockaddr_in sa;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    if (1 != inet_pton(AF_INET, ip, &sa.sin_addr)) {
+        return NULL;
+    }
+    return pmix_net_get_hostname((struct sockaddr *) &sa);
+}
+
+/* The hostname buffer is per thread, hung off a TSD key that finalize
+ * deletes along with every other registered key.  The helper used to go on
+ * using the deleted key's number - which pthreads gives to the next key
+ * anybody creates - and wrote NI_MAXHOST bytes into whatever that key held.
+ * A PRRTE unit test that printed an address after PMIx had been finalized
+ * corrupted its own heap that way.
+ *
+ * Reproduce the reuse: finish the network helper and delete the keys, as
+ * finalize does, then create keys of our own, each holding a marked buffer,
+ * so that one of them is all but certain to get the old number.  Asking for
+ * a hostname must leave every buffer untouched.  Then initialize again and
+ * the helper must work as before. */
+#define NKEYS  64
+#define BUFLEN 2048
+#define MARK   0x5a
+
+static void test_hostname_after_finalize(void)
+{
+    pthread_key_t keys[NKEYS];
+    unsigned char *bufs[NKEYS];
+    const char *name;
+    int i, j, nkeys = 0;
+    bool intact = true;
+
+    name = hostname_of("127.0.0.1");
+    report("get_hostname(127.0.0.1) before finalize",
+           NULL != name && 0 == strcmp(name, "127.0.0.1"));
+
+    (void) pmix_net_finalize();
+    (void) pmix_tsd_keys_destruct();
+
+    for (i = 0; i < NKEYS; i++) {
+        bufs[i] = malloc(BUFLEN);
+        if (NULL == bufs[i] || 0 != pthread_key_create(&keys[i], NULL)) {
+            free(bufs[i]);
+            break;
+        }
+        memset(bufs[i], MARK, BUFLEN);
+        (void) pthread_setspecific(keys[i], bufs[i]);
+        nkeys++;
+    }
+    report("created keys for the old number to land on", 0 < nkeys);
+
+    name = hostname_of("127.0.0.1");
+    report("get_hostname after finalize answers without a buffer",
+           NULL != name && 0 == strcmp(name, "UNKNOWN"));
+    for (i = 0; i < nkeys && intact; i++) {
+        for (j = 0; j < BUFLEN; j++) {
+            if (MARK != bufs[i][j]) {
+                intact = false;
+                break;
+            }
+        }
+    }
+    report("get_hostname after finalize writes into nobody else's buffer", intact);
+
+    for (i = 0; i < nkeys; i++) {
+        (void) pthread_key_delete(keys[i]);
+        free(bufs[i]);
+    }
+
+    report("pmix_net_init again", PMIX_SUCCESS == pmix_net_init());
+    name = hostname_of("127.0.0.1");
+    report("get_hostname(127.0.0.1) after initializing again",
+           NULL != name && 0 == strcmp(name, "127.0.0.1"));
+    (void) pmix_net_finalize();
+}
+
 #endif /* HAVE_STRUCT_SOCKADDR_IN */
 
 /* ------------------------------------------------------------------ */
@@ -360,8 +446,10 @@ int main(int argc, char **argv)
     test_isaddr();
     test_samenetwork();
     test_isipv6linklocal();
-    /* last - it initializes the library */
+    /* it initializes the library */
     test_isipv4public();
+    /* last - it finalizes the network helper */
+    test_hostname_after_finalize();
 #else
     fprintf(stdout, "  SKIP: no struct sockaddr_in on this platform\n");
 #endif
