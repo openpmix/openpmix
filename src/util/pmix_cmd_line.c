@@ -483,8 +483,6 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         // they requested help on the "help" option itself
                         str = pmix_show_help_string("help-cli.txt", "help", false,
                                                     pmix_tool_basename, pmix_tool_basename,
-                                                    pmix_tool_basename, pmix_tool_basename,
-                                                    pmix_tool_basename, pmix_tool_basename,
                                                     pmix_tool_basename, pmix_tool_basename);
                         if (NULL != str) {
                             printf("%s\n", str);

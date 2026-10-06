@@ -350,7 +350,8 @@ int main(int argc, char **argv)
             *strt = '\0';
             ++strt;
             if (NULL == (endp = strrchr(strt, ']'))) {
-                str = pmix_show_help_string("help-pquery.txt", "bad-quals", true, qkeys[n]);
+                str = pmix_show_help_string("help-pquery.txt", "bad-quals", true,
+                                            pmix_tool_basename, qkeys[n]);
                 if (NULL != str) {
                     printf("%s", str);
                     free(str);
