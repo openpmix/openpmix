@@ -953,28 +953,55 @@ static void test_legacy_counts_bounded(const char *version)
     PMIX_DESTRUCT(&buf);
 }
 
+/* Build the wire image of a single value of a legacy v21/v3 type: the
+ * value count and the type tag (a one-element PMIX_UINT16 packs to
+ * exactly that under these formats), then the body as the component's
+ * own packer writes it, less that packer's four-byte element count. */
+static int legacy_value_image(pmix_bfrops_module_t *mod, pmix_buffer_t *buf, uint16_t tag,
+                              void *body, pmix_data_type_t body_type)
+{
+    pmix_buffer_t tmp;
+    size_t len;
+    char *dst;
+    int ok;
+
+    PMIX_CONSTRUCT(&tmp, pmix_buffer_t);
+    tmp.type = PMIX_BFROP_BUFFER_NON_DESC;
+    ok = (PMIX_SUCCESS == mod->pack(buf, &tag, 1, PMIX_UINT16) &&
+          PMIX_SUCCESS == mod->pack(&tmp, body, 1, body_type) &&
+          sizeof(int32_t) < tmp.bytes_used);
+    if (ok) {
+        len = tmp.bytes_used - sizeof(int32_t);
+        dst = pmix_bfrop_buffer_extend(buf, len);
+        ok = (NULL != dst);
+        if (ok) {
+            memcpy(dst, tmp.base_ptr + sizeof(int32_t), len);
+            buf->pack_ptr += len;
+            buf->bytes_used += len;
+        }
+    }
+    PMIX_DESTRUCT(&tmp);
+    return ok;
+}
+
 /* v21 and v3 register PMIX_MODEX, but only as an array element type -
  * no release gave pmix_value_t a member for it. A value tagged with it
  * must be refused in both directions.
  *
- * The wire image is what a value of that type would look like: the
- * count and the type tag (a one-element PMIX_UINT16 packs to exactly
- * that under these formats), then a well-formed modex with no blob, so
- * that the only thing wrong with the message is the type. It is
- * unpacked into a block larger than a value and filled with a known
- * byte, and nothing past the value may change. */
+ * The body is a well-formed modex with no blob, so that the only thing
+ * wrong with the message is the type. It is unpacked into a block
+ * larger than a value and filled with a known byte, and nothing past
+ * the value may change. */
 #define UT_CANARY_LEN 512
 
 static void test_legacy_modex_value_refused(const char *version)
 {
     pmix_bfrops_module_t *mod;
-    pmix_buffer_t buf, tmp;
+    pmix_buffer_t buf;
     pmix_value_t *heapval;
     ut_modex_data_t modex;
-    uint16_t tag = UT_PMIX_MODEX;
     unsigned char *block;
-    char *dst;
-    size_t len, i;
+    size_t i;
     int32_t n;
     pmix_status_t rc;
     char label[128];
@@ -988,23 +1015,8 @@ static void test_legacy_modex_value_refused(const char *version)
 
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     buf.type = PMIX_BFROP_BUFFER_NON_DESC;
-    PMIX_CONSTRUCT(&tmp, pmix_buffer_t);
-    tmp.type = PMIX_BFROP_BUFFER_NON_DESC;
     memset(&modex, 0, sizeof(modex));
-    ok = (PMIX_SUCCESS == mod->pack(&buf, &tag, 1, PMIX_UINT16) &&
-          PMIX_SUCCESS == mod->pack(&tmp, &modex, 1, UT_PMIX_MODEX) &&
-          sizeof(int32_t) < tmp.bytes_used);
-    if (ok) {
-        /* the modex without its own element count */
-        len = tmp.bytes_used - sizeof(int32_t);
-        dst = pmix_bfrop_buffer_extend(&buf, len);
-        ok = (NULL != dst);
-        if (ok) {
-            memcpy(dst, tmp.base_ptr + sizeof(int32_t), len);
-            buf.pack_ptr += len;
-            buf.bytes_used += len;
-        }
-    }
+    ok = legacy_value_image(mod, &buf, UT_PMIX_MODEX, &modex, UT_PMIX_MODEX);
     if (ok) {
         block = (unsigned char *) malloc(UT_CANARY_LEN);
         memset(block, 0xa5, UT_CANARY_LEN);
@@ -1022,7 +1034,6 @@ static void test_legacy_modex_value_refused(const char *version)
     }
     snprintf(label, sizeof(label), "%s: a value tagged PMIX_MODEX is not unpacked", version);
     report(label, ok);
-    PMIX_DESTRUCT(&tmp);
     PMIX_DESTRUCT(&buf);
 
     heapval = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
@@ -1034,6 +1045,106 @@ static void test_legacy_modex_value_refused(const char *version)
     report(label, PMIX_SUCCESS != rc);
     PMIX_DESTRUCT(&buf);
     free(heapval);
+}
+
+/* A 2.x value could hold a PMIX_INFO_ARRAY, which v21 and v3 still
+ * speak. The value union has no member for it now, so it must unpack
+ * as a PMIX_DATA_ARRAY of PMIX_INFO holding the same entries. The body
+ * is packed by the component's own info-array packer, which writes what
+ * a 2.1 peer writes. */
+static void test_legacy_info_array_value(const char *version)
+{
+    pmix_bfrops_module_t *mod;
+    pmix_buffer_t buf;
+    pmix_info_array_t arr;
+    pmix_info_t *in, *out;
+    pmix_value_t *val;
+    int32_t n;
+    pmix_status_t rc;
+    char label[128];
+    int ok;
+
+    mod = pmix_bfrops_base_assign_module(version);
+    if (NULL == mod) {
+        fprintf(stdout, "  SKIP: bfrops %s not available\n", version);
+        return;
+    }
+
+    PMIX_INFO_CREATE(in, 2);
+    PMIX_INFO_LOAD(&in[0], "ut.legacy.str", "hello", PMIX_STRING);
+    n = 42;
+    PMIX_INFO_LOAD(&in[1], "ut.legacy.int", &n, PMIX_INT32);
+    arr.size = 2;
+    arr.array = in;
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    val = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+    rc = PMIX_ERROR;
+    ok = legacy_value_image(mod, &buf, UT_PMIX_INFO_ARRAY, &arr, UT_PMIX_INFO_ARRAY);
+    if (ok) {
+        n = 1;
+        rc = mod->unpack(&buf, val, &n, PMIX_VALUE);
+        ok = (PMIX_SUCCESS == rc && PMIX_DATA_ARRAY == val->type &&
+              NULL != val->data.darray && PMIX_INFO == val->data.darray->type &&
+              2 == val->data.darray->size && NULL != val->data.darray->array);
+    }
+    if (ok) {
+        out = (pmix_info_t *) val->data.darray->array;
+        ok = (PMIx_Check_key(out[0].key, "ut.legacy.str") &&
+              PMIX_STRING == out[0].value.type &&
+              NULL != out[0].value.data.string &&
+              0 == strcmp("hello", out[0].value.data.string) &&
+              PMIx_Check_key(out[1].key, "ut.legacy.int") &&
+              PMIX_INT32 == out[1].value.type && 42 == out[1].value.data.int32);
+    } else {
+        fprintf(stdout, "    unpack returned %s\n", PMIx_Error_string(rc));
+    }
+    snprintf(label, sizeof(label), "%s: a PMIX_INFO_ARRAY value unpacks as an info data array",
+             version);
+    report(label, ok);
+    PMIX_DESTRUCT(&buf);
+    PMIX_VALUE_RELEASE(val);
+    PMIX_INFO_FREE(in, 2);
+}
+
+/* A wire format that never had PMIX_INFO_ARRAY must not take a value
+ * tagged with it. */
+static void test_info_array_value_unknown(const char *version)
+{
+    pmix_bfrops_module_t *mod;
+    pmix_buffer_t buf;
+    pmix_value_t *val;
+    uint16_t tag = UT_PMIX_INFO_ARRAY;
+    int32_t n;
+    pmix_status_t rc;
+    char label[128];
+    char *dst;
+
+    mod = pmix_bfrops_base_assign_module(version);
+    if (NULL == mod) {
+        fprintf(stdout, "  SKIP: bfrops %s not available\n", version);
+        return;
+    }
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    rc = mod->pack(&buf, &tag, 1, PMIX_UINT16);
+    if (PMIX_SUCCESS == rc) {
+        /* plenty of plausible bytes after the tag */
+        dst = pmix_bfrop_buffer_extend(&buf, 64);
+        if (NULL != dst) {
+            memset(dst, 0, 64);
+            buf.pack_ptr += 64;
+            buf.bytes_used += 64;
+        }
+        val = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+        n = 1;
+        rc = mod->unpack(&buf, val, &n, PMIX_VALUE);
+        free(val);
+    }
+    snprintf(label, sizeof(label), "%s: a PMIX_INFO_ARRAY value is refused", version);
+    report(label, PMIX_SUCCESS != rc);
+    PMIX_DESTRUCT(&buf);
 }
 
 /* A value of type PMIX_POINTER carries only a sentinel on the wire. The
@@ -1160,6 +1271,9 @@ int main(int argc, char **argv)
     test_legacy_counts_bounded("v3");
     test_legacy_modex_value_refused("v21");
     test_legacy_modex_value_refused("v3");
+    test_legacy_info_array_value("v21");
+    test_legacy_info_array_value("v3");
+    test_info_array_value_unknown("v61");
     test_count_fits_boundaries();
     test_nested_info_counts_bounded();
     test_sparse_array_counts();

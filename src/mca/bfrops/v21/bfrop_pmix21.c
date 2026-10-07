@@ -707,10 +707,12 @@ static pmix_status_t pmix21_bfrop_unpack_array(pmix_pointer_array_t *regtypes,
                 ptr[i].size = 0;
                 return PMIX_ERR_NOMEM;
             }
+            /* the elements are pmix_info_t, packed by
+             * pmix_bfrops_base_pack_info() above */
             m = ptr[i].size;
             if (PMIX_SUCCESS
-                != (ret = pmix_bfrops_base_unpack_value(regtypes, buffer, ptr[i].array, &m,
-                                                        PMIX_INFO))) {
+                != (ret = pmix_bfrops_base_unpack_info(regtypes, buffer, ptr[i].array, &m,
+                                                       PMIX_INFO))) {
                 return ret;
             }
         }

@@ -114,6 +114,16 @@ PMIX_EXPORT extern pmix_bfrops_globals_t pmix_bfrops_globals;
 #define PMIX_BFROP_LEGACY_MODEX 29
 
 /*
+ * PMIX_INFO_ARRAY also left the public header with v3, and is also
+ * still registered by v21 and v3. Unlike PMIX_MODEX it was a value type:
+ * a 2.x pmix_value_t carried one through a pmix_info_array_t pointer.
+ * The value union has no such member now, so pmix_bfrops_base_unpack_val()
+ * delivers one as a PMIX_DATA_ARRAY of PMIX_INFO, which holds the same
+ * thing.
+ */
+#define PMIX_BFROP_LEGACY_INFO_ARRAY 44
+
+/*
  * The recursive array packer and unpacker each track how deep they
  * are. The counter cannot live on the buffer: pmix_buffer_t appears
  * in installed headers and can be placed in shared memory read by
