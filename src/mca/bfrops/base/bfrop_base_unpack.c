@@ -579,6 +579,29 @@ _Static_assert(sizeof(pmix_envar_t) <= PMIX_VALUE_UNION_SIZE, "PMIX_ENVAR no lon
 _Static_assert(sizeof(pmix_byte_object_t) <= PMIX_VALUE_UNION_SIZE,
                "PMIX_BYTE_OBJECT no longer fits");
 
+/* How many levels of nesting the unpack running on this thread is
+ * inside - data arrays, and the value types that hold values of their
+ * own (see value_type_nests()) */
+static PMIX_BFROP_THREAD_LOCAL unsigned int array_depth = 0;
+
+/* Value types other than PMIX_DATA_ARRAY whose unpacker unpacks values
+ * of its own: a query's qualifiers, a legacy info array's entries. Each
+ * can hold another of itself, so each is a level of nesting, and is
+ * charged against max_array_depth like a data array. A data array
+ * charges itself in pmix_bfrops_base_unpack_darray(). A new value type
+ * whose unpacker reaches unpack_info(), unpack_value() or unpack_val()
+ * belongs here, and in its mirror in bfrop_base_pack.c. */
+static bool value_type_nests(pmix_data_type_t type)
+{
+    switch (type) {
+    case PMIX_QUERY:
+    case PMIX_BFROP_LEGACY_INFO_ARRAY:
+        return true;
+    default:
+        return false;
+    }
+}
+
 /* A 2.x value could hold a PMIX_INFO_ARRAY, and a v2.1 or v2.2 peer can
  * still send one. The value union has no member for it now, so it is
  * delivered as the PMIX_DATA_ARRAY of PMIX_INFO it is equivalent to.
@@ -615,8 +638,8 @@ static pmix_status_t unpack_legacy_info_array(pmix_pointer_array_t *regtypes,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                          pmix_value_t *val)
+static pmix_status_t unpack_val(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                               pmix_value_t *val)
 {
     int m;
     pmix_status_t ret = PMIX_SUCCESS;
@@ -818,6 +841,29 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_b
                 pmix_output(0, "UNPACK-PMIX-VALUE: UNSUPPORTED TYPE %d", (int) val->type);
             }
     }
+
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                          pmix_value_t *val)
+{
+    pmix_status_t ret;
+
+    if (!value_type_nests(val->type)) {
+        return unpack_val(regtypes, buffer, val);
+    }
+    if (0 < pmix_bfrops_globals.max_array_depth &&
+        pmix_bfrops_globals.max_array_depth <= array_depth) {
+        pmix_show_help("help-pmix-runtime.txt", "bfrops:array_depth", true,
+                       "unpack", (unsigned long) array_depth + 1,
+                       (unsigned long) pmix_bfrops_globals.max_array_depth);
+        return PMIX_ERR_UNPACK_FAILURE;
+    }
+
+    array_depth++;
+    ret = unpack_val(regtypes, buffer, val);
+    array_depth--;
 
     return ret;
 }
@@ -1479,12 +1525,10 @@ static pmix_status_t unpack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t
     return PMIX_SUCCESS;
 }
 
-/* How many arrays the unpack running on this thread is nested inside */
-static PMIX_BFROP_THREAD_LOCAL unsigned int array_depth = 0;
-
 /* Every level of array nesting - an element type of PMIX_DATA_ARRAY, or
- * the ordinary array/info/value chain - comes back through here, so this
- * is where the recursion is bounded. It has to be: a peer describes each
+ * the ordinary array/info/value chain - comes back through here or
+ * through a value type that nests (see value_type_nests()), so those are
+ * where the recursion is bounded. It has to be: a peer describes each
  * level in a type tag and a size, so a couple of bytes of message buy a
  * stack frame, and nothing else in the unpacker limits how many */
 pmix_status_t pmix_bfrops_base_unpack_darray(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,

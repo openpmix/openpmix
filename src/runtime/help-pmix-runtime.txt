@@ -61,8 +61,9 @@ If you believe this msg is legitimate, please increase the
 max msg size via the ptl_base_max_msg_size parameter.
 #
 [bfrops:array_depth]
-A data array is nested more deeply inside other data arrays than
-this PMIx library is willing to %s:
+Data is nested more deeply than this PMIx library is willing to %s.
+Each data array, query or info array held inside another counts as a
+level:
 
   Depth reached:   %lu
   Depth limit:     %lu
