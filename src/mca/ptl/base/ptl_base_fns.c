@@ -522,7 +522,7 @@ process:
      * the file but not yet finished writing into it. So give
      * us a chance to get the required info */
     for (retries = 0; retries < 3; retries++) {
-        srvr = pmix_getline(fp);
+        srvr = pmix_getline(fp, NULL);
         if (NULL != srvr) {
             break;
         }
@@ -545,14 +545,14 @@ process:
     }
 
     /* see if this file contains the server's version */
-    p = pmix_getline(fp);
+    p = pmix_getline(fp, NULL);
     /* and whether it lists other addresses the server listens on, and the
      * wire formats and security mechanisms it accepts. They follow every
      * line a released reader takes by position, and are found by their
      * tag rather than by where they fall. The first of each counts */
     alt = NULL;
     if (NULL != p) {
-        while (NULL != (line = pmix_getline(fp))) {
+        while (NULL != (line = pmix_getline(fp, NULL))) {
             if (0 == strncmp(line, PMIX_PTL_ALT_URIS_TAG, strlen(PMIX_PTL_ALT_URIS_TAG))) {
                 tag = PMIX_PTL_ALT_URIS_TAG;
                 dest = &alt;
@@ -2169,7 +2169,7 @@ static void check_server(char *filename, pmix_list_t *servers)
      * the file but not yet finished writing into it. So give
      * us a chance to get the required info */
     for (retries = 0; retries < 3; retries++) {
-        srvr = pmix_getline(fp);
+        srvr = pmix_getline(fp, NULL);
         if (NULL != srvr) {
             break;
         }
@@ -2225,7 +2225,7 @@ static void check_server(char *filename, pmix_list_t *servers)
     /* see if this file contains the server's version - every server
      * since v2.1 writes one, so a file without it came from a v2.0
      * server, which the connection will then refuse */
-    p2 = pmix_getline(fp);
+    p2 = pmix_getline(fp, NULL);
     if (NULL == p2) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V20 SERVER DETECTED");
         ok = add_info(&mylist, PMIX_VERSION_INFO, "v2.0", PMIX_STRING);
@@ -2240,7 +2240,7 @@ static void check_server(char *filename, pmix_list_t *servers)
     }
 
     /* see if the file contains the pid */
-    p2 = pmix_getline(fp);
+    p2 = pmix_getline(fp, NULL);
     if (NULL == p2) {
         goto complete;
     }
@@ -2251,7 +2251,7 @@ static void check_server(char *filename, pmix_list_t *servers)
     }
 
     /* check for uid:gid */
-    p2 = pmix_getline(fp);
+    p2 = pmix_getline(fp, NULL);
     if (NULL == p2) {
         goto complete;
     }
@@ -2275,7 +2275,7 @@ static void check_server(char *filename, pmix_list_t *servers)
     }
 
     /* check for timestamp */
-    p2 = pmix_getline(fp);
+    p2 = pmix_getline(fp, NULL);
     if (NULL == p2) {
         goto complete;
     }
