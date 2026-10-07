@@ -546,7 +546,7 @@ Four invariants in here are easy to break and hard to see broken.
   `make_copy()` loads that string as the key it reports to the
   application.
 
-### `pmix_string_copy` — and the "getline" that does not read a line
+### `pmix_string_copy` and `pmix_getline`
 
 `pmix_string_copy()` is the always-terminating bounded copy, and it does
 what its header says: at most `dest_len` bytes are written, the last of
@@ -555,25 +555,30 @@ them a `\0`, with no right-padding. Its `assert()` on a `dest_len` over
 lean on — `-DNDEBUG` removes it, and `pmix_getcwd` sits close enough to
 that bound to be worth knowing about (see its section above).
 
-`pmix_getline()` is the one to be careful with, because its name
-promises more than it does. It is one `fgets()` into a 1024-byte stack
-buffer, so **a line longer than 1023 bytes comes back in pieces, with no
-error and no marker** — the next call returns the tail, which a caller
-reading successive lines will take for the next line. The in-tree
-callers (`ptl_base_listener`'s stale-rendezvous check, `ptl_base_fns`'
-server-URI reads) are all reading files PMIx itself wrote, whose lines
-are a URI, a version, a pid and a uid:gid pair, so none of them is close
-to the limit — but the header is installed, so the limit is now written
-down there rather than left to be discovered.
+`pmix_getline()` reads a line of any length, a character at a time up to
+its newline, and returns it whole with the newline stripped. It used to be
+one `fgets()` into a 1024-byte stack buffer, so a longer line came back in
+pieces - the next call returning the tail, which a caller reading
+successive lines took for the next line. Every PMIx caller reads a short
+file PMIx wrote, but the header is installed and the host reads its own
+configuration files with it, and that is where the limit bit.
 
-Two smaller things follow from the same one-`fgets` shape. A returned
-line is **not** necessarily newline-terminated in the file: the newline
-is stripped when present, and is absent both for a final line without
-one and for a 1023-byte fragment, so it says nothing about where the
-line came from. And `NULL` means end-of-file, a read error, or a failed
-`strdup`, indistinguishably; there is no other channel, and the callers
-treat it as "the writer had not finished yet". Both boundaries, and the
-long-line split, are pinned by
+Its second argument, `failed`, is what makes it usable for those files.
+`NULL` comes back at the end of the stream, and also on a read error, a
+NUL byte and a failed allocation; `failed` (which may be `NULL`) tells
+them apart. A caller reading a whole file must check it once its loop
+ends, or a read that stops halfway is taken for a file that ends there.
+The PMIx callers pass `NULL`: for the rendezvous files they read, any
+`NULL` already means the writer had not finished.
+
+A NUL byte is a failure rather than the end of the line because the line
+is handed back as a C string: the rest of it would silently vanish. That
+is also why the read goes a character at a time - `fgets()` cannot say
+how much it read, so it cannot see a NUL at all.
+
+A returned line is **not** necessarily newline-terminated in the file:
+the newline is stripped when present, and is absent for a final line
+without one. These cases, the long line, and the read error are pinned by
 [`test/unit/util/util_string_copy.c`](../../test/unit/util/util_string_copy.c).
 
 ### `pmix_basename` — two implementations, one of them invisible
