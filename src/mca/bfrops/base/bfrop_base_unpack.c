@@ -544,7 +544,8 @@ pmix_status_t pmix_bfrops_base_unpack_status(pmix_pointer_array_t *regtypes, pmi
  * contents of that overflow come from the peer.
  *
  * So refuse them. A value tagged with one of these is not something a
- * correct peer can have sent. */
+ * correct peer can have sent. The legacy PMIX_MODEX type is refused for
+ * the same reason - see PMIX_BFROP_LEGACY_MODEX. */
 static bool value_type_overflows_union(pmix_data_type_t type)
 {
     switch (type) {
@@ -554,6 +555,7 @@ static bool value_type_overflows_union(pmix_data_type_t type)
     case PMIX_APP:
     case PMIX_KVAL:
     case PMIX_BUFFER:
+    case PMIX_BFROP_LEGACY_MODEX:
         return true;
     default:
         return false;
