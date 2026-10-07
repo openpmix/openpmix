@@ -106,6 +106,14 @@ PMIX_EXPORT extern pmix_bfrops_globals_t pmix_bfrops_globals;
 #define PMIX_BFROP_DEFAULT_MAX_ARRAY_DEPTH 100
 
 /*
+ * PMIX_MODEX left the public header with v3, but the v21 and v3
+ * components still register it for the peers that speak those wire
+ * formats. It has only ever been an array element type: no release
+ * gave pmix_value_t a member for it, so a value cannot carry one.
+ */
+#define PMIX_BFROP_LEGACY_MODEX 29
+
+/*
  * The recursive array packer and unpacker each track how deep they
  * are. The counter cannot live on the buffer: pmix_buffer_t appears
  * in installed headers and can be placed in shared memory read by
