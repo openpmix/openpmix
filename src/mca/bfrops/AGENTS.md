@@ -359,7 +359,7 @@ All under the `pmix_bfrops_base_` prefix:
 |-----------|---------|
 | `initial_size` | starting allocation of a new buffer (default 128 bytes) |
 | `threshold_size` | size at which `buffer_extend` switches from doubling to additive growth (default 1024) |
-| `max_array_depth` | how deeply data arrays may nest before pack and unpack refuse; 0 disables the cap |
+| `max_array_depth` | how deeply data may nest before pack and unpack refuse - data arrays, and query and legacy info-array values that hold values of their own type; 0 disables the cap |
 | `default_type` | default `pmix_bfrop_buffer_type_t` for new buffers (described vs. non-described) |
 
 ## Threading

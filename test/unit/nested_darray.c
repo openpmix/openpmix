@@ -627,6 +627,238 @@ static void test_refusal_does_not_poison_the_buffer(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* depth cap: values that nest without a data array                    */
+/* ------------------------------------------------------------------ */
+
+/* A query's qualifiers are info, and an info's value may itself be a
+ * query, so a value of type PMIX_QUERY can nest with no data array in
+ * the chain. The query sits in the value's union. Each query-typed value
+ * is one level. */
+static int build_query_chain(pmix_value_t *v, int levels)
+{
+    pmix_query_t *q;
+    int seven = 7;
+
+    v->type = PMIX_QUERY;
+    q = (pmix_query_t *) &v->data;
+    memset(q, 0, sizeof(*q));
+    PMIX_INFO_CREATE(q->qualifiers, 1);
+    if (NULL == q->qualifiers) {
+        return 0;
+    }
+    q->nqual = 1;
+    PMIx_Load_key(q->qualifiers[0].key, "ut.nest");
+    if (1 == levels) {
+        return (PMIX_SUCCESS == PMIx_Value_load(&q->qualifiers[0].value, &seven, PMIX_INT));
+    }
+    return build_query_chain(&q->qualifiers[0].value, levels - 1);
+}
+
+static void release_query_chain(pmix_value_t *v)
+{
+    pmix_query_t *q;
+    size_t n;
+
+    if (PMIX_QUERY != v->type) {
+        PMIX_VALUE_DESTRUCT(v);
+        return;
+    }
+    q = (pmix_query_t *) &v->data;
+    for (n = 0; NULL != q->qualifiers && n < q->nqual; n++) {
+        release_query_chain(&q->qualifiers[n].value);
+    }
+    free(q->qualifiers);
+    PMIx_Argv_free(q->keys);
+    v->type = PMIX_UNDEF;
+}
+
+static pmix_status_t pack_query_chain(pmix_data_buffer_t *buf, int levels)
+{
+    pmix_value_t src;
+    pmix_status_t rc = PMIX_ERR_NOMEM;
+
+    memset(&src, 0, sizeof(src));
+    if (build_query_chain(&src, levels)) {
+        rc = PMIx_Data_pack(NULL, buf, &src, 1, PMIX_VALUE);
+    }
+    release_query_chain(&src);
+    return rc;
+}
+
+static void test_query_depth(void)
+{
+    pmix_data_buffer_t buf;
+    pmix_value_t dst;
+    unsigned int save = pmix_bfrops_globals.max_array_depth;
+    pmix_status_t rc;
+    int32_t count;
+    int ok;
+
+    /* at the limit: round-trips */
+    memset(&dst, 0, sizeof(dst));
+    PMIx_Data_buffer_construct(&buf);
+    rc = pack_query_chain(&buf, (int) save);
+    if (PMIX_SUCCESS == rc) {
+        count = 1;
+        rc = PMIx_Data_unpack(NULL, &buf, &dst, &count, PMIX_VALUE);
+    }
+    ok = (PMIX_SUCCESS == rc);
+    if (!ok) {
+        fprintf(stdout, "    query nested to the limit returned %s\n", PMIx_Error_string(rc));
+    }
+    release_query_chain(&dst);
+    PMIx_Data_buffer_destruct(&buf);
+    report("queries nested to the depth limit round-trip", ok);
+
+    /* one past: pack refuses */
+    PMIx_Data_buffer_construct(&buf);
+    rc = pack_query_chain(&buf, (int) save + 1);
+    PMIx_Data_buffer_destruct(&buf);
+    report("queries nested past the depth limit are refused by pack",
+           PMIX_ERR_PACK_FAILURE == rc);
+
+    /* past it, built by a sender with a higher limit: unpack refuses */
+    memset(&dst, 0, sizeof(dst));
+    PMIx_Data_buffer_construct(&buf);
+    pmix_bfrops_globals.max_array_depth = save + 8;
+    rc = pack_query_chain(&buf, (int) save + 3);
+    pmix_bfrops_globals.max_array_depth = save;
+    if (PMIX_SUCCESS == rc) {
+        count = 1;
+        rc = PMIx_Data_unpack(NULL, &buf, &dst, &count, PMIX_VALUE);
+        ok = (PMIX_ERR_UNPACK_FAILURE == rc);
+    } else {
+        ok = 0;
+    }
+    if (!ok) {
+        fprintf(stdout, "    queries nested past the limit returned %s\n",
+                PMIx_Error_string(rc));
+    }
+    release_query_chain(&dst);
+    PMIx_Data_buffer_destruct(&buf);
+    report("queries nested past the depth limit are refused by unpack", ok);
+}
+
+/* The v21 and v3 wire formats carry the legacy PMIX_INFO_ARRAY value
+ * type, whose entries are info - and an entry's value may be another
+ * info array. A 2.x value held the array in its union; that is how the
+ * component's packer reads it. */
+static int build_info_array_chain(pmix_value_t *v, int levels)
+{
+    pmix_info_array_t *ia;
+    int seven = 7;
+
+    v->type = PMIX_BFROP_LEGACY_INFO_ARRAY;
+    ia = (pmix_info_array_t *) &v->data;
+    PMIX_INFO_CREATE(ia->array, 1);
+    if (NULL == ia->array) {
+        ia->size = 0;
+        return 0;
+    }
+    ia->size = 1;
+    PMIx_Load_key(ia->array[0].key, "ut.nest");
+    if (1 == levels) {
+        return (PMIX_SUCCESS == PMIx_Value_load(&ia->array[0].value, &seven, PMIX_INT));
+    }
+    return build_info_array_chain(&ia->array[0].value, levels - 1);
+}
+
+static void release_info_array_chain(pmix_value_t *v)
+{
+    pmix_info_array_t *ia;
+
+    if (PMIX_BFROP_LEGACY_INFO_ARRAY != v->type) {
+        PMIX_VALUE_DESTRUCT(v);
+        return;
+    }
+    ia = (pmix_info_array_t *) &v->data;
+    if (NULL != ia->array) {
+        release_info_array_chain(&ia->array[0].value);
+        free(ia->array);
+    }
+    v->type = PMIX_UNDEF;
+}
+
+static pmix_status_t pack_info_array_chain(pmix_bfrops_module_t *mod, pmix_buffer_t *buf,
+                                           int levels)
+{
+    pmix_value_t src;
+    pmix_status_t rc = PMIX_ERR_NOMEM;
+
+    memset(&src, 0, sizeof(src));
+    if (build_info_array_chain(&src, levels)) {
+        rc = mod->pack(buf, &src, 1, PMIX_VALUE);
+    }
+    release_info_array_chain(&src);
+    return rc;
+}
+
+static void test_info_array_depth(void)
+{
+    pmix_bfrops_module_t *mod;
+    pmix_buffer_t buf;
+    pmix_value_t dst;
+    unsigned int save = pmix_bfrops_globals.max_array_depth;
+    pmix_status_t rc;
+    int32_t count;
+    int ok;
+
+    mod = pmix_bfrops_base_assign_module("v21");
+    if (NULL == mod) {
+        fprintf(stdout, "  SKIP: bfrops v21 not available\n");
+        return;
+    }
+
+    /* at the limit: round-trips, as nested data arrays of info */
+    memset(&dst, 0, sizeof(dst));
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    rc = pack_info_array_chain(mod, &buf, (int) save);
+    if (PMIX_SUCCESS == rc) {
+        count = 1;
+        rc = mod->unpack(&buf, &dst, &count, PMIX_VALUE);
+    }
+    ok = (PMIX_SUCCESS == rc && PMIX_DATA_ARRAY == dst.type);
+    if (!ok) {
+        fprintf(stdout, "    info arrays nested to the limit returned %s\n",
+                PMIx_Error_string(rc));
+    }
+    PMIX_VALUE_DESTRUCT(&dst);
+    PMIX_DESTRUCT(&buf);
+    report("v21: info arrays nested to the depth limit round-trip", ok);
+
+    /* one past: pack refuses */
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    rc = pack_info_array_chain(mod, &buf, (int) save + 1);
+    PMIX_DESTRUCT(&buf);
+    report("v21: info arrays nested past the depth limit are refused by pack",
+           PMIX_ERR_PACK_FAILURE == rc);
+
+    /* past it, built by a sender with a higher limit: unpack refuses */
+    memset(&dst, 0, sizeof(dst));
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    pmix_bfrops_globals.max_array_depth = save + 8;
+    rc = pack_info_array_chain(mod, &buf, (int) save + 3);
+    pmix_bfrops_globals.max_array_depth = save;
+    if (PMIX_SUCCESS == rc) {
+        count = 1;
+        rc = mod->unpack(&buf, &dst, &count, PMIX_VALUE);
+        ok = (PMIX_ERR_UNPACK_FAILURE == rc);
+    } else {
+        ok = 0;
+    }
+    if (!ok) {
+        fprintf(stdout, "    info arrays nested past the limit returned %s\n",
+                PMIx_Error_string(rc));
+    }
+    PMIX_VALUE_DESTRUCT(&dst);
+    PMIX_DESTRUCT(&buf);
+    report("v21: info arrays nested past the depth limit are refused by unpack", ok);
+}
+
+/* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
 {
@@ -662,6 +894,8 @@ int main(int argc, char **argv)
     test_depth_past_limit_is_refused_by_unpack();
     test_limit_follows_the_parameter();
     test_refusal_does_not_poison_the_buffer();
+    test_query_depth();
+    test_info_array_depth();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
