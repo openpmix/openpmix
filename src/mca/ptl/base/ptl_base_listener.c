@@ -425,7 +425,7 @@ static char *rndz_file_owner(int dirfd, const char *name)
         return NULL;
     }
     for (n = 0; n < 3; n++) {
-        line = pmix_getline(fp);
+        line = pmix_getline(fp, NULL);
         if (NULL == line) {
             /* the file was never completely written - e.g., its
              * creator died partway thru doing so */

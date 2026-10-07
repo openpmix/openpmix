@@ -17,7 +17,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_string_copy.h"
 
 static int npass = 0;
@@ -131,17 +133,18 @@ static FILE *make_tmpfile(const char *contents)
 /* a normal newline-terminated line has its newline stripped */
 static void test_getline_strip_newline(void)
 {
+    bool failed;
     FILE *fp = make_tmpfile("hello\nworld\n");
     char *line;
 
-    line = pmix_getline(fp);
+    line = pmix_getline(fp, &failed);
     report("getline: first line stripped", line && 0 == strcmp(line, "hello"));
     free(line);
-    line = pmix_getline(fp);
+    line = pmix_getline(fp, &failed);
     report("getline: second line stripped", line && 0 == strcmp(line, "world"));
     free(line);
-    line = pmix_getline(fp);
-    report("getline: EOF returns NULL", NULL == line);
+    line = pmix_getline(fp, &failed);
+    report("getline: EOF returns NULL", NULL == line && !failed);
     free(line);
     fclose(fp);
 }
@@ -149,9 +152,11 @@ static void test_getline_strip_newline(void)
 /* a final line with no trailing newline must keep all its characters */
 static void test_getline_no_trailing_newline(void)
 {
+    bool failed;
     FILE *fp = make_tmpfile("nonewline");
-    char *line = pmix_getline(fp);
-    report("getline: unterminated last line preserved", line && 0 == strcmp(line, "nonewline"));
+    char *line = pmix_getline(fp, &failed);
+    report("getline: unterminated last line preserved",
+           line && 0 == strcmp(line, "nonewline") && !failed);
     free(line);
     fclose(fp);
 }
@@ -159,41 +164,129 @@ static void test_getline_no_trailing_newline(void)
 /* an empty line ("\n") must return an empty string, not underflow */
 static void test_getline_empty_line(void)
 {
+    bool failed;
     FILE *fp = make_tmpfile("\nafter\n");
     char *line;
 
-    line = pmix_getline(fp);
+    line = pmix_getline(fp, &failed);
     report("getline: empty line returns \"\"", line && 0 == strcmp(line, ""));
     free(line);
-    line = pmix_getline(fp);
+    line = pmix_getline(fp, &failed);
     report("getline: line after empty preserved", line && 0 == strcmp(line, "after"));
     free(line);
     fclose(fp);
 }
 
-/* a line longer than the internal buffer must not lose a character to
- * the newline-stripping logic (the first fgets read has no newline) */
+/* a line far longer than any buffer comes back whole, and the line after
+ * it is the next line - not the tail of this one */
 static void test_getline_long_line(void)
 {
-    char big[2000];
+    bool failed;
+    char big[5000], *contents = NULL;
+    char *line;
+    FILE *fp;
+
     memset(big, 'a', sizeof(big) - 1);
     big[sizeof(big) - 1] = '\0';
+    if (0 > pmix_asprintf(&contents, "%s\nnext\n%s", big, big)) {
+        report("getline: long line test setup", false);
+        return;
+    }
+    fp = make_tmpfile(contents);
+    free(contents);
 
-    FILE *fp = make_tmpfile(big);
-    char *line = pmix_getline(fp);
-    /* the internal buffer is 1024, so the first read returns 1023
-     * 'a' chars with no newline; none of them may be dropped */
-    report("getline: long line not truncated by strip",
-           line && 1023 == strlen(line) && (size_t) (strspn(line, "a")) == strlen(line));
+    line = pmix_getline(fp, &failed);
+    report("getline: a long line comes back whole",
+           line && strlen(big) == strlen(line) && 0 == strcmp(line, big));
+    free(line);
+    line = pmix_getline(fp, &failed);
+    report("getline: the line after a long one is the next line",
+           line && 0 == strcmp(line, "next"));
+    free(line);
+    line = pmix_getline(fp, &failed);
+    report("getline: a long final line with no newline comes back whole",
+           line && 0 == strcmp(line, big));
+    free(line);
+    line = pmix_getline(fp, &failed);
+    report("getline: then the end of the file", NULL == line && !failed);
+    free(line);
+    fclose(fp);
+}
+
+/* a NUL byte is refused and reported: as a C string the rest of its
+ * line would silently vanish */
+static void test_getline_nul_byte(void)
+{
+    bool failed;
+    FILE *fp = tmpfile();
+    char *line;
+
+    if (NULL == fp) {
+        report("getline: NUL test setup", false);
+        return;
+    }
+    fwrite("ok\nab\0cd\nnext\n", 1, 14, fp);
+    rewind(fp);
+    line = pmix_getline(fp, &failed);
+    report("getline: the line before a NUL is read", line && 0 == strcmp(line, "ok") && !failed);
+    free(line);
+    line = pmix_getline(fp, &failed);
+    report("getline: a NUL stops the read", NULL == line);
+    report("getline: ...and says so", failed);
+    free(line);
+    fclose(fp);
+}
+
+/* a read error is reported, not taken for the end of the stream */
+static void test_getline_read_error(void)
+{
+    bool failed = false;
+    char path[] = "/tmp/pmix_getline_XXXXXX";
+    char *line;
+    FILE *fp;
+    int fd;
+
+    fd = mkstemp(path);
+    if (0 > fd) {
+        report("getline: read error test setup", false);
+        return;
+    }
+    close(fd);
+    /* reading a stream opened only for writing fails */
+    fp = fopen(path, "w");
+    unlink(path);
+    if (NULL == fp) {
+        report("getline: read error test setup", false);
+        return;
+    }
+    line = pmix_getline(fp, &failed);
+    report("getline: a read error returns NULL", NULL == line);
+    report("getline: ...and says so", failed);
+    free(line);
+    fclose(fp);
+}
+
+/* "failed" may be NULL for a caller that does not need it */
+static void test_getline_null_flag(void)
+{
+    FILE *fp = make_tmpfile("one\n");
+    char *line;
+
+    line = pmix_getline(fp, NULL);
+    report("getline: no flag: the line is read", line && 0 == strcmp(line, "one"));
+    free(line);
+    line = pmix_getline(fp, NULL);
+    report("getline: no flag: then the end of the file", NULL == line);
     free(line);
     fclose(fp);
 }
 
 static void test_getline_empty_file(void)
 {
+    bool failed;
     FILE *fp = make_tmpfile("");
-    char *line = pmix_getline(fp);
-    report("getline: empty file returns NULL", NULL == line);
+    char *line = pmix_getline(fp, &failed);
+    report("getline: empty file returns NULL", NULL == line && !failed);
     free(line);
     fclose(fp);
 }
@@ -218,6 +311,9 @@ int main(int argc, char **argv)
     test_getline_no_trailing_newline();
     test_getline_empty_line();
     test_getline_long_line();
+    test_getline_nul_byte();
+    test_getline_read_error();
+    test_getline_null_flag();
     test_getline_empty_file();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);

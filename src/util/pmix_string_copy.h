@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -84,33 +84,29 @@ PMIX_EXPORT void pmix_string_copy(char *dest, const char *src, size_t dest_len)
  * Read one line from an open stream, without its trailing newline.
  *
  * @param fp An open, readable stream. It is invalid to pass NULL.
+ * @param failed If not NULL, set to true when the read stopped short of
+ *        the end of the stream, and to false otherwise.
  * @retval A fresh allocation the CALLER frees.
  * @retval NULL nothing more could be read.
  *
- * Three things about this are easy to assume and wrong:
- *
- * - **It reads at most 1023 bytes, and a longer line comes back in
- *   pieces.** There is no error and no marker: the first call answers
- *   the first 1023 bytes and the next call answers the rest, so a
- *   caller reading successive lines is handed the tail of the previous
- *   one where it expects the next line. Every file PMIx reads with this
- *   is one PMIx wrote, and their lines are short; do not point it at a
- *   file whose length you do not control.
+ * A line of any length is returned whole: it is read a character at a
+ * time until its newline arrives. Three things about this are easy to
+ * assume and wrong:
  *
  * - **A returned line is not necessarily newline-terminated in the
  *   file.** The newline is stripped when there is one, and there is none
- *   for the last line of a file that does not end in one - or for the
- *   1023-byte fragment above. So the absence of a newline says nothing
- *   about where in the file the line came from.
+ *   for the last line of a file that does not end in one.
  *
- * - **NULL is not specifically end-of-file.** A read error and a failed
- *   allocation answer the same way, and this function has no other way
- *   to say so. A caller that has to tell them apart must ask the stream
- *   itself (feof/ferror); callers here treat NULL as "no more input",
- *   which for the rendezvous files they read means the writer had not
- *   finished.
+ * - **NULL is not specifically end-of-file.** A read error, a NUL byte
+ *   in the line and a failed allocation also return NULL, and set
+ *   "failed". A caller that stops at the first NULL without checking it
+ *   takes whatever it read before the failure for the whole file.
+ *
+ * - **A NUL byte is a failure, not the end of the line.** The line is
+ *   handed back as a C string, so the rest of it would silently vanish;
+ *   a line-oriented text file has no use for one.
  */
-PMIX_EXPORT char *pmix_getline(FILE *fp);
+PMIX_EXPORT char *pmix_getline(FILE *fp, bool *failed);
 
 
 END_C_DECLS
