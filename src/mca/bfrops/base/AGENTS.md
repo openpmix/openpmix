@@ -568,7 +568,7 @@ Registered in `bfrop_base_frame.c`, all under `pmix_bfrops_base_`:
 |-----------|---------|
 | `initial_size` | starting allocation of a new buffer |
 | `threshold_size` | size at which `buffer_extend` stops doubling and grows additively |
-| `max_array_depth` | how deeply data arrays may nest before pack and unpack refuse; 0 disables the cap. Each nesting level is a couple of bytes of message and one stack frame to unpack, so this cap is what bounds unpack's stack depth — see the depth tests in [`test/unit/nested_darray.c`](../../../../test/unit/nested_darray.c) |
+| `max_array_depth` | how deeply data may nest before pack and unpack refuse; 0 disables the cap. A level is a data array (charged in `pmix_bfrops_base_[un]pack_darray()`), or a value whose type nests without one - `PMIX_QUERY` and the legacy `PMIX_INFO_ARRAY` (charged in `pmix_bfrops_base_[un]pack_val()`, listed in `value_type_nests()`). A new value type whose unpacker reaches the info or value unpackers must be added to that list in both files. Each nesting level is a couple of bytes of message and one stack frame to unpack, so this cap is what bounds unpack's stack depth — see the depth tests in [`test/unit/nested_darray.c`](../../../../test/unit/nested_darray.c) |
 | `default_type` | described vs. non-described for new buffers; described is the default in `PMIX_ENABLE_DEBUG` builds |
 
 ## Threading

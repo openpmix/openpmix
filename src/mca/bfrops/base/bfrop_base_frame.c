@@ -85,8 +85,9 @@ static int pmix_bfrop_register(pmix_mca_base_register_flag_t flags)
 
     pmix_bfrops_globals.max_array_depth = PMIX_BFROP_DEFAULT_MAX_ARRAY_DEPTH;
     pmix_mca_base_var_register("pmix", "bfrops", "base", "max_array_depth",
-                               "Maximum depth to which data arrays may be nested inside "
-                               "one another when packed or unpacked (0 = no limit)",
+                               "Maximum depth to which data arrays, queries and info "
+                               "arrays may be nested inside one another when packed or "
+                               "unpacked (0 = no limit)",
                                PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_INT,
                                &pmix_bfrops_globals.max_array_depth);
 
