@@ -198,12 +198,13 @@ every unpacker. Add to it rather than to a scratch program. Note that
 both defects above were found by that fuzz stage, not by reading -
 which is the argument for keeping it.
 
-## The one place unpack does not hand back the type it was given
+## The two places unpack does not hand back the type it was given
 
 `pmix_bfrops_base_unpack_val()` expands a `PMIX_COMPRESSED_STRING` and
-returns a `PMIX_STRING`. That is deliberate and is the only such
-transformation in the framework, so it is worth knowing before you read
-the switch and assume a typo.
+returns a `PMIX_STRING`, and turns a legacy `PMIX_INFO_ARRAY` into a
+`PMIX_DATA_ARRAY` of `PMIX_INFO` (see the end of this section). Both are
+deliberate and are the only such transformations in the framework, so
+they are worth knowing before you read the switch and assume a typo.
 
 The reason is that PMIx publishes no way to expand one: there is no
 `PMIx_Value_decompress`, so a compressed string that survives
@@ -241,6 +242,18 @@ these bytes are compressed and we cannot expand them, we have no string
 Coverage: `test/unit/compress_block.c` packs a hand-built
 `PMIX_COMPRESSED_STRING` value and asserts the unpack yields a matching
 `PMIX_STRING`. It fails against a library without the arm.
+
+**The legacy info array.** A 2.x `pmix_value_t` could hold a
+`PMIX_INFO_ARRAY` (type 44) through a `pmix_info_array_t` pointer, and a
+v2.1 or v2.2 peer can still send one. The type left the public header
+with v3 and the union has no member for it, so `unpack_val` delivers it
+as the `PMIX_DATA_ARRAY` of `PMIX_INFO` that holds the same entries. It
+unpacks through the peer's registered handler, so only `v21` and `v3`
+accept it; the newer formats never registered type 44 and refuse it as
+an unknown type. Nothing converts the other way: a 2.1 peer already
+understands `PMIX_DATA_ARRAY`. Coverage: the info-array cases in
+`test/unit/bfrops_malformed.c`, which build the value with the
+component's own packer.
 
 ## Defects found in the August 2026 review
 

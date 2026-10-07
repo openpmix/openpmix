@@ -579,6 +579,42 @@ _Static_assert(sizeof(pmix_envar_t) <= PMIX_VALUE_UNION_SIZE, "PMIX_ENVAR no lon
 _Static_assert(sizeof(pmix_byte_object_t) <= PMIX_VALUE_UNION_SIZE,
                "PMIX_BYTE_OBJECT no longer fits");
 
+/* A 2.x value could hold a PMIX_INFO_ARRAY, and a v2.1 or v2.2 peer can
+ * still send one. The value union has no member for it now, so it is
+ * delivered as the PMIX_DATA_ARRAY of PMIX_INFO it is equivalent to.
+ * The array is unpacked by the peer's own registered handler, so a wire
+ * format that never had the type refuses it as an unknown type. */
+static pmix_status_t unpack_legacy_info_array(pmix_pointer_array_t *regtypes,
+                                              pmix_buffer_t *buffer, pmix_value_t *val)
+{
+    pmix_info_array_t ia;
+    pmix_data_array_t *darray;
+    int32_t m = 1;
+    pmix_status_t ret;
+
+    memset(&ia, 0, sizeof(ia));
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ia, &m, PMIX_BFROP_LEGACY_INFO_ARRAY, regtypes);
+    if (PMIX_SUCCESS != ret) {
+        if (NULL != ia.array) {
+            PMIX_INFO_FREE(ia.array, ia.size);
+        }
+        return ret;
+    }
+    darray = (pmix_data_array_t *) pmix_calloc(1, sizeof(pmix_data_array_t));
+    if (NULL == darray) {
+        if (NULL != ia.array) {
+            PMIX_INFO_FREE(ia.array, ia.size);
+        }
+        return PMIX_ERR_NOMEM;
+    }
+    darray->type = PMIX_INFO;
+    darray->size = ia.size;
+    darray->array = ia.array;
+    val->type = PMIX_DATA_ARRAY;
+    val->data.darray = darray;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                           pmix_value_t *val)
 {
@@ -730,6 +766,8 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_b
             val->data.ptr = NULL;
             return ret;
 
+        case PMIX_BFROP_LEGACY_INFO_ARRAY:
+            return unpack_legacy_info_array(regtypes, buffer, val);
         case PMIX_COMPRESSED_STRING: {
             /* A compressed string is a transport encoding, not a thing a
              * value is allowed to still be once it has been received. We
