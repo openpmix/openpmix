@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2018-2020 Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,6 +13,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #ifdef HAVE_STRING_H
 #    include <string.h>
 #endif
@@ -50,26 +51,69 @@ void pmix_string_copy(char *dest, const char *src, size_t dest_len)
     dest[dest_len - 1] = '\0';
 }
 
-char *pmix_getline(FILE *fp)
+char *pmix_getline(FILE *fp, bool *failed)
 {
-    char *ret, *buff;
-    char input[1024];
-    size_t len;
+    char *line = NULL, *grown;
+    size_t len = 0, size = 0;
+    bool started = false;
+    int c;
 
-    ret = fgets(input, sizeof(input), fp);
-    if (NULL != ret) {
-        /* strip a trailing newline, if present.  fgets does not
-         * guarantee one: a line longer than the buffer or a final
-         * line at EOF will have none, so we must not blindly delete
-         * the last character.  Guard against an empty string as well
-         * to avoid a size_t underflow on input[len - 1]. */
-        len = strlen(input);
-        if (0 < len && '\n' == input[len - 1]) {
-            input[len - 1] = '\0';
-        }
-        buff = strdup(input);
-        return buff;
+    if (NULL != failed) {
+        *failed = false;
     }
 
+    /* a character at a time, to the newline however far away it is */
+    for (;;) {
+        c = getc(fp);
+        if (EOF == c) {
+            if (ferror(fp)) {
+                /* not the end of the stream: whatever is left of it was
+                 * never read, so this fragment is not the line */
+                goto fail;
+            }
+            /* a final line with no newline is still a line */
+            break;
+        }
+        started = true;
+        if ('\n' == c) {
+            break;
+        }
+        if ('\0' == c) {
+            /* handed back as a C string, the rest of the line would
+             * silently vanish */
+            goto fail;
+        }
+        /* room for this character and the terminator after it */
+        if (len + 2 > size) {
+            size = (0 == size) ? 256 : 2 * size;
+            grown = (char *) realloc(line, size);
+            if (NULL == grown) {
+                goto fail;
+            }
+            line = grown;
+        }
+        line[len++] = (char) c;
+    }
+
+    if (!started) {
+        /* the end of the stream, with nothing at all on this line */
+        return NULL;
+    }
+    if (NULL == line) {
+        /* an empty line is still a line */
+        line = strdup("");
+        if (NULL == line) {
+            goto fail;
+        }
+        return line;
+    }
+    line[len] = '\0';
+    return line;
+
+fail:
+    free(line);
+    if (NULL != failed) {
+        *failed = true;
+    }
     return NULL;
 }
