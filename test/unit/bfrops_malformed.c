@@ -953,6 +953,89 @@ static void test_legacy_counts_bounded(const char *version)
     PMIX_DESTRUCT(&buf);
 }
 
+/* v21 and v3 register PMIX_MODEX, but only as an array element type -
+ * no release gave pmix_value_t a member for it. A value tagged with it
+ * must be refused in both directions.
+ *
+ * The wire image is what a value of that type would look like: the
+ * count and the type tag (a one-element PMIX_UINT16 packs to exactly
+ * that under these formats), then a well-formed modex with no blob, so
+ * that the only thing wrong with the message is the type. It is
+ * unpacked into a block larger than a value and filled with a known
+ * byte, and nothing past the value may change. */
+#define UT_CANARY_LEN 512
+
+static void test_legacy_modex_value_refused(const char *version)
+{
+    pmix_bfrops_module_t *mod;
+    pmix_buffer_t buf, tmp;
+    pmix_value_t *heapval;
+    ut_modex_data_t modex;
+    uint16_t tag = UT_PMIX_MODEX;
+    unsigned char *block;
+    char *dst;
+    size_t len, i;
+    int32_t n;
+    pmix_status_t rc;
+    char label[128];
+    int ok;
+
+    mod = pmix_bfrops_base_assign_module(version);
+    if (NULL == mod) {
+        fprintf(stdout, "  SKIP: bfrops %s not available\n", version);
+        return;
+    }
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    PMIX_CONSTRUCT(&tmp, pmix_buffer_t);
+    tmp.type = PMIX_BFROP_BUFFER_NON_DESC;
+    memset(&modex, 0, sizeof(modex));
+    ok = (PMIX_SUCCESS == mod->pack(&buf, &tag, 1, PMIX_UINT16) &&
+          PMIX_SUCCESS == mod->pack(&tmp, &modex, 1, UT_PMIX_MODEX) &&
+          sizeof(int32_t) < tmp.bytes_used);
+    if (ok) {
+        /* the modex without its own element count */
+        len = tmp.bytes_used - sizeof(int32_t);
+        dst = pmix_bfrop_buffer_extend(&buf, len);
+        ok = (NULL != dst);
+        if (ok) {
+            memcpy(dst, tmp.base_ptr + sizeof(int32_t), len);
+            buf.pack_ptr += len;
+            buf.bytes_used += len;
+        }
+    }
+    if (ok) {
+        block = (unsigned char *) malloc(UT_CANARY_LEN);
+        memset(block, 0xa5, UT_CANARY_LEN);
+        n = 1;
+        rc = mod->unpack(&buf, block, &n, PMIX_VALUE);
+        ok = (PMIX_SUCCESS != rc);
+        for (i = sizeof(pmix_value_t); i < UT_CANARY_LEN; i++) {
+            if (0xa5 != block[i]) {
+                fprintf(stdout, "    byte %lu past the value was written\n", (unsigned long) i);
+                ok = 0;
+                break;
+            }
+        }
+        free(block);
+    }
+    snprintf(label, sizeof(label), "%s: a value tagged PMIX_MODEX is not unpacked", version);
+    report(label, ok);
+    PMIX_DESTRUCT(&tmp);
+    PMIX_DESTRUCT(&buf);
+
+    heapval = (pmix_value_t *) calloc(1, sizeof(pmix_value_t));
+    heapval->type = UT_PMIX_MODEX;
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    buf.type = PMIX_BFROP_BUFFER_NON_DESC;
+    rc = mod->pack(&buf, heapval, 1, PMIX_VALUE);
+    snprintf(label, sizeof(label), "%s: a value tagged PMIX_MODEX is not packed", version);
+    report(label, PMIX_SUCCESS != rc);
+    PMIX_DESTRUCT(&buf);
+    free(heapval);
+}
+
 /* A value of type PMIX_POINTER carries only a sentinel on the wire. The
  * value it unpacks into must hold no pointer afterward, whatever its
  * storage held before. */
@@ -1075,6 +1158,8 @@ int main(int argc, char **argv)
     test_element_count_sign();
     test_legacy_counts_bounded("v21");
     test_legacy_counts_bounded("v3");
+    test_legacy_modex_value_refused("v21");
+    test_legacy_modex_value_refused("v3");
     test_count_fits_boundaries();
     test_nested_info_counts_bounded();
     test_sparse_array_counts();

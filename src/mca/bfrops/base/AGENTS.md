@@ -498,6 +498,13 @@ type keeps the list honest against the union's size in both directions —
 so if the union grows, or a type that fits stops fitting, the build
 fails here instead of at run time.
 
+The legacy `PMIX_MODEX` type is on the same list. It left the public
+header with v3, but `v21` and `v3` still register it, and no release
+ever gave `pmix_value_t` a member for it — it is only an array element
+type. Base code names it `PMIX_BFROP_LEGACY_MODEX` (in `base.h`), since
+the public constant no longer exists. It has no `_Static_assert`,
+because its struct is private to those two components.
+
 **Two things about how it was found are worth more than the defect.**
 
 It needed *Linux*: `bfrops_darray` and `bfrops_helpers` also segfaulted

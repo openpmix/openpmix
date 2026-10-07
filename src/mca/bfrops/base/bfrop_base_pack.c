@@ -1013,7 +1013,8 @@ pmix_status_t pmix_bfrops_base_pack_val(pmix_pointer_array_t *regtypes, pmix_buf
          * of a 24-byte union rather than writing into it. */
         if (PMIX_VALUE == p->type || PMIX_INFO == p->type ||
             PMIX_PDATA == p->type || PMIX_APP == p->type ||
-            PMIX_KVAL == p->type || PMIX_BUFFER == p->type) {
+            PMIX_KVAL == p->type || PMIX_BUFFER == p->type ||
+            PMIX_BFROP_LEGACY_MODEX == p->type) {
             pmix_output(0, "PACK-PMIX-VALUE[%s:%d]: TYPE %s CANNOT BE CARRIED BY A VALUE",
                         __FILE__, __LINE__, PMIx_Data_type_string(p->type));
             return PMIX_ERR_BAD_PARAM;
