@@ -839,6 +839,13 @@ PMIX_EXPORT void pmix_server_trk_join(pmix_server_trkr_t *trk, pmix_peer_t *peer
  * which a tracker built before we had heard of it can be repaired. */
 PMIX_EXPORT bool pmix_server_trk_count_nspace(pmix_server_trkr_t *trk,
                                               pmix_namespace_t *nptr);
+
+/* How many of nptr's local procs the participant list names, each
+ * counted once however often it is named. Returns false when that
+ * cannot be settled yet. Shared by the fence family and groups. */
+PMIX_EXPORT bool pmix_server_count_local_participants(const pmix_proc_t *pcs, size_t npcs,
+                                                      pmix_namespace_t *nptr,
+                                                      size_t *count);
 PMIX_EXPORT pmix_status_t pmix_server_build_proc_info(pmix_rank_info_t *info,
                                                       bool include_scope,
                                                       pmix_info_t *xfer,

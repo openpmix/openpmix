@@ -669,6 +669,66 @@ pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *procs,
     return trk;
 }
 
+/* How many of a namespace's procs on this node are among a collective's
+ * participants - which is how many contributions the collective's local
+ * phase has to wait for from that namespace.
+ *
+ * Each local proc counts once, however many times the participant list
+ * names it, and a wildcard names all of them whatever else the list says.
+ * Counting one per list entry instead expects a contribution per mention
+ * where each proc only ever makes one: a list that names a member twice
+ * sets a target the participants cannot reach, and the collective never
+ * leaves this server. The list is the caller's to build, nothing forbids
+ * a repeat, and callers do repeat - an MPI disconnecting an
+ * intracommunicator can name its group once as the local group and again
+ * as the remote one - and a client of any release may send such a list,
+ * so the count has to be a count of procs, not of entries.
+ *
+ * Returns false when the count cannot be settled yet: the namespace's
+ * local proc count is not known, or the list names ranks individually and
+ * not all of the namespace's local clients have registered. */
+bool pmix_server_count_local_participants(const pmix_proc_t *pcs, size_t npcs,
+                                          pmix_namespace_t *nptr, size_t *count)
+{
+    pmix_rank_info_t *rinfo;
+    size_t i;
+    bool any = false;
+
+    *count = 0;
+    for (i = 0; i < npcs; i++) {
+        if (0 != strncmp(pcs[i].nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+            continue;
+        }
+        if (PMIX_RANK_WILDCARD == pcs[i].rank) {
+            /* names every local proc, whatever else the list says */
+            if (SIZE_MAX == nptr->nlocalprocs) {
+                return false;
+            }
+            *count = nptr->nlocalprocs;
+            return true;
+        }
+        any = true;
+    }
+    if (!any) {
+        return true;
+    }
+    if (!nptr->all_registered) {
+        return false;
+    }
+    /* walk our procs rather than the participants, so that each is
+     * counted once however many times the list names it */
+    PMIX_LIST_FOREACH (rinfo, &nptr->ranks, pmix_rank_info_t) {
+        for (i = 0; i < npcs; i++) {
+            if (pcs[i].rank == rinfo->pname.rank &&
+                0 == strncmp(pcs[i].nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+                ++(*count);
+                break;
+            }
+        }
+    }
+    return true;
+}
+
 /* Count one namespace's local participants into a tracker, once.
  *
  * pmix_server_new_tracker does this for every namespace it can see when
@@ -717,39 +777,23 @@ bool pmix_server_trk_count_nspace(pmix_server_trkr_t *trk, pmix_namespace_t *npt
         }
     }
 
-    /* All or nothing. A namespace is counted once, by whichever caller
-     * first sees it fully registered, and is then on the list forever -
-     * so a partial count here would be a permanent undercount, and a
-     * second caller adding the rest would double it. */
     for (i = 0; i < trk->npcs; i++) {
-        if (0 != strncmp(trk->pcs[i].nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
-            continue;
-        }
-        any = true;
-        if (PMIX_RANK_WILDCARD == trk->pcs[i].rank) {
-            if (SIZE_MAX == nptr->nlocalprocs) {
-                return false;
-            }
-            addend += nptr->nlocalprocs;
-            continue;
-        }
-        if (!nptr->all_registered) {
-            return false;
-        }
-        found = false;
-        PMIX_LIST_FOREACH (rinfo, &nptr->ranks, pmix_rank_info_t) {
-            if (trk->pcs[i].rank == rinfo->pname.rank) {
-                found = true;
-                break;
-            }
-        }
-        if (found) {
-            ++addend;
+        if (0 == strncmp(trk->pcs[i].nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
+            any = true;
+            break;
         }
     }
     if (!any) {
         /* no participant from this namespace - nothing to record */
         return true;
+    }
+
+    /* All or nothing. A namespace is counted once, by whichever caller
+     * first sees it fully registered, and is then on the list forever -
+     * so a partial count here would be a permanent undercount, and a
+     * second caller adding the rest would double it. */
+    if (!pmix_server_count_local_participants(trk->pcs, trk->npcs, nptr, &addend)) {
+        return false;
     }
 
     /* what this namespace contributes is now fixed; note whether any of
