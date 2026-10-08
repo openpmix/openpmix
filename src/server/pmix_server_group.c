@@ -228,8 +228,7 @@ static void forward_to_host(grp_block_t *blk);
 static void check_definition_complete(grp_block_t *blk)
 {
     pmix_namespace_t *ns, *nptr;
-    pmix_rank_info_t *info;
-    size_t i;
+    size_t i, n;
     uint32_t nlocal = 0;
     grp_trk_t *trk;
 
@@ -278,48 +277,28 @@ static void check_definition_complete(grp_block_t *blk)
             /* delay processing until this nspace is registered */
             return;
         }
+    }
+
+    /* Every participating namespace is known, so count each one's local
+     * members - once per namespace, and once per member however many
+     * times the membership names it. Walking the membership and counting
+     * an entry at a time set a target of one contribution per mention,
+     * which a membership naming anyone twice could never reach. */
+    PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
         if (0 == nptr->nlocalprocs) {
             /* the host has informed us that this nspace has no local procs */
-            pmix_output_verbose(5, pmix_server_globals.group_output,
-                                "check_definition_complete: nspace %s has no local procs",
-                                trk->pcs[i].nspace);
             continue;
         }
-
-        /* if they want all the local members of this nspace, then
-         * add them in here. They told us how many procs will be
-         * local to us from this nspace, but we don't know their
-         * ranks. So as long as they want _all_ of them, we can
-         * handle that case regardless of whether the individual
-         * clients have been "registered" */
-        if (PMIX_RANK_WILDCARD == trk->pcs[i].rank) {
-            nlocal += nptr->nlocalprocs;
-            continue;
-        }
-
-        /* They don't want all the local clients, or they are at
-         * least listing them individually. Check if all the clients
-         * for this nspace have been registered via "register_client"
-         * so we know the specific ranks on this node */
-        if (!nptr->all_registered) {
-            /* nope, so no point in going further on this one - we'll
+        if (!pmix_server_count_local_participants(trk->pcs, trk->npcs, nptr, &n)) {
+            /* the membership lists ranks of this nspace individually,
+             * and we don't know all of its local ranks yet - we'll
              * process it once all the procs are known */
             pmix_output_verbose(5, pmix_server_globals.group_output,
                                 "check_definition_complete: all clients not registered nspace %s",
-                                trk->pcs[i].nspace);
+                                nptr->nspace);
             return;
         }
-        /* is this one of my local ranks? */
-        PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
-            if (trk->pcs[i].rank == info->pname.rank) {
-                pmix_output_verbose(5, pmix_server_globals.group_output,
-                                    "adding local proc %s.%d to tracker", info->pname.nspace,
-                                    info->pname.rank);
-                /* track the count */
-                nlocal++;
-                break;
-            }
-        }
+        nlocal += (uint32_t) n;
     }
 
     // if we get here, then we have completed definition of the block

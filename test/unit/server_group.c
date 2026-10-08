@@ -623,6 +623,21 @@ int main(int argc, char **argv)
            group_fired);
     report("and the block does not park forever", nothing_parked());
 
+    /* --- a membership that names its namespace twice --- *
+     * Two local procs, two participants, and a membership that lists the
+     * namespace's wildcard twice. Each proc contributes once whatever
+     * the list says, so the block expects two - against an unfixed
+     * library it expected one per entry, four, and never fired. */
+    PMIX_LOAD_PROCID(&twoprocs[0], GRPUT_TWO, PMIX_RANK_WILDCARD);
+    PMIX_LOAD_PROCID(&twoprocs[1], GRPUT_TWO, PMIX_RANK_WILDCARD);
+    rc = drive_group_procs("grput.dup", twoprocs, 2, false);
+    report("first participant of a repeated membership is accepted", PMIX_SUCCESS == rc);
+    rc = drive_group_procs("grput.dup", twoprocs, 2, false);
+    report("second participant of a repeated membership is accepted", PMIX_SUCCESS == rc);
+    progress_barrier();
+    report("a repeated membership is counted once per proc", group_fired);
+    report("and its block does not park forever", nothing_parked());
+
     /* --- two bootstrap blocks the host accepts separately --- *
      * A bootstrap participant gets a block of its own, so two of them on
      * one node put two blocks carrying the same group id on
