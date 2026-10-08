@@ -47,7 +47,10 @@ lists ``pmix_server_globals.collectives`` and
 A tracker records, among other things:
 
 * the participant list (``pcs`` / ``npcs``) as originally supplied;
-* the *expected* number of local participants (``nlocal``);
+* the *expected* number of local participants (``nlocal``) — the number
+  of distinct local procs the participant list names, so a proc named
+  more than once, or both by rank and by its namespace's wildcard,
+  is expected to contribute once;
 * a list of the contributions received so far (``local_cbs``, a list of
   ``pmix_server_caddy_t``, one entry per contributing peer — including a
   separate entry for each fork/exec'd clone of a participating rank);

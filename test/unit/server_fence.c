@@ -534,6 +534,59 @@ static void drop_late_tracker(int sd, short args, void *cbdata)
     PMIX_WAKEUP_THREAD(&l->lock);
 }
 
+/* A participant list that names a member more than once.
+ *
+ * Every participant hands the server the same list, and each local proc
+ * contributes once - so the number of contributions to wait for is the
+ * number of local procs the list names, not the number of entries that
+ * name them. Counting entries set a target a repeated list could never
+ * reach, and the collective never left the server: an MPI disconnecting
+ * an intracommunicator names its group once as local and again as
+ * remote, and hung there. A wildcard alongside a rank of the same
+ * namespace is the same repeat in another form. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_proc_t *procs;
+    size_t nprocs;
+    uint32_t nlocal;
+    bool def_complete;
+    bool built;
+} duptrk_t;
+
+static void build_dup_tracker(int sd, short args, void *cbdata)
+{
+    duptrk_t *d = (duptrk_t *) cbdata;
+    pmix_server_trkr_t *trk;
+
+    (void) sd;
+    (void) args;
+
+    trk = pmix_server_new_tracker(NULL, d->procs, d->nprocs, PMIX_FENCENB_CMD);
+    if (NULL != trk) {
+        d->built = true;
+        d->nlocal = trk->nlocal;
+        d->def_complete = trk->def_complete;
+        pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+        PMIX_RELEASE(trk);
+    }
+    PMIX_WAKEUP_THREAD(&d->lock);
+}
+
+static bool dup_tracker_counts(pmix_proc_t *procs, size_t nprocs, uint32_t expected)
+{
+    duptrk_t d;
+
+    memset(&d, 0, sizeof(d));
+    d.procs = procs;
+    d.nprocs = nprocs;
+    PMIX_CONSTRUCT_LOCK(&d.lock);
+    PMIX_THREADSHIFT(&d, build_dup_tracker);
+    PMIX_WAIT_THREAD(&d.lock);
+    PMIX_DESTRUCT_LOCK(&d.lock);
+    return d.built && d.def_complete && expected == d.nlocal;
+}
+
 static void drop_reg_trackers(int sd, short args, void *cbdata)
 {
     regtrk_t *r = (regtrk_t *) cbdata;
@@ -1119,6 +1172,28 @@ int main(int argc, char **argv)
             PMIX_WAIT_THREAD(&r.lock);
             PMIX_DESTRUCT_LOCK(&r.lock);
         }
+    }
+
+    /* --- a member named twice is still one contribution --- *
+     * regnsA has two local procs, ranks 0 and 1, both registered above. */
+    {
+        pmix_proc_t pr[4];
+
+        PMIX_LOAD_PROCID(&pr[0], "regnsA", 0);
+        PMIX_LOAD_PROCID(&pr[1], "regnsA", 0);
+        PMIX_LOAD_PROCID(&pr[2], "regnsA", 1);
+        PMIX_LOAD_PROCID(&pr[3], "regnsA", 1);
+        report("each member listed twice is counted once",
+               dup_tracker_counts(pr, 4, 2));
+        report("one member listed twice is one participant",
+               dup_tracker_counts(pr, 2, 1));
+
+        PMIX_LOAD_PROCID(&pr[0], "regnsA", 1);
+        PMIX_LOAD_PROCID(&pr[1], "regnsA", PMIX_RANK_WILDCARD);
+        report("a rank named beside its namespace's wildcard adds nothing",
+               dup_tracker_counts(pr, 2, 2));
+        report("no tracker is left behind by the repeated lists",
+               0 == pmix_list_get_size(&pmix_server_globals.collectives));
     }
 
     /* the collective timeout must not outlive its tracker */
