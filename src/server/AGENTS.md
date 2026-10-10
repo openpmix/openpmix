@@ -1961,8 +1961,12 @@ reports success, so `PMIx_Group_construct("")` arrives here with a NULL
 id - and `get_tracker` `strcmp`s the id against every block on
 `grp_collectives` and then `strdup`s it into a new one. The client
 library screens a NULL pointer, which an empty string is not, and the
-value is unpacked here, so the screen belongs here: `pmix_server_group`
-rejects a NULL id before anything else looks at it. Same class as the
+value is unpacked here, so the screen belongs here. All three handlers
+that take a group id off the wire - `pmix_server_group`,
+`pmix_server_group_invite` and `pmix_server_group_join` - reject a NULL
+id before anything else looks at it; the invite handler otherwise
+`strcmp`s it in `find_invite` and `strdup`s it into the invitation
+(covered by `test/unit/server_invite.c`). Same class as the
 invalid-namespace screen in `pmix_server_get.c`.
 
 **Driving a completion claims the block, and `host_called` is what says
