@@ -1903,6 +1903,14 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         PMIX_ERROR_LOG(rc);
         goto done;
     }
+    /* an empty string unpacks to NULL with success, and find_invite and
+     * the strdup below both use the id as a string - the same screen
+     * pmix_server_group and pmix_server_group_join apply */
+    if (NULL == grpid) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &nprocs, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {

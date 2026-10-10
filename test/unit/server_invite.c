@@ -31,6 +31,13 @@
  *      The host reports a loss with the lost process as the source; one
  *      raised by some other process naming it is not a loss.
  *
+ *   an empty group id is refused
+ *      A zero-length string unpacks as NULL with success, and the handler
+ *      uses the id as a string - strdup'd into the invitation, and
+ *      strcmp'd against every one already pending. Checked with no
+ *      invitation pending and with one pending, which reach the two
+ *      separately. Against an unfixed library either case segfaults.
+ *
  * Separately, a client may not raise the group events only servers raise:
  * that is covered in test/unit/server_events.c.
  */
@@ -346,6 +353,12 @@ int main(int argc, char **argv)
     memcpy(&procs[1], &p1, sizeof(pmix_proc_t));
     memcpy(&procs[2], &p2, sizeof(pmix_proc_t));
 
+    /* --- an empty group id is refused --- *
+     * the client screens only a NULL pointer, so PMIx_Group_invite("")
+     * reaches the server, where the id unpacks as NULL */
+    rc = invite(NULL, procs, 2);
+    report("an empty group id is refused", PMIX_ERR_BAD_PARAM == rc);
+
     /* --- an answer counts only for the group it names --- */
     reset_host();
     rc = invite("srvinv-g1", procs, 2);
@@ -379,6 +392,10 @@ int main(int argc, char **argv)
     terminated(&p2, &p1);
     report("a loss raised by another process is not counted",
            !saw_outcome("srvinv-g4", 6));
+    /* g4 is still pending, so this one is compared against it */
+    rc = invite(NULL, procs, 2);
+    report("an empty group id is refused while an invitation is pending",
+           PMIX_ERR_BAD_PARAM == rc);
     /* the lost member never accepted, so counting its loss resolves the
      * invitation - as a failure, the membership being incomplete */
     terminated(&p1, &p1);
