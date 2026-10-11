@@ -134,6 +134,12 @@ struct pmix_ptl_base_t {
      * connect-ack, and bound on each blocking read of the handshake that
      * follows it - see pmix_ptl_base_connection_handler */
     int connect_ack_timeout;
+    /* the most connections pending_connections may hold, as the
+     * max_pending_connections parameter gives it, and as
+     * pmix_ptl_base_start_listening works it out from that - 0 there means
+     * no limit. See connection_event_handler */
+    int max_pending_connections;
+    int pending_cap;
     /* the most any one writev may carry - see send_msg. Not a tuning
      * parameter: it exists so a test can drive the chunking with a small
      * message instead of a 2 GB one */
@@ -234,6 +240,11 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_create_listener(pmix_info_t info[], size
 PMIX_EXPORT void pmix_ptl_base_start_listening(void);
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
 PMIX_EXPORT void pmix_ptl_base_drop_pending_connection(pmix_pending_connection_t *pnd);
+/* What the listener does when accept() on lt fails with err: nothing for an
+ * error that concerns only the connection, a pause and a retry a second
+ * later for anything else, and a stop once the retries of an error that
+ * does not clear on its own run out. Runs on the progress thread */
+PMIX_EXPORT void pmix_ptl_base_accept_failed(pmix_listener_t *lt, int err);
 
 /* base support functions */
 /* Build the port array a listener scans from a list or range. NULL, an

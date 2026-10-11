@@ -294,7 +294,9 @@ On the server side the connection handler:
    keeping its place, until the whole message is in — and then parses it,
    guarding sizes against ``PMIX_MAX_CRED_SIZE`` and taint limits. A
    connection that has not delivered its whole handshake within
-   ``ptl_base_connect_ack_timeout`` is dropped;
+   ``ptl_base_connect_ack_timeout`` is dropped, and so is the oldest such
+   connection when ``ptl_base_max_pending_connections`` of them are
+   waiting;
 #. for a **simple client or singleton**, verifies the nspace and rank were
    pre-registered, creates the peer, and assigns its ``psec`` / ``bfrops``
    / ``gds`` compatibility modules;
@@ -433,7 +435,10 @@ asks it to retry; the wait defaults to 60 seconds, and 0 removes the
 bound),
 ``connect_ack_timeout`` (how long a server gives an incoming connection to
 deliver its whole connection request, and to answer each step of any
-security handshake after it; default 5 seconds, 0 for no limit), and
+security handshake after it; default 5 seconds, 0 for no limit),
+``max_pending_connections`` (how many incoming connections may be waiting
+to deliver their connection request at once; the oldest is dropped at the
+limit; default a quarter of the descriptor limit, -1 for no limit), and
 ``report_uri``. Inspect the current values
 for a build with::
 

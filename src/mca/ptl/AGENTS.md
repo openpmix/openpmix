@@ -542,6 +542,7 @@ All under the `pmix_ptl_base_` prefix, most with deprecated
 | `connection_wait_time` / `max_retries` | how long/often to wait for a server's connection file to appear |
 | `handshake_wait_time` / `handshake_max_retries` | how long a client or tool waits on a server while connecting - each `connect()` attempt and each handshake reply, or the whole event-driven attach (default 60s, 0 = unbounded) - and how often it retries a handshake the server asks it to retry |
 | `connect_ack_timeout` | seconds a server gives an inbound connection to deliver its whole connect-ack, and to answer each step of the blocking handshake after it, before dropping it (default 5; 0 = no limit) |
+| `max_pending_connections` | most inbound connections held while their connect-ack is still arriving; at the limit the oldest is dropped (default 0 = a quarter of the descriptor limit; -1 = no limit) |
 | `report_uri` | where to print the listener URI |
 
 Per the top-level guidance, prefer adding an MCA parameter (or, better, an
