@@ -397,6 +397,14 @@ typedef struct pmix_listener_t {
     bool group_given;
     uint32_t mode;
     pmix_ptl_pending_cbfunc_t cbfunc;
+    /* accept() failed and is retried from retry_ev - see
+     * pmix_ptl_base_accept_failed. nretries counts the retries of an
+     * error that does not clear on its own, and warned that this run of
+     * failures has been reported; a successful accept resets both */
+    pmix_event_t retry_ev;
+    bool paused;
+    int nretries;
+    bool warned;
 } pmix_listener_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_listener_t);
 
@@ -413,7 +421,10 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_listener_t);
     .group = 0,                             \
     .group_given = false,                   \
     .mode = 0,                              \
-    .cbfunc = NULL                          \
+    .cbfunc = NULL,                         \
+    .paused = false,                        \
+    .nretries = 0,                          \
+    .warned = false                         \
 }
 
 /* The header carries a payload's length in 32 bits, so a buffer larger

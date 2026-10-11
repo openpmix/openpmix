@@ -25,6 +25,12 @@
  * but only never waiting can make these pass with none. The timeout's own
  * job - dropping a connection that never finishes - has a case of its own.
  *
+ * With no timeout, the number of such connections is what bounds the
+ * descriptors they hold. At ptl_base_max_pending_connections the oldest is
+ * dropped to make room, so a process that means to connect - which sends
+ * at once - still gets in. Those cases also run with the timeout disabled,
+ * so nothing but the cap can close a connection.
+ *
  * Each case runs in its own child with an alarm armed, so a regression is
  * reported as a failure rather than hanging "make check". A stalled server
  * shows up as a blocking server call that never returns, since that call
@@ -44,6 +50,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -279,7 +286,74 @@ static int timeout_child(void)
     return ok ? STALL_OK : STALL_FAILED;
 }
 
-enum { CASE_IDLE, CASE_ONE_BYTE, CASE_PARTIAL, CASE_PIECES, CASE_FINALIZE, CASE_TIMEOUT };
+/* at a cap of two, a third connection drops the first - the one that has
+ * waited longest - and the server goes on answering */
+static int cap_child(void)
+{
+    int port, first, second, third;
+    bool ok = true;
+
+    setenv("PMIX_MCA_ptl_base_max_pending_connections", "2", 1);
+    if (0 > (port = start_server()) || 2 != pmix_ptl_base.pending_cap ||
+        0 > (first = dial(port)) || 0 > (second = dial(port))) {
+        return STALL_SETUP;
+    }
+    CHILD_CHECK(server_answers());
+    CHILD_CHECK(!closed_by_server(first, 200));
+    if (0 > (third = dial(port))) {
+        return STALL_SETUP;
+    }
+    CHILD_CHECK(closed_by_server(first, 3000));
+    CHILD_CHECK(!closed_by_server(second, 200));
+    CHILD_CHECK(!closed_by_server(third, 200));
+    CHILD_CHECK(server_answers());
+    close(first);
+    close(second);
+    close(third);
+    PMIx_server_finalize();
+    return ok ? STALL_OK : STALL_FAILED;
+}
+
+/* by default the cap is a quarter of the descriptor limit the server
+ * starts with, and -1 removes it */
+static int cap_default_child(void)
+{
+    struct rlimit rl;
+    int want;
+
+    if (0 != getrlimit(RLIMIT_NOFILE, &rl)) {
+        return STALL_SETUP;
+    }
+    if (RLIM_INFINITY == rl.rlim_cur) {
+        want = 0;
+    } else if ((rlim_t) INT_MAX < rl.rlim_cur / 4) {
+        want = INT_MAX;
+    } else {
+        want = (4 > rl.rlim_cur) ? 1 : (int) (rl.rlim_cur / 4);
+    }
+    if (0 > start_server()) {
+        return STALL_SETUP;
+    }
+    if (want != pmix_ptl_base.pending_cap) {
+        fprintf(stderr, "default cap %d, expected %d\n", pmix_ptl_base.pending_cap, want);
+        return STALL_FAILED;
+    }
+    PMIx_server_finalize();
+
+    setenv("PMIX_MCA_ptl_base_max_pending_connections", "-1", 1);
+    if (0 > start_server()) {
+        return STALL_SETUP;
+    }
+    if (0 != pmix_ptl_base.pending_cap) {
+        fprintf(stderr, "cap of -1 gave %d\n", pmix_ptl_base.pending_cap);
+        return STALL_FAILED;
+    }
+    PMIx_server_finalize();
+    return STALL_OK;
+}
+
+enum { CASE_IDLE, CASE_ONE_BYTE, CASE_PARTIAL, CASE_PIECES, CASE_FINALIZE, CASE_TIMEOUT,
+       CASE_CAP, CASE_CAP_DEFAULT };
 
 static void run_case(const char *name, int which, const char *timeout)
 {
@@ -312,8 +386,14 @@ static void run_case(const char *name, int which, const char *timeout)
         case CASE_FINALIZE:
             rc = finalize_child();
             break;
-        default:
+        case CASE_TIMEOUT:
             rc = timeout_child();
+            break;
+        case CASE_CAP:
+            rc = cap_child();
+            break;
+        default:
+            rc = cap_default_child();
             break;
         }
         _exit(rc);
@@ -350,6 +430,10 @@ int main(int argc, char **argv)
              CASE_FINALIZE, "0");
     run_case("the connect-ack timeout drops a connection that never finishes",
              CASE_TIMEOUT, "1");
+    run_case("at the pending-connection cap the oldest connection is dropped",
+             CASE_CAP, "0");
+    run_case("the default cap is a quarter of the descriptor limit, and -1 removes it",
+             CASE_CAP_DEFAULT, "0");
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;
