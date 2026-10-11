@@ -7,12 +7,25 @@
  * $HEADER$
  *
  * Unit tests for the ptl listener: what it does with the directives a host
- * hands PMIx_server_init, and how it stops when accept() fails for good.
+ * hands PMIx_server_init, and what it does when accept() fails.
  *
- *  - accept() failing with EMFILE closed the listening descriptor and left
- *    the rest standing: the event registered, the listener marked active,
- *    and pmix_ptl_base.listener.socket naming a number the kernel was free
- *    to reuse for a client socket or a pipe - which finalize then closed.
+ *  - accept() failing with EMFILE stopped the listener for good, so a
+ *    server that once ran out of descriptors never accepted another
+ *    connection, however many were freed. It now pauses and accepts again
+ *    a second later. Linux leaves the connection that failed in the
+ *    backlog, and it is the one accepted; macOS closes it, so the case
+ *    connects again and that one must be accepted. Before
+ *    that, the stop itself closed the listening descriptor and left the
+ *    rest standing: the event registered, the listener marked active, and
+ *    pmix_ptl_base.listener.socket naming a number the kernel was free to
+ *    reuse - which finalize then closed. The finalize case holds that.
+ *
+ *  - an accept() error that does not clear on its own is retried once a
+ *    second for a minute, and only then is the listener stopped; running
+ *    out of descriptors or memory is retried for as long as it lasts, and
+ *    a descriptor that is no longer a socket stops the listener at once.
+ *    These drive pmix_ptl_base_accept_failed directly, since no portable
+ *    way exists to make accept() report a chosen error.
  *
  *  - PMIX_TCP_IF_INCLUDE and its string siblings were read out of the
  *    value union as a pointer whatever type the value carried.
@@ -51,9 +64,11 @@
 #include "src/util/pmix_if.h"
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <net/if.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -123,37 +138,96 @@ static void run_case(const char *name, void (*fn)(void))
     }
 }
 
-/* ---- accept() out of descriptors ---------------------------------- */
+/* ---- accept() failures -------------------------------------------- */
 
 typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
     pmix_lock_t lock;
+    int err;      // fed to pmix_ptl_base_accept_failed nerr times first
+    int nerr;
     bool active;
+    bool paused;
+    int nretries;
     int socket;
+    size_t npending;
 } lstate_t;
 static PMIX_CLASS_INSTANCE(lstate_t, pmix_object_t, NULL, NULL);
 
 static void read_listener(int sd, short args, void *cbdata)
 {
     lstate_t *ls = (lstate_t *) cbdata;
+    pmix_listener_t *lt = &pmix_ptl_base.listener;
+    int n;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
-    ls->active = pmix_ptl_base.listener.active;
-    ls->socket = pmix_ptl_base.listener.socket;
+
+    for (n = 0; n < ls->nerr; n++) {
+        pmix_ptl_base_accept_failed(lt, ls->err);
+    }
+    ls->active = lt->active;
+    ls->paused = lt->paused;
+    ls->nretries = lt->nretries;
+    ls->socket = lt->socket;
+    ls->npending = pmix_list_get_size(&pmix_ptl_base.pending_connections);
     PMIX_WAKEUP_THREAD(&ls->lock);
 }
 
-static void emfile_child(void)
+/* the listener's state, read on the progress thread after it has been
+ * told nerr times that accept() failed with err */
+static void listener_state(lstate_t *out, int err, int nerr)
+{
+    lstate_t *ls;
+
+    ls = PMIX_NEW(lstate_t);
+    PMIX_CONSTRUCT_LOCK(&ls->lock);
+    ls->err = err;
+    ls->nerr = nerr;
+    PMIX_THREADSHIFT(ls, read_listener);
+    PMIX_WAIT_THREAD(&ls->lock);
+    PMIX_DESTRUCT_LOCK(&ls->lock);
+    out->active = ls->active;
+    out->paused = ls->paused;
+    out->nretries = ls->nretries;
+    out->socket = ls->socket;
+    out->npending = ls->npending;
+    PMIX_RELEASE(ls);
+}
+
+static void print_state(const char *when, const lstate_t *ls)
+{
+    fprintf(stderr, "listener %s: active %d paused %d retries %d socket %d pending %lu\n",
+            when, (int) ls->active, (int) ls->paused, ls->nretries, ls->socket,
+            (unsigned long) ls->npending);
+}
+
+static int dial_listener(void)
+{
+    struct sockaddr_storage addr;
+    int c;
+
+    memcpy(&addr, pmix_ptl_base.connection, sizeof(addr));
+    c = socket(addr.ss_family, SOCK_STREAM, 0);
+    if (0 > c) {
+        return -1;
+    }
+    if (0 != connect(c, (struct sockaddr *) &addr,
+                     (AF_INET == addr.ss_family) ? sizeof(struct sockaddr_in)
+                                                 : sizeof(struct sockaddr_in6))) {
+        close(c);
+        return -1;
+    }
+    return c;
+}
+
+/* Connect while the server has no descriptor to accept with, and leave
+ * the limit lowered long enough for the accept to fail. Returns the
+ * client's socket, with the limit restored */
+static int connect_out_of_descriptors(void)
 {
     struct rlimit rl, saved;
     struct sockaddr_storage addr;
-    lstate_t *ls;
     int c, probe;
-    bool ok;
 
-    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, NULL, 0)) {
-        _exit(CHILD_FAIL);
-    }
     memcpy(&addr, pmix_ptl_base.connection, sizeof(addr));
     c = socket(addr.ss_family, SOCK_STREAM, 0);
     /* leave no descriptor free for the accept */
@@ -172,19 +246,180 @@ static void emfile_child(void)
     }
     pause_ms(300);
     setrlimit(RLIMIT_NOFILE, &saved);
+    return c;
+}
 
-    ls = PMIX_NEW(lstate_t);
-    PMIX_CONSTRUCT_LOCK(&ls->lock);
-    PMIX_THREADSHIFT(ls, read_listener);
-    PMIX_WAIT_THREAD(&ls->lock);
-    ok = !ls->active && 0 > ls->socket;
-    if (!ok) {
-        fprintf(stderr, "listener after EMFILE: active %d socket %d\n", (int) ls->active,
-                ls->socket);
+/* true if the far end of c has closed it within msec */
+static bool closed_by_peer(int c, int msec)
+{
+    struct pollfd pfd;
+    char ch;
+
+    pfd.fd = c;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    if (0 >= poll(&pfd, 1, msec)) {
+        return false;
     }
-    /* no finalize: against the unfixed library it closes whatever now
-     * holds the stale descriptor number */
-    _exit(ok ? CHILD_PASS : CHILD_FAIL);
+    return 0 >= recv(c, &ch, 1, 0);
+}
+
+/* out of descriptors: the listener pauses with its socket open, and once
+ * descriptors are free it accepts again - the connection that was waiting
+ * if the kernel kept it, or a new one if the kernel closed it */
+static void emfile_child(void)
+{
+    lstate_t ls;
+    int c, sock;
+    bool ok;
+
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, NULL, 0)) {
+        _exit(CHILD_FAIL);
+    }
+    c = connect_out_of_descriptors();
+    listener_state(&ls, 0, 0);
+    ok = !ls.active && ls.paused && 0 <= ls.socket && 0 == ls.npending;
+    if (!ok) {
+        print_state("after EMFILE", &ls);
+        _exit(CHILD_FAIL);
+    }
+    sock = ls.socket;
+    /* the retry is due a second after the failure */
+    pause_ms(1500);
+    if (closed_by_peer(c, 0)) {
+        close(c);
+        if (0 > (c = dial_listener())) {
+            _exit(CHILD_FAIL);
+        }
+        pause_ms(300);
+    }
+    listener_state(&ls, 0, 0);
+    ok = ls.active && !ls.paused && sock == ls.socket && 1 == ls.npending;
+    if (!ok) {
+        print_state("a second later", &ls);
+        _exit(CHILD_FAIL);
+    }
+    close(c);
+    PMIx_server_finalize();
+    _exit(CHILD_PASS);
+}
+
+/* finalize while paused: the listening socket is closed, and a second
+ * init comes up listening rather than paused */
+static void emfile_finalize_child(void)
+{
+    lstate_t ls;
+    int c, sock;
+
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, NULL, 0)) {
+        _exit(CHILD_FAIL);
+    }
+    c = connect_out_of_descriptors();
+    listener_state(&ls, 0, 0);
+    if (!ls.paused || 0 > ls.socket) {
+        print_state("after EMFILE", &ls);
+        _exit(CHILD_FAIL);
+    }
+    sock = ls.socket;
+    PMIx_server_finalize();
+    if (0 <= fcntl(sock, F_GETFD) || EBADF != errno) {
+        fprintf(stderr, "listening descriptor %d still open after finalize\n", sock);
+        _exit(CHILD_FAIL);
+    }
+    /* a second cycle must come up listening, with no retry left over */
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, NULL, 0)) {
+        _exit(CHILD_FAIL);
+    }
+    pause_ms(1500);
+    listener_state(&ls, 0, 0);
+    if (!ls.active || ls.paused || 0 > ls.socket) {
+        print_state("in the second cycle", &ls);
+        _exit(CHILD_FAIL);
+    }
+    PMIx_server_finalize();
+    close(c);
+    _exit(CHILD_PASS);
+}
+
+/* running out of descriptors or memory is retried for as long as it lasts */
+static void resource_retry_child(void)
+{
+    lstate_t ls;
+
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, NULL, 0)) {
+        _exit(CHILD_FAIL);
+    }
+    listener_state(&ls, EMFILE, 200);
+    if (!ls.paused || 0 > ls.socket || 0 != ls.nretries) {
+        print_state("after 200 EMFILE", &ls);
+        _exit(CHILD_FAIL);
+    }
+    listener_state(&ls, ENOBUFS, 200);
+    if (!ls.paused || 0 > ls.socket || 0 != ls.nretries) {
+        print_state("after 200 ENOBUFS", &ls);
+        _exit(CHILD_FAIL);
+    }
+    PMIx_server_finalize();
+    _exit(CHILD_PASS);
+}
+
+/* An error that does not clear on its own is retried 60 times; the next
+ * one stops the listener. A connection accepted in between starts the
+ * count again */
+static void unknown_retry_child(void)
+{
+    lstate_t ls;
+    int c;
+
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, NULL, 0)) {
+        _exit(CHILD_FAIL);
+    }
+    listener_state(&ls, EIO, 60);
+    if (!ls.paused || 0 > ls.socket || 60 != ls.nretries) {
+        print_state("after 60 EIO", &ls);
+        _exit(CHILD_FAIL);
+    }
+    /* resumed a second later, and a connection resets the count */
+    pause_ms(1500);
+    if (0 > (c = dial_listener())) {
+        _exit(CHILD_FAIL);
+    }
+    pause_ms(300);
+    listener_state(&ls, 0, 0);
+    if (!ls.active || ls.paused || 0 != ls.nretries || 1 != ls.npending) {
+        print_state("after a connection", &ls);
+        _exit(CHILD_FAIL);
+    }
+    listener_state(&ls, EIO, 60);
+    if (!ls.paused || 0 > ls.socket) {
+        print_state("after 60 more EIO", &ls);
+        _exit(CHILD_FAIL);
+    }
+    listener_state(&ls, EIO, 1);
+    if (ls.active || ls.paused || 0 <= ls.socket) {
+        print_state("after the 61st EIO", &ls);
+        _exit(CHILD_FAIL);
+    }
+    close(c);
+    PMIx_server_finalize();
+    _exit(CHILD_PASS);
+}
+
+/* a descriptor that is no longer a socket stops the listener at once */
+static void notsock_child(void)
+{
+    lstate_t ls;
+
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, NULL, 0)) {
+        _exit(CHILD_FAIL);
+    }
+    listener_state(&ls, ENOTSOCK, 1);
+    if (ls.active || ls.paused || 0 <= ls.socket) {
+        print_state("after ENOTSOCK", &ls);
+        _exit(CHILD_FAIL);
+    }
+    PMIx_server_finalize();
+    _exit(CHILD_PASS);
 }
 
 /* ---- directives ---------------------------------------------------- */
@@ -598,7 +833,16 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "\n=== ptl listener unit tests ===\n\n");
 
-    run_case("accept out of descriptors stops the listener cleanly", emfile_child);
+    run_case("accept out of descriptors pauses, then accepts once descriptors are free",
+             emfile_child);
+    run_case("finalize while paused closes the listener, and the next cycle listens",
+             emfile_finalize_child);
+    run_case("running out of descriptors or memory is retried for as long as it lasts",
+             resource_retry_child);
+    run_case("an unknown accept error is retried 60 times, then the listener stops",
+             unknown_retry_child);
+    run_case("a listening descriptor that is not a socket stops the listener at once",
+             notsock_child);
     run_case("a non-string PMIX_TCP_IF_INCLUDE is refused", bool_if_include_child);
     run_case("a PMIX_TCP_IPV4_PORT past 65535 is refused", big_port_child);
     run_case("an empty PMIX_TCP_REPORT_URI leaves stdin alone", empty_report_uri_child);

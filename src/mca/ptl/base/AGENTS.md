@@ -238,7 +238,7 @@ connect-ack and stopped.
 
 **`pmix_ptl_base.pending_connections`** holds every `pnd` whose
 connect-ack is still arriving — `pmix_pending_connection_t` is a list
-item for this. It is how such a connection is found again, and three
+item for this. It is how such a connection is found again, and four
 things take it off:
 
 1. the handler, the moment the connect-ack is complete or has failed —
@@ -251,8 +251,20 @@ things take it off:
 3. `pmix_ptl_base_stop_listening`, at finalize, which is what closes
    them when the timeout is disabled. Both finalize paths stop the
    progress thread first, so neither event can be running.
+4. the accept handler, when the list is full. `pending_cap` is worked
+   out by `pmix_ptl_base_start_listening` from
+   `ptl_base_max_pending_connections`: a positive value is the cap, 0
+   (the default) a quarter of the soft `RLIMIT_NOFILE`, and -1 none.
+   At the cap the **oldest** connection is dropped to make room for the
+   new one. A process that means to connect sends its connect-ack at
+   once, so it is never the oldest; refusing the newcomer instead would
+   let whoever fills the list keep everyone out for
+   `connect_ack_timeout`, or for good with the timeout disabled. There is
+   no per-source cap: the listener is loopback by default, so every local
+   peer has the same address, and the uid is not known until the
+   credential has been read.
 
-All three go through `pmix_ptl_base_drop_pending_connection` or remove
+All four go through `pmix_ptl_base_drop_pending_connection` or remove
 the item themselves before the `pnd` can be released: releasing a list
 item that is still on a list aborts a debug build.
 
@@ -685,16 +697,38 @@ publishes the URI into `gds`, and drops rendezvous files.
   a `pid_t` before it is handed to `kill()`: `4294967295` narrows to -1,
   and `kill(-1, 0)` asks about every process we may signal, so a garbled
   line always looked like a live owner.
-- **An `accept()` failure that stops the listener must stop all of it.**
-  Out of descriptors (or an error we do not recognize), the accept
-  handler gives up for good — the connection stays in the backlog, so
-  the event would otherwise fire again at once. `abandon_listener()`
-  deletes the event, clears `active` and closes `lt->socket` through
+- **An `accept()` failure pauses the listener; only a few stop it.**
+  `pmix_ptl_base_accept_failed()` decides, by errno:
+  - a connection that was reset or hit a network error in the backlog
+    (and `EINTR`/`EAGAIN`) is ignored; it says nothing about the
+    listening socket.
+  - out of descriptors or memory (`EMFILE`, `ENFILE`, `ENOBUFS`,
+    `ENOMEM`) pauses the listener and resumes it a second later, for as
+    long as the error lasts. It clears as connections finish or close.
+    It used to stop the listener for good, so a server that ran out of
+    descriptors once never accepted another connection.
+  - any other error is retried the same way 60 times
+    (`PMIX_PTL_ACCEPT_MAX_RETRIES`, a minute), and the next one stops the
+    listener. A successful accept starts the count again.
+  - `EBADF`/`ENOTSOCK` stop it at once: the descriptor is no longer our
+    socket, and a number we keep may be handed to something else.
+
+  A pause deletes the accept event and arms `lt->retry_ev`, leaving the
+  socket open. Without it, a connection Linux leaves in the backlog
+  would fire the event again at once. **The platforms differ on that
+  connection**: Linux checks for a free descriptor before it dequeues,
+  so the connection waits and is accepted on resume; macOS dequeues it
+  and closes it, so the peer sees its connection closed and only later
+  connections benefit. The warning is printed once per run of failures.
+
+  A paused listener is not `active` but still has a socket and an armed
+  timer, so `pmix_ptl_base_stop_listening` cannot stop at "not active";
+  `disarm_listener()` handles both states. A stop must stop all of it:
+  `abandon_listener()` disarms and closes `lt->socket` through
   `CLOSE_THE_SOCKET`, which sets it to -1. Closing only the descriptor
-  the handler was passed left `lt->socket` naming a number the kernel
-  reuses, and the stale event and finalize then acted on whatever got
-  it. A connection that was reset or hit a network error in the backlog
-  is retried like `EAGAIN`; it says nothing about the listening socket.
+  the handler was passed once left `lt->socket` naming a number the
+  kernel reuses, and the stale event and finalize then acted on whatever
+  got it.
 - **The directives are the host's, and typed by nothing but their key.**
   The string ones (`PMIX_TCP_IF_INCLUDE`/`_EXCLUDE`, `PMIX_TCP_REPORT_URI`,
   `PMIX_SERVER_TMPDIR`, `PMIX_SYSTEM_TMPDIR`) go through
@@ -812,11 +846,11 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_sendrecv.c` | lost-connection completion per peer, a split header, a sendrecv to a closed peer or to a tool itself, a message too large to frame, writes split by the cap, and `flush_sends` past `FD_SETSIZE` |
 | `test/unit/ptl_legacy_ack.c` | a v4.1-shaped connect-ack, pad byte and all, still connects as a client and as a tool |
 | `test/unit/ptl_loopback.c` | a server's request to itself reaches its switchyard and is answered once; a loopback reply nobody waits for is not read as a command |
-| `test/unit/ptl_listener.c` | accept out of descriptors stops the listener cleanly; mistyped, out-of-range and empty directives; a directive-named report file is removed; with remote connections every public interface accepts connections and is advertised where older readers do not look |
+| `test/unit/ptl_listener.c` | accept out of descriptors pauses the listener and it accepts again; finalize while paused; the retry policy for each kind of accept error; mistyped, out-of-range and empty directives; a directive-named report file is removed; with remote connections every public interface accepts connections and is advertised where older readers do not look |
 | `test/unit/tool_alt_uris.c` | a tool whose URI's address is unreachable connects at an alternate - by directive, from a contact file, and through the event-driven attach - and still fails when there is none |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
 | `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one |
-| `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them |
+| `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them; at the pending-connection cap the oldest is dropped, and the default cap follows the descriptor limit |
 | `test/unit/ptl_recv_timeout.c` | `pmix_ptl_base_recv_blocking` ends a blocking socket's receive at its timeout, and still waits out `EAGAIN` on a non-blocking one |
 | `test/unit/tool_nspace.c` | a real tool connection leaves exactly one namespace object, and the peer resolves through the one on the list |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |

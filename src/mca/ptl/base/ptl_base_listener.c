@@ -45,6 +45,7 @@
 #endif
 #include <ctype.h>
 #include <signal.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <event.h>
 #include <pthread.h>
@@ -82,6 +83,19 @@ static void arm_listener(pmix_listener_t *lt)
                    connection_event_handler, lt);
     lt->active = true;
     pmix_event_add(&lt->ev, 0);
+}
+
+/* stop accepting on lt, whether it is armed or waiting out a pause */
+static void disarm_listener(pmix_listener_t *lt)
+{
+    if (lt->active) {
+        pmix_event_del(&lt->ev);
+        lt->active = false;
+    }
+    if (lt->paused) {
+        pmix_event_evtimer_del(&lt->retry_ev);
+        lt->paused = false;
+    }
 }
 
 // local value for connection support
@@ -122,6 +136,35 @@ pmix_status_t pmix_ptl_base_create_listener(pmix_info_t info[], size_t ninfo)
     return PMIX_SUCCESS;
 }
 
+/* How many connections may be waiting on their connect-ack at once. Each
+ * holds a descriptor, and a peer need not have a credential to open one,
+ * so by default they get a quarter of the descriptors we have - the rest
+ * stay for connected clients, IOF and the files we open. Read here rather
+ * than at register, so a host that raises its limit during init is
+ * counted with the limit it raised */
+static int pending_cap(void)
+{
+    struct rlimit rl;
+
+    if (0 > pmix_ptl_base.max_pending_connections) {
+        return 0;
+    }
+    if (0 < pmix_ptl_base.max_pending_connections) {
+        return pmix_ptl_base.max_pending_connections;
+    }
+    if (0 == getrlimit(RLIMIT_NOFILE, &rl) && RLIM_INFINITY != rl.rlim_cur) {
+        if (4 > rl.rlim_cur) {
+            return 1;
+        }
+        if ((rlim_t) INT_MAX < rl.rlim_cur / 4) {
+            return INT_MAX;
+        }
+        return (int) (rl.rlim_cur / 4);
+    }
+    /* no limit we can see, so none we can run into */
+    return 0;
+}
+
 /* Begin answering the connections the kernel has been holding for us.
  *
  * Call this at the foot of init, once there is nothing left for the
@@ -134,6 +177,7 @@ void pmix_ptl_base_start_listening(void)
     pmix_listener_t *lt = &pmix_ptl_base.listener;
     pmix_listener_t *alt;
 
+    pmix_ptl_base.pending_cap = pending_cap();
     arm_listener(lt);
     PMIX_LIST_FOREACH (alt, &pmix_ptl_base.alt_listeners, pmix_listener_t) {
         arm_listener(alt);
@@ -169,23 +213,19 @@ void pmix_ptl_base_stop_listening(void)
     /* the alternates go whether or not they were ever armed: their sockets
      * were bound and listening from the moment setup created them */
     while (NULL != (alt = (pmix_listener_t *) pmix_list_remove_first(&pmix_ptl_base.alt_listeners))) {
-        if (alt->active) {
-            alt->active = false;
-            pmix_event_del(&alt->ev);
-        }
+        disarm_listener(alt);
         PMIX_RELEASE(alt);  // the destructor closes its socket
     }
     free(pmix_ptl_base.alt_uris);
     pmix_ptl_base.alt_uris = NULL;
 
-    if (!lt->active) {
+    /* A paused listener is not active, but its socket is still open and
+     * its retry timer still armed - so this cannot stop at "not active" */
+    if (!lt->active && !lt->paused) {
         /* nothing we need do */
         return;
     }
-
-    /* mark it as inactive */
-    lt->active = false;
-    pmix_event_del(&lt->ev);
+    disarm_listener(lt);
     /* close the socket to remove the connection points */
     CLOSE_THE_SOCKET(lt->socket);
     lt->socket = -1;
@@ -201,11 +241,105 @@ void pmix_ptl_base_stop_listening(void)
  * so the failure took some unrelated descriptor down with it. */
 static void abandon_listener(pmix_listener_t *lt)
 {
+    disarm_listener(lt);
+    CLOSE_THE_SOCKET(lt->socket);
+}
+
+/* An error accept() reports when it cannot go on: one of these is retried
+ * this many times, a second apart, before the listener is abandoned. A
+ * minute is longer than anyone waits on a connection */
+#define PMIX_PTL_ACCEPT_MAX_RETRIES 60
+
+static void resume_listener(int sd, short args, void *cbdata)
+{
+    pmix_listener_t *lt = (pmix_listener_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    lt->paused = false;
+    arm_listener(lt);
+}
+
+/* Stop accepting on lt for a second, leaving the socket open. On Linux the
+ * connection whose accept() failed stays in the backlog, so the event would
+ * fire again at once for as long as the error lasts, and the connection is
+ * accepted when we resume. BSD-derived systems, macOS among them, take it
+ * off the backlog and close it - the peer sees its connection closed - so
+ * there the pause is for the connections that follow */
+static void pause_listener(pmix_listener_t *lt)
+{
+    struct timeval tv = {1, 0};
+
     if (lt->active) {
         pmix_event_del(&lt->ev);
         lt->active = false;
     }
-    CLOSE_THE_SOCKET(lt->socket);
+    if (!lt->paused) {
+        pmix_event_evtimer_set(pmix_globals.evbase, &lt->retry_ev, resume_listener, lt);
+        lt->paused = true;
+    }
+    pmix_event_evtimer_add(&lt->retry_ev, &tv);
+}
+
+void pmix_ptl_base_accept_failed(pmix_listener_t *lt, int err)
+{
+    const char *why;
+
+    /* Errors that concern only the connection being accepted. Besides
+     * the obvious ones, a connection that was reset or hit a network
+     * error while it waited in the backlog is reported by accept() on
+     * some systems - Linux documents that these are to be retried like
+     * EAGAIN. None of them says anything about the listening socket */
+    if (EINTR == err || EAGAIN == err || EWOULDBLOCK == err ||
+        ECONNABORTED == err || EPROTO == err ||
+        ENETDOWN == err || ENETUNREACH == err ||
+        EHOSTUNREACH == err || EHOSTDOWN == err) {
+        return;
+    }
+
+    /* The descriptor is no longer our socket. Nothing is gained by trying
+     * it again, and a number we keep may be handed to something else */
+    if (EBADF == err || ENOTSOCK == err) {
+        pmix_show_help("help-ptl-base.txt", "accept failed", true,
+                       pmix_globals.hostname, err, strerror(err),
+                       "The listening socket is gone; no further connections "
+                       "will be accepted");
+        abandon_listener(lt);
+        return;
+    }
+
+    /* Out of descriptors or memory. That clears as connections finish or
+     * close - an unfinished connect-ack is dropped after
+     * ptl_base_connect_ack_timeout - so it is retried for as long as it
+     * lasts */
+    if (EMFILE == err || ENFILE == err || ENOBUFS == err || ENOMEM == err) {
+        if (!lt->warned) {
+            PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+            why = (ENOBUFS == err || ENOMEM == err) ? "Out of memory" : "Out of file descriptors";
+            pmix_show_help("help-ptl-base.txt", "accept failed", true,
+                           pmix_globals.hostname, err, strerror(err), why);
+            lt->warned = true;
+        }
+        pause_listener(lt);
+        return;
+    }
+
+    /* Anything else may or may not clear, so it is retried for a while */
+    if (PMIX_PTL_ACCEPT_MAX_RETRIES <= lt->nretries) {
+        pmix_show_help("help-ptl-base.txt", "accept failed", true,
+                       pmix_globals.hostname, err, strerror(err),
+                       "Still failing after a minute of retries; no further "
+                       "connections will be accepted");
+        abandon_listener(lt);
+        return;
+    }
+    if (!lt->warned) {
+        pmix_show_help("help-ptl-base.txt", "accept failed", true,
+                       pmix_globals.hostname, err, strerror(err),
+                       "Unknown cause; retrying once a second for up to a minute");
+        lt->warned = true;
+    }
+    ++lt->nretries;
+    pause_listener(lt);
 }
 
 /* Give up on a connection whose connect-ack is still arriving: take it off
@@ -249,7 +383,7 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
     pmix_socklen_t addrlen = sizeof(addr);
     int sd, fdflags;
     struct timeval tv;
-    pmix_pending_connection_t *pending_connection;
+    pmix_pending_connection_t *pending_connection, *pnd;
     /* the primary listener or one of the alternates - whichever fired */
     pmix_listener_t *lt = (pmix_listener_t *) cbdata;
     PMIX_HIDE_UNUSED_PARAMS(flags);
@@ -265,49 +399,12 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
                         pmix_net_get_hostname((struct sockaddr *) &addr),
                         pmix_net_get_port((struct sockaddr *) &addr));
     if (sd < 0) {
-        /* Non-fatal errors. Besides the obvious ones, a connection that
-         * was reset or hit a network error while it waited in the backlog
-         * is reported by accept() on some systems - Linux documents that
-         * these are to be retried like EAGAIN. None of them says anything
-         * about the listening socket itself. */
-        if (EINTR == pmix_socket_errno ||
-            EAGAIN == pmix_socket_errno ||
-            EWOULDBLOCK == pmix_socket_errno ||
-            ECONNABORTED == pmix_socket_errno ||
-            EPROTO == pmix_socket_errno ||
-            ENETDOWN == pmix_socket_errno ||
-            ENETUNREACH == pmix_socket_errno ||
-            EHOSTUNREACH == pmix_socket_errno ||
-            EHOSTDOWN == pmix_socket_errno) {
-            return;
-        }
-
-        /* If we run out of file descriptors, log an extra warning (so
-           that the user can know to fix this problem) and abandon all
-           hope. The pending connection stays in the backlog, so the
-           event would fire again at once for as long as we are out. */
-        else if (EMFILE == pmix_socket_errno || ENFILE == pmix_socket_errno) {
-            PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-            pmix_show_help("help-ptl-base.txt", "accept failed", true,
-                           pmix_globals.hostname,
-                           pmix_socket_errno, strerror(pmix_socket_errno),
-                           "Out of file descriptors");
-            abandon_listener(lt);
-            return;
-        }
-
-        /* For all other cases, print a warning and stop accepting: a
-           failure we do not recognize may well recur on every wakeup,
-           and the job can still continue with the peers it has */
-        else {
-            pmix_show_help("help-ptl-base.txt", "accept failed", true,
-                           pmix_globals.hostname,
-                           pmix_socket_errno, strerror(pmix_socket_errno),
-                           "Unknown cause; job will try to continue");
-            abandon_listener(lt);
-            return;
-        }
+        pmix_ptl_base_accept_failed(lt, pmix_socket_errno);
+        return;
     }
+    /* whatever was failing has cleared */
+    lt->nretries = 0;
+    lt->warned = false;
 
     /* The connect-ack that follows is read on the progress thread, from a
      * port that anything able to reach it can open, before any credential
@@ -362,6 +459,20 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
      * is disabled, closed well before that. A peer holding a connection
      * costs nothing but a descriptor, but it costs one for as long as it
      * likes, and anything that can reach the listener can open more. */
+    if (0 < pmix_ptl_base.pending_cap &&
+        (size_t) pmix_ptl_base.pending_cap <= pmix_list_get_size(&pmix_ptl_base.pending_connections)) {
+        /* Full. Make room by dropping the connection that has waited
+         * longest - the list is in accept order. A process that means to
+         * connect sends its connect-ack at once, so it is not the one
+         * still waiting; refusing the new connection instead would let
+         * whoever holds the cap keep everyone else out */
+        pnd = (pmix_pending_connection_t *) pmix_list_get_first(&pmix_ptl_base.pending_connections);
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:listener: %d connections are still sending their "
+                            "connect-ack - dropping the oldest, on socket %d",
+                            pmix_ptl_base.pending_cap, pnd->sd);
+        pmix_ptl_base_drop_pending_connection(pnd);
+    }
     pmix_list_append(&pmix_ptl_base.pending_connections, &pending_connection->super);
     if (0 < pmix_ptl_base.connect_ack_timeout) {
         pmix_event_evtimer_set(pmix_globals.evbase, &pending_connection->timer,
