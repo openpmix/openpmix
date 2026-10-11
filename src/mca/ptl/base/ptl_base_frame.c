@@ -122,6 +122,8 @@ pmix_ptl_base_t pmix_ptl_base = {
     .handshake_max_retries = 0,
     .search_depth = 8,
     .connect_ack_timeout = 5,
+    .max_pending_connections = 0,
+    .pending_cap = 0,
     .max_write = INT_MAX
 };
 int pmix_ptl_base_output = -1;
@@ -304,6 +306,14 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_ptl_base.connect_ack_timeout);
 
+    (void) pmix_mca_base_var_register("pmix", "ptl", "base", "max_pending_connections",
+                                      "Most connections a server holds while their connection "
+                                      "requests are still arriving; at the limit, the oldest is "
+                                      "dropped to make room for a new one (0 = a quarter of the "
+                                      "descriptor limit the server starts with, -1 = no limit)",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_ptl_base.max_pending_connections);
+
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "report_uri",
                                      "Output URI [- => stdout, + => stderr, or filename]",
                                      PMIX_MCA_BASE_VAR_TYPE_STRING,
@@ -400,6 +410,7 @@ static pmix_status_t pmix_ptl_close(void)
     pmix_ptl_base.session_tool = false;
     pmix_ptl_base.tool_support = false;
     pmix_ptl_base.max_write = INT_MAX;
+    pmix_ptl_base.pending_cap = 0;
 
     /* ensure the listen thread has been shut down */
     pmix_ptl_base_stop_listening();
@@ -788,6 +799,10 @@ static void lcon(pmix_listener_t *p)
     p->group_given = false;
     p->cbfunc = NULL;
     p->mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
+    memset(&p->retry_ev, 0, sizeof(pmix_event_t));
+    p->paused = false;
+    p->nretries = 0;
+    p->warned = false;
 }
 static void ldes(pmix_listener_t *p)
 {
