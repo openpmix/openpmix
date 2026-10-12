@@ -249,14 +249,17 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
         return PMIX_ERR_INVALID_CRED;
     }
 
-    /* check uid */
-    if (euid != pr->info->uid) {
-        return PMIX_ERR_INVALID_CRED;
-    }
-
-    /* check guid */
-    if (egid != pr->info->gid) {
-        return PMIX_ERR_INVALID_CRED;
+    /* A credential that came with a connection must be from the user and
+     * group that connected. One handed to PMIx_Validate_credential has no
+     * connection - it is checked by munge alone, and the identity it
+     * carries is what we report */
+    if (0 <= pr->sd) {
+        if (NULL == pr->info) {
+            return PMIX_ERR_INVALID_CRED;
+        }
+        if (euid != pr->info->uid || egid != pr->info->gid) {
+            return PMIX_ERR_INVALID_CRED;
+        }
     }
 
     pmix_output_verbose(2, pmix_globals.debug_output, "psec: munge credential valid");
