@@ -452,7 +452,11 @@ int main(int argc, char **argv)
         fprintf(stderr, "PMIx_Query_info returned no results\n");
         rc = PMIX_ERR_NOT_FOUND;
     } else if (!PMIX_CHECK_KEY(&mq.info[0], PMIX_QUERY_ATTRIBUTE_SUPPORT)) {
-        fprintf(stderr, "PMIx_Query_info returned incorrect key: %s\n", mq.info[0].key);
+        /* the server's to supply - see pmix_util_printable() */
+        shown = pmix_util_printable(mq.info[0].key);
+        fprintf(stderr, "PMIx_Query_info returned incorrect key: %s\n",
+                (NULL == shown) ? "?" : shown);
+        free(shown);
         rc = PMIX_ERR_BAD_PARAM;
     } else {
         /* print out the returned value(s) */

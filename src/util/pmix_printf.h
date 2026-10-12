@@ -162,7 +162,10 @@ __pmix_attribute_format__(__printf__, 2, 0);
  * @retval A newly allocated copy in which every control character except
  * a tab - newlines included, and DEL - is written as "\xNN", so the text
  * cannot move the cursor, change the terminal's settings, or begin what
- * looks like another line of output. Every other byte is copied as is.
+ * looks like another line of output. That includes the C1 controls
+ * (U+0080-U+009F) written in UTF-8, and every byte that is not part of a
+ * well-formed UTF-8 character - an 8-bit terminal reads a lone byte in
+ * 0x80-0x9f as a control. Well-formed UTF-8 is copied as is.
  * NULL only when s is NULL or memory is exhausted. The caller frees it.
  */
 PMIX_EXPORT char *pmix_util_printable(const char *s);

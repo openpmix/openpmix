@@ -1826,11 +1826,14 @@ void pmix_attributes_print_attrs(char ***ans, char *function,
     for (n = 0; n < nattrs; n++) {
         memset(line, ' ', PMIX_PRINT_ATTR_COLUMN_WIDTH);
         line[PMIX_PRINT_ATTR_COLUMN_WIDTH - 1] = '\0';
-        len = strlen(attrs[n].name);
-        if (PMIX_PRINT_NAME_COLUMN_WIDTH < len) {
-            len = PMIX_PRINT_NAME_COLUMN_WIDTH;
+        /* a registration may carry no name - leave the column blank */
+        if (NULL != attrs[n].name) {
+            len = strlen(attrs[n].name);
+            if (PMIX_PRINT_NAME_COLUMN_WIDTH < len) {
+                len = PMIX_PRINT_NAME_COLUMN_WIDTH;
+            }
+            memcpy(line, attrs[n].name, len);
         }
-        memcpy(line, attrs[n].name, len);
 
         if (0 == strlen(attrs[n].string)) {
             line[PMIX_PRINT_ATTR_COLUMN_WIDTH - 1] = '\0'; // ensure NULL termination
