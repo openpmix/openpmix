@@ -750,9 +750,16 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     }
 
     /* the same comparison every mechanism makes with what the peer was
-     * registered as - or, for a tool, what it said in its handshake */
-    if (NULL != pr->info && (uid != pr->info->uid || gid != pr->info->gid)) {
-        REFUSE("the credential's identity is not the one this peer connected as");
+     * registered as - or, for a tool, what it said in its handshake. A
+     * credential handed to PMIx_Validate_credential has no connection,
+     * and is reported as the identity it carries */
+    if (0 <= pr->sd) {
+        if (NULL == pr->info) {
+            REFUSE("the connection has no identity to check against");
+        }
+        if (uid != pr->info->uid || gid != pr->info->gid) {
+            REFUSE("the credential's identity is not the one this peer connected as");
+        }
     }
 
     if (!first_use(p + SSL_OFF_NONCE, when, now)) {
