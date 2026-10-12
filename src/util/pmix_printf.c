@@ -480,31 +480,82 @@ int pmix_vsnprintf(char *str, size_t size, const char *fmt, va_list ap)
 #endif
 }
 
+/* The length of the UTF-8 sequence starting at p if it is well formed
+ * and encodes a character that is not a control - 0 otherwise. A C1
+ * control (U+0080-U+009F) is refused like a C0 one, and so are an
+ * overlong form, a surrogate and anything past U+10FFFF, which decoders
+ * do not agree on. A NUL is not a continuation byte, so the walk never
+ * passes the end of the string. */
+static size_t printable_utf8(const unsigned char *p)
+{
+    uint32_t cp;
+    size_t len, i;
+
+    if (0xc2 <= p[0] && 0xdf >= p[0]) {
+        len = 2;
+        cp = p[0] & 0x1f;
+    } else if (0xe0 <= p[0] && 0xef >= p[0]) {
+        len = 3;
+        cp = p[0] & 0x0f;
+    } else if (0xf0 <= p[0] && 0xf4 >= p[0]) {
+        len = 4;
+        cp = p[0] & 0x07;
+    } else {
+        return 0;
+    }
+    for (i = 1; i < len; i++) {
+        if (0x80 != (p[i] & 0xc0)) {
+            return 0;
+        }
+        cp = (cp << 6) | (p[i] & 0x3f);
+    }
+    if ((3 == len && 0x800 > cp) || (4 == len && 0x10000 > cp) || 0x10ffff < cp ||
+        (0xd800 <= cp && 0xdfff >= cp) || (0x80 <= cp && 0x9f >= cp)) {
+        return 0;
+    }
+    return len;
+}
+
+/* how many bytes at p are copied as they are - 0 if the byte at p is
+ * to be written out as "\xNN" */
+static size_t printable_run(const unsigned char *p)
+{
+    if (0x80 > *p) {
+        return ((0x20 > *p && '\t' != *p) || 0x7f == *p) ? 0 : 1;
+    }
+    return printable_utf8(p);
+}
+
 char *pmix_util_printable(const char *s)
 {
     static const char hex[] = "0123456789abcdef";
     const unsigned char *p;
-    size_t len = 0;
+    size_t len = 0, run;
     char *out, *q;
 
     if (NULL == s) {
         return NULL;
     }
-    for (p = (const unsigned char *) s; '\0' != *p; p++) {
-        len += ((0x20 > *p && '\t' != *p) || 0x7f == *p) ? 4 : 1;
+    for (p = (const unsigned char *) s; '\0' != *p; p += (0 == run) ? 1 : run) {
+        run = printable_run(p);
+        len += (0 == run) ? 4 : run;
     }
     out = (char *) malloc(len + 1);
     if (NULL == out) {
         return NULL;
     }
-    for (p = (const unsigned char *) s, q = out; '\0' != *p; p++) {
-        if ((0x20 > *p && '\t' != *p) || 0x7f == *p) {
+    for (p = (const unsigned char *) s, q = out; '\0' != *p;) {
+        run = printable_run(p);
+        if (0 == run) {
             *q++ = '\\';
             *q++ = 'x';
             *q++ = hex[*p >> 4];
             *q++ = hex[*p & 0x0f];
+            p++;
         } else {
-            *q++ = (char) *p;
+            memcpy(q, p, run);
+            q += run;
+            p += run;
         }
     }
     *q = '\0';
