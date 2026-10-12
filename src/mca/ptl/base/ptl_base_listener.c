@@ -626,7 +626,7 @@ static char *compat_lines(void)
     char *bfrops, *psec, *lines = NULL;
 
     bfrops = pmix_bfrops_base_get_available_modules();
-    psec = pmix_psec_base_get_available_modules();
+    psec = pmix_psec_base_get_accepted_modules();
     if (0 > pmix_asprintf(&lines, "%s%s%s%s%s%s",
                           (NULL == bfrops) ? "" : PMIX_PTL_BFROPS_TAG,
                           (NULL == bfrops) ? "" : bfrops,

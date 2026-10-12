@@ -114,6 +114,14 @@ typedef pmix_status_t (*pmix_psec_base_module_server_hndshk_fn_t)(struct pmix_pe
                                                                   int sd);
 
 /**
+ * Whether the module can, as configured, validate a peer's credential -
+ * a module may be able to create credentials and still have nothing to
+ * check another's against. A server lists only the modules that can
+ * when it tells peers which mechanisms it accepts. NULL means always.
+ */
+typedef bool (*pmix_psec_base_module_validates_fn_t)(void);
+
+/**
  * Base structure for a PSEC module
  */
 typedef struct {
@@ -127,6 +135,7 @@ typedef struct {
     /** Server-side */
     pmix_psec_base_module_validate_cred_fn_t validate_cred;
     pmix_psec_base_module_server_hndshk_fn_t server_handshake;
+    pmix_psec_base_module_validates_fn_t validates;
 } pmix_psec_module_t;
 
 /* define an API module */
@@ -134,6 +143,10 @@ typedef struct {
 /* get a list of available options - caller must free results
  * when done */
 PMIX_EXPORT char *pmix_psec_base_get_available_modules(void);
+
+/* the subset of those that can validate a peer's credential - what a
+ * server tells its peers it accepts. Caller must free the result */
+PMIX_EXPORT char *pmix_psec_base_get_accepted_modules(void);
 
 /* Select a psec module for a given peer */
 PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options);
@@ -242,7 +255,7 @@ typedef struct pmix_psec_base_component_t pmix_psec_base_component_t;
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
 #define PMIX_MCA_psec_MAJOR_VERSION   2
-#define PMIX_MCA_psec_MINOR_VERSION   0
+#define PMIX_MCA_psec_MINOR_VERSION   1
 #define PMIX_MCA_psec_RELEASE_VERSION 0
 
 END_C_DECLS

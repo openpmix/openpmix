@@ -555,8 +555,12 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             PMIx_Setenv("PMIX_RANK", tmp, true, &env);
             PMIx_Setenv("PMIX_SERVER_RANK", tmp, true, &env);
 
-            /* pass our active security modules */
-            security_mode = pmix_psec_base_get_available_modules();
+            /* pass the security modules the child may connect to us
+             * with - or, if we can check no credential, what we have */
+            security_mode = pmix_psec_base_get_accepted_modules();
+            if (NULL == security_mode) {
+                security_mode = pmix_psec_base_get_available_modules();
+            }
             PMIx_Setenv("PMIX_SECURITY_MODE", security_mode, true, &env);
             free(security_mode);
             /* pass the type of buffer we are using */

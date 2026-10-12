@@ -163,6 +163,7 @@ unused pointers stay `NULL`, and the framework macros guard on them.
 | `client_handshake` | `(peer, sd)` | client | run the client half of a live handshake over socket `sd`; `peer` is the server |
 | `validate_cred` | `(peer, directives, ndirs, &info, &ninfo, cred)` | server | check a received credential, or return `PMIX_ERR_READY_FOR_HANDSHAKE`; required - a module without it is never selected |
 | `server_handshake` | `(peer, sd)` | server | run the server half of a live handshake with `peer` over socket `sd`; may settle the peer's identity like `validate_cred` |
+| `validates` | `(void) -> bool` | server | whether the module, as configured, can check a peer's credential; `NULL` means always. `ssl` with an identity and no CA can connect but not accept |
 
 The `directives`/`info` pairs carry the attribute arrays required of
 every PMIx interface: `directives` are caller inputs (e.g.
@@ -223,12 +224,17 @@ priority list.
 
 ### `base/psec_base_fns.c` — module lookup and directive screening
 
-Three exported helpers, all declared in [`base/base.h`](base/base.h):
+Four exported helpers, all declared in [`base/base.h`](base/base.h):
 
 - **`pmix_psec_base_get_available_modules()`** — returns a comma-joined
-  string of the active component names (highest priority first). This is
-  the list a server advertises so a connecting peer knows which
-  mechanisms it can choose from.
+  string of the active component names (highest priority first): what
+  this process has.
+- **`pmix_psec_base_get_accepted_modules()`** — the same, less any module
+  whose `validates` says it cannot check a peer's credential. This is the
+  list a server advertises (the `psec:` rendezvous line,
+  `PMIX_SECURITY_MODE` for a child) so a connecting peer does not choose
+  a mechanism that will refuse it. Where it is empty - a tool that only
+  connects out - a child is told the available list, as before.
 - **`pmix_psec_base_assign_module(const char *options)`** — the heart of
   negotiation. Given `options` (a comma-separated list of acceptable
   names, or `NULL`), it walks `actives` in priority order and returns the

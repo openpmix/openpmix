@@ -92,6 +92,7 @@ static void ssl_finalize(void);
 static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
                                  size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                  pmix_byte_object_t *cred);
+static bool validates(void);
 static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
                                    size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                    const pmix_byte_object_t *cred);
@@ -100,7 +101,8 @@ pmix_psec_module_t pmix_ssl_module = {.name = "ssl",
                                       .init = ssl_init,
                                       .finalize = ssl_finalize,
                                       .create_cred = create_cred,
-                                      .validate_cred = validate_cred};
+                                      .validate_cred = validate_cred,
+                                      .validates = validates};
 
 #define SSL_MAGIC     "PMIXSSL1"
 #define SSL_MAGIC_LEN 8
@@ -438,6 +440,13 @@ static pmix_status_t ssl_init(void)
     seen_ready = true;
     pmix_mutex_unlock(&seenlock);
     return PMIX_SUCCESS;
+}
+
+/* a process given an identity and no CA can connect with ssl but not
+ * accept it */
+static bool validates(void)
+{
+    return NULL != trust;
 }
 
 static void ssl_finalize(void)
