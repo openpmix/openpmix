@@ -24,6 +24,8 @@ typedef struct {
     char *excparms;
     char **include;
     char **exclude;
+    /* the largest param file read, in bytes - 0 for no limit */
+    size_t max_param_file_size;
 } pmix_pmdl_ompi_component_t;
 
 /* the component must be visible data for the linker to find it */

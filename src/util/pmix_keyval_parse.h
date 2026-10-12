@@ -78,18 +78,26 @@ PMIX_EXPORT int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_f
                                        void *cbdata);
 
 /**
- * Parse a file the caller has already opened, exactly as
- * pmix_util_keyval_parse() parses a named one. This is for a caller that
- * checks what it opened (with fstat) before reading it: parsing by name
- * would open the path again, and could find something else there.
+ * Parse a file the caller has already opened, as pmix_util_keyval_parse()
+ * parses a named one. This is for a caller that checks what it opened
+ * (with fstat) before reading it: parsing by name would open the path
+ * again, and could find something else there - and for one reading a
+ * file on someone else's behalf. So a "-x" directive in the stream is
+ * passed over: it is not added to this process's environment list (see
+ * pmix_util_keyval_save_internal_envars()).
  *
- * @param fp       Stream to read to its end. It is not closed.
+ * @param fp       Stream to read. It is not closed.
  * @param filename Name to report in messages and hand to the callback.
+ * @param maxbytes Most bytes to read, 0 for no limit. A larger stream
+ *                 ends the parse with PMIX_ERR_BAD_PARAM, after the
+ *                 callback has seen some of it - a caller that wants all
+ *                 or nothing discards what it collected.
  *
- * @return PMIX_SUCCESS, or PMIX_ERR_OUT_OF_RESOURCE as for
- *         pmix_util_keyval_parse().
+ * @return PMIX_SUCCESS, PMIX_ERR_BAD_PARAM for a stream past maxbytes,
+ *         or PMIX_ERR_OUT_OF_RESOURCE as for pmix_util_keyval_parse().
  */
 PMIX_EXPORT int pmix_util_keyval_parse_stream(FILE *fp, const char *filename,
+                                              size_t maxbytes,
                                               pmix_keyval_parse_fn_t callback,
                                               void *cbdata);
 
