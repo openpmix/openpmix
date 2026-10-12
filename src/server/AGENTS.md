@@ -3370,7 +3370,15 @@ misbehave by design).
   register_events, query (on every query's qualifiers), both resolve
   handlers (on the query they build), log (host path only), alloc,
   job_control, monitor, get/validate credential, iofreg, iofdereg, stdin,
-  session_control and resource_block. Two up-calls have no process
+  session_control, resource_block and both fabric handlers.
+
+  The collectives are the other way round: fence, connect, disconnect and
+  group are made for all of their participants, so their up-calls name
+  no requester, and a `PMIX_USERID` or `PMIX_GRPID` a participant sent is
+  removed. Fence, connect and disconnect use
+  `pmix_server_strip_requester_id()`, which keeps the seeded slots
+  closing the array (fence reads its status slot by position); group
+  drops them in the loop that already compacts its array. Two up-calls have no process
   argument - `iof_pull` (registration and the `PMIX_IOF_STOP` deregistration)
   and `register_events` - so they also get `pmix_server_add_requester_proc()`,
   which names the requester with `PMIX_REQUESTOR`, replacing any it sent.

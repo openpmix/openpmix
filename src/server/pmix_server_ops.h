@@ -561,6 +561,16 @@ PMIX_EXPORT pmix_status_t pmix_server_normalize_ids(const pmix_info_t *info, siz
 PMIX_EXPORT pmix_status_t pmix_server_add_requester_proc(pmix_peer_t *peer, pmix_info_t **info,
                                                          size_t *ninfo);
 
+/* A collective (fence, connect, disconnect) is made for all of its
+ * participants, so its up-call names no requester: remove any
+ * PMIX_USERID or PMIX_GRPID among the first nfrom entries of info - the
+ * ones a participant sent - and move the entries after them, through
+ * ninfo, down to close the gap. The slots freed at the end are left
+ * empty. Returns how many were removed, which the caller takes off both
+ * its counts. */
+PMIX_EXPORT size_t pmix_server_strip_requester_id(pmix_info_t *info, size_t nfrom,
+                                                  size_t ninfo);
+
 PMIX_EXPORT pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_info_cbfunc_t cbfunc, void *cbdata);
 
