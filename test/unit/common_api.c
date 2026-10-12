@@ -654,6 +654,24 @@ static void test_register_attributes(void)
         PMIx_Argv_free(lines);
     }
 
+    /* a regattr can arrive with no name - from a host registration, or
+     * off the wire in a query reply that pattrs prints */
+    {
+        pmix_regattr_t noname;
+
+        PMIX_REGATTR_CONSTRUCT(&noname);
+        PMIX_LOAD_KEY(noname.string, PMIX_HOSTNAME);
+        noname.type = PMIX_STRING;
+        lines = NULL;
+        pmix_attributes_print_attrs(&lines, "common_api_test_fn", &noname, 1);
+        check(NULL != lines && NULL != lines[0] && NULL != lines[1],
+              "an attribute with no name is printed");
+        if (NULL != lines) {
+            PMIx_Argv_free(lines);
+        }
+        PMIX_REGATTR_DESTRUCT(&noname);
+    }
+
     /* the public lookups take whatever the caller passed */
     check(NULL == PMIx_Get_attribute_string(NULL), "PMIx_Get_attribute_string(NULL) safe");
     check(NULL == PMIx_Get_attribute_name(NULL), "PMIx_Get_attribute_name(NULL) safe");

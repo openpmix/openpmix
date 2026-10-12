@@ -297,9 +297,30 @@ static void test_printable(void)
            NULL != out && 0 == strcmp(out, "\\x1b[2Jred\\x0anext\\x7f"));
     free(out);
 
-    out = pmix_util_printable("h\xc3\xa9llo");
-    report("printable: bytes above 0x7f are kept", NULL != out &&
-           0 == strcmp(out, "h\xc3\xa9llo"));
+    out = pmix_util_printable("h\xc3\xa9llo \xc3\x89 \xe2\x82\xac \xf0\x9f\x98\x80");
+    report("printable: well-formed UTF-8 is kept, continuation bytes in 0x80-0x9f too",
+           NULL != out &&
+           0 == strcmp(out, "h\xc3\xa9llo \xc3\x89 \xe2\x82\xac \xf0\x9f\x98\x80"));
+    free(out);
+
+    /* a C1 control in UTF-8 (U+009B, CSI) and a lone 0x9b byte, which an
+     * 8-bit terminal reads as CSI too */
+    out = pmix_util_printable("a\xc2\x9b" "2Jb\x9b" "2Jc");
+    report("printable: C1 controls, encoded or bare, are written out",
+           NULL != out && 0 == strcmp(out, "a\\xc2\\x9b2Jb\\x9b2Jc"));
+    free(out);
+
+    /* malformed sequences: a truncated one at the end, a lead byte with
+     * no continuation, an overlong ESC, a surrogate, and a byte that is
+     * never UTF-8 */
+    out = pmix_util_printable("\xe2\x82");
+    report("printable: a truncated sequence is written out",
+           NULL != out && 0 == strcmp(out, "\\xe2\\x82"));
+    free(out);
+    out = pmix_util_printable("\xc3z\xc0\x9b\xed\xa0\x80\xff");
+    report("printable: malformed UTF-8 is written out byte by byte",
+           NULL != out &&
+           0 == strcmp(out, "\\xc3z\\xc0\\x9b\\xed\\xa0\\x80\\xff"));
     free(out);
 
     out = pmix_util_printable("");
