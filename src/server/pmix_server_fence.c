@@ -1727,7 +1727,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     size_t sz = 0;
     pmix_buffer_t bucket;
     pmix_info_t *info = NULL;
-    size_t ninfo = 0, ninf, n;
+    size_t ninfo = 0, ninf, n, nstrip;
     uint32_t tmo;
     struct timeval tv = {0, 0};
 
@@ -1832,6 +1832,11 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             PMIX_INFO_FREE(info, ninfo);
             goto cleanup;
         }
+        /* a collective is made for all of its participants, not for
+         * one requester, so it carries no requester's identity */
+        nstrip = pmix_server_strip_requester_id(info, ninf, ninfo);
+        ninf -= nstrip;
+        ninfo -= nstrip;
         /* see if we are to collect data or enforce a timeout - we don't internally care
          * about any other directives */
         for (n = 0; n < ninf; n++) {

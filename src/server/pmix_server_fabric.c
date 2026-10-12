@@ -183,8 +183,12 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t
         goto exit;
     }
 
-    /* setup the requesting peer name */
+    /* setup the requesting peer name, and tell the host who is asking */
     PMIX_LOAD_PROCID(&proc, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+    rc = pmix_server_add_requester_id(cd->peer, &qcd->info, &qcd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        goto exit;
+    }
 
     /* ask the host to execute the request */
     if (PMIX_SUCCESS
@@ -274,6 +278,11 @@ pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd, pmix_buffer_t *
         goto exit;
     }
     PMIX_INFO_LOAD(&qcd->info[0], PMIX_FABRIC_INDEX, &index, PMIX_SIZE);
+    /* and who is asking */
+    rc = pmix_server_add_requester_id(cd->peer, &qcd->info, &qcd->ninfo);
+    if (PMIX_SUCCESS != rc) {
+        goto exit;
+    }
 
     /* ask the host to execute the request */
     if (PMIX_SUCCESS

@@ -92,6 +92,10 @@ static void report(const char *name, int passed)
 static bool group_fired = false;
 static size_t group_ninfo = 0;
 static bool group_status_last = false;
+/* whether the host was handed a PMIX_USERID or PMIX_GRPID, and whether
+ * drive_group puts both after its first directive */
+static bool group_has_id = false;
+static bool next_ids = false;
 /* the PMIX_GROUP_INFO the host was given: its leading proc and size */
 static bool group_contrib_seen = false;
 static pmix_proc_t group_contrib;
@@ -120,8 +124,14 @@ static pmix_status_t stub_group(pmix_group_operation_t op, char grp[],
     group_ninfo = ndirs;
     group_status_last = false;
     group_contrib_seen = false;
+    group_has_id = false;
     for (size_t d = 0; NULL != directives && d < ndirs; d++) {
         const pmix_info_t *gi;
+
+        if (PMIX_CHECK_KEY(&directives[d], PMIX_USERID) ||
+            PMIX_CHECK_KEY(&directives[d], PMIX_GRPID)) {
+            group_has_id = true;
+        }
 
         if (!PMIX_CHECK_KEY(&directives[d], PMIX_GROUP_INFO) ||
             PMIX_DATA_ARRAY != directives[d].value.type ||
@@ -190,6 +200,8 @@ typedef struct {
     /* the same, but with no leading proc at all - as a client before
      * v6.0 sends the caller's array */
     bool bare_contribution;
+    /* the second and third infos are a PMIX_USERID and a PMIX_GRPID */
+    bool ids;
     pmix_status_t status;
 } grp_req_t;
 
@@ -277,6 +289,11 @@ static void do_group(int sd, short args, void *cbdata)
                 PMIX_INFO_LOAD(&gpi[1], "grput.value", &gv, PMIX_UINT32);
                 PMIX_INFO_LOAD(&dirs[n], PMIX_GROUP_INFO, gi, PMIX_DATA_ARRAY);
                 PMIX_DATA_ARRAY_FREE(gi);
+            } else if (r->ids && (1 == n || 2 == n)) {
+                uint32_t id = 4242;
+
+                PMIX_INFO_LOAD(&dirs[n], (1 == n) ? PMIX_USERID : PMIX_GRPID, &id,
+                               PMIX_UINT32);
             } else if (r->bootstrap) {
                 PMIX_INFO_LOAD(&dirs[n], PMIX_GROUP_BOOTSTRAP, &nboot, PMIX_SIZE);
             } else {
@@ -330,6 +347,7 @@ static pmix_status_t drive_group(const char *grpid, const char *pns,
     req.nprocs_real = nprocs_real;
     req.ninf = ninf;
     req.ninf_real = ninf_real;
+    req.ids = next_ids;
     group_fired = false;
     PMIX_THREADSHIFT(&req, do_group);
     PMIX_WAIT_THREAD(&req.lock);
@@ -523,6 +541,20 @@ int main(int argc, char **argv)
     /* the host declined, so the handler answered every participant and
      * tore the block down - nothing may be left waiting */
     report("a refused construct parks nothing", nothing_parked());
+
+    /* --- a group operation names no requester --- *
+     * it is made for all of its members, so a PMIX_USERID or PMIX_GRPID
+     * a member sends is not passed up */
+    group_has_id = true;
+    next_ids = true;
+    rc = drive_group("grput.ids", GRPUT_NSPACE, 1, 1, 3, 3);
+    next_ids = false;
+    report("a construct carrying an identity reached the host",
+           PMIX_SUCCESS == rc && group_fired);
+    report("the member's PMIX_USERID and PMIX_GRPID are not passed up", !group_has_id);
+    report("the rest of its directives and the status slot are",
+           2 == group_ninfo && group_status_last);
+    report("and it parks nothing", nothing_parked());
 
     /* --- group info is the sender's own --- *
      * Every member stores a contribution's values under the proc its
