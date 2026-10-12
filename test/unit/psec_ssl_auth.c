@@ -27,6 +27,11 @@
  *   - every truncation of a good credential, which must be refused
  *   - a revoked certificate, once a CRL is configured
  *
+ * The peer stands for a connection, so it holds a descriptor. A
+ * credential handed to PMIx_Validate_credential has none, and is
+ * checked on its own and reported as the identity it carries - that
+ * case is covered separately, with the descriptor taken away.
+ *
  * Each of those is built by hand in the documented wire format rather
  * than by create_cred, so the test also pins the format: a module that
  * changed it would refuse every hand-built credential here, the good
@@ -51,6 +56,7 @@
 #include "src/runtime/pmix_init_util.h"
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -389,6 +395,12 @@ int main(int argc, char **argv)
     peer->info = PMIX_NEW(pmix_rank_info_t);
     peer->info->uid = me;
     peer->info->gid = mygid;
+    /* ssl reads nothing from the connection, only that there is one */
+    peer->sd = open("/dev/null", O_RDONLY);
+    if (0 > peer->sd) {
+        fprintf(stdout, "cannot open /dev/null - skipping\n");
+        return 77;
+    }
 
     /* ---- nothing configured: the component stays out of the way ---- */
     fprintf(stdout, "\n=== unconfigured ===\n");
@@ -527,6 +539,51 @@ int main(int argc, char **argv)
            PMIX_ERR_INVALID_CRED == check(mod, &cred));
     peer->info->uid = me;
     PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    {
+        /* with no connection - PMIx_Validate_credential, whose peer is
+         * the validator - the credential is checked on its own, and its
+         * own identity reported. The validator's is not the holder's */
+        int sd = peer->sd;
+        pmix_rank_info_t *info = peer->info;
+        uint32_t u32 = (uint32_t) -1;
+
+        peer->sd = -1;
+        build_cred(&cred, key, c_leaf, l_leaf, me, mygid, now);
+        peer->info->uid = me + 1;
+        peer->info->gid = mygid + 1;
+        rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults,
+                                &cred);
+        for (i = 0; i < nresults; i++) {
+            if (PMIX_CHECK_KEY(&results[i], PMIX_USERID) &&
+                PMIX_UINT32 == results[i].value.type) {
+                u32 = results[i].value.data.uint32;
+            }
+        }
+        report("with no connection, a credential is not held to the validator's identity",
+               PMIX_SUCCESS == rc);
+        report("and is reported as the identity it carries", me == u32);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+            results = NULL;
+            nresults = 0;
+        }
+        peer->info->uid = me;
+        peer->info->gid = mygid;
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+        peer->info = NULL;
+        build_cred(&cred, key, c_leaf, l_leaf, me, mygid, now);
+        report("with no connection and no peer identity, a credential is accepted",
+               PMIX_SUCCESS == check(mod, &cred));
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+        peer->sd = sd;
+        build_cred(&cred, key, c_leaf, l_leaf, me, mygid, now);
+        report("a connection with no identity to check against is refused",
+               PMIX_ERR_INVALID_CRED == check(mod, &cred));
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+        peer->info = info;
+    }
 
     /* the time window - max_skew is 30 */
     build_cred(&cred, key, c_leaf, l_leaf, me, mygid, now - 120);

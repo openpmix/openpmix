@@ -426,6 +426,69 @@ static void module_round_trip(pmix_psec_module_t *mod, pmix_peer_t *peer, int pa
     PMIX_BYTE_OBJECT_DESTRUCT(&cred);
 }
 
+/* A credential handed to PMIx_Validate_credential arrives on no
+ * connection - the peer is the validator itself, whose socket is -1 and
+ * whose identity is not the credential holder's. A module whose
+ * credential carries its own proof checks it alone and reports the
+ * identity it carries, whatever the peer's info says - or whether it
+ * has any. native vouches only for a connection, so it is not asked. */
+static void module_no_connection(pmix_psec_module_t *mod)
+{
+    pmix_peer_t *peer;
+    pmix_byte_object_t cred;
+    pmix_info_t *results = NULL, *ptr;
+    size_t nresults = 0;
+    pmix_status_t rc;
+    char label[256];
+    int pass;
+
+    if (0 == strcmp(mod->name, "native")) {
+        return;
+    }
+    peer = PMIX_NEW(pmix_peer_t);
+    peer->protocol = PMIX_PROTOCOL_V2;
+    for (pass = 0; pass < 2; pass++) {
+        if (0 == pass) {
+            /* an identity that is not the credential's */
+            peer->info = PMIX_NEW(pmix_rank_info_t);
+            peer->info->uid = geteuid() + 1;
+            peer->info->gid = getegid() + 1;
+        }
+        PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+        rc = mod->create_cred((struct pmix_peer_t *) peer, NULL, 0, NULL, NULL, &cred);
+        if (PMIX_SUCCESS != rc) {
+            snprintf(label, sizeof(label), "%s: create_cred for the no-connection case",
+                     mod->name);
+            report(label, 0);
+            break;
+        }
+        snprintf(label, sizeof(label), "%s: a credential with no connection is accepted %s",
+                 mod->name, (0 == pass) ? "whatever the validator is" : "with no peer info");
+        rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+        report(label, PMIX_SUCCESS == rc);
+        snprintf(label, sizeof(label), "%s: and reported as the identity it carries (%s)",
+                 mod->name, (0 == pass) ? "with peer info" : "with no peer info");
+        ptr = find_key(results, nresults, PMIX_USERID);
+        report(label, NULL != ptr && PMIX_UINT32 == ptr->value.type
+                          && (uint32_t) geteuid() == ptr->value.data.uint32);
+        if (NULL != results) {
+            PMIX_INFO_FREE(results, nresults);
+            results = NULL;
+            nresults = 0;
+        }
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+        if (0 == pass) {
+            PMIX_RELEASE(peer->info);
+            peer->info = NULL;
+        }
+    }
+    if (NULL != peer->info) {
+        PMIX_RELEASE(peer->info);
+        peer->info = NULL;
+    }
+    PMIX_RELEASE(peer);
+}
+
 static void active_modules_round_trip(void)
 {
     pmix_psec_base_active_module_t *active;
@@ -455,6 +518,7 @@ static void active_modules_round_trip(void)
         }
         module_round_trip(active->module, peer, 1);
         module_round_trip(active->module, peer, 2);
+        module_no_connection(active->module);
     }
 
     close(client);

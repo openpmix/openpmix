@@ -93,10 +93,14 @@ costs nothing that matters.
 - **`validate_cred`** applies the same `PMIX_CRED_TYPE` filtering, then
   checks the credential is well-formed (see the gotcha below) before
   calling `munge_decode` to recover the sender's `uid`/`gid` from it (a
-  failed decode → `PMIX_ERR_INVALID_CRED`). It compares them against
-  `pr->info->uid` / `pr->info->gid` and rejects a mismatch. On success it
-  returns `*info` with `PMIX_CRED_TYPE = "munge"`, the validated
-  `PMIX_USERID`, and `PMIX_GRPID`.
+  failed decode → `PMIX_ERR_INVALID_CRED`). For a credential that came
+  with a connection (`pr->sd` valid) it compares them against
+  `pr->info->uid` / `pr->info->gid` and rejects a mismatch. A credential
+  handed to `PMIx_Validate_credential` has no connection (its peer is
+  `pmix_globals.mypeer`, whose `sd` is -1), so there is nothing to compare
+  with - the validator's own identity is not the credential holder's.
+  On success it returns `*info` with `PMIX_CRED_TYPE = "munge"`, the
+  `PMIX_USERID`, and `PMIX_GRPID` the credential carried.
 
 Both use `pmix_psec_base_check_directives()` for the `PMIX_CRED_TYPE`
 screen rather than open-coding the loop — see the framework
