@@ -313,6 +313,23 @@ static bool lists_ssl(bool accepted)
     return found;
 }
 
+/* whether native comes ahead of ssl in the priority order. Not whether
+ * native is the default: with munged running, munge outranks both */
+static bool native_before_ssl(void)
+{
+    pmix_psec_base_active_module_t *active;
+
+    PMIX_LIST_FOREACH (active, &pmix_psec_globals.actives, pmix_psec_base_active_module_t) {
+        if (0 == strcmp(active->module->name, "native")) {
+            return true;
+        }
+        if (0 == strcmp(active->module->name, "ssl")) {
+            return false;
+        }
+    }
+    return false;
+}
+
 static bool open_psec(void)
 {
     if (PMIX_SUCCESS != pmix_mca_base_framework_open(&pmix_psec_base_framework, 0) ||
@@ -447,8 +464,7 @@ int main(int argc, char **argv)
         return 1;
     }
     report("ssl is active once configured", 1);
-    report("native still outranks ssl by default",
-           0 == strcmp("native", pmix_psec_base_assign_module(NULL)->name));
+    report("native still outranks ssl by default", native_before_ssl());
     report("with a CA, ssl is among the mechanisms offered to peers", lists_ssl(true));
 
     /* our own credential, round trip */
