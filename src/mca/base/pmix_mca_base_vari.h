@@ -123,10 +123,11 @@ PMIX_EXPORT int pmix_mca_base_parse_paramfile(const char *paramfile, pmix_list_t
  * \internal
  *
  * Parse a parameter file the caller has already opened; "paramfile" is
- * the name reported for it. See pmix_util_keyval_parse_stream().
+ * the name reported for it, and at most "maxbytes" (0 for no limit) are
+ * read. See pmix_util_keyval_parse_stream().
  */
 PMIX_EXPORT int pmix_mca_base_parse_paramfile_stream(FILE *fp, const char *paramfile,
-                                                     pmix_list_t *list);
+                                                     size_t maxbytes, pmix_list_t *list);
 
 /**
  * \internal

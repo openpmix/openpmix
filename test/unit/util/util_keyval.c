@@ -612,6 +612,78 @@ static void test_root_trusts_only_root_files(void)
     reset_seen();
 }
 
+/* parse the fixture as a stream the caller opened, reading at most
+ * maxbytes */
+static int parse_stream_text(const char *contents, size_t maxbytes)
+{
+    FILE *fp;
+    int rc;
+
+    reset_seen();
+    if (0 != write_file(contents)) {
+        return PMIX_ERROR;
+    }
+    fp = fopen(tmpfile_path, "r");
+    if (NULL == fp) {
+        return PMIX_ERROR;
+    }
+    rc = pmix_util_keyval_parse_stream(fp, tmpfile_path, maxbytes, collect, NULL);
+    fclose(fp);
+    return rc;
+}
+
+/*
+ * A stream is a file read on someone else's behalf. It is read only up
+ * to the byte budget its caller gives - whatever the file holds by then,
+ * since it can grow after the caller checked it - and its -x directives
+ * do not join this process's own environment list.
+ */
+static void test_stream_limits(void)
+{
+    const char *text = "a = 1\nb = 2\nc = 3\n"; /* 18 bytes */
+    char *big;
+    size_t n;
+    int rc;
+
+    rc = parse_stream_text(text, 0);
+    report("stream: no limit reads the whole file",
+           PMIX_SUCCESS == rc && value_is("a", "1") && value_is("c", "3"));
+
+    rc = parse_stream_text(text, 18);
+    report("stream: a file exactly at the limit is read",
+           PMIX_SUCCESS == rc && value_is("c", "3"));
+
+    rc = parse_stream_text(text, 17);
+    report("stream: a file past the limit is refused", PMIX_ERR_BAD_PARAM == rc);
+    report("stream: and nothing past the limit is delivered", 0 > find_seen("c"));
+
+    /* one line longer than the budget - the line buffer must not grow
+     * to hold it */
+    n = 64 * 1024;
+    big = (char *) malloc(n + 8);
+    if (NULL == big) {
+        report("stream: could not build the long-line fixture", 0);
+    } else {
+        memcpy(big, "a = ", 4);
+        memset(big + 4, 'x', n);
+        memcpy(big + 4 + n, "\n", 2);
+        rc = parse_stream_text(big, 1024);
+        report("stream: a single line past the limit is refused",
+               PMIX_ERR_BAD_PARAM == rc && 0 == nseen);
+        free(big);
+    }
+
+    /* -x directives in a stream are passed over */
+    pmix_util_keyval_save_internal_envars(collect, NULL);
+    rc = parse_stream_text("-x STREAMVAR=1\nd = 4\n", 0);
+    report("stream: a file with -x directives parses",
+           PMIX_SUCCESS == rc && value_is("d", "4"));
+    reset_seen();
+    pmix_util_keyval_save_internal_envars(collect, NULL);
+    report("stream: its -x directives do not join this process's list", 0 == nseen);
+    reset_seen();
+}
+
 int main(int argc, char **argv)
 {
     const char *tmpdir;
@@ -649,6 +721,7 @@ int main(int argc, char **argv)
     test_long_lines();
     test_finalize_drops_pending_envars();
     test_root_trusts_only_root_files();
+    test_stream_limits();
 
     pmix_util_keyval_parse_finalize();
     reset_seen();

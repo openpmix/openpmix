@@ -52,6 +52,7 @@
 #include "src/include/pmix_config.h"
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -69,7 +70,12 @@ static pmix_mutex_t keyval_mutex;
 
 static char *env_str = NULL;
 #define PMIX_KEYVAL_ENV_STR_INIT 1024
-static int envsize = PMIX_KEYVAL_ENV_STR_INIT;
+static size_t envsize = PMIX_KEYVAL_ENV_STR_INIT;
+/* strlen(env_str), kept so an append need not measure the string */
+static size_t envlen = 0;
+/* false while parsing a stream - a file read for someone else, whose
+ * -x directives do not belong in this process's list */
+static bool collect_env = true;
 
 /* Nothing in a parameter file is length-limited, so the line buffer
  * starts small and grows to fit the longest line in the file. */
@@ -89,6 +95,7 @@ void pmix_util_keyval_parse_finalize(void)
     free(env_str);
     env_str = NULL;
     envsize = PMIX_KEYVAL_ENV_STR_INIT;
+    envlen = 0;
 
     PMIX_DESTRUCT(&keyval_mutex);
 }
@@ -167,10 +174,15 @@ static int ensure_room(char **buf, size_t *len, size_t needed)
  * A final line with no terminator at all is still a line: an editor that
  * does not add one, a here-doc and a generated file all produce them.
  *
+ * Every byte read is charged against *budget; a read that would take it
+ * below zero ends the parse, so a stream cannot grow the line buffer, or
+ * run the parse, past what its caller allowed.
+ *
  * @return PMIX_SUCCESS when a line was read, PMIX_ERR_NOT_FOUND at end
- *         of file, PMIX_ERR_OUT_OF_RESOURCE if the buffer could not grow.
+ *         of file, PMIX_ERR_OUT_OF_RESOURCE if the buffer could not grow,
+ *         PMIX_ERR_BAD_PARAM if the stream is larger than *budget.
  */
-static int read_line(FILE *fp, char **buf, size_t *buflen)
+static int read_line(FILE *fp, char **buf, size_t *buflen, size_t *budget)
 {
     size_t used = 0;
     size_t chunk;
@@ -195,6 +207,10 @@ static int read_line(FILE *fp, char **buf, size_t *buflen)
              * the end of the line rather than spinning here. */
             break;
         }
+        if (chunk > *budget) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+        *budget -= chunk;
         used += chunk;
 
         if ('\n' == (*buf)[used - 1]) {
@@ -328,8 +344,8 @@ static char *next_token(char **pp)
 
 static int add_to_env_str(const char *var, const char *val)
 {
-    int sz, varsz = 0, valsz = 0, new_envsize;
-    void *tmp;
+    size_t varsz, valsz = 0, sz, new_envsize;
+    char *tmp, *p;
 
     if (NULL == var) {
         return PMIX_ERR_BAD_PARAM;
@@ -337,47 +353,47 @@ static int add_to_env_str(const char *var, const char *val)
 
     varsz = strlen(var);
     if (NULL != val) {
-        valsz = strlen(val);
         /* account for '=' */
-        valsz += 1;
+        valsz = strlen(val) + 1;
     }
-    sz = 0;
-    if (NULL != env_str) {
-        sz = strlen(env_str);
-        /* account for ';' */
-        sz += 1;
-    }
-    /* add required new size incl NULL byte */
-    sz += varsz + valsz + 1;
+    /* what is there, a ';' if anything is, the new entry and a NUL */
+    sz = envlen + ((0 < envlen) ? 1 : 0) + varsz + valsz + 1;
 
     /* make sure we have sufficient space */
     new_envsize = envsize;
-    while (new_envsize <= sz) {
+    while (new_envsize < sz) {
         new_envsize *= 2;
     }
 
-    if (NULL != env_str) {
-        if (new_envsize > envsize) {
-            tmp = realloc(env_str, new_envsize);
-            if (NULL == tmp) {
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            env_str = tmp;
-        }
-        strcat(env_str, ";");
-    } else {
-        env_str = pmix_calloc(1, new_envsize);
+    if (NULL == env_str) {
+        env_str = (char *) malloc(new_envsize);
         if (NULL == env_str) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
+        envlen = 0;
+    } else if (new_envsize > envsize) {
+        tmp = (char *) realloc(env_str, new_envsize);
+        if (NULL == tmp) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        env_str = tmp;
     }
     envsize = new_envsize;
 
-    strcat(env_str, var);
-    if (NULL != val) {
-        strcat(env_str, "=");
-        strcat(env_str, val);
+    /* append at the end we know rather than searching for it */
+    p = env_str + envlen;
+    if (0 < envlen) {
+        *p++ = ';';
     }
+    memcpy(p, var, varsz);
+    p += varsz;
+    if (NULL != val) {
+        *p++ = '=';
+        memcpy(p, val, valsz - 1);
+        p += valsz - 1;
+    }
+    *p = '\0';
+    envlen = (size_t) (p - env_str);
 
     return PMIX_SUCCESS;
 }
@@ -491,10 +507,13 @@ static int parse_directives(const char *filename, int lineno, char *p,
 
             /* the -x directives are not delivered as they are read: they
              * pile up in one string that is handed over by
-             * pmix_util_keyval_save_internal_envars() */
-            rc = add_to_env_str(name, value);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
+             * pmix_util_keyval_save_internal_envars(). A stream is a file
+             * read for someone else, and its directives are not ours */
+            if (collect_env) {
+                rc = add_to_env_str(name, value);
+                if (PMIX_SUCCESS != rc) {
+                    return rc;
+                }
             }
             continue;
         }
@@ -553,10 +572,12 @@ static int process_line(const char *filename, int lineno, char *work,
     return parse_assignment(filename, lineno, p, original, callback, cbdata);
 }
 
-/* read fp to its end. Called with keyval_mutex held */
-static int parse_stream(FILE *fp, const char *filename, pmix_keyval_parse_fn_t callback,
-                        void *cbdata)
+/* read fp to its end, or until maxbytes (0 for no limit) have been read.
+ * Called with keyval_mutex held */
+static int parse_stream(FILE *fp, const char *filename, size_t maxbytes,
+                        pmix_keyval_parse_fn_t callback, void *cbdata)
 {
+    size_t budget = (0 == maxbytes) ? SIZE_MAX : maxbytes;
     char *line = NULL;
     char *work = NULL;
     size_t linelen = 0;
@@ -566,7 +587,7 @@ static int parse_stream(FILE *fp, const char *filename, pmix_keyval_parse_fn_t c
     int rc = PMIX_SUCCESS;
     int ret = PMIX_SUCCESS;
 
-    while (PMIX_SUCCESS == (rc = read_line(fp, &line, &linelen))) {
+    while (PMIX_SUCCESS == (rc = read_line(fp, &line, &linelen, &budget))) {
         char *start = line;
         size_t len;
 
@@ -598,7 +619,7 @@ static int parse_stream(FILE *fp, const char *filename, pmix_keyval_parse_fn_t c
             break;
         }
     }
-    if (PMIX_ERR_OUT_OF_RESOURCE == rc) {
+    if (PMIX_ERR_OUT_OF_RESOURCE == rc || PMIX_ERR_BAD_PARAM == rc) {
         ret = rc;
     }
 
@@ -607,7 +628,7 @@ static int parse_stream(FILE *fp, const char *filename, pmix_keyval_parse_fn_t c
     return ret;
 }
 
-int pmix_util_keyval_parse_stream(FILE *fp, const char *filename,
+int pmix_util_keyval_parse_stream(FILE *fp, const char *filename, size_t maxbytes,
                                   pmix_keyval_parse_fn_t callback, void *cbdata)
 {
     int ret;
@@ -616,7 +637,9 @@ int pmix_util_keyval_parse_stream(FILE *fp, const char *filename,
         return PMIX_ERR_BAD_PARAM;
     }
     pmix_mutex_lock(&keyval_mutex);
-    ret = parse_stream(fp, filename, callback, cbdata);
+    collect_env = false;
+    ret = parse_stream(fp, filename, maxbytes, callback, cbdata);
+    collect_env = true;
     pmix_mutex_unlock(&keyval_mutex);
     return ret;
 }
@@ -664,7 +687,7 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
         }
     }
 
-    ret = parse_stream(fp, filename, callback, cbdata);
+    ret = parse_stream(fp, filename, 0, callback, cbdata);
     fclose(fp);
 
 cleanup:
@@ -681,10 +704,11 @@ int pmix_util_keyval_save_internal_envars(pmix_keyval_parse_fn_t callback,
      * string while another thread's parse is still appending to it */
     pmix_mutex_lock(&keyval_mutex);
 
-    if (NULL != env_str && 0 < strlen(env_str)) {
+    if (NULL != env_str && 0 < envlen) {
         callback(NULL, 0, "mca_base_env_list_internal", env_str, cbdata);
         free(env_str);
         env_str = NULL;
+        envlen = 0;
     }
 
     pmix_mutex_unlock(&keyval_mutex);
