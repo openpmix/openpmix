@@ -103,7 +103,10 @@ by reinterpreting a field.
    records a group.
 5. **The time** is within `psec_ssl_max_skew` seconds of now, either way.
 6. **The peer.** As every mechanism does, the identity must be the one
-   the peer registered or connected as (`pr->info->uid`/`gid`).
+   the peer registered or connected as (`pr->info->uid`/`gid`). Only
+   for a connection (`pr->sd` valid): a credential handed to
+   `PMIx_Validate_credential` has none, and is reported as the identity
+   it carries rather than compared with the validator's own.
 7. **The nonce** has not been seen. This runs **last**, so nothing that
    failed an earlier check ever reaches the replay list — which is
    therefore bounded by what authenticated peers can send.
