@@ -51,8 +51,14 @@ typedef enum {
     CASE_REGULAR,
     CASE_SYMLINK,
     CASE_FIFO,
-    CASE_FOREIGN
+    CASE_FOREIGN,
+    CASE_LARGE,         /* past the size limit */
+    CASE_LARGE_NOLIMIT  /* the same file, with no limit set */
 } pfcase_t;
+
+/* the size limit each case runs with - the large file is twice it */
+#define PFCAP     4096
+#define PFCAP_STR "4096"
 
 static int npass = 0;
 static int nfail = 0;
@@ -81,8 +87,25 @@ static bool write_params(const char *path)
     return true;
 }
 
+/* the marker, then comments to twice the size limit */
+static bool write_large_params(const char *path)
+{
+    FILE *fp = fopen(path, "w");
+    int n;
+
+    if (NULL == fp) {
+        return false;
+    }
+    fprintf(fp, "pmdlut_marker = yes\n");
+    for (n = 0; n < 2 * PFCAP / 32; n++) {
+        fprintf(fp, "# padding padding padding pad\n");
+    }
+    fclose(fp);
+    return true;
+}
+
 /* child: harvest the job environment and look for the file's value */
-static int harvest(const char *home)
+static int harvest(const char *home, const char *cap)
 {
     pmix_info_t info[2];
     pmix_list_t ilist;
@@ -92,6 +115,7 @@ static int harvest(const char *home)
 
     setenv("HOME", home, 1);
     unsetenv("OMPIHOME");
+    setenv("PMIX_MCA_pmdl_ompi_max_param_file_size", cap, 1);
     if (PMIX_SUCCESS != PMIx_server_init(NULL, NULL, 0)) {
         return C_SETUP;
     }
@@ -153,6 +177,12 @@ static int run_case(pfcase_t which, char *home)
             return -1;
         }
         break;
+    case CASE_LARGE:
+    case CASE_LARGE_NOLIMIT:
+        if (!write_large_params(file)) {
+            return -1;
+        }
+        break;
     }
 
     pid = fork();
@@ -160,7 +190,7 @@ static int run_case(pfcase_t which, char *home)
         return -1;
     }
     if (0 == pid) {
-        _exit(harvest(home));
+        _exit(harvest(home, (CASE_LARGE_NOLIMIT == which) ? "0" : PFCAP_STR));
     }
     for (i = 0; i < 300; i++) {
         r = waitpid(pid, &status, WNOHANG);
@@ -216,6 +246,8 @@ int main(int argc, char **argv)
     check("a regular file of the user's is read", CASE_REGULAR, home, C_READ);
     check("a symlink to a file of the user's is read", CASE_SYMLINK, home, C_READ);
     check("a FIFO at the name is skipped without blocking", CASE_FIFO, home, C_SKIPPED);
+    check("a file past the size limit is skipped", CASE_LARGE, home, C_SKIPPED);
+    check("the same file is read with no limit", CASE_LARGE_NOLIMIT, home, C_READ);
     if (0 == geteuid()) {
         check("a file belonging to another user is skipped", CASE_FOREIGN, home, C_SKIPPED);
     } else {

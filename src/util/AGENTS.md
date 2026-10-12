@@ -1978,6 +1978,16 @@ just a leak: the next run is handed the previous run's variables.
 [`test/unit/util/util_keyval.c`](../../test/unit/util/util_keyval.c) pins
 it.
 
+**A stream is someone else's file.** `pmix_util_keyval_parse_stream()`
+is how `pmdl/ompi` reads a job's Open MPI parameter file on the job's
+behalf, so it differs from a parse by name in two ways: it reads at most
+the `maxbytes` its caller gives (a line longer than what is left ends the
+parse, so the line buffer cannot outgrow the budget either), and it
+passes over `-x` directives rather than adding them to `env_str`, which
+is this process's own list. `env_str` keeps its length in `envlen`, so an
+append costs the length of what is appended, not of everything before it.
+`test_stream_limits` in `util_keyval.c` covers both.
+
 **A malformed line is a warning; running out of memory is a return
 code.** The caller acts on what `pmix_util_keyval_parse()` answers —
 `pmix_mca_base_var_cache_files()` treats anything but `PMIX_SUCCESS` or

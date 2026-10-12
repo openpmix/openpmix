@@ -122,8 +122,17 @@ same descriptor through `pmix_mca_base_parse_paramfile_stream()`. Parsing
 by name would open the path a second time and could read something other
 than what was checked. A symlink is followed; its target is what must
 pass. A file that is absent or fails the check is skipped, as a missing
-one always was. `test/unit/pmdl_paramfile.c` covers each case, in a
-child per case because the result is cached per user.
+one always was.
+
+The file is read by the server on a job's behalf, so its size is
+bounded: `pmdl_ompi_max_param_file_size` (bytes, default 1 MiB, 0 for no
+limit). The `fstat` size is checked first, and the same number is the
+stream parser's byte budget, because a file can grow after the `fstat`.
+A file over the limit contributes nothing - all of it or none of it.
+The stream parse also passes over `-x` directives: a file read for a job
+must not add to the server's own environment list (see
+`pmix_util_keyval_parse_stream()`). `test/unit/pmdl_paramfile.c` covers
+each case, in a child per case because the result is cached per user.
 
 It then parses the MCA param file and, for each variable, decides how to
 re-prefix it before forwarding, using the framework's shared classifiers:
