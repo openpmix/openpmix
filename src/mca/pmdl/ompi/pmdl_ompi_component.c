@@ -54,7 +54,8 @@ pmix_pmdl_ompi_component_t pmix_mca_pmdl_ompi_component = {
         .pmix_mca_query_component = component_query,
     },
     .include = NULL,
-    .exclude = NULL
+    .exclude = NULL,
+    .max_param_file_size = 1024 * 1024
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, pmdl, ompi)
 
@@ -81,6 +82,13 @@ static pmix_status_t component_register(void)
     if (NULL != pmix_mca_pmdl_ompi_component.excparms) {
         pmix_mca_pmdl_ompi_component.exclude = PMIx_Argv_split(pmix_mca_pmdl_ompi_component.excparms, ',');
     }
+
+    (void) pmix_mca_base_component_var_register(
+        component, "max_param_file_size",
+        "Largest Open MPI MCA parameter file read on a job's behalf, in bytes. "
+        "A larger file is not read (0 = no limit)",
+        PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+        &pmix_mca_pmdl_ompi_component.max_param_file_size);
 
     return PMIX_SUCCESS;
 }

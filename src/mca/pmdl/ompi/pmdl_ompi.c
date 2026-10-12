@@ -15,6 +15,7 @@
 #include "src/include/pmix_config.h"
 
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -242,7 +243,8 @@ static pmix_status_t add_prefixed_envar(pmix_list_t *ilist, const char *prefix,
  * (uid_t) -1, belong to that user - and the same descriptor is parsed, so
  * what was checked is what is read. A symlink is followed, and its target
  * is what must pass. A file that is absent or does not pass contributes
- * nothing. */
+ * nothing, and neither does one larger than max_param_file_size - judged
+ * on what is read, since the file can grow after the fstat. */
 static pmix_status_t process_param_file(char *file, uid_t owner, pmix_list_t *ilist)
 {
     pmix_list_t params;
@@ -267,7 +269,9 @@ static pmix_status_t process_param_file(char *file, uid_t owner, pmix_list_t *il
         return PMIX_SUCCESS;
     }
     if (0 != fstat(fd, &buf) || !S_ISREG(buf.st_mode) ||
-        ((uid_t) -1 != owner && buf.st_uid != owner)) {
+        ((uid_t) -1 != owner && buf.st_uid != owner) ||
+        (0 < pmix_mca_pmdl_ompi_component.max_param_file_size &&
+         (uintmax_t) buf.st_size > (uintmax_t) pmix_mca_pmdl_ompi_component.max_param_file_size)) {
         pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
                             "pmdl:ompi: skipping param file %s", file);
         close(fd);
@@ -280,8 +284,20 @@ static pmix_status_t process_param_file(char *file, uid_t owner, pmix_list_t *il
     }
 
     PMIX_CONSTRUCT(&params, pmix_list_t);
-    pmix_mca_base_parse_paramfile_stream(fp, file, &params);
+    rc = pmix_mca_base_parse_paramfile_stream(fp, file,
+                                              pmix_mca_pmdl_ompi_component.max_param_file_size,
+                                              &params);
     fclose(fp);
+    if (PMIX_SUCCESS != rc) {
+        /* all of it or none of it */
+        PMIX_LIST_DESTRUCT(&params);
+        if (PMIX_ERR_OUT_OF_RESOURCE == rc) {
+            return rc;
+        }
+        pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                            "pmdl:ompi: skipping param file %s", file);
+        return PMIX_SUCCESS;
+    }
     PMIX_LIST_FOREACH (fv, &params, pmix_mca_base_var_file_value_t) {
         /* a single param file can hold values directed at any of the
          * three libraries, and each one has to carry the prefix its
