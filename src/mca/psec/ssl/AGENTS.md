@@ -49,6 +49,10 @@ signature machinery.
   `show_help` — on anything malformed. A failed `init` leaves the module
   off the actives list, so `finalize` is never called for it; `init`
   releases what it loaded on every failure path.
+- **Offered to peers** only with a CA. A process given an identity and no
+  CA connects with `ssl` but can check nobody's credential, so its
+  `validates` hook keeps `ssl` off the list a server advertises
+  (`pmix_psec_base_get_accepted_modules()`).
 - **Priority 5**, below `native`'s 10. A process that says nothing keeps
   authenticating local peers with `native`; a remote tool asks for `ssl`
   by name (`PMIX_MCA_psec=ssl` or `PMIX_SECURITY_MODE=ssl`), and a server

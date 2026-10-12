@@ -289,6 +289,30 @@ static pmix_status_t check(pmix_psec_module_t *mod, const pmix_byte_object_t *cr
     return rc;
 }
 
+/* whether ssl is on the list of mechanisms we have, or on the list we
+ * tell peers we accept */
+static bool lists_ssl(bool accepted)
+{
+    char *list, **names;
+    bool found = false;
+    int n;
+
+    list = accepted ? pmix_psec_base_get_accepted_modules()
+                    : pmix_psec_base_get_available_modules();
+    if (NULL == list) {
+        return false;
+    }
+    names = PMIx_Argv_split(list, ',');
+    for (n = 0; NULL != names && NULL != names[n]; n++) {
+        if (0 == strcmp(names[n], "ssl")) {
+            found = true;
+        }
+    }
+    PMIx_Argv_free(names);
+    free(list);
+    return found;
+}
+
 static bool open_psec(void)
 {
     if (PMIX_SUCCESS != pmix_mca_base_framework_open(&pmix_psec_base_framework, 0) ||
@@ -425,6 +449,7 @@ int main(int argc, char **argv)
     report("ssl is active once configured", 1);
     report("native still outranks ssl by default",
            0 == strcmp("native", pmix_psec_base_assign_module(NULL)->name));
+    report("with a CA, ssl is among the mechanisms offered to peers", lists_ssl(true));
 
     /* our own credential, round trip */
     PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
@@ -631,6 +656,20 @@ int main(int argc, char **argv)
     PMIX_BYTE_OBJECT_DESTRUCT(&cred);
     close_psec();
     unsetenv("PMIX_MCA_psec_ssl_crl_file");
+
+    /* ---- an identity and no CA: connect with ssl, but accept nobody ---- */
+    fprintf(stdout, "\n=== identity, no CA ===\n");
+    unsetenv("PMIX_MCA_psec_ssl_ca_file");
+    setenv("PMIX_MCA_psec_ssl_cert_file", certfile, 1);
+    setenv("PMIX_MCA_psec_ssl_key_file", keyfile, 1);
+    if (!open_psec() || NULL == (mod = pmix_psec_base_assign_module("ssl"))) {
+        report("ssl is active with an identity alone", 0);
+        return 1;
+    }
+    report("with no CA, ssl is still available to connect with", lists_ssl(false));
+    report("but is not offered to peers", !lists_ssl(true));
+    close_psec();
+    setenv("PMIX_MCA_psec_ssl_ca_file", cafile, 1);
 
     /* ---- a private key anyone may read is refused ---- */
     fprintf(stdout, "\n=== an exposed private key ===\n");

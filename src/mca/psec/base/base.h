@@ -77,6 +77,7 @@ typedef struct pmix_psec_globals_t pmix_psec_globals_t;
 PMIX_EXPORT extern pmix_psec_globals_t pmix_psec_globals;
 
 PMIX_EXPORT char *pmix_psec_base_get_available_modules(void);
+PMIX_EXPORT char *pmix_psec_base_get_accepted_modules(void);
 PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options);
 
 /**
