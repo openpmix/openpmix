@@ -319,15 +319,16 @@ static void server_unpack_procs(char *buf, size_t size)
     }
 }
 
-static size_t server_pack_procs(int server_id, char **buf, size_t size)
+static int server_pack_procs(int server_id, char **buf, size_t size, size_t *packed)
 {
     size_t ns_count = pmix_list_get_size(server_nspace);
     size_t buf_size = sizeof(size_t) + (PMIX_MAX_NSLEN + 1) * ns_count;
     server_nspace_t *tmp;
-    char *ptr;
+    char *ptr, *newbuf;
 
+    *packed = 0;
     if (0 == ns_count) {
-        return 0;
+        return PMIX_SUCCESS;
     }
 
     buf_size += size;
@@ -335,8 +336,13 @@ static size_t server_pack_procs(int server_id, char **buf, size_t size)
     PMIX_LIST_FOREACH (tmp, server_nspace, server_nspace_t) {
         buf_size += sizeof(int) + sizeof(size_t) + sizeof(size_t) + sizeof(int) * tmp->ltasks;
     }
-    *buf = (char *) realloc(*buf, buf_size);
-    memset(*buf + size, 0, buf_size);
+    newbuf = (char *) realloc(*buf, buf_size);
+    if (NULL == newbuf) {
+        TEST_ERROR(("Failed to allocate %lu bytes for the proc map", (unsigned long) buf_size));
+        return PMIX_ERR_NOMEM;
+    }
+    *buf = newbuf;
+    memset(*buf + size, 0, buf_size - size);
     ptr = *buf + size;
     /* pack ns count */
     memcpy(ptr, &ns_count, sizeof(size_t));
@@ -368,7 +374,8 @@ static size_t server_pack_procs(int server_id, char **buf, size_t size)
         }
     }
     assert((size_t)(ptr - *buf) == buf_size);
-    return buf_size;
+    *packed = buf_size;
+    return PMIX_SUCCESS;
 }
 
 static void remove_server_item(server_info_t *server)
@@ -501,7 +508,10 @@ static int server_send_procs(void)
     msg_hdr.cmd = CMD_FENCE_CONTRIB;
     msg_hdr.dst_id = 0;
     msg_hdr.src_id = my_server_id;
-    msg_hdr.size = server_pack_procs(my_server_id, &buf, 0);
+    if (PMIX_SUCCESS != server_pack_procs(my_server_id, &buf, 0, &msg_hdr.size)) {
+        free(buf);
+        return PMIX_ERROR;
+    }
     server->modex_cbfunc = _send_procs_cb;
     server->cbdata = (void *) server;
 
