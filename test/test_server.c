@@ -390,12 +390,12 @@ static int srv_wait_all(double timeout)
     server_info_t *server, *next;
     pid_t pid;
     int status;
-    struct timeval tv;
+    struct timeval now;
     double start_time, cur_time;
     int ret = 0;
 
-    gettimeofday(&tv, NULL);
-    start_time = tv.tv_sec + 1E-6 * tv.tv_usec;
+    gettimeofday(&now, NULL);
+    start_time = now.tv_sec + 1E-6 * now.tv_usec;
     cur_time = start_time;
 
     /* Remove this server from the list */
@@ -407,21 +407,41 @@ static int srv_wait_all(double timeout)
         }
     }
 
+    // wait on each server by pid - the SIGCHLD handler reaps only
+    // the clients, so the servers' exit status is still ours to collect
     while (!pmix_list_is_empty(server_list) && (timeout >= (cur_time - start_time))) {
-        pid = waitpid(-1, &status, 0);
-        if (pid >= 0) {
-            PMIX_LIST_FOREACH_SAFE (server, next, server_list, server_info_t) {
-                if (server->pid == pid) {
-                    TEST_VERBOSE(("server %d finalize PID:%d with status %d", server->idx,
-                                  server->pid, WEXITSTATUS(status)));
-                    ret += WEXITSTATUS(status);
-                    remove_server_item(server);
-                }
+        PMIX_LIST_FOREACH_SAFE (server, next, server_list, server_info_t) {
+            pid = waitpid(server->pid, &status, WNOHANG);
+            if (0 == pid || (-1 == pid && EINTR == errno)) {
+                continue;
             }
+            if (server->pid == pid) {
+                TEST_VERBOSE(("server %d finalize PID:%d with status %d", server->idx,
+                              server->pid, WEXITSTATUS(status)));
+                if (WIFEXITED(status)) {
+                    ret += WEXITSTATUS(status);
+                } else {
+                    ret++;
+                }
+            } else {
+                TEST_ERROR(("server %d PID:%d cannot be waited on: %s", server->idx,
+                            server->pid, strerror(errno)));
+                ret++;
+            }
+            remove_server_item(server);
+        }
+        if (!pmix_list_is_empty(server_list)) {
+            usleep(10000);
         }
         // calculate current timestamp
-        gettimeofday(&tv, NULL);
-        cur_time = tv.tv_sec + 1E-6 * tv.tv_usec;
+        gettimeofday(&now, NULL);
+        cur_time = now.tv_sec + 1E-6 * now.tv_usec;
+    }
+    PMIX_LIST_FOREACH_SAFE (server, next, server_list, server_info_t) {
+        TEST_ERROR(("server %d PID:%d did not finish within %.0f sec", server->idx,
+                    server->pid, timeout));
+        ret++;
+        remove_server_item(server);
     }
 
     return ret;
@@ -835,36 +855,30 @@ static void wait_signal_callback(int fd, short event, void *arg)
     }
 
     /* we can have multiple children leave but only get one
-     * sigchild callback, so reap all the waitpids until we
-     * don't get anything valid back */
-    while (1) {
-        pid = waitpid(-1, &status, WNOHANG);
-        if (-1 == pid && EINTR == errno) {
-            /* try it again */
+     * sigchild callback, so check every client. Reap only the
+     * clients by pid - the emulated servers are also our children,
+     * and srv_wait_all needs to collect their exit status itself */
+    for (i = 0; i < cli_info_cnt; i++) {
+        if (0 >= cli_info[i].pid) {
             continue;
         }
-        /* if we got garbage, then nothing we can do */
-        if (pid <= 0) {
-            goto done;
+        do {
+            pid = waitpid(cli_info[i].pid, &status, WNOHANG);
+        } while (-1 == pid && EINTR == errno);
+        if (pid != cli_info[i].pid) {
+            continue;
         }
         /* we are already in an event, so it is safe to access the list */
-        for (i = 0; i < cli_info_cnt; i++) {
-            if (cli_info[i].pid == pid) {
-                /* found it! */
-                if (WIFEXITED(status)) {
-                    cli_info[i].exit_code = WEXITSTATUS(status);
-                } else {
-                    if (WIFSIGNALED(status)) {
-                        cli_info[i].exit_code = WTERMSIG(status) + 128;
-                    }
-                }
-                cli_cleanup(&cli_info[i]);
-                cli_info[i].alive = false;
-                break;
+        if (WIFEXITED(status)) {
+            cli_info[i].exit_code = WEXITSTATUS(status);
+        } else {
+            if (WIFSIGNALED(status)) {
+                cli_info[i].exit_code = WTERMSIG(status) + 128;
             }
         }
+        cli_cleanup(&cli_info[i]);
+        cli_info[i].alive = false;
     }
-done:
     for (i = 0; i < cli_info_cnt; i++) {
         if (cli_info[i].alive) {
             /* someone is still alive */
