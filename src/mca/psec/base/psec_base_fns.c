@@ -34,7 +34,7 @@
 
 #include "src/mca/psec/base/base.h"
 
-char *pmix_psec_base_get_available_modules(void)
+static char *list_modules(bool accepted_only)
 {
     pmix_psec_base_active_module_t *active;
     char **tmp = NULL, *reply = NULL;
@@ -44,6 +44,10 @@ char *pmix_psec_base_get_available_modules(void)
     }
 
     PMIX_LIST_FOREACH (active, &pmix_psec_globals.actives, pmix_psec_base_active_module_t) {
+        if (accepted_only && NULL != active->module->validates &&
+            !active->module->validates()) {
+            continue;
+        }
         /* this list is advertised to our clients as the mechanisms they
          * may select from, so a silently truncated one would hide a
          * mechanism that is actually available */
@@ -58,6 +62,16 @@ char *pmix_psec_base_get_available_modules(void)
         PMIx_Argv_free(tmp);
     }
     return reply;
+}
+
+char *pmix_psec_base_get_available_modules(void)
+{
+    return list_modules(false);
+}
+
+char *pmix_psec_base_get_accepted_modules(void)
+{
+    return list_modules(true);
 }
 
 pmix_psec_module_t *pmix_psec_base_assign_module(const char *options)
