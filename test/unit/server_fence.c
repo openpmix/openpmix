@@ -163,6 +163,10 @@ static size_t fence_nprocs = 0;
 static size_t fence_ninfo = 0;
 static bool fence_status_last = false;
 static bool fence_sorted_next_to_last = false;
+/* whether the host was handed a PMIX_USERID or PMIX_GRPID, and whether
+ * do_fence adds both to the directives it packs */
+static bool fence_has_id = false;
+static bool pack_ids = false;
 /* the in-flight cases below need a host that ACCEPTS the operation, so
  * the tracker is left with the host owning it - that is the state the
  * double-hand-off case is about. Counted, with the cbdata recorded, so a
@@ -194,6 +198,12 @@ static pmix_status_t stub_fence_nb(const pmix_proc_t procs[], size_t nprocs,
     if (NULL != info && 2 <= ninfo) {
         fence_status_last = PMIX_CHECK_KEY(&info[ninfo - 1], PMIX_LOCAL_COLLECTIVE_STATUS);
         fence_sorted_next_to_last = PMIX_CHECK_KEY(&info[ninfo - 2], PMIX_SORTED_PROC_ARRAY);
+    }
+    fence_has_id = false;
+    for (size_t k = 0; NULL != info && k < ninfo; k++) {
+        if (PMIX_CHECK_KEY(&info[k], PMIX_USERID) || PMIX_CHECK_KEY(&info[k], PMIX_GRPID)) {
+            fence_has_id = true;
+        }
     }
     ++fence_calls;
     fence_cbdata = cbdata;
@@ -260,7 +270,21 @@ static void do_fence(int sd, short args, void *cbdata)
     if (PMIX_SUCCESS == rc) {
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &r->ninf, 1, PMIX_SIZE);
     }
-    for (n = 0; PMIX_SUCCESS == rc && n < r->ninf_real; n++) {
+    if (PMIX_SUCCESS == rc && pack_ids) {
+        /* the directive and an identity the participant claims, in one
+         * pack - three separate packs are three one-element arrays */
+        pmix_info_t dirs[3];
+        uint32_t id = 4242;
+
+        PMIX_INFO_LOAD(&dirs[0], PMIX_COLLECT_DATA, &collect, PMIX_BOOL);
+        PMIX_INFO_LOAD(&dirs[1], PMIX_USERID, &id, PMIX_UINT32);
+        PMIX_INFO_LOAD(&dirs[2], PMIX_GRPID, &id, PMIX_UINT32);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, dirs, 3, PMIX_INFO);
+        for (n = 0; n < 3; n++) {
+            PMIX_INFO_DESTRUCT(&dirs[n]);
+        }
+    }
+    for (n = 0; !pack_ids && PMIX_SUCCESS == rc && n < r->ninf_real; n++) {
         PMIX_INFO_LOAD(&dir, PMIX_COLLECT_DATA, &collect, PMIX_BOOL);
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &dir, 1, PMIX_INFO);
         PMIX_INFO_DESTRUCT(&dir);
@@ -1073,6 +1097,25 @@ int main(int argc, char **argv)
            PMIX_ERR_NOT_SUPPORTED == rc);
 
     /* nothing may be left parked on the collectives list */
+    report("no tracker is left behind",
+           0 == pmix_list_get_size(&pmix_server_globals.collectives));
+
+    /* --- a fence names no requester --- *
+     * a PMIX_USERID or PMIX_GRPID a participant sends is not passed up,
+     * and the seeded slots still close the array */
+    fence_fired = false;
+    fence_ninfo = 0;
+    fence_status_last = false;
+    fence_has_id = true;
+    pack_ids = true;
+    rc = drive_fence(1, 1, 3, 3);
+    pack_ids = false;
+    progress_barrier();
+    report("a fence carrying an identity reaches the host", fence_fired);
+    report("the participant's PMIX_USERID and PMIX_GRPID are not passed up", !fence_has_id);
+    report("the rest of its directives and the two seeded slots are", 3 == fence_ninfo);
+    report("PMIX_LOCAL_COLLECTIVE_STATUS is still the last slot",
+           fence_status_last && fence_sorted_next_to_last);
     report("no tracker is left behind",
            0 == pmix_list_get_size(&pmix_server_globals.collectives));
 

@@ -148,7 +148,7 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
     int32_t cnt;
     pmix_status_t rc;
     pmix_info_t *info = NULL;
-    size_t nprocs, ninfo, ninf;
+    size_t nprocs, ninfo, ninf, nstrip;
     pmix_server_trkr_t *trk;
     pmix_proc_t *procs = NULL;
     struct timeval tv = {0, 0};
@@ -259,6 +259,11 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
             rc = PMIX_ERR_BAD_PARAM;
             goto cleanup;
         }
+        /* a collective is made for all of its participants, not for
+         * one requester, so it carries no requester's identity */
+        nstrip = pmix_server_strip_requester_id(info, ninf, ninfo);
+        ninf -= nstrip;
+        ninfo -= nstrip;
         /* check for a timeout */
         rc = check_timeout(info, ninf, &tv);
         if (PMIX_SUCCESS != rc) {
@@ -443,7 +448,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     pmix_status_t rc;
     pmix_proc_t *procs = NULL;
     pmix_info_t *info = NULL, endpt;
-    size_t nprocs, ninfo, ninf;
+    size_t nprocs, ninfo, ninf, nstrip;
     bool haveendpt;
     pmix_server_trkr_t *trk;
     struct timeval tv = {0, 0};
@@ -558,6 +563,11 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
             rc = PMIX_ERR_BAD_PARAM;
             goto cleanup;
         }
+        /* a collective is made for all of its participants, not for
+         * one requester, so it carries no requester's identity */
+        nstrip = pmix_server_strip_requester_id(info, ninf, ninfo);
+        ninf -= nstrip;
+        ninfo -= nstrip;
         /* check for a timeout */
         rc = check_timeout(info, ninf, &tv);
         if (PMIX_SUCCESS != rc) {

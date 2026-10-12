@@ -172,6 +172,74 @@ static pmix_status_t do_device_dists(pmix_cpuset_t *cpuset)
     return do_device_dists_n(cpuset, 0);
 }
 
+/* A host fabric entry point that records the identity it is handed and
+ * declines, so the handler still ends at PMIX_ERR_NOT_SUPPORTED */
+static int fabric_calls = 0;
+static size_t fabric_nuid = 0;
+static size_t fabric_ngid = 0;
+static uint32_t fabric_uid = 0;
+
+static pmix_status_t stub_fabric(const pmix_proc_t *requestor, pmix_fabric_operation_t op,
+                                 const pmix_info_t directives[], size_t ndirs,
+                                 pmix_info_cbfunc_t cbfunc, void *cbdata)
+{
+    size_t n;
+
+    (void) requestor;
+    (void) op;
+    (void) cbfunc;
+    (void) cbdata;
+
+    ++fabric_calls;
+    fabric_nuid = 0;
+    fabric_ngid = 0;
+    for (n = 0; NULL != directives && n < ndirs; n++) {
+        if (PMIX_CHECK_KEY(&directives[n], PMIX_USERID)) {
+            ++fabric_nuid;
+            if (PMIX_UINT32 == directives[n].value.type) {
+                fabric_uid = directives[n].value.data.uint32;
+            }
+        } else if (PMIX_CHECK_KEY(&directives[n], PMIX_GRPID)) {
+            ++fabric_ngid;
+        }
+    }
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+/* Drive one PMIX_FABRIC_UPDATE_CMD: the fabric index */
+static pmix_status_t do_fabric_update(size_t index)
+{
+    pmix_buffer_t *buf;
+    pmix_server_caddy_t *cd;
+    pmix_status_t rc;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    if (NULL == buf) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &index, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+    cd = PMIX_NEW(pmix_server_caddy_t);
+    if (NULL == cd) {
+        PMIX_RELEASE(buf);
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_RETAIN(pmix_globals.mypeer);
+    cd->peer = pmix_globals.mypeer;
+    cd->hdr.tag = 0;
+
+    rc = pmix_server_fabric_update(cd, buf, pmix_server_fabric_cbfunc);
+    if (PMIX_SUCCESS != rc) {
+        /* the switchyard owns the caddy on a non-success return */
+        PMIX_RELEASE(cd);
+    }
+    PMIX_RELEASE(buf);
+    return rc;
+}
+
 /* Drive one PMIX_FABRIC_REGISTER_CMD: the directive count and the
  * directives. The count is a parameter so it can be made to disagree
  * with what is actually packed. */
@@ -223,6 +291,7 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "server_fabric: server-side device-distance unit tests\n");
 
+    mymodule.fabric = stub_fabric;
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
@@ -319,6 +388,37 @@ int main(int argc, char **argv)
                PMIX_ERR_NOT_SUPPORTED == rc);
 
         PMIX_INFO_DESTRUCT(&dir);
+    }
+
+    /* --- the host is told who is asking ---
+     *
+     * Both fabric up-calls carry the requester's PMIX_USERID and
+     * PMIX_GRPID, exactly one of each, and the uid is the one recorded
+     * for the connection - not one the requester put in its request. */
+    {
+        pmix_info_t dirs[2];
+        uint32_t claimed = (uint32_t) geteuid() + 1;
+
+        PMIX_INFO_LOAD(&dirs[0], "server-fabric-ut.dir", "value", PMIX_STRING);
+        PMIX_INFO_LOAD(&dirs[1], PMIX_USERID, &claimed, PMIX_UINT32);
+        fabric_calls = 0;
+        rc = do_fabric_register(2, 2, dirs);
+        report("fabric_register reaches the host", 1 == fabric_calls);
+        report("fabric_register tells the host one uid and one gid",
+               1 == fabric_nuid && 1 == fabric_ngid);
+        report("fabric_register's uid is the connection's, not the claimed one",
+               (uint32_t) pmix_globals.mypeer->info->uid == fabric_uid);
+        PMIX_INFO_DESTRUCT(&dirs[0]);
+        PMIX_INFO_DESTRUCT(&dirs[1]);
+
+        fabric_calls = 0;
+        fabric_uid = claimed;
+        rc = do_fabric_update(0);
+        report("fabric_update reaches the host", 1 == fabric_calls);
+        report("fabric_update tells the host one uid and one gid",
+               1 == fabric_nuid && 1 == fabric_ngid);
+        report("fabric_update's uid is the connection's",
+               (uint32_t) pmix_globals.mypeer->info->uid == fabric_uid);
     }
 
     pmix_hwloc_destruct_cpuset(&cpuset);

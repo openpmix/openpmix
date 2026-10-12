@@ -538,6 +538,29 @@ pmix_status_t pmix_server_add_requester_proc(pmix_peer_t *peer, pmix_info_t **in
     return PMIX_SUCCESS;
 }
 
+size_t pmix_server_strip_requester_id(pmix_info_t *info, size_t nfrom, size_t ninfo)
+{
+    size_t n, m = 0;
+
+    for (n = 0; n < ninfo; n++) {
+        if (n < nfrom && (PMIx_Check_key(info[n].key, PMIX_USERID) ||
+                          PMIx_Check_key(info[n].key, PMIX_GRPID))) {
+            PMIx_Info_destruct(&info[n]);
+            continue;
+        }
+        /* moved, not copied - the source slot is emptied below or
+         * overwritten by a later move */
+        if (m != n) {
+            memcpy(&info[m], &info[n], sizeof(pmix_info_t));
+        }
+        ++m;
+    }
+    for (n = m; n < ninfo; n++) {
+        PMIx_Info_construct(&info[n]);
+    }
+    return ninfo - m;
+}
+
 pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
                                   pmix_op_cbfunc_t cbfunc,
                                   void *cbdata)

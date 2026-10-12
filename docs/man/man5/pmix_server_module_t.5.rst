@@ -172,7 +172,12 @@ This applies to ``publish``, ``lookup``, ``unpublish``, ``spawn``,
 :ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>`), ``tool_connected`` and
 ``tool_connected2``, ``log`` and ``log2``, ``allocate``, ``job_control``,
 ``monitor``, ``get_credential``, ``validate_credential``, ``iof_pull``,
-``push_stdin``, ``session_control`` and ``resource_block``.
+``push_stdin``, ``session_control``, ``resource_block`` and ``fabric``.
+
+``fence_nb``, ``connect``, ``disconnect`` and ``group`` are made for all of
+their participants rather than for one requester, so they carry no
+requester identity: any ``PMIX_USERID`` or ``PMIX_GRPID`` a participant put in
+its directives is removed before the up-call.
 
 ``direct_modex`` is made for the target process, and may stand for several
 local requesters that share one identity; its info array names that
