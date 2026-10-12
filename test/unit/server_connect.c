@@ -74,6 +74,20 @@ static void op_stub(pmix_status_t status, void *cbdata)
  * the tracker itself, so the test can resolve it afterwards. */
 static int connect_calls = 0;
 static void *connect_cbdata = NULL;
+/* whether the last up-call was handed a PMIX_USERID or PMIX_GRPID */
+static bool upcall_has_id = false;
+
+static bool has_id(const pmix_info_t info[], size_t ninfo)
+{
+    size_t n;
+
+    for (n = 0; NULL != info && n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_USERID) || PMIX_CHECK_KEY(&info[n], PMIX_GRPID)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 static pmix_status_t stub_connect(const pmix_proc_t procs[], size_t nprocs,
                                   const pmix_info_t info[], size_t ninfo,
@@ -81,13 +95,29 @@ static pmix_status_t stub_connect(const pmix_proc_t procs[], size_t nprocs,
 {
     (void) procs;
     (void) nprocs;
-    (void) info;
-    (void) ninfo;
     (void) cbfunc;
 
     ++connect_calls;
     connect_cbdata = cbdata;
+    upcall_has_id = has_id(info, ninfo);
     return PMIX_SUCCESS;
+}
+
+/* records, then declines - the handler tears the tracker down */
+static int disconnect_calls = 0;
+
+static pmix_status_t stub_disconnect(const pmix_proc_t procs[], size_t nprocs,
+                                     const pmix_info_t info[], size_t ninfo,
+                                     pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    (void) procs;
+    (void) nprocs;
+    (void) cbfunc;
+    (void) cbdata;
+
+    ++disconnect_calls;
+    upcall_has_id = has_id(info, ninfo);
+    return PMIX_ERR_NOT_SUPPORTED;
 }
 
 /* carrier for driving the handlers on the progress thread - they touch
@@ -118,6 +148,9 @@ typedef struct {
      * rather than the inert stub - the teardown of a failed collective
      * runs through that callback, so a stub cannot observe it */
     bool real_cb;
+    /* add a PMIX_USERID and PMIX_GRPID to the one directive, packed as
+     * one array of three - ninf must say 3 */
+    bool ids;
     pmix_status_t status;
     size_t ncollectives;  /* trackers left on the list afterwards */
 } cut_req_t;
@@ -168,7 +201,19 @@ static void do_op(int sd, short args, void *cbdata)
     if (PMIX_SUCCESS == rc) {
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &r->ninf, 1, PMIX_SIZE);
     }
-    for (n = 0; PMIX_SUCCESS == rc && n < r->ninf_real; n++) {
+    if (PMIX_SUCCESS == rc && r->ids) {
+        pmix_info_t dirs[3];
+        uint32_t id = 4242;
+
+        PMIX_INFO_LOAD(&dirs[0], PMIX_EMBED_BARRIER, &flag, PMIX_BOOL);
+        PMIX_INFO_LOAD(&dirs[1], PMIX_USERID, &id, PMIX_UINT32);
+        PMIX_INFO_LOAD(&dirs[2], PMIX_GRPID, &id, PMIX_UINT32);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, dirs, 3, PMIX_INFO);
+        for (n = 0; n < 3; n++) {
+            PMIX_INFO_DESTRUCT(&dirs[n]);
+        }
+    }
+    for (n = 0; !r->ids && PMIX_SUCCESS == rc && n < r->ninf_real; n++) {
         PMIX_INFO_LOAD(&dir, PMIX_EMBED_BARRIER, &flag, PMIX_BOOL);
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &dir, 1, PMIX_INFO);
         PMIX_INFO_DESTRUCT(&dir);
@@ -231,6 +276,8 @@ static void do_op(int sd, short args, void *cbdata)
 
 static size_t last_ncollectives = 0;
 
+static bool next_ids = false;
+
 static pmix_status_t drive_full(bool disconnect, size_t nprocs, size_t nprocs_real,
                                 size_t ninf, size_t ninf_real, bool bad_trailer,
                                 bool real_cb, bool array_procs)
@@ -239,6 +286,7 @@ static pmix_status_t drive_full(bool disconnect, size_t nprocs, size_t nprocs_re
     pmix_status_t rc;
 
     memset(&req, 0, sizeof(req));
+    req.ids = next_ids;
     PMIX_CONSTRUCT_LOCK(&req.lock);
     req.disconnect = disconnect;
     req.nprocs = nprocs;
@@ -286,6 +334,7 @@ int main(int argc, char **argv)
     fprintf(stdout, "server_connect: connect/disconnect handler unit tests\n");
 
     mymodule.connect = stub_connect;
+    mymodule.disconnect = stub_disconnect;
 
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {
@@ -408,6 +457,47 @@ int main(int argc, char **argv)
             pmix_server_cnct_cbfunc(PMIX_SUCCESS, connect_cbdata);
             progress_barrier();
         }
+    }
+
+    /* --- a connect or disconnect names no requester ---
+     *
+     * the collective is made for all of its participants, so a
+     * PMIX_USERID or PMIX_GRPID one of them sends is not passed up.
+     * Distinct proc counts keep these off the trackers above. */
+    {
+        pmix_status_t st;
+        size_t before;
+
+        progress_barrier();
+        before = pmix_list_get_size(&pmix_server_globals.collectives);
+        connect_calls = 0;
+        connect_cbdata = NULL;
+        upcall_has_id = true;
+        next_ids = true;
+        st = drive_full(false, 7, 7, 3, 3, false, true, true);
+        next_ids = false;
+        progress_barrier();
+        report("a connect carrying an identity reaches the host",
+               PMIX_SUCCESS == st && 1 == connect_calls);
+        report("the participant's PMIX_USERID and PMIX_GRPID are not passed up to connect",
+               !upcall_has_id);
+        if (NULL != connect_cbdata) {
+            pmix_server_cnct_cbfunc(PMIX_SUCCESS, connect_cbdata);
+            progress_barrier();
+        }
+
+        disconnect_calls = 0;
+        upcall_has_id = true;
+        next_ids = true;
+        st = drive_full(true, 7, 7, 3, 3, false, true, true);
+        next_ids = false;
+        progress_barrier();
+        report("a disconnect carrying an identity reaches the host", 1 == disconnect_calls);
+        report("the participant's PMIX_USERID and PMIX_GRPID are not passed up to disconnect",
+               !upcall_has_id);
+        report("neither leaves a tracker behind",
+               before == pmix_list_get_size(&pmix_server_globals.collectives));
+        (void) st;
     }
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);

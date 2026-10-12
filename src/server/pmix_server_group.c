@@ -2492,11 +2492,15 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
      * longer take them: what a process has made public is what it
      * committed, and this server has that on the rank's modex log, which
      * also keeps anything the client never committed out of the exchange.
-     * Drop theirs, closing the gap so the array stays contiguous. */
+     * Drop theirs, closing the gap so the array stays contiguous. A group
+     * operation is made for all of its members, not for one requester,
+     * so a PMIX_USERID or PMIX_GRPID a member sent is dropped too. */
     ncontrib = 0;
     PMIX_LOAD_PROCID(&self, peer->info->pname.nspace, peer->info->pname.rank);
     for (n = 0; n < ninf; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_INFO_ARRAY)) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_INFO_ARRAY) ||
+            PMIX_CHECK_KEY(&info[n], PMIX_USERID) ||
+            PMIX_CHECK_KEY(&info[n], PMIX_GRPID)) {
             PMIX_INFO_DESTRUCT(&info[n]);
             continue;
         }
