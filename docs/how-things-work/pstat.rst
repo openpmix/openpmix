@@ -121,8 +121,8 @@ The **directives** that shape a request:
        rank of the job)
    * - ``PMIX_MONITOR_TARGET_PIDS``
      - array of ``pmix_node_pid_t`` (node + pid) restricting the sample;
-       the requester must own each pid, and ``-1`` is every process the
-       requester owns
+       only the pids the requester owns are sampled, and ``-1`` is every
+       process the requester owns
    * - ``PMIX_MONITOR_TARGET_NODES`` / ``PMIX_MONITOR_TARGET_NODEIDS``
      - restrict to named nodes / node IDs (used for scope resolution)
    * - ``PMIX_MONITOR_LOCAL_ONLY``
@@ -258,8 +258,10 @@ process reported about itself is used.
   with ``PMIx_Store_internal(..., PMIX_PROC_PID, ...)``. A process with no
   recorded pid is skipped. A host that wants its processes monitored must
   therefore record their pids, as PRRTE does.
-* A pid named in ``PMIX_MONITOR_TARGET_PIDS`` must be owned by the
-  requester; ``-1`` means every process the requester owns on that node.
+* A pid named in ``PMIX_MONITOR_TARGET_PIDS`` is sampled only if the
+  requester owns it. One it does not own is left out without an error,
+  the same as a pid with no process. ``-1`` means every process the
+  requester owns on that node.
 * The requester must be allowed to access each job it names (the same
   rule ``PMIx_Get`` applies), and "every process" covers only the jobs it
   may access. The host is not restricted for its own requests; a request

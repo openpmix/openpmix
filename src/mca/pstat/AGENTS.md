@@ -213,7 +213,7 @@ who may see what:
 | Request | Processes | Who may ask |
 |---------|-----------|-------------|
 | `PMIX_MONITOR_TARGET_PROCS` | each named PMIx process of this node, at the pid its host recorded with `PMIx_Store_internal(PMIX_PROC_PID)`; a wildcard rank is every local rank; a process with no recorded pid is skipped | the job access rule, per named job; naming one the requester may not access refuses the request |
-| `PMIX_MONITOR_TARGET_PIDS` | each pid on this node | the requester must own it (as the kernel reports it), or the request is refused; a pid of `-1` is every process with the requester's uid, looked up afresh at each sample |
+| `PMIX_MONITOR_TARGET_PIDS` | each pid on this node | the requester must own it (as the kernel reports it); one it does not own is left out, answered exactly as a pid with no process is; a pid of `-1` is every process with the requester's uid, looked up afresh at each sample |
 | neither | every PMIx process of this node with a recorded pid | only jobs the requester may access; others are left out |
 
 The requester is resolved by `pmix_server_access_requester()`: one of our
