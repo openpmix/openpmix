@@ -14,9 +14,10 @@
  * named in PMIX_MONITOR_TARGET_PROCS (or covered by "every process") is
  * sampled at the pid its host recorded with PMIx_Store_internal
  * (PMIX_PROC_PID), never at one the process claimed, and is skipped when
- * there is none. A pid named in PMIX_MONITOR_TARGET_PIDS must belong to the
- * requester - to the host, anything - and -1 is every process with the
- * requester's uid. Each process must still belong to the expected owner
+ * there is none. A pid named in PMIX_MONITOR_TARGET_PIDS is sampled only if
+ * it belongs to the requester - to the host, anything - and one that does
+ * not is left out exactly as one with no process is; -1 is every process
+ * with the requester's uid. Each process must still belong to the expected owner
  * when it is read. A request relayed by the host (PMIX_MONITOR_PROXY) must
  * say whom it is for, and a requester's periodic monitors end when it
  * leaves.
@@ -33,6 +34,7 @@
 #include "src/mca/pstat/pstat.h"
 #include "src/server/pmix_server_ops.h"
 
+#include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -266,22 +268,43 @@ static pmix_info_t *target_procs(const char *ns, pmix_rank_t rank)
     return dir;
 }
 
-static pmix_info_t *target_pid(pid_t pid)
+static pmix_info_t *target_pids(const pid_t *pids, size_t n)
 {
     pmix_info_t *dir;
     pmix_data_array_t da;
-    pmix_node_pid_t np;
+    pmix_node_pid_t np[2];
+    size_t m;
 
-    memset(&np, 0, sizeof(np));
-    np.hostname = pmix_globals.hostname;
-    np.nodeid = pmix_globals.nodeid;
-    np.pid = pid;
+    memset(np, 0, sizeof(np));
+    for (m = 0; m < n; m++) {
+        np[m].hostname = pmix_globals.hostname;
+        np[m].nodeid = pmix_globals.nodeid;
+        np[m].pid = pids[m];
+    }
     da.type = PMIX_NODE_PID;
-    da.size = 1;
-    da.array = &np;
+    da.size = n;
+    da.array = np;
     PMIX_INFO_CREATE(dir, 1);
     PMIX_INFO_LOAD(&dir[0], PMIX_MONITOR_TARGET_PIDS, &da, PMIX_DATA_ARRAY);
     return dir;
+}
+
+static pmix_info_t *target_pid(pid_t pid)
+{
+    return target_pids(&pid, 1);
+}
+
+/* a pid no process has */
+static pid_t absent_pid(void)
+{
+    pid_t pid;
+
+    for (pid = 99998; 1 < pid; pid--) {
+        if (0 != kill(pid, 0) && ESRCH == errno) {
+            return pid;
+        }
+    }
+    return 0;
 }
 
 static pmix_pstat_target_t *only_target(call_t *c)
@@ -418,14 +441,49 @@ static void test_pids(pmix_peer_t *me)
     PMIX_INFO_FREE(c.dirs, c.ndirs);
     call_done(&c);
 
+    /* a bare pid no process has */
+    call_init(&c, me->info->pname.nspace, me->info->pname.rank);
+    c.dirs = target_pid(absent_pid());
+    c.ndirs = 1;
+    c.query = true;
+    on_progress(do_call, &c);
+    report("a pid with no process is answered with no results",
+           PMIX_SUCCESS == c.rc && 0 == c.nresults);
+    PMIX_INFO_FREE(c.dirs, c.ndirs);
+    call_done(&c);
+
     /* a bare pid of another user's - pid 1 is root's */
     if (0 != geteuid()) {
+        pid_t both[2];
+
         call_init(&c, me->info->pname.nspace, me->info->pname.rank);
         c.dirs = target_pid(1);
         c.ndirs = 1;
         on_progress(do_call, &c);
-        report("a client may not monitor a process it does not own",
-               PMIX_ERR_NO_PERMISSIONS == c.rc);
+        report("a process the client does not own is left out",
+               PMIX_SUCCESS == c.rc && 0 == pmix_list_get_size(&c.targets));
+        PMIX_INFO_FREE(c.dirs, c.ndirs);
+        call_done(&c);
+
+        call_init(&c, me->info->pname.nspace, me->info->pname.rank);
+        c.dirs = target_pid(1);
+        c.ndirs = 1;
+        c.query = true;
+        on_progress(do_call, &c);
+        report("and is answered as a pid with no process is",
+               PMIX_SUCCESS == c.rc && 0 == c.nresults);
+        PMIX_INFO_FREE(c.dirs, c.ndirs);
+        call_done(&c);
+
+        both[0] = getpid();
+        both[1] = 1;
+        call_init(&c, me->info->pname.nspace, me->info->pname.rank);
+        c.dirs = target_pids(both, 2);
+        c.ndirs = 1;
+        c.query = true;
+        on_progress(do_call, &c);
+        report("a request naming one of each samples the client's own",
+               PMIX_SUCCESS == c.rc && 1 == sampled(&c, &self) && self);
         PMIX_INFO_FREE(c.dirs, c.ndirs);
         call_done(&c);
 
