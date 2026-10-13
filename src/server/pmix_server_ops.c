@@ -109,7 +109,8 @@ pmix_server_module_t pmix_host_server = {
     .group = NULL,
     .fabric = NULL,
     .client_connected2 = NULL,
-    .session_control = NULL
+    .session_control = NULL,
+    .abort2 = NULL
 };
 
 static void abcbfn(pmix_status_t status, void *cbdata)
@@ -197,15 +198,26 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
 
     /* let the local host's server execute it */
-    if (NULL == pmix_host_server.abort) {
+    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    proc.rank = peer->info->pname.rank;
+    if (NULL != pmix_host_server.abort2) {
+        /* tell the host who is asking - the caddy owns the array */
+        cd->copied = true;
+        rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
+        rc = pmix_host_server.abort2(&proc, peer->info->server_object, cd->status,
+                                     cd->nspace, cd->procs, cd->nprocs,
+                                     cd->info, cd->ninfo, abcbfn, cd);
+    } else if (NULL != pmix_host_server.abort) {
+        rc = pmix_host_server.abort(&proc, peer->info->server_object, cd->status,
+                                    cd->nspace, cd->procs, cd->nprocs,
+                                    abcbfn, cd);
+    } else {
         rc = PMIX_ERR_NOT_SUPPORTED;
         goto error;
     }
-    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
-    proc.rank = peer->info->pname.rank;
-    rc = pmix_host_server.abort(&proc, peer->info->server_object, cd->status,
-                                cd->nspace, cd->procs, cd->nprocs,
-                                abcbfn, cd);
     if (PMIX_SUCCESS != rc) {
         goto error;
     }
