@@ -3241,6 +3241,10 @@ misbehave by design).
   that skips `pmix_bfrops_base_pack_info()`. It replaces the array, so
   call it on an array the caddy owns, and make sure the caddy's "owns it"
   flag is set afterwards even when the requester sent no array at all.
+  An up-call with no array to carry them cannot tell the host, which is
+  why `abort` was replaced by `abort2`: `pmix_server_abort` builds the
+  array itself, from nothing, and uses `abort` only for a host that
+  provides no `abort2`.
 
   **Who may access a job is decided by user and group, not namespace** -
   see `docs/security-plan.rst`. Each `pmix_namespace_t` carries a
