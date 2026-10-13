@@ -37,6 +37,23 @@ def clientfence(args, cbfunc, cbdata):
     cbfunc(PMIX_SUCCESS, bytearray(0), cbdata)
     return PMIX_SUCCESS
 
+# client.py asks for a process that does not exist to be aborted, and
+# fails unless the request is accepted. Accept it only if it names the
+# client's uid and gid, each once, as server.py does.
+def clientabort2(args, cbfunc, cbdata):
+    def named(attr, i):
+        k = i['key'].decode('ascii') if isinstance(i['key'], bytes) else i['key']
+        a = attr.decode('ascii') if isinstance(attr, bytes) else attr
+        return k == a
+    uids = [i['value'] for i in args.get('info', []) if named(PMIX_USERID, i)]
+    gids = [i['value'] for i in args.get('info', []) if named(PMIX_GRPID, i)]
+    if uids == [os.geteuid()] and gids == [os.getegid()]:
+        cbfunc(PMIX_SUCCESS, cbdata)
+    else:
+        print("ABORT2 WAS NOT GIVEN THE REQUESTER'S IDENTITY:", args.get('info'))
+        cbfunc(PMIX_ERR_BAD_PARAM, cbdata)
+    return PMIX_SUCCESS
+
 def main():
     try:
         foo = PMIxServer()
@@ -47,7 +64,8 @@ def main():
     args = [{'key':PMIX_SERVER_SCHEDULER, 'value':'T', 'val_type':PMIX_BOOL}]
     map = {'clientconnected': clientconnected,
            'clientfinalized': clientfinalized,
-           'fencenb': clientfence}
+           'fencenb': clientfence,
+           'abort2': clientabort2}
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
     rc = foo.initialized()

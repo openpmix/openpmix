@@ -135,6 +135,15 @@ def main():
     units = [{'type': PMIX_DEVTYPE_GPU, 'count': 2}]
     rc = foo.resource_block(PMIX_RESOURCE_BLOCK_DEFINE, "myblock", units, [])
     print("Resource block result ", foo.error_string(rc))
+    # ask for a process that does not exist to be aborted - our server
+    # checks that the request names us, and refuses it otherwise
+    print("ABORT")
+    rc = foo.abort(PMIX_ERR_JOB_ABORTED, "client abort test",
+                   [{'nspace': "testnspace", 'rank': 99}])
+    print("Abort result ", foo.error_string(rc))
+    if PMIX_SUCCESS != rc:
+        print("ABORT WAS NOT ACCEPTED")
+        exit(1)
     # test a fence that should return not_supported because
     # we pass a required attribute that doesn't exist
     procs = []
