@@ -602,15 +602,15 @@ pmix_status_t pmix_pstat_base_targets(const pmix_proc_t *requestor,
                     rc = add_target(targets, NULL, -1, uid);
                 } else {
                     rc = pmix_pstat_base_pid_owner(ppid[m].pid, &owner);
-                    if (PMIX_ERR_NOT_FOUND == rc) {
-                        /* no such process - nothing to report */
+                    /* no such process, or not the requester's - either
+                     * way there is nothing to report, and the two are
+                     * answered alike */
+                    if (PMIX_ERR_NOT_FOUND == rc ||
+                        (PMIX_SUCCESS == rc && !host && owner != uid)) {
                         continue;
                     }
                     if (PMIX_SUCCESS != rc) {
                         return rc;
-                    }
-                    if (!host && owner != uid) {
-                        return PMIX_ERR_NO_PERMISSIONS;
                     }
                     /* it must still be this owner's when it is read */
                     rc = add_target(targets, NULL, ppid[m].pid, owner);
