@@ -435,6 +435,8 @@ error; it does not guarantee a non-``NULL`` ``results`` array when requesting
 resource-usage statistics. For example, a request for the resource usage of
 processes on a node that is not currently running any user-level processes returns
 success with an empty ``results`` array because no statistics were produced.
+A request with ``PMIX_MONITOR_RESOURCE_RATE`` is set up all the same: each
+later sample reports whatever it finds, which may again be nothing.
 
 Support for individual monitoring actions and directives is implementation- and
 host-environment-dependent.
