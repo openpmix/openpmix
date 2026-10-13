@@ -341,7 +341,7 @@ pmix_status_t pmix_ptl_base_select_compat(struct pmix_peer_t *pr, pmix_connectio
     pmix_psec_module_t *psec = NULL, *cur;
     char *ours, **list;
     bool primary;
-    uint8_t major;
+    uint8_t major, minor;
     int n;
 
     if (NULL == peer || NULL == peer->nptr || NULL == cn) {
@@ -364,10 +364,13 @@ pmix_status_t pmix_ptl_base_select_compat(struct pmix_peer_t *pr, pmix_connectio
         /* an older server says only its version - go by that, if it is
          * older than we are */
         major = PMIX_PEER_MAJOR_VERSION(peer);
+        minor = PMIX_PEER_MINOR_VERSION(peer);
+        // compare major.minor as one value - comparing the minors on
+        // their own is a constant false in any x.0 release
         if (0 != major && PMIX_MAJOR_WILDCARD != major &&
-            (PMIX_VERSION_MAJOR > major ||
-             (PMIX_VERSION_MAJOR == major && PMIX_VERSION_MINOR > PMIX_PEER_MINOR_VERSION(peer)))) {
-            bfrops = bfrops_by_version(major, PMIX_PEER_MINOR_VERSION(peer));
+            (((unsigned) major << 8) | minor) <
+            (((unsigned) PMIX_VERSION_MAJOR << 8) | (unsigned) PMIX_VERSION_MINOR)) {
+            bfrops = bfrops_by_version(major, minor);
         }
     }
     if (NULL != bfrops) {
