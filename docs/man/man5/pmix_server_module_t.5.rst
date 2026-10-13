@@ -22,7 +22,7 @@ C Syntax
        /* v1x interfaces */
        pmix_server_client_connected_fn_t   client_connected; // DEPRECATED
        pmix_server_client_finalized_fn_t   client_finalized;
-       pmix_server_abort_fn_t              abort;
+       pmix_server_abort_fn_t              abort;            // DEPRECATED
        pmix_server_fencenb_fn_t            fence_nb;
        pmix_server_dmodex_req_fn_t         direct_modex;
        pmix_server_publish_fn_t            publish;
@@ -57,6 +57,8 @@ C Syntax
        /* pending interfaces */
        pmix_server_session_control_fn_t    session_control;
        pmix_server_resource_block_fn_t     resource_block;
+       /* v7x interfaces */
+       pmix_server_abort2_fn_t             abort2;
 
    } pmix_server_module_t;
 
@@ -172,7 +174,9 @@ This applies to ``publish``, ``lookup``, ``unpublish``, ``spawn``,
 :ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>`), ``tool_connected`` and
 ``tool_connected2``, ``log`` and ``log2``, ``allocate``, ``job_control``,
 ``monitor``, ``get_credential``, ``validate_credential``, ``iof_pull``,
-``push_stdin``, ``session_control``, ``resource_block`` and ``fabric``.
+``push_stdin``, ``session_control``, ``resource_block``, ``fabric`` and
+``abort2``. The deprecated ``abort`` has no info array, so it carries no
+requester identity beyond its process argument.
 
 ``fence_nb``, ``connect``, ``disconnect`` and ``group`` are made for all of
 their participants rather than for one requester, so they carry no
@@ -210,7 +214,7 @@ the order of fields is a binary-compatibility contract and is **frozen**:
   place** (marked ``// DEPRECATED``) and a replacement is appended at the end
   with a numeric suffix on its name.
 
-The structure currently carries three deprecation pairs. In each case the
+The structure currently carries four deprecation pairs. In each case the
 library prefers the newer member and falls back to the deprecated one only if
 the newer member is NULL:
 
@@ -228,6 +232,10 @@ the newer member is NULL:
   ``void``; the replacement ``pmix_server_log2_fn_t`` has an identical parameter
   list but returns a ``pmix_status_t`` so the host can indicate synchronously
   whether the log request was accepted.
+* ``abort`` |rarrow| ``abort2``. The original ``pmix_server_abort_fn_t`` has no
+  info array; the replacement ``pmix_server_abort2_fn_t`` adds an
+  ``info[]``/``ninfo`` array, ahead of ``cbfunc``, which carries the
+  requester's identity.
 
 
 CALLBACK FUNCTIONS
@@ -255,8 +263,8 @@ it associated with the process via ``PMIx_server_register_client``.
 abort
 ^^^^^
 
-``abort`` (``pmix_server_abort_fn_t``) |mdash| Services
-:ref:`PMIx_Abort(3) <man3-PMIx_Abort>`. A local client has requested that a set
+``abort`` (``pmix_server_abort_fn_t``) |mdash| **DEPRECATED**; use ``abort2``.
+Services :ref:`PMIx_Abort(3) <man3-PMIx_Abort>`. A local client has requested that a set
 of processes be terminated; the ``procs`` array names the targets, or a NULL
 array means all processes in the caller's namespace. The requesting client is
 held blocked until the host invokes ``cbfunc``. The host performs the requested
@@ -621,6 +629,18 @@ deletes, extends, or removes resources from a named resource block per the
 ``pmix_resource_block_directive_t`` and the supplied array of
 ``pmix_resource_unit_t`` units. Completion is reported through a
 ``pmix_op_cbfunc_t``.
+
+abort2
+^^^^^^
+
+``abort2`` (``pmix_server_abort2_fn_t``) |mdash| Replaces the deprecated
+``abort`` and services :ref:`PMIx_Abort(3) <man3-PMIx_Abort>`; the library
+prefers this member and falls back to ``abort`` only when it is NULL. The
+parameters are those of ``abort`` with an ``info``/``ninfo`` array added
+ahead of ``cbfunc``. For a request from a client or tool, the array carries
+the requester's ``PMIX_USERID`` and ``PMIX_GRPID``, as established when it
+connected (see the requester's identity above). When the host itself calls
+`PMIx_Abort`, the array is empty.
 
 
 .. seealso::

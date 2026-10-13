@@ -2109,7 +2109,8 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         pmix_lock_t lock;
 
-        if (NULL == pmix_host_server.abort) {
+        if (NULL == pmix_host_server.abort2 &&
+            NULL == pmix_host_server.abort) {
             return PMIX_ERR_NOT_SUPPORTED;
         }
         /* We wait for the host's answer below, so screen for the caller
@@ -2125,10 +2126,18 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
          * PRRTE does - answered every abort with "queued", so a request
          * it went on to reject reached the caller as success. */
         PMIX_CONSTRUCT_LOCK(&lock);
-        rc = pmix_host_server.abort(&pmix_globals.myid,
-                                    pmix_globals.mypeer->info->server_object,
-                                    flag, msg, procs, nprocs,
-                                    opcb_wakeup, &lock);
+        if (NULL != pmix_host_server.abort2) {
+            /* the host is the requester, so there is no identity to add */
+            rc = pmix_host_server.abort2(&pmix_globals.myid,
+                                         pmix_globals.mypeer->info->server_object,
+                                         flag, msg, procs, nprocs, NULL, 0,
+                                         opcb_wakeup, &lock);
+        } else {
+            rc = pmix_host_server.abort(&pmix_globals.myid,
+                                        pmix_globals.mypeer->info->server_object,
+                                        flag, msg, procs, nprocs,
+                                        opcb_wakeup, &lock);
+        }
         if (PMIX_SUCCESS == rc) {
             /* the host took it and will answer through the callback */
             PMIX_WAIT_THREAD(&lock);

@@ -109,6 +109,15 @@ typedef pmix_status_t (*pmix_server_abort_fn_t)(const pmix_proc_t *proc, void *s
                                                 pmix_proc_t procs[], size_t nprocs,
                                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
 
+/* REPLACES ABOVE FUNCTION TO ALLOW PASSING ADDITIONAL INFO. For a request
+ * from a client or tool, the info array carries the requester's PMIX_USERID
+ * and PMIX_GRPID as its connection to the server established them */
+typedef pmix_status_t (*pmix_server_abort2_fn_t)(const pmix_proc_t *proc, void *server_object,
+                                                 int status, const char msg[],
+                                                 pmix_proc_t procs[], size_t nprocs,
+                                                 const pmix_info_t info[], size_t ninfo,
+                                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
+
 /* At least one client called either PMIx_Fence or PMIx_Fence_nb. In either case,
  * the host server will be called via a non-blocking function to execute
  * the specified operation once all participating local procs have
@@ -580,7 +589,7 @@ typedef struct pmix_server_module_4_0_0_t {
     /* v1x interfaces */
     pmix_server_client_connected_fn_t   client_connected; // DEPRECATED
     pmix_server_client_finalized_fn_t   client_finalized;
-    pmix_server_abort_fn_t              abort;
+    pmix_server_abort_fn_t              abort;            // DEPRECATED
     pmix_server_fencenb_fn_t            fence_nb;
     pmix_server_dmodex_req_fn_t         direct_modex;
     pmix_server_publish_fn_t            publish;
@@ -615,6 +624,8 @@ typedef struct pmix_server_module_4_0_0_t {
     /* pending interfaces */
     pmix_server_session_control_fn_t    session_control;
     pmix_server_resource_block_fn_t     resource_block;
+    /* v7x interfaces */
+    pmix_server_abort2_fn_t             abort2;
 
 } pmix_server_module_t;
 

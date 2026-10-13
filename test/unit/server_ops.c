@@ -22,6 +22,9 @@
  *   abort proc count that
  *      truncates negative    -> PMIX_ERR_BAD_PARAM
  *   well-formed abort        -> reaches the host with the procs we sent
+ *   abort with abort2 set    -> abort2, not abort, is called, and is
+ *                               given the requester's uid and gid; the
+ *                               host's own PMIx_Abort reaches it with none
  *   publish                  -> the host is given the uid the connection
  *                               handshake established, NOT the one the
  *                               command carried
@@ -128,6 +131,45 @@ static pmix_status_t stub_abort(const pmix_proc_t *proc, void *server_object,
     if (NULL != msg) {
         abort_msg = strdup(msg);
     }
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, cbdata);
+    }
+    return PMIX_SUCCESS;
+}
+
+/* what abort2 was handed beyond what abort is */
+static bool abort2_fired = false;
+static size_t abort2_ninfo = 0;
+static size_t abort2_nuid = 0;
+static size_t abort2_ngid = 0;
+static uint32_t abort2_uid = 0;
+static uint32_t abort2_gid = 0;
+
+static pmix_status_t stub_abort2(const pmix_proc_t *proc, void *server_object,
+                                 int status, const char msg[],
+                                 pmix_proc_t procs[], size_t nprocs,
+                                 const pmix_info_t info[], size_t ninfo,
+                                 pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    size_t n;
+
+    abort2_fired = true;
+    abort2_ninfo = ninfo;
+    abort2_nuid = 0;
+    abort2_ngid = 0;
+    for (n = 0; NULL != info && n < ninfo; n++) {
+        if (PMIx_Check_key(info[n].key, PMIX_USERID)) {
+            ++abort2_nuid;
+            abort2_uid = info[n].value.data.uint32;
+        } else if (PMIx_Check_key(info[n].key, PMIX_GRPID)) {
+            ++abort2_ngid;
+            abort2_gid = info[n].value.data.uint32;
+        }
+    }
+    /* the rest is recorded as abort records it */
+    abort_fired = false;
+    stub_abort(proc, server_object, status, msg, procs, nprocs, NULL, NULL);
+    abort_fired = false;
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
     }
@@ -612,6 +654,34 @@ int main(int argc, char **argv)
            abort_fired && 2 == abort_nprocs);
     report("well-formed abort carried its message",
            NULL != abort_msg && 0 == strcmp(OPSUT_ABORT_MSG, abort_msg));
+
+    /* --- abort2 is preferred, and names the requester --- */
+    pmix_host_server.abort2 = stub_abort2;
+    abort_fired = false;
+    abort2_fired = false;
+    abort_nprocs = 0;
+    rc = drive(OPSUT_ABORT, 2, 2, 0, 0, false);
+    report("abort goes to abort2 when the host provides it",
+           PMIX_SUCCESS == rc && abort2_fired && !abort_fired);
+    report("abort2 is given the procs and the message",
+           2 == abort_nprocs && NULL != abort_msg &&
+               0 == strcmp(OPSUT_ABORT_MSG, abort_msg));
+    report("abort2 is given the requester's uid and gid, once each",
+           1 == abort2_nuid && 1 == abort2_ngid &&
+               (uint32_t) pmix_globals.mypeer->info->uid == abort2_uid &&
+               (uint32_t) pmix_globals.mypeer->info->gid == abort2_gid);
+
+    /* the host aborting on its own behalf is the requester itself */
+    abort2_fired = false;
+    {
+        pmix_proc_t target;
+
+        PMIX_LOAD_PROCID(&target, OPSUT_CHILD, 0);
+        rc = PMIx_Abort(PMIX_ERR_JOB_ABORTED, OPSUT_ABORT_MSG, &target, 1);
+    }
+    report("the host's own abort goes to abort2, with no identity added",
+           PMIX_SUCCESS == rc && abort2_fired && 0 == abort2_ninfo);
+    pmix_host_server.abort2 = NULL;
 
     /* --- publish takes the requestor's identity from the connection --- *
      * The user id is half of the pair the host stores the published data
