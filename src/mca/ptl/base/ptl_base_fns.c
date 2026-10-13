@@ -1837,6 +1837,13 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
 
     sdsize = *sz;
 
+    /* every connect path gives the server's peer a namespace, and the gds
+     * module we will use with it, before it gets here - the message names
+     * that module, so there is nothing to send without one */
+    if (NULL == peer->nptr || NULL == peer->nptr->compat.gds) {
+        return PMIX_ERR_INIT;
+    }
+
     /* setup the header */
     memset(&hdr, 0, sizeof(pmix_ptl_hdr_t));
     hdr.pindex = -1;
@@ -1847,9 +1854,9 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
      * it through one (pmix_ptl_base_select_compat). For our primary
      * server those are our own; a tool attaching to another server may
      * need older ones for it alone */
-    psec = (NULL != peer->nptr && NULL != peer->nptr->compat.psec)
+    psec = (NULL != peer->nptr->compat.psec)
                ? peer->nptr->compat.psec : pmix_globals.mypeer->nptr->compat.psec;
-    bfmod = (NULL != peer->nptr && NULL != peer->nptr->compat.bfrops)
+    bfmod = (NULL != peer->nptr->compat.bfrops)
                 ? peer->nptr->compat.bfrops : pmix_globals.mypeer->nptr->compat.bfrops;
 
     /* add the name of our active sec module */
