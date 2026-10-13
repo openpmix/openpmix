@@ -725,6 +725,32 @@ static void test_departure(pmix_peer_t *me)
            0 == pmix_list_get_size(&pmix_pstat_base.ops));
 }
 
+/* A periodic monitor whose first sample finds nothing is still a
+ * monitor: the request succeeds with no results, and the monitor runs */
+static void test_empty_periodic(pmix_peer_t *me)
+{
+    call_t c;
+    uint32_t rate = 3600;
+    size_t before = pmix_list_get_size(&pmix_pstat_base.ops);
+    pmix_info_t *dirs;
+
+    call_init(&c, me->info->pname.nspace, me->info->pname.rank);
+    dirs = target_pid(absent_pid());
+    PMIX_INFO_CREATE(c.dirs, 2);
+    PMIX_INFO_XFER(&c.dirs[0], &dirs[0]);
+    PMIX_INFO_FREE(dirs, 1);
+    PMIX_INFO_LOAD(&c.dirs[1], PMIX_MONITOR_RESOURCE_RATE, &rate, PMIX_UINT32);
+    c.ndirs = 2;
+    c.query = true;
+    on_progress(do_call, &c);
+    report("a periodic monitor that finds nothing at first answers with no results",
+           PMIX_SUCCESS == c.rc && 0 == c.nresults);
+    report("and is kept", before + 1 == pmix_list_get_size(&pmix_pstat_base.ops));
+    PMIX_INFO_FREE(c.dirs, c.ndirs);
+    call_done(&c);
+    on_progress(lost, me);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -766,6 +792,7 @@ int main(int argc, char **argv)
 #endif
     test_relay();
     test_departure(me);
+    test_empty_periodic(me);
     test_limit(me);
 
     drop_peer(stranger);

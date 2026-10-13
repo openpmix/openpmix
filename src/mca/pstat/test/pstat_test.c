@@ -962,17 +962,18 @@ static pmix_status_t query(pmix_proc_t *requestor,
         PMIx_Info_list_release(cb.cbdata);
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS == rc) {
+            *results = (pmix_info_t*)darray.array;
+            *nresults = darray.size;
+        } else if (PMIX_ERR_EMPTY == rc) {
+            // nothing found is not an error - and a monitor given a
+            // rate still runs, reporting what each sample finds
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        } else {
             PMIX_DATA_ARRAY_DESTRUCT(&darray);
             PMIX_RELEASE(op);
-            if (PMIX_ERR_EMPTY == rc) {
-                // this is not an error
-                rc = PMIX_SUCCESS;
-            }
             return rc;
         }
-        *results = (pmix_info_t*)darray.array;
-        *nresults = darray.size;
 
         // if we were given a rate, then setup the event to generate
         // the requested updates
@@ -1051,14 +1052,13 @@ static pmix_status_t query(pmix_proc_t *requestor,
         // "empty" as no data was found
         if (3 > darray.size) {
             PMIX_DATA_ARRAY_DESTRUCT(&darray);
-            PMIX_RELEASE(op);
-            return PMIX_SUCCESS;
+        } else {
+            PMIX_INFO_CREATE(xfer, 1);
+            PMIX_INFO_LOAD(xfer, PMIX_NODE_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
+            *results = xfer;
+            *nresults = 1;
         }
-        PMIX_INFO_CREATE(xfer, 1);
-        PMIX_INFO_LOAD(xfer, PMIX_NODE_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
-        PMIX_DATA_ARRAY_DESTRUCT(&darray);
-        *results = xfer;
-        *nresults = 1;
 
         // if we were given a rate, then setup the event to generate
         // the requested updates
@@ -1103,17 +1103,18 @@ static pmix_status_t query(pmix_proc_t *requestor,
         PMIx_Info_list_release(cb.cbdata);
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS == rc) {
+            *results = (pmix_info_t*)darray.array;
+            *nresults = darray.size;
+        } else if (PMIX_ERR_EMPTY == rc) {
+            // nothing found is not an error - and a monitor given a
+            // rate still runs, reporting what each sample finds
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        } else {
             PMIX_DATA_ARRAY_DESTRUCT(&darray);
             PMIX_RELEASE(op);
-            if (PMIX_ERR_EMPTY == rc) {
-                // empty = nothing found, not an error
-                rc = PMIX_SUCCESS;
-            }
             return rc;
         }
-        *results = (pmix_info_t*)darray.array;
-        *nresults = darray.size;
 
         // if we were given a rate, then setup the event to generate
         // the requested updates
@@ -1158,17 +1159,18 @@ static pmix_status_t query(pmix_proc_t *requestor,
         PMIx_Info_list_release(cb.cbdata);
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS == rc) {
+            *results = (pmix_info_t*)darray.array;
+            *nresults = darray.size;
+        } else if (PMIX_ERR_EMPTY == rc) {
+            // nothing found is not an error - and a monitor given a
+            // rate still runs, reporting what each sample finds
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        } else {
             PMIX_DATA_ARRAY_DESTRUCT(&darray);
             PMIX_RELEASE(op);
-            if (PMIX_ERR_EMPTY == rc) {
-                // empty = nothing found, not an error
-                rc = PMIX_SUCCESS;
-            }
             return rc;
         }
-        *results = (pmix_info_t*)darray.array;
-        *nresults = darray.size;
 
         // if we were given a rate, then setup the event to generate
         // the requested updates

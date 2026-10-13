@@ -97,7 +97,9 @@ with no results.
 
 `PMIX_ERR_EMPTY` from the info-list conversion is mapped to
 `PMIX_SUCCESS` in the proc/disk/net blocks — an empty sample is not an
-error.
+error. In all four blocks an empty first sample still arms a monitor
+given a rate: the request answers with no results, and each later tick
+reports whatever it finds.
 
 **Everything `query` reads out of `monitor` and `directives` is
 type-checked first.** For a client request both arrays came off the wire and
