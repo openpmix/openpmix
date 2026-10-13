@@ -134,6 +134,21 @@ def clientgroup(args, cbfunc, cbdata):
     threading.Timer(0.001, cbfunc, [PMIX_SUCCESS, results, cbdata]).start()
     return PMIX_SUCCESS
 
+# An abort the client asks for names a process that does not exist, so
+# there is nothing to kill: what is checked is that the request reaches
+# abort2 carrying the requester's uid and gid, each once. Anything else
+# is refused, which fails the client.
+def clientabort2(args, cbfunc, cbdata):
+    print("ABORT2", args['caller'], args.get('targets'), args.get('msg'))
+    uids = [i['value'] for i in args.get('info', []) if keymatch(PMIX_USERID, i['key'])]
+    gids = [i['value'] for i in args.get('info', []) if keymatch(PMIX_GRPID, i['key'])]
+    if uids == [os.geteuid()] and gids == [os.getegid()]:
+        cbfunc(PMIX_SUCCESS, cbdata)
+    else:
+        print("ABORT2 WAS NOT GIVEN THE REQUESTER'S IDENTITY:", args.get('info'))
+        cbfunc(PMIX_ERR_BAD_PARAM, cbdata)
+    return PMIX_SUCCESS
+
 def main():
     try:
         foo = PMIxServer()
@@ -149,7 +164,8 @@ def main():
            'publish': clientpublish,
            'lookup': clientlookup,
            'unpublish': clientunpublish,
-           'group': clientgroup}
+           'group': clientgroup,
+           'abort2': clientabort2}
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
     rc = foo.initialized()

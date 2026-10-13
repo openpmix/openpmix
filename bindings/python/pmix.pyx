@@ -4282,7 +4282,8 @@ def setmodulefn(k, f):
                  'toolconnected', 'log', 'allocate', 'jobcontrol',
                  'monitor', 'getcredential', 'validatecredential',
                  'iofpull', 'pushstdin', 'group', 'fabric', 'clientconnected2',
-                 'toolconnected2', 'log2', 'sessioncontrol', 'resourceblock']
+                 'toolconnected2', 'log2', 'sessioncontrol', 'resourceblock',
+                 'abort2']
     if k not in permitted:
         return PMIX_ERR_BAD_PARAM
     if not callable(f):
@@ -4414,6 +4415,9 @@ cdef class PMIxServer(PMIxClient):
             self.myserver.session_control = <pmix_server_session_control_fn_t>sessioncontrol
         if 'resourceblock' in kvkeys:
             self.myserver.resource_block = <pmix_server_resource_block_fn_t>resourceblock
+        # v7.x interfaces
+        if 'abort2' in kvkeys:
+            self.myserver.abort2 = <pmix_server_abort2_fn_t>clientaborted2
 
     def finalize(self):
         # finalize
@@ -5551,6 +5555,48 @@ cdef int clientaborted(const pmix_proc_t *proc, void *server_object,
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
             # upcall it
             return pmixservermodule['abort'](args, pypmix_op_cbfunc, cbdata_dict)
+
+        return PMIX_ERR_NOT_SUPPORTED
+    except:
+        traceback.print_exc()
+        return PMIX_ERROR
+
+cdef int clientaborted2(const pmix_proc_t *proc, void *server_object,
+                        int status, const char msg[],
+                        pmix_proc_t procs[], size_t nprocs,
+                        const pmix_info_t info[], size_t ninfo,
+                        pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
+    # libpmix calls this across a C frame, so an exception
+    # raised by the handler has nowhere to propagate to.
+    # Without this, Cython returned -1 and left the error
+    # indicator set for whatever Python code ran next in
+    # this process to trip over.
+    try:
+        keys = pmixservermodule.keys()
+        if 'abort2' in keys:
+            args = {}
+            myproc = []
+            myprocs = []
+            ilist = []
+            # convert the caller's name
+            pmix_unload_procs(proc, 1, myproc)
+            args['caller'] = myproc[0]
+            # record the status
+            args['status'] = status
+            # record the msg, if given
+            if NULL != msg:
+                args['msg'] = pmix_decode_str(msg)
+            # convert any provided array of procs to be aborted
+            if NULL != procs:
+                pmix_unload_procs(procs, nprocs, myprocs)
+                args['targets'] = myprocs
+            # the requester's identity, among anything else provided
+            if NULL != info:
+                pmix_unload_info(info, ninfo, ilist)
+                args['info'] = ilist
+            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            # upcall it
+            return pmixservermodule['abort2'](args, pypmix_op_cbfunc, cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
