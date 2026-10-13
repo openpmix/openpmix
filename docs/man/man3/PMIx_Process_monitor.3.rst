@@ -181,9 +181,10 @@ Action-specific directives (placed in the ``directives`` array) include:
   If no targets are given, every process on the node of a job the caller
   may access is monitored.
 * ``PMIX_MONITOR_TARGET_PIDS`` (pmix_data_array_t*) |mdash| array of
-  ``pmix_node_pid_t`` structures to be monitored. The caller must own each
-  process named, or the request is refused. A pid of -1 includes every
-  process on that node owned by the caller.
+  ``pmix_node_pid_t`` structures to be monitored. Only the processes the
+  caller owns are monitored; a pid the caller does not own is left out, the
+  same as a pid with no process. A pid of -1 includes every process on that
+  node owned by the caller.
 * ``PMIX_MONITOR_TARGET_NODES`` (pmix_data_array_t*) |mdash| array of string host
   names to be monitored.
 * ``PMIX_MONITOR_TARGET_NODEIDS`` (pmix_data_array_t*) |mdash| array of ``uint32_t``
@@ -249,9 +250,10 @@ Which processes are included, and who may ask for them:
   allowed to access each namespace it names, under the job access rule
   described in :doc:`/security-plan`; if it is not, the request fails with
   ``PMIX_ERR_NO_PERMISSIONS``.
-* **Processes named with** ``PMIX_MONITOR_TARGET_PIDS``. The caller must own each
-  process it names, as the operating system reports it; if it does not, the
-  request fails with ``PMIX_ERR_NO_PERMISSIONS``. A process ID of -1 includes
+* **Processes named with** ``PMIX_MONITOR_TARGET_PIDS``. Only the processes the
+  caller owns, as the operating system reports it, are monitored. A process ID
+  the caller does not own is left out without an error, exactly as one with no
+  process is, so the two cannot be told apart. A process ID of -1 includes
   every process on that node owned by the caller, found again at each periodic
   sample.
 * **No targets given.** Every process on the node, in a job the caller may
@@ -407,8 +409,7 @@ was accepted for processing; the final status and any data are delivered to
   example, a ``NULL`` ``monitor``, or a server attempting to use
   ``PMIX_SEND_HEARTBEAT``.
 * ``PMIX_ERR_NO_PERMISSIONS`` |mdash| the request names processes whose job
-  the caller's user may not access, or process IDs the caller does not own, or
-  was relayed by a host without the requester's ``PMIX_USERID``. A request for
+  the caller's user may not access, or was relayed by a host without the requester's ``PMIX_USERID``. A request for
   every process on a node leaves out the processes the caller may not see
   instead. See `WHICH PROCESSES ARE MONITORED`_ and :doc:`/security-plan`.
 * ``PMIX_ERR_OUT_OF_RESOURCE`` |mdash| the caller already holds the most
