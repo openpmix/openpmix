@@ -1232,8 +1232,10 @@ static void process_cbfunc(int sd, short args, void *cbdata)
                                                           peer->info->peerid);
         if (NULL != pr2 && pr2 != peer && pr2->finalized) {
             pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->info->peerid, NULL);
-            if (NULL != peer->nptr && 0 < peer->nptr->nfinalized) {
-                --peer->nptr->nfinalized;
+            /* the count is on the tombstone's namespace - that is the one
+             * its finalize raised */
+            if (NULL != pr2->nptr && 0 < pr2->nptr->nfinalized) {
+                --pr2->nptr->nfinalized;
             }
             PMIX_RELEASE(pr2);
         }
