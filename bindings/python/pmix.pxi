@@ -352,7 +352,8 @@ cdef int pmix_load_coord(pmix_coord_t *coord, pycoord):
     if not isinstance(dims, pmix_int_types) or 0 > dims:
         return PMIX_ERR_BAD_PARAM
     nbytes = dims * sizeof(uint32_t)
-    if len(pybytes) < nbytes:
+    # a length is never negative, so the comparison can be made unsigned
+    if <size_t> len(pybytes) < nbytes:
         return PMIX_ERR_BAD_PARAM
     if 0 == nbytes:
         return PMIX_SUCCESS
