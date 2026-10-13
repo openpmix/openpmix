@@ -1343,6 +1343,7 @@ static pmix_status_t query(pmix_proc_t *requestor,
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
         if (PMIX_SUCCESS != rc) {
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             PMIX_RELEASE(op);
             if (PMIX_ERR_EMPTY == rc) {
                 // empty = nothing found, not an error
