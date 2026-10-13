@@ -97,6 +97,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/un.h>
+#include <time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #ifdef HAVE_SYS_TYPES_H
@@ -1085,6 +1086,23 @@ static pmix_status_t run_handshake(pmix_psec_module_t *mod, pmix_peer_t *peer, b
     return rc;
 }
 
+/* Seconds on a clock that stops while the system sleeps. The deadline
+ * bounds time the server could have run; wall-clock time also counts a
+ * laptop's sleep, and a run that spans one would report the sleep as a
+ * deadline the server missed. macOS's CLOCK_MONOTONIC keeps counting
+ * through sleep, so use its uptime clock there */
+static double awake_secs(void)
+{
+    struct timespec tp;
+
+#ifdef CLOCK_UPTIME_RAW
+    (void) clock_gettime(CLOCK_UPTIME_RAW, &tp);
+#else
+    (void) clock_gettime(CLOCK_MONOTONIC, &tp);
+#endif
+    return (double) tp.tv_sec + (double) tp.tv_nsec / 1e9;
+}
+
 static void native_handshake(void)
 {
     pmix_psec_module_t *mod;
@@ -1148,13 +1166,11 @@ static void native_handshake(void)
      * server must give up at the handshake deadline (5 seconds by default)
      * whatever the peer does in between */
     {
-        struct timeval t0, t1;
-        double secs;
+        double t0, secs;
 
-        gettimeofday(&t0, NULL);
+        t0 = awake_secs();
         rc = run_handshake(NULL, peer, false, &crc);
-        gettimeofday(&t1, NULL);
-        secs = (double) (t1.tv_sec - t0.tv_sec) + (double) (t1.tv_usec - t0.tv_usec) / 1e6;
+        secs = awake_secs() - t0;
         fprintf(stdout, "    trickling peer refused after %.1f seconds\n", secs);
         report("handshake gives up on a trickling peer at one deadline for the whole exchange",
                PMIX_ERR_INVALID_CRED == rc && PMIX_SUCCESS == crc && 8.0 > secs);
