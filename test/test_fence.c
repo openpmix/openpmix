@@ -111,6 +111,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             tmp = tmp2;
         }
         TEST_VERBOSE(("%s\n", tmp));
+        free(tmp);
         if (participate) {
             /*run fence test on this range */
             /* first put value (my_ns, my_rank) with key based on fence_num to split results of
@@ -192,6 +193,7 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                         exit(PMIX_ERROR);
                     }
                     pmix_list_remove_item(desc->participants, (pmix_list_item_t *) p);
+                    PMIX_RELEASE(p);
                     for (i = 0; i < nranks; i++) {
                         participant_t *prt;
                         prt = PMIX_NEW(participant_t);
