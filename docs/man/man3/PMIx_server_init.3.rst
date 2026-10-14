@@ -71,6 +71,15 @@ internal details. For performance and scalability, host module functions are
 required to return quickly and to execute their work asynchronously, completing
 each operation by invoking the callback function supplied to them.
 
+.. important:: A host must run against a PMIx library of the same major
+   version as the PMIx headers it was compiled against. The library takes
+   the host's ``pmix_server_module_t`` to be the size and layout defined by
+   its own headers, and expects the host's functions to behave as that
+   version specifies. It cannot check either. New members are added to the
+   structure only in a new major release. A host that runs against a
+   library of a different major version is not supported, and its behavior
+   is undefined.
+
 Ownership rules for the module functions are important: all data passed *to* a
 host server function is owned by the PMIx server library and must not be freed
 by the host, while data returned by the host via a module callback is owned by
