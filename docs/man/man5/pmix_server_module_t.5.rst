@@ -202,6 +202,15 @@ identifier and the library adds nothing to the caller's arrays.
 ABI STABILITY
 -------------
 
+.. important:: A host must run against a PMIx library of the same major
+   version as the PMIx headers it was compiled against. The library takes
+   the host's ``pmix_server_module_t`` to be the size and layout defined by
+   its own headers, and expects the host's functions to behave as that
+   version specifies. It cannot check either. New members are added to the
+   structure only in a new major release. A host that runs against a
+   library of a different major version is not supported, and its behavior
+   is undefined.
+
 The `pmix_server_module_t` structure is consumed by host environments that may
 initialize it using **positional** (non-designated) initializers. Consequently
 the order of fields is a binary-compatibility contract and is **frozen**:
