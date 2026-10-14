@@ -64,6 +64,15 @@ storage alive after the call returns; however, any objects referenced by
 the module's function pointers must remain valid for as long as the tool
 acts as a server.
 
+.. important:: A host must run against a PMIx library of the same major
+   version as the PMIx headers it was compiled against. The library takes
+   the host's ``pmix_server_module_t`` to be the size and layout defined by
+   its own headers, and expects the host's functions to behave as that
+   version specifies. It cannot check either. New members are added to the
+   structure only in a new major release. A host that runs against a
+   library of a different major version is not supported, and its behavior
+   is undefined.
+
 The module may be set only once. A second call, after a module has already
 been installed, is rejected.
 
