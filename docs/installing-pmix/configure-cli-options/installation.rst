@@ -191,10 +191,10 @@ be used with ``configure``:
   ``LIST`` is a comma-delimited list of PMIx frameworks and/or
   framework+component tuples.  Examples:
 
-  * ``ptl`` specifies the entire PTL framework
-  * ``ptl-client`` specifies just the CLIENT component in the PTL framework
-  * ``plog,ptl-client`` specifies the entire PLOG framework and the CLIENT
-     component in the PTL framework
+  * ``psec`` specifies the entire PSEC framework
+  * ``psec-native`` specifies just the NATIVE component in the PSEC framework
+  * ``plog,psec-native`` specifies the entire PLOG framework and the NATIVE
+     component in the PSEC framework
 
   PMIx's ``configure`` script uses the values of these two options
   when evaluating each component to determine how it should be built
@@ -229,31 +229,31 @@ be used with ``configure``:
 
         shell$ ./configure
 
-  #. Build all components as static, except the CLIENT PTL, which will be
+  #. Build all components as static, except the NATIVE PSEC, which will be
      built as a DSO::
 
-        shell$ ./configure --enable-mca-dso=ptl-client
+        shell$ ./configure --enable-mca-dso=psec-native
 
-  #. Build all components as static, except all PTL components, which
+  #. Build all components as static, except all PSEC components, which
      will be built as DSOs::
 
-        shell$ ./configure --enable-mca-dso=ptl
+        shell$ ./configure --enable-mca-dso=psec
 
   #. Build all components as static, except all PLOG components and the
-     CLIENT PTL component, which will be built as DSOs::
+     NATIVE PSEC component, which will be built as DSOs::
 
-        shell$ ./configure --enable-mca-dso=plog,ptl-client
+        shell$ ./configure --enable-mca-dso=plog,psec-native
 
-  #. Build all PTLs as static, except the CLIENT PTL, as the
+  #. Build all PSECs as static, except the NATIVE PSEC, as the
      ``<framework-component>`` option is more specific than the
      ``<framework>`` option::
 
-        shell$ ./configure --enable-mca-dso=ptl --enable-mca-static=ptl-client
+        shell$ ./configure --enable-mca-dso=psec --enable-mca-static=psec-native
 
-  #. Build the CLIENT PTL as static, because the static option at the
+  #. Build the NATIVE PSEC as static, because the static option at the
      same level always wins::
 
-        shell$ ./configure --enable-mca-dso=ptl-client --enable-mca-static=ptl-client
+        shell$ ./configure --enable-mca-dso=psec-native --enable-mca-static=psec-native
 
   .. tip::
 
@@ -276,6 +276,32 @@ be used with ``configure``:
             because the ``configure`` script will naturally see that
             you do not have support for OmniPath and will
             automatically skip the ``opa`` PNET component.
+
+  .. note:: The ``usock`` and ``tcp`` PTL components are always built,
+            and ``configure`` stops with an error if either is
+            excluded: a process of this release reaches a server on its
+            host over ``usock``, and a server of an earlier release
+            over ``tcp``.
+
+* ``--disable-legacy-peers``: Build without support for clients and
+  tools of PMIx releases before v7.0, which connect to a server over TCP.
+  With it - the default - a server takes them only when the
+  ``ptl_base_legacy_peers`` MCA parameter, or its host's
+  ``PMIX_SERVER_LEGACY_PEERS`` attribute, says so; the parameter
+  defaults to ``false``. Without it, a server never takes them, and
+  asking for them fails its init.
+
+* ``--enable-remote-tools``: Build support for tools that connect to a
+  PMIx server from other hosts. Without it - the default - a server
+  takes TCP connections on a loopback interface only, never on a public
+  one, and a host that asks for connections from other hosts
+  (``PMIX_SERVER_REMOTE_CONNECTIONS``) fails its init. With it, the
+  host still decides at run time with that attribute.
+
+  A tool on another host authenticates with ``munge`` or ``ssl`` (see
+  ``--with-munge`` and ``--with-openssl``). A server refuses a peer on
+  another host that names ``native``, and a server asked for remote
+  connections with neither available fails its init.
 
 * ``--disable-show-load-errors-by-default``:
   Set the default value of the ``mca_base_component_show_load_errors``

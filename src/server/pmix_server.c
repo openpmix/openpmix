@@ -784,25 +784,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_output_verbose(2, pmix_server_globals.base_output,
         "pmix:server init called");
 
-    /* backward compatibility fix - remove any directive to use
-     * the old usock component so we avoid a warning message */
-    if (NULL != (evar = getenv("PMIX_MCA_ptl"))) {
-        if (0 == strcmp(evar, "usock")) {
-            /* we cannot support a usock-only environment */
-            fprintf(stderr,
-                    "-------------------------------------------------------------------\n");
-            fprintf(stderr, "PMIx no longer supports the \"usock\" transport for client-server\n");
-            fprintf(stderr,
-                    "communication. A directive was detected that only allows that mode.\n");
-            fprintf(stderr, "We cannot continue - please remove that constraint and try again.\n");
-            fprintf(stderr,
-                    "-------------------------------------------------------------------\n");
-            rc = PMIX_ERR_INIT;
-            goto errout_early;
-        }
-        /* anything else should just be cleared */
-        pmix_unsetenv("PMIX_MCA_ptl", &environ);
-    }
+    /* Which transports this process uses is not the user's to choose -
+     * see pmix_ptl_register - so a ptl selection in our environment is
+     * removed, and our children do not inherit it */
+    pmix_unsetenv("PMIX_MCA_ptl", &environ);
 
     /* init the parent procid to something innocuous */
     PMIX_LOAD_PROCID(&myparent, NULL, PMIX_RANK_UNDEF);
@@ -1624,7 +1609,7 @@ static pmix_status_t setup_fork_body(const pmix_proc_t *proc, char ***env)
     char rankstr[128];
     pmix_listener_t *lt;
     pmix_status_t rc;
-    char **varnames;
+    char **varnames, *value, *uri;
     int n;
 
     /* pass the nspace */
@@ -1640,9 +1625,14 @@ static pmix_status_t setup_fork_body(const pmix_proc_t *proc, char ***env)
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    /* pass our rendezvous info */
+    /* Pass our rendezvous info, in the variables every release reads: the
+     * TCP address when we take clients of earlier releases, which reach
+     * us only there, and otherwise the local socket's, which no earlier
+     * release can use - a client of this release finds its server through
+     * these variables either way */
     lt = &pmix_ptl_base.listener;
-    if (NULL != lt->uri && NULL != lt->varname) {
+    uri = pmix_ptl_base.legacy_peers ? lt->uri : pmix_ptl_base.local_listener.uri;
+    if (NULL != uri && NULL != lt->varname) {
         /* PMIx_Argv_split answers NULL - not an empty array - for a string
          * with no tokens, and the listener's varname is built by joining a
          * list that can legitimately come back empty (PMIx_Argv_join of an
@@ -1651,7 +1641,7 @@ static pmix_status_t setup_fork_body(const pmix_proc_t *proc, char ***env)
         varnames = PMIx_Argv_split(lt->varname, ':');
         if (NULL != varnames) {
             for (n = 0; NULL != varnames[n]; n++) {
-                rc = PMIx_Setenv(varnames[n], lt->uri, true, env);
+                rc = PMIx_Setenv(varnames[n], uri, true, env);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     PMIx_Argv_free(varnames);
@@ -1659,6 +1649,18 @@ static pmix_status_t setup_fork_body(const pmix_proc_t *proc, char ***env)
                 }
             }
             PMIx_Argv_free(varnames);
+        }
+    }
+    /* and where our local transport listens, with who we are: a process of
+     * this release connects there, and requires the kernel to say the
+     * server at the far end is that uid and gid */
+    value = pmix_ptl_base_local_uri_value();
+    if (NULL != value) {
+        rc = PMIx_Setenv(PMIX_PTL_LOCAL_URI_ENV, value, true, env);
+        free(value);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
         }
     }
 
@@ -1687,6 +1689,11 @@ static pmix_status_t setup_fork_body(const pmix_proc_t *proc, char ***env)
 
     /* get any PTL contribution such as tmpdir settings for session files */
     if (PMIX_SUCCESS != (rc = pmix_ptl_base_setup_fork(proc, env))) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    /* and the token its connection presents for its rank */
+    if (PMIX_SUCCESS != (rc = pmix_ptl_base_make_token(proc, env))) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }

@@ -39,6 +39,8 @@
 #endif
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <signal.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -120,6 +122,36 @@ pmix_status_t pmix_fd_write(int fd, int len, const void *buffer)
     }
 
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_fd_write_nosigpipe(int fd, int len, const void *buffer)
+{
+#ifdef F_SETNOSIGPIPE
+    (void) fcntl(fd, F_SETNOSIGPIPE, 1);
+    return pmix_fd_write(fd, len, buffer);
+#else
+    sigset_t pipeset, saved, pending;
+    pmix_status_t rc;
+    int sig, err;
+
+    sigemptyset(&pipeset);
+    sigaddset(&pipeset, SIGPIPE);
+    if (0 != pthread_sigmask(SIG_BLOCK, &pipeset, &saved)) {
+        return pmix_fd_write(fd, len, buffer);
+    }
+    rc = pmix_fd_write(fd, len, buffer);
+    err = errno;
+    /* on a thread that had it unblocked, only one we raised can be
+     * pending - take it, or it is delivered when the mask is restored.
+     * sigwait() returns at once for a signal already pending */
+    if (!sigismember(&saved, SIGPIPE) && 0 == sigpending(&pending) &&
+        sigismember(&pending, SIGPIPE)) {
+        (void) sigwait(&pipeset, &sig);
+    }
+    (void) pthread_sigmask(SIG_SETMASK, &saved, NULL);
+    errno = err;
+    return rc;
+#endif
 }
 
 pmix_status_t pmix_fd_set_cloexec(int fd)

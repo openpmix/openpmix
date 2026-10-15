@@ -48,6 +48,12 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#if defined(__FreeBSD__)
+/* __FreeBSD_version, which the pid lookup below tests; then struct xucred,
+ * for LOCAL_PEERCRED */
+#    include <sys/param.h>
+#    include <sys/ucred.h>
+#endif
 #ifdef HAVE_NETINET_IN_H
 #    include <netinet/in.h>
 #endif
@@ -172,7 +178,9 @@ pmix_status_t pmix_util_getid(int sd, uid_t *uid, gid_t *gid)
 
 /* The peer's pid comes with its credentials where the credential struct
  * carries one: Linux's struct ucred and OpenBSD's struct sockpeercred both
- * do. macOS answers it separately, through LOCAL_PEERPID. */
+ * do. macOS answers it separately, through LOCAL_PEERPID; FreeBSD 13 and
+ * later in struct xucred's cr_pid, through LOCAL_PEERCRED; NetBSD in
+ * struct unpcbid, through LOCAL_PEEREID. */
 #if PMIX_HAVE_PEERCRED && (defined(HAVE_STRUCT_SOCKPEERCRED_UID) || \
                            (defined(__linux__) && defined(HAVE_STRUCT_UCRED_UID)))
 #    define PMIX_HAVE_PEERCRED_PID 1
@@ -206,6 +214,29 @@ pmix_status_t pmix_util_getpid(int sd, pid_t *pid)
         return PMIX_ERR_NOT_FOUND;
     }
     *pid = p;
+    return PMIX_SUCCESS;
+#elif defined(__FreeBSD__) && defined(LOCAL_PEERCRED) && defined(__FreeBSD_version) && \
+    1300000 <= __FreeBSD_version
+    struct xucred xu;
+    socklen_t len = sizeof(xu);
+
+    memset(&xu, 0, sizeof(xu));
+    if (getsockopt(sd, SOL_LOCAL, LOCAL_PEERCRED, &xu, &len) < 0 || len < sizeof(xu) ||
+        XUCRED_VERSION != xu.cr_version || 0 >= xu.cr_pid) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    *pid = xu.cr_pid;
+    return PMIX_SUCCESS;
+#elif defined(__NetBSD__) && defined(LOCAL_PEEREID)
+    struct unpcbid id;
+    socklen_t len = sizeof(id);
+
+    /* NetBSD takes local-socket options at level 0 */
+    if (getsockopt(sd, 0, LOCAL_PEEREID, &id, &len) < 0 || len < sizeof(id) ||
+        0 >= id.unp_pid) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    *pid = id.unp_pid;
     return PMIX_SUCCESS;
 #else
     PMIX_HIDE_UNUSED_PARAMS(sd, pid);
@@ -644,5 +675,30 @@ pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid)
                             "getid: owner of tcp peer of socket %d unknown: %s", sd,
                             PMIx_Error_string(rc));
     }
+    return rc;
+}
+
+pmix_status_t pmix_util_id_to_parent(const char *mapfile, uint32_t id, uint32_t *out)
+{
+    unsigned long inside, outside, count;
+    char line[256];
+    FILE *fp;
+    pmix_status_t rc = PMIX_ERR_NOT_FOUND;
+
+    fp = fopen(mapfile, "r");
+    if (NULL == fp) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    while (NULL != fgets(line, sizeof(line), fp)) {
+        if (3 != sscanf(line, "%lu %lu %lu", &inside, &outside, &count)) {
+            continue;
+        }
+        if ((unsigned long) id >= inside && (unsigned long) id - inside < count) {
+            *out = (uint32_t) (outside + ((unsigned long) id - inside));
+            rc = PMIX_SUCCESS;
+            break;
+        }
+    }
+    fclose(fp);
     return rc;
 }

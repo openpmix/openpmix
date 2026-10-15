@@ -125,6 +125,9 @@ result directly:
   once per rank; a second call would push the namespace's rank list permanently
   past its local-process count, after which every collective involving the
   namespace would hang.
+* ``PMIX_ERR_EXISTS`` |mdash| a process that connected before it was registered
+  holds the rank, or is being accepted on it, and its uid or gid is not the one
+  given here. The rank is left to that connection.
 * ``PMIX_ERR_WOULD_BLOCK`` |mdash| the blocking form was called from the
   library's own progress thread. See `PROGRESS THREAD RESTRICTION`_.
 
@@ -146,6 +149,18 @@ of an eventual
 :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>` call.
 After registering the client, the host must call ``PMIx_server_setup_fork`` to
 inject the environment the client needs to connect back to this server.
+
+From registration on, a process of this release that connects as the rank
+must present the token ``PMIx_server_setup_fork`` hands out for it, and
+is refused with ``PMIX_ERR_INVALID_CRED`` until then: registration keeps
+a token for the rank that nobody is handed. A host may also call the two
+functions in the other order. The exception is a rank this server
+already holds when the host registers it - the singleton named by
+``PMIX_SINGLETON`` when the server was initialized, or a process that
+connected before it was registered. Neither was prepared, so no token is
+asked of it. The registration takes such a rank over only for the uid and
+gid of the connection that holds it: for any other it returns
+``PMIX_ERR_EXISTS``.
 
 For security, PMIx server implementations should verify the user and group IDs
 of a connecting process against those registered here before completing the

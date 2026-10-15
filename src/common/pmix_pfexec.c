@@ -85,6 +85,7 @@
 #include "src/util/pmix_show_help.h"
 
 #include "src/client/pmix_client_ops.h"
+#include "src/common/pmix_idenv.h"
 #include "src/common/pmix_pfexec.h"
 #include "src/server/pmix_server_ops.h"
 
@@ -337,7 +338,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     int i, n;
     size_t m, k;
     pmix_status_t rc;
-    char **argv = NULL, **env = NULL;
+    char **argv = NULL, **env = NULL, **launchenv;
     /* the completion callback below reports this even on the error
      * paths that jump there before a namespace has been composed */
     pmix_nspace_t nspace = {0};
@@ -432,8 +433,22 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
      * launch their procs */
     for (m = 0; m < fcd->napps; m++) {
         app = (pmix_app_t *) &fcd->apps[m];
-        /* merge our launch environment into the app's */
-        rc = pmix_environ_merge_inplace(&app->env, environ);
+        /* merge our launch environment into the app's - less the
+         * variables that say who this process is and how it reaches its
+         * own server: the child is given its own below */
+        launchenv = NULL;
+        for (k = 0; NULL != environ && NULL != environ[k]; k++) {
+            if (pmix_idenv_is_identity(environ[k])) {
+                continue;
+            }
+            rc = PMIx_Argv_append_nosize(&launchenv, environ[k]);
+            if (PMIX_SUCCESS != rc) {
+                PMIx_Argv_free(launchenv);
+                goto complete;
+            }
+        }
+        rc = pmix_environ_merge_inplace(&app->env, launchenv);
+        PMIx_Argv_free(launchenv);
         if (PMIX_SUCCESS != rc) {
             goto complete;
         }
@@ -575,6 +590,10 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                 child_delist(child);
                 goto complete;
             }
+            /* a connection token is for a rank its host registered, which
+             * this child's is not - and one in the environment we copied
+             * belongs to someone else */
+            (void) pmix_unsetenv(PMIX_PTL_TOKEN_ENV, &env);
 
             /* ensure we agree on our hostname */
             PMIx_Setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, &env);

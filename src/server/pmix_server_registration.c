@@ -934,8 +934,8 @@ void pmix_server_peer_finalized(pmix_peer_t *peer)
 
     /* We reach here either for a just-retired tool referenced peer (handled
      * above) or for a stranded peer that a newer connection already took
-     * over - a fork/exec'd clone still running, or a fast re-init that
-     * reconnected before this socket-close was processed. In the stranded
+     * over - a fast re-init that reconnected before this socket-close was
+     * processed. In the stranded
      * case info->peerid no longer names this object, so nothing references
      * it as the rank's peer. Either way this object still occupies its own
      * slot (the check above established that) and so still holds the
@@ -983,7 +983,12 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                      * we don't duplicate account for it and take care
                      * of it here */
                     peer->finalized = true;
-                    nptr->nfinalized++;
+                    /* one whose finalize request is still with the host
+                     * was counted when the request arrived */
+                    if (!peer->finalize_counted) {
+                        nptr->nfinalized++;
+                        peer->finalize_counted = true;
+                    }
                 }
                 /* resources may have been allocated to them, so
                  * ensure they get cleaned up - this isn't true
@@ -1122,6 +1127,9 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
      * and event teardown below, so a notice raised here still has
      * somewhere to go. */
     pmix_show_help_purge_nspace(cd->proc.nspace);
+
+    /* the job's connection tokens go with it */
+    pmix_ptl_base_drop_tokens(cd->proc.nspace, PMIX_RANK_WILDCARD);
 
     /* release any job-level network resources */
     pmix_pnet.deregister_nspace(cd->proc.nspace);
@@ -1717,6 +1725,28 @@ static void _register_client(int sd, short args, void *cbdata)
         adopted = info;
         break;
     }
+    /* The entry is the identity of the connection that holds it, or is
+     * being accepted on it: one whose uid or gid is not the host's for the
+     * rank is a connection of another process, and the rank is refused to
+     * the host rather than handed to that connection */
+    if (NULL != adopted && (0 < adopted->proc_cnt || 0 < adopted->connecting) &&
+        (adopted->uid != cd->uid || adopted->gid != cd->gid)) {
+        pmix_output_verbose(2, pmix_server_globals.base_output,
+                            "pmix:server register client %s:%u - the rank is held by a "
+                            "connection of uid %lu gid %lu",
+                            cd->proc.nspace, cd->proc.rank, (unsigned long) adopted->uid,
+                            (unsigned long) adopted->gid);
+        rc = PMIX_ERR_EXISTS;
+        goto cleanup;
+    }
+    /* From its registration on, a rank is taken only with the token
+     * PMIx_server_setup_fork hands out for it. An entry already here is
+     * the singleton the server was started for (PMIX_SINGLETON), or a
+     * process that connected before it was registered: neither was
+     * prepared, so neither has a token to present */
+    if (NULL == adopted && PMIX_SUCCESS != (rc = pmix_ptl_base_reserve_token(&cd->proc))) {
+        goto cleanup;
+    }
     if (NULL != adopted) {
         info = adopted;
         info->uid = cd->uid;
@@ -1924,6 +1954,9 @@ static void _deregister_client(int sd, short args, void *cbdata)
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server _deregister_client for nspace %s rank %d", cd->proc.nspace,
                         cd->proc.rank);
+
+    /* the rank's connection token goes with it */
+    pmix_ptl_base_drop_tokens(cd->proc.nspace, cd->proc.rank);
 
     /* see if we already have this nspace */
     nptr = NULL;

@@ -15,13 +15,12 @@ This document orients AI agents and human contributors working in the
 already read the top-level [`AGENTS.md`](../../../AGENTS.md) — the golden
 rules, prefix conventions, thread-safety/caddy model, and MCA concepts
 described there all apply here and are not repeated. This file covers
-what is specific to `ptl`: what the framework is for, the (unusual) way
-its components are selected, the wire protocol, how a connection is
-established from both ends, and how steady-state messages flow. Each
-component subdirectory (`client/`, `server/`, `tool/`) carries its own
-`AGENTS.md` with role-specific detail — and so does
-[`base/`](base/AGENTS.md), which is where nearly all of the code
-actually lives and the document to read before changing any of it. For
+what is specific to `ptl`: what the framework is for, how a process's
+role picks the functions it uses, the wire protocol, how a connection is
+established from both ends, and how steady-state messages flow.
+[`base/AGENTS.md`](base/AGENTS.md) covers the base, which is where nearly
+all of the code actually lives and the document to read before changing
+any of it. For
 an integration-level view of how this framework connects a PMIx process
 to its server, see
 [`docs/how-things-work/ptl.rst`](../../../docs/how-things-work/ptl.rst).
@@ -50,100 +49,114 @@ datastore selection — belongs to other frameworks (`bfrops`, `psec`,
 
 ## The single most important structural fact
 
-`ptl` is a **single-select** framework (only one component is active at a
-time), but it does **not** work the way most single-select frameworks do.
+**The base owns essentially all of the code** — framing, the handshake,
+the listener, rendezvous files, send/recv, teardown. What a process does
+with it depends on its *role*, and the roles are not components: they are
+tables of base functions.
 
-In a typical framework the component *is* the implementation and the
-`base/` directory is just plumbing. In `ptl` it is the reverse: **the
-base owns essentially all of the code** — TCP sockets, framing, the
-handshake, the listener, interface discovery, rendezvous files,
-send/recv, teardown — and the three components (`client`, `server`,
-`tool`) are extremely thin *role selectors*. A component is little more
-than a `pmix_ptl_module_t` whose function pointers mostly point straight
-back at `pmix_ptl_base_*` functions in `base/`.
+- **The role is the process's own type.** `pmix_ptl_base_select`
+  (`base/ptl_base_select.c`) looks at `pmix_globals.mypeer` and fills the
+  exported global **`pmix_ptl`** (a `pmix_ptl_api_t`, see [`ptl.h`](ptl.h))
+  with that role's functions. Back-end code reaches the role through that
+  global and through the `PMIX_PTL_*` macros in [`ptl_types.h`](ptl_types.h).
+- **The roles, in the order they are tested:**
 
-Consequently:
+  | Role | The local peer is… | `connect_to_peer` | `setup_listener` | `setup_fork` | `connect_to_peer_nb` |
+  |------|--------------------|-------------------|------------------|--------------|----------------------|
+  | client | a client **and not** a tool | `pmix_ptl_base_client_connect_to_peer` | NULL | NULL | NULL |
+  | tool | any tool — a debugger, a launcher (tool+server), a client-tool | `pmix_ptl_base_connect_to_peer` | `pmix_ptl_base_tool_setup_listener` | `pmix_ptl_base_setup_fork` | `pmix_ptl_base_connect_to_peer_nb` |
+  | server | a server (and not a tool) | `pmix_ptl_base_connect_to_peer` | `pmix_ptl_base_setup_listener` | `pmix_ptl_base_setup_fork` | `pmix_ptl_base_connect_to_peer_nb` |
 
-- **Components partition by process role, not by transport.** Only one
-  wins because `component_query` gates on `pmix_globals.mypeer`'s type
-  (see the selection table below), and the gates are mutually exclusive.
-  The `client` component takes a *pure client*; the `tool` component
-  takes *any tool* (including a launcher, which is tool+server); the
-  `server` component takes a *pure server*.
-- **The component priorities are effectively vestigial.** Because the
-  gates never overlap, at most one component ever returns a module, so
-  the "highest priority wins" logic in `pmix_ptl_base_select` never
-  actually arbitrates between two candidates.
-- **The header comment in `ptl.h` describes an aspiration, not today's
-  reality.** It says components exist to support new handshake versions
-  and new transports. In practice there is one transport (TCP, protocol
-  `PMIX_PROTOCOL_V2`); the old Unix-domain-socket transport (`usock`) is
-  gone, and its `PMIX_PROTOCOL_V1` value with it. Handshake versioning is
-  handled *inside* the base by inspecting the peer's version string, not
-  by swapping components.
+  A process with none of those bits is refused at select with the
+  `no-plugins` `show_help` topic and `PMIX_ERR_SILENT`.
+- **The NULLs are part of the contract.** Callers test for them: a
+  client's `PMIx_tool_attach_to_server` takes the blocking path because
+  `connect_to_peer_nb` is NULL, and a client forks no PMIx children.
+- **The role is fixed at select.** A process's type changes after it -
+  a client becomes a singleton, a tool becomes a client-tool - but none of
+  those changes moves it from one row to another.
+- **A tool listens because a launcher must.** A launcher is a tool and a
+  server at once: it listens for the children it starts while it connects
+  up to its own server. A plain debugger's listener is simply never used.
+- **Handshake versioning is done inside the base** by inspecting the
+  peer's version string, not by swapping code.
 
-If you are looking for "the TCP code," it is in `base/`, not in a
-component. Read `base/` first.
+## Transports are the components
 
-## Module interface (`pmix_ptl_module_t`)
+`ptl` is a **multi-select** framework, and its components are
+transports. `pmix_ptl_base_select` keeps every one whose query succeeds on
+`pmix_ptl_base.actives`, highest priority first. Today there is one,
+[`tcp/`](tcp/AGENTS.md).
 
-Defined in [`ptl.h`](ptl.h). A component fills in the subset of these it
-needs; the rest stay `NULL`.
+A transport (`pmix_ptl_module_t` in [`ptl.h`](ptl.h)) does only what
+depends on the kind of socket:
 
-| Field | Signature | Who sets it | Purpose |
-|-------|-----------|-------------|---------|
-| `name` | `char *` | all | component name string |
-| `init` / `finalize` | `(void)` | none today | per-module lifecycle hooks (unused) |
-| `recv` | register a persistent recv | none today | vestigial — posted recvs are managed directly by the base |
-| `cancel` | cancel a persistent recv | none today | vestigial |
-| `connect_to_peer` | `(peer, info, ninfo, &suri)` | **all three** | open + handshake a connection *up* to a server |
-| `query_servers` | `(dirname, list)` | none today | vestigial — server discovery runs through `pmix_ptl_base_query_servers` |
-| `setup_listener` | `(info, ninfo)` | server, tool | bind a listen socket and publish rendezvous |
-| `setup_fork` | `(proc, &env)` | server, tool | inject `PMIX_*_TMPDIR` env into forked children |
+| Field | What it does |
+|-------|--------------|
+| `setup_listener` | open the listening socket for a `pmix_listener_t` - bound, listening, non-blocking - and make its URI, acting on any directive meant for it |
+| `uri_to_addr` | the address a URI of this transport's scheme names; `PMIX_ERR_NOT_SUPPORTED` for any other scheme, so the next transport is asked |
+| `close` | release what it holds, at framework close |
 
-Note how much is `NULL`: `init`, `finalize`, `recv`, `cancel`, and
-`query_servers` are never wired by any current component. Do not assume a
-non-`NULL` value; the base guards these paths in other ways. The only
-functionally distinct component implementation is the `client`
-component's *own* `connect_to_peer` (a simpler client-only path) versus
-the shared `pmix_ptl_base_connect_to_peer` used by `server` and `tool`.
+Everything done on a socket once it exists is the base's. The base reaches
+the transports through two functions: `pmix_ptl_base_listen` (the
+highest-priority transport that listens opens the primary listener) and
+`pmix_ptl_base_setup_connection` (the transport whose scheme a URI has
+turns it into an address; its callers do not know which).
 
-The selected module is copied into the exported global
-**`pmix_ptl`** (in `base/ptl_base_frame.c`) during selection; all
-back-end code reaches the framework through that global and through the
-`PMIX_PTL_*` macros in [`ptl_types.h`](ptl_types.h).
+**Every connection records its transport** in `transport`: a listener
+gets it from `pmix_ptl_base_listen`, a pending connection and then the
+peer from their listener on the accepting side, and the peer from
+`pmix_ptl_base_uri_to_addr` - which reports the transport that took the
+URI - on the connecting side, blocking or event-driven.
+`test/unit/ptl_transport.c` checks the listener, the server's peer for a
+tool, and a tool's peer for its server, by both connects; a pending
+connection is covered only by way of the peer it becomes.
 
-## Selection and lifecycle
+**A process's transports are not the user's to choose.** The ptl
+selection parameter (`PMIX_MCA_ptl`, or `ptl` in a parameter file) is
+cleared in `pmix_ptl_register`, before the components are found, so every
+transport available is used whatever it says. Client, server and tool
+init also remove `PMIX_MCA_ptl` from the environment, so their children
+do not inherit it. `test/unit/ptl_select.c` covers both.
+
+A transport is built into the library, never as a plugin - its
+`configure.m4` sets the compile mode to static. Every process needs one,
+and tests reach its helpers by name.
+
+## The role interface (`pmix_ptl_api_t`)
+
+Defined in [`ptl.h`](ptl.h).
+
+| Field | Signature | Purpose |
+|-------|-----------|---------|
+| `name` | `char *` | the role, for verbose output |
+| `connect_to_peer` | `(peer, info, ninfo, &suri)` | open + handshake a connection *up* to a server, blocking |
+| `connect_to_peer_nb` | `(peer, info, ninfo, cbfunc, cbdata)` | the same driven by events; NULL for a client |
+| `setup_listener` | `(info, ninfo)` | bind a listen socket and publish rendezvous |
+| `setup_fork` | `(proc, &env)` | inject `PMIX_*_TMPDIR` env into forked children |
+
+The only functions that differ between roles are the client's own
+`connect_to_peer` (`base/ptl_base_client.c`, a short path: environment,
+directive, else the system server, else a singleton) and the tool's
+`setup_listener` wrapper (`base/ptl_base_tool.c`, which would register the
+tool's rendezvous files for cleanup with its server — see the comment
+there for why that registration is always declined today).
+
+## Lifecycle
 
 - **`base/ptl_base_frame.c`** declares the framework
   (`PMIX_MCA_BASE_FRAMEWORK_DECLARE`), instantiates the global
-  `pmix_ptl_base` state struct and the `pmix_ptl` module, registers all
-  the MCA parameters (`pmix_ptl_register`), opens components
+  `pmix_ptl_base` state struct and the `pmix_ptl` role table, registers all
+  the MCA parameters (`pmix_ptl_register`), opens the framework
   (`pmix_ptl_open`), and defines the `PMIX_CLASS_INSTANCE`s for the many
   transport objects (`pmix_ptl_send_t`, `pmix_ptl_recv_t`,
   `pmix_ptl_posted_recv_t`, `pmix_ptl_sr_t`, `pmix_ptl_queue_t`,
   `pmix_pending_connection_t`, `pmix_listener_t`, `pmix_connection_t`).
   `pmix_ptl_close` is where all the rendezvous files and tmpdirs created
   by the listener are removed.
-- **`base/ptl_base_select.c`** (`pmix_ptl_base_select`) queries each
-  component, keeps the highest-priority module whose `init` (if any)
-  succeeds, and copies it into `pmix_ptl`. If none is selected it emits
-  the `no-plugins` `show_help` topic and returns `PMIX_ERR_SILENT` —
-  `ptl` requires exactly one component.
-
-Selection table (from each component's `component_query`):
-
-| Component | Priority | Selected when the local peer is… |
-|-----------|----------|----------------------------------|
-| `client`  | 50 | a client **and not** a tool (a "pure" client) |
-| `tool`    | 40 | any tool (debugger, launcher, or client-tool) |
-| `server`  | 30 | a server **and not** a tool (a "pure" server) |
-
-Remember these conditions are exclusive, so priority order never breaks a
-tie in practice. A **launcher** (`PMIX_PROC_LAUNCHER` = tool+server) is a
-tool for selection purposes and therefore uses the `tool` component —
-which is why the `tool` module carries `setup_listener` (a launcher must
-*listen* for its own children while also *connecting up* to its server).
+- **`base/ptl_base_select.c`** (`pmix_ptl_base_select`) fills `pmix_ptl`
+  for the role, once per open; `pmix_ptl_close` lets the next init select
+  again.
 
 ## Core data structures ([`ptl_types.h`](ptl_types.h))
 
@@ -221,8 +234,8 @@ the side that *initiated* it uses the lower half
 `PMIX_PROC_SCHEDULER`, …) with its `major.minor.release` version. The
 `PMIX_PEER_IS_*` / `PMIX_PROC_IS_*` macros test the role bits; the
 `PMIX_PEER_IS_Vxx` / `PMIX_PEER_TRIPLET` macros test versions
-(255 = wildcard). These roles are what the component `component_query`
-functions and the connection handler switch on.
+(255 = wildcard). These roles are what `pmix_ptl_base_select` and the
+connection handler switch on.
 
 ## The public transport macros
 
@@ -343,12 +356,12 @@ servers, which is why the completion is per peer — see
 Entry point is `pmix_ptl.connect_to_peer`, invoked (blocking) during
 init. Two implementations:
 
-- **Client** (`client/ptl_client.c`): the simple path. Reads
+- **Client** (`base/ptl_base_client.c`): the simple path. Reads
   `PMIX_SERVER_URI` from the info array or environment (via
   `pmix_ptl_base_set_peer`, which also detects the server's version by
   which `PMIX_SERVER_URIvNN` env var is set); if none is found, tries the
   system rendezvous file and otherwise declares itself a **singleton**.
-- **Tool/server** (`base/ptl_base_connect_to_peer`): the full discovery
+- **Tool/server** (`pmix_ptl_base_connect_to_peer`, `base/ptl_base_connect.c`): the full discovery
   matrix. Honors a caller-specified connection **order**
   (`PMIX_CONNECT_SYSTEM_FIRST`, `PMIX_CONNECT_TO_SYSTEM`,
   `PMIX_CONNECT_TO_SCHEDULER`, `PMIX_CONNECT_TO_SYS_CONTROLLER`), an
@@ -382,27 +395,21 @@ the real work on the progress thread:
    type, gds module, and an optional info blob. A v1.x or v2.0 peer is
    refused at the version string - see "Version floors" in
    [`base/AGENTS.md`](base/AGENTS.md).
-3. Branch on the flag: a **simple client / singleton** must already be a
-   registered nspace+rank; a **tool/launcher** goes through the two-step
-   `process_tool_request` (which may call the host's `tool_connected` to
-   get an nspace assigned, then `process_cbfunc` sends it back).
-4. **Validate first.** The peer's credential is checked
-   (`PMIX_PSEC_VALIDATE_CONNECTION_WITH`, naming the psec module the peer
-   asked for) on a peer object attached to nothing shared, before
-   anything is recorded or anyone is asked: not the namespace's modules
-   or version, not a clients-array slot, not the info blob (and the pid
-   and real ids it carries), not the host. A tool is validated in
-   `process_tool_request` against the uid/gid it claimed, before its
-   namespace is looked up and before the host's `tool_connected`; a
-   failure is answered in the first reply the tool reads, where the
-   host's status would be. A tool whose credential asks for a handshake
-   runs it right there, before the host is asked anything; the security
-   status it reads after its identity replies is only the outcome. Then
-   the namespace's compat modules are set, `client_connected2` is called,
-   and `_cnct_complete` sends back the status + the peer's array index,
-   runs the security handshake if the psec module asked for one (the
-   client path's place for it), arms events, and flushes any cached
-   notifications.
+3. Branch on the flag: a **simple client / singleton** (`accept_client`)
+   must already be a registered nspace+rank; a **tool/launcher**
+   (`accept_tool`) may be given an identity by the host's
+   `tool_connected` up-call.
+4. **Settle the identity, check, ask the host, accept - in that order.**
+   The peer's credential is checked (`PMIX_PSEC_VALIDATE_CONNECTION_WITH`,
+   naming the psec module the peer asked for) on a scratch peer attached
+   to nothing shared, and a credential that needs a live exchange gets
+   it - from events - before anything else. Every check that can refuse
+   runs next; then the host is asked; only once it accepts is anything
+   shared changed: the namespace's compat modules and version, a
+   clients-array slot, the rank's pid, a namespace or rank entry built for
+   a tool. Every refusal is sent to the peer as a status. See "Inbound"
+   in [`base/AGENTS.md`](base/AGENTS.md) for the steps and the
+   ownership rule that makes a refusal at any of them a single release.
 
 **A namespace's compat modules are set by the first peer to connect.**
 They are shared by every peer of the namespace - what the server packs
@@ -412,26 +419,12 @@ psec or gds differs is served with its own (`peer->gds` holds a peer's
 own gds). `test/unit/ptl_validate_first.c` covers the ordering and this
 rule on both paths.
 
-**`PMIX_PSEC_VALIDATE_CONNECTION` can return
-`PMIX_ERR_READY_FOR_HANDSHAKE`, and that is a request, not a rejection.**
-A psec module whose credential cannot decide on its own (`native`, for a
-peer the kernel's TCP table cannot see) hands back
-`PMIX_ERR_READY_FOR_HANDSHAKE` from `validate_cred`; the status has to
-survive until the module's server handshake runs and overwrites it with
-the real result. Both call sites here — the client path and the tool
-path — must therefore test
-
-```c
-if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
-```
-
-rather than `PMIX_SUCCESS != reply` alone. They once did the latter, and
-the effect was that no module that asked for a handshake could complete
-a single connection. Nothing caught it because the only such module was
-then a test component built solely on request. `psec/native` now asks for a
-handshake whenever the kernel cannot name a TCP peer's owner, and
-`test/unit/run_native_handshake.pl` drives that through a real server.
-See [`psec/AGENTS.md`](../psec/AGENTS.md).
+**`PMIX_PSEC_VALIDATE_CONNECTION` decides the matter.** Its answer is
+`PMIX_SUCCESS` or the reason the peer is refused; no psec module runs a
+live exchange over the socket, and the server never answers a
+connect-ack with `PMIX_ERR_READY_FOR_HANDSHAKE`. A client or tool asked
+for one by a server fails its connection with `PMIX_ERR_NOT_SUPPORTED`.
+See "No handshake" in [`psec/AGENTS.md`](../psec/AGENTS.md).
 
 The `PMIX_PTL_PUT_*` (build) and `PMIX_PTL_GET_*` (parse) macro pairs are
 deliberately symmetric so the two ends can be read side by side. **The
@@ -444,10 +437,16 @@ Note that **every field here arrives before the credential has been
 validated**. Each `GET_*` macro therefore bounds itself against the
 number of bytes actually received, and a new field must do the same.
 
-## The listener (`base/ptl_base_listener.c`)
+## The listener (`base/ptl_base_listener.c`, `tcp/ptl_tcp.c`)
 
 `pmix_ptl_base_setup_listener` is where a server/tool chooses how it can
-be reached:
+be reached. It takes the directives that are not a transport's, has the
+transport open the socket (`pmix_ptl_base_listen`), and publishes what
+the transport made. The local transport's listener is always made; the
+tcp transport's only when the server takes legacy peers
+(`pmix_ptl_base.legacy_peers`, from `ptl_base_legacy_peers` or
+`PMIX_SERVER_LEGACY_PEERS`) or remote tools. The tcp transport's part is
+the first two steps:
 
 - **Interface selection.** Enumerate interfaces, filter through
   `if_include`/`if_exclude`, and default to a **loopback** device. Only
@@ -457,10 +456,12 @@ be reached:
 - **Bind.** Try each port from `ipv4_ports` / `ipv6_ports` (default `0` =
   let the kernel choose), set `SO_REUSEADDR` and close-on-exec, `listen`
   with `SOMAXCONN`, and make the socket non-blocking.
-- **Publish.** Build the URI `nspace.rank;tcp4://host:port`, store it in
-  `gds` under both `PMIX_MYSERVER_URI` and (for older tools)
-  `PMIX_SERVER_URI`, optionally emit it via `report_uri`
-  (`-`=stdout, `+`=stderr, an integer pipe fd, or a file).
+- **Publish.** Build the URI `nspace.rank;tcp4://host:port`. The base
+  stores the server's URI - the TCP one when there is a TCP listener,
+  else the local socket's - in `gds` under both `PMIX_MYSERVER_URI` and
+  (for older tools) `PMIX_SERVER_URI`, optionally emits it via
+  `report_uri` (`-`=stdout, `+`=stderr, an integer pipe fd, or a file),
+  and puts it first in the rendezvous files.
 - **Rendezvous files.** Depending on role/flags, drop contact files a
   peer can discover: `pmix.sched.<host>` (scheduler),
   `pmix.sysctrlr.<host>` (system controller), `pmix.sys.<host>` (system
@@ -531,7 +532,10 @@ and Testing* section of the top-level
 ## MCA parameters (registered in `ptl_base_frame.c`)
 
 All under the `pmix_ptl_base_` prefix, most with deprecated
-`pmix_ptl_tcp_` synonyms retained for compatibility:
+`pmix_ptl_tcp_` synonyms retained for compatibility. The interface, port
+and address-family ones are the tcp transport's, which reads them from
+`pmix_ptl_base`: it cannot register them itself, as its `pmix_ptl_tcp_*`
+names are already those synonyms.
 
 | Parameter | Meaning |
 |-----------|---------|
@@ -542,8 +546,9 @@ All under the `pmix_ptl_base_` prefix, most with deprecated
 | `connection_wait_time` / `max_retries` | how long/often to wait for a server's connection file to appear |
 | `handshake_wait_time` / `handshake_max_retries` | how long a client or tool waits on a server while connecting - each `connect()` attempt and each handshake reply, or the whole event-driven attach (default 60s, 0 = unbounded) - and how often it retries a handshake the server asks it to retry |
 | `connect_ack_timeout` | seconds a server gives an inbound connection to deliver its whole connect-ack, and to answer each step of the blocking handshake after it, before dropping it (default 5; 0 = no limit) |
-| `max_pending_connections` | most inbound connections held while their connect-ack is still arriving; at the limit the oldest is dropped (default 0 = a quarter of the descriptor limit; -1 = no limit) |
+| `max_pending_connections` | most inbound connections held while their connect-ack is still arriving, and separately most tools held while the host decides; at the first limit the oldest still arriving is dropped, at the second a further tool is refused (default 0 = an eighth of the descriptor limit, for each; -1 = no limit) |
 | `report_uri` | where to print the listener URI |
+| `server_access` | servers a client or tool will talk to on the local socket besides its own user's and root's, when no server it was started by named itself: `users=<list>,groups=<list>`, names or numbers separated by `:` |
 
 Per the top-level guidance, prefer adding an MCA parameter (or, better, an
 attribute honored by `connect_to_peer`/`setup_listener`) over hard-coding
@@ -562,8 +567,8 @@ to break this framework:
    inbound handshake runs on the server's progress thread, at any moment,
    while that thread is serving every other client. So the server reads
    the connect-ack as its bytes arrive and
-   never waits for them; only the replies and psec handshake after it are
-   blocking, bounded by `ptl_base_connect_ack_timeout` — see
+   never waits for them; only the replies after it are blocking writes,
+   bounded by `ptl_base_connect_ack_timeout` — see
    [`base/AGENTS.md`](base/AGENTS.md).
 2. **Steady-state I/O is entirely on the progress thread.** Every
    `PMIX_PTL_SEND_*` macro thread-shifts; the send/recv handlers,
@@ -572,8 +577,8 @@ to break this framework:
    (`pmix_ptl_base.posted_recvs`, a peer's send/recv queues) is touched
    only there.
 
-The caddies (`pmix_ptl_sr_t`, `pmix_ptl_queue_t`, `pmix_pending_connection_t`,
-`cnct_hdlr_t`) all carry the mandatory `pmix_event_t ev` and retain the
+The caddies (`pmix_ptl_sr_t`, `pmix_ptl_queue_t`, `pmix_pending_connection_t`)
+all carry the mandatory `pmix_event_t ev` and retain the
 peer so it outlives the async hop, exactly as the top-level thread-safety
 rules require. The blocking file-wait paths (`pmix_ptl_base_parse_uri_file`,
 `check_server`) pause through `retry_wait()`: an evtimer plus a local
@@ -586,13 +591,15 @@ never fire. See [`base/AGENTS.md`](base/AGENTS.md).
 
 ```
 src/mca/ptl/
-├── ptl.h                       Framework API: module struct, macros, component struct, version
+├── ptl.h                       Framework API: role table, macros, component struct, version
 ├── ptl_types.h                 Header, tags, transport objects, proc-type & version macros
 ├── base/
 │   ├── base.h                  Internal base API + the pmix_ptl_base global-state struct
 │   ├── ptl_base_handshake.h    PUT_*/GET_* handshake (de)serialization macros + rnd flags
 │   ├── ptl_base_frame.c        open/close, MCA params, framework decl, class instances
-│   ├── ptl_base_select.c       role-based component selection
+│   ├── ptl_base_select.c       fills pmix_ptl with the process's role
+│   ├── ptl_base_client.c       a client's own connect_to_peer
+│   ├── ptl_base_tool.c         a tool's setup_listener wrapper
 │   ├── ptl_base_connect.c      outbound connection: discovery matrix + socket connect
 │   ├── ptl_base_connection_hdlr.c  inbound connection: accept → parse handshake → validate
 │   ├── ptl_base_listener.c     interface selection, bind, publish URI, rendezvous files
@@ -600,18 +607,14 @@ src/mca/ptl/
 │   ├── ptl_base_fns.c          handshake build/parse, URI parsing, file discovery, helpers
 │   ├── ptl_base_stubs.c        version comparison + notification-recv registration
 │   └── AGENTS.md               the authoritative guide to everything above
-├── client/                     pure-client role (its own simpler connect_to_peer)
-├── server/                     pure-server role (base connect + listener + fork)
-└── tool/                       any-tool role (base connect + listener w/ cleanup + fork)
+└── tcp/                        the TCP transport: listening sockets and tcp4:// / tcp6:// URIs
 ```
 
 ## Building
 
-All three components are statically built into `libpmix` and wired
-through the generated `base/static-components.h`; none ships a
-`configure.m4`, so none is conditionally compiled out. Editing a
-`Makefile.am` only needs a plain `make`; adding or removing a *component
-directory* changes the build wiring resolved by `configure`, so re-run
+The base and every transport are built into `libpmix`. Editing a
+`Makefile.am` only needs a plain `make`; adding or removing a *component directory* changes the build
+wiring resolved by `configure`, so re-run
 `./autogen.pl && ./configure … && make`. `ptl` **does** ship its own
 `show_help` file, `base/help-ptl-base.txt` — per the top-level golden
 rule, after any add/delete/modify of that text you must
@@ -620,10 +623,8 @@ help content.
 
 ## When working in this framework
 
-- **Do not add a component to implement a new transport or handshake
-  without team consensus.** The current design puts everything in the
-  base and selects components by role; a genuine second transport would be
-  a significant departure. Discuss it on a GitHub issue first.
+- **A role is not a component.** Role differences are rows in the table
+  in `base/ptl_base_select.c`; do not reintroduce role components.
 - **Treat the handshake and header layouts as frozen wire formats.**
   Append only, never reorder — a server and client built from different
   PMIx releases must interoperate (see the top-level interoperability

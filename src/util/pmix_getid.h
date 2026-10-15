@@ -65,6 +65,19 @@ PMIX_EXPORT pmix_status_t pmix_util_getpid(int sd, pid_t *pid);
  * *uid is written only on PMIX_SUCCESS. */
 PMIX_EXPORT pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid);
 
+/* An id the kernel reported, in this process's user namespace, as the
+ * parent of that namespace numbers it - where a server outside it runs.
+ * The kernel reports a peer's ids translated into the reader's namespace,
+ * by the mapping in `mapfile` (/proc/self/uid_map or gid_map): lines of
+ * "<first id inside> <first id outside> <count>". In the initial
+ * namespace that mapping is the identity.
+ *
+ * Returns PMIX_SUCCESS with *out written; PMIX_ERR_NOT_FOUND if no line
+ * maps `id`; PMIX_ERR_NOT_SUPPORTED where there is no such file - a
+ * platform without user namespaces. */
+PMIX_EXPORT pmix_status_t pmix_util_id_to_parent(const char *mapfile, uint32_t id,
+                                                 uint32_t *out);
+
 END_C_DECLS
 
 #endif /* PMIX_GETID_H */

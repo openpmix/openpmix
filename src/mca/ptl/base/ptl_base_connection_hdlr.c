@@ -43,155 +43,488 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_getid.h"
+#include "src/util/pmix_net.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_strnlen.h"
 
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/base/ptl_base_handshake.h"
+#include "src/mca/psec/psec.h"
 
-static void process_cbfunc(int sd, short args, void *cbdata);
+/* Accepting a connection.
+ *
+ * A connection is accepted as a sequence of steps, each run on the
+ * progress thread from an event: its connect-ack arriving, the host
+ * deciding.
+ * Nothing waits on a peer in between, so a slow or hostile peer holds only
+ * its own connection. See docs/how-things-work/connections.rst.
+ *
+ * The pending connection carries everything the connection holds until
+ * it is accepted - its socket, a scratch peer, the namespace and rank
+ * entry it will join, a namespace or rank entry built for it - and nothing
+ * of it is attached to anything shared until then. So refusing a
+ * connection, at any step, is the same act: send the peer the reason, in
+ * the status word it reads next, and release the pending connection. Its
+ * destructor gives everything back.
+ *
+ * The status word the peer reads next is its first reply - which a tool
+ * is sent once the host has decided on it. A tool reads one last status
+ * after the identity replies. */
+static void client_settled(pmix_pending_connection_t *pnd, pmix_status_t status);
+static void client_answered(int sd, short args, void *cbdata);
+static void tool_settled(pmix_pending_connection_t *pnd, pmix_status_t status);
+static void next_tool(void);
+static void next_tool_cb(int sd, short args, void *cbdata);
+static void ask_about_tool(pmix_pending_connection_t *pnd);
+static void tool_answered(int sd, short args, void *cbdata);
 static void cnct_cbfunc(pmix_status_t status, pmix_proc_t *proc, void *cbdata);
 static void _check_cached_events(pmix_peer_t *peer);
-static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd, char *mg, size_t cnt);
+static void accept_client(pmix_pending_connection_t *pnd);
+static void accept_tool(pmix_pending_connection_t *pnd);
+static void kick_tool_queue(void);
+static bool local_peer(pmix_pending_connection_t *pnd);
 
-// Local objects
-typedef struct {
-    pmix_object_t super;
-    pmix_event_t ev;
-    pmix_status_t status;
-    pmix_status_t reply;
-    pmix_pending_connection_t *pnd;
-    pmix_peer_t *peer;
-    /* the psec module the peer was validated with - which need not be
-     * the one its namespace carries */
-    pmix_psec_module_t *psec;
-    pmix_info_t *info;
-    size_t ninfo;
-} cnct_hdlr_t;
-static void chcon(cnct_hdlr_t *p)
+/* Turn a connection away: tell the peer why, in the status it reads next,
+ * and release it. */
+static void refuse(pmix_pending_connection_t *pnd, pmix_status_t why)
 {
-    memset(&p->ev, 0, sizeof(pmix_event_t));
-    p->status = PMIX_SUCCESS;
-    p->reply = PMIX_SUCCESS;
-    p->pnd = NULL;
-    p->peer = NULL;
-    p->psec = NULL;
-    p->info = NULL;
-    p->ninfo = 0;
-}
-static void chdes(cnct_hdlr_t *p)
-{
-    if (NULL != p->pnd) {
-        PMIX_RELEASE(p->pnd);
-    }
-    if (NULL != p->info) {
-        PMIX_INFO_FREE(p->info, p->ninfo);
-    }
-}
-static PMIX_CLASS_INSTANCE(cnct_hdlr_t,
-                           pmix_object_t,
-                           chcon, chdes);
-
-static void _cnct_complete(int sd, short args, void *cbdata)
-{
-    cnct_hdlr_t *ch = (cnct_hdlr_t *) cbdata;
     uint32_t u32;
+
+    if (PMIX_SUCCESS == why || PMIX_OPERATION_SUCCEEDED == why) {
+        /* a refusal is never reported as a success */
+        why = PMIX_ERROR;
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:base: refusing the connection on socket %d: %s", pnd->sd,
+                        PMIx_Error_string(why));
+    if (0 <= pnd->sd) {
+        u32 = htonl((uint32_t) why);
+        /* nothing more is owed if the peer is not there to read it */
+        (void) pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+    }
+    PMIX_RELEASE(pnd);
+}
+
+/* A scratch peer to validate a connection with: what the security module
+ * reads and may change - the identity, the protocol, the socket - and
+ * nothing else. The identity is the caller's copy, so a module settling an
+ * identity changes nothing shared. */
+static pmix_peer_t *scratch_peer(pmix_pending_connection_t *pnd, const char *nspace,
+                                 pmix_rank_t rank, uid_t uid, gid_t gid, bool registered)
+{
+    pmix_peer_t *peer;
+    pmix_rank_info_t *info;
+
+    peer = PMIX_NEW(pmix_peer_t);
+    info = PMIX_NEW(pmix_rank_info_t);
+    if (NULL == peer || NULL == info) {
+        if (NULL != peer) {
+            PMIX_RELEASE(peer);
+        }
+        if (NULL != info) {
+            PMIX_RELEASE(info);
+        }
+        return NULL;
+    }
+    info->pname.nspace = strdup(nspace);
+    info->pname.rank = rank;
+    info->uid = uid;
+    info->gid = gid;
+    info->host_registered = registered;
+    peer->info = info;
+    peer->index = -1;
+    memcpy(&peer->proc_type, &pnd->proc_type, sizeof(pmix_proc_type_t));
+    peer->protocol = pnd->protocol;
+    peer->transport = pnd->transport;
+    /* the socket stays the connection's: it is lent to the module only
+     * while it validates */
+    peer->sd = -1;
+    return peer;
+}
+
+/* Validate the credential the peer sent */
+static pmix_status_t validate(pmix_pending_connection_t *pnd)
+{
+    pmix_psec_module_t *psec = (pmix_psec_module_t *) pnd->psecmod;
+    pmix_peer_t *peer = (pmix_peer_t *) pnd->peer;
+    pmix_byte_object_t cred;
     pmix_status_t rc;
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    if (PMIX_SUCCESS != ch->status) {
-        goto error;
-    }
-
-    /* tell the client all is good */
-    u32 = htonl(ch->reply);
-    rc = pmix_ptl_base_send_blocking(ch->pnd->sd, (char *) &u32, sizeof(uint32_t));
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto error;
-    }
-
-    /* If needed, perform the handshake. The macro will update reply */
-    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED_WITH(ch->reply, ch->psec, ch->peer);
-
-    /* It is possible that connection validation failed */
-    if (PMIX_SUCCESS != ch->reply) {
+    /* A peer that connected over TCP from an address that is not this
+     * host's names a mechanism that validates a credential made on its
+     * own host - and is not taken at all by a build without remote tools,
+     * whatever address its listener is on */
+    if (!local_peer(pnd) && (!psec->remote || !PMIX_ENABLE_REMOTE_TOOLS) &&
+        !pmix_ptl_base_addr_on_host(&pnd->addr)) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "validation of client connection failed");
-        goto error;
+                            "ptl:base: refusing a peer at %s, not on this host - this build "
+                            "takes no remote tools, or security mechanism \"%s\" validates "
+                            "only a peer on this host",
+                            pmix_net_get_hostname((struct sockaddr *) &pnd->addr), psec->name);
+        return PMIX_ERR_NO_PERMISSIONS;
     }
 
-    /* send the client's array index */
-    u32 = htonl(ch->peer->index);
-    rc = pmix_ptl_base_send_blocking(ch->pnd->sd, (char *) &u32, sizeof(uint32_t));
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto error;
+    cred.bytes = pnd->cred;
+    cred.size = pnd->len;
+    peer->sd = pnd->sd;
+    PMIX_PSEC_VALIDATE_CONNECTION_WITH(rc, psec, peer, NULL, 0, NULL, NULL, &cred);
+    peer->sd = -1;
+    return rc;
+}
+
+/* A tool that brings no identity of its own is known to the server by the
+ * one the host gives it, and is sent it: a tool that asks for one gets the
+ * namespace and rank, and a tool of the legacy kinds - which only v2.1
+ * sends, and which takes its rank to be 0 - gets the namespace alone */
+static bool host_names_tool(pmix_pending_connection_t *pnd)
+{
+    return pnd->need_id || PMIX_LEGACY_TOOL == pnd->flag || PMIX_LEGACY_LAUNCHER == pnd->flag;
+}
+
+/* How much longer than the time it asks the host to answer in the server
+ * waits, for an answer given at the end of that time to arrive */
+#define PMIX_PTL_HOST_GRACE_SEC 2
+
+/* Whether a process of this name has a live connection */
+static bool name_is_live(const pmix_proc_t *id)
+{
+    pmix_peer_t *pr;
+    int n;
+
+    for (n = 0; n < pmix_server_globals.clients.size; n++) {
+        pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
+        if (NULL != pr && NULL != pr->info && !pr->finalized && 0 <= pr->sd &&
+            pr->info->pname.rank == id->rank &&
+            PMIx_Check_nspace(pr->info->pname.nspace, id->nspace)) {
+            return true;
+        }
     }
+    return false;
+}
+
+/* Whether this is a tool's connection rather than a client's */
+/* Whether a connection is on the local transport, whose far end the
+ * kernel identifies */
+static bool local_peer(pmix_pending_connection_t *pnd)
+{
+    return NULL != pnd->transport && NULL != pnd->transport->peer_identity;
+}
+
+/* The pid the kernel reports for a local connection's far end, or 0 if it
+ * gives none */
+static pid_t kernel_pid(pmix_pending_connection_t *pnd)
+{
+    uid_t uid;
+    gid_t gid;
+    pid_t pid = 0;
+
+    if (PMIX_SUCCESS != pnd->transport->peer_identity(pnd->sd, &uid, &gid, &pid)) {
+        return 0;
+    }
+    return pid;
+}
+
+static bool is_tool(pmix_pending_connection_t *pnd)
+{
+    return PMIX_SIMPLE_CLIENT != pnd->flag && PMIX_SINGLETON_CLIENT != pnd->flag;
+}
+
+/* The name a tool's connection is known by: the one it brought, or the one
+ * the host gave it */
+static const pmix_proc_t *tool_name(pmix_pending_connection_t *pnd)
+{
+    return host_names_tool(pnd) ? &pnd->assigned : &pnd->proc;
+}
+
+/* The host has been handed the notice, and the name the connection held
+ * is free */
+static void noticed(pmix_status_t status, void *cbdata)
+{
+    pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
+    if (pnd->late_listed) {
+        pmix_list_remove_item(&pmix_ptl_base.tool_late, &pnd->super);
+        pnd->late_listed = false;
+    }
+    PMIX_RELEASE(pnd);
+    kick_tool_queue();
+}
+
+/* The host accepted `id`, and it is not connected - the connection could
+ * not be completed, or the server had stopped waiting for the answer.
+ * Tell the host, as for any process that leaves without finalizing, and
+ * release the connection once the host has been given the notice. Until
+ * then the connection keeps the name: a client's rank, and a tool's on a
+ * rank it was counted on, by `connecting`, and any tool's by its place on
+ * tool_late, so nothing accepted under the name meanwhile can be what the
+ * notice names. If a live connection has the name already, the notice
+ * would name it, and the host is not told */
+static void release_not_connected(pmix_pending_connection_t *pnd, const pmix_proc_t *id)
+{
+    if (0 <= pnd->sd) {
+        CLOSE_THE_SOCKET(pnd->sd);
+        pnd->sd = -1;
+    }
+    if (name_is_live(id)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: %s:%u was accepted but not connected, and a live "
+                            "connection has the name - the host is not told",
+                            id->nspace, id->rank);
+        noticed(PMIX_SUCCESS, pnd);
+        return;
+    }
+    if (is_tool(pnd) && !pnd->late_listed) {
+        pmix_list_append(&pmix_ptl_base.tool_late, &pnd->super);
+        pnd->late_listed = true;
+    }
+    pmix_ptl_base_report_not_connected(id, noticed, pnd);
+}
+
+/* Refuse a connection the host accepted, with `why`, and tell the host */
+static void refuse_accepted(pmix_pending_connection_t *pnd, const pmix_proc_t *id,
+                            pmix_status_t why)
+{
+    uint32_t u32;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "connect-ack from client completed");
+                        "ptl:base: refusing %s:%u, which the host accepted: %s", id->nspace,
+                        id->rank, PMIx_Error_string(why));
+    if (0 <= pnd->sd) {
+        u32 = htonl((uint32_t) why);
+        (void) pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+    }
+    release_not_connected(pnd, id);
+}
 
-    pmix_ptl_base_set_nonblocking(ch->pnd->sd);
+/* The host's late answer for a connection the server stopped waiting on.
+ * A yes is for a process that is not connected - tell the host so. `id`
+ * is NULL when the answer named nobody */
+static void late_answer(pmix_pending_connection_t *pnd, const pmix_proc_t *id)
+{
+    if (PMIX_SUCCESS == pnd->status && PMIX_SUCCESS == pnd->upcall_rc && NULL != id) {
+        release_not_connected(pnd, id);
+        return;
+    }
+    noticed(PMIX_SUCCESS, pnd);
+}
 
-    /* start the events for this client */
-    pmix_event_assign(&ch->peer->recv_event, pmix_globals.evbase, ch->pnd->sd, EV_READ | EV_PERSIST,
-                      pmix_ptl_base_recv_handler, ch->peer);
-    pmix_event_add(&ch->peer->recv_event, NULL);
-    ch->peer->recv_ev_active = true;
-    pmix_event_assign(&ch->peer->send_event, pmix_globals.evbase, ch->pnd->sd, EV_WRITE | EV_PERSIST,
-                      pmix_ptl_base_send_handler, ch->peer);
+/* The seconds the host can be given to answer in: what a process waits
+ * for each reply while it connects, less what it has waited for this one
+ * already - in the queue for the host, say. 0 when that wait is
+ * unbounded; less than 1 once it is used up */
+static int host_timeout(pmix_pending_connection_t *pnd)
+{
+    struct timeval now;
+    long waited;
+
+    if (0 >= pmix_ptl_base.handshake_wait_time) {
+        return 0;
+    }
+    pmix_ptl_base_monotime(&now);
+    waited = (long) (now.tv_sec - pnd->waiting.tv_sec);
+    if (now.tv_usec < pnd->waiting.tv_usec) {
+        --waited;
+    }
+    if (0 > waited) {
+        waited = 0;
+    }
+    if (waited >= (long) pmix_ptl_base.handshake_wait_time) {
+        return -1;
+    }
+    return pmix_ptl_base.handshake_wait_time - (int) waited;
+}
+
+static void host_expired(int sd, short args, void *cbdata);
+
+/* Wait for the host's answer no longer than it was asked to give it in,
+ * and a little more */
+static void await_host(pmix_pending_connection_t *pnd)
+{
+    struct timeval tv;
+
+    if (0 >= pnd->host_tmo) {
+        return;
+    }
+    tv.tv_sec = pnd->host_tmo + PMIX_PTL_HOST_GRACE_SEC;
+    tv.tv_usec = 0;
+    pmix_event_evtimer_set(pmix_globals.evbase, &pnd->timer, host_expired, pnd);
+    if (0 == pmix_event_evtimer_add(&pnd->timer, &tv)) {
+        pnd->timer_active = true;
+    }
+}
+
+/* the host has answered: stop waiting for it */
+static void host_answered(pmix_pending_connection_t *pnd)
+{
+    if (pnd->timer_active) {
+        pmix_event_evtimer_del(&pnd->timer);
+        pnd->timer_active = false;
+    }
+}
+
+/* the namespace of this name on the server's list, if there is one */
+static pmix_namespace_t *find_nspace(const char *nspace)
+{
+    pmix_namespace_t *nptr;
+
+    if (NULL == nspace || '\0' == nspace[0]) {
+        return NULL;
+    }
+    PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (NULL != nptr->nspace && 0 == strcmp(nptr->nspace, nspace)) {
+            return nptr;
+        }
+    }
+    return NULL;
+}
+
+/* whether a namespace is still on the server's list - the host may
+ * deregister one while it decides on a connection */
+static bool nspace_listed(pmix_namespace_t *nptr)
+{
+    pmix_namespace_t *ns;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (ns == nptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static pmix_rank_info_t *find_rank(pmix_namespace_t *nptr, pmix_rank_t rank)
+{
+    pmix_rank_info_t *info;
+
+    PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
+        if (info->pname.rank == rank) {
+            return info;
+        }
+    }
+    return NULL;
+}
+
+/* A namespace's wire format is shared by all of its peers - what the
+ * server packs for one it packs for every one. The first peer to connect
+ * sets it, and a later one that disagrees cannot be served. */
+static bool wire_format_fits(pmix_pending_connection_t *pnd, pmix_namespace_t *nptr)
+{
+    pmix_bfrops_module_t *bfrops = (pmix_bfrops_module_t *) pnd->bfropsmod;
+
+    if (NULL != nptr->compat.bfrops &&
+        (nptr->compat.bfrops != bfrops || nptr->compat.type != pnd->buffer_type)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "%s:%u wire format %s does not match its namespace's %s",
+                            pnd->proc.nspace, pnd->proc.rank, pnd->bfrops,
+                            nptr->compat.bfrops->version);
+        return false;
+    }
+    return true;
+}
+
+/* An accepted peer joins its namespace's wire format, which the first of
+ * its peers sets and no later one replaces */
+static void adopt_modules(pmix_pending_connection_t *pnd, pmix_peer_t *peer,
+                          pmix_namespace_t *nptr)
+{
+    pmix_info_t ginfo;
+    pmix_status_t rc;
+
+    if (NULL == nptr->compat.bfrops) {
+        nptr->compat.bfrops = (pmix_bfrops_module_t *) pnd->bfropsmod;
+        nptr->compat.type = pnd->buffer_type;
+    }
+    if (NULL == nptr->compat.psec) {
+        nptr->compat.psec = (pmix_psec_module_t *) pnd->psecmod;
+    }
+    if (NULL == nptr->compat.gds) {
+        nptr->compat.gds = (pmix_gds_base_module_t *) pnd->gdsmod;
+    }
+    /* track this peer's GDS module on the peer itself, so a later
+     * per-client fallback (PMIX_GDS_FALLBACK_CMD) can change it without
+     * affecting the other peers sharing this nspace */
+    peer->gds = (pmix_gds_base_module_t *) pnd->gdsmod;
+
+    /* If we haven't previously stored the wire format for this nspace, do
+     * so now. This is what PMIx_Data_pack/unpack fall back on for an
+     * nspace with no connected peer left, and they hand it to
+     * pmix_bfrops_base_assign_module() - which matches a component name
+     * ("v61"), not the peer's library release ("7.0.0") */
+    if (!nptr->version_stored) {
+        PMIX_INFO_LOAD(&ginfo, PMIX_BFROPS_MODULE, nptr->compat.bfrops->version, PMIX_STRING);
+        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, &ginfo, 1);
+        PMIX_INFO_DESTRUCT(&ginfo);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        } else {
+            nptr->version_stored = true;
+        }
+    }
+}
+
+/* If this rank previously finalized, a harmless finalized "tombstone"
+ * peer from that prior cycle may still occupy its clients-array slot -
+ * pmix_server_peer_finalized leaves it in place at socket-close rather
+ * than mutating shared state amid concurrent collectives. Now that the
+ * rank is reconnecting we are at a safe point (no collective from the
+ * prior cycle can still be in flight), so reclaim that tombstone: null
+ * its slot, drop the finalized count it was still contributing, and
+ * release it. This is what keeps the clients array and nptr->nfinalized
+ * from drifting across repeated init/finalize cycles. Only when no live
+ * process remains for the rank (proc_cnt == 0), so a live connection
+ * for the rank is never disturbed. See
+ * docs/how-things-work/init-finalize.rst. */
+static void reclaim_tombstone(pmix_rank_info_t *info)
+{
+    pmix_peer_t *stale;
+
+    if (0 > info->peerid || 0 != info->proc_cnt) {
+        return;
+    }
+    stale = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
+                                                        info->peerid);
+    if (NULL != stale && stale->finalized) {
+        pmix_pointer_array_set_item(&pmix_server_globals.clients, info->peerid, NULL);
+        /* the count is on the tombstone's namespace - that is the one its
+         * finalize raised */
+        if (NULL != stale->nptr && 0 < stale->nptr->nfinalized) {
+            --stale->nptr->nfinalized;
+        }
+        PMIX_RELEASE(stale);
+    }
+}
+
+/* the connection is the peer's now: start serving it */
+static void activate(pmix_pending_connection_t *pnd, pmix_peer_t *peer)
+{
+    peer->sd = pnd->sd;
+    pnd->sd = -1;
+    pnd->peer = NULL;
+    PMIX_RELEASE(pnd);
+
+    pmix_ptl_base_set_nonblocking(peer->sd);
+    pmix_event_assign(&peer->recv_event, pmix_globals.evbase, peer->sd, EV_READ | EV_PERSIST,
+                      pmix_ptl_base_recv_handler, peer);
+    pmix_event_add(&peer->recv_event, NULL);
+    peer->recv_ev_active = true;
+    pmix_event_assign(&peer->send_event, pmix_globals.evbase, peer->sd, EV_WRITE | EV_PERSIST,
+                      pmix_ptl_base_send_handler, peer);
     /* A send may have been queued while this event had no base - see
      * pmix_ptl_base_send(). It could not be activated then; activate it
      * now, or it waits for a send that may never come. */
-    if (NULL != ch->peer->send_msg && !ch->peer->send_ev_active) {
-        if (0 == pmix_event_add(&ch->peer->send_event, 0)) {
-            ch->peer->send_ev_active = true;
+    if (NULL != peer->send_msg && !peer->send_ev_active) {
+        if (0 == pmix_event_add(&peer->send_event, 0)) {
+            peer->send_ev_active = true;
         }
     }
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "pmix:server client %s:%u has connected on socket %d",
-                        ch->peer->info->pname.nspace, ch->peer->info->pname.rank, ch->peer->sd);
+                        "pmix:server %s %s:%u has connected on socket %d",
+                        PMIX_PEER_IS_TOOL(peer) ? "tool" : "client",
+                        peer->info->pname.nspace, peer->info->pname.rank, peer->sd);
 
-    /* check the cached events and update the client */
-    _check_cached_events(ch->peer);
-    PMIX_RELEASE(ch);
-    return;
-
-error:
-    if (NULL != ch->peer) {
-        /* Undo the bookkeeping the connection handler did on this rank's
-         * behalf before it handed us the peer: the live-process count it
-         * incremented and the clients-array slot it pointed the rank at.
-         * Leaving proc_cnt raised strands the rank at a count that never
-         * drops again, which blocks the tombstone reclaim on a later
-         * reconnect (that reclaim requires proc_cnt == 0), and leaving
-         * peerid set points the rank at a slot we are about to empty. */
-        if (NULL != ch->peer->info) {
-            if (0 < ch->peer->info->proc_cnt) {
-                --ch->peer->info->proc_cnt;
-            }
-            if (ch->peer->info->peerid == ch->peer->index) {
-                ch->peer->info->peerid = -1;
-            }
-        }
-        if (0 <= ch->peer->index) {
-            pmix_pointer_array_set_item(&pmix_server_globals.clients, ch->peer->index, NULL);
-        }
-        /* the socket is closed once, below */
-        ch->peer->sd = -1;
-        PMIX_RELEASE(ch->peer);
-    }
-    CLOSE_THE_SOCKET(ch->pnd->sd);
-    PMIX_RELEASE(ch);
-}
-
-static void _connect_complete(pmix_status_t status, void *cbdata)
-{
-    cnct_hdlr_t *ch = (cnct_hdlr_t *) cbdata;
-    /* need to thread-shift this response */
-    ch->status = status;
-    PMIX_THREADSHIFT(ch, _cnct_complete);
+    /* check the cached events and update the peer */
+    _check_cached_events(peer);
 }
 
 /* Take into buf, at *recvd, whatever the socket has of the size bytes
@@ -252,10 +585,9 @@ static pmix_status_t read_connect_ack(pmix_pending_connection_t *pnd)
         return rc;
     }
     /* get the id, authentication and version payload (and possibly
-     * security credential) - to guard against potential attacks, we'll
-     * set an arbitrary limit per a define. The length is judged on every
-     * pass, not only the one that allocates: it is the bound the read
-     * below runs to, and it comes off the wire */
+     * security credential) - no larger than PMIX_MAX_CRED_SIZE. The
+     * length is judged on every pass, not only the one that allocates: it
+     * is the bound the read below runs to, and it comes off the wire */
     if (PMIX_MAX_CRED_SIZE < pnd->hdr.nbytes) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:base:connection_handler: connect-ack of %u bytes "
@@ -288,30 +620,10 @@ static pmix_status_t read_connect_ack(pmix_pending_connection_t *pnd)
 void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 {
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
-    pmix_peer_t *peer = NULL;
-    pmix_status_t rc, reply;
-    char *msg = NULL, *mg, *blob = NULL;
-    size_t cnt, n, nblob = 0;
-    size_t len = 0;
-    int32_t i32;
-    pmix_namespace_t *nptr, *tmp;
-    pmix_rank_info_t *info = NULL, *iptr;
-    pmix_proc_t proc;
-    pmix_info_t ginfo, *iblob = NULL;
-    pmix_byte_object_t cred;
-    pmix_buffer_t buf;
+    pmix_status_t rc;
+    char *msg = NULL, *mg;
+    size_t cnt;
     uint8_t major, minor, release;
-    uint32_t u32;
-    cnct_hdlr_t *ch;
-    void *ilist;
-    pmix_data_array_t darray;
-    pmix_peer_t *stale;
-    bool counted = false;
-    pmix_psec_module_t *psec = NULL;
-    pmix_bfrops_module_t *bfrops = NULL;
-    pmix_gds_base_module_t *gds = NULL;
-    pid_t kpid;
-    bool kpid_known;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -331,12 +643,11 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         PMIX_POST_OBJECT(pnd);
         if (0 != pmix_event_add(&pnd->ev, NULL)) {
             PMIX_ERROR_LOG(PMIX_ERROR);
-            pmix_ptl_base_drop_pending_connection(pnd);
+            pmix_ptl_base_drop_pending_connection(pnd, PMIX_ERROR);
         }
         return;
     }
-    /* complete or failed, it is no longer waiting on its socket - and
-     * everything below disposes of pnd itself */
+    /* complete or failed, it is no longer waiting on its socket */
     pmix_list_remove_item(&pmix_ptl_base.pending_connections, &pnd->super);
     if (pnd->timer_active) {
         pmix_event_evtimer_del(&pnd->timer);
@@ -347,44 +658,37 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
                             "ptl:base:connection_handler unable to complete recv of connect-ack "
                             "on socket %d: %s",
                             pnd->sd, PMIx_Error_string(rc));
-        goto error;
+        if (PMIX_ERR_UNREACH == rc) {
+            /* the peer closed the connection - nobody to tell */
+            PMIX_RELEASE(pnd);
+        } else {
+            /* a connect-ack too large to accept, or one we could not make
+             * room for */
+            refuse(pnd, rc);
+        }
+        return;
     }
-    /* the payload is ours from here - the error path below frees it */
+    /* the payload is ours from here */
     msg = pnd->msg;
     pnd->msg = NULL;
 
-    /* The replies to this connect-ack, and the security handshake some psec
-     * modules run after them, are written and read as blocking exchanges -
-     * so put the socket back into blocking mode for them */
+    /* The replies to this connect-ack are a few words written into a
+     * socket nothing else has written to, so they are written as blocking
+     * sends. Nothing below reads from the socket */
     pmix_ptl_base_set_blocking(pnd->sd);
-
-    /* Bound every blocking read from here on. This is still before the
-     * credential has been validated, on the progress thread, so a psec
-     * handshake peer that stops answering would otherwise hold that thread
-     * indefinitely. The timeout stays on the socket until it goes
-     * non-blocking for steady-state traffic. A failure to set it is not
-     * fatal - we are no worse off than before */
-    if (0 < pmix_ptl_base.connect_ack_timeout) {
-        struct timeval tv;
-        tv.tv_sec = pmix_ptl_base.connect_ack_timeout;
-        tv.tv_usec = 0;
-        if (0 != setsockopt(pnd->sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:base:connection_handler: could not set SO_RCVTIMEO: %s",
-                                strerror(pmix_socket_errno));
-        }
-    }
 
     cnt = pnd->hdr.nbytes;
     mg = msg;
+    /* a field that is missing or malformed is refused as such */
+    rc = PMIX_ERR_BAD_PARAM;
     /* extract the name of the sec module they used */
     PMIX_PTL_GET_STRING(pnd->psec);
 
     /* extract any credential so we can validate this connection
      * before doing anything else */
     PMIX_PTL_GET_U32(pnd->len);
-    if (PMIX_TAINT_UINT_LIMIT < pnd->len) {    // arbitrary value to guard against tainted input
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+    if (PMIX_TAINT_UINT_LIMIT < pnd->len) {    // a credential is no longer than this
+        rc = PMIX_ERR_BAD_PARAM;
         goto error;
     }
 
@@ -472,7 +776,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     default:
         /* we don't know what they are! */
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+        rc = PMIX_ERR_NOT_SUPPORTED;
         goto error;
     }
 
@@ -483,6 +787,16 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     PMIX_SET_PROC_MINOR(&pnd->proc_type, minor);
     PMIX_SET_PROC_RELEASE(&pnd->proc_type, release);
 
+    /* no release is numbered 0 - this is not a version at all */
+    if (0 == major) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:connection_handler: connect-ack version \"%s\" is "
+                            "not a PMIx version",
+                            (NULL == pnd->version) ? "(none)" : pnd->version);
+        rc = PMIX_ERR_BAD_PARAM;
+        goto error;
+    }
+
     /* The oldest peer we serve is v2.1. A v1.x peer cannot reach us at all
      * (it speaks only the usock transport, which is gone), and a v2.0
      * peer's handshake ends here, without the wire format, buffer type or
@@ -492,13 +806,57 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     if (1 == major || (2 == major && 0 == minor)) {
         pmix_show_help("help-ptl-base.txt", "unsupported-client-version", true,
                        pnd->version);
-        /* The status is the first thing every client reads back, so it
-         * gets a real failure rather than a closed socket. It cannot name
-         * the code, but it will fail instead of carrying on as though no
-         * server were there. Nothing more is owed if the send fails. */
-        u32 = htonl((uint32_t) PMIX_ERR_OUTDATED);
-        (void) pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+        /* It cannot name the code, but it will fail instead of carrying
+         * on as though no server were there */
+        rc = PMIX_ERR_OUTDATED;
         goto error;
+    }
+
+    /* A client or tool of an earlier release is taken only when this
+     * server takes them */
+    if (PMIX_PTL_LOCAL_MAJOR > major && !pmix_ptl_base.legacy_peers) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:connection_handler: refusing a peer of release %s - "
+                            "this server takes no clients or tools of earlier releases",
+                            pnd->version);
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto error;
+    }
+    /* and only over TCP: no earlier release has the local transport */
+    if (PMIX_PTL_LOCAL_MAJOR > major && local_peer(pnd)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:connection_handler: refusing a peer of release %s on "
+                            "the local socket, which no earlier release uses",
+                            pnd->version);
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto error;
+    }
+
+    /* A process that names itself must name a process: a namespace, and a
+     * rank. An empty namespace would match every namespace wherever names
+     * are compared. A tool of an earlier release with its server's
+     * address in its environment but no namespace and rank says it is on
+     * a client's rank, and sends no name: it is given one by the host, as
+     * a tool that needs one is - but it reads none back, so none is sent,
+     * and it knows itself by no name. A tool of this release with no
+     * namespace and rank asks for an identity instead */
+    if (PMIX_SIMPLE_CLIENT != pnd->flag && !pnd->need_id && PMIX_LEGACY_TOOL != pnd->flag &&
+        PMIX_LEGACY_LAUNCHER != pnd->flag &&
+        ('\0' == pnd->proc.nspace[0] || !PMIX_RANK_IS_VALID(pnd->proc.rank))) {
+        if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
+            pnd->flag = (PMIX_TOOL_CLIENT == pnd->flag) ? PMIX_TOOL_NEEDS_ID
+                                                        : PMIX_LAUNCHER_NEEDS_ID;
+            pnd->need_id = true;
+            pnd->id_unsent = true;
+            PMIX_LOAD_PROCID(&pnd->proc, NULL, PMIX_RANK_UNDEF);
+        } else {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:base:connection_handler: connect-ack names no process "
+                                "(\"%s\":%u)",
+                                pnd->proc.nspace, pnd->proc.rank);
+            rc = PMIX_ERR_BAD_PARAM;
+            goto error;
+        }
     }
 
     /* extract the name of the bfrops module they used */
@@ -510,688 +868,1452 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     /* extract the name of the gds module they used */
     PMIX_PTL_GET_STRING(pnd->gds);
 
-    /* extract the blob */
+    /* keep the trailing info until the peer is validated - it is read
+     * with the wire format the peer named */
     if (0 < cnt) {
-        len = cnt;
-        PMIX_PTL_GET_BLOB(blob, len);
+        pnd->bloblen = cnt;
+        PMIX_PTL_GET_BLOB(pnd->blob, pnd->bloblen);
     }
+    /* the info it holds may carry a connection token */
+    pmix_ptl_base_wipe(msg, pnd->hdr.nbytes);
+    free(msg);
+    msg = NULL;
 
-    /* see if this is a tool connection request */
-    if (PMIX_SIMPLE_CLIENT != pnd->flag &&
-        PMIX_SINGLETON_CLIENT != pnd->flag) {
-        /* nope, it's for a tool, so process it
-         * separately - it is a 2-step procedure */
-        rc = process_tool_request(pnd, blob, len);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            goto error;
-        }
-        if (NULL != blob) {
-            free(blob);
-            blob = NULL;
-        }
+    if (PMIX_SIMPLE_CLIENT == pnd->flag || PMIX_SINGLETON_CLIENT == pnd->flag) {
+        accept_client(pnd);
+    } else {
+        accept_tool(pnd);
+    }
+    return;
+
+error:
+    if (NULL != msg) {
+        pmix_ptl_base_wipe(msg, pnd->hdr.nbytes);
         free(msg);
+    }
+    refuse(pnd, rc);
+}
+
+/* What a client's connect-ack info says: its pid and real ids, as its
+ * PMIx library sent them, recorded only once the connection is accepted.
+ * A uid or gid in it is ignored - the identity is the one the security
+ * module settles, and nothing a peer states can add to that */
+static pmix_status_t read_client_info(pmix_pending_connection_t *pnd)
+{
+    pmix_bfrops_module_t *bfrops = (pmix_bfrops_module_t *) pnd->bfropsmod;
+    pmix_buffer_t buf;
+    pmix_info_t *iblob = NULL;
+    size_t nblob = 0, n;
+    int32_t i32;
+    pmix_status_t rc;
+
+    if (NULL == pnd->blob) {
+        return PMIX_SUCCESS;
+    }
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &buf, pnd->blob, pnd->bloblen);
+    buf.type = pnd->buffer_type;
+    i32 = 1;
+    rc = bfrops->unpack(&buf, &nblob, &i32, PMIX_SIZE);
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+        /* too short to hold even the count - see PMIX_PTL_LEGACY_PAD */
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    /* the blob must still hold nblob packed pmix_info_t. This mirrors the
+     * check on the tool path */
+    if (!pmix_bfrop_count_fits(&buf, nblob, PMIX_INFO)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (0 == nblob) {
+        return PMIX_SUCCESS;
+    }
+    PMIX_INFO_CREATE(iblob, nblob);
+    if (NULL == iblob) {
+        return PMIX_ERR_NOMEM;
+    }
+    i32 = (int32_t) nblob;
+    rc = bfrops->unpack(&buf, iblob, &i32, PMIX_INFO);
+    if (PMIX_SUCCESS != rc) {
+        pmix_ptl_base_wipe_token_info(iblob, nblob);
+        PMIX_INFO_FREE(iblob, nblob);
+        return rc;
+    }
+    for (n = 0; n < nblob; n++) {
+        if (PMIx_Check_key(iblob[n].key, PMIX_PROC_PID)) {
+            pnd->pid = iblob[n].value.data.pid;
+        } else if (PMIx_Check_key(iblob[n].key, PMIX_REALUID)) {
+            pnd->realuid = iblob[n].value.data.uint32;
+            pnd->realuid_given = true;
+        } else if (PMIx_Check_key(iblob[n].key, PMIX_REALGID)) {
+            pnd->realgid = iblob[n].value.data.uint32;
+            pnd->realgid_given = true;
+        } else if (PMIx_Check_key(iblob[n].key, PMIX_PTL_TOKEN_KEY) && NULL == pnd->token &&
+                   PMIX_STRING == iblob[n].value.type && NULL != iblob[n].value.data.string) {
+            pnd->token = strdup(iblob[n].value.data.string);
+        }
+    }
+    pmix_ptl_base_wipe_token_info(iblob, nblob);
+    PMIX_INFO_FREE(iblob, nblob);
+    return rc;
+}
+
+/* A client: a process the host registered, before it started, under the
+ * namespace and rank it names */
+static void accept_client(pmix_pending_connection_t *pnd)
+{
+    pmix_namespace_t *nptr;
+    pmix_rank_info_t *info;
+    pmix_info_t ginfo;
+
+    nptr = find_nspace(pnd->proc.nspace);
+    if (NULL == nptr) {
+        refuse(pnd, PMIX_ERR_NOT_FOUND);
+        return;
+    }
+    info = find_rank(nptr, pnd->proc.rank);
+    if (NULL == info) {
+        refuse(pnd, PMIX_ERR_NOT_FOUND);
+        return;
+    }
+    PMIX_RETAIN(nptr);
+    pnd->nptr = nptr;
+    PMIX_RETAIN(info);
+    pnd->rinfo = info;
+
+    /* the modules it asked for */
+    pnd->psecmod = pmix_psec_base_assign_module(pnd->psec);
+    pnd->bfropsmod = pmix_bfrops_base_assign_module(pnd->bfrops);
+    if (NULL != pnd->gds) {
+        PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);
+        pnd->gdsmod = pmix_gds_base_assign_module(&ginfo, 1);
+        PMIX_INFO_DESTRUCT(&ginfo);
+    } else {
+        pnd->gdsmod = pmix_gds_base_assign_module(NULL, 0);
+    }
+    if (NULL == pnd->psecmod || NULL == pnd->bfropsmod || NULL == pnd->gdsmod) {
+        refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
+        return;
+    }
+    if (!wire_format_fits(pnd, nptr)) {
+        refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
         return;
     }
 
-    /* it is a client that is connecting, so it should have
-     * been registered with us prior to being started.
-     * See if we know this nspace */
-    nptr = NULL;
-    PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(tmp->nspace, pnd->proc.nspace)) {
-            nptr = tmp;
-            break;
+    /* The rank's entry is the identity the client must have, whoever made
+     * it - the host, or this server for a singleton that started it - so
+     * it is validated as a registration, on a copy: a module settling an
+     * identity must never rewrite the entry itself */
+    pnd->peer = scratch_peer(pnd, nptr->nspace, info->pname.rank, info->uid, info->gid, true);
+    if (NULL == pnd->peer) {
+        refuse(pnd, PMIX_ERR_NOMEM);
+        return;
+    }
+    client_settled(pnd, validate(pnd));
+}
+
+/* Whether a rank already has a live connection, or one waiting on the
+ * host's answer. A finalized connection is a tombstone the rank left
+ * behind, and one whose socket has closed is a connection that was lost -
+ * a process may connect again after either.
+ *
+ * A socket can have closed before its receive handler has run to see it:
+ * the close is read on the progress thread and a new connection arrives
+ * on the listener thread, so a rank whose process died can connect again
+ * - a process the host started again, say - before the server has seen
+ * the first one go. Such a connection is handled as lost here, first, so
+ * the new one is not refused as a second connection for the rank */
+static bool rank_connected(pmix_rank_info_t *info)
+{
+    pmix_peer_t *pr;
+    int n;
+
+    if (0 < info->connecting) {
+        return true;
+    }
+    for (n = 0; n < pmix_server_globals.clients.size; n++) {
+        pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
+        if (NULL != pr && pr->info == info && !pr->finalized && 0 <= pr->sd) {
+            if (pmix_ptl_base_reap_if_closed(pr)) {
+                continue;
+            }
+            return true;
         }
     }
-    if (NULL == nptr) {
-        /* we don't know this namespace, reject it */
-        rc = PMIX_ERR_NOT_FOUND;
-        goto error;
-    }
+    return false;
+}
 
-    /* likewise, we should have this peer in our list */
-    info = NULL;
-    PMIX_LIST_FOREACH (iptr, &nptr->ranks, pmix_rank_info_t) {
-        if (iptr->pname.rank == pnd->proc.rank) {
-            info = iptr;
-            break;
-        }
+/* The host answers a connection up-call exactly once: either an error
+ * from the up-call, or PMIX_SUCCESS and then the callback. A host that
+ * gets this wrong must not cost the server its memory, so the two cases
+ * that can be caught are: a second call of the callback, ignored while
+ * the connection is still waiting for the first to be acted on; and a
+ * callback followed by an error return, which is then the answer. A
+ * callback that comes after the connection was refused cannot be told
+ * from any other use of freed memory - see pmix_server_module_t(5). */
+static bool first_answer(pmix_pending_connection_t *pnd)
+{
+    if (atomic_exchange(&pnd->answered, true)) {
+        pmix_output(0, "PMIX ERROR: the host answered a connection request on socket %d "
+                       "more than once - ignoring all but the first answer",
+                    pnd->sd);
+        return false;
     }
-    if (NULL == info) {
-        /* rank unknown, reject it */
-        rc = PMIX_ERR_NOT_FOUND;
-        goto error;
-    }
+    return true;
+}
 
-    /* The modules this peer asked for. Nothing is attached to the
-     * namespace - which the job's other peers share - or recorded
-     * anywhere else until the peer has been validated, so hold them
-     * here */
-    psec = pmix_psec_base_assign_module(pnd->psec);
-    bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
-    if (NULL != pnd->gds) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);
-        gds = pmix_gds_base_assign_module(&ginfo, 1);
-        PMIX_INFO_DESTRUCT(&ginfo);
-    } else {
-        gds = pmix_gds_base_assign_module(NULL, 0);
+/* What the up-call returned. The host answers through the callback when it
+ * returns PMIX_SUCCESS (or, for a client, PMIX_OPERATION_SUCCEEDED with no
+ * callback). Returns true if the caller is to act on `rc` itself */
+static bool upcall_returned(pmix_pending_connection_t *pnd, pmix_status_t rc)
+{
+    if (PMIX_SUCCESS == rc) {
+        return false;
     }
-    if (NULL == psec || NULL == bfrops || NULL == gds) {
-        goto error;
+    if (pmix_atomic_check_bool(&pnd->answered)) {
+        /* it answered through the callback as well - that answer is
+         * queued, and acts on this one */
+        pmix_output(0, "PMIX ERROR: the host both called back and returned %s for a "
+                       "connection request on socket %d",
+                    PMIx_Error_string(rc), pnd->sd);
+        pnd->upcall_rc = (PMIX_OPERATION_SUCCEEDED == rc) ? PMIX_SUCCESS : rc;
+        return false;
     }
+    return true;
+}
 
-    /* The tracker for this peer, attached to nothing yet. Validation
-     * reads only the identity the rank was registered with, the protocol
-     * and the socket. */
-    peer = PMIX_NEW(pmix_peer_t);
-    if (NULL == peer) {
-        goto error;
-    }
-    /* not in the clients array - the error path must not empty a slot */
-    peer->index = -1;
-    memcpy(&peer->proc_type, &pnd->proc_type, sizeof(pmix_proc_type_t));
-    peer->protocol = pnd->protocol;
-    PMIX_RETAIN(info);
-    peer->info = info;
-    peer->sd = pnd->sd;
+/* the host's answer for a client, on whatever thread it gave it */
+static void client_host_cbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
 
-    /* validate the connection before anything is done for it */
-    cred.bytes = pnd->cred;
-    cred.size = pnd->len;
-    PMIX_PSEC_VALIDATE_CONNECTION_WITH(reply, psec, peer, NULL, 0, NULL, NULL, &cred);
-    /* PMIX_ERR_READY_FOR_HANDSHAKE is not a failure - it is how a psec
-     * module that authenticates with a live exchange rather than with a
-     * credential asks us to run that exchange. We carry it in ch->reply
-     * so that _cnct_complete can report it to the client and then drive
-     * the handshake; bailing out here would leave the handshake half of
-     * psec permanently unreachable */
-    if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
+    if (!first_answer(pnd)) {
+        return;
+    }
+    pnd->status = status;
+    PMIX_THREADSHIFT(pnd, client_answered);
+}
+
+/* The client is who its registration says. Ask the host */
+static void client_settled(pmix_pending_connection_t *pnd, pmix_status_t status)
+{
+    pmix_rank_info_t *info = (pmix_rank_info_t *) pnd->rinfo;
+    pmix_peer_t *peer = (pmix_peer_t *) pnd->peer;
+    pmix_proc_t proc;
+    void *ilist;
+    pmix_data_array_t darray;
+    pid_t kpid;
+    int tmo;
+    pmix_status_t rc;
+
+    if (PMIX_SUCCESS != status) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "validation of client connection failed");
-        goto error;
+        refuse(pnd, status);
+        return;
     }
-
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "client connection validated");
 
-    /* The namespace's wire format is shared by all of its peers - what
-     * the server packs for one it packs for every one. The first peer to
-     * connect sets it, and a later one that disagrees cannot be served. */
-    if (NULL != nptr->compat.bfrops &&
-        (nptr->compat.bfrops != bfrops || nptr->compat.type != pnd->buffer_type)) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "client %s:%u wire format %s does not match its namespace's %s",
-                            pnd->proc.nspace, pnd->proc.rank, pnd->bfrops,
-                            nptr->compat.bfrops->version);
-        goto error;
+    /* what its info says - read only now that it is who it says */
+    rc = read_client_info(pnd);
+    if (PMIX_SUCCESS != rc) {
+        refuse(pnd, rc);
+        return;
     }
 
-    /* save the version in the namespace object */
+    /* A process its host prepared with PMIx_server_setup_fork was given a
+     * token for its rank, which a client of this release presents - an
+     * earlier release has none to present */
+    if (PMIX_PTL_LOCAL_MAJOR <= pnd->proc_type.major) {
+        rc = pmix_ptl_base_check_token(info->pname.nspace, info->pname.rank, pnd->token);
+        if (PMIX_SUCCESS != rc) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "refusing %s:%u - it did not present its rank's token",
+                                info->pname.nspace, info->pname.rank);
+            refuse(pnd, rc);
+            return;
+        }
+    }
+
+    /* The process's pid, as the kernel reports it for this socket, is the
+     * one this host can act on - it is in our pid namespace. On the local
+     * transport it is the only one: a client whose kernel gives none has
+     * none. Over TCP the pid the client's library sent is used */
+    if (local_peer(pnd)) {
+        pnd->pid = kernel_pid(pnd);
+    } else if (PMIX_SUCCESS == pmix_util_getpid(pnd->sd, &kpid)) {
+        pnd->pid = kpid;
+    }
+
+    /* A rank has one connection at a time. A second one - from a process
+     * the client forked, or the program it exec'd, say - is refused, and
+     * the host is not asked about it */
+    if (rank_connected(info)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "refusing a second connection for %s:%u",
+                            info->pname.nspace, info->pname.rank);
+        refuse(pnd, PMIX_ERR_EXISTS);
+        return;
+    }
+
+    /* The host has what is left of the time the client waits for its
+     * answer. A client with none left is not worth asking about */
+    if (0 > (tmo = host_timeout(pnd))) {
+        refuse(pnd, PMIX_ERR_TIMEOUT);
+        return;
+    }
+    pnd->host_tmo = tmo;
+
+    ilist = PMIx_Info_list_start();
+    if (0 < pnd->pid) {
+        PMIx_Info_list_add(ilist, PMIX_PROC_PID, &pnd->pid, PMIX_PID);
+    }
+    PMIx_Info_list_add(ilist, PMIX_USERID, &peer->info->uid, PMIX_UINT32);
+    PMIx_Info_list_add(ilist, PMIX_GRPID, &peer->info->gid, PMIX_UINT32);
+    /* the security module that settled them */
+    PMIx_Info_list_add(ilist, PMIX_CRED_TYPE, ((pmix_psec_module_t *) pnd->psecmod)->name,
+                       PMIX_STRING);
+    if (pnd->realuid_given) {
+        PMIx_Info_list_add(ilist, PMIX_REALUID, &pnd->realuid, PMIX_UINT32);
+    }
+    if (pnd->realgid_given) {
+        PMIx_Info_list_add(ilist, PMIX_REALGID, &pnd->realgid, PMIX_UINT32);
+    }
+    /* the time the host is asked to answer in */
+    if (0 < tmo) {
+        PMIx_Info_list_add(ilist, PMIX_TIMEOUT, &tmo, PMIX_INT);
+    }
+    rc = PMIx_Info_list_convert(ilist, &darray);
+    PMIx_Info_list_release(ilist);
+    if (PMIX_SUCCESS != rc) {
+        /* the conversion creates its array before filling it */
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        refuse(pnd, rc);
+        return;
+    }
+    pnd->info = (pmix_info_t *) darray.array;
+    pnd->ninfo = darray.size;
+
+    /* let the host server know that this client has connected. Until it
+     * answers, this connection holds the rank: another arriving meanwhile
+     * is refused */
+    ++info->connecting;
+    pnd->connecting = true;
+    PMIX_LOAD_PROCID(&proc, info->pname.nspace, info->pname.rank);
+    if (NULL != pmix_host_server.client_connected2 || NULL != pmix_host_server.client_connected) {
+        await_host(pnd);
+    }
+    if (NULL != pmix_host_server.client_connected2) {
+        rc = pmix_host_server.client_connected2(&proc, info->server_object, pnd->info,
+                                                pnd->ninfo, client_host_cbfunc, pnd);
+    } else if (NULL != pmix_host_server.client_connected) {
+        rc = pmix_host_server.client_connected(&proc, info->server_object, client_host_cbfunc,
+                                               pnd);
+    } else {
+        /* if neither is provided, then we simply assume the host is ready */
+        rc = PMIX_OPERATION_SUCCEEDED;
+    }
+    if (!upcall_returned(pnd, rc)) {
+        /* the host answers through the callback */
+        return;
+    }
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        pmix_atomic_set_bool(&pnd->answered);
+        pnd->status = PMIX_SUCCESS;
+        client_answered(0, 0, pnd);
+        return;
+    }
+    refuse(pnd, rc);
+}
+
+/* The host has answered */
+static void client_answered(int sd, short args, void *cbdata)
+{
+    pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
+    pmix_namespace_t *nptr = (pmix_namespace_t *) pnd->nptr;
+    pmix_rank_info_t *info = (pmix_rank_info_t *) pnd->rinfo;
+    pmix_peer_t *peer = (pmix_peer_t *) pnd->peer;
+    pmix_proc_t id;
+    uint32_t u32;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(pnd);
+    host_answered(pnd);
+    PMIX_LOAD_PROCID(&id, info->pname.nspace, info->pname.rank);
+
+    if (pnd->abandoned) {
+        /* the client was refused when the host took too long - its rank
+         * is free again once this is released */
+        late_answer(pnd, &id);
+        return;
+    }
+    /* the connection holds the rank until it is accepted, or until the
+     * host has been told it was not */
+    if (PMIX_SUCCESS != pnd->upcall_rc) {
+        refuse(pnd, pnd->upcall_rc);
+        return;
+    }
+    if (PMIX_SUCCESS != pnd->status) {
+        refuse(pnd, pnd->status);
+        return;
+    }
+    /* The host has accepted the client. From here, a client that cannot
+     * be connected after all is one the host is told of */
+
+    /* The host may have deregistered the client, or the job, while it
+     * decided - and another client of the job may have connected
+     * meanwhile and fixed its wire format */
+    if (!nspace_listed(nptr) || info != find_rank(nptr, info->pname.rank)) {
+        refuse_accepted(pnd, &id, PMIX_ERR_NOT_FOUND);
+        return;
+    }
+    if (!wire_format_fits(pnd, nptr)) {
+        refuse_accepted(pnd, &id, PMIX_ERR_NOT_SUPPORTED);
+        return;
+    }
+
+    /* The connection is accepted. Take its place in the clients array
+     * first, so that the index we are about to send is the one it has */
+    reclaim_tombstone(info);
+    peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer);
+    if (0 > peer->index) {
+        refuse_accepted(pnd, &id, PMIX_ERR_NOMEM);
+        return;
+    }
+    /* tell the client all is good, and send its array index */
+    u32 = htonl((uint32_t) PMIX_SUCCESS);
+    if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)) ||
+        (u32 = htonl((uint32_t) peer->index),
+         PMIX_SUCCESS != pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
+        /* the client has gone */
+        pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
+        peer->index = -1;
+        release_not_connected(pnd, &id);
+        return;
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "connect-ack from client completed");
+
+    /* It is connected: the rank is held by its connection from here */
+    if (pnd->connecting) {
+        pnd->connecting = false;
+        if (0 < info->connecting) {
+            --info->connecting;
+        }
+    }
+
+    /* now everything else the connection changes */
     if (0 == nptr->version.major) {
         nptr->version.major = pnd->proc_type.major;
         nptr->version.minor = pnd->proc_type.minor;
         nptr->version.release = pnd->proc_type.release;
     }
-
-    /* If this rank previously finalized, a harmless finalized "tombstone"
-     * peer from that prior cycle may still occupy its clients-array slot -
-     * pmix_server_peer_finalized leaves it in place at socket-close rather
-     * than mutating shared state amid concurrent collectives. Now that the
-     * rank is reconnecting we are at a safe point (no collective from the
-     * prior cycle can still be in flight), so reclaim that tombstone
-     * before allocating a fresh peer for this connection: null its slot,
-     * drop the finalized count it was still contributing, and release it.
-     * This is what keeps the clients array and nptr->nfinalized from
-     * drifting across repeated init/finalize cycles. We only reclaim when
-     * no live process remains for the rank (proc_cnt == 0) so a surviving
-     * fork/exec'd clone is never disturbed. See
-     * docs/how-things-work/init-finalize.rst. */
-    if (0 <= info->peerid && 0 == info->proc_cnt) {
-        stale = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
-                                                            info->peerid);
-        if (NULL != stale && stale->finalized) {
-            pmix_pointer_array_set_item(&pmix_server_globals.clients, info->peerid, NULL);
-            if (0 < nptr->nfinalized) {
-                --nptr->nfinalized;
-            }
-            PMIX_RELEASE(stale);
-        }
-    }
-
-    /* a peer can connect on multiple sockets since it can fork/exec
-     * a child that also calls PMIX_Init, so add it here if necessary.
-     * Assign the upper half of the tag space for sendrecvs */
-    peer->dyn_tags_start    = PMIX_PTL_TAG_DYNAMIC + (UINT32_MAX - PMIX_PTL_TAG_DYNAMIC)/2 + 1;
-    peer->dyn_tags_end      = UINT32_MAX;
-    peer->dyn_tags_current  = peer->dyn_tags_start;
-    /* add in the nspace pointer */
-    PMIX_RETAIN(nptr);
+    /* a peer can connect on multiple sockets since it can fork/exec a
+     * child that also calls PMIx_Init. Assign the upper half of the tag
+     * space for sendrecvs */
+    peer->dyn_tags_start = PMIX_PTL_TAG_DYNAMIC + (UINT32_MAX - PMIX_PTL_TAG_DYNAMIC) / 2 + 1;
+    peer->dyn_tags_end = UINT32_MAX;
+    peer->dyn_tags_current = peer->dyn_tags_start;
+    /* the peer takes the references the connection held, on the real
+     * namespace and rank entry in place of the scratch identity it was
+     * validated with */
     peer->nptr = nptr;
-    info->proc_cnt++; /* increase number of processes on this rank */
-    counted = true;
-    if (0 > (peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer))) {
-        goto error;
+    pnd->nptr = NULL;
+    PMIX_RELEASE(peer->info);
+    peer->info = info;
+    pnd->rinfo = NULL;
+    adopt_modules(pnd, peer, nptr);
+    info->pid = pnd->pid;
+    if (pnd->realuid_given) {
+        info->realuid = pnd->realuid;
     }
+    if (pnd->realgid_given) {
+        info->realgid = pnd->realgid;
+    }
+    info->proc_cnt++; /* increase number of processes on this rank */
     info->peerid = peer->index;
 
-    /* The namespace's modules are set by the first of its peers to
-     * connect, and not replaced by a later one */
-    if (NULL == nptr->compat.bfrops) {
-        nptr->compat.bfrops = bfrops;
-        nptr->compat.type = pnd->buffer_type;
-    }
-    if (NULL == nptr->compat.psec) {
-        nptr->compat.psec = psec;
-    }
-    if (NULL == nptr->compat.gds) {
-        nptr->compat.gds = gds;
-    }
-    /* track this client's GDS module on the peer itself, so a later
-     * per-client fallback (PMIX_GDS_FALLBACK_CMD) can change it without
-     * affecting the other peers sharing this nspace */
-    peer->gds = gds;
+    activate(pnd, peer);
+}
 
-    /* if we haven't previously stored the wire format for this
-     * nspace, do so now. This is what PMIx_Data_pack/unpack fall back
-     * on for an nspace with no connected peer left, and they hand it to
-     * pmix_bfrops_base_assign_module() - which matches a component
-     * name ("v61"), not the peer's library release ("7.0.0") */
-    if (!nptr->version_stored) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_BFROPS_MODULE, peer->nptr->compat.bfrops->version, PMIX_STRING);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, peer->nptr, &ginfo, 1);
+/* A tool, launcher or scheduler: a process that may or may not have been
+ * registered, and may or may not bring an identity. Its credential is
+ * checked first, against the uid and gid it claimed - and a module that
+ * establishes the identity some other way (the owner of its socket)
+ * replaces the claim with what it found */
+static void accept_tool(pmix_pending_connection_t *pnd)
+{
+    pmix_psec_module_t *psec;
+
+    /* A server takes tools only when its host said it would serve them,
+     * with PMIX_SERVER_TOOL_SUPPORT - however the tool came by the
+     * server's address */
+    if (!pmix_ptl_base.tool_support) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "refusing a tool - this server does not support tools");
+        refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
+        return;
+    }
+
+    psec = pmix_psec_base_assign_module(pnd->psec);
+    if (NULL == psec) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "tool asked for security module \"%s\", which is not available",
+                            (NULL == pnd->psec) ? "(none)" : pnd->psec);
+        refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
+        return;
+    }
+    pnd->psecmod = psec;
+    pnd->bfropsmod = pmix_bfrops_base_assign_module(pnd->bfrops);
+    if (NULL == pnd->bfropsmod) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "tool asked for wire format \"%s\", which is not available",
+                            (NULL == pnd->bfrops) ? "(none)" : pnd->bfrops);
+        refuse(pnd, PMIX_ERR_NOT_AVAILABLE);
+        return;
+    }
+    pnd->peer = scratch_peer(pnd, pnd->proc.nspace, pnd->proc.rank, pnd->uid, pnd->gid, false);
+    if (NULL == pnd->peer) {
+        refuse(pnd, PMIX_ERR_NOMEM);
+        return;
+    }
+    tool_settled(pnd, validate(pnd));
+}
+
+static bool nspace_is_users(pmix_namespace_t *nptr, uid_t uid, gid_t gid);
+
+/* Whether a namespace is this uid and gid's: its owner - our own identity
+ * where no owner was named - and every process in it */
+static bool nspace_is_tools(pmix_namespace_t *nptr, uid_t uid, gid_t gid)
+{
+    uid_t ouid;
+    gid_t ogid;
+
+    if (PMIX_OWNER_UNKNOWN == nptr->access.source) {
+        ouid = geteuid();
+        ogid = getegid();
+    } else {
+        ouid = nptr->access.uid;
+        ogid = nptr->access.gid;
+    }
+    return ouid == uid && ogid == gid && nspace_is_users(nptr, uid, gid);
+}
+
+/* Where a tool belongs: the namespace and rank entry it will join, when
+ * either already exists, or ones built for it - which are not listed
+ * until the connection is accepted. Returns the reason for a refusal */
+static pmix_status_t place_tool(pmix_pending_connection_t *pnd)
+{
+    pmix_namespace_t *nptr = NULL;
+    pmix_rank_info_t *info;
+    pmix_peer_t *p2;
+    pmix_pfexec_child_t *child;
+    bool found;
+
+    if (!host_names_tool(pnd)) {
+        nptr = find_nspace(pnd->proc.nspace);
+    }
+
+    if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
+        /* A tool we launched - the host may have registered it as a
+         * client. It is possible that this is a tool inside of a
+         * job-script as part of a multi-spawn operation: each tool
+         * invocation may have finalized and terminated, causing us to
+         * clean up all references to it, and then reappear. So it is not
+         * refused for being unknown - the namespace and rank are built
+         * for it, and the host decides whether that is allowed */
+        if (NULL == nptr) {
+            nptr = PMIX_NEW(pmix_namespace_t);
+            if (NULL == nptr) {
+                return PMIX_ERR_NOMEM;
+            }
+            nptr->nspace = strdup(pnd->proc.nspace);
+            /* the tool's job belongs to the user it connected as */
+            pmix_server_access_set_owner(nptr, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
+            nptr->version.major = pnd->proc_type.major;
+            nptr->version.minor = pnd->proc_type.minor;
+            nptr->version.release = pnd->proc_type.release;
+            pnd->nspace_created = true;
+            pnd->nptr = nptr;
+        } else {
+            PMIX_RETAIN(nptr);
+            pnd->nptr = nptr;
+        }
+        info = find_rank(nptr, pnd->proc.rank);
+        if (NULL != info) {
+            /* it must be the identity its rank was registered with */
+            if (info->uid != pnd->uid || info->gid != pnd->gid) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "tool %s:%u is uid %lu gid %lu - its rank is uid %lu gid %lu",
+                                    pnd->proc.nspace, pnd->proc.rank, (unsigned long) pnd->uid,
+                                    (unsigned long) pnd->gid, (unsigned long) info->uid,
+                                    (unsigned long) info->gid);
+                return PMIX_ERR_INVALID_CRED;
+            }
+            PMIX_RETAIN(info);
+        } else {
+            /* A rank the namespace does not have is built for the tool -
+             * see above - but only in a namespace that is the tool's own
+             * user's: its owner, and every process already in it. A rank
+             * in it would make the tool one of the job's own processes */
+            if (!pnd->nspace_created && !nspace_is_tools(nptr, pnd->uid, pnd->gid)) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "tool %s:%u is uid %lu gid %lu - the namespace is not "
+                                    "that user's",
+                                    pnd->proc.nspace, pnd->proc.rank,
+                                    (unsigned long) pnd->uid, (unsigned long) pnd->gid);
+                return PMIX_ERR_NO_PERMISSIONS;
+            }
+            /* see above about not finding the namespace */
+            info = PMIX_NEW(pmix_rank_info_t);
+            if (NULL == info) {
+                return PMIX_ERR_NOMEM;
+            }
+            info->pname.nspace = strdup(pnd->proc.nspace);
+            info->pname.rank = pnd->proc.rank;
+            info->uid = pnd->uid;
+            info->gid = pnd->gid;
+            pnd->rinfo_created = true;
+        }
+        pnd->rinfo = info;
+        return PMIX_SUCCESS;
+    }
+
+    if (NULL != nptr) {
+        /* A tool or launcher that names a namespace we already know, which
+         * the host did not register. A prior instance of the tool must
+         * have connected for us to know it, and every process of a
+         * namespace is of one uid and gid */
+        if (pmix_list_is_empty(&nptr->ranks)) {
+            /* the namespace can only exist because a prior instance of
+             * the tool already connected */
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        info = (pmix_rank_info_t *) pmix_list_get_first(&nptr->ranks);
+        if (-1 == info->peerid) {
+            /* the tool may be one we fork/exec'd ourselves - check the
+             * local children to see */
+            found = false;
+            PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+                if (PMIx_Check_nspace(child->proc.nspace, nptr->nspace)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                return PMIX_ERR_NOT_SUPPORTED;
+            }
+        } else {
+            p2 = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
+                                                             info->peerid);
+            if (NULL == p2) {
+                return PMIX_ERR_NOT_FOUND;
+            }
+            if (!PMIX_PEER_IS_TOOL(p2)) {
+                /* the entire namespace must be a tool's if this tool
+                 * claims to be a member of it */
+                return PMIX_ERR_NOT_SUPPORTED;
+            }
+        }
+        if (info->uid != pnd->uid || info->gid != pnd->gid) {
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        PMIX_RETAIN(nptr);
+        pnd->nptr = nptr;
+        /* its rank entry is found, or built, once its identity is final */
+        return PMIX_SUCCESS;
+    }
+
+    /* a namespace of its own - named now if the tool named it, else once
+     * the host has given it an identity */
+    nptr = PMIX_NEW(pmix_namespace_t);
+    if (NULL == nptr) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (!host_names_tool(pnd)) {
+        nptr->nspace = strdup(pnd->proc.nspace);
+    }
+    /* the tool's job belongs to the user it connected as */
+    pmix_server_access_set_owner(nptr, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
+    nptr->version.major = pnd->proc_type.major;
+    nptr->version.minor = pnd->proc_type.minor;
+    nptr->version.release = pnd->proc_type.release;
+    pnd->nspace_created = true;
+    pnd->nptr = nptr;
+    return PMIX_SUCCESS;
+}
+
+/* The keys the server sets in what the host is given for a tool. Every
+ * copy the tool sent of any of them is dropped - one it sent twice would
+ * otherwise reach the host beside the server's value. The pid is the
+ * exception: over TCP the first copy that holds a pid is kept, and replaced
+ * by the kernel's where there is one; on the local transport only the
+ * kernel's is given */
+static bool server_sets(const char *key)
+{
+    return PMIx_Check_key(key, PMIX_USERID) || PMIx_Check_key(key, PMIX_GRPID) ||
+           PMIx_Check_key(key, PMIX_CRED_TYPE) || PMIx_Check_key(key, PMIX_VERSION_INFO) ||
+           PMIx_Check_key(key, PMIX_NSPACE) || PMIx_Check_key(key, PMIX_RANK) ||
+           PMIx_Check_key(key, PMIX_TIMEOUT);
+}
+
+/* What a tool's connect-ack info says, for the host - less what the
+ * server sets itself */
+static pmix_status_t read_tool_info(pmix_pending_connection_t *pnd, void *ilist)
+{
+    pmix_bfrops_module_t *bfrops = (pmix_bfrops_module_t *) pnd->bfropsmod;
+    pmix_buffer_t buf;
+    pmix_info_t *iptr;
+    size_t sz, n;
+    int32_t foo;
+    bool havepid = false;
+    pmix_status_t rc;
+
+    if (NULL == pnd->blob) {
+        return PMIX_SUCCESS;
+    }
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &buf, pnd->blob, pnd->bloblen);
+    buf.type = pnd->buffer_type;
+    foo = 1;
+    rc = bfrops->unpack(&buf, &sz, &foo, PMIX_SIZE);
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+        /* too short to hold even the count - see PMIX_PTL_LEGACY_PAD */
+        return PMIX_SUCCESS;
+    }
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    /* the payload must still hold sz packed pmix_info_t */
+    if (!pmix_bfrop_count_fits(&buf, sz, PMIX_INFO)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (0 == sz) {
+        return PMIX_SUCCESS;
+    }
+    PMIX_INFO_CREATE(iptr, sz);
+    if (NULL == iptr) {
+        return PMIX_ERR_NOMEM;
+    }
+    foo = (int32_t) sz;
+    rc = bfrops->unpack(&buf, iptr, &foo, PMIX_INFO);
+    if (PMIX_SUCCESS != rc) {
+        pmix_ptl_base_wipe_token_info(iptr, sz);
+        PMIX_INFO_FREE(iptr, sz);
+        return rc;
+    }
+    for (n = 0; n < sz; n++) {
+        if (server_sets(iptr[n].key)) {
+            continue;
+        }
+        /* the token is checked here, and goes no further */
+        if (PMIx_Check_key(iptr[n].key, PMIX_PTL_TOKEN_KEY)) {
+            if (NULL == pnd->token && PMIX_STRING == iptr[n].value.type &&
+                NULL != iptr[n].value.data.string) {
+                pnd->token = strdup(iptr[n].value.data.string);
+            }
+            continue;
+        }
+        if (PMIx_Check_key(iptr[n].key, PMIX_PROC_PID)) {
+            /* on the local transport the kernel's pid is the only one */
+            if (havepid || PMIX_PID != iptr[n].value.type || local_peer(pnd)) {
+                continue;
+            }
+            havepid = true;
+        }
+        PMIx_Info_list_xfer(ilist, &iptr[n]);
+    }
+    pmix_ptl_base_wipe_token_info(iptr, sz);
+    PMIX_INFO_FREE(iptr, sz);
+    return PMIX_SUCCESS;
+}
+
+/* The tool is who its credential says. Check that it may connect at all,
+ * then put it in the queue for the host */
+static void tool_settled(pmix_pending_connection_t *pnd, pmix_status_t status)
+{
+    pmix_peer_t *vpeer = (pmix_peer_t *) pnd->peer;
+
+    if (PMIX_SUCCESS != status) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "validation of tool credentials failed: %s",
+                            PMIx_Error_string(status));
+        refuse(pnd, status);
+        return;
+    }
+    /* the identity validation settled on - the scratch peer has served
+     * its purpose */
+    pnd->uid = vpeer->info->uid;
+    pnd->gid = vpeer->info->gid;
+    PMIX_RELEASE(vpeer);
+    pnd->peer = NULL;
+
+    /* a tool of another user is refused unless allowed */
+    if (!pmix_ptl_base.allow_foreign_tools && pnd->uid != pmix_globals.uid) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "refusing a tool of uid %lu - this server does not accept "
+                            "tools of other users",
+                            (unsigned long) pnd->uid);
+        refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
+        return;
+    }
+
+    /* A tool waiting on the host holds its connection as one still sending
+     * its connect-ack does. Waiting tools have a cap of their own, the
+     * same size as that on connections still sending: at it, a further
+     * tool is refused */
+    if (0 < pmix_ptl_base.pending_cap &&
+        (size_t) pmix_ptl_base.pending_cap <= pmix_ptl_base_waiting_tools()) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "refusing a tool - %d tools are waiting on the host",
+                            pmix_ptl_base.pending_cap);
+        refuse(pnd, PMIX_ERR_OUT_OF_RESOURCE);
+        return;
+    }
+
+    /* The host is asked about one tool of a name at a time, so that it
+     * never decides on two tools for one name at once; tools of other
+     * names, and tools it is to name, it is asked about together. Where
+     * the tool belongs is worked out when its turn comes - by then the
+     * tool of its name ahead of it has been decided on */
+    pmix_list_append(&pmix_ptl_base.tool_queue, &pnd->super);
+    next_tool();
+}
+
+/* The host is no longer deciding on this tool: ask about the next one -
+ * from an event of its own, so that one answer never runs the queue from
+ * inside another */
+static void kick_tool_queue(void)
+{
+    pmix_shift_caddy_t *scd;
+
+    if (pmix_list_is_empty(&pmix_ptl_base.tool_queue)) {
+        return;
+    }
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* the next tool to settle runs the queue */
+        return;
+    }
+    PMIX_THREADSHIFT(scd, next_tool_cb);
+}
+
+static void tool_decided(pmix_pending_connection_t *pnd)
+{
+    if (!pnd->asking) {
+        return;
+    }
+    pmix_list_remove_item(&pmix_ptl_base.tool_asking, &pnd->super);
+    pnd->asking = false;
+    kick_tool_queue();
+}
+
+/* Whether a tool of this tool's name is ahead of it: one the host is
+ * deciding on, or one not yet done with - the server stopped waiting on
+ * the host's answer for it, or the host accepted it and is being told it
+ * is not connected, which must not name a tool accepted since. A tool
+ * that needs an identity has no name yet, and nothing is ahead of it: the
+ * host keeps the names it gives unique */
+static bool name_busy(pmix_pending_connection_t *pnd)
+{
+    pmix_pending_connection_t *ahead;
+    const pmix_proc_t *held;
+
+    if (host_names_tool(pnd)) {
+        return false;
+    }
+    PMIX_LIST_FOREACH (ahead, &pmix_ptl_base.tool_asking, pmix_pending_connection_t) {
+        if (!host_names_tool(ahead) && ahead->proc.rank == pnd->proc.rank &&
+            PMIx_Check_nspace(ahead->proc.nspace, pnd->proc.nspace)) {
+            return true;
+        }
+    }
+    PMIX_LIST_FOREACH (ahead, &pmix_ptl_base.tool_late, pmix_pending_connection_t) {
+        held = tool_name(ahead);
+        if (held->rank == pnd->proc.rank && PMIx_Check_nspace(held->nspace, pnd->proc.nspace)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void next_tool_cb(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(scd);
+    PMIX_RELEASE(scd);
+    next_tool();
+}
+
+/* Ask the host about every queued tool with no tool of its name ahead of
+ * it, in the order they arrived. A tool that is refused before the host
+ * is asked makes way at once. One that has closed its connection while it
+ * waited - its own connect timed out, say - is dropped: there is nobody to
+ * accept */
+static void next_tool(void)
+{
+    pmix_pending_connection_t *pnd, *pnext;
+    bool asked;
+
+    do {
+        asked = false;
+        PMIX_LIST_FOREACH_SAFE (pnd, pnext, &pmix_ptl_base.tool_queue,
+                                pmix_pending_connection_t) {
+            if (pmix_ptl_base_sd_closed(pnd->sd)) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "ptl:base: the tool on socket %d went away while it "
+                                    "waited for the host - dropping it",
+                                    pnd->sd);
+                pmix_list_remove_item(&pmix_ptl_base.tool_queue, &pnd->super);
+                PMIX_RELEASE(pnd);
+                continue;
+            }
+            if (name_busy(pnd)) {
+                /* it waits on, behind the tool of its name */
+                continue;
+            }
+            pmix_list_remove_item(&pmix_ptl_base.tool_queue, &pnd->super);
+            ask_about_tool(pnd);
+            /* asking, or a refusal, may have changed the queue - start
+             * again from the head */
+            asked = true;
+            break;
+        }
+    } while (asked);
+}
+
+/* Two tools that cannot both be accepted: the one the host has just
+ * accepted, as `id` and of `uid` and `gid`, and a queued one that names
+ * the same rank, or the same namespace as another user. The queued one
+ * is refused now, without asking the host */
+static void refuse_queued_conflicts(const pmix_proc_t *id, uid_t uid, gid_t gid)
+{
+    pmix_pending_connection_t *q, *qnext;
+
+    PMIX_LIST_FOREACH_SAFE (q, qnext, &pmix_ptl_base.tool_queue, pmix_pending_connection_t) {
+        if (host_names_tool(q) || !PMIx_Check_nspace(q->proc.nspace, id->nspace)) {
+            continue;
+        }
+        if (q->proc.rank == id->rank) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "refusing a queued tool connecting as %s:%u - the host has "
+                                "accepted a tool of that name",
+                                q->proc.nspace, q->proc.rank);
+            pmix_list_remove_item(&pmix_ptl_base.tool_queue, &q->super);
+            refuse(q, PMIX_ERR_EXISTS);
+        } else if (q->uid != uid || q->gid != gid) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "refusing a queued tool of uid %lu joining %s - the host has "
+                                "accepted a tool of uid %lu into it",
+                                (unsigned long) q->uid, q->proc.nspace, (unsigned long) uid);
+            pmix_list_remove_item(&pmix_ptl_base.tool_queue, &q->super);
+            refuse(q, PMIX_ERR_NOT_SUPPORTED);
+        }
+    }
+}
+
+/* The host has not answered in the time it was asked to answer in, and
+ * the process has stopped waiting too. Refuse it, and keep the connection
+ * only for the host's answer when it comes - the host holds it until then.
+ * A client's rank, and a tool's name, stay held until the answer: if it
+ * is yes, the host is told the process is not connected, and that must
+ * not name a process accepted since. The next tool is asked about */
+static void host_expired(int sd, short args, void *cbdata)
+{
+    pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
+    bool tool = pnd->asking;
+    uint32_t u32;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(pnd);
+    pnd->timer_active = false;
+    if (pmix_atomic_check_bool(&pnd->answered)) {
+        /* the answer is on its way to us */
+        return;
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:base: the host has not answered for the connection on socket %d "
+                        "in %d seconds - refusing it",
+                        pnd->sd, pnd->host_tmo + PMIX_PTL_HOST_GRACE_SEC);
+    pnd->abandoned = true;
+    if (0 <= pnd->sd) {
+        u32 = htonl((uint32_t) PMIX_ERR_TIMEOUT);
+        (void) pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+        CLOSE_THE_SOCKET(pnd->sd);
+        pnd->sd = -1;
+    }
+    if (tool) {
+        tool_decided(pnd);
+        if (!host_names_tool(pnd)) {
+            pmix_list_append(&pmix_ptl_base.tool_late, &pnd->super);
+            pnd->late_listed = true;
+        }
+    }
+}
+
+/* The tool's turn: check where it belongs, then ask the host. Until the
+ * host answers, the tool is on pmix_ptl_base.tool_asking */
+static void ask_about_tool(pmix_pending_connection_t *pnd)
+{
+    pmix_namespace_t *nptr;
+    pmix_rank_info_t *info;
+    void *ilist;
+    pmix_data_array_t darray;
+    pid_t kpid;
+    size_t n;
+    int tmo;
+    pmix_status_t rc;
+
+    rc = place_tool(pnd);
+    if (PMIX_SUCCESS != rc) {
+        refuse(pnd, rc);
+        return;
+    }
+    nptr = (pmix_namespace_t *) pnd->nptr;
+    /* A tool that has waited in the queue for as long as it waits for a
+     * reply has given up: it is not worth asking about. The host has what
+     * is left of the wait */
+    if (0 > (tmo = host_timeout(pnd))) {
+        refuse(pnd, PMIX_ERR_TIMEOUT);
+        return;
+    }
+    pnd->host_tmo = tmo;
+    {
+        pmix_info_t ginfo;
+
+        PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);
+        pnd->gdsmod = pmix_gds_base_assign_module(&ginfo, 1);
         PMIX_INFO_DESTRUCT(&ginfo);
-        nptr->version_stored = true;
+        if (NULL == pnd->gdsmod) {
+            refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
+            return;
+        }
     }
 
     ilist = PMIx_Info_list_start();
-    /* The process's pid, as the kernel reports it for this socket, is the
-     * one this host can act on - it is in our pid namespace - and it is
-     * not the client's to state. A pid the client sends is used only where
-     * the kernel has none to give, as over TCP. */
-    kpid_known = (PMIX_SUCCESS == pmix_util_getpid(pnd->sd, &kpid));
-    if (kpid_known) {
-        info->pid = kpid;
-    }
-    // if a blob was provided, then unpack it
-    if (NULL != blob) {
-        PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-        PMIX_LOAD_BUFFER_NON_DESTRUCT(peer, &buf, blob, len); // allocates no memory
-        i32 = 1;
-        PMIX_BFROPS_UNPACK(rc, peer, &buf, &nblob, &i32, PMIX_SIZE);
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
-            /* too short to hold even the count - see PMIX_PTL_LEGACY_PAD */
-            nblob = 0;
-        } else if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIx_Info_list_release(ilist);
-            goto error;
-        }
-        /* the blob must still hold nblob packed pmix_info_t. This
-         * mirrors the check on the tool path in process_tool_request() */
-        if (!pmix_bfrop_count_fits(&buf, nblob, PMIX_INFO)) {
-            rc = PMIX_ERR_BAD_PARAM;
-            PMIX_ERROR_LOG(rc);
-            PMIx_Info_list_release(ilist);
-            goto error;
-        }
-        if (0 < nblob) {
-            PMIX_INFO_CREATE(iblob, nblob);
-            i32 = nblob;
-            PMIX_BFROPS_UNPACK(rc, peer, &buf, iblob, &i32, PMIX_INFO);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_INFO_FREE(iblob, nblob);
-                iblob = NULL;
-                PMIx_Info_list_release(ilist);
-                goto error;
-            }
-            // process the data
-            for (n=0; n < nblob; n++) {
-                if (PMIx_Check_key(iblob[n].key, PMIX_PROC_PID)) {
-                    /* the kernel's answer, where it has one, is the pid
-                     * the host can act on - see below */
-                    if (!kpid_known) {
-                        info->pid = iblob[n].value.data.pid;
-                    }
-
-                } else if (PMIx_Check_key(iblob[n].key, PMIX_REALUID)) {
-                    info->realuid = iblob[n].value.data.uint32;
-                    PMIx_Info_list_add(ilist, PMIX_REALUID, &info->realuid, PMIX_UINT32);
-
-                } else if (PMIx_Check_key(iblob[n].key, PMIX_USERID)) {
-                    // check if the client is claiming to be someone other
-                    // than what they were registered as
-                    if (info->uid != iblob[n].value.data.uint32) {
-                        // mismatch
-                        PMIx_Info_list_release(ilist);
-                        pmix_show_help("help-ptl-base.txt", "mismatch-id", true,
-                                       "user", iblob[n].value.data.uint32, info->uid);
-                        goto error;
-                    }
-
-                } else if (PMIx_Check_key(iblob[n].key, PMIX_REALGID)) {
-                    info->realgid = iblob[n].value.data.uint32;
-                    PMIx_Info_list_add(ilist, PMIX_REALGID, &info->realgid, PMIX_UINT32);
-
-                } else if (PMIx_Check_key(iblob[n].key, PMIX_GRPID)) {
-                    // check if the client is claiming to be someone other
-                    // than what they were registered as
-                    if (info->gid != iblob[n].value.data.uint32) {
-                        // mismatch
-                        PMIx_Info_list_release(ilist);
-                        pmix_show_help("help-ptl-base.txt", "mismatch-id", true,
-                                       "group", iblob[n].value.data.uint32, info->gid);
-                        goto error;
-                    }
-                }
-            }
-            PMIX_INFO_FREE(iblob, nblob);
-            iblob = NULL;
-            nblob = 0;
-        }
-        free(blob);
-        blob = NULL;
-    }
-
-    free(msg); // can now release the data buffer
-    msg = NULL;
-
-    // prep for processing
-    ch = PMIX_NEW(cnct_hdlr_t);
-    if (NULL == ch) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+    rc = read_tool_info(pnd, ilist);
+    if (PMIX_SUCCESS != rc) {
         PMIx_Info_list_release(ilist);
-        goto error;
+        refuse(pnd, rc);
+        return;
     }
-    ch->peer = peer;
-    ch->pnd = pnd;
-    ch->reply = reply;
-    ch->psec = psec;
-
-    if (0 < info->pid) {
-        PMIx_Info_list_add(ilist, PMIX_PROC_PID, &info->pid, PMIX_PID);
+    /* A tool of this release that names a rank its host prepared a process
+     * for with PMIx_server_setup_fork - one started on a client's rank -
+     * presents that rank's token */
+    if (PMIX_PTL_LOCAL_MAJOR <= pnd->proc_type.major && !host_names_tool(pnd)) {
+        rc = pmix_ptl_base_check_token(pnd->proc.nspace, pnd->proc.rank, pnd->token);
+        if (PMIX_SUCCESS != rc) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "refusing a tool as %s:%u - it did not present the rank's token",
+                                pnd->proc.nspace, pnd->proc.rank);
+            PMIx_Info_list_release(ilist);
+            refuse(pnd, rc);
+            return;
+        }
     }
-    PMIx_Info_list_add(ilist, PMIX_USERID, &info->uid, PMIX_UINT32);
-    PMIx_Info_list_add(ilist, PMIX_GRPID, &info->gid, PMIX_UINT32);
-    PMIx_Info_list_convert(ilist, &darray);
-    ch->info = (pmix_info_t*)darray.array;
-    ch->ninfo = darray.size;
+    /* provide the version, and the identity validation settled - and
+     * the pid, where the kernel reports one for this socket, in place of
+     * the one the tool sent. Any other the tool put in its own info was
+     * dropped as it was read */
+    PMIx_Info_list_add_unique(ilist, PMIX_VERSION_INFO, pnd->version, PMIX_STRING, true);
+    PMIx_Info_list_add_unique(ilist, PMIX_USERID, &pnd->uid, PMIX_UINT32, true);
+    if (local_peer(pnd)) {
+        kpid = kernel_pid(pnd);
+        if (0 < kpid) {
+            PMIx_Info_list_add_unique(ilist, PMIX_PROC_PID, &kpid, PMIX_PID, true);
+        }
+    } else if (PMIX_SUCCESS == pmix_util_getpid(pnd->sd, &kpid)) {
+        PMIx_Info_list_add_unique(ilist, PMIX_PROC_PID, &kpid, PMIX_PID, true);
+    }
+    PMIx_Info_list_add_unique(ilist, PMIX_GRPID, &pnd->gid, PMIX_UINT32, true);
+    /* the security module that settled them */
+    PMIx_Info_list_add_unique(ilist, PMIX_CRED_TYPE, ((pmix_psec_module_t *) pnd->psecmod)->name,
+                              PMIX_STRING, true);
+    /* if we have it, pass along their ID */
+    if (!host_names_tool(pnd)) {
+        PMIx_Info_list_add_unique(ilist, PMIX_NSPACE, pnd->proc.nspace, PMIX_STRING, true);
+        PMIx_Info_list_add_unique(ilist, PMIX_RANK, &pnd->proc.rank, PMIX_PROC_RANK, true);
+    }
+    /* the time the host is asked to answer in */
+    if (0 < tmo) {
+        PMIx_Info_list_add_unique(ilist, PMIX_TIMEOUT, &tmo, PMIX_INT, true);
+    }
+    rc = PMIx_Info_list_convert(ilist, &darray);
     PMIx_Info_list_release(ilist);
-
-    /* let the host server know that this client has connected */
-    if (NULL != pmix_host_server.client_connected2) {
-        PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-        rc = pmix_host_server.client_connected2(&proc, peer->info->server_object,
-                                                ch->info, ch->ninfo,
-                                                _connect_complete, ch);
-        if (PMIX_OPERATION_SUCCEEDED == rc) {
-            ch->status = PMIX_SUCCESS;
-            _cnct_complete(0, 0, ch);
-            return;
-        }
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            /* the error path below closes the socket and releases pnd, so
-             * detach it from the caddy first - the caddy's destructor
-             * would otherwise release it out from under us */
-            ch->pnd = NULL;
-            PMIX_RELEASE(ch);
-            goto error;
-        }
-
-    } else if (NULL != pmix_host_server.client_connected) {
-        PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-        rc = pmix_host_server.client_connected(&proc, peer->info->server_object, _connect_complete, ch);
-        if (PMIX_OPERATION_SUCCEEDED == rc) {
-            ch->status = PMIX_SUCCESS;
-            _cnct_complete(0, 0, ch);
-            return;
-        }
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            /* as above - the error path owns pnd from here on */
-            ch->pnd = NULL;
-            PMIX_RELEASE(ch);
-            goto error;
-        }
-    } else {
-        // if neither of those conditions are met, then we simply assume the host is ready
-        ch->status = PMIX_SUCCESS;
-        _cnct_complete(0, 0, ch);
+    if (PMIX_SUCCESS != rc) {
+        /* the conversion creates its array before filling it */
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        refuse(pnd, rc);
+        return;
     }
-
-    return;
-
-error:
-    /* 'info' is a member of the namespace's rank list, not something we
-     * own - the only reference this function took on it is the one it
-     * gave the peer, which PMIX_RELEASE(peer) below gives back. Releasing
-     * it here as well drove its refcount to zero while it was still on
-     * that list, which aborts the server in a debug build and leaves the
-     * list holding freed memory in an optimized one. Undo the count we
-     * added and leave the object alone. */
-    if (NULL != info && counted) {
-        info->proc_cnt--;
-    }
-    if (NULL != msg) {
-        free(msg);
-    }
-    if (NULL != blob) {
-        free(blob);
-    }
-    if (NULL != iblob) {
-        PMIX_INFO_FREE(iblob, nblob);
-    }
-    if (NULL != peer) {
-        if (0 <= peer->index) {
-            pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
-            /* the rank was pointed at the slot we just emptied */
-            if (NULL != info && info->peerid == peer->index) {
-                info->peerid = -1;
-            }
-        }
-        /* the socket is closed once, below - releasing a peer closes the
-         * one it holds */
-        peer->sd = -1;
-        PMIX_RELEASE(peer);
-    }
-    CLOSE_THE_SOCKET(pnd->sd);
-    PMIX_RELEASE(pnd);
-    return;
-}
-
-/* Put the namespace we built for a connecting tool onto the server's
- * global namespace list, and make sure that list holds exactly one
- * object per namespace name.
- *
- * The append cannot happen any earlier: for a tool that asked us for an
- * identity, the name is not known until the host's tool_connected
- * upcall returns. That upcall is also the window in which the host may
- * register a namespace of its own under the very name it just handed
- * us - so by the time we get here, ours may be a duplicate. It must not
- * be allowed to stand: the whole server resolves a namespace by
- * scanning this list, so a second object for the same name means half
- * the library reaches a tool through one of them and half through the
- * other, and whichever one is not found has an invisible rank list.
- *
- * Returns the namespace the peer should use. On return, pnd->nspace_created
- * is true only if the object we created is the one now on the list -
- * i.e. it is exactly "the caller must withdraw this on failure".
- */
-static pmix_namespace_t *consolidate_nspace(pmix_pending_connection_t *pnd,
-                                            pmix_peer_t *peer,
-                                            pmix_namespace_t *nptr)
-{
-    pmix_namespace_t *ns, *existing = NULL;
-    pmix_rank_info_t *rinfo, *match = NULL;
-
-    /* An object with no name cannot be looked up by one, so there is
-     * nothing to reconcile against and nothing for the list to do with
-     * it. Leave it to the peer. */
-    if (NULL == nptr->nspace || '\0' == nptr->nspace[0]) {
-        return nptr;
-    }
-
-    /* Compare names EXACTLY, which is what PMIx_Check_nspace_strict() is
-     * for. Do NOT reach for PMIx_Check_nspace() here: it reports a match
-     * whenever *either* name is absent, which is the right answer for the
-     * wildcard matching its callers do and a catastrophic one for us. The
-     * server's list legitimately carries namespaces whose name is not set
-     * yet, and treating the first of those as "the same namespace" hands
-     * this tool an object belonging to something else - after which the
-     * job data the server packs for it is somebody else's, and the tool
-     * fails to unpack its own identity out of the reply. */
-    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (ns != nptr &&
-            PMIx_Check_nspace_strict(nptr->nspace, ns->nspace)) {
-            existing = ns;
+    pnd->info = (pmix_info_t *) darray.array;
+    pnd->ninfo = darray.size;
+    /* the tool's pid: the kernel's, else the one the tool's library sent */
+    for (n = 0; n < pnd->ninfo; n++) {
+        if (PMIx_Check_key(pnd->info[n].key, PMIX_PROC_PID) &&
+            PMIX_PID == pnd->info[n].value.type) {
+            pnd->pid = pnd->info[n].value.data.pid;
             break;
         }
     }
+
+    /* A rank has one connection at a time, so a tool joining a rank that
+     * already has one is refused, as a client is. The rank entry it joins
+     * is known now if it was found for a tool the host launched, or is the
+     * one its namespace already lists for the rank it named */
+    info = pnd->rinfo_created ? NULL : (pmix_rank_info_t *) pnd->rinfo;
+    if (NULL == info && NULL == pnd->rinfo && !host_names_tool(pnd)) {
+        info = find_rank(nptr, pnd->proc.rank);
+        if (NULL != info) {
+            /* the entry it joins, held while the host decides */
+            PMIX_RETAIN(info);
+            pnd->rinfo = info;
+        }
+    }
+    if (NULL != info && rank_connected(info)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "refusing a tool connecting as %s:%u - the rank is connected",
+                            info->pname.nspace, info->pname.rank);
+        refuse(pnd, PMIX_ERR_EXISTS);
+        return;
+    }
+    /* Its wire format must be its namespace's - checked after the rank, so
+     * that a tool whose rank is taken is told that, and not that its
+     * format does not fit: a tool started on a client's rank falls back
+     * to a namespace of its own on the one, where it can use its own
+     * format, and not on the other */
+    if (!wire_format_fits(pnd, nptr)) {
+        refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
+        return;
+    }
+
+    /* does the host support tool connections? */
+    if (NULL == pmix_host_server.tool_connected &&
+        NULL == pmix_host_server.tool_connected2 && host_names_tool(pnd)) {
+        /* someone must give the tool an identity, and nobody can */
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "refusing a tool that needs an identity - the host "
+                            "provides no tool_connected upcall");
+        refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
+        return;
+    }
+
+    pmix_list_append(&pmix_ptl_base.tool_asking, &pnd->super);
+    pnd->asking = true;
+    if (NULL != info) {
+        /* until it is accepted, or refused, this connection holds the
+         * rank */
+        ++info->connecting;
+        pnd->connecting = true;
+    }
+    if (NULL == pmix_host_server.tool_connected && NULL == pmix_host_server.tool_connected2) {
+        /* nothing to ask: a host that takes every tool */
+        cnct_cbfunc(PMIX_SUCCESS, &pnd->proc, (void *) pnd);
+        return;
+    }
+
+    await_host(pnd);
+    if (NULL != pmix_host_server.tool_connected2) {
+        rc = pmix_host_server.tool_connected2(pnd->info, pnd->ninfo, cnct_cbfunc, pnd);
+        if (PMIX_OPERATION_SUCCEEDED == rc && !pmix_atomic_check_bool(&pnd->answered)) {
+            /* a tool's identity can only come back through the callback */
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "tool_connected2 returned PMIX_OPERATION_SUCCEEDED, which "
+                                "gives the tool no identity - refusing it");
+            tool_decided(pnd);
+            refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
+            return;
+        }
+        if (upcall_returned(pnd, rc)) {
+            tool_decided(pnd);
+            refuse(pnd, rc);
+        }
+        return;
+    }
+    pmix_host_server.tool_connected(pnd->info, pnd->ninfo, cnct_cbfunc, pnd);
+}
+
+/* receive the host's answer for a tool, on whatever thread it gave it */
+static void cnct_cbfunc(pmix_status_t status, pmix_proc_t *proc, void *cbdata)
+{
+    pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
+
+    if (!first_answer(pnd)) {
+        return;
+    }
+    pnd->status = status;
+    if (NULL != proc) {
+        PMIX_LOAD_PROCID(&pnd->assigned, proc->nspace, proc->rank);
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix:tool:cnct_cbfunc returning %s:%d %s", pnd->assigned.nspace,
+                        pnd->assigned.rank, PMIx_Error_string(status));
+    PMIX_THREADSHIFT(pnd, tool_answered);
+}
+
+/* Whether every process of a namespace is of this uid and gid */
+static bool nspace_is_users(pmix_namespace_t *nptr, uid_t uid, gid_t gid)
+{
+    pmix_rank_info_t *info;
+
+    PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
+        if (info->uid != uid || info->gid != gid) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* The tool's namespace has its final name now. If the host registered a
+ * namespace of that name while it decided - or one was registered
+ * meanwhile by another means - the tool joins that one: the server
+ * resolves a namespace by scanning its list, so two objects for one name
+ * would leave half the library reaching the tool through each */
+static pmix_namespace_t *consolidate_nspace(pmix_pending_connection_t *pnd,
+                                            pmix_namespace_t *nptr)
+{
+    pmix_namespace_t *existing;
+
+    existing = find_nspace(nptr->nspace);
     if (NULL == existing) {
-        /* ours is the only one - the reference PMIX_NEW gave us becomes
-         * the one the list holds */
-        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
         return nptr;
     }
-
-    /* Someone got there first. Move what we built onto their object and
-     * dispose of ours. */
-    if (pnd->rinfo_created && NULL != peer->info) {
-        PMIX_LIST_FOREACH (rinfo, &existing->ranks, pmix_rank_info_t) {
-            if (rinfo->pname.rank == peer->info->pname.rank) {
-                match = rinfo;
-                break;
-            }
-        }
-        pmix_list_remove_item(&nptr->ranks, &peer->info->super);
-        if (NULL == match) {
-            /* they have no entry for this rank - carry ours across. The
-             * reference the rank list holds moves with it, so nothing is
-             * released here, and rinfo_created stays true because the
-             * entry is still ours to withdraw on failure */
-            pmix_list_append(&existing->ranks, &peer->info->super);
-        } else {
-            /* they already describe this rank - use their entry and drop
-             * ours entirely: the reference its rank list was holding and
-             * the peer's both belong to an object nobody will reach */
-            PMIX_RELEASE(peer->info);
-            PMIX_RELEASE(peer->info);
-            PMIX_RETAIN(match);
-            peer->info = match;
-            pnd->rinfo_created = false;
-        }
-    }
-
-    /* the peer moves to their object, so it needs a reference on it;
-     * ours gives back both the peer's and the one we were holding for
-     * the list we are not going to join, which disposes of it */
+    /* someone got there first - use their object, and drop ours */
     PMIX_RETAIN(existing);
     PMIX_RELEASE(nptr);
-    PMIX_RELEASE(nptr);
-    peer->nptr = existing;
-    /* we no longer own a created namespace - theirs is on the list and
-     * is not ours to withdraw */
+    pnd->nptr = existing;
     pnd->nspace_created = false;
     return existing;
 }
 
-/* process the host's callback with tool connection info */
-static void process_cbfunc(int sd, short args, void *cbdata)
+/* The host has answered for the tool */
+static void tool_answered(int sd, short args, void *cbdata)
 {
-    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
-    pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cd->cbdata;
-    pmix_namespace_t *nptr = NULL;
+    pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
+    pmix_namespace_t *nptr = (pmix_namespace_t *) pnd->nptr;
     pmix_rank_info_t *info;
-    pmix_peer_t *peer = NULL, *pr2;
-    pmix_status_t rc, reply;
+    pmix_peer_t *peer;
+    pmix_iof_req_t *req;
+    pmix_proc_t id;
     uint32_t u32;
-    int n;
-    pmix_info_t ginfo;
-    pmix_iof_req_t *req = NULL;
-    bool nspace_listed = false;
-    bool wire_ok = true;
-    pmix_bfrops_module_t *bfrops;
-    pmix_gds_base_module_t *gds;
-
-    /* acquire the object */
-    PMIX_ACQUIRE_OBJECT(cd);
-    // must use sd, args to avoid -Werror
+    bool named, accepted;
+    pmix_status_t reply = PMIX_SUCCESS;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    /* send this status so they don't hang */
-    u32 = ntohl(cd->status);
-    rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto error;
-    }
+    PMIX_ACQUIRE_OBJECT(pnd);
+    host_answered(pnd);
 
-    /* if the request failed, then we are done */
-    if (PMIX_SUCCESS != cd->status) {
-        goto error;
+    /* the host has answered - the next tool may be asked about. This
+     * connection holds its rank until it is accepted, or until the host
+     * has been told it was not */
+    tool_decided(pnd);
+    /* A tool that brought its own identity keeps it - the host's answer is
+     * not sent to it, so it is not what the tool will use. One that did not
+     * is known by the host's, which is sent to one that asked for it */
+    named = !host_names_tool(pnd) ||
+            ('\0' != pnd->assigned.nspace[0] && PMIX_RANK_IS_VALID(pnd->assigned.rank));
+    if (host_names_tool(pnd)) {
+        PMIX_LOAD_PROCID(&id, pnd->assigned.nspace, pnd->assigned.rank);
+    } else {
+        PMIX_LOAD_PROCID(&id, pnd->proc.nspace, pnd->proc.rank);
     }
-
-    /* if we got an identifier, send it back to the tool */
-    if (pnd->need_id) {
-        /* start with the nspace */
-        rc = pmix_ptl_base_send_blocking(pnd->sd, cd->proc.nspace, PMIX_MAX_NSLEN + 1);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            goto error;
+    if (pnd->abandoned) {
+        /* the tool was refused when the host took too long - its name is
+         * free again once this is released */
+        late_answer(pnd, named ? &id : NULL);
+        return;
+    }
+    if (PMIX_SUCCESS != pnd->upcall_rc) {
+        pnd->status = pnd->upcall_rc;
+    }
+    /* a tool that brings no identity must be given one */
+    if (PMIX_SUCCESS == pnd->status && !named) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "the host accepted a tool without giving it an identity - "
+                            "refusing it");
+        pnd->status = PMIX_ERR_NOT_SUPPORTED;
+    }
+    /* the host's answer is the status the tool reads now */
+    accepted = (PMIX_SUCCESS == pnd->status);
+    if (!accepted) {
+        refuse(pnd, pnd->status);
+        return;
+    }
+    u32 = htonl((uint32_t) pnd->status);
+    if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t))) {
+        /* the tool has gone */
+        release_not_connected(pnd, &id);
+        return;
+    }
+    /* The host has accepted the tool. From here, a tool that cannot be
+     * connected after all is one the host is told of */
+    if (host_names_tool(pnd) && !pnd->id_unsent) {
+        if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(pnd->sd, id.nspace, PMIX_MAX_NSLEN + 1) ||
+            (pnd->need_id &&
+             (u32 = htonl((uint32_t) id.rank),
+              PMIX_SUCCESS != pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32,
+                                                          sizeof(uint32_t))))) {
+            release_not_connected(pnd, &id);
+            return;
         }
-
-        /* now the rank, suitably converted */
-        u32 = ntohl(cd->proc.rank);
-        rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            goto error;
-        }
     }
-
-    /* send my nspace back to the tool */
-    rc = pmix_ptl_base_send_blocking(pnd->sd, pmix_globals.myid.nspace,
-                                             PMIX_MAX_NSLEN + 1);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto error;
+    /* send my nspace and rank back to the tool */
+    u32 = htonl((uint32_t) pmix_globals.myid.rank);
+    if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(pnd->sd, pmix_globals.myid.nspace,
+                                                    PMIX_MAX_NSLEN + 1) ||
+        PMIX_SUCCESS != pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t))) {
+        release_not_connected(pnd, &id);
+        return;
     }
+    /* What is left for the tool to read is the last status: anything that
+     * turns it away from here on is reported there */
 
-    /* send my rank back to the tool */
-    u32 = ntohl(pmix_globals.myid.rank);
-    rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto error;
-    }
-
-    /* shortcuts */
-    peer = (pmix_peer_t *) pnd->peer;
-    nptr = peer->nptr;
-
-    /* if this tool is a client, then check against our list of
-     * local clients to verify they are the same */
-    if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
-        for (n=0; n < pmix_server_globals.clients.size; n++) {
-            pr2 = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
-            if (NULL == pr2) {
-                continue;
+    if (pnd->nspace_created) {
+        if (NULL == nptr->nspace) {
+            nptr->nspace = strdup(id.nspace);
+            if (NULL == nptr->nspace) {
+                refuse_accepted(pnd, &id, PMIX_ERR_NOMEM);
+                return;
             }
-            if (PMIx_Check_nspace(pr2->info->pname.nspace, cd->proc.nspace) &&
-                pr2->info->pname.rank == cd->proc.rank) {
-                // this matches the existing client record - check uid/gid
-                if (pr2->info->uid != pnd->uid) {
-                    reply = PMIX_ERR_INVALID_CRED;
-                    u32 = htonl(reply);
-                    rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                    }
-                    goto error;
-                }
+        }
+        nptr = consolidate_nspace(pnd, nptr);
+        /* one that appeared while the host decided - another tool's,
+         * decided on at the same time - is joined only by its own user, as
+         * a namespace known before the host was asked is */
+        if (!pnd->nspace_created && !nspace_is_users(nptr, pnd->uid, pnd->gid)) {
+            refuse_accepted(pnd, &id, PMIX_ERR_NOT_SUPPORTED);
+            return;
+        }
+    } else if (!nspace_listed(nptr)) {
+        /* the host deregistered it while it decided */
+        refuse_accepted(pnd, &id, PMIX_ERR_NOT_FOUND);
+        return;
+    }
+    if (!wire_format_fits(pnd, nptr)) {
+        refuse_accepted(pnd, &id, PMIX_ERR_NOT_SUPPORTED);
+        return;
+    }
+
+    /* its rank entry: the one found or built for a tool the host
+     * launched, else the namespace's entry for this rank - one already
+     * there is shared, not duplicated - or a new one */
+    info = (pmix_rank_info_t *) pnd->rinfo;
+    if (NULL != info && !pnd->rinfo_created && info != find_rank(nptr, info->pname.rank)) {
+        /* the host deregistered the rank while it decided */
+        refuse_accepted(pnd, &id, PMIX_ERR_NOT_FOUND);
+        return;
+    }
+    if (NULL != info && pnd->rinfo_created && !pnd->nspace_created) {
+        /* built before we knew whether the namespace would have one */
+        pmix_rank_info_t *found = find_rank(nptr, info->pname.rank);
+        if (NULL != found) {
+            /* the rank's identity is its entry's */
+            if (found->uid != pnd->uid || found->gid != pnd->gid) {
+                refuse_accepted(pnd, &id, PMIX_ERR_NOT_SUPPORTED);
+                return;
             }
+            PMIX_RELEASE(info);
+            PMIX_RETAIN(found);
+            pnd->rinfo = info = found;
+            pnd->rinfo_created = false;
         }
     }
-    /* if this tool wasn't initially registered as a client,
-     * then add some required structures */
-    if (PMIX_TOOL_CLIENT != pnd->flag && PMIX_LAUNCHER_CLIENT != pnd->flag) {
-        if (NULL != nptr->nspace) {
-            free(nptr->nspace);
+    if (NULL == info) {
+        info = find_rank(nptr, id.rank);
+        if (NULL != info) {
+            if (info->uid != pnd->uid || info->gid != pnd->gid) {
+                refuse_accepted(pnd, &id, PMIX_ERR_NOT_SUPPORTED);
+                return;
+            }
+            PMIX_RETAIN(info);
+        } else {
+            info = PMIX_NEW(pmix_rank_info_t);
+            if (NULL == info) {
+                refuse_accepted(pnd, &id, PMIX_ERR_NOMEM);
+                return;
+            }
+            info->pname.nspace = strdup(nptr->nspace);
+            info->pname.rank = id.rank;
+            info->uid = pnd->uid;
+            info->gid = pnd->gid;
+            pnd->rinfo_created = true;
         }
-        nptr->nspace = strdup(cd->proc.nspace);
-        info = PMIX_NEW(pmix_rank_info_t);
-        info->pname.nspace = strdup(nptr->nspace);
-        info->pname.rank = cd->proc.rank;
-        info->uid = pnd->uid;
-        info->gid = pnd->gid;
+        pnd->rinfo = info;
+    }
+    /* The connection no longer holds the rank by waiting on it: it is about
+     * to hold it by being accepted. Another connection for the rank may
+     * have been accepted while the host decided on a tool it did not hold
+     * the rank for */
+    if (pnd->connecting) {
+        pnd->connecting = false;
+        if (0 < info->connecting) {
+            --info->connecting;
+        }
+    }
+    if (!pnd->rinfo_created && rank_connected(info)) {
+        refuse_accepted(pnd, &id, PMIX_ERR_EXISTS);
+        return;
+    }
+
+    /* the peer, and the output forwarding every tool gets */
+    peer = PMIX_NEW(pmix_peer_t);
+    req = PMIX_NEW(pmix_iof_req_t);
+    if (NULL == peer || NULL == req) {
+        if (NULL != peer) {
+            PMIX_RELEASE(peer);
+        }
+        if (NULL != req) {
+            PMIX_RELEASE(req);
+        }
+        refuse_accepted(pnd, &id, PMIX_ERR_NOMEM);
+        return;
+    }
+    peer->index = -1;
+    pnd->peer = peer;
+    reclaim_tombstone(info);
+    peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer);
+    if (0 > peer->index) {
+        PMIX_RELEASE(req);
+        refuse_accepted(pnd, &id, PMIX_ERR_NOMEM);
+        return;
+    }
+
+    /* The tool is accepted. Its namespace and rank entry join their lists
+     * - the references the connection held become the lists' - and the
+     * peer takes references of its own */
+    if (pnd->nspace_created) {
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+        PMIX_RETAIN(nptr);
+    }
+    pnd->nptr = NULL;
+    peer->nptr = nptr;
+    if (pnd->rinfo_created) {
         pmix_list_append(&nptr->ranks, &info->super);
         PMIX_RETAIN(info);
-        peer->info = info;
-        pnd->rinfo_created = true;
     }
+    pnd->rinfo = NULL;
+    peer->info = info;
+    info->peerid = peer->index;
+    info->pid = pnd->pid;
+    /* a live process on the rank - the count every departure gives back,
+     * and the one a reconnect's tombstone reclaim waits on */
+    info->proc_cnt++;
 
-    /* The namespace has its final name now, so this is the point at
-     * which it can join the server's list - and the point at which a
-     * duplicate registered by the host during the upcall has to be
-     * reconciled against. This applies to every tool we built a
-     * namespace for, not only one the server had already registered as
-     * a client: a self-started tool's namespace used to be left off the
-     * list entirely, which stranded the reference held for it and left
-     * the server able to hold two objects for one name. */
-    if (pnd->nspace_created) {
-        nptr = consolidate_nspace(pnd, peer, nptr);
-        nspace_listed = pnd->nspace_created;
-    }
-
-    /* mark the peer proc type */
     memcpy(&peer->proc_type, &pnd->proc_type, sizeof(pmix_proc_type_t));
-    /* save the protocol */
     peer->protocol = pnd->protocol;
+    peer->transport = pnd->transport;
     peer->proc_cnt = 1;
-    peer->sd = pnd->sd;
-
-    /* Get the appropriate compatibility modules based on the info
-     * provided by the tool during the initial connection request.
-     *
-     * These are attached here rather than in process_tool_request,
-     * because the namespace this peer ends up on need not be the object
-     * that ran: if the host registered this namespace during its
-     * tool_connected upcall, we adopted its object instead, and a
-     * host-registered namespace carries no compat modules - nothing has
-     * connected through it yet. Leaving bfrops unset that way is not a
-     * degraded mode, it is a NULL dereference on the first message the
-     * tool sends.
-     *
-     * As on the client path, the namespace's modules are set by the first
-     * of its peers to connect, and its wire format is shared by all of
-     * them - so a tool that disagrees with it is refused, at the point
-     * where it would be told the outcome of its validation. */
-    bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
-    PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);
-    gds = pmix_gds_base_assign_module(&ginfo, 1);
-    PMIX_INFO_DESTRUCT(&ginfo);
-    if (NULL == bfrops || NULL == gds || NULL == pnd->psecmod) {
-        goto error;
-    }
-    if (NULL != peer->nptr->compat.bfrops &&
-        (peer->nptr->compat.bfrops != bfrops ||
-         peer->nptr->compat.type != pnd->buffer_type)) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "tool wire format %s does not match its namespace's %s",
-                            pnd->bfrops, peer->nptr->compat.bfrops->version);
-        wire_ok = false;
-    } else {
-        if (NULL == peer->nptr->compat.bfrops) {
-            peer->nptr->compat.bfrops = bfrops;
-            peer->nptr->compat.type = pnd->buffer_type;
-        }
-        if (NULL == peer->nptr->compat.psec) {
-            peer->nptr->compat.psec = (pmix_psec_module_t *) pnd->psecmod;
-        }
-        if (NULL == peer->nptr->compat.gds) {
-            peer->nptr->compat.gds = gds;
-        }
-    }
-    /* track this peer's GDS module on the peer itself (see the client
-     * connection path for rationale) */
-    peer->gds = gds;
-
-    /* if we haven't previously stored the wire format for this
-     * nspace, do so now - see the client path above */
-    if (wire_ok && !peer->nptr->version_stored) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_BFROPS_MODULE, peer->nptr->compat.bfrops->version, PMIX_STRING);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, peer->nptr, &ginfo, 1);
-        PMIX_INFO_DESTRUCT(&ginfo);
-        peer->nptr->version_stored = true;
-    }
+    peer->dyn_tags_start = PMIX_PTL_TAG_DYNAMIC + (UINT32_MAX - PMIX_PTL_TAG_DYNAMIC) / 2 + 1;
+    peer->dyn_tags_end = UINT32_MAX;
+    peer->dyn_tags_current = peer->dyn_tags_start;
+    adopt_modules(pnd, peer, nptr);
 
     /* automatically setup to forward output to the tool */
-    req = PMIX_NEW(pmix_iof_req_t);
-    if (NULL == req) {
-        goto error;
-    }
     PMIX_RETAIN(peer);
     req->requestor = peer;
     req->nprocs = 1;
@@ -1203,553 +2325,15 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     req->remote_id = 0; // default ID for tool during init
     req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
 
-    /* The tool was authenticated before anything was done for it
-     * (process_tool_request), so what is left to report in this slot is
-     * whether its wire format matches its namespace's. Every release reads
-     * this word; one that sees PMIX_ERR_READY_FOR_HANDSHAKE here would run a
-     * late handshake, and nothing asks for one any more */
-    reply = wire_ok ? PMIX_SUCCESS : PMIX_ERR_NOT_SUPPORTED;
-    u32 = htonl(reply);
-    rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
-    if (PMIX_SUCCESS != rc || PMIX_SUCCESS != reply) {
-        goto error;
-    }
+    /* the last status the tool reads. If it is not there to read it, its
+     * connection closing is handled as a lost connection */
+    u32 = htonl((uint32_t) reply);
+    (void) pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
 
-    /* set the socket non-blocking for all further operations */
-    pmix_ptl_base_set_nonblocking(pnd->sd);
-
-    /* If this rank previously finalized and left a tombstone peer behind
-     * (a tool registered as a client keeps the client tombstone semantics,
-     * which pmix_server_peer_finalized does not free at socket-close), the
-     * stale finalized peer may still occupy the rank's clients slot. We are
-     * now at a safe reconnect point, so reclaim it before allocating this
-     * connection's fresh peer - mirroring the client path in the main
-     * connection handler. Without this a tool that reuses its identity
-     * across init/finalize cycles would leak one peer (and one nfinalized
-     * count) per cycle. See docs/how-things-work/init-finalize.rst. */
-    if (NULL != peer->info && 0 <= peer->info->peerid) {
-        pr2 = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
-                                                          peer->info->peerid);
-        if (NULL != pr2 && pr2 != peer && pr2->finalized) {
-            pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->info->peerid, NULL);
-            /* the count is on the tombstone's namespace - that is the one
-             * its finalize raised */
-            if (NULL != pr2->nptr && 0 < pr2->nptr->nfinalized) {
-                --pr2->nptr->nfinalized;
-            }
-            PMIX_RELEASE(pr2);
-        }
-    }
-
-    if (0 > (peer->index = pmix_pointer_array_add(&pmix_server_globals.clients, peer))) {
-        goto error;
-    }
-    peer->info->peerid = peer->index;
-
-    /* start the events for this tool */
-    pmix_event_assign(&peer->recv_event, pmix_globals.evbase, peer->sd, EV_READ | EV_PERSIST,
-                      pmix_ptl_base_recv_handler, peer);
-    pmix_event_add(&peer->recv_event, NULL);
-    peer->recv_ev_active = true;
-    pmix_event_assign(&peer->send_event, pmix_globals.evbase, peer->sd, EV_WRITE | EV_PERSIST,
-                      pmix_ptl_base_send_handler, peer);
-    /* A send may have been queued while this event had no base - see
-     * pmix_ptl_base_send(). It could not be activated then; activate it
-     * now, or it waits for a send that may never come. */
-    if (NULL != peer->send_msg && !peer->send_ev_active) {
-        if (0 == pmix_event_add(&peer->send_event, 0)) {
-            peer->send_ev_active = true;
-        }
-    }
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "pmix:server tool %s:%d has connected on socket %d",
-                        peer->info->pname.nspace, peer->info->pname.rank, peer->sd);
-
-    /* check the cached events and update the tool */
-    _check_cached_events(peer);
-    PMIX_RELEASE(pnd);
-    PMIX_RELEASE(cd);
-    return;
-
-error:
-    CLOSE_THE_SOCKET(pnd->sd);
-    if (NULL != peer) {
-        if (NULL != peer->info && pnd->rinfo_created) {
-            /* withdraw it from the namespace's rank list and give back
-             * the reference that list was holding - removing an item
-             * does not release it. The peer's own reference is given
-             * back when the peer is released below. */
-            pmix_list_remove_item(&peer->nptr->ranks, &peer->info->super);
-            PMIX_RELEASE(peer->info);
-        }
-        if (NULL != peer->nptr && pnd->nspace_created) {
-            /* This namespace is one we built. Whether it reached the
-             * global list depends on how far we got - several of the
-             * gotos above fire before the block that appends it - so
-             * withdraw it only if it is actually there. Either way we are
-             * still holding the reference PMIX_NEW gave us on behalf of
-             * that list, and removing an item does not release it, so
-             * give it back here. The peer's own reference comes back when
-             * the peer is released below. */
-            if (nspace_listed) {
-                pmix_list_remove_item(&pmix_globals.nspaces, &peer->nptr->super);
-            }
-            PMIX_RELEASE(peer->nptr);
-        }
-        PMIX_RELEASE(peer);
-    }
-    PMIX_RELEASE(cd);
-    if (NULL != req) {
-        pmix_pointer_array_set_item(&pmix_globals.iof_requests, req->local_id, NULL);
-        PMIX_RELEASE(req);
-    }
-    PMIX_RELEASE(pnd);
-}
-
-/* receive a callback from the host RM with an nspace
- * for a connecting tool */
-static void cnct_cbfunc(pmix_status_t status, pmix_proc_t *proc, void *cbdata)
-{
-    pmix_setup_caddy_t *cd;
-
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "pmix:tool:cnct_cbfunc returning %s:%d %s", proc->nspace, proc->rank,
-                        PMIx_Error_string(status));
-
-    /* need to thread-shift this into our context */
-    cd = PMIX_NEW(pmix_setup_caddy_t);
-    if (NULL == cd) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        return;
-    }
-    cd->status = status;
-    if (NULL != proc) {
-        PMIX_LOAD_PROCID(&cd->proc, proc->nspace, proc->rank);
-    }
-    cd->cbdata = cbdata;
-    PMIX_THREADSHIFT(cd, process_cbfunc);
-}
-
-static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
-                                          char *mg, size_t cnt)
-{
-    pmix_peer_t *peer, *p2;
-    pmix_namespace_t *nptr, *tmp;
-    pmix_rank_info_t *info;
-    bool found;
-    size_t n, sz;
-    pmix_buffer_t buf;
-    pmix_status_t rc;
-    void *ilist;
-    pmix_info_t *iptr;
-    pmix_data_array_t darray;
-    pmix_pfexec_child_t *child;
-    pmix_psec_module_t *psec;
-    pmix_bfrops_module_t *bfrops;
-    pmix_peer_t *vpeer;
-    pmix_rank_info_t *vinfo;
-    pmix_byte_object_t cred;
-    uint32_t u32;
-    pid_t kpid;
-
-    /* Validate the tool before anything is done for it - before its info
-     * is unpacked, its namespace looked up or built, or the host asked to
-     * give it an identity. The credential vouches for the uid and gid the
-     * tool claimed, so that is the identity it is checked against - and a
-     * module that establishes the tool's identity some other way (the
-     * owner of its socket) replaces the claim with what it found. One
-     * whose credential check asks for a handshake to finish the job runs
-     * it here, ahead of the identity replies - only a tool that sent such
-     * a credential knows to expect it. */
-    psec = pmix_psec_base_assign_module(pnd->psec);
-    if (NULL == psec) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-    pnd->psecmod = psec;
-    if (NULL == psec->validate_cred) {
-        /* every psec module validates a credential - one that cannot is
-         * not a security mechanism */
-        u32 = htonl((uint32_t) PMIX_ERR_NOT_SUPPORTED);
-        (void) pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-    vpeer = PMIX_NEW(pmix_peer_t);
-    vinfo = PMIX_NEW(pmix_rank_info_t);
-    if (NULL == vpeer || NULL == vinfo) {
-        if (NULL != vpeer) {
-            PMIX_RELEASE(vpeer);
-        }
-        if (NULL != vinfo) {
-            PMIX_RELEASE(vinfo);
-        }
-        return PMIX_ERR_NOMEM;
-    }
-    vinfo->pname.nspace = strdup(pnd->proc.nspace);
-    vinfo->pname.rank = pnd->proc.rank;
-    vinfo->uid = pnd->uid;
-    vinfo->gid = pnd->gid;
-    vpeer->info = vinfo;
-    vpeer->index = -1;
-    memcpy(&vpeer->proc_type, &pnd->proc_type, sizeof(pmix_proc_type_t));
-    vpeer->protocol = pnd->protocol;
-    vpeer->sd = pnd->sd;
-    cred.bytes = pnd->cred;
-    cred.size = pnd->len;
-    PMIX_PSEC_VALIDATE_CONNECTION_WITH(rc, psec, vpeer, NULL, 0, NULL, NULL, &cred);
-    if (PMIX_ERR_READY_FOR_HANDSHAKE == rc) {
-        u32 = htonl((uint32_t) rc);
-        rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
-        if (PMIX_SUCCESS == rc) {
-            /* the handshake tells the tool its outcome itself */
-            rc = psec->server_handshake((struct pmix_peer_t *) vpeer, pnd->sd);
-        }
-        if (PMIX_SUCCESS != rc) {
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "security handshake for tool failed: %s",
-                                PMIx_Error_string(rc));
-            vpeer->sd = -1;
-            PMIX_RELEASE(vpeer);
-            return rc;
-        }
-    }
-    /* the identity validation settled on */
-    pnd->uid = vinfo->uid;
-    pnd->gid = vinfo->gid;
-    /* the socket is the connection's, not this scratch peer's */
-    vpeer->sd = -1;
-    PMIX_RELEASE(vpeer);
-    if (PMIX_SUCCESS != rc) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "validation of tool credentials failed: %s",
-                            PMIx_Error_string(rc));
-        /* the outcome of its request is the first thing a tool
-         * reads, so that is where it is told */
-        u32 = htonl((uint32_t) rc);
-        (void) pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
-        return rc;
-    }
-
-    /* a tool of another user is refused unless allowed - judged on the
-     * identity it was validated as, where it was */
-    if (!pmix_ptl_base.allow_foreign_tools) {
-        if (pnd->uid != pmix_globals.uid) {
-            // reject this connection
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-    }
-
-    peer = PMIX_NEW(pmix_peer_t);
-    if (NULL == peer) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        return PMIX_ERR_NOMEM;
-    }
-    /* Assign the upper half of the tag space for sendrecvs */
-    peer->dyn_tags_start    = PMIX_PTL_TAG_DYNAMIC + (UINT32_MAX - PMIX_PTL_TAG_DYNAMIC)/2 + 1;
-    peer->dyn_tags_end      = UINT32_MAX;
-    peer->dyn_tags_current  = peer->dyn_tags_start;
-    pnd->peer = peer;
-
-    /* see if we know this nspace - i.e., was it registered or did
-     * another tool within it already connect */
-    nptr = NULL;
-    PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(tmp->nspace, pnd->proc.nspace)) {
-            nptr = tmp;
-            break;
-        }
-    }
-
-    /* if this is a tool we launched, then the host may
-     * have already registered it as a client - so check
-     * to see if we already have a peer for it */
-    if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
-       if (NULL == nptr) {
-           /* it is possible that this is a tool inside of
-             * a job-script as part of a multi-spawn operation.
-             * Since each tool invocation may have finalized and
-             * terminated, the tool will appear to "terminate", thus
-             * causing us to cleanup all references to it, and then
-             * reappear. So we don't reject this connection request.
-             * Instead, we create the nspace and rank objects for
-             * it and let the RM/host decide if this behavior
-             * is allowed */
-            nptr = PMIX_NEW(pmix_namespace_t);
-            if (NULL == nptr) {
-                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-                PMIX_RELEASE(peer);
-                return PMIX_ERR_NOMEM;
-            }
-            nptr->nspace = strdup(pnd->proc.nspace);
-            /* the tool's job belongs to the user it connected as */
-            pmix_server_access_set_owner(nptr, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
-            /* save the version */
-            nptr->version.major = pnd->proc_type.major;
-            nptr->version.minor = pnd->proc_type.minor;
-            nptr->version.release = pnd->proc_type.release;
-            pnd->nspace_created = true;
-        }
-        /* now look for the rank */
-        info = NULL;
-        found = false;
-        PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
-            if (info->pname.rank == pnd->proc.rank) {
-                found = true;
-                break;
-            }
-        }
-        if (found) {
-            /* check that the uid/gid of the connecting tool
-             * matches the expected values */
-            if (info->uid != pnd->uid ||
-                info->gid != pnd->gid) {
-                PMIX_RELEASE(peer);
-                PMIX_ERROR_LOG(PMIX_ERR_INVALID_CRED);
-                return PMIX_ERR_INVALID_CRED;
-            }
-
-        } else {
-           /* see above note about not finding nspace */
-            info = PMIX_NEW(pmix_rank_info_t);
-            info->pname.nspace = strdup(pnd->proc.nspace);
-            info->pname.rank = pnd->proc.rank;
-            info->uid = pnd->uid;
-            info->gid = pnd->gid;
-            pmix_list_append(&nptr->ranks, &info->super);
-            pnd->rinfo_created = true;
-        }
-        PMIX_RETAIN(info);
-        peer->info = info;
-
-    } else if (NULL != nptr) {
-        /* this is an non-client tool/launcher that already
-         * has a known nspace that wasn't defined by register_client.
-         * We must therefore already have a rank for it that connected
-         * (so we would know the nspace), and the uid/gid's of this proc
-         * must match those already registered */
-        info = (pmix_rank_info_t*)pmix_list_get_first(&nptr->ranks);
-        if (NULL == info) {
-            /* this cannot happen - the nspace can only exist because
-             * a prior instance of the tool already connected */
-            PMIX_RELEASE(peer);
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-        if (-1 == info->peerid) {
-            /* the tool may be one we fork/exec'd ourselves - check
-             * the local children to see */
-            found = false;
-            PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-                if (PMIx_Check_nspace(child->proc.nspace, nptr->nspace)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                /* this proc is not a child of ours and has not connected - this
-                 * cannot happen for a tool as we otherwise would not know of it */
-                PMIX_RELEASE(peer);
-                PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-                return PMIX_ERR_NOT_SUPPORTED;
-            }
-        } else {
-            p2 = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid);
-            if (NULL == p2) {
-                // that's an error
-                PMIX_RELEASE(peer);
-                PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-                return PMIX_ERR_NOT_FOUND;
-            }
-            if (!PMIX_PEER_IS_TOOL(p2)) {
-                /* cannot happen - the entire nspace must be a tool if this proc claims
-                 * to be a member of that nspace and is a tool */
-                PMIX_RELEASE(peer);
-                PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-                return PMIX_ERR_NOT_SUPPORTED;
-            }
-        }
-        /* all members of an nspace must be from the same uid and gid */
-        if (info->uid != pnd->uid ||
-            info->gid != pnd->gid) {
-            PMIX_RELEASE(peer);
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-
-    } else {
-        nptr = PMIX_NEW(pmix_namespace_t);
-        if (NULL == nptr) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            PMIX_RELEASE(peer);
-            return PMIX_ERR_NOMEM;
-        }
-        if (!pnd->need_id) {
-            // must have been given one
-            nptr->nspace = strdup(pnd->proc.nspace);
-        }
-        /* the tool's job belongs to the user it connected as */
-        pmix_server_access_set_owner(nptr, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
-        /* save the version */
-        nptr->version.major = pnd->proc_type.major;
-        nptr->version.minor = pnd->proc_type.minor;
-        nptr->version.release = pnd->proc_type.release;
-        pnd->nspace_created = true;
-        /* must add the nspace to the global list after we return
-         * from the host's upcall since they can/will assign the
-         * tool with a namespace */
-    }
-
-    /* the peer holds one reference on the namespace object. If we created
-     * that object here, then the reference PMIX_NEW gave us is the one
-     * held on behalf of the global namespace list - process_cbfunc either
-     * appends it to that list or releases it once the host has told us
-     * the tool's identity. If the namespace already existed, the list is
-     * already holding its own reference, so all we add is the peer's. */
-    PMIX_RETAIN(nptr);
-    peer->nptr = nptr;
-    /* the tool's wire format, to unpack the info it sent. It is not
-     * attached to the namespace here - that may be one other peers
-     * already share - but in process_cbfunc, once the connection is
-     * committed */
-    bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
-    if (NULL == bfrops) {
-        rc = PMIX_ERR_NOT_AVAILABLE;
-        PMIX_ERROR_LOG(rc);
-        goto cleanup;
-    }
-
-    n = 0;
-    /* if info structs need to be passed along, then unpack them */
-    ilist = PMIx_Info_list_start();
-    if (0 < cnt) {
-        int32_t foo;
-        PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-        PMIX_LOAD_BUFFER_NON_DESTRUCT(peer, &buf, mg, cnt); // allocates no memory
-        buf.type = pnd->buffer_type;
-        foo = 1;
-        rc = bfrops->unpack(&buf, &sz, &foo, PMIX_SIZE);
-        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
-            /* too short to hold even the count - see PMIX_PTL_LEGACY_PAD */
-            sz = 0;
-        } else if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIx_Info_list_release(ilist);
-            goto cleanup;
-        }
-        /* the payload must still hold sz packed pmix_info_t */
-        if (!pmix_bfrop_count_fits(&buf, sz, PMIX_INFO)) {
-            rc = PMIX_ERR_BAD_PARAM;
-            PMIX_ERROR_LOG(rc);
-            PMIx_Info_list_release(ilist);
-            goto cleanup;
-        }
-        if (0 < sz) {
-            foo = (int32_t) sz;
-            PMIX_INFO_CREATE(iptr, sz);
-            rc = bfrops->unpack(&buf, iptr, &foo, PMIX_INFO);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_INFO_FREE(iptr, sz);
-                PMIx_Info_list_release(ilist);
-                goto cleanup;
-            }
-            for (n=0; n < sz; n++) {
-                PMIx_Info_list_xfer(ilist, &iptr[n]);
-            }
-            PMIX_INFO_FREE(iptr, sz);
-        }
-    }
-
-    /* does the server support tool connections? */
-    if (NULL == pmix_host_server.tool_connected &&
-        NULL == pmix_host_server.tool_connected2) {
-        PMIx_Info_list_release(ilist);
-        if (pnd->need_id) {
-            /* we need someone to provide the tool with an
-             * identifier and they aren't available */
-            /* send an error reply to the client */
-            rc = PMIX_ERR_NOT_SUPPORTED;
-            goto cleanup;
-        } else {
-            /* just process it locally */
-            cnct_cbfunc(PMIX_SUCCESS, &pnd->proc, (void *) pnd);
-            /* release the msg */
-            return PMIX_SUCCESS;
-        }
-    }
-
-    /* setup the info array to pass the relevant info
-     * to the server */
-    /* provide the version */
-    PMIx_Info_list_add_unique(ilist, PMIX_VERSION_INFO,
-                              pnd->version, PMIX_STRING, true);
-
-    /* provide the user id and group id from the handshake, in place of
-     * any the tool put in its own info - and the pid, where the kernel
-     * reports one for this socket */
-    PMIx_Info_list_add_unique(ilist, PMIX_USERID,
-                              &pnd->uid, PMIX_UINT32, true);
-    if (PMIX_SUCCESS == pmix_util_getpid(pnd->sd, &kpid)) {
-        PMIx_Info_list_add_unique(ilist, PMIX_PROC_PID, &kpid, PMIX_PID, true);
-    }
-    PMIx_Info_list_add_unique(ilist, PMIX_GRPID,
-                              &pnd->gid, PMIX_UINT32, true);
-
-    /* if we have it, pass along their ID */
-    if (!pnd->need_id) {
-        PMIx_Info_list_add_unique(ilist, PMIX_NSPACE,
-                                  pnd->proc.nspace, PMIX_STRING, true);
-        PMIx_Info_list_add_unique(ilist, PMIX_RANK,
-                                  &pnd->proc.rank, PMIX_PROC_RANK, true);
-    }
-    rc = PMIx_Info_list_convert(ilist, &darray);
-    PMIx_Info_list_release(ilist);
-    if (PMIX_SUCCESS  != rc) {
-        PMIX_ERROR_LOG(rc);
-        /* the pending connection never adopted the array, so the partial
-         * one the conversion created is ours to release */
-        PMIX_DATA_ARRAY_DESTRUCT(&darray);
-        goto cleanup;
-    }
-
-    pnd->info = (pmix_info_t*)darray.array;
-    pnd->ninfo = darray.size;
-
-    /* pass it up for processing */
-    if (NULL != pmix_host_server.tool_connected2) {
-        rc = pmix_host_server.tool_connected2(pnd->info, pnd->ninfo, cnct_cbfunc, pnd);
-        if (PMIX_SUCCESS != rc) {
-            goto cleanup;
-        }
-        return PMIX_SUCCESS;
-    } else {
-        pmix_host_server.tool_connected(pnd->info, pnd->ninfo, cnct_cbfunc, pnd);
-    }
-    return PMIX_SUCCESS;
-
-cleanup:
-    /* Unwind exactly what we built here and nothing else. The peer holds
-     * one reference on each of the rank-info and namespace objects, so
-     * releasing it below gives those back - the pre-existing objects then
-     * remain owned by the lists that already held them. pnd->info is
-     * owned by the pending connection and is freed by its destructor when
-     * our caller releases it. */
-    if (pnd->rinfo_created) {
-        /* we appended this rank info to the namespace - withdraw it, and
-         * give back the reference that list was holding, since removing
-         * an item does not release it. The peer's own reference is given
-         * back when the peer is released below. */
-        pmix_list_remove_item(&nptr->ranks, &peer->info->super);
-        PMIX_RELEASE(peer->info);
-    }
-    if (pnd->nspace_created) {
-        /* the namespace we created was never placed on the global list -
-         * that only happens once the host has assigned the tool an
-         * identity - so simply drop the reference we held for it */
-        PMIX_RELEASE(nptr);
-    }
-    PMIX_RELEASE(peer);
-    return rc;
-
+    /* tools still waiting their turn that can no longer be accepted are
+     * refused now, rather than put to the host */
+    refuse_queued_conflicts(&id, pnd->uid, pnd->gid);
+    activate(pnd, peer);
 }
 
 static void _check_cached_events(pmix_peer_t *peer)

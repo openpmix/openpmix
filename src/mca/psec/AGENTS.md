@@ -16,8 +16,7 @@ read the top-level [`AGENTS.md`](../../../AGENTS.md) — the golden rules,
 prefix conventions, thread-safety model, wire-format/interoperability
 rules, and MCA concepts described there all apply here and are not
 repeated. This file covers what is specific to `psec`: what the framework
-is for, the credential every module must provide (and the handshake that
-may finish it), how a module is negotiated
+is for, the credential every module must provide, how a module is negotiated
 between two peers during the connection handshake, and the contract every
 component must honor. Each component subdirectory (`native/`, `munge/`,
 `ssl/`) carries its own `AGENTS.md` with component-specific detail.
@@ -26,8 +25,8 @@ component must honor. Each component subdirectory (`native/`, `munge/`,
 no test-only one: `psec/none` (which accepted every peer) and
 `psec/dummy_handshake` (which swapped a fixed string) were removed, and
 neither should come back. A build or deployment that cannot authenticate
-a peer refuses it. Do not add a component whose `validate_cred` or
-handshake can succeed without establishing who the peer is - not as a
+a peer refuses it. Do not add a component whose `validate_cred` can
+succeed without establishing who the peer is - not as a
 default, not behind an MCA parameter, not for testing.
 
 ## What PSEC does
@@ -40,20 +39,13 @@ traffic flows. `psec` provides that proof in the form of a **credential**
 — an opaque `pmix_byte_object_t` the connecting side creates and the
 accepting side validates.
 
-Concretely, `psec` owns two operations, each with a client half and a
-server half:
-
-1. **Credential creation / validation** (the common case). The connecting
-   side calls `create_cred` to produce a credential; the accepting side
-   calls `validate_cred` to check it. This is a **single-shot** exchange:
-   the credential rides inside the `ptl` connection handshake blob, and
-   the server accepts or rejects it in one step.
-2. **A handshake that finishes a credential** (the rare case). When a
-   module's `validate_cred` cannot decide on the credential alone, it asks
-   for a live exchange over the socket, and the module's
-   `client_handshake` / `server_handshake` read and write the socket
-   directly during connection setup. A handshake is never a substitute
-   for a credential: every module creates and validates one.
+Concretely, `psec` owns one operation, with a client half and a server
+half: **credential creation / validation**. The connecting side calls
+`create_cred` to produce a credential; the accepting side calls
+`validate_cred` to check it. This is a **single-shot** exchange: the
+credential rides inside the `ptl` connect-ack, and the server accepts or
+rejects it in one step. There is no live exchange over the socket - see
+"No handshake" below.
 
 `psec` is **not** in the steady-state data path. It runs only while a
 connection is being established. Once a peer is validated, `psec` is not
@@ -78,7 +70,7 @@ builds a priority-ordered list of *all* usable modules
 But how that list is used differs by role:
 
 - A **client / tool** selects exactly one module for itself at init
-  (`pmix_psec_base_assign_module(getenv("PMIX_SECURITY_MODE"))` in
+  (`pmix_psec_base_assign_module(pmix_idenv_get("PMIX_SECURITY_MODE"))` in
   [`src/client/pmix_client.c`](../../../src/client/pmix_client.c) and
   [`src/tool/pmix_tool.c`](../../../src/tool/pmix_tool.c)) and uses it
   for its one connection *up* to its server. It also assigns that same
@@ -95,7 +87,7 @@ namespace compatibility struct. All the `PMIX_PSEC_*` macros dereference
 that pointer; there is **no** exported "current module" global the way
 `ptl` has `pmix_ptl`.
 
-## The credential, and the handshake that may finish it
+## The credential
 
 Every module provides `create_cred` and `validate_cred`.
 `pmix_psec_base_select` does not activate one that lacks either, and
@@ -114,40 +106,30 @@ The credential is a self-contained blob:
   return an info array naming the issuing agent). The blob is packed into
   the `ptl` handshake by `pmix_ptl_base_construct_message`.
 - Server side: `validate_cred` inspects the blob (and/or the socket) and
-  returns `PMIX_SUCCESS`, `PMIX_ERR_INVALID_CRED`, or
-  `PMIX_ERR_READY_FOR_HANDSHAKE` (below).
+  returns `PMIX_SUCCESS` or the reason it refuses, such as
+  `PMIX_ERR_INVALID_CRED`.
 
-`munge` and `ssl` decide on the credential alone and leave both
-`*_handshake` pointers `NULL`.
+Every component decides on the credential alone (and, for `native`, the
+socket).
 
-### A handshake that finishes the job
+### No handshake
 
-A module whose `validate_cred` cannot always decide returns
-`PMIX_ERR_READY_FOR_HANDSHAKE` for what it cannot, and the framework then
-runs its `server_handshake` (with the peer's `client_handshake` on the
-other end). `native` does this: when the kernel cannot name the owner of a
-TCP connection, the peer proves its identity over an AF_UNIX socket. See
-[`native/AGENTS.md`](native/AGENTS.md).
+The interface has no live exchange over the socket. Earlier releases had
+`client_handshake` / `server_handshake` slots, and a server could answer a
+connect-ack with `PMIX_ERR_READY_FOR_HANDSHAKE` to run one. No released
+server asks for one except with the test module `dummy_handshake`, which is
+gone; `native`'s, the last user, went when local peers moved to the local
+socket, where the kernel names them. The slots and the ptl code that ran
+them are removed.
 
-Two rules make that safe:
+A client or tool of this release that is asked for a handshake fails its
+connection with `PMIX_ERR_NOT_SUPPORTED` (`server_status` in
+`ptl_base_fns.c`) rather than waiting on the server. The status code
+itself stays defined: codes are never removed.
 
-- **Only ask a peer that can answer.** A peer's module may come from an
-  older release whose `client_handshake` is `NULL`. The request must be
-  keyed on something only a capable peer sends — `native` uses a trailer
-  on its credential. `PMIX_PSEC_CLIENT_HANDSHAKE` refuses rather than
-  call through a `NULL` slot, but an old client's copy of that macro
-  does not.
-- **On the tool path the handshake runs early.** `process_tool_request`
-  validates a tool before anything is done for it. A `validate_cred`
-  that asks for a handshake there gets it at once — the tool's first
-  status is `READY_FOR_HANDSHAKE` — and the identity the module settles
-  on (written to the scratch peer's `info`) replaces the claimed one in
-  `pnd` before the host hears of the tool. There is no later handshake:
-  the security status a tool reads after its identity replies is only
-  ever the outcome.
-
-`PMIX_PSEC_VALIDATE_CONNECTION_WITH` turns a `READY_FOR_HANDSHAKE` from a
-module with no `server_handshake` into `PMIX_ERR_NOT_SUPPORTED`.
+A mechanism that needs more than one message cannot be added as a psec
+module alone. It needs a new exchange in the ptl connect, and a way for
+the server to tell which peers can take part in it.
 
 ## Module interface (`pmix_psec_module_t`)
 
@@ -160,10 +142,9 @@ unused pointers stay `NULL`, and the framework macros guard on them.
 | `init` | `(void) -> pmix_status_t` | both | one-time module init at selection; return non-success to disqualify the module (e.g. `munge` checks the local `munged` daemon is reachable) |
 | `finalize` | `(void) -> void` | both | module tear-down, invoked by `pmix_psec_close` for each active module at framework close (e.g. `munge_finalize` frees the cached credential) |
 | `create_cred` | `(peer, directives, ndirs, &info, &ninfo, cred)` | client | build a credential blob for this process |
-| `client_handshake` | `(peer, sd)` | client | run the client half of a live handshake over socket `sd`; `peer` is the server |
-| `validate_cred` | `(peer, directives, ndirs, &info, &ninfo, cred)` | server | check a received credential, or return `PMIX_ERR_READY_FOR_HANDSHAKE`; required - a module without it is never selected |
-| `server_handshake` | `(peer, sd)` | server | run the server half of a live handshake with `peer` over socket `sd`; may settle the peer's identity like `validate_cred` |
+| `validate_cred` | `(peer, directives, ndirs, &info, &ninfo, cred)` | server | check a received credential; required - a module without it is never selected |
 | `validates` | `(void) -> bool` | server | whether the module, as configured, can check a peer's credential; `NULL` means always. `ssl` with an identity and no CA can connect but not accept |
+| `remote` | `bool` | server | whether the module validates a credential made on another host - `munge` and `ssl` do, `native` (which asks this host's kernel) does not. ptl refuses a TCP peer whose address is not this host's that names a module without it, and a server asked for remote connections fails its init unless an active module has it and `validates` (`pmix_psec_base_remote_available`) |
 
 The `directives`/`info` pairs carry the attribute arrays required of
 every PMIx interface: `directives` are caller inputs (e.g.
@@ -301,36 +282,11 @@ carried in the `ptl` handshake rather than in the payload:
    peer carrying only its identity (`info`), protocol and socket - so a
    module's `validate_cred` must read nothing else from the peer. The
    macro calls `validate_cred`, and answers `PMIX_ERR_NOT_SUPPORTED` for a
-   module without one; `validate_cred` may itself answer
-   `PMIX_ERR_READY_FOR_HANDSHAKE` (a signal, not an error).
-4. The server sends that reply status back, then runs
-   **`PMIX_PSEC_SERVER_HANDSHAKE_IFNEED_WITH`**, which invokes
-   `server_handshake` *only* when the reply was
-   `PMIX_ERR_READY_FOR_HANDSHAKE`. The client mirror is
-   `pmix_ptl_base_client_handshake`, which calls
-   **`PMIX_PSEC_CLIENT_HANDSHAKE`** on the same signal.
-
-**`PMIX_ERR_READY_FOR_HANDSHAKE` is a signal, not a failure — and every
-caller of `PMIX_PSEC_VALIDATE_CONNECTION` has to treat it that way.**
-This is the single easiest thing to get wrong at the `psec`/`ptl` seam,
-because the status is negative and reads like an error at a glance. Both
-call sites in
-[`ptl_base_connection_hdlr.c`](../ptl/base/ptl_base_connection_hdlr.c)
-once tested the result with a bare `if (PMIX_SUCCESS != reply) goto
-error;`, which aborted the connection between step 3 and step 4 and made
-the entire handshake half of `psec` unreachable - no module that asked
-for a handshake could complete a single connection. The test must be
-
-```c
-if (PMIX_SUCCESS != reply && PMIX_ERR_READY_FOR_HANDSHAKE != reply) {
-```
-
-so that the signal survives to reach `PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`,
-which is what converts it into a real status.
-
-The handshake slots took only the socket until the psec interface went
-to 2.0.0; they now take the peer as well, so a handshake can see the
-identity the peer was registered or connected as.
+   module without one. Its answer decides the matter: anything but
+   `PMIX_SUCCESS` refuses the peer.
+The psec interface went to 2.0.0 when `validate_cred` was given the
+peer, so a module can see the identity the peer was registered or
+connected as, and to 4.0.0 when the handshake slots were removed.
 
 ## The `PMIX_PSEC_*` macros ([`psec.h`](psec.h))
 
@@ -341,13 +297,10 @@ these macros, all of which dereference `p->nptr->compat.psec`:
 |-------|------|-------|
 | `PMIX_PSEC_CREATE_CRED(r,p,d,nd,in,nin,c)` | client | build a credential |
 | `PMIX_PSEC_VALIDATE_CRED(r,p,d,nd,in,nin,c)` | server | validate directly (used by the credential APIs) |
-| `PMIX_PSEC_VALIDATE_CONNECTION(r,p,…)` | server | validate *or* request a handshake — the branch above |
-| `PMIX_PSEC_CLIENT_HANDSHAKE(r,p,sd)` | client | run `client_handshake` |
-| `PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(r,p)` | server | run `server_handshake` iff `r == PMIX_ERR_READY_FOR_HANDSHAKE` |
+| `PMIX_PSEC_VALIDATE_CONNECTION(r,p,…)` | server | validate a connecting peer — step 3 above |
 
-`PMIX_PSEC_VALIDATE_CONNECTION` and `PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`
-are the two that contain real control flow; the rest are thin call
-wrappers.
+`PMIX_PSEC_VALIDATE_CONNECTION` is the one that contains real control
+flow; the rest are thin call wrappers.
 
 ### The `*info` output array
 
@@ -374,7 +327,7 @@ Default priorities come from each component's `component_query`:
 | Component | Priority | Model | Active when |
 |-----------|----------|-------|-------------|
 | `munge` | 80 | single-shot | built only if `--with-munge` was given and libmunge is found; `init` succeeds only if the `munged` daemon issues a credential |
-| `native` | 10 | single-shot + handshake | always (no `configure.m4`, no gate); authenticates **peers on this host's kernel**, containers included |
+| `native` | 10 | single-shot | always (no `configure.m4`, no gate); authenticates **peers on this host's kernel**, containers included |
 | `ssl` | 5 | single-shot | built only with `--with-openssl`; active only when `psec_ssl_ca_file` or a cert/key pair is configured; authenticates remote peers by X.509 certificate |
 
 Because the list is priority-ordered and `assign_module(NULL)` returns
@@ -392,8 +345,11 @@ through the implicit framework component-selection variable, `psec`
 which components are opened/considered. As a convenience,
 [`pmix_init.c`](../../../src/runtime/pmix_init.c) copies the
 `PMIX_SECURITY_MODE` environment variable into `PMIX_MCA_psec` at
-startup, and clients pass their selected mechanism to
-`assign_module` via that same `PMIX_SECURITY_MODE` env var. Per the
+startup - when `PMIX_MCA_psec` is not set already - and takes the copy
+out again once the framework has read it. Clients and tools pass their
+selected mechanism to `assign_module` from that same variable, read
+through `pmix_idenv_get` (`src/common/pmix_idenv.h`): their init takes
+it out of the environment first. Per the
 top-level guidance, prefer
 adding an attribute honored by `create_cred`/`validate_cred` (they
 already take a directives array) over hard-coding new behavior.
@@ -405,9 +361,9 @@ connection is being established:
 
 - On a client/tool/server, `create_cred` runs during `PMIx_Init` /
   `PMIx_tool_init` in the caller's thread as part of the blocking connect.
-- On a server, `validate_cred` / `server_handshake` run inside the `ptl`
-  connection handler on the progress thread, with the socket temporarily
-  in blocking mode for the handshake I/O.
+- On a server, `validate_cred` runs inside the `ptl` connection handler
+  on the progress thread. It may look at the socket (`native` asks the
+  kernel who owns it) but never reads from or writes to it.
 - The credential-API path (`pmix_security.c`) invokes
   `create_cred`/`validate_cred` through the macros *inline in the calling
   thread* — it does **not** thread-shift — consistent with `psec` doing
@@ -426,8 +382,7 @@ inline on whichever thread called the public API, two application threads
 can be inside the same module function at the same time — there is no
 progress thread serializing them the way there is for most of the
 library. A module that keeps nothing between calls is fine as written;
-`native`'s only shared state is its handshake socket directory, which only
-a server's progress thread touches. `munge` caches a credential in a file static and refreshes it on
+`native` keeps no state between calls. `munge` caches a credential in a file static and refreshes it on
 every use, so two concurrent `PMIx_Get_credential()` calls would both
 free it; it guards that state with a file-scope `pmix_mutex_t`. Any new
 module that caches anything must do the same. This is not a hot path —
@@ -444,7 +399,7 @@ src/mca/psec/
 │   ├── psec_base_frame.c     open/close, framework decl, class instance (no MCA params)
 │   ├── psec_base_select.c    query components, build priority-ordered actives list
 │   └── psec_base_fns.c       get_available_modules + assign_module (name lookup)
-├── native/                   uid/gid from the kernel: TCP socket owner, else an AF_UNIX handshake (default, always available)
+├── native/                   uid/gid from the kernel: the local socket's peer, or the TCP socket's owner (default, always available)
 ├── munge/                    MUNGE credentials (conditional on libmunge)
 └── ssl/                      X.509-signed credentials for remote peers (conditional on OpenSSL)
 ```
@@ -484,12 +439,9 @@ make`.
   breaks interoperability with peers that request it by the old name;
   treat it like the `preg` tag or a `bfrops` version.
 - **`validate_cred` is required.** A module without it is never
-  selected, and a peer that names one is refused. A module that sometimes
-  needs a live exchange returns `PMIX_ERR_READY_FOR_HANDSHAKE` from
-  `validate_cred`; there is no way to run a handshake in place of a
-  credential.
-- **Match `create_cred` to `validate_cred` and `client_handshake` to
-  `server_handshake`.** The two ends of a connection may be built from
+  selected, and a peer that names one is refused. There is no live
+  exchange to fall back on - see "No handshake".
+- **Match `create_cred` to `validate_cred`.** The two ends of a connection may be built from
   different PMIx releases; a change to what one side emits must be a
   change the other side already tolerates. Extend by appending, never by
   reformatting an existing credential.

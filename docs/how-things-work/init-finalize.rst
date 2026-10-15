@@ -70,8 +70,8 @@ The Actors
     One entry per rank on ``nptr->ranks``. Records the rank's identity
     (``pname``), ``uid``/``gid``, the host's ``server_object``, the index
     (``peerid``) of the peer object serving this rank in the server's
-    ``clients`` array, and ``proc_cnt`` — the number of live *clones* of
-    this rank (see below). This is **registration** state: it is created
+    ``clients`` array, and ``proc_cnt`` — the number of live connections
+    for this rank, which is at most one (see below). This is **registration** state: it is created
     by ``PMIx_server_register_client`` (or lazily on first connect) and
     lives until the client or the namespace is deregistered. It is
     **not** torn down by finalize.
@@ -83,14 +83,17 @@ The Actors
     ``pmix_server_globals.clients`` and pointed to by ``info->peerid``.
     This is the primary carrier of **client-scoped** state.
 
-Clones
-    A client may ``fork``/``exec`` a child that also calls ``PMIx_Init``
-    using the *same* namespace and rank as its parent — in PMIx
-    terminology, a *clone* of that client. Each clone opens its own
-    socket and is tracked by ``info->proc_cnt``. A rank is only fully
-    finalized when the original
-    client **and all of its clones** have finalized — i.e. when
-    ``proc_cnt`` returns to zero.
+One connection per rank
+    A rank has at most one live connection. A child a client starts
+    before its ``PMIx_Init`` inherits its environment and, if it calls
+    ``PMIx_Init``, connects as the same rank — a *clone*, in the
+    Standard's terms; one it starts afterwards inherits none of its
+    identity (see :ref:`PMIx_Init(3) <man3-PMIx_Init>`). The server
+    refuses a clone with ``PMIX_ERR_EXISTS`` (see
+    :doc:`connections`). A rank whose connection finalized, or was lost,
+    can connect again. A process that execs closes its connection - every
+    socket the library makes is close-on-exec - and is lost as one that
+    exits without finalizing is.
 
 
 The Three Teardown Triggers
@@ -100,9 +103,9 @@ Server-side cleanup is driven by exactly three events. Each has a
 distinct, non-overlapping responsibility. The remainder of this document
 is normative: "must" denotes a required behavior.
 
-1. Client finalize (all clones included)
-    A client, together with all of its clones, has finalized — the rank's
-    ``proc_cnt`` has dropped to zero. The peer object serving that rank is
+1. Client finalize
+    A client has finalized — the rank's ``proc_cnt`` has dropped to
+    zero. The peer object serving that rank is
     left in place as an inert **tombstone** at its existing client-array
     slot (it is not freed, its slot is not nulled, and ``info->peerid`` is
     not moved), while the rank's **registration** (the ``pmix_rank_info_t``
@@ -190,12 +193,12 @@ collective touches changes underneath it; the object is reclaimed only
 once no such operation can be in flight.
 
 A tombstone whose slot has been taken over by a newer peer for the same
-rank — a fork/exec'd clone that is still running, or a fast re-init that
-reconnected before the socket-close was processed — is no longer named by
-``info->peerid``. Such a *stranded* object is freed immediately in
-``pmix_server_peer_finalized`` (nulling only its own slot, never the live
-referenced one, and never touching ``info->peerid``), so a departing
-clone or a raced reconnect cannot leak a peer or its finalized count.
+rank — a fast re-init that reconnected before the socket-close was
+processed — is no longer named by ``info->peerid``. Such a *stranded*
+object is freed immediately in ``pmix_server_peer_finalized`` (nulling
+only its own slot, never the live referenced one, and never touching
+``info->peerid``), so a raced reconnect cannot leak a peer or its
+finalized count.
 
 Job-scoped accounting must stay honest across cycles. The rank's
 ``proc_cnt`` tracks live processes and returns to zero when the last one
@@ -253,12 +256,12 @@ concurrent collective or get can still find the rank's GDS module.
 
 **The two counters.**
 
-* ``info->proc_cnt`` is the number of **live** processes (clones) for the
-  rank. It is incremented in the connection handler when a peer connects
-  and decremented on **every** peer departure — a clean finalize drop
-  *and* an abnormal termination. Decrementing on abnormal death too
-  (in ``lost_connection``) keeps a later clone's tombstone/reclaim
-  accounting correct.
+* ``info->proc_cnt`` is the number of **live** connections for the rank
+  — at most one. It is incremented in the connection handler when a peer
+  connects and decremented on **every** peer departure — a clean finalize
+  drop *and* an abnormal termination. Decrementing on abnormal death too
+  (in ``lost_connection``) keeps the tombstone reclaim at the rank's next
+  connection correct.
 
 * ``nptr->nfinalized`` is the number of client peers currently in the
   ``finalized == true`` state, **including tombstones**. It is incremented
@@ -296,8 +299,8 @@ retires it according to its role:
   a fresh namespace, a finalized tool never reconnects onto the same rank
   to be reclaimed there — leaving it would leak one peer per init/finalize
   cycle. Freeing it also restores the post-finalize ``info->peerid == -1``
-  state that ``process_tool_request`` relies on to recognize a reconnecting
-  tool.
+  state that the tool connection path (``place_tool``) relies on to
+  recognize a reconnecting tool.
 
 Otherwise a newer peer already owns the rank's slot and this object is
 stranded, so it is freed at once regardless of role: its own ``clients``
@@ -316,9 +319,11 @@ no live process (``proc_cnt == 0``), that tombstone is reclaimed — its
 slot nulled, ``nfinalized`` decremented, and the object released — and
 only then is a new peer allocated. A tool that was registered as a client
 (a launcher child) keeps the client tombstone semantics above but
-reconnects through ``process_tool_request`` rather than the client
-handler; that path performs the same reclaim on the finalized peer at
-``info->peerid`` before assigning the reconnecting tool its fresh slot.
+reconnects through the tool path rather than the client handler; that
+path performs the same reclaim on the finalized peer at ``info->peerid``
+before assigning the reconnecting tool its fresh slot. On both paths the
+reclaim runs only once the host has accepted the connection, so a refused
+reconnect leaves the tombstone where it was.
 Either way ``info->peerid`` is then repointed, by the normal connection
 assignment, to the freshly allocated peer.
 
@@ -392,7 +397,7 @@ means the trigger leaves it in place.
    :widths: 34 22 22 22
 
    * - State
-     - Client finalize (all clones)
+     - Client finalize
      - Deregister client
      - Deregister nspace
    * - Peer object (``pmix_peer_t``)
@@ -570,8 +575,8 @@ An implementation of the above must uphold these invariants:
   peer, are freed immediately. Either way at most one finalized object per
   rank is ever kept, and only while the rank's registration itself
   persists — including across repeated tool init/finalize cycles that
-  reuse the same namespace and rank, whose reconnect reclaim runs in
-  ``process_tool_request``.
+  reuse the same namespace and rank, whose reconnect reclaim runs when the
+  tool's connection is accepted.
 
 * **No shared-state mutation while a collective is in flight.** Finalize
   must not free a peer, null a live ``clients`` slot, or move a live

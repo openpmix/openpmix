@@ -30,20 +30,11 @@
 #include "src/common/pmix_control.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_show_help.h"
-#include "ptl_tool.h"
 #include "src/mca/ptl/base/base.h"
 
-static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo);
-
-pmix_ptl_module_t pmix_ptl_tool_module = {
-    .name = "tool",
-    .connect_to_peer = pmix_ptl_base_connect_to_peer,
-    .connect_to_peer_nb = pmix_ptl_base_connect_to_peer_nb,
-    .setup_fork = pmix_ptl_base_setup_fork,
-    .setup_listener = setup_listener
-};
-
-static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo)
+/* A tool's listener is a server's, and a connected tool registers its
+ * rendezvous files for cleanup */
+pmix_status_t pmix_ptl_base_tool_setup_listener(pmix_info_t info[], size_t ninfo)
 {
     pmix_status_t rc;
     char **clnup = NULL, *cptr = NULL;

@@ -32,16 +32,42 @@
 
 #include "src/mca/ptl/base/base.h"
 
-/* Function for selecting a component
- * from all those that are available. */
+/* The functions of each role. A client neither listens, nor forks
+ * children, nor connects without blocking: callers test for those */
+static const pmix_ptl_api_t client_api = {
+    .name = "client",
+    .connect_to_peer = pmix_ptl_base_client_connect_to_peer
+};
+
+static const pmix_ptl_api_t tool_api = {
+    .name = "tool",
+    .connect_to_peer = pmix_ptl_base_connect_to_peer,
+    .connect_to_peer_nb = pmix_ptl_base_connect_to_peer_nb,
+    .setup_fork = pmix_ptl_base_setup_fork,
+    .setup_listener = pmix_ptl_base_tool_setup_listener
+};
+
+static const pmix_ptl_api_t server_api = {
+    .name = "server",
+    .connect_to_peer = pmix_ptl_base_connect_to_peer,
+    .connect_to_peer_nb = pmix_ptl_base_connect_to_peer_nb,
+    .setup_fork = pmix_ptl_base_setup_fork,
+    .setup_listener = pmix_ptl_base_setup_listener
+};
+
+/* Take up every transport available, and the functions of this
+ * process's role. A process that is a client and not a tool is a client;
+ * any tool - a launcher, or a tool on a client's rank - is a tool; a
+ * server that is not a tool is a server */
 int pmix_ptl_base_select(void)
 {
-    pmix_mca_base_component_list_item_t *cli = NULL;
-    pmix_ptl_base_component_t *component = NULL;
+    pmix_peer_t *me = pmix_globals.mypeer;
+    pmix_mca_base_component_list_item_t *cli;
+    pmix_ptl_base_component_t *component;
+    pmix_ptl_base_active_t *active, *newactive;
     pmix_mca_base_module_t *mod;
-    pmix_ptl_module_t *pmod;
-    int rc, pri, best_pri = -1;
-    bool inserted = false;
+    int rc, pri;
+    bool inserted;
 
     if (pmix_ptl_base.selected) {
         /* ensure we don't do this twice */
@@ -49,47 +75,54 @@ int pmix_ptl_base_select(void)
     }
     pmix_ptl_base.selected = true;
 
-    /* Query all available components and ask if they have a module */
+    /* every transport available is used, highest priority first */
     PMIX_LIST_FOREACH (cli, &pmix_ptl_base_framework.framework_components,
                        pmix_mca_base_component_list_item_t) {
         component = (pmix_ptl_base_component_t *) cli->cli_component;
-
         pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                             "mca:ptl:select: checking available component %s",
                             component->base.pmix_mca_component_name);
-
-        /* get the module for this component */
         rc = component->base.pmix_mca_query_component(&mod, &pri);
         if (PMIX_SUCCESS != rc || NULL == mod) {
             continue;
         }
-
-        /* If we got a module, try to initialize it */
-        pmod = (pmix_ptl_module_t *) mod;
-        if (NULL != pmod->init && PMIX_SUCCESS != pmod->init()) {
-            continue;
+        newactive = PMIX_NEW(pmix_ptl_base_active_t);
+        if (NULL == newactive) {
+            return PMIX_ERR_NOMEM;
         }
-
-        /* keep only the highest priority module */
-        if (best_pri < pri) {
-            best_pri = pri;
-            /* give any prior module a chance to finalize */
-            if (NULL != pmix_ptl.finalize) {
-                pmix_ptl.finalize();
+        newactive->priority = pri;
+        newactive->component = component;
+        newactive->module = (pmix_ptl_module_t *) mod;
+        inserted = false;
+        PMIX_LIST_FOREACH (active, &pmix_ptl_base.actives, pmix_ptl_base_active_t) {
+            if (active->priority < pri) {
+                pmix_list_insert_pos(&pmix_ptl_base.actives, &active->super,
+                                     &newactive->super);
+                inserted = true;
+                break;
             }
-            pmix_ptl = *pmod;
-            inserted = true;
+        }
+        if (!inserted) {
+            pmix_list_append(&pmix_ptl_base.actives, &newactive->super);
         }
     }
+    if (0 == pmix_list_get_size(&pmix_ptl_base.actives)) {
+        pmix_show_help("help-pmix-runtime.txt", "no-plugins", true, "PTL");
+        return PMIX_ERR_SILENT;
+    }
 
-    /* if no modules were found, then that's an error as we require at least one */
-    if (!inserted) {
+    if (PMIX_PEER_IS_CLIENT(me) && !PMIX_PEER_IS_TOOL(me)) {
+        pmix_ptl = client_api;
+    } else if (PMIX_PEER_IS_TOOL(me)) {
+        pmix_ptl = tool_api;
+    } else if (PMIX_PEER_IS_SERVER(me)) {
+        pmix_ptl = server_api;
+    } else {
         pmix_show_help("help-pmix-runtime.txt", "no-plugins", true, "PTL");
         return PMIX_ERR_SILENT;
     }
 
     pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
-                        "mca:ptl:select: using component %s", pmix_ptl.name);
-
+                        "mca:ptl:select: acting as %s", pmix_ptl.name);
     return PMIX_SUCCESS;
 }

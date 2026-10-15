@@ -63,6 +63,7 @@ static const char pmix_version_string[] = "OpenPMIx " PMIX_VERSION
 
 #include "src/class/pmix_list.h"
 #include "src/common/pmix_attributes.h"
+#include "src/common/pmix_idenv.h"
 #include "src/common/pmix_iof.h"
 #include "src/event/pmix_event.h"
 #include "src/hwloc/pmix_hwloc.h"
@@ -1252,7 +1253,8 @@ static int client_init_cntr = 0;
 pmix_status_t PMIx_Init(pmix_proc_t *proc,
                         pmix_info_t info[], size_t ninfo)
 {
-    char *evar, *suri;
+    const char *evar;
+    char *suri;
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_cb_t cb;
     pmix_buffer_t *req;
@@ -1318,25 +1320,14 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         pmix_atomic_fetch_add(&client_init_cntr, 1);
     }
 
-    /* backward compatibility fix - remove any directive to use
-     * the old usock component so we avoid a warning message */
-    if (NULL != (evar = getenv("PMIX_MCA_ptl"))) {
-        if (0 == strcmp(evar, "usock")) {
-            /* we cannot support a usock-only environment */
-            fprintf(stderr,
-                    "-------------------------------------------------------------------\n");
-            fprintf(stderr, "PMIx no longer supports the \"usock\" transport for client-server\n");
-            fprintf(stderr,
-                    "communication. A directive was detected that only allows that mode.\n");
-            fprintf(stderr, "We cannot continue - please remove that constraint and try again.\n");
-            fprintf(stderr,
-                    "-------------------------------------------------------------------\n");
-            rc = PMIX_ERR_INIT;
-            goto errout_early;
-        }
-        /* anything else should just be cleared */
-        pmix_unsetenv("PMIX_MCA_ptl", &environ);
-    }
+    /* Which transports this process uses is not the user's to choose -
+     * see pmix_ptl_register - so a ptl selection in our environment is
+     * removed, and our children do not inherit it */
+    pmix_unsetenv("PMIX_MCA_ptl", &environ);
+    /* nor who we are, and how we reach our server: the library keeps
+     * that for this process alone, and a process we start inherits none
+     * of it */
+    pmix_idenv_take();
 
     /* setup the runtime - this init's the globals,
      * opens and initializes the required frameworks */
@@ -1423,7 +1414,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                         "pmix: init called");
 
     /* see if the required info is present */
-    if (NULL == (evar = getenv("PMIX_NAMESPACE"))) {
+    if (NULL == (evar = pmix_idenv_get("PMIX_NAMESPACE"))) {
         /* if we didn't see a PMIx server (e.g., missing envar),
          * then allow us to run as a singleton */
         pid = getpid();
@@ -1451,7 +1442,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         pmix_globals.mypeer->nptr->nspace = strdup(evar);
 
         /* we also require our rank */
-        if (PMIX_UNLIKELY(NULL == (evar = getenv("PMIX_RANK")))) {
+        if (PMIX_UNLIKELY(NULL == (evar = pmix_idenv_get("PMIX_RANK")))) {
             /* let the caller know that the server isn't available yet */
             PMIX_ERROR_LOG(PMIX_ERR_DATA_VALUE_NOT_FOUND);
             rc = PMIX_ERR_DATA_VALUE_NOT_FOUND;
@@ -1500,7 +1491,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* select our psec compat module - the selection will be based
      * on the corresponding envars that should have been passed
      * to us at launch */
-    evar = getenv("PMIX_SECURITY_MODE");
+    evar = pmix_idenv_get("PMIX_SECURITY_MODE");
     pmix_globals.mypeer->nptr->compat.psec = pmix_psec_base_assign_module(evar);
     if (PMIX_UNLIKELY(NULL == pmix_globals.mypeer->nptr->compat.psec)) {
         PMIX_ERROR_LOG(PMIX_ERR_INIT);
@@ -1513,7 +1504,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     /* set the buffer type - the selection will be based
      * on the corresponding envars that should have been passed
      * to us at launch */
-    evar = getenv("PMIX_BFROP_BUFFER_TYPE");
+    evar = pmix_idenv_get("PMIX_BFROP_BUFFER_TYPE");
     if (NULL == evar) {
         /* just set to our default */
         pmix_globals.mypeer->nptr->compat.type = pmix_bfrops_globals.default_type;
@@ -1529,7 +1520,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
      * our server- the selection will be based
      * on the corresponding envars that should have been passed
      * to us at launch */
-    evar = getenv("PMIX_GDS_MODULE");
+    evar = pmix_idenv_get("PMIX_GDS_MODULE");
     if (NULL != evar) {
         PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, evar, PMIX_STRING);
         pmix_client_globals.myserver->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
@@ -1913,7 +1904,6 @@ errout:
      * PMIX_ERR_INIT for the life of the process. */
     client_teardown();
 
-errout_early:
     pmix_atomic_fetch_add(&client_init_cntr, -1);
     /* last, so that a concurrent PMIx_Init sees the latch clear only
      * once there is nothing left of ours for it to trip over */

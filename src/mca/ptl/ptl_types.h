@@ -348,6 +348,7 @@ typedef struct {
     pmix_event_t timer;
     bool timer_active;
     pmix_listener_protocol_t protocol;
+    struct pmix_ptl_module_t *transport; // the transport whose socket this is
     int sd;
     /* the connect-ack as it arrives - it is read a piece at a time as
      * the socket delivers it, never waited for, so the place reached
@@ -357,6 +358,8 @@ typedef struct {
     char *msg;
     size_t msg_recvd;
     bool need_id;
+    /* the host names the tool, but the tool reads no name back */
+    bool id_unsent;
     bool nspace_created;
     bool rinfo_created;
     pmix_rnd_flag_t flag;
@@ -379,6 +382,56 @@ typedef struct {
     /* the psec module (pmix_psec_module_t *) the peer asked to be
      * validated with */
     void *psecmod;
+    /* Everything below belongs to the connection until it is accepted,
+     * and its destructor releases whatever is still here - so a refused
+     * connection unwinds in one place. Accepting it hands each on (and
+     * clears the field): the peer to the clients array, the socket to the
+     * peer, a rank entry and namespace built for it to their lists. */
+    /* the namespace (pmix_namespace_t *) and rank entry
+     * (pmix_rank_info_t *) the connection will join - one reference each.
+     * Neither is on its list yet if it was built here (nspace_created,
+     * rinfo_created) */
+    void *nptr;
+    void *rinfo;
+    /* the wire-format and datastore modules the peer asked for */
+    void *bfropsmod;
+    void *gdsmod;
+    /* the connect-ack's trailing info, kept until it can be read */
+    char *blob;
+    size_t bloblen;
+    /* what a client's info said: its pid, and its real ids */
+    pid_t pid;
+    uint32_t realuid;
+    uint32_t realgid;
+    bool realuid_given;
+    bool realgid_given;
+    /* the connection token its info carried, if any */
+    char *token;
+    /* the identity the host gave a tool that asked for one */
+    pmix_proc_t assigned;
+    /* this connection is counted in its rank entry's `connecting` while it
+     * waits on the host - the destructor gives the count back */
+    bool connecting;
+    /* The host's answer. `answered` is set the moment its callback runs,
+     * on whatever thread the host calls it from; `upcall_rc` holds an
+     * error the up-call returned after the callback had already run */
+    pmix_atomic_bool_t answered;
+    pmix_status_t upcall_rc;
+    /* the server stopped waiting on the host's answer and refused the
+     * process; the connection is kept only until that answer arrives */
+    bool abandoned;
+    /* a tool's connection on pmix_ptl_base.tool_late: its name is held
+     * until the host's late answer, and any notice that follows it, are
+     * done with */
+    bool late_listed;
+    /* a tool's connection on pmix_ptl_base.tool_asking: the host is
+     * deciding on it */
+    bool asking;
+    /* when the peer began to wait for the reply it reads next - the
+     * connection's arrival - on a clock that only goes forward */
+    struct timeval waiting;
+    /* the seconds the host was given to answer in; 0 for no limit */
+    int host_tmo;
 } pmix_pending_connection_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pending_connection_t);
 
@@ -388,6 +441,7 @@ typedef struct pmix_listener_t {
     pmix_event_t ev;
     pmix_atomic_bool_t active;
     pmix_listener_protocol_t protocol;
+    struct pmix_ptl_module_t *transport; // the transport whose socket this is
     int socket;
     char *varname;
     char *uri;

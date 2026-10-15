@@ -148,9 +148,9 @@ No directory under `src/mca/` may break this pattern (except `base/` subdirector
 | `psec` | Security operations (connection handshakes); multi-select |
 | `psensor` | Process monitoring, resource utilization, and health checks |
 | `pstat` | System statistics at process, node, and disk levels |
-| `ptl` | Transport Layer for client-server and tool-server communication; single-select |
+| `ptl` | Transport Layer for client-server and tool-server communication; multi-select (one component per transport) |
 
-**Single-select vs. multi-select:** A single-select framework activates exactly one component at a time (`ptl` is an example).  A multi-select framework can have several components active simultaneously (`bfrops`, `preg`, `psec`).  Check the framework header comment before assuming which kind you are modifying.
+**Single-select vs. multi-select:** A single-select framework activates exactly one component at a time.  A multi-select framework can have several components active simultaneously (`bfrops`, `preg`, `psec`).  Check the framework header comment before assuming which kind you are modifying.
 
 ### Adding or Modifying Components
 
@@ -212,7 +212,7 @@ and [`docs/contributing.rst`](docs/contributing.rst):
 - Public API symbols: `PMIx_` (functions) / `PMIX_` (macros/types)
 - Internal library symbols: `pmix_`
 - Framework-scoped symbols: `pmix_FRAMEWORK_` (e.g., `pmix_ptl_`)
-- Component-scoped symbols: `pmix_FRAMEWORK_COMPONENT_` (e.g., `pmix_ptl_client_`)
+- Component-scoped symbols: `pmix_FRAMEWORK_COMPONENT_` (e.g., `pmix_ptl_tcp_`)
 
 **Symbol visibility:** Use `PMIX_EXPORT` on any symbol that must be visible outside `libpmix.so`.  Do not mark internal symbols with `PMIX_EXPORT`.
 

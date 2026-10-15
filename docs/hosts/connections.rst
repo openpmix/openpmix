@@ -36,29 +36,24 @@ on it.
 * A rank takes one connection at a time. A second connection for a
   rank that already has one - live, or waiting on the host's answer -
   is refused with ``PMIX_ERR_EXISTS``, and the host is not asked about
-  it. A process the client forked and exec'd that calls ``PMIx_Init``
-  makes such a connection. A rank whose earlier connection finalized,
-  or was lost, can connect again.
-* A process that calls ``PMIx_Init`` and then execs a program that
-  calls it again is the same process, and keeps its rank. The server
-  knows it by its pid, and its new connection takes the place of the
-  old one, which the new program inherited but cannot use. **The host
-  is not asked again, and is not told**: nothing it was told has
-  changed. It is told the client finalized once, when the new program
-  finalizes. The server knows the pid only if the client's library
-  sends it: libraries from v6.1 on do, and those from v5.0 and earlier
-  do not. A v5.0 or older client that execs and initializes again is
-  therefore refused with ``PMIX_ERR_EXISTS``, as any second connection
-  for its rank is.
-
-.. DRAFT: today every second connection is accepted and passed to
-   client_connected2, an exec'd process included.
+  it, whatever pid it comes from. A process the client started before
+  it called ``PMIx_Init`` inherits its identity, and makes such a
+  connection if it calls ``PMIx_Init`` too. One it starts afterwards
+  inherits none: the client library takes the variables
+  ``PMIx_server_setup_fork`` set out of the environment as it
+  initializes (see :ref:`PMIx_Init(3) <man3-PMIx_Init>`). A rank whose
+  earlier connection finalized, or was lost, can connect again.
+* **A client of this release that execs is lost**: its connection is
+  close-on-exec, so it closes in the exec, and the host is sent
+  ``PMIX_ERR_LOST_CONNECTION`` at once, whether the process runs on or
+  not (see `When a connection ends`_). The program it execs is a new
+  process to the server. A client of an earlier release leaves its
+  connection open across an exec: the rank stays connected until the
+  program it exec'd exits, and that program cannot connect for the
+  rank meanwhile.
 
 A ``PMIX_USERID`` or ``PMIX_GRPID`` in a client's connection data is
 ignored. The client's identity is the one the credential establishes.
-
-.. DRAFT: today the server still refuses a client whose PMIX_USERID or
-   PMIX_GRPID differs from the registered value.
 
 **For a tool,** in addition:
 
@@ -70,26 +65,34 @@ ignored. The client's identity is the one the credential establishes.
 * A tool that says it is a registered client, or that joins a namespace
   the server already knows, must have that process's uid and gid.
 * A tool joining a rank that already has a connection is refused with
-  ``PMIX_ERR_EXISTS``, as a client is, and a tool that execs and
-  initializes again keeps its name, as a client does.
+  ``PMIX_ERR_EXISTS``, as a client is. A tool that execs is lost, as a
+  client is - the host is sent ``PMIX_ERR_LOST_CONNECTION`` - and if its
+  new program initializes, it connects as a new tool, which the host is asked about, under the same name if it
+  names one.
 * A tool that took its namespace and rank from its environment - one
   started from a job script, which inherits the script's - and is
   refused that way connects again as a tool that needs an identity.
   **The host must then give it one**: such a tool arrives at
-  ``tool_connected2`` with no ``PMIX_NSPACE``.
-* **Tools are put to the host one at a time,** in the order they
-  arrived, so the host never decides on two tools for one name at
-  once. Once it accepts a tool, any waiting tool of the same name is
-  refused without the host being asked.
-
-.. DRAFT: today a tool joins a rank that already has a connection, a
-   launched tool that is refused does not connect again, and the host
-   is asked about tools as they arrive.
+  ``tool_connected2`` with no ``PMIX_NSPACE``. A tool of an earlier
+  release does not connect again; its ``PMIx_tool_init`` fails with
+  ``PMIX_ERR_EXISTS``.
+* A tool of an earlier release with the server's address in its
+  environment but no namespace and rank also arrives at
+  ``tool_connected2`` with no ``PMIX_NSPACE``, and must be given an
+  identity in the same way. The tool is not told the name it was given.
+* **The host decides on one tool of a name at a time.** A tool that
+  brings its own namespace and rank waits while the host decides on a
+  tool of that name, so the host never decides on two tools for one
+  name at once. Once it accepts a tool, any waiting tool of the same
+  name is refused without the host being asked. Tools of other names,
+  and tools that need an identity, are put to the host together: the
+  host must keep the names it gives unique, and a tool it gives a name
+  that a tool has taken for itself meanwhile is refused with
+  ``PMIX_ERR_EXISTS`` once the host accepts it - the host is then sent
+  the notice described below.
 
 A connection that fails any of these checks is sent a status saying
 why, and closed. The host is not told about it.
-
-.. DRAFT: today most refusals close the connection without a status.
 
 
 What the host is told
@@ -108,12 +111,14 @@ The host receives:
   for the connection, which it has checked against the registration;
 * ``PMIX_CRED_TYPE`` - the name of the security component that
   established them;
-* ``PMIX_PROC_PID`` - the client's process ID on the node. The
-  client's PMIx library obtains it with ``getpid()`` and sends it when
-  it connects. (The kernel does not report the pid at the other end of
-  a TCP connection.) A client in a container with its own process-ID
-  namespace sends its pid within that namespace, which is not the pid
-  the host sees;
+* ``PMIX_PROC_PID`` - the client's process ID on the node. On the
+  local socket it is the pid the kernel reports for the connection, in
+  the host's own process-ID namespace; where the kernel reports none,
+  the host is given none. Over TCP - a client of an earlier release -
+  it is the one the client's PMIx library obtains with ``getpid()`` and
+  sends, which for a client in a container with its own process-ID
+  namespace is its pid within that namespace, not the pid the host
+  sees;
 * ``PMIX_REALUID`` and ``PMIX_REALGID``, if the client's library sent
   them.
 
@@ -121,22 +126,23 @@ The host receives:
 :ref:`tool_connected2 <man5-pmix_server_module_t-tool_connected2>`. The host receives everything
 the tool sent, with these replaced by values PMIx established:
 ``PMIX_USERID`` and ``PMIX_GRPID``, ``PMIX_CRED_TYPE``, and
-``PMIX_VERSION_INFO``. The
-rest is passed on as the tool sent it: ``PMIX_PROC_PID``,
-``PMIX_REALUID`` and ``PMIX_REALGID``, which the tool's PMIx library
-obtains from the operating system; ``PMIX_CMD_LINE``; and the roles the
-tool asked for.
+``PMIX_VERSION_INFO``; and ``PMIX_PROC_PID``, as for a client. The
+rest is passed on as the tool sent it: ``PMIX_REALUID`` and
+``PMIX_REALGID``, which the tool's PMIx library obtains from the
+operating system; ``PMIX_CMD_LINE``; and the roles the tool asked
+for.
 
 Both are also given ``PMIX_TIMEOUT``: the number of seconds the host is
-asked to answer within. It is the server's
-``ptl_base_handshake_wait_time`` - how long a process waits for each
-reply while it connects - and is absent when that wait is unbounded.
+asked to answer within. It is what the process has left of the time
+it waits for the reply - the server's ``ptl_base_handshake_wait_time``,
+less any time it has already spent waiting for this reply, behind a
+tool of its name, say - and is absent when that wait is unbounded. A
+process with none left is refused with ``PMIX_ERR_TIMEOUT``, and the
+host is not asked.
 
 The deprecated forms, ``client_connected`` and ``tool_connected``, are
 called only when the newer form is ``NULL``. ``client_connected``
 receives no information about the client beyond its process ID.
-
-.. DRAFT: today PMIX_TIMEOUT is not passed.
 
 
 What the host is expected to check
@@ -188,10 +194,6 @@ The host is then sent a ``PMIX_ERR_LOST_CONNECTION`` event naming the
 process, as for any process that leaves without finalizing (see
 `When a connection ends`_), and should release what it recorded for it.
 
-.. DRAFT: today the server waits for the host's answer indefinitely,
-   and the host is not told when a process it accepted is not
-   connected.
-
 A host that provides neither connection up-call accepts every client
 PMIx accepts. Tools that need an identity assigned are then refused.
 
@@ -213,8 +215,8 @@ When a connection ends
   the same event (see `What the host is expected to check`_). It is not
   raised when another connection has the process's name by then, since
   it would name that connection.
-* **A process that execs and initializes again** raises nothing: its
-  connection continues.
+* **A process of this release that execs** raises the same event, at
+  once: its connection closes in the exec.
 
 A client is the host's child, so the host sees it end anyway. A tool
 the host did not start is not, and the lost-connection event is the
@@ -243,10 +245,9 @@ The ``psec`` framework does the authentication. Three components exist:
      - How it establishes the peer's uid and gid
      - Availability
    * - ``native``
-     - Asks the server's own kernel who owns the peer's end of the
-       connection. A peer the kernel cannot see directly, such as one
-       in a container with its own network, proves its identity over a
-       local socket instead. Serves peers on the same node only.
+     - Takes the uid and gid the kernel reports for a connection on the
+       local socket. Over TCP, asks the server's own kernel who owns the
+       peer's end of the connection. Serves peers on the same node only.
      - Always built. The default.
    * - ``munge``
      - Decodes a credential issued by the MUNGE daemon. Works across

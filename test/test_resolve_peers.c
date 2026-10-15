@@ -116,7 +116,7 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
         /* then resolve peers from this namespace - earlier versions cannot handle
          * cross-nspace peer resolution because their test servers don't provide
          * the info. So check for a marker of either 3.1.5 or above */
-        if (NULL != getenv("PMIX_VERSION")) {
+        if (params.server_version) {
             rc = resolve_nspace(nspace, params, my_nspace, my_rank);
             if (PMIX_SUCCESS == rc) {
                 TEST_VERBOSE(

@@ -195,8 +195,8 @@ directories, explained below).  Hence, only framework and component
 code can be in the ``mca`` tree.
 
 That is, framework and component names must be valid directory names
-(and C variables; more on that later).  For example, the CLIENT PTL
-component is located in ``mca/ptl/client/``.
+(and C variables; more on that later).  For example, the NATIVE PSEC
+component is located in ``mca/psec/native/``.
 
 The name ``base`` is reserved; there cannot be a framework or component
 named ``base``. Directories named ``base`` are reserved for the
@@ -211,8 +211,8 @@ of the |opmix_series| source tree):
     # Implementation of the ptl framework
     mca/ptl/base
 
-    # Implementation of the client component of the ptl framework
-    mca/ptl/client
+    # Implementation of the native component of the psec framework
+    mca/psec/native
 
 Under these mandated directories, frameworks and/or components may have
 arbitrary directory structures, however.

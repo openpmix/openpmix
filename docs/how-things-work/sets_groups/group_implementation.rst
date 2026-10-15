@@ -273,8 +273,8 @@ For the collective (fully-specified) method:
       def_complete  AND  (size(mbrs) + size(departed)) >= nlocal
 
   This is the group analog of ``pmix_server_trk_complete()`` used by the
-  fence family. The ``>=`` (rather than ``==``) tolerates fork/exec clones
-  that share a rank and over-count. The local phase is complete once every
+  fence family. The ``>=`` (rather than ``==``) tolerates a rank that
+  contributes twice and over-counts. The local phase is complete once every
   expected local participant has either **contributed** (a tracker on
   ``mbrs``) or **departed**.
 

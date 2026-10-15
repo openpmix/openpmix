@@ -396,8 +396,10 @@ int main(int argc, char **argv)
         goto done;
     }
 
-    if (NULL == pmix_ptl_base.listener.uri ||
-        0 > asprintf(&line, "%d %s", refid, pmix_ptl_base.listener.uri)) {
+    /* the address the server reports: its TCP listener's when it has
+     * one, else its local socket's */
+    if (NULL == ((NULL != pmix_ptl_base.listener.uri) ? pmix_ptl_base.listener.uri : pmix_ptl_base.local_listener.uri) ||
+        0 > asprintf(&line, "%d %s", refid, ((NULL != pmix_ptl_base.listener.uri) ? pmix_ptl_base.listener.uri : pmix_ptl_base.local_listener.uri))) {
         report("server published its URI", 0, "no URI");
         goto done;
     }
