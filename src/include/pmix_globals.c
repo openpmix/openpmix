@@ -370,6 +370,7 @@ static void info_con(pmix_rank_info_t *info)
     info->pname.rank = PMIX_RANK_UNDEF;
     info->modex_recvd = false;
     info->proc_cnt = 0;
+    info->connecting = 0;
     info->server_object = NULL;
     info->host_registered = false;
     PMIX_CONSTRUCT(&info->modex_log, pmix_list_t);
@@ -422,7 +423,9 @@ static void pcon(pmix_peer_t *p)
     p->proc_type.release = PMIX_RELEASE_WILDCARD;
     p->proc_type.flag = 0;
     p->protocol = PMIX_PROTOCOL_UNDEF;
+    p->transport = NULL;
     p->finalized = false;
+    p->finalize_counted = false;
     p->stdin_producer = false;
     p->upstream = false;
     p->info = NULL;

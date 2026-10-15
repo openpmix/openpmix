@@ -486,7 +486,10 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
     }
 
     if (PMIX_FINALIZE_CMD == cmd) {
-        peer->nptr->nfinalized++;
+        if (!peer->finalize_counted) {
+            peer->nptr->nfinalized++;
+            peer->finalize_counted = true;
+        }
         /* purge events.  This peer finalized - it did not vanish - so a
          * request parked on data it never published is answered "not
          * found", not "lost connection": the asker's own session is

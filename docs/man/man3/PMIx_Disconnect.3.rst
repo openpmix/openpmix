@@ -125,7 +125,9 @@ processing. The following attributes are optional and depend on the
 implementation and host environment:
 
 * ``PMIX_ALL_CLONES_PARTICIPATE`` (bool) |mdash| all clones of the calling process
-  must participate in the collective operation.
+  must participate in the collective operation. Has no effect in this
+  implementation: a server accepts one connection per rank, so a process has no
+  clones.
 * ``PMIX_TIMEOUT`` (int) |mdash| maximum time, in seconds, for the disconnect to
   complete before the host declares an error. This helps avoid "hangs" caused by a
   programming error that prevents one or more processes from reaching the

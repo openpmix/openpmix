@@ -31,8 +31,6 @@ Non-goals
   host environment's responsibility.
 * Changing how modex data is packed or how context IDs are assigned;
   those become per-operation hooks, unchanged in behavior.
-* Reworking clone semantics beyond what invariant correctness requires
-  (see *Clones* below).
 
 Current state (starting point)
 ------------------------------
@@ -90,13 +88,12 @@ operations and add identity accounting. The additive fields:
   each caddy retains its ``pmix_peer_t *peer``. "Has this rank
   contributed?" is answered by scanning ``local_cbs`` for a caddy with
   the departing peer's name. Because ``nlocal`` counts *ranks* (one per
-  local participant, clones not counted separately), the contribution
-  question is correctly asked per rank: a rank is satisfied if any of its
-  peers — the client or a fork/exec'd clone — has an entry. The clone
-  data-loss hazard the spec warns about is avoided not by keying the
-  *check* on the peer pointer but by **never removing a contribution on
-  loss at all** (Case A does nothing), so a sibling clone's data can never
-  be discarded.
+  local participant), the contribution question is correctly asked per
+  rank: a rank is satisfied if any of its peers — its connection now, or
+  one it had before reconnecting — has an entry. A server accepts one
+  connection per rank at a time (see :doc:`/how-things-work/connections`).
+  A contribution is **never removed on loss** (Case A does nothing), so a
+  rank's delivered data is never discarded.
 * ``departed`` is the new list (of ``pmix_proclist_t``) of expected ranks
   lost before contributing, deduplicated by name. A rank appears in at
   most one of ``local_cbs`` / ``departed``.
@@ -128,8 +125,8 @@ Because a rank is counted in exactly one of the two lists and neither is
 ever decremented behind the predicate's back, this cannot complete early:
 a not-yet-heard-from live participant is in neither list, so the sum stays
 below ``nlocal`` until it either contributes or departs. (``>=`` rather
-than ``==`` is deliberate defensive hygiene against any clone
-over-count; see *Clones*.)
+than ``==`` is deliberate defensive hygiene against a rank that
+contributes twice.)
 
 As built
 ~~~~~~~~
@@ -306,9 +303,8 @@ disconnect, group):
   remain).
 * **Loss after ``host_called``:** dropping a participant after handoff
   neither re-forwards nor alters completion.
-* **Clones:** two peers sharing one ``{nspace, rank}`` each contribute;
-  losing one after it contributed does not discard the other's
-  contribution.
+* **Reconnect:** a rank that contributed, lost its connection and
+  connected again keeps its contribution.
 * **Late registration vs. concurrent loss:** a rank registering late
   while another participant is being lost does not complete the
   collective early.
@@ -331,12 +327,9 @@ Risks and constraints
   dictates).
 * **Interoperability:** unchanged — this is server-local logic; a peer of
   any version sees identical behavior on the wire.
-* **Clones** (see design): the peer-keyed contribution check is the
-  correctness-critical part and is handled. Whether ``nlocal`` should
-  count clones distinctly is a pre-existing question this plan does not
-  regress; the ``>=`` predicate tolerates any clone over-count, and the
-  audit in step 4 records whatever semantics ``pmix_server_new_tracker``
-  already implements.
+* **One connection per rank:** a server refuses a second connection for
+  a rank that has one, so ``nlocal`` counting ranks is exact; the ``>=``
+  predicate tolerates a rank that contributes twice.
 
 Open decisions to resolve before coding
 ----------------------------------------

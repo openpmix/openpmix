@@ -136,12 +136,13 @@ pmix_status_t pmix_ptl_base_create_listener(pmix_info_t info[], size_t ninfo)
     return PMIX_SUCCESS;
 }
 
-/* How many connections may be waiting on their connect-ack at once. Each
- * holds a descriptor, and a peer need not have a credential to open one,
- * so by default they get a quarter of the descriptors we have - the rest
- * stay for connected clients, IOF and the files we open. Read here rather
- * than at register, so a host that raises its limit during init is
- * counted with the limit it raised */
+/* How many connections may be waiting on their connect-ack at once - and,
+ * separately, how many tools may be waiting on the host. Each holds a
+ * descriptor, and a peer need not have a credential to open one, so by
+ * default each gets an eighth of the descriptors we have - a quarter
+ * between them; the rest stay for connected clients, IOF and the files we
+ * open. Read here rather than at register, so a host that raises its
+ * limit during init is counted with the limit it raised */
 static int pending_cap(void)
 {
     struct rlimit rl;
@@ -153,13 +154,13 @@ static int pending_cap(void)
         return pmix_ptl_base.max_pending_connections;
     }
     if (0 == getrlimit(RLIMIT_NOFILE, &rl) && RLIM_INFINITY != rl.rlim_cur) {
-        if (4 > rl.rlim_cur) {
+        if (8 > rl.rlim_cur) {
             return 1;
         }
-        if ((rlim_t) INT_MAX < rl.rlim_cur / 4) {
+        if ((rlim_t) INT_MAX < rl.rlim_cur / 8) {
             return INT_MAX;
         }
-        return (int) (rl.rlim_cur / 4);
+        return (int) (rl.rlim_cur / 8);
     }
     /* no limit we can see, so none we can run into */
     return 0;
@@ -179,6 +180,7 @@ void pmix_ptl_base_start_listening(void)
 
     pmix_ptl_base.pending_cap = pending_cap();
     arm_listener(lt);
+    arm_listener(&pmix_ptl_base.local_listener);
     PMIX_LIST_FOREACH (alt, &pmix_ptl_base.alt_listeners, pmix_listener_t) {
         arm_listener(alt);
     }
@@ -189,6 +191,7 @@ void pmix_ptl_base_stop_listening(void)
     pmix_listener_t *lt = &pmix_ptl_base.listener;
     pmix_listener_t *alt;
     pmix_pending_connection_t *pnd, *pnext;
+    uint32_t u32;
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                         "ptl:base:stop_listening");
@@ -200,7 +203,16 @@ void pmix_ptl_base_stop_listening(void)
      * progress thread by now, so neither of its handlers can be running. */
     PMIX_LIST_FOREACH_SAFE (pnd, pnext, &pmix_ptl_base.pending_connections,
                             pmix_pending_connection_t) {
-        pmix_ptl_base_drop_pending_connection(pnd);
+        pmix_ptl_base_drop_pending_connection(pnd, PMIX_ERR_UNREACH);
+    }
+    /* and the tools still waiting their turn with the host */
+    while (NULL != (pnd = (pmix_pending_connection_t *) pmix_list_remove_first(
+                        &pmix_ptl_base.tool_queue))) {
+        u32 = htonl((uint32_t) PMIX_ERR_UNREACH);
+        if (0 <= pnd->sd) {
+            (void) pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+        }
+        PMIX_RELEASE(pnd);
     }
 
     /* The listener has to be built again if the framework is opened
@@ -218,6 +230,13 @@ void pmix_ptl_base_stop_listening(void)
     }
     free(pmix_ptl_base.alt_uris);
     pmix_ptl_base.alt_uris = NULL;
+
+    /* the local listener's socket too, whether or not it was ever armed */
+    disarm_listener(&pmix_ptl_base.local_listener);
+    if (0 <= pmix_ptl_base.local_listener.socket) {
+        CLOSE_THE_SOCKET(pmix_ptl_base.local_listener.socket);
+        pmix_ptl_base.local_listener.socket = -1;
+    }
 
     /* A paused listener is not active, but its socket is still open and
      * its retry timer still armed - so this cannot stop at "not active" */
@@ -342,18 +361,25 @@ void pmix_ptl_base_accept_failed(pmix_listener_t *lt, int err)
     pause_listener(lt);
 }
 
-/* Give up on a connection whose connect-ack is still arriving: take it off
- * the pending list, disarm both of its events, close its socket and
- * release it. Runs on the progress thread, or once that has stopped. */
-void pmix_ptl_base_drop_pending_connection(pmix_pending_connection_t *pnd)
+/* Give up on a connection whose connect-ack is still arriving: take it
+ * off the pending list, disarm its events, tell the peer `why` (unless
+ * that is PMIX_SUCCESS) and release it - so no event is left registered
+ * on a descriptor number that has been given back. Runs on the progress
+ * thread, or once that has stopped. */
+void pmix_ptl_base_drop_pending_connection(pmix_pending_connection_t *pnd, pmix_status_t why)
 {
+    uint32_t u32;
+
     pmix_list_remove_item(&pmix_ptl_base.pending_connections, &pnd->super);
     pmix_event_del(&pnd->ev);
     if (pnd->timer_active) {
         pmix_event_evtimer_del(&pnd->timer);
         pnd->timer_active = false;
     }
-    CLOSE_THE_SOCKET(pnd->sd);
+    if (PMIX_SUCCESS != why && 0 <= pnd->sd) {
+        u32 = htonl((uint32_t) why);
+        (void) pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+    }
     PMIX_RELEASE(pnd);
 }
 
@@ -371,7 +397,7 @@ static void connect_ack_expired(int sd, short args, void *cbdata)
                         " bytes of its connect-ack in %d seconds - dropping it",
                         pnd->sd, pnd->hdr_recvd + pnd->msg_recvd,
                         pmix_ptl_base.connect_ack_timeout);
-    pmix_ptl_base_drop_pending_connection(pnd);
+    pmix_ptl_base_drop_pending_connection(pnd, PMIX_ERR_TIMEOUT);
 }
 
 /*
@@ -382,6 +408,8 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
     struct sockaddr_storage addr;
     pmix_socklen_t addrlen = sizeof(addr);
     int sd, fdflags;
+
+    memset(&addr, 0, sizeof(addr));
     struct timeval tv;
     pmix_pending_connection_t *pending_connection, *pnd;
     /* the primary listener or one of the alternates - whichever fired */
@@ -391,13 +419,21 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
     /* the address is only printed, but an IPv6 peer's does not fit in a
      * plain struct sockaddr - it was truncated, and then read past the
      * end of the stack variable to print it */
+#if defined(HAVE_ACCEPT4) && defined(SOCK_CLOEXEC)
+    /* close-on-exec from the moment it exists, where the platform can */
+    sd = accept4(incoming_sd, (struct sockaddr *) &addr, &addrlen, SOCK_CLOEXEC);
+#else
     sd = accept(incoming_sd, (struct sockaddr *) &addr, &addrlen);
+#endif
     pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                         "connection_event_handler: working connection "
                         "(%d, %d) %s:%d\n",
                         sd, pmix_socket_errno,
                         pmix_net_get_hostname((struct sockaddr *) &addr),
                         pmix_net_get_port((struct sockaddr *) &addr));
+    if (0 <= sd) {
+        pmix_ptl_base_own_socket(sd);
+    }
     if (sd < 0) {
         pmix_ptl_base_accept_failed(lt, pmix_socket_errno);
         return;
@@ -405,6 +441,7 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
     /* whatever was failing has cleared */
     lt->nretries = 0;
     lt->warned = false;
+    pmix_ptl_base_set_nosigpipe(sd);
 
     /* The connect-ack that follows is read on the progress thread, from a
      * port that anything able to reach it can open, before any credential
@@ -437,7 +474,10 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
         return;
     }
     pending_connection->protocol = lt->protocol;
+    pending_connection->transport = lt->transport;
     pending_connection->sd = sd;
+    /* where it came from, which decides what may vouch for it */
+    memcpy(&pending_connection->addr, &addr, sizeof(addr));
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                         "connection_event_handler: new connection: (%d, %d)", pending_connection->sd,
@@ -460,18 +500,22 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
      * costs nothing but a descriptor, but it costs one for as long as it
      * likes, and anything that can reach the listener can open more. */
     if (0 < pmix_ptl_base.pending_cap &&
-        (size_t) pmix_ptl_base.pending_cap <= pmix_list_get_size(&pmix_ptl_base.pending_connections)) {
+        (size_t) pmix_ptl_base.pending_cap <=
+            pmix_list_get_size(&pmix_ptl_base.pending_connections)) {
         /* Full. Make room by dropping the connection that has waited
-         * longest - the list is in accept order. A process that means to
-         * connect sends its connect-ack at once, so it is not the one
-         * still waiting; refusing the new connection instead would let
-         * whoever holds the cap keep everyone else out */
+         * longest to send its connect-ack - the list is in accept order.
+         * A process that means to connect sends its connect-ack at once,
+         * so it is not the one still waiting; refusing the new connection
+         * instead would let whoever holds the cap keep everyone else out.
+         * Tools waiting on the host are not on this list and are never
+         * dropped for it: they have a cap of their own, the same size, at
+         * which a further tool is refused */
         pnd = (pmix_pending_connection_t *) pmix_list_get_first(&pmix_ptl_base.pending_connections);
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:base:listener: %d connections are still sending their "
                             "connect-ack - dropping the oldest, on socket %d",
                             pmix_ptl_base.pending_cap, pnd->sd);
-        pmix_ptl_base_drop_pending_connection(pnd);
+        pmix_ptl_base_drop_pending_connection(pnd, PMIX_ERR_OUT_OF_RESOURCE);
     }
     pmix_list_append(&pmix_ptl_base.pending_connections, &pending_connection->super);
     if (0 < pmix_ptl_base.connect_ack_timeout) {
@@ -488,7 +532,7 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
     if (0 != pmix_event_add(&pending_connection->ev, NULL)) {
         /* nothing will ever service this connection */
         PMIX_ERROR_LOG(PMIX_ERROR);
-        pmix_ptl_base_drop_pending_connection(pending_connection);
+        pmix_ptl_base_drop_pending_connection(pending_connection, PMIX_ERROR);
     }
 }
 
@@ -754,7 +798,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
      * refuses a URI carrying more than one address, and a client refused
      * that way quietly runs as a singleton. */
     compat = compat_lines();
-    if (0 > pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n%s%s%s%s",
+    if (0 > pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n%s%s%s%s%s%s%s%s%s",
                           uri, PMIX_VERSION, (unsigned long)pmix_globals.pid,
                           (unsigned long)pmix_globals.uid,
                           (unsigned long)pmix_globals.gid,
@@ -762,6 +806,12 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
                           (NULL == pmix_ptl_base.alt_uris) ? "" : PMIX_PTL_ALT_URIS_TAG,
                           (NULL == pmix_ptl_base.alt_uris) ? "" : pmix_ptl_base.alt_uris,
                           (NULL == pmix_ptl_base.alt_uris) ? "" : "\n",
+                          (NULL == pmix_ptl_base.local_listener.uri) ? "" : PMIX_PTL_LOCAL_URI_TAG,
+                          (NULL == pmix_ptl_base.local_listener.uri) ? "" : pmix_globals.hostname,
+                          (NULL == pmix_ptl_base.local_listener.uri) ? "" : ";",
+                          (NULL == pmix_ptl_base.local_listener.uri) ? ""
+                                                                     : pmix_ptl_base.local_listener.uri,
+                          (NULL == pmix_ptl_base.local_listener.uri) ? "" : "\n",
                           (NULL == compat) ? "" : compat)) {
         free(compat);
         /* nothing has been written, so do not leave an empty file behind
@@ -801,7 +851,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
  * value of any other type was read out of the union as a pointer and
  * handed to strdup. Returns false, with *rc set, if the directive cannot
  * be used. */
-static bool replace_string(const pmix_info_t *info, char **target, int *rc)
+bool pmix_ptl_base_replace_string(const pmix_info_t *info, char **target, int *rc)
 {
     char *copy;
 
@@ -821,30 +871,51 @@ static bool replace_string(const pmix_info_t *info, char **target, int *rc)
     return true;
 }
 
-/* A port directive is a single port as a PMIX_INT, or a list or range as
- * a PMIX_STRING. Zero, a negative number, and a NULL string all ask for
- * the ephemeral port. A number too large to be a port is refused rather
- * than bound: the bind loop narrows it to 16 bits, so 70000 used to
- * listen on 4464. */
-static pmix_status_t port_directive(const pmix_info_t *info, char ***ports)
+size_t pmix_ptl_base_waiting_tools(void)
 {
-    char num[16];
+    return pmix_list_get_size(&pmix_ptl_base.tool_queue) +
+           pmix_list_get_size(&pmix_ptl_base.tool_asking);
+}
 
-    if (PMIX_INT == info->value.type) {
-        if (65535 < info->value.data.integer) {
-            pmix_output(0, "ptl:base:setup_listener: %s value %d is not a port number",
-                        info->key, info->value.data.integer);
-            return PMIX_ERR_BAD_PARAM;
+pmix_status_t pmix_ptl_base_listen(pmix_info_t info[], size_t ninfo, pmix_listener_t *lt)
+{
+    pmix_ptl_base_active_t *active;
+
+    PMIX_LIST_FOREACH (active, &pmix_ptl_base.actives, pmix_ptl_base_active_t) {
+        if (!active->module->local && NULL != active->module->setup_listener) {
+            lt->transport = active->module;
+            return active->module->setup_listener(info, ninfo, lt);
         }
-        snprintf(num, sizeof(num), "%d",
-                 (0 < info->value.data.integer) ? info->value.data.integer : 0);
-        return pmix_ptl_base_set_ports(num, ports);
     }
-    if (PMIX_STRING == info->value.type) {
-        return pmix_ptl_base_set_ports(info->value.data.string, ports);
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+char *pmix_ptl_base_local_uri_value(void)
+{
+    char *value = NULL;
+
+    if (NULL == pmix_ptl_base.local_listener.uri) {
+        return NULL;
     }
-    /* any other type was never acted on - keep it that way */
-    return PMIX_SUCCESS;
+    if (0 > pmix_asprintf(&value, "%s;%lu:%lu", pmix_ptl_base.local_listener.uri,
+                          (unsigned long) pmix_ptl_base.local_uid,
+                          (unsigned long) pmix_ptl_base.local_gid)) {
+        return NULL;
+    }
+    return value;
+}
+
+pmix_status_t pmix_ptl_base_listen_local(pmix_info_t info[], size_t ninfo, pmix_listener_t *lt)
+{
+    pmix_ptl_base_active_t *active;
+
+    PMIX_LIST_FOREACH (active, &pmix_ptl_base.actives, pmix_ptl_base_active_t) {
+        if (active->module->local && NULL != active->module->setup_listener) {
+            lt->transport = active->module;
+            return active->module->setup_listener(info, ninfo, lt);
+        }
+    }
+    return PMIX_ERR_NOT_SUPPORTED;
 }
 
 /* store our URI under the given key in our own datastore */
@@ -870,140 +941,6 @@ static pmix_status_t store_uri(const char *key, const char *uri)
     return rc;
 }
 
-/* Bind one more listening socket, on the interface at index @c ifidx.
- *
- * The port the primary listener got is tried first, so a static port
- * directive holds for every address; if this address has it taken, the
- * kernel picks one. Returns the listener, or NULL (having said why at
- * verbosity) if this interface cannot be listened on - which costs a
- * remote tool one way of reaching us, not the server its init. */
-static pmix_listener_t *open_alternate(const pmix_listener_t *primary, int ifidx,
-                                       uint16_t primary_port)
-{
-    struct sockaddr_storage addr;
-    pmix_socklen_t addrlen;
-    pmix_listener_t *alt;
-    char host[PMIX_MAXHOSTNAMELEN] = {0};
-    const char *prefix;
-    int attempt, flags;
-    uint16_t port = 0;
-
-    for (attempt = 0; attempt < 2; attempt++) {
-        memset(&addr, 0, sizeof(addr));
-        if (PMIX_SUCCESS != pmix_ifindextoaddr(ifidx, (struct sockaddr *) &addr, sizeof(addr))) {
-            return NULL;
-        }
-        port = (0 == attempt) ? primary_port : 0;
-        if (AF_INET == addr.ss_family) {
-            ((struct sockaddr_in *) &addr)->sin_port = htons(port);
-            addrlen = sizeof(struct sockaddr_in);
-        } else if (AF_INET6 == addr.ss_family) {
-            ((struct sockaddr_in6 *) &addr)->sin6_port = htons(port);
-            addrlen = sizeof(struct sockaddr_in6);
-        } else {
-            return NULL;
-        }
-
-        alt = PMIX_NEW(pmix_listener_t);
-        if (NULL == alt) {
-            return NULL;
-        }
-        alt->socket = socket(addr.ss_family, SOCK_STREAM, 0);
-        if (0 > alt->socket) {
-            PMIX_RELEASE(alt);
-            return NULL;
-        }
-        flags = (0 != port) ? 1 : 0;
-        if (0 > setsockopt(alt->socket, SOL_SOCKET, SO_REUSEADDR, (const char *) &flags,
-                           sizeof(flags)) ||
-            PMIX_SUCCESS != pmix_fd_set_cloexec(alt->socket)) {
-            PMIX_RELEASE(alt);  // closes the socket
-            return NULL;
-        }
-        if (0 == bind(alt->socket, (struct sockaddr *) &addr, addrlen)) {
-            break;
-        }
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:base:setup_listener: alternate interface %d port %u: %s",
-                            ifidx, (unsigned) port, strerror(pmix_socket_errno));
-        PMIX_RELEASE(alt);
-        alt = NULL;
-        if (0 == primary_port ||
-            (EADDRINUSE != pmix_socket_errno && EADDRNOTAVAIL != pmix_socket_errno)) {
-            /* the kernel already chose this port, or the failure is not
-             * about the port - a second try would fail the same way */
-            return NULL;
-        }
-    }
-    if (NULL == alt) {
-        return NULL;
-    }
-
-    if (0 > getsockname(alt->socket, (struct sockaddr *) &addr, &addrlen) ||
-        0 > listen(alt->socket, SOMAXCONN) ||
-        0 > (flags = fcntl(alt->socket, F_GETFL, 0)) ||
-        0 > fcntl(alt->socket, F_SETFL, flags | O_NONBLOCK)) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:base:setup_listener: alternate interface %d: %s",
-                            ifidx, strerror(pmix_socket_errno));
-        PMIX_RELEASE(alt);
-        return NULL;
-    }
-
-    if (AF_INET == addr.ss_family) {
-        prefix = "tcp4://";
-        port = ntohs(((struct sockaddr_in *) &addr)->sin_port);
-        inet_ntop(AF_INET, &((struct sockaddr_in *) &addr)->sin_addr, host, sizeof(host) - 1);
-    } else {
-        prefix = "tcp6://";
-        port = ntohs(((struct sockaddr_in6 *) &addr)->sin6_port);
-        inet_ntop(AF_INET6, &((struct sockaddr_in6 *) &addr)->sin6_addr, host, sizeof(host) - 1);
-    }
-    /* an address and port only, in the form the URI carries after its ';' -
-     * the server's identity is the primary URI's, and is not repeated */
-    if (0 > pmix_asprintf(&alt->uri, "%s%s:%u", prefix, host, (unsigned) port)) {
-        PMIX_RELEASE(alt);
-        return NULL;
-    }
-    alt->protocol = primary->protocol;
-    alt->cbfunc = primary->cbfunc;
-    return alt;
-}
-
-/* Listen on each of the other public interfaces the directives left us, so
- * a remote tool that cannot reach the primary address can reach one of
- * these. pmix_ptl_base.alt_uris gets the comma-delimited list of where. */
-static pmix_status_t open_alternates(const pmix_listener_t *primary, const int *altidx,
-                                     int naltidx, uint16_t primary_port)
-{
-    pmix_listener_t *alt;
-    char **uris = NULL;
-    int n;
-
-    for (n = 0; n < naltidx; n++) {
-        alt = open_alternate(primary, altidx[n], primary_port);
-        if (NULL == alt) {
-            continue;
-        }
-        if (PMIX_SUCCESS != PMIx_Argv_append_nosize(&uris, alt->uri)) {
-            PMIX_RELEASE(alt);
-            PMIx_Argv_free(uris);
-            return PMIX_ERR_NOMEM;
-        }
-        pmix_list_append(&pmix_ptl_base.alt_listeners, &alt->super);
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:base alternate URI %s", alt->uri);
-    }
-    if (NULL != uris) {
-        pmix_ptl_base.alt_uris = PMIx_Argv_join(uris, ',');
-        PMIx_Argv_free(uris);
-        if (NULL == pmix_ptl_base.alt_uris) {
-            return PMIX_ERR_NOMEM;
-        }
-    }
-    return PMIX_SUCCESS;
-}
-
 /* discover the available
  * interfaces, filter them thru any given directives, and select
  * the one we will listen on for connection requests. This will
@@ -1021,30 +958,19 @@ static pmix_status_t open_alternates(const pmix_listener_t *primary, const int *
  */
 pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
 {
-    int flags = 0;
-    pmix_listener_t *lt;
-    int i, rc = 0, saveindex = -1, savelpbk = -1;
-    char **interfaces = NULL, **candidates = NULL, **ports;
-    bool including = false;
-    char name[32];
-    struct sockaddr_storage my_ss;
-    int kindex;
-    pmix_socklen_t addrlen;
-    char *prefix;
-    char myconnhost[PMIX_MAXHOSTNAMELEN] = {0};
-    int myport;
+    pmix_listener_t *lt, *llt = NULL;
+    int rc = 0;
     pid_t mypid;
     int outpipe;
-    char *leftover;
+    char *leftover, *uri;
     size_t n;
     FILE *fptst;
-    uint16_t port = 0;
-    long portnum;
-    int *altidx = NULL, naltidx = 0;
+    const char *legacy_from = "ptl_base_legacy_peers";
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base:setup_listener");
 
+    pmix_ptl_base.legacy_peers = pmix_ptl_base.legacy_peers_param;
     for (n = 0; n < ninfo; n++) {
         if (0 == strcmp(info[n].key, PMIX_SERVER_SESSION_SUPPORT)) {
             pmix_ptl_base.session_tool = PMIX_INFO_TRUE(&info[n]);
@@ -1061,449 +987,105 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_REMOTE_CONNECTIONS)) {
             pmix_ptl_base.remote_connections = PMIX_INFO_TRUE(&info[n]);
             pmix_ptl_base.connections_specified = true;
-
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_INCLUDE)) {
-            if (!replace_string(&info[n], &pmix_ptl_base.if_include, &rc)) {
-                return rc;
-            }
-
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_EXCLUDE)) {
-            if (!replace_string(&info[n], &pmix_ptl_base.if_exclude, &rc)) {
-                return rc;
-            }
-
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV4_PORT)) {
-            rc = port_directive(&info[n], &pmix_ptl_base.ipv4_ports);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-
-#if PMIX_ENABLE_IPV6
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV6_PORT)) {
-            rc = port_directive(&info[n], &pmix_ptl_base.ipv6_ports);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
+#if !PMIX_ENABLE_REMOTE_TOOLS
+            if (pmix_ptl_base.remote_connections) {
+                pmix_show_help("help-ptl-base.txt", "remote-tools-not-built", true,
+                               pmix_globals.hostname);
+                return PMIX_ERR_SILENT;
             }
 #endif
 
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV4)) {
-            pmix_ptl_base.disable_ipv4_family = PMIX_INFO_TRUE(&info[n]);
-
-#if PMIX_ENABLE_IPV6
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV6)) {
-            pmix_ptl_base.disable_ipv6_family = PMIX_INFO_TRUE(&info[n]);
-#endif
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_LEGACY_PEERS)) {
+            pmix_ptl_base.legacy_peers = PMIX_INFO_TRUE(&info[n]);
+            legacy_from = PMIX_SERVER_LEGACY_PEERS;
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_REPORT_URI)) {
-            if (!replace_string(&info[n], &pmix_ptl_base.report_uri, &rc)) {
+            if (!pmix_ptl_base_replace_string(&info[n], &pmix_ptl_base.report_uri, &rc)) {
                 return rc;
             }
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
-            if (!replace_string(&info[n], &pmix_ptl_base.session_tmpdir, &rc)) {
+            if (!pmix_ptl_base_replace_string(&info[n], &pmix_ptl_base.session_tmpdir, &rc)) {
                 return rc;
             }
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
-            if (!replace_string(&info[n], &pmix_ptl_base.system_tmpdir, &rc)) {
+            if (!pmix_ptl_base_replace_string(&info[n], &pmix_ptl_base.system_tmpdir, &rc)) {
                 return rc;
             }
         }
     }
 
-    if (NULL != pmix_ptl_base.if_include && NULL != pmix_ptl_base.if_exclude) {
-        pmix_show_help("help-ptl-base.txt", "include-exclude", true, pmix_ptl_base.if_include,
-                       pmix_ptl_base.if_exclude);
+#if !PMIX_ENABLE_LEGACY_PEERS
+    if (pmix_ptl_base.legacy_peers) {
+        pmix_show_help("help-ptl-base.txt", "legacy-peers-not-built", true,
+                       pmix_globals.hostname, legacy_from);
+        return PMIX_ERR_SILENT;
+    }
+#else
+    PMIX_HIDE_UNUSED_PARAMS(legacy_from);
+#endif
+
+    /* a tool on another host proves who it is with a credential made
+     * there, which only some mechanisms validate */
+    if (pmix_ptl_base.remote_connections && !pmix_psec_base_remote_available()) {
+        leftover = pmix_psec_base_get_accepted_modules();
+        pmix_show_help("help-ptl-base.txt", "remote-no-psec", true, pmix_globals.hostname,
+                       (NULL == leftover) ? "none" : leftover);
+        free(leftover);
         return PMIX_ERR_SILENT;
     }
 
     lt = &pmix_ptl_base.listener;
-
-    /* if interface include was given, construct a list
-     * of those interfaces which match the specifications - remember,
-     * the includes could be given as named interfaces, IP addrs, or
-     * subnet+mask
-     */
-    if (NULL != pmix_ptl_base.if_include) {
-        interfaces = pmix_ptl_base_split_and_resolve(pmix_ptl_base.if_include, "include");
-        including = true;
-    } else if (NULL != pmix_ptl_base.if_exclude) {
-        interfaces = pmix_ptl_base_split_and_resolve(pmix_ptl_base.if_exclude, "exclude");
-        including = false;
-    }
-
-    /* look at all available interfaces and pick one - we default to a
-     * loopback interface if available, but otherwise pick the first
-     * available interface since we are only talking locally */
-    for (i = pmix_ifbegin(); i >= 0; i = pmix_ifnext(i)) {
-        if (PMIX_SUCCESS != pmix_ifindextoaddr(i, (struct sockaddr *) &my_ss, sizeof(my_ss))) {
-            pmix_output(0, "ptl:base:setup_listener: problems getting address for index %i (kernel index %i)\n", i,
-                        pmix_ifindextokindex(i));
-            continue;
-        }
-        /* ignore non-ip4/6 interfaces */
-        if (AF_INET != my_ss.ss_family && AF_INET6 != my_ss.ss_family) {
-            continue;
-        }
-        /* get the name for diagnostic purposes */
-        pmix_ifindextoname(i, name, sizeof(name));
-
-        /* ignore any virtual interfaces */
-        if (0 == strncmp(name, "vir", 3)) {
-            continue;
-        }
-        /* ignore any interfaces in a disabled family */
-        if (AF_INET == my_ss.ss_family) {
-            if (pmix_ptl_base.disable_ipv4_family) {
-                continue;
-            }
-#if PMIX_ENABLE_IPV6
-        } else if (AF_INET6 == my_ss.ss_family) {
-            if (pmix_ptl_base.disable_ipv6_family) {
-                continue;
-            }
-#endif
-        } else {
-            /* ignore any other type */
-            continue;
-        }
-
-        /* get the kernel index */
-        kindex = pmix_ifindextokindex(i);
-        if (kindex <= 0) {
-            continue;
-        }
-
-        // cache the candidates
-        PMIx_Argv_append_nosize(&candidates, name);
-
-        pmix_output_verbose(10, pmix_ptl_base_framework.framework_output,
-                            "WORKING INTERFACE %d KERNEL INDEX %d FAMILY: %s", i, kindex,
-                            (AF_INET == my_ss.ss_family) ? "V4" : "V6");
-        /* handle include/exclude directives */
-        if (NULL != interfaces) {
-            /* check for match */
-            rc = pmix_ifmatches(kindex, interfaces);
-            /* if one of the network specifications isn't parseable, then
-             * error out as we can't do what was requested
-             */
-            if (PMIX_ERR_FABRIC_NOT_PARSEABLE == rc) {
-                pmix_show_help("help-ptl-base.txt", "not-parseable", true);
-                PMIx_Argv_free(interfaces);
-                PMIx_Argv_free(candidates);
-                return PMIX_ERR_BAD_PARAM;
-            }
-            /* if we are including, then ignore this if not present */
-            if (including) {
-                if (PMIX_SUCCESS != rc) {
-                    pmix_output_verbose(
-                        10, pmix_ptl_base_framework.framework_output,
-                        "ptl:base:setup_listener rejecting interface %s (not in include list)", name);
-                    continue;
-                }
-            } else {
-                /* we are excluding, so ignore if present */
-                if (PMIX_SUCCESS == rc) {
-                    pmix_output_verbose(10, pmix_ptl_base_framework.framework_output,
-                                        "ptl:base:setup_listener rejecting interface %s (in exclude list)",
-                                        name);
-                    continue;
-                }
-            }
-        }
-
-        /* if this is the loopback device and they didn't enable
-         * remote connections, then we are done */
-        if (pmix_ifisloopback(i)) {
-            pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
-                                "ptl:base:setup_listener loopback interface %s found", name);
-            if (savelpbk < 0) {
-                savelpbk = i;
-            }
-
-        } else if (saveindex < 0) {
-            saveindex = i;
-        } else if (pmix_ptl_base.remote_connections) {
-            /* every other public interface the directives left us is
-             * somewhere a remote tool may be able to reach us from when it
-             * cannot reach the first - keep them all */
-            int *tmpidx = (int *) realloc(altidx, (naltidx + 1) * sizeof(int));
-            if (NULL == tmpidx) {
-                free(altidx);
-                PMIx_Argv_free(interfaces);
-                PMIx_Argv_free(candidates);
-                return PMIX_ERR_NOMEM;
-            }
-            altidx = tmpidx;
-            altidx[naltidx++] = i;
-        }
-        if (0 <= savelpbk && 0 <= saveindex && !pmix_ptl_base.remote_connections) {
-            break;
-        }
-    }
-    /* cleanup */
-    if (NULL != interfaces) {
-        PMIx_Argv_free(interfaces);
-    }
-
-    // if they enabled remote connections, then we must have a public
-    // interface available to us
-    if (pmix_ptl_base.remote_connections) {
-        if (saveindex < 0) {
-            prefix = PMIx_Argv_join(candidates, ',');
-            pmix_show_help("help-ptl-base.txt", "no-remote-interfaces", true,
-                            (NULL == pmix_ptl_base.if_include) ? "NULL" : pmix_ptl_base.if_include,
-                            (NULL == pmix_ptl_base.if_exclude) ? "NULL" : pmix_ptl_base.if_exclude,
-                            prefix);
-            PMIx_Argv_free(candidates);
-            free(prefix);
-            return PMIX_ERR_SILENT;
-        }
-        // if we found a public interface, then just fall through and use it
-        PMIx_Argv_free(candidates);
-
-    } else {
-        // if there are no loopback interfaces, and if they didn't specify
-        // we shouldn't support remote connections, then take a public
-        // interface if available
-        if (savelpbk < 0) {
-            if (!pmix_ptl_base.connections_specified) {
-                // fallback to a public interface, if available
-                if (saveindex < 0) {
-                    // didn't find anything!
-                    prefix = PMIx_Argv_join(candidates, ',');
-                    pmix_show_help("help-ptl-base.txt", "no-available-interfaces", true,
-                                    (NULL == pmix_ptl_base.if_include) ? "NULL" : pmix_ptl_base.if_include,
-                                    (NULL == pmix_ptl_base.if_exclude) ? "NULL" : pmix_ptl_base.if_exclude,
-                                    prefix);
-                    PMIx_Argv_free(candidates);
-                    free(prefix);
-                    return PMIX_ERR_SILENT;
-                } else {
-                    // go ahead and use the public interface
-                    PMIx_Argv_free(candidates);
-                    goto complete;
-                }
-            } else {
-                // they said not to allow remote connections, so we cannot
-                // take a public interface
-                prefix = PMIx_Argv_join(candidates, ',');
-                pmix_show_help("help-ptl-base.txt", "no-loopback-interfaces", true,
-                                (NULL == pmix_ptl_base.if_include) ? "NULL" : pmix_ptl_base.if_include,
-                                (NULL == pmix_ptl_base.if_exclude) ? "NULL" : pmix_ptl_base.if_exclude,
-                                prefix);
-                PMIx_Argv_free(candidates);
-                free(prefix);
-                return PMIX_ERR_SILENT;
-            }
-
-        } else {
-            // they didn't ask for remote support, and we found a loopback
-            // interface, so use it
-            saveindex = savelpbk;
-            PMIx_Argv_free(candidates);
-        }
-    }
-
-
-complete:
-    /* save the connection */
-    if (PMIX_SUCCESS
-        != pmix_ifindextoaddr(saveindex, (struct sockaddr *) pmix_ptl_base.connection,
-                              sizeof(struct sockaddr_storage))) {
-        pmix_output(0, "ptl:base: problems getting address for kernel index %i\n",
-                    pmix_ifindextokindex(saveindex));
-        free(altidx);
-        return PMIX_ERR_NOT_AVAILABLE;
-    }
-
-    // set the ports to scan based on the connection we selected
-    if (AF_INET == pmix_ptl_base.connection->ss_family) {
-        ports = pmix_ptl_base.ipv4_ports;
-#if PMIX_ENABLE_IPV6
-    } else if (AF_INET6 == pmix_ptl_base.connection->ss_family) {
-        ports = pmix_ptl_base.ipv6_ports;
-#endif
-    } else {
-        /* unrecognized family type - shouldn't be possible as we only
-         * included IPv4 and IPv6 interfaces, but this is needed to
-         * silence warnings */
-        free(altidx);
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
     lt->varname = pmix_bfrops_base_get_components();
     lt->protocol = PMIX_PROTOCOL_V2;
     lt->cbfunc = pmix_ptl_base_connection_handler;
 
-    rc = PMIX_ERR_NOT_AVAILABLE;
-    for (n=0; NULL != ports[n]; n++) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:setup_listener - trying port %s", ports[n]);
-
-        /* get the port number - a list or range from the parser can
-         * still name one that does not fit in 16 bits, and narrowing it
-         * would bind some other port instead */
-        errno = 0;
-        portnum = strtol(ports[n], &leftover, 10);
-        if (0 != errno || leftover == ports[n] || '\0' != *leftover ||
-            0 > portnum || 65535 < portnum) {
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:setup_listener - skipping invalid port %s", ports[n]);
-            continue;
-        }
-        /* convert it to network-byte-order */
-        port = htons((uint16_t) portnum);
-
-        /* set the port */
-        if (AF_INET == pmix_ptl_base.connection->ss_family) {
-            ((struct sockaddr_in *) pmix_ptl_base.connection)->sin_port = port;
-            addrlen = sizeof(struct sockaddr_in);
-            if (0 != port) {
-                flags = 1;
-            }
-#if PMIX_ENABLE_IPV6
-        } else if (AF_INET6 == pmix_ptl_base.connection->ss_family) {
-            ((struct sockaddr_in6 *) pmix_ptl_base.connection)->sin6_port = port;
-            addrlen = sizeof(struct sockaddr_in6);
-            if (0 != port) {
-                flags = 1;
-            }
-#endif
-        }
-
-        /* create a listen socket for incoming connection attempts */
-        lt->socket = socket(pmix_ptl_base.connection->ss_family, SOCK_STREAM, 0);
-        if (lt->socket < 0) {
-            pmix_output(0, "ptl:base:create_listen: socket() failed: %s (%d)\n",
-                        strerror(pmix_socket_errno), pmix_socket_errno);
-            rc = PMIX_ERR_OUT_OF_RESOURCE;
+    /* The TCP transport opens its socket and says where it is - only for
+     * those who use it: peers of earlier releases, and tools on other
+     * hosts. A process of this release on this host uses the local one */
+    if (pmix_ptl_base.legacy_peers || pmix_ptl_base.remote_connections) {
+        rc = pmix_ptl_base_listen(info, ninfo, lt);
+        if (PMIX_SUCCESS != rc) {
             goto sockerror;
         }
-
-        /* set reusing ports flag */
-        if (setsockopt(lt->socket, SOL_SOCKET, SO_REUSEADDR, (const char *) &flags, sizeof(flags)) < 0) {
-            pmix_output(0,
-                        "ptl:base:create_listen: unable to set the "
-                        "SO_REUSEADDR option (%s:%d)\n",
-                        strerror(pmix_socket_errno), pmix_socket_errno);
-            rc = PMIX_ERROR;
-            goto sockerror;
-        }
-
-        /* Set the socket to close-on-exec so that no children inherit
-         * this FD */
-        if (pmix_fd_set_cloexec(lt->socket) != PMIX_SUCCESS) {
-            rc = PMIX_ERROR;
-            goto sockerror;
-        }
-
-        if (bind(lt->socket, (struct sockaddr *) pmix_ptl_base.connection, addrlen) < 0) {
-            if ((EADDRINUSE == pmix_socket_errno) || (EADDRNOTAVAIL == pmix_socket_errno)) {
-                /* this port is taken - drop the socket we opened for it
-                 * before moving on, or we leak one descriptor per busy
-                 * port in the range we were given */
-                CLOSE_THE_SOCKET(lt->socket);
-                continue;
-            }
-            pmix_output(0, "ptl:base:create_listen: bind() failed for socket %d "
-                        "storage size %u: %s (%d)\n", lt->socket, (unsigned) addrlen,
-                        strerror(pmix_socket_errno), pmix_socket_errno);
-            rc = PMIX_ERROR;
-            goto sockerror;
-        }
-        rc = PMIX_SUCCESS;
-        break;  // got one that works
     }
+
+    /* and the local transport its own, which every process of this
+     * release on this host connects to - there is no running without it */
+    llt = &pmix_ptl_base.local_listener;
+    llt->varname = strdup(lt->varname);
+    llt->protocol = PMIX_PROTOCOL_V2;
+    llt->cbfunc = pmix_ptl_base_connection_handler;
+    rc = pmix_ptl_base_listen_local(info, ninfo, llt);
     if (PMIX_SUCCESS != rc) {
-        /* every port we were given is in use - say so instead of falling
-         * thru and advertising an unbound socket */
-        pmix_show_help("help-ptl-base.txt", "no-available-ports", true,
-                       pmix_globals.hostname);
-        rc = PMIX_ERR_SILENT;
         goto sockerror;
     }
+    pmix_ptl_base.local_uid = geteuid();
+    pmix_ptl_base.local_gid = getegid();
 
-    /* resolve assigned port */
-    if (getsockname(lt->socket, (struct sockaddr *) pmix_ptl_base.connection, &addrlen) < 0) {
-        pmix_output(0, "ptl:base:create_listen: getsockname(): %s (%d)",
-                    strerror(pmix_socket_errno), pmix_socket_errno);
-        rc = PMIX_ERROR;
-        goto sockerror;
-    }
-
-    /* setup listen backlog to maximum allowed by kernel */
-    if (listen(lt->socket, SOMAXCONN) < 0) {
-        pmix_output(0, "ptl:base:create_listen: listen() failed: %s (%d)\n",
-                    strerror(pmix_socket_errno), pmix_socket_errno);
-        rc = PMIX_ERROR;
-        goto sockerror;
-    }
-
-    /* set socket up to be non-blocking, otherwise accept could block */
-    if ((flags = fcntl(lt->socket, F_GETFL, 0)) < 0) {
-        pmix_output(0, "ptl:base:create_listen: fcntl(F_GETFL) failed: %s (%d)\n",
-                    strerror(pmix_socket_errno), pmix_socket_errno);
-        rc = PMIX_ERROR;
-        goto sockerror;
-    }
-    flags |= O_NONBLOCK;
-    if (fcntl(lt->socket, F_SETFL, flags) < 0) {
-        pmix_output(0, "ptl:base:create_listen: fcntl(F_SETFL) failed: %s (%d)\n",
-                    strerror(pmix_socket_errno), pmix_socket_errno);
-        rc = PMIX_ERROR;
-        goto sockerror;
-    }
-
-    if (AF_INET == pmix_ptl_base.connection->ss_family) {
-        prefix = "tcp4://";
-        myport = ntohs(((struct sockaddr_in *) pmix_ptl_base.connection)->sin_port);
-        inet_ntop(AF_INET, &((struct sockaddr_in *) pmix_ptl_base.connection)->sin_addr,
-                  myconnhost, PMIX_MAXHOSTNAMELEN - 1);
-    } else if (AF_INET6 == pmix_ptl_base.connection->ss_family) {
-        prefix = "tcp6://";
-        myport = ntohs(((struct sockaddr_in6 *) pmix_ptl_base.connection)->sin6_port);
-        inet_ntop(AF_INET6, &((struct sockaddr_in6 *) pmix_ptl_base.connection)->sin6_addr,
-                  myconnhost, PMIX_MAXHOSTNAMELEN - 1);
-    } else {
-        rc = PMIX_ERR_NOT_SUPPORTED;
-        goto sockerror;
-    }
-
-    if (0 > pmix_asprintf(&lt->uri, "%s.%u;%s%s:%d", pmix_globals.myid.nspace,
-                          pmix_globals.myid.rank, prefix, myconnhost, myport)
-        || NULL == lt->uri) {
-        rc = PMIX_ERR_NOMEM;
-        goto sockerror;
-    }
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "ptl:base URI %s", lt->uri);
+    /* Where we are, as we report it: the TCP address when we listen on
+     * one - a reader of an earlier release, or on another host, can use
+     * nothing else, and one of this release on this host finds the local
+     * socket beside it - and the local socket's when we do not */
+    uri = (NULL != lt->uri) ? lt->uri : llt->uri;
 
     /* save the URI internally so we can report it - and a legacy copy
      * for older tools */
-    rc = store_uri(PMIX_MYSERVER_URI, lt->uri);
+    rc = store_uri(PMIX_MYSERVER_URI, uri);
     if (PMIX_SUCCESS == rc) {
-        rc = store_uri(PMIX_SERVER_URI, lt->uri);
+        rc = store_uri(PMIX_SERVER_URI, uri);
     }
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto sockerror;
     }
-
-    /* listen on the other public interfaces too, and record where */
-    if (0 < naltidx) {
-        rc = open_alternates(lt, altidx, naltidx, (uint16_t) myport);
-        free(altidx);
-        altidx = NULL;
+    /* and where else a remote tool may reach us */
+    if (NULL != pmix_ptl_base.alt_uris) {
+        rc = store_uri(PMIX_MYSERVER_ALT_URIS, pmix_ptl_base.alt_uris);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             goto sockerror;
-        }
-        if (NULL != pmix_ptl_base.alt_uris) {
-            rc = store_uri(PMIX_MYSERVER_ALT_URIS, pmix_ptl_base.alt_uris);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                goto sockerror;
-            }
         }
     }
 
@@ -1511,10 +1093,10 @@ complete:
     if (NULL != pmix_ptl_base.report_uri && '\0' != pmix_ptl_base.report_uri[0]) {
         /* if the string is a "-", then output to stdout */
         if (0 == strcmp(pmix_ptl_base.report_uri, "-")) {
-            fprintf(stdout, "%s\n", lt->uri);
+            fprintf(stdout, "%s\n", uri);
         } else if (0 == strcmp(pmix_ptl_base.report_uri, "+")) {
             /* output to stderr */
-            fprintf(stderr, "%s\n", lt->uri);
+            fprintf(stderr, "%s\n", uri);
         } else {
             /* see if it is an integer pipe. It is one only if there were
              * digits and nothing after them: strtol consumes nothing of
@@ -1525,12 +1107,12 @@ complete:
             if (NULL != leftover && leftover != pmix_ptl_base.report_uri &&
                 '\0' == *leftover) {
                 /* stitch together the var names and URI */
-                if (0 > pmix_asprintf(&leftover, "%s;%s", lt->varname, lt->uri)) {
+                if (0 > pmix_asprintf(&leftover, "%s;%s", lt->varname, uri)) {
                     rc = PMIX_ERR_NOMEM;
                     goto sockerror;
                 }
                 /* output to the pipe */
-                rc = pmix_fd_write(outpipe, strlen(leftover) + 1, leftover);
+                rc = pmix_fd_write_nosigpipe(outpipe, strlen(leftover) + 1, leftover);
                 free(leftover);
                 close(outpipe);
                 if (PMIX_SUCCESS != rc) {
@@ -1565,7 +1147,7 @@ complete:
                     goto sockerror;
                 }
                 /* output my nspace and rank plus the URI */
-                fprintf(fp, "%s\n", lt->uri);
+                fprintf(fp, "%s\n", uri);
                 /* record our version - a connecting peer uses it to decide
                  * whether it can talk to us */
                 fprintf(fp, "v%s\n", PMIX_VERSION);
@@ -1573,6 +1155,12 @@ complete:
                  * other addresses we listen on */
                 if (NULL != pmix_ptl_base.alt_uris) {
                     fprintf(fp, "%s%s\n", PMIX_PTL_ALT_URIS_TAG, pmix_ptl_base.alt_uris);
+                }
+                /* the local socket, for a tool on this host - a report
+                 * file may be read on another */
+                if (NULL != pmix_ptl_base.local_listener.uri) {
+                    fprintf(fp, "%s%s;%s\n", PMIX_PTL_LOCAL_URI_TAG, pmix_globals.hostname,
+                            pmix_ptl_base.local_listener.uri);
                 }
                 /* and the wire formats and security mechanisms we accept */
                 leftover = compat_lines();
@@ -1613,7 +1201,7 @@ complete:
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "WRITING RENDEZVOUS FILE %s", pmix_ptl_base.rendezvous_filename);
-        rc = write_rndz_file(pmix_ptl_base.rendezvous_filename, lt->uri,
+        rc = write_rndz_file(pmix_ptl_base.rendezvous_filename, uri,
                              "server",
                              &pmix_ptl_base.created_rendezvous_dir,
                              &pmix_ptl_base.created_rendezvous_file,
@@ -1632,7 +1220,7 @@ nextstep:
             rc = PMIX_ERR_NOMEM;
             goto sockerror;
         }
-        rc = write_rndz_file(pmix_ptl_base.scheduler_filename, lt->uri,
+        rc = write_rndz_file(pmix_ptl_base.scheduler_filename, uri,
                              "scheduler",
                              &pmix_ptl_base.created_system_tmpdir,
                              &pmix_ptl_base.created_scheduler_filename,
@@ -1649,7 +1237,7 @@ nextstep:
             rc = PMIX_ERR_NOMEM;
             goto sockerror;
         }
-        rc = write_rndz_file(pmix_ptl_base.sysctrlr_filename, lt->uri,
+        rc = write_rndz_file(pmix_ptl_base.sysctrlr_filename, uri,
                              "system controller",
                              &pmix_ptl_base.created_system_tmpdir,
                              &pmix_ptl_base.created_sysctrlr_filename,
@@ -1665,7 +1253,7 @@ nextstep:
                 rc = PMIX_ERR_NOMEM;
                 goto sockerror;
             }
-            rc = write_rndz_file(pmix_ptl_base.system_filename, lt->uri,
+            rc = write_rndz_file(pmix_ptl_base.system_filename, uri,
                                  "system tool",
                                  &pmix_ptl_base.created_system_tmpdir,
                                  &pmix_ptl_base.created_system_filename,
@@ -1684,7 +1272,7 @@ nextstep:
             }
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "WRITING SESSION TOOL FILE %s", pmix_ptl_base.session_filename);
-            rc = write_rndz_file(pmix_ptl_base.session_filename, lt->uri,
+            rc = write_rndz_file(pmix_ptl_base.session_filename, uri,
                                  "session tool",
                                  &pmix_ptl_base.created_session_tmpdir,
                                  &pmix_ptl_base.created_session_filename,
@@ -1703,7 +1291,7 @@ nextstep:
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "WRITING PID TOOL FILE %s",
                             pmix_ptl_base.pid_filename);
-        rc = write_rndz_file(pmix_ptl_base.pid_filename, lt->uri,
+        rc = write_rndz_file(pmix_ptl_base.pid_filename, uri,
                              "tool (by pid)",
                              &pmix_ptl_base.created_session_tmpdir,
                              &pmix_ptl_base.created_pid_filename,
@@ -1721,7 +1309,7 @@ nextstep:
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "WRITING NSPACE TOOL FILE %s", pmix_ptl_base.nspace_filename);
-        rc = write_rndz_file(pmix_ptl_base.nspace_filename, lt->uri,
+        rc = write_rndz_file(pmix_ptl_base.nspace_filename, uri,
                              "tool (by namespace)",
                              &pmix_ptl_base.created_session_tmpdir,
                              &pmix_ptl_base.created_nspace_filename,
@@ -1734,7 +1322,10 @@ nextstep:
     return PMIX_SUCCESS;
 
 sockerror:
-    free(altidx);
     CLOSE_THE_SOCKET(lt->socket);
+    if (NULL != llt && 0 <= llt->socket) {
+        CLOSE_THE_SOCKET(llt->socket);
+        llt->socket = -1;
+    }
     return rc;
 }

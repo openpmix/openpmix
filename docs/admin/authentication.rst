@@ -81,6 +81,17 @@ container, say), has a set of files for each:
   Use this file for settings that users, and the host environment,
   should not change.
 
+A process reads these files because its environment does not say
+otherwise. The files themselves are named by MCA parameters
+(``mca_base_param_files``, ``mca_base_override_param_file``), so a
+process whose environment sets those - or sets
+``mca_base_param_files`` to ``none`` - reads other files, or none. A
+parameter file is therefore the policy for the processes started
+without such settings: the host's servers, when the administrator
+starts them or controls their environment. To make a component
+unavailable to every process of an installation, build the
+installation without it, or remove its plugin (below).
+
 A process running as root reads a parameter file only if root owns it
 and no other user or group can write to it.
 
@@ -121,30 +132,44 @@ These MCA parameters adjust the checks PMIx makes on connections:
      - Default
      - Effect
    * - ``psec_native_legacy_auth``
-     - ``true``
-     - When ``false``, ``native`` refuses a peer from a release older
-       than v7.0 whose identity the kernel cannot confirm, instead of
-       accepting the identity the peer gives.
-   * - ``psec_native_socket_dir``
-     - server's temporary directory
-     - Where ``native`` creates the local socket a containerized peer
-       uses to prove its identity. The directory must be visible inside
-       the container.
+     - ``false``
+     - When ``true``, ``native`` accepts a peer connecting over TCP on
+       the identity it gives, on a platform whose kernel has no table of
+       TCP connections to confirm it with (any but Linux and macOS),
+       instead of refusing it.
+   * - ``ptl_base_legacy_peers``
+     - ``false``
+     - When ``true``, a server takes clients and tools of PMIx releases
+       before v7.0, which connect over TCP; a host's
+       ``PMIX_SERVER_LEGACY_PEERS`` overrides it. Older clients need it -
+       and, on a platform other than Linux or macOS,
+       ``psec_native_legacy_auth`` as well. A PMIx configured
+       ``--disable-legacy-peers`` refuses it.
    * - ``ptl_base_if_include`` / ``ptl_base_if_exclude``
      - none
      - Network interfaces the server may or may not listen on. Keep
        loopback included.
    * - ``ptl_base_connect_ack_timeout``
      - 5
-     - Seconds a server allows for a new connection's opening message
-       and each handshake step.
+     - Seconds a server allows for a new connection's opening message.
    * - ``ptl_base_max_pending_connections``
      - 0
-     - How many connections may wait to be accepted. 0 means a quarter
-       of the process's file-descriptor limit; -1 means no limit.
+     - How many connections may still be sending their request, and,
+       separately, how many tools may wait for the host's decision. 0
+       means an eighth of the process's file-descriptor limit, for each;
+       -1 means no limit.
    * - ``ptl_base_max_msg_size``
      - 0
      - Largest message accepted, in megabytes. 0 means no limit.
+   * - ``ptl_base_server_access``
+     - none
+     - Servers a client or tool will talk to on its host besides one
+       running as its own user or as root, when no server started it:
+       ``users=<list>,groups=<list>``, each list user or group names or
+       numbers separated by ``:``. Over TCP only ``users`` can match: the
+       kernel records no group for a TCP connection. A name the system
+       does not know, an empty list, or a directive given twice makes
+       the process fail to initialize.
    * - ``psec_ssl_ca_file``, ``psec_ssl_cert_file``,
        ``psec_ssl_key_file``, ``psec_ssl_crl_file``,
        ``psec_ssl_max_skew``
@@ -164,12 +189,19 @@ parameters, because they depend on how the host is deployed:
 
 * **Whether tools of other users may connect.** By default a server
   refuses a tool whose user is not the server's own. A host can allow
-  them (``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``).
+  them (``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``), and must then also widen
+  the server's local socket to them (``PMIX_SOCKET_MODE``, with
+  ``PMIX_GRPID`` for a group): by default only the server's user can
+  connect to it.
 * **Whether processes on other nodes may connect.** By default a
-  server listens only on loopback. A host can listen on other
-  interfaces (``PMIX_SERVER_REMOTE_CONNECTIONS``), which also requires
-  ``munge`` or ``ssl``. Restricting ``psec`` to ``native`` keeps every
-  peer on the same node, since ``native`` refuses peers on other nodes.
+  server takes no TCP connection at all, and when it takes clients and
+  tools of earlier releases it listens for them on loopback only. In a
+  PMIx configured
+  ``--enable-remote-tools``, a host can listen on other interfaces
+  (``PMIX_SERVER_REMOTE_CONNECTIONS``); without that option, a host that
+  asks fails its init. A peer on another node must use ``munge`` or
+  ``ssl``: the server refuses one that names ``native``, and a server
+  asked for remote connections with neither available fails its init.
 * **Clients are always checked** against the user and group the host
   registered them with. No setting changes that.
 
@@ -180,13 +212,17 @@ choices.
 Temporary files
 ---------------
 
-A PMIx server writes rendezvous files and session directories under
-its temporary directory (``$TMPDIR``, or ``/tmp``). Tools find servers
-through those files. A server that is killed can leave its files
-behind; PMIx reclaims a rendezvous file whose server is gone, but
-session directories accumulate. Clean out old ``pmix*`` entries as you
-would other stale temporary files. Keep the temporary directory's path
-short: it forms part of a socket path, which is limited to about 100
-characters.
+A PMIx server writes rendezvous files, session directories and its
+local socket under its temporary directory (``$TMPDIR``, or ``/tmp``).
+Tools find servers through those files. The local socket is in a
+directory of its own, ``pmix-XXXXXX``. A server that is killed can leave
+its files behind; PMIx reclaims a rendezvous file whose server is gone,
+but session directories and socket directories accumulate. Clean out old
+``pmix*`` entries as you would other stale temporary files.
+
+Keep the temporary directory's path short: the local socket's path is
+built under it, and is limited to about 100 characters. A server whose
+path is too long fails to start. The default ``$TMPDIR`` on macOS is too
+long - start the host environment with a shorter one.
 
 See :doc:`/how-things-work/session_dirs`.

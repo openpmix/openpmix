@@ -127,19 +127,31 @@ static bool send_all(int sd, const char *buf, size_t len)
     return (ssize_t) len == send(sd, buf, len, 0);
 }
 
-/* true if the server has closed its end of sd within msec */
+/* true if the server has closed its end of sd within msec. A refused
+ * peer is sent the reason before the connection closes, so a status word
+ * may come first - read past it */
 static bool closed_by_server(int sd, int msec)
 {
     struct pollfd pfd;
-    char c;
+    char buf[64];
+    ssize_t rd;
 
-    pfd.fd = sd;
-    pfd.events = POLLIN;
-    pfd.revents = 0;
-    if (0 >= poll(&pfd, 1, msec)) {
-        return false;
+    while (1) {
+        pfd.fd = sd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        if (0 >= poll(&pfd, 1, msec)) {
+            return false;
+        }
+        rd = recv(sd, buf, sizeof(buf), 0);
+        if (0 == rd) {
+            return true;
+        }
+        if (0 > rd) {
+            /* a reset closes it as surely as a FIN */
+            return true;
+        }
     }
-    return 0 == recv(sd, &c, 1, 0);
 }
 
 /* A blocking call that cannot complete unless the progress thread is free
@@ -314,7 +326,7 @@ static int cap_child(void)
     return ok ? STALL_OK : STALL_FAILED;
 }
 
-/* by default the cap is a quarter of the descriptor limit the server
+/* by default the cap is an eighth of the descriptor limit the server
  * starts with, and -1 removes it */
 static int cap_default_child(void)
 {
@@ -326,10 +338,10 @@ static int cap_default_child(void)
     }
     if (RLIM_INFINITY == rl.rlim_cur) {
         want = 0;
-    } else if ((rlim_t) INT_MAX < rl.rlim_cur / 4) {
+    } else if ((rlim_t) INT_MAX < rl.rlim_cur / 8) {
         want = INT_MAX;
     } else {
-        want = (4 > rl.rlim_cur) ? 1 : (int) (rl.rlim_cur / 4);
+        want = (8 > rl.rlim_cur) ? 1 : (int) (rl.rlim_cur / 8);
     }
     if (0 > start_server()) {
         return STALL_SETUP;
@@ -415,6 +427,15 @@ static void run_case(const char *name, int which, const char *timeout)
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+#if PMIX_ENABLE_LEGACY_PEERS
+    /* these cases are about the TCP listener, which a server opens for
+     * clients and tools of earlier releases */
+    setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
+#else
+    fprintf(stdout, "this PMIx takes no clients or tools of earlier releases, so a "
+                    "server has no TCP listener for these cases\n");
+    return 77;
+#endif
 
     fprintf(stdout, "\n=== PTL stalled-peer unit test ===\n\n");
 
@@ -432,7 +453,7 @@ int main(int argc, char **argv)
              CASE_TIMEOUT, "1");
     run_case("at the pending-connection cap the oldest connection is dropped",
              CASE_CAP, "0");
-    run_case("the default cap is a quarter of the descriptor limit, and -1 removes it",
+    run_case("the default cap is an eighth of the descriptor limit, and -1 removes it",
              CASE_CAP_DEFAULT, "0");
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);

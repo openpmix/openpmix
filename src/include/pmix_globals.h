@@ -505,7 +505,9 @@ typedef struct pmix_rank_info_t {
     gid_t realgid;
     gid_t gid;
     bool modex_recvd;
-    int proc_cnt;        // #clones of this rank we know about
+    int proc_cnt;        // live connections for this rank - one at most
+    int connecting;      // connections for this rank waiting on the host's
+                         // answer - while one waits, another is refused
     void *server_object; // pointer to rank-specific object provided by server
     /* True once the host has registered this rank with
      * PMIx_server_register_client.
@@ -536,11 +538,11 @@ typedef struct pmix_rank_info_t {
      * carry it. Equally, data that arrived in our store by some route
      * other than a commit is not on the log and is never circulated.
      *
-     * It lives on the rank rather than the peer for two reasons: a
-     * fork/exec'd clone shares its parent's rank_info, which is the same
-     * identity the collection dedups on, so a per-peer log would
-     * contribute that rank twice; and the modex is keyed on the rank,
-     * which is what a contribution's blob names.
+     * It lives on the rank rather than the peer for two reasons: every
+     * connection the rank makes - again after a reconnect, say - shares
+     * its rank_info, which is the same identity the collection dedups on,
+     * so a per-peer log would contribute that rank twice; and the modex
+     * is keyed on the rank, which is what a contribution's blob names.
      *
      * It is append-only for the life of the rank, and no entry is ever
      * reclaimed: a fence over a participant set this rank has not
@@ -627,10 +629,15 @@ typedef struct pmix_peer_t {
     pmix_rank_info_t *info;
     pmix_proc_type_t proc_type;
     pmix_listener_protocol_t protocol;
+    /* the ptl transport that carries this peer's connection */
+    struct pmix_ptl_module_t *transport;
     int proc_cnt;
     int index; // index into the local clients array on the server
     int sd;
     bool finalized;          // peer has called finalize
+    bool finalize_counted;   // its finalize is counted in nptr->nfinalized -
+                             // from the moment the request arrives, before
+                             // the host has answered it and `finalized` is set
     bool stdin_producer;     // peer has pushed stdin to us, and is therefore
                              // somebody IOF flow control has to reach when the
                              // host tells us to stop taking stdin
@@ -778,8 +785,8 @@ typedef struct {
     pmix_lock_t lock;       // flag for waiting for completion
     bool def_complete;      // all local procs have been registered and the trk definition is complete
     pmix_list_t local_cbs;  // list of pmix_server_caddy_t for sending result to the local participants
-                            //    Note: there may be multiple entries for a given proc if that proc
-                            //    has fork/exec'd clones that are also participating
+                            //    Note: there may be two entries for a given proc if it called
+                            //    twice, or called again after reconnecting
     pmix_list_t departed;   // local participants lost (connection dropped) BEFORE contributing.
                             //    Participation is tracked by identity: a peer that already
                             //    contributed (appears on local_cbs) is never moved here, so its

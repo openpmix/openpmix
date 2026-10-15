@@ -83,7 +83,8 @@ pmix_psec_module_t pmix_munge_module = {.name = "munge",
                                         .init = munge_init,
                                         .finalize = munge_finalize,
                                         .create_cred = create_cred,
-                                        .validate_cred = validate_cred};
+                                        .validate_cred = validate_cred,
+                                        .remote = true};
 
 static char *mycred = NULL;
 static bool initialized = false;

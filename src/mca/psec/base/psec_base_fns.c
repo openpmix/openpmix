@@ -74,6 +74,22 @@ char *pmix_psec_base_get_accepted_modules(void)
     return list_modules(true);
 }
 
+bool pmix_psec_base_remote_available(void)
+{
+    pmix_psec_base_active_module_t *active;
+
+    if (!pmix_psec_globals.initialized) {
+        return false;
+    }
+    PMIX_LIST_FOREACH (active, &pmix_psec_globals.actives, pmix_psec_base_active_module_t) {
+        if (active->module->remote &&
+            (NULL == active->module->validates || active->module->validates())) {
+            return true;
+        }
+    }
+    return false;
+}
+
 pmix_psec_module_t *pmix_psec_base_assign_module(const char *options)
 {
     pmix_psec_base_active_module_t *active;

@@ -14,12 +14,12 @@ This document orients AI agents and human contributors working in
 `src/mca/ptl/base` — the implementation of the PMIx Transport Layer.
 Read the top-level [`AGENTS.md`](../../../../AGENTS.md) and then the
 framework's [`AGENTS.md`](../AGENTS.md) first: the golden rules, the
-caddy/thread-shift model, and the (unusual) fact that `ptl`'s components
-are role selectors rather than implementations all come from there and
-are not repeated. **This directory is where essentially all of `ptl`
-lives** — sockets, framing, the handshake, the listener, rendezvous
-files, teardown. The `client/`, `server/` and `tool/` component
-directories together are under 250 lines; this one is nearly 6000.
+caddy/thread-shift model, how a process's role picks its functions, and
+the transport components all come from there and are not repeated. **This
+directory is where essentially all of `ptl` lives** — framing, the
+handshake, the listener, rendezvous files, teardown. The one transport,
+[`../tcp/`](../tcp/AGENTS.md), makes TCP sockets and parses TCP URIs, and
+nothing more.
 
 ## The files
 
@@ -28,11 +28,14 @@ directories together are under 250 lines; this one is nearly 6000.
 | [`base.h`](base.h) | the internal API and the `pmix_ptl_base` global-state struct |
 | [`ptl_base_handshake.h`](ptl_base_handshake.h) | the connector flags and the `PUT_*`/`GET_*` (de)serialization macro pair |
 | [`ptl_base_frame.c`](ptl_base_frame.c) | framework open/close, MCA parameters, every `PMIX_CLASS_INSTANCE` in `ptl` |
-| [`ptl_base_select.c`](ptl_base_select.c) | role-based component selection |
-| [`ptl_base_listener.c`](ptl_base_listener.c) | interface choice, bind, URI publication, rendezvous files, the accept handler |
+| [`ptl_base_select.c`](ptl_base_select.c) | the transports in use, and the role table `pmix_ptl` |
+| [`ptl_base_client.c`](ptl_base_client.c) | a client's own `connect_to_peer` |
+| [`ptl_base_tool.c`](ptl_base_tool.c) | a tool's `setup_listener` wrapper |
+| [`ptl_base_listener.c`](ptl_base_listener.c) | having a transport open the listener, URI publication, rendezvous files, the accept handler |
 | [`ptl_base_connection_hdlr.c`](ptl_base_connection_hdlr.c) | the **inbound** half: parse a connect-ack, build a peer, tell the host |
 | [`ptl_base_connect.c`](ptl_base_connect.c) | the **outbound** half: blocking socket helpers, `connect()`, the tool discovery matrix |
 | [`ptl_base_fns.c`](ptl_base_fns.c) | string/URI parsing, connect-ack construction, the client and tool handshakes, server discovery |
+| [`ptl_base_token.c`](ptl_base_token.c) | the connection token `register_client` and `setup_fork` give a rank: make, check, forget, and add to a connect-ack |
 | [`ptl_base_sendrecv.c`](ptl_base_sendrecv.c) | steady-state send/recv handlers, tag matching, `lost_connection` |
 | [`ptl_base_stubs.c`](ptl_base_stubs.c) | version comparison and the notification recv registration |
 | [`help-ptl-base.txt`](help-ptl-base.txt) | this framework's `show_help` topics |
@@ -106,7 +109,16 @@ anything is read that depends on it.
   *it* was built with debug, and a mismatch misreads the peer's very
   first message. That, plus a get reply the 2.0 client could not unpack
   even with the types forced to agree, is why 2.0 is refused rather than
-  served. An unparseable version (major 0) is not refused.
+  served. A version that parses as major 0 - any non-numeric string - is
+  no release at all, and is refused as malformed (`PMIX_ERR_BAD_PARAM`).
+- **A peer of a release before `PMIX_PTL_LOCAL_MAJOR` (7) is a legacy
+  peer**, taken only when `pmix_ptl_base.legacy_peers`: otherwise the
+  handler refuses it with `PMIX_ERR_NOT_SUPPORTED`, on whichever transport
+  it came. `legacy_peers` is settled at `setup_listener` from the
+  `ptl_base_legacy_peers` parameter (`legacy_peers_param`, default false)
+  and then `PMIX_SERVER_LEGACY_PEERS`; asking for it in a build without
+  `PMIX_ENABLE_LEGACY_PEERS` (`--disable-legacy-peers`) fails the init
+  (`legacy-peers-not-built`).
 - `pmix_ptl_base_make_connection()` refuses a server known to be older
   than v3.2 (`unsupported-server-version`) before opening a socket. Such
   a server accepts the connection and then leaves the client waiting on
@@ -124,6 +136,48 @@ anything is read that depends on it.
   directly has no recorded version, and `PMIX_PEER_IS_EARLIER()` would
   call it "earlier", so the check reads the fields itself rather than
   asking that macro.
+
+### Connection tokens (`ptl_base_token.c`)
+
+`PMIx_server_setup_fork`'s body (`setup_fork_body` in
+`src/server/pmix_server.c`) calls `pmix_ptl_base_make_token` - not
+`pmix_ptl_base_setup_fork`, which pfexec also calls for the processes the
+library starts itself, which get no token (pfexec unsets an inherited
+one). `make_token` takes `PMIX_PTL_TOKEN_LEN` (16) bytes from
+`pmix_util_random_bytes` (arc4random_buf, else getrandom, else
+/dev/urandom), keeps them in `pmix_ptl_base.tokens` (a list of
+namespaces, each a uint32 hash of rank to bytes) and puts
+`<myid.nspace>.<myid.rank>;<hex>` in the child's environment as
+`PMIX_PTL_TOKEN_ENV` (`PMIX_CONNECT_TOKEN`). A process with no valid rank
+gets none, and an inherited one is unset. Preparing a rank again replaces
+its token; `_deregister_client` and `_deregister_nspace` call
+`pmix_ptl_base_drop_tokens`.
+
+`_register_client` (`src/server/pmix_server_registration.c`) calls
+`pmix_ptl_base_reserve_token`, which keeps random bytes nobody is handed
+for a rank that has no token yet - so the two calls may come in either
+order, and from registration on the rank is taken only with what
+`setup_fork` hands out. It is not called for an entry the host's
+registration adopts: the singleton `PMIx_server_init` registered from
+`PMIX_SINGLETON`, or a process that connected first. Neither was
+prepared, so neither has a token to present.
+
+A client (`ptl_base_client.c`, after the URI is parsed and on the
+singleton's system-server path) and a tool (`do_connect`, at `complete:`,
+whatever route found the server) call `pmix_ptl_base_add_token` with the
+server's nspace and rank: it adds the hex under `PMIX_PTL_TOKEN_KEY` only
+if that is the name in the environment's value - never to another server.
+
+The server reads it in `read_client_info`/`read_tool_info` (where it is
+dropped, not passed to the host) and checks it with
+`pmix_ptl_base_check_token` - a constant-time compare - for any peer of
+`PMIX_PTL_LOCAL_MAJOR` or later, on any transport, before anything else
+about the rank: in `client_settled`, and in `ask_about_tool` for a tool
+that names a rank. A mismatch or absence for a rank that has one is
+`PMIX_ERR_INVALID_CRED`; a rank with none, and a peer of an earlier
+release, are not checked. Every copy is zeroed before it is freed
+(`pmix_ptl_base_wipe*`): the kept bytes, the pending connection's string,
+its connect-ack blob, and the info arrays that carried it.
 
 ### Every field of the connect-ack is checked as it is read
 
@@ -149,8 +203,8 @@ including the info blob (see "Validate first" in
   `pmix_info_t` is never smaller than a byte, so a count larger than the
   bytes received is malformed and is refused before anything is
   allocated from it. **Both**
-  the client path (`pmix_ptl_base_connection_handler`) and the tool path
-  (`process_tool_request`) parse this blob and both must apply the guard;
+  the client path (`read_client_info`) and the tool path
+  (`read_tool_info`) parse this blob and both must apply the guard;
   the client path silently lacked it for a time. Check the unpack return
   on each step here as well — a corrupt blob is the normal way these fail.
 - **Except one failure, which a released version sends on every
@@ -182,26 +236,144 @@ Four functions, in this order, all on the progress thread:
 2. **`pmix_ptl_base_connection_handler`** (`ptl_base_connection_hdlr.c`)
    — runs each time the socket is readable until the whole connect-ack
    has arrived, then takes the `pnd` off the pending list, flips the
-   socket to **blocking** for the replies, parses the connect-ack with
-   the `GET_*` macros, and splits:
-   - a **simple client or singleton** must already be a registered
-     nspace+rank; the handler builds the peer inline;
-   - anything else is a tool/launcher/scheduler and goes to
-     `process_tool_request`.
-3. **`process_tool_request`** → the host's `tool_connected`/
-   `tool_connected2` → **`cnct_cbfunc`** → thread-shift →
-   **`process_cbfunc`**. This is the two-step path: the host may assign
-   the tool a namespace, which is why the namespace object cannot be put
-   on `pmix_globals.nspaces` until `process_cbfunc` runs — see
-   *One namespace object per name* below, which is the rule that step
-   exists to satisfy.
-4. **`_cnct_complete`** (client path) or the tail of `process_cbfunc`
-   (tool path) — reply with the status and the peer's array index, run
-   the psec server handshake if the module asked for one (client path
-   only: a tool's ran in `process_tool_request`, and the security status
-   `process_cbfunc` sends it is only the outcome), set the socket
-   non-blocking, arm the recv/send events, and flush cached
-   notifications.
+   socket to **blocking** for the few words of reply it will write,
+   parses the connect-ack with the `GET_*` macros, and splits: a **simple
+   client or singleton** to `accept_client`, anything else (tool,
+   launcher, scheduler) to `accept_tool`.
+3. **Settle the identity.** `validate` first refuses, with
+   `PMIX_ERR_NO_PERMISSIONS`, a TCP peer whose address (`pnd->addr`,
+   recorded at accept) `pmix_ptl_base_addr_on_host` says is not this
+   host's - not loopback, not one of its interfaces' - when its psec
+   module's `remote` is false, or the build has no
+   `PMIX_ENABLE_REMOTE_TOOLS`. Both paths validate the credential on a
+   *scratch* peer (`scratch_peer`), so a module that settles an identity
+   rewrites nothing shared. A client is validated as its rank entry's
+   registration - whoever made it - and must be that identity; a tool's
+   claim is replaced by what the module establishes. Validation is a
+   single synchronous call, and the next step is `client_settled` /
+   `tool_settled`.
+4. **Check, then ask the host.** Everything that can refuse runs before
+   the up-call: registration, modules, wire format, foreign tools,
+   membership of a known namespace. Then `client_connected2` (or the
+   deprecated form) for a client, `tool_connected2`/`tool_connected` for
+   a tool. Their callbacks (`client_host_cbfunc`, `cnct_cbfunc`)
+   thread-shift to `client_answered` / `tool_answered`.
+
+   **Tools of one name go to the host one at a time.** `tool_settled`
+   checks only the credential and the foreign-user rule, then appends
+   the connection to `pmix_ptl_base.tool_queue`. `next_tool` takes, in
+   order, every queued tool for which `name_busy` is false - no tool of
+   its name on `pmix_ptl_base.tool_asking` (the tools the host is
+   deciding on) or on `tool_late`; a tool that needs an identity is
+   never busy - dropping one whose socket has closed
+   (`pmix_ptl_base_sd_closed`), and `ask_about_tool` runs the rest:
+   `place_tool`, the remaining-wait check, the rank check, wire format,
+   gds, the info list, the up-call. The connection joins `tool_asking`
+   (`pnd->asking`) just before the up-call (or the no-host path) and
+   leaves it in `tool_decided`, which
+   `tool_answered` calls first and every synchronous up-call failure
+   calls; it starts the queue again from a thread-shifted event, never
+   inline. `pcdes` takes the connection off `tool_asking` if it is
+   released there. Tools asked about together can meet at acceptance:
+   the rank re-check refuses the second of one name, and a tool joining
+   a namespace that appeared meanwhile (`consolidate_nspace`) must be
+   of the user of every rank in it (`nspace_is_users`).
+   On an acceptance, `refuse_queued_conflicts` refuses queued tools
+   naming the accepted name (`PMIX_ERR_EXISTS`) or its namespace as
+   another uid/gid. `pmix_ptl_base_stop_listening` refuses what is still
+   queued.
+
+   **The host's answer has a deadline.** Every connection up-call
+   carries `PMIX_TIMEOUT` (`pnd->host_tmo`, from `host_timeout()`: the
+   server's `handshake_wait_time` less what the peer has waited for its
+   current reply - since `pnd->waiting`, stamped at arrival; absent when
+   0). A peer
+   with none left is refused with `PMIX_ERR_TIMEOUT` before the up-call.
+   `await_host` arms
+   `pnd->timer` for that plus `PMIX_PTL_HOST_GRACE_SEC` just before the
+   up-call; `host_answered` disarms it. `host_expired` (unless the
+   answer is already on its way - `answered` set) marks the connection
+   `abandoned`, sends `PMIX_ERR_TIMEOUT` and closes the socket, but
+   cannot release it: the host holds `cbdata`. A client keeps its rank
+   held through `connecting`; a tool that brought its name goes on
+   `pmix_ptl_base.tool_late`, which `next_tool` consults
+   (`name_held_late`, which compares the name a listed tool is known
+   by - `tool_name`) to leave queued tools of that name waiting. The
+   late answer reaches `client_answered`/`tool_answered`, which hand an
+   abandoned connection to `late_answer`: a yes goes on to
+   `release_not_connected`, anything else is released at once
+   (`noticed`).
+
+   **A yes that does not stand is reported - and the name stays held
+   until it has been.** After the host accepts, every refusal goes
+   through `refuse_accepted` (status, then `release_not_connected`), and
+   every failed reply calls `release_not_connected` directly. That closes
+   the socket and raises `PMIX_ERR_LOST_CONNECTION` naming the process
+   (`pmix_ptl_base_report_not_connected`, with `noticed` as its
+   callback) - unless `name_is_live`, when the event would name a live
+   connection. The
+   connection is released only in `noticed`, which runs once the host's
+   handlers have been given the event (the notify call's callback, on a
+   server; the chain's end, on a launcher). Until then it keeps the
+   name: a client, and a tool on a rank it was counted on, by
+   `connecting`, which is therefore given back only at acceptance (or
+   by the destructor); any tool by being on `tool_late` (`late_listed`).
+   Releasing first and raising the event on a timer let a connection
+   accepted under the name in between be the one the event named. Tools
+   with no identity from the host have no name to report.
+
+   **One connection per rank.** A client connecting as a rank that
+   already has a live connection (`rank_connected`: in the clients array,
+   not finalized, socket open) or one still waiting on the host
+   (`info->connecting`, counted from the up-call until the answer, given
+   back by `pnd`'s destructor on any refusal) is refused with
+   `PMIX_ERR_EXISTS`. The decision is made once, before the host is
+   asked, so the host is never asked about a second connection. A
+   finalized tombstone and a lost connection are not live, so a process
+   that initializes again, or comes back after its connection dropped,
+   is accepted. No pid is compared: a second connection from the live
+   one's pid is refused like any other.
+   `rank_connected` looks at each live socket it finds
+   (`pmix_ptl_base_reap_if_closed`): one that has closed, or been reset,
+   before its receive handler ran is handled as lost there and then, so
+   a rank whose process died is not refused when it connects again
+   before the server has read the close. Only end of file, `ECONNRESET`,
+   `ENOTCONN` and `EPIPE` count as closed: a socket with unread data on
+   it, or any other error, counts as live. A tool is
+   held to the same rule: `ask_about_tool` checks
+   the rank entry it will join when that is known before the up-call (one
+   found for a tool the host launched, which it then counts in
+   `connecting`, or the entry its namespace lists for the rank it named),
+   and `tool_answered` checks again once the entry is final. On the
+   tool's side, `pmix_ptl_base_make_connection_alts` answers
+   `PMIX_ERR_EXISTS` for a tool that took its rank from the environment
+   (`PMIX_PROC_CLIENT_TOOL`/`CLIENT_LAUNCHER`, and its name equal to
+   `PMIX_NAMESPACE`/`PMIX_RANK` - a name its caller gave it is kept) by
+   `take_new_identity`: it drops the client bits and its name, so
+   `pmix_ptl_base_set_flag` picks `NEEDS_ID`, and connects once more. A
+   failure of that second connection is reported as `PMIX_ERR_EXISTS`,
+   the reason the tool needed it. Only during `PMIx_tool_init`
+   (`pmix_globals.initialized` unset) - an attach after init never
+   changes an identity the caller already has, so the event-driven
+   connect has no such step. The client bit is set in `do_connect` only
+   for a tool that has a name: one with the server's address but no
+   `PMIX_NAMESPACE`/`PMIX_RANK` asks for an identity. The server refuses
+   a connect-ack that names itself with an empty namespace or an invalid
+   rank (`PMIX_ERR_BAD_PARAM`) - an empty namespace is a wildcard to
+   `PMIx_Check_nspace`. `ask_about_tool` checks the rank before the
+   wire format, so a tool on a client's rank is told the rank is taken.
+5. **Accept.** Only now does anything shared change: the tombstone is
+   reclaimed, the peer takes its clients-array slot and its namespace
+   and rank entry, the namespace's modules and version are set, a
+   namespace or rank entry built for a tool joins its list. The final
+   replies go out and `activate` arms the steady-state events and
+   flushes cached notifications.
+
+**The status word a peer reads next.** A refusal at any step is
+`refuse()`: one status word, then the connection is released. Which word
+that is depends on how far the peer got - its first reply; or, for a
+tool, the last reply after the identity replies. A tool's first reply is
+sent only once the host has decided on it.
 
 ### The inbound connect-ack never blocks the server's progress thread
 
@@ -254,9 +426,14 @@ things take it off:
 4. the accept handler, when the list is full. `pending_cap` is worked
    out by `pmix_ptl_base_start_listening` from
    `ptl_base_max_pending_connections`: a positive value is the cap, 0
-   (the default) a quarter of the soft `RLIMIT_NOFILE`, and -1 none.
+   (the default) an eighth of the soft `RLIMIT_NOFILE`, and -1 none.
    At the cap the **oldest** connection is dropped to make room for the
-   new one. A process that means to connect sends its connect-ack at
+   new one. Tools waiting on the host (`tool_queue` and `tool_asking`,
+   `pmix_ptl_base_waiting_tools()`) are not on this list and never
+   count toward it, so they cannot crowd out connecting clients. They
+   have a cap of their own, the same `pending_cap`: a tool that would
+   make that many waiting is refused with `PMIX_ERR_OUT_OF_RESOURCE` as
+   it is queued. A process that means to connect sends its connect-ack at
    once, so it is never the oldest; refusing the newcomer instead would
    let whoever fills the list keep everyone out for
    `connect_ack_timeout`, or for good with the timeout disabled. There is
@@ -264,39 +441,25 @@ things take it off:
    peer has the same address, and the uid is not known until the
    credential has been read.
 
+Every drop sends the peer a status first - `PMIX_ERR_TIMEOUT`,
+`PMIX_ERR_OUT_OF_RESOURCE`, `PMIX_ERR_UNREACH` at finalize - as every
+refusal does.
+
 All four go through `pmix_ptl_base_drop_pending_connection` or remove
 the item themselves before the `pnd` can be released: releasing a list
 item that is still on a list aborts a debug build.
 
-**What is still blocking, and bounded by the same timeout.** Once the
-connect-ack is in, the replies to it and the psec server handshake
-(`PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`) are blocking exchanges on the same
-socket, still before the connection is complete. The handler sets
-`SO_RCVTIMEO` from `connect_ack_timeout` when it puts the socket into
-blocking mode, and the option stays until the socket goes non-blocking
-for steady-state traffic. That bound only works because
-**`pmix_ptl_base_recv_blocking` reports it**: on a socket in blocking
-mode, `EAGAIN`/`EWOULDBLOCK` is how `recv()` says an `SO_RCVTIMEO`
-expired, not "no data yet", so the function returns `PMIX_ERR_TIMEOUT`
-there and cycles only for a socket that really is non-blocking. It used
-to cycle unconditionally, which turned every receive timeout into an
-unbounded wait — the outbound `handshake_wait_time` never expired
-either. The psec exchange itself stays blocking: its interface is
-`server_handshake(peer, sd)`, a blocking exchange by definition. The one
-module that implements one is `psec/native`, which runs its local-socket
-handshake only for a peer the kernel's TCP table cannot see (a container
-with its own network). native
-bounds the whole exchange by one `connect_ack_timeout` deadline, and
-stops waiting the moment the peer's TCP connection closes, so a peer that
-cannot reach the socket costs nothing; one that stalls holds the progress
-thread for that timeout at most. Making the exchange event-driven means changing
-the psec interface again.
+**Nothing after the connect-ack reads from the socket either.** The
+replies are a few words written into a socket nothing else has written
+to, so they are sent with `pmix_ptl_base_send_blocking` and do not wait.
+Validation reads nothing from the peer: no psec module runs a live
+exchange (see "No handshake" in [`psec/AGENTS.md`](../../psec/AGENTS.md)).
 
-On the **tool path** a credential module's handshake runs inside
-`process_tool_request`, before anything is done for the tool: the tool's
-first status is `READY_FOR_HANDSHAKE`, and the identity the module
-settles on is copied from the scratch peer back into `pnd`. The
-`allow_foreign_tools` check runs after that, on the settled uid.
+`pmix_ptl_base_recv_blocking` still reports an `SO_RCVTIMEO` expiry as
+`PMIX_ERR_TIMEOUT` rather than cycling - on a socket in blocking mode,
+`EAGAIN`/`EWOULDBLOCK` is how `recv()` says the timeout expired, not "no
+data yet". The *outbound* side depends on that: `handshake_wait_time`
+bounds a client's or tool's wait for its server's replies.
 
 `test/unit/ptl_stalled_peer.c` runs every stall case with the timeout
 **disabled**, so only the non-blocking read can pass them, and gives the
@@ -305,35 +468,41 @@ the two readings of `EAGAIN` directly, over a socketpair.
 
 ### Ownership along that path — read this before editing
 
-Most of the historical bugs in this directory are refcount and
-list-membership mistakes on the failure paths. The invariants:
+Most of the historical bugs in this directory were refcount and
+list-membership mistakes on the failure paths, scattered over separate
+`error:` blocks. The structure that replaced them is the invariant:
 
-- **`pnd` belongs to whoever is going to release it.** The connection
-  handler releases it on its own `error:` path; on success it hands
-  ownership to the `cnct_hdlr_t` caddy (whose destructor releases it) or
-  to `process_cbfunc`. When you add an early exit after the caddy exists,
-  null `ch->pnd` first if the error path below is also going to release
-  it — the caddy destructor would otherwise release it a second time.
-- **`pnd->info` is freed by `pnd`'s destructor.** Never free it by hand,
-  and never `PMIX_RELEASE` it — it is a `pmix_info_t` array, not an
-  object.
-- **A namespace the handler created is not on any list yet.** Do not
-  `pmix_list_remove_item` it from `pmix_globals.nspaces` on a failure
-  path; just drop the reference. A namespace that already existed *is* on
-  that list and the list holds its own reference — the peer's retain is
-  the only one you may give back.
-- **Take exactly one namespace/rank-info retain for the peer.** Releasing
-  the peer gives it back. Nulling `peer->nptr` or `peer->info` to "protect"
-  a shared object strands that retain instead.
-- **The rank's `proc_cnt` and `peerid` are shared bookkeeping.** The
-  connection handler raises `proc_cnt` and points `peerid` at the new
-  clients-array slot. Any failure after that point must give both back —
-  `proc_cnt == 0` is the gate on reclaiming a finalized tombstone peer
-  when the rank reconnects, so a count that never drops leaks one peer
-  per later reconnect.
-- **`info` is a member of the namespace's rank list**, not something the
-  handler owns. Releasing it directly drives its refcount to zero while
-  it is still linked.
+- **Until it is accepted, a connection holds everything in its `pnd`,
+  and `pnd`'s destructor gives it all back.** The socket (`pnd->sd`), the
+  scratch peer (`pnd->peer`, whose `sd` is kept at -1 so releasing it
+  never closes the connection's socket), one reference each on the
+  namespace and rank entry it will join (`pnd->nptr`, `pnd->rinfo`), the
+  info array for the host (`pnd->info`), the trailing info (`pnd->blob`).
+  So refusing a
+  connection at any step is `refuse()` and nothing else - there is no
+  per-step unwinding to get wrong.
+- **Nothing a connection builds is listed until it is accepted.** A
+  namespace built for a tool (`nspace_created`) is not on
+  `pmix_globals.nspaces`, a rank entry built for it (`rinfo_created`) is
+  not on its namespace's rank list, and nothing has touched an existing
+  namespace's compat modules, version or cached wire format, or a rank's
+  pid, `proc_cnt` or `peerid`. A refused peer leaves no trace, and in
+  particular cannot fix its job's wire format.
+- **Accepting hands each thing on and clears its field.** The peer goes
+  to the clients array, the socket to the peer (`activate`), the
+  references on the namespace and rank entry to the peer - and, for one
+  that was built here, the reference becomes the list's when it is
+  appended and the peer takes one of its own.
+- **Re-check what the host may have changed.** A rank entry found for a
+  tool before the up-call is checked again after it. The host runs code during
+  its up-call and may deregister the job or the client, or another client
+  of the job may connect and fix its wire format. `client_answered` and
+  `tool_answered` check that the namespace is still listed, the rank
+  entry still on it and the wire format still compatible before
+  committing.
+- **The rank's `proc_cnt` and `peerid` are shared bookkeeping**, changed
+  only once the connection is accepted. `proc_cnt == 0` is the gate on
+  reclaiming a finalized tombstone peer when the rank reconnects.
 
 ### One namespace object per name
 
@@ -348,11 +517,14 @@ The tool path is the one place this is hard, because a tool that asks to
 be given an identity has no name until the host's `tool_connected`
 upcall returns — and that upcall is also the window in which the host
 may register a namespace of its own under the very name it just handed
-us. So the append is deferred to `process_cbfunc`, and when it happens
-it has to reconcile against whatever appeared meanwhile. That is
-`consolidate_nspace()`: it appends our object if no other carries the
-name, and otherwise moves the peer (and any rank info we built) onto the
-one already there and disposes of ours.
+us. So the append is deferred to `tool_answered`, and when it happens it
+has to reconcile against whatever appeared meanwhile. That is
+`consolidate_nspace()`: if another object carries the name, the tool
+joins that one and ours is dropped; a rank entry built for the tool is
+then matched against that namespace's own, so a rank is never listed
+twice. A tool that joins a namespace it named keeps that namespace's
+name whatever the host answers - only a tool that asked for an identity
+is given the host's.
 
 Run it for **every** tool we created a namespace for. It used to run
 only for a tool the server had already registered as a client, so a
@@ -383,12 +555,54 @@ the event-registration-store section of
 ## Outbound: connect_to_peer to connected peer
 
 `pmix_ptl_base_connect_to_peer` (`ptl_base_connect.c`) is the tool and
-server path; the `client` component has its own, simpler one. Both
-converge on `pmix_ptl_base_make_connection` (`ptl_base_fns.c`):
+server path; a client has its own, simpler one (`ptl_base_client.c`).
+
+**A process of this release on its server's host uses the local socket.**
+- A client, or a tool its server started, finds `PMIX_SERVER_LOCAL_URI`
+  in its environment (`pmix_ptl_base_use_local_env`): the server's local
+  URI, then `;<uid>:<gid>`. It connects there instead of to the
+  `PMIX_SERVER_URIxx` address - which `pmix_ptl_base_set_peer` still
+  reads, for the server's wire format. `setup_fork` sets those to the TCP
+  URI only when the server takes legacy peers, and to the local socket's
+  URI otherwise. It expects the server to be that
+  uid and gid (`pmix_ptl_base.server_expect_*`, for this connect only).
+  A socket it cannot reach fails init with `PMIX_ERR_COMM_FAILURE` and the
+  `local-unreachable` topic; there is no falling back to TCP.
+- `pmix_ptl_base_use_local_env(server, &uri)` takes `PMIX_SERVER_LOCAL_URI`
+  only when its `<nspace>.<rank>` is the one the `PMIX_SERVER_URIxx`
+  value names: a server of an earlier release, started under one of
+  this release, sets the other variables and leaves this one stale.
+- A tool that finds a server through a file connects to its `local:`
+  line when it has one for this host (`take_address`), and drops the TCP
+  alternates. The line is `local:<host>;<uri>`; a report file may be read
+  on another host, which uses the TCP URI. A singleton reaching a system
+  server uses that file's `local:` line too.
+- **The server is checked before anything is sent.** Once the socket is
+  connected - `make_connection_alts` and `cnct_connected` alike -
+  `pmix_ptl_base_check_server` asks the transport what the kernel says of
+  the far end. Expected identity: an exact uid and gid match - after
+  `pmix_util_id_to_parent` maps the kernel's ids through
+  `/proc/self/{uid,gid}_map` when they differ, since in a user namespace
+  the kernel reports the server's ids as that namespace numbers them. None: our
+  own uid, root, or one `ptl_base_server_access` allows
+  (`users=a:b,groups=c:d`, resolved at open by
+  `pmix_ptl_base_parse_server_access`; a bad value fails open). A
+  transport with no `peer_identity` (tcp) asks `pmix_util_getid_tcp`
+  instead: when this host's TCP table has the server's end, its owner -
+  a uid, no gid - must be the given uid, or else our own, root or a
+  `users=` entry (`server-identity-tcp`). When the table does not have it
+  (`PMIX_ERR_NOT_FOUND`) and the server's address (`getpeername`) is this
+  host's, it is refused (`server-unidentified`); at any other address, or
+  with no table to ask (`PMIX_ERR_NOT_SUPPORTED`), there is no check.
+
+Both converge on `pmix_ptl_base_make_connection` (`ptl_base_fns.c`):
 
 ```
-setup_connection()          parse "tcp4://host:port" into a sockaddr
+uri_to_addr()               the transport whose scheme the URI has parses it
+                            ("tcp4://host:port", "usock:///path") into a sockaddr
 pmix_ptl_base_connect()     socket() + connect(), retrying
+check_server()              a local transport's far end must be a server we
+                            may talk to
 send_connect_ack()          construct_message() builds the blob
 recv_connect_ack()          client or tool handshake, per our own role
                             assign the LOWER half of the dynamic tag space
@@ -503,7 +717,11 @@ one valid file and drives both walks under a watchdog.
 
 ### What a URI parse accepts
 
-- **The port is strict.** `setup_connection` accepts only a whole
+- **A transport takes only its own scheme.** tcp's `uri_to_addr`
+  (`../tcp/ptl_tcp.c`) answers `PMIX_ERR_NOT_SUPPORTED` for anything that
+  does not begin `tcp4://` or `tcp6://`, before any other check, so the
+  base can ask the next transport.
+- **The port is strict.** tcp's `uri_to_addr` accepts only a whole
   decimal field in 1..65535. It used `atoi()`, so `""` and `"x"` were
   port 0 and `70000` wrapped to 4464 — a mistyped URI connected to some
   other port instead of being refused. The IPv6 branch additionally
@@ -516,10 +734,41 @@ one valid file and drives both walks under a watchdog.
   back onto the same `pmix_rank_t`. A digits-only parse would refuse
   those servers, which are inside the interoperability floor.
 
+## A process that execs loses its connection
+
+Every socket the library creates or accepts is close-on-exec
+(`PMIX_SOCK_CLOEXEC` where the platform has it, then
+`pmix_ptl_base_own_socket`), so a program a process execs does not
+inherit a connection it cannot use - a client's or a tool's, on the local
+socket or over TCP. An exec therefore closes the process's connection,
+and the server handles that in `lost_connection` like any other close:
+the rank is lost at once, whether the process runs on or not. Nothing
+keeps a rank for the program the process execs, and nothing lets a new
+connection take a live one's place.
+
+A peer of an earlier release leaves its socket open across an exec. Its
+rank stays connected until the exec'd program exits, and a connection
+that program makes for the rank meanwhile is refused as a second one.
+
+`test/unit/ptl_exec.c` covers a real client whose process execs, over the
+local socket and over TCP, and one that dies; `ptl_accept.c` covers a
+connection that closes while its process runs on, and a second
+connection from the rank's pid.
+
 ## Steady state
 
 `ptl_base_sendrecv.c`. The framework doc describes the flow; the details
 that bite:
+
+- **No write may raise `SIGPIPE`.** A peer that resets while we write to
+  it would otherwise end the whole process - a host or an application -
+  and its signal disposition is not ours to set. So every socket PMIx
+  creates or accepts goes through `pmix_ptl_base_set_nosigpipe()`
+  (`SO_NOSIGPIPE`, where the platform has it), and every write passes
+  `PMIX_PTL_NOSIGNAL` (`MSG_NOSIGNAL`): `send()` directly, and the
+  vector writes through `pmix_ptl_base_writev()`, which is `sendmsg()`
+  because `writev()` takes no flags. A new socket or a new write path
+  needs the same treatment.
 
 - **Tag space is split in half per connection** so the two ends of a
   bidirectional socket never collide. The side that *accepted* takes the
@@ -611,14 +860,28 @@ that bite:
 
 ## The listener
 
-`pmix_ptl_base_setup_listener` picks an interface (loopback by default;
-a public one only if remote or tool connections were asked for), binds,
-publishes the URI into `gds`, and drops rendezvous files.
+`pmix_ptl_base_setup_listener` takes the directives that are not a
+transport's, has the highest-priority transport that listens open the
+socket (`pmix_ptl_base_listen`), publishes the URI into `gds`, and drops
+rendezvous files. The tcp transport (`../tcp/ptl_tcp.c`) picks the
+interface (loopback by default; a public one only if remote or tool
+connections were asked for), binds, and makes the URI.
+
+- **Remote connections are a build option.** `PMIX_ENABLE_REMOTE_TOOLS`
+  (configure `--enable-remote-tools`, default off) decides whether
+  `PMIX_SERVER_REMOTE_CONNECTIONS` can be honored: in a build without
+  it, the directive set true fails the init (`remote-tools-not-built`),
+  and tcp never falls back to a public interface when the directives
+  leave no loopback one. Whatever the build, a loopback candidate must
+  carry a loopback address (`pmix_net_islocalhost`): any other address
+  on a loopback device counts as public. In a build with it, the directive set true
+  fails the init unless `pmix_psec_base_remote_available()`
+  (`remote-no-psec`).
 
 - **With remote connections, every public interface is listened on - but
   the URI still names one.** The scan keeps going past the first public
-  interface and `open_alternates()` binds a `pmix_listener_t` on each of
-  the others (`pmix_ptl_base.alt_listeners`), trying the primary's port
+  interface and tcp's `open_alternates()` binds a `pmix_listener_t` on each
+  of the others (`pmix_ptl_base.alt_listeners`), trying the primary's port
   first. Where they are is `pmix_ptl_base.alt_uris`, a comma-delimited
   list of address-only `tcpX://host:port` strings, stored as
   `PMIX_MYSERVER_ALT_URIS` and written after everything a released reader
@@ -732,8 +995,8 @@ publishes the URI into `gds`, and drops rendezvous files.
 - **The directives are the host's, and typed by nothing but their key.**
   The string ones (`PMIX_TCP_IF_INCLUDE`/`_EXCLUDE`, `PMIX_TCP_REPORT_URI`,
   `PMIX_SERVER_TMPDIR`, `PMIX_SYSTEM_TMPDIR`) go through
-  `replace_string()`, which refuses any other type — a `bool` there was
-  a SIGSEGV. A port goes through `port_directive()` and
+  `pmix_ptl_base_replace_string()`, which refuses any other type — a
+  `bool` there was a SIGSEGV. A port goes through tcp's `port_directive()` and
   `pmix_ptl_base_set_ports()`, and the bind loop parses each entry
   strictly: a number past 65535 used to be narrowed to 16 bits and
   bound, so 70000 listened on 4464.
@@ -799,9 +1062,8 @@ Two regimes, described in the framework doc. What matters *here*:
   It used to run the blocking connect there, so the whole progress
   thread waited on the server - forever, while `handshake_wait_time`
   defaulted to 0. It now calls the module's `connect_to_peer_nb`
-  (`pmix_ptl_base_connect_to_peer_nb` for the tool and server
-  components; the client component has none and falls back to the
-  blocking call). That locates the server exactly as the blocking form
+  (`pmix_ptl_base_connect_to_peer_nb` for the tool and server roles;
+  a client has none and falls back to the blocking call). That locates the server exactly as the blocking form
   does - it shares `do_connect()` with it - and then hands the connection
   to the event-driven connect in `ptl_base_fns.c`: a non-blocking
   `connect()`, the same connect-ack sent as the socket accepts it, and
@@ -813,8 +1075,8 @@ Two regimes, described in the framework doc. What matters *here*:
   The callback never runs inside the starting call - the connect begins
   on the next pass of the event loop - and connects still under way at
   finalize are completed with `PMIX_ERR_NOT_AVAILABLE` by
-  `pmix_ptl_base_abandon_connects()`. A psec client handshake is still
-  run blocking, bounded by the same wait, for the reason given above.
+  `pmix_ptl_base_abandon_connects()`. A server that asks for a security
+  handshake is refused at once (`server_status`), on both paths.
   `test/unit/tool_attach_nb.c` holds this: an event registration made
   while an attach waits on a silent server has to complete promptly.
 - **The file-wait loops pause through `retry_wait()`, and nothing else.**
@@ -851,8 +1113,15 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
 | `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one |
 | `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them; at the pending-connection cap the oldest is dropped, and the default cap follows the descriptor limit |
+| `test/unit/ptl_nosigpipe.c` | a blocking send and a vector write to a peer that has reset return an error, with `SIGPIPE` at its default action |
 | `test/unit/ptl_recv_timeout.c` | `pmix_ptl_base_recv_blocking` ends a blocking socket's receive at its timeout, and still waits out `EAGAIN` on a non-blocking one |
 | `test/unit/tool_nspace.c` | a real tool connection leaves exactly one namespace object, and the peer resolves through the one on the list |
+| `test/unit/ptl_transport.c` | the listener, the server's peer for a tool, and the tool's peer for its server - by a blocking connect and by an event-driven attach - each record the transport that carries them |
+| `test/unit/ptl_legacy.c` | by default a server has no TCP listener and reports its local socket in the rendezvous file and `PMIX_SERVER_URIxx`; legacy peers on (attribute or parameter) make the TCP listener and report it, with the local socket beside it; the attribute overrides the parameter; asking in a build without legacy peers fails the init |
+| `test/unit/ptl_tcp_server.c` | over TCP a tool checks a server on its host by the kernel's TCP table: a server on loopback the table does not show (Linux `TCP_DEFER_ACCEPT`) is refused before anything is sent; as root, a server of another user is refused before anything is sent, and one `ptl_base_server_access` names gets past it; a server of the tool's own user is taken |
+| `test/unit/ptl_pfexec_token.c` | a process a launcher starts itself (pfexec) gets no token, not even one in the launcher's environment, and connects back without one |
+| `test/unit/ptl_token.c` | setup_fork's token: hex after the making server's name in the environment, added to a connect-ack only for a server of that name, different per rank, replaced when the rank is prepared again; only the kept token is taken (another, none, short, long, non-hex, one digit off refused); a rank never prepared takes anything; a rankless process gets none and loses an inherited one; deregistering the rank, then the job, forgets them |
+| `test/unit/ptl_remote.c` | which peer addresses are this host's; which psec modules validate a credential made elsewhere; remote connections asked for fail the init in a build without them (and with only native in one with them); directives leaving no loopback interface fail the init rather than take a public one in a build without them |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |
 | `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: tools connecting across nodes, discovery by pid/nspace, remote-connection interface selection |
 

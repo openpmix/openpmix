@@ -37,6 +37,7 @@
 #    include <fcntl.h>
 #endif
 #include <ctype.h>
+#include <strings.h>
 #include <errno.h>
 #include <time.h>
 
@@ -44,8 +45,11 @@
 #include "src/include/pmix_socket_errno.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/client/pmix_client_ops.h"
+#include "src/common/pmix_idenv.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/psec/base/base.h"
+#include "src/util/pmix_getid.h"
+#include "src/util/pmix_idname.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
@@ -71,13 +75,13 @@ static bool search_candidate(const char *path, bool *isdir);
 pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char **evar)
 {
     pmix_status_t rc;
-    char *vrs;
+    const char *vrs;
     pmix_bfrops_base_active_module_t *mod;
     char *ptr, *tmp, check[2], *eval;
     int major, minor;
     bool evalgiven;
 
-    vrs = getenv("PMIX_VERSION");
+    vrs = pmix_idenv_get("PMIX_VERSION");
 
     if (NULL == evar) {
         return PMIX_ERR_BAD_PARAM;
@@ -112,7 +116,7 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char **evar)
                 continue;
             }
         } else {
-            if (NULL == (eval = getenv(tmp))) {
+            if (NULL == (eval = (char *) pmix_idenv_get(tmp))) {
                 free(tmp);
                 continue;
             }
@@ -162,8 +166,6 @@ pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     pmix_status_t rc;
 
-    PMIX_HIDE_UNUSED_PARAMS(proc);
-
     /* a child that does not get these still starts, and then searches
      * the default tmpdir for its server - where it may find a different
      * one - so a failure to set them has to fail the fork setup */
@@ -171,6 +173,7 @@ pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env)
     if (PMIX_SUCCESS == rc) {
         rc = PMIx_Setenv("PMIX_SYSTEM_TMPDIR", pmix_ptl_base.system_tmpdir, true, env);
     }
+    PMIX_HIDE_UNUSED_PARAMS(proc);
     return rc;
 }
 
@@ -458,7 +461,8 @@ static pmix_status_t parse_conn_file(char *filename, bool optional, bool found_b
     char *nspace = NULL;
     pmix_rank_t rank;
     char *uri = NULL;
-    char *alt = NULL, *line;
+    char *alt = NULL, *line, *local = NULL, *lns = NULL, *luri = NULL, *lhost;
+    pmix_rank_t lrank;
     char *bfrops = NULL, *psec = NULL, **dest;
     const char *tag;
     size_t taglen;
@@ -559,6 +563,10 @@ process:
             if (0 == strncmp(line, PMIX_PTL_ALT_URIS_TAG, strlen(PMIX_PTL_ALT_URIS_TAG))) {
                 tag = PMIX_PTL_ALT_URIS_TAG;
                 dest = &alt;
+            } else if (0 == strncmp(line, PMIX_PTL_LOCAL_URI_TAG,
+                                    strlen(PMIX_PTL_LOCAL_URI_TAG))) {
+                tag = PMIX_PTL_LOCAL_URI_TAG;
+                dest = &local;
             } else if (0 == strncmp(line, PMIX_PTL_BFROPS_TAG, strlen(PMIX_PTL_BFROPS_TAG))) {
                 tag = PMIX_PTL_BFROPS_TAG;
                 dest = &bfrops;
@@ -590,6 +598,7 @@ process:
                 free(p);
             }
             free(alt);
+            free(local);
             free(bfrops);
             free(psec);
             return PMIX_ERR_NOMEM;
@@ -601,8 +610,23 @@ process:
         cn->alt_uris = alt;
         cn->bfrops = bfrops;
         cn->psec = psec;
+        /* the local address is "<host>;<uri>": used only on the server's
+         * host - a report file may be read on another - and only if it is
+         * the same server's */
+        lhost = (NULL == local) ? NULL : strchr(local, ';');
+        if (NULL != lhost && (size_t) (lhost - local) == strlen(pmix_globals.hostname) &&
+            0 == strncmp(local, pmix_globals.hostname, (size_t) (lhost - local)) &&
+            PMIX_SUCCESS == pmix_ptl_base_parse_uri(lhost + 1, &lns, &lrank, &luri) &&
+            0 == strcmp(lns, nspace) && lrank == rank) {
+            cn->local_uri = luri;
+            luri = NULL;
+        }
+        free(lns);
+        free(luri);
+        free(local);
         pmix_list_append(connections, &cn->super);
     } else {
+        free(local);
         free(alt);
         free(bfrops);
         free(psec);
@@ -703,131 +727,347 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, bool exact,
                      pmix_ptl_base.search_depth);
 }
 
-/* Convert the port field of a URI. It has to be the whole of what follows
- * the separator and a port a socket can actually be connected to: atoi()
- * read "" and "x" as 0 and wrapped 70000 onto 4464, so a mistyped URI
- * connected to some other port on the host instead of being refused */
-static bool parse_port(const char *str, uint16_t *port)
+/* The address a URI names, from the transport whose URI it is - and
+ * that transport, if asked. A URI no transport speaks is not supported */
+pmix_status_t pmix_ptl_base_uri_to_addr(const char *uri, struct sockaddr_storage *connection,
+                                        size_t *len, pmix_ptl_module_t **transport)
 {
-    char *end;
-    unsigned long val;
+    pmix_ptl_base_active_t *active;
+    pmix_status_t rc;
 
-    if (!isdigit((unsigned char) str[0])) {
-        return false;
+    PMIX_LIST_FOREACH (active, &pmix_ptl_base.actives, pmix_ptl_base_active_t) {
+        rc = active->module->uri_to_addr(uri, connection, len);
+        if (PMIX_ERR_NOT_SUPPORTED != rc) {
+            if (PMIX_SUCCESS == rc && NULL != transport) {
+                *transport = active->module;
+            }
+            return rc;
+        }
     }
-    errno = 0;
-    val = strtoul(str, &end, 10);
-    if (0 != errno || '\0' != *end || 0 == val || 65535 < val) {
-        return false;
-    }
-    *port = htons((uint16_t) val);
-    return true;
+    PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+    return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix_ptl_base_setup_connection(char *uri, struct sockaddr_storage *connection,
                                              size_t *len)
 {
-    char *p = NULL, *p2, *host;
-    struct sockaddr_in *in;
-    struct sockaddr_in6 *in6;
+    return pmix_ptl_base_uri_to_addr(uri, connection, len, NULL);
+}
 
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "pmix:base setup connection to %s", uri);
+bool pmix_ptl_base_addr_on_host(const struct sockaddr_storage *addr)
+{
+    struct sockaddr_storage peer, ifaddr;
+    const struct sockaddr_in6 *in6;
+    struct sockaddr_in *in4;
+    int i;
 
-    memset(connection, 0, sizeof(struct sockaddr_storage));
-    /* every URI we accept begins with a 7-character scheme prefix
-     * ("tcp4://" or "tcp6://") followed by an address - anything
-     * shorter cannot be one, and indexing past it would read off the
-     * end of a string that reached us from a rendezvous file or an
-     * environment variable */
-    if (NULL == uri || strlen(uri) <= strlen("tcp4://")) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+    memcpy(&peer, addr, sizeof(peer));
+    /* an IPv4 peer of a dual-stack listener arrives v4-mapped */
+    in6 = (const struct sockaddr_in6 *) addr;
+    if (AF_INET6 == addr->ss_family && IN6_IS_ADDR_V4MAPPED(&in6->sin6_addr)) {
+        memset(&peer, 0, sizeof(peer));
+        in4 = (struct sockaddr_in *) &peer;
+        in4->sin_family = AF_INET;
+        memcpy(&in4->sin_addr, &in6->sin6_addr.s6_addr[12], sizeof(in4->sin_addr));
+    }
+    if (AF_INET != peer.ss_family && AF_INET6 != peer.ss_family) {
+        return false;
+    }
+    if (pmix_net_islocalhost((struct sockaddr *) &peer)) {
+        return true;
+    }
+    for (i = pmix_ifbegin(); 0 <= i; i = pmix_ifnext(i)) {
+        if (PMIX_SUCCESS != pmix_ifindextoaddr(i, (struct sockaddr *) &ifaddr, sizeof(ifaddr)) ||
+            ifaddr.ss_family != peer.ss_family) {
+            continue;
+        }
+        if (AF_INET == peer.ss_family &&
+            0 == memcmp(&((struct sockaddr_in *) &ifaddr)->sin_addr,
+                        &((struct sockaddr_in *) &peer)->sin_addr, sizeof(struct in_addr))) {
+            return true;
+        }
+        if (AF_INET6 == peer.ss_family &&
+            0 == memcmp(&((struct sockaddr_in6 *) &ifaddr)->sin6_addr,
+                        &((struct sockaddr_in6 *) &peer)->sin6_addr, sizeof(struct in6_addr))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+pmix_status_t pmix_ptl_base_parse_local_uri(const char *value, char **uri, uid_t *uid,
+                                            gid_t *gid)
+{
+    const char *id;
+    char *end;
+    unsigned long u, g;
+    size_t n;
+
+    /* "<nspace>.<rank>;<address>;<uid>:<gid>" - the identity is after the
+     * last ';', which no address of ours holds */
+    if (NULL == value || NULL == (id = strrchr(value, ';')) || id == value) {
         return PMIX_ERR_BAD_PARAM;
     }
-    if (0 == strncmp(uri, "tcp4", 4)) {
-        /* need to skip the tcp4: part */
-        p = strdup(&uri[7]);
-        if (NULL == p) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            return PMIX_ERR_NOMEM;
-        }
-
-        /* separate the IP address from the port */
-        p2 = strrchr(p, ':');
-        if (NULL == p2) {
-            free(p);
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        *p2 = '\0';
-        p2++;
-        host = p;
-        /* load the address */
-        in = (struct sockaddr_in *) connection;
-        in->sin_family = AF_INET;
-        in->sin_addr.s_addr = inet_addr(host);
-        if (in->sin_addr.s_addr == INADDR_NONE || !parse_port(p2, &in->sin_port)) {
-            free(p);
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        *len = sizeof(struct sockaddr_in);
-    } else if (0 == strncmp(uri, "tcp6", 4)) {
-        /* need to skip the tcp6: part */
-        p = strdup(&uri[7]);
-        if (NULL == p) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            return PMIX_ERR_NOMEM;
-        }
-
-        p2 = strrchr(p, ':');
-        if (NULL == p2) {
-            free(p);
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        *p2 = '\0';
-        p2++;
-        /* nothing before the port separator - there is no last character
-         * to inspect, and p[strlen(p) - 1] would be p[-1] */
-        if ('\0' == p[0]) {
-            free(p);
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        if (']' == p[strlen(p) - 1]) {
-            p[strlen(p) - 1] = '\0';
-        }
-        if ('[' == p[0]) {
-            host = &p[1];
-        } else {
-            host = &p[0];
-        }
-        /* load the address */
-        in6 = (struct sockaddr_in6 *) connection;
-        in6->sin6_family = AF_INET6;
-        if (0 == inet_pton(AF_INET6, host, (void *) &in6->sin6_addr)) {
-            pmix_output(0, "ptl_tcp_parse_uri: Could not convert %s\n", host);
-            free(p);
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        if (!parse_port(p2, &in6->sin6_port)) {
-            free(p);
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        *len = sizeof(struct sockaddr_in6);
-    } else {
-        /* not a scheme we speak */
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-        return PMIX_ERR_NOT_SUPPORTED;
+    errno = 0;
+    u = strtoul(id + 1, &end, 10);
+    if (0 != errno || end == id + 1 || ':' != *end || !isdigit((unsigned char) end[1])) {
+        return PMIX_ERR_BAD_PARAM;
     }
-    if (NULL != p) {
-        free(p);
+    id = end + 1;
+    g = strtoul(id, &end, 10);
+    if (0 != errno || '\0' != *end || (unsigned long) (uid_t) u != u ||
+        (unsigned long) (gid_t) g != g) {
+        return PMIX_ERR_BAD_PARAM;
     }
-
+    n = (size_t) (strrchr(value, ';') - value);
+    *uri = (char *) malloc(n + 1);
+    if (NULL == *uri) {
+        return PMIX_ERR_NOMEM;
+    }
+    memcpy(*uri, value, n);
+    (*uri)[n] = '\0';
+    *uid = (uid_t) u;
+    *gid = (gid_t) g;
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_ptl_base_use_local_env(const char *server, char **uri)
+{
+    const char *value, *a, *b;
+    uid_t uid;
+    gid_t gid;
+    pmix_status_t rc;
+
+    value = pmix_idenv_get(PMIX_PTL_LOCAL_URI_ENV);
+    if (NULL == value) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    rc = pmix_ptl_base_parse_local_uri(value, uri, &uid, &gid);
+    if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_BAD_PARAM == rc) {
+            pmix_show_help("help-ptl-base.txt", "local-uri-bad", true, PMIX_PTL_LOCAL_URI_ENV,
+                           value);
+            rc = PMIX_ERR_SILENT;
+        }
+        return rc;
+    }
+    /* It must name the server the rest of the environment does: a server
+     * of an earlier release, started under one of this release, sets the
+     * other variables but leaves this one as it found it */
+    a = strchr(server, ';');
+    b = strchr(*uri, ';');
+    if (NULL == a || NULL == b || (a - server) != (b - *uri) ||
+        0 != strncmp(server, *uri, (size_t) (a - server))) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: %s names another server than %s - not using it",
+                            PMIX_PTL_LOCAL_URI_ENV, server);
+        free(*uri);
+        *uri = NULL;
+        return PMIX_ERR_NOT_FOUND;
+    }
+    pmix_ptl_base.server_expect_given = true;
+    pmix_ptl_base.server_expect_uid = uid;
+    pmix_ptl_base.server_expect_gid = gid;
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_ptl_base_check_server(pmix_peer_t *peer, bool given, uid_t uid, gid_t gid)
+{
+    uid_t kuid;
+    gid_t kgid = 0;
+    pid_t kpid;
+    size_t n;
+    bool ok, tcp = false;
+    char want[128];
+    struct sockaddr_storage sa;
+    pmix_socklen_t salen = sizeof(sa);
+    pmix_status_t rc;
+
+    if (NULL == peer->transport || NULL == peer->transport->peer_identity) {
+        /* Over TCP, the kernel names the owner of the server's end of the
+         * connection when the server is on this host, from its table of
+         * TCP connections - a user, but no group */
+        rc = pmix_util_getid_tcp(peer->sd, &kuid);
+        if (PMIX_SUCCESS != rc) {
+            /* A server whose address is this host's has its end in that
+             * table, as an established connection, by the time ours is
+             * connected - unless the platform has no table to ask. One at
+             * any other address is on another host, or in another network
+             * namespace, and the kernel says nothing of it */
+            memset(&sa, 0, sizeof(sa));
+            if (PMIX_ERR_NOT_FOUND == rc &&
+                0 == getpeername(peer->sd, (struct sockaddr *) &sa, &salen) &&
+                pmix_ptl_base_addr_on_host(&sa)) {
+                pmix_show_help("help-ptl-base.txt", "server-unidentified", true,
+                               pmix_globals.hostname);
+                return PMIX_ERR_INVALID_CRED;
+            }
+            return PMIX_SUCCESS;
+        }
+        tcp = true;
+    } else if (PMIX_SUCCESS != peer->transport->peer_identity(peer->sd, &kuid, &kgid, &kpid)) {
+        pmix_show_help("help-ptl-base.txt", "server-unidentified", true, pmix_globals.hostname);
+        return PMIX_ERR_INVALID_CRED;
+    }
+    if (tcp) {
+        /* a user, and no group to check */
+        if (given) {
+            ok = (kuid == uid);
+            snprintf(want, sizeof(want), "uid %lu, as the server that started this process said",
+                     (unsigned long) uid);
+        } else {
+            ok = (kuid == geteuid() || 0 == kuid);
+            for (n = 0; !ok && n < pmix_ptl_base.naccess_uids; n++) {
+                ok = (kuid == pmix_ptl_base.access_uids[n]);
+            }
+            snprintf(want, sizeof(want), "this process's own user, root, or a user "
+                     "pmix_ptl_base_server_access names");
+        }
+        if (!ok) {
+            pmix_show_help("help-ptl-base.txt", "server-identity-tcp", true,
+                           pmix_globals.hostname, (unsigned long) kuid, want);
+            return PMIX_ERR_INVALID_CRED;
+        }
+        return PMIX_SUCCESS;
+    }
+    if (given) {
+        /* the server that started us said who it is - in its own user
+         * namespace, which is the parent of ours if we run in one: the
+         * kernel reports the server's ids translated into ours */
+        ok = (kuid == uid && kgid == gid);
+        if (!ok) {
+            uint32_t puid, pgid;
+
+            ok = (PMIX_SUCCESS == pmix_util_id_to_parent("/proc/self/uid_map", (uint32_t) kuid,
+                                                         &puid) &&
+                  PMIX_SUCCESS == pmix_util_id_to_parent("/proc/self/gid_map", (uint32_t) kgid,
+                                                         &pgid) &&
+                  puid == (uint32_t) uid && pgid == (uint32_t) gid);
+        }
+        snprintf(want, sizeof(want), "uid %lu gid %lu, as the server that started this "
+                 "process said", (unsigned long) uid, (unsigned long) gid);
+    } else {
+        ok = (kuid == geteuid() || 0 == kuid);
+        for (n = 0; !ok && n < pmix_ptl_base.naccess_uids; n++) {
+            ok = (kuid == pmix_ptl_base.access_uids[n]);
+        }
+        for (n = 0; !ok && n < pmix_ptl_base.naccess_gids; n++) {
+            ok = (kgid == pmix_ptl_base.access_gids[n]);
+        }
+        snprintf(want, sizeof(want), "this process's own user, root, or one "
+                 "pmix_ptl_base_server_access allows");
+    }
+    if (!ok) {
+        pmix_show_help("help-ptl-base.txt", "server-identity", true, pmix_globals.hostname,
+                       (unsigned long) kuid, (unsigned long) kgid, want);
+        return PMIX_ERR_INVALID_CRED;
+    }
+    return PMIX_SUCCESS;
+}
+
+/* One name or number of a ptl_base_server_access list, as an id */
+static bool access_id(const char *item, bool user, unsigned long *id)
+{
+    uint32_t val;
+    pmix_status_t rc;
+
+    rc = user ? pmix_util_uid_from_string(item, &val) : pmix_util_gid_from_string(item, &val);
+    if (PMIX_SUCCESS != rc) {
+        return false;
+    }
+    *id = (unsigned long) val;
+    return true;
+}
+
+pmix_status_t pmix_ptl_base_parse_server_access(const char *spec)
+{
+    char **dirs = NULL, **items = NULL, *val;
+    bool users_seen = false, groups_seen = false, user;
+    unsigned long id;
+    size_t n, m, cnt;
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    pmix_ptl_base.access_uids = NULL;
+    pmix_ptl_base.naccess_uids = 0;
+    pmix_ptl_base.access_gids = NULL;
+    pmix_ptl_base.naccess_gids = 0;
+    if (NULL == spec || '\0' == spec[0]) {
+        return PMIX_SUCCESS;
+    }
+    dirs = PMIx_Argv_split(spec, ',');
+    for (n = 0; NULL != dirs && NULL != dirs[n]; n++) {
+        if (0 == strncasecmp(dirs[n], "users=", 6)) {
+            if (users_seen) {
+                rc = PMIX_ERR_BAD_PARAM;
+                break;
+            }
+            users_seen = true;
+            user = true;
+            val = dirs[n] + 6;
+        } else if (0 == strncasecmp(dirs[n], "groups=", 7)) {
+            if (groups_seen) {
+                rc = PMIX_ERR_BAD_PARAM;
+                break;
+            }
+            groups_seen = true;
+            user = false;
+            val = dirs[n] + 7;
+        } else {
+            rc = PMIX_ERR_BAD_PARAM;
+            break;
+        }
+        items = PMIx_Argv_split(val, ':');
+        cnt = PMIx_Argv_count(items);
+        if (0 == cnt) {
+            rc = PMIX_ERR_BAD_PARAM;
+            break;
+        }
+        for (m = 0; m < cnt; m++) {
+            if (!access_id(items[m], user, &id)) {
+                rc = PMIX_ERR_BAD_PARAM;
+                break;
+            }
+            if (user) {
+                uid_t *tmp = (uid_t *) realloc(pmix_ptl_base.access_uids,
+                                               (pmix_ptl_base.naccess_uids + 1) * sizeof(uid_t));
+                if (NULL == tmp) {
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
+                pmix_ptl_base.access_uids = tmp;
+                pmix_ptl_base.access_uids[pmix_ptl_base.naccess_uids++] = (uid_t) id;
+            } else {
+                gid_t *tmp = (gid_t *) realloc(pmix_ptl_base.access_gids,
+                                               (pmix_ptl_base.naccess_gids + 1) * sizeof(gid_t));
+                if (NULL == tmp) {
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
+                pmix_ptl_base.access_gids = tmp;
+                pmix_ptl_base.access_gids[pmix_ptl_base.naccess_gids++] = (gid_t) id;
+            }
+        }
+        PMIx_Argv_free(items);
+        items = NULL;
+        if (PMIX_SUCCESS != rc) {
+            break;
+        }
+    }
+    PMIx_Argv_free(items);
+    PMIx_Argv_free(dirs);
+    if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_BAD_PARAM == rc) {
+            pmix_show_help("help-ptl-base.txt", "server-access-bad", true, spec);
+            rc = PMIX_ERR_SILENT;
+        }
+        free(pmix_ptl_base.access_uids);
+        pmix_ptl_base.access_uids = NULL;
+        pmix_ptl_base.naccess_uids = 0;
+        free(pmix_ptl_base.access_gids);
+        pmix_ptl_base.access_gids = NULL;
+        pmix_ptl_base.naccess_gids = 0;
+    }
+    return rc;
 }
 
 static pmix_status_t send_connect_ack(pmix_peer_t *peer,
@@ -851,10 +1091,13 @@ static pmix_status_t send_connect_ack(pmix_peer_t *peer,
     }
 
     /* send the entire message across */
+    /* the message carries our token, if we have one: it goes no further */
     if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(peer->sd, msg, sdsize)) {
+        pmix_ptl_base_wipe(msg, sdsize);
         free(msg);
         return PMIX_ERR_UNREACH;
     }
+    pmix_ptl_base_wipe(msg, sdsize);
     free(msg);
     return PMIX_SUCCESS;
 }
@@ -880,6 +1123,8 @@ static void hint_closed_no_reply(pmix_peer_t *peer, const char *uri)
 /* we receive a connection acknowledgment from the server,
  * consisting of nothing more than a status report. If success,
  * then we initiate authentication method */
+static pmix_status_t server_status(uint32_t u32);
+
 static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
 {
     pmix_status_t reply;
@@ -913,7 +1158,7 @@ static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
         }
         return rc;
     }
-    reply = ntohl(u32);
+    reply = server_status(ntohl(u32));
 
     if ((PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) ||
          PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) &&
@@ -975,13 +1220,14 @@ pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
  * an alternate that does not is passed over, since it came from a file or a
  * directive an older or foreign writer may have garbled. */
 static pmix_status_t connect_any(char **suri, const char *alt_uris,
-                                 struct sockaddr_storage *addr, size_t *len, int *sd)
+                                 struct sockaddr_storage *addr, size_t *len, int *sd,
+                                 pmix_ptl_module_t **transport)
 {
     char **alts = NULL, *used;
     pmix_status_t rc;
     int n;
 
-    rc = pmix_ptl_base_setup_connection(*suri, addr, len);
+    rc = pmix_ptl_base_uri_to_addr(*suri, addr, len, transport);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
@@ -995,7 +1241,7 @@ static pmix_status_t connect_any(char **suri, const char *alt_uris,
     for (n = 0; NULL != alts && NULL != alts[n]; n++) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:base: %s unreachable - trying alternate %s", *suri, alts[n]);
-        if (PMIX_SUCCESS != pmix_ptl_base_setup_connection(alts[n], addr, len)) {
+        if (PMIX_SUCCESS != pmix_ptl_base_uri_to_addr(alts[n], addr, len, transport)) {
             continue;
         }
         rc = pmix_ptl_base_connect(addr, *len, sd);
@@ -1015,14 +1261,62 @@ static pmix_status_t connect_any(char **suri, const char *alt_uris,
     return rc;
 }
 
+/* A tool a server started takes the namespace and rank in the environment
+ * it inherited - a tool run from a job script takes the script's. If that
+ * rank already has a connection, the server refuses the tool with
+ * PMIX_ERR_EXISTS: several tools a script starts cannot all be the
+ * script's rank. Such a tool then connects again as a tool that needs an
+ * identity, and the host gives it a namespace of its own. Only an identity
+ * the tool took from its environment: one its caller gave it is the one
+ * the caller asked for. Only while the tool is initializing: once
+ * PMIx_tool_init has returned, the caller has been told who it is.
+ * Returns true if the tool is to connect again */
+static bool take_new_identity(void)
+{
+    const char *ns, *rk;
+    char *end;
+    unsigned long rank;
+
+    if (pmix_atomic_check_bool(&pmix_globals.initialized) ||
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer) ||
+        !PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+        return false;
+    }
+    ns = pmix_idenv_get("PMIX_NAMESPACE");
+    rk = pmix_idenv_get("PMIX_RANK");
+    if (NULL == ns || NULL == rk || !PMIx_Check_nspace(ns, pmix_globals.myid.nspace)) {
+        return false;
+    }
+    errno = 0;
+    rank = strtoul(rk, &end, 10);
+    if (0 != errno || end == rk || '\0' != *end || rank != (unsigned long) pmix_globals.myid.rank) {
+        return false;
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix: %s:%u already has a connection - connecting again as a tool "
+                        "that needs an identity",
+                        pmix_globals.myid.nspace, pmix_globals.myid.rank);
+    pmix_globals.mypeer->proc_type.type &= ~(PMIX_PROC_CLIENT | PMIX_PROC_CLIENT_TOOL_ACT);
+    memset(pmix_globals.myid.nspace, 0, sizeof(pmix_globals.myid.nspace));
+    pmix_globals.myid.rank = PMIX_RANK_INVALID;
+    if (NULL != pmix_globals.mypeer->info) {
+        free(pmix_globals.mypeer->info->pname.nspace);
+        pmix_globals.mypeer->info->pname.nspace = NULL;
+        pmix_globals.mypeer->info->pname.rank = PMIX_RANK_INVALID;
+    }
+    return true;
+}
+
 pmix_status_t pmix_ptl_base_make_connection_alts(pmix_peer_t *peer, char **suri,
                                                  const char *alt_uris,
                                                  pmix_info_t *iptr, size_t niptr)
 {
     struct sockaddr_storage myconnection;
+    pmix_ptl_module_t *transport = NULL;
     pmix_status_t rc;
     size_t len;
     int retries = 0;
+    bool renamed = false;
 
     rc = refuse_outdated(peer);
     if (PMIX_SUCCESS != rc) {
@@ -1030,26 +1324,36 @@ pmix_status_t pmix_ptl_base_make_connection_alts(pmix_peer_t *peer, char **suri,
     }
 
     /* connect to whichever of the server's addresses answers first */
-    rc = connect_any(suri, alt_uris, &myconnection, &len, &peer->sd);
+    rc = connect_any(suri, alt_uris, &myconnection, &len, &peer->sd, &transport);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
+    peer->transport = transport;
     goto connected;
 
 retry:
     /* the server asked us to try the handshake again - at the address that
      * answered */
     if (PMIX_SUCCESS != (rc = pmix_ptl_base_connect(&myconnection, len, &peer->sd))) {
-        return rc;
+        return renamed ? PMIX_ERR_EXISTS : rc;
     }
 
 connected:
+
+    /* the server must be one we may talk to, by what the kernel says of it */
+    rc = pmix_ptl_base_check_server(peer, pmix_ptl_base.server_expect_given,
+                                    pmix_ptl_base.server_expect_uid,
+                                    pmix_ptl_base.server_expect_gid);
+    if (PMIX_SUCCESS != rc) {
+        CLOSE_THE_SOCKET(peer->sd);
+        return rc;
+    }
 
     /* send our identity and any authentication credentials to the server */
     if (PMIX_SUCCESS != (rc = send_connect_ack(peer, iptr, niptr))) {
         PMIX_ERROR_LOG(rc);
         CLOSE_THE_SOCKET(peer->sd);
-        return rc;
+        return renamed ? PMIX_ERR_EXISTS : rc;
     }
 
     /* do whatever handshake is required */
@@ -1061,7 +1365,14 @@ connected:
                 goto retry;
             }
         }
-        return rc;
+        if (PMIX_ERR_EXISTS == rc && !renamed && take_new_identity()) {
+            renamed = true;
+            goto retry;
+        }
+        /* a tool that could not come up under a namespace of its own is
+         * told why it needed one: the identity it was started with is
+         * taken */
+        return renamed ? PMIX_ERR_EXISTS : rc;
     }
     /* Assign the lower half of the tag space for sendrecvs */
     peer->dyn_tags_start    = PMIX_PTL_TAG_DYNAMIC;
@@ -1166,12 +1477,7 @@ pmix_status_t pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
  * the wire changes - but never waits for bytes that have not arrived: each
  * reply field is collected as it comes in, the operation keeps its place,
  * and the progress thread goes back to its other work in between. One
- * timer, ptl_base_handshake_wait_time, bounds the whole connect.
- *
- * What it cannot make event-driven is a psec handshake: that interface is
- * server_handshake()/client_handshake(), a blocking exchange by
- * definition, and it is run as one here, bounded by the same wait. native
- * runs one only when the server cannot see who owns our TCP connection. */
+ * timer, ptl_base_handshake_wait_time, bounds the whole connect. */
 
 typedef enum {
     PMIX_CNCT_CONNECTING,
@@ -1197,6 +1503,10 @@ typedef struct {
     size_t niptr;
     struct sockaddr_storage addr;
     size_t addrlen;
+    pmix_ptl_module_t *transport; // whose address addr is
+    bool expect_given;            // the server's identity, if we were told it
+    uid_t expect_uid;
+    gid_t expect_gid;
     int sd;
     int connect_tries;
     int handshake_tries;
@@ -1227,6 +1537,10 @@ static void cnopcon(pmix_ptl_connect_op_t *p)
     p->niptr = 0;
     memset(&p->addr, 0, sizeof(p->addr));
     p->addrlen = 0;
+    p->transport = NULL;
+    p->expect_given = false;
+    p->expect_uid = (uid_t) -1;
+    p->expect_gid = (gid_t) -1;
     p->sd = -1;
     p->connect_tries = 0;
     p->handshake_tries = 0;
@@ -1352,25 +1666,6 @@ static void cnct_restart(pmix_ptl_connect_op_t *op)
     cnct_begin(-1, 0, op);
 }
 
-/* A psec module that authenticates by exchange rather than by credential.
- * Its interface is blocking - see the note above - so run it on a blocking
- * socket, bounded by the handshake wait, and put the socket back */
-static pmix_status_t cnct_psec_handshake(pmix_ptl_connect_op_t *op)
-{
-    pmix_status_t rc;
-    struct timeval tv;
-
-    pmix_ptl_base_set_blocking(op->sd);
-    tv.tv_sec = pmix_ptl_base.handshake_wait_time;
-    tv.tv_usec = 0;
-    (void) setsockopt(op->sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    PMIX_PSEC_CLIENT_HANDSHAKE(rc, op->peer, op->sd);
-    tv.tv_sec = 0;
-    (void) setsockopt(op->sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    pmix_ptl_base_set_nonblocking(op->sd);
-    return rc;
-}
-
 static void cnct_begin(int sd, short args, void *cbdata)
 {
     pmix_ptl_connect_op_t *op = (pmix_ptl_connect_op_t *) cbdata;
@@ -1381,10 +1676,11 @@ static void cnct_begin(int sd, short args, void *cbdata)
 
     /* the same attempts pmix_ptl_base_connect makes, without waiting */
     while (PMIX_MAX_RETRIES >= op->connect_tries++) {
-        op->sd = socket(op->addr.ss_family, SOCK_STREAM, 0);
+        op->sd = socket(op->addr.ss_family, SOCK_STREAM | PMIX_SOCK_CLOEXEC, 0);
         if (0 > op->sd) {
             continue;
         }
+        pmix_ptl_base_own_socket(op->sd);
         pmix_ptl_base_set_nonblocking(op->sd);
         if (0 == connect(op->sd, (struct sockaddr *) &op->addr, op->addrlen)) {
             cnct_connected(op->sd, EV_WRITE, op);
@@ -1410,7 +1706,8 @@ static void cnct_begin(int sd, short args, void *cbdata)
         const char *next = op->alts[op->nextalt++];
         char *copy;
 
-        if (PMIX_SUCCESS != pmix_ptl_base_setup_connection((char *) next, &op->addr, &op->addrlen)) {
+        if (PMIX_SUCCESS != pmix_ptl_base_uri_to_addr(next, &op->addr, &op->addrlen,
+                                                      &op->transport)) {
             continue;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -1453,8 +1750,16 @@ static void cnct_connected(int sd, short args, void *cbdata)
         return;
     }
 
-    /* connected - build the same connect-ack send_connect_ack sends */
+    /* connected - to a server we may talk to, by what the kernel says of
+     * it - and then build the same connect-ack send_connect_ack sends */
     op->peer->sd = op->sd;
+    op->peer->transport = op->transport;
+    rc = pmix_ptl_base_check_server(op->peer, op->expect_given, op->expect_uid,
+                                    op->expect_gid);
+    if (PMIX_SUCCESS != rc) {
+        cnct_finish(op, rc);
+        return;
+    }
     op->peer->proc_type.flag = pmix_ptl_base_set_flag(&sdsize);
     rc = construct_message(op->peer, &op->msg, &sdsize, op->iptr, op->niptr);
     if (PMIX_SUCCESS != rc) {
@@ -1478,7 +1783,7 @@ static void cnct_send(int sd, short args, void *cbdata)
     op->ev_active = false;
 
     while (op->sent < op->msglen) {
-        n = send(op->sd, op->msg + op->sent, op->msglen - op->sent, 0);
+        n = send(op->sd, op->msg + op->sent, op->msglen - op->sent, PMIX_PTL_NOSIGNAL);
         if (0 < n) {
             op->sent += (size_t) n;
             continue;
@@ -1507,6 +1812,27 @@ static void cnct_send(int sd, short args, void *cbdata)
     }
 }
 
+/* A status a server sent. The codes the connect uses to say how it is
+ * going - done, or under way - never come from a server, and one that does
+ * is not a reply. A server asking for a security handshake is refused:
+ * this library runs none */
+static pmix_status_t server_status(uint32_t u32)
+{
+    pmix_status_t reply = (pmix_status_t) u32;
+
+    if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "pmix: the server asked for a security handshake, which this "
+                            "library does not run");
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    if (PMIX_OPERATION_SUCCEEDED == reply || PMIX_OPERATION_IN_PROGRESS == reply) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    return reply;
+}
+
 /* The field just read is complete - act on it and say what comes next.
  * Returns PMIX_SUCCESS when there is more to read, PMIX_OPERATION_SUCCEEDED
  * when the handshake is done, or the failure. The order below is the one
@@ -1527,7 +1853,7 @@ static pmix_status_t cnct_field(pmix_ptl_connect_op_t *op)
 
     switch (op->state) {
     case PMIX_CNCT_STATUS:
-        reply = (pmix_status_t) u32;
+        reply = server_status(u32);
         if (PMIX_ERR_TEMP_UNAVAILABLE == reply &&
             ++op->handshake_tries < pmix_ptl_base.handshake_max_retries) {
             /* the server asked us to try again - make_connection does so
@@ -1536,29 +1862,11 @@ static pmix_status_t cnct_field(pmix_ptl_connect_op_t *op)
             cnct_restart(op);
             return PMIX_OPERATION_IN_PROGRESS;
         }
-        if (client) {
-            if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
-                rc = cnct_psec_handshake(op);
-                if (PMIX_SUCCESS != rc) {
-                    return rc;
-                }
-            } else if (PMIX_SUCCESS != reply) {
-                return reply;
-            }
-            return cnct_expect(op, PMIX_CNCT_PINDEX, sizeof(uint32_t));
-        }
-        if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
-            /* a tool's credential the server could not decide on alone -
-             * settled by a handshake ahead of everything else, after
-             * which the server sends the status of our request */
-            rc = cnct_psec_handshake(op);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-            return cnct_expect(op, PMIX_CNCT_STATUS, sizeof(uint32_t));
-        }
         if (PMIX_SUCCESS != reply) {
             return reply;
+        }
+        if (client) {
+            return cnct_expect(op, PMIX_CNCT_PINDEX, sizeof(uint32_t));
         }
         if (PMIX_TOOL_NEEDS_ID == op->peer->proc_type.flag ||
             PMIX_LAUNCHER_NEEDS_ID == op->peer->proc_type.flag) {
@@ -1597,9 +1905,8 @@ static pmix_status_t cnct_field(pmix_ptl_connect_op_t *op)
         return cnct_expect(op, PMIX_CNCT_SEC_STATUS, sizeof(uint32_t));
 
     case PMIX_CNCT_SEC_STATUS:
-        /* the outcome of our request - any handshake ran ahead of the
-         * identity replies, and no server asks for one here */
-        reply = (pmix_status_t) u32;
+        /* the outcome of our request */
+        reply = server_status(u32);
         if (PMIX_SUCCESS != reply) {
             return reply;
         }
@@ -1695,7 +2002,12 @@ pmix_status_t pmix_ptl_base_start_connection(pmix_peer_t *peer, char *nspace,
     if (NULL == op) {
         return PMIX_ERR_NOMEM;
     }
-    rc = pmix_ptl_base_setup_connection(suri, &op->addr, &op->addrlen);
+    /* the server's identity, if whoever started us named it - carried
+     * with the connect, which completes after this returns */
+    op->expect_given = pmix_ptl_base.server_expect_given;
+    op->expect_uid = pmix_ptl_base.server_expect_uid;
+    op->expect_gid = pmix_ptl_base.server_expect_gid;
+    rc = pmix_ptl_base_uri_to_addr(suri, &op->addr, &op->addrlen, &op->transport);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(op);
         return rc;
@@ -2050,15 +2362,7 @@ pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save,
 
 pmix_status_t pmix_ptl_base_client_handshake(pmix_peer_t *peer, pmix_status_t reply)
 {
-    pmix_status_t rc;
-
-    /* see if they want us to do the handshake */
-    if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
-        PMIX_PSEC_CLIENT_HANDSHAKE(rc, peer, peer->sd);
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
-    } else if (PMIX_SUCCESS != reply) {
+    if (PMIX_SUCCESS != reply) {
         return reply;
     }
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -2076,19 +2380,6 @@ pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp)
     pmix_nspace_t nspace;
     pmix_rank_t rank;
     pmix_status_t reply, rc;
-    uint32_t u32;
-
-    /* A credential the server could not decide on alone is settled by a
-     * handshake ahead of everything else - the server then tells us the
-     * outcome of our request as usual */
-    if (PMIX_ERR_READY_FOR_HANDSHAKE == rp) {
-        PMIX_PSEC_CLIENT_HANDSHAKE(rc, peer, peer->sd);
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
-        PMIX_PTL_RECV_U32(peer->sd, u32);
-        rp = (pmix_status_t) u32;
-    }
 
     /* if the status indicates an error, then we are done */
     if (PMIX_SUCCESS != rp) {
@@ -2115,9 +2406,9 @@ pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp)
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, peer->info->pname.nspace,
                         peer->info->pname.rank);
 
-    /* get the outcome of our request - any handshake ran ahead of the
-     * identity replies, and no server asks for one here */
+    /* get the outcome of our request */
     PMIX_PTL_RECV_U32(peer->sd, reply);
+    reply = server_status((uint32_t) reply);
     if (PMIX_SUCCESS != reply) {
         return reply;
     }
@@ -2507,102 +2798,6 @@ static void retry_wait(const struct timeval *tv)
     while (0 != nanosleep(&req, &rem) && EINTR == errno) {
         req = rem;
     }
-}
-
-/*
- * Go through a list of argv; if there are any subnet specifications
- * (a.b.c.d/e), resolve them to an interface name (Currently only
- * supporting IPv4).  If unresolvable, warn and remove.
- */
-char **pmix_ptl_base_split_and_resolve(const char *orig_str,
-                                       const char *name)
-{
-    int i, ret, if_index;
-    char **argv, **interfaces, *str;
-    char if_name[PMIX_IF_NAMESIZE];
-    struct sockaddr_storage argv_inaddr, if_inaddr;
-    uint32_t argv_prefix;
-    bool found;
-
-    /* Sanity check */
-    if (NULL == orig_str) {
-        return NULL;
-    }
-
-    /* "" and "," split to nothing at all - a NULL, not an empty array */
-    argv = PMIx_Argv_split(orig_str, ',');
-    if (NULL == argv) {
-        return NULL;
-    }
-    interfaces = NULL;
-    for (i = 0; NULL != argv[i]; ++i) {
-        if (isalpha((unsigned char) argv[i][0])) {
-            /* This is an interface name. If not already in the interfaces array, add it */
-            PMIx_Argv_append_unique_nosize(&interfaces, argv[i]);
-            pmix_output_verbose(20,
-                                pmix_ptl_base_framework.framework_output,
-                                "ptl:tool: Using interface: %s ", argv[i]);
-            continue;
-        }
-
-        /* Found a subnet notation.  Convert it to an IP
-           address/netmask.  Get the prefix first. */
-        argv_prefix = 0;
-        str = strchr(argv[i], '/');
-        if (NULL == str) {
-            pmix_show_help("help-ptl-base.txt", "invalid if_inexclude", true,
-                           name, pmix_globals.hostname, argv[i],
-                           "Invalid specification (missing \"/\")");
-            continue;
-        }
-        *str = '\0';
-        argv_prefix = atoi(str + 1);
-
-        /* Now convert the IPv4 address */
-        ((struct sockaddr *) &argv_inaddr)->sa_family = AF_INET;
-        ret = inet_pton(AF_INET, argv[i], &((struct sockaddr_in *) &argv_inaddr)->sin_addr);
-        *str = '/';
-
-        if (1 != ret) {
-            pmix_show_help("help-ptl-base.txt", "invalid if_inexclude", true,
-                           name, pmix_globals.hostname, argv[i],
-                           "Invalid specification (inet_pton() failed)");
-            continue;
-        }
-        pmix_output_verbose(20, pmix_ptl_base_framework.framework_output,
-                            "ptl:base: Searching for %s address+prefix: %s / %u", name,
-                            pmix_net_get_hostname((struct sockaddr *) &argv_inaddr), argv_prefix);
-
-        /* Go through all interfaces and see if we can find a match */
-        found = false;
-        for (if_index = pmix_ifbegin(); if_index >= 0; if_index = pmix_ifnext(if_index)) {
-            pmix_ifindextoaddr(if_index,
-                               (struct sockaddr*) &if_inaddr,
-                               sizeof(if_inaddr));
-            if (pmix_net_samenetwork(&argv_inaddr, &if_inaddr, argv_prefix)) {
-                /* We found a match. If it's not already in the interfaces array,
-                   add it. If it's already in the array, treat it as a match */
-                found = true;
-                pmix_ifindextoname(if_index, if_name, sizeof(if_name));
-                PMIx_Argv_append_unique_nosize(&interfaces, if_name);
-                pmix_output_verbose(20,
-                                    pmix_ptl_base_framework.framework_output,
-                                    "ptl:base: Found match: %s (%s)",
-                                    pmix_net_get_hostname((struct sockaddr*) &if_inaddr),
-                                    if_name);
-            }
-
-        }
-        /* If we didn't find a match, report it but keep trying */
-        if (!found) {
-            pmix_show_help("help-ptl-base.txt", "invalid if_inexclude", true,
-                           name, pmix_globals.hostname, argv[i],
-                           "Did not find interface matching this subnet");
-        }
-    }
-
-    PMIx_Argv_free(argv);
-    return interfaces;
 }
 
 char *pmix_ptl_base_peer_type(pmix_peer_t *peer)

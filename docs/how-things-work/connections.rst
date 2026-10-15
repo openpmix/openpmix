@@ -38,16 +38,18 @@ The pieces
      - Where
      - Role
    * - Listener
-     - ``src/mca/ptl/base/ptl_base_listener.c``
-     - Opens the listening sockets, publishes the URI, writes the
-       rendezvous files, accepts connections.
+     - ``src/mca/ptl/base/ptl_base_listener.c``, ``src/mca/ptl/tcp/ptl_tcp.c``,
+       ``src/mca/ptl/usock/ptl_usock.c``
+     - Has each transport open its listening socket - the local socket
+       (``ptl_usock.c``) and TCP (``ptl_tcp.c``) - then publishes the
+       URIs, writes the rendezvous files and accepts connections.
    * - Connection handler
      - ``src/mca/ptl/base/ptl_base_connection_hdlr.c``
      - Reads and checks each new connection's request, runs the checks,
        calls the host, replies.
    * - Connecting side
      - ``src/mca/ptl/base/ptl_base_connect.c``,
-       ``ptl_base_fns.c``, ``src/mca/ptl/client/ptl_client.c``
+       ``ptl_base_fns.c``, ``src/mca/ptl/base/ptl_base_client.c``
      - Builds and sends the connection request, reads the replies.
    * - Security (``psec``)
      - ``src/mca/psec/{native,munge,ssl}``
@@ -131,10 +133,42 @@ Between the two, the server finishes initializing. A peer that connects
 in that window waits in the kernel's backlog until the server starts
 accepting.
 
+A server listens on its **local socket**, where every client and tool of
+this release on its host connects. It listens on **TCP** only for those
+who use it: clients and tools of earlier releases, when it takes them
+(``ptl_base_legacy_peers``, or the host's ``PMIX_SERVER_LEGACY_PEERS``;
+off by default), and tools on other hosts, when its host asks
+(``PMIX_SERVER_REMOTE_CONNECTIONS``). A server that cannot open a socket
+it needs fails ``PMIx_server_init``.
+
+The local socket
+^^^^^^^^^^^^^^^^
+
+The local socket is an ``AF_UNIX`` socket. The kernel identifies the
+process at the far end of each connection to it - its uid, gid and pid -
+whatever that process claims.
+
+* It is ``pmix-<pid>``, in a directory of its own that the server makes
+  beneath its temporary directory: ``<tmpdir>/pmix-XXXXXX``.
+* The directory is mode 0700 and the socket 0600: only the server's own
+  user can connect. A host widens that by passing ``PMIX_SOCKET_MODE``,
+  and ``PMIX_USERID`` and ``PMIX_GRPID`` for the socket's owner and
+  group, to ``PMIx_server_init``. The socket takes its mode and owner
+  while the directory is still closed; the directory, which stays the
+  server's, is then opened to whom the mode lets in - search permission,
+  never read. The server holds the directory open from the moment it
+  makes it, and makes every change in it through that descriptor.
+* The path must fit an ``AF_UNIX`` address, about 100 characters. A
+  temporary directory too long for it fails init; there is no fallback.
+  The default ``$TMPDIR`` on macOS is too long - pass a shorter
+  ``PMIX_SERVER_TMPDIR``.
+* At finalize the server removes the socket and its directory. A server
+  that is killed leaves them behind.
+
 Choosing an interface
 ^^^^^^^^^^^^^^^^^^^^^
 
-The server considers each network interface that has an IPv4 address
+For TCP, the server considers each network interface that has an IPv4 address
 (or IPv6, if enabled), skipping any the ``if_include`` / ``if_exclude``
 settings rule out. Then:
 
@@ -142,10 +176,15 @@ settings rule out. Then:
   same node can reach it.
 * **With ``PMIX_SERVER_REMOTE_CONNECTIONS``,** it listens on the first
   public interface, and on every other public interface as well. The
-  first gives the URI; the others are *alternate* addresses.
-* **With no loopback interface,** it uses a public interface - unless
+  first gives the URI; the others are *alternate* addresses. Only a
+  PMIx configured ``--enable-remote-tools`` does this. In one without
+  it, a host that asks fails its init. In one with it, a host that asks
+  fails its init when neither ``munge`` nor ``ssl`` can validate a
+  peer's credential.
+* **With no loopback interface,** a PMIx configured
+  ``--enable-remote-tools`` uses a public interface - unless
   ``PMIX_SERVER_REMOTE_CONNECTIONS`` was explicitly set to false, in
-  which case it fails.
+  which case it fails. One without that option fails.
 
 The port is the first free one from ``ptl_base_ipv4_ports`` (or the
 ``PMIX_TCP_IPV4_PORT`` directive), and by default is chosen by the
@@ -154,15 +193,22 @@ kernel. Each socket is close-on-exec and non-blocking.
 Publishing the address
 ^^^^^^^^^^^^^^^^^^^^^^
 
-The server's address is a URI:
+Each address is a URI:
 
 .. code-block:: text
 
+   <nspace>.<rank>;usock://<path>
    <nspace>.<rank>;tcp4://<address>:<port>
 
-(``tcp6://`` for IPv6). The server stores it under ``PMIX_MYSERVER_URI``
-and ``PMIX_SERVER_URI``, and any alternates, comma-separated, under
-``PMIX_MYSERVER_ALT_URIS``.
+(``tcp6://`` for IPv6). The server's URI is its TCP one when it listens
+on TCP, and its local socket's when it does not. The server stores it
+under ``PMIX_MYSERVER_URI`` and ``PMIX_SERVER_URI``, reports it, and
+puts it first in its rendezvous files; any alternates go, comma-separated,
+under ``PMIX_MYSERVER_ALT_URIS``. A TCP URI reaches processes on other
+hosts and older peers, which cannot use the local socket. When the
+server has one, the local socket's URI is given beside it where a
+process on the host reads it: the environment of the processes the
+server starts (see below) and the rendezvous files.
 
 The server can also report the URI on request (``ptl_base_report_uri``
 or the ``PMIX_TCP_REPORT_URI`` directive): to stdout (``-``), stderr
@@ -174,9 +220,9 @@ Rendezvous files
 A server that supports tools writes rendezvous files, through which
 tools find it. Which files it writes, and where, is described in
 :doc:`ptl`; that part is being redesigned. Each file holds the URI, the
-server's version, pid, uid and gid, and the wire formats and security
-mechanisms it accepts. The server removes the files it wrote when it
-finalizes.
+server's version, pid, uid and gid, the local socket's URI, and the
+wire formats and security mechanisms it accepts. The server removes the
+files it wrote when it finalizes.
 
 Accepting
 ^^^^^^^^^
@@ -184,15 +230,18 @@ Accepting
 Once listening, the progress thread runs the accept handler whenever a
 connection arrives:
 
-#. ``accept`` the connection and make it non-blocking.
+#. ``accept`` the connection and make it non-blocking and close-on-exec.
 #. Add it to the list of *pending* connections - accepted, but not yet
    delivered their connection request.
 #. Start a timer of ``ptl_base_connect_ack_timeout`` seconds (default
    5). A connection that has not delivered its whole request in that
    time is closed.
 #. If ``ptl_base_max_pending_connections`` connections are already
-   pending (default: a quarter of the process's file-descriptor limit),
-   close the oldest of them.
+   pending (default: an eighth of the process's file-descriptor limit),
+   close the oldest of them. Tools waiting for the host's decision are
+   not pending connections and are never the ones closed. They have a
+   limit of their own, the same number: once that many tools are
+   waiting, a further tool is refused with ``PMIX_ERR_OUT_OF_RESOURCE``.
 
 If ``accept`` itself fails, the handler retries per-connection errors
 at once. When the process is out of descriptors or memory, it pauses
@@ -216,9 +265,9 @@ environment, before the client starts. The host:
 #. starts the client with that environment.
 
 A client is local to its server by definition: the host registers it
-and prepares its environment on the server's node.
-``PMIX_SERVER_REMOTE_CONNECTIONS`` lets tools on other nodes reach the
-server.
+and prepares its environment on the server's node. It connects to the
+local socket. ``PMIX_SERVER_REMOTE_CONNECTIONS`` lets tools on other
+nodes reach the server.
 
 ``PMIx_server_setup_fork`` sets:
 
@@ -232,11 +281,26 @@ server.
    * - ``PMIX_NAMESPACE``, ``PMIX_RANK``
      - the client's identity
      - name itself to the server
+   * - ``PMIX_SERVER_LOCAL_URI``
+     - the local socket's URI, then ``;<uid>:<gid>`` - the effective
+       uid and gid the server runs as
+     - connect to the local socket, and check that the server there is
+       the one that started it. Clients of earlier releases ignore it
+   * - ``PMIX_CONNECT_TOKEN``
+     - ``<server nspace>.<server rank>;`` then 128 random bits, in hex,
+       that that server made for this rank and keeps
+     - present them to the server of that name, however it reaches it,
+       and to no other. Clients of earlier releases ignore it
    * - ``PMIX_SERVER_URI<NN>``, one per wire format the server accepts
        (for example ``PMIX_SERVER_URI61``, ``PMIX_SERVER_URI51``)
-     - the server's URI
-     - find the server, and choose the newest wire format both sides
-       share: the first variable the client recognizes wins
+     - the server's TCP URI when it takes clients of earlier releases,
+       else its local socket's URI
+     - choose the newest wire format both sides share: the first
+       variable the client recognizes wins. A client of an earlier
+       release also connects to this URI - and, given the local
+       socket's, which it cannot use, initializes as a singleton and
+       returns ``PMIX_ERR_UNREACH`` (a v5.0 client also prints a
+       ``PMIX_ERR_BAD_PARAM`` error line as it does)
    * - ``PMIX_VERSION``
      - the server's version
      - know which features the server has
@@ -256,6 +320,28 @@ server.
      - the server's name for this node
      - use the same node name as the server
 
+A client takes these out of its environment as ``PMIx_Init`` begins -
+all but ``PMIX_SERVER_TMPDIR``, ``PMIX_SYSTEM_TMPDIR`` and
+``PMIX_HOSTNAME`` - and keeps them for its own process, where a later
+``PMIx_Init`` of the same process reads them. A tool does the same at
+``PMIx_tool_init``. Both also take ``PMIX_LAUNCHER_RNDZ_URI``,
+``PMIX_SERVER_NSPACE`` and ``PMIX_SERVER_RANK``, which a launcher sets
+for a process it starts itself. The token is overwritten where the
+environment held it. A process the client or tool starts once it has
+initialized - forked, or forked and exec'd - and a program it execs
+inherit none of them, and a process forked from it does not find the
+ones it kept. Only the C library's environment is changed: a language
+runtime's own copy of it, such as Python's ``os.environ``, still holds
+them (the PMIx Python bindings take them out of that copy too).
+
+A server takes none of them out: the host's environment is the host's.
+The server adds the variables above to each client's environment one
+client at a time, and does not pass its own environment on. The one
+place the library does - a process it starts itself, with no host to
+start it (``PMIx_Spawn`` from a launcher, or a server whose host has no
+``spawn`` up-call) - it passes its environment on less these variables,
+and gives the process its own.
+
 A process started with none of these is a **singleton**. It looks for a
 system-level server on its node (the ``pmix.sys.<host>`` rendezvous
 file) and, if it finds one, connects to it; otherwise it runs without a
@@ -271,17 +357,53 @@ connection is complete or has failed. A tool attaching to another
 server later (``PMIx_tool_attach_to_server``) connects from the
 progress thread, without blocking it.
 
-A client takes the URI from its environment (or from a
-``PMIX_SERVER_URI`` directive to ``PMIx_Init``). A tool finds its server
-as described in :doc:`ptl`. From there the two do the same:
+A client takes the local socket's URI from its environment (or a URI
+from a ``PMIX_SERVER_URI`` directive to ``PMIx_Init``). A tool finds its
+server as described in :doc:`ptl`; a rendezvous file of this release
+gives it the local socket. From there the two do the same:
 
-#. **Open a TCP connection** to the URI's address, trying each
+#. **Open a connection** to the URI's address. For TCP, try each
    alternate address if that fails. Each attempt is bounded by
-   ``ptl_base_handshake_wait_time`` (default 60 seconds).
+   ``ptl_base_handshake_wait_time`` (default 60 seconds). A process given
+   the local socket connects there and nowhere else: if it cannot reach
+   the socket, it fails to initialize, and says why.
+#. **On the local socket, check the server** (below).
 #. **Send the connection request.**
 #. **Read the replies**, each also bounded by
    ``ptl_base_handshake_wait_time``.
 #. **Arm the connection** for normal traffic.
+
+Checking the server
+^^^^^^^^^^^^^^^^^^^
+
+On the local socket the kernel names the server as well: the uid and
+gid of the process listening there. A process checks them before it
+sends its request:
+
+* **A process the server started** was told who the server is, in
+  ``PMIX_SERVER_LOCAL_URI``. The kernel's uid and gid must equal those.
+  A process in a user namespace of its own - a rootless container, say -
+  is shown the server's ids as its namespace maps them; it maps them back
+  to its parent namespace's, through ``/proc/self/uid_map`` and
+  ``gid_map``, before comparing. A server whose ids its namespace does
+  not map cannot be checked, and is refused.
+* **Any other process** - a tool that found the server through a
+  rendezvous file, say - talks to a server running as its own user or as
+  root, or as a user or group the ``ptl_base_server_access`` parameter
+  names (``users=<list>,groups=<list>``). The gid checked is the
+  server's effective gid.
+
+A server that fails the check is not talked to. The process reports the
+uid and gid it found and what it expected.
+
+Over TCP, the kernel names the owner of the server's end of the
+connection when the server is on the same host, from its table of TCP
+connections - a user, but no group. A process applies the same rule by
+user alone: a server running as its own user, as root, or as a user
+``ptl_base_server_access`` names. A server at an address of this host
+that the table does not show is refused. One at any other address - on
+another host, or in another network namespace - is not checked, nor is
+any on a platform with no table to ask.
 
 The connection request
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -387,9 +509,8 @@ The credential
 
 Each ``psec`` component makes its own credential:
 
-* **native** sends the peer's effective uid and gid, followed by an
-  identifier of the kernel it runs on. The server does not take the
-  uid and gid on trust: see :doc:`authentication/native`.
+* **native** sends the peer's effective uid and gid. The server does
+  not take them on trust: see :doc:`authentication/native`.
 * **munge** sends a credential encoded by the MUNGE daemon.
 * **ssl** sends the peer's uid, gid, a timestamp, a random value, its
   certificate chain, and a signature over all of them.
@@ -401,8 +522,8 @@ A **client** reads, in order:
 
 #. a status: success, or a request to continue with a security
    exchange;
-#. if requested, the client side of that exchange (only ``native`` has
-   one - see :doc:`authentication/native`);
+#. if requested, the client side of that exchange (no component of
+   this release requests one);
 #. its index in the server's table of peers.
 
 A **tool** reads, in order:
@@ -442,7 +563,17 @@ peer:
 * **Kind of peer.** An unknown value is refused.
 * **Version.** A peer from PMIx v1 or v2.0 is refused with
   ``PMIX_ERR_OUTDATED``. See :ref:`label-version-numbers` for the
-  supported floors.
+  supported floors. A peer of any release before v7.0 is refused with
+  ``PMIX_ERR_NOT_SUPPORTED`` unless the server takes legacy peers, and on
+  the local socket whether it does or not: no earlier release has that
+  transport.
+
+Before the security component is asked, a peer that connected over TCP
+from an address that is not this host's - not a loopback address, and
+not the address of one of its interfaces - must name a component that
+validates a credential made on another host: ``munge`` or ``ssl``. One
+that names ``native`` is refused with ``PMIX_ERR_NO_PERMISSIONS``, as is
+any such peer in a PMIx configured without ``--enable-remote-tools``.
 
 The rest depends on whether the peer is a client (kinds 0 and 9) or a
 tool (all the others).
@@ -461,15 +592,27 @@ Checks for a client
    settles the client's uid and gid (see `Settling the identity`_),
    and they must equal the uid and gid the host registered for that
    rank.
+#. **It must present its rank's token.** A rank the host registers
+   with ``PMIx_server_register_client`` gets a token nobody is handed;
+   preparing a process for it with ``PMIx_server_setup_fork`` replaces it
+   with the one that process is given, and preparing it again replaces
+   that. The server keeps it until the rank or its job is deregistered. A
+   client of this release that names the rank must present it, on
+   whichever socket it comes, or is refused with
+   ``PMIX_ERR_INVALID_CRED`` before the host is asked - so until the
+   rank is prepared, no client is taken for it. A rank neither
+   registered nor prepared has none, and nothing is asked of it; nor is
+   anything asked of the singleton a server was started for
+   (``PMIX_SINGLETON``), which no host prepared. A client of an earlier
+   release presents none, and is not asked for one: with legacy peers, a
+   connection over TCP that declares an earlier release is taken without
+   a token.
 #. **Its wire format must match its job's.** All clients of one job use
    one wire format, set by the first to connect.
 
 A ``PMIX_USERID`` or ``PMIX_GRPID`` in a client's information field is
 ignored. The identity the security component settles is the only one
 the server uses.
-
-.. DRAFT: today the server still refuses a client whose PMIX_USERID or
-   PMIX_GRPID differs from the registered value.
 
 Checks for a tool
 ^^^^^^^^^^^^^^^^^
@@ -484,6 +627,8 @@ Checks for a tool
 
    - a tool started by a server (kind 5 or 8) whose rank is already
      known must have that rank's uid and gid;
+   - a tool of this release that names a rank with a token must present
+     it, as a client must;
    - a tool joining a namespace the server already knows must have
      that namespace's uid and gid, and the namespace must belong to a
      tool, or to a process this server started.
@@ -500,13 +645,14 @@ Settling the identity
 The security component the peer named settles its uid and gid. How
 depends on the component:
 
-* **native** asks the server's own kernel who owns the peer's end of the
-  TCP connection. That gives the uid. If the peer is somewhere the
-  kernel's connection table cannot see - for example a container with
-  its own network - or if its group needs confirming, the server asks
-  the peer to prove its identity over a local socket, and the kernel
-  reports the uid and gid of the process that connects there. A peer on
-  another node is refused. See :doc:`authentication/native`.
+* **native**, on the local socket, takes the uid and gid the kernel
+  reports for the connection. Over TCP it asks the server's own kernel
+  who owns the peer's end of the connection, which gives the uid; a peer
+  at an address of this host that the table does not show is refused. A
+  peer on another node never reaches it (see above). On a platform with
+  no table to ask, a TCP peer is accepted on its claim only while
+  ``psec_native_legacy_auth`` is ``true``. See
+  :doc:`authentication/native`.
 * **munge** decodes the credential through the MUNGE daemon. The
   decoded uid and gid must equal the peer's registered (client) or
   claimed (tool) identity.
@@ -522,9 +668,6 @@ Where settling the identity takes an exchange with the peer, the server
 drives it as a small state machine per connection: each step runs when
 the peer's socket becomes readable, and a time limit ends the exchange.
 While one connection waits, the server serves everyone else.
-
-.. DRAFT: today the server runs the exchange with blocking reads on the
-   progress thread.
 
 Calling the host
 ^^^^^^^^^^^^^^^^
@@ -567,7 +710,8 @@ receives:
      - the client's PMIx library
    * - ``PMIX_TIMEOUT``
      - the seconds the host is asked to answer within
-     - the server's ``ptl_base_handshake_wait_time``; absent when that is 0
+     - the server's ``ptl_base_handshake_wait_time``, less what the peer
+       has waited for this reply already; absent when that is 0
 
 **A tool** goes to
 :ref:`tool_connected2 <man5-pmix_server_module_t-tool_connected2>` (or
@@ -595,7 +739,8 @@ information field, with these set by the server:
      - the tool's PMIx library, in its connection request
    * - ``PMIX_TIMEOUT``
      - the seconds the host is asked to answer within
-     - the server's ``ptl_base_handshake_wait_time``; absent when that is 0
+     - the server's ``ptl_base_handshake_wait_time``, less what the peer
+       has waited for this reply already; absent when that is 0
 
 The rest is passed on as the tool sent it: ``PMIX_PROC_PID``,
 ``PMIX_REALUID`` and ``PMIX_REALGID``, which the tool's PMIx library
@@ -606,10 +751,12 @@ If the host provides neither connection up-call, a client is accepted,
 and so is a tool that brought its own identity. A tool that needs an
 identity assigned is refused.
 
-**Tools are put to the host one at a time,** in the order their
-identities were settled. A tool waits in a queue until the host has
-answered for the tool ahead of it, so the host never decides on two
-tools for one name at once:
+**The host decides on one tool of a name at a time.** A tool that
+brings its own namespace and rank waits in a queue, in the order the
+tools' identities were settled, while the host decides on a tool of
+that name - or while one of that name is not yet done with after a late
+answer (see `When the host's answer does not stand`_). So the host never
+decides on two tools for one name at once:
 
 * where a tool belongs - the namespace and rank it joins, and whether
   that rank already has a connection - is checked when its turn comes,
@@ -623,9 +770,18 @@ tools for one name at once:
 * when the server finalizes, the tools still queued are refused with
   ``PMIX_ERR_UNREACH``.
 
-A slow answer therefore delays every tool behind it.
+Tools of other names, and tools that need an identity - which have no
+name until the host gives them one - are put to the host together. The
+host keeps the names it gives unique; it cannot know of a name a tool
+took for itself until it is asked. A tool the host names while a tool
+that took that name is still being decided on is checked again when it
+is accepted: whichever is accepted second is refused with
+``PMIX_ERR_EXISTS``, and a tool given a rank in a namespace that
+appeared while the host decided - another tool's, accepted meanwhile -
+joins it only if every process in it is the tool's user.
 
-.. DRAFT: today the host is asked about tools as they arrive.
+A slow answer therefore delays the tools of that name behind it, and
+their time in the queue counts against their own wait.
 
 What the host must do
 ^^^^^^^^^^^^^^^^^^^^^
@@ -644,8 +800,10 @@ What the host must do
   callback. ``tool_connected2`` may not, because the tool's assigned
   identity can only travel through the callback.
 * **Answer within** ``PMIX_TIMEOUT``. The peer is waiting, bounded by
-  its own ``ptl_base_handshake_wait_time``, and tools behind it in the
-  queue wait too. The up-call itself runs on the progress thread, so it
+  its own ``ptl_base_handshake_wait_time``, and tools of its name behind
+  it in the queue wait too. ``PMIX_TIMEOUT`` is what the peer has left
+  of that wait; a peer with none left is refused with
+  ``PMIX_ERR_TIMEOUT`` without the host being asked. The up-call itself runs on the progress thread, so it
   must not block. A host that cannot decide in time should answer no.
 * **Handle** ``PMIX_ERR_LOST_CONNECTION`` **for a process it accepted.**
   See `When the host's answer does not stand`_.
@@ -673,16 +831,14 @@ process that leaves without finalizing. That happens when:
 * the peer's wire format no longer fits its job;
 * the server could not record the connection.
 
+The name stays held until the event has been given to the host's
+handlers, as it is while the server waits for the answer, so nothing
+accepted under the name meanwhile can be the process the event names.
 The event is not raised when a live connection has the name by then:
 it would name that connection. A host with no handler for the event is
 not told, as for any lost connection.
 
 A no, early or late, is followed by nothing.
-
-.. DRAFT: today PMIX_TIMEOUT is not passed, the server waits for the
-   host's answer indefinitely, and the host is not told when a process
-   it accepted is not connected.
-
 
 Replying to the peer
 ^^^^^^^^^^^^^^^^^^^^
@@ -700,48 +856,66 @@ and closes the connection.
 One connection per rank
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-A rank has at most one connection at a time. A process a client forks
-inherits its environment, and if it execs a program that calls
-``PMIx_Init``, that program connects as the same rank - a *clone*, in
-the Standard's terms. The server does not accept clones.
+A rank has at most one connection at a time. A process a client starts
+once it has initialized inherits none of its identity (see `2. Telling
+a client where to connect`_), and calls ``PMIx_Init`` as a singleton. One
+that does have it - started before the client initialized, or given it
+by the host or a job script - and connects as the same rank is a
+*clone*, in the Standard's terms. The server does not accept clones.
 
 * A client connection for a rank that already has a connection - live
   (not finalized, socket open) or waiting on the host's answer - is
   refused with ``PMIX_ERR_EXISTS``, before the host is asked.
 * A tool joining a rank that already has a connection is refused the
-  same way. A tool that took its namespace and rank from its
-  environment - one started from a job script, say, which inherits the
-  script's - then connects again as a tool that needs an identity, and
-  the host gives it a namespace of its own. It does so only while
-  ``PMIx_tool_init`` runs: a tool that attaches to a server later keeps
-  the identity it was initialized with.
+  same way - checked before its wire format, so a tool is told its rank
+  is taken rather than that its format does not fit the namespace. A
+  tool that took its namespace and rank from its environment - one
+  started from a job script, say, which inherits the script's - then
+  connects again as a tool that needs an identity, and the host gives it
+  a namespace of its own; if that connection fails too, the tool is told
+  ``PMIX_ERR_EXISTS``. Tools of earlier releases do not connect again:
+  their ``PMIx_tool_init`` returns ``PMIX_ERR_EXISTS``. A tool connects
+  again only while ``PMIx_tool_init`` runs: a
+  tool that attaches to a server later keeps the identity it was
+  initialized with, and so does a tool whose caller gave it one
+  (``PMIX_TOOL_NSPACE`` and ``PMIX_TOOL_RANK``).
+* The first process to connect holds the rank. A tool that takes a job
+  script's rank before the script's application connects leaves the
+  application refused: the server cannot tell such a tool from one that
+  is the script's only PMIx process, so the script must start its tools
+  without the script's ``PMIX_NAMESPACE`` and ``PMIX_RANK``, or with an
+  identity of their own.
+* A tool with the server's address in its environment but no namespace
+  and rank asks the host for an identity. A tool of an earlier release -
+  v7.0.0rc1 among them - in that position says instead that it is a tool
+  on a client's rank, and sends an empty name: the server takes it as a
+  tool that needs an identity, and the host names it, but the name is
+  not sent to the tool, which reads none. Any other connection that names
+  itself with an empty namespace or an invalid rank is refused with
+  ``PMIX_ERR_BAD_PARAM``: an empty namespace would match every namespace
+  where names are compared.
 * A rank whose earlier connection finalized, or was lost, can connect
   again.
 
-A process that calls ``PMIx_Init`` or ``PMIx_tool_init`` and then
-execs a program that calls it again is the same process connecting
-again, and must not be refused. The new program inherits the old
-connection's socket but cannot use it, so the old connection is still
-open when the new one arrives:
+Every socket the library creates or accepts is close-on-exec, so a
+process's connection closes when it execs - on the local socket and over
+TCP alike, for a client and a tool. The server handles that as it handles
+any connection that ends without a finalize: the rank is lost at once
+(see `When a connection is lost`_), whether the process runs on or not.
+The program the process execs is a new process to the server.
 
-* the server compares the new connection's pid with the pid the rank's
-  live connection was accepted with. The pid is the one the kernel
-  reports for the socket where it reports one, else the one the
-  process's PMIx library obtains with ``getpid()`` and sends; an exec
-  does not change it. Libraries from v6.1 on send it; those from v5.0
-  and earlier do not, and over TCP the kernel reports none, so an
-  exec'd v5.0 or older client has no pid to match and is refused as a
-  second connection;
-* when they match, the old connection is retired as if the process had
-  finalized: its cached events are purged, it is counted as finalized,
-  and its end leaves the collectives it was part of and the job's count
-  of local processes alone and raises no event. The new connection takes
-  its place without the host being asked - nothing the host was told has
-  changed - and the host is told the rank finalized once, when the new
-  program finalizes;
-* a process that closes every descriptor before it execs closes the old
-  connection itself. If the server reads that close first, the rank's
-  connection was lost, and is handled as any other loss.
+The server never compares a new connection's pid with the pid of the
+rank's live connection: a second connection for a rank that has one is
+refused with ``PMIX_ERR_EXISTS`` whatever pid it comes from.
+
+Libraries of earlier releases leave their connection open across an
+exec. The program such a process execs inherits the socket, and cannot
+use it: the rank keeps its connection until that program exits, and if
+the program calls ``PMIx_Init`` or ``PMIx_tool_init`` for the rank, it
+is refused with ``PMIX_ERR_EXISTS`` meanwhile. A process of this release
+whose server is of an earlier release closes its connection when it
+execs, as it does with any server, and that server handles the
+connection as lost.
 
 A rank's process that died can connect again - restarted by the host,
 say - before the server has read its old connection's close. Before
@@ -752,10 +926,6 @@ reports any other error, is live.
 
 ``PMIX_ALL_CLONES_PARTICIPATE``, which the Standard defines for
 collectives, has no effect: a rank has one process.
-
-.. DRAFT: today every second connection is accepted and passed to the
-   host, a process that execs is no different, and a launched tool
-   whose rank is in use is refused.
 
 
 5. Ending a connection
@@ -850,7 +1020,9 @@ When a connection is lost
 
 A process that exits, or is killed, without finalizing closes its
 connection without notice; so does a tool that disconnects. The server
-notices when a read or write on the socket fails, and then:
+notices when a read or write on the socket fails - a process that
+execs closes its connection the same way (see `One connection per
+rank`_). The server:
 
 #. closes the connection and stops its events;
 #. accounts for the process in every collective it was part of: a fence,
@@ -983,8 +1155,10 @@ Host obligations, in one place
 * Optionally, deregister each client once its process has terminated.
   Until you do, a rank that finalized is still expected in its job's
   collectives.
-* Ignore ``SIGPIPE``, or handle it, so that a peer that vanishes
-  mid-reply does not end the host.
 
-.. DRAFT: the SIGPIPE item goes once the library suppresses SIGPIPE on
-   its own sends.
+A peer that vanishes while the server writes to it costs the server an
+error on that connection, never a ``SIGPIPE``: no write PMIx makes to a
+connection's socket can raise it, nor the write of its URI to a pipe the
+host names (``PMIX_SERVER_REPORT_URI``). A host need not change its own
+handling of that signal for connections. (Output forwarding writes pipes
+of its own, and is described with it.)

@@ -447,6 +447,36 @@ out:
     rmdir(dir);
 }
 
+/* pmix_util_id_to_parent reads a namespace map: each line maps a run of
+ * ids inside to a run outside */
+static void test_id_to_parent(void)
+{
+    char path[64];
+    FILE *fp;
+    uint32_t out = 0;
+
+    snprintf(path, sizeof(path), "/tmp/pmix_util_idmap.%lu", (unsigned long) getpid());
+    fp = fopen(path, "w");
+    if (NULL == fp) {
+        report("a namespace map can be written for the test", 0);
+        return;
+    }
+    /* as rootless containers map: root inside is the user, and a range of
+     * subordinate ids follows */
+    fprintf(fp, "         0       1000          1\n         1     100000      65536\n");
+    fclose(fp);
+    report("root inside maps to the user outside",
+           PMIX_SUCCESS == pmix_util_id_to_parent(path, 0, &out) && 1000 == out);
+    report("an id in the second run maps into it",
+           PMIX_SUCCESS == pmix_util_id_to_parent(path, 5, &out) && 100004 == out);
+    report("the last id of a run maps, the next does not",
+           PMIX_SUCCESS == pmix_util_id_to_parent(path, 65536, &out) && 165535 == out &&
+               PMIX_ERR_NOT_FOUND == pmix_util_id_to_parent(path, 65537, &out));
+    unlink(path);
+    report("no map file is not supported",
+           PMIX_ERR_NOT_SUPPORTED == pmix_util_id_to_parent(path, 0, &out));
+}
+
 int main(int argc, char **argv)
 {
     int sd[2], c, s;
@@ -476,6 +506,10 @@ int main(int argc, char **argv)
     } else {
         fprintf(stdout, "pmix_util_getid is not supported here - skipping its cases\n");
     }
+
+
+    fprintf(stdout, "\n=== pmix_util_id_to_parent ===\n");
+    test_id_to_parent();
 
     fprintf(stdout, "\n=== pmix_util_getid_tcp ===\n");
     test_tcp_not_tcp();
