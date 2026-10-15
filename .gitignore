@@ -143,6 +143,7 @@ examples/spawn_reuse
 examples/spawn_iof
 examples/iof_watcher
 examples/group_badinfo
+examples/get_concurrent
 examples/group_invite_suppress
 examples/group_invite_nb
 examples/group_invite_endpts
@@ -403,6 +404,7 @@ test/unit/run_grpref.pl
 test/unit/run_grpinvite.pl
 test/unit/run_grpinviteendpts.pl
 test/unit/run_grpbadinfo.pl
+test/unit/run_getconcurrent.pl
 test/unit/run_grpinviteothers.pl
 test/unit/run_grpinvitesuppress.pl
 test/unit/run_grpinvitenb.pl

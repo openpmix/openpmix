@@ -161,10 +161,12 @@ and torn down in `PMIx_Finalize`. The load-bearing fields:
   thread and the progress thread; see the rules under
   [Invariants](#invariants-and-gotchas).
 - **`pending_requests`** (`pmix_list_t` of `pmix_cb_t`) — outstanding
-  `PMIx_Get` requests awaiting a server reply. Multiple gets for the same
-  `nspace:rank` are **coalesced**: only the first sends; the rest are
-  appended and satisfied together when the reply arrives (see
-  `pmix_client_get.c`).
+  `PMIx_Get` requests awaiting a server reply. Gets for the same
+  `nspace:rank` *and the same key*, carrying no directives, are
+  **coalesced**: only the first sends; the rest are appended and
+  satisfied together when the reply arrives (see `rides_on()` in
+  `pmix_client_get.c`, and "A request rides on another only if that
+  reply is its answer" below).
 - **`groups`** (`pmix_list_t` of `pmix_group_t`) — PMIx groups this client
   currently belongs to; consulted by `pmix_client_convert_group_procs` to
   expand group references in collective calls. **Always hold `grouplock`
@@ -3228,6 +3230,42 @@ Regression: `check_coalescing()` in
 carry `PMIX_IMMEDIATE`, which is what makes the case bounded — without it
 the server *parks* a request it cannot satisfy and neither call
 completes, fixed or not, so the test would wedge instead of failing.
+
+### A request rides on another only if that reply is its answer
+
+The same target is necessary and not sufficient. A request used to ride on
+*any* outstanding request for its proc, whatever key it named and whatever
+directives either carried, and every rider was answered with the reply to
+the one that was sent. A successful reply carries all of the proc's data,
+so a rider asking for a different key usually found it there, which is why
+this went unnoticed. An error reply was handed to every rider without its
+own key ever being looked up. The server parks a get for a key a local
+peer has not put, and fails it when the wait runs out (2 seconds unless
+the caller gave a `PMIX_TIMEOUT`), so one get for a key the peer never
+published failed every concurrent get for that peer, including gets for
+keys it had committed long before. That is
+[openpmix#4356](https://github.com/openpmix/openpmix/issues/4356): a
+node-local peer's `PMIX_GLOBAL` key read back as `PMIX_ERR_TIMEOUT` after
+two seconds, with no fence involved. Directives are the same defect from
+the other side: a `PMIX_IMMEDIATE` get riding on a blocking one inherited
+the blocking one's wait.
+
+`rides_on()` is now the question both sites ask: same target, same key
+(or both NULL), and **no directives on either**. A request with
+directives always sends its own. The cost is a round trip whenever two
+gets for one proc are in flight together, which is the price of each
+being answered for what it asked. The delivery walk answers the request
+the reply was addressed to, plus the requests that pass `rides_on()`
+against it, and nothing else. Every other request for that proc was sent
+on its own and has its own reply coming; answering it here would leave
+that reply to arrive for a released caddy. The walk snapshots the sent
+request's key and directive state before it starts, because that request
+is itself on the list and is released partway through.
+
+Regression: `test/unit/run_getconcurrent.pl`, which drives
+`examples/get_concurrent` under `simptest` with three procs: one plain
+case and one `PMIX_IMMEDIATE` case, each against a peer with a get for an
+unpublished key already in flight. Both fail against the old rule.
 
 ## A lost connection is not a missing key
 

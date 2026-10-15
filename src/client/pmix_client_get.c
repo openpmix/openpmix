@@ -121,6 +121,44 @@ static bool same_target(const char *ns1, pmix_rank_t r1,
     return (r1 == r2) && PMIX_CHECK_NSPACE(ns1, ns2);
 }
 
+/* May request "cb" ride on an outstanding request for (ns, rank, key)
+ * rather than send its own? Only if the server's answer to that request
+ * is, by construction, the answer to this one.
+ *
+ * A request used to ride on any outstanding request for the same proc,
+ * whatever key it named and whatever directives either carried, and every
+ * rider was then answered with the reply to the request that was sent.
+ * When that reply was a success it carried all of the proc's data, so a
+ * rider asking for a different key usually found it - which is why this
+ * went unnoticed. When it was an error, every rider got the error without
+ * its own key ever being looked up. A server parks a get for a key a
+ * local peer has not put, and fails it when the wait expires - 2 seconds
+ * by default - so one get for a key the peer never published was enough
+ * to fail every concurrent get for that peer, including ones for keys it
+ * had committed long before. Directives are the same problem from the
+ * other side: a PMIX_IMMEDIATE get that rides on a blocking one inherits
+ * the blocking one's wait, and a blocking one riding on an immediate one
+ * is told "not found" without having waited at all.
+ *
+ * So both must name the same key - or both NULL, "everything this proc
+ * put" - and neither may carry directives. A request with directives
+ * always sends its own, which costs a round trip only when two gets for
+ * one proc overlap. */
+static bool rides_on(const char *ns, pmix_rank_t rank, const char *key,
+                     bool directives, const pmix_cb_t *cb)
+{
+    if (!same_target(ns, rank, cb->pname.nspace, cb->pname.rank)) {
+        return false;
+    }
+    if (directives || 0 < cb->ninfo) {
+        return false;
+    }
+    if (NULL == key || NULL == cb->key) {
+        return (NULL == key && NULL == cb->key);
+    }
+    return (0 == strcmp(key, cb->key));
+}
+
 /* A PMIX_QUALIFIED_VALUE kval carries the value the caller actually asked for
  * as the first element of a PMIX_INFO data array, with the qualifiers behind
  * it. Three places here unwrap that, and all three used to reach straight
@@ -918,7 +956,9 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                           pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
-    pmix_cb_t *cb2;
+    pmix_cb_t *cb2, *sent;
+    pmix_key_t sentkey;
+    bool sentnull, sentdirs, sentdone;
     pmix_status_t rc, ret = PMIX_ERR_NOT_FOUND;
     pmix_value_t *val = NULL;
     int32_t cnt;
@@ -1021,9 +1061,27 @@ done:
      * once we start delivering results below, that cb (and its lg) will
      * be released, so we must not dereference lg during the loop */
     PMIX_LOAD_PROCID(&rproc, lg->p.nspace, lg->p.rank);
+    /* and snapshot what the request asked, for the same reason: only the
+     * requests that ride on it may be answered with this reply - every
+     * other request for this proc was sent on its own, and its own reply
+     * is still coming (see rides_on()) */
+    sent = (pmix_cb_t *) cbdata;
+    sentnull = (NULL == sent->key);
+    if (!sentnull) {
+        pmix_strncpy(sentkey, sent->key, PMIX_MAX_KEYLEN);
+    }
+    sentdirs = (0 < sent->ninfo);
+    sentdone = false;
     PMIX_LIST_FOREACH_SAFE (cb, cb2, &pmix_client_globals.pending_requests, pmix_cb_t) {
-        if (same_target(rproc.nspace, rproc.rank,
-                        cb->pname.nspace, cb->pname.rank)) {
+        /* "sent" may have been released by the time a later entry is
+         * looked at, so it is compared by address only until it has
+         * been answered */
+        if ((!sentdone && cb == sent) ||
+            rides_on(rproc.nspace, rproc.rank, sentnull ? NULL : sentkey,
+                     sentdirs, cb)) {
+            if (cb == sent) {
+                sentdone = true;
+            }
             /* reset per iteration so a failed fetch for this request can
              * never deliver a value already handed to a previous one */
             val = NULL;
@@ -1778,16 +1836,15 @@ doget:
         goto done;
     }
 
-    /* see if we already have a request in place with the server for data from
-     * this nspace:rank. If we do, then no need to ask again as the
-     * request will return _all_ data from that proc */
+    /* see if we already have a request in place with the server whose
+     * answer is also the answer to this one - see rides_on() */
     PMIX_LIST_FOREACH (cbret, &pmix_client_globals.pending_requests, pmix_cb_t) {
         /* compare what each request recorded about itself, not the rank
          * this one is about to ask the server with - the rewrite above
          * varies that, and cb->pname is what the reply is matched
          * against. See same_target() for why the two must agree. */
-        if (same_target(cbret->pname.nspace, cbret->pname.rank,
-                        cb->pname.nspace, cb->pname.rank)) {
+        if (rides_on(cbret->pname.nspace, cbret->pname.rank, cbret->key,
+                     0 < cbret->ninfo, cb)) {
             pmix_output_verbose(2, pmix_client_globals.get_output,
                                 "%s ADDING REQUEST TO PENDING %s:%s KEY %s",
                                 PMIX_NAME_PRINT(&pmix_globals.myid), cb->proc->nspace,
