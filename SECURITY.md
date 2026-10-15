@@ -122,8 +122,7 @@ PMIx make that easier than it may sound, and both are described in
 ## Scope
 
 This policy covers the PMIx library itself — the client, server, and tool
-libraries, the PMI-1 and PMI-2 compatibility interfaces, the tools shipped in
-this repository, and the components under `src/mca`.
+libraries, the tools shipped in this repository, and the components under `src/mca`.
 
 Issues in closely related components belong to their own projects, and we will
 happily help you find the right contacts and coordinate:
@@ -142,42 +141,36 @@ happily help you find the right contacts and coordinate:
 
 A few behaviors are intentional and are not, by themselves, vulnerabilities:
 
-* **Authentication is opt-outable.** The `psec/none` component validates any
-  credential as good. It refuses to be selected unless the deployment names it
-  explicitly, which is the point: an environment that asks PMIx to skip
-  connection authentication gets what it asked for. A way to reach `none` — or
-  to have a credential accepted — *without* that explicit request is very much
-  a vulnerability.
-* **Channels are authenticated, not encrypted.** `psec` authenticates a
+* **Channels are authenticated, not encrypted.** PMIx authenticates a
   connection while it is being established; the traffic that follows is not
-  encrypted. A party that already holds the access needed to read a PMIx
-  channel is outside the model, rather than a finding on its own. A way to
-  obtain that access — to reach another user's rendezvous socket, session
-  directory, or shared-memory segment — is in scope.
+  encrypted.
 * **Access is decided by user, not by namespace.** A client or tool may read
   a job's data, pull its output, and monitor or signal its processes when its
   *user* is permitted to: root, the server's own user, the job's owner, or a
   user or group the owner named with `PMIX_ACCESS_PERMISSIONS`. Crossing
   namespaces is therefore normal — connected jobs, debuggers, and workflow
-  tools do it routinely — and is not by itself a finding. What *is* a
-  vulnerability is a requester reaching what its user is not permitted:
-  another user's job data, output, or processes, or an operation driven on
-  their behalf. So is a requester being taken for a user it is not. The rule,
+  tools do it routinely — and is not by itself an issue. The rule,
   and what a host environment must supply for it, are described in
   [Access control by user and group](https://docs.openpmix.org/en/latest/security-plan.html).
   The host environment itself is not restricted, and two things are governed
   differently: the process raising an event chooses who receives it through
   the event's range, and published data (`PMIx_Publish`) is governed per item
   by the host's data server.
-* **Running a PMIx server as root.** A server started as root with paths it
-  was handed by a user can damage what those paths point at; that risk belongs
-  to whoever configured it that way. A privilege escalation reachable by an
-  unprivileged client against a correctly configured root server is a
-  vulnerability.
+* **Running a PMIx server at privilege.** A server operated at privilege can
+  inadvertently damage paths a user points it at; host programs targeting
+  privileged operation should exercise appropriate care.
+* **Using PMIx in a setuid or setgid program.** The PMIx library is configured
+  by its environment - e.g., the `PMIX_*` variables, a per-user parameter file
+  under `$HOME`, and `$TMPDIR`. In a setuid or setgid program that environment
+  belongs to the user who ran it, not the program's owner. PMIx clients need
+  that environment to find their server, so they cannot simply discard it. Thus,
+  a program that runs under setuid or setgid may exhibit unexpected behavior
+  due to differences, for example, between the user's and owner's default
+  parameter files.
 
-If you are unsure whether what you have found is in scope, report it. We would
-much rather read a report that turns out to be benign than miss one that is
-not.
+If you are unsure whether something you have observed is an issue, report it.
+We would much rather read a report that turns out to be benign than miss one
+that is not.
 
 ## Software authenticity and integrity
 
