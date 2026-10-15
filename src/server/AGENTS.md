@@ -3247,7 +3247,7 @@ misbehave by design).
   provides no `abort2`.
 
   **Who may access a job is decided by user and group, not namespace** -
-  see `docs/security-plan.rst`. Each `pmix_namespace_t` carries a
+  see `docs/hosts/access-control.rst`. Each `pmix_namespace_t` carries a
   `pmix_access_t`: the owner uid/gid, where the owner came from
   (`pmix_owner_source_t`), and the extra users and groups allowed.
   - Recorded by `pmix_server_access_set()` from the host's

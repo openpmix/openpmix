@@ -46,16 +46,25 @@ INPUT PARAMETERS
 DESCRIPTION
 -----------
 
-Deregister the specified client and purge all data relating to it from the PMIx
-server library.
+Tell the PMIx server library that a client process has ended and will not
+connect again, and purge all data relating to it.
 
-This API is intended primarily for *exception cases*. In normal operation,
+A client that calls ``PMIx_Finalize`` remains a member of its job, because it
+may call ``PMIx_Init`` again |mdash| an MPI Sessions program does so once per
+session. Collectives that name it therefore keep waiting for it. Deregistering
+the client is how the host tells the server that the process is gone for good.
+Call it once the process has terminated, not from the host's
+``client_finalized`` up-call.
+
+Calling it is optional.
 :ref:`PMIx_server_deregister_nspace(3) <man3-PMIx_server_deregister_nspace>`
-deletes all client information for a namespace, and the PMIx server library
-automatically performs that cleanup once all local clients of a namespace have
-disconnected. ``PMIx_server_deregister_client`` is therefore needed only when a
-single client must be removed while its namespace remains active |mdash| though
-it may be called in non-exception cases if desired.
+removes every client of a namespace, and the server library does not
+deregister clients or namespaces on its own. Until a finalized client that
+never returns is deregistered, a collective that names it waits until its
+``PMIX_TIMEOUT``, or indefinitely if it has none.
+
+What the server does when a client is deregistered is described in
+:doc:`/how-things-work/connections`.
 
 Like other server registration APIs, this call thread-shifts the request onto
 the library's internal progress thread and supports both a non-blocking and a

@@ -106,7 +106,7 @@ typedef struct {
     bool requested;       // the host has already been asked for this target
     /* who is asking: requests are shared only by requesters of the same
      * uid, gid and job, since the server holding the data decides for
-     * that identity - see docs/security-plan.rst */
+     * that identity - see docs/hosts/access-control.rst */
     uid_t uid;
     gid_t gid;
     pmix_nspace_t reqns;
@@ -383,8 +383,8 @@ PMIX_EXPORT void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t 
 PMIX_EXPORT pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info,
                                                        size_t *ninfo);
 
-/* Access to a namespace by user and group - see docs/security-plan.rst and
- * pmix_server_access.c.
+/* Access to a namespace by user and group - see
+ * docs/hosts/access-control.rst and pmix_server_access.c.
  *
  * A host applies the same rule to what it does for clients and tools by
  * keeping its own copies - a pmix_access_t for each job, built with
@@ -489,7 +489,7 @@ PMIX_EXPORT pmix_status_t pmix_server_access_set(pmix_namespace_t *nptr, const p
 PMIX_EXPORT void pmix_server_access_set_owner(pmix_namespace_t *nptr, uid_t uid, gid_t gid,
                                               pmix_owner_source_t source);
 
-/* Data held on another node - see docs/security-plan.rst. A job not
+/* Data held on another node - see docs/hosts/access-control.rst. A job not
  * registered here whose data we fetched from the server holding it records
  * the requester identities that server approved (pmix_access_t apv_*) */
 PMIX_EXPORT pmix_status_t pmix_server_access_approve(pmix_namespace_t *nptr, uid_t uid, gid_t gid);

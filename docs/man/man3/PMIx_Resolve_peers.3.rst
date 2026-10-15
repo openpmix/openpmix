@@ -101,7 +101,7 @@ constant is returned, including:
   or an invalid response was received while servicing the request.
 * ``PMIX_ERR_NO_PERMISSIONS`` |mdash| the caller's user may not access the
   requested namespace. With no namespace given, the answer includes only the
-  jobs the caller may access. See :doc:`/security-plan`.
+  jobs the caller may access. See :doc:`/hosts/access-control`.
 * ``PMIX_ERR_INVALID_NAMESPACE`` |mdash| the requested namespace is not known
   to the process answering the request.
 * ``PMIX_ERR_INVALID_VAL`` |mdash| the value recorded against the request was

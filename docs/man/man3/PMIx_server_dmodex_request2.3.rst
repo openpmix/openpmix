@@ -84,7 +84,7 @@ requester is answered as ``PMIx_server_dmodex_request`` answers it.
 
 The requesting server remembers which requesters the holding server
 approved, answers only them from the copy it keeps, and asks again for any
-other. See :doc:`/security-plan`.
+other. See :doc:`/hosts/access-control`.
 
 A host can tell whether the library provides this function from the
 ``PMIX_CAP_DMODEX_REQUEST2`` capability flag in ``pmix_version.h``.

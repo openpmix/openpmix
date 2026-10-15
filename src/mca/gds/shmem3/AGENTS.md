@@ -723,7 +723,7 @@ read-only and map it read-only (`src/util/pmix_shmem.c`).
 `PMIX_USERID`/`PMIX_GRPID` the host registered - at `0400`, or `0440` for
 the first group the job's access list names, and never grants write. A
 server that is not root cannot give the file away; it keeps it, and sets
-the group if it can. See `docs/security-plan.rst`.
+the group if it can. See `docs/hosts/access-control.rst`.
 
 A client the mode does not admit - of another user's job (a multi-job
 fence hands a client other jobs' modex segments), or of a job the server

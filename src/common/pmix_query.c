@@ -355,7 +355,7 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
             }
         }
         /* a server answering for a peer answers about a job the peer may
-         * access - see docs/security-plan.rst */
+         * access - see docs/hosts/access-control.rst */
         if (NULL != cd->reqpeer && 0 < pmix_nslen(proc.nspace) &&
             !pmix_server_peer_may_access_nspace(cd->reqpeer, proc.nspace)) {
             rc = PMIX_ERR_NO_PERMISSIONS;
