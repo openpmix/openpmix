@@ -48,38 +48,20 @@ BEGIN_C_DECLS
 /* forward declaration */
 struct pmix_peer_t;
 
-/* The overall objective of this framework is to provide transport
- * options by which a server can communicate with a client:
+/* The ptl carries messages between a server and its clients and tools.
  *
- * (a) across different versions of the library - e.g., when the
- *     connection handshake changes.
+ * What a process does with it depends on its role - a client connects
+ * to its server, a tool connects and may listen, a server listens. The
+ * role's functions are in the base, and pmix_ptl_base_select fills the
+ * pmix_ptl table below with the ones for this process's role.
  *
- * (b) using different transports as necessitated by different
- *     environments.
- *
- * This is a single-select framework - i.e., only one component
- * is selected and "active" at a time. The intent is
- * to have one component for each use-case, with the
- * expectation that the community will do its best not to revise
- * communications in manners that expand components to support (a).
- * Thus, new variations should be rare, and only a few components
- * will exist.
+ * The components are transports. This is a multi-select framework: every
+ * transport available is active, in order of priority. A transport opens
+ * listening sockets and turns its URIs into addresses; everything done on
+ * a socket once it is connected is the base's.
  */
 
-/****    MODULE INTERFACE DEFINITION    ****/
-
-/* initialize the active plugin */
-typedef pmix_status_t (*pmix_ptl_init_fn_t)(void);
-
-/* finalize the active plugin */
-typedef void (*pmix_ptl_finalize_fn_t)(void);
-
-/* (ONE-WAY) register a persistent recv */
-typedef pmix_status_t (*pmix_ptl_recv_fn_t)(struct pmix_peer_t *peer, pmix_ptl_cbfunc_t cbfunc,
-                                            pmix_ptl_tag_t tag);
-
-/* Cancel a persistent recv */
-typedef pmix_status_t (*pmix_ptl_cancel_fn_t)(struct pmix_peer_t *peer, pmix_ptl_tag_t tag);
+/****    ROLE INTERFACE DEFINITION    ****/
 
 /* connect to a peer - this is a blocking function
  * to establish a connection to a peer*/
@@ -108,13 +90,7 @@ typedef pmix_status_t (*pmix_ptl_connect_to_peer_nb_fn_t)(struct pmix_peer_t *pe
                                                           pmix_ptl_connect_nb_cbfunc_t cbfunc,
                                                           void *cbdata);
 
-/* query available servers on the local node */
-typedef void (*pmix_ptl_query_servers_fn_t)(char *dirname, pmix_list_t *servers);
-
-/* define an API for establishing a
- * communication rendezvous point for local procs. The active component
- * is given an opportunity to register a listener with the
- * PTL base */
+/* establish a communication rendezvous point for local procs */
 typedef pmix_status_t (*pmix_ptl_setup_listener_fn_t)(pmix_info_t info[], size_t ninfo);
 
 /* define an API for obtaining any envars that are to
@@ -122,21 +98,18 @@ typedef pmix_status_t (*pmix_ptl_setup_listener_fn_t)(pmix_info_t info[], size_t
 typedef pmix_status_t (*pmix_ptl_setup_fork_fn_t)(const pmix_proc_t *proc, char ***env);
 
 /**
- * Base structure for a PTL module
+ * The functions of this process's role. A role leaves a function NULL
+ * where it has none: a client neither listens, nor forks children, nor
+ * connects without blocking
  */
-struct pmix_ptl_module_t {
+struct pmix_ptl_api_t {
     char *name;
-    pmix_ptl_init_fn_t init;
-    pmix_ptl_finalize_fn_t finalize;
-    pmix_ptl_recv_fn_t recv;
-    pmix_ptl_cancel_fn_t cancel;
     pmix_ptl_connect_to_peer_fn_t connect_to_peer;
-    pmix_ptl_query_servers_fn_t query_servers;
     pmix_ptl_setup_listener_fn_t setup_listener;
     pmix_ptl_setup_fork_fn_t setup_fork;
     pmix_ptl_connect_to_peer_nb_fn_t connect_to_peer_nb;
 };
-typedef struct pmix_ptl_module_t pmix_ptl_module_t;
+typedef struct pmix_ptl_api_t pmix_ptl_api_t;
 
 /*****    MACROS FOR EXECUTING PTL FUNCTIONS    *****/
 
@@ -250,12 +223,47 @@ PMIX_EXPORT extern void pmix_ptl_base_send_recv(int sd, short args, void *cbdata
 struct pmix_ptl_base_component_t {
     pmix_mca_base_component_t base;
     int priority;
-    char *uri;
 };
 typedef struct pmix_ptl_base_component_t pmix_ptl_base_component_t;
 
-/* export the PTL module struct */
-PMIX_EXPORT extern pmix_ptl_module_t pmix_ptl;
+/* the functions of this process's role */
+PMIX_EXPORT extern pmix_ptl_api_t pmix_ptl;
+
+/****    TRANSPORT INTERFACE DEFINITION    ****/
+
+/* Open this transport's listening socket for lt - its socket, bound,
+ * listening and non-blocking, and its URI, "<nspace>.<rank>;<address>" -
+ * acting on any directive in info meant for this transport */
+typedef pmix_status_t (*pmix_ptl_listen_fn_t)(pmix_info_t info[], size_t ninfo,
+                                              pmix_listener_t *lt);
+
+/* The address a URI names, if the URI is this transport's. One of
+ * another scheme returns PMIX_ERR_NOT_SUPPORTED, so the next transport
+ * can be asked */
+typedef pmix_status_t (*pmix_ptl_uri_to_addr_fn_t)(const char *uri,
+                                                   struct sockaddr_storage *addr, size_t *len);
+
+/* Release what the transport holds, at framework close */
+typedef void (*pmix_ptl_close_fn_t)(void);
+
+/* What the kernel says of the process at the far end of a connected
+ * socket of this transport: its uid and gid, and its pid where the kernel
+ * gives one (*pid is then > 0, else 0). PMIX_ERR_NOT_SUPPORTED if the
+ * transport's sockets carry no such thing */
+typedef pmix_status_t (*pmix_ptl_peer_identity_fn_t)(int sd, uid_t *uid, gid_t *gid,
+                                                     pid_t *pid);
+
+struct pmix_ptl_module_t {
+    const char *name;
+    /* the transport for processes on this host - its listener is opened
+     * beside the others, and always */
+    bool local;
+    pmix_ptl_listen_fn_t setup_listener;
+    pmix_ptl_uri_to_addr_fn_t uri_to_addr;
+    pmix_ptl_peer_identity_fn_t peer_identity;
+    pmix_ptl_close_fn_t close;
+};
+typedef struct pmix_ptl_module_t pmix_ptl_module_t;
 
 /* The ptl framework interface version. It is stated here and nowhere
  * else: components stamp it into their struct with
@@ -263,7 +271,7 @@ PMIX_EXPORT extern pmix_ptl_module_t pmix_ptl;
  * the same three by pasting its name, so the two cannot drift apart.
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
-#define PMIX_MCA_ptl_MAJOR_VERSION   2
+#define PMIX_MCA_ptl_MAJOR_VERSION   3
 #define PMIX_MCA_ptl_MINOR_VERSION   0
 #define PMIX_MCA_ptl_RELEASE_VERSION 0
 

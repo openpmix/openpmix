@@ -133,7 +133,7 @@ Naming follows from the prefix rule: files are
 | [`pmdl`](pmdl/) | multi | programming-model (MPI, OpenMP, …) env and parameter setup |
 | [`pnet`](pnet/) | multi | network support and "instant on" endpoint computation |
 | [`preg`](preg/) | multi | node/proc-map regular expression generation and parsing |
-| [`psec`](psec/) | multi | connection security handshakes |
+| [`psec`](psec/) | multi | connection security credentials |
 | [`psensor`](psensor/) | multi | process monitoring and health checks |
 | [`pstat`](pstat/) | single | process/node/disk statistics |
 | [`ptl`](ptl/) | single | client/server and tool/server transport |

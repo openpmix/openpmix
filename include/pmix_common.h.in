@@ -164,7 +164,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        functions (e.g., capturing signals) that would
                                                                     //        otherwise interfere with the host
 #define PMIX_SERVER_TOOL_SUPPORT            "pmix.srvr.tool"        // (bool) The host RM wants to declare itself as willing
-                                                                    //        to accept tool connection requests. Rendezvous
+                                                                    //        to accept tool connection requests - without it,
+                                                                    //        every tool is refused. Rendezvous
                                                                     //        files will be readable only by the host's user ID,
                                                                     //        and tools running under other user IDs are refused,
                                                                     //        unless PMIX_SERVER_ALLOW_FOREIGN_TOOLS is given
@@ -178,9 +179,16 @@ typedef uint32_t pmix_rank_t;
                                                                     //        ultimate authority over such connections, and can
                                                                     //        restrict execution of tool requests as per host
                                                                     //        policy (e.g., limit foreign tools to "queries")
-#define PMIX_ALLOW_CLIENT_CLONES            "pmix.allow.clones"     // (bool) Allow connections from forks of client processes
+#define PMIX_SOCKET_MODE                    "pmix.sockmode"         // (uint32_t) POSIX mode (9 bits valid) of the local socket a server's
+                                                                    //        clients and tools connect to. It is owner-only (0600) unless
+                                                                    //        this is given; PMIX_USERID and PMIX_GRPID passed with it to
+                                                                    //        PMIx_server_init name the socket's owner and group
 #define PMIX_SERVER_REMOTE_CONNECTIONS      "pmix.srvr.remote"      // (bool) Allow connections from remote tools (do not use
                                                                     //        loopback device)
+#define PMIX_SERVER_LEGACY_PEERS            "pmix.srvr.legacy"      // (bool) Take connections from clients and tools of PMIx
+                                                                    //        releases before v7.0, which connect over TCP. Only a
+                                                                    //        PMIx built with legacy peer support (the default) can;
+                                                                    //        overrides the ptl_base_legacy_peers MCA parameter
 #define PMIX_SERVER_SYSTEM_SUPPORT          "pmix.srvr.sys"         // (bool) The host RM wants to declare itself as being
                                                                     //        the local system server for PMIx connection
                                                                     //        requests - rendezvous files will be readable

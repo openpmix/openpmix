@@ -313,6 +313,12 @@ nothing.
 
 ## Invariants and gotchas
 
+- **Read the identity variables through `pmix_idenv_get`, never
+  `getenv`.** `PMIx_Init` takes `PMIX_NAMESPACE`, `PMIX_RANK`, the server
+  URIs, the token and the rest out of `environ` before it reads any of
+  them (`src/common/pmix_idenv.h`), so nothing the application starts
+  inherits them. `getenv` finds none of them after that - in this init,
+  and in a later one of the same process.
 - **`PMIx_Init` returns `PMIX_ERR_UNREACH`, not `PMIX_SUCCESS`, on the
   singleton path.** A process with no server still initializes; callers
   must treat `PMIX_ERR_UNREACH` from init as "up but unconnected," not as

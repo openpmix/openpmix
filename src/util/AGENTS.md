@@ -61,6 +61,7 @@ interface list).
 | `pmix_shmem.{c,h}` / `pmix_vmem.{c,h}` | mmap-backed shared-memory segment; `/proc/self/maps` hole finder (Linux) | `pad_to_page` pure; the hole scan runs anywhere against a synthetic map; rest need mmap |
 | `pmix_pty.{c,h}` / `pmix_tty.{c,h}` | openpty/forkpty wrappers; termios/winsize helpers | need real pty/tty |
 | `pmix_alfg.{c,h}` | additive lagged-Fibonacci RNG (from Open MPI's `opal_rand`) | pure/deterministic |
+| `pmix_random_bytes.{c,h}` | bytes from the OS's secure random source (`arc4random_buf`, else `getrandom`, else `/dev/urandom`) - `pmix_alfg` is a deterministic generator, and is not such a source | `test/unit/ptl_token` (through setup_fork's token) |
 | `pmix_timings.{c,h}` | optional profiling (`--enable-pmix-timing`, off by default) | needs `--enable-pmix-timing` |
 | `pmix_context_fns.{c,h}` | process-launch cwd/exe resolution helpers | needs a fixture |
 

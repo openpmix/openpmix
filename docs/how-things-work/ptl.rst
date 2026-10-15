@@ -5,7 +5,7 @@ Transport Layer (Client/Server/Tool Connections)
 This document describes how PMIx connects a process to the PMIx server it
 talks to, and how messages then flow between them: how a server publishes
 where it can be reached, how a client or tool discovers and connects to
-it, the identity/security handshake both sides run, and how framed
+it, how the server establishes who connected, and how framed
 messages are sent and received over the socket in steady state. All of
 this is the job of the MCA ``ptl`` (PMIx Transport Layer) framework.
 
@@ -16,7 +16,7 @@ finds its server, and how messages travel once connected.
 For a code-oriented orientation aimed at contributors working *inside*
 the framework, each ``ptl`` directory also carries an ``AGENTS.md`` (with
 a ``CLAUDE.md`` symlink): ``src/mca/ptl/AGENTS.md`` for the framework as a
-whole, plus one each in ``client/``, ``server/``, and ``tool/``. This
+whole, plus one each in ``base/``, ``tcp/``, and ``usock/``. This
 document explains how the transport layer fits into the wider library;
 those explain each piece's internals in detail.
 
@@ -43,50 +43,66 @@ serializing the payload (``bfrops``), the security credential itself
 frameworks; ``ptl`` is the pipe and the rules for setting it up.
 
 
-An Unusual Framework Shape
---------------------------
-
-``ptl`` is a **single-select** framework — exactly one component is active
-in a given process — but it is structured differently from most PMIx
-frameworks, and understanding that difference is the key to reading the
-code.
+Roles, Not Components
+---------------------
 
 In a typical framework the component contains the implementation and
-``base/`` is just plumbing. In ``ptl`` it is inverted: **the base contains
-essentially all of the code** — TCP sockets, message framing, the
-handshake, the listener, interface discovery, rendezvous files,
-send/receive, and teardown — while the three components (``client``,
-``server``, ``tool``) are thin *role selectors*. Each component's
-``component_query`` inspects the local process type and claims the process
-only if it matches:
+``base/`` is just plumbing. In ``ptl`` **the base contains essentially all
+of the code** — message framing, the handshake, the listener, rendezvous
+files, send/receive, and teardown. What a process uses depends on its
+*role*, which is its own process type. When the framework is selected,
+``pmix_ptl_base_select`` fills the ``pmix_ptl`` table with the role's
+functions:
 
 .. list-table::
    :header-rows: 1
-   :widths: 15 15 70
+   :widths: 15 85
 
-   * - Component
-     - Priority
-     - Selected when the local peer is…
-   * - ``client``
-     - 50
-     - a client **and not** a tool (a "pure" client)
-   * - ``tool``
-     - 40
-     - any tool — debugger, launcher, or client-tool
-   * - ``server``
-     - 30
-     - a server **and not** a tool (a "pure" server)
+   * - Role
+     - The local peer is…
+   * - client
+     - a client **and not** a tool. It only connects; it neither listens
+       nor forks PMIx children of its own.
+   * - tool
+     - any tool — debugger, launcher, or client-tool. It connects, and it
+       listens.
+   * - server
+     - a server (and not a tool). It listens, and can connect to another
+       server.
 
-These conditions are mutually exclusive, so at most one component ever
-returns a module and the priorities never actually break a tie. A
-**launcher** is ``tool+server`` and therefore uses the ``tool`` component
-— which is why a tool, not just a server, is able to set up a listener.
+They are tested in that order. A **launcher** is ``tool+server`` and is
+therefore a tool — which is why a tool, not just a server, is able to set
+up a listener.
 
-There is only one transport today: TCP, identified on the wire as
-``PMIX_PROTOCOL_V2``. The older Unix-domain-socket transport
-(``PMIX_PROTOCOL_V1``, "usock") has been removed. Handshake version
-differences are handled *inside* the base by inspecting the peer's version
-string, not by swapping components.
+The transports are components. ``ptl`` is multi-select: every transport
+that can run is active, and each opens its own listening socket:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 85
+
+   * - Transport
+     - Used by
+   * - ``usock``
+     - Every client and tool of this release on the server's host. An
+       ``AF_UNIX`` socket, whose far end the kernel identifies - its uid,
+       gid and pid. Its URI is ``<nspace>.<rank>;usock://<path>``.
+   * - ``tcp``
+     - Peers of earlier releases, and tools on other hosts. Its URI is
+       ``<nspace>.<rank>;tcp4://<host>:<port>`` (``tcp6://`` for IPv6).
+       A server listens on it only when it takes legacy peers
+       (``ptl_base_legacy_peers``, ``PMIX_SERVER_LEGACY_PEERS``) or
+       remote tools (``PMIX_SERVER_REMOTE_CONNECTIONS``).
+
+Both are always built: ``configure`` stops with an error if either is
+excluded. Which transport a URI belongs to is the transport that
+recognizes its scheme. ``PMIX_MCA_ptl`` selects nothing - it is removed
+from the environment at init, and a ``ptl`` selection given any other way
+is ignored. Both transports speak the same messages, on the wire as
+``PMIX_PROTOCOL_V2``. (``PMIX_PROTOCOL_V1`` was the original Unix-domain
+transport of the v1 releases, whose peers can no longer connect.)
+Handshake version differences are handled *inside* the base by inspecting
+the peer's version string.
 
 
 Publishing a Server: the Listener
@@ -94,12 +110,19 @@ Publishing a Server: the Listener
 
 A server (or launcher, or any tool that will spawn children) makes itself
 reachable in ``pmix_ptl_base_setup_listener``
-(``src/mca/ptl/base/ptl_base_listener.c``):
+(``src/mca/ptl/base/ptl_base_listener.c``). It has the transport open the
+socket - the first two steps below are the ``tcp`` transport's, in
+``src/mca/ptl/tcp/ptl_tcp.c`` - and does the rest itself:
 
 #. **Choose an interface.** Enumerate the node's interfaces, filter them
    through any ``if_include`` / ``if_exclude`` directives, and default to
-   a **loopback** device. Only if remote or tool connections were
-   requested does it fall back to a public interface. When remote
+   a **loopback** device. An entry that is neither an interface name nor
+   a subnet, or an include list none of whose entries is on this host,
+   stops the listener from opening at all. A loopback device's address
+   must be a loopback address. A PMIx configured ``--enable-remote-tools``
+   falls back to a public interface when the directives leave no loopback
+   one and the host did not say no remote connections; one without it
+   never does. When remote
    connections are accepted, *every* public interface the directives leave
    is used: the first carries the URI, and each of the others gets a
    listener of its own (on the same port where it is free), so a remote
@@ -108,8 +131,10 @@ reachable in ``pmix_ptl_base_setup_listener``
    let the kernel assign one), set ``SO_REUSEADDR`` and close-on-exec,
    ``listen`` with ``SOMAXCONN``, and make the socket non-blocking.
 #. **Publish the URI.** Build a URI of the form
-   ``nspace.rank;tcp4://host:port`` and store it in ``gds`` under both
-   ``PMIX_MYSERVER_URI`` and (for older tools) ``PMIX_SERVER_URI``. If
+   ``nspace.rank;tcp4://host:port``. The base stores the server's URI -
+   this one when there is a TCP listener, else the local socket's - in
+   ``gds`` under both ``PMIX_MYSERVER_URI`` and (for older tools)
+   ``PMIX_SERVER_URI``. If
    ``report_uri`` is set, also emit it to stdout (``-``), stderr (``+``),
    an integer pipe fd, or a named file. The other addresses, if any, are
    stored as ``PMIX_MYSERVER_ALT_URIS`` - a comma-delimited list of
@@ -142,7 +167,9 @@ reachable in ``pmix_ptl_base_setup_listener``
    Each file contains the URI, the server's version, its PID, its
    ``uid:gid``, and a timestamp, and then - only when the server listens
    on more than one address - a line tagged ``alturis:`` listing the
-   others. Two more tagged lines follow: ``bfrops:`` lists the wire
+   others. A line tagged ``local:`` carries the server's host name and
+   the local socket's URI, as ``local:<host>;<uri>``. Two
+   more tagged lines follow: ``bfrops:`` lists the wire
    formats (``bfrops`` components) the server accepts and ``psec:`` its
    security mechanisms, each comma-delimited in the server's priority
    order and limited by its MCA parameters. Readers find every tagged
@@ -151,8 +178,39 @@ reachable in ``pmix_ptl_base_setup_listener``
    directories this process created, so ``pmix_ptl_close`` can remove
    precisely those at shutdown and nothing that belongs to a peer.
 
-``pmix_ptl_base_start_listening`` then registers the listen socket's
-accept event on the progress thread.
+Beside the TCP listener, every server opens its **local socket** - the
+``usock`` transport's, in ``src/mca/ptl/usock/ptl_usock.c``:
+
+#. **Make a directory of its own** with ``mkdtemp`` beneath the server's
+   temporary directory: ``<tmpdir>/pmix-XXXXXX``, mode 0700.
+#. **Bind** ``pmix-<pid>`` inside it, and give the socket its mode -
+   0600 unless the host passed ``PMIX_SOCKET_MODE`` - and its owner and
+   group (``PMIX_USERID``, ``PMIX_GRPID``; the group is the server's
+   effective group unless named) while the directory is still 0700. Only
+   then is the directory opened to whom the mode lets connect: group or
+   others get search permission, never read. The directory itself stays
+   the server's. It is held open from the moment it is made, and every
+   change in it is made through that descriptor.
+#. **Listen**, non-blocking and close-on-exec.
+
+A server that cannot open its local socket fails ``PMIx_server_init``.
+The socket's path must fit an ``AF_UNIX`` address (about 100 characters):
+a long temporary directory - the default ``$TMPDIR`` on macOS is one - is
+an error, not a reason to fall back. Pass a shorter directory
+(``PMIX_SERVER_TMPDIR``). At finalize the server removes the socket and
+its directory; a server that is killed leaves them behind.
+
+The local socket's URI reaches a client in its environment, as
+``PMIX_SERVER_LOCAL_URI``, and a tool on the rendezvous file's ``local:``
+line. ``PMIX_SERVER_URI``, ``PMIX_MYSERVER_URI``, the report and the
+first line of the rendezvous files are the TCP URI when the server
+listens on TCP - they reach processes on other hosts, and older peers,
+which cannot use the local socket - and the local socket's otherwise.
+The ``PMIX_SERVER_URIxx`` variables are the TCP URI only when the server
+takes legacy peers, which are the processes that read them alone.
+
+``pmix_ptl_base_start_listening`` then registers the listen sockets'
+accept events on the progress thread.
 
 
 Finding and Connecting to a Server
@@ -160,23 +218,29 @@ Finding and Connecting to a Server
 
 The outbound side is driven by ``pmix_ptl.connect_to_peer``, called
 (blocking) during ``PMIx_Init`` or ``PMIx_tool_init``. There are two
-implementations, chosen by the selected component.
+implementations, chosen by the process's role.
 
 Clients: the short path
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A pure client uses the ``client`` component's own ``connect_to_peer``
-(``src/mca/ptl/client/ptl_client.c``). A client already knows its server,
+A pure client uses its own ``connect_to_peer``
+(``src/mca/ptl/base/ptl_base_client.c``). A client already knows its server,
 so the logic is short:
 
 #. use an explicit ``PMIX_SERVER_URI`` from the info array if present;
 #. otherwise consult the environment via ``pmix_ptl_base_set_peer``, which
    walks the active ``bfrops`` modules and looks for the corresponding
    ``PMIX_SERVER_URIvNN`` variable — finding one yields both the URI and
-   the server's version;
+   the server's version. If the server also set ``PMIX_SERVER_LOCAL_URI``
+   - the local socket, and the uid and gid the server runs as - naming
+   the same server, the client connects there and nowhere else: if the
+   socket cannot be reached, ``PMIx_Init`` fails and says why. A
+   ``PMIX_SERVER_LOCAL_URI`` naming another server is one a server of an
+   earlier release left in place, and is not used;
 #. if neither exists, the process was not launched under a server: mark it
-   a **singleton**, probe for a system server via ``pmix.sys.<host>``, and
-   fall back to standalone operation if none is found.
+   a **singleton** and probe for a system server via ``pmix.sys.<host>`` -
+   reaching it on its local socket - falling back to standalone operation
+   if none is found.
 
 Tools and servers: the discovery matrix
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -196,8 +260,37 @@ most specific to least:
 * a directory search of the session tmpdir, taking the first
   ``pmix.<host>.tool*`` server that answers.
 
+A tool started by a server has ``PMIX_SERVER_LOCAL_URI`` in its
+environment, as a client does. A rendezvous or report file with a
+``local:`` line for the tool's own host takes it to the local socket, and
+only there. A file without one is an older server's, and one whose
+``local:`` line names another host - a report file read elsewhere - is
+for a tool on that host: the tool uses the file's TCP URI.
+
+A client's or tool's connection to its server is close-on-exec whichever
+transport it is on: a process that execs leaves its connection behind,
+and the server handles it as lost.
+
 ``PMIX_TOOL_CONNECT_OPTIONAL`` decides whether failing to find a server is
 an error or simply leaves the tool unconnected.
+
+Checking the server
+~~~~~~~~~~~~~~~~~~~
+
+On the local socket the kernel names the server too, and a client or
+tool checks it before it sends anything that matters:
+
+* a process the server started was told, in ``PMIX_SERVER_LOCAL_URI``,
+  the uid and gid the server runs as. The kernel's must match both;
+* any other process accepts a server running as its own user, as root,
+  or as a user or group ``ptl_base_server_access`` names.
+
+A server that fails the check is not talked to, and the process says
+whom it found. Over TCP, the kernel's table of TCP connections names the
+user - no group - of a server on the same host, and the same rule is
+applied by user alone. A server at an address of this host that the table
+does not show is refused; one at any other address is on another host,
+and is not checked - nor is any, on a platform with no table to ask.
 
 Choosing what to speak
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -352,9 +445,9 @@ The regimes that coexist:
 * **The server's side of the handshake does not wait either.** It runs
   on the server's progress thread, whenever anyone connects, while that thread
   is serving every other client. So the server reads an incoming
-  handshake as it arrives and never waits for it. Only the replies and
-  any security handshake that follow are blocking exchanges, each read
-  bounded by ``ptl_base_connect_ack_timeout``.
+  handshake as it arrives and never waits for it. The replies that follow
+  are a few words written to the peer; the server reads nothing more
+  from it until the connection is accepted.
 * **Steady-state I/O is entirely on the progress thread.** Every
   ``PMIX_PTL_SEND_*`` macro thread-shifts; the send/receive handlers,
   message matching, the accept handler, and the connection handler all run
@@ -382,12 +475,20 @@ for a server's rendezvous file to appear), ``handshake_wait_time`` /
 while connecting to it, and how often it retries a handshake the server
 asks it to retry; the wait defaults to 60 seconds, and 0 removes the
 bound),
+``server_access`` (servers a client or tool will
+talk to over the local socket besides one of its own user or root, as
+``users=<list>,groups=<list>``, each list user or group names or numbers
+separated by ``:``; a name the system does not know, an empty list, or
+a directive given twice fails init),
 ``connect_ack_timeout`` (how long a server gives an incoming connection to
-deliver its whole connection request, and to answer each step of any
-security handshake after it; default 5 seconds, 0 for no limit),
+deliver its whole connection request; default 5 seconds, 0 for no
+limit),
 ``max_pending_connections`` (how many incoming connections may be waiting
-to deliver their connection request at once; the oldest is dropped at the
-limit; default a quarter of the descriptor limit, -1 for no limit), and
+to deliver their connection request at once, and, separately, how many
+tools may wait for the host's decision; at the first limit the oldest
+connection still delivering its request is dropped, and at the second a
+further tool is refused; default an eighth of the descriptor limit for
+each, -1 for no limit), and
 ``report_uri``. Inspect the current values
 for a build with::
 

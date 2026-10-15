@@ -1334,8 +1334,9 @@ static uint64_t participant_signature(const pmix_proc_t *procs, size_t nprocs)
  * (modex_upto), rather than the rank keeping one scratch value - a rank
  * can be in two fences over different sets at once, and a per-rank
  * scratch would be overwritten by the second collection before the first
- * completes. A mark only ever moves forward, so a clone's caddy (which
- * collect_data skips, leaving 0) and a repeated stamp are both no-ops. */
+ * completes. A mark only ever moves forward, so a rank's second caddy
+ * (which collect_data skips, leaving 0) and a repeated stamp are both
+ * no-ops. */
 void pmix_server_modex_contributed(pmix_server_trkr_t *trk)
 {
     pmix_server_caddy_t *scd;
@@ -1513,11 +1514,12 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
         PMIX_CONSTRUCT(&rank_blobs, pmix_list_t);
         PMIX_CONSTRUCT(&pnames, pmix_list_t);
         PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
-            /* Contribute each participating rank once. A fork/exec'd clone
-             * shares its parent's pmix_rank_info_t, so both caddies name
-             * the same rank and would otherwise have that rank's remote
+            /* Contribute each participating rank once. A rank can have two
+             * caddies here - a second non-blocking call, or a call made
+             * again after it reconnected - and both name its one
+             * pmix_rank_info_t, so would otherwise have that rank's remote
              * data fetched and packed into the bucket twice. Identity of
-             * the rank_info's pname is the test, exactly as the clone
+             * the rank_info's pname is the test, exactly as the per-rank
              * accounting in the tracker engine uses it. */
             found = false;
             PMIX_LIST_FOREACH (pn, &pnames, pmix_namelist_t) {
@@ -1929,9 +1931,10 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
      * A tracker already handed to the host is excluded, and that guard is
      * load-bearing rather than defensive. pmix_server_get_tracker matches
      * on the participant set, so a contribution that arrives while the
-     * host still owns the tracker is given that same tracker - a
-     * fork/exec'd clone of a rank that already contributed, or a second
-     * PMIx_Fence_nb over the same set issued before the first resolved.
+     * host still owns the tracker is given that same tracker - a rank
+     * that already contributed calling again after it reconnected, or a
+     * second PMIx_Fence_nb over the same set issued before the first
+     * resolved.
      * pmix_server_trk_complete then answers "yes" again (it is a '>='
      * comparison, deliberately tolerant of an over-count), and without
      * this test the host was handed the *same tracker pointer* a second
@@ -2061,8 +2064,8 @@ cleanup:
  * on departed). A live participant that has not yet been heard from is on
  * neither list, so the sum stays below nlocal until it either contributes
  * or departs. The '>=' comparison is deliberate: it tolerates any
- * over-count from fork/exec'd clones without falsely reporting the
- * collective as incomplete. See docs/how-things-work/collectives. */
+ * over-count from a rank that contributed twice without falsely reporting
+ * the collective as incomplete. See docs/how-things-work/collectives. */
 bool pmix_server_trk_complete(pmix_server_trkr_t *trk)
 {
     if (!trk->def_complete) {
@@ -2169,8 +2172,8 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
         }
         /* Determine whether this participant has already contributed.
          * Its rank counts as contributed if any of its local peers -
-         * the client or a fork/exec'd clone sharing the same name -
-         * has an entry on local_cbs. If so, the contribution and the
+         * its connection now, or one it had before reconnecting - has
+         * an entry on local_cbs. If so, the contribution and the
          * data it already delivered stand: we ignore the loss for
          * this collective. We do NOT reduce the expected count and do
          * NOT remove the contribution, so the collective neither
@@ -2193,8 +2196,8 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
          * Record its rank as departed (once) so the collective can
          * complete on the remaining live participants instead of
          * hanging forever. Participation is tracked per rank, matching
-         * the way nlocal is counted, so a clone sharing the name does
-         * not add a second departed entry. */
+         * the way nlocal is counted, so a rank lost twice does not add
+         * a second departed entry. */
         flag = false;
         PMIX_LIST_FOREACH (dp, &trk->departed, pmix_proclist_t) {
             if (PMIX_CHECK_NAMES(&dp->proc, &peer->info->pname)) {

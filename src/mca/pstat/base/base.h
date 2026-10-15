@@ -68,7 +68,7 @@ typedef struct {
 PMIX_EXPORT extern pmix_pstat_base_t pmix_pstat_base;
 
 /* A peer has left this server: the periodic monitors it asked for end
- * with it (once no clone of it under the same name is still connected).
+ * with it (once no other live connection under its name remains).
  * Called on the progress thread by the connection teardown; a no-op
  * unless the framework is open. */
 PMIX_EXPORT void pmix_pstat_base_peer_lost(struct pmix_peer_t *peer);

@@ -319,7 +319,7 @@ static void test_var_dump_color(void)
 static void test_listener_armed(void)
 {
     report("listener:init leaves the accept event armed",
-           pmix_ptl_base.listener.active && 0 <= pmix_ptl_base.listener.socket);
+           pmix_ptl_base.local_listener.active && 0 <= pmix_ptl_base.local_listener.socket);
 }
 
 static void test_output_channel_open(void)

@@ -60,6 +60,7 @@
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/mca/ptl/tcp/ptl_tcp.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_if.h"
 
@@ -205,7 +206,7 @@ static int dial_listener(void)
     struct sockaddr_storage addr;
     int c;
 
-    memcpy(&addr, pmix_ptl_base.connection, sizeof(addr));
+    memcpy(&addr, &pmix_mca_ptl_tcp_component.connection, sizeof(addr));
     c = socket(addr.ss_family, SOCK_STREAM, 0);
     if (0 > c) {
         return -1;
@@ -228,7 +229,7 @@ static int connect_out_of_descriptors(void)
     struct sockaddr_storage addr;
     int c, probe;
 
-    memcpy(&addr, pmix_ptl_base.connection, sizeof(addr));
+    memcpy(&addr, &pmix_mca_ptl_tcp_component.connection, sizeof(addr));
     c = socket(addr.ss_family, SOCK_STREAM, 0);
     /* leave no descriptor free for the accept */
     probe = dup(0);
@@ -423,6 +424,75 @@ static void notsock_child(void)
 }
 
 /* ---- directives ---------------------------------------------------- */
+
+/* An include list naming only a subnet this host is not on, or an address
+ * that is not a subnet, is refused - with remote connections asked for,
+ * it used to leave the listener on the first public interface */
+static void include_child(const char *spec)
+{
+    pmix_info_t info[2];
+    bool yes = true;
+
+    PMIX_INFO_LOAD(&info[0], PMIX_SERVER_REMOTE_CONNECTIONS, &yes, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[1], PMIX_TCP_IF_INCLUDE, spec, PMIX_STRING);
+    if (PMIX_SUCCESS == PMIx_server_init(&mymodule, info, 2)) {
+        fprintf(stderr, "listening at %s\n", (NULL == pmix_ptl_base.listener.uri)
+                                                   ? "(none)" : pmix_ptl_base.listener.uri);
+        _exit(CHILD_FAIL);
+    }
+    _exit(CHILD_PASS);
+}
+static void include_nomatch_child(void)
+{
+    include_child("203.0.113.0/24");
+}
+static void include_noprefix_child(void)
+{
+    include_child("192.168.77.5");
+}
+
+/* A help message is printed in a second init cycle too. The first cycle
+ * left help routed through the server's output forwarding, which the next
+ * init could not use while it was starting - so a server that failed its
+ * second init said nothing of why */
+static void help_after_cycle_child(void)
+{
+    pmix_info_t info;
+    char path[] = "/tmp/pmix_help_cycle.XXXXXX", buf[8192];
+    int fd, saved;
+    ssize_t n;
+    bool said;
+
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, NULL, 0)) {
+        _exit(CHILD_FAIL);
+    }
+    PMIx_server_finalize();
+
+    fd = mkstemp(path);
+    if (0 > fd) {
+        _exit(CHILD_FAIL);
+    }
+    unlink(path);
+    fflush(stderr);
+    saved = dup(STDERR_FILENO);
+    dup2(fd, STDERR_FILENO);
+    PMIX_INFO_LOAD(&info, PMIX_TCP_IF_INCLUDE, "192.168.77.5", PMIX_STRING);
+    if (PMIX_SUCCESS == PMIx_server_init(&mymodule, &info, 1)) {
+        dup2(saved, STDERR_FILENO);
+        fprintf(stderr, "the second init succeeded\n");
+        _exit(CHILD_FAIL);
+    }
+    fflush(stderr);
+    dup2(saved, STDERR_FILENO);
+    lseek(fd, 0, SEEK_SET);
+    n = read(fd, buf, sizeof(buf) - 1);
+    buf[(0 < n) ? n : 0] = '\0';
+    said = (NULL != strstr(buf, "pmix_ptl_base_if_include"));
+    if (!said) {
+        fprintf(stderr, "the second init said: \"%s\"\n", buf);
+    }
+    _exit(said ? CHILD_PASS : CHILD_FAIL);
+}
 
 static void bool_if_include_child(void)
 {
@@ -818,6 +888,15 @@ int main(int argc, char **argv)
 {
     const char *base;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+#if PMIX_ENABLE_LEGACY_PEERS
+    /* these cases are about the TCP listener, which a server opens for
+     * clients and tools of earlier releases */
+    setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
+#else
+    fprintf(stdout, "this PMIx takes no clients or tools of earlier releases, so a "
+                    "server has no TCP listener for these cases\n");
+    return 77;
+#endif
 
     base = getenv("TMPDIR");
     if (NULL == base) {
@@ -844,6 +923,10 @@ int main(int argc, char **argv)
     run_case("a listening descriptor that is not a socket stops the listener at once",
              notsock_child);
     run_case("a non-string PMIX_TCP_IF_INCLUDE is refused", bool_if_include_child);
+    run_case("an include list matching no interface here is refused", include_nomatch_child);
+    run_case("a help message is printed in a second init cycle", help_after_cycle_child);
+    run_case("an include list holding an address with no prefix is refused",
+             include_noprefix_child);
     run_case("a PMIX_TCP_IPV4_PORT past 65535 is refused", big_port_child);
     run_case("an empty PMIX_TCP_REPORT_URI leaves stdin alone", empty_report_uri_child);
     run_case("a report file named by directive is removed at finalize", report_uri_file_child);

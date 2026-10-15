@@ -311,8 +311,8 @@ pmix_status_t pmix_job_control_relay(const pmix_proc_t targets[], size_t ntarget
     /* The library has to be all the way up before we put a request on
      * the wire. "Connected" is not enough: the connection is made well
      * before init finishes, and both PMIx_server_init and
-     * PMIx_tool_init start their listener - which is where the ptl tool
-     * component wants to make this call - some way ahead of setting
+     * PMIx_tool_init start their listener - which is where a tool's ptl
+     * setup_listener wants to make this call - some way ahead of setting
      * this flag. Sending in that window injects a reply into the middle
      * of the init exchange, which the init path then reads as its own
      * and fails to unpack. PMIx_Job_control_nb makes the same check

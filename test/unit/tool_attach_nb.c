@@ -29,6 +29,11 @@
  *                   handshake wait expires, not before and not never.
  *   closed server   a listener that accepts and closes at once. The attach
  *                   must fail promptly, not wait out the timer.
+ *   handshake       a server that answers with a request for a security
+ *                   handshake and then waits for it. The tool runs none:
+ *                   both an attach and a PMIx_tool_init that connects must
+ *                   fail at once with PMIX_ERR_NOT_SUPPORTED, not wait out
+ *                   the timer.
  *
  * Attaching to a real server is covered by the existing tool tests
  * (tool_api, tool_rndz, run_toolswitch.pl), which go through the same
@@ -267,7 +272,98 @@ static int closed_child(int port)
     return ATT_OK;
 }
 
-static void run_case(const char *name, int (*fn)(int), bool closer)
+/* An attach to a server whose first word is a code the connect uses
+ * internally, which no server sends: it fails, and is not taken as done */
+static int sentinel_child(int port)
+{
+    attach_t at;
+
+    signal(SIGALRM, on_alarm);
+    alarm(4 * ATTACH_WAIT);
+    if (0 != tool_up()) {
+        return ATT_SETUP;
+    }
+    memset(&at, 0, sizeof(at));
+    at.port = port;
+    (void) attach_thread(&at);
+    alarm(0);
+    if (PMIX_SUCCESS == at.rc) {
+        fprintf(stdout, "    the attach succeeded on a reply of %s\n",
+                PMIx_Error_string(PMIX_OPERATION_SUCCEEDED));
+        return ATT_FAILED;
+    }
+    PMIx_tool_finalize();
+    return ATT_OK;
+}
+
+/* A server that asks for a security handshake: an attach fails at once */
+static int handshake_attach_child(int port)
+{
+    attach_t at;
+
+    signal(SIGALRM, on_alarm);
+    alarm(4 * ATTACH_WAIT);
+    if (0 != tool_up()) {
+        return ATT_SETUP;
+    }
+    memset(&at, 0, sizeof(at));
+    at.port = port;
+    (void) attach_thread(&at);
+    alarm(0);
+    if (PMIX_ERR_NOT_SUPPORTED != at.rc) {
+        fprintf(stdout, "    the attach returned %s, expected PMIX_ERR_NOT_SUPPORTED\n",
+                PMIx_Error_string(at.rc));
+        return ATT_FAILED;
+    }
+    if ((double) ATTACH_WAIT - 1.0 < at.secs) {
+        fprintf(stdout, "    the attach took %.1fs - it waited on the server\n", at.secs);
+        return ATT_FAILED;
+    }
+    PMIx_tool_finalize();
+    return ATT_OK;
+}
+
+/* A server that asks for a security handshake: a PMIx_tool_init that
+ * connects to it fails at once */
+static int handshake_init_child(int port)
+{
+    pmix_proc_t myproc;
+    pmix_info_t info[1];
+    struct timeval start;
+    pmix_status_t rc;
+    char uri[128], val[16];
+    double secs;
+
+    signal(SIGALRM, on_alarm);
+    alarm(4 * ATTACH_WAIT);
+    snprintf(val, sizeof(val), "%d", ATTACH_WAIT);
+    setenv("PMIX_MCA_ptl_base_handshake_wait_time", val, 1);
+    snprintf(uri, sizeof(uri), "fakeserver.0;tcp4://127.0.0.1:%d", port);
+    PMIX_INFO_LOAD(&info[0], PMIX_SERVER_URI, uri, PMIX_STRING);
+    gettimeofday(&start, NULL);
+    rc = PMIx_tool_init(&myproc, info, 1);
+    secs = since(&start);
+    alarm(0);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    if (PMIX_SUCCESS == rc) {
+        fprintf(stdout, "    PMIx_tool_init succeeded\n");
+        PMIx_tool_finalize();
+        return ATT_FAILED;
+    }
+    if ((double) ATTACH_WAIT - 1.0 < secs) {
+        fprintf(stdout, "    PMIx_tool_init took %.1fs - it waited on the server\n", secs);
+        return ATT_FAILED;
+    }
+    return ATT_OK;
+}
+
+/* what the separate acceptor process does with the connection */
+#define ACCEPT_NONE      0 // nothing accepts it: the listener's backlog holds it
+#define ACCEPT_CLOSE     1 // accept and close at once
+#define ACCEPT_SENTINEL  2 // accept, read the request, answer PMIX_OPERATION_SUCCEEDED
+#define ACCEPT_HANDSHAKE 3 // accept, read the request, ask for a security handshake
+
+static void run_case(const char *name, int (*fn)(int), int closer)
 {
     int lsd, port = 0, status = 0, csd;
     pid_t child, acceptor = -1;
@@ -277,13 +373,26 @@ static void run_case(const char *name, int (*fn)(int), bool closer)
         report(name, 0, "could not create a listener");
         return;
     }
-    if (closer) {
-        /* a separate process accepts and closes, so the child's attach is
-         * answered while this one waits on it */
+    if (ACCEPT_NONE != closer) {
+        /* a separate process accepts, so the child's attach is answered
+         * while this one waits on it */
         acceptor = fork();
         if (0 == acceptor) {
             alarm(4 * ATTACH_WAIT);
             csd = accept(lsd, NULL, NULL);
+            if (0 <= csd && (ACCEPT_SENTINEL == closer || ACCEPT_HANDSHAKE == closer)) {
+                uint32_t w = htonl((uint32_t) (ACCEPT_SENTINEL == closer
+                                                   ? PMIX_OPERATION_SUCCEEDED
+                                                   : PMIX_ERR_READY_FOR_HANDSHAKE));
+                char junk[4096];
+
+                usleep(100000);
+                if (0 > read(csd, junk, sizeof(junk)) ||
+                    (ssize_t) sizeof(w) != write(csd, &w, sizeof(w))) {
+                    _exit(0);
+                }
+                sleep(4 * ATTACH_WAIT);
+            }
             if (0 <= csd) {
                 close(csd);
             }
@@ -328,8 +437,15 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "\n=== tool attach, event-driven ===\n\n");
     run_case("progress thread runs while an attach waits on a silent server", silent_child,
-             false);
-    run_case("attach to a server that closes the connection fails promptly", closed_child, true);
+             ACCEPT_NONE);
+    run_case("attach to a server that closes the connection fails promptly", closed_child,
+             ACCEPT_CLOSE);
+    run_case("attach to a server that replies with an internal code fails", sentinel_child,
+             ACCEPT_SENTINEL);
+    run_case("attach to a server that asks for a security handshake fails at once",
+             handshake_attach_child, ACCEPT_HANDSHAKE);
+    run_case("a tool connecting to a server that asks for a security handshake fails at once",
+             handshake_init_child, ACCEPT_HANDSHAKE);
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;

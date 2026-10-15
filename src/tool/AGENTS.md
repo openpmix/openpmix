@@ -78,7 +78,10 @@ bottom before editing. Its phases, in order:
    `PMIX_TOOL_CONNECT_OPTIONAL`, `PMIX_FWD_STDIN`, `PMIX_LAUNCHER`,
    `PMIX_SERVER_SCHEDULER`, tmpdir overrides, `PMIX_IOF_LOCAL_OUTPUT`.
    Then env fallbacks: `PMIX_NAMESPACE`/`PMIX_RANK` (set when a server
-   launched us — this is what promotes us to a `CLIENT_*` type),
+   launched us — this is what promotes us to a `CLIENT_*` type), read
+   through `pmix_idenv_get` - `pmix_idenv_take`, just before, took them
+   and the other identity variables out of the environment
+   (`src/common/pmix_idenv.h`),
    `PMIX_KEEPALIVE_PIPE` (registers `pdiedfn` to synthesize a
    `PMIX_ERR_JOB_TERMINATED` event if the parent dies).
 3. **`pmix_rte_init`** with the computed proc type and

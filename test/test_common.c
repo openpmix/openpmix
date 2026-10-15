@@ -276,6 +276,8 @@ void parse_cmd(int argc, char **argv, test_params *params)
         }
     }
 
+    params->server_version = (NULL != getenv("PMIX_VERSION"));
+
     // Fix namespace if running under SLURM
     if (NULL == params->nspace) {
         char *nspace = getenv("PMIX_NAMESPACE");

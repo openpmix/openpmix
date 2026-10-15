@@ -33,9 +33,12 @@ headers += \
 sources += \
         base/ptl_base_frame.c \
         base/ptl_base_select.c \
+        base/ptl_base_client.c \
+        base/ptl_base_tool.c \
         base/ptl_base_sendrecv.c \
         base/ptl_base_listener.c \
         base/ptl_base_stubs.c \
         base/ptl_base_connect.c \
         base/ptl_base_fns.c \
+        base/ptl_base_token.c \
         base/ptl_base_connection_hdlr.c

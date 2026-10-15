@@ -677,8 +677,8 @@ void pmix_pstat_base_peer_lost(struct pmix_peer_t *p)
         NULL == peer->info->pname.nspace) {
         return;
     }
-    /* A process and the clones it fork/exec'd share one name, and the
-     * monitors are the name's until the last of them leaves */
+    /* The monitors are the name's, and end when no live connection under
+     * it remains */
     for (n = 0; n < pmix_server_globals.clients.size; n++) {
         pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
         if (NULL == pr || pr == peer || NULL == pr->info || pr->finalized || 0 > pr->sd) {

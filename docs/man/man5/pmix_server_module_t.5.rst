@@ -636,19 +636,51 @@ the deprecated ``client_connected``. Invoked when a registered client connects;
 the library prefers this member and only falls back to ``client_connected`` when
 this is NULL. Adds an ``info[]``/``ninfo`` array carrying additional information
 about the connecting client. The client is held blocked until the host invokes
-``cbfunc``.
+``cbfunc``. The host answers exactly once: return an error, or return
+``PMIX_SUCCESS`` and later call ``cbfunc`` once, from any thread, or return
+``PMIX_OPERATION_SUCCEEDED`` to accept at once without calling it. Two mistakes
+are survived: a callback followed by an error return refuses the client with
+that error, and a second call of ``cbfunc`` made before the library has acted on
+the first is ignored. Any other late call - after an error return, or once the
+library has accepted or refused the connection - reaches memory already
+released.
+
+It is called only once the client's identity has been settled and every check
+the server can make beforehand has passed. It is not called for a second
+connection for a rank that already has one, which is refused with
+``PMIX_ERR_EXISTS``. What the host itself may change
+while it decides is checked again once it accepts: a client, or a job, it
+deregistered meanwhile is refused then, as is one whose wire format another
+client of its job has meanwhile fixed differently, and one that has gone before
+it could be told.
+
+The host is asked to answer within the time given in ``PMIX_TIMEOUT``. The
+server waits a little longer than that; then it refuses the client with
+``PMIX_ERR_TIMEOUT``, and keeps the client's rank held until the host does
+answer. An answer of yes that comes too late, or is followed by one of the
+refusals above, is followed by a ``PMIX_ERR_LOST_CONNECTION`` event naming the
+client, delivered to the event handlers the host registered - as for any
+process that leaves without finalizing - unless another connection has the
+name by then.
 
 The array carries:
 
 * ``PMIX_USERID`` and ``PMIX_GRPID`` - the identity the server established when
-  the client connected, which the security handshake checked against the
+  the client connected, which the security component checked against the
   kernel and against the client's registration.
-* ``PMIX_PROC_PID`` - the pid the kernel reports for the connection, which is
-  in the host's pid namespace. Over a connection the kernel cannot see, such as
-  TCP, it is the pid the client sent.
+* ``PMIX_CRED_TYPE`` - the name of the security component that established
+  them (``native``, ``munge``, ``ssl``).
+* ``PMIX_PROC_PID`` - the client's pid. The client's PMIx library obtains it with
+  ``getpid()`` and sends it when it connects, since the kernel does not report the
+  pid at the other end of a TCP connection. A client in a container with its own
+  process-ID namespace sends its pid within that namespace.
 * ``PMIX_REALUID`` and ``PMIX_REALGID`` - the client's real (as opposed to
-  effective) user and group IDs **as the client reports them**. Nothing checks
-  these; a host that acts on them is taking the client's word.
+  effective) user and group IDs, as the client's PMIx library sent them.
+* ``PMIX_TIMEOUT`` - the seconds the host is asked to answer within: what the
+  client has left of the time it waits for this reply - the server's
+  ``ptl_base_handshake_wait_time``, less what it has waited already. Absent
+  when that wait is unbounded. A process with none left is refused with
+  ``PMIX_ERR_TIMEOUT``, and the host is not asked.
 
 .. _man5-pmix_server_module_t-tool_connected2:
 
@@ -660,13 +692,32 @@ deprecated ``tool_connected``. Invoked when a tool connects and needs a
 namespace/rank assignment; the library prefers this member over
 ``tool_connected``. Unlike the original, it returns a ``pmix_status_t`` so the
 host can synchronously reject the connection. The assigned identifier is returned
-through a ``pmix_tool_connection_cbfunc_t``.
+through a ``pmix_tool_connection_cbfunc_t``, so the host accepts only by returning
+``PMIX_SUCCESS`` and calling it, once; ``PMIX_OPERATION_SUCCEEDED`` gives the tool
+no identity, and the tool is refused. The rules for answering are otherwise those
+of ``client_connected2``.
 
-The info array is what the tool sent, with ``PMIX_USERID``, ``PMIX_GRPID`` and
-- where the kernel reports one - ``PMIX_PROC_PID`` replaced by the values the
-server established for the connection, as for ``client_connected2``. Anything
-else in it, ``PMIX_REALUID`` and ``PMIX_REALGID`` included, is the tool's own
-account and is not checked.
+The info array is what the tool sent, with ``PMIX_USERID``, ``PMIX_GRPID``,
+``PMIX_CRED_TYPE`` and - where the kernel reports one - ``PMIX_PROC_PID``
+replaced by the values the server established for the connection, as for
+``client_connected2``, and ``PMIX_TIMEOUT`` set as for ``client_connected2``.
+The rest
+is passed on as the tool sent it: ``PMIX_REALUID`` and ``PMIX_REALGID``, which the
+tool's PMIx library obtains from the operating system, its command line, and the
+roles it asked for.
+
+The host is asked about one tool of a name at a time, so it never decides on two
+tools for one name at once; a tool that cannot be accepted once another has
+been - one of the same name - is refused without the host being asked. Tools of
+other names, and tools that need an identity, are put to the host together. The
+host must keep the names it gives unique; a tool it gives a name that another
+tool took for itself meanwhile is refused with ``PMIX_ERR_EXISTS`` when the
+host accepts it. A slow answer delays the tools of that name behind it, and
+their time waiting counts against their own ``PMIX_TIMEOUT``. An answer
+that is too late, and an accepted tool that cannot be connected after all, are
+handled as for ``client_connected2``: the tool is refused with
+``PMIX_ERR_TIMEOUT``, its name held until the answer, and a yes is followed by a
+``PMIX_ERR_LOST_CONNECTION`` event naming the tool.
 
 .. _man5-pmix_server_module_t-log2:
 

@@ -60,23 +60,16 @@
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
-#include "ptl_client.h"
 #include "src/mca/ptl/base/base.h"
 
-static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
-                                     pmix_info_t *info, size_t ninfo,
-                                     char **suri);
-
-pmix_ptl_module_t pmix_ptl_client_module = {
-    .name = "client",
-    .connect_to_peer = connect_to_peer
-};
-
-static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
-                                     pmix_info_t *info, size_t ninfo,
-                                     char **suriout)
+/* A client connects to the server named in its environment, or in a
+ * PMIX_SERVER_URI directive - or, with neither, looks for a system
+ * server and is a singleton if it finds none */
+pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
+                                                   pmix_info_t *info, size_t ninfo,
+                                                   char **suriout)
 {
-    char *evar = NULL, *suri = NULL, *urispec = NULL;
+    char *evar = NULL, *suri = NULL, *urispec = NULL, *localuri = NULL;
     char *nspace = NULL;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
     char *rendfile = NULL;
@@ -173,6 +166,14 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
         rc = pmix_ptl_base_set_peer(peer, &evar);
         if (PMIX_SUCCESS == rc) {
             given = true;
+            /* the server's local transport, when it named one - with who
+             * the kernel must say the server is */
+            rc = pmix_ptl_base_use_local_env(evar, &localuri);
+            if (PMIX_SUCCESS == rc) {
+                evar = localuri;
+            } else if (PMIX_ERR_NOT_FOUND != rc) {
+                goto error;
+            }
         } else {
             /* we must be a singleton */
             PMIX_SET_PEER_TYPE(pmix_globals.mypeer, PMIX_PROC_SINGLETON);
@@ -203,15 +204,28 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                  * then go ahead and try to connect */
                 rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, cn);
                 if (PMIX_SUCCESS == rc) {
-                    rc = pmix_ptl_base_make_connection(peer, cn->uri, iptr, niptr);
+                    /* the token our rank was given, if it is this server's */
+                    rc = pmix_ptl_base_add_token(&iptr, &niptr, cn->nspace, cn->rank);
+                }
+                if (PMIX_SUCCESS == rc) {
+                    /* its local socket, when the file names one */
+                    rc = pmix_ptl_base_make_connection(peer,
+                                                       (NULL != cn->local_uri) ? cn->local_uri
+                                                                               : cn->uri,
+                                                       iptr, niptr);
                 }
                 if (PMIX_SUCCESS == rc) {
                     /* don't free nspace/uri - we will use them below */
                     nspace = cn->nspace;
                     rank = cn->rank;
-                    suri = cn->uri;
+                    if (NULL != cn->local_uri) {
+                        suri = cn->local_uri;
+                        cn->local_uri = NULL;
+                    } else {
+                        suri = cn->uri;
+                        cn->uri = NULL;
+                    }
                     cn->nspace = NULL;
-                    cn->uri = NULL;
                     goto complete;
                 }
             }
@@ -230,18 +244,31 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     if (PMIX_SUCCESS != rc) {
         goto error;
     }
+    /* the token our rank was given, if it is this server's */
+    rc = pmix_ptl_base_add_token(&iptr, &niptr, nspace, rank);
+    if (PMIX_SUCCESS != rc) {
+        goto error;
+    }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp:client attempt connect to %s:%u at %s", nspace, rank, suri);
 
     rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
     if (PMIX_SUCCESS != rc) {
+        if (NULL != localuri && PMIX_ERR_UNREACH == rc) {
+            /* there is no falling back to another transport: a process of
+             * this release on this host uses the local one */
+            pmix_show_help("help-ptl-base.txt", "local-unreachable", true,
+                           pmix_globals.hostname, suri,
+                           (0 == pmix_ptl_base.last_connect_errno)
+                               ? "the server closed the connection before it answered"
+                               : strerror(pmix_ptl_base.last_connect_errno));
+        }
         goto error;
     }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "tcp_peer_try_connect: Connection across to peer %s:%u succeeded", nspace,
-                        rank);
+                        "ptl:client connection to %s:%u succeeded", nspace, rank);
 
 complete:
     /* mark the connection as made */
@@ -269,6 +296,9 @@ error:
     if (given && PMIX_ERR_UNREACH == rc) {
         rc = PMIX_ERR_COMM_FAILURE;
     }
+    /* an identity we were told to expect was for this connect alone */
+    pmix_ptl_base.server_expect_given = false;
+    free(localuri);
     PMIX_LIST_DESTRUCT(&connections);
     if (NULL != urispec) {
         free(urispec);
@@ -280,6 +310,7 @@ error:
         free(suri);
     }
     if (NULL != iptr) {
+        pmix_ptl_base_wipe_token_info(iptr, niptr);
         PMIX_INFO_FREE(iptr, niptr);
     }
     return rc;

@@ -133,7 +133,9 @@ static int run_server_b(const char *urifile)
         return 1;
     }
 
-    if (NULL == pmix_ptl_base.listener.uri) {
+    /* the address the server reports: its TCP listener's when it has
+     * one, else its local socket's */
+    if (NULL == ((NULL != pmix_ptl_base.listener.uri) ? pmix_ptl_base.listener.uri : pmix_ptl_base.local_listener.uri)) {
         fprintf(stderr, "server-b: no listener URI available\n");
         PMIx_server_finalize();
         return 1;
@@ -148,7 +150,7 @@ static int run_server_b(const char *urifile)
         PMIx_server_finalize();
         return 1;
     }
-    fprintf(fp, "%s\n", pmix_ptl_base.listener.uri);
+    fprintf(fp, "%s\n", ((NULL != pmix_ptl_base.listener.uri) ? pmix_ptl_base.listener.uri : pmix_ptl_base.local_listener.uri));
     fclose(fp);
     if (0 != rename(tmpfile, urifile)) {
         fprintf(stderr, "server-b: cannot rename %s: %s\n", urifile, strerror(errno));

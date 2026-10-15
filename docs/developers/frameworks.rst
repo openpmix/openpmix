@@ -27,7 +27,8 @@ this writing |date|:
 * ``pnet``: Network support, including computation of endpoints to
   support the ``instant on`` launch procedure
 * ``preg``: Regular expression generator and parser
-* ``psec``: Security operations such as connection handshakes
+* ``psec``: Security operations: creating and validating the credential a
+  process connects with
 * ``psensor``: Sensor framework for monitoring processes, including
   resource utilization and state-of-health (e.g., heartbeat)
 * ``pstat``: Statistics, including reporting resource usage at the

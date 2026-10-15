@@ -232,7 +232,9 @@ int main(int argc, char **argv)
         goto reap;
     }
 
-    uri = pmix_ptl_base.listener.uri;
+    /* the address the server reports: its TCP listener's when it has
+     * one, else its local socket's */
+    uri = ((NULL != pmix_ptl_base.listener.uri) ? pmix_ptl_base.listener.uri : pmix_ptl_base.local_listener.uri);
     if (NULL == uri) {
         report("server published its URI", 0, "listener has no URI");
         goto done;

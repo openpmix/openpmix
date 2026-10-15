@@ -521,6 +521,11 @@ pmix_status_t pmix_show_help_finalize(void)
         show_help_timer_set = false;
     }
     show_help_time_last_displayed = 0;
+    /* Help goes through the host's logging only once an init has reached
+     * the point that turns this on; a second init must start where the
+     * first did, printing it here, or a failure early in that init is
+     * routed to a log that is not there yet and never seen */
+    pmix_atomic_store_int(&pmix_show_help_enabled, 0);
 
     pmix_output_close(output_stream);
     output_stream = -1;

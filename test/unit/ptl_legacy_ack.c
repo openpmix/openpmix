@@ -35,11 +35,13 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <ftw.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -149,7 +151,15 @@ static int legacy_child(bool tool)
     uint32_t reply;
     int port, sd;
 
-    rc = PMIx_server_init(&mymodule, NULL, 0);
+    {
+        /* tools connect here, which a server takes only with tool support */
+        pmix_info_t tsinfo;
+        bool tsflag = true;
+
+        PMIX_INFO_LOAD(&tsinfo, PMIX_SERVER_TOOL_SUPPORT, &tsflag, PMIX_BOOL);
+        rc = PMIx_server_init(&mymodule, &tsinfo, 1);
+        PMIX_INFO_DESTRUCT(&tsinfo);
+    }
     if (PMIX_SUCCESS != rc) {
         return CHILD_SETUP;
     }
@@ -238,9 +248,54 @@ static void run_case(const char *name, bool tool)
     }
 }
 
+/* The servers here exit without finalizing, which leaves their socket
+ * directories and rendezvous files behind: give them a directory of their
+ * own, removed when the test ends */
+static char scratch[256];
+
+static int scratch_rm(const char *path, const struct stat *st, int flag, struct FTW *ftw)
+{
+    PMIX_HIDE_UNUSED_PARAMS(st, flag, ftw);
+    return remove(path);
+}
+
+static void scratch_done(void)
+{
+    if ('\0' != scratch[0]) {
+        (void) nftw(scratch, scratch_rm, 16, FTW_DEPTH | FTW_PHYS);
+    }
+}
+
+static bool scratch_start(void)
+{
+    const char *base = getenv("TMPDIR");
+
+    snprintf(scratch, sizeof(scratch), "%s/pmix_ut.XXXXXX", (NULL == base) ? "/tmp" : base);
+    if (NULL == mkdtemp(scratch)) {
+        scratch[0] = '\0';
+        return false;
+    }
+    setenv("TMPDIR", scratch, 1);
+    atexit(scratch_done);
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+#if PMIX_ENABLE_LEGACY_PEERS
+    /* these cases are about the TCP listener, which a server opens for
+     * clients and tools of earlier releases */
+    setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
+#else
+    fprintf(stdout, "this PMIx takes no clients or tools of earlier releases, so a "
+                    "server has no TCP listener for these cases\n");
+    return 77;
+#endif
+    if (!scratch_start()) {
+        fprintf(stderr, "could not make a scratch directory\n");
+        return 1;
+    }
 
     fprintf(stdout, "\n=== v4.1-shaped connect-ack unit tests ===\n\n");
     run_case("a v4.1 client's padded connect-ack connects", false);

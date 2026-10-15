@@ -116,8 +116,38 @@ Tool identity attributes
 * ``PMIX_TOOL_NSPACE`` (char\*) |mdash| namespace to use for this tool. Must be
   accompanied by ``PMIX_TOOL_RANK``; providing one without the other returns an
   error. If not given, the identity is taken from the ``PMIX_NAMESPACE``
-  environment variable (set when the tool was launched by a PMIx-enabled daemon)
-  or is self-assigned.
+  and ``PMIX_RANK`` environment variables (set when the tool was launched by a
+  PMIx-enabled daemon, and inherited by a tool that a job script starts) or,
+  when those are absent, is assigned by the server's host. A client takes
+  those variables out of its environment when it initializes, so a tool it
+  starts after that has none of them (see
+  :ref:`PMIx_Init(3) <man3-PMIx_Init>`).
+
+  A server accepts one connection per namespace and rank, and the first
+  process to connect holds it:
+
+  * a tool that takes its namespace and rank from its environment can find
+    them in use - by the script that started it, or by another tool it
+    started. The server refuses the connection with ``PMIX_ERR_EXISTS``,
+    and the tool connects again without an identity, to be given one by the
+    host: it comes up under a namespace of its own. If the host does not give
+    it one, ``PMIx_tool_init`` returns ``PMIX_ERR_EXISTS``. Tools of releases before
+    this one do not connect again, and ``PMIx_tool_init`` returns
+    ``PMIX_ERR_EXISTS``;
+  * a tool given ``PMIX_TOOL_NSPACE`` and ``PMIX_TOOL_RANK`` keeps that
+    identity. If it is in use, ``PMIx_tool_init`` returns ``PMIX_ERR_EXISTS``;
+  * a tool that takes a job script's rank before the script's application
+    connects holds the rank, and the application is then refused with
+    ``PMIX_ERR_EXISTS``. The server cannot tell such a tool from a tool that
+    is the script's only PMIx process. Where a script runs a tool alongside
+    its application, start the tool without ``PMIX_NAMESPACE`` and
+    ``PMIX_RANK`` in its environment, or give it ``PMIX_TOOL_NSPACE`` and
+    ``PMIX_TOOL_RANK``.
+
+  A tool that joins a namespace - a client's rank, or a namespace another tool
+  of its name holds - must use that namespace's wire format: every process of
+  a namespace is sent the same. A tool whose library does not have it is
+  refused with ``PMIX_ERR_NOT_SUPPORTED``.
 * ``PMIX_TOOL_RANK`` (uint32_t) |mdash| rank of this tool within its namespace.
 * ``PMIX_LAUNCHER`` (bool) |mdash| the tool is a launcher and needs rendezvous
   files created; causes the server-side infrastructure to be initialized.
@@ -251,6 +281,11 @@ a PMIx error constant is returned, including:
   not optional. A message naming the server's version is printed.
 * ``PMIX_ERR_NOMEM`` |mdash| the library could not allocate required internal
   storage.
+* ``PMIX_ERR_EXISTS`` |mdash| the namespace and rank the tool was to connect
+  as already have a connection, and the tool did not come up under a
+  namespace of its own (see ``PMIX_TOOL_NSPACE``).
+* ``PMIX_ERR_NOT_SUPPORTED`` |mdash| among other causes, the tool would join a
+  namespace whose processes use a wire format its library does not have.
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.

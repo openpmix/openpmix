@@ -62,6 +62,7 @@
 
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
+#include "src/common/pmix_idenv.h"
 #include "src/common/pmix_iof.h"
 #include "src/event/pmix_event.h"
 
@@ -234,6 +235,8 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     int ret, debug_level;
     pmix_status_t kirc;
     char *error = NULL, *evar;
+    const char *idv;
+    bool psec_set = false;
     size_t n, m;
     char hostname[PMIX_MAXHOSTNAMELEN] = {0};
     pmix_info_t *iptr;
@@ -578,12 +581,18 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
 
     /* open the psec and select the active plugins */
-    if (NULL != (evar = getenv("PMIX_SECURITY_MODE"))) {
-        /* convert to an MCA param, but don't overwrite something already there */
-        PMIx_Setenv("PMIX_MCA_psec", evar, false, &environ);
+    if (NULL != (idv = pmix_idenv_get("PMIX_SECURITY_MODE")) && NULL == getenv("PMIX_MCA_psec")) {
+        /* convert to an MCA param, but don't overwrite something already
+         * there - and take it out again once it is read, so a process we
+         * start inherits it no more than the mode it came from */
+        PMIx_Setenv("PMIX_MCA_psec", idv, false, &environ);
+        psec_set = true;
     }
     ret = pmix_mca_base_framework_open(&pmix_psec_base_framework,
                                        PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (psec_set) {
+        pmix_unsetenv("PMIX_MCA_psec", &environ);
+    }
     if (PMIX_SUCCESS != ret) {
         error = "pmix_psec_base_open";
         goto return_error;

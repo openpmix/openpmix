@@ -171,7 +171,7 @@ PMIx has addressed this by utilizing a plugin-based architecture that allows bot
 
 That support has limits in both directions:
 
-* A server supports clients and tools using PMIx v2.1 or later.
+* A server supports clients and tools using PMIx v2.1 or later. Those of releases before v7.0 connect over TCP, and a server takes them only when its ``ptl_base_legacy_peers`` MCA parameter, or its host's ``PMIX_SERVER_LEGACY_PEERS`` attribute, says so. Both are off by default, and a PMIx configured ``--disable-legacy-peers`` cannot take them at all. On a platform other than Linux and macOS, one that authenticates with ``native`` is taken only when ``psec_native_legacy_auth`` is also set to ``true``.
 * A client or tool supports servers using PMIx v3.2 or later.
 
 Connections outside those limits are refused, with a message naming the version that was found, rather than being allowed to fail later in some less obvious way. In particular:
@@ -179,5 +179,6 @@ Connections outside those limits are refused, with a message naming the version 
 * PMIx v1.x clients cannot connect to a current server at all: they only support the ``usock`` transport, which is no longer provided.
 * PMIx v2.0.x clients are not supported. A server does not advertise itself in the form they look for, and one that reaches a server anyway is refused at its handshake, which does not identify the buffer format it uses, so a server cannot reliably read its messages.
 * A current client or tool will not connect to a server older than v3.2. Such a server accepts the connection, but cannot answer requests that current clients make during initialization.
+* PMIx v4.1 is no longer maintained. Its clients and tools cannot use a server built with ``--enable-debug``: such a server has its clients use fully described buffers, and a v4.1 library built without that option builds its first request in its own default format and fails ``PMIx_Init`` with ``PMIX_ERR_PACK_MISMATCH``. They work with a server built without ``--enable-debug``.
 
 .. note:: The cross-version guarantee only means that users of two different versions will be able to communicate requests and their responses. It does not guarantee that both sides will completely support the requests. It is possible, for example, for a server to not include support for an operation that was introduced in a newer version being used by a client. Likewise, it is possible that a bug existed in an earlier version that precludes correct completion of the request.

@@ -124,10 +124,16 @@ static void check_bad_directive(const char *key)
  * swallow that under "optional" and come up with a self-assigned identity,
  * reporting success for a call that could never have done what was asked.
  *
- * The child reports what init returned: 0 = PMIX_ERR_BAD_PARAM,
- * 1 = PMIX_SUCCESS, 2 = anything else. The tmpdirs point at an empty
- * directory so a regression that fell through to discovery cannot attach
- * to some real server on this node. */
+ * The child reports what init returned, in exit codes of its own: a
+ * memory-error detector that ends the child reports one too, and 1 - its
+ * usual choice - must not read as a successful init. The tmpdirs point at
+ * an empty directory so a regression that fell through to discovery
+ * cannot attach to some real server on this node. */
+#define OPT_BAD_PARAM 40
+#define OPT_SUCCESS   41
+#define OPT_OTHER     42
+#define OPT_SETUP     43
+
 static int optional_child(const char *key, const char *strval)
 {
     pmix_proc_t myproc;
@@ -139,7 +145,7 @@ static int optional_child(const char *key, const char *strval)
 
     dir = mkdtemp(tmpl);
     if (NULL == dir) {
-        return 3;
+        return OPT_SETUP;
     }
     if (NULL == strval) {
         /* the key names a string or a number; hand it a bool */
@@ -154,9 +160,9 @@ static int optional_child(const char *key, const char *strval)
     rmdir(dir);
     if (PMIX_SUCCESS == rc) {
         PMIx_tool_finalize();
-        return 1;
+        return OPT_SUCCESS;
     }
-    return (PMIX_ERR_BAD_PARAM == rc) ? 0 : 2;
+    return (PMIX_ERR_BAD_PARAM == rc) ? OPT_BAD_PARAM : OPT_OTHER;
 }
 
 static void check_optional(const char *name, const char *key, const char *strval,
@@ -179,9 +185,14 @@ static void check_optional(const char *name, const char *key, const char *strval
     waitpid(child, &status, 0);
     if (!WIFEXITED(status)) {
         report(name, 0, "the tool died on a signal");
-    } else if (expect != WEXITSTATUS(status)) {
-        snprintf(detail, sizeof(detail), "init returned %s",
-                 (WEXITSTATUS(status) < 4) ? outcome[WEXITSTATUS(status)] : "?");
+    } else if (OPT_BAD_PARAM + expect != WEXITSTATUS(status)) {
+        if (OPT_BAD_PARAM <= WEXITSTATUS(status) && OPT_SETUP >= WEXITSTATUS(status)) {
+            snprintf(detail, sizeof(detail), "init returned %s",
+                     outcome[WEXITSTATUS(status) - OPT_BAD_PARAM]);
+        } else {
+            snprintf(detail, sizeof(detail), "the tool exited %d without reporting",
+                     WEXITSTATUS(status));
+        }
         report(name, 0, detail);
     } else {
         report(name, 1, NULL);

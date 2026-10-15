@@ -1004,8 +1004,8 @@ def_complete && (len(local_cbs) + len(departed)) >= nlocal
 ```
 
 `departed` holds local participants whose connection dropped **before**
-contributing; the `>=` is deliberately tolerant of over-count from
-fork/exec'd clones. Participation is tracked **by identity**: a peer that
+contributing; the `>=` is deliberately tolerant of over-count from a
+rank that contributed twice. Participation is tracked **by identity**: a peer that
 already contributed (is on `local_cbs`) is never moved to `departed`, so
 its loss can neither complete the collective early nor discard its data.
 
@@ -1313,7 +1313,7 @@ eventual callback then runs `pmix_server_cnct_cbfunc` on freed memory.
 `test/unit/server_connect.c` reproduces that as a SIGSEGV. Hence the
 `if (!trk->host_called)` wrapper around the whole assembly. A late
 contributor loses nothing by being skipped: its contribution is built
-from `cd->peer->info`, and a clone shares its parent's
+from `cd->peer->info`, and every connection of a rank shares its
 `pmix_rank_info_t`, so it is exactly what the rank already sent.
 
 **A tracker the host already owns must not be completed again.**
@@ -1322,10 +1322,10 @@ and `completion_fired` is the only state it refuses. That leaves the
 window between `fence_nb` returning and the host calling back - the
 length of a global barrier - during which the tracker is on the list,
 `host_called`, and joinable. A contribution arriving in that window is a
-routine event: a fork/exec'd clone of a rank that already called in, or a
-second `PMIx_Fence_nb` over the same set issued before the first
-resolved. `pmix_server_trk_complete()` then answers "yes" again (the
-`>=` is deliberately tolerant of a clone over-count), and the handler
+routine event: a rank that already called in calling again after it
+reconnected, or a second `PMIx_Fence_nb` over the same set issued before
+the first resolved. `pmix_server_trk_complete()` then answers "yes" again
+(the `>=` is deliberately tolerant of an over-count), and the handler
 handed the host *the same tracker pointer* a second time. The host then
 has two operations outstanding against one `cbdata` and completes both:
 the first reply run unlinks and releases the tracker, and the second runs
@@ -1361,10 +1361,11 @@ neither the compression flag nor the enclosing byte object that
 participant's `bfrops` module rather than `pmix_globals.mypeer`'s. So
 every fence that had to wait on a registration handed the host a blob no
 receiving server could parse - invisible to `make check`, because a
-single-node run never defers a fence. The clone de-duplication that copy
-carried now lives in `pmix_server_collect_data`, where both callers get
-it: a fork/exec'd clone shares its parent's `pmix_rank_info_t`, so
-identity of `&peer->info->pname` is what tells the two apart.
+single-node run never defers a fence. The per-rank de-duplication that
+copy carried now lives in `pmix_server_collect_data`, where both callers
+get it: two caddies of one rank - a second call, or a call made again
+after the rank reconnected - share its `pmix_rank_info_t`, so identity
+of `&peer->info->pname` is what tells them apart.
 
 **A tracker handed to `PMIX_EXECUTE_COLLECTIVE` crosses an async hop, so
 the caddy takes a reference.** `pmix_trkr_caddy_t` used to carry a bare
