@@ -67,7 +67,9 @@
  *    psec_native_legacy_auth says. A current one asks for the
  *    local-socket handshake - unless it names another host's kernel,
  *    which is refused outright. The handshake itself is then run end to
- *    end, its two halves on two threads over a loopback connection.
+ *    end, its two halves on two threads over a loopback connection -
+ *    including with other connections reaching the handshake socket
+ *    first, which the server must read past to find the peer's.
  *
  * Like the pstat tests, this needs the MCA up but no server:
  * pmix_init_util() establishes the install dirs, the variable system and
@@ -89,6 +91,7 @@
 #include "src/mca/psec/base/base.h"
 #include "src/runtime/pmix_init_util.h"
 
+#include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -955,6 +958,7 @@ typedef struct {
     pmix_psec_module_t *mod;
     int sd;
     bool close_after;
+    bool flood;
     pmix_status_t rc;
 } hs_client_t;
 
@@ -1051,10 +1055,108 @@ done:
     return NULL;
 }
 
-static pmix_status_t run_handshake(pmix_psec_module_t *mod, pmix_peer_t *peer, bool close_after,
+/* connect to the handshake socket, trying again while the server has
+ * not yet taken the connections queued ahead of this one */
+static int hs_connect(struct sockaddr_un *addr)
+{
+    int sd, n;
+
+    for (n = 0; n < 5000; n++) {
+        sd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (0 > sd) {
+            return -1;
+        }
+        if (0 == connect(sd, (struct sockaddr *) addr, sizeof(*addr))) {
+            return sd;
+        }
+        close(sd);
+        if (ECONNREFUSED != errno && EAGAIN != errno) {
+            return -1;
+        }
+        usleep(1000);
+    }
+    return -1;
+}
+
+/* A peer whose connection to the handshake socket comes after others:
+ * one that sends a wrong nonce, one that sends half the right one and
+ * stops, and one that sends nothing - or, with `flood`, more silent
+ * ones than the server reads at once. The peer then sends the nonce and
+ * holds its connection until the server answers, as client_handshake
+ * does */
+#define HS_FLOOD 12
+
+static void *hs_decoys(void *arg)
+{
+    hs_client_t *c = (hs_client_t *) arg;
+    unsigned char nonce[32], wrong[32];
+    struct sockaddr_un addr;
+    uint32_t u32;
+    char *base = NULL, *rel = NULL;
+    int decoy[HS_FLOOD], ndecoys, usd = -1, n;
+
+    c->rc = PMIX_ERROR;
+    for (n = 0; n < HS_FLOOD; n++) {
+        decoy[n] = -1;
+    }
+    if (!read_full(c->sd, &u32, sizeof(u32)) || sizeof(nonce) != ntohl(u32) ||
+        !read_full(c->sd, nonce, sizeof(nonce)) || NULL == (base = read_str(c->sd)) ||
+        NULL == (rel = read_str(c->sd))) {
+        goto done;
+    }
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s", base, rel);
+
+    ndecoys = c->flood ? HS_FLOOD : 3;
+    for (n = 0; n < ndecoys; n++) {
+        decoy[n] = hs_connect(&addr);
+        if (0 > decoy[n]) {
+            goto done;
+        }
+        if (c->flood) {
+            continue;
+        }
+        if (0 == n) {
+            memcpy(wrong, nonce, sizeof(wrong));
+            wrong[0] ^= 0xff;
+            if (sizeof(wrong) != send(decoy[n], wrong, sizeof(wrong), 0)) {
+                goto done;
+            }
+        } else if (1 == n) {
+            if (sizeof(nonce) / 2 != send(decoy[n], nonce, sizeof(nonce) / 2, 0)) {
+                goto done;
+            }
+        }
+    }
+
+    usd = hs_connect(&addr);
+    if (0 > usd || sizeof(nonce) != send(usd, nonce, sizeof(nonce), 0)) {
+        goto done;
+    }
+    if (read_full(c->sd, &u32, sizeof(u32))) {
+        c->rc = (pmix_status_t) ntohl(u32);
+    }
+
+done:
+    if (0 <= usd) {
+        close(usd);
+    }
+    for (n = 0; n < HS_FLOOD; n++) {
+        if (0 <= decoy[n]) {
+            close(decoy[n]);
+        }
+    }
+    free(base);
+    free(rel);
+    return NULL;
+}
+
+/* run the server half here and `peer_fn` on a thread */
+static pmix_status_t run_handshake(void *(*peer_fn)(void *), pmix_psec_module_t *mod,
+                                   pmix_peer_t *peer, bool close_after, bool flood,
                                    pmix_status_t *client_rc)
 {
-    /* a NULL client module means the trickling peer */
     pmix_psec_module_t *server = pmix_psec_base_assign_module("native");
     hs_client_t c;
     pthread_t thr;
@@ -1068,8 +1170,9 @@ static pmix_status_t run_handshake(pmix_psec_module_t *mod, pmix_peer_t *peer, b
     c.mod = mod;
     c.sd = client;
     c.close_after = close_after;
+    c.flood = flood;
     c.rc = PMIX_ERROR;
-    if (0 != pthread_create(&thr, NULL, (NULL == mod) ? hs_trickler : hs_client, &c)) {
+    if (0 != pthread_create(&thr, NULL, peer_fn, &c)) {
         close(client);
         close(peer->sd);
         peer->sd = -1;
@@ -1125,13 +1228,13 @@ static void native_handshake(void)
     peer->info->host_registered = true;
     peer->info->uid = geteuid();
     peer->info->gid = getegid();
-    rc = run_handshake(mod, peer, false, &crc);
+    rc = run_handshake(hs_client, mod, peer, false, false, &crc);
     report("handshake confirms a client registered as its own user",
            PMIX_SUCCESS == rc && PMIX_SUCCESS == crc);
 
     /* a client registered as somebody else is refused - and told so */
     peer->info->uid = (0 == geteuid()) ? (uid_t) 4242 : (uid_t) 0;
-    rc = run_handshake(mod, peer, false, &crc);
+    rc = run_handshake(hs_client, mod, peer, false, false, &crc);
     report("handshake refuses a client registered as another user",
            PMIX_ERR_INVALID_CRED == rc && PMIX_ERR_INVALID_CRED == crc);
 
@@ -1146,7 +1249,7 @@ static void native_handshake(void)
     }
 #endif
     peer->info->gid = (0 == geteuid()) ? getegid() : other_gid;
-    rc = run_handshake(mod, peer, false, &crc);
+    rc = run_handshake(hs_client, mod, peer, false, false, &crc);
     report("handshake replaces a tool's claimed identity with the socket's",
            PMIX_SUCCESS == rc && PMIX_SUCCESS == crc && geteuid() == peer->info->uid
                && getegid() == peer->info->gid);
@@ -1156,11 +1259,27 @@ static void native_handshake(void)
     peer->info->host_registered = true;
     peer->info->uid = geteuid();
     peer->info->gid = getegid();
-    rc = run_handshake(mod, peer, true, &crc);
+    rc = run_handshake(hs_client, mod, peer, true, false, &crc);
     report("handshake fails cleanly when the peer cannot reach the socket",
            PMIX_ERR_INVALID_CRED == rc && PMIX_SUCCESS != crc);
     free(*sockdir);
     *sockdir = NULL;
+
+    /* other connections reach the socket before the peer's - one with a
+     * wrong nonce, one with half the right one, one silent - and the
+     * server reads past them to the peer */
+    peer->info->host_registered = true;
+    peer->info->uid = geteuid();
+    peer->info->gid = getegid();
+    rc = run_handshake(hs_decoys, mod, peer, false, false, &crc);
+    report("handshake finds the peer's connection behind wrong, partial and silent ones",
+           PMIX_SUCCESS == rc && PMIX_SUCCESS == crc);
+
+    /* more silent connections than the server reads at once: the oldest
+     * give way, and the peer's is still read */
+    rc = run_handshake(hs_decoys, mod, peer, false, true, &crc);
+    report("handshake finds the peer's connection behind more silent ones than it holds",
+           PMIX_SUCCESS == rc && PMIX_SUCCESS == crc);
 
     /* a peer that sends its nonce a byte a second takes 32 seconds; the
      * server must give up at the handshake deadline (5 seconds by default)
@@ -1169,7 +1288,7 @@ static void native_handshake(void)
         double t0, secs;
 
         t0 = awake_secs();
-        rc = run_handshake(NULL, peer, false, &crc);
+        rc = run_handshake(hs_trickler, mod, peer, false, false, &crc);
         secs = awake_secs() - t0;
         fprintf(stdout, "    trickling peer refused after %.1f seconds\n", secs);
         report("handshake gives up on a trickling peer at one deadline for the whole exchange",
