@@ -118,22 +118,33 @@ server -> peer (TCP):   u32 status
   `<socket_dir>/pmix-native.XXXXXX` (`mkdtemp`, mode 0711), on first
   use, and removes it at finalize. Several servers can share a base.
 - Each handshake gets its own socket (`auth.<n>`, mode 0777 — any user
-  may connect; the nonce and `SO_PEERCRED`/`getpeereid()` decide), with a
-  backlog of one. It is unlinked as soon as it has accepted, and on every
-  exit path.
+  may connect; the nonce and `SO_PEERCRED`/`getpeereid()` decide). It is
+  unlinked once a connection has presented the nonce, and on every exit
+  path.
+- **The server reads every connection made to the socket until one
+  presents the nonce** (`await_nonce()`). Any user can connect, so the
+  first connection is not necessarily the peer's: one that sends a wrong
+  nonce, or nothing, is closed and the wait goes on. Up to
+  `NATIVE_MAX_PENDING` (8, also the `listen()` backlog) are read at once;
+  when all are in use the oldest is closed to admit a new one. Each
+  `poll()` round reads what the open connections have sent before it
+  accepts another, and a peer sends its nonce as soon as it connects, so
+  a new connection cannot push the peer's out before it has been read.
+  Do not go back to accepting one connection and closing the listener:
+  whoever connected first then decided the handshake.
 - The peer joins the **relative path** to its own `socket_dir` if set,
   else to the base the server sent. That is how a container that mounts
   the directory elsewhere still finds it.
 - The peer keeps its AF_UNIX socket open until the server's status
   arrives, so the server can read its credentials while it is connected.
-- The server waits with `poll()` on the listener **and** the TCP socket.
-  **The whole server half shares one deadline**,
-  `ptl_base_connect_ack_timeout` from the start of the handshake: the
-  wait for the connection and the read of the nonce (non-blocking, a
-  `poll()` per chunk) each wait only for what is left of it. Do not go
-  back to `SO_RCVTIMEO` and `pmix_ptl_base_recv_blocking` there: that
-  timeout restarts with every `recv()`, so a peer sending one byte at a
-  time held the server for 32 timeouts. A peer that cannot reach the
+- The server waits with one `poll()` on the listener, the TCP socket
+  and the connections it is reading. **The whole server half shares one
+  deadline**, `ptl_base_connect_ack_timeout` from the start of the
+  handshake: every wait, for a connection or for more of a nonce, waits
+  only for what is left of it. Do not go back to `SO_RCVTIMEO` and
+  `pmix_ptl_base_recv_blocking` there: that timeout restarts with every
+  `recv()`, so a peer sending one byte at a time held the server for 32
+  timeouts. A peer that cannot reach the
   socket returns an error, ptl closes the TCP connection, and the
   server's wait ends at once.
 - The nonce is compared without an early exit.

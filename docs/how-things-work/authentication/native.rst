@@ -33,8 +33,11 @@ these steps in order and stops at the first that decides the matter.
    the TCP connection, its path and a random value. The peer connects to
    that socket and returns the value. The kernel reports the uid and gid
    of the process that connected (method 1 in :doc:`methods`), and the
-   returned value ties that process to the TCP connection. The server
-   then closes and removes the socket. All further traffic stays on TCP.
+   returned value ties that process to the TCP connection. Any process
+   may connect to the socket, so the server reads each connection until
+   one returns the value, closing those that return something else or
+   nothing. It then closes and removes the socket. All further traffic
+   stays on TCP.
 
 #. **Otherwise, refuse.** A peer whose credential shows it runs on
    another host's kernel is refused outright: no local socket can reach
