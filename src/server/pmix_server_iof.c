@@ -608,7 +608,7 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
             continue;
         }
         /* the subscription follows into the child job only if its
-         * requester may access that job - see docs/security-plan.rst */
+         * requester may access that job - see docs/hosts/access-control.rst */
         if (!pmix_server_peer_permitted(req->requestor, child)) {
             continue;
         }

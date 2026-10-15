@@ -201,7 +201,7 @@ drops a segment it unlinks the backing file; a client that still has it
 mapped keeps a valid mapping, which is what lets one generation of a
 segment be handed off while readers are still on it. A client the file's
 mode does not admit falls back to getting the data from the server, where
-the access rule is applied (see :doc:`/security-plan`).
+the access rule is applied (see :doc:`/hosts/access-control`).
 
 .. important::
 

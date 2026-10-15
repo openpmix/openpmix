@@ -840,7 +840,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     if (0 < cnt) {
         /* Cleanup is removed as the peer that asked for it (each entry
          * records who), and is put only on the epilogs of jobs that peer
-         * is allowed to act on - see docs/security-plan.rst. With no
+         * is allowed to act on - see docs/hosts/access-control.rst. With no
          * targets the cleanup is on the requester's own job */
         if (unknown_target) {
             rc = PMIX_ERR_NOT_FOUND;

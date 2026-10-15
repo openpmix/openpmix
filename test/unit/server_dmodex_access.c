@@ -7,7 +7,7 @@
  * $HEADER$
  *
  * White-box unit tests for access by user and group to data held on
- * another node - see docs/security-plan.rst, phase 3.
+ * another node - see docs/hosts/access-control.rst, phase 3.
  *
  * One process plays both servers. As the server a requester asks, it takes
  * GETs for a job it does not host and hands them to a stub host's

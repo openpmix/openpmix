@@ -1101,7 +1101,7 @@ static ssize_t pattern_literal_head(const char *pattern)
 }
 
 /* Who is to read a job's output files, and what can be arranged - see
- * docs/security-plan.rst. By default only the job's owner reads them. A
+ * docs/hosts/access-control.rst. By default only the job's owner reads them. A
  * group the owner allowed in the job's access list may too. */
 typedef struct {
     uid_t owner;

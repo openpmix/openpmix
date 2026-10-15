@@ -6,7 +6,7 @@
  *
  * $HEADER$
  *
- * Who owns and reads a job's output files - see docs/security-plan.rst,
+ * Who owns and reads a job's output files - see docs/hosts/access-control.rst,
  * phase 4.
  *
  * The test process is the server. It registers jobs asking for their

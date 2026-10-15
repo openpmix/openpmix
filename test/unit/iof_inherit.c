@@ -38,7 +38,7 @@
  * be: test/simple/simptest cannot host a spawn - see src/server/AGENTS.md.)
  *
  * A subscription follows into the child job only if its requester may
- * access that job - see docs/security-plan.rst. The watchers built here
+ * access that job - see docs/hosts/access-control.rst. The watchers built here
  * are root unless a case says otherwise, so only the access cases turn
  * on who they are.
  */

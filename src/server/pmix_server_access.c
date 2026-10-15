@@ -7,7 +7,7 @@
  * $HEADER$
  */
 
-/* Access to a namespace by user and group - see docs/security-plan.rst.
+/* Access to a namespace by user and group - see docs/hosts/access-control.rst.
  *
  * A namespace has an owner (pmix_access_t in pmix_globals.h) and may
  * name further users and groups allowed to access it; a user

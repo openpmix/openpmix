@@ -217,7 +217,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
         created = true;
     }
     /* who owns the job and who else may access it - see
-     * docs/security-plan.rst. A malformed entry fails the registration,
+     * docs/hosts/access-control.rst. A malformed entry fails the registration,
      * and a namespace this call created goes back off the list */
     rc = pmix_server_access_set(nptr, cd->info, cd->ninfo);
     if (PMIX_SUCCESS != rc) {

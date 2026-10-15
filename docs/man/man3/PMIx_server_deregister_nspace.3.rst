@@ -94,8 +94,8 @@ Deregistering a namespace automatically deletes all client information for that
 namespace |mdash| there is no need to individually deregister its clients
 first. Use
 :ref:`PMIx_server_deregister_client(3) <man3-PMIx_server_deregister_client>`
-only for exception cases where a single client must be removed while the
-namespace remains active.
+to remove a single client whose process has ended while the namespace remains
+active.
 
 If the PMIx server library's progress engine has already been stopped (for
 example, during finalize), the request cannot be serviced; any provided

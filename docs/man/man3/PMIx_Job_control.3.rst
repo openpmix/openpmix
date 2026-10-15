@@ -208,7 +208,7 @@ for processing and the final status will be delivered to ``cbfunc``.
   given for job or process cleanup.
 * ``PMIX_ERR_NO_PERMISSIONS`` |mdash| cleanup directives name a job the
   caller's user may not access, or the host refused the request. See
-  :doc:`/security-plan`.
+  :doc:`/hosts/access-control`.
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the operation is not supported (for example,
   a server whose host environment provides no job control module).
 * ``PMIX_ERR_UNREACH`` |mdash| the local PMIx server could not be reached.
