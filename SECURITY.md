@@ -151,7 +151,7 @@ A few behaviors are intentional and are not, by themselves, vulnerabilities:
   namespaces is therefore normal — connected jobs, debuggers, and workflow
   tools do it routinely — and is not by itself an issue. The rule,
   and what a host environment must supply for it, are described in
-  [Access control by user and group](https://docs.openpmix.org/en/latest/security-plan.html).
+  [Access control by user and group](https://docs.openpmix.org/en/latest/hosts/access-control.html).
   The host environment itself is not restricted, and two things are governed
   differently: the process raising an event chooses who receives it through
   the event's range, and published data (`PMIx_Publish`) is governed per item

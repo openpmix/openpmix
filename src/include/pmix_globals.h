@@ -374,7 +374,7 @@ typedef struct {
 }
 
 /* Who may access a namespace's data and act on it - see
- * docs/security-plan.rst and pmix_server_access_permitted(). Kept by a
+ * docs/hosts/access-control.rst and pmix_server_access_permitted(). Kept by a
  * server only. */
 typedef enum {
     PMIX_OWNER_UNKNOWN = 0,   // nobody named an owner - the server's own identity stands in

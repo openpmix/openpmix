@@ -1859,7 +1859,7 @@ shmem3_segment_attach_and_init(
  * does not admit - of another user's job, or of a job this server could
  * not give the file to - fails to open it and takes the data from the
  * server instead, where the access rule is applied. See
- * docs/security-plan.rst.
+ * docs/hosts/access-control.rst.
  */
 static pmix_status_t
 shmem3_segment_fix_perms(

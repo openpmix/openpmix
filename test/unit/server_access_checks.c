@@ -7,7 +7,7 @@
  * $HEADER$
  *
  * White-box unit tests for where the server library applies access by
- * user and group to what it answers itself - see docs/security-plan.rst,
+ * user and group to what it answers itself - see docs/hosts/access-control.rst,
  * phase 2. test/unit/server_access.c covers how a job's owner and access
  * list are recorded and the rule itself; this covers the places the rule
  * is applied.

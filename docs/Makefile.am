@@ -56,6 +56,7 @@ IMAGE_SOURCE_FILES  = \
 
 RST_SOURCE_FILES   = \
         $(srcdir)/*.rst \
+        $(srcdir)/admin/*.rst \
         $(srcdir)/building-apps/*.rst \
         $(srcdir)/developers/*.rst \
         $(srcdir)/how-things-work/*.rst \
@@ -64,6 +65,7 @@ RST_SOURCE_FILES   = \
         $(srcdir)/how-things-work/inheritance/*.rst \
         $(srcdir)/how-things-work/schedulers/*.rst \
         $(srcdir)/how-things-work/sets_groups/*.rst \
+        $(srcdir)/hosts/*.rst \
         $(srcdir)/installing-pmix/*.rst \
         $(srcdir)/installing-pmix/configure-cli-options/*.rst \
         $(srcdir)/man/*.rst \

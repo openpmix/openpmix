@@ -9,6 +9,10 @@ it, the identity/security handshake both sides run, and how framed
 messages are sent and received over the socket in steady state. All of
 this is the job of the MCA ``ptl`` (PMIx Transport Layer) framework.
 
+The life of a connection, from listener to departure, is described in
+:doc:`connections`. This page covers the framework itself, how a tool
+finds its server, and how messages travel once connected.
+
 For a code-oriented orientation aimed at contributors working *inside*
 the framework, each ``ptl`` directory also carries an ``AGENTS.md`` (with
 a ``CLAUDE.md`` symlink): ``src/mca/ptl/AGENTS.md`` for the framework as a
@@ -255,59 +259,9 @@ steady-state send/receive events.
 The Handshake
 -------------
 
-Once the socket is open, the connecting side sends a **connect-ack**: a
-message header followed by a payload the two ends have agreed to lay out
-field by field. The payload carries the security module name, a
-credential, a one-byte **flag** identifying the kind of connector, the
-process's identity (nspace/rank and/or uid/gid), its version, its
-``bfrops`` module and buffer type, its ``gds`` module, and an optional
-info blob.
-
-The flag (``pmix_rnd_flag_t``, values 0–10, defined in
-``src/mca/ptl/base/ptl_base_handshake.h``) distinguishes a simple client
-from a legacy tool, a launcher, a self-started tool that *needs* an
-identifier versus one that was *given* one, a server-started tool, a
-singleton, or a scheduler. The server switches on this flag to decide how
-much of the message to read and how to treat the connector.
-
-The payload is built with the ``PMIX_PTL_PUT_*`` macros on the sending
-side (``construct_message`` in ``ptl_base_fns.c``) and parsed with the
-symmetric ``PMIX_PTL_GET_*`` macros on the receiving side
-(``pmix_ptl_base_connection_handler`` in ``ptl_base_connection_hdlr.c``).
-The two macro families are deliberately mirror images so the two ends can
-be read side by side.
-
-**The field order of the handshake is a frozen wire-format contract.** A
-server and a client built from different PMIx releases must interoperate,
-so per PMIx's interoperability rules the layout is append-only: new fields
-may be added at the end, but nothing may be inserted, removed, or
-reordered. The oldest peer a server accepts is v2.1: a v2.0 peer's
-handshake ends at the version string, without the buffer type the server
-needs to read its messages, so the server refuses it there. A client or
-tool likewise refuses to connect to a server it knows to be older than
-v3.2.
-
-On the server side the connection handler:
-
-#. reads the handshake as its bytes arrive — the accepted socket is
-   non-blocking, and the handler runs each time it becomes readable,
-   keeping its place, until the whole message is in — and then parses it,
-   guarding sizes against ``PMIX_MAX_CRED_SIZE`` and taint limits. A
-   connection that has not delivered its whole handshake within
-   ``ptl_base_connect_ack_timeout`` is dropped, and so is the oldest such
-   connection when ``ptl_base_max_pending_connections`` of them are
-   waiting;
-#. for a **simple client or singleton**, verifies the nspace and rank were
-   pre-registered, creates the peer, and assigns its ``psec`` / ``bfrops``
-   / ``gds`` compatibility modules;
-#. for a **tool or launcher**, runs the two-step ``process_tool_request``,
-   which may call the host's ``tool_connected`` upcall to assign a fresh
-   nspace, then returns it to the tool via ``process_cbfunc``;
-#. validates the credential with ``PMIX_PSEC_VALIDATE_CONNECTION``, informs
-   the host through ``client_connected2``, sends back the status and the
-   peer's array index, runs the security handshake if the ``psec`` module
-   requested one, arms the peer's events, and flushes any cached event
-   notifications to the newly connected peer.
+The connection request, the checks the server makes, the security
+exchange, the call to the host, and the replies are described in
+:doc:`connections`.
 
 
 Messages in Steady State
@@ -373,13 +327,8 @@ to itself.
 Losing a connection
 ~~~~~~~~~~~~~~~~~~~~~
 
-When a socket error or peer close is detected, ``lost_connection`` unwinds
-the state that depended on the peer: it stops the peer's events and closes
-the socket, and then either (as a server) accounts for the departed client
-in every collective it was participating in, purges its cached
-notifications, and reports ``PMIX_ERR_LOST_CONNECTION``; or (as a client
-whose server died) completes any in-flight ``SEND_RECV`` with an empty
-buffer so blocked callers do not hang, before reporting the event.
+How a connection ends - by finalize, disconnect, a process dying, or
+the server going away - is described in :doc:`connections`.
 
 
 Threading Model

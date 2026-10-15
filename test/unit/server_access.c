@@ -8,7 +8,7 @@
  *
  * White-box unit tests for access to a namespace by user and group -
  * src/server/pmix_server_access.c, and the places a job's owner and
- * access list are recorded. See docs/security-plan.rst.
+ * access list are recorded. See docs/hosts/access-control.rst.
  *
  * A job has an owner and may name further users and groups allowed to
  * access it. A requester is allowed if it is root, runs as the server's

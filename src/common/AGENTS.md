@@ -408,7 +408,7 @@ Two rules to keep when touching it:
   sides of each power of ten.
 
 **Who owns and reads an output file is settled through its descriptor**
-(`output_perms()`, `output_fd()`; see `docs/security-plan.rst`).
+(`output_perms()`, `output_fd()`; see `docs/hosts/access-control.rst`).
 `output_perms()` decides once per job from `nptr->access`: the owner, the
 group to give read access to (the first one the access list names, else
 the owner's), and the mode for the directories we create - `0700`/`0750`

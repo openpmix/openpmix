@@ -301,7 +301,7 @@ spawning debugger daemons alongside it.
   as ``PMIX_DEBUG_STOP_ON_EXEC``. A stopped process continues when it receives
   a ``PMIX_DEBUGGER_RELEASE`` event. The server accepts that event from a client
   or tool only if its user may access the job of every process the event can
-  reach - see :doc:`/security-plan`.
+  reach - see :doc:`/hosts/access-control`.
 * ``PMIX_DEBUG_STOP_IN_APP`` (varies) |mdash| direct the specified rank(s) to
   stop at an application-defined point and notify that they are ready to be
   debugged. Same value forms as ``PMIX_DEBUG_STOP_ON_EXEC``.
@@ -457,7 +457,7 @@ Formatting and destination of the forwarded output:
   that cannot give the files to the job's owner makes them readable by
   the owner's group, or failing that by everyone. An output file that is
   not a regular file with a single name is not written. See
-  :doc:`/security-plan`.
+  :doc:`/hosts/access-control`.
 * ``PMIX_IOF_FILE_PATTERN`` (bool) |mdash| treat the ``PMIX_IOF_OUTPUT_TO_FILE``
   value as a pattern, suppressing the automatic annotation by nspace, rank, or
   other parameters.
@@ -531,7 +531,7 @@ access its data and act on it. To allow others, include
 ``pmix_info_t`` holding ``PMIX_ACCESS_USERIDS`` and/or ``PMIX_ACCESS_GRPIDS``,
 each a data array of user or group IDs (``uint32_t``) or names (``char*``). A
 server resolves names when it receives the request, and passes the list to its
-host, which records it with the job. See :doc:`/security-plan`.
+host, which records it with the job. See :doc:`/hosts/access-control`.
 
 A launcher process (such as an intermediate launcher started by a tool) that is
 not connected to a PMIx server defaults to launching the applications via a local

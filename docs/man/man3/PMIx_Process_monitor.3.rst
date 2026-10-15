@@ -248,7 +248,7 @@ Which processes are included, and who may ask for them:
   ``PMIX_PROC_PID``. A process whose host recorded no process ID is skipped, so a
   host that wants its processes monitored must record them. The caller must be
   allowed to access each namespace it names, under the job access rule
-  described in :doc:`/security-plan`; if it is not, the request fails with
+  described in :doc:`/hosts/access-control`; if it is not, the request fails with
   ``PMIX_ERR_NO_PERMISSIONS``.
 * **Processes named with** ``PMIX_MONITOR_TARGET_PIDS``. Only the processes the
   caller owns, as the operating system reports it, are monitored. A process ID
@@ -411,7 +411,7 @@ was accepted for processing; the final status and any data are delivered to
 * ``PMIX_ERR_NO_PERMISSIONS`` |mdash| the request names processes whose job
   the caller's user may not access, or was relayed by a host without the requester's ``PMIX_USERID``. A request for
   every process on a node leaves out the processes the caller may not see
-  instead. See `WHICH PROCESSES ARE MONITORED`_ and :doc:`/security-plan`.
+  instead. See `WHICH PROCESSES ARE MONITORED`_ and :doc:`/hosts/access-control`.
 * ``PMIX_ERR_OUT_OF_RESOURCE`` |mdash| the caller already holds the most
   liveness monitors it may (see `LIVENESS MONITORS`_), or the most repeating
   resource-usage requests (see ``PMIX_MONITOR_RESOURCE_RATE``).

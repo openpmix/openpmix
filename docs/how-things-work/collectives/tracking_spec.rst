@@ -31,7 +31,7 @@ Background: how a collective is assembled
 -----------------------------------------
 
 A collective names a set of participating processes. Some of those
-processes are *local* — clients (and their clones) connected to this
+processes are *local* — clients connected to this
 server — and some may be remote. The server's job in the local phase is
 to wait until **every local participant has contributed** its call, then
 pass the assembled operation up to the host for global completion.
@@ -52,8 +52,7 @@ A tracker records, among other things:
   more than once, or both by rank and by its namespace's wildcard,
   is expected to contribute once;
 * a list of the contributions received so far (``local_cbs``, a list of
-  ``pmix_server_caddy_t``, one entry per contributing peer — including a
-  separate entry for each fork/exec'd clone of a participating rank);
+  ``pmix_server_caddy_t``, one entry per contributing peer);
 * whether the tracker *definition* is complete (``def_complete``: every
   participating namespace has been registered so ``nlocal`` is known to
   be final);
@@ -145,11 +144,12 @@ three sets of local participants:
     contribution.
 
 ``departed``
-    Local participants that were lost (abnormal termination) **before**
-    contributing. A participant enters ``departed`` only if it was
-    expected and had not already contributed. A rank that dropped its
-    connection by calling ``PMIx_Finalize`` is **not** departed — see
-    *A graceful finalize is not a departure* below.
+    Local participants that were lost **before** contributing - by
+    abnormal termination, or by the host deregistering the client. A
+    participant enters ``departed`` only if it was expected and had not
+    already contributed. A rank that dropped its connection by calling
+    ``PMIx_Finalize`` is **not** departed — see *A graceful finalize is
+    not a departure* below.
 
 Completion rule
 ~~~~~~~~~~~~~~~
@@ -178,7 +178,8 @@ can never diverge between call sites.
 Lost-connection accounting rules
 ---------------------------------
 
-When a connection is lost, for every tracker (on **both** the
+When a connection is lost, or the host deregisters a client
+(``PMIx_server_deregister_client``), for every tracker (on **both** the
 ``collectives`` and ``grp_collectives`` lists) in which the departing
 peer is an expected participant, the server must apply exactly one of the
 following, based on whether that specific participant has already
@@ -239,12 +240,22 @@ termination only.** A finalizing rank that had already contributed is
 Case A in any event, so ignoring the finalize entirely gives up nothing
 but Case B — which is the case that must not fire here.
 
-The corollary is that a rank which finalizes and never returns, while
-its peers wait in a collective it was expected to join, leaves them
-waiting. That program is erroneous — it is no different from a rank that
-simply never calls — and the remedy is the one PMIx already offers for
-it, ``PMIX_TIMEOUT``. The alternative, guessing that the rank is not
-coming back, is what breaks every well-formed program that recycles.
+The server cannot tell whether a finalized rank will return. The host
+can: once the process has terminated, the host deregisters the client
+(``PMIx_server_deregister_client``), and that **is** a departure. Every
+tracker that names the rank and has not received its contribution
+records it in ``departed`` (Case B), so a rank that finalizes and never
+returns does not leave its peers waiting. ``PMIX_TIMEOUT`` is optional
+and cannot be relied on for this. Guessing at finalize that the rank is
+not coming back is what breaks every well-formed program that recycles.
+
+A host that never deregisters its clients gives up that release: a
+collective waiting on a finalized rank that never returns then waits
+until its ``PMIX_TIMEOUT``, or indefinitely if it has none. See
+:doc:`/how-things-work/connections`.
+
+.. DRAFT: deregistration does not reach the trackers yet; the
+   connection lifecycle fixes add it.
 
 Status reporting on loss
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -325,21 +336,14 @@ the two structs into one. Invariant 7 below is stated in these terms.
 Additional required behaviors
 -----------------------------
 
-**Clones share a rank but must not corrupt the accounting.** A process
-may fork/exec one or more clones that connect to the same server with the
-same ``{namespace, rank}`` and independently join a collective. The
-overriding requirement is that losing one peer must never discard a
-clone's contribution that shares the same name. The current expected
-count (``nlocal``) is maintained per *rank* — a clone is not counted as a
-separate expected participant — so the contribution question is asked per
-rank too: a rank is satisfied once any of its peers has contributed. The
-clone data-loss hazard is closed not by keying the contribution *check*
-on the peer pointer but by the stronger guarantee that **a loss never
-removes a contribution at all** (Case A does nothing): whatever a rank's
-peers delivered stays in the collective regardless of which peer's
-connection drops. (A future change that made ``nlocal`` count clones
-individually would move the contribution check to the peer granularity;
-until then, per-rank name matching is the consistent choice.)
+**A rank has one peer at a time.** A server refuses a second
+connection for a rank that already has one (see
+:doc:`/how-things-work/connections`), so the expected count
+(``nlocal``), the contribution check and loss accounting are all per
+*rank*, matched by process name. A rank that loses its connection and
+connects again is a new peer of the same rank. Whatever its earlier peer
+delivered stays in the collective, because **a loss never removes a
+contribution at all** (Case A does nothing).
 
 **Contribution is idempotent and terminal.** A given required
 contribution is recorded once. Once recorded, it is never removed by
@@ -435,11 +439,12 @@ all times:
    for the duration it is spoken for, and every path that can reach a
    tracker must skip it.
 #. **The rules apply uniformly** to fence, connect, disconnect, and group
-   operations, and to both directly-connected clients and their clones.
-#. **Loss accounting is driven by abnormal termination only.** A rank
-   whose connection dropped because it called ``PMIx_Finalize`` is never
-   recorded as departed and never degrades a collective's status, since
-   it remains in the expected set and may return.
+   operations, and to every directly-connected client.
+#. **Loss accounting is driven by abnormal termination and by host
+   deregistration only.** A rank whose connection dropped because it
+   called ``PMIx_Finalize`` is not recorded as departed and does not
+   degrade a collective's status, since it remains in the expected set
+   and may return - until the host deregisters it.
 #. **Participation logic is shared, not copied.** Fence, connect, and
    disconnect are tracked by one tracker representation with one
    completion predicate and one lost-connection routine. Group operations,
@@ -454,7 +459,7 @@ Relationship to the current implementation
 The behaviors above are partially and fragilely approximated today: the
 fence/connect/disconnect path attempts to remove a departed peer's
 contribution from ``local_cbs`` while also decrementing ``nlocal``, but
-it does so by process name (so it cannot distinguish clones), it discards
+it does so by process name, it discards
 already-delivered data (violating invariant 1), it duplicates the
 completion test across many call sites, and it does not cover group
 operations at all. The implementation plan describes how to collapse the
