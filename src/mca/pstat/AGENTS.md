@@ -238,8 +238,8 @@ per-process sampler.
 Targets hold no server objects, so a client disconnecting cannot leave
 an op pointing at freed memory. What does end with a client is the
 periodic monitors it asked for: the connection teardown calls
-`pmix_pstat_base_peer_lost()`, which releases them once no clone of the
-requester (same name) is still connected.
+`pmix_pstat_base_peer_lost()`, which releases them once no other live
+connection under the requester's name remains.
 
 ### Who owns the answer list (get this wrong and it is a double free)
 

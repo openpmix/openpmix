@@ -2,6 +2,7 @@
 
 from pmix import *
 import pmix
+import os
 import time
 import threading
 
@@ -89,6 +90,15 @@ def main():
     print("Init result ", my_result)
     if 0 != my_result[0]:
         print("FAILED TO INIT")
+        exit(1)
+    # init took who we are out of the environment, and the bindings out of
+    # os.environ too - the environment a process Python starts is given
+    left = [k for k in os.environ
+            if k in ('PMIX_NAMESPACE', 'PMIX_RANK', 'PMIX_CONNECT_TOKEN',
+                     'PMIX_SERVER_LOCAL_URI', 'PMIX_SECURITY_MODE', 'PMIX_VERSION')
+            or k.startswith('PMIX_SERVER_URI')]
+    if left:
+        print("STILL IN os.environ:", left)
         exit(1)
     # register an event handler
     rc,myevhndlr = foo.register_event_handler(None, None, default_evhandler)

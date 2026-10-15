@@ -25,11 +25,13 @@ sources += \
         common/pmix_alloc.c \
         common/pmix_session.c \
         common/pmix_pfexec.c \
-        common/pmix_monitor.c
+        common/pmix_monitor.c \
+        common/pmix_idenv.c
 
 headers += \
         common/pmix_control.h \
         common/pmix_iof.h \
         common/pmix_attributes.h \
         common/pmix_pfexec.h \
-        common/pmix_monitor.h
+        common/pmix_monitor.h \
+        common/pmix_idenv.h

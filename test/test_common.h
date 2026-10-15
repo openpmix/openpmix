@@ -145,6 +145,9 @@ typedef struct {
     char *gds_mode;
     int nservers;
     uint32_t lsize;
+    /* the server put PMIX_VERSION in our environment - read before
+     * PMIx_Init, which takes it out */
+    bool server_version;
 } test_params;
 
 #define INIT_TEST_PARAMS(params)               \
@@ -179,6 +182,7 @@ typedef struct {
         params.gds_mode = NULL;                \
         params.nservers = 1;                   \
         params.lsize = 0;                      \
+        params.server_version = false;         \
     } while (0)
 
 #define FREE_TEST_PARAMS(params)      \

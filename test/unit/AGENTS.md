@@ -1000,7 +1000,7 @@ that is only a loopback listener, so no PMIx server is involved:
   thread, a blocking `PMIx_Register_event_handler` - which can only
   complete on the progress thread - must come back promptly, and the
   attach must then fail with `PMIX_ERR_TIMEOUT` once the handshake wait
-  expires. With the tool component's `connect_to_peer_nb` removed, so the
+  expires. With the tool role's `connect_to_peer_nb` removed, so the
   attach takes the blocking path, this case fails: the registration waits
   out the whole attach.
 - **closed server**: a helper process accepts and closes at once; the

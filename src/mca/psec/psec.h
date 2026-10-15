@@ -72,19 +72,6 @@ typedef pmix_status_t (*pmix_psec_base_module_create_cred_fn_t)(struct pmix_peer
                                                                 size_t *ninfo,
                                                                 pmix_byte_object_t *cred);
 
-/**
- * Perform the client-side handshake over the connected socket `sd`,
- * after the server has answered the connection with
- * PMIX_ERR_READY_FOR_HANDSHAKE. `peer` is the server being connected to.
- *
- * Every module creates and validates a credential. A handshake is only
- * ever a continuation of that: a module whose validate_cred cannot decide
- * on the credential alone returns PMIX_ERR_READY_FOR_HANDSHAKE and
- * finishes the job in its handshake. A module that never asks for one
- * leaves both handshake slots NULL. */
-typedef pmix_status_t (*pmix_psec_base_module_client_hndshk_fn_t)(struct pmix_peer_t *peer,
-                                                                  int sd);
-
 /****    SERVER-SIDE FUNCTIONS    ****/
 /**
  * Validate a client's credential - required of every module. The
@@ -104,16 +91,6 @@ typedef pmix_status_t (*pmix_psec_base_module_validate_cred_fn_t)(struct pmix_pe
                                                                   const pmix_byte_object_t *cred);
 
 /**
- * Perform the server-side handshake with the connecting `peer` over the
- * socket `sd`. The peer is the one validate_cred was given, so the
- * handshake can check the identity it was registered or connected as -
- * and, like validate_cred, may replace an identity the peer only claimed
- * (one the host did not register) with the one it establishes. See
- * the client-side handshake for when a module has one. */
-typedef pmix_status_t (*pmix_psec_base_module_server_hndshk_fn_t)(struct pmix_peer_t *peer,
-                                                                  int sd);
-
-/**
  * Whether the module can, as configured, validate a peer's credential -
  * a module may be able to create credentials and still have nothing to
  * check another's against. A server lists only the modules that can
@@ -131,11 +108,13 @@ typedef struct {
     pmix_psec_base_module_fini_fn_t finalize;
     /** Client-side */
     pmix_psec_base_module_create_cred_fn_t create_cred;
-    pmix_psec_base_module_client_hndshk_fn_t client_handshake;
     /** Server-side */
     pmix_psec_base_module_validate_cred_fn_t validate_cred;
-    pmix_psec_base_module_server_hndshk_fn_t server_handshake;
     pmix_psec_base_module_validates_fn_t validates;
+    /* Whether the module validates a credential made on another host. One
+     * that asks this host's kernel who the peer is cannot, and a server
+     * refuses a peer on another host that names it */
+    bool remote;
 } pmix_psec_module_t;
 
 /* define an API module */
@@ -148,6 +127,10 @@ PMIX_EXPORT char *pmix_psec_base_get_available_modules(void);
  * server tells its peers it accepts. Caller must free the result */
 PMIX_EXPORT char *pmix_psec_base_get_accepted_modules(void);
 
+/* whether one of the modules that can validate a peer's credential can
+ * validate one made on another host */
+PMIX_EXPORT bool pmix_psec_base_remote_available(void);
+
 /* Select a psec module for a given peer */
 PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options);
 
@@ -155,18 +138,6 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
 
 #define PMIX_PSEC_CREATE_CRED(r, p, d, nd, in, nin, c) \
     (r) = (p)->nptr->compat.psec->create_cred((struct pmix_peer_t *) (p), (d), (nd), (in), (nin), c)
-
-/* A server asks for a handshake only from a peer whose module has one,
- * but the answer comes off the wire - refuse rather than call through a
- * NULL slot if it is ever asked of one that does not */
-#define PMIX_PSEC_CLIENT_HANDSHAKE(r, p, sd)                                              \
-    do {                                                                                  \
-        if (NULL == (p)->nptr->compat.psec->client_handshake) {                           \
-            (r) = PMIX_ERR_NOT_SUPPORTED;                                                 \
-        } else {                                                                          \
-            (r) = (p)->nptr->compat.psec->client_handshake((struct pmix_peer_t *) (p), sd); \
-        }                                                                                 \
-    } while (0)
 
 #define PMIX_PSEC_VALIDATE_CRED(r, p, d, nd, in, nin, c)                                     \
     (r) = (p)->nptr->compat.psec->validate_cred((struct pmix_peer_t *) (p), (d), (nd), (in), \
@@ -185,14 +156,7 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
          * security mechanism, and the peer is refused */                                          \
         if (NULL != (m)->validate_cred) {                                                          \
             _r = (m)->validate_cred((struct pmix_peer_t *) (p), (d), (nd), (in), (nin), c);        \
-            if (PMIX_ERR_READY_FOR_HANDSHAKE == _r && NULL == (m)->server_handshake) {           \
-                /* a request for a handshake the module cannot run */                              \
-                _r = PMIX_ERR_NOT_SUPPORTED;                                                       \
-            }                                                                                      \
-            if (PMIX_ERR_READY_FOR_HANDSHAKE == _r) {                                              \
-                pmix_output_verbose(2, pmix_globals.debug_output,                                  \
-                                    "credential needs a handshake to complete validation");        \
-            } else if (PMIX_SUCCESS != _r) {                                                       \
+            if (PMIX_SUCCESS != _r) {                                                              \
                 pmix_output_verbose(2, pmix_globals.debug_output,                                  \
                                     "validation of credential failed: %s", PMIx_Error_string(_r)); \
             } else {                                                                               \
@@ -206,24 +170,6 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
 
 #define PMIX_PSEC_VALIDATE_CONNECTION(r, p, d, nd, in, nin, c) \
     PMIX_PSEC_VALIDATE_CONNECTION_WITH(r, (p)->nptr->compat.psec, p, d, nd, in, nin, c)
-
-#define PMIX_PSEC_SERVER_HANDSHAKE_IFNEED_WITH(r, m, p)                               \
-    do {                                                                              \
-        if (PMIX_ERR_READY_FOR_HANDSHAKE == (r)) {                                    \
-            pmix_status_t _r;                                                         \
-            /* execute the handshake if the security mode calls for it */             \
-            pmix_output_verbose(2, pmix_globals.debug_output, "executing handshake"); \
-            if (PMIX_SUCCESS != (_r = (m)->server_handshake((struct pmix_peer_t *) (p), \
-                                                            (p)->sd))) {              \
-                PMIX_ERROR_LOG(_r);                                                   \
-            }                                                                         \
-            /* Update the reply status */                                             \
-            (r) = _r;                                                                 \
-        }                                                                             \
-    } while (0)
-
-#define PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(r, p) \
-    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED_WITH(r, (p)->nptr->compat.psec, p)
 
 /****    COMPONENT STRUCTURE DEFINITION    ****/
 
@@ -254,8 +200,8 @@ typedef struct pmix_psec_base_component_t pmix_psec_base_component_t;
  * the same three by pasting its name, so the two cannot drift apart.
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
-#define PMIX_MCA_psec_MAJOR_VERSION   2
-#define PMIX_MCA_psec_MINOR_VERSION   1
+#define PMIX_MCA_psec_MAJOR_VERSION   4
+#define PMIX_MCA_psec_MINOR_VERSION   0
 #define PMIX_MCA_psec_RELEASE_VERSION 0
 
 END_C_DECLS

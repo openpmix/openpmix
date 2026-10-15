@@ -92,6 +92,44 @@ Multiple calls to ``PMIx_Init`` must not include conflicting directives; an erro
 is returned when directives that conflict with those of a prior call are
 encountered.
 
+The identity variables
+^^^^^^^^^^^^^^^^^^^^^^
+
+The host tells a client who it is and how to reach its server through
+environment variables. ``PMIx_Init`` takes them out of the process's
+environment as it begins, before it reads them, and keeps them for this
+process:
+
+* ``PMIX_NAMESPACE`` and ``PMIX_RANK``, and ``PMIX_SERVER_NSPACE`` and
+  ``PMIX_SERVER_RANK``;
+* every ``PMIX_SERVER_URI`` variable (``PMIX_SERVER_URI41``,
+  ``PMIX_SERVER_URI5``, and so on) and ``PMIX_SERVER_LOCAL_URI``;
+* ``PMIX_CONNECT_TOKEN``, whose value is also overwritten where the
+  environment held it;
+* ``PMIX_LAUNCHER_RNDZ_URI``, ``PMIX_SECURITY_MODE``,
+  ``PMIX_BFROP_BUFFER_TYPE``, ``PMIX_GDS_MODULE`` and ``PMIX_VERSION``.
+
+A process the application starts after that - forked, or forked and
+exec'd - and a program it execs inherit none of them. Such a process that
+calls ``PMIx_Init`` is a singleton; one that calls
+:ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>` is a tool the server's host
+names. A later ``PMIx_Init`` of the same process, after
+:ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>`, uses the values kept. The
+other variables stay: the server's temporary directories
+(``PMIX_SERVER_TMPDIR``, ``PMIX_SYSTEM_TMPDIR``), ``PMIX_HOSTNAME``, MCA
+parameters, and those that programming-model support sets.
+
+Code that reads these variables itself must do so before the first
+``PMIx_Init``. After it, the process's namespace and rank are the ones
+``PMIx_Init`` returns.
+
+Only the C library's environment is changed. A language runtime that keeps
+a copy of its own - Python's ``os.environ``, made when the interpreter
+starts, is one - still holds the variables, and passes them on to a
+process it starts from that copy. The PMIx Python bindings take them out
+of ``os.environ`` as well. Other code that starts processes from such a
+copy must leave them out itself.
+
 .. warning:: Use PMIx with caution in a setuid or setgid program. PMIx
    takes its configuration from the environment and from locations the
    environment names: the ``PMIX_*`` variables (including those that name
@@ -134,11 +172,12 @@ retrievable via :ref:`PMIx_Get(3) <man3-PMIx_Get>`.
   family of addresses.
 * ``PMIX_TCP_DISABLE_IPV6`` (bool) |mdash| set to ``true`` to disable the IPv6
   family of addresses.
-* ``PMIX_USOCK_DISABLE`` (bool) |mdash| if the library supports Unix socket
-  connections, disable their use.
-* ``PMIX_SOCKET_MODE`` (uint32_t) |mdash| set the mode of the rendezvous socket.
-* ``PMIX_SINGLE_LISTENER`` (bool) |mdash| if the library supports more than one
-  method for clients to connect to servers, use only one of them.
+
+A client given ``PMIX_SERVER_LOCAL_URI`` by its server connects to the
+server's local socket.
+``PMIX_SOCKET_MODE`` sets the mode of a server's local socket and has no
+effect here (see :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`); the
+deprecated ``PMIX_USOCK_DISABLE`` and ``PMIX_SINGLE_LISTENER`` have no effect.
 
 Runtime attributes
 ^^^^^^^^^^^^^^^^^^
@@ -237,6 +276,15 @@ a PMIx error constant is returned, including:
 * ``PMIX_ERR_LOST_CONNECTION`` |mdash| a server was reached, but the connection
   failed before it delivered the caller's job information. Unlike
   ``PMIX_ERR_UNREACH`` above, the library is **not** initialized.
+* ``PMIX_ERR_EXISTS`` |mdash| the server already has a connection for this
+  process's namespace and rank, from another process. A server accepts one
+  connection per rank, and the first process to connect holds it: a process
+  that a client started before its ``PMIx_Init``, and that inherited the
+  client's environment, cannot initialize as the client's rank, and an application started by a job script
+  cannot initialize as the script's rank if a tool the script started took it
+  first (see :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`). A process that
+  execs closes its connection as it does, so the program it execs is not
+  refused for that.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| the environment describing this process is
   malformed. In particular, ``PMIX_NAMESPACE`` was present but the accompanying
   ``PMIX_RANK`` was empty, negative, non-numeric, or not a valid rank value.

@@ -77,6 +77,22 @@ does not involve the host environment or a callback. The variables added here ar
 the counterpart to those the client library consumes during
 :ref:`PMIx_Init(3) <man3-PMIx_Init>`.
 
+For a process with a rank of its own, ``PMIx_server_setup_fork`` also makes a
+token: 128 random bits from the operating system's secure random source, which
+the server keeps for the rank and puts in ``env`` as ``PMIX_CONNECT_TOKEN``,
+after the server's own namespace and rank. The client presents it to that server
+when it connects, by whatever route it reaches it, and a connection from a
+process of this release that names the rank without it is refused. Processes
+the library starts itself, for a launcher or a server with no host to do it, are
+not given one.
+:ref:`PMIx_server_register_client(3) <man3-PMIx_server_register_client>`
+already keeps a token for the rank, which nobody is handed; the one this
+function makes replaces it. Calling the function again for
+the same rank replaces the token; deregistering the rank, or its namespace,
+forgets it. A process given no rank of its own gets no token, and one already in
+``env`` is removed. ``env`` therefore carries a value the process is to keep to
+itself.
+
 Calling ``PMIx_server_setup_fork`` for the first local client of a namespace is
 also the signal that causes any operations cached by a prior call to
 :ref:`PMIx_server_setup_local_support(3) <man3-PMIx_server_setup_local_support>`
@@ -94,6 +110,8 @@ negative PMIx error constant is returned, including:
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because the
   library's progress engine has been stopped.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| ``proc`` or ``env`` was ``NULL``.
+* ``PMIX_ERROR`` |mdash| the operating system's secure random source could not
+  supply the rank's token.
 
 Any other negative value indicates that one of the contributing subsystems
 (transport, network, datastore, or programming model) failed to add its

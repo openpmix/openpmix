@@ -48,6 +48,7 @@
 
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pif/pif.h"
+#include "src/util/pmix_fd.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_if.h"
 
@@ -83,13 +84,15 @@ static bool if_linux_ipv6_flags(const char *ifname, uint32_t *flags)
     struct ifreq ifr;
     int sd;
 
-    sd = socket(AF_INET6, SOCK_DGRAM, 0);
+    sd = socket(AF_INET6, SOCK_DGRAM | PMIX_SOCK_CLOEXEC, 0);
     if (sd < 0) {
-        sd = socket(AF_INET, SOCK_DGRAM, 0);
+        sd = socket(AF_INET, SOCK_DGRAM | PMIX_SOCK_CLOEXEC, 0);
         if (sd < 0) {
             return false;
         }
     }
+    /* a child the process forks and execs meanwhile does not keep it */
+    (void) pmix_fd_set_cloexec(sd);
 
     memset(&ifr, 0, sizeof(ifr));
     pmix_strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name) - 1);

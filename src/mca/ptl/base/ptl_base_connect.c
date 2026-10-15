@@ -84,6 +84,42 @@ pmix_status_t pmix_ptl_base_set_nonblocking(int sd)
     return PMIX_SUCCESS;
 }
 
+void pmix_ptl_base_own_socket(int sd)
+{
+    if (PMIX_SUCCESS != pmix_fd_set_cloexec(sd)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:own_socket: could not set socket %d close-on-exec: %s (%d)",
+                            sd, strerror(pmix_socket_errno), pmix_socket_errno);
+    }
+    pmix_ptl_base_set_nosigpipe(sd);
+}
+
+void pmix_ptl_base_set_nosigpipe(int sd)
+{
+#ifdef SO_NOSIGPIPE
+    int on = 1;
+
+    if (0 != setsockopt(sd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on))) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:set_nosigpipe: setsockopt(SO_NOSIGPIPE) on socket %d "
+                            "failed: %s (%d)",
+                            sd, strerror(pmix_socket_errno), pmix_socket_errno);
+    }
+#else
+    PMIX_HIDE_UNUSED_PARAMS(sd);
+#endif
+}
+
+ssize_t pmix_ptl_base_writev(int sd, struct iovec *iov, int iovcnt)
+{
+    struct msghdr mh;
+
+    memset(&mh, 0, sizeof(mh));
+    mh.msg_iov = iov;
+    mh.msg_iovlen = iovcnt;
+    return sendmsg(sd, &mh, PMIX_PTL_NOSIGNAL);
+}
+
 pmix_status_t pmix_ptl_base_set_blocking(int sd)
 {
     int flags;
@@ -117,7 +153,7 @@ pmix_status_t pmix_ptl_base_send_blocking(int sd, char *ptr, size_t size)
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                         "send blocking of %" PRIsize_t " bytes to socket %d", size, sd);
     while (cnt < size) {
-        retval = send(sd, (char *) ptr + cnt, size - cnt, 0);
+        retval = send(sd, (char *) ptr + cnt, size - cnt, PMIX_PTL_NOSIGNAL);
         if (0 > retval) {
             if (EAGAIN == pmix_socket_errno || EWOULDBLOCK == pmix_socket_errno) {
                 /* just cycle and let it try again */
@@ -285,16 +321,24 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl_base_connect: attempting to connect to server");
+    /* the reason a failure here gives - none yet */
+    pmix_ptl_base.last_connect_errno = 0;
 
     /* Create the new socket */
-    sd = socket(addr->ss_family, SOCK_STREAM, 0);
+    sd = socket(addr->ss_family, SOCK_STREAM | PMIX_SOCK_CLOEXEC, 0);
+    if (0 <= sd) {
+        pmix_ptl_base_own_socket(sd);
+    }
 
     while (retries < PMIX_MAX_RETRIES) {
         retries++;
         if (sd < 0) {
             pmix_output(0, "pmix:create_socket: socket() failed: %s (%d)\n",
                         strerror(pmix_socket_errno), pmix_socket_errno);
-            sd = socket(addr->ss_family, SOCK_STREAM, 0);
+            sd = socket(addr->ss_family, SOCK_STREAM | PMIX_SOCK_CLOEXEC, 0);
+            if (0 <= sd) {
+                pmix_ptl_base_own_socket(sd);
+            }
             continue;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -302,6 +346,7 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
                             sd);
         /* try to connect */
         if (bounded_connect(sd, (struct sockaddr *) addr, addrlen) < 0) {
+            pmix_ptl_base.last_connect_errno = pmix_socket_errno;
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "Connect failed: %s (%d)", strerror(pmix_socket_errno),
                                 pmix_socket_errno);
@@ -312,7 +357,10 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
             }
             /* get a different socket, but do that BEFORE we release the current
              * one so we don't just get the same socket handed back to us */
-            sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
+            sd2 = socket(addr->ss_family, SOCK_STREAM | PMIX_SOCK_CLOEXEC, 0);
+            if (0 <= sd2) {
+                pmix_ptl_base_own_socket(sd2);
+            }
             CLOSE_THE_SOCKET(sd);
             sd = sd2;
             continue;
@@ -462,6 +510,25 @@ static pmix_status_t check_connections(pmix_list_t *connections)
     return PMIX_SUCCESS;
 }
 
+/* The address to connect to from a server's file: its local transport's
+ * when the file names one - and then none of its others, which a process
+ * of this release on this host does not use - else the first line's and
+ * the alternates */
+static void take_address(pmix_connection_t *cn, char **suri, char **alts)
+{
+    free(*alts);
+    *alts = NULL;
+    if (NULL != cn->local_uri) {
+        *suri = cn->local_uri;
+        cn->local_uri = NULL;
+        return;
+    }
+    *suri = cn->uri;
+    cn->uri = NULL;
+    *alts = cn->alt_uris;
+    cn->alt_uris = NULL;
+}
+
 static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
                              pmix_rank_t *rank, char **suri, char **alts,
                              bool optional, bool rndz, char *filename)
@@ -496,11 +563,7 @@ static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
         *nspace = cn->nspace;
         cn->nspace = NULL;
         *rank = cn->rank;
-        *suri = cn->uri;
-        cn->uri = NULL;
-        free(*alts);
-        *alts = cn->alt_uris;
-        cn->alt_uris = NULL;
+        take_address(cn, suri, alts);
     }
     PMIX_LIST_DESTRUCT(&connections);
     return rc;
@@ -536,11 +599,7 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
         *nspace = cn->nspace;
         cn->nspace = NULL;
         *rank = cn->rank;
-        *suri = cn->uri;
-        cn->uri = NULL;
-        free(*alts);
-        *alts = cn->alt_uris;
-        cn->alt_uris = NULL;
+        take_address(cn, suri, alts);
         PMIX_LIST_DESTRUCT(&connections);
         return rc;
     } else if (1 < pmix_list_get_size(&connections)) {
@@ -734,12 +793,13 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                                 char **suriout,
                                 pmix_ptl_connect_nb_cbfunc_t cbfunc, void *cbdata)
 {
-    char *suri = NULL, *evar;
+    char *suri = NULL, *evar, *localuri = NULL;
     char *alts = NULL;              // the server's other addresses, if we know any
     const char *diralts = NULL;     // ...as given by PMIX_SERVER_ALT_URIS
     char *filename, *nspace = NULL;
     char **order = NULL;
     const char* tmp;
+    char *str;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
     char *p = NULL, *server_nspace = NULL, *rendfile = NULL;
     int rc;
@@ -819,9 +879,14 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                 for (m=0; NULL != order[m]; m++) {
                     /* every entry was vetted as a connection target by
                      * pmix_ptl_base_check_connect_directives */
+                    /* copy before freeing: a name that is not a reserved
+                     * attribute's - an attribute string given in place of
+                     * its name - is looked up as itself, so the result can
+                     * be the very string being replaced */
                     tmp = pmix_attributes_lookup(order[m]);
+                    str = (NULL == tmp) ? NULL : strdup(tmp);
                     free(order[m]);
-                    order[m] = strdup(tmp);
+                    order[m] = str;
                     if (NULL == order[m]) {
                         /* a NULL here would end the argv early - silently
                          * dropping the rest of the requested order and
@@ -1220,8 +1285,23 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
     evar = NULL;
     rc = pmix_ptl_base_set_peer(peer, &evar);
     if (PMIX_SUCCESS == rc) {
-        PMIX_SET_PEER_TYPE(pmix_globals.mypeer, PMIX_PROC_CLIENT_TOOL);
+        /* a tool on a client's rank only if it has the rank - one with the
+         * server's address but no namespace and rank in its environment
+         * asks the host for an identity */
+        if ('\0' != pmix_globals.myid.nspace[0] && PMIX_RANK_IS_VALID(pmix_globals.myid.rank)) {
+            PMIX_SET_PEER_TYPE(pmix_globals.mypeer, PMIX_PROC_CLIENT_TOOL);
+        }
+        /* the server's local transport, when it named one - with who the
+         * kernel must say the server is */
+        rc = pmix_ptl_base_use_local_env(evar, &localuri);
+        if (PMIX_SUCCESS == rc) {
+            evar = localuri;
+        } else if (PMIX_ERR_NOT_FOUND != rc) {
+            goto cleanup;
+        }
         rc = pmix_ptl_base_parse_uri(evar, &nspace, &rank, &suri);
+        free(localuri);
+        localuri = NULL;
         if (PMIX_SUCCESS != rc) {
             goto cleanup;
         }
@@ -1253,6 +1333,14 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
     goto cleanup;
 
 complete:
+    /* the token the rank in our environment was given, if it is this
+     * server's - however we came to it */
+    if (NULL != nspace) {
+        rc = pmix_ptl_base_add_token(&iptr, &niptr, nspace, rank);
+        if (PMIX_SUCCESS != rc) {
+            goto cleanup;
+        }
+    }
     if (NULL != cbfunc) {
         rc = pmix_ptl_base_start_connection(peer, nspace, rank, suri, alts, iptr, niptr,
                                             cbfunc, cbdata);
@@ -1278,12 +1366,15 @@ complete:
     rc = pmix_ptl_base_complete_connection(peer, nspace, rank);
 
 cleanup:
+    /* an identity we were told to expect was for this connect alone */
+    pmix_ptl_base.server_expect_given = false;
     *suriout = suri;
     free(alts);
     if (NULL != nspace) {
         free(nspace);
     }
     if (NULL != iptr) {
+        pmix_ptl_base_wipe_token_info(iptr, niptr);
         PMIX_INFO_FREE(iptr, niptr);
     }
     if (NULL != order) {

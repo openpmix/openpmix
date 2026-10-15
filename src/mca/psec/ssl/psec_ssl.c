@@ -102,7 +102,8 @@ pmix_psec_module_t pmix_ssl_module = {.name = "ssl",
                                       .finalize = ssl_finalize,
                                       .create_cred = create_cred,
                                       .validate_cred = validate_cred,
-                                      .validates = validates};
+                                      .validates = validates,
+                                      .remote = true};
 
 #define SSL_MAGIC     "PMIXSSL1"
 #define SSL_MAGIC_LEN 8
@@ -759,7 +760,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     }
 
     /* the same comparison every mechanism makes with what the peer was
-     * registered as - or, for a tool, what it said in its handshake. A
+     * registered as - or, for a tool, what it said in its connect-ack. A
      * credential handed to PMIx_Validate_credential has no connection,
      * and is reported as the identity it carries */
     if (0 <= pr->sd) {

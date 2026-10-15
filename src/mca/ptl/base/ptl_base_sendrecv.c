@@ -46,6 +46,7 @@
 #include "src/mca/pstat/base/base.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_getid.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_show_help.h"
 
@@ -133,6 +134,8 @@ static void complete_recvs(pmix_peer_t *peer)
     PMIX_DESTRUCT(&done);
 }
 
+static void lost_connection(pmix_peer_t *peer);
+
 static void lost_connection(pmix_peer_t *peer)
 {
     pmix_ptl_recv_t *msg;
@@ -187,19 +190,21 @@ static void lost_connection(pmix_peer_t *peer)
             pmix_server_trk_peer_lost(peer);
             pmix_server_grp_peer_lost(peer);
 
-            /* if the peer simply died without finalizing,
-             * then reduce the number of local procs, and reduce the
-             * rank's live-process count so a later clone recycle decision
-             * remains correct (the finalize path decrements proc_cnt in
-             * pmix_server_peer_finalized; the abnormal path must too) */
+            /* if the peer simply died without finalizing, its job has
+             * one local process fewer - a finalized one stays expected,
+             * since it may initialize again */
             if (!peer->finalized) {
                 if (0 < peer->nptr->nlocalprocs) {
                     --peer->nptr->nlocalprocs;
                 }
-                if (0 < peer->info->proc_cnt) {
-                    --peer->info->proc_cnt;
-                }
             }
+        }
+        /* The rank's count of live connections goes down whatever kind of
+         * server this is - a launcher, which is a tool as well, counts the
+         * tools connected to it too (the finalize path gives the count back
+         * in pmix_server_peer_finalized) */
+        if (!peer->finalized && NULL != peer->info && 0 < peer->info->proc_cnt) {
+            --peer->info->proc_cnt;
         }
 
         /* purge any notifications cached for this client.  Here the
@@ -261,13 +266,12 @@ static void lost_connection(pmix_peer_t *peer)
              * namespace deregistration */
             pmix_server_peer_finalized(peer);
         } else if (peer->finalized && PMIX_PEER_IS_TOOL(peer) && !PMIX_PEER_IS_CLIENT(peer)) {
-            /* a pure tool is freed outright: nothing resolves a tool through
-             * info->peerid, so it needs no tombstone, and it never reconnects
-             * onto the same rank (each tool init is assigned a fresh nspace),
-             * so leaving it would leak one peer per init/finalize cycle. A
-             * tool the host registered as a client keeps the client tombstone
-             * path above and is reclaimed by its tool reconnect (or namespace
-             * deregistration) instead. */
+            /* a tool is freed outright: nothing resolves a tool through
+             * info->peerid, so it needs no tombstone, and leaving it would
+             * leak one peer per init/finalize cycle. That includes a tool
+             * on a rank the host registered as a client - the server types
+             * every tool's peer a tool, never a client, so it is retired
+             * here too, and the rank's next connection finds it free */
             pmix_server_peer_finalized(peer);
         }
 
@@ -307,6 +311,156 @@ static void lost_connection(pmix_peer_t *peer)
     }
 }
 
+bool pmix_ptl_base_sd_closed(int sd)
+{
+    char c;
+    ssize_t rc;
+    int flags;
+
+    if (0 > sd) {
+        return false;
+    }
+    /* Look without taking: anything there is for whoever reads the socket.
+     * Only an orderly close, or a connection the other end reset, is
+     * closed - any other error, a shortage of buffers say, says nothing
+     * about the other end */
+#ifdef MSG_DONTWAIT
+    flags = MSG_PEEK | MSG_DONTWAIT;
+#else
+    flags = fcntl(sd, F_GETFL, 0);
+    if (0 > flags || !(flags & O_NONBLOCK)) {
+        /* a look could wait */
+        return false;
+    }
+    flags = MSG_PEEK;
+#endif
+    rc = recv(sd, &c, 1, flags);
+    if (0 < rc ||
+        (0 > rc && ECONNRESET != pmix_socket_errno && ENOTCONN != pmix_socket_errno &&
+         EPIPE != pmix_socket_errno)) {
+        return false;
+    }
+    return true;
+}
+
+bool pmix_ptl_base_reap_if_closed(pmix_peer_t *peer)
+{
+    if (!pmix_ptl_base_sd_closed(peer->sd)) {
+        return false;
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:base: the connection on socket %d has closed - handling its loss",
+                        peer->sd);
+    lost_connection(peer);
+    return true;
+}
+
+/* A notice that a process the host accepted is not connected, and who to
+ * tell once the host has been handed it */
+typedef struct {
+    pmix_event_t ev;
+    pmix_event_chain_t *chain;
+    pmix_op_cbfunc_t cbfunc;
+    void *cbdata;
+} not_connected_t;
+
+static void not_connected_done_cb(int sd, short args, void *cbdata)
+{
+    not_connected_t *nc = (not_connected_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(nc);
+    if (NULL != nc->cbfunc) {
+        nc->cbfunc(PMIX_SUCCESS, nc->cbdata);
+    }
+    free(nc);
+}
+
+/* The notice has been delivered: the host's handlers have been given it.
+ * Its caller is told on the progress thread, whichever thread a handler
+ * finished on */
+static void not_connected_done(pmix_status_t status, void *cbdata)
+{
+    not_connected_t *nc = (not_connected_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
+    PMIX_RELEASE(nc->chain);
+    nc->chain = NULL;
+    PMIX_THREADSHIFT(nc, not_connected_done_cb);
+}
+
+static void deliver_not_connected(int sd, short args, void *cbdata)
+{
+    not_connected_t *nc = (not_connected_t *) cbdata;
+    pmix_event_chain_t *ch = nc->chain;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(nc);
+    /* what pmix_event_timeout_cb does with a lost peer's report */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+        rc = pmix_server_notify_client_of_event(ch->status, &ch->source, ch->range, ch->info,
+                                                ch->ninfo, not_connected_done, nc);
+        if (PMIX_SUCCESS != rc) {
+            /* nothing was delivered, and nothing will be */
+            PMIX_ERROR_LOG(rc);
+            not_connected_done(rc, nc);
+        }
+    } else {
+        pmix_invoke_local_event_hdlr(ch);
+    }
+}
+
+void pmix_ptl_base_report_not_connected(const pmix_proc_t *proc, pmix_op_cbfunc_t cbfunc,
+                                        void *cbdata)
+{
+    pmix_event_chain_t *ch;
+    not_connected_t *nc;
+
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:base: %s:%u was accepted but is not connected - telling the host",
+                        proc->nspace, proc->rank);
+    /* what PMIX_REPORT_EVENT_WINDOW raises for a lost peer, for a process
+     * that never became one - delivered on its own, at once: it must
+     * reach the host before anything else of this name can */
+    nc = (not_connected_t *) calloc(1, sizeof(not_connected_t));
+    ch = PMIX_NEW(pmix_event_chain_t);
+    if (NULL == nc || NULL == ch) {
+        goto fail;
+    }
+    ch->status = PMIX_ERR_LOST_CONNECTION;
+    ch->range = PMIX_RANGE_PROC_LOCAL;
+    PMIX_LOAD_PROCID(&ch->source, proc->nspace, proc->rank);
+    PMIX_PROC_CREATE(ch->affected, 1);
+    if (NULL == ch->affected) {
+        goto fail;
+    }
+    ch->naffected = 1;
+    PMIX_LOAD_PROCID(ch->affected, proc->nspace, proc->rank);
+    ch->nallocated = 2;
+    PMIX_INFO_CREATE(ch->info, ch->nallocated);
+    if (NULL == ch->info) {
+        goto fail;
+    }
+    ch->final_cbfunc = not_connected_done;
+    ch->final_cbdata = nc;
+    nc->chain = ch;
+    nc->cbfunc = cbfunc;
+    nc->cbdata = cbdata;
+    PMIX_THREADSHIFT(nc, deliver_not_connected);
+    return;
+
+fail:
+    if (NULL != ch) {
+        PMIX_RELEASE(ch);
+    }
+    free(nc);
+    /* the host cannot be told - its caller need not wait */
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_ERR_NOMEM, cbdata);
+    }
+}
+
 static pmix_status_t send_msg(int sd, pmix_ptl_send_t *msg)
 {
     struct iovec iov[2];
@@ -336,7 +490,7 @@ static pmix_status_t send_msg(int sd, pmix_ptl_send_t *msg)
             iov_count = 2;
         }
 
-        rc = writev(sd, iov, iov_count);
+        rc = pmix_ptl_base_writev(sd, iov, iov_count);
         if (rc < 0) {
             if (pmix_socket_errno == EINTR) {
                 continue;

@@ -15,9 +15,7 @@
  * ptl_base_handshake_wait_time seconds on the socket - so that a server
  * which accepts the connection and never answers does not hold the
  * connecting process forever. A tool attaching to a server does that on
- * its progress thread. A server's own blocking reads after an incoming
- * connect-ack - the psec handshake - are bounded the same way, by
- * ptl_base_connect_ack_timeout.
+ * its progress thread.
  *
  * When that timeout expires, recv() on the blocking socket fails with
  * EAGAIN/EWOULDBLOCK - the same errors a non-blocking socket gives for

@@ -23,17 +23,9 @@ PMIX_EXPORT extern pmix_psec_base_component_t pmix_mca_psec_native_component;
 extern pmix_psec_module_t pmix_native_module;
 
 typedef struct {
-    /* the directory under which a server makes the sockets for its
-     * local-socket check, and where a peer looks for them - each as that
-     * process sees it. NULL means the server's own tmpdir, and the
-     * directory the server names */
-    char *socket_dir;
-    /* accept a peer from a release without the local-socket check on
-     * the identity it claims, when the kernel cannot confirm it */
+    /* accept a peer on the identity it claims, when it connects over TCP
+     * and the kernel cannot confirm who owns the connection */
     bool legacy_auth;
-    /* (testing only) never look the peer up in the TCP table, so every
-     * peer able to run the local-socket check is asked to */
-    bool force_handshake;
 } pmix_psec_native_params_t;
 PMIX_EXPORT extern pmix_psec_native_params_t pmix_psec_native_params;
 

@@ -68,11 +68,15 @@
 pmix_ptl_base_t pmix_ptl_base = {
     .initialized = false,
     .selected = false,
+    .actives = PMIX_LIST_STATIC_INIT(pmix_ptl_base.actives),
     .posted_recvs = PMIX_LIST_STATIC_INIT(pmix_ptl_base.posted_recvs),
     .listener = PMIX_LISTENER_STATIC_INIT,
+    .local_listener = PMIX_LISTENER_STATIC_INIT,
     .pending_connections = PMIX_LIST_STATIC_INIT(pmix_ptl_base.pending_connections),
+    .tool_queue = PMIX_LIST_STATIC_INIT(pmix_ptl_base.tool_queue),
+    .tool_asking = PMIX_LIST_STATIC_INIT(pmix_ptl_base.tool_asking),
+    .tool_late = PMIX_LIST_STATIC_INIT(pmix_ptl_base.tool_late),
     .connecting = PMIX_LIST_STATIC_INIT(pmix_ptl_base.connecting),
-    .connection = NULL,
     .max_msg_size = 0,
     .session_tmpdir = NULL,
     .system_tmpdir = NULL,
@@ -106,6 +110,8 @@ pmix_ptl_base_t pmix_ptl_base = {
     .pid_dirfd = -1,
     .remote_connections = false,
     .connections_specified = false,
+    .legacy_peers_param = false,
+    .legacy_peers = false,
     .system_tool = false,
     .allow_foreign_tools = false,
     .session_tool = false,
@@ -127,14 +133,9 @@ pmix_ptl_base_t pmix_ptl_base = {
     .max_write = INT_MAX
 };
 int pmix_ptl_base_output = -1;
-pmix_ptl_module_t pmix_ptl = {
+pmix_ptl_api_t pmix_ptl = {
     .name = NULL,
-    .init = NULL,
-    .finalize = NULL,
-    .recv = NULL,
-    .cancel = NULL,
     .connect_to_peer = NULL,
-    .query_servers = NULL,
     .setup_listener = NULL,
     .setup_fork = NULL,
     .connect_to_peer_nb = NULL
@@ -176,6 +177,15 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
     pmix_status_t rc;
 
     (void) flags;
+
+    /* Which transports a process uses is not a choice for the ptl
+     * selection parameter: every one available is used, whatever it says
+     * and wherever it was set - the environment, where client, server and
+     * tool init remove it, or a parameter file. The framework registered
+     * it just before calling us, and the components are found next */
+    free(pmix_ptl_base_framework.framework_selection);
+    pmix_ptl_base_framework.framework_selection = NULL;
+
     pmix_mca_base_var_register("pmix", "ptl", "base", "max_msg_size",
                                "Max size (in Mbytes) of a client/server msg",
                                PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
@@ -300,17 +310,37 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
     (void) pmix_mca_base_var_register("pmix", "ptl", "base", "connect_ack_timeout",
                                       "Number of seconds a server gives an incoming connection to "
-                                      "deliver its whole connection request, and to answer each "
-                                      "step of any security handshake after it, before dropping "
+                                      "deliver its whole connection request, before dropping "
                                       "the connection (0 = no limit)",
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_ptl_base.connect_ack_timeout);
 
+    (void) pmix_mca_base_var_register("pmix", "ptl", "base", "server_access",
+                                      "Servers a client or tool will talk to over the local "
+                                      "transport besides one running as its own user or root, "
+                                      "when no server it was started by names itself: "
+                                      "\"users=<list>,groups=<list>\", each list of names or "
+                                      "numbers separated by ':' - a server whose uid is in users, "
+                                      "or whose effective gid is in groups, is allowed",
+                                      PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                      &pmix_ptl_base.server_access);
+
+    (void) pmix_mca_base_var_register("pmix", "ptl", "base", "legacy_peers",
+                                      "Whether a server takes connections from clients and tools "
+                                      "of PMIx releases before v7.0, which connect over TCP. Only "
+                                      "a PMIx built with legacy peer support can; the "
+                                      "PMIX_SERVER_LEGACY_PEERS attribute overrides it",
+                                      PMIX_MCA_BASE_VAR_TYPE_BOOL,
+                                      &pmix_ptl_base.legacy_peers_param);
+
     (void) pmix_mca_base_var_register("pmix", "ptl", "base", "max_pending_connections",
                                       "Most connections a server holds while their connection "
-                                      "requests are still arriving; at the limit, the oldest is "
-                                      "dropped to make room for a new one (0 = a quarter of the "
-                                      "descriptor limit the server starts with, -1 = no limit)",
+                                      "requests are still arriving, and separately the most tools "
+                                      "it holds while the host decides on them; at the first "
+                                      "limit, the oldest request still arriving is dropped to "
+                                      "make room for a new one, and at the second a further tool "
+                                      "is refused (0 = an eighth of the descriptor limit the "
+                                      "server starts with, for each; -1 = no limit)",
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_ptl_base.max_pending_connections);
 
@@ -379,10 +409,13 @@ static void remove_rndz_file(char **filename, bool *created, int *dirfd)
     *created = false;
 }
 
+static void free_server_access(void);
+
 static pmix_status_t pmix_ptl_close(void)
 {
     int rc;
     char *tmp;
+    pmix_ptl_base_active_t *active;
 
     if (!pmix_ptl_base.initialized) {
         return PMIX_SUCCESS;
@@ -405,6 +438,7 @@ static pmix_status_t pmix_ptl_close(void)
      * never asked for it. Put back the defaults from the initializer. */
     pmix_ptl_base.remote_connections = false;
     pmix_ptl_base.connections_specified = false;
+    pmix_ptl_base.legacy_peers = false;
     pmix_ptl_base.system_tool = false;
     pmix_ptl_base.allow_foreign_tools = false;
     pmix_ptl_base.session_tool = false;
@@ -421,22 +455,39 @@ static pmix_status_t pmix_ptl_close(void)
             pmix_client_globals.myserver->sd = -1;
         }
     }
-    if (NULL != pmix_ptl_base.connection) {
-        free(pmix_ptl_base.connection);
-        pmix_ptl_base.connection = NULL;
+    /* each transport releases what it holds */
+    PMIX_LIST_FOREACH (active, &pmix_ptl_base.actives, pmix_ptl_base_active_t) {
+        if (NULL != active->module->close) {
+            active->module->close();
+        }
     }
+    PMIX_LIST_DESTRUCT(&pmix_ptl_base.actives);
+    free_server_access();
     /* the component will cleanup when closed */
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
     PMIX_DESTRUCT(&pmix_ptl_base.listener);
+    PMIX_DESTRUCT(&pmix_ptl_base.local_listener);
     /* stop_listening above released every alternate and their list */
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.alt_listeners);
     /* stop_listening above has already closed and released anything
-     * that was still on it */
+     * that was still on it, and on the tool queue */
     PMIX_DESTRUCT(&pmix_ptl_base.pending_connections);
+    PMIX_DESTRUCT(&pmix_ptl_base.tool_queue);
+    /* the tools the host is deciding on are the host's: it holds them */
+    while (NULL != pmix_list_remove_first(&pmix_ptl_base.tool_asking)) {
+    }
+    PMIX_DESTRUCT(&pmix_ptl_base.tool_asking);
+    /* a tool still on this list is one the host has yet to answer for,
+     * which the host holds, or one whose not-connected notice is still on
+     * its way, which that notice holds: neither is ours to release */
+    while (NULL != pmix_list_remove_first(&pmix_ptl_base.tool_late)) {
+    }
+    PMIX_DESTRUCT(&pmix_ptl_base.tool_late);
     /* a connect still under way will never finish now - the progress
      * thread is stopped - so tell whoever is waiting on it */
     pmix_ptl_base_abandon_connects();
     PMIX_DESTRUCT(&pmix_ptl_base.connecting);
+    PMIX_LIST_DESTRUCT(&pmix_ptl_base.tokens);
 
     remove_rndz_file(&pmix_ptl_base.scheduler_filename,
                      &pmix_ptl_base.created_scheduler_filename,
@@ -528,10 +579,21 @@ static pmix_status_t pmix_ptl_close(void)
  * cannot do this: pmix_mca_base_framework_open() answers a failed open by
  * closing the framework, and a framework that never reached OPEN is closed
  * without calling its close function. */
+static void free_server_access(void)
+{
+    free(pmix_ptl_base.access_uids);
+    pmix_ptl_base.access_uids = NULL;
+    pmix_ptl_base.naccess_uids = 0;
+    free(pmix_ptl_base.access_gids);
+    pmix_ptl_base.access_gids = NULL;
+    pmix_ptl_base.naccess_gids = 0;
+    pmix_ptl_base.server_expect_given = false;
+}
+
 static void open_cleanup(void)
 {
-    free(pmix_ptl_base.connection);
-    pmix_ptl_base.connection = NULL;
+    PMIX_LIST_DESTRUCT(&pmix_ptl_base.actives);
+    free_server_access();
     free(pmix_ptl_base.session_tmpdir);
     pmix_ptl_base.session_tmpdir = NULL;
     free(pmix_ptl_base.system_tmpdir);
@@ -542,9 +604,14 @@ static void open_cleanup(void)
     pmix_ptl_base.rendezvous_filename = NULL;
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
     PMIX_DESTRUCT(&pmix_ptl_base.listener);
+    PMIX_DESTRUCT(&pmix_ptl_base.local_listener);
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.alt_listeners);
     PMIX_DESTRUCT(&pmix_ptl_base.pending_connections);
+    PMIX_DESTRUCT(&pmix_ptl_base.tool_queue);
+    PMIX_DESTRUCT(&pmix_ptl_base.tool_asking);
+    PMIX_DESTRUCT(&pmix_ptl_base.tool_late);
     PMIX_DESTRUCT(&pmix_ptl_base.connecting);
+    PMIX_LIST_DESTRUCT(&pmix_ptl_base.tokens);
     pmix_ptl_base.initialized = false;
 }
 
@@ -556,18 +623,18 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
 
     /* initialize globals */
     pmix_ptl_base.initialized = true;
+    PMIX_CONSTRUCT(&pmix_ptl_base.actives, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.posted_recvs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.listener, pmix_listener_t);
+    PMIX_CONSTRUCT(&pmix_ptl_base.local_listener, pmix_listener_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.alt_listeners, pmix_list_t);
     pmix_ptl_base.alt_uris = NULL;
     PMIX_CONSTRUCT(&pmix_ptl_base.pending_connections, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_ptl_base.tool_queue, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_ptl_base.tool_asking, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_ptl_base.tool_late, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.connecting, pmix_list_t);
-    pmix_ptl_base.connection = (struct sockaddr_storage *)malloc(sizeof(struct sockaddr_storage));
-    if (NULL == pmix_ptl_base.connection) {
-        rc = PMIX_ERR_NOMEM;
-        goto error;
-    }
-    memset(pmix_ptl_base.connection, 0, sizeof(struct sockaddr_storage));
+    PMIX_CONSTRUCT(&pmix_ptl_base.tokens, pmix_list_t);
 
     /* check for environ-based directives on the tmpdirs to use. A server
      * or launcher has already resolved both in its init, and they can only
@@ -611,6 +678,12 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
                 goto error;
             }
         }
+    }
+
+    /* the servers we may talk to besides our own user's and root's */
+    rc = pmix_ptl_base_parse_server_access(pmix_ptl_base.server_access);
+    if (PMIX_SUCCESS != rc) {
+        goto error;
     }
 
     /* Open up all available components */
@@ -711,6 +784,20 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_sr_t,
                                 pmix_object_t,
                                 srcon, srdes);
 
+void pmix_ptl_base_monotime(struct timeval *tv)
+{
+#if PMIX_HAVE_CLOCK_GETTIME && defined(CLOCK_MONOTONIC)
+    struct timespec ts;
+
+    if (0 == clock_gettime(CLOCK_MONOTONIC, &ts)) {
+        tv->tv_sec = ts.tv_sec;
+        tv->tv_usec = ts.tv_nsec / 1000;
+        return;
+    }
+#endif
+    (void) gettimeofday(tv, NULL);
+}
+
 static void pccon(pmix_pending_connection_t *p)
 {
     /* every field is set here - including the ones the listener fills in
@@ -718,6 +805,7 @@ static void pccon(pmix_pending_connection_t *p)
      * that far, and several of these want something other than the zero
      * PMIX_NEW would leave */
     p->protocol = PMIX_PROTOCOL_UNDEF;
+    p->transport = NULL;
     /* assigned only when the connect-ack timeout is enabled, and deleted
      * only when timer_active says it was added */
     memset(&p->timer, 0, sizeof(p->timer));
@@ -735,6 +823,7 @@ static void pccon(pmix_pending_connection_t *p)
     p->gid = 0;
     memset(&p->addr, 0, sizeof(p->addr));
     p->need_id = false;
+    p->id_unsent = false;
     p->nspace_created = false;
     p->rinfo_created = false;
     PMIX_LOAD_PROCID(&p->proc, NULL, PMIX_RANK_UNDEF);
@@ -752,14 +841,70 @@ static void pccon(pmix_pending_connection_t *p)
     p->proc_type.release = PMIX_RELEASE_WILDCARD;
     p->proc_type.flag = 0;
     p->psecmod = NULL;
+    p->nptr = NULL;
+    p->rinfo = NULL;
+    p->bfropsmod = NULL;
+    p->gdsmod = NULL;
+    p->blob = NULL;
+    p->bloblen = 0;
+    p->pid = 0;
+    p->realuid = 0;
+    p->realgid = 0;
+    p->realuid_given = false;
+    p->realgid_given = false;
+    PMIX_LOAD_PROCID(&p->assigned, NULL, PMIX_RANK_UNDEF);
+    p->connecting = false;
+    pmix_atomic_unset_bool(&p->answered);
+    p->upcall_rc = PMIX_SUCCESS;
+    p->abandoned = false;
+    p->late_listed = false;
+    p->asking = false;
+    p->token = NULL;
+    pmix_ptl_base_monotime(&p->waiting);
+    p->host_tmo = 0;
 }
 static void pcdes(pmix_pending_connection_t *p)
 {
+    pmix_peer_t *peer = (pmix_peer_t *) p->peer;
+    pmix_namespace_t *nptr = (pmix_namespace_t *) p->nptr;
+    pmix_rank_info_t *rinfo = (pmix_rank_info_t *) p->rinfo;
+
     if (p->timer_active) {
         pmix_event_evtimer_del(&p->timer);
         p->timer_active = false;
     }
+    /* a connection that was waiting on the host no longer is */
+    if (p->asking) {
+        pmix_list_remove_item(&pmix_ptl_base.tool_asking, &p->super);
+        p->asking = false;
+    }
+    if (p->connecting && NULL != rinfo && 0 < rinfo->connecting) {
+        --rinfo->connecting;
+    }
+    /* a connection that was never accepted: what it built was never
+     * listed, so releasing it is all the undoing there is */
+    if (NULL != peer) {
+        /* the socket is ours, below - not the peer's */
+        peer->sd = -1;
+        PMIX_RELEASE(peer);
+    }
+    if (NULL != rinfo) {
+        PMIX_RELEASE(rinfo);
+    }
+    if (NULL != nptr) {
+        PMIX_RELEASE(nptr);
+    }
+    if (0 <= p->sd) {
+        CLOSE_THE_SOCKET(p->sd);
+    }
+    if (NULL != p->blob) {
+        /* the info it holds may carry a connection token */
+        pmix_ptl_base_wipe(p->blob, p->bloblen);
+        free(p->blob);
+    }
     if (NULL != p->msg) {
+        /* as much of the connect-ack as arrived, token and all */
+        pmix_ptl_base_wipe(p->msg, p->msg_recvd);
         free(p->msg);
     }
     if (NULL != p->info) {
@@ -780,6 +925,8 @@ static void pcdes(pmix_pending_connection_t *p)
     if (NULL != p->cred) {
         free(p->cred);
     }
+    pmix_ptl_base_wipe_token(p->token);
+    free(p->token);
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_pending_connection_t,
                                 pmix_list_item_t,
@@ -790,6 +937,7 @@ static void lcon(pmix_listener_t *p)
     memset(&p->ev, 0, sizeof(pmix_event_t));
     p->active = false;
     p->protocol = PMIX_PROTOCOL_UNDEF;
+    p->transport = NULL;
     p->socket = -1;
     p->varname = NULL;
     p->uri = NULL;
@@ -816,6 +964,10 @@ static void ldes(pmix_listener_t *p)
         free(p->uri);
     }
 }
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_base_active_t,
+                                pmix_list_item_t,
+                                NULL, NULL);
+
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_listener_t,
                                 pmix_list_item_t,
                                 lcon, ldes);
@@ -845,6 +997,7 @@ static void ccon(pmix_connection_t *p)
     p->uri = NULL;
     p->version = NULL;
     p->alt_uris = NULL;
+    p->local_uri = NULL;
     p->bfrops = NULL;
     p->psec = NULL;
 }
@@ -860,6 +1013,7 @@ static void dcon(pmix_connection_t *p)
         free(p->version);
     }
     free(p->alt_uris);
+    free(p->local_uri);
     free(p->bfrops);
     free(p->psec);
 }

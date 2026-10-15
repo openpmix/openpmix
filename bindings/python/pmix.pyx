@@ -4,7 +4,7 @@
 
 from libc.string cimport memset, strncpy, strcpy, strlen, strdup
 
-from libc.stdlib cimport malloc, free
+from libc.stdlib cimport malloc, free, getenv
 from libc.string cimport memcpy
 from libc.stdio cimport printf
 from ctypes import addressof, c_int
@@ -46,6 +46,16 @@ _pending_evreg = None
 _pending_iofreg = None
 _reglock = threading.Lock()
 myname = {}
+
+# PMIx_Init and PMIx_tool_init take the variables that say who this
+# process is, and how it reaches its server, out of the C environment.
+# os.environ is the copy Python made when it started, and the environment
+# Python gives a process it starts: drop from it every PMIX_ variable the
+# C environment no longer holds
+def _pmix_sync_environ():
+    for key in [k for k in os.environ if k.startswith('PMIX_')]:
+        if NULL == getenv(key.encode('UTF-8')):
+            del os.environ[key]
 
 
 cdef struct icbd:
@@ -1021,6 +1031,7 @@ cdef class PMIxClient:
         if PMIX_SUCCESS != rc:
             return rc, myname
         rc = PMIx_Init(&self.myproc, info, klen)
+        _pmix_sync_environ()
         if 0 < klen:
             pmix_free_info(info, klen)
         if PMIX_SUCCESS == rc:
@@ -6509,6 +6520,7 @@ cdef class PMIxTool(PMIxServer):
             pmix_free_info(info, sz)
         else:
             rc = PMIx_tool_init(&self.myproc, NULL, 0)
+        _pmix_sync_environ()
         if PMIX_SUCCESS == rc:
             # convert the returned name
             myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}
@@ -6899,6 +6911,7 @@ cdef class PMIxScheduler(PMIxTool):
             pmix_free_info(info, sz)
         else:
             rc = PMIx_tool_init(&self.myproc, NULL, 0)
+        _pmix_sync_environ()
         if PMIX_SUCCESS == rc:
             # convert the returned name
             myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}

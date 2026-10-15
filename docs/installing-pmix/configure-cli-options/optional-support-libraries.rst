@@ -63,7 +63,8 @@ Other capabilities
   remote tools with X.509 certificates. The default ``psec/native``
   mechanism authenticates only peers on the server's own host, so a
   server that accepts connections from tools on other hosts
-  (``PMIX_SERVER_REMOTE_CONNECTIONS``) needs this or MUNGE.
+  (``PMIX_SERVER_REMOTE_CONNECTIONS``, in a PMIx configured
+  ``--enable-remote-tools``) needs this or MUNGE.
 
   Like MUNGE, this is **opt-in only**. The component is compiled into
   ``libpmix`` like any other, so building it adds ``libcrypto`` to

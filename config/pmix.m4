@@ -497,7 +497,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
                       crt_externs.h signal.h \
                       ioLib.h sockLib.h hostLib.h limits.h \
                       sys/fcntl.h sys/statfs.h sys/statvfs.h \
-                      netdb.h ucred.h sys/auxv.h \
+                      netdb.h ucred.h sys/auxv.h sys/random.h \
                       sys/sysctl.h termio.h termios.h pty.h \
                       libutil.h util.h grp.h sys/cdefs.h utmp.h \
                       sys/utsname.h stdatomic.h mntent.h])
@@ -734,7 +734,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # -lrt might be needed for clock_gettime
     PMIX_SEARCH_LIBS_CORE([clock_gettime], [rt])
 
-    AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep statfs statvfs getpeereid getpeerucred setgroups strnlen posix_fallocate tcgetpgrp setpgid ptsname openpty setenv fork execve waitpid atexit forkpty posix_openpt fileno_unlocked isatty])
+    AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep statfs statvfs getpeereid getpeerucred setgroups strnlen posix_fallocate tcgetpgrp setpgid ptsname openpty setenv fork execve waitpid atexit forkpty posix_openpt fileno_unlocked isatty accept4 arc4random_buf getrandom])
 
     # On some hosts, htonl is a define, so the AC_CHECK_FUNC will get
     # confused.  On others, it's in the standard library, but stubbed with
@@ -886,6 +886,18 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     PMIX_MCA
 
+    # Every process of this release on a host connects to its server over
+    # the usock transport, and the server listens on tcp too - for older
+    # peers and for tools on other hosts. Neither can be left out.
+    for pmix_ptl_required in usock tcp ; do
+        AS_CASE([" $MCA_pmix_ptl_STATIC_COMPONENTS $MCA_pmix_ptl_DSO_COMPONENTS "],
+                [*" $pmix_ptl_required "*], [],
+                [AC_MSG_WARN([The ptl/$pmix_ptl_required component is not being built.])
+                 AC_MSG_WARN([PMIx cannot run without it: do not exclude it with])
+                 AC_MSG_WARN([--enable-mca-no-build.])
+                 AC_MSG_ERROR([Cannot continue])])
+    done
+
 
     ############################################################################
     # final compiler config
@@ -1010,7 +1022,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_gds_fallback.pl], [chmod +x test/unit/run_gds_fallback.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_simpcycle.pl], [chmod +x test/unit/run_simpcycle.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_toolcycle.pl], [chmod +x test/unit/run_toolcycle.pl])
-    AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_native_handshake.pl], [chmod +x test/unit/run_native_handshake.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_toolswitch.pl], [chmod +x test/unit/run_toolswitch.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_grpmember.pl], [chmod +x test/unit/run_grpmember.pl])
     AC_CONFIG_FILES(pmix_config_prefix[test/unit/run_grpref.pl], [chmod +x test/unit/run_grpref.pl])
@@ -1494,6 +1505,56 @@ AC_DEFINE_UNQUOTED([PMIX_ENABLE_IPV6], [$pmix_want_ipv6],
                    [Enable IPv6 support, but only if the underlying system supports it])
 
 PMIX_SUMMARY_ADD([Miscellaneous], [IPv6 Support], [], [$pmix_ipv6_enabled])
+
+#
+# Do we want to build support for tools on other hosts? Without it a
+# server listens for TCP connections on a loopback interface only, and a
+# host that asks for remote connections fails its init. The tcp transport
+# is built either way: a client or tool of this release still reaches an
+# older server over it.
+#
+AC_MSG_CHECKING([if want support for remote tools])
+AC_ARG_ENABLE([remote-tools],
+    [AS_HELP_STRING([--enable-remote-tools],
+        [Build support for tools connecting to a PMIx server from other hosts. Without it, a server takes TCP connections on a loopback interface only (default: disabled)])])
+if test "$enable_remote_tools" = "yes"; then
+    AC_MSG_RESULT([yes])
+    pmix_remote_tools=1
+    pmix_remote_tools_msg=yes
+else
+    AC_MSG_RESULT([no])
+    pmix_remote_tools=0
+    pmix_remote_tools_msg=no
+fi
+AC_DEFINE_UNQUOTED([PMIX_ENABLE_REMOTE_TOOLS], [$pmix_remote_tools],
+                   [Whether a server can take connections from tools on other hosts])
+
+PMIX_SUMMARY_ADD([Miscellaneous], [Remote tools], [], [$pmix_remote_tools_msg])
+
+#
+# Do we want to build support for clients and tools of earlier releases?
+# They connect over TCP, which a process of this release on the server's
+# host never uses to reach a server of this release. Without it a server
+# takes no such connection, whatever its host or the ptl_base_legacy_peers
+# parameter asks.
+#
+AC_MSG_CHECKING([if want support for clients and tools of earlier PMIx releases])
+AC_ARG_ENABLE([legacy-peers],
+    [AS_HELP_STRING([--disable-legacy-peers],
+        [Build without support for clients and tools of PMIx releases before v7.0, which connect to a server over TCP. With it, the ptl_base_legacy_peers parameter or the PMIX_SERVER_LEGACY_PEERS attribute turns it on (default: enabled)])])
+if test "$enable_legacy_peers" = "no"; then
+    AC_MSG_RESULT([no])
+    pmix_legacy_peers=0
+    pmix_legacy_peers_msg=no
+else
+    AC_MSG_RESULT([yes])
+    pmix_legacy_peers=1
+    pmix_legacy_peers_msg=yes
+fi
+AC_DEFINE_UNQUOTED([PMIX_ENABLE_LEGACY_PEERS], [$pmix_legacy_peers],
+                   [Whether a server can take connections from clients and tools of earlier releases])
+
+PMIX_SUMMARY_ADD([Miscellaneous], [Earlier-release clients and tools], [], [$pmix_legacy_peers_msg])
 
 ])dnl
 

@@ -52,13 +52,17 @@ decide, among other things:
 * whether tools running as other users may connect
   (``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``);
 * whether the server listens on interfaces other than loopback
-  (``PMIX_SERVER_REMOTE_CONNECTIONS``);
+  (``PMIX_SERVER_REMOTE_CONNECTIONS``, in a PMIx configured
+  ``--enable-remote-tools``);
 * where the server's rendezvous files and session directories go
   (``PMIX_SERVER_TMPDIR``, ``PMIX_SYSTEM_TMPDIR``).
 
 These are the host's decisions. A system administrator cannot change
 them through MCA parameters (see
-:ref:`label-sysadmin-authentication`). A host that wants tools
+:ref:`label-sysadmin-authentication`). Whether the server takes clients
+and tools of earlier releases is the host's when it says, with
+``PMIX_SERVER_LEGACY_PEERS``, and the ``ptl_base_legacy_peers``
+parameter's when it does not. A host that wants tools
 of other users to connect must also give the server a directory those
 users can search; see :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`
 and :doc:`/how-things-work/session_dirs`.
@@ -83,10 +87,22 @@ and :doc:`/how-things-work/session_dirs`.
      deployment calls for particular methods, such as ``munge`` for
      peers on other nodes.
    * **A system administrator** sets it in that installation's
-     ``<prefix>/etc/pmix-mca-params-override.conf``, which takes
-     precedence over the environment, so neither the host nor a user
-     can change it; or builds the installation without the components
-     that are not to be used.
+     ``<prefix>/etc/pmix-mca-params-override.conf``, whose settings take
+     precedence over the environment's - for every process that reads
+     the file. A process whose environment points its library at other
+     parameter files, or at none, does not read it (see
+     :ref:`label-sysadmin-authentication`), so the file sets the policy
+     for servers the administrator starts, or whose environment the
+     administrator controls. A component the installation is built
+     without, or whose plugin is removed, is unavailable to every
+     process of that installation.
+   * **A server started by a client** - a nested server - inherits
+     ``PMIX_SECURITY_MODE`` from the environment its own server gave the
+     client, and takes it as its ``psec`` setting unless ``PMIX_MCA_psec``
+     is set. It offers its own peers no more than its parent server
+     offered. A server started by a process that has itself called
+     ``PMIx_Init`` or ``PMIx_tool_init`` inherits no ``PMIX_SECURITY_MODE``
+     - that init took it out of the environment - and is not narrowed.
 
    Each PMIx installation reads only the parameter files under its own
    prefix, so the settings belong in the installation the host's server
@@ -104,8 +120,9 @@ rules are on :doc:`connections`; in brief:
   carries the number of seconds the host is asked to answer within. A
   host that cannot decide in time should answer no; the server refuses
   the process itself a little after that time.
-* **Tools are put to you one at a time.** A slow answer delays every
-  tool waiting behind it.
+* **You decide on one tool of a name at a time.** A slow answer delays
+  the tools of that name waiting behind it, and their time waiting
+  counts against their own wait.
 * **Be ready to name a tool you launched.** A tool you started, whose
   namespace and rank are already in use - several tools started by one
   job script, say - connects again as a tool that needs an identity,
@@ -115,15 +132,10 @@ rules are on :doc:`connections`; in brief:
   your answer came too late, or it went away first. You are then sent
   this event naming it, as for any process that leaves without
   finalizing. Register a handler for it.
-* **Expect nothing when a process execs.** A client or tool that execs
-  and initializes again keeps its connection's place: you are not asked
-  again, and hear of it once, when the new program finalizes.
-
-.. DRAFT: today the server waits for the host's answer indefinitely,
-   tools are put to the host as they arrive, a launched tool whose
-   rank is in use is refused, the host is not told when a process it
-   accepted is not connected, and an exec'd process is refused as a
-   second connection.
+* **Expect a process that execs to be lost.** A client or tool of this
+  release closes its connection when it execs: you are sent
+  ``PMIX_ERR_LOST_CONNECTION`` for it at once, whether the process runs
+  on or not.
 
 Do not call :ref:`PMIx_server_finalize(3) <man3-PMIx_server_finalize>`
 after a failed ``PMIx_server_init``.

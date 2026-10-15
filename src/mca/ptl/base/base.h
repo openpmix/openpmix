@@ -43,6 +43,7 @@
 #include "src/include/pmix_stdatomic.h"
 #include "src/mca/ptl/base/ptl_base_handshake.h"
 #include "src/mca/ptl/ptl.h"
+#include "src/util/pmix_fd.h"
 
 BEGIN_C_DECLS
 
@@ -63,20 +64,63 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_select(void);
  * the first attempt */
 #define PMIX_MAX_RETRIES 10
 
+/* a transport in use, on pmix_ptl_base.actives in priority order */
+typedef struct {
+    pmix_list_item_t super;
+    int priority;
+    pmix_ptl_base_component_t *component;
+    pmix_ptl_module_t *module;
+} pmix_ptl_base_active_t;
+PMIX_CLASS_DECLARATION(pmix_ptl_base_active_t);
+
 /* framework globals */
 struct pmix_ptl_base_t {
     bool initialized;
     bool selected;
+    pmix_list_t actives;      // pmix_ptl_base_active_t, highest priority first
     pmix_list_t posted_recvs; // list of pmix_ptl_posted_recv_t
     pmix_listener_t listener;
-    /* when remote connections are accepted, a listener on each other
-     * public interface the directives selected, and where they are:
-     * a comma-delimited list of "tcp4://host:port"/"tcp6://host:port" */
+    /* the local transport's listener - the one every process of this
+     * release on this host connects to - and the effective uid and gid it
+     * was opened as, which the kernel reports to whoever connects */
+    pmix_listener_t local_listener;
+    uid_t local_uid;
+    gid_t local_gid;
+    /* Who the server a connection reaches on the local transport must be,
+     * as the kernel reports it: the uid and gid the server that launched
+     * us named, when it named them - else our own uid, root, or one that
+     * ptl_base_server_access allows. See pmix_ptl_base_check_server */
+    bool server_expect_given;
+    uid_t server_expect_uid;
+    gid_t server_expect_gid;
+    char *server_access;
+    uid_t *access_uids;
+    size_t naccess_uids;
+    gid_t *access_gids;
+    size_t naccess_gids;
+    /* why the last blocking connect failed, for saying so */
+    int last_connect_errno;
+    /* listeners beyond the primary one, and where they are: today, when
+     * remote connections are accepted, tcp's on each other public
+     * interface the directives selected - a comma-delimited list of
+     * "tcp4://host:port"/"tcp6://host:port" */
     pmix_list_t alt_listeners;
     char *alt_uris;
     pmix_list_t pending_connections; // pmix_pending_connection_t still reading their connect-ack
+    /* The host decides on one tool of a name at a time: a tool whose
+     * identity is settled waits here (pmix_pending_connection_t), in the
+     * order they arrived, while the host decides on a tool of its name -
+     * one on tool_asking, which holds every tool the host is deciding on.
+     * A tool that needs an identity has no name, and never waits */
+    pmix_list_t tool_queue;
+    pmix_list_t tool_asking;
+    /* tools the server stopped waiting on the host for, whose answer has
+     * yet to arrive - their names are held until it does */
+    pmix_list_t tool_late;
+    /* the connection tokens PMIx_server_setup_fork gave out, by namespace
+     * and rank - see ptl_base_token.c */
+    pmix_list_t tokens;
     pmix_list_t connecting;          // pmix_ptl_connect_op_t: our own connects still under way
-    struct sockaddr_storage *connection;
     size_t max_msg_size;
     char *session_tmpdir;
     char *system_tmpdir;
@@ -113,6 +157,11 @@ struct pmix_ptl_base_t {
     int pid_dirfd;
     bool remote_connections;
     bool connections_specified;
+    /* whether clients and tools of earlier releases may connect: the
+     * ptl_base_legacy_peers parameter's value, and what this server
+     * settled on, which PMIX_SERVER_LEGACY_PEERS can change */
+    bool legacy_peers_param;
+    bool legacy_peers;
     bool system_tool;
     bool allow_foreign_tools;
     bool session_tool;
@@ -131,13 +180,13 @@ struct pmix_ptl_base_t {
      * server's rendezvous file descends - see pmix_ptl_base_df_search */
     int search_depth;
     /* seconds a server gives an incoming connection to deliver its whole
-     * connect-ack, and bound on each blocking read of the handshake that
-     * follows it - see pmix_ptl_base_connection_handler */
+     * connect-ack - see pmix_ptl_base_connection_handler */
     int connect_ack_timeout;
-    /* the most connections pending_connections may hold, as the
-     * max_pending_connections parameter gives it, and as
-     * pmix_ptl_base_start_listening works it out from that - 0 there means
-     * no limit. See connection_event_handler */
+    /* the most connections pending_connections may hold, and separately
+     * the most tools that may wait on the host (tool_queue and
+     * tool_asking), as the max_pending_connections parameter gives it,
+     * and as pmix_ptl_base_start_listening works it out from that - 0
+     * there means no limit. See connection_event_handler */
     int max_pending_connections;
     int pending_cap;
     /* the most any one writev may carry - see send_msg. Not a tuning
@@ -147,6 +196,19 @@ struct pmix_ptl_base_t {
 };
 typedef struct pmix_ptl_base_t pmix_ptl_base_t;
 
+/* The token PMIx_server_setup_fork gives a rank: this many random bytes,
+ * in hex in the process's environment under PMIX_PTL_TOKEN_ENV - after the
+ * name of the server that made it and a ';' - and sent back in the
+ * connect-ack's info under PMIX_PTL_TOKEN_KEY */
+#define PMIX_PTL_TOKEN_LEN 16
+#define PMIX_PTL_TOKEN_ENV "PMIX_CONNECT_TOKEN"
+#define PMIX_PTL_TOKEN_KEY "pmix.ptl.token"
+
+/* The first major release whose clients and tools reach a server on their
+ * own host over the local transport. A peer of an earlier one connects
+ * over TCP, and is taken only when the server takes legacy peers */
+#define PMIX_PTL_LOCAL_MAJOR 7
+
 PMIX_EXPORT extern pmix_ptl_base_t pmix_ptl_base;
 
 /* Tags the line of a rendezvous or report-URI file that carries a server's
@@ -154,6 +216,44 @@ PMIX_EXPORT extern pmix_ptl_base_t pmix_ptl_base;
  * by position, and a reader finds it by this tag rather than by where it
  * falls, so more lines may yet follow or precede it. */
 #define PMIX_PTL_ALT_URIS_TAG "alturis:"
+
+/* Tags the line of the same files that carries the server's local
+ * transport's URI - the one a process of this release on this host
+ * connects to. The first line keeps the address older readers take */
+#define PMIX_PTL_LOCAL_URI_TAG "local:"
+
+/* The variable a server puts the same URI in for the processes it starts,
+ * followed by ";<uid>:<gid>" - the identity the kernel must report for the
+ * server at the far end. No released reader builds or reads this name */
+#define PMIX_PTL_LOCAL_URI_ENV "PMIX_SERVER_LOCAL_URI"
+
+/* Build the value of PMIX_SERVER_LOCAL_URI for our local listener, or
+ * NULL if there is none */
+PMIX_EXPORT char *pmix_ptl_base_local_uri_value(void);
+
+/* Split a PMIX_SERVER_LOCAL_URI value into the URI and the uid and gid the
+ * server is to be. PMIX_ERR_BAD_PARAM if it is not that shape */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_local_uri(const char *value, char **uri,
+                                                        uid_t *uid, gid_t *gid);
+
+/* If the server that started us named its local transport's address, in
+ * PMIX_SERVER_LOCAL_URI, give it in *uri (ours to free) and expect the
+ * identity it named - PMIX_ERR_NOT_FOUND if it named none. A value that
+ * cannot be read is reported, and PMIX_ERR_SILENT returned */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_use_local_env(const char *server, char **uri);
+
+/* Whether the server at the far end of the peer's connection is one we
+ * may talk to, by what the kernel reports for it - see server_expect_*
+ * above. A connection on a transport whose far end the kernel does not
+ * identify passes. A server that may not be talked to is reported, and
+ * PMIX_ERR_INVALID_CRED returned */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_check_server(pmix_peer_t *peer, bool given, uid_t uid,
+                                                     gid_t gid);
+
+/* Resolve the ptl_base_server_access value - "users=a:b,groups=c:d",
+ * names or numbers - into pmix_ptl_base's lists. Reports and refuses an
+ * unknown name, an empty list, or a directive unknown or given twice */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_server_access(const char *spec);
 
 /* Tag the lines of the same files that list the wire formats (bfrops
  * components) and security mechanisms (psec components) the server can
@@ -172,6 +272,7 @@ typedef struct {
     char *uri;
     char *version;
     char *alt_uris;  // the server's other addresses, if its file listed any
+    char *local_uri; // the server's local transport's address, if its file listed one
     char *bfrops;    // the server's wire formats, if its file listed them
     char *psec;      // the server's security mechanisms, if its file listed them
 } pmix_connection_t;
@@ -210,6 +311,12 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer_nb(struct pmix_peer_t *p
                                                            pmix_info_t info[], size_t ninfo,
                                                            pmix_ptl_connect_nb_cbfunc_t cbfunc,
                                                            void *cbdata);
+/* A client's connect_to_peer - see ptl_base_client.c */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *peer,
+                                                               pmix_info_t info[], size_t ninfo,
+                                                               char **suri);
+/* A tool's setup_listener - see ptl_base_tool.c */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_tool_setup_listener(pmix_info_t info[], size_t ninfo);
 /* Start the event-driven connect to a located server. Takes ownership of
  * nspace, suri and iptr only when it returns PMIX_SUCCESS - after which
  * cbfunc is called exactly once, and never from inside this call. */
@@ -232,14 +339,68 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_rndz_file(char *filename,
                                                         bool optional,
                                                         pmix_list_t *connections);
 
+/* The address a URI names, from the transport whose scheme it has.
+ * PMIX_ERR_NOT_SUPPORTED if no transport in use speaks it */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_connection(char *uri,
                                                          struct sockaddr_storage *connection,
                                                          size_t *len);
+/* The same, also giving the transport whose scheme the URI has, when
+ * transport is not NULL */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_uri_to_addr(const char *uri,
+                                                    struct sockaddr_storage *connection,
+                                                    size_t *len, pmix_ptl_module_t **transport);
+/* The tools holding a connection while they wait on the host: queued for
+ * it, or being decided on */
+PMIX_EXPORT size_t pmix_ptl_base_waiting_tools(void);
+/* Give proc a token: make one, keep it, and put it in *env - or, for a
+ * process with no rank of its own, take any it inherited out of *env */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_make_token(const pmix_proc_t *proc, char ***env);
+/* Give a registered rank that has no token one that nobody is handed, so
+ * that until it is prepared nothing is taken for it */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_reserve_token(const pmix_proc_t *proc);
+/* Whether `given` is the token kept for the rank: PMIX_SUCCESS if it is,
+ * or if the rank has none - it was neither registered nor prepared;
+ * PMIX_ERR_INVALID_CRED if not */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_check_token(const char *nspace, pmix_rank_t rank,
+                                                    const char *given);
+/* Zero a token held as a string, or every token in an info array, before
+ * it is freed */
+PMIX_EXPORT void pmix_ptl_base_wipe(void *p, size_t len);
+PMIX_EXPORT void pmix_ptl_base_wipe_token(char *s);
+PMIX_EXPORT void pmix_ptl_base_wipe_token_info(pmix_info_t *info, size_t ninfo);
+/* Forget the rank's token - every rank's, for PMIX_RANK_WILDCARD */
+PMIX_EXPORT void pmix_ptl_base_drop_tokens(const char *nspace, pmix_rank_t rank);
+/* Add the token in our environment to a connect-ack's info - replacing
+ * *info and *ninfo - if it is the server nspace.rank's */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_add_token(pmix_info_t **info, size_t *ninfo,
+                                                  const char *nspace, pmix_rank_t rank);
+/* Whether a peer's address is this host's: a loopback address, or the
+ * address of one of this host's interfaces */
+PMIX_EXPORT bool pmix_ptl_base_addr_on_host(const struct sockaddr_storage *addr);
+
+/* Every socket PMIx creates or accepts is the library's alone: it is set
+ * close-on-exec, so a program the process execs - or a child it forks
+ * and execs - does not inherit a connection it cannot use, and keep it
+ * open after the process that made it is gone; and it is given
+ * pmix_ptl_base_set_nosigpipe() */
+PMIX_EXPORT void pmix_ptl_base_own_socket(int sd);
+
+/* Have the local transport open lt's socket and make its URI */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_listen_local(pmix_info_t info[], size_t ninfo,
+                                                     pmix_listener_t *lt);
+/* Have the highest-priority transport that listens open lt's socket and
+ * make its URI */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_listen(pmix_info_t info[], size_t ninfo,
+                                               pmix_listener_t *lt);
+/* Replace a string global from a directive, which must be a non-NULL
+ * PMIX_STRING. Returns false, with *rc set, if it cannot be used */
+PMIX_EXPORT bool pmix_ptl_base_replace_string(const pmix_info_t *info, char **target, int *rc);
 
 PMIX_EXPORT pmix_status_t pmix_ptl_base_create_listener(pmix_info_t info[], size_t ninfo);
 PMIX_EXPORT void pmix_ptl_base_start_listening(void);
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
-PMIX_EXPORT void pmix_ptl_base_drop_pending_connection(pmix_pending_connection_t *pnd);
+PMIX_EXPORT void pmix_ptl_base_drop_pending_connection(pmix_pending_connection_t *pnd,
+                                                       pmix_status_t why);
 /* What the listener does when accept() on lt fails with err: nothing for an
  * error that concerns only the connection, a pause and a retry a second
  * later for anything else, and a stop once the retries of an error that
@@ -259,9 +420,44 @@ PMIX_EXPORT void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata);
  * the definition. */
 PMIX_EXPORT void pmix_ptl_base_flush_sends(pmix_peer_t *peer);
 PMIX_EXPORT void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata);
+/* If a peer's socket has closed, or been reset, before its receive handler
+ * has run to see it, handle the loss now, as the handler would, and return
+ * true - the peer may have been released. A socket with unread data on it,
+ * or one that reports any other error, is live: returns false. Progress
+ * thread only */
+PMIX_EXPORT bool pmix_ptl_base_reap_if_closed(pmix_peer_t *peer);
+/* Whether the other end of a socket has closed it, or reset it - looked at
+ * without taking anything from it. Unread data, and any other error, is a
+ * socket still open. A blocking socket is not looked at where the look
+ * could wait: false */
+PMIX_EXPORT bool pmix_ptl_base_sd_closed(int sd);
+/* The time now, on a clock that only goes forward where there is one */
+PMIX_EXPORT void pmix_ptl_base_monotime(struct timeval *tv);
+/* Tell the host that `proc`, which it accepted, is not connected: the
+ * PMIX_ERR_LOST_CONNECTION it is given for any process that leaves
+ * without finalizing. `cbfunc`, if given, is called on the progress
+ * thread once the host's handlers have been given the notice - or at once
+ * if it could not be raised. Progress thread only */
+PMIX_EXPORT void pmix_ptl_base_report_not_connected(const pmix_proc_t *proc,
+                                                    pmix_op_cbfunc_t cbfunc, void *cbdata);
 PMIX_EXPORT void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_nonblocking(int sd);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_blocking(int sd);
+
+/* A write to a socket whose peer has reset raises SIGPIPE, and its
+ * default action ends the process - the host's or the application's, not
+ * a library's to decide. So nothing PMIx writes may raise it: every send
+ * passes PMIX_PTL_NOSIGNAL, and every socket PMIx creates or accepts is
+ * given pmix_ptl_base_set_nosigpipe(), for a platform whose sends take no
+ * such flag. */
+#ifdef MSG_NOSIGNAL
+#    define PMIX_PTL_NOSIGNAL MSG_NOSIGNAL
+#else
+#    define PMIX_PTL_NOSIGNAL 0
+#endif
+PMIX_EXPORT void pmix_ptl_base_set_nosigpipe(int sd);
+/* writev() that cannot raise SIGPIPE */
+PMIX_EXPORT ssize_t pmix_ptl_base_writev(int sd, struct iovec *iov, int iovcnt);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_send_blocking(int sd, char *ptr, size_t size);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr, pmix_socklen_t len,
@@ -298,8 +494,6 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct ti
                                                     pmix_socklen_t *sz, bool *sockopt);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_client_handshake(pmix_peer_t *peer, pmix_status_t reply);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp);
-PMIX_EXPORT char **pmix_ptl_base_split_and_resolve(const char *orig_str,
-                                                   const char *name);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char **evar);
 PMIX_EXPORT char *pmix_ptl_base_get_cmd_line(void);
 

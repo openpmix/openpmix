@@ -43,6 +43,10 @@
  *   - a PMIX_SERVER_URI directive
  *     names a port with nothing
  *     listening                        -> PMIX_ERR_COMM_FAILURE, not initialized
+ *   - environment names a server that
+ *     answers with a request for a
+ *     security handshake and then
+ *     waits                            -> a failure at once, not initialized
  */
 
 #include "src/include/pmix_config.h"
@@ -58,6 +62,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -351,6 +356,78 @@ static void test_directive_dead_port(void)
            PMIX_ERR_COMM_FAILURE, 0);
 }
 
+/* A server that answers the connect-ack with a request for a security
+ * handshake, and then holds the connection open, waiting for the
+ * handshake. The client runs none: it must fail at once, rather than wait
+ * on the server, and be left uninitialized */
+static void test_env_handshake_request(void)
+{
+    int fds[2], port = 0, lsd, csd;
+    pid_t child;
+    result_t res;
+    bool got;
+    struct pollfd pfd;
+    struct timeval start, end;
+    char buf[4096];
+    uint32_t w = htonl((uint32_t) PMIX_ERR_READY_FOR_HANDSHAKE);
+    double secs;
+
+    lsd = bound_socket(&port, true);
+    if (0 > lsd || 0 != pipe(fds)) {
+        report("server asks for a handshake", 0, "setup failed");
+        return;
+    }
+    gettimeofday(&start, NULL);
+    child = fork();
+    if (0 == child) {
+        close(fds[0]);
+        close(lsd);
+        clear_server_env();
+        set_launched_env(port);
+        /* a client that waited on the server would wait this long */
+        setenv("PMIX_MCA_ptl_base_handshake_wait_time", "20", 1);
+        child_init(fds[1], NULL, 0);
+    }
+    close(fds[1]);
+    pfd.fd = lsd;
+    pfd.events = POLLIN;
+    csd = -1;
+    if (0 < poll(&pfd, 1, 30000)) {
+        csd = accept(lsd, NULL, NULL);
+        if (0 <= csd) {
+            pfd.fd = csd;
+            if (0 < poll(&pfd, 1, 2000)) {
+                ssize_t r = read(csd, buf, sizeof(buf));
+                (void) r;
+            }
+            if ((ssize_t) sizeof(w) != write(csd, &w, sizeof(w))) {
+                close(csd);
+                csd = -1;
+            }
+        }
+    }
+    got = collect(child, fds[0], &res);
+    gettimeofday(&end, NULL);
+    if (0 <= csd) {
+        close(csd);
+    }
+    close(lsd);
+    secs = (double) (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
+    if (got && 10.0 < secs) {
+        report("server asks for a handshake: the client fails at once", 0,
+               "the client waited on the server");
+        return;
+    }
+    if (got && (PMIX_SUCCESS == res.status || PMIX_ERR_UNREACH == res.status ||
+                res.initialized)) {
+        expect("server asks for a handshake: the client fails at once", got, &res,
+               PMIX_ERR_COMM_FAILURE, 0);
+        return;
+    }
+    report("server asks for a handshake: the client fails at once", got,
+           "the child hung or died without reporting");
+}
+
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -361,6 +438,7 @@ int main(void)
     test_env_dead_port();
     test_env_dropped_connection();
     test_directive_dead_port();
+    test_env_handshake_request();
 
     fprintf(stdout, "client_connect_fail: %d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;

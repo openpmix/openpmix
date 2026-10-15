@@ -23,6 +23,19 @@
 
 BEGIN_C_DECLS
 
+#ifdef HAVE_SYS_SOCKET_H
+#    include <sys/socket.h>
+#endif
+
+/* Where the platform has it, a socket is created close-on-exec - pass this
+ * in socket()'s type - so no fork and exec on another thread can come
+ * between its creation and a pmix_fd_set_cloexec() */
+#ifdef SOCK_CLOEXEC
+#    define PMIX_SOCK_CLOEXEC SOCK_CLOEXEC
+#else
+#    define PMIX_SOCK_CLOEXEC 0
+#endif
+
 /**
  * Read a complete buffer from a file descriptor.
  *
@@ -60,6 +73,18 @@ PMIX_EXPORT pmix_status_t pmix_fd_read(int fd, int len, void *buffer);
  * pmix_fd_read(), the fd must be a blocking one.
  */
 PMIX_EXPORT pmix_status_t pmix_fd_write(int fd, int len, const void *buffer);
+
+/**
+ * pmix_fd_write() for a descriptor whose reader may have gone - a pipe the
+ * host handed us, say. A write that would raise SIGPIPE fails with
+ * PMIX_ERR_IN_ERRNO and errno EPIPE instead. Where the platform can turn
+ * SIGPIPE off for one descriptor (F_SETNOSIGPIPE) that is done; otherwise
+ * SIGPIPE is blocked on this thread around the write - which is enough
+ * where, as on Linux, the signal goes to the thread that wrote - and one
+ * raised meanwhile is taken before the thread's mask is restored. Not for
+ * use between fork and exec.
+ */
+PMIX_EXPORT pmix_status_t pmix_fd_write_nosigpipe(int fd, int len, const void *buffer);
 
 /**
  * Convenience function to set a file descriptor to be close-on-exec.

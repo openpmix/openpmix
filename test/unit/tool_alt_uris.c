@@ -271,6 +271,15 @@ int main(int argc, char **argv)
     int status, i;
     bool flag = true;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+#if PMIX_ENABLE_LEGACY_PEERS
+    /* these cases are about the TCP listener, which a server opens for
+     * clients and tools of earlier releases */
+    setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
+#else
+    fprintf(stdout, "this PMIx takes no clients or tools of earlier releases, so a "
+                    "server has no TCP listener for these cases\n");
+    return 77;
+#endif
 
     fprintf(stdout, "\n=== tool alternate server address unit test ===\n\n");
 

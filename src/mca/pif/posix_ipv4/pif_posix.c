@@ -51,6 +51,7 @@
 
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pif/pif.h"
+#include "src/util/pmix_fd.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_if.h"
 
@@ -109,10 +110,12 @@ static int if_posix_open(void)
     /* Create the internet socket to test with.  Must use AF_INET;
        using AF_UNSPEC or AF_INET6 will cause everything to
        fail. */
-    if ((sd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+    if ((sd = socket(AF_INET, SOCK_DGRAM | PMIX_SOCK_CLOEXEC, 0)) < 0) {
         pmix_output(0, "pmix_ifinit: socket() failed with errno=%d\n", errno);
         return PMIX_ERROR;
     }
+    /* a child the process forks and execs meanwhile does not keep it */
+    (void) pmix_fd_set_cloexec(sd);
 
     /*
      * Get Network Interface configuration

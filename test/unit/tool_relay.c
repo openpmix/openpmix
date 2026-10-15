@@ -219,7 +219,7 @@ static const char *why(int code)
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
-    pmix_info_t tinfo[2];
+    pmix_info_t tinfo[3];
     pmix_status_t rc;
     char *uri;
     int uripipe[2];
@@ -254,9 +254,13 @@ int main(int argc, char **argv)
      * makes the downstream tool's spawn unrelayable. */
     PMIX_INFO_LOAD(&tinfo[0], PMIX_LAUNCHER, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&tinfo[1], PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
-    rc = PMIx_tool_init(&myproc, tinfo, 2);
+    /* the downstream tool connects to us, which a launcher takes only
+     * with tool support - as prun asks for it */
+    PMIX_INFO_LOAD(&tinfo[2], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
+    rc = PMIx_tool_init(&myproc, tinfo, 3);
     PMIX_INFO_DESTRUCT(&tinfo[0]);
     PMIX_INFO_DESTRUCT(&tinfo[1]);
+    PMIX_INFO_DESTRUCT(&tinfo[2]);
     if (PMIX_SUCCESS != rc) {
         report("upstream launcher initialized", 0, PMIx_Error_string(rc));
         goto reap;
@@ -267,7 +271,9 @@ int main(int argc, char **argv)
 
     /* hand the downstream tool our contact information - read straight
      * off the listener, as this test is white-box anyway */
-    uri = pmix_ptl_base.listener.uri;
+    /* the address the server reports: its TCP listener's when it has
+     * one, else its local socket's */
+    uri = ((NULL != pmix_ptl_base.listener.uri) ? pmix_ptl_base.listener.uri : pmix_ptl_base.local_listener.uri);
     if (NULL == uri) {
         report("upstream launcher published its URI", 0,
                "no listener - a launcher must start one");

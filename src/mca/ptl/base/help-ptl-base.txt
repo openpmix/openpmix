@@ -42,6 +42,94 @@ value will be ignored.
   Value:      %s
   Message:    %s
 #
+[local-unreachable]
+This process could not reach the socket of the PMIx server that started
+it, on this host, and cannot continue. It does not fall back to another
+way of connecting.
+
+  Local host: %s
+  Socket:     %s
+  Reason:     %s
+
+The socket is in the server's temporary directory. A process in a
+container needs that directory mounted, and must run as a user the
+socket lets in.
+#
+[local-uri-bad]
+The variable through which the PMIx server that started this process
+said where it listens could not be read:
+
+  %s=%s
+
+It should hold "<namespace>.<rank>;<address>;<uid>:<gid>".
+#
+[server-unidentified]
+This process could not learn, from the kernel, which user runs the PMIx
+server it connected to on host %s, and will not talk to it.
+#
+[server-identity]
+The PMIx server this process connected to on host %s is not one it may
+talk to: the kernel reports it runs as
+
+  uid %lu, gid %lu
+
+and it should be %s.
+#
+[server-identity-tcp]
+The PMIx server this process connected to over TCP on host %s is not
+one it may talk to: the kernel reports that its end of the connection
+belongs to
+
+  uid %lu
+
+and it should be %s. The kernel records no group for a TCP connection,
+so pmix_ptl_base_server_access can accept such a server by its user
+alone.
+#
+[server-access-bad]
+The value of pmix_ptl_base_server_access could not be used:
+
+  %s
+
+It names further servers a client or tool will talk to, as
+"users=<list>,groups=<list>" - either may be left out - where each list
+is user or group names or numbers separated by ':'. Every name must be
+one this system knows, no list may be empty, and each directive may be
+given once.
+#
+[usock-listener]
+The PMIx server could not open the socket the processes on its host
+connect to, and cannot run without it.
+
+  Local host: %s
+  Socket:     %s
+  Reason:     %s
+
+The socket is made in a directory of its own beneath the server's
+temporary directory. If the path is too long - a socket's path is
+limited to about 100 characters - pass the server a shorter temporary
+directory.
+#
+[bad if_inexclude]
+An invalid value was given for pmix_ptl_base_if_%s, so the listener
+cannot be opened as asked.
+
+  Local host: %s
+  Value:      %s
+  Message:    %s
+
+Each entry must be an interface name or a subnet in CIDR notation
+(e.g., "eth0,192.168.0.0/16").
+#
+[no-include-match]
+None of the interfaces or subnets in pmix_ptl_base_if_include is on
+this host, so the listener cannot be opened on any of them.
+
+  Local host: %s
+  Include:    %s
+
+Please name an interface or subnet this host has.
+#
 [accept failed]
 WARNING: The accept(3) system call failed on a TCP socket.  While this
 should generally never happen on a well-configured HPC system, the
@@ -79,16 +167,6 @@ rendezvous file:
 
 Please correct the error and try again.
 #
-[mismatch-id]
-The %s ID of the client process does not match the ID registered
-by the host runtime:
-
-  Process:     %u
-  Registered:  %u
-
-This could be a security issue. Please check the situation and
-try again.
-#
 [no-remote-interfaces]
 You requested support for remote tool connections, but no non-loopback
 interfaces were found after applying any include or exclude directives:
@@ -101,8 +179,10 @@ Please adjust your include or exclude to allow selection of a
 non-loopback interface.
 #
 [no-loopback-interfaces]
-You requested support for only local tool connections, but no loopback
-interfaces were found after applying any include or exclude directives:
+This PMIx server takes TCP connections on a loopback interface only -
+remote connections were not requested, or this PMIx was built without
+--enable-remote-tools - but no loopback interfaces were found after
+applying any include or exclude directives:
 
   Include:    %s
   Exclude:    %s
@@ -110,6 +190,34 @@ interfaces were found after applying any include or exclude directives:
 
 Please adjust your include or exclude to allow selection of a
 loopback interface.
+#
+[remote-tools-not-built]
+The host asked the PMIx server on %s to take connections from tools on
+other hosts (PMIX_SERVER_REMOTE_CONNECTIONS), but this PMIx was built
+without support for them. It takes TCP connections on a loopback
+interface only.
+
+Rebuild PMIx with --enable-remote-tools, or do not ask for remote
+connections.
+#
+[legacy-peers-not-built]
+The PMIx server on %s was asked, by %s, to take
+connections from clients and tools of PMIx releases before v7.0, but
+this PMIx was built without support for them (--disable-legacy-peers).
+
+Rebuild PMIx without --disable-legacy-peers, or do not ask for them.
+#
+[remote-no-psec]
+The host asked the PMIx server on %s to take connections from tools on
+other hosts (PMIX_SERVER_REMOTE_CONNECTIONS). A tool on another host
+must prove who it is with a security mechanism that validates a
+credential made on that host - munge or ssl - and none is available.
+The mechanisms this server can validate with are:
+
+  %s
+
+Build PMIx with munge or OpenSSL support, and for ssl give the server a
+certificate authority with psec_ssl_ca_file.
 #
 [no-available-interfaces]
 You requested support for tool connections, but no available

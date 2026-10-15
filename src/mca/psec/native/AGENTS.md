@@ -16,11 +16,9 @@ peer's user and group — the effective `uid`/`gid` — with no external
 daemon or library. Read the framework [`AGENTS.md`](../AGENTS.md) first;
 this file covers only what is specific to `native`.
 
-`native` uses **both** psec models. Its credential (`create_cred` +
-`validate_cred`) decides most connections on its own. When it cannot,
-`validate_cred` returns `PMIX_ERR_READY_FOR_HANDSHAKE` and its handshake
-(`client_handshake` + `server_handshake`) finishes the job. The
-user-facing description is
+`native` uses the single-shot psec model: its credential (`create_cred`
++ `validate_cred`) decides every connection on its own, and it has no
+handshake. The user-facing description is
 [`docs/how-things-work/authentication/native.rst`](../../../../docs/how-things-work/authentication/native.rst).
 
 ## Files
@@ -29,37 +27,23 @@ user-facing description is
 |------|----------|
 | `psec_native.h` | Declares the component and module symbols, and `pmix_psec_native_params`. |
 | `psec_native_component.c` | Component struct, MCA parameters, `component_query` (priority **10**, always available). |
-| `psec_native.c` | The module: credential, identity rules, and the local-socket handshake. |
-| `help-psec-native.txt` | Why a connection was refused: `remote-peer`, `legacy-peer`, `foreign-group`, `handshake-failed`, `socket-unreachable`. |
+| `psec_native.c` | The module: the credential and the identity rules. |
+| `help-psec-native.txt` | Why a connection was refused: `legacy-peer`, `unowned-peer`, `foreign-group`. |
 
 ## MCA parameters
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
-| `psec_native_socket_dir` | server's tmpdir | Where a server makes the directory for its handshake sockets. On a peer: where that same base directory appears to it. |
-| `psec_native_legacy_auth` | `true` | Accept a peer from an older release on its claimed identity when the kernel cannot confirm it. |
+| `psec_native_legacy_auth` | `false` | Accept a peer connecting over TCP on its claimed identity on a platform with no TCP table to ask. |
 
 ## The credential
 
-`create_cred` (V2/TCP protocol only) produces:
-
-```
-uid_t euid | gid_t egid | "PNX1" | uint8 idlen | idlen bytes of kernel id
-```
-
-- The uid and gid are raw host-endian `memcpy`s. A peer on this host
-  shares the server's ABI, which is all native serves.
-- The **trailer** (`"PNX1"` onward) was added with the local-socket
-  handshake. Its presence says "I can run the handshake". Its absence is
-  how a server recognizes an older release.
-- The **kernel id** is `/proc/sys/kernel/random/boot_id` on Linux and
-  `kern.bootsessionuuid` on macOS — empty elsewhere. It is the same for
-  every process on one kernel, containers included. It is not secret and
-  nothing trusts it: it only decides whether a handshake could possibly
-  succeed.
-- Every server back to v3.2 reads the uid and gid and ignores what
-  follows (`sizeof(uid_t) <= ln` checks, not `==`). That is what makes
-  appending safe. **Append after the kernel id; never reorder.**
+`create_cred` (V2 protocol only) produces the peer's effective `uid_t`
+and `gid_t`, and nothing more. A server reads those and **ignores
+anything after them**, as every release has: a later release may append,
+and must not be refused for it. (An unreleased trailer, `"PNX1"`, once
+marked a peer able to run an AF_UNIX side handshake; it is gone, and a
+server that sees it ignores it.)
 
 ## What `validate_cred` decides
 
@@ -68,21 +52,23 @@ After the `PMIX_CRED_TYPE` screen and the protocol checks (a
 
 1. **No connection** (`pr->sd < 0`, i.e. `PMIx_Validate_credential`):
    refused. The credential is only a claim.
-2. **The kernel names the owner** — `pmix_util_getid_tcp()`
+2. **A local-transport connection** (`pr->transport->peer_identity`, the
+   usock transport): the kernel's uid and gid for the far end are the
+   peer's, whatever it claimed. Then `settle_identity()`, with the gid
+   attested.
+3. **Over TCP, the kernel names the owner** — `pmix_util_getid_tcp()`
    ([`src/util/pmix_getid.c`](../../../util/pmix_getid.c)) finds the
    peer's socket in this host's TCP table. That uid is the peer's uid.
-   The group is the claimed one (the kernel records none for a socket).
-   Then `settle_identity()`. If that refuses **the group alone** and the
-   peer sent the trailer, the answer is `PMIX_ERR_READY_FOR_HANDSHAKE`
-   instead, so the handshake can attest the group: with host networking
-   and a user namespace, the claimed gid is the one inside the namespace.
-3. **The kernel cannot, and the peer sent the trailer:**
-   - its kernel id differs from ours → refused (`remote-peer`): it is on
-     another host, where no local socket reaches it;
-   - otherwise → `PMIX_ERR_READY_FOR_HANDSHAKE`.
-4. **The kernel cannot, and there is no trailer** (an older release):
-   accepted on its claim when `legacy_auth` is true — the claim must
-   still match the recorded uid/gid — else refused (`legacy-peer`).
+   The group is the claimed one (the kernel records none for a TCP
+   socket). Then `settle_identity()`, with the gid not attested.
+4. **Over TCP, the kernel cannot.** A peer at an address of this host
+   (`peer_on_host`) that the table does not show (`PMIX_ERR_NOT_FOUND`) is
+   refused whatever `legacy_auth` says (`unowned-peer`): its end is in the
+   table once it has sent. Otherwise - a platform with no table
+   (`PMIX_ERR_NOT_SUPPORTED`) - accepted on its claim when `legacy_auth`
+   is true, the claim still matching the recorded uid/gid, else refused
+   (`legacy-peer`). A peer at an address not this host's never gets here:
+   ptl refuses it first, native's module not being `remote`.
 
 ### `settle_identity()` — registered vs. claimed
 
@@ -96,108 +82,32 @@ After the `PMIX_CRED_TYPE` screen and the protocol checks (a
   registered it): the established uid **replaces** `pr->info->uid`. The
   claimed group stands if the user holds it
   (`pmix_psec_base_gid_held()`, or it is our own egid for our own uid).
-  Otherwise an attested group (handshake path) replaces it, and an
-  unattested one (TCP path) is refused (`foreign-group`).
+  Otherwise an attested group (local transport) replaces it, and an
+  unattested one (TCP) is refused (`foreign-group`).
 
 On success `*info` carries `PMIX_CRED_TYPE`, and `PMIX_USERID` /
 `PMIX_GRPID` set to the identity settled on.
 
-## The local-socket handshake
-
-For a peer the kernel's TCP table cannot see — typically a container with
-its own network namespace. TCP remains the connection; the AF_UNIX
-socket exists only for this exchange:
-
-```
-server -> peer (TCP):   u32 32, 32-byte nonce, u32 len + base dir, u32 len + relative path
-peer   -> server (AF_UNIX): the nonce
-server -> peer (TCP):   u32 status
-```
-
-- The server makes one directory per server process,
-  `<socket_dir>/pmix-native.XXXXXX` (`mkdtemp`, mode 0711), on first
-  use, and removes it at finalize. Several servers can share a base.
-- Each handshake gets its own socket (`auth.<n>`, mode 0777 — any user
-  may connect; the nonce and `SO_PEERCRED`/`getpeereid()` decide). It is
-  unlinked once a connection has presented the nonce, and on every exit
-  path.
-- **The server reads every connection made to the socket until one
-  presents the nonce** (`await_nonce()`). Any user can connect, so the
-  first connection is not necessarily the peer's: one that sends a wrong
-  nonce, or nothing, is closed and the wait goes on. Up to
-  `NATIVE_MAX_PENDING` (8, also the `listen()` backlog) are read at once;
-  when all are in use the oldest is closed to admit a new one. Each
-  `poll()` round reads what the open connections have sent before it
-  accepts another, and a peer sends its nonce as soon as it connects, so
-  a new connection cannot push the peer's out before it has been read.
-  Do not go back to accepting one connection and closing the listener:
-  whoever connected first then decided the handshake.
-- The peer joins the **relative path** to its own `socket_dir` if set,
-  else to the base the server sent. That is how a container that mounts
-  the directory elsewhere still finds it.
-- The peer keeps its AF_UNIX socket open until the server's status
-  arrives, so the server can read its credentials while it is connected.
-- The server waits with one `poll()` on the listener, the TCP socket
-  and the connections it is reading. **The whole server half shares one
-  deadline**, `ptl_base_connect_ack_timeout` from the start of the
-  handshake: every wait, for a connection or for more of a nonce, waits
-  only for what is left of it. Do not go back to `SO_RCVTIMEO` and
-  `pmix_ptl_base_recv_blocking` there: that timeout restarts with every
-  `recv()`, so a peer sending one byte at a time held the server for 32
-  timeouts. A peer that cannot reach the
-  socket returns an error, ptl closes the TCP connection, and the
-  server's wait ends at once.
-- The nonce is compared without an early exit.
-- The identity read from the AF_UNIX socket goes through
-  `settle_identity()` with `gid_attested = true`.
-
-### Where the handshake runs
-
-- **Client path** (`_cnct_complete`): the standard place — status
-  `READY_FOR_HANDSHAKE`, then `PMIX_PSEC_SERVER_HANDSHAKE_IFNEED`.
-- **Tool path** (`process_tool_request`): **early**, before the host's
-  `tool_connected` up-call, so the identity the host is given — and that
-  `allow_foreign_tools` and namespace ownership are judged on — is the
-  settled one. The server sends `READY_FOR_HANDSHAKE` as the tool's
-  *first* status, runs the handshake on the scratch peer, copies the
-  scratch `info->uid/gid` back into `pnd`, and then the tool's normal
-  replies follow (status, ids, `SEC_STATUS = SUCCESS`). Only a tool that
-  sent the trailer can receive this, and both tool-side readers
-  (`pmix_ptl_base_tool_handshake` and the event-driven `cnct_handle`)
-  accept it.
-
 ## Gotchas
 
-- **Never ask an older peer for a handshake.** Every released native
-  client has `client_handshake == NULL`. The server only returns
-  `READY_FOR_HANDSHAKE` for a credential with the trailer, and
-  `PMIX_PSEC_CLIENT_HANDSHAKE` refuses rather than call a NULL slot.
 - **Only a live connection has an owner.** `pmix_util_getid_tcp()`
   answers only for an `ESTABLISHED` entry that matches all four addresses
   and ports; a `TIME_WAIT`/`FIN_WAIT` entry carries no owner (Linux
   reports uid 0 for it). The unit test uses a closed connection to stand
   in for "a peer the kernel cannot see".
-- **A relay's connection is the relay's.** A peer that comes through a
-  process on this host that forwards connections (`socat`,
+- **A relay's connection is the relay's.** A peer that comes over TCP
+  through a process on this host that forwards connections (`socat`,
   `docker-proxy`) is reported by `pmix_util_getid_tcp()` as the relay's
   user: that is whose socket the server is connected to. Nothing in the
   connection tells a relay apart from the peer itself, so this is
-  documented in `native.rst` (Limits), not handled in code. Asking for
-  the handshake when the reported uid differs from the claim would help
-  only a peer that claims its own uid.
+  documented in `native.rst` (Limits), not handled in code.
 - **Remote peers use another mechanism.** native serves peers on this
-  host's kernel. A remote peer from a current release is refused; one
-  from an older release is accepted on its claim only while
-  `legacy_auth` is true. Remote tools should use `munge` or
-  [`ssl`](../ssl/AGENTS.md).
-- **The handshake blocks the server's progress thread** for as long as
-  the peer takes, up to `connect_ack_timeout` in all, like every psec
-  handshake (see [`../../ptl/base/AGENTS.md`](../../ptl/base/AGENTS.md)).
-  A legitimate peer answers at once.
+  host's kernel, and its module's `remote` is false: ptl refuses a TCP
+  peer whose address is not this host's that names native before native
+  is asked. Remote tools use `munge` or [`ssl`](../ssl/AGENTS.md).
 - **The `PMIX_PROTOCOL_UNDEF` rejection is explicit on purpose.** It does
   not rely on the `(uid_t) -1` initializers of `euid`/`egid` failing a
   comparison. Keep it explicit.
-- **`test/unit/psec_credentials.c`** covers the trailer parse, both
-  identity rules, the legacy switch, the remote refusal, and the
-  handshake end to end on two threads. Each of the handshake and remote
-  cases was checked to fail with its check removed.
+- **`test/unit/psec_credentials.c`** covers the credential's shape, both
+  identity rules and the legacy switch; `test/unit/ptl_accept.c` covers a
+  local-transport peer whose credential claims another user.

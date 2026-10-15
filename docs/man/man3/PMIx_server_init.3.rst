@@ -135,7 +135,9 @@ Server identity and directories
   server is to place its session-level files, including the rendezvous files
   tools use to find it by PID or namespace. If not given, the
   ``PMIX_SERVER_TMPDIR`` environment variable is used, then ``TMPDIR``,
-  ``TEMP`` and ``TMP``, and finally ``/tmp``.
+  ``TEMP`` and ``TMP``, and finally ``/tmp``. The server's local socket is
+  made here too, and its path must fit a socket address (see `The local
+  socket`_).
 * ``PMIX_SYSTEM_TMPDIR`` (char\*) |mdash| temporary directory in which the
   server is to place its system-level rendezvous files (system server,
   scheduler, system controller). If not given, the ``PMIX_SYSTEM_TMPDIR``
@@ -147,9 +149,14 @@ Role and support attributes
 
 * ``PMIX_SERVER_TOOL_SUPPORT`` (bool) |mdash| the host is willing to accept
   connection requests from tools, and rendezvous files naming the server by PID
-  and by namespace are written (see `Rendezvous files`_). The files are readable
-  only by the host's user ID, and tools running under other user IDs are
-  refused, unless ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` is also given.
+  and by namespace are written (see `Rendezvous files`_). Without it, every
+  tool is refused with ``PMIX_ERR_NOT_SUPPORTED`` - including one a client or
+  job script starts, which has the server's address in its environment. The
+  files are readable only by the host's user ID, and tools running under
+  other user IDs are refused, unless ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` is
+  also given; such tools also need the server's local socket widened to them
+  (``PMIX_SOCKET_MODE``, ``PMIX_USERID``, ``PMIX_GRPID``), which a server
+  does not do by itself.
 * ``PMIX_SERVER_SYSTEM_SUPPORT`` (bool) |mdash| the server is the node's
   system server: tools asking for the system server find it through a
   system-level rendezvous file. Takes effect only together with
@@ -166,18 +173,30 @@ Role and support attributes
   requests.
 * ``PMIX_SERVER_SYS_CONTROLLER`` (bool) |mdash| the server is hosting the
   system controller.
+* ``PMIX_SERVER_LEGACY_PEERS`` (bool) |mdash| take (or refuse) connections
+  from clients and tools of PMIx releases before v7.0, which connect over
+  TCP. Overrides the ``ptl_base_legacy_peers`` MCA parameter, which
+  defaults to ``false``. With it, the server listens on a loopback
+  interface for them and gives its clients the TCP address in the
+  variables those releases read; without it - and without
+  ``PMIX_SERVER_REMOTE_CONNECTIONS`` - the server has no TCP listener,
+  and a client or tool of an earlier release cannot connect. Only a PMIx
+  built with legacy peer support (the default; ``--disable-legacy-peers``
+  removes it) can take them: in one without it, asking fails the init.
 * ``PMIX_SERVER_REMOTE_CONNECTIONS`` (bool) |mdash| allow (or disable)
-  connections from remote tools. When allowed, the server listens on every
+  connections from remote tools. Only a PMIx configured
+  ``--enable-remote-tools`` can allow them: in one without it, asking
+  for them fails the init. When allowed, the server listens on every
   non-loopback interface left by ``PMIX_TCP_IF_INCLUDE`` /
   ``PMIX_TCP_IF_EXCLUDE``. Its URI names the first; the others are stored as
   ``PMIX_MYSERVER_ALT_URIS`` and listed in its contact files, where tools
   finding the server by file, PID or namespace try them if the URI's address
   cannot be reached. A remote tool must authenticate with a mechanism that
   works across hosts: the default ``native`` mechanism confirms a peer's
-  identity through the server's own kernel, so it refuses a peer on
-  another host (one using a release that predates its local-socket check
-  is accepted on its claimed identity while ``psec_native_legacy_auth`` is
-  ``true``). Use ``ssl`` - PMIx configured
+  identity through the server's own kernel, which cannot name a peer on
+  another host, and the server refuses a peer on another host that names
+  it. A server asked for remote connections with neither ``ssl`` nor
+  ``munge`` able to validate a peer fails its init. Use ``ssl`` - PMIx configured
   ``--with-openssl``, the server given ``psec_ssl_ca_file``, and the tool
   given ``psec_ssl_cert_file``/``psec_ssl_key_file`` and
   ``PMIX_MCA_psec=ssl`` - or ``munge``.
@@ -190,12 +209,19 @@ Role and support attributes
   dictated by host policy. The permissions of an existing directory the files
   are placed in are never changed, so a directory other users cannot search
   still keeps their tools out (see `Rendezvous files`_).
-* ``PMIX_ALLOW_CLIENT_CLONES`` (bool) |mdash| allow connections from clones
-  (forks) of a registered client process.
 
 Connection attributes
 ^^^^^^^^^^^^^^^^^^^^^
 
+* ``PMIX_SOCKET_MODE`` (uint32_t) |mdash| the mode (nine permission bits)
+  of the server's local socket. Default 0600: only the server's user can
+  connect. See `The local socket`_.
+* ``PMIX_USERID`` (uint32_t, or a user name as char\*) |mdash| the owner
+  of the server's local socket. Default: the server's user. Its directory
+  stays the server's.
+* ``PMIX_GRPID`` (uint32_t, or a group name as char\*) |mdash| the group
+  of the server's local socket and of its directory. Default: the
+  server's effective group.
 * ``PMIX_LAUNCHER_RENDEZVOUS_FILE`` (char\*) |mdash| full pathname of an
   additional rendezvous file in which the server is to write its contact
   information |mdash| for example, so that a debugger can find a launcher.
@@ -295,11 +321,46 @@ launching that client, then set up the client's environment with
 ``PMIx_server_setup_fork``.
 
 
+The local socket
+^^^^^^^^^^^^^^^^
+
+Every server listens on a local (``AF_UNIX``) socket, where the clients and
+tools of this release on its host connect. It listens on TCP only for peers
+of earlier releases (``PMIX_SERVER_LEGACY_PEERS``) and for tools on other
+hosts (``PMIX_SERVER_REMOTE_CONNECTIONS``). The kernel identifies the process at
+each end of a connection to the local socket: the server knows each peer's
+uid, gid and pid, and each peer can check the server's uid and gid.
+
+The socket is ``pmix-<pid>``, in a directory of its own the server makes
+beneath ``PMIX_SERVER_TMPDIR``: ``<tmpdir>/pmix-XXXXXX``. By default the
+directory is mode 0700 and the socket 0600, so only the server's user can
+connect. A host that wants other users' processes to connect - a client it
+starts under another user ID, a tool it allows with
+``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` - must widen it: ``PMIX_SOCKET_MODE``
+sets the socket's mode, and ``PMIX_USERID`` and ``PMIX_GRPID`` its owner and
+group. The directory stays the server's: it is searchable by whom the mode
+lets connect - and by everyone, when the socket is given to another user -
+and readable by no one but the server's user. The server never widens it on
+its own.
+
+The socket's path must fit a socket address - about 100 characters. A
+temporary directory too long for it makes ``PMIx_server_init`` fail; there
+is no fallback. The default ``$TMPDIR`` on macOS is too long: pass a shorter
+``PMIX_SERVER_TMPDIR``.
+
+The server removes the socket and its directory at finalize. A server that
+is killed leaves them behind, as ``pmix-XXXXXX`` directories in its
+temporary directory.
+
+``PMIx_server_setup_fork`` gives a child the socket's address and the
+server's uid and gid in ``PMIX_SERVER_LOCAL_URI``; a child of this release
+connects there and nowhere else, and only to a server with that uid and gid.
+
 Rendezvous files
 ^^^^^^^^^^^^^^^^
 
 A tool finds a server through a *rendezvous file*: a small file holding the
-server's URI, version and PID. Which ones are written depends on the
+server's URI, version and PID, and the address of its local socket. Which ones are written depends on the
 directives:
 
 .. list-table::

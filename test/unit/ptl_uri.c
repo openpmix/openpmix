@@ -28,12 +28,14 @@
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/mca/ptl/tcp/ptl_tcp.h"
 
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 
 static int npass = 0;
 static int nfail = 0;
@@ -160,9 +162,42 @@ static void test_setup_connection(void)
      * unrelated reason that it had no ':' left in it. Requiring
      * NOT_SUPPORTED pins that we recognized the scheme as wrong rather
      * than tripping over the address we tried to read out of it */
-    rc = pmix_ptl_base_setup_connection("usock://tmp/pmix.sock", &ss, &len);
+    rc = pmix_ptl_base_setup_connection("ipc://tmp/pmix.sock", &ss, &len);
     report("setup_connection: unknown scheme rejected as unsupported",
            PMIX_ERR_NOT_SUPPORTED == rc, PMIx_Error_string(rc));
+    /* usock takes an absolute path that fits in a socket address */
+    rc = pmix_ptl_base_setup_connection("usock:///tmp/pmix-x/pmix-1", &ss, &len);
+    report("setup_connection: a usock URI names an AF_UNIX address",
+           PMIX_SUCCESS == rc && AF_UNIX == ss.ss_family &&
+               0 == strcmp(((struct sockaddr_un *) &ss)->sun_path, "/tmp/pmix-x/pmix-1"),
+           PMIx_Error_string(rc));
+    rc = pmix_ptl_base_setup_connection("usock://tmp/pmix.sock", &ss, &len);
+    report("setup_connection: a usock URI with a relative path is refused",
+           PMIX_ERR_BAD_PARAM == rc, PMIx_Error_string(rc));
+    {
+        char longuri[300];
+        memset(longuri, 'x', sizeof(longuri));
+        memcpy(longuri, "usock:///", 9);
+        longuri[sizeof(longuri) - 1] = '\0';
+        rc = pmix_ptl_base_setup_connection(longuri, &ss, &len);
+        report("setup_connection: a usock path too long for a socket is refused",
+               PMIX_ERR_BAD_PARAM == rc, PMIx_Error_string(rc));
+    }
+    /* a transport takes only its own scheme - "tcp4" and "tcp4:/" are not
+     * tcp's, and are left to the next transport rather than refused by
+     * this one; "tcp4://" is tcp's, with no address */
+    rc = pmix_ptl_base_setup_connection("tcp4", &ss, &len);
+    report("setup_connection: a bare tcp4 is no transport's",
+           PMIX_ERR_NOT_SUPPORTED == rc, PMIx_Error_string(rc));
+    rc = pmix_ptl_base_setup_connection("tcp4:/127.0.0.1:41234", &ss, &len);
+    report("setup_connection: a scheme without its // is no transport's",
+           PMIX_ERR_NOT_SUPPORTED == rc, PMIx_Error_string(rc));
+    rc = pmix_ptl_base_setup_connection("fd://3", &ss, &len);
+    report("setup_connection: a short URI of another scheme is no transport's",
+           PMIX_ERR_NOT_SUPPORTED == rc, PMIx_Error_string(rc));
+    rc = pmix_ptl_base_setup_connection("tcp4://", &ss, &len);
+    report("setup_connection: tcp's scheme with no address is refused by tcp",
+           PMIX_ERR_BAD_PARAM == rc, PMIx_Error_string(rc));
 
     rc = pmix_ptl_base_setup_connection(NULL, &ss, &len);
     report("setup_connection: NULL URI rejected", PMIX_SUCCESS != rc, "accepted");
@@ -231,28 +266,58 @@ static void test_setup_connection_ipv6(void)
     report("setup_connection: IPv6 empty port rejected", PMIX_SUCCESS != rc, "accepted");
 }
 
-/* ---- pmix_ptl_base_split_and_resolve ----------------------------- */
+/* ---- pmix_ptl_tcp_split_and_resolve ----------------------------- */
 
 static void test_split_and_resolve(void)
 {
     char **ifs;
+    pmix_status_t rc;
 
     /* PMIx_Argv_split() answers NULL, not an empty array, for a string
      * with no tokens in it - which the loop then indexed. An if_include
      * of "," took a server down in PMIx_server_init */
-    ifs = pmix_ptl_base_split_and_resolve(",", "include");
-    report("split_and_resolve: a list of nothing resolves to nothing", NULL == ifs,
-           "returned a list");
+    rc = pmix_ptl_tcp_split_and_resolve(",", "include", &ifs);
+    report("split_and_resolve: a list of nothing resolves to nothing",
+           PMIX_SUCCESS == rc && NULL == ifs, "returned a list or an error");
     PMIx_Argv_free(ifs);
-    ifs = pmix_ptl_base_split_and_resolve("", "include");
-    report("split_and_resolve: an empty string resolves to nothing", NULL == ifs,
-           "returned a list");
+    rc = pmix_ptl_tcp_split_and_resolve("", "include", &ifs);
+    report("split_and_resolve: an empty string resolves to nothing",
+           PMIX_SUCCESS == rc && NULL == ifs, "returned a list or an error");
     PMIx_Argv_free(ifs);
 
-    ifs = pmix_ptl_base_split_and_resolve("foo0,,bar1", "include");
+    rc = pmix_ptl_tcp_split_and_resolve("foo0,,bar1", "include", &ifs);
     report("split_and_resolve: named interfaces kept",
-           2 == PMIx_Argv_count(ifs) && 0 == strcmp(ifs[0], "foo0") && 0 == strcmp(ifs[1], "bar1"),
+           PMIX_SUCCESS == rc && 2 == PMIx_Argv_count(ifs) && 0 == strcmp(ifs[0], "foo0") &&
+               0 == strcmp(ifs[1], "bar1"),
            "wrong list");
+    PMIx_Argv_free(ifs);
+
+    /* An entry that is neither a name nor a subnet refuses the list - it
+     * used to be dropped, and a list of nothing else read as no list, so
+     * the listener opened on a public interface it was told to avoid */
+    rc = pmix_ptl_tcp_split_and_resolve("192.168.77.5", "include", &ifs);
+    report("split_and_resolve: an address with no prefix refuses the list",
+           PMIX_ERR_BAD_PARAM == rc && NULL == ifs, PMIx_Error_string(rc));
+    PMIx_Argv_free(ifs);
+    rc = pmix_ptl_tcp_split_and_resolve("10.0.0.0/8,300.1.2.3/8", "exclude", &ifs);
+    report("split_and_resolve: an unconvertible subnet refuses an exclude list",
+           PMIX_ERR_BAD_PARAM == rc && NULL == ifs, PMIx_Error_string(rc));
+    PMIx_Argv_free(ifs);
+
+    /* A subnet no interface is on is passed over - but an include list of
+     * nothing else names no interface here at all */
+    rc = pmix_ptl_tcp_split_and_resolve("203.0.113.0/24", "include", &ifs);
+    report("split_and_resolve: an include list matching nothing here is refused",
+           PMIX_ERR_NOT_FOUND == rc && NULL == ifs, PMIx_Error_string(rc));
+    PMIx_Argv_free(ifs);
+    rc = pmix_ptl_tcp_split_and_resolve("203.0.113.0/24", "exclude", &ifs);
+    report("split_and_resolve: an exclude list matching nothing here excludes nothing",
+           PMIX_SUCCESS == rc && NULL == ifs, PMIx_Error_string(rc));
+    PMIx_Argv_free(ifs);
+    rc = pmix_ptl_tcp_split_and_resolve("203.0.113.0/24,lo0", "include", &ifs);
+    report("split_and_resolve: an include list keeps what it names past a subnet not here",
+           PMIX_SUCCESS == rc && 1 == PMIx_Argv_count(ifs) && 0 == strcmp(ifs[0], "lo0"),
+           PMIx_Error_string(rc));
     PMIx_Argv_free(ifs);
 }
 

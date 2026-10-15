@@ -34,7 +34,7 @@ pmix.evname            3     PMIX_EVENT_HDLR_NAME
 pmix.evaux             4     PMIX_EXTERNAL_AUX_EVENT_BASE
 pmix.srvr.tool         5     PMIX_SERVER_TOOL_SUPPORT
 pmix.srvr.ftools       6     PMIX_SERVER_ALLOW_FOREIGN_TOOLS
-pmix.allow.clones      7     PMIX_ALLOW_CLIENT_CLONES
+RETIRED:pmix.allow.clones 7
 pmix.srvr.remote       8     PMIX_SERVER_REMOTE_CONNECTIONS
 pmix.srvr.sys          9     PMIX_SERVER_SYSTEM_SUPPORT
 pmix.srvr.sess         10    PMIX_SERVER_SESSION_SUPPORT
@@ -698,3 +698,4 @@ pmix.alloc.seq         667   PMIX_ALLOC_SEQUENCE
 pmix.mysrvr.alturis    668   PMIX_MYSERVER_ALT_URIS
 pmix.srvr.alturis      669   PMIX_SERVER_ALT_URIS
 pmix.dev.dist.origin   670   PMIX_DEVICE_DIST_ORIGIN
+pmix.srvr.legacy       671   PMIX_SERVER_LEGACY_PEERS

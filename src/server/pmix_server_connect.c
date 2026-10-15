@@ -314,8 +314,8 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
      *
      * A tracker the host already owns is excluded for the reason spelled
      * out in pmix_server_fence: get_tracker matches on the participant
-     * set, so a clone - or a second non-blocking call over the same set -
-     * is handed the in-flight tracker, and completing it again gives the
+     * set, so a second non-blocking call over the same set - or a call from
+     * a rank that reconnected - is handed the in-flight tracker, and completing it again gives the
      * host two operations against one cbdata and ends in a double
      * release. */
     if (!trk->host_called && pmix_server_trk_complete(trk)) {
@@ -606,9 +606,10 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * tracker, and a tracker the host already owns must not be modified.
      *
      * That state is reachable: pmix_server_get_tracker matches on the
-     * participant set, so a fork/exec'd clone of a rank that already
-     * called in joins the in-flight tracker (nlocal counts ranks, not
-     * peers, so the parent's contribution completed it). Two things then
+     * participant set, so a second call from a rank that already called
+     * in - a second non-blocking call, or one made after the rank
+     * reconnected - joins the in-flight tracker (nlocal counts ranks, not
+     * calls, so the first contribution completed it). Two things then
      * go wrong. add_trk_info rebuilds trk->info and frees the old array -
      * the very array this server handed to pmix_host_server.connect,
      * which the host may read until it calls back. And a failure in here
@@ -618,9 +619,9 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * pmix_server_cnct_cbfunc on freed memory.
      *
      * A late contributor loses nothing by being skipped. Its endpoint
-     * data is built from cd->peer->info, and a clone shares its parent's
-     * pmix_rank_info_t - so what it would contribute is precisely what
-     * the rank already contributed. All it needs is to be on local_cbs,
+     * data is built from cd->peer->info, and every connection of a rank
+     * shares its pmix_rank_info_t - so what it would contribute is
+     * precisely what the rank already contributed. All it needs is to be on local_cbs,
      * which the pending completion drains. */
     if (!trk->host_called) {
         /* Drain whatever optional blobs this client sent, and route them by
@@ -701,8 +702,8 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      *
      * A tracker the host already owns is excluded for the reason spelled
      * out in pmix_server_fence: get_tracker matches on the participant
-     * set, so a clone - or a second non-blocking call over the same set -
-     * is handed the in-flight tracker, and completing it again gives the
+     * set, so a second non-blocking call over the same set - or a call from
+     * a rank that reconnected - is handed the in-flight tracker, and completing it again gives the
      * host two operations against one cbdata and ends in a double
      * release. */
     if (!trk->host_called && pmix_server_trk_complete(trk)) {
