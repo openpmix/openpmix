@@ -322,7 +322,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             data = NULL;
             sz = 0;
             /* a request parked before we knew this job is checked now -
-             * see docs/security-plan.rst */
+             * see docs/hosts/access-control.rst */
             rc = pmix_server_access_check_remote(nptr, dcd->cd->info, dcd->cd->ninfo);
             if (PMIX_SUCCESS != rc) {
                 dcd->cd->cbfunc(rc, NULL, 0, dcd->cd->cbdata);

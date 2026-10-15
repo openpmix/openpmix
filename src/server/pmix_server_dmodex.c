@@ -97,7 +97,7 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     }
 
     /* the requester the host names, if any, must be allowed this job's
-     * data - see docs/security-plan.rst */
+     * data - see docs/hosts/access-control.rst */
     rc = pmix_server_access_check_remote(nptr, cd->info, cd->ninfo);
     if (PMIX_SUCCESS != rc) {
         pmix_output_verbose(2, pmix_server_globals.base_output,

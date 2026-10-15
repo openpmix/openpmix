@@ -24,6 +24,7 @@ find information on that subject here.
    pmix_log.rst
    regex.rst
    cmd_line.rst
+   connections.rst
    ptl.rst
    authentication/index.rst
    pstat.rst

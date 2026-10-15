@@ -119,18 +119,48 @@ from the Libtool docs):
 Application Binary Interface (ABI) Compatibility
 ------------------------------------------------
 
-OpenPMIx provides forward ABI compatibility in all versions of a given
-feature release series and its corresponding
-super stable series.  For example, on a single platform, a PMIx
-application linked against OpenPMIx v1.3.2 shared libraries can be
-updated to point to the shared libraries in any successive v1.3.x or
-v1.4 release and still work properly (e.g., via the ``LD_LIBRARY_PATH``
-environment variable or other operating system mechanism).
+PMIx keeps its public interface forever. Public APIs, macros,
+structures, and attributes are not removed, and a structure's layout
+is not changed. Every release from v4.2 through v7.0 has the same
+shared-library name, ``libpmix.so.2``.
 
-OpenPMIx reserves the right to break ABI compatibility at new feature
-release series.  For example, the same PMIx application from above
-(linked against PMIx v1.3.2 shared libraries) will *not* work with
-PMIx v1.5 shared libraries.
+**A program built against an earlier PMIx release therefore runs
+against a later one without being recompiled** - on Linux, for
+example, by pointing ``LD_LIBRARY_PATH`` at the newer library, or by
+installing the newer library in place of the older. This has been
+tested: the example programs of PMIx v5.0.11, built against v5.0.11,
+run against the v7.0 library and behave exactly as the same programs
+rebuilt against v7.0.
+
+Two kinds of program are exceptions:
+
+* **Host environments** - programs that call ``PMIx_server_init`` - must
+  be built against the PMIx release they run with. The library
+  receives only a pointer to the host's ``pmix_server_module_t``, and
+  cannot tell which release's definition of that structure the host
+  was built with. See :doc:`/hosts/partnership`.
+* **Programs that use PMIx's internal headers** - those installed under
+  ``include/pmix/src`` - get no compatibility guarantee at all. PRRTE is
+  the main such program, which is why each PRRTE series works only
+  with particular PMIx series (see :doc:`/admin/prrte`).
+
+The promise was broken in two places between v5.0 and v7.0. A program
+built against PMIx v5.0 that uses either of these needs attention
+before it runs against v7.0:
+
+* The ``PMIx_Proc_stats_*``, ``PMIx_Disk_stats_*``,
+  ``PMIx_Net_stats_*`` and ``PMIx_Node_stats_*`` functions, and the
+  ``pmix_*_stats_t`` types, were removed. A program that calls them
+  does not load against v7.0.
+* Three attributes had the same string as another attribute, and their
+  strings were changed to separate them:
+  ``PMIX_FABRIC_DEVICE_COORDINATES``,
+  ``PMIX_JOB_CTRL_CHECKPOINT_TIMEOUT``, and
+  ``PMIX_QUERY_SUPPORTED_QUALIFIERS``. A program built against v5.0
+  still sends the old string, which now means the other attribute.
+
+.. DRAFT: the list above depends on whether v7 restores the removed
+   stats functions - Ralph to decide.
 
 Cross-Version Compatibility
 ---------------------------

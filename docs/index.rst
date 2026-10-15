@@ -40,6 +40,23 @@ RedHat Enterprise Linux (RHEL), Fedora, CentOS, and SUSE Linux
 Enterprise Server (SLES). Support for vendor-specific operating
 systems is included as provided by the vendor.
 
+Where to start
+==============
+
+New to this documentation? :ref:`label-where-to-start` points each
+kind of reader - installers, system administrators, application and
+tool developers, host environment developers, and PMIx developers - to
+the pages written for them.
+
+**System administrators** should read :ref:`label-sysadmin`: which
+release to install, how PMIx and PRRTE releases pair up, and how to
+control authentication.
+
+**Developers of resource managers, launchers, and other host
+environments** should read :ref:`label-host-env`. It sets out what
+PMIx does to authenticate and authorize requests, and what it requires
+the host to do.
+
 Table of contents
 =================
 
@@ -47,11 +64,14 @@ Table of contents
    :maxdepth: 2
    :numbered:
 
+   where-to-start
    quickstart
    getting-help
    release-notes/index
    exceptions
    installing-pmix/index
+   admin/index
+   hosts/index
    how-things-work/index
    release-notes
    history
@@ -65,6 +85,5 @@ Table of contents
    code-of-conduct
    license
    security
-   security-plan
    news/index
    man/index

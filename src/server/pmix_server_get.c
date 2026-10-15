@@ -301,7 +301,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     PMIX_LOAD_PROCID(&proc, nspace, rank);
 
     /* the requester must be allowed the target job's data - see
-     * docs/security-plan.rst. A job the host has not registered with us
+     * docs/hosts/access-control.rst. A job the host has not registered with us
      * is checked where its data is held */
     nptr = NULL;
     PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
@@ -510,7 +510,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     /* A job not registered here whose data we hold only because another
      * requester fetched it: its holder decides who may have it, and has
      * said so only for the identities it approved. Anyone else is asked
-     * about as though we held nothing - see docs/security-plan.rst */
+     * about as though we held nothing - see docs/hosts/access-control.rst */
     if (NULL != nptr && !nptr->access.registered &&
         !pmix_server_peer_may_use_copy(cd->peer, nptr)) {
         pmix_output_verbose(5, pmix_server_globals.get_output,
@@ -1598,7 +1598,7 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
      * requester identity. If the job is not registered here, remember
      * that it approved them: they - and only they, besides the job's own
      * processes, root and our own user - may be answered from the copy
-     * we are about to keep. See docs/security-plan.rst */
+     * we are about to keep. See docs/hosts/access-control.rst */
     if (PMIX_SUCCESS == caddy->status && !nptr->access.registered &&
         0 != strncmp(caddy->lcd->reqns, nptr->nspace, PMIX_MAX_NSLEN)) {
         rc = pmix_server_access_approve(nptr, caddy->lcd->uid, caddy->lcd->gid);

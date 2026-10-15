@@ -192,7 +192,7 @@ decides by group membership, and a group the requester merely names must
 not count. The host passes these on to the holding server with
 :ref:`PMIx_server_dmodex_request2(3) <man3-PMIx_server_dmodex_request2>`.
 Requesters of different identities are sent up separately. See
-:doc:`/security-plan`.
+:doc:`/hosts/access-control`.
 
 When the host itself calls a PMIx API that is serviced through its own module,
 the requester is the host: the up-call carries the server's own process
@@ -252,6 +252,8 @@ CALLBACK FUNCTIONS
 
 The members are described below in structure order.
 
+.. _man5-pmix_server_module_t-client_connected:
+
 client_connected
 ^^^^^^^^^^^^^^^^^
 
@@ -261,6 +263,8 @@ connects to the local server. The client is held blocked until the host invokes
 ``cbfunc``, allowing the library to release it. This original form conveys only
 the client's ``proc`` and ``server_object``.
 
+.. _man5-pmix_server_module_t-client_finalized:
+
 client_finalized
 ^^^^^^^^^^^^^^^^^
 
@@ -268,6 +272,8 @@ client_finalized
 host that a local client has called `PMIx_Finalize`. The client is held blocked
 until the host invokes ``cbfunc``. The host should release any per-client state
 it associated with the process via ``PMIx_server_register_client``.
+
+.. _man5-pmix_server_module_t-abort:
 
 abort
 ^^^^^
@@ -278,6 +284,8 @@ of processes be terminated; the ``procs`` array names the targets, or a NULL
 array means all processes in the caller's namespace. The requesting client is
 held blocked until the host invokes ``cbfunc``. The host performs the requested
 termination and reports the result.
+
+.. _man5-pmix_server_module_t-fence_nb:
 
 fence_nb
 ^^^^^^^^
@@ -314,6 +322,8 @@ canonical order so the host need not sort it again. These attributes apply
 equally to the other collective module functions below (``connect``,
 ``disconnect``, and ``group``).
 
+.. _man5-pmix_server_module_t-direct_modex:
+
 direct_modex
 ^^^^^^^^^^^^
 
@@ -328,6 +338,8 @@ has been posted by the target process. Like ``spawn``, this operation's result
 reaches the requestor only through the callback, so
 ``PMIX_OPERATION_SUCCEEDED`` is not an allowed return from it.
 
+.. _man5-pmix_server_module_t-publish:
+
 publish
 ^^^^^^^
 
@@ -336,6 +348,8 @@ publish
 in the host's data store subject to the requested range and persistence
 directives, recording the publisher's identity for later lookup. Completion is
 reported through a ``pmix_op_cbfunc_t``.
+
+.. _man5-pmix_server_module_t-lookup:
 
 lookup
 ^^^^^^
@@ -347,6 +361,8 @@ and returns the results through a ``pmix_lookup_cbfunc_t``. Like ``spawn``, the
 data this operation retrieves reaches the requestor only through the callback,
 so ``PMIX_OPERATION_SUCCEEDED`` is not an allowed return from it.
 
+.. _man5-pmix_server_module_t-unpublish:
+
 unpublish
 ^^^^^^^^^
 
@@ -354,6 +370,8 @@ unpublish
 :ref:`PMIx_Unpublish(3) <man3-PMIx_Unpublish>`. Deletes previously published data
 matching a NULL-terminated array of keys (within any specified range) and reports
 completion through a ``pmix_op_cbfunc_t``.
+
+.. _man5-pmix_server_module_t-spawn:
 
 spawn
 ^^^^^
@@ -370,6 +388,8 @@ indicating whether the process that issued the spawn request is a tool or a
 client, respectively; a host may use this to apply different policies to
 tool-initiated launches.
 
+.. _man5-pmix_server_module_t-connect:
+
 connect
 ^^^^^^^
 
@@ -382,6 +402,8 @@ have contributed; completion is reported through a ``pmix_op_cbfunc_t``. As with
 ``PMIX_LOCAL_PARTICIPANTS``, and ``PMIX_SORTED_PROC_ARRAY`` describing the local
 portion of the collective.
 
+.. _man5-pmix_server_module_t-disconnect:
+
 disconnect
 ^^^^^^^^^^
 
@@ -392,6 +414,8 @@ connected. Completion is reported through a ``pmix_op_cbfunc_t``. As with
 ``fence_nb``, the ``info`` array may carry ``PMIX_LOCAL_COLLECTIVE_STATUS``,
 ``PMIX_LOCAL_PARTICIPANTS``, and ``PMIX_SORTED_PROC_ARRAY`` describing the local
 portion of the collective.
+
+.. _man5-pmix_server_module_t-register_events:
 
 register_events
 ^^^^^^^^^^^^^^^
@@ -410,6 +434,8 @@ never requested again, and only the codes needing action appear in the array.
 Non-system codes are never passed to the host: the host is required to report
 events relating to a registered namespace regardless of any registration.
 
+.. _man5-pmix_server_module_t-deregister_events:
+
 deregister_events
 ^^^^^^^^^^^^^^^^^
 
@@ -426,6 +452,8 @@ code will call ``register_events`` again. A host that provides
 ``register_events`` should provide this as well; leaving it NULL simply means
 the host keeps forwarding codes the library no longer wants.
 
+.. _man5-pmix_server_module_t-listener:
+
 listener
 ^^^^^^^^
 
@@ -435,6 +463,8 @@ incoming client connections, and passes each accepted socket to the provided
 ``pmix_connection_cbfunc_t``. Leaving this member NULL causes the library to
 spawn its own internal listener thread.
 
+.. _man5-pmix_server_module_t-notify_event:
+
 notify_event
 ^^^^^^^^^^^^
 
@@ -443,6 +473,8 @@ notify_event
 the server or one of its local clients must be delivered beyond the local node.
 The host propagates the event (identified by ``code``, ``source``, and ``range``)
 and reports completion through a ``pmix_op_cbfunc_t``.
+
+.. _man5-pmix_server_module_t-query:
 
 query
 ^^^^^
@@ -457,6 +489,8 @@ the requester's own job. The same entry point services the queries behind
 :ref:`PMIx_Resolve_peers(3) <man3-PMIx_Resolve_peers>` and
 :ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>`.
 
+.. _man5-pmix_server_module_t-tool_connected:
+
 tool_connected
 ^^^^^^^^^^^^^^
 
@@ -465,6 +499,8 @@ use ``tool_connected2``. Invoked when a tool connects and needs a namespace/rank
 assignment. The host returns the assigned identifier through a
 ``pmix_tool_connection_cbfunc_t``. This original form returns ``void`` and so
 cannot synchronously reject the connection.
+
+.. _man5-pmix_server_module_t-log:
 
 log
 ^^^
@@ -475,6 +511,8 @@ log
 instead it forwards the data to a gateway/logging channel or returns a
 not-supported error. Completion is reported through a ``pmix_op_cbfunc_t``. This
 original form returns ``void``.
+
+.. _man5-pmix_server_module_t-allocate:
 
 allocate
 ^^^^^^^^
@@ -487,6 +525,8 @@ on the requested allocation modification (identified by a
 (pmix_proc_t*) identifying the process on whose behalf the request was made when
 it was relayed by another process.
 
+.. _man5-pmix_server_module_t-job_control:
+
 job_control
 ^^^^^^^^^^^
 
@@ -497,6 +537,8 @@ target processes and returns results through a ``pmix_info_cbfunc_t``. The
 directives may include ``PMIX_REQUESTOR`` (pmix_proc_t*) identifying the process
 on whose behalf the request was made when it was relayed by another process.
 
+.. _man5-pmix_server_module_t-monitor:
+
 monitor
 ^^^^^^^
 
@@ -505,6 +547,8 @@ monitor
 requested monitoring (e.g., heartbeat or file-based) of the requestor, raising
 the specified error status on failure, and returns results through a
 ``pmix_info_cbfunc_t``.
+
+.. _man5-pmix_server_module_t-get_credential:
 
 get_credential
 ^^^^^^^^^^^^^^
@@ -515,6 +559,8 @@ security credential from the SMS on behalf of the identified process and returns
 it through a ``pmix_credential_cbfunc_t``, which is the only channel for it |mdash|
 so ``PMIX_OPERATION_SUCCEEDED`` is not an allowed return from it.
 
+.. _man5-pmix_server_module_t-validate_credential:
+
 validate_credential
 ^^^^^^^^^^^^^^^^^^^
 
@@ -523,6 +569,8 @@ validate_credential
 the SMS to validate the supplied credential and returns the result through a
 ``pmix_validation_cbfunc_t``, which is the only channel for it |mdash| so
 ``PMIX_OPERATION_SUCCEEDED`` is not an allowed return from it.
+
+.. _man5-pmix_server_module_t-iof_pull:
 
 iof_pull
 ^^^^^^^^
@@ -542,6 +590,8 @@ for the request until the host reports success; output that arrives before
 then is held and delivered once the request is approved. If the host refuses,
 the request is discarded.
 
+.. _man5-pmix_server_module_t-push_stdin:
+
 push_stdin
 ^^^^^^^^^^
 
@@ -550,6 +600,8 @@ push_stdin
 a source process to the host for delivery to the named target processes (a
 WILDCARD rank targets all processes in a namespace). Completion is reported
 through a ``pmix_op_cbfunc_t``.
+
+.. _man5-pmix_server_module_t-group:
 
 group
 ^^^^^
@@ -563,6 +615,8 @@ through a ``pmix_info_cbfunc_t``. As with ``fence_nb``, the ``info`` array may
 carry ``PMIX_LOCAL_COLLECTIVE_STATUS``, ``PMIX_LOCAL_PARTICIPANTS``, and
 ``PMIX_SORTED_PROC_ARRAY`` describing the local portion of the collective.
 
+.. _man5-pmix_server_module_t-fabric:
+
 fabric
 ^^^^^^
 
@@ -571,6 +625,8 @@ fabric
 operations. The host retrieves fabric-related information from the server
 supporting the system scheduler, per the ``pmix_fabric_operation_t`` op, and
 returns it through a ``pmix_info_cbfunc_t``.
+
+.. _man5-pmix_server_module_t-client_connected2:
 
 client_connected2
 ^^^^^^^^^^^^^^^^^
@@ -594,6 +650,8 @@ The array carries:
   effective) user and group IDs **as the client reports them**. Nothing checks
   these; a host that acts on them is taking the client's word.
 
+.. _man5-pmix_server_module_t-tool_connected2:
+
 tool_connected2
 ^^^^^^^^^^^^^^^
 
@@ -610,6 +668,8 @@ server established for the connection, as for ``client_connected2``. Anything
 else in it, ``PMIX_REALUID`` and ``PMIX_REALGID`` included, is the tool's own
 account and is not checked.
 
+.. _man5-pmix_server_module_t-log2:
+
 log2
 ^^^^
 
@@ -618,6 +678,8 @@ services :ref:`PMIx_Log(3) <man3-PMIx_Log>`; the library prefers this member and
 falls back to ``log`` only when it is NULL. Identical in parameters to ``log``
 but returns a ``pmix_status_t``. As with ``log``, the host must not call
 `PMIx_Log` from within this callback.
+
+.. _man5-pmix_server_module_t-session_control:
 
 session_control
 ^^^^^^^^^^^^^^^
@@ -629,6 +691,8 @@ returns results through a ``pmix_info_cbfunc_t``. The directives may include
 ``PMIX_REQUESTOR`` (pmix_proc_t*) identifying the process on whose behalf the
 request was made when it was relayed by another process.
 
+.. _man5-pmix_server_module_t-resource_block:
+
 resource_block
 ^^^^^^^^^^^^^^
 
@@ -638,6 +702,8 @@ deletes, extends, or removes resources from a named resource block per the
 ``pmix_resource_block_directive_t`` and the supplied array of
 ``pmix_resource_unit_t`` units. Completion is reported through a
 ``pmix_op_cbfunc_t``.
+
+.. _man5-pmix_server_module_t-abort2:
 
 abort2
 ^^^^^^

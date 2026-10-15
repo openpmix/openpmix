@@ -294,7 +294,7 @@ records both when the namespace is registered; a later registration that names a
 list replaces it, and one that does not keeps it. If no owner is given, the job
 belongs to the user its clients are registered with. A malformed
 ``PMIX_ACCESS_PERMISSIONS`` fails the registration with ``PMIX_ERR_BAD_PARAM``.
-See :doc:`/security-plan` for how the library uses them.
+See :doc:`/hosts/access-control` for how the library uses them.
 
 
 .. include:: /man/no-blocking-in-progress-thread.rst
