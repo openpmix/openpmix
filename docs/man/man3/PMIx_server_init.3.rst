@@ -100,6 +100,18 @@ to :ref:`PMIx_server_finalize(3) <man3-PMIx_server_finalize>`.
 ``PMIx_server_init`` is a blocking call that completes synchronously; it does
 not take a callback.
 
+.. warning:: Use PMIx with caution in a setuid or setgid program. PMIx
+   takes its configuration from the environment and from locations the
+   environment names: the ``PMIX_*`` variables (including those that name
+   the server to connect to and the directories components are loaded
+   from), a per-user parameter file under ``$HOME``, and the session
+   directory under ``$TMPDIR``. In a setuid or setgid program these are
+   set by the user who ran it, not by the program's owner. PMIx cannot
+   tell the difference, and it cannot ignore them, because the
+   environment is how a process finds its server. A setuid or setgid
+   program may need to set or clear these variables itself before calling
+   this function.
+
 
 DIRECTIVES
 ----------
