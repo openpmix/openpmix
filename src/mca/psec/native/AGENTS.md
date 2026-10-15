@@ -177,6 +177,14 @@ server -> peer (TCP):   u32 status
   and ports; a `TIME_WAIT`/`FIN_WAIT` entry carries no owner (Linux
   reports uid 0 for it). The unit test uses a closed connection to stand
   in for "a peer the kernel cannot see".
+- **A relay's connection is the relay's.** A peer that comes through a
+  process on this host that forwards connections (`socat`,
+  `docker-proxy`) is reported by `pmix_util_getid_tcp()` as the relay's
+  user: that is whose socket the server is connected to. Nothing in the
+  connection tells a relay apart from the peer itself, so this is
+  documented in `native.rst` (Limits), not handled in code. Asking for
+  the handshake when the reported uid differs from the claim would help
+  only a peer that claims its own uid.
 - **Remote peers use another mechanism.** native serves peers on this
   host's kernel. A remote peer from a current release is refused; one
   from an older release is accepted on its claim only while

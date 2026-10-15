@@ -49,6 +49,9 @@ PMIX_EXPORT pmix_status_t pmix_util_getpid(int sd, pid_t *pid);
  * of TCP connections, looked up by the connection's addresses and ports,
  * so it is the uid that created the peer's socket - not anything the
  * peer said. The kernel does not record a group, so none is returned.
+ * When the peer reaches us through a relay on this host - a process
+ * that accepts its connection and opens one of its own to us - the far
+ * end is the relay's socket, and the uid is the relay's.
  *
  * Returns:
  *   PMIX_SUCCESS            *uid holds the owner
