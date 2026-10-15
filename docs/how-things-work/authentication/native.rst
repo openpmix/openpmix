@@ -143,3 +143,14 @@ Limits
   reports the uid but not the gid, so step 2 is used to settle the
   group. The socket directory must then be mounted into the container
   as well.
+
+* A peer that reaches the server through a relay on the server's host
+  (``socat``, ``docker-proxy``, or any other process that accepts the
+  peer's connection and opens its own to the server) is identified in
+  step 1 as the relay's user: the connection the server sees is the
+  relay's. A registered client is then refused, because that is not the
+  user it was registered as, and a tool takes the relay's identity.
+  Peers in containers should reach the server through host networking
+  or a mounted socket directory rather than a published port. Where a
+  relay cannot be avoided, it should run as the user of the peers it
+  carries, or those peers should use ``munge`` or ``ssl``.
