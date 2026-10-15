@@ -88,6 +88,7 @@ pmix_psec_module_t pmix_native_module = {.name = "native",
 /* the local-socket handshake's limits on what it reads off the wire */
 #define NATIVE_NONCE_LEN      32
 #define NATIVE_MAX_NAME_LEN   256
+#define NATIVE_MAX_PENDING    8
 
 /* this host's kernel, as create_cred reports it and validate_cred
  * compares against it. Set once, in init, before any credential is made */
@@ -625,85 +626,149 @@ static int64_t handshake_deadline(void)
     return now_ms() + (int64_t) pmix_ptl_base.connect_ack_timeout * 1000;
 }
 
-/* wait until `fd` is readable, or until the TCP connection `sd` says
- * something (the peer gave up, or went away), or the deadline passes */
-static pmix_status_t wait_readable(int fd, int sd, int64_t deadline)
-{
-    struct pollfd pfd[2];
-    int64_t left;
-    int timeout, rc;
+/* A connection to the handshake socket that has not yet sent a whole
+ * nonce */
+typedef struct {
+    int fd;
+    size_t got;
+    unsigned char buf[NATIVE_NONCE_LEN];
+} native_pending_t;
 
-    pfd[0].fd = fd;
-    pfd[0].events = POLLIN;
-    pfd[1].fd = sd;
-    pfd[1].events = POLLIN;
+static void drop_pending(native_pending_t *pend, int *npend, int i)
+{
+    memmove(&pend[i], &pend[i + 1], (size_t) (*npend - i - 1) * sizeof(native_pending_t));
+    --(*npend);
+}
+
+/* Wait for a connection to the handshake socket `lsd` that presents
+ * `nonce`, and return it in *csd. Any process may connect to the
+ * socket, so a connection that sends something else, or nothing, is
+ * dropped and the wait goes on. Up to NATIVE_MAX_PENDING connections
+ * are read at once; when all are in use, the oldest gives way to a new
+ * one. What the open connections have sent is read before another is
+ * accepted, and a peer sends its nonce as soon as it connects, so a new
+ * connection cannot push it out before it has been read. The wait ends
+ * when the TCP connection `sd` says something (the peer gave up, or
+ * went away), or at the deadline */
+static pmix_status_t await_nonce(int lsd, int sd, const unsigned char *nonce, int64_t deadline,
+                                 int *csd)
+{
+    native_pending_t pend[NATIVE_MAX_PENDING];
+    struct pollfd pfd[NATIVE_MAX_PENDING + 2];
+    int npend = 0, i, j, fd, rc, timeout;
+    int64_t left;
+    ssize_t rd;
+    unsigned char diff;
+    pmix_status_t ret;
+
+    *csd = -1;
     while (1) {
         if (0 > deadline) {
             timeout = -1;
         } else {
             left = deadline - now_ms();
             if (0 >= left) {
-                return PMIX_ERR_TIMEOUT;
+                ret = PMIX_ERR_TIMEOUT;
+                goto done;
             }
             timeout = (int) left;
         }
+        pfd[0].fd = sd;
+        pfd[0].events = POLLIN;
         pfd[0].revents = 0;
+        pfd[1].fd = lsd;
+        pfd[1].events = POLLIN;
         pfd[1].revents = 0;
-        rc = poll(pfd, 2, timeout);
+        for (i = 0; i < npend; i++) {
+            pfd[i + 2].fd = pend[i].fd;
+            pfd[i + 2].events = POLLIN;
+            pfd[i + 2].revents = 0;
+        }
+        rc = poll(pfd, (nfds_t) (npend + 2), timeout);
         if (0 > rc && EINTR == errno) {
             continue;
         }
         if (0 > rc) {
-            return PMIX_ERROR;
+            ret = PMIX_ERROR;
+            goto done;
         }
         if (0 == rc) {
-            return PMIX_ERR_TIMEOUT;
+            ret = PMIX_ERR_TIMEOUT;
+            goto done;
         }
-        if (0 != pfd[1].revents) {
-            return PMIX_ERR_UNREACH;
+        if (0 != pfd[0].revents) {
+            ret = PMIX_ERR_UNREACH;
+            goto done;
         }
-        return PMIX_SUCCESS;
-    }
-}
 
-/* read exactly `size` bytes from the non-blocking socket `fd`, against
- * the same deadline */
-static pmix_status_t read_by(int fd, int sd, char *data, size_t size, int64_t deadline)
-{
-    size_t cnt = 0;
-    ssize_t rd;
-    pmix_status_t rc;
-
-    while (cnt < size) {
-        rc = wait_readable(fd, sd, deadline);
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
-        rd = recv(fd, data + cnt, size - cnt, 0);
-        if (0 == rd) {
-            return PMIX_ERR_UNREACH;
-        }
-        if (0 > rd) {
-            if (EAGAIN == pmix_socket_errno || EWOULDBLOCK == pmix_socket_errno ||
-                EINTR == pmix_socket_errno) {
+        /* walk down, so dropping an entry moves only those already read */
+        for (i = npend - 1; 0 <= i; i--) {
+            if (0 == pfd[i + 2].revents) {
                 continue;
             }
-            return PMIX_ERR_UNREACH;
+            rd = recv(pend[i].fd, pend[i].buf + pend[i].got, NATIVE_NONCE_LEN - pend[i].got, 0);
+            if (0 > rd && (EAGAIN == pmix_socket_errno || EWOULDBLOCK == pmix_socket_errno ||
+                           EINTR == pmix_socket_errno)) {
+                continue;
+            }
+            if (0 < rd) {
+                pend[i].got += (size_t) rd;
+                if (NATIVE_NONCE_LEN > pend[i].got) {
+                    continue;
+                }
+                diff = 0;
+                for (j = 0; j < NATIVE_NONCE_LEN; j++) {
+                    diff |= (unsigned char) (nonce[j] ^ pend[i].buf[j]);
+                }
+                if (0 == diff) {
+                    *csd = pend[i].fd;
+                    drop_pending(pend, &npend, i);
+                    ret = PMIX_SUCCESS;
+                    goto done;
+                }
+                pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
+                                    "psec: native local socket returned the wrong nonce");
+            }
+            close(pend[i].fd);
+            drop_pending(pend, &npend, i);
         }
-        cnt += (size_t) rd;
+
+        if (0 != pfd[1].revents) {
+            fd = accept(lsd, NULL, NULL);
+            if (0 > fd) {
+                if (EAGAIN == pmix_socket_errno || EWOULDBLOCK == pmix_socket_errno ||
+                    EINTR == pmix_socket_errno || ECONNABORTED == pmix_socket_errno) {
+                    continue;
+                }
+                ret = PMIX_ERR_UNREACH;
+                goto done;
+            }
+            if (NATIVE_MAX_PENDING == npend) {
+                close(pend[0].fd);
+                drop_pending(pend, &npend, 0);
+            }
+            pmix_ptl_base_set_nonblocking(fd);
+            pend[npend].fd = fd;
+            pend[npend].got = 0;
+            ++npend;
+        }
     }
-    return PMIX_SUCCESS;
+
+done:
+    for (i = 0; i < npend; i++) {
+        close(pend[i].fd);
+    }
+    return ret;
 }
 
 static pmix_status_t server_handshake(struct pmix_peer_t *peer, int sd)
 {
     static bool warned = false;
     pmix_peer_t *pr = (pmix_peer_t *) peer;
-    unsigned char nonce[NATIVE_NONCE_LEN], got[NATIVE_NONCE_LEN];
+    unsigned char nonce[NATIVE_NONCE_LEN];
     struct sockaddr_un addr;
     char *rel = NULL, *path = NULL;
-    int lsd = -1, csd = -1, n;
-    unsigned char diff;
+    int lsd = -1, csd = -1;
     uid_t uid;
     gid_t gid;
     uint32_t u32;
@@ -746,7 +811,7 @@ static pmix_status_t server_handshake(struct pmix_peer_t *peer, int sd)
     }
     (void) unlink(path);
     if (0 != bind(lsd, (struct sockaddr *) &addr, sizeof(addr)) ||
-        0 != chmod(path, S_IRWXU | S_IRWXG | S_IRWXO) || 0 != listen(lsd, 1)) {
+        0 != chmod(path, S_IRWXU | S_IRWXG | S_IRWXO) || 0 != listen(lsd, NATIVE_MAX_PENDING)) {
         pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
                             "psec: native cannot listen on %s: %s", path,
                             strerror(pmix_socket_errno));
@@ -764,42 +829,17 @@ static pmix_status_t server_handshake(struct pmix_peer_t *peer, int sd)
         goto cleanup;
     }
 
-    /* the peer connects - or gives up and says so on the TCP connection */
-    while (1) {
-        rc = wait_readable(lsd, sd, deadline);
-        if (PMIX_SUCCESS != rc) {
-            goto fail;
-        }
-        csd = accept(lsd, NULL, NULL);
-        if (0 <= csd) {
-            break;
-        }
-        if (EAGAIN != pmix_socket_errno && EWOULDBLOCK != pmix_socket_errno &&
-            EINTR != pmix_socket_errno && ECONNABORTED != pmix_socket_errno) {
-            rc = PMIX_ERR_UNREACH;
-            goto fail;
-        }
+    /* the peer connects and sends the nonce - or gives up and says so on
+     * the TCP connection */
+    rc = await_nonce(lsd, sd, nonce, deadline, &csd);
+    if (PMIX_SUCCESS != rc) {
+        goto fail;
     }
-    /* one connection is all this socket is for */
+    /* the socket has served its purpose */
     close(lsd);
     lsd = -1;
     (void) unlink(path);
 
-    pmix_ptl_base_set_nonblocking(csd);
-    rc = read_by(csd, sd, (char *) got, NATIVE_NONCE_LEN, deadline);
-    if (PMIX_SUCCESS != rc) {
-        goto fail;
-    }
-    diff = 0;
-    for (n = 0; n < NATIVE_NONCE_LEN; n++) {
-        diff |= (unsigned char) (nonce[n] ^ got[n]);
-    }
-    if (0 != diff) {
-        pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                            "psec: native local socket returned the wrong nonce");
-        rc = PMIX_ERR_INVALID_CRED;
-        goto cleanup;
-    }
     rc = pmix_util_getid(csd, &uid, &gid);
     if (PMIX_SUCCESS != rc) {
         rc = PMIX_ERR_INVALID_CRED;
@@ -816,7 +856,7 @@ fail:
     if (!warned) {
         pmix_show_help("help-psec-native.txt", "handshake-failed", true,
                        pmix_fd_get_peer_name(sd), path,
-                       (PMIX_ERR_TIMEOUT == rc) ? "the peer did not connect in time"
+                       (PMIX_ERR_TIMEOUT == rc) ? "the peer did not confirm its identity in time"
                                                 : "the peer could not reach the socket");
         warned = true;
     }
