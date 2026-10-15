@@ -1,0 +1,137 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
+# $COPYRIGHT$
+#
+# Additional copyrights may follow
+
+# A get for a key a node-local peer has committed must succeed even while
+# another get for that peer - for a key it never published - is still
+# waiting on the server.
+#
+# examples/get_concurrent.c has ranks 0 and 1 commit a PMIX_GLOBAL key and
+# rank 2 ask for it with a get for an unpublished key already in flight
+# against the same peer - plainly of rank 0, with PMIX_IMMEDIATE of rank 1.
+# The client used to fold the second get onto the first and answer it with
+# the first one's reply, which is PMIX_ERR_TIMEOUT once the server's default
+# 2-second wait for the unpublished key runs out; so a committed key read
+# back as missing, and PMIX_IMMEDIATE waited as long as anything else.
+#
+# This needs a server and three real clients: a singleton has no server to
+# park a request on, and test/unit/get_api.c has only one client.
+
+use strict;
+
+# We are running against the build tree (vs. an installation). Autogen
+# hands us every possible component directory in
+# PMIX_COMPONENT_LIBRARY_PATHS; turn each into an absolute path to the
+# built component so the MCA base can find them without a prior install.
+my @myfullpaths;
+my $mybuilddir = "@PMIX_BUILT_TEST_PREFIX@";
+my $mypathstr = "@PMIX_COMPONENT_LIBRARY_PATHS@";
+my @splitstr = split(':', $mypathstr);
+foreach my $path (@splitstr) {
+    my $fullpath = $mybuilddir . "/" . $path . "/.libs";
+    push(@myfullpaths, $fullpath)
+        if (-d $fullpath);
+}
+my $mymcapaths = join(":", @myfullpaths);
+$ENV{'PMIX_MCA_mca_base_component_path'} = $mymcapaths;
+
+# simptest forks its clients from its own directory; run from there and name
+# the client (built under examples/) by absolute path so simptest can exec it.
+my $wdir = $mybuilddir . "/test/simple";
+chdir $wdir;
+
+# find the timeout or gtimeout cmd so we can bound the run if it hangs
+my $timeout_cmd = "";
+my @paths = split(/:/, $ENV{PATH});
+foreach my $p (@paths) {
+    my $fullpath = $p . "/" . "gtimeout";
+    if ((-e $fullpath) && (-f $fullpath)) {
+        $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+        last;
+    } else {
+        $fullpath = $p . "/" . "timeout";
+        if ((-e $fullpath) && (-f $fullpath)) {
+            $timeout_cmd = $fullpath . " --preserve-status -k 500 450 ";
+            last;
+        }
+    }
+}
+
+# Prefix the external timeout(1)/gtimeout(1) when we found one; otherwise
+# arm a Perl alarm so a wedged run can never hang "make check" forever.
+my $client = $mybuilddir . "/examples/get_concurrent";
+my @cmd = ("./simptest", "-n", "3", "-e", "$client");
+my $use_alarm = 0;
+if ("" ne $timeout_cmd) {
+    unshift(@cmd, split(' ', $timeout_cmd));
+} else {
+    $use_alarm = 1;
+}
+print "@cmd\n";
+
+# Run the server in a child we control, merging stderr into stdout, and
+# slurp the output. The alarm (when armed) bounds the wait.
+my $pid = open(my $fh, "-|");
+defined($pid) or die "cannot fork: $!";
+if (0 == $pid) {
+    open(STDERR, ">&", \*STDOUT) or die "cannot redirect stderr: $!";
+    exec(@cmd) or die "cannot exec simptest: $!";
+}
+my $output = "";
+my $timed_out = 0;
+eval {
+    local $SIG{ALRM} = sub { die "alarm\n"; };
+    alarm(600) if $use_alarm;
+    local $/;            # slurp the whole stream
+    $output = <$fh>;
+    alarm(0);
+};
+if ($@) {
+    $timed_out = 1;
+    kill('KILL', $pid);
+}
+close($fh);
+$output = "" unless defined($output);
+my $status = $timed_out ? 1 : ($? >> 8);
+if ($timed_out) {
+    $output .= "\nFAIL: simptest exceeded the 600s time limit\n";
+}
+print $output . "\n";
+print "CODE $status\n";
+
+# The server must exit 0: a client that failed the assertion (or could not
+# connect/finalize) drives a non-zero exit.
+if (0 != $status) {
+    print "FAIL: simptest did not complete (exit $status)\n";
+    exit($status == 0 ? 1 : $status);
+}
+
+# Confirm rank 2 actually asked both questions and got both answers. The
+# example prints one line per committed-key get before its verdict, so a
+# client that died part-way through is caught here as well as by the exit
+# status.
+my $ran_plain = ($output =~ /committed key of rank 0 \(plain\) -> PMIX_SUCCESS: ok/);
+my $ran_imm   = ($output =~ /committed key of rank 1 \(immediate\) -> PMIX_SUCCESS: ok/);
+my $client_ok = ($output =~ /get_concurrent: PASS/);
+my $server_done = ($output =~ /Test finished OK!/);
+if (!$ran_plain) {
+    print "FAIL: a committed key was not delivered behind an outstanding get for an unpublished one\n";
+    exit(1);
+}
+if (!$ran_imm) {
+    print "FAIL: a PMIX_IMMEDIATE get was not answered behind an outstanding get for an unpublished key\n";
+    exit(1);
+}
+if (!$client_ok) {
+    print "FAIL: client did not complete\n";
+    exit(1);
+}
+if (!$server_done) {
+    print "FAIL: server did not finish cleanly after the clients ran\n";
+    exit(1);
+}
+print "PASS: concurrent gets for one peer are each answered on their own\n";
+exit(0);
