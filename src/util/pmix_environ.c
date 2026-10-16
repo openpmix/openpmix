@@ -204,6 +204,17 @@ pmix_status_t pmix_unsetenv(const char *name, char ***env)
         return PMIX_SUCCESS;
     }
 
+    /* The process's own environment is libc's: it takes the variable out
+     * under the lock its other environment calls take, and takes every
+     * entry of the name, where shifting the array here would race them */
+    if (environ == *env) {
+        found = (NULL != getenv(name));
+        if (0 != unsetenv(name)) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+        return (found) ? PMIX_SUCCESS : PMIX_ERR_NOT_FOUND;
+    }
+
     /* Make something easy to compare to */
 
     i = pmix_asprintf(&compare, "%s=", name);
@@ -221,9 +232,7 @@ pmix_status_t pmix_unsetenv(const char *name, char ***env)
         if (0 != strncmp((*env)[i], compare, len)) {
             continue;
         }
-        if (environ != *env) {
-            free((*env)[i]);
-        }
+        free((*env)[i]);
         for (; NULL != (*env)[i]; ++i) {
             (*env)[i] = (*env)[i + 1];
         }

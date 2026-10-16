@@ -274,6 +274,82 @@ static void masks_match_the_os(void)
     free(label);
 }
 
+#ifdef HAVE_IFADDRS_H
+/* An interface can hold more than one IPv4 address - Linux lists each in
+ * SIOCGIFCONF under the interface's name, and a lookup by that name
+ * answers for the first of them. Each address the OS reports for an
+ * interface pif kept must be discovered, and each just once: asking by
+ * name turned every further address into a copy of the first */
+static void every_ipv4_address_once(void)
+{
+    struct ifaddrs *list = NULL, *cur;
+    pmix_pif_t *intf;
+    int checked = 0, missing = 0, copies = 0, n;
+    bool named;
+    char *label, buf[INET_ADDRSTRLEN];
+
+    if (getifaddrs(&list) < 0) {
+        report("getifaddrs is available to cross-check against", 0);
+        return;
+    }
+    for (cur = list; NULL != cur; cur = cur->ifa_next) {
+        if (NULL == cur->ifa_addr || AF_INET != cur->ifa_addr->sa_family ||
+            0 == (cur->ifa_flags & IFF_UP)) {
+            continue;
+        }
+        n = 0;
+        named = false;
+        PMIX_LIST_FOREACH (intf, &pmix_if_list, pmix_pif_t) {
+            if (AF_INET != intf->af_family || 0 != strcmp(cur->ifa_name, intf->if_name)) {
+                continue;
+            }
+            named = true;
+            if (0 == memcmp(&((struct sockaddr_in *) cur->ifa_addr)->sin_addr,
+                            &((struct sockaddr_in *) &intf->if_addr)->sin_addr,
+                            sizeof(struct in_addr))) {
+                ++n;
+            }
+        }
+        if (!named) {
+            /* an interface pif leaves out by design */
+            continue;
+        }
+        ++checked;
+        inet_ntop(AF_INET, &((struct sockaddr_in *) cur->ifa_addr)->sin_addr, buf, sizeof(buf));
+        if (0 == n) {
+            ++missing;
+            fprintf(stdout, "    %s: %s was not discovered\n", cur->ifa_name, buf);
+        }
+    }
+    /* and no address twice */
+    PMIX_LIST_FOREACH (intf, &pmix_if_list, pmix_pif_t) {
+        pmix_pif_t *other;
+
+        if (AF_INET != intf->af_family) {
+            continue;
+        }
+        for (other = (pmix_pif_t *) pmix_list_get_next(&intf->super);
+             other != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list);
+             other = (pmix_pif_t *) pmix_list_get_next(&other->super)) {
+            if (AF_INET == other->af_family && 0 == strcmp(intf->if_name, other->if_name) &&
+                0 == memcmp(&((struct sockaddr_in *) &intf->if_addr)->sin_addr,
+                            &((struct sockaddr_in *) &other->if_addr)->sin_addr,
+                            sizeof(struct in_addr))) {
+                ++copies;
+                inet_ntop(AF_INET, &((struct sockaddr_in *) &intf->if_addr)->sin_addr, buf,
+                          sizeof(buf));
+                fprintf(stdout, "    %s: %s was discovered twice\n", intf->if_name, buf);
+            }
+        }
+    }
+    freeifaddrs(list);
+    pmix_asprintf(&label, "every IPv4 address of an interface is discovered, once (%d checked)",
+                  checked);
+    report(label, 0 == missing && 0 == copies);
+    free(label);
+}
+#endif
+
 /* An interface has to be on its own network.  This is the property the
  * /64 assumption actually broke: with linux_ipv6 reporting the /128 the
  * kernel gives ::1, pmix_net_samenetwork() - which answered only /64 -
@@ -326,6 +402,7 @@ int main(int argc, char **argv)
     indices_are_a_dense_walk();
 #ifdef HAVE_IFADDRS_H
     masks_match_the_os();
+    every_ipv4_address_once();
 #endif
     every_address_matches_itself();
 
