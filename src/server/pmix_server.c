@@ -949,14 +949,17 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 
     if (NULL != security_mode) {
         free(security_mode);
+        security_mode = NULL;
     }
 
     if (NULL != bfrops_mode) {
         free(bfrops_mode);
+        bfrops_mode = NULL;
     }
 
     if (NULL != gds_mode) {
         free(gds_mode);
+        gds_mode = NULL;
     }
 
     /* close the psensor framework */
@@ -964,16 +967,25 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     /* close the pnet framework */
     (void) pmix_mca_base_framework_close(&pmix_pnet_base_framework);
 
+    /* the global lock is statically initialized and lives for the whole
+     * process - the library can be initialized again after this, so it
+     * must not be destructed here */
     PMIX_RELEASE_THREAD(&pmix_global_lock);
-    PMIX_DESTRUCT_LOCK(&pmix_global_lock);
 
     pmix_rte_finalize();
     if (NULL != pmix_globals.mypeer) {
         PMIX_RELEASE(pmix_globals.mypeer);
     }
 
+    /* clear these so a later PMIx_server_init chooses them afresh
+     * rather than reusing (and again freeing) released strings */
     if (NULL != pmix_server_globals.tmpdir) {
         free(pmix_server_globals.tmpdir);
+        pmix_server_globals.tmpdir = NULL;
+    }
+    if (NULL != pmix_server_globals.system_tmpdir) {
+        free(pmix_server_globals.system_tmpdir);
+        pmix_server_globals.system_tmpdir = NULL;
     }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
