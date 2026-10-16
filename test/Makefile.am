@@ -70,7 +70,8 @@ check_PROGRAMS = \
     pmix_client \
     pmix_regex \
     pmix_environ \
-    pmix_refinalize
+    pmix_refinalize \
+    pmix_client_unreach
 
 TESTS = \
 	run_tests00.pl \
@@ -88,14 +89,16 @@ TESTS = \
 	run_tests12.pl \
 	run_tests13.pl \
 	pmix_environ \
-	pmix_refinalize
+	pmix_refinalize \
+	pmix_client_unreach
 #	run_tests14.pl \
 #	run_tests15.pl
 
 
 ##########################
 
-noinst_PROGRAMS += pmix_test pmix_client pmix_regex pmix_environ pmix_refinalize
+noinst_PROGRAMS += pmix_test pmix_client pmix_regex pmix_environ pmix_refinalize \
+        pmix_client_unreach
 
 pmix_test_SOURCES = $(headers) \
         pmix_test.c test_common.c cli_stages.c server_callbacks.c test_server.c utils.c
@@ -123,5 +126,9 @@ pmix_environ_LDADD = $(top_builddir)/src/libpmix.la
 pmix_refinalize_SOURCES = pmix_refinalize.c
 pmix_refinalize_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 pmix_refinalize_LDADD = $(top_builddir)/src/libpmix.la
+
+pmix_client_unreach_SOURCES = pmix_client_unreach.c
+pmix_client_unreach_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pmix_client_unreach_LDADD = $(top_builddir)/src/libpmix.la
 
 EXTRA_DIST = $(noinst_SCRIPTS)

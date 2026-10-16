@@ -633,7 +633,17 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stderr, &pmix_globals.myid, 2,
                          PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
 
-    /* setup the globals */
+    /* setup the globals - each init cycle decides afresh whether we are
+     * a singleton */
+    pmix_client_globals.singleton = false;
+    /* the IOF code keeps its output cache and partial-line residuals on
+     * these lists for every process that writes forwarded output, which
+     * includes a client handed IOF it did not register a handler for. So
+     * build them in every client, named or not, and tear them down in
+     * every finalize - a list that was never constructed cannot be walked
+     * or destructed */
+    PMIX_CONSTRUCT(&pmix_server_globals.iof, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_server_globals.iof_residuals, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.pending_requests, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.peers, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
@@ -675,8 +685,6 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         pmix_globals.mypeer->nptr->nspace = strdup(pmix_globals.myid.nspace);
         /* define us as an IOF endpoint so any output will be printed */
         pmix_globals.iof_flags.local_output = true;
-        PMIX_CONSTRUCT(&pmix_server_globals.iof, pmix_list_t);
-        PMIX_CONSTRUCT(&pmix_server_globals.iof_residuals, pmix_list_t);
     } else {
         if (NULL != proc) {
             PMIX_LOAD_NSPACE(proc->nspace, evar);
@@ -1155,10 +1163,9 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         }
     }
     PMIX_DESTRUCT(&pmix_client_globals.peers);
-    if (pmix_client_globals.singleton) {
-        PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
-        PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
-    }
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
+    pmix_client_globals.singleton = false;
 
     if (0 <= pmix_client_globals.myserver->sd) {
         CLOSE_THE_SOCKET(pmix_client_globals.myserver->sd);
