@@ -1583,6 +1583,8 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_LIST_DESTRUCT(&pmix_server_globals.gdata);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.events);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.psets);
 
     (void) pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
     (void) pmix_mca_base_framework_close(&pmix_pnet_base_framework);
