@@ -1089,8 +1089,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     if (nspace_given) {
         PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, nspace);
     } else {
-        /* look for our namespace, if one was given */
-        if (NULL == (evar = getenv("PMIX_SERVER_NAMESPACE"))) {
+        /* look for our namespace, if one was given: a launcher that
+         * starts a server itself names it in PMIX_SERVER_NSPACE, beside
+         * PMIX_SERVER_RANK. PMIX_SERVER_NAMESPACE is the name read here
+         * before, and is still taken */
+        if (NULL == (evar = getenv("PMIX_SERVER_NSPACE")) &&
+            NULL == (evar = getenv("PMIX_SERVER_NAMESPACE"))) {
             /* use a fake namespace */
             PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, "pmix-server");
         } else {

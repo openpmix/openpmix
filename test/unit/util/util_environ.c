@@ -130,6 +130,34 @@ static void test_unsetenv_null_env(void)
     report("unsetenv_null_env: returns SUCCESS", PMIX_SUCCESS == rc);
 }
 
+/* the process's own environment, holding the name twice: every entry
+ * leaves, and the others stay */
+static void test_unsetenv_environ(void)
+{
+    char **saved = environ, *one, *two, *other, *env[4];
+    pmix_status_t rc;
+
+    one = strdup("PMIX_UT_ENVIRON_X=1");
+    two = strdup("PMIX_UT_ENVIRON_X=2");
+    other = strdup("PMIX_UT_ENVIRON_Y=y");
+    env[0] = one;
+    env[1] = other;
+    env[2] = two;
+    env[3] = NULL;
+    environ = env;
+    rc = pmix_unsetenv("PMIX_UT_ENVIRON_X", &environ);
+    report("unsetenv_environ: returns SUCCESS", PMIX_SUCCESS == rc);
+    report("unsetenv_environ: every entry of the name leaves",
+           NULL == getenv("PMIX_UT_ENVIRON_X"));
+    report("unsetenv_environ: other key kept", NULL != getenv("PMIX_UT_ENVIRON_Y"));
+    rc = pmix_unsetenv("PMIX_UT_ENVIRON_X", &environ);
+    report("unsetenv_environ: a name it does not hold is NOT_FOUND", PMIX_ERR_NOT_FOUND == rc);
+    environ = saved;
+    free(one);
+    free(two);
+    free(other);
+}
+
 /* ------------------------------------------------------------------ */
 /* pmix_environ_merge                                                  */
 /* ------------------------------------------------------------------ */
@@ -366,6 +394,7 @@ int main(int argc, char **argv)
     test_unsetenv_found();
     test_unsetenv_not_found();
     test_unsetenv_null_env();
+    test_unsetenv_environ();
 
     test_merge_both_null();
     test_merge_minor_null();
