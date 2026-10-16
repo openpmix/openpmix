@@ -140,7 +140,10 @@ def write_id_map(path):
     entries += [(k, RETIRED_PREFIX + v, "") for k, v in retired.items()]
     entries.sort()
 
-    width = max([len(e[1]) for e in entries]) if entries else 1
+    # the column fits the live strings only: a retired one is longer by
+    # its prefix, and letting it widen the column would rewrite every line
+    # of the map for the one id that changed
+    width = max([len(k) for k in ids]) if ids else 1
     try:
         mapfile = open(path, "w")
         mapfile.write(MAP_HEADER)

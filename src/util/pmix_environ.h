@@ -128,6 +128,9 @@ PMIX_EXPORT char * pmix_getenv(const char *name, char **env) __pmix_attribute_no
  *
  * If \em name is found in \em env, the string corresponding to
  * that entry is freed and its entry is eliminated from the array.
+ * If \em env is the process's environment, unsetenv(3) takes out
+ * every entry of the name instead, and PMIX_ERR_BAD_PARAM is returned
+ * for a name it refuses.
  */
 PMIX_EXPORT pmix_status_t pmix_unsetenv(const char *name, char ***env)
     __pmix_attribute_nonnull__(1);
