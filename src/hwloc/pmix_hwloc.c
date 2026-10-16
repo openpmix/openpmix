@@ -64,8 +64,10 @@
 #    include <hwloc/shmem.h>
 #endif
 
-static bool topo_in_shmem = false;
+// acquisition runs once per init/finalize cycle - pmix_hwloc_finalize
+// resets both of these so the next cycle acquires a fresh topology
 static bool passed_thru = false;
+static pmix_status_t setup_result = PMIX_SUCCESS;
 static char *vmhole = "biggest";
 static pmix_vmem_hole_kind_t hole_kind = VMEM_HOLE_BIGGEST;
 static char *topo_file = NULL;
@@ -93,6 +95,8 @@ static void print_maps(void);
 static pmix_topology_t *popptr(pmix_cb_t *cb);
 static int get_locality_string_by_depth(int d, hwloc_cpuset_t cpuset, hwloc_cpuset_t result);
 static int set_flags(hwloc_topology_t topo, unsigned int flags);
+static pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo);
+static void discard_topology(void);
 
 pmix_status_t pmix_hwloc_register(void)
 {
@@ -145,23 +149,71 @@ void pmix_hwloc_finalize(void)
     if (NULL != shmemfile) {
         unlink(shmemfile);
         free(shmemfile);
+        shmemfile = NULL;
+        shmemsize = 0;
     }
     if (0 <= shmemfd) {
         close(shmemfd);
+        shmemfd = -1;
     }
 #endif
-    if (NULL != pmix_globals.topology.topology && !pmix_globals.external_topology
-        && !topo_in_shmem) {
+    /* A topology we discovered, loaded from XML, or adopted from the
+     * server's shmem segment is ours to destroy - an adopted one included,
+     * as hwloc_shmem_topology_adopt takes a reference on hwloc's components
+     * and maps the segment, and only hwloc_topology_destroy gives both back.
+     * One the host passed in belongs to the host. Either way the cached
+     * pointer is cleared: this library can be initialized again in the same
+     * process, and the next cycle tests that pointer to decide whether it
+     * already has a topology - a stale one is then used, and destroyed a
+     * second time by the next finalize. */
+    if (NULL != pmix_globals.topology.topology &&
+        !pmix_globals.external_topology) {
         hwloc_topology_destroy(pmix_globals.topology.topology);
     }
+    pmix_globals.topology.topology = NULL;
+    pmix_globals.external_topology = false;
     if (NULL != pmix_globals.topology.source) {
         free(pmix_globals.topology.source);
+        pmix_globals.topology.source = NULL;
     }
 
+    /* let the next init cycle acquire the topology again - the
+     * output system that owned our stream is already finalized */
+    pmix_hwloc_output = -1;
+    passed_thru = false;
+    setup_result = PMIX_SUCCESS;
     return;
 }
 
+/* Acquire the topology once per init/finalize cycle.
+ *
+ * The latch remembers the answer, not just that we ran: acquisition can
+ * fail without being fatal - a server that was not asked to share its
+ * topology carries on - and pmix_hwloc_load_topology falls back to this
+ * function and, on success, hands back the cached topology. Replaying
+ * PMIX_SUCCESS after a failure would hand back a NULL topology. */
 pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
+{
+    if (passed_thru) {
+        return setup_result;
+    }
+    passed_thru = true;
+    setup_result = setup_topology(info, ninfo);
+    return setup_result;
+}
+
+/* Destroy a topology that failed to load and clear the cached pointer, so
+ * nothing downstream walks it and pmix_hwloc_finalize does not destroy it
+ * a second time. */
+static void discard_topology(void)
+{
+    if (NULL != pmix_globals.topology.topology) {
+        hwloc_topology_destroy(pmix_globals.topology.topology);
+        pmix_globals.topology.topology = NULL;
+    }
+}
+
+static pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
 {
     pmix_cb_t cb;
     pmix_proc_t wildcard;
@@ -176,12 +228,6 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
     pmix_topology_t *topo;
     char *file;
     pmix_status_t rc;
-
-    /* only go thru here ONCE! */
-    if (passed_thru) {
-        return PMIX_SUCCESS;
-    }
-    passed_thru = true;
 
     pmix_output_verbose(2, pmix_hwloc_output,
                         "%s:%s", __FILE__, __func__);
@@ -305,7 +351,6 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, &kv);
         pmix_output_verbose(2, pmix_hwloc_output, "%s:%s stored", __FILE__,
                             __func__);
-        topo_in_shmem = true;
         return PMIX_SUCCESS;
     }
 
@@ -412,18 +457,19 @@ tryself:
             return PMIX_ERR_TAKE_NEXT_OPTION;
         }
         if (0 != hwloc_topology_set_xml((hwloc_topology_t) pmix_globals.topology.topology, topo_file)) {
+            discard_topology();
             return PMIX_ERR_NOT_SUPPORTED;
         }
         /* since we are loading this from an external source, we have to
          * explicitly set a flag so hwloc sets things up correctly
          */
         if (0 != set_flags(pmix_globals.topology.topology, HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM)) {
-            hwloc_topology_destroy(pmix_globals.topology.topology);
+            discard_topology();
             return PMIX_ERROR;
         }
         /* now load the topology */
         if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
-            hwloc_topology_destroy(pmix_globals.topology.topology);
+            discard_topology();
             return PMIX_ERROR;
         }
         /* we don't know the version */
@@ -437,13 +483,13 @@ tryself:
         }
 
         if (0 != set_flags(pmix_globals.topology.topology, 0)) {
-            hwloc_topology_destroy(pmix_globals.topology.topology);
+            discard_topology();
             return PMIX_ERR_INIT;
         }
 
         if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
             PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            hwloc_topology_destroy(pmix_globals.topology.topology);
+            discard_topology();
             return PMIX_ERR_NOT_SUPPORTED;
         }
 #ifdef HWLOC_VERSION
@@ -699,6 +745,10 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
             topo->topology = t->topology;
             pmix_globals.topology.source = strdup(t->source);
             pmix_globals.topology.topology = t->topology;
+            /* the hwloc topology now belongs to the cache; the
+             * container and its source string are ours to release */
+            free(t->source);
+            free(t);
             return PMIX_SUCCESS;
         }
     }
@@ -1502,19 +1552,19 @@ static pmix_status_t load_xml(char *xml)
         return PMIX_ERROR;
     }
     if (0 != hwloc_topology_set_xmlbuffer(pmix_globals.topology.topology, xml, strlen(xml) + 1)) {
-        hwloc_topology_destroy(pmix_globals.topology.topology);
+        discard_topology();
         return PMIX_ERROR;
     }
     /* since we are loading this from an external source, we have to
      * explicitly set a flag so hwloc sets things up correctly
      */
     if (0 != set_flags(pmix_globals.topology.topology, HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM)) {
-        hwloc_topology_destroy(pmix_globals.topology.topology);
+        discard_topology();
         return PMIX_ERROR;
     }
     /* now load the topology */
     if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
-        hwloc_topology_destroy(pmix_globals.topology.topology);
+        discard_topology();
         return PMIX_ERROR;
     }
     pmix_globals.topology.source = strdup("hwloc"); // don't know the version?
