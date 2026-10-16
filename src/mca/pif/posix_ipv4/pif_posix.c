@@ -102,6 +102,7 @@ static int if_posix_open(void)
     int ifc_len;
     bool successful_locate = false;
     struct ifreq *ifr;
+    struct sockaddr addr;
     pmix_pif_t *intf;
     int length;
 
@@ -222,6 +223,12 @@ static int if_posix_open(void)
         if (AF_INET != ifr->ifr_addr.sa_family) {
             continue;
         }
+        /* The entry's address is this address. An interface with more
+         * than one lists each under the interface's name, and the ioctls
+         * below - which take a name - answer for the first of them unless
+         * the request carries the address, which their answers overwrite:
+         * so it is kept here */
+        memcpy(&addr, &ifr->ifr_addr, sizeof(addr));
 
         if (ioctl(sd, SIOCGIFFLAGS, ifr) < 0) {
             pmix_output(0, "pmix_ifinit: ioctl(SIOCGIFFLAGS) failed with errno=%d", errno);
@@ -277,21 +284,13 @@ static int if_posix_open(void)
 #    endif
 #endif /* SIOCGIFINDEX */
 
-        /* This call returns IPv4 addresses only. Use SIOCGLIFADDR
-           instead */
-        if (ioctl(sd, SIOCGIFADDR, ifr) < 0) {
-            pmix_output(0, "pmix_ifinit: ioctl(SIOCGIFADDR) failed with errno=%d", errno);
-            PMIX_RELEASE(intf);
-            continue;
-        }
-        if (AF_INET != ifr->ifr_addr.sa_family) {
-            PMIX_RELEASE(intf);
-            continue;
-        }
+        /* the address is the entry's own - asking the interface by name
+         * would answer with its first address */
+        memcpy(&intf->if_addr, &addr, sizeof(struct sockaddr_in));
 
-        /* based on above, we know this is an IPv4 address... */
-        memcpy(&intf->if_addr, &ifr->ifr_addr, sizeof(struct sockaddr_in));
-
+        /* and the netmask is that address's: given the address, the
+         * kernel answers for it rather than for the name's first */
+        memcpy(&ifr->ifr_addr, &addr, sizeof(addr));
         if (ioctl(sd, SIOCGIFNETMASK, ifr) < 0) {
             pmix_output(0, "pmix_ifinit: ioctl(SIOCGIFNETMASK) failed with errno=%d", errno);
             PMIX_RELEASE(intf);

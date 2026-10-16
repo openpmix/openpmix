@@ -59,7 +59,8 @@ name `"posix_ipv4"`, single `.pmix_mca_open_component = if_posix_open`.
 3. Walks the returned `struct ifreq` array (advancing by a
    `sa_len`-aware stride where `HAVE_STRUCT_SOCKADDR_SA_LEN` is defined),
    and for each interface:
-   - skips non-`AF_INET` entries;
+   - skips non-`AF_INET` entries, and keeps the entry's own address -
+     the one `SIOCGIFCONF` listed - before any ioctl overwrites it;
    - `SIOCGIFFLAGS` → skips interfaces that are not `IFF_UP`, and (where
      `IFF_SLAVE` is defined) skips bonded/load-balancer slaves so the
      master is picked up instead;
@@ -68,9 +69,10 @@ name `"posix_ipv4"`, single `.pmix_mca_open_component = if_posix_open`.
    - `SIOCGIFINDEX` → `if_kernel_index` (falling back to `if_index` where
      `SIOCGIFINDEX` is undefined, and reading `ifr_ifindex`/`ifr_index`
      per what the platform defines);
-   - `SIOCGIFADDR` → primary IPv4 address (copied as `struct sockaddr_in`);
-   - `SIOCGIFNETMASK` → `if_mask` as a **CIDR prefix length** via the local
-     `prefix()` helper;
+   - copies that address into `if_addr`;
+   - `SIOCGIFNETMASK`, with the address put back in `ifr_addr` →
+     `if_mask` as a **CIDR prefix length** via the local `prefix()`
+     helper;
    - `SIOCGIFHWADDR` → `if_mac[6]` (only where `SIOCGIFHWADDR` and
      `ifr_hwaddr` exist — effectively Linux);
    - `SIOCGIFMTU` → `ifmtu` (only where `SIOCGIFMTU` and `ifr_mtu` exist);
@@ -86,6 +88,19 @@ name `"posix_ipv4"`, single `.pmix_mca_open_component = if_posix_open`.
 4. Frees the ioctl buffers and closes the scratch socket.
 
 ## Gotchas
+
+- **An interface's further addresses are listed under its own name.**
+  Linux's `SIOCGIFCONF` gives one entry per IPv4 address, and a secondary
+  address added without a label carries the interface's name. An ioctl
+  that takes a name answers for the name's first address - unless the
+  request's `ifr_addr` holds an `AF_INET` address, which Linux then
+  matches as well. `SIOCGIFFLAGS` and `SIOCGIFINDEX` write their answers
+  over `ifr_addr` (it is a union). So the address comes from the entry
+  itself, never from `SIOCGIFADDR`, and is put back before
+  `SIOCGIFNETMASK`. Asking by name made every secondary address a copy
+  of the primary. `test/unit/pif_discovery.c` checks each address is
+  found once; it bites only where an interface has more than one, which
+  a plain container does not - add one with `ip addr add` (privileged).
 
 - **This is the only component that fills `if_mac` and `ifmtu`.** The
   `bsdx_*` components leave them zero. Code that needs MAC/MTU therefore

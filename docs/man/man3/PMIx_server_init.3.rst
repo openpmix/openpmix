@@ -125,8 +125,12 @@ Server identity and directories
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 * ``PMIX_SERVER_NSPACE`` (char\*) |mdash| namespace to assign to this PMIx
-  server.
+  server. If not given, the ``PMIX_SERVER_NSPACE`` environment variable is
+  used - a launcher that starts the server itself sets it - and otherwise the
+  namespace is ``pmix-server``.
 * ``PMIX_SERVER_RANK`` (pmix_rank_t) |mdash| rank to assign to this PMIx server.
+  If not given, the ``PMIX_SERVER_RANK`` environment variable is used, and
+  otherwise the server's pid.
 * ``PMIX_SERVER_TMPDIR`` (char\*) |mdash| temporary directory in which the
   server is to place its session-level files, including the rendezvous files
   tools use to find it by PID or namespace. If not given, the
