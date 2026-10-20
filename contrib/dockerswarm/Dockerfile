@@ -49,6 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         perl python3 python3-dev python3-setuptools cython3 git \
         libevent-dev libhwloc-dev \
         zlib1g-dev libzstd-dev liblz4-dev \
+        libssl-dev openssl \
         valgrind time \
         openssh-server openssh-client \
         iproute2 iputils-ping procps less vim ca-certificates \

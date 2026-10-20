@@ -105,6 +105,53 @@ cleanup_swarm() {
     done
 }
 
+# --- tools on other nodes ---------------------------------------------------
+# A server takes tools from other nodes only in a PMIx built with
+# SWARM_REMOTE_TOOLS=1 (./build.sh configures it --enable-remote-tools
+# --with-openssl), when its host asks - PRRTE's pmix_remote_connections -
+# and with a mechanism that authenticates a tool made on another host:
+# here psec/ssl. ssl_make_certs puts a throwaway CA in the build volume,
+# with a tool certificate it signs, and a second CA and certificate the
+# servers do not trust. The CN is the user the tools run as on every
+# node: root.
+#   SWARM_SERVER_ENV - for a DVM: remote connections, and the CA
+#   SWARM_TOOL_ENV   - for a tool on another node: ssl, and its identity
+#   SWARM_ROGUE_ENV  - the same with the untrusted CA's certificate
+SSL_DIR=/opt/prte/ssl
+if [ "${SWARM_REMOTE_TOOLS:-0}" = 1 ]; then
+    SWARM_SERVER_ENV="PRTE_MCA_pmix_remote_connections=1 PMIX_MCA_psec_ssl_ca_file=$SSL_DIR/ca.pem"
+    SWARM_TOOL_ENV="PMIX_MCA_psec=ssl PMIX_MCA_psec_ssl_cert_file=$SSL_DIR/tool.pem PMIX_MCA_psec_ssl_key_file=$SSL_DIR/tool.key"
+    SWARM_ROGUE_ENV="PMIX_MCA_psec=ssl PMIX_MCA_psec_ssl_cert_file=$SSL_DIR/rogue.pem PMIX_MCA_psec_ssl_key_file=$SSL_DIR/rogue.key"
+else
+    SWARM_SERVER_ENV=""
+    SWARM_TOOL_ENV=""
+    SWARM_ROGUE_ENV=""
+fi
+ssl_make_certs() {
+    [ "${SWARM_REMOTE_TOOLS:-0}" = 1 ] || return 0
+    docker run --rm -v "$VOLUME":/opt/prte -e D="$SSL_DIR" "$IMAGE" bash -euo pipefail -c '
+        rm -rf "$D" && mkdir -p "$D" && cd "$D"
+        umask 077
+        ext=$(mktemp)
+        printf "basicConstraints=CA:FALSE\nkeyUsage=digitalSignature\nextendedKeyUsage=clientAuth\n" > "$ext"
+        for who in ca rogue-ca; do
+            openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=swarm $who" \
+                -keyout $who.key -out $who.pem >/dev/null 2>&1
+        done
+        for pair in tool:ca rogue:rogue-ca; do
+            leaf=${pair%%:*}; ca=${pair#*:}
+            openssl req -new -newkey rsa:2048 -nodes -subj "/CN=root" \
+                -keyout $leaf.key -out $leaf.csr >/dev/null 2>&1
+            openssl x509 -req -in $leaf.csr -CA $ca.pem -CAkey $ca.key -CAcreateserial \
+                -days 2 -extfile "$ext" -out $leaf.pem >/dev/null 2>&1
+        done
+        rm -f "$ext" ./*.csr ./*.srl
+        chmod 644 ./*.pem
+        chmod 600 ./*.key
+        openssl verify -CAfile ca.pem tool.pem >/dev/null
+    '
+}
+
 # --- macOS: keep this run inside its own clone ------------------------------
 # The native subsets run on the developer's own machine, where another clone
 # of openpmix may be running this very same script.  Nothing may reach a

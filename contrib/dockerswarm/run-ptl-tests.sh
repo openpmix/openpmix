@@ -22,12 +22,14 @@
 # same server.  That reaches the framing code but not much else, and the
 # parts it misses are exactly the parts that are hard to reason about:
 #
-#   * INTERFACE SELECTION.  pmix_ptl_base_setup_listener defaults to a
-#     loopback device and only falls back to a public one when remote or
-#     tool connections were asked for.  On one host the loopback branch is
-#     always taken and the public branch -- along with every "no
-#     interfaces" diagnostic guarding it -- is dead code.  A tool on
-#     another node can only reach a server that took the other branch.
+#   * INTERFACE SELECTION.  A server listens on TCP only for clients and
+#     tools of earlier releases, on a loopback device, and for tools on
+#     other hosts, on public ones - the latter only in a PMIx configured
+#     --enable-remote-tools whose host asks for remote connections.  On one
+#     host the public branch -- along with every "no interfaces"
+#     diagnostic guarding it -- is dead code.  A tool on another node can
+#     only reach a server that took it; a server with no TCP listener
+#     reports its local socket, which no other node can reach.
 #
 #   * DISCOVERY IS NODE-LOCAL.  The rendezvous files a server drops
 #     (pmix.<host>.tool, pmix.<host>.tool.<pid>, pmix.<host>.tool.<nspace>)
@@ -180,6 +182,11 @@ test_linux() {
         bad "could not build the transport examples (rc=$rc)"; return
     fi
     ok "built: $PTL_EXAMPLES"
+    # with SWARM_REMOTE_TOOLS=1 the DVM below takes tools from other nodes,
+    # which present a certificate (see swarm-common.sh)
+    if ! ssl_make_certs; then
+        bad "could not make the tool certificates"; return
+    fi
 
     ####################################################################
     banner "a job whose ranks are behind different servers"
@@ -232,7 +239,7 @@ test_linux() {
     # fail cleanly.
     cleanup_swarm
     nsp=""
-    OUT="$(RUN "rm -f $DVM_URI_FILE; prte --daemonize --report-uri $DVM_URI_FILE 2>&1")"
+    OUT="$(RUN "rm -f $DVM_URI_FILE; ${SWARM_SERVER_ENV:+export $SWARM_SERVER_ENV;} prte --daemonize --report-uri $DVM_URI_FILE 2>&1")"
     # --daemonize returns as soon as the DVM is forked, so poll for the
     # file rather than guessing how long it takes to write it
     for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -246,9 +253,13 @@ test_linux() {
         skp "tool by URI from another node (no DVM)"
     else
         # "<nspace>.<rank>;tcp4://<addr>:<port>" - split it the way
-        # pmix_ptl_base_parse_uri does, from the back
+        # pmix_ptl_base_parse_uri does, from the back - or a local socket's
+        # "<nspace>.<rank>;usock://<path>"
         nsp="${uri%%;*}"; nsp="${nsp%.*}"
-        addr="${uri#*//}"; addr="${addr%%:*}"
+        case "$uri" in
+            *";usock://"*) addr=usock ;;
+            *) addr="${uri#*//}"; addr="${addr%%:*}" ;;
+        esac
         ok "DVM reported a URI (nspace $nsp at $addr)"
 
         OUT="$(RUN "timeout 60 $TESTDIR/tool -nspace $nsp 2>&1")"
@@ -293,12 +304,14 @@ test_linux() {
         # PRRTE's business, so a loopback URI is a skip with the reason
         # named, not a failure of the transport.
         case "$addr" in
+            usock)
+                skp "tool by URI from another node (the DVM takes no remote tools - set SWARM_REMOTE_TOOLS=1 with a PMIx that has them: $uri)" ;;
             127.*|::1|localhost)
                 skp "tool by URI from another node (DVM listener is on loopback: $addr)" ;;
             "")
                 skp "tool by URI from another node (could not parse an address out of $uri)" ;;
             *)
-                OUT="$(ON 2 "timeout 60 $TESTDIR/tool -u '$uri' 2>&1")"
+                OUT="$(ON 2 "${SWARM_TOOL_ENV:+export $SWARM_TOOL_ENV;} timeout 60 $TESTDIR/tool -u '$uri' 2>&1")"
                 RC=$?
                 if [ "$RC" = 124 ]; then
                     bad "tool by URI across nodes: HUNG"
