@@ -74,6 +74,10 @@ is only the nickname.
 - **PRRTE is baked as source.** The image clones PRRTE `master` and runs
   `autogen.pl`; `build.sh` only configures + builds it (against your PMIx) into
   the shared volume. Override the branch with `PRRTE_REF=... ./build.sh image`.
+- **A PRRTE branch nobody has pushed.** `PRRTE_REPO` may name a PRRTE clone
+  (or a worktree of one) on this host: `build.sh` mounts its git directory
+  into the builder, read-only, and builds `$PRRTE_REF` from it - for a PMIx
+  change that needs PRRTE changed with it.
 
 ## 3. Prerequisites
 
@@ -267,6 +271,8 @@ swarm's `/tmp`, because the containers are different containers.
 | force a clean rebuild | `docker volume rm pmix-build && ./build.sh` |
 | move the baked PRRTE forward | `docker build --no-cache --build-arg PRRTE_REF=master -t pmix-swarm:latest .`, then wipe the volume's VPATH dirs and recreate the containers - see below |
 | rebuild the base image (different PRRTE branch) | `PRRTE_REF=v3.0.x ./build.sh image` |
+| build against a local PRRTE branch | `PRRTE_REPO=~/prrte/wt-mine PRRTE_REF=topic/mine ./build.sh` - best in a swarm of its own (`PMIX_SWARM`), so the volume's PRRTE clone starts from that repository |
+| build a PMIx that takes tools from other nodes | `SWARM_REMOTE_TOOLS=1 ./build.sh` (configures `--enable-remote-tools --with-openssl`; changing it reconfigures), and run the suites with `SWARM_REMOTE_TOOLS=1` too |
 | tear down the swarm | `docker compose down` (the `pmix-build` volume persists) |
 | run a second, independent swarm | `export PMIX_SWARM=alt` and repeat the quick start — see §4. Every command in this table then names that swarm's volume (`alt-build`) and containers (`alt-node*`), and **a `docker compose down` without the variable takes down the *default* swarm** |
 
@@ -1016,13 +1022,13 @@ A developer's own `make check` drives the PTL hard, but always over
 loopback, on one host, between processes one server started. Four things
 it therefore cannot reach:
 
-* **Interface selection.** `pmix_ptl_base_setup_listener` defaults to a
-  loopback device and only falls back to a public one when remote or
-  tool connections were asked for. On one host the loopback branch is
-  always taken, and the public branch — plus the `no-remote-interfaces`
-  / `no-loopback-interfaces` / `no-available-interfaces` diagnostics
-  guarding it — is dead code. A tool on another node can only reach a
-  server that took the other branch.
+* **Interface selection.** A server listens on TCP only for clients and
+  tools of earlier releases, on a loopback device, and for tools on other
+  hosts, on public ones - the latter only in a PMIx configured
+  `--enable-remote-tools` whose host asks. On one host the public branch
+  — plus the `no-remote-interfaces` / `no-available-interfaces`
+  diagnostics guarding it — is dead code. A tool on another node can only
+  reach a server that took it.
 
 * **Discovery is node-local, and nothing proves it.** The rendezvous
   files a server drops (`pmix.<host>.tool`, `pmix.<host>.tool.<pid>`,
@@ -1066,11 +1072,11 @@ the *back*, because a namespace may itself contain dots (PRRTE names one
 after the host). Splitting from the front finds the wrong separator on
 exactly the namespaces this harness produces.
 
-**A loopback DVM is a skip, not a failure.** The remote-tool case
-depends on the DVM having enabled remote connections. When it did not,
-the address in the reported URI is `127.0.0.1` and the case says so and
-skips: failing there would be blaming the transport for a launcher
-configuration.
+**A DVM that takes no remote tools is a skip, not a failure.** The
+remote-tool case depends on the DVM having enabled remote connections.
+When it did not, the reported URI names its local socket (or, with legacy
+peers on, `127.0.0.1`), and the case says so and skips: failing there
+would be blaming the transport for a launcher configuration.
 
 **The port-range case needs the port actually occupied.** It parks a
 Python listener on node1 and *verifies* the port is taken before
@@ -1340,17 +1346,29 @@ DVM the tool would have to be handed some non-head daemon's URI, and
 nothing publishes those; two heads each report their own through
 `--report-uri`.
 
-### `PRTE_MCA_pmix_remote_connections=1` is load-bearing
+### Remote connections are load-bearing
 
-A PMIx server binds a **loopback** interface unless remote connections
-were asked for, and a loopback URI is unreachable from another node by
-construction. Both DVMs are therefore started with
-`PRTE_MCA_pmix_remote_connections=1`, which is the PRRTE-side MCA
-parameter that becomes the `PMIX_SERVER_REMOTE_CONNECTIONS` directive on
-`PMIx_server_init`. Without it every cross-node stage skips itself and
-the suite proves nothing — which is exactly what `run-ptl-tests.sh`
-reports when it meets a loopback URI. If a stage here starts skipping
-with "listener is on loopback", that variable is what is missing.
+A PMIx server takes TCP connections from other nodes only in a PMIx
+configured `--enable-remote-tools`, only with `munge` or `ssl` to
+authenticate the tools, and only when its host asks. Otherwise it has no
+TCP listener at all - or one on loopback, for clients of earlier
+releases - and reports its local socket, which no other node can reach.
+With `SWARM_REMOTE_TOOLS=1` both DVMs are started with
+`PRTE_MCA_pmix_remote_connections=1`, the PRRTE-side MCA parameter that
+becomes the `PMIX_SERVER_REMOTE_CONNECTIONS` directive on
+`PMIx_server_init`, and with `psec_ssl_ca_file` naming a throwaway CA
+the suite makes in the build volume (`/opt/prte/ssl`, by `ssl_make_certs`
+in `swarm-common.sh`). The tools on other nodes present a certificate it
+signed, `CN=root` - the user every node runs as - with `psec=ssl`. Set
+it only for a swarm built with `SWARM_REMOTE_TOOLS=1`, or the DVMs fail
+to start. Without it every cross-node stage skips itself, naming why.
+
+The first stage asserts who a server on another node takes. With remote
+tools: a tool whose certificate the CA signed is taken; one whose
+certificate a second CA signed, and one with no certificate (`native`,
+which serves only its own host), are refused. Without them: a tool on
+another node cannot reach the DVM at all, since it reports its local
+socket.
 
 | Stage | What it drives |
 |-------|----------------|

@@ -70,6 +70,12 @@
 #     gets, and it is the only one that gets it with real remote peers
 #     attached and detached.
 #
+# The cross-node stages need the DVMs to take tools from other nodes: a
+# PMIx configured --enable-remote-tools, with munge or ssl to authenticate
+# them, and PRRTE asking for remote connections. Set SWARM_REMOTE_TOOLS=1
+# when the swarm's PMIx has them. Otherwise the DVMs listen only on their
+# local sockets, and those stages are skipped with the reason named.
+#
 # WHAT THIS DOES NOT COVER:
 #
 #   * the RELAY half of src/tool/pmix_tool_ops.c -- a tool that has
@@ -135,8 +141,20 @@ wait_for_uri() {
 }
 
 # Pull the address out of "<nspace>.<rank>;tcp4://<addr>:<port>", split from
-# the back the way pmix_ptl_base_parse_uri does.
-uri_addr() { local a="${1#*//}"; echo "${a%%:*}"; }
+# the back the way pmix_ptl_base_parse_uri does - or "usock" for a URI that
+# names a server's local socket, which no other node can reach.
+uri_addr() {
+    case "$1" in
+        *";usock://"*) echo usock; return ;;
+    esac
+    local a="${1#*//}"; echo "${a%%:*}"
+}
+# Ask the DVMs for remote connections only when the swarm's PMIx can take
+# them: a PMIx without remote tool support, or with no mechanism that can
+# authenticate a tool on another node, fails its init when asked. The
+# settings - and the certificates the tools present - are in
+# swarm-common.sh.
+REMOTE_ENV="$SWARM_SERVER_ENV"
 
 ########################################################################
 # Linux: the 10-node swarm.
@@ -207,6 +225,15 @@ test_linux() {
     fi
     ok "built: $TOOL_EXAMPLES"
 
+    if [ "${SWARM_REMOTE_TOOLS:-0}" = 1 ]; then
+        if ssl_make_certs; then
+            ok "a CA, a tool certificate it signs, and one it does not, in $SSL_DIR"
+        else
+            bad "could not make the tool certificates"
+            return
+        fi
+    fi
+
     # ------------------------------------------------------------------
     # Two INDEPENDENT DVMs, one headed on node1 and one headed on node2.
     #
@@ -218,19 +245,16 @@ test_linux() {
     banner "bring up two DVMs on different nodes"
     cleanup_swarm
     ON 1 "rm -f $URI_A"; ON 2 "rm -f $URI_B"
-    # PRTE_MCA_pmix_remote_connections=1 is what makes this suite possible.
-    # A PMIx server binds a LOOPBACK interface unless remote connections
-    # were asked for, and a loopback URI is unreachable from another node by
-    # construction -- so without this every cross-node stage below would
-    # skip itself and the suite would prove nothing. It is a PRRTE-side MCA
-    # parameter that ends up as the PMIX_SERVER_REMOTE_CONNECTIONS directive
-    # on PMIx_server_init.
-    ON 1 "export PRTE_ALLOW_RUN_AS_ROOT=1 PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1 \
-                 PRTE_MCA_pmix_remote_connections=1;
+    # PRTE_MCA_pmix_remote_connections=1 (REMOTE_ENV, with
+    # SWARM_REMOTE_TOOLS=1) is what makes the cross-node stages possible.
+    # Without remote connections a PMIx server takes no TCP connection from
+    # another node, so every cross-node stage below skips itself, naming
+    # why. It is a PRRTE-side MCA parameter that ends up as the
+    # PMIX_SERVER_REMOTE_CONNECTIONS directive on PMIx_server_init.
+    ON 1 "export PRTE_ALLOW_RUN_AS_ROOT=1 PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1 $REMOTE_ENV;
           . /opt/prte/env.sh; prte --daemonize --report-uri $URI_A \
               --host node1:1,node3:1,node4:1 >/tmp/toolsuite-a.log 2>&1" >/dev/null 2>&1
-    ON 2 "export PRTE_ALLOW_RUN_AS_ROOT=1 PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1 \
-                 PRTE_MCA_pmix_remote_connections=1;
+    ON 2 "export PRTE_ALLOW_RUN_AS_ROOT=1 PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1 $REMOTE_ENV;
           . /opt/prte/env.sh; prte --daemonize --report-uri $URI_B \
               --host node2:1 >/tmp/toolsuite-b.log 2>&1" >/dev/null 2>&1
 
@@ -246,10 +270,61 @@ test_linux() {
     addr_b="$(uri_addr "$uri_b")"
 
     # ------------------------------------------------------------------
+    # Who a server on another node takes. A DVM of a PMIx without remote
+    # tools cannot be reached from another node at all: it reports its
+    # local socket. One with them takes a tool whose certificate its CA
+    # signed, and refuses one whose certificate another CA signed, and
+    # one that brings no certificate (native, which serves only its own
+    # host).
+    # ------------------------------------------------------------------
+    banner "who a server on another node takes"
+    # examples/tool exits with its PMIx_tool_init status, as a byte
+    remote_try() {      # $1 = tool environment; sets OUT, RC
+        OUT="$(ON 1 "${1:+export $1;} timeout 60 $TESTDIR/tool -u '$uri_b' 2>&1")"
+        RC=$?
+    }
+    INVALID_CRED=244    # PMIX_ERR_INVALID_CRED, -12
+    NO_PERMISSIONS=233  # PMIX_ERR_NO_PERMISSIONS, -23
+    UNREACH=231         # PMIX_ERR_UNREACH, -25
+    case "$addr_b" in
+        usock)
+            remote_try ""
+            if [ "$RC" = "$UNREACH" ]; then
+                ok "a DVM without remote tools cannot be reached from another node: PMIX_ERR_UNREACH"
+            else
+                bad "a DVM without remote tools, from another node: exit $RC, not PMIX_ERR_UNREACH ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
+            fi ;;
+        127.*|::1|localhost|"")
+            skp "remote tool authentication (DVM B's listener is on loopback: ${addr_b:-unparseable})" ;;
+        *)
+            remote_try "$SWARM_TOOL_ENV"
+            if [ "$RC" = 0 ]; then
+                ok "a tool whose certificate the server's CA signed is taken"
+            else
+                bad "a tool whose certificate the server's CA signed: exit $RC ($(echo "$OUT" | tr '\n' ' ' | tail -c 240))"
+            fi
+            remote_try "$SWARM_ROGUE_ENV"
+            if [ "$RC" = "$INVALID_CRED" ]; then
+                ok "a tool whose certificate another CA signed is refused: PMIX_ERR_INVALID_CRED"
+            else
+                bad "a tool whose certificate another CA signed: exit $RC, not PMIX_ERR_INVALID_CRED ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
+            fi
+            remote_try ""
+            if [ "$RC" = "$NO_PERMISSIONS" ]; then
+                ok "a tool with no certificate, from another node, is refused: PMIX_ERR_NO_PERMISSIONS"
+            else
+                bad "a tool with no certificate, from another node: exit $RC, not PMIX_ERR_NO_PERMISSIONS ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
+            fi ;;
+    esac
+
+    # ------------------------------------------------------------------
     # The multi-server model, with the two servers on two hosts.
     # ------------------------------------------------------------------
     banner "a tool switching its primary between servers on different nodes"
     case "$addr_b" in
+        usock)
+            skp "toolswitch (DVM B takes no remote tools - set SWARM_REMOTE_TOOLS=1 with a PMIx that has them)"
+            skp "toolswitch under valgrind (no remote URI)" ;;
         127.*|::1|localhost|"")
             # A loopback URI is unreachable from node1 by construction.
             # Whether PRRTE asked for remote connections is PRRTE's
@@ -257,7 +332,7 @@ test_linux() {
             skp "toolswitch (DVM B's listener is on loopback: ${addr_b:-unparseable})"
             skp "toolswitch under valgrind (no remote URI)" ;;
         *)
-            OUT="$(ON 1 "timeout 180 $TESTDIR/toolswitch -u '$uri_b' -n 5 2>&1")"
+            OUT="$(ON 1 "${SWARM_TOOL_ENV:+export $SWARM_TOOL_ENV;} timeout 180 $TESTDIR/toolswitch -u '$uri_b' -n 5 2>&1")"
             RC=$?
             if [ "$RC" = 124 ]; then
                 bad "toolswitch: HUNG"
@@ -300,7 +375,7 @@ test_linux() {
                 # and PRRTE ships files of its own whose basenames collide
                 # with ours, so a basename match would attribute their
                 # leaks to us.
-                OUT="$(ON 1 "valgrind --leak-check=full --show-leak-kinds=definite \
+                OUT="$(ON 1 "${SWARM_TOOL_ENV:+export $SWARM_TOOL_ENV;} valgrind --leak-check=full --show-leak-kinds=definite \
                                  --error-exitcode=0 --fullpath-after= \
                                  --log-file=/tmp/toolsuite-vg.log \
                                  timeout 300 $TESTDIR/toolswitch -u '$uri_b' -n 2 2>&1")"
@@ -337,13 +412,15 @@ test_linux() {
     # ------------------------------------------------------------------
     banner "a tool whose server on another node goes away"
     case "$addr_b" in
+        usock)
+            skp "remote server death (DVM B takes no remote tools)" ;;
         127.*|::1|localhost|"")
             skp "remote server death (DVM B's listener is on loopback)" ;;
         *)
             # kill DVM B out from under a tool on node1 that is attached
             # to it by URI
             ON 2 "( sleep 5; . /opt/prte/env.sh; pterm --dvm-uri '$uri_b' >/dev/null 2>&1 ) &" >/dev/null 2>&1
-            OUT="$(ON 1 "timeout 90 $TESTDIR/tool -u '$uri_b' 2>&1")"
+            OUT="$(ON 1 "${SWARM_TOOL_ENV:+export $SWARM_TOOL_ENV;} timeout 90 $TESTDIR/tool -u '$uri_b' 2>&1")"
             RC=$?
             if [ "$RC" = 124 ]; then
                 bad "remote server death: HUNG (never noticed the drop)"
