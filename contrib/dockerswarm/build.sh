@@ -47,6 +47,20 @@ root="$(git -C "$here" rev-parse --show-toplevel)"     # the openpmix tree
 
 PRRTE_REF="${PRRTE_REF:-master}"        # baked-image PRRTE branch
 PRRTE_REPO="${PRRTE_REPO:-https://github.com/openpmix/prrte.git}"
+# PRRTE_REPO may also name a PRRTE clone on this host - for a PMIx change
+# that needs a PRRTE branch nobody has pushed. Its git directory is
+# mounted into the builder, read-only, and the branch cloned from there.
+# A worktree names the clone it belongs to: its branches live there.
+PRRTE_MOUNT=()
+if [ -d "$PRRTE_REPO" ]; then
+    _gd="$(git -C "$PRRTE_REPO" rev-parse --path-format=absolute --git-common-dir)" || {
+        echo "PRRTE_REPO=$PRRTE_REPO is not a git clone" >&2; exit 2; }
+    PRRTE_MOUNT=(-v "$_gd":/prrte-repo:ro)
+    PRRTE_REPO=/prrte-repo
+fi
+# SWARM_REMOTE_TOOLS=1 builds a PMIx that takes tools from other nodes:
+# --enable-remote-tools, with OpenSSL for psec/ssl to authenticate them.
+SWARM_REMOTE_TOOLS="${SWARM_REMOTE_TOOLS:-0}"
 
 # the group example programs that exercise the construction methods; built as
 # standalone clients against the installed PMIx and launched by prterun/prun.
@@ -169,23 +183,33 @@ build_linux() {
         -e PYTHON_BINDINGS="$PYTHON_BINDINGS" \
         -e PRRTE_REPO="$PRRTE_REPO" \
         -e PRRTE_REF="$PRRTE_REF" \
+        -e SWARM_REMOTE_TOOLS="$SWARM_REMOTE_TOOLS" \
+        ${PRRTE_MOUNT[@]+"${PRRTE_MOUNT[@]}"} \
         "$IMAGE" bash -euo pipefail -c '
             jobs=$(nproc)
 
-            pyopt=""
-            [ "$PYTHON_BINDINGS" = yes ] && pyopt="--enable-python-bindings"
+            opts=""
+            [ "$PYTHON_BINDINGS" = yes ] && opts="$opts --enable-python-bindings"
+            [ "$SWARM_REMOTE_TOOLS" = 1 ] && opts="$opts --with-openssl --enable-remote-tools"
 
             echo ">>>> PMIx from bind-mounted /pmix-src -> /opt/prte/pmix"
             mkdir -p /opt/prte/vpath-pmix && cd /opt/prte/vpath-pmix
             # Reconfigure when the build directory was configured with a
             # different set of options than we want now -- otherwise flipping
-            # PYTHON_BINDINGS would be silently ignored, since the guard below
-            # only asks whether *a* configure has ever run here.
-            if [ -f config.status ] && ! ./config.status --config 2>/dev/null | grep -qF -- "${pyopt:-__none__}"; then
-                if [ -n "$pyopt" ] || ./config.status --config 2>/dev/null | grep -q -- --enable-python-bindings; then
-                    echo "   (configure options changed -- reconfiguring)"
-                    rm -f config.status
-                fi
+            # PYTHON_BINDINGS or SWARM_REMOTE_TOOLS would be silently
+            # ignored, since the guard below only asks whether *a* configure
+            # has ever run here.
+            if [ -f config.status ]; then
+                _have=" $(./config.status --config 2>/dev/null) "
+                for _o in --enable-python-bindings --with-openssl --enable-remote-tools; do
+                    case " $opts " in *" $_o "*) _want=1 ;; *) _want=0 ;; esac
+                    case "$_have" in *"$_o"*) _got=1 ;; *) _got=0 ;; esac
+                    if [ "$_want" != "$_got" ]; then
+                        echo "   (configure options changed -- reconfiguring)"
+                        rm -f config.status
+                        break
+                    fi
+                done
             fi
             # Reconfigure when the *component set* has changed under us.
             # Automake records every configure.m4 it folded into aclocal.m4
@@ -211,7 +235,7 @@ build_linux() {
                     rm -f config.status
                 fi
             fi
-            [ -f config.status ] || /pmix-src/configure --prefix=/opt/prte/pmix --enable-debug $pyopt
+            [ -f config.status ] || /pmix-src/configure --prefix=/opt/prte/pmix --enable-debug $opts
             # NOTE: deliberately two statements, not "make && make install".
             # set -e does NOT fire for a failing command in a non-final
             # position of an && list, so the old form swallowed a build
@@ -235,8 +259,18 @@ build_linux() {
             if [ ! -d "$prte_src/.git" ]; then
                 echo ">>>> cloning PRRTE $PRRTE_REF -> $prte_src"
                 rm -rf "$prte_src"
-                git clone --quiet --recursive -b "$PRRTE_REF" \
-                          "$PRRTE_REPO" "$prte_src" || {
+                # Submodules after the clone, not with it: one named relative
+                # to its repository (config/oac is ../../open-mpi/oac) has no
+                # home beside a PRRTE clone on this host, so name such a one
+                # relative to GitHub, where PRRTE itself lives.
+                { git clone --quiet -b "$PRRTE_REF" "$PRRTE_REPO" "$prte_src" &&
+                  git -C "$prte_src" config -f .gitmodules --get-regexp "\.url$" |
+                  while read -r key url; do
+                      case "$url" in
+                          ../*) git -C "$prte_src" config "$key" "https://github.com/${url##*../}" ;;
+                      esac
+                  done &&
+                  git -C "$prte_src" submodule --quiet update --init --recursive; } || {
                     echo "   (clone failed -- using the baked copy in the image)"
                     rm -rf "$prte_src"; cp -a /src/prrte "$prte_src"; }
             fi
