@@ -195,15 +195,20 @@ two disagree, the README wins, and please fix this file.
   cleanly. The image carries no valgrind, so the stage installs it into
   the one node it needs at run time and skips if there is no network.
 
-- **A PMIx server binds LOOPBACK unless remote connections were asked
-  for.** So does PRRTE's, and a loopback URI is unreachable from another
-  node by construction — which turns every cross-node tool stage into a
-  skip. `run-tool-tests.sh` starts its DVMs with
-  `PRTE_MCA_pmix_remote_connections=1` (the PRRTE-side parameter that
-  becomes the `PMIX_SERVER_REMOTE_CONNECTIONS` directive) for exactly this
-  reason. `run-ptl-tests.sh` predates that discovery and still reports the
-  skip. If a stage starts saying "listener is on loopback", that variable
-  is what is missing — it is not a PRRTE bug.
+- **A PMIx server takes no TCP connection from another node unless it
+  has remote tools.** That needs a PMIx configured `--enable-remote-tools`,
+  `munge` or `ssl` to authenticate the tools, and the host asking. Without
+  them a server reports its local socket (`usock://`), which no other node
+  can reach - so every cross-node tool stage is a skip, naming why.
+  `run-tool-tests.sh` asks its DVMs for remote connections
+  (`PRTE_MCA_pmix_remote_connections=1`, the PRRTE-side parameter that
+  becomes `PMIX_SERVER_REMOTE_CONNECTIONS`) only with
+  `SWARM_REMOTE_TOOLS=1`: asked without the support, a server fails its
+  init. It is not a PRRTE bug. `SWARM_REMOTE_TOOLS=1` must be given to
+  `build.sh` too, which then configures `--enable-remote-tools
+  --with-openssl`; the suites make a throwaway CA and tool certificates
+  in `/opt/prte/ssl` (`ssl_make_certs`) and run the remote tools with
+  `psec=ssl` (`SWARM_TOOL_ENV`).
 
 - **`prterun` has no `--dvm-uri`; `prun` does.** A stage that wants a
   tool attached to a *persistent* DVM has to use `prun`. `prterun` brings
