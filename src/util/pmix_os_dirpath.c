@@ -652,12 +652,21 @@ int pmix_os_dirpath_open_dir(const char *path)
  * O_DIRECTORY: a plain file sitting at the requested name is an error
  * rather than something we report as usable.
  *
- * O_NOFOLLOW: refuse a symlink planted at the final component.
- * Following one would point every subsequent operation at the link's
- * *target* -- which an attacker gets to choose, and which
- * pmix_os_dirpath_destroy() would later recurse into. The paths that
- * reach this code include the rendezvous directory, whose default
- * root (/tmp) is world-writable, so that is not theoretical.
+ * A symlink at the final component is followed only when it is ours or
+ * root's. Following one points every subsequent operation at the link's
+ * *target*, which whoever made the link chose - and a predictable name
+ * under a world-writable root such as /tmp can be made by anyone. But
+ * the path itself came from outside PMIx, and a link its owner set up
+ * is as much theirs to name as a directory would be: TMPDIR=/tmp on
+ * macOS, where /tmp is root's link into /private, or a user's own link
+ * to a scratch filesystem. Refusing those refused every server started
+ * with such a TMPDIR. In a sticky directory nobody else can replace a
+ * link that is ours or root's.
+ *
+ * The link is recognized with lstat(), not by the errno the
+ * O_NOFOLLOW open fails with: platforms do not agree on that - ENOTDIR
+ * on Linux and macOS once O_DIRECTORY is given, EMLINK on FreeBSD -
+ * and neither reads as "this is a symbolic link".
  *
  * Note that we deliberately do not ask whether the directory is
  * writable. Whether the caller can put files here is settled by the
@@ -675,16 +684,29 @@ int pmix_os_dirpath_open_dir(const char *path)
 static int dirpath_check_existing(const char *path, const mode_t mode)
 {
     struct stat buf;
-    int fd;
+    int fd, save;
 
     fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (0 > fd && ENOENT != errno) {
+        save = errno;
+        if (0 == lstat(path, &buf) && S_ISLNK(buf.st_mode)) {
+            if (geteuid() != buf.st_uid && 0 != buf.st_uid) {
+                pmix_show_help("help-pmix-util.txt", "dir-symlink-owner", true, path,
+                               (unsigned long) buf.st_uid, (unsigned long) geteuid());
+                return PMIX_ERR_SILENT;
+            }
+            fd = open(path, O_RDONLY | O_DIRECTORY);
+        } else {
+            errno = save;
+        }
+    }
     if (0 > fd) {
         if (ENOENT == errno) {
             return PMIX_ERR_NOT_FOUND;
         }
-        /* ELOOP (symlink) and ENOTDIR (plain file) land here:
-         * something that is not a directory is occupying the name we
-         * were asked to create */
+        /* a plain file, or a link of ours to something that is not a
+         * directory: something other than a directory is occupying the
+         * name we were asked to create */
         pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
                        path, strerror(errno));
         return PMIX_ERR_SILENT;
