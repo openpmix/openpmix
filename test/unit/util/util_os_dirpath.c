@@ -261,7 +261,8 @@ static void test_destroy_recursive(void)
 /* Symlink / non-directory hardening                                   */
 /*                                                                     */
 /* pmix_os_dirpath_create() must not adopt (or chmod) something that   */
-/* is not a directory, and pmix_os_dirpath_destroy() must never follow */
+/* is not a directory, nor follow a link another user put at the name, */
+/* and pmix_os_dirpath_destroy() must never follow                     */
 /* a symlink -- either as its base path or as an entry it finds while  */
 /* walking the tree.  The session and rendezvous directories have      */
 /* fully predictable names under a world-writable root, so a link      */
@@ -320,15 +321,40 @@ static void test_create_on_symlink(void)
         return;
     }
 
-    /* ask for group bits the target does not have: if the link were
-     * followed, the target would come back chmod'ed */
+    /* a link of our own is ours to name, as TMPDIR=/tmp is on macOS:
+     * it leads to an existing directory, which is used as found. Ask
+     * for group bits the target does not have: it must not come back
+     * chmod'ed */
     rc = pmix_os_dirpath_create(link, S_IRWXU | S_IRWXG);
-    report("create_on_symlink: refused with ERR_SILENT", PMIX_ERR_SILENT == rc);
+    report("create_on_symlink: our own link is followed", PMIX_ERR_EXISTS == rc);
     report("create_on_symlink: link not replaced", is_symlink(link));
     report("create_on_symlink: target mode untouched",
            0 == stat(target, &st) && 0 == (st.st_mode & S_IRWXG));
 
+    /* another user's link could have been planted by anyone able to
+     * write beside it. Only root can make one to test with */
+    if (0 == geteuid() && 0 == lchown(link, 65534, 65534)) {
+        rc = pmix_os_dirpath_create(link, S_IRWXU | S_IRWXG);
+        report("create_on_symlink: another user's link refused", PMIX_ERR_SILENT == rc);
+        report("create_on_symlink: their link not replaced", is_symlink(link));
+    } else {
+        report("create_on_symlink: another user's link (skipped: needs root)", 1);
+    }
     unlink(link);
+
+    /* a link of ours to something that is not a directory is no more a
+     * directory than the thing itself */
+    snprintf(target, sizeof(target), "%s/link_file_target", tmpbase);
+    make_file(target);
+    if (0 == symlink(target, link)) {
+        rc = pmix_os_dirpath_create(link, S_IRWXU);
+        report("create_on_symlink: link to a file refused", PMIX_ERR_SILENT == rc);
+        report("create_on_symlink: file left in place", file_exists(target));
+        unlink(link);
+    }
+    unlink(target);
+
+    snprintf(target, sizeof(target), "%s/link_target", tmpbase);
     rmdir(target);
 }
 
@@ -784,11 +810,23 @@ static void test_create_on_symlink_trailing_separator(void)
 
     snprintf(arg, sizeof(arg), "%s/", link);
     rc = pmix_os_dirpath_create(arg, S_IRWXU | S_IRWXG);
-    report("create_on_symlink_trailing_separator: refused with ERR_SILENT",
-           PMIX_ERR_SILENT == rc);
+    report("create_on_symlink_trailing_separator: our own link is followed",
+           PMIX_ERR_EXISTS == rc);
     report("create_on_symlink_trailing_separator: link not replaced", is_symlink(link));
     report("create_on_symlink_trailing_separator: target mode untouched",
            0 == stat(target, &st) && 0 == (st.st_mode & S_IRWXG));
+
+    /* "link/" opens the target even with O_NOFOLLOW, so without the
+     * separator stripped first another user's link would never be seen
+     * to be a link at all. Only root can make one to test with */
+    if (0 == geteuid() && 0 == lchown(link, 65534, 65534)) {
+        rc = pmix_os_dirpath_create(arg, S_IRWXU | S_IRWXG);
+        report("create_on_symlink_trailing_separator: another user's link refused",
+               PMIX_ERR_SILENT == rc);
+    } else {
+        report("create_on_symlink_trailing_separator: another user's link (skipped: needs root)",
+               1);
+    }
 
     unlink(link);
     rmdir(target);

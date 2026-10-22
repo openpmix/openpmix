@@ -1214,7 +1214,7 @@ Four contracts the callers depend on:
   applies only to directories `pmix_os_dirpath_create()` makes. One
   that is already there was named from outside PMIx - `$TMPDIR`, the
   system tmpdir, a user's output directory - so it is checked (a real
-  directory, not a symlink or a file) and then used as found, even if
+  directory, not a file) and then used as found, even if
   it lacks some of the requested bits. Who may look into a directory
   is its owner's call, not the library's; a foreign tool that cannot
   reach the file is the consequence of that choice, and the listener
@@ -1222,6 +1222,23 @@ Four contracts the callers depend on:
   walk still `fchmod`s its final component, because that one is a
   name PMIx composed and the walk has checked is ours.
   `test_create_existing_mode_untouched` covers it.
+- **A symlink at the final component is followed if it is ours or
+  root's, and refused otherwise.** The whole path came from outside, so
+  a link at its end is the caller's naming as much as a directory is:
+  `TMPDIR=/tmp` on macOS, where `/tmp` is root's link into `/private`,
+  or a user's link to a scratch filesystem. Refusing every link failed
+  `PMIx_server_init` for every such `TMPDIR`, since `write_rndz_file()`
+  hands the tmpdir itself to `pmix_os_dirpath_create()`. What is still
+  refused is a link of another user's, which is what a link planted at
+  a predictable name under `/tmp` would be; `dir-symlink-owner` says so.
+  The link is recognized with `lstat()`, never by errno: an
+  `O_DIRECTORY | O_NOFOLLOW` open of one fails with `ENOTDIR` on Linux
+  and macOS and `EMLINK` on FreeBSD, so the user was told "Not a
+  directory" or "Too many links" about a link to a directory. Callers that compose the final name themselves
+  and need to refuse every link still have to check it themselves, as
+  PRRTE's `session_dir.c` does. `test_create_on_symlink` covers it,
+  and `test/unit/rndz_stale.c` starts a server through a linked
+  tmpdir.
 - **The `tmp` buffer in `dirpath_create()` is sized exactly, not
   generously.** It is `strlen(path) + 1`, and the `strcat` chain fits
   only because every separator it writes was a separator in the input:
