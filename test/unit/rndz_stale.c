@@ -369,6 +369,36 @@ int main(void)
         }
     }
 
+    /* A tmpdir named through a symlink of our own is as much ours to
+     * name as the directory itself - TMPDIR=/tmp on macOS is root's
+     * link into /private. The tmpdir is the very directory the
+     * rendezvous file is created in, and every server given such a
+     * TMPDIR used to fail its init. A link of another user's is still
+     * refused: anyone able to write where it sits could have put it
+     * there. Only root can make one of those to test with */
+    {
+        char link[PMIX_PATH_MAX + 8];
+
+        snprintf(link, sizeof(link), "%s.link", tmpdir);
+        unlink(link);
+        if (0 == symlink(tmpdir, link)) {
+            setenv("PMIX_SYSTEM_TMPDIR", link, 1);
+            setenv("PMIX_SERVER_TMPDIR", link, 1);
+            rc = run_child(true);
+            report("a tmpdir named through our own symlink is used", CHILD_OK == rc,
+                   "init failed");
+            report("its file is removed at finalize", !file_exists(path), "file still present");
+            if (0 == geteuid() && 0 == lchown(link, 65534, 65534)) {
+                rc = run_child(true);
+                report("a tmpdir named through another user's symlink is refused",
+                       CHILD_INITFAIL == rc, "init should have failed");
+            }
+            setenv("PMIX_SYSTEM_TMPDIR", tmpdir, 1);
+            setenv("PMIX_SERVER_TMPDIR", tmpdir, 1);
+            unlink(link);
+        }
+    }
+
     /* finalize removes the file from the directory it was created in,
      * not from whatever the name leads to by then */
     {
