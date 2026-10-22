@@ -75,6 +75,18 @@ jobs:
         make check
         cd ..
         make uninstall
+    - name: Show the logs of the tests that failed
+      if: failure()
+      run: |
+        # make check names a failing test and keeps its output in that
+        # directory's test-suite.log, which nothing else here shows
+        find . -name test-suite.log -exec grep -l -E '^# (FAIL|ERROR): +[1-9]' {} + |
+            while read -r log; do
+                echo "==================== $log"
+                cat "$log"
+            done
+        # fail this step too, so gh run view --log-failed shows it
+        exit 1
 
   ubuntu:
     runs-on: ubuntu-latest
@@ -128,6 +140,18 @@ jobs:
         cd ..
         make install
         make uninstall
+    - name: Show the logs of the tests that failed
+      if: failure()
+      run: |
+        # make check names a failing test and keeps its output in that
+        # directory's test-suite.log, which nothing else here shows
+        find . -name test-suite.log -exec grep -l -E '^# (FAIL|ERROR): +[1-9]' {} + |
+            while read -r log; do
+                echo "==================== $log"
+                cat "$log"
+            done
+        # fail this step too, so gh run view --log-failed shows it
+        exit 1
 
   mca-dso:
     # Every component built as a run-time-loadable plugin, rather than
@@ -189,6 +213,18 @@ jobs:
         cd ..
         make install
         make uninstall
+    - name: Show the logs of the tests that failed
+      if: failure()
+      run: |
+        # make check names a failing test and keeps its output in that
+        # directory's test-suite.log, which nothing else here shows
+        find . -name test-suite.log -exec grep -l -E '^# (FAIL|ERROR): +[1-9]' {} + |
+            while read -r log; do
+                echo "==================== $log"
+                cat "$log"
+            done
+        # fail this step too, so gh run view --log-failed shows it
+        exit 1
 
   sanitizer:
     # AddressSanitizer over the unit suite.
@@ -246,6 +282,18 @@ jobs:
         # alone takes over two minutes under ASan.
         export ASAN_OPTIONS="$ASAN_OPTS:detect_leaks=0"
         make -C test/unit check-am
+    - name: Show the logs of the tests that failed
+      if: failure()
+      run: |
+        # make check names a failing test and keeps its output in that
+        # directory's test-suite.log, which nothing else here shows
+        find . -name test-suite.log -exec grep -l -E '^# (FAIL|ERROR): +[1-9]' {} + |
+            while read -r log; do
+                echo "==================== $log"
+                cat "$log"
+            done
+        # fail this step too, so gh run view --log-failed shows it
+        exit 1
 
   distcheck:
     runs-on: ubuntu-latest
@@ -264,3 +312,15 @@ jobs:
         ./autogen.pl
         ./configure --prefix=${PWD}/install --enable-sphinx --enable-devel-check
         make distcheck AM_DISTCHECK_MAKEFLAGS=-j
+    - name: Show the logs of the tests that failed
+      if: failure()
+      run: |
+        # make check names a failing test and keeps its output in that
+        # directory's test-suite.log, which nothing else here shows
+        find . -name test-suite.log -exec grep -l -E '^# (FAIL|ERROR): +[1-9]' {} + |
+            while read -r log; do
+                echo "==================== $log"
+                cat "$log"
+            done
+        # fail this step too, so gh run view --log-failed shows it
+        exit 1
