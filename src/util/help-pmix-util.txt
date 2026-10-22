@@ -57,6 +57,18 @@ It is most likely left over from another user's job, and PMIx will not
 use it. Remove the directory (this may require the system
 administrator), or use a different location.
 #
+[dir-symlink-owner]
+PMIx was asked to use a directory whose name is a symbolic link that
+belongs to another user:
+
+  Directory:  %s
+  Link owner: uid %lu
+  Our uid:    %lu
+
+Anyone able to write in the directory holding that name could have put
+the link there, so PMIx will not follow it. Name the directory the link
+points to instead, or remove the link.
+#
 [unlink-error]
 We attempted to remove a file, but were unable to do so:
 

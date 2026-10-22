@@ -29,8 +29,10 @@
  *
  * If the specified full path name already exists, the
  * pmix_os_dirpath_create() function checks only that the final
- * component really is a directory - a symlink or a plain file at the
- * name is refused. Its permissions are left exactly as found, even
+ * component really is a directory - a plain file at the name is
+ * refused, and so is a symlink unless it belongs to this user or to
+ * root, in which case the directory it leads to is the one checked.
+ * Its permissions are left exactly as found, even
  * when they lack some of the requested bits: the path was named by
  * someone outside PMIx (a user, the host, the environment), and so
  * is the decision about who may see into it.
