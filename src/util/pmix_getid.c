@@ -436,9 +436,11 @@ static pmix_status_t lookup_sock_diag(const tcp_tuple_t *t, uid_t *uid)
                 return PMIX_ERR_NOT_SUPPORTED;
             }
             err = (struct nlmsgerr *) NLMSG_DATA(nlh);
-            /* ENOENT is an answer: there is no such connection here. Any
-             * other error - the diag module absent, the request filtered
-             * by a seccomp policy - says only that this route is closed */
+            /* ENOENT means no such connection - or no TCP handler to
+             * ask, which the kernel answers the same way, so the caller
+             * confirms it elsewhere. Any other error - the request
+             * filtered by a seccomp policy, say - says only that this
+             * route is closed */
             return (-ENOENT == err->error) ? PMIX_ERR_NOT_FOUND : PMIX_ERR_NOT_SUPPORTED;
         }
         if (SOCK_DIAG_BY_FAMILY != nlh->nlmsg_type ||
@@ -753,6 +755,13 @@ pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid)
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "getid: sock_diag unavailable - scanning /proc/net");
         rc = lookup_proc_net(&t, &owner);
+    } else if (PMIX_ERR_NOT_FOUND == rc &&
+               PMIX_SUCCESS == lookup_proc_net(&t, &owner)) {
+        /* a kernel whose TCP diag handler is a module it cannot load
+         * answers every request "no such connection" - /proc/net still
+         * lists it. A table that does not either, or cannot be read,
+         * leaves the answer as it was */
+        rc = PMIX_SUCCESS;
     }
 #elif PMIX_HAVE_PROC_NET_TCP
     rc = lookup_proc_net(&t, &owner);
