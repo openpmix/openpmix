@@ -106,7 +106,19 @@ sources = \
         pmix_getcwd.c \
         pmix_tty.c
 
-pmix_show_help_content.c: convert-help.py
+# The generator slurps every help-*.txt in the tree, so the prerequisite
+# list would be the whole tree; in a developer build, run it every time
+# instead.  It rewrites the output only when the content differs, so an
+# unchanged tree leaves the timestamp alone and nothing recompiles.  A
+# tarball ships the generated file, so only a developer tree needs to
+# rebuild it - and only a developer tree may delete it on "make clean".
+if PMIX_DEVEL_BUILD
+pmix_show_help_deps = FORCE
+else
+pmix_show_help_deps = convert-help.py
+endif
+
+pmix_show_help_content.c: $(pmix_show_help_deps)
 if PMIX_PICKY_COMPILERS
 	$(PMIX_V_GEN) $(PYTHON) $(abs_srcdir)/convert-help.py \
 		--root $(abs_top_srcdir) \
@@ -118,6 +130,8 @@ else
 		--out pmix_show_help_content.c
 endif
 
+FORCE:
+
 libpmix_util_la_SOURCES = $(headers) $(sources)
 
 # Unconditionally install the header files
@@ -127,19 +141,16 @@ pmix_HEADERS = $(headers)
 
 # Every show_help call has to pass as many arguments as its topic has
 # conversions; the topic is the format string, so the compiler cannot check
-# that.  The generation rule above depends only on the converter script, so
-# editing a help file or a call site does not re-run it - check here, where
-# it runs every time.
+# that.  Outside a developer build, the generation rule above depends only
+# on the converter script, so editing a help file or a call site does not
+# re-run it - check here, where it runs every time.
 check-local:
 	$(PYTHON) $(abs_srcdir)/convert-help.py \
 		--root $(abs_top_srcdir) \
 		--check-only
 
-clean-local:
-	rm -f pmix_show_help_content.c pmix_show_help_content.lo
-
 MAINTAINERCLEANFILES = \
 	pmix_show_help_content.c
-
-distclean-local:
-	rm -f pmix_show_help_content.c
+if PMIX_DEVEL_BUILD
+CLEANFILES += pmix_show_help_content.c
+endif

@@ -336,22 +336,25 @@ the upstream `master` (or the appropriate release branch). If you are
 unsure which remote is the fork, run `git remote -v` and ask rather than
 guessing.
 
-**Regenerate `show_help` content after touching any help text.** The
-`show_help` help messages are compiled into the library from a generated
-source pair, [`src/util/pmix_show_help_content.c`](src/util/pmix_show_help_content.c)
-and its header, which are built from the `help-*.txt` files. These
-generated files are not refreshed automatically when the underlying help
-text changes. After **any** add, delete, or modify of `show_help`
-content — including adding a brand-new `show_help` file — you must
-delete the generated pair and rebuild so the change is picked up:
+**`show_help` content is generated, and a git clone regenerates it.**
+The `show_help` help messages are compiled into the library from a
+generated source,
+[`src/util/pmix_show_help_content.c`](src/util/pmix_show_help_content.c),
+which `src/util/convert-help.py` builds from every `help-*.txt` in the
+tree. In a git clone, configure enables a developer build
+(`PMIX_DEVEL_BUILD`) in which the converter runs on every `make`, so an
+add, delete, or modify of `show_help` content — including a brand-new
+`help-*.txt` file — is picked up by a plain `make`. The converter
+rewrites the file only when its content changes, so an untouched tree
+does not recompile. Never edit or commit the generated file.
+
+A tarball ships the generated file and does not regenerate it. If you
+change help text in an unpacked tarball, delete it and rebuild:
 
 ```sh
-rm src/util/pmix_show_help_content.*
+rm src/util/pmix_show_help_content.c
 make
 ```
-
-Skipping this leaves the library emitting stale help output that no
-longer matches the source.
 
 ## Building and Testing
 
