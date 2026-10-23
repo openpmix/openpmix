@@ -32,6 +32,7 @@
 #include "src/util/pmix_error.h"
 
 #include <dirent.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -40,6 +41,10 @@
 #if defined(__APPLE__)
 #    include <libproc.h>
 #    include <sys/sysctl.h>
+#elif defined(__FreeBSD__)
+#    include <sys/param.h>
+#    include <sys/sysctl.h>
+#    include <sys/user.h>
 #endif
 
 /* Collect a device identifier into the caller's argv.
@@ -284,6 +289,21 @@ pmix_status_t pmix_pstat_base_pid_owner(pid_t pid, uid_t *owner)
         *owner = kp.kp_eproc.e_ucred.cr_uid;
         return PMIX_SUCCESS;
     }
+#elif defined(__FreeBSD__)
+    {
+        /* the effective uid, as ps(1) shows it. A server that does not
+         * run as root is not shown another user's process while
+         * security.bsd.see_other_uids is 0 - and that is no such process */
+        struct kinfo_proc kp;
+        size_t len = sizeof(kp);
+        int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, (int) pid};
+
+        if (0 != sysctl(mib, 4, &kp, &len, NULL, 0) || sizeof(kp) != len) {
+            return PMIX_ERR_NOT_FOUND;
+        }
+        *owner = kp.ki_uid;
+        return PMIX_SUCCESS;
+    }
 #else
     PMIX_HIDE_UNUSED_PARAMS(owner);
     return PMIX_ERR_NOT_SUPPORTED;
@@ -358,6 +378,53 @@ pmix_status_t pmix_pstat_base_pids_of(uid_t uid, pid_t **pids, size_t *npids)
                 out[n++] = out[m];
             }
         }
+    }
+#elif defined(__FreeBSD__)
+    {
+        int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_UID, (int) uid};
+        struct kinfo_proc *kp = NULL;
+        size_t len = 0, m, nkp;
+        int tries;
+
+        /* one record per process, by effective uid. The table can grow
+         * between asking its size and reading it, so ask for headroom and
+         * try again if that was not enough */
+        for (tries = 0; tries < 5; tries++) {
+            if (0 != sysctl(mib, 4, NULL, &len, NULL, 0)) {
+                return PMIX_ERR_NOT_SUPPORTED;
+            }
+            len += len / 8 + 16 * sizeof(struct kinfo_proc);
+            kp = (struct kinfo_proc *) malloc(len);
+            if (NULL == kp) {
+                return PMIX_ERR_NOMEM;
+            }
+            if (0 == sysctl(mib, 4, kp, &len, NULL, 0)) {
+                break;
+            }
+            free(kp);
+            kp = NULL;
+            if (ENOMEM != errno) {
+                return PMIX_ERR_NOT_SUPPORTED;
+            }
+        }
+        if (NULL == kp) {
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        nkp = len / sizeof(struct kinfo_proc);
+        if (0 < nkp) {
+            out = (pid_t *) calloc(nkp, sizeof(pid_t));
+            if (NULL == out) {
+                free(kp);
+                return PMIX_ERR_NOMEM;
+            }
+            for (m = 0; m < nkp; m++) {
+                if (0 < kp[m].ki_pid) {
+                    out[n++] = kp[m].ki_pid;
+                }
+            }
+        }
+        free(kp);
+        PMIX_HIDE_UNUSED_PARAMS(cap);
     }
 #else
     PMIX_HIDE_UNUSED_PARAMS(uid, cap);

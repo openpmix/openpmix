@@ -12,8 +12,8 @@ timer and streams each sample back to the requestor as a PMIx event.
 For a code-oriented orientation aimed at contributors working *inside*
 the framework, each ``pstat`` directory also carries an ``AGENTS.md``
 (with a ``CLAUDE.md`` symlink): ``src/mca/pstat/AGENTS.md`` for the
-framework as a whole, plus one each in ``plinux/``, ``pmacos/``, and
-``test/``. This
+framework as a whole, plus one each in ``plinux/``, ``pmacos/``,
+``pfreebsd/``, and ``test/``. This
 document explains how the pieces fit into the wider library; those explain
 each piece's internals in detail.
 
@@ -200,6 +200,11 @@ Inside the Framework
        libproc, sysctl, and IOKit interfaces. Built only on Apple hosts;
        never coexists with ``plinux``, so the shared priority never
        collides.
+   * - ``pfreebsd``
+     - 80
+     - Reads real statistics on FreeBSD 12 and later through
+       ``sysctl(3)`` and ``getifaddrs(3)``. Built only on FreeBSD, so it
+       too never competes with the other two.
    * - ``test``
      - 20
      - Returns fixed, canned values with no OS access. Always built; the
@@ -311,6 +316,32 @@ Only the fields the caller requested are read and emitted. Values that
 request can nest network and disk sub-arrays inside the returned node data
 array, so one call can retrieve a full node picture.
 
+The ``pfreebsd`` component reads the same categories from the kernel's
+``sysctl`` records:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Category
+     - Sources
+   * - per-process
+     - ``kern.proc.pid.<pid>`` - one ``kinfo_proc`` record holding the
+       owner, command name, state, CPU time, %CPU, priority, thread
+       count, last processor, and virtual and resident sizes
+   * - node
+     - ``getloadavg(3)``, ``hw.physmem``, ``vm.stats.vm`` page counts,
+       ``vfs.bufspace``, and ``vm.swap_info``
+   * - disk
+     - ``kern.devstat.all``, the table ``iostat(8)`` reads (``pass``
+       devices left out, as ``iostat`` leaves them out)
+   * - network
+     - ``getifaddrs(3)``, whose counters are 64 bits wide on FreeBSD
+
+A server that does not run as root sees another user's processes only
+while ``security.bsd.see_other_uids`` is left at its default of ``1``;
+with it off, such a process is reported as not found.
+
 The ``test`` component mirrors ``plinux``'s control flow exactly but
 substitutes fixed constants for the OS reads (two fabricated disks, three
 fabricated interfaces, canned per-process and node figures), which makes
@@ -341,9 +372,10 @@ Summary
   framework.
 * ``src/common/pmix_monitor.c`` splits each request into a local part
   (handled by ``pstat``) and a remote part (handed to the host RM).
-* ``pstat`` is single-select: ``plinux`` reads ``/proc`` on Linux;
-  ``test`` returns canned values everywhere else; an *unsupported* stub
-  covers "no component."
+* ``pstat`` is single-select: ``plinux`` reads ``/proc`` on Linux,
+  ``pmacos`` the native interfaces on macOS, and ``pfreebsd`` the
+  ``sysctl`` records on FreeBSD; ``test`` returns canned values
+  everywhere else; an *unsupported* stub covers "no component."
 * A ``pmix_pstat_op_t`` drives both one-shot collection (synchronous,
   results returned) and periodic monitoring (timer-driven, results pushed
   as events), distinguished by the ``op->cb`` field.
