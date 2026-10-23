@@ -598,7 +598,9 @@ int pmix_bfrops_base_print_timeval(char **output, char *prefix, struct timeval *
         }
     }
 
-    ret = pmix_asprintf(output, "%sData type: PMIX_TIMEVAL\tValue: %lu.%lu",
+    /* the microseconds are a fraction of a second, so they keep their
+     * leading zeros: 1.005 seconds is "1.005000", not "1.5000" */
+    ret = pmix_asprintf(output, "%sData type: PMIX_TIMEVAL\tValue: %lu.%06lu",
                    (NULL == prefix) ? " " : prefix,
                    (unsigned long)src->tv_sec,
                    (unsigned long)src->tv_usec);
