@@ -567,10 +567,10 @@ whose license explicitly forbids modifying parts of it.
 	finalize. A run that is killed, crashes, or times out leaves its
 	`pmix-*` / `pmix.*` entries behind. A leftover *rendezvous* file no
 	longer blocks a restart — the listener now reads the pid the file
-	records and reclaims the file if that process is gone — but the
-	session directories and tool connection files still accumulate, and
-	they can confuse a tool trying to discover which server to connect
-	to. When a server does fail to start, it says so specifically (e.g.,
+	records and reclaims the file if that process is gone, and a tool's
+	search for a server passes over a file whose server is gone — but
+	those files, and the session directories, still accumulate until
+	something removes them. When a server does fail to start, it says so specifically (e.g.,
 	naming the file and the live process that owns it); the generic
 
 	```

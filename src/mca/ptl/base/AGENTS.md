@@ -750,7 +750,7 @@ the session tmpdir. Things to keep straight:
 for `pmix.*` contact files. **That tree is the system tmpdir, which
 defaults to `$TMPDIR` or `/tmp` and is shared by everything on the
 node**, so the walk makes no assumption about what it finds there,
-including what kind of file each entry is. Three rules, each of which
+including what kind of file each entry is. These rules, each of which
 was once broken:
 
 - **Only a real directory is descended into.** An entry is classified
@@ -772,9 +772,66 @@ was once broken:
   file `readdir()` happened to list after it — and a server killed while
   writing its file leaves exactly that behind. Only `PMIX_ERR_NOMEM`
   ends the walk.
+- **The file of a server that is gone is passed over.** A server that is
+  killed or crashes leaves its file behind, and a tool's search compares
+  the URIs of every match: one leftover next to a running server's file
+  was `too-many-conns`, and a tool could not find a server it could
+  reach. Beside each rendezvous file it writes, a server takes and holds
+  a lock (`flock`, `LOCK_EX`) on a file of its own,
+  `.<name>.lock` (`pmix_ptl_base_lock_name`, `pmix_ptl_base_take_lock`:
+  mode 0600, ours, one name, and still the file at that name once
+  locked), keeps the descriptor in `pmix_ptl_base.rndz_lockfd` until
+  `pmix_ptl_close` removes both files, and says so on a `lock:flock`
+  line. `pmix_ptl_base_lock_state()` says GONE when a shared lock on it
+  can be taken, HELD on `EWOULDBLOCK`, and UNKNOWN otherwise - no line,
+  no lock file, one not the rendezvous file's owner's, one this process
+  holds itself (never opened: closing a descriptor on it lets go of our
+  lock where `flock` is done with `fcntl` locks, as over NFS). Why each
+  part:
+  - **Not the pid.** In another pid namespace - another container
+    sharing the directory - a pid is another process or none.
+  - **Not the rendezvous file itself.** It is world-readable for foreign
+    tools, `flock` does not check the open mode, and anyone could queue a
+    lock that the kernel hands them when the server dies, so that its
+    file never looks gone and the next server never starts.
+  - **A leading dot.** A name ending in `.lock` beside
+    `pmix.<host>.tool.<pid>` matches every search's prefix, and a v6.1
+    search stops at the first file it cannot parse.
+  - **A free lock does not take a file.** A tmp cleaner can remove the
+    lock file from under a running server; a new server then holds a
+    fresh one. So the listener's reclaim (`rndz_file_owner`) takes a file
+    as in use while its lock is HELD, whatever its pid, and otherwise
+    judges it by its pid as before - a container restarted usually gives
+    its server the old pid, which is our own.
+  - **A held lock refuses the name.** `take_lock` answers
+    `PMIX_PTL_LOCK_BUSY` when another server holds it (a reader's
+    momentary `LOCK_SH` is waited out, up to 200 ms), and the server
+    refuses the name (`rndz-name-held`) - whether that server's file is
+    there yet or not: two servers starting at one name otherwise both
+    went ahead, each removing the other's file. The one exception is
+    `pmix.<host>.tool.<pid>`, which collides only across pid namespaces
+    and is one of several names: it is not written.
+  - **The lock file the reader checks is the one `take_lock` would
+    take:** one name, mode 0600, the rendezvous file's owner. A hard link
+    to some other file of that user, or a file others could open and
+    lock, says nothing.
+  - **Finalize removes each file only while it is the one we wrote**
+    (`remove_rndz_file`, by the dev/ino in `rndz_dev`/`rndz_ino`), and
+    the lock file only while it is the one we hold: another server can
+    take a name from under us, and a tmp cleaner can remove a lock file,
+    which says nothing either way. A server that made the rendezvous
+    directory itself still removes the whole directory.
+  A search keeps a file whose lock is not GONE. Files larger than any
+  server writes (`PMIX_PTL_MAX_CONN_FILE`) are not read, and every read
+  of one (`pmix_ptl_base_getline`) comes out of a budget of that many
+  bytes - a file can grow while it is read - with no more than
+  `PMIX_PTL_MAX_TAG_LINES` lines past the positional ones. Where `flock`
+  does not reach every reader - a tmpdir on NFS mounted `nolock`, or
+  shared between a host and a VM - a lock held elsewhere reads GONE, and
+  a child a host forks without exec keeps a dead server's lock held.
 
-`test/unit/ptl_search.c` builds a directory holding all three next to
-one valid file and drives both walks under a watchdog.
+`test/unit/ptl_search.c` builds a directory holding each of these next
+to one valid file and drives both walks under a watchdog.
 
 ### What a URI parse accepts
 

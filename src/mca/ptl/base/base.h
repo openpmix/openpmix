@@ -160,6 +160,16 @@ struct pmix_ptl_base_t {
     int session_dirfd;
     int nspace_dirfd;
     int pid_dirfd;
+    /* the rendezvous files we wrote - the name, and the file it was when we
+     * wrote it, which pmix_ptl_close removes only while it still is - and
+     * the lock each holds beside it while we run, if it took one (-1 if
+     * not): see PMIX_PTL_LOCK_TAG. One for each of the names above */
+#define PMIX_PTL_NLOCKS 8
+    int rndz_lockfd[PMIX_PTL_NLOCKS];
+    char *rndz_lockname[PMIX_PTL_NLOCKS];
+    dev_t rndz_dev[PMIX_PTL_NLOCKS];
+    ino_t rndz_ino[PMIX_PTL_NLOCKS];
+    size_t nrndz_lockfd;
     bool remote_connections;
     bool connections_specified;
     /* whether clients and tools of earlier releases may connect: the
@@ -276,6 +286,62 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_server_access(const char *spec);
  * its own that the server lists. */
 #define PMIX_PTL_BFROPS_TAG "bfrops:"
 #define PMIX_PTL_PSEC_TAG   "psec:"
+
+/* Tags the line of a rendezvous file whose server holds a lock (flock)
+ * for as long as it runs on a file of its own beside it - the name with a
+ * '.' before it and PMIX_PTL_LOCK_SUFFIX after (pmix_ptl_base_lock_name),
+ * which no search for "pmix.*" files matches, mode 0600: "lock:flock". A process that can take
+ * a lock on that file knows the server is gone - whatever pid namespace,
+ * container or jail it ran in, which a pid cannot say. Only the server's
+ * user can open it, so no other can hold the lock in its place. A file
+ * without the line, from an earlier release, says nothing of the kind */
+#define PMIX_PTL_LOCK_TAG    "lock:"
+#define PMIX_PTL_LOCK_FLOCK  "flock"
+#define PMIX_PTL_LOCK_SUFFIX ".lock"
+
+/* The most a reader takes from a contact file it found rather than was
+ * given: one larger is not a server's, and no more lines than these are
+ * read past the ones taken by position */
+#define PMIX_PTL_MAX_CONN_FILE  (64 * 1024)
+#define PMIX_PTL_MAX_TAG_LINES  64
+
+/* A line of a contact file, as pmix_getline reads one - NULL at the end,
+ * on a read error or a NUL byte - taken from what is left of *budget
+ * bytes: NULL once it is spent, however the file grows while it is read.
+ * A last line without a newline that ends exactly as the budget does is
+ * dropped; no server writes one. Set *budget to PMIX_PTL_MAX_CONN_FILE
+ * before the first. Caller frees */
+PMIX_EXPORT char *pmix_ptl_base_getline(FILE *fp, size_t *budget);
+
+/* What the lock beside the rendezvous file `name` (relative to dirfd, or
+ * AT_FDCWD), owned by `owner`, says of its server, when its lock line's
+ * value (`lock`, NULL if it has none) says it holds one: GONE when
+ * nothing holds it, HELD when something does, UNKNOWN when it says
+ * nothing - no such line, a lock file this process holds itself (its own
+ * server's, which is not opened), one it cannot open or that is not the
+ * server's, or a lock it cannot take for another reason */
+typedef enum {
+    PMIX_PTL_LOCK_UNKNOWN,
+    PMIX_PTL_LOCK_GONE,
+    PMIX_PTL_LOCK_HELD
+} pmix_ptl_lock_state_t;
+PMIX_EXPORT pmix_ptl_lock_state_t pmix_ptl_base_lock_state(int dirfd, const char *name,
+                                                          uid_t owner, const char *lock);
+
+/* Whether that says the server is gone */
+PMIX_EXPORT bool pmix_ptl_base_server_gone(int dirfd, const char *name, uid_t owner,
+                                           const char *lock);
+
+/* The lock file's name for a rendezvous file's - a path, or a name alone.
+ * Caller frees; NULL if out of memory */
+PMIX_EXPORT char *pmix_ptl_base_lock_name(const char *name);
+
+/* Take and hold the lock file for the rendezvous file `name` in dirfd:
+ * our own, created 0600 if it is not there. The descriptor;
+ * PMIX_PTL_LOCK_BUSY when another server holds it - a reader's moment
+ * with it is waited out; or -1 when the name is not ours to use */
+#define PMIX_PTL_LOCK_BUSY -2
+PMIX_EXPORT int pmix_ptl_base_take_lock(int dirfd, const char *name);
 
 typedef struct {
     pmix_list_item_t super;
