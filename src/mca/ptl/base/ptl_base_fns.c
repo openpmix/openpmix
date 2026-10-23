@@ -366,13 +366,26 @@ int pmix_ptl_base_take_lock(int dirfd, const char *name)
     struct timespec wait = {0, 10000000};
     char *lname;
     int fd, rc, tries, busy = 0;
+    bool created;
 
     if (NULL == (lname = pmix_ptl_base_lock_name(name))) {
         return -1;
     }
     for (tries = 0; tries < 2; tries++) {
-        fd = openat(dirfd, lname, O_RDWR | O_CREAT | O_NOFOLLOW | O_NONBLOCK | PTL_O_CLOEXEC,
+        /* knowing whether we made it, so as not to leave one behind that
+         * we could not lock */
+        created = true;
+        fd = openat(dirfd, lname,
+                    O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_NONBLOCK | PTL_O_CLOEXEC,
                     S_IRUSR | S_IWUSR);
+        if (0 > fd && EEXIST == errno) {
+            created = false;
+            fd = openat(dirfd, lname, O_RDWR | O_NOFOLLOW | O_NONBLOCK | PTL_O_CLOEXEC);
+            if (0 > fd && ENOENT == errno) {
+                /* gone between the two: make it after all */
+                continue;
+            }
+        }
         if (0 > fd) {
             break;
         }
@@ -386,14 +399,27 @@ int pmix_ptl_base_take_lock(int dirfd, const char *name)
         }
         /* and held by no other server - a reader asking whether one runs
          * holds it for a moment, and is waited out */
-        rc = flock(fd, LOCK_EX | LOCK_NB);
+        do {
+            rc = flock(fd, LOCK_EX | LOCK_NB);
+        } while (0 != rc && EINTR == errno);
         while (0 != rc && EWOULDBLOCK == errno && busy < 20) {
             ++busy;
             (void) nanosleep(&wait, NULL);
-            rc = flock(fd, LOCK_EX | LOCK_NB);
+            do {
+                rc = flock(fd, LOCK_EX | LOCK_NB);
+            } while (0 != rc && EINTR == errno);
         }
         if (0 != rc) {
             busy = (EWOULDBLOCK == errno);
+            /* A file system that does not lock: a lock file there is no
+             * use to anyone - the one we made, or one of ours another
+             * run left - and would keep a directory we made from being
+             * empty at finalize */
+            if (!busy && (created || ENOLCK == errno || EOPNOTSUPP == errno) &&
+                0 == fstatat(dirfd, lname, &now, AT_SYMLINK_NOFOLLOW) &&
+                now.st_dev == st.st_dev && now.st_ino == st.st_ino) {
+                (void) unlinkat(dirfd, lname, 0);
+            }
             close(fd);
             fd = busy ? PMIX_PTL_LOCK_BUSY : -1;
             break;

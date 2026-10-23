@@ -9,6 +9,7 @@
  * Unit tests for pmix_os_dirpath utility functions:
  *   pmix_os_dirpath_create, pmix_os_dirpath_is_empty,
  *   pmix_os_dirpath_access, pmix_os_dirpath_destroy,
+ *   pmix_os_dirpath_destroy_at,
  *   pmix_os_dirpath_create_file, pmix_os_dirpath_create_file_at.
  *
  * A temporary directory is created under /tmp for each test and
@@ -1314,6 +1315,97 @@ static void test_create_file_at_follows_descriptor(void)
     rmdir(dir);
 }
 
+/* ------------------------------------------------------------------ */
+/* pmix_os_dirpath_destroy_at                                          */
+/* ------------------------------------------------------------------ */
+
+static bool keep_all(int dirfd, const char *name)
+{
+    (void) dirfd;
+    (void) name;
+    return false;
+}
+
+/* names that are not a single component of the parent are refused */
+static void test_destroy_at_bad_names(void)
+{
+    int pfd = open(tmpbase, O_RDONLY | O_DIRECTORY);
+
+    report("destroy_at: a negative parent is refused",
+           PMIX_ERR_BAD_PARAM == pmix_os_dirpath_destroy_at(-1, "x", NULL, true, NULL, NULL));
+    report("destroy_at: \".\" is refused",
+           PMIX_ERR_BAD_PARAM == pmix_os_dirpath_destroy_at(pfd, ".", NULL, true, NULL, NULL));
+    report("destroy_at: \"..\" is refused",
+           PMIX_ERR_BAD_PARAM == pmix_os_dirpath_destroy_at(pfd, "..", NULL, true, NULL, NULL));
+    report("destroy_at: a name with a separator is refused",
+           PMIX_ERR_BAD_PARAM == pmix_os_dirpath_destroy_at(pfd, "a/b", NULL, true, NULL, NULL));
+    report("destroy_at: an empty name is refused",
+           PMIX_ERR_BAD_PARAM == pmix_os_dirpath_destroy_at(pfd, "", NULL, true, NULL, NULL));
+    close(pfd);
+}
+
+/* the directory recorded is removed under whatever name it has in the
+ * parent now, and a different directory at the old name is left */
+static void test_destroy_at_renamed(void)
+{
+    char made[512], moved[512], decoy[512];
+    struct stat st;
+    int pfd, fd, rc;
+
+    snprintf(made, sizeof(made), "%s/at-made", tmpbase);
+    snprintf(moved, sizeof(moved), "%s/at-moved", tmpbase);
+    snprintf(decoy, sizeof(decoy), "%s/at-made/keep", tmpbase);
+    mkdir(made, 0700);
+    fd = open(made, O_RDONLY | O_DIRECTORY);
+    fstat(fd, &st);
+    rename(made, moved);
+    mkdir(made, 0700);
+    make_file(decoy);
+
+    pfd = open(tmpbase, O_RDONLY | O_DIRECTORY);
+    rc = pmix_os_dirpath_destroy_at(pfd, "at-made", &st, true, NULL, NULL);
+    report("destroy_at: a renamed directory is removed under its new name",
+           PMIX_SUCCESS == rc && !dir_exists(moved));
+    report("destroy_at: a directory now at its old name is left", file_exists(decoy));
+
+    /* and with neither name leading to it, nothing is removed */
+    rc = pmix_os_dirpath_destroy_at(pfd, "at-made", &st, true, NULL, NULL);
+    report("destroy_at: a directory no longer there is NOT_FOUND",
+           PMIX_ERR_NOT_FOUND == rc && file_exists(decoy));
+    close(fd);
+    close(pfd);
+    unlink(decoy);
+    rmdir(made);
+}
+
+/* a callback that keeps everything removes the directory only if empty,
+ * and empty subdirectories are kept too */
+static void test_destroy_at_keep_all(void)
+{
+    char dir[512], sub[512], file[512];
+    int pfd, rc;
+
+    snprintf(dir, sizeof(dir), "%s/at-keep", tmpbase);
+    snprintf(sub, sizeof(sub), "%s/at-keep/sub", tmpbase);
+    snprintf(file, sizeof(file), "%s/at-keep/file", tmpbase);
+    mkdir(dir, 0700);
+    mkdir(sub, 0700);
+    make_file(file);
+    pfd = open(tmpbase, O_RDONLY | O_DIRECTORY);
+
+    rc = pmix_os_dirpath_destroy_at(pfd, "at-keep", NULL, false, keep_all, NULL);
+    report("destroy_at: keeping everything succeeds", PMIX_SUCCESS == rc);
+    report("destroy_at: ...and keeps a file and an empty subdirectory",
+           file_exists(file) && dir_exists(sub));
+
+    unlink(file);
+    rmdir(sub);
+    rc = pmix_os_dirpath_destroy_at(pfd, "at-keep", NULL, false, keep_all, NULL);
+    report("destroy_at: ...and removes the directory once it is empty",
+           PMIX_SUCCESS == rc && !dir_exists(dir));
+    close(pfd);
+}
+
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -1378,6 +1470,10 @@ int main(int argc, char **argv)
     test_create_file_reclaim_declined();
     test_create_file_reclaims_only_once();
     test_create_file_at_follows_descriptor();
+
+    test_destroy_at_bad_names();
+    test_destroy_at_renamed();
+    test_destroy_at_keep_all();
 
     /* Remove the test root; all subdirectories were cleaned up above. */
     rmdir(tmpbase);

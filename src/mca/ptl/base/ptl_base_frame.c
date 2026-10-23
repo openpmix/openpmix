@@ -91,10 +91,9 @@ pmix_ptl_base_t pmix_ptl_base = {
     .nspace_filename = NULL,
     .pid_filename = NULL,
     .rendezvous_filename = NULL,
-    .created_rendezvous_dir = false,
+    .rendezvous_dir = PMIX_PTL_MADE_DIR_STATIC_INIT,
+    .system_dir = PMIX_PTL_MADE_DIR_STATIC_INIT,
     .created_rendezvous_file = false,
-    .created_session_tmpdir = false,
-    .created_system_tmpdir = false,
     .created_sysctrlr_filename = false,
     .created_scheduler_filename = false,
     .created_system_filename = false,
@@ -109,6 +108,8 @@ pmix_ptl_base_t pmix_ptl_base = {
     .session_dirfd = -1,
     .nspace_dirfd = -1,
     .pid_dirfd = -1,
+    .urifile_dirfd = -1,
+    .urifile_fd = -1,
     .remote_connections = false,
     .connections_specified = false,
     .legacy_peers_param = false,
@@ -355,36 +356,35 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
     return PMIX_SUCCESS;
 }
 
-static bool _check_file(const char *root, const char *path)
+/* Keep everything: a directory we made goes only once it is empty */
+static bool _keep_all(int dirfd, const char *name)
 {
-    struct stat st;
-    char *fullpath;
-    int rc;
+    PMIX_HIDE_UNUSED_PARAMS(dirfd, name);
+    return false;
+}
 
-    /*
-     * Keep:
-     *  - non-zero files starting with "output-"
-     */
-    if (0 == strncmp(path, "output-", strlen("output-"))) {
-        memset(&st, 0, sizeof(struct stat));
-        fullpath = pmix_os_path(false, root, path, NULL);
-        if (NULL == fullpath) {
-            /* cannot assemble the name: allow removal */
-            return true;
-        }
-        rc = stat(fullpath, &st);
-        if (0 != rc) {
-            free(fullpath);
-            return true;
-        }
-        free(fullpath);
-        if (0 == st.st_size) {
-            return true;
-        }
-        return false;
+/* Remove a directory we made, through the descriptor on the directory
+ * that held it, under whatever name it has there now - and only that
+ * directory, and only if it is empty. Everything we put in it has been
+ * removed by then; anything else is another process's - another server
+ * may share it - and not ours to remove */
+static void remove_made_dir(pmix_ptl_made_dir_t *made)
+{
+    if (0 <= made->parentfd) {
+        (void) pmix_os_dirpath_destroy_at(made->parentfd, made->name, &made->st, false,
+                                          _keep_all, made->path);
+        close(made->parentfd);
+        made->parentfd = -1;
     }
-
-    return true;
+    if (0 <= made->fd) {
+        close(made->fd);
+        made->fd = -1;
+    }
+    free(made->name);
+    made->name = NULL;
+    free(made->path);
+    made->path = NULL;
+    made->created = false;
 }
 
 /* Remove a rendezvous file we created, relative to the descriptor on
@@ -451,8 +451,8 @@ static void free_server_access(void);
 
 static pmix_status_t pmix_ptl_close(void)
 {
-    int rc;
-    char *tmp;
+    const char *base;
+    struct stat there;
     pmix_ptl_base_active_t *active;
 
     if (!pmix_ptl_base.initialized) {
@@ -545,22 +545,11 @@ static pmix_status_t pmix_ptl_close(void)
     remove_rndz_file(&pmix_ptl_base.pid_filename,
                      &pmix_ptl_base.created_pid_filename,
                      &pmix_ptl_base.pid_dirfd);
-    if (NULL != pmix_ptl_base.rendezvous_filename) {
-        /* the file first - destroying the directory takes the file with
-         * it, and the remove would then fail on every clean shutdown */
-        tmp = NULL;
-        if (pmix_ptl_base.created_rendezvous_dir) {
-            tmp = pmix_dirname(pmix_ptl_base.rendezvous_filename);
-        }
-        remove_rndz_file(&pmix_ptl_base.rendezvous_filename,
-                         &pmix_ptl_base.created_rendezvous_file,
-                         &pmix_ptl_base.rendezvous_dirfd);
-        if (NULL != tmp) {
-            pmix_os_dirpath_destroy(tmp, true, _check_file);
-            free(tmp);
-        }
-        pmix_ptl_base.created_rendezvous_dir = false;
-    }
+    remove_rndz_file(&pmix_ptl_base.rendezvous_filename,
+                     &pmix_ptl_base.created_rendezvous_file,
+                     &pmix_ptl_base.rendezvous_dirfd);
+    /* the directory we made for it goes after the file */
+    remove_made_dir(&pmix_ptl_base.rendezvous_dir);
     /* any lock whose file was not ours to remove is let go of too */
     while (0 < pmix_ptl_base.nrndz_lockfd) {
         --pmix_ptl_base.nrndz_lockfd;
@@ -575,10 +564,15 @@ static pmix_status_t pmix_ptl_close(void)
         pmix_ptl_base.uri = NULL;
     }
     if (NULL != pmix_ptl_base.urifile) {
-        if (pmix_ptl_base.created_urifile) {
-            /* remove the file */
-            rc = remove(pmix_ptl_base.urifile);
-            if (0 != rc) {
+        /* the report file we wrote, from the directory we wrote it in,
+         * and only while it is still that file */
+        if (pmix_ptl_base.created_urifile && 0 <= pmix_ptl_base.urifile_dirfd) {
+            base = strrchr(pmix_ptl_base.urifile, PMIX_PATH_SEP[0]);
+            base = (NULL == base) ? pmix_ptl_base.urifile : base + 1;
+            if (0 == fstatat(pmix_ptl_base.urifile_dirfd, base, &there, AT_SYMLINK_NOFOLLOW) &&
+                there.st_dev == pmix_ptl_base.urifile_st.st_dev &&
+                there.st_ino == pmix_ptl_base.urifile_st.st_ino &&
+                0 != unlinkat(pmix_ptl_base.urifile_dirfd, base, 0)) {
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "Remove of %s failed: %s",
                                     pmix_ptl_base.urifile, strerror(errno));
@@ -588,23 +582,20 @@ static pmix_status_t pmix_ptl_close(void)
         pmix_ptl_base.urifile = NULL;
         pmix_ptl_base.created_urifile = false;
     }
-    if (NULL != pmix_ptl_base.session_tmpdir) {
-        /* if I created the session tmpdir, then remove it if empty */
-        if (pmix_ptl_base.created_session_tmpdir) {
-            pmix_os_dirpath_destroy(pmix_ptl_base.session_tmpdir, true, _check_file);
-        }
-        free(pmix_ptl_base.session_tmpdir);
-        pmix_ptl_base.session_tmpdir = NULL;
-        pmix_ptl_base.created_session_tmpdir = false;
+    if (0 <= pmix_ptl_base.urifile_dirfd) {
+        close(pmix_ptl_base.urifile_dirfd);
+        pmix_ptl_base.urifile_dirfd = -1;
     }
-    if (NULL != pmix_ptl_base.system_tmpdir) {
-        if (pmix_ptl_base.created_system_tmpdir) {
-            pmix_os_dirpath_destroy(pmix_ptl_base.system_tmpdir, true, _check_file);
-        }
-        free(pmix_ptl_base.system_tmpdir);
-        pmix_ptl_base.system_tmpdir = NULL;
-        pmix_ptl_base.created_system_tmpdir = false;
+    if (0 <= pmix_ptl_base.urifile_fd) {
+        close(pmix_ptl_base.urifile_fd);
+        pmix_ptl_base.urifile_fd = -1;
     }
+    /* and the system tmpdir, if we made it, now our files are out of it */
+    free(pmix_ptl_base.session_tmpdir);
+    pmix_ptl_base.session_tmpdir = NULL;
+    remove_made_dir(&pmix_ptl_base.system_dir);
+    free(pmix_ptl_base.system_tmpdir);
+    pmix_ptl_base.system_tmpdir = NULL;
 
     if (NULL != pmix_ptl_base.ipv4_ports) {
         PMIx_Argv_free(pmix_ptl_base.ipv4_ports);

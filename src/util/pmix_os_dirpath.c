@@ -844,6 +844,11 @@ static int dirpath_create(const char *path, const mode_t mode)
                 free(tmp);
                 return ret;
             }
+            /* and it is not ours: say so, as the single mkdir above
+             * does, so no caller takes it for one it made */
+            PMIx_Argv_free(parts);
+            free(tmp);
+            return PMIX_ERR_EXISTS;
         }
     }
 
@@ -894,11 +899,10 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
  * directory was not destroyed. Anything else means the removal really
  * failed.
  */
-static bool dirpath_rmdir_error_is_benign(int err,
-                                          pmix_os_dirpath_destroy_callback_fn_t cbfunc)
+static bool dirpath_rmdir_error_is_benign(int err, bool have_cb)
 {
     return (ENOENT == err ||
-            (NULL != cbfunc && (ENOTEMPTY == err || EEXIST == err)));
+            (have_cb && (ENOTEMPTY == err || EEXIST == err)));
 }
 
 /**
@@ -919,11 +923,13 @@ static bool dirpath_rmdir_error_is_benign(int err,
  * sending the recursion outside the tree we were asked to destroy.
  *
  * path is the printable path of this directory. It is used only for
- * the caller's callback, for building child display paths, and for
- * error messages.
+ * the caller's path callback, for building child display paths, and for
+ * error messages. At most one of cbfunc and atfn is given: atfn is asked
+ * about each entry relative to this directory's descriptor instead.
  */
 static int dirpath_destroy_at(int fd, const char *path, bool recursive,
-                              pmix_os_dirpath_destroy_callback_fn_t cbfunc)
+                              pmix_os_dirpath_destroy_callback_fn_t cbfunc,
+                              pmix_os_dirpath_destroy_at_callback_fn_t atfn)
 {
     int rc, childfd, exit_status = PMIX_SUCCESS;
     DIR *dp;
@@ -960,6 +966,8 @@ static int dirpath_destroy_at(int fd, const char *path, bool recursive,
             if (!(cbfunc(path, ep->d_name))) {
                 continue;
             }
+        } else if (NULL != atfn && !atfn(dirfd(dp), ep->d_name)) {
+            continue;
         }
 
         if (0 != fstatat(dirfd(dp), ep->d_name, &buf, AT_SYMLINK_NOFOLLOW)) {
@@ -1059,7 +1067,7 @@ static int dirpath_destroy_at(int fd, const char *path, bool recursive,
             exit_status = PMIX_ERR_OUT_OF_RESOURCE;
             break;
         }
-        rc = dirpath_destroy_at(childfd, filenm, recursive, cbfunc);
+        rc = dirpath_destroy_at(childfd, filenm, recursive, cbfunc, atfn);
         free(filenm);
         if (PMIX_SUCCESS != rc) {
             exit_status = rc;
@@ -1067,7 +1075,7 @@ static int dirpath_destroy_at(int fd, const char *path, bool recursive,
         }
         /* remove the now-empty subdirectory */
         if (0 != unlinkat(dirfd(dp), ep->d_name, AT_REMOVEDIR) &&
-            !dirpath_rmdir_error_is_benign(errno, cbfunc)) {
+            !dirpath_rmdir_error_is_benign(errno, NULL != cbfunc || NULL != atfn)) {
             exit_status = PMIX_ERROR;
         }
     }
@@ -1075,6 +1083,69 @@ static int dirpath_destroy_at(int fd, const char *path, bool recursive,
     /* Done with this directory */
     closedir(dp);
 
+    return exit_status;
+}
+
+/**
+ * Destroy the directory `base` in the directory parentfd refers to.
+ * expect, if given, is the directory the caller recorded: anything else
+ * at the name is left alone. remove_top says whether the directory
+ * itself may go once it is empty. path is its printable name.
+ */
+static int dirpath_destroy_under(int parentfd, const char *base, const struct stat *expect,
+                                 bool recursive, bool remove_top,
+                                 pmix_os_dirpath_destroy_callback_fn_t cbfunc,
+                                 pmix_os_dirpath_destroy_at_callback_fn_t atfn,
+                                 const char *path)
+{
+    int fd, exit_status;
+    struct stat basebuf, buf;
+
+    /* O_NOFOLLOW: never destroy through a symlinked base path - the
+     * session directories sit under a world-writable root with
+     * predictable names, so a link planted there would otherwise
+     * redirect this whole recursive removal at a tree of the attacker's
+     * choosing */
+    fd = openat(parentfd, base, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | PMIX_O_CLOEXEC);
+    if (0 > fd) {
+        return (ENOENT == errno) ? PMIX_ERR_NOT_FOUND : PMIX_ERROR;
+    }
+    if (0 != fstat(fd, &basebuf)) {
+        close(fd);
+        return PMIX_ERROR;
+    }
+    if (NULL != expect &&
+        (basebuf.st_dev != expect->st_dev || basebuf.st_ino != expect->st_ino)) {
+        /* the name leads to some other directory now */
+        close(fd);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    exit_status = dirpath_destroy_at(fd, path, recursive, cbfunc, atfn);
+
+    if (remove_top) {
+        /* Only if the parent still holds the directory that was opened
+         * and emptied under that name: one renamed away and replaced
+         * during the walk leaves a newcomer that is not ours to remove.
+         * No call removes a directory by descriptor, so a window between
+         * the fstatat() and the unlinkat() remains - but it is confined
+         * to the parent we hold, and unlinkat(AT_REMOVEDIR) will only
+         * remove an empty directory through it */
+        if (0 != fstatat(parentfd, base, &buf, AT_SYMLINK_NOFOLLOW)) {
+            if (ENOENT != errno && PMIX_SUCCESS == exit_status) {
+                exit_status = PMIX_ERROR;
+            }
+        } else if (buf.st_dev != basebuf.st_dev ||
+                   buf.st_ino != basebuf.st_ino) {
+            if (PMIX_SUCCESS == exit_status) {
+                exit_status = PMIX_ERROR;
+            }
+        } else if (0 != unlinkat(parentfd, base, AT_REMOVEDIR) &&
+                   !dirpath_rmdir_error_is_benign(errno, NULL != cbfunc || NULL != atfn) &&
+                   PMIX_SUCCESS == exit_status) {
+            exit_status = PMIX_ERROR;
+        }
+    }
     return exit_status;
 }
 
@@ -1089,10 +1160,10 @@ static int dirpath_destroy_at(int fd, const char *path, bool recursive,
 int pmix_os_dirpath_destroy(const char *path, bool recursive,
                             pmix_os_dirpath_destroy_callback_fn_t cbfunc)
 {
-    int parentfd, fd, exit_status;
-    struct stat basebuf, buf;
+    int parentfd, exit_status;
     char *clean, *parent, *sep;
     const char *base;
+    bool remove_top;
 
     if (NULL == path) { /* protect against error */
         return PMIX_ERROR;
@@ -1149,69 +1220,84 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
         return exit_status;
     }
 
-    /* O_NOFOLLOW: never destroy through a symlinked base path - the
-     * session directories sit under a world-writable root with
-     * predictable names, so a link planted there would otherwise
-     * redirect this whole recursive removal at a tree of the attacker's
-     * choosing */
-    fd = openat(parentfd, base, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | PMIX_O_CLOEXEC);
-    if (0 > fd) {
-        exit_status = (ENOENT == errno) ? PMIX_ERR_NOT_FOUND : PMIX_ERROR;
-        close(parentfd);
-        free(parent);
-        free(clean);
-        return exit_status;
-    }
-    if (0 != fstat(fd, &basebuf)) {
-        close(fd);
-        close(parentfd);
-        free(parent);
-        free(clean);
-        return PMIX_ERROR;
-    }
-
-    exit_status = dirpath_destroy_at(fd, clean, recursive, cbfunc);
-
     /*
      * If the directory is empty, then remove it - but leave the system
-     * tmpdir alone unless we created it!
-     *
-     * Releasing pmix_ptl_base.system_tmpdir here is not this function's
-     * to do, and it aliased its own argument: the only caller that
-     * reaches the second arm passes that very string, so the free left
-     * "path" dangling for the rest of the function and survived only
-     * because nothing read it again. pmix_ptl_base_close() frees it on
-     * the line after the call regardless.
+     * tmpdir alone unless we created it! (pmix_ptl_close removes the
+     * directories it made through pmix_os_dirpath_destroy_at(); this
+     * guards the host's own calls.)
      */
-    if (NULL == pmix_server_globals.system_tmpdir ||
-        0 != strcmp(path, pmix_server_globals.system_tmpdir) ||
-        pmix_ptl_base.created_system_tmpdir) {
-        /* Only if the parent still holds the directory that was opened
-         * and emptied under that name: one renamed away and replaced
-         * during the walk leaves a newcomer that is not ours to remove.
-         * No call removes a directory by descriptor, so a window between
-         * the fstatat() and the unlinkat() remains - but it is confined
-         * to the parent we hold, and unlinkat(AT_REMOVEDIR) will only
-         * remove an empty directory through it */
-        if (0 != fstatat(parentfd, base, &buf, AT_SYMLINK_NOFOLLOW)) {
-            if (ENOENT != errno && PMIX_SUCCESS == exit_status) {
-                exit_status = PMIX_ERROR;
-            }
-        } else if (buf.st_dev != basebuf.st_dev ||
-                   buf.st_ino != basebuf.st_ino) {
-            if (PMIX_SUCCESS == exit_status) {
-                exit_status = PMIX_ERROR;
-            }
-        } else if (0 != unlinkat(parentfd, base, AT_REMOVEDIR) &&
-                   !dirpath_rmdir_error_is_benign(errno, cbfunc) &&
-                   PMIX_SUCCESS == exit_status) {
-            exit_status = PMIX_ERROR;
-        }
-    }
+    remove_top = (NULL == pmix_server_globals.system_tmpdir ||
+                  0 != strcmp(path, pmix_server_globals.system_tmpdir) ||
+                  pmix_ptl_base.system_dir.created);
+    exit_status = dirpath_destroy_under(parentfd, base, NULL, recursive, remove_top,
+                                        cbfunc, NULL, clean);
     close(parentfd);
     free(parent);
     free(clean);
     return exit_status;
+}
+
+/* The name under which the directory parentfd refers to holds the
+ * directory expect describes, or NULL if none does or the directory
+ * cannot be read. Caller frees */
+static char *dirpath_find_entry(int parentfd, const struct stat *expect)
+{
+    DIR *dp;
+    struct dirent *ep;
+    struct stat buf;
+    char *found = NULL;
+    int fd;
+
+    fd = openat(parentfd, ".", O_RDONLY | O_DIRECTORY | PMIX_O_CLOEXEC);
+    if (0 > fd) {
+        return NULL;
+    }
+    dp = fdopendir(fd);
+    if (NULL == dp) {
+        close(fd);
+        return NULL;
+    }
+    while (NULL != (ep = readdir(dp))) {
+        if (0 == strcmp(ep->d_name, ".") || 0 == strcmp(ep->d_name, "..")) {
+            continue;
+        }
+        if (0 == fstatat(dirfd(dp), ep->d_name, &buf, AT_SYMLINK_NOFOLLOW) &&
+            S_ISDIR(buf.st_mode) && buf.st_dev == expect->st_dev &&
+            buf.st_ino == expect->st_ino) {
+            found = strdup(ep->d_name);
+            break;
+        }
+    }
+    closedir(dp);
+    return found;
+}
+
+int pmix_os_dirpath_destroy_at(int parentfd, const char *name, const struct stat *expect,
+                               bool recursive, pmix_os_dirpath_destroy_at_callback_fn_t cbfunc,
+                               const char *display)
+{
+    struct stat buf;
+    char *found = NULL;
+    int rc;
+
+    if (0 > parentfd || NULL == name || '\0' == name[0] || NULL != strchr(name, path_sep[0]) ||
+        0 == strcmp(name, ".") || 0 == strcmp(name, "..")) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* renamed within its parent: find it there by what it is */
+    if (NULL != expect &&
+        (0 != fstatat(parentfd, name, &buf, AT_SYMLINK_NOFOLLOW) ||
+         buf.st_dev != expect->st_dev || buf.st_ino != expect->st_ino)) {
+        found = dirpath_find_entry(parentfd, expect);
+        if (NULL == found) {
+            return PMIX_ERR_NOT_FOUND;
+        }
+        name = found;
+    }
+    rc = dirpath_destroy_under(parentfd, name, expect, recursive, true, NULL, cbfunc,
+                               (NULL == display) ? name : display);
+    free(found);
+    return rc;
 }
 
 bool pmix_os_dirpath_is_empty(const char *path)
