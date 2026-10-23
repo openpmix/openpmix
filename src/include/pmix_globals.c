@@ -957,7 +957,7 @@ static void epilog_walk(pmix_epilog_t *epi, uid_t uid, gid_t gid)
         if (NULL == cd->path || epilog_ignored(epi, cd->path)) {
             continue;
         }
-        fd = open(cd->path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        fd = open(cd->path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
         if (0 > fd) {
             continue;
         }
@@ -1179,10 +1179,15 @@ static void dirpath_destroy_at(int fd, const char *path, pmix_cleanup_dir_t *cd,
 {
     DIR *dp;
     struct dirent *ep;
-    struct stat buf, childbuf;
+    struct stat buf, childbuf, dirbuf;
     char *filenm;
     int childfd;
 
+    /* the file system this directory is on: the walk stays on it */
+    if (0 != fstat(fd, &dirbuf)) {
+        close(fd);
+        return;
+    }
     dp = fdopendir(fd);
     if (NULL == dp) {
         close(fd);
@@ -1237,21 +1242,32 @@ static void dirpath_destroy_at(int fd, const char *path, pmix_cleanup_dir_t *cd,
          * which is what makes the walk bottom-up. Given neither, we were
          * not told to touch a subdirectory at all, so it is left where it
          * is. */
-        if (cd->recurse || cd->empty) {
-            childfd = openat(dirfd(dp), ep->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
-            if (0 <= childfd) {
-                /* O_NOFOLLOW refuses a symlink swapped in since the
-                 * fstatat, but not another directory renamed into place -
-                 * so descend only into the one that was classified */
-                if (0 == fstat(childfd, &childbuf) &&
-                    childbuf.st_dev == buf.st_dev &&
-                    childbuf.st_ino == buf.st_ino) {
-                    dirpath_destroy_at(childfd, filenm, cd, epi);
-                    /* removes it only if it is now empty */
-                    (void) unlinkat(dirfd(dp), ep->d_name, AT_REMOVEDIR);
-                } else {
-                    close(childfd);
-                }
+        if (!(cd->recurse || cd->empty) || buf.st_dev != dirbuf.st_dev) {
+            /* not told to, or something on another file system is
+             * mounted here - which is not part of the tree */
+            free(filenm);
+            continue;
+        }
+        if (0 == unlinkat(dirfd(dp), ep->d_name, AT_REMOVEDIR) || EBUSY == errno) {
+            /* empty, and now gone - or a mount point bound from this
+             * same file system, which only this tells apart */
+            free(filenm);
+            continue;
+        }
+        childfd = openat(dirfd(dp), ep->d_name,
+                         O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (0 <= childfd) {
+            /* O_NOFOLLOW refuses a symlink swapped in since the
+             * fstatat, but not another directory renamed into place -
+             * so descend only into the one that was classified */
+            if (0 == fstat(childfd, &childbuf) &&
+                childbuf.st_dev == buf.st_dev &&
+                childbuf.st_ino == buf.st_ino) {
+                dirpath_destroy_at(childfd, filenm, cd, epi);
+                /* removes it only if it is now empty */
+                (void) unlinkat(dirfd(dp), ep->d_name, AT_REMOVEDIR);
+            } else {
+                close(childfd);
             }
         }
         free(filenm);

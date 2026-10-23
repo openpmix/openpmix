@@ -302,6 +302,8 @@ typedef bool (*pmix_os_dirpath_destroy_callback_fn_t)(const char *root, const ch
  * are ignored so that "link/" cannot make the kernel follow one. It is removed
  * at the end only if its parent still holds the directory that was emptied: one
  * renamed away and replaced during the walk leaves the replacement alone.
+ * The walk stays on the directory's file system: a subdirectory something is
+ * mounted on is left, and so is everything above it.
  *
  * @param path A pointer to a string that contains the path name to be destroyed
  * @param recursive Recursively descend the directory removing all files and directories.
