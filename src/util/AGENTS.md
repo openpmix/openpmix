@@ -807,7 +807,10 @@ Three rules, each of which a plausible "simplification" breaks:
 - **Only an `ESTABLISHED` entry is an answer.** A `TIME_WAIT`/`FIN_WAIT`
   entry carries no owner, and Linux reports uid 0 for it. A connection
   whose peer has closed answers `PMIX_ERR_NOT_FOUND`;
-  `test_tcp_peer_gone` pins it.
+  `test_tcp_peer_gone` pins it. So does one whose passive end has not
+  yet taken the final ACK of the handshake, which a caller looking the
+  moment its connect completes can see; `pmix_ptl_base_check_server`
+  retries briefly for that (`ptl_check_server`).
 - **All four values must match what comes back.** Linux's exact lookup
   falls back to a *listening* socket when no connection matches.
 - **A v4-mapped pair is IPv4.** A dual-stack listener holds an IPv4 peer

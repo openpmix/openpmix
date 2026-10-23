@@ -888,20 +888,36 @@ pmix_status_t pmix_ptl_base_check_server(pmix_peer_t *peer, bool given, uid_t ui
          * connection when the server is on this host, from its table of
          * TCP connections - a user, but no group */
         rc = pmix_util_getid_tcp(peer->sd, &kuid);
-        if (PMIX_SUCCESS != rc) {
+        memset(&sa, 0, sizeof(sa));
+        if (PMIX_ERR_NOT_FOUND == rc &&
+            0 == getpeername(peer->sd, (struct sockaddr *) &sa, &salen) &&
+            pmix_ptl_base_addr_on_host(&sa)) {
             /* A server whose address is this host's has its end in that
-             * table, as an established connection, by the time ours is
-             * connected - unless the platform has no table to ask. One at
-             * any other address is on another host, or in another network
-             * namespace, and the kernel says nothing of it */
-            memset(&sa, 0, sizeof(sa));
-            if (PMIX_ERR_NOT_FOUND == rc &&
-                0 == getpeername(peer->sd, (struct sockaddr *) &sa, &salen) &&
-                pmix_ptl_base_addr_on_host(&sa)) {
+             * table, as an established connection - but not always yet.
+             * Our end is connected once the server's SYN-ACK arrives, and
+             * the server's is established only when its kernel has taken
+             * our ACK, which on loopback it may get to a moment later:
+             * until then macOS holds it in SYN_RECEIVED, Linux as a
+             * request in SYN_RECV, and FreeBSD in its syncache, outside
+             * the table. Give it that moment */
+            struct timeval tv = {0, 1000};
+
+            for (n = 0; PMIX_ERR_NOT_FOUND == rc && n < 10; n++) {
+                retry_wait(&tv);
+                tv.tv_usec *= 2;
+                rc = pmix_util_getid_tcp(peer->sd, &kuid);
+            }
+            if (PMIX_ERR_NOT_FOUND == rc) {
                 pmix_show_help("help-ptl-base.txt", "server-unidentified", true,
                                pmix_globals.hostname);
                 return PMIX_ERR_INVALID_CRED;
             }
+        }
+        if (PMIX_SUCCESS != rc) {
+            /* the platform has no table to ask, or the server is at an
+             * address that is not this host's - on another host, or in
+             * another network namespace - and the kernel says nothing of
+             * it */
             return PMIX_SUCCESS;
         }
         tcp = true;
