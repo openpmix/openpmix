@@ -497,10 +497,10 @@ The framework **base** is always compiled into `libpmix` (via
 Merely editing a `Makefile.am` needs only `make`, but adding or removing
 a `configure.m4` — or a component directory — changes the wiring
 `configure` resolves, so the full `./autogen.pl && ./configure && make`
-regen is required. The `intel` component ships `help-pgpu-intel.txt`, so
-the regenerate-the-help-content golden rule **does** apply when you touch
-it: `rm src/util/pmix_show_help_content.*` and rebuild, or the library
-keeps emitting the old text. No other component here has help text.
+regen is required. The `intel` component ships `help-pgpu-intel.txt`,
+whose content is compiled into the library; in a git clone a plain
+`make` regenerates it (see the top-level guide for a tarball). No other
+component here has help text.
 
 ## When adding or modifying a component
 

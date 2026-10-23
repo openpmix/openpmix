@@ -453,10 +453,9 @@ are unusually blunt about it:
 `PMIX_SUMMARY_ADD([Transports], …)`, so `configure`'s summary shows
 `Simptest` and `TCP` as yes/no.
 
-`simptest` ships a `show_help` file, `help-pnet-simptest.txt`; per the
-top-level golden rule, after any add/delete/modify of that text you must
-`rm src/util/pmix_show_help_content.* && make`. The other components ship
-no `show_help` text.
+`simptest` ships a `show_help` file, `help-pnet-simptest.txt`, whose
+content is compiled into the library; in a git clone a plain `make`
+regenerates it. The other components ship no `show_help` text.
 
 Per the top-level build rules: editing a `Makefile.am` needs only a plain
 `make`; **adding or removing a component directory, or changing a

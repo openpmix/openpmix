@@ -278,10 +278,9 @@ follow:
   by heap-allocating the default.
 
 Help text for this directory lives in
-[`help-pmix-runtime.txt`](help-pmix-runtime.txt). Per the top-level
-rule, after editing any `show_help` content you must
-`rm src/util/pmix_show_help_content.* && make` so the compiled-in copy
-is regenerated.
+[`help-pmix-runtime.txt`](help-pmix-runtime.txt). Its content is
+compiled into the library; in a git clone a plain `make` regenerates
+it (see the top-level guide for a tarball).
 
 ## The progress-thread engine (`pmix_progress_threads.c`)
 

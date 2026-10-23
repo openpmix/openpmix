@@ -509,13 +509,9 @@ dynamic half of `pmix_mca_base_component_find.c`. A build without it
 still works — every component is statically linked — so a change in
 those files has to compile and behave in both configurations.
 
-**Both `help-*.txt` files in this directory are `show_help` content.**
-Per the top-level golden rule, after any edit to them:
-
-```sh
-rm src/util/pmix_show_help_content.*
-make
-```
+**Both `help-*.txt` files in this directory are `show_help` content**,
+compiled into the library. In a git clone a plain `make` regenerates
+it; see the top-level guide for a tarball.
 
 ## Testing
 
