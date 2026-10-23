@@ -50,17 +50,20 @@ with no platform-specific content. All the macOS specifics live in the
 four readers, each of which appends one or more `PMIX_*_RESOURCE_USAGE`
 data arrays tagged with a `*_SAMPLE_TIME`, exactly like `plinux`.
 
-**Keep it that way.** These two functions are the same code in two files,
-so a defect found in one is a defect in the other, and a fix applied to
-one and not the other silently gives macOS and Linux different behavior
-for the same request. The rules they encode — type-checking the monitor
+**Keep it that way.** These functions are the same code in three files -
+here, `plinux` and `pfreebsd` - so a defect found in one is a defect in
+the others, and a fix applied to one and not the rest silently gives two
+platforms different behavior for the same request. That has happened:
+`plinux` came to destruct the array a failed `PMIx_Info_list_convert()`
+leaves behind, and this copy leaked it on every such path until the three
+were compared. The rules they encode — type-checking the monitor
 value, who owns the answer list on the synchronous path, why a reader's
 `PMIX_ERR_NOT_FOUND` is skipped rather than fatal, why every
 `PMIx_Info_list_convert()` result is destructed after it is added, and
 why a refused `PMIx_Notify_event` releases its own caddy — are written up
 once, in the [framework guide](../AGENTS.md) and in
 [`plinux/AGENTS.md`](../plinux/AGENTS.md). Read them there; only what is
-genuinely Darwin-specific is repeated below. Diffing the two `query`
+genuinely Darwin-specific is repeated below. Diffing the `query`
 bodies (ignoring whitespace) is the cheap way to confirm they have not
 drifted.
 

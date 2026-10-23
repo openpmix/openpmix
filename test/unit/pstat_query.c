@@ -22,9 +22,9 @@
  * by crashing rather than by returning the wrong code.
  *
  * These assertions are framework contract, not component behavior, so
- * they hold for whichever component this host selects - plinux, pmacos
- * or test. That is deliberate: the three implement query separately, and
- * a rule that only one of them honors is not a rule.
+ * they hold for whichever component this host selects - plinux, pmacos,
+ * pfreebsd or test. That is deliberate: the four implement query
+ * separately, and a rule that only one of them honors is not a rule.
  *
  * This needs the MCA up but no server: pmix_init_util() establishes the
  * install dirs, the variable system and the component repository, and

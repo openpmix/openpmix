@@ -18,7 +18,7 @@ described there all apply here and are not repeated. This file covers what
 is specific to `pstat`: what the framework is for, how a monitoring
 request flows through it, the shared data structures and base helpers
 every component leans on, and the contract a component must honor. Each
-component subdirectory (`plinux/`, `pmacos/`, `test/`) carries its own
+component subdirectory (`plinux/`, `pmacos/`, `pfreebsd/`, `test/`) carries its own
 `AGENTS.md` with component-specific detail.
 
 For a wider, API-oriented tour of how this framework implements the
@@ -50,9 +50,10 @@ any caller of the monitor API.
 `pstat` is a **single-select** framework: exactly one component is active
 per process. On a Linux node with a readable `/proc`, that is `plinux`
 (priority 80); on macOS (Darwin) it is `pmacos` (priority 80), which reads
-the same categories through the mach/libproc/sysctl/IOKit interfaces.
-Only one of these ever builds on a given host, so their equal priorities
-never collide. The `test` component (priority 20) returns deterministic
+the same categories through the mach/libproc/sysctl/IOKit interfaces; and
+on FreeBSD it is `pfreebsd` (priority 80), which reads them from the
+kernel's sysctl records. Only one of these ever builds on a given host,
+so their equal priorities never collide. The `test` component (priority 20) returns deterministic
 canned values and exists so the monitor code path can be exercised on
 platforms without a native reader and in CI. If no component can run, the base
 installs an "unsupported" module whose every entry point returns
@@ -72,6 +73,7 @@ src/mca/pstat/
 │   └── pstat_base_fns.c    the four "parse the request" helpers
 ├── plinux/                 Linux /proc reader (the real component)
 ├── pmacos/                 macOS reader (mach/libproc/sysctl/IOKit)
+├── pfreebsd/               FreeBSD reader (sysctl records, getifaddrs)
 └── test/                   canned-data component for CI / unsupported hosts
 ```
 
@@ -229,7 +231,9 @@ pid. A
 recorded pid outlives its process and is reused, so the components check
 it on every sample - `plinux` opens `/proc/<pid>` as a directory, checks
 its owner, and reads the rest relative to that descriptor; `pmacos`
-checks `pbi_uid` and compares the start time again after sampling. A
+checks `pbi_uid` and compares the start time again after sampling;
+`pfreebsd` reads the owner and the statistics in the one `kinfo_proc`
+record, so the two cannot belong to different processes. A
 process that is gone, or no longer the owner's, is `PMIX_ERR_NOT_FOUND`
 and skipped. The loop over targets is the base's
 `pmix_pstat_base_sample_targets()`; a component supplies only the
@@ -574,7 +578,7 @@ Two failure modes, and they are **not** treated alike:
   than the framework's own "degrade to unsupported" design suggests, and
   it is worth deciding deliberately rather than inheriting it: the
   alternative is to log and fall back to the stubs, as the no-component
-  case does. All three current components' `init` is an unconditional
+  case does. All four current components' `init` is an unconditional
   `return PMIX_SUCCESS`, so nothing reaches it today.
 
 ## Threading
@@ -597,12 +601,14 @@ rest of the library also uses.
 
 The framework core (`base/`) is always built into `libpmix`. Each
 component builds as a standard MCA component (DSO
-`pmix_mca_pstat_<name>.la` or static `libpmix_mca_pstat_<name>.la`). Both
-real components ship a `configure.m4`: `plinux` enables **only** on Linux
+`pmix_mca_pstat_<name>.la` or static `libpmix_mca_pstat_<name>.la`). Every
+real component ships a `configure.m4`: `plinux` enables **only** on Linux
 with a readable `/proc/cpuinfo` and a defined `HZ` (from `<sys/param.h>`),
-and `pmacos` enables **only** on Apple/Darwin (`oac_found_apple`), where
+`pmacos` enables **only** on Apple/Darwin (`oac_found_apple`), where
 it also pulls in the IOKit and CoreFoundation frameworks for its per-disk
-statistics. On a host matching neither, only `test` remains and the
+statistics, and `pfreebsd` enables **only** on FreeBSD 12 and later
+(`oac_found_freebsd`, and a compile check for the records it reads). On a
+host matching none of them, only `test` remains and the
 framework falls back to it (or to `unsupported`). Adding a component means
 creating `src/mca/pstat/<name>/` with the usual `Makefile.am`, a component
 struct, and a module; the framework picks it up through the generated
