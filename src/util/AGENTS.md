@@ -815,7 +815,7 @@ other users' connections only while `security.bsd.see_other_uids` is 1,
 the default; with it off another user's peer is `PMIX_ERR_NOT_FOUND`.
 Anything else answers `PMIX_ERR_NOT_SUPPORTED`.
 
-Three rules, each of which a plausible "simplification" breaks:
+Four rules, each of which a plausible "simplification" breaks:
 
 - **Only an `ESTABLISHED` entry is an answer.** A `TIME_WAIT`/`FIN_WAIT`
   entry carries no owner, and Linux reports uid 0 for it. A connection
@@ -830,6 +830,12 @@ Three rules, each of which a plausible "simplification" breaks:
   as `::ffff:a.b.c.d`, while the peer's own socket may be `AF_INET`; the
   lookup unwraps the pair and, on the `/proc` route, searches both
   tables.
+- **`sock_diag`'s `ENOENT` is confirmed in `/proc/net`.** The kernel
+  answers "no such connection" and "no TCP diag handler registered" with
+  the same `-ENOENT` (a kernel with `CONFIG_INET_TCP_DIAG=m` and module
+  loading disabled), so a miss is looked up in `/proc/net/tcp{,6}` before
+  it is believed. Taking it at its word refused every TCP peer and server
+  on such a kernel as unowned.
 
 Every case in the test connects the process to itself, where the right
 answer and a lookup of the wrong end of the connection are the same
