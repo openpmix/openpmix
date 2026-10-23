@@ -226,6 +226,40 @@ jobs:
         # fail this step too, so gh run view --log-failed shows it
         exit 1
 
+  remote-tools:
+    # A build that takes tools from other hosts, with both mechanisms they
+    # authenticate with: --enable-remote-tools, which configure refuses
+    # without munge or ssl, and munge and OpenSSL. No other leg builds
+    # either component, so without this one psec/munge and psec/ssl are
+    # compiled by nothing here, and the tests of a tool and a server
+    # authenticating each other (ptl_remote_auth, psec_ssl_auth) never run.
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends software-properties-common libhwloc-dev libevent-dev libssl-dev munge libmunge-dev
+    - name: Start munged
+      run: |
+        sudo systemctl start munge || true
+        munge -n | unmunge > /dev/null
+    - name: Git clone OpenPMIx
+      uses: actions/checkout@v6
+      with:
+            submodules: recursive
+    - name: Build OpenPMIx with remote tools, munge and ssl
+      run: |
+        ./autogen.pl
+        ./configure --prefix=${PWD}/install --enable-devel-check \
+            --enable-remote-tools --with-munge --with-openssl
+        make -j
+        cd test
+        make check
+        # both mechanisms really ran: a skipped munge case or a missing
+        # test would pass the suite above without exercising either
+        grep -q "PASS: ...and with munge$" unit/ptl_remote_auth.log
+        grep -q "PASS: a hand-built bound credential" unit/psec_ssl_auth.log
+
   sanitizer:
     # AddressSanitizer over the unit suite.
     #
