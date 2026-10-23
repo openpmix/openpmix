@@ -177,8 +177,10 @@ AND INIT/FINALIZE THE GLOBAL CLASSES."* It is almost entirely
   way `pmix_os_dirpath_destroy()` walks: a symlink inside the tree is
   removed as a link, never followed, and a registered path that is itself
   a symlink is left alone. Paths are still built for each entry, but only
-  to compare against the ignore list. `test/unit/server_control.c`
-  covers both symlink cases.
+  to compare against the ignore list. Like that walk it stays on one file
+  system: a subdirectory on another device, or one that will not go when
+  empty because something is mounted on it (`EBUSY`), is not descended
+  into. `test/unit/server_control.c` covers both symlink cases.
 - Thin libevent wrappers `pmix_event_assign()` / `pmix_event_new()`
   (the `pmix_event_*` macros they back live in `pmix_types.h`).
 - `pmix_event_del_checked()` — the one wrapper here that is **not**
