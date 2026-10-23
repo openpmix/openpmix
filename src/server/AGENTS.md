@@ -2834,9 +2834,9 @@ files to the top-level `sources` list and `pmix_server_ops.h` to
 effect with a plain top-level `make` on an already-configured tree; you
 need `autogen.pl` + `configure` only when adding or removing a source
 file. `help-pmix-server.txt` is a `show_help` file — if you add, remove,
-or edit any message in it, follow the top-level rule and rebuild the
-generated `show_help` content (`rm src/util/pmix_show_help_content.* &&
-make`).
+or edit any message in it, a plain `make` in a git clone regenerates
+the compiled `show_help` content (see the top-level guide for a
+tarball).
 
 ## Testing what a single node cannot reach
 

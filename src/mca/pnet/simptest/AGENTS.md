@@ -216,9 +216,8 @@ is a recognizable placeholder.
   coordinate still resolves on the compute node.) With
   `test/simple/simptest` the map is generated from the local host, so the
   topology file needs a single line for this node.
-- **Editing the help text** (`help-pnet-simptest.txt`) requires the
-  regenerate-help golden rule: `rm src/util/pmix_show_help_content.* &&
-  make`.
+- **Editing the help text** (`help-pnet-simptest.txt`) takes a rebuild
+  of the library, which in a git clone a plain `make` does.
 - **Priority 0 is intentional.** `simptest` must never outrank a real
   fabric component; keep it last in the fan-out.
 

@@ -378,9 +378,9 @@ struct, and a module — the framework picks it up through the generated
 
 Remember the top-level golden rules that bite here specifically:
 
-- If you touch any text in `base/help-pmix-plog.txt` (or add a new
-  `show_help` message), you must regenerate the compiled `show_help`
-  content: `rm src/util/pmix_show_help_content.*` then `make`.
+- Text in `base/help-pmix-plog.txt` is compiled into the library; in a
+  git clone a plain `make` regenerates it (see the top-level guide for
+  a tarball).
 - Editing a `Makefile.am` only needs a plain `make`; adding/removing a
   *component directory* changes the build wiring resolved by `configure`,
   so re-run `./autogen.pl && ./configure ... && make`.

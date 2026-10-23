@@ -411,8 +411,7 @@ requires re-running `./autogen.pl && ./configure … && make`** — a plain
 `pif` ships **no `show_help` file of its own** — the only `show_help`
 topic reachable through its code path (`invalid-net-mask`) lives in
 `src/util/help-pmix-util.txt`, which belongs to `src/util`, not this
-framework. So the "regenerate `pmix_show_help_content`" golden rule does
-not normally bite here.
+framework.
 
 To exercise a real change, the interface list is easiest to observe
 through the `ptl` listener (which logs its interface selection) or by

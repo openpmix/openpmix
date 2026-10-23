@@ -173,9 +173,9 @@ which is the pair that catches an ordinal computed for the wrong one.
 - Keep `PMIX_PGPU_INTEL_BLOB` / `PMIX_PGPU_INTEL_INVENTORY_KEY` unique
   across components; `setup_local` claims its data by matching the blob
   key string.
-- Touching `help-pgpu-intel.txt` — including adding a topic — requires
-  `rm src/util/pmix_show_help_content.*` and a rebuild, or the library
-  keeps emitting the old text.
+- `help-pgpu-intel.txt` is compiled into the library: an edit —
+  including a new topic — takes a rebuild, which in a git clone a plain
+  `make` does (see the top-level guide for a tarball).
 - The inventory functions really are no-ops. Do not describe them as
   doing work.
 - An ordinal is not an identity. Do not let one leak into anything that

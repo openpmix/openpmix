@@ -472,10 +472,8 @@ component (DSO `pmix_mca_psensor_<name>.la` or static
 
 The `file` component ships a `show_help` file,
 [`file/help-pmix-psensor-file.txt`](file/help-pmix-psensor-file.txt)
-(topic `file-stalled`). Per the top-level golden rule, after any
-add/delete/modify of that text you must
-`rm src/util/pmix_show_help_content.* && make` to regenerate the compiled
-help content. `heartbeat` includes the `show_help` header but ships no
+(topic `file-stalled`), whose content is compiled into the library; in
+a git clone a plain `make` regenerates it. `heartbeat` includes the `show_help` header but ships no
 help file of its own.
 
 Adding a monitor means creating `src/mca/psensor/<name>/` with the usual
