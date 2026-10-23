@@ -928,9 +928,14 @@ static int dirpath_destroy_at(int fd, const char *path, bool recursive,
     int rc, childfd, exit_status = PMIX_SUCCESS;
     DIR *dp;
     struct dirent *ep;
-    struct stat buf, childbuf;
+    struct stat buf, childbuf, dirbuf;
     char *filenm;
 
+    /* the file system this directory is on: the walk stays on it */
+    if (0 != fstat(fd, &dirbuf)) {
+        close(fd);
+        return PMIX_ERROR;
+    }
     /* fdopendir() takes ownership of fd; closedir() will close it */
     dp = fdopendir(fd);
     if (NULL == dp) {
@@ -1003,15 +1008,28 @@ static int dirpath_destroy_at(int fd, const char *path, bool recursive,
         if (ENOENT == errno) {
             continue;
         }
+        if (EBUSY == errno) {
+            /* a mount point - one from this same file system, a bind
+             * mount, included: what is on it is not part of the tree */
+            exit_status = PMIX_ERROR;
+            continue;
+        }
         if (!recursive) {
             /* it isn't empty and we were not told to descend into it,
              * so we cannot honor the request */
             exit_status = PMIX_ERROR;
             continue;
         }
+        if (buf.st_dev != dirbuf.st_dev) {
+            /* something mounted here: what is on it is not part of the
+             * tree, so leave it - and so the directory - where it is */
+            exit_status = PMIX_ERROR;
+            continue;
+        }
 
         /* proceed downwards through the descriptor we already hold */
-        childfd = openat(dirfd(dp), ep->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        childfd = openat(dirfd(dp), ep->d_name,
+                         O_RDONLY | O_DIRECTORY | O_NOFOLLOW | PMIX_O_CLOEXEC);
         if (0 > childfd) {
             if (ENOENT != errno) {
                 /* the entry is no longer an ordinary directory -
@@ -1121,7 +1139,7 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
      * parent is only traversed, so it need not be readable. It is also
      * the part of the path that was handed to us, so it is resolved the
      * ordinary way. */
-    parentfd = open(parent, PMIX_O_TRAVERSE | O_DIRECTORY);
+    parentfd = open(parent, PMIX_O_TRAVERSE | O_DIRECTORY | PMIX_O_CLOEXEC);
     if (0 > parentfd) {
         /* per the documented contract, a directory that does not exist is
          * reported as NOT_FOUND; any other open failure is a generic error */
@@ -1136,7 +1154,7 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
      * predictable names, so a link planted there would otherwise
      * redirect this whole recursive removal at a tree of the attacker's
      * choosing */
-    fd = openat(parentfd, base, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    fd = openat(parentfd, base, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | PMIX_O_CLOEXEC);
     if (0 > fd) {
         exit_status = (ENOENT == errno) ? PMIX_ERR_NOT_FOUND : PMIX_ERROR;
         close(parentfd);

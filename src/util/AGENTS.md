@@ -1185,7 +1185,10 @@ more roundabout than "stat then chmod" or "readdir then unlink".
   directory that was emptied (a `st_dev`/`st_ino` check). A
   subdirectory gets the same identity check between `fstatat()` and
   the `openat()` it recurses through, since `O_NOFOLLOW` declines a
-  symlink at that name but not a different directory.
+  symlink at that name but not a different directory. The walk stays on
+  the directory's file system: a subdirectory on another device, or one
+  that will not go when empty because something is mounted on it
+  (`EBUSY`), is not descended into, and is left with everything above it.
 - **A trailing separator defeats `O_NOFOLLOW`.** `open("link/",
   O_DIRECTORY | O_NOFOLLOW)` opens the link's *target* on both Linux and
   macOS, because the separator makes the kernel resolve the final
