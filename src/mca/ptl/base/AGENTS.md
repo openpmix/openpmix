@@ -592,8 +592,14 @@ server path; a client has its own, simpler one (`ptl_base_client.c`).
   a uid, no gid - must be the given uid, or else our own, root or a
   `users=` entry (`server-identity-tcp`). When the table does not have it
   (`PMIX_ERR_NOT_FOUND`) and the server's address (`getpeername`) is this
-  host's, it is refused (`server-unidentified`); at any other address, or
-  with no table to ask (`PMIX_ERR_NOT_SUPPORTED`), there is no check.
+  host's, the lookup is retried for up to about a second, and then it is
+  refused (`server-unidentified`); at any other address, or with no table
+  to ask (`PMIX_ERR_NOT_SUPPORTED`), there is no check. The retry is not
+  optional: our end is connected on the server's SYN-ACK, and the server's
+  is not `ESTABLISHED` until its kernel has taken our ACK, which on
+  loopback can come a moment later - until then macOS shows it in
+  `SYN_RECEIVED`, and Linux and FreeBSD not at all. Checking once refused
+  a real server now and then (`tool_alt_uris`, on macOS CI).
 
 Both converge on `pmix_ptl_base_make_connection` (`ptl_base_fns.c`):
 
