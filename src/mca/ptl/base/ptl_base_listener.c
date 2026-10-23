@@ -45,6 +45,7 @@
 #endif
 #include <ctype.h>
 #include <signal.h>
+#include <sys/file.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <event.h>
@@ -582,18 +583,24 @@ void pmix_ptl_base_await_connect_ack(pmix_pending_connection_t *pnd, bool resume
  * NULL if the file has no live owner (i.e., it is stale and can be
  * reclaimed). The caller must free any returned string.
  */
-static char *rndz_file_owner(int dirfd, const char *name)
+/* in use, though there was no memory to say by whom */
+static char inuse_unknown[] = "a running process";
+
+static char *rndz_file_owner(int dirfd, const char *name, bool held)
 {
     FILE *fp;
     struct stat buf;
-    char *line, *endptr, *owner = NULL;
+    char *line, *endptr, *owner = NULL, *lock = NULL;
     unsigned long pid = 0;
     bool havepid = false;
+    pmix_ptl_lock_state_t state;
+    size_t budget = PMIX_PTL_MAX_CONN_FILE;
     int fd, n;
 
     /* the file holds the uri, the version, the pid of the process
-     * that wrote it, its uid:gid, and a timestamp - one per line.
-     * We only care about the pid.
+     * that wrote it, its uid:gid, and a timestamp - one per line - and
+     * then tagged lines. We only care about the pid, and the line that
+     * says its writer holds it locked while it runs.
      *
      * It is read relative to the directory we checked, and not thru a
      * symlink. O_NONBLOCK keeps a FIFO at the name from stalling us in
@@ -605,7 +612,7 @@ static char *rndz_file_owner(int dirfd, const char *name)
     if (0 > fd) {
         return NULL;
     }
-    if (0 != fstat(fd, &buf) || !S_ISREG(buf.st_mode)) {
+    if (0 != fstat(fd, &buf) || !S_ISREG(buf.st_mode) || PMIX_PTL_MAX_CONN_FILE < buf.st_size) {
         close(fd);
         return NULL;
     }
@@ -615,7 +622,7 @@ static char *rndz_file_owner(int dirfd, const char *name)
         return NULL;
     }
     for (n = 0; n < 3; n++) {
-        line = pmix_getline(fp, NULL);
+        line = pmix_ptl_base_getline(fp, &budget);
         if (NULL == line) {
             /* the file was never completely written - e.g., its
              * creator died partway thru doing so */
@@ -637,7 +644,35 @@ static char *rndz_file_owner(int dirfd, const char *name)
         }
         free(line);
     }
+    /* and whether its writer holds it locked, on a tagged line further on */
+    for (n = 0; havepid && n < PMIX_PTL_MAX_TAG_LINES && NULL != (line = pmix_ptl_base_getline(fp, &budget));
+         n++) {
+        if (NULL == lock && 0 == strncmp(line, PMIX_PTL_LOCK_TAG, strlen(PMIX_PTL_LOCK_TAG))) {
+            lock = strdup(line + strlen(PMIX_PTL_LOCK_TAG));
+        }
+        free(line);
+    }
+    /* A writer that holds the lock beside the file is running, whatever
+     * its pid says here - which from another pid namespace, as another
+     * container sharing this directory, is another process or none. A
+     * lock nothing holds - we hold it ourselves already when no other
+     * server of this name runs - is not enough to take the file: a lock
+     * file a tmp cleaner removed from under a running server is one
+     * nothing holds. That, and a file without the line, from an earlier
+     * release, are judged by the pid as before */
+    state = PMIX_PTL_LOCK_UNKNOWN;
+    if (havepid && NULL != lock) {
+        state = held ? PMIX_PTL_LOCK_GONE
+                     : pmix_ptl_base_lock_state(dirfd, name, buf.st_uid, lock);
+    }
+    free(lock);
     fclose(fp);
+    if (PMIX_PTL_LOCK_HELD == state) {
+        if (0 > pmix_asprintf(&owner, "pid %lu, which holds the lock beside the file", pid)) {
+            return inuse_unknown;
+        }
+        return owner;
+    }
 
     if (!havepid) {
         return NULL;
@@ -654,7 +689,9 @@ static char *rndz_file_owner(int dirfd, const char *name)
     if (0 != kill((pid_t)pid, 0) && EPERM != errno) {
         return NULL;
     }
-    pmix_asprintf(&owner, "pid %lu", pid);
+    if (0 > pmix_asprintf(&owner, "pid %lu", pid)) {
+        return inuse_unknown;
+    }
     return owner;
 }
 
@@ -662,6 +699,7 @@ typedef struct {
     const char *role;
     const char *filename;
     int dirfd;
+    bool held;      // we hold the lock beside the name
     bool reported;
 } rndz_reclaim_t;
 
@@ -675,11 +713,13 @@ static bool rndz_reclaim(const char *name, void *cbdata)
     rndz_reclaim_t *ctx = (rndz_reclaim_t *) cbdata;
     char *owner;
 
-    owner = rndz_file_owner(ctx->dirfd, name);
+    owner = rndz_file_owner(ctx->dirfd, name, ctx->held);
     if (NULL != owner) {
         pmix_show_help("help-ptl-base.txt", "rndz-file-in-use", true,
                        ctx->role, ctx->filename, owner);
-        free(owner);
+        if (owner != inuse_unknown) {
+            free(owner);
+        }
         ctx->reported = true;
         return false;
     }
@@ -720,16 +760,34 @@ static char *compat_lines(void)
     return lines;
 }
 
-static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role,
+/* Let go of the lock beside a rendezvous file we did not write after all,
+ * and remove it */
+static void release_lock(int dirfd, const char *base, int lockfd)
+{
+    char *lname;
+
+    if (0 > lockfd) {
+        return;
+    }
+    if (NULL != (lname = pmix_ptl_base_lock_name(base))) {
+        (void) unlinkat(dirfd, lname, 0);
+        free(lname);
+    }
+    close(lockfd);
+}
+
+static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role, bool optional,
                                      bool *dir_created, bool *file_created, int *dirfd_out)
 {
     int fd, dirfd;
     char *dirname, *tmp, *compat;
     const char *base;
     time_t mytime;
-    int rc;
+    bool locked;
+    int rc, lockfd = -1;
+    size_t n;
     rndz_reclaim_t reclaim = {.role = role, .filename = filename, .dirfd = -1,
-                              .reported = false};
+                              .held = false, .reported = false};
     mode_t mode;
     struct stat buf;
 
@@ -797,6 +855,30 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     }
     free(dirname);
     reclaim.dirfd = dirfd;
+    /* the lock beside the file, held for as long as we run, so that a
+     * process that finds the file can tell whether we still do - whatever
+     * pid namespace it is in. The kernel lets go of it however we exit */
+    lockfd = -1;
+    if (PMIX_PTL_NLOCKS > pmix_ptl_base.nrndz_lockfd) {
+        lockfd = pmix_ptl_base_take_lock(dirfd, base);
+    }
+    if (PMIX_PTL_LOCK_BUSY == lockfd) {
+        /* another server of this name runs. A name with our pid in it
+         * collides only with one in another pid namespace, and is one
+         * of several we write: that one is let go */
+        close(dirfd);
+        *file_created = false;
+        if (optional) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:base: %s rendezvous file %s is another server's - not "
+                                "writing it", role, filename);
+            return PMIX_ERR_EXISTS;
+        }
+        pmix_show_help("help-ptl-base.txt", "rndz-name-held", true, role, filename,
+                       "the lock beside the file");
+        return PMIX_ERR_SILENT;
+    }
+    reclaim.held = (0 <= lockfd);
 
     /* set the file mode */
     mode = S_IRUSR | S_IWUSR ;
@@ -808,6 +890,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     fd = pmix_os_dirpath_create_file_at(dirfd, base, O_RDWR, mode, rndz_reclaim, &reclaim);
     if (0 > fd) {
         *file_created = false;
+        release_lock(dirfd, base, lockfd);
         close(dirfd);
         if (reclaim.reported) {
             return PMIX_ERR_SILENT;
@@ -833,7 +916,8 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
      * refuses a URI carrying more than one address, and a client refused
      * that way quietly runs as a singleton. */
     compat = compat_lines();
-    if (0 > pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n%s%s%s%s%s%s%s%s%s",
+    locked = (0 <= lockfd);
+    if (0 > pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n%s%s%s%s%s%s%s%s%s%s%s%s",
                           uri, PMIX_VERSION, (unsigned long)pmix_globals.pid,
                           (unsigned long)pmix_globals.uid,
                           (unsigned long)pmix_globals.gid,
@@ -847,12 +931,15 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
                           (NULL == pmix_ptl_base.local_listener.uri) ? ""
                                                                      : pmix_ptl_base.local_listener.uri,
                           (NULL == pmix_ptl_base.local_listener.uri) ? "" : "\n",
-                          (NULL == compat) ? "" : compat)) {
+                          (NULL == compat) ? "" : compat,
+                          locked ? PMIX_PTL_LOCK_TAG : "", locked ? PMIX_PTL_LOCK_FLOCK : "",
+                          locked ? "\n" : "")) {
         free(compat);
         /* nothing has been written, so do not leave an empty file behind
          * for a peer to read as a server that died partway thru */
         close(fd);
         unlinkat(dirfd, base, 0);
+        release_lock(dirfd, base, lockfd);
         close(dirfd);
         *file_created = false;
         return PMIX_ERR_NOMEM;
@@ -868,10 +955,25 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
         pmix_free(tmp);
         close(fd);
         unlinkat(dirfd, base, 0);
+        release_lock(dirfd, base, lockfd);
         close(dirfd);
         return PMIX_ERR_FILE_WRITE_FAILURE;
     }
     pmix_free(tmp);
+    /* which file we wrote, so that finalize removes this one and no other
+     * now at the name - and the lock beside it */
+    n = pmix_ptl_base.nrndz_lockfd;
+    if (PMIX_PTL_NLOCKS > n && 0 == fstat(fd, &buf) &&
+        NULL != (pmix_ptl_base.rndz_lockname[n] = strdup(filename))) {
+        pmix_ptl_base.rndz_dev[n] = buf.st_dev;
+        pmix_ptl_base.rndz_ino[n] = buf.st_ino;
+        pmix_ptl_base.rndz_lockfd[n] = lockfd;
+        ++pmix_ptl_base.nrndz_lockfd;
+    } else {
+        /* with no name to remove it by at finalize, let go of it now:
+         * the file is then judged by its pid */
+        release_lock(dirfd, base, lockfd);
+    }
     close(fd);
     if (0 <= *dirfd_out) {
         close(*dirfd_out);
@@ -1237,7 +1339,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "WRITING RENDEZVOUS FILE %s", pmix_ptl_base.rendezvous_filename);
         rc = write_rndz_file(pmix_ptl_base.rendezvous_filename, uri,
-                             "server",
+                             "server", false,
                              &pmix_ptl_base.created_rendezvous_dir,
                              &pmix_ptl_base.created_rendezvous_file,
                              &pmix_ptl_base.rendezvous_dirfd);
@@ -1256,7 +1358,7 @@ nextstep:
             goto sockerror;
         }
         rc = write_rndz_file(pmix_ptl_base.scheduler_filename, uri,
-                             "scheduler",
+                             "scheduler", false,
                              &pmix_ptl_base.created_system_tmpdir,
                              &pmix_ptl_base.created_scheduler_filename,
                              &pmix_ptl_base.scheduler_dirfd);
@@ -1273,7 +1375,7 @@ nextstep:
             goto sockerror;
         }
         rc = write_rndz_file(pmix_ptl_base.sysctrlr_filename, uri,
-                             "system controller",
+                             "system controller", false,
                              &pmix_ptl_base.created_system_tmpdir,
                              &pmix_ptl_base.created_sysctrlr_filename,
                              &pmix_ptl_base.sysctrlr_dirfd);
@@ -1289,7 +1391,7 @@ nextstep:
                 goto sockerror;
             }
             rc = write_rndz_file(pmix_ptl_base.system_filename, uri,
-                                 "system tool",
+                                 "system tool", false,
                                  &pmix_ptl_base.created_system_tmpdir,
                                  &pmix_ptl_base.created_system_filename,
                                  &pmix_ptl_base.system_dirfd);
@@ -1308,7 +1410,7 @@ nextstep:
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "WRITING SESSION TOOL FILE %s", pmix_ptl_base.session_filename);
             rc = write_rndz_file(pmix_ptl_base.session_filename, uri,
-                                 "session tool",
+                                 "session tool", false,
                                  &pmix_ptl_base.created_session_tmpdir,
                                  &pmix_ptl_base.created_session_filename,
                                  &pmix_ptl_base.session_dirfd);
@@ -1327,11 +1429,13 @@ nextstep:
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "WRITING PID TOOL FILE %s",
                             pmix_ptl_base.pid_filename);
         rc = write_rndz_file(pmix_ptl_base.pid_filename, uri,
-                             "tool (by pid)",
+                             "tool (by pid)", true,
                              &pmix_ptl_base.created_session_tmpdir,
                              &pmix_ptl_base.created_pid_filename,
                              &pmix_ptl_base.pid_dirfd);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_EXISTS == rc) {
+            rc = PMIX_SUCCESS;
+        } else if (PMIX_SUCCESS != rc) {
             goto sockerror;
         }
 
@@ -1345,7 +1449,7 @@ nextstep:
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "WRITING NSPACE TOOL FILE %s", pmix_ptl_base.nspace_filename);
         rc = write_rndz_file(pmix_ptl_base.nspace_filename, uri,
-                             "tool (by namespace)",
+                             "tool (by namespace)", false,
                              &pmix_ptl_base.created_session_tmpdir,
                              &pmix_ptl_base.created_nspace_filename,
                              &pmix_ptl_base.nspace_dirfd);

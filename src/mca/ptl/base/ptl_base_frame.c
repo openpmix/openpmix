@@ -45,6 +45,7 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/mca.h"
 #include "src/server/pmix_server_ops.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_os_dirpath.h"
@@ -391,14 +392,51 @@ static bool _check_file(const char *root, const char *path)
 static void remove_rndz_file(char **filename, bool *created, int *dirfd)
 {
     const char *base;
+    struct stat ours, there;
+    char *lname = NULL;
+    size_t n, slot = PMIX_PTL_NLOCKS;
+    bool remove = true;
 
     if (NULL != *filename && *created && 0 <= *dirfd) {
         base = strrchr(*filename, PMIX_PATH_SEP[0]);
         base = (NULL == base) ? *filename : base + 1;
-        if (0 != unlinkat(*dirfd, base, 0)) {
+        /* the file we wrote at that name, if we know which it was */
+        for (n = 0; n < pmix_ptl_base.nrndz_lockfd; n++) {
+            if (NULL != pmix_ptl_base.rndz_lockname[n] &&
+                0 == strcmp(pmix_ptl_base.rndz_lockname[n], *filename)) {
+                slot = n;
+                break;
+            }
+        }
+        /* Only while it is still ours: a server can take the name from
+         * under us - its file is not ours to remove - and the lock file a
+         * tmp cleaner removed is no sign either way */
+        if (PMIX_PTL_NLOCKS != slot) {
+            remove = (0 == fstatat(*dirfd, base, &there, AT_SYMLINK_NOFOLLOW) &&
+                      pmix_ptl_base.rndz_dev[slot] == there.st_dev &&
+                      pmix_ptl_base.rndz_ino[slot] == there.st_ino);
+        }
+        if (remove && 0 != unlinkat(*dirfd, base, 0)) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "Remove of %s failed: %s", *filename, strerror(errno));
         }
+        if (PMIX_PTL_NLOCKS != slot) {
+            /* and the lock file, if it is the one we hold, before we let
+             * go of the lock */
+            if (0 <= pmix_ptl_base.rndz_lockfd[slot]) {
+                lname = pmix_ptl_base_lock_name(base);
+                if (NULL != lname && 0 == fstat(pmix_ptl_base.rndz_lockfd[slot], &ours) &&
+                    0 == fstatat(*dirfd, lname, &there, AT_SYMLINK_NOFOLLOW) &&
+                    ours.st_dev == there.st_dev && ours.st_ino == there.st_ino) {
+                    (void) unlinkat(*dirfd, lname, 0);
+                }
+                close(pmix_ptl_base.rndz_lockfd[slot]);
+                pmix_ptl_base.rndz_lockfd[slot] = -1;
+            }
+            free(pmix_ptl_base.rndz_lockname[slot]);
+            pmix_ptl_base.rndz_lockname[slot] = NULL;
+        }
+        free(lname);
     }
     if (0 <= *dirfd) {
         close(*dirfd);
@@ -522,6 +560,15 @@ static pmix_status_t pmix_ptl_close(void)
             free(tmp);
         }
         pmix_ptl_base.created_rendezvous_dir = false;
+    }
+    /* any lock whose file was not ours to remove is let go of too */
+    while (0 < pmix_ptl_base.nrndz_lockfd) {
+        --pmix_ptl_base.nrndz_lockfd;
+        if (0 <= pmix_ptl_base.rndz_lockfd[pmix_ptl_base.nrndz_lockfd]) {
+            close(pmix_ptl_base.rndz_lockfd[pmix_ptl_base.nrndz_lockfd]);
+        }
+        free(pmix_ptl_base.rndz_lockname[pmix_ptl_base.nrndz_lockfd]);
+        pmix_ptl_base.rndz_lockname[pmix_ptl_base.nrndz_lockfd] = NULL;
     }
     if (NULL != pmix_ptl_base.uri) {
         free(pmix_ptl_base.uri);
