@@ -1356,19 +1356,24 @@ releases - and reports its local socket, which no other node can reach.
 With `SWARM_REMOTE_TOOLS=1` both DVMs are started with
 `PRTE_MCA_pmix_remote_connections=1`, the PRRTE-side MCA parameter that
 becomes the `PMIX_SERVER_REMOTE_CONNECTIONS` directive on
-`PMIx_server_init`, and with `psec_ssl_ca_file` naming a throwaway CA
-the suite makes in the build volume (`/opt/prte/ssl`, by `ssl_make_certs`
-in `swarm-common.sh`). The tools on other nodes present a certificate it
-signed, `CN=root` - the user every node runs as - with `psec=ssl`. Set
-it only for a swarm built with `SWARM_REMOTE_TOOLS=1`, or the DVMs fail
-to start. Without it every cross-node stage skips itself, naming why.
+`PMIx_server_init`. A tool and a server on different nodes authenticate
+each other, the server first, so each end has a certificate and key of
+its own and the CA that issued the other's: the suite makes a throwaway
+CA in the build volume (`/opt/prte/ssl`, by `ssl_make_certs` in
+`swarm-common.sh`) and a server and a tool certificate it signs, both
+`CN=root` - the user every node runs as. The DVMs get theirs from
+`SWARM_SERVER_ENV`, the tools theirs from `SWARM_TOOL_ENV`; a tool picks
+`ssl` for a server on another node itself. Set it only for a swarm built
+with `SWARM_REMOTE_TOOLS=1`, or the DVMs fail to start. Without it every
+cross-node stage skips itself, naming why.
 
 The first stage asserts who a server on another node takes. With remote
-tools: a tool whose certificate the CA signed is taken; one whose
-certificate a second CA signed, and one with no certificate (`native`,
-which serves only its own host), are refused. Without them: a tool on
-another node cannot reach the DVM at all, since it reports its local
-socket.
+tools: a tool and a server whose certificates the CA issued authenticate
+each other; a tool that trusts only a second CA refuses the server; a
+tool whose certificate the second CA issued is refused by the server;
+and a tool with no certificate (only `native`, which serves only its own
+host) sends nothing and fails. Without them: a tool on another node
+cannot reach the DVM at all, since it reports its local socket.
 
 | Stage | What it drives |
 |-------|----------------|
