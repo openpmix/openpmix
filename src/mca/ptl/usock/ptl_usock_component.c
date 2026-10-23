@@ -32,7 +32,8 @@ PMIX_EXPORT pmix_ptl_usock_component_t pmix_mca_ptl_usock_component = {
     },
     .dir = NULL,
     .path = NULL,
-    .dfd = -1
+    .dfd = -1,
+    .pdfd = -1
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, ptl, usock)
 

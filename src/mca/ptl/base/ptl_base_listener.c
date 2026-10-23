@@ -44,6 +44,7 @@
 #    include <sys/types.h>
 #endif
 #include <ctype.h>
+#include <dirent.h>
 #include <signal.h>
 #include <sys/file.h>
 #include <sys/resource.h>
@@ -760,6 +761,195 @@ static char *compat_lines(void)
     return lines;
 }
 
+/* Whether the directory fd is open on (O_RDONLY) has nothing in it */
+static bool dir_is_empty(int fd)
+{
+    DIR *dp;
+    struct dirent *ep;
+    bool empty = true;
+    int dfd;
+
+    dfd = fcntl(fd, F_DUPFD_CLOEXEC, 0);
+    if (0 > dfd) {
+        return false;
+    }
+    dp = fdopendir(dfd);
+    if (NULL == dp) {
+        close(dfd);
+        return false;
+    }
+    while (NULL != (ep = readdir(dp))) {
+        if (0 != strcmp(ep->d_name, ".") && 0 != strcmp(ep->d_name, "..")) {
+            empty = false;
+            break;
+        }
+    }
+    closedir(dp);
+    return empty;
+}
+
+/* Hold on to a directory we just made, so that finalize can remove it
+ * from wherever it has come to be: a descriptor on the directory that
+ * holds it, its name there, and one on the directory itself, which keeps
+ * it from being replaced by another with the same identity. Only while
+ * that name in that parent leads to the directory dirfd is open on, and
+ * it is ours and empty - the directory just made. It is given the mode
+ * asked for, whatever the umask took from it. Otherwise nothing is held
+ * and the directory is left at finalize */
+static void hold_made_dir(pmix_ptl_made_dir_t *made, const char *dirname, int dirfd,
+                          mode_t mode)
+{
+    char *clean = NULL, *parent = NULL;
+    const char *base;
+    struct stat given, there;
+    size_t len;
+    int pfd = -1, fd = -1;
+
+    if (0 <= made->parentfd) {
+        return;
+    }
+    /* "dir/" names dir: its last component is before the separators */
+    clean = strdup(dirname);
+    if (NULL == clean) {
+        goto leave;
+    }
+    len = strlen(clean);
+    while (1 < len && PMIX_PATH_SEP[0] == clean[len - 1]) {
+        clean[--len] = '\0';
+    }
+    base = strrchr(clean, PMIX_PATH_SEP[0]);
+    base = (NULL == base) ? clean : base + 1;
+    if ('\0' == base[0] || 0 == strcmp(base, ".") || 0 == strcmp(base, "..") ||
+        0 != fstat(dirfd, &given)) {
+        goto leave;
+    }
+    parent = pmix_dirname(clean);
+    if (NULL == parent) {
+        goto leave;
+    }
+    pfd = pmix_os_dirpath_open_dir(parent);
+    if (0 > pfd) {
+        goto leave;
+    }
+    fd = openat(pfd, base, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (0 > fd || 0 != fstat(fd, &there) ||
+        there.st_dev != given.st_dev || there.st_ino != given.st_ino ||
+        geteuid() != there.st_uid || !dir_is_empty(fd) ||
+        0 != fchmod(fd, mode | (there.st_mode & S_ISGID)) || 0 != fstat(fd, &made->st) ||
+        NULL == (made->name = strdup(base)) || NULL == (made->path = strdup(clean))) {
+        goto leave;
+    }
+    made->parentfd = pfd;
+    made->fd = fd;
+    free(parent);
+    free(clean);
+    return;
+
+leave:
+    free(made->name);
+    made->name = NULL;
+    if (0 <= fd) {
+        close(fd);
+    }
+    if (0 <= pfd) {
+        close(pfd);
+    }
+    free(parent);
+    free(clean);
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:base: the directory %s will be left at finalize", dirname);
+}
+
+/* Open a directory a server puts its files in, making it with the given
+ * mode if it is not there. One this call makes is held in `made`, if
+ * given, which pmix_ptl_close removes from wherever it has come to be. The descriptor,
+ * close-on-exec; or -1 with *rc saying why - PMIX_ERR_SILENT once
+ * reported */
+static int open_dir(const char *dirname, mode_t mode, pmix_ptl_made_dir_t *made,
+                    pmix_status_t *rc)
+{
+    int dirfd;
+
+    *rc = pmix_os_dirpath_create(dirname, mode);
+    if (PMIX_ERR_SILENT == *rc) {
+        // error has already been reported
+        return -1;
+    }
+    if (PMIX_SUCCESS != *rc && PMIX_ERR_EXISTS != *rc) {
+        PMIX_ERROR_LOG(*rc);
+        return -1;
+    }
+
+    /* The directory is the one we were given, and is trusted as such.
+     * Open it once and do everything from here on - including the
+     * removal at finalize - relative to that descriptor, so the
+     * directory a file is created in is the one it is removed from,
+     * whatever the name comes to lead to in the meantime */
+    dirfd = pmix_os_dirpath_open_dir(dirname);
+    if (0 > dirfd) {
+        pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
+                       dirname, strerror(errno));
+        *rc = PMIX_ERR_SILENT;
+        return -1;
+    }
+    if (PMIX_SUCCESS == *rc && NULL != made) {
+        // do not change the created flag if the directory
+        // already exists as we don't know if we previously
+        // created it or it already existed. Success is returned
+        // only when we created the directory ourselves
+        made->created = true;
+        hold_made_dir(made, dirname, dirfd, mode);
+    }
+    *rc = PMIX_SUCCESS;
+    return dirfd;
+}
+
+/* Hold the directory the report file was written in, provided its name
+ * there leads to the file we wrote. Otherwise the file is left at
+ * finalize */
+static void hold_report_file(const struct stat *wrote)
+{
+    char *dirname;
+    const char *base;
+    struct stat there;
+    int fd;
+
+    if (0 <= pmix_ptl_base.urifile_dirfd) {
+        close(pmix_ptl_base.urifile_dirfd);
+        pmix_ptl_base.urifile_dirfd = -1;
+    }
+    base = strrchr(pmix_ptl_base.urifile, PMIX_PATH_SEP[0]);
+    base = (NULL == base) ? pmix_ptl_base.urifile : base + 1;
+    dirname = pmix_dirname(pmix_ptl_base.urifile);
+    fd = (NULL == dirname) ? -1 : pmix_os_dirpath_open_dir(dirname);
+    free(dirname);
+    if (0 <= pmix_ptl_base.urifile_fd) {
+        close(pmix_ptl_base.urifile_fd);
+        pmix_ptl_base.urifile_fd = -1;
+    }
+    /* and one on the file, so that its identity stays its own */
+    if (0 <= fd) {
+        pmix_ptl_base.urifile_fd = openat(fd, base, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    }
+    if (0 > fd || 0 > pmix_ptl_base.urifile_fd ||
+        0 != fstat(pmix_ptl_base.urifile_fd, &there) ||
+        there.st_dev != wrote->st_dev || there.st_ino != wrote->st_ino) {
+        if (0 <= fd) {
+            close(fd);
+        }
+        if (0 <= pmix_ptl_base.urifile_fd) {
+            close(pmix_ptl_base.urifile_fd);
+            pmix_ptl_base.urifile_fd = -1;
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: the report file %s will be left at finalize",
+                            pmix_ptl_base.urifile);
+        return;
+    }
+    pmix_ptl_base.urifile_st = *wrote;
+    pmix_ptl_base.urifile_dirfd = fd;
+}
+
 /* Let go of the lock beside a rendezvous file we did not write after all,
  * and remove it */
 static void release_lock(int dirfd, const char *base, int lockfd)
@@ -777,7 +967,8 @@ static void release_lock(int dirfd, const char *base, int lockfd)
 }
 
 static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role, bool optional,
-                                     bool *dir_created, bool *file_created, int *dirfd_out)
+                                     pmix_ptl_made_dir_t *made, bool *file_created,
+                                     int *dirfd_out)
 {
     int fd, dirfd;
     char *dirname, *tmp, *compat;
@@ -810,36 +1001,10 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     if (pmix_ptl_base.allow_foreign_tools) {
         mode |= S_IXGRP | S_IRGRP | S_IXOTH | S_IROTH;
     }
-    rc = pmix_os_dirpath_create(dirname, mode);
-    if (PMIX_ERR_SILENT == rc) {
-        // error has already been reported
-        free(dirname);
-        return rc;
-    }
-    if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
-        PMIX_ERROR_LOG(rc);
-        free(dirname);
-        return rc;
-    }
-    if (PMIX_SUCCESS == rc) {
-        // do not change the dir_created flag if the directory
-        // already exists as we don't know if we previously
-        // created it or it already existed. Success is returned
-        // only when we created the directory ourselves
-        *dir_created = true;
-    }
-
-    /* The directory is the one we were given, and is trusted as such.
-     * Open it once and do everything from here on - including the
-     * removal at finalize - relative to that descriptor, so the
-     * directory the file is created in is the one it is removed from,
-     * whatever the name comes to lead to in the meantime */
-    dirfd = pmix_os_dirpath_open_dir(dirname);
+    dirfd = open_dir(dirname, mode, made, &rc);
     if (0 > dirfd) {
-        pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
-                       dirname, strerror(errno));
         free(dirname);
-        return PMIX_ERR_SILENT;
+        return rc;
     }
     /* a directory we were given may keep other users out, in which
      * case a foreign tool cannot reach the file however we mark it.
@@ -1320,6 +1485,9 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                 free(pmix_ptl_base.urifile);
                 pmix_ptl_base.urifile = leftover;
                 pmix_ptl_base.created_urifile = true;
+                /* and hold the directory it is in, with the file it is,
+                 * so that finalize removes this file from there */
+                hold_report_file(&sbuf);
             }
         }
     }
@@ -1340,7 +1508,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                             "WRITING RENDEZVOUS FILE %s", pmix_ptl_base.rendezvous_filename);
         rc = write_rndz_file(pmix_ptl_base.rendezvous_filename, uri,
                              "server", false,
-                             &pmix_ptl_base.created_rendezvous_dir,
+                             &pmix_ptl_base.rendezvous_dir,
                              &pmix_ptl_base.created_rendezvous_file,
                              &pmix_ptl_base.rendezvous_dirfd);
         if (PMIX_SUCCESS != rc) {
@@ -1359,7 +1527,7 @@ nextstep:
         }
         rc = write_rndz_file(pmix_ptl_base.scheduler_filename, uri,
                              "scheduler", false,
-                             &pmix_ptl_base.created_system_tmpdir,
+                             &pmix_ptl_base.system_dir,
                              &pmix_ptl_base.created_scheduler_filename,
                              &pmix_ptl_base.scheduler_dirfd);
         if (PMIX_SUCCESS != rc) {
@@ -1376,7 +1544,7 @@ nextstep:
         }
         rc = write_rndz_file(pmix_ptl_base.sysctrlr_filename, uri,
                              "system controller", false,
-                             &pmix_ptl_base.created_system_tmpdir,
+                             &pmix_ptl_base.system_dir,
                              &pmix_ptl_base.created_sysctrlr_filename,
                              &pmix_ptl_base.sysctrlr_dirfd);
         if (PMIX_SUCCESS != rc) {
@@ -1392,7 +1560,7 @@ nextstep:
             }
             rc = write_rndz_file(pmix_ptl_base.system_filename, uri,
                                  "system tool", false,
-                                 &pmix_ptl_base.created_system_tmpdir,
+                                 &pmix_ptl_base.system_dir,
                                  &pmix_ptl_base.created_system_filename,
                                  &pmix_ptl_base.system_dirfd);
             if (PMIX_SUCCESS != rc) {
@@ -1411,7 +1579,7 @@ nextstep:
                                 "WRITING SESSION TOOL FILE %s", pmix_ptl_base.session_filename);
             rc = write_rndz_file(pmix_ptl_base.session_filename, uri,
                                  "session tool", false,
-                                 &pmix_ptl_base.created_session_tmpdir,
+                                 NULL,
                                  &pmix_ptl_base.created_session_filename,
                                  &pmix_ptl_base.session_dirfd);
             if (PMIX_SUCCESS != rc) {
@@ -1430,7 +1598,7 @@ nextstep:
                             pmix_ptl_base.pid_filename);
         rc = write_rndz_file(pmix_ptl_base.pid_filename, uri,
                              "tool (by pid)", true,
-                             &pmix_ptl_base.created_session_tmpdir,
+                             NULL,
                              &pmix_ptl_base.created_pid_filename,
                              &pmix_ptl_base.pid_dirfd);
         if (PMIX_ERR_EXISTS == rc) {
@@ -1450,7 +1618,7 @@ nextstep:
                             "WRITING NSPACE TOOL FILE %s", pmix_ptl_base.nspace_filename);
         rc = write_rndz_file(pmix_ptl_base.nspace_filename, uri,
                              "tool (by namespace)", false,
-                             &pmix_ptl_base.created_session_tmpdir,
+                             NULL,
                              &pmix_ptl_base.created_nspace_filename,
                              &pmix_ptl_base.nspace_dirfd);
         if (PMIX_SUCCESS != rc) {

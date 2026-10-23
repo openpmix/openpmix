@@ -1189,6 +1189,16 @@ more roundabout than "stat then chmod" or "readdir then unlink".
   the directory's file system: a subdirectory on another device, or one
   that will not go when empty because something is mounted on it
   (`EBUSY`), is not descended into, and is left with everything above it.
+  `pmix_os_dirpath_destroy_at()` is the same with nothing resolved by
+  path: the caller holds the parent, names the directory within it, and
+  may pass the `struct stat` it recorded when it made the directory, so
+  a different directory now at the name is left alone, and the one made
+  is looked for under whatever name it has in that parent now. Hold a
+  descriptor on the directory until the call returns, or the identity
+  can pass to a new directory once a cleaner has removed it. Its callback is
+  asked about each entry relative to a descriptor too. Use it to remove
+  a directory you made: the path form re-resolves the parent at removal
+  time, and so misses a directory whose parent was renamed meanwhile.
 - **A trailing separator defeats `O_NOFOLLOW`.** `open("link/",
   O_DIRECTORY | O_NOFOLLOW)` opens the link's *target* on both Linux and
   macOS, because the separator makes the kernel resolve the final
@@ -1238,7 +1248,11 @@ Four contracts the callers depend on:
   it when the final directory was already there. Every in-tree caller
   tests for it alongside `PMIX_SUCCESS`; what the distinction buys them is knowing whether
   *they* are the ones who must remove it afterwards. A caller that tests
-  only `PMIX_SUCCESS != rc` treats an ordinary rerun as a failure.
+  only `PMIX_SUCCESS != rc` treats an ordinary rerun as a failure. That
+  holds when another process makes the final directory while the tree is
+  being built, too: the walk answers `PMIX_ERR_EXISTS` then, not success,
+  so two processes racing to make one directory do not both take it for
+  theirs.
   `PMIX_ERR_SILENT` means the user has already been shown a message and
   must not be shown another.
 - **An existing directory keeps its mode.** The `mode` argument
@@ -1290,12 +1304,12 @@ Four contracts the callers depend on:
 pattern to copy.** `pmix_os_dirpath_destroy()` includes
 `src/mca/ptl/base/base.h` and `src/server/pmix_server_ops.h` so it can
 decline to remove the system tmpdir unless PMIx created it - a policy
-decision living in a leaf utility. It used to go further and `free()`
+decision living in a leaf utility. No PMIx code reaches that guard any
+more - the ptl removes what it made with `pmix_os_dirpath_destroy_at()`
+- but a host's own call can. It used to go further and `free()`
 `pmix_ptl_base.system_tmpdir` on its way out, which aliased its own
-`path` argument (the one caller that reaches that arm passes exactly that
-string) and survived only because nothing read `path` again afterwards.
-`pmix_ptl_base_close()` frees it on the line after the call. Keep the
-release with the owner.
+`path` argument and survived only because nothing read `path` again
+afterwards. Keep the release with the owner.
 
 ### `pmix_fd` — descriptor helpers, three of them with no caller
 

@@ -819,8 +819,10 @@ was once broken:
     (`remove_rndz_file`, by the dev/ino in `rndz_dev`/`rndz_ino`), and
     the lock file only while it is the one we hold: another server can
     take a name from under us, and a tmp cleaner can remove a lock file,
-    which says nothing either way. A server that made the rendezvous
-    directory itself still removes the whole directory.
+    which says nothing either way. A directory the server made - the
+    rendezvous file's, or the system tmpdir - goes only if it is empty
+    after that (`remove_made_dir`): another server may have put its files
+    there.
   A search keeps a file whose lock is not GONE. Files larger than any
   server writes (`PMIX_PTL_MAX_CONN_FILE`) are not read, and every read
   of one (`pmix_ptl_base_getline`) comes out of a budget of that many

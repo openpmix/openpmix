@@ -179,15 +179,25 @@ socket - the first two steps below are the ``tcp`` transport's, in
    lock however the server exits.
    Readers find every tagged
    line by its tag; older readers stop before them. The ``pmix_ptl_base`` state struct
-   records (via its ``created_*`` flags) exactly which files and
-   directories this process created, so ``pmix_ptl_close`` can remove
-   precisely those at shutdown and nothing that belongs to a peer.
+   records (via its ``created_*`` flags and ``pmix_ptl_made_dir_t``
+   records) exactly which files and directories this process created, so
+   ``pmix_ptl_close`` can remove precisely those at shutdown and nothing
+   that belongs to a peer. Each is removed through a descriptor held on
+   the directory that holds it, and only if it is what was made - under
+   whatever name it has there by then - so a directory renamed while the
+   server runs, or one above it, is cleaned where it went. A directory
+   the server made - for a rendezvous file, or as the system tmpdir - is
+   removed only if it is empty once the server's own files are gone:
+   anything else in it is another process's, and another server may
+   share it.
 
 Beside the TCP listener, every server opens its **local socket** - the
 ``usock`` transport's, in ``src/mca/ptl/usock/ptl_usock.c``:
 
-#. **Make a directory of its own** with ``mkdtemp`` beneath the server's
-   temporary directory: ``<tmpdir>/pmix-XXXXXX``, mode 0700.
+#. **Make a directory of its own** beneath the server's temporary
+   directory: ``<tmpdir>/pmix-XXXXXX``, mode 0700, made with ``mkdirat``
+   through a descriptor held on the temporary directory, which must
+   already exist.
 #. **Bind** ``pmix-<pid>`` inside it, and give the socket its mode -
    0600 unless the host passed ``PMIX_SOCKET_MODE`` - and its owner and
    group (``PMIX_USERID``, ``PMIX_GRPID``; the group is the server's
@@ -203,7 +213,8 @@ The socket's path must fit an ``AF_UNIX`` address (about 100 characters):
 a long temporary directory - the default ``$TMPDIR`` on macOS is one - is
 an error, not a reason to fall back. Pass a shorter directory
 (``PMIX_SERVER_TMPDIR``). At finalize the server removes the socket and
-its directory; a server that is killed leaves them behind.
+its directory, through the descriptors it holds; a server that is killed
+leaves them behind.
 
 The local socket's URI reaches a client in its environment, as
 ``PMIX_SERVER_LOCAL_URI``, and a tool on the rendezvous file's ``local:``

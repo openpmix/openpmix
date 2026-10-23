@@ -39,7 +39,8 @@ The following attributes can be used to pass session directory information to th
 
 * ``PMIX_TDIR_RMCLEAN``: the host environment (often known as the "resource manager" or "RM") will
   cleanup the session directories. In the absence of this attribute, the PMIx library will
-  remove all files in any session directory it created and then remove the directory itself.
+  remove the files it wrote to any session directory it created, and then the directory itself
+  if nothing else is in it.
 
 These same attributes can be used in calls to ``PMIx_Get`` by application processes to retrieve
 the session directory locations for their own use.
@@ -66,6 +67,9 @@ always create all levels of the session directory tree, although the process
 itself can of course create directories as it sees fit. Only the directories that (a) are required
 for generating the particular rendezvous file, and (b) do not already exist are created. Only
 directories actually created by the library are cleaned up and removed upon finalization.
+A server's ``PMIX_SERVER_TMPDIR`` is not one of them: its local socket is made there before any
+rendezvous file is written, so the directory must already exist. A directory the library made is removed
+only once it is empty - another server may have put its own files there.
 
 The following rendezvous files are provided:
 
