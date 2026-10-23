@@ -645,9 +645,9 @@ static void server_teardown(void)
      * THIS FREE MUST STAY BELOW pmix_rte_finalize(). We only ever free
      * the string; the directory itself is removed by pmix_ptl_close(),
      * which runs inside pmix_rte_finalize() and does so only if it
-     * created the directory. But the second guard - the one in
-     * pmix_os_dirpath_destroy() - decides by comparing its path against
-     * THIS string, and reads a NULL here as "the caller has no system
+     * created the directory. But the guard in pmix_os_dirpath_destroy(),
+     * which a host's own cleanup can still reach, decides by comparing
+     * its path against THIS string, and reads a NULL here as "the caller has no system
      * tmpdir of its own", which is the ordinary case for a client or
      * tool and takes the *unconditional* rmdir arm. Freeing this while
      * any session-directory cleanup can still run would therefore turn

@@ -327,6 +327,47 @@ typedef bool (*pmix_os_dirpath_destroy_callback_fn_t)(const char *root, const ch
 PMIX_EXPORT int pmix_os_dirpath_destroy(const char *path, bool recursive,
                                         pmix_os_dirpath_destroy_callback_fn_t cbfunc);
 
+/**
+ * Callback for pmix_os_dirpath_destroy_at(). The same question as
+ * pmix_os_dirpath_destroy_callback_fn_t, asked of the entry `name` in the
+ * directory that dirfd refers to - so a callback that looks at the entry
+ * looks at it there, with fstatat() and the like, not through a path.
+ * @retval true  Allow the program to remove the file/directory
+ * @retval false Do not allow the program to remove the file/directory
+ */
+typedef bool (*pmix_os_dirpath_destroy_at_callback_fn_t)(int dirfd, const char *name);
+
+/**
+ * Destroy a directory named relative to a directory the caller holds.
+ * The same as pmix_os_dirpath_destroy(), except that nothing is resolved
+ * by path: a process that made a directory and kept a descriptor on its
+ * parent removes it from wherever that parent has come to be, and only if
+ * the name there still leads to the directory it made.
+ * @param parentfd  A descriptor on the directory holding it. Not closed.
+ * @param name      Its name there - a single component.
+ * @param expect    If not NULL, the directory as fstat() described it when
+ *                  the caller made it: anything else at the name is left
+ *                  alone, and the directory is looked for under whatever
+ *                  name it has in parentfd now. Hold a descriptor on it
+ *                  until this returns, so that what expect describes
+ *                  cannot be removed and another directory given its
+ *                  identity.
+ * @param recursive As for pmix_os_dirpath_destroy().
+ * @param cbfunc    As for pmix_os_dirpath_destroy(), but asked relative to
+ *                  a descriptor. If NULL, then assume all remove.
+ * @param display   The directory's path, for messages and nothing else.
+ *                  NULL means name.
+ * @retval PMIX_ERR_NOT_FOUND If nothing is at the name, or something other
+ *                    than expect is.
+ * @retval PMIX_ERR_BAD_PARAM If parentfd is negative, or name is not a
+ *                    single component, or is "." or "..".
+ * @retval Otherwise as for pmix_os_dirpath_destroy().
+ */
+PMIX_EXPORT int pmix_os_dirpath_destroy_at(int parentfd, const char *name,
+                                           const struct stat *expect, bool recursive,
+                                           pmix_os_dirpath_destroy_at_callback_fn_t cbfunc,
+                                           const char *display);
+
 END_C_DECLS
 
 #endif

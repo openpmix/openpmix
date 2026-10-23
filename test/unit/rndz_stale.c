@@ -50,6 +50,7 @@
 /* child exit codes */
 #define CHILD_OK       0 /* init succeeded */
 #define CHILD_INITFAIL 1 /* init failed */
+#define CHILD_NOTMADE  2 /* init succeeded, but not everything was made */
 
 #define SCHED_PREFIX "pmix.sched."
 
@@ -59,6 +60,9 @@ static char tmpdir[PMIX_PATH_MAX];
 static char moveddir[PMIX_PATH_MAX + 8];
 /* the name of the rendezvous file within its directory, once known */
 static const char *schedname = NULL;
+/* the cases in which the server makes its directories itself: 1 moves
+ * them all away, 2 puts another directory at the system tmpdir's name */
+static int made_case = 0;
 
 static pmix_server_module_t mymodule = {0};
 
@@ -154,6 +158,77 @@ static bool file_exists(const char *path)
     return (0 == stat(path, &buf));
 }
 
+/* the names in a directory, but for those listed in keep, joined by
+ * spaces - or NULL if there are none. A directory that is not there says
+ * so. Caller must free the result */
+static char *leftovers(const char *dir, const char *const keep[])
+{
+    DIR *dp;
+    struct dirent *entry;
+    char *list = NULL, *tmp;
+    size_t n;
+    bool kept;
+
+    dp = opendir(dir);
+    if (NULL == dp) {
+        return strdup("(the directory is gone)");
+    }
+    while (NULL != (entry = readdir(dp))) {
+        if (0 == strcmp(entry->d_name, ".") || 0 == strcmp(entry->d_name, "..")) {
+            continue;
+        }
+        kept = false;
+        for (n = 0; NULL != keep && NULL != keep[n]; n++) {
+            if (0 == strcmp(entry->d_name, keep[n])) {
+                kept = true;
+            }
+        }
+        if (kept) {
+            continue;
+        }
+        if (0 > asprintf(&tmp, "%s%s%s", (NULL == list) ? "" : list,
+                         (NULL == list) ? "" : " ", entry->d_name)) {
+            break;
+        }
+        free(list);
+        list = tmp;
+    }
+    closedir(dp);
+    return list;
+}
+
+/* whether a directory holds an entry whose name starts with prefix */
+static bool has_entry(const char *dir, const char *prefix)
+{
+    DIR *dp;
+    struct dirent *entry;
+    bool found = false;
+
+    dp = opendir(dir);
+    if (NULL == dp) {
+        return false;
+    }
+    while (!found && NULL != (entry = readdir(dp))) {
+        found = (0 == strncmp(entry->d_name, prefix, strlen(prefix)));
+    }
+    closedir(dp);
+    return found;
+}
+
+/* write a file holding a line, so it is not empty */
+static void plant_line(const char *dir, const char *name)
+{
+    char path[PMIX_PATH_MAX * 2];
+    FILE *fp;
+
+    snprintf(path, sizeof(path), "%s/%s", dir, name);
+    fp = fopen(path, "w");
+    if (NULL != fp) {
+        fprintf(fp, "not the server's\n");
+        fclose(fp);
+    }
+}
+
 /* attempt an init as the scheduler. If "clean" is false, we exit without
  * finalizing so our rendezvous file is left behind - i.e., we stand in
  * for a server that was killed */
@@ -183,6 +258,41 @@ static void child(bool clean)
     }
     if (!clean) {
         _exit(CHILD_OK);
+    }
+    if (2 == made_case) {
+        char dir[PMIX_PATH_MAX * 2], old[PMIX_PATH_MAX * 2];
+
+        snprintf(dir, sizeof(dir), "%s/my", tmpdir);
+        snprintf(old, sizeof(old), "%s/my.old", tmpdir);
+        if (0 != rename(dir, old) || 0 != mkdir(dir, 0700)) {
+            _exit(CHILD_INITFAIL);
+        }
+        plant_line(dir, "decoy");
+    } else if (1 == made_case) {
+        char dir[PMIX_PATH_MAX * 2];
+
+        /* everything the case is about was made: the socket's
+         * directory, the report file, the rendezvous file and the
+         * system one */
+        snprintf(dir, sizeof(dir), "%s/uri", tmpdir);
+        if (!has_entry(tmpdir, "pmix-") || !file_exists(dir)) {
+            _exit(CHILD_NOTMADE);
+        }
+        snprintf(dir, sizeof(dir), "%s/mr/rndz", tmpdir);
+        if (!file_exists(dir)) {
+            _exit(CHILD_NOTMADE);
+        }
+        snprintf(dir, sizeof(dir), "%s/my", tmpdir);
+        if (!has_entry(dir, SCHED_PREFIX)) {
+            _exit(CHILD_NOTMADE);
+        }
+        /* another server's file in the rendezvous directory this one
+         * made. Then the whole tree moves away */
+        snprintf(dir, sizeof(dir), "%s/mr", tmpdir);
+        plant_line(dir, "other");
+        if (0 != rename(tmpdir, moveddir)) {
+            _exit(CHILD_INITFAIL);
+        }
     }
     if (NULL != schedname) {
         /* move the directory away and put a decoy at the old name, so
@@ -251,30 +361,27 @@ static int run_child(bool clean)
     return WEXITSTATUS(status);
 }
 
+/* remove what the servers we killed left in the tmpdir: the directories
+ * their sockets are in */
+static void clear_killed(void)
+{
+    char cmd[PMIX_PATH_MAX * 2];
+
+    snprintf(cmd, sizeof(cmd), "rm -rf '%s'/pmix-*", tmpdir);
+    if (0 != system(cmd)) {
+        fprintf(stderr, "could not clear %s\n", tmpdir);
+    }
+}
+
 /* remove everything we (or a server we started) left in the tmpdir */
 static void cleanup(void)
 {
-    DIR *dp;
-    struct dirent *entry;
-    char *path;
+    char cmd[PMIX_PATH_MAX * 2];
 
-    dp = opendir(tmpdir);
-    if (NULL != dp) {
-        while (NULL != (entry = readdir(dp))) {
-            if (0 == strcmp(entry->d_name, ".") || 0 == strcmp(entry->d_name, "..")) {
-                continue;
-            }
-            if (0 > asprintf(&path, "%s/%s", tmpdir, entry->d_name)) {
-                continue;
-            }
-            if (0 != unlink(path)) {
-                rmdir(path);
-            }
-            free(path);
-        }
-        closedir(dp);
+    snprintf(cmd, sizeof(cmd), "rm -rf '%s'", tmpdir);
+    if (0 != system(cmd)) {
+        fprintf(stderr, "could not remove %s\n", tmpdir);
     }
-    rmdir(tmpdir);
 }
 
 int main(void)
@@ -513,6 +620,7 @@ int main(void)
 
         snprintf(moveddir, sizeof(moveddir), "%s.moved", tmpdir);
         schedname = strrchr(path, '/') + 1;
+        clear_killed();
         rc = run_child(true);
         schedname = NULL;
         snprintf(moved, sizeof(moved), "%s/%s", moveddir, strrchr(path, '/') + 1);
@@ -536,13 +644,102 @@ int main(void)
         }
         snprintf(moved, sizeof(moved), "%s/%s", moveddir, strrchr(path, '/') + 1);
         unlink(moved);
-        /* and what else the server made there - its session and socket
-         * directories, which finalize removes by name */
+        /* and nothing else the server made is left there either - its
+         * socket's directory included */
+        {
+            char *left = leftovers(moveddir, NULL);
+
+            report("nothing the server made is left in the moved directory", NULL == left,
+                   (NULL == left) ? "" : left);
+            free(left);
+        }
         snprintf(moved, sizeof(moved), "rm -rf '%s'", moveddir);
         if (0 != system(moved)) {
             fprintf(stderr, "could not remove %s\n", moveddir);
         }
         unlink(path);
+    }
+
+    /* The directories a server makes for itself - the system tmpdir, the
+     * rendezvous file's - and the report file it writes are removed at
+     * finalize from wherever they have come to be. The rendezvous
+     * directory and a tmpdir it made go only if nothing but the server's
+     * own files were in them */
+    {
+        char moved[PMIX_PATH_MAX * 2], *left;
+        const char *keep_top[] = {"mr", NULL};
+        const char *keep_rndz[] = {"other", NULL};
+
+        snprintf(moveddir, sizeof(moveddir), "%s.moved", tmpdir);
+        clear_killed();
+        snprintf(moved, sizeof(moved), "%s/my", tmpdir);
+        setenv("PMIX_SYSTEM_TMPDIR", moved, 1);
+        snprintf(moved, sizeof(moved), "%s/mr/rndz", tmpdir);
+        setenv("PMIX_LAUNCHER_RENDEZVOUS_FILE", moved, 1);
+        snprintf(moved, sizeof(moved), "%s/uri", tmpdir);
+        setenv("PMIX_MCA_ptl_base_report_uri", moved, 1);
+        made_case = 1;
+        rc = run_child(true);
+        made_case = 0;
+        unsetenv("PMIX_MCA_ptl_base_report_uri");
+        report("a server whose directories are moved away finalizes", CHILD_OK == rc,
+               (CHILD_NOTMADE == rc) ? "not everything was made" : "init failed");
+
+        /* nothing but the rendezvous directory, which holds another
+         * server's file, is left where the tmpdir went: not the socket's
+         * directory, not the report file, not the empty system tmpdir */
+        left = leftovers(moveddir, keep_top);
+        report("what it made is removed from where it went, the empty tmpdir it made included",
+               CHILD_OK == rc && NULL == left, (NULL == left) ? "" : left);
+        free(left);
+        snprintf(moved, sizeof(moved), "%s/mr", moveddir);
+        left = leftovers(moved, keep_rndz);
+        report("its rendezvous file is removed from the directory it made", NULL == left,
+               (NULL == left) ? "" : left);
+        free(left);
+        snprintf(moved, sizeof(moved), "%s/mr/other", moveddir);
+        report("...which is kept for another server's file", file_exists(moved),
+               "the directory was removed with another server's file in it");
+
+
+        snprintf(moved, sizeof(moved), "rm -rf '%s'", moveddir);
+        if (0 != system(moved)) {
+            fprintf(stderr, "could not remove %s\n", moveddir);
+        }
+        if (0 != mkdir(tmpdir, 0700)) {
+            fprintf(stderr, "could not remake %s\n", tmpdir);
+        }
+
+        /* A rendezvous directory and a tmpdir it made, with nothing else
+         * in them, go. And a directory now at a made directory's name is
+         * not the one made: it is left alone, and the one made is emptied
+         * of what the server put in it, and removed, under its new name */
+        snprintf(moved, sizeof(moved), "%s/mr2/rndz", tmpdir);
+        setenv("PMIX_LAUNCHER_RENDEZVOUS_FILE", moved, 1);
+        snprintf(moved, sizeof(moved), "%s/my", tmpdir);
+        setenv("PMIX_SYSTEM_TMPDIR", moved, 1);
+        made_case = 2;
+        rc = run_child(true);
+        made_case = 0;
+        unsetenv("PMIX_LAUNCHER_RENDEZVOUS_FILE");
+        setenv("PMIX_SYSTEM_TMPDIR", tmpdir, 1);
+        snprintf(moved, sizeof(moved), "%s/mr2", tmpdir);
+        report("an empty rendezvous directory it made is removed",
+               CHILD_OK == rc && !file_exists(moved), "still present");
+        snprintf(moved, sizeof(moved), "%s/my/decoy", tmpdir);
+        report("a directory now at a made one's name is left alone",
+               CHILD_OK == rc && file_exists(moved), "decoy was removed");
+        snprintf(moved, sizeof(moved), "%s/my.old", tmpdir);
+        report("...and the one made is removed under its new name",
+               CHILD_OK == rc && !file_exists(moved), "still present");
+        {
+            char cmd[PMIX_PATH_MAX * 3];
+
+            snprintf(cmd, sizeof(cmd), "rm -rf '%s/my' '%s/my.old'", tmpdir, tmpdir);
+            if (0 != system(cmd)) {
+                fprintf(stderr, "could not remove %s/my\n", tmpdir);
+            }
+        }
     }
 
     free(path);

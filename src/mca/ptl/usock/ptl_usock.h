@@ -25,6 +25,8 @@ typedef struct {
     /* the directory, held open: every change in it is made through this,
      * never by its path */
     int dfd;
+    /* and the directory holding it, through which it is removed */
+    int pdfd;
 } pmix_ptl_usock_component_t;
 
 PMIX_EXPORT extern pmix_ptl_usock_component_t pmix_mca_ptl_usock_component;

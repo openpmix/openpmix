@@ -34,6 +34,9 @@
 #ifdef HAVE_STRING_H
 #    include <string.h>
 #endif
+#ifdef HAVE_SYS_STAT_H
+#    include <sys/stat.h> /* for struct stat */
+#endif
 
 #include "src/class/pmix_pointer_array.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
@@ -64,6 +67,21 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_select(void);
  * the blocking and the event-driven connect make this many retries after
  * the first attempt */
 #define PMIX_MAX_RETRIES 10
+
+/* A directory this process made, held so that finalize removes it from
+ * wherever it has come to be: a descriptor on the directory holding it,
+ * its name there, one on the directory itself, and what that is. parentfd
+ * is -1 when there is nothing to remove - we did not make it, or could
+ * not hold it */
+typedef struct {
+    bool created;
+    int parentfd;
+    int fd;
+    char *name;
+    char *path;        // where it was made, for messages
+    struct stat st;
+} pmix_ptl_made_dir_t;
+#define PMIX_PTL_MADE_DIR_STATIC_INIT {.created = false, .parentfd = -1, .fd = -1, .name = NULL, .path = NULL}
 
 /* a transport in use, on pmix_ptl_base.actives in priority order */
 typedef struct {
@@ -139,10 +157,13 @@ struct pmix_ptl_base_t {
     char *nspace_filename;
     char *pid_filename;
     char *rendezvous_filename;
-    bool created_rendezvous_dir;
+    /* the directories we made for the rendezvous file and in place of
+     * the system tmpdir, if we made them. The session tmpdir is never
+     * ours: the local socket is made in it before any file is written,
+     * so it must already exist */
+    pmix_ptl_made_dir_t rendezvous_dir;
+    pmix_ptl_made_dir_t system_dir;
     bool created_rendezvous_file;
-    bool created_session_tmpdir;
-    bool created_system_tmpdir;
     bool created_sysctrlr_filename;
     bool created_scheduler_filename;
     bool created_system_filename;
@@ -160,6 +181,12 @@ struct pmix_ptl_base_t {
     int session_dirfd;
     int nspace_dirfd;
     int pid_dirfd;
+    /* the same for the report file, the file it was when we wrote it, and
+     * a descriptor on that file, which keeps its identity from passing to
+     * another */
+    int urifile_dirfd;
+    int urifile_fd;
+    struct stat urifile_st;
     /* the rendezvous files we wrote - the name, and the file it was when we
      * wrote it, which pmix_ptl_close removes only while it still is - and
      * the lock each holds beside it while we run, if it took one (-1 if
@@ -339,7 +366,9 @@ PMIX_EXPORT char *pmix_ptl_base_lock_name(const char *name);
 /* Take and hold the lock file for the rendezvous file `name` in dirfd:
  * our own, created 0600 if it is not there. The descriptor;
  * PMIX_PTL_LOCK_BUSY when another server holds it - a reader's moment
- * with it is waited out; or -1 when the name is not ours to use */
+ * with it is waited out; or -1 when the name is not ours to use, or the
+ * file system does not lock, in which case a lock file this call made,
+ * or one of ours there already, is removed */
 #define PMIX_PTL_LOCK_BUSY -2
 PMIX_EXPORT int pmix_ptl_base_take_lock(int dirfd, const char *name);
 
