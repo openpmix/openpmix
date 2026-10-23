@@ -41,6 +41,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_stdatomic.h"
+#include "src/mca/psec/psec.h"
 #include "src/mca/ptl/base/ptl_base_handshake.h"
 #include "src/mca/ptl/ptl.h"
 #include "src/util/pmix_fd.h"
@@ -93,6 +94,10 @@ struct pmix_ptl_base_t {
     bool server_expect_given;
     uid_t server_expect_uid;
     gid_t server_expect_gid;
+    /* whether a release before this one, if that is what the server's
+     * version says, may be believed of it - see
+     * pmix_ptl_base_check_server. Set with that version, for one connect */
+    bool server_release_vouched;
     char *server_access;
     uid_t *access_uids;
     size_t naccess_uids;
@@ -244,11 +249,19 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_use_local_env(const char *server, char *
 
 /* Whether the server at the far end of the peer's connection is one we
  * may talk to, by what the kernel reports for it - see server_expect_*
- * above. A connection on a transport whose far end the kernel does not
- * identify passes. A server that may not be talked to is reported, and
- * PMIX_ERR_INVALID_CRED returned */
+ * above. A server that may not be talked to is reported, and
+ * PMIX_ERR_INVALID_CRED returned.
+ *
+ * A tool connected over TCP to a server on this host, on a platform with
+ * no table of TCP connections to ask, gets *prove set: the server is to
+ * prove who it is, as one on another host does (pmix_ptl_base_auth_server),
+ * and PMIX_ERR_NOT_SUPPORTED, reported, if the tool has no mechanism that
+ * can. A server whose version is known to be of an earlier release has no
+ * such exchange, and passes - when that may be believed (`vouched`: see
+ * server_release_vouched). So does a client's server, and a server at an
+ * address that is not this host's - see pmix_ptl_base_server_remote */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_check_server(pmix_peer_t *peer, bool given, uid_t uid,
-                                                     gid_t gid);
+                                                     gid_t gid, bool vouched, bool *prove);
 
 /* Resolve the ptl_base_server_access value - "users=a:b,groups=c:d",
  * names or numbers - into pmix_ptl_base's lists. Reports and refuses an
@@ -275,6 +288,7 @@ typedef struct {
     char *local_uri; // the server's local transport's address, if its file listed one
     char *bfrops;    // the server's wire formats, if its file listed them
     char *psec;      // the server's security mechanisms, if its file listed them
+    bool vouched;    // an earlier release the version names may be believed
 } pmix_connection_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_connection_t);
 
@@ -378,6 +392,132 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_add_token(pmix_info_t **info, size_t *ni
  * address of one of this host's interfaces */
 PMIX_EXPORT bool pmix_ptl_base_addr_on_host(const struct sockaddr_storage *addr);
 
+/****    BETWEEN HOSTS    ****
+ *
+ * A tool and a server on different hosts authenticate each other, the
+ * server first, before the tool sends its connect-ack. The tool opens with
+ * a short message in the connect-ack's framing - the security mechanism
+ * it means to use, no credential, the connector flag PMIX_REMOTE_AUTH, its
+ * version, a nonce of its own, its uid, and a byte that says whether it
+ * binds the connection too (below; anything after that is a later
+ * release's, and ignored). The server answers with a status and,
+ * on success, a nonce of its own and a credential bound to both
+ * (create_bound, as a server). The tool checks that credential, and who
+ * it says the server is, and only then sends its connect-ack - whose
+ * credential is bound to the same two nonces, as a tool. The server takes
+ * no peer on another host that has not been through this, whatever its
+ * release or mechanism. See ptl_base_auth.c. Each nonce is
+ * PMIX_PTL_AUTH_NONCE_LEN (ptl_types.h) bytes.
+ *
+ * A tool runs the same exchange with a TCP server on its own host when
+ * its kernel cannot name the server's user - see
+ * pmix_ptl_base_check_server. Its opening says, after its uid, that it
+ * binds both credentials to the connection's two ends as well, which each
+ * end reads from its own socket: a connection relayed through a third
+ * process has other ends on each side. A server that takes tools answers
+ * such an opening from a peer at an address of its host whether or not
+ * it takes tools from others - where its own kernel cannot name its peers
+ * either, as it cannot when the tool's cannot */
+
+/* The bytes a credential made for one such connection is bound to: whose
+ * it is, the tool's nonce and the server's - and, when both ends are on
+ * one host, the connection's two ends (`conn`, from
+ * pmix_ptl_base_auth_conn; NULL otherwise). Caller frees bind->bytes */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_auth_bind(bool server, const unsigned char *tool,
+                                                  const unsigned char *srv, const char *conn,
+                                                  pmix_byte_object_t *bind);
+
+/* The two ends of the TCP connection on sd, the tool's first, as both
+ * ends see them when nothing stands between them: "addr,port;addr,port".
+ * `at_server` is which end sd is. An IPv4 end seen v4-mapped is written
+ * as IPv4 */
+#define PMIX_PTL_AUTH_CONN_LEN 128
+PMIX_EXPORT pmix_status_t pmix_ptl_base_auth_conn(int sd, bool at_server,
+                                                  char conn[PMIX_PTL_AUTH_CONN_LEN]);
+
+/* Whether a peer at this TCP address is on another host */
+PMIX_EXPORT bool pmix_ptl_base_tcp_peer_remote(const struct sockaddr_storage *addr);
+
+/* Whether an interface of this host holds the address now, by the kernel's
+ * own list (getifaddrs) - which names some the interface list made at init
+ * leaves out: an address added since, a secondary address on Linux, a
+ * point-to-point or link-local one on BSD. It decides only whether a tool
+ * and a server bind their connection (see "Between hosts" below): an
+ * address the kernel holds may still lead elsewhere, as a Kubernetes
+ * service address does, so it is not "this host" for anything else */
+PMIX_EXPORT bool pmix_ptl_base_addr_held(const struct sockaddr_storage *addr);
+
+/* ...that, or one on the interface list, for a TCP peer - and never with
+ * pmix_ptl_base_test_remote set */
+PMIX_EXPORT bool pmix_ptl_base_tcp_peer_held(const struct sockaddr_storage *addr);
+
+/* Whether the server at the far end of this socket is on another host:
+ * a TCP connection whose far end is not one of this host's addresses */
+PMIX_EXPORT bool pmix_ptl_base_server_remote(pmix_peer_t *peer);
+
+/* The tool's half, run once the socket to a server on another host is
+ * connected and before anything else is sent on it: choose the mechanism,
+ * have the server prove who it is, and check that it is a server we may
+ * talk to (see pmix_ptl_base_check_ids). On success *bind holds the bytes
+ * the tool's own credential is to be bound to - ours to free - and
+ * *srvuid the user the server proved it runs as, whom it is for. `local`
+ * is a server on this host the kernel cannot identify, which a failure
+ * is reported as */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_auth_server(pmix_peer_t *peer, bool given, uid_t uid,
+                                                    gid_t gid, bool local,
+                                                    pmix_byte_object_t *bind, uid_t *srvuid);
+
+/* The opening message for a server on another host, in *msg (ours to
+ * free) - see above. `bound`: we bind the connection's two ends into the
+ * credentials as well, as a tool on the server's host does */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_auth_request(const char *psec, const unsigned char *nonce,
+                                                     bool bound, char **msg, size_t *len);
+
+/* Check what a server on another host sent back for our opening: its
+ * credential, bound to our nonce and its - and, `local`, to the
+ * connection - and the identity it proves. On success *bind holds the
+ * bytes our own credential is to be bound to */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_auth_reply(pmix_peer_t *peer, bool given, uid_t uid,
+                                                   gid_t gid, bool local,
+                                                   const unsigned char *tool,
+                                                   const unsigned char *srv,
+                                                   const pmix_byte_object_t *cred,
+                                                   pmix_byte_object_t *bind, uid_t *srvuid);
+
+/* Report that a server on another host - or, `local`, one on this host
+ * the kernel cannot identify - would not prove who it is, as a server of
+ * an earlier release, or one that takes no tools from other hosts, will
+ * not: with `why`, its answer or our failure to read one */
+PMIX_EXPORT void pmix_ptl_base_auth_refused(pmix_peer_t *peer, const char *psec, bool local,
+                                            pmix_status_t why);
+
+/* The security mechanism for a server on another host: the one chosen
+ * for it, if that can, else the highest of ours that can - set on the
+ * server's peer. Reported, and NULL, if none can */
+PMIX_EXPORT pmix_psec_module_t *pmix_ptl_base_auth_module(pmix_peer_t *peer);
+
+/* Whether a server that is uid and gid - by what the kernel reports, or,
+ * on another host (`remote`), by what its credential proves - is one we
+ * may talk to: the identity we were given for it, if we were, else our
+ * own user, root, or one ptl_base_server_access allows. Reported, and
+ * PMIX_ERR_INVALID_CRED returned, if not */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_check_ids(uid_t kuid, gid_t kgid, bool given, uid_t uid,
+                                                  gid_t gid, bool remote);
+
+/* A status a server sent in a reply: one a connect uses to say how it is
+ * going never comes from a server, and is refused; a server asking for a
+ * security handshake is refused as this library runs none */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_server_status(uint32_t u32);
+
+/* For the unit tests alone: treat every peer of a TCP connection as on
+ * another host. Nothing outside a test's own code sets it */
+PMIX_EXPORT extern bool pmix_ptl_base_test_remote;
+
+/* For the unit tests alone: take this platform to have no table of TCP
+ * connections, so the kernel names no TCP server's user. Nothing outside
+ * a test's own code sets it */
+PMIX_EXPORT extern bool pmix_ptl_base_test_no_tcp_table;
+
 /* Every socket PMIx creates or accepts is the library's alone: it is set
  * close-on-exec, so a program the process execs - or a child it forks
  * and execs - does not inherit a connection it cannot use, and keep it
@@ -401,6 +541,12 @@ PMIX_EXPORT void pmix_ptl_base_start_listening(void);
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
 PMIX_EXPORT void pmix_ptl_base_drop_pending_connection(pmix_pending_connection_t *pnd,
                                                        pmix_status_t why);
+/* Wait, without blocking, for a connection's connect-ack: put it on the
+ * pending list, arm the connect-ack timer and the read event. For one just
+ * accepted; and, with `resume`, for a peer on another host whose server
+ * has just proved who it is - which gets only what is left of the timeout
+ * that began when it arrived, and its place among the others by arrival */
+PMIX_EXPORT void pmix_ptl_base_await_connect_ack(pmix_pending_connection_t *pnd, bool resume);
 /* What the listener does when accept() on lt fails with err: nothing for an
  * error that concerns only the connection, a pause and a retry a second
  * later for anything else, and a stop once the retries of an error that

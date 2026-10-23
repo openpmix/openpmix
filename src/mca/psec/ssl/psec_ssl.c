@@ -38,6 +38,23 @@
  *   chain                       PEM certificates, leaf first
  *   signature length            uint32
  *   signature                   over every byte before the signature length
+ *
+ * A tool on another host and its server authenticate each other with a
+ * credential made for their one connection (create_bound/validate_bound).
+ * It also signs whose it is and the bytes it is bound to, after the nonce:
+ *
+ *   "PMIXSSL2"                  8 bytes
+ *   uid, gid, time, nonce       as above
+ *   role                        uint8: 1 a server's, 0 a tool's
+ *   bind length                 uint32
+ *   bind                        the bytes both ends of the connection know
+ *   chain length, chain         as above
+ *   signature length, signature as above
+ *
+ * A server's certificate must allow server authentication, and a tool's
+ * client authentication, where they restrict their key's use. Each format
+ * is accepted only where it is expected: a bound credential is never a
+ * PMIx_Validate_credential one, nor the reverse.
  */
 
 #include "src/include/pmix_config.h"
@@ -96,6 +113,11 @@ static bool validates(void);
 static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
                                    size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                    const pmix_byte_object_t *cred);
+static pmix_status_t create_bound(const pmix_byte_object_t *bind, bool server, uid_t to,
+                                  pmix_byte_object_t *cred);
+static pmix_status_t validate_bound(const pmix_byte_object_t *bind, bool server,
+                                    const pmix_byte_object_t *cred, uid_t *uid, gid_t *gid);
+static bool mutual(void);
 
 pmix_psec_module_t pmix_ssl_module = {.name = "ssl",
                                       .init = ssl_init,
@@ -103,21 +125,30 @@ pmix_psec_module_t pmix_ssl_module = {.name = "ssl",
                                       .create_cred = create_cred,
                                       .validate_cred = validate_cred,
                                       .validates = validates,
-                                      .remote = true};
+                                      .create_bound = create_bound,
+                                      .validate_bound = validate_bound,
+                                      .mutual = mutual};
 
-#define SSL_MAGIC     "PMIXSSL1"
-#define SSL_MAGIC_LEN 8
-#define SSL_NONCE_LEN 16
-#define SSL_OFF_UID   (SSL_MAGIC_LEN)
-#define SSL_OFF_GID   (SSL_OFF_UID + 4)
-#define SSL_OFF_TIME  (SSL_OFF_GID + 4)
-#define SSL_OFF_NONCE (SSL_OFF_TIME + 8)
-#define SSL_OFF_CHAIN (SSL_OFF_NONCE + SSL_NONCE_LEN)
-#define SSL_HDR_LEN   (SSL_OFF_CHAIN + 4)
+#define SSL_MAGIC       "PMIXSSL1"
+#define SSL_MAGIC_BOUND "PMIXSSL2"
+#define SSL_MAGIC_LEN   8
+#define SSL_NONCE_LEN   16
+#define SSL_OFF_UID     (SSL_MAGIC_LEN)
+#define SSL_OFF_GID     (SSL_OFF_UID + 4)
+#define SSL_OFF_TIME    (SSL_OFF_GID + 4)
+#define SSL_OFF_NONCE   (SSL_OFF_TIME + 8)
+/* PMIXSSL1: the chain's length follows the nonce */
+#define SSL_OFF_CHAIN   (SSL_OFF_NONCE + SSL_NONCE_LEN)
+#define SSL_HDR_LEN     (SSL_OFF_CHAIN + 4)
+/* PMIXSSL2: the role and the bound bytes come first */
+#define SSL_OFF_ROLE    (SSL_OFF_NONCE + SSL_NONCE_LEN)
+#define SSL_OFF_BINDLEN (SSL_OFF_ROLE + 1)
+#define SSL_OFF_BIND    (SSL_OFF_BINDLEN + 4)
 /* bounds on what a peer may hand us - well inside PMIX_MAX_CRED_SIZE */
 #define SSL_MAX_CHAIN (64 * 1024)
 #define SSL_MAX_SIG   2048
 #define SSL_MAX_CERTS 10
+#define SSL_MAX_BIND  256
 /* the longest private-key or certificate file we will read */
 #define SSL_MAX_FILE  (256 * 1024)
 
@@ -450,6 +481,13 @@ static bool validates(void)
     return NULL != trust;
 }
 
+/* each end of a connection between hosts both proves who it is and checks
+ * who the other is */
+static bool mutual(void)
+{
+    return NULL != mykey && NULL != trust;
+}
+
 static void ssl_finalize(void)
 {
     pmix_output_verbose(2, pmix_psec_base_framework.framework_output, "psec: ssl finalize");
@@ -458,36 +496,35 @@ static void ssl_finalize(void)
 
 /* ------------------------------------------------------------------ */
 
-static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
-                                 size_t ndirs, pmix_info_t **info, size_t *ninfo,
-                                 pmix_byte_object_t *cred)
+/* Sign a statement of who we are. With `bind`, it is a bound credential
+ * (PMIXSSL2) carrying those bytes and whether we make it as a server */
+static pmix_status_t make_statement(const pmix_byte_object_t *bind, bool server,
+                                    pmix_byte_object_t *cred)
 {
     unsigned char *buf = NULL;
-    size_t signedlen, siglen = 0;
+    size_t off, signedlen, siglen = 0;
     EVP_MD_CTX *md = NULL;
     pmix_status_t rc = PMIX_ERROR;
 
-    PMIX_HIDE_UNUSED_PARAMS(peer);
-
-    pmix_output_verbose(2, pmix_psec_base_framework.framework_output, "psec: ssl create_cred");
-
     PMIX_BYTE_OBJECT_CONSTRUCT(cred);
-
-    if (!pmix_psec_base_check_directives("ssl", directives, ndirs)) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
     if (NULL == mykey) {
         /* we can check other people's credentials but have none of our
          * own - no cert_file/key_file was given */
         return PMIX_ERR_NOT_SUPPORTED;
     }
+    if (NULL != bind && (NULL == bind->bytes || 0 == bind->size || SSL_MAX_BIND < bind->size)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
-    signedlen = SSL_HDR_LEN + mychainlen;
+    signedlen = SSL_OFF_NONCE + SSL_NONCE_LEN + 4 + mychainlen;
+    if (NULL != bind) {
+        signedlen += 1 + 4 + bind->size;
+    }
     buf = (unsigned char *) malloc(signedlen + 4 + SSL_MAX_SIG);
     if (NULL == buf) {
         return PMIX_ERR_NOMEM;
     }
-    memcpy(buf, SSL_MAGIC, SSL_MAGIC_LEN);
+    memcpy(buf, (NULL == bind) ? SSL_MAGIC : SSL_MAGIC_BOUND, SSL_MAGIC_LEN);
     put_u32(buf + SSL_OFF_UID, (uint32_t) geteuid());
     put_u32(buf + SSL_OFF_GID, (uint32_t) getegid());
     put_u64(buf + SSL_OFF_TIME, (uint64_t) time(NULL));
@@ -495,8 +532,15 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
         drain_errors("generating a nonce");
         goto done;
     }
-    put_u32(buf + SSL_OFF_CHAIN, (uint32_t) mychainlen);
-    memcpy(buf + SSL_HDR_LEN, mychain, mychainlen);
+    off = SSL_OFF_NONCE + SSL_NONCE_LEN;
+    if (NULL != bind) {
+        buf[off] = server ? 1 : 0;
+        put_u32(buf + off + 1, (uint32_t) bind->size);
+        memcpy(buf + off + 5, bind->bytes, bind->size);
+        off += 5 + bind->size;
+    }
+    put_u32(buf + off, (uint32_t) mychainlen);
+    memcpy(buf + off + 4, mychain, mychainlen);
 
     md = EVP_MD_CTX_new();
     if (NULL == md ||
@@ -508,16 +552,6 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
         goto done;
     }
     put_u32(buf + signedlen, (uint32_t) siglen);
-
-    if (NULL != info) {
-        PMIX_INFO_CREATE(*info, 1);
-        if (NULL == *info) {
-            rc = PMIX_ERR_NOMEM;
-            goto done;
-        }
-        *ninfo = 1;
-        PMIX_INFO_LOAD(&(*info)[0], PMIX_CRED_TYPE, "ssl", PMIX_STRING);
-    }
     cred->bytes = (char *) buf;
     cred->size = signedlen + 4 + siglen;
     buf = NULL;
@@ -529,6 +563,52 @@ done:
     }
     free(buf);
     return rc;
+}
+
+static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
+                                 size_t ndirs, pmix_info_t **info, size_t *ninfo,
+                                 pmix_byte_object_t *cred)
+{
+    pmix_status_t rc;
+
+    PMIX_HIDE_UNUSED_PARAMS(peer);
+
+    pmix_output_verbose(2, pmix_psec_base_framework.framework_output, "psec: ssl create_cred");
+
+    PMIX_BYTE_OBJECT_CONSTRUCT(cred);
+
+    if (!pmix_psec_base_check_directives("ssl", directives, ndirs)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    rc = make_statement(NULL, false, cred);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    if (NULL != info) {
+        PMIX_INFO_CREATE(*info, 1);
+        if (NULL == *info) {
+            PMIX_BYTE_OBJECT_DESTRUCT(cred);
+            return PMIX_ERR_NOMEM;
+        }
+        *ninfo = 1;
+        PMIX_INFO_LOAD(&(*info)[0], PMIX_CRED_TYPE, "ssl", PMIX_STRING);
+    }
+    return PMIX_SUCCESS;
+}
+
+/* a certificate's statement can be checked by anyone who trusts its CA,
+ * so `to` is not used */
+static pmix_status_t create_bound(const pmix_byte_object_t *bind, bool server, uid_t to,
+                                  pmix_byte_object_t *cred)
+{
+    PMIX_HIDE_UNUSED_PARAMS(to);
+    pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
+                        "psec: ssl create_bound as a %s", server ? "server" : "tool");
+    if (NULL == bind) {
+        PMIX_BYTE_OBJECT_CONSTRUCT(cred);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    return make_statement(bind, server, cred);
 }
 
 /* The certificate names its user in its subject's common name, and that
@@ -634,14 +714,19 @@ static bool first_use(const unsigned char *nonce, int64_t when, int64_t now)
         goto done;                                                             \
     } while (0)
 
-static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
-                                   size_t ndirs, pmix_info_t **info, size_t *ninfo,
-                                   const pmix_byte_object_t *cred)
+/* Everything a credential is checked for, but whom it must match: its
+ * framing, its chain, its signature, the user it may claim and its time.
+ * With `bind`, it must be a bound credential (PMIXSSL2) carrying exactly
+ * those bytes, made as a server if `server`; without, a PMIXSSL1 one. On
+ * success it says the identity, the time and where the nonce is */
+static pmix_status_t check_statement(const pmix_byte_object_t *cred,
+                                     const pmix_byte_object_t *bind, bool server,
+                                     uid_t *uidout, gid_t *gidout, int64_t *whenout,
+                                     const unsigned char **nonceout)
 {
-    pmix_peer_t *pr = (pmix_peer_t *) peer;
     const unsigned char *p;
-    uint32_t chainlen, siglen, u32;
-    size_t signedlen;
+    uint32_t chainlen, siglen, bindlen;
+    size_t off, signedlen;
     uid_t uid, certuid;
     gid_t gid;
     int64_t when, now, skew;
@@ -654,32 +739,42 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     int ncerts = 0;
     pmix_status_t rc = PMIX_ERR_INVALID_CRED;
 
-    pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                        "psec: ssl validate_cred %s", (NULL == cred) ? "NULL" : "NON-NULL");
-
-    if (!pmix_psec_base_check_directives("ssl", directives, ndirs)) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-    if (NULL == trust) {
-        /* we can make credentials but were given no CA to check anyone
-         * else's against */
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
     /* the framing - every length came from the peer */
-    if (NULL == cred || NULL == cred->bytes || SSL_HDR_LEN + 4 > cred->size) {
+    if (NULL == cred || NULL == cred->bytes || SSL_OFF_NONCE + SSL_NONCE_LEN + 4 > cred->size) {
         return PMIX_ERR_INVALID_CRED;
     }
     p = (const unsigned char *) cred->bytes;
-    if (0 != memcmp(p, SSL_MAGIC, SSL_MAGIC_LEN)) {
+    if (0 != memcmp(p, (NULL == bind) ? SSL_MAGIC : SSL_MAGIC_BOUND, SSL_MAGIC_LEN)) {
         return PMIX_ERR_INVALID_CRED;
     }
-    chainlen = get_u32(p + SSL_OFF_CHAIN);
-    if (0 == chainlen || SSL_MAX_CHAIN < chainlen ||
-        cred->size - SSL_HDR_LEN - 4 < chainlen) {
+    off = SSL_OFF_NONCE + SSL_NONCE_LEN;
+    if (NULL != bind) {
+        /* whose it is, and the bytes it is bound to */
+        if (SSL_OFF_BIND + 4 > cred->size) {
+            return PMIX_ERR_INVALID_CRED;
+        }
+        if ((server ? 1 : 0) != p[SSL_OFF_ROLE]) {
+            pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
+                                "psec:ssl: credential refused: made as a %s",
+                                (1 == p[SSL_OFF_ROLE]) ? "server" : "tool");
+            return PMIX_ERR_INVALID_CRED;
+        }
+        bindlen = get_u32(p + SSL_OFF_BINDLEN);
+        if (bindlen != bind->size || cred->size - SSL_OFF_BIND - 4 < bindlen ||
+            0 != memcmp(p + SSL_OFF_BIND, bind->bytes, bind->size)) {
+            pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
+                                "psec:ssl: credential refused: made for another connection");
+            return PMIX_ERR_INVALID_CRED;
+        }
+        off = SSL_OFF_BIND + bindlen;
+    }
+    chainlen = get_u32(p + off);
+    off += 4;
+    if (0 == chainlen || SSL_MAX_CHAIN < chainlen || cred->size - off < 4 ||
+        cred->size - off - 4 < chainlen) {
         return PMIX_ERR_INVALID_CRED;
     }
-    signedlen = SSL_HDR_LEN + chainlen;
+    signedlen = off + chainlen;
     siglen = get_u32(p + signedlen);
     if (0 == siglen || SSL_MAX_SIG < siglen || signedlen + 4 + siglen != cred->size) {
         return PMIX_ERR_INVALID_CRED;
@@ -690,7 +785,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
 
     /* the chain: the first certificate is the peer's, the rest are
      * intermediates it offers - untrusted until they lead to a CA of ours */
-    in = BIO_new_mem_buf(p + SSL_HDR_LEN, (int) chainlen);
+    in = BIO_new_mem_buf(p + off, (int) chainlen);
     chain = sk_X509_new_null();
     if (NULL == in || NULL == chain) {
         rc = PMIX_ERR_NOMEM;
@@ -719,9 +814,11 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
         rc = PMIX_ERR_NOMEM;
         goto done;
     }
-    /* a certificate issued for authenticating clients: if it restricts
-     * its key's use, it has to allow this one */
-    X509_STORE_CTX_set_purpose(ctx, X509_PURPOSE_SSL_CLIENT);
+    /* a certificate issued for authenticating clients - or, for a server
+     * proving itself to a tool, servers: if it restricts its key's use, it
+     * has to allow this one */
+    X509_STORE_CTX_set_purpose(ctx, (NULL != bind && server) ? X509_PURPOSE_SSL_SERVER
+                                                             : X509_PURPOSE_SSL_CLIENT);
     if (1 != X509_verify_cert(ctx)) {
         pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
                             "psec:ssl: certificate refused: %s",
@@ -752,11 +849,64 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
         REFUSE("the credential claims a group its user does not hold");
     }
 
-    /* recent enough to still be accepted, and not already used */
+    /* recent enough to still be accepted */
     now = (int64_t) time(NULL);
     skew = pmix_psec_ssl_params.max_skew;
     if (now - when > skew || when - now > skew) {
         REFUSE("the credential is outside the accepted time window");
+    }
+
+    *uidout = uid;
+    *gidout = gid;
+    *whenout = when;
+    *nonceout = p + SSL_OFF_NONCE;
+    rc = PMIX_SUCCESS;
+
+done:
+    if (NULL != md) {
+        EVP_MD_CTX_free(md);
+    }
+    if (NULL != ctx) {
+        X509_STORE_CTX_free(ctx);
+    }
+    if (NULL != leaf) {
+        X509_free(leaf);
+    }
+    if (NULL != chain) {
+        sk_X509_pop_free(chain, X509_free);
+    }
+    if (NULL != in) {
+        BIO_free(in);
+    }
+    return rc;
+}
+
+static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
+                                   size_t ndirs, pmix_info_t **info, size_t *ninfo,
+                                   const pmix_byte_object_t *cred)
+{
+    pmix_peer_t *pr = (pmix_peer_t *) peer;
+    const unsigned char *nonce;
+    uint32_t u32;
+    uid_t uid;
+    gid_t gid;
+    int64_t when;
+    pmix_status_t rc;
+
+    pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
+                        "psec: ssl validate_cred %s", (NULL == cred) ? "NULL" : "NON-NULL");
+
+    if (!pmix_psec_base_check_directives("ssl", directives, ndirs)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    if (NULL == trust) {
+        /* we can make credentials but were given no CA to check anyone
+         * else's against */
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    rc = check_statement(cred, NULL, false, &uid, &gid, &when, &nonce);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
     }
 
     /* the same comparison every mechanism makes with what the peer was
@@ -772,7 +922,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
         }
     }
 
-    if (!first_use(p + SSL_OFF_NONCE, when, now)) {
+    if (!first_use(nonce, when, (int64_t) time(NULL))) {
         REFUSE("the credential has been used before");
     }
 
@@ -794,20 +944,37 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     rc = PMIX_SUCCESS;
 
 done:
-    if (NULL != md) {
-        EVP_MD_CTX_free(md);
+    return rc;
+}
+
+static pmix_status_t validate_bound(const pmix_byte_object_t *bind, bool server,
+                                    const pmix_byte_object_t *cred, uid_t *uid, gid_t *gid)
+{
+    const unsigned char *nonce;
+    uid_t u;
+    gid_t g;
+    int64_t when;
+    pmix_status_t rc;
+
+    pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
+                        "psec: ssl validate_bound from a %s", server ? "server" : "tool");
+    if (NULL == bind || NULL == bind->bytes || 0 == bind->size) {
+        return PMIX_ERR_BAD_PARAM;
     }
-    if (NULL != ctx) {
-        X509_STORE_CTX_free(ctx);
+    if (NULL == trust) {
+        return PMIX_ERR_NOT_SUPPORTED;
     }
-    if (NULL != leaf) {
-        X509_free(leaf);
+    rc = check_statement(cred, bind, server, &u, &g, &when, &nonce);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
     }
-    if (NULL != chain) {
-        sk_X509_pop_free(chain, X509_free);
+    if (!first_use(nonce, when, (int64_t) time(NULL))) {
+        REFUSE("the credential has been used before");
     }
-    if (NULL != in) {
-        BIO_free(in);
-    }
+    *uid = u;
+    *gid = g;
+    rc = PMIX_SUCCESS;
+
+done:
     return rc;
 }

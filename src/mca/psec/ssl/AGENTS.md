@@ -30,10 +30,10 @@ signature machinery.
 |------|----------|
 | `psec_ssl.h` | Component and module symbols; the MCA parameter struct. |
 | `psec_ssl_component.c` | Component struct, parameter registration, `component_query`. |
-| `psec_ssl.c` | The module: key/chain/CA loading, `create_cred`, `validate_cred`, the replay list. |
+| `psec_ssl.c` | The module: key/chain/CA loading, `create_cred`/`validate_cred`, `create_bound`/`validate_bound`/`mutual` (between hosts), the shared `make_statement`/`check_statement`, the replay list. |
 | `testbuild_ssl.h` | Non-functional OpenSSL stand-in for `--enable-test-build`. Every call fails. |
 | `help-psec-ssl.txt` | Configuration errors: unreadable files, an exposed or encrypted key, a key that is not the certificate's. |
-| `configure.m4` | Opt-in `--with-openssl[=DIR]`; defines `PMIX_HAVE_PSEC_SSL` for the unit test. |
+| `configure.m4` | Opt-in `--with-openssl[=DIR]`; defines `PMIX_HAVE_PSEC_SSL` for the unit tests, only when the component is built against the real library. |
 
 ## When it is built, and when it is selected
 
@@ -54,9 +54,13 @@ signature machinery.
   `validates` hook keeps `ssl` off the list a server advertises
   (`pmix_psec_base_get_accepted_modules()`).
 - **Priority 5**, below `native`'s 10. A process that says nothing keeps
-  authenticating local peers with `native`; a remote tool asks for `ssl`
-  by name (`PMIX_MCA_psec=ssl` or `PMIX_SECURITY_MODE=ssl`), and a server
-  with a CA configured accepts it per peer.
+  authenticating local peers with `native`. A tool connecting to a server
+  on another host takes `ssl` itself when it can
+  (`pmix_psec_base_remote_module`), and a server accepts it per peer.
+- **Between hosts it needs all three on each end** (`mutual`): a
+  certificate and key to prove who this end is, and a CA to check the
+  other. A server asked for remote connections with less fails its init;
+  a tool with less does not use `ssl` for a server on another host.
 
 ## The credential
 
@@ -82,10 +86,26 @@ except Ed25519/Ed448, which hash internally and must be handed no digest
 it parsed rather than sending the file's bytes, so nothing but
 certificates goes on the wire.
 
+A credential made for one connection between hosts (`create_bound`) is
+`PMIXSSL2`: the same, with whose it is and the bytes it is bound to
+signed after the nonce:
+
+```
+"PMIXSSL2"        8 bytes
+uid, gid, time, nonce   as above
+role              uint8: 1 a server's, 0 a tool's
+bind length       uint32 (at most 256)
+bind              the bytes ptl gives - see "Between hosts" in the framework AGENTS.md
+chain length, chain, signature length, signature   as above
+```
+
+Each format is accepted only where it is expected: `validate_cred`
+refuses a `PMIXSSL2` credential and `validate_bound` a `PMIXSSL1` one.
+
 **This format is a wire contract.** A tool and a server may be different
-releases. `test/unit/psec_ssl_auth.c` builds its credentials by hand from
-the layout above, so a change to it fails that test's good cases as well
-as its bad ones — that is deliberate. Extend by bumping the magic, never
+releases. `test/unit/psec_ssl_auth.c` builds its credentials, of both
+formats, by hand from the layouts above, so a change to either fails
+that test's good cases as well as its bad ones — that is deliberate. Extend by bumping the magic, never
 by reinterpreting a field.
 
 ## What `validate_cred` checks, in order
@@ -96,7 +116,11 @@ by reinterpreting a field.
 2. **The chain** leads to a CA in `psec_ssl_ca_file`, with the
    intermediates the peer supplied treated as untrusted. The purpose is
    `X509_PURPOSE_SSL_CLIENT`, so a certificate whose extended key usage
-   is only `serverAuth` is refused. With `psec_ssl_crl_file`,
+   is only `serverAuth` is refused - except for a server's bound
+   credential, whose purpose is `X509_PURPOSE_SSL_SERVER`: a certificate
+   whose key usage is only `clientAuth` proves no server. A bound
+   credential must also carry exactly the expected bytes, as the
+   expected role, before anything else is read from it. With `psec_ssl_crl_file`,
    `X509_V_FLAG_CRL_CHECK` is set — which also means a leaf whose
    issuer has *no* CRL in the file is refused.
 3. **The signature** is the leaf's.
@@ -114,6 +138,10 @@ by reinterpreting a field.
 7. **The nonce** has not been seen. This runs **last**, so nothing that
    failed an earlier check ever reaches the replay list — which is
    therefore bounded by what authenticated peers can send.
+
+`check_statement()` does steps 1-5 for both formats; `validate_cred`
+adds 6 and 7, and `validate_bound` adds 7 and returns the identity for
+ptl to compare.
 
 The replay list keeps each nonce for `2 * max_skew` seconds, which is the
 whole span a credential could be accepted in. It has its own mutex,
@@ -137,9 +165,9 @@ So:
 
 | Parameter | Meaning |
 |-----------|---------|
-| `psec_ssl_ca_file` | PEM CAs a peer's certificate must chain to. Needed to *accept* ssl connections. |
+| `psec_ssl_ca_file` | PEM CAs a peer's certificate must chain to. Needed to *accept* ssl connections, and by a tool to check a server on another host. |
 | `psec_ssl_crl_file` | PEM CRLs; enables revocation checking. |
-| `psec_ssl_cert_file` | This process's certificate, then any intermediates. Needed to *connect* with ssl. |
+| `psec_ssl_cert_file` | This process's certificate, then any intermediates. Needed to *connect* with ssl, and by a server to prove who it is to a tool on another host. |
 | `psec_ssl_key_file` | Its private key: PEM, unencrypted, owned by this process's user and not accessible to group or others (refused otherwise, as ssh refuses one). |
 | `psec_ssl_max_skew` | Seconds either side of now a credential stays valid (default 300). |
 | `psec_ssl_priority` | Default 5. |
@@ -150,13 +178,14 @@ because OpenSSL's default reads the terminal.
 
 ## Properties of the mechanism
 
-- **Credentials name no target server.** A credential is accepted by any
-  server that trusts its CA, within the time window; each server's
-  replay list refuses a nonce it has already seen. Naming a target would
-  need the server's name passed into `create_cred`, which `ptl` does not
-  do today.
-- **Authentication is one-way.** The server authenticates the tool; the
-  tool does not authenticate the server.
+- **A `PMIXSSL1` credential names no connection.** One from
+  `create_cred` - `PMIx_Get_credential` - is accepted by any validator
+  that trusts its CA, within the time window; each validator's replay
+  list refuses a nonce it has already seen. Between hosts ptl uses
+  `PMIXSSL2` instead, bound to the connection's two nonces.
+- **Between hosts, authentication is mutual, the server first.** On one
+  host the tool checks the server by what the kernel says of it, and
+  the server checks the tool with `native`.
 
 ## Testing
 
@@ -165,6 +194,10 @@ root and a set of leaves at run time, then checks every refusal above
 with a credential that gets exactly one thing wrong, plus a round trip of
 the module's own credentials with an EC and an Ed25519 key, every
 truncation of a good credential, revocation, and the refusal to start
-with an exposed key. Each check in `validate_cred` was disabled in turn
+with an exposed key. It also makes and checks bound credentials: as
+each role, with bytes of their own and another's, presented twice, in
+the other format, cut short, and from a certificate for clients only as
+a server's. `test/unit/ptl_remote_auth.c` runs the whole exchange, tool
+and server, with a PKI of its own. Each check in `validate_cred` was disabled in turn
 and its case failed. The test is built only where `PMIX_HAVE_PSEC_SSL`
 is true — never against the shim.

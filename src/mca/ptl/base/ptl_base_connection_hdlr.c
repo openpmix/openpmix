@@ -22,6 +22,7 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_stdint.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
@@ -44,6 +45,7 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_getid.h"
 #include "src/util/pmix_net.h"
+#include "src/util/pmix_random_bytes.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_strnlen.h"
 
@@ -142,6 +144,56 @@ static pmix_peer_t *scratch_peer(pmix_pending_connection_t *pnd, const char *nsp
     return peer;
 }
 
+/* A peer on another host, to which this server has proved who it is:
+ * its credential must have been made for that exchange, as a tool's, with
+ * the mechanism the exchange used - and say the identity it claimed */
+static pmix_status_t validate_bound(pmix_pending_connection_t *pnd)
+{
+    pmix_psec_module_t *psec = (pmix_psec_module_t *) pnd->psecmod;
+    pmix_peer_t *peer = (pmix_peer_t *) pnd->peer;
+    pmix_byte_object_t bind, cred;
+    char conn[PMIX_PTL_AUTH_CONN_LEN];
+    uid_t uid;
+    gid_t gid;
+    pmix_status_t rc;
+
+    if (psec != pnd->authmod || NULL == psec->validate_bound) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: refusing a peer at %s - it names security mechanism "
+                            "\"%s\", not the one this server proved who it is with",
+                            pmix_net_get_hostname((struct sockaddr *) &pnd->addr), psec->name);
+        return PMIX_ERR_NO_PERMISSIONS;
+    }
+    /* a peer that said it binds the connection's two ends did */
+    if (pnd->auth_bound && PMIX_SUCCESS != (rc = pmix_ptl_base_auth_conn(pnd->sd, true, conn))) {
+        return rc;
+    }
+    rc = pmix_ptl_base_auth_bind(false, pnd->auth_tool, pnd->auth_srv,
+                                 pnd->auth_bound ? conn : NULL, &bind);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    cred.bytes = pnd->cred;
+    cred.size = pnd->len;
+    rc = psec->validate_bound(&bind, false, &cred, &uid, &gid);
+    PMIX_BYTE_OBJECT_DESTRUCT(&bind);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    /* and it must be the identity it connected as, and the user its
+     * opening named */
+    if (NULL == peer->info || uid != peer->info->uid || gid != peer->info->gid ||
+        uid != pnd->auth_uid) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: refusing a peer at %s - its credential is uid %lu gid "
+                            "%lu, not the identity it connected as",
+                            pmix_net_get_hostname((struct sockaddr *) &pnd->addr),
+                            (unsigned long) uid, (unsigned long) gid);
+        return PMIX_ERR_INVALID_CRED;
+    }
+    return PMIX_SUCCESS;
+}
+
 /* Validate the credential the peer sent */
 static pmix_status_t validate(pmix_pending_connection_t *pnd)
 {
@@ -150,17 +202,25 @@ static pmix_status_t validate(pmix_pending_connection_t *pnd)
     pmix_byte_object_t cred;
     pmix_status_t rc;
 
-    /* A peer that connected over TCP from an address that is not this
-     * host's names a mechanism that validates a credential made on its
-     * own host - and is not taken at all by a build without remote tools,
-     * whatever address its listener is on */
-    if (!local_peer(pnd) && (!psec->remote || !PMIX_ENABLE_REMOTE_TOOLS) &&
-        !pmix_ptl_base_addr_on_host(&pnd->addr)) {
+    if (pnd->proved) {
+        return validate_bound(pnd);
+    }
+    /* A peer at an address that is not this host's is taken only once this
+     * server has proved who it is to it - which a peer of an earlier
+     * release never asks, and which a server that takes no tools from
+     * other hosts never does. A peer of this release that did not ask -
+     * one that reached us through a port forward, say, and took us to be
+     * on its own host - is told to, when we would */
+    if (!local_peer(pnd) && pmix_ptl_base_tcp_peer_remote(&pnd->addr)) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:base: refusing a peer at %s, not on this host - this build "
-                            "takes no remote tools, or security mechanism \"%s\" validates "
-                            "only a peer on this host",
-                            pmix_net_get_hostname((struct sockaddr *) &pnd->addr), psec->name);
+                            "ptl:base: refusing a peer at %s, not on this host, that did not "
+                            "first have this server prove who it is",
+                            pmix_net_get_hostname((struct sockaddr *) &pnd->addr));
+        if (PMIX_ENABLE_REMOTE_TOOLS && pmix_ptl_base.remote_connections &&
+            PMIX_PTL_LOCAL_MAJOR <= pnd->proc_type.major &&
+            PMIX_MAJOR_WILDCARD != pnd->proc_type.major) {
+            return PMIX_ERR_PROVE_FIRST;
+        }
         return PMIX_ERR_NO_PERMISSIONS;
     }
 
@@ -604,6 +664,212 @@ static pmix_status_t read_connect_ack(pmix_pending_connection_t *pnd)
     return read_available(pnd->sd, pnd->msg, pnd->hdr.nbytes, &pnd->msg_recvd);
 }
 
+/* The server's answer to a peer on another host is a few words and a
+ * credential, written to a socket in blocking mode - bounded by the
+ * connect-ack timeout, as a peer that stops reading must not hold the
+ * progress thread. pmix_ptl_base_send_blocking cycles on EAGAIN, which is
+ * how a send that times out reports it, so it cannot be used here.
+ * PMIX_ERR_UNREACH if the peer is gone or has stopped reading */
+static pmix_status_t send_bounded(int sd, const char *ptr, size_t size)
+{
+    size_t cnt = 0;
+    ssize_t n;
+
+    while (cnt < size) {
+        n = send(sd, ptr + cnt, size - cnt, PMIX_PTL_NOSIGNAL);
+        if (0 < n) {
+            cnt += (size_t) n;
+            continue;
+        }
+        if (0 > n && EINTR == pmix_socket_errno) {
+            continue;
+        }
+        return PMIX_ERR_UNREACH;
+    }
+    return PMIX_SUCCESS;
+}
+
+static void set_send_timeout(int sd, int secs)
+{
+    struct timeval tv;
+
+    tv.tv_sec = secs;
+    tv.tv_usec = 0;
+    (void) setsockopt(sd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
+/* A tool on another host - or on this one, where its kernel cannot name
+ * this server's user - asks this server to prove who it is, before it
+ * sends its connect-ack - see "Between hosts" in base.h. What is left of
+ * the message after the flag is the tool's version and its nonce. The
+ * answer is a status and, on success, our nonce and a credential bound
+ * to both; the connection then waits for the tool's connect-ack as it
+ * waited for this message. On failure the caller refuses the connection */
+static pmix_status_t answer_auth(pmix_pending_connection_t *pnd, char *mg, size_t cnt)
+{
+    pmix_psec_module_t *psec;
+    pmix_byte_object_t bind, cred;
+    char *version = NULL, conn[PMIX_PTL_AUTH_CONN_LEN];
+    uid_t kuid;
+    uint8_t u8;
+    uint32_t len, u32;
+    pmix_status_t rc = PMIX_ERR_BAD_PARAM;
+
+    PMIX_BYTE_OBJECT_CONSTRUCT(&bind);
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+
+    /* asked once, over TCP, with no credential of the tool's */
+    if (local_peer(pnd) || pnd->proved || 0 != pnd->len) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: refusing a request to prove who this server is on "
+                            "socket %d - %s",
+                            pnd->sd, local_peer(pnd) ? "it came over the local socket"
+                                     : pnd->proved ? "it was made already"
+                                                   : "it carried a credential");
+        rc = local_peer(pnd) ? PMIX_ERR_NOT_SUPPORTED : PMIX_ERR_BAD_PARAM;
+        goto error;
+    }
+    PMIX_PTL_GET_STRING(version);
+    PMIX_PTL_GET_U32(len);
+    /* then its nonce, its user and whether it binds the connection -
+     * anything after them is a later release's, and ignored */
+    if (PMIX_PTL_AUTH_NONCE_LEN != len || cnt < len + sizeof(uint32_t)) {
+        rc = PMIX_ERR_BAD_PARAM;
+        goto error;
+    }
+    memcpy(pnd->auth_tool, mg, len);
+    mg += len;
+    cnt -= len;
+    PMIX_PTL_GET_U32(u32);
+    pnd->auth_uid = (uid_t) u32;
+    /* and whether it binds the connection's two ends too - which one
+     * that sends no more does not */
+    pnd->auth_bound = false;
+    if (0 < cnt) {
+        PMIX_PTL_GET_U8(u8);
+        pnd->auth_bound = (0 != u8);
+    }
+
+    /* only a server that takes tools proves who it is to one, and only
+     * with a mechanism that can. A tool that binds the connection is on
+     * this host, where the kernel cannot name this server's user - nor,
+     * sharing that kernel, this server's peers: one at another address,
+     * or on a host whose kernel can, has no need. Any other is a tool on
+     * another host, which this server proves who it is to only when it
+     * takes tools from other hosts. All of this is settled before
+     * anything is made for the peer */
+    rc = PMIX_SUCCESS;
+    if (!pmix_ptl_base.tool_support) {
+        rc = PMIX_ERR_NOT_SUPPORTED;
+    } else if (pnd->auth_bound) {
+        if (!pmix_ptl_base_tcp_peer_held(&pnd->addr) ||
+            (!pmix_ptl_base_test_no_tcp_table &&
+             PMIX_ERR_NOT_SUPPORTED != pmix_util_getid_tcp(pnd->sd, &kuid))) {
+            rc = PMIX_ERR_NOT_SUPPORTED;
+        }
+    } else if (!PMIX_ENABLE_REMOTE_TOOLS || !pmix_ptl_base.remote_connections) {
+        rc = PMIX_ERR_NOT_SUPPORTED;
+    }
+    if (PMIX_ERR_NOT_SUPPORTED == rc) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: refusing a peer at %s - this server takes no %s",
+                            pmix_net_get_hostname((struct sockaddr *) &pnd->addr),
+                            !pmix_ptl_base.tool_support ? "tools"
+                            : pnd->auth_bound ? "request to prove who it is from there"
+                                              : "tools from other hosts");
+        goto error;
+    }
+    psec = pmix_psec_base_assign_module(pnd->psec);
+    if (NULL == psec || 0 != strcmp(psec->name, pnd->psec) ||
+        !pmix_psec_base_remote_capable(psec)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: refusing a peer at %s - security mechanism \"%s\" "
+                            "cannot authenticate across hosts here",
+                            pmix_net_get_hostname((struct sockaddr *) &pnd->addr), pnd->psec);
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto error;
+    }
+
+    /* our nonce, and a credential made as a server for both */
+    rc = pmix_util_random_bytes(pnd->auth_srv, PMIX_PTL_AUTH_NONCE_LEN);
+    if (PMIX_SUCCESS != rc) {
+        goto error;
+    }
+    /* bound to the connection's two ends as well, when the tool binds
+     * them - it reads them from its own end of it */
+    if (pnd->auth_bound && PMIX_SUCCESS != (rc = pmix_ptl_base_auth_conn(pnd->sd, true, conn))) {
+        goto error;
+    }
+    rc = pmix_ptl_base_auth_bind(true, pnd->auth_tool, pnd->auth_srv,
+                                 pnd->auth_bound ? conn : NULL, &bind);
+    if (PMIX_SUCCESS != rc) {
+        goto error;
+    }
+    /* for that user to check alone, where the mechanism can say so */
+    rc = psec->create_bound(&bind, true, pnd->auth_uid, &cred);
+    if (PMIX_SUCCESS != rc) {
+        goto error;
+    }
+    /* no larger than a tool will read */
+    if (PMIX_MAX_CRED_SIZE < cred.size) {
+        rc = PMIX_ERR_BAD_PARAM;
+        goto error;
+    }
+    /* status, our nonce, the credential's length, the credential */
+    if (0 < pmix_ptl_base.connect_ack_timeout) {
+        set_send_timeout(pnd->sd, pmix_ptl_base.connect_ack_timeout);
+    }
+    u32 = htonl((uint32_t) PMIX_SUCCESS);
+    rc = send_bounded(pnd->sd, (char *) &u32, sizeof(u32));
+    if (PMIX_SUCCESS == rc) {
+        rc = send_bounded(pnd->sd, (char *) pnd->auth_srv, PMIX_PTL_AUTH_NONCE_LEN);
+    }
+    if (PMIX_SUCCESS == rc) {
+        u32 = htonl((uint32_t) cred.size);
+        rc = send_bounded(pnd->sd, (char *) &u32, sizeof(u32));
+    }
+    if (PMIX_SUCCESS == rc) {
+        rc = send_bounded(pnd->sd, cred.bytes, cred.size);
+    }
+    /* the replies to its connect-ack go out unbounded, as every other's */
+    set_send_timeout(pnd->sd, 0);
+    if (PMIX_SUCCESS != rc) {
+        /* the peer is gone - nothing more to tell it */
+        rc = PMIX_ERR_UNREACH;
+        goto error;
+    }
+    /* the peer's version goes into the log only as printable characters */
+    for (len = 0; '\0' != version[len]; len++) {
+        if (!isprint((unsigned char) version[len])) {
+            version[len] = '?';
+        }
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:base: proved who this server is with %s to a peer at %s "
+                        "(release %s)",
+                        psec->name, pmix_net_get_hostname((struct sockaddr *) &pnd->addr),
+                        version);
+
+    /* its connect-ack comes next, and is read as this was */
+    pnd->proved = true;
+    pnd->authmod = psec;
+    free(pnd->psec);
+    pnd->psec = NULL;
+    pnd->flag = PMIX_SIMPLE_CLIENT;
+    memset(&pnd->hdr, 0, sizeof(pnd->hdr));
+    pnd->hdr_recvd = 0;
+    pnd->msg_recvd = 0;
+    pmix_ptl_base_set_nonblocking(pnd->sd);
+    pmix_ptl_base_await_connect_ack(pnd, true);
+    rc = PMIX_SUCCESS;
+
+error:
+    free(version);
+    PMIX_BYTE_OBJECT_DESTRUCT(&bind);
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    return rc;
+}
+
 /* PMIX_PTL_LEGACY_PAD: a trailer too short to hold an info count is not an
  * info blob.
  *
@@ -698,6 +964,22 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     /* get the process type of the connecting peer */
     PMIX_PTL_GET_U8(pnd->flag);
+
+    /* not a connect-ack: a tool on another host asking us to prove who we
+     * are first */
+    if (PMIX_REMOTE_AUTH == pnd->flag) {
+        size_t nbytes = pnd->hdr.nbytes;
+
+        rc = answer_auth(pnd, mg, cnt);
+        pmix_ptl_base_wipe(msg, nbytes);
+        free(msg);
+        if (PMIX_ERR_UNREACH == rc) {
+            PMIX_RELEASE(pnd);
+        } else if (PMIX_SUCCESS != rc) {
+            refuse(pnd, rc);
+        }
+        return;
+    }
 
     switch (pnd->flag) {
     case PMIX_SIMPLE_CLIENT:
@@ -809,6 +1091,16 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         /* It cannot name the code, but it will fail instead of carrying
          * on as though no server were there */
         rc = PMIX_ERR_OUTDATED;
+        goto error;
+    }
+
+    /* A peer that had this server prove who it is is of this release or
+     * later: an earlier one has no such exchange */
+    if (pnd->proved && PMIX_PTL_LOCAL_MAJOR > major) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:connection_handler: refusing a peer that asked this "
+                            "server to prove who it is, then named an earlier release");
+        rc = PMIX_ERR_BAD_PARAM;
         goto error;
     }
 

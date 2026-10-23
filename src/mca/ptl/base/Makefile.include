@@ -41,4 +41,5 @@ sources += \
         base/ptl_base_connect.c \
         base/ptl_base_fns.c \
         base/ptl_base_token.c \
+        base/ptl_base_auth.c \
         base/ptl_base_connection_hdlr.c

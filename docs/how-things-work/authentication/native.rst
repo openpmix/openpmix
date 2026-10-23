@@ -104,8 +104,9 @@ Limits
   nothing to ask the kernel about.
 
 * A peer on another host, or in a container with a network of its own,
-  connects from an address that is not this host's, and must use
-  ``munge`` or ``ssl``.
+  connects from an address that is not this host's. It and the server
+  authenticate each other with ``munge`` or ``ssl`` instead - see "A
+  server on another host" in :doc:`../connections`.
 
 * On platforms other than Linux, macOS and FreeBSD, step 2 is not
   available, so a peer connecting over TCP is refused unless

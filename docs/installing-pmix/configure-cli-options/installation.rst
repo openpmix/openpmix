@@ -298,10 +298,13 @@ be used with ``configure``:
   (``PMIX_SERVER_REMOTE_CONNECTIONS``) fails its init. With it, the
   host still decides at run time with that attribute.
 
-  A tool on another host authenticates with ``munge`` or ``ssl`` (see
-  ``--with-munge`` and ``--with-openssl``). A server refuses a peer on
-  another host that names ``native``, and a server asked for remote
-  connections with neither available fails its init.
+  It requires ``--with-munge`` or ``--with-openssl`` as well:
+  ``configure`` stops with an error otherwise. A tool on another host
+  and its server authenticate each other with ``munge`` or ``ssl``, the
+  server first. A server refuses a peer on another host that does not
+  take part - one of an earlier release, or one with only ``native`` -
+  and a server asked for remote connections that cannot take part fails
+  its init.
 
 * ``--disable-show-load-errors-by-default``:
   Set the default value of the ``mca_base_component_show_load_errors``

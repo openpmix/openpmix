@@ -176,7 +176,11 @@ These MCA parameters adjust the checks PMIx makes on connections:
        ``psec_ssl_max_skew``
      - (none), 300
      - Certificates and limits for ``ssl``. ``ssl`` is not used unless
-       a CA file, or a certificate and key, is given.
+       a CA file, or a certificate and key, is given. A process and a
+       server on different hosts each need all three: a certificate and
+       key to prove who they are, and the CA the other's certificate is
+       issued by. A server's certificate must allow server
+       authentication, and a tool's client authentication.
 
 To see every parameter and its current value:
 
@@ -198,11 +202,22 @@ parameters, because they depend on how the host is deployed:
   server takes no TCP connection at all, and when it takes clients and
   tools of earlier releases it listens for them on loopback only. In a
   PMIx configured
-  ``--enable-remote-tools``, a host can listen on other interfaces
+  ``--enable-remote-tools`` - which also requires ``--with-munge`` or
+  ``--with-openssl`` - a host can listen on other interfaces
   (``PMIX_SERVER_REMOTE_CONNECTIONS``); without that option, a host that
-  asks fails its init. A peer on another node must use ``munge`` or
-  ``ssl``: the server refuses one that names ``native``, and a server
-  asked for remote connections with neither available fails its init.
+  asks fails its init. A process on another node and the server
+  authenticate each other with ``munge`` or ``ssl``, the server first:
+  the server proves who it is before the process sends its connection
+  request, and each credential is good for that one connection. With
+  ``ssl``, the user a server's certificate names must exist on the
+  process's host, with the same uid, and hold the server's group there,
+  as a process's must on the server's host. The process refuses
+  a server that does not prove who it is, or proves it is a user the
+  process may not talk to (its own, root, or one
+  ``ptl_base_server_access`` names). The server refuses a process on
+  another node that does not take part - one of an earlier release, or
+  one with only ``native`` - and a server asked for remote connections
+  that cannot take part fails its init.
 * **Clients are always checked** against the user and group the host
   registered them with. No setting changes that.
 
