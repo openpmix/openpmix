@@ -364,6 +364,7 @@ test/unit/ptl_recv_timeout
 test/unit/ptl_nosigpipe
 test/unit/ptl_transport
 test/unit/ptl_remote
+test/unit/ptl_check_server
 test/unit/ptl_legacy
 test/unit/ptl_token
 test/unit/ptl_pfexec_token
