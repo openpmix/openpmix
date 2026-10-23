@@ -61,8 +61,9 @@
 /* The kernel interfaces pmix_util_getid_tcp() asks. Each platform has
  * its own, and none of them is portable: Linux answers through the
  * socket-diagnostics netlink family, with the text table in
- * /proc/net/tcp{,6} to fall back on, and macOS through the pcblist64
- * sysctl that netstat reads. */
+ * /proc/net/tcp{,6} to fall back on, macOS through the pcblist64 sysctl
+ * that netstat reads, and FreeBSD through its pcblist sysctl, whose
+ * records have had their present shape since FreeBSD 12. */
 #if defined(__linux__) && defined(HAVE_LINUX_NETLINK_H) && \
     defined(HAVE_LINUX_SOCK_DIAG_H) && defined(HAVE_LINUX_INET_DIAG_H)
 #    define PMIX_HAVE_SOCK_DIAG 1
@@ -89,6 +90,18 @@
 #    include <netinet/tcp_fsm.h>
 #else
 #    define PMIX_HAVE_PCBLIST64 0
+#endif
+#if defined(__FreeBSD__) && defined(HAVE_SYS_SYSCTL_H) && defined(__FreeBSD_version) && \
+    __FreeBSD_version >= 1200000
+#    define PMIX_HAVE_XTCPCB 1
+#    include <sys/socketvar.h>
+#    include <sys/sysctl.h>
+#    include <netinet/in_pcb.h>
+#    include <netinet/tcp.h>
+#    include <netinet/tcp_fsm.h>
+#    include <netinet/tcp_var.h>
+#else
+#    define PMIX_HAVE_XTCPCB 0
 #endif
 
 #include "src/include/pmix_globals.h"
@@ -552,6 +565,39 @@ static pmix_status_t lookup_proc_net(const tcp_tuple_t *t, uid_t *uid)
 }
 #endif /* PMIX_HAVE_PROC_NET_TCP */
 
+#if PMIX_HAVE_PCBLIST64 || PMIX_HAVE_XTCPCB
+/* read the whole of a pcblist sysctl into *bufp. The table can grow
+ * between asking its size and reading it, so ask for headroom and try
+ * again if that was not enough */
+static pmix_status_t read_pcblist(const char *name, char **bufp, size_t *lenp)
+{
+    size_t len = 0;
+    char *buf;
+    int tries;
+
+    for (tries = 0; tries < 5; tries++) {
+        if (0 != sysctlbyname(name, NULL, &len, NULL, 0)) {
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        len += len / 8 + 4096;
+        buf = (char *) malloc(len);
+        if (NULL == buf) {
+            return PMIX_ERR_NOMEM;
+        }
+        if (0 == sysctlbyname(name, buf, &len, NULL, 0)) {
+            *bufp = buf;
+            *lenp = len;
+            return PMIX_SUCCESS;
+        }
+        free(buf);
+        if (ENOMEM != errno) {
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+    }
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+#endif
+
 #if PMIX_HAVE_PCBLIST64
 static bool pcb_matches(const struct xtcpcb64 *tp, const tcp_tuple_t *t)
 {
@@ -583,32 +629,13 @@ static pmix_status_t lookup_pcblist64(const tcp_tuple_t *t, uid_t *uid)
     uint32_t reclen;
     size_t len = 0, off;
     char *buf = NULL;
-    int tries;
-    pmix_status_t rc = PMIX_ERR_NOT_FOUND;
+    pmix_status_t rc;
 
-    /* the table can grow between asking its size and reading it, so ask
-     * for headroom and try again if that was not enough */
-    for (tries = 0; tries < 5; tries++) {
-        if (0 != sysctlbyname("net.inet.tcp.pcblist64", NULL, &len, NULL, 0)) {
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-        len += len / 8 + 4096;
-        buf = (char *) malloc(len);
-        if (NULL == buf) {
-            return PMIX_ERR_NOMEM;
-        }
-        if (0 == sysctlbyname("net.inet.tcp.pcblist64", buf, &len, NULL, 0)) {
-            break;
-        }
-        free(buf);
-        buf = NULL;
-        if (ENOMEM != errno) {
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
+    rc = read_pcblist("net.inet.tcp.pcblist64", &buf, &len);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
     }
-    if (NULL == buf) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
+    rc = PMIX_ERR_NOT_FOUND;
 
     /* a leading xinpgen, one xtcpcb64 per connection, and a trailing
      * xinpgen - each opening with its own length. Copy each record out
@@ -639,6 +666,76 @@ static pmix_status_t lookup_pcblist64(const tcp_tuple_t *t, uid_t *uid)
 }
 #endif /* PMIX_HAVE_PCBLIST64 */
 
+#if PMIX_HAVE_XTCPCB
+static bool xtcpcb_matches(const struct xtcpcb *tp, const tcp_tuple_t *t)
+{
+    const struct xinpcb *inp = &tp->xt_inp;
+
+    if (IPPROTO_TCP != inp->xi_socket.xso_protocol ||
+        TCPS_ESTABLISHED != tp->t_state ||
+        inp->inp_lport != t->peer_port || inp->inp_fport != t->local_port) {
+        return false;
+    }
+    /* as on macOS, an IPv6 socket connected over IPv4 is flagged IPv4 and
+     * keeps the addresses where an IPv4 one does */
+    if (INP_IPV4 & inp->inp_vflag) {
+        return AF_INET == t->family && inp->inp_laddr.s_addr == t->peer4.s_addr &&
+               inp->inp_faddr.s_addr == t->local4.s_addr;
+    }
+    if (INP_IPV6 & inp->inp_vflag) {
+        return 0 == memcmp(&inp->in6p_laddr, &t->peer6, sizeof(t->peer6)) &&
+               0 == memcmp(&inp->in6p_faddr, &t->local6, sizeof(t->local6));
+    }
+    return false;
+}
+
+static pmix_status_t lookup_xtcpcb(const tcp_tuple_t *t, uid_t *uid)
+{
+    struct xinpgen gen;
+    struct xtcpcb tp;
+    ksize_t reclen;
+    size_t len = 0, off;
+    char *buf = NULL;
+    pmix_status_t rc;
+
+    rc = read_pcblist("net.inet.tcp.pcblist", &buf, &len);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    rc = PMIX_ERR_NOT_FOUND;
+
+    /* the same framing as macOS - a leading xinpgen, one xtcpcb per
+     * connection, a trailing xinpgen - but each record opens with a
+     * 64-bit length. Copied out for the same reason: no alignment is
+     * promised. A non-root reader is shown every user's connections
+     * unless security.bsd.see_other_uids is off, and then another
+     * user's peer is not found */
+    if (len < sizeof(gen)) {
+        free(buf);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    memcpy(&gen, buf, sizeof(gen));
+    for (off = gen.xig_len; off + sizeof(reclen) <= len; off += reclen) {
+        memcpy(&reclen, buf + off, sizeof(reclen));
+        if (reclen <= sizeof(struct xinpgen)) {
+            break; /* the trailer */
+        }
+        if (reclen < sizeof(tp) || reclen > len - off) {
+            rc = PMIX_ERR_NOT_SUPPORTED; /* not a layout we understand */
+            break;
+        }
+        memcpy(&tp, buf + off, sizeof(tp));
+        if (xtcpcb_matches(&tp, t)) {
+            *uid = tp.xt_inp.xi_socket.so_uid;
+            rc = PMIX_SUCCESS;
+            break;
+        }
+    }
+    free(buf);
+    return rc;
+}
+#endif /* PMIX_HAVE_XTCPCB */
+
 pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid)
 {
     tcp_tuple_t t;
@@ -661,6 +758,8 @@ pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid)
     rc = lookup_proc_net(&t, &owner);
 #elif PMIX_HAVE_PCBLIST64
     rc = lookup_pcblist64(&t, &owner);
+#elif PMIX_HAVE_XTCPCB
+    rc = lookup_xtcpcb(&t, &owner);
 #else
     rc = PMIX_ERR_NOT_SUPPORTED;
 #endif
