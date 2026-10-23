@@ -68,7 +68,8 @@ After the `PMIX_CRED_TYPE` screen and the protocol checks (a
    (`PMIX_ERR_NOT_SUPPORTED`) - accepted on its claim when `legacy_auth`
    is true, the claim still matching the recorded uid/gid, else refused
    (`legacy-peer`). A peer at an address not this host's never gets here:
-   ptl refuses it first, native's module not being `remote`.
+   ptl refuses it first - native has no `create_bound`/`validate_bound`,
+   and such a peer must authenticate with a module that has.
 
 ### `settle_identity()` — registered vs. claimed
 
@@ -102,9 +103,10 @@ On success `*info` carries `PMIX_CRED_TYPE`, and `PMIX_USERID` /
   connection tells a relay apart from the peer itself, so this is
   documented in `native.rst` (Limits), not handled in code.
 - **Remote peers use another mechanism.** native serves peers on this
-  host's kernel, and its module's `remote` is false: ptl refuses a TCP
-  peer whose address is not this host's that names native before native
-  is asked. Remote tools use `munge` or [`ssl`](../ssl/AGENTS.md).
+  host's kernel and has no `create_bound`/`validate_bound`: ptl refuses a
+  TCP peer whose address is not this host's unless it and the server
+  have authenticated each other with a module that has, before native is
+  asked. Remote tools use `munge` or [`ssl`](../ssl/AGENTS.md).
 - **The `PMIX_PROTOCOL_UNDEF` rejection is explicit on purpose.** It does
   not rely on the `(uid_t) -1` initializers of `euid`/`egid` failing a
   comparison. Keep it explicit.

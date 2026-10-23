@@ -209,15 +209,109 @@ Rebuild PMIx without --disable-legacy-peers, or do not ask for them.
 #
 [remote-no-psec]
 The host asked the PMIx server on %s to take connections from tools on
-other hosts (PMIX_SERVER_REMOTE_CONNECTIONS). A tool on another host
-must prove who it is with a security mechanism that validates a
-credential made on that host - munge or ssl - and none is available.
-The mechanisms this server can validate with are:
+other hosts (PMIX_SERVER_REMOTE_CONNECTIONS). A tool on another host and
+its server prove who they are to each other with munge or ssl, and
+neither is available here as configured. The mechanisms this server can
+validate with are:
 
   %s
 
-Build PMIx with munge or OpenSSL support, and for ssl give the server a
-certificate authority with psec_ssl_ca_file.
+munge needs a running munged. ssl needs this server's certificate and
+key (psec_ssl_cert_file, psec_ssl_key_file) and the certificate
+authority its tools' certificates are issued by (psec_ssl_ca_file).
+#
+[remote-no-psec-tool]
+This process on %s is connecting to a PMIx server on another host:
+
+  %s
+
+A process and a server on different hosts prove who they are to each
+other with munge or ssl, and this process has neither as configured.
+Its security mechanisms are:
+
+  %s
+
+munge needs a running munged. ssl needs this process's certificate and
+key (psec_ssl_cert_file, psec_ssl_key_file) and the certificate
+authority the server's certificate is issued by (psec_ssl_ca_file).
+#
+[local-no-psec-tool]
+This process on %s is connecting over TCP to a PMIx server on this
+host:
+
+  %s
+
+and the kernel here does not say which user runs that server. A server
+in that position proves who it is with munge or ssl, as one on another
+host does, and this process has neither as configured. Its security
+mechanisms are:
+
+  %s
+
+munge needs a running munged. ssl needs this process's certificate and
+key (psec_ssl_cert_file, psec_ssl_key_file) and the certificate
+authority the server's certificate is issued by (psec_ssl_ca_file).
+
+A server of v7.0 or later also listens on a local socket, which needs
+neither: give this process the server's rendezvous file
+("file:<path>") rather than only its address, and it connects there. A
+server of an earlier release cannot prove who it is; this process
+connects to one as before when that file says its release.
+#
+[local-auth-refused]
+This process on %s asked the PMIx server it is connecting to over TCP on
+this host:
+
+  %s
+
+to prove who it is with %s, and it did not:
+
+  %s
+
+The kernel here does not say which user runs that server, so it must
+prove who it is. A server does so only when it takes tools and has munge
+or ssl configured, and only on a connection that nothing relays.
+
+A server of a release before v7.0 cannot prove who it is. This process
+connects to one as before when it knows the server's release from its
+rendezvous file: if it was given only the server's address, give it the
+file ("file:<path>") instead.
+#
+[remote-auth-refused]
+This process on %s asked the PMIx server it is connecting to on another
+host:
+
+  %s
+
+to prove who it is with %s, and it did not:
+
+  %s
+
+A server takes processes from other hosts only when its host asks it to,
+and only with munge or ssl configured; a server of a release before this
+one does not take them this way at all.
+#
+[remote-server-unproven]
+This process on %s did not connect to the PMIx server at
+
+  %s
+
+because the server's %s credential did not prove who it is:
+
+  %s
+
+For ssl, the server's certificate must be issued by a certificate
+authority in this process's psec_ssl_ca_file, allow server
+authentication, and name a user of this host. Both ends must have
+clocks within psec_ssl_max_skew seconds of each other.
+#
+[server-identity-remote]
+The PMIx server this process on %s connected to is not one it may talk
+to: its credential proves it runs as
+
+  uid %lu, gid %lu
+
+and it should be %s.
 #
 [no-available-interfaces]
 You requested support for tool connections, but no available

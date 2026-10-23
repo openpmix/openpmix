@@ -152,6 +152,12 @@ static void test_df_search(void)
         report("df_search: the connection found is the valid one",
                NULL != cn->nspace && 0 == strcmp(cn->nspace, "goodns"),
                (NULL == cn->nspace) ? "NULL" : cn->nspace);
+        /* the release it names chooses the wire format, whatever is
+         * believed of it - and a file found by a search is no caller's
+         * word that the server is of an earlier release */
+        report("df_search: the file's version is kept as it says, and not vouched for",
+               NULL != cn->version && 0 == strcmp(cn->version, "4.2.0") && !cn->vouched,
+               (NULL == cn->version) ? "NULL" : cn->version);
     }
     PMIX_LIST_DESTRUCT(&connections);
 }

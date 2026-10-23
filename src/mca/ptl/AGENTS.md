@@ -391,7 +391,9 @@ the real work on the progress thread:
 2. Parse it with the `PMIX_PTL_GET_*` macros
    ([`base/ptl_base_handshake.h`](base/ptl_base_handshake.h)): psec name,
    credential, a **flag** (`pmix_rnd_flag_t`, 0–10) identifying the kind
-   of connector, the peer's procid/uid/gid, version, bfrops module, buffer
+   of connector - or 11, a tool on another host asking the server to
+   prove who it is first (see "Between hosts" in
+   [`base/AGENTS.md`](base/AGENTS.md)), the peer's procid/uid/gid, version, bfrops module, buffer
    type, gds module, and an optional info blob. A v1.x or v2.0 peer is
    refused at the version string - see "Version floors" in
    [`base/AGENTS.md`](base/AGENTS.md).

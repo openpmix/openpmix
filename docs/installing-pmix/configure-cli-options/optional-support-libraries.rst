@@ -59,20 +59,21 @@ Other capabilities
 * ``--with-openssl[=VALUE]``:
 
   Specifies where to find `OpenSSL <https://www.openssl.org/>`_ (1.1.1 or
-  later), and builds the ``psec/ssl`` component, which authenticates
-  remote tools with X.509 certificates. The default ``psec/native``
-  mechanism authenticates only peers on the server's own host, so a
-  server that accepts connections from tools on other hosts
-  (``PMIX_SERVER_REMOTE_CONNECTIONS``, in a PMIx configured
-  ``--enable-remote-tools``) needs this or MUNGE.
+  later), and builds the ``psec/ssl`` component, which authenticates a
+  tool and a server on different hosts to each other with X.509
+  certificates. The default ``psec/native`` mechanism authenticates only
+  peers on the server's own host, so a server that accepts connections
+  from tools on other hosts (``PMIX_SERVER_REMOTE_CONNECTIONS``, in a
+  PMIx configured ``--enable-remote-tools``) needs this or MUNGE, and
+  ``--enable-remote-tools`` requires one of them.
 
   Like MUNGE, this is **opt-in only**. The component is compiled into
   ``libpmix`` like any other, so building it adds ``libcrypto`` to
   everything that links PMIx. It is active at run time only where it is
   configured, through the ``psec_ssl_*`` MCA parameters (see
   ``pmix_info --param psec ssl``), and it ranks below ``native``, so
-  local connections are unaffected. A remote tool selects it with
-  ``PMIX_MCA_psec=ssl``.
+  local connections are unaffected. A tool connecting to a server on
+  another host picks it itself, where it is configured.
 
 * ``--with-smtp[=VALUE]``:
 

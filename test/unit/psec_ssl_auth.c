@@ -27,6 +27,14 @@
  *   - every truncation of a good credential, which must be refused
  *   - a revoked certificate, once a CRL is configured
  *
+ * A credential made for one connection between hosts (create_bound,
+ * validate_bound) is checked the same way, and must also carry the bytes
+ * it was bound to and say whose it is: one bound to other bytes, made as
+ * a tool and presented as a server's or the reverse, presented twice, or
+ * presented where the other format is expected is refused. A server's
+ * certificate must allow server authentication. Only an end with both a
+ * CA and an identity of its own can take part.
+ *
  * The peer stands for a connection, so it holds a descriptor. A
  * credential handed to PMIx_Validate_credential has none, and is
  * checked on its own and reported as the identity it carries - that
@@ -56,6 +64,7 @@
 #include "src/runtime/pmix_init_util.h"
 
 #include <arpa/inet.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <pwd.h>
 #include <stdio.h>
@@ -76,6 +85,8 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
+#include "ssl_test_pki.h"
+
 static int npass = 0;
 static int nfail = 0;
 
@@ -93,77 +104,6 @@ static void report(const char *name, int passed)
 /* ---------------------------------------------------------------- *
  * a small PKI
  * ---------------------------------------------------------------- */
-
-static EVP_PKEY *gen_key(int type)
-{
-    EVP_PKEY_CTX *c;
-    EVP_PKEY *k = NULL;
-
-    c = EVP_PKEY_CTX_new_id(type, NULL);
-    if (NULL == c || 1 != EVP_PKEY_keygen_init(c)) {
-        EVP_PKEY_CTX_free(c);
-        return NULL;
-    }
-    if (EVP_PKEY_EC == type &&
-        1 != EVP_PKEY_CTX_set_ec_paramgen_curve_nid(c, NID_X9_62_prime256v1)) {
-        EVP_PKEY_CTX_free(c);
-        return NULL;
-    }
-    if (1 != EVP_PKEY_keygen(c, &k)) {
-        k = NULL;
-    }
-    EVP_PKEY_CTX_free(c);
-    return k;
-}
-
-static const EVP_MD *md_for(EVP_PKEY *k)
-{
-    return (EVP_PKEY_ED25519 == EVP_PKEY_id(k)) ? NULL : EVP_sha256();
-}
-
-static void add_ext(X509 *x, X509 *issuer, int nid, const char *value)
-{
-    X509V3_CTX ctx;
-    X509_EXTENSION *ext;
-
-    X509V3_set_ctx_nodb(&ctx);
-    X509V3_set_ctx(&ctx, issuer, x, NULL, NULL, 0);
-    ext = X509V3_EXT_conf_nid(NULL, &ctx, nid, value);
-    if (NULL != ext) {
-        X509_add_ext(x, ext, -1);
-        X509_EXTENSION_free(ext);
-    }
-}
-
-/* issuer NULL: self-signed. eku NULL: a CA */
-static X509 *make_cert(EVP_PKEY *key, const char *cn, X509 *issuer, EVP_PKEY *issuer_key,
-                       long serial, long from, long until, const char *eku)
-{
-    X509 *x = X509_new();
-    X509_NAME *n;
-
-    X509_set_version(x, 2);
-    ASN1_INTEGER_set(X509_get_serialNumber(x), serial);
-    X509_gmtime_adj(X509_getm_notBefore(x), from);
-    X509_gmtime_adj(X509_getm_notAfter(x), until);
-    X509_set_pubkey(x, key);
-    n = X509_get_subject_name(x);
-    X509_NAME_add_entry_by_txt(n, "CN", MBSTRING_ASC, (const unsigned char *) cn, -1, -1, 0);
-    X509_set_issuer_name(x, (NULL == issuer) ? n : X509_get_subject_name(issuer));
-    if (NULL == eku) {
-        add_ext(x, (NULL == issuer) ? x : issuer, NID_basic_constraints, "critical,CA:TRUE");
-        add_ext(x, (NULL == issuer) ? x : issuer, NID_key_usage, "critical,keyCertSign,cRLSign");
-    } else {
-        add_ext(x, issuer, NID_basic_constraints, "CA:FALSE");
-        add_ext(x, issuer, NID_key_usage, "critical,digitalSignature");
-        add_ext(x, issuer, NID_ext_key_usage, eku);
-    }
-    if (NULL == issuer_key) {
-        issuer_key = key;
-    }
-    X509_sign(x, issuer_key, md_for(issuer_key));
-    return x;
-}
 
 static X509_CRL *make_crl(X509 *ca, EVP_PKEY *cakey, long revoked_serial)
 {
@@ -188,43 +128,6 @@ static X509_CRL *make_crl(X509 *ca, EVP_PKEY *cakey, long revoked_serial)
     ASN1_TIME_free(t);
     ASN1_INTEGER_free(s);
     return crl;
-}
-
-/* PEM text of one or two certificates, leaf first */
-static char *chain_pem(X509 *leaf, X509 *intermediate, size_t *len)
-{
-    BIO *b = BIO_new(BIO_s_mem());
-    char *data, *out;
-    long n;
-
-    PEM_write_bio_X509(b, leaf);
-    if (NULL != intermediate) {
-        PEM_write_bio_X509(b, intermediate);
-    }
-    n = BIO_get_mem_data(b, &data);
-    out = (char *) malloc((size_t) n);
-    memcpy(out, data, (size_t) n);
-    *len = (size_t) n;
-    BIO_free(b);
-    return out;
-}
-
-static void write_file(const char *path, const char *data, size_t len, mode_t mode)
-{
-    FILE *fp = fopen(path, "w");
-
-    fwrite(data, 1, len, fp);
-    fclose(fp);
-    chmod(path, mode);
-}
-
-static void write_key(const char *path, EVP_PKEY *k, mode_t mode)
-{
-    FILE *fp = fopen(path, "w");
-
-    PEM_write_PrivateKey(fp, k, NULL, NULL, 0, NULL, NULL);
-    fclose(fp);
-    chmod(path, mode);
 }
 
 static void write_crl(const char *path, X509_CRL *crl)
@@ -263,6 +166,40 @@ static void build_cred(pmix_byte_object_t *cred, EVP_PKEY *key, const char *chai
     RAND_bytes(buf + 24, 16);
     put32(buf + 40, (uint32_t) chainlen);
     memcpy(buf + HDR, chain, chainlen);
+    EVP_DigestSignInit(md, NULL, md_for(key), NULL, key);
+    EVP_DigestSign(md, NULL, &siglen, buf, signedlen);
+    EVP_DigestSign(md, buf + signedlen + 4, &siglen, buf, signedlen);
+    EVP_MD_CTX_free(md);
+    put32(buf + signedlen, (uint32_t) siglen);
+    cred->bytes = (char *) buf;
+    cred->size = signedlen + 4 + siglen;
+}
+
+/* the same statement in the bound format, PMIXSSL2: role and the bytes
+ * it is bound to come after the nonce. bindlen is what is written in the
+ * length field, which a bad case makes disagree with what follows */
+static void build_bound(pmix_byte_object_t *cred, EVP_PKEY *key, const char *chain,
+                        size_t chainlen, uint32_t uid, uint32_t gid, int64_t when,
+                        uint8_t role, const pmix_byte_object_t *bind, uint32_t bindlen)
+{
+    size_t off = 8 + 4 + 4 + 8 + 16;
+    size_t signedlen = off + 1 + 4 + bind->size + 4 + chainlen, siglen = 0;
+    unsigned char *buf = (unsigned char *) malloc(signedlen + 4 + 2048);
+    EVP_MD_CTX *md = EVP_MD_CTX_new();
+    uint64_t w = (uint64_t) when;
+
+    memcpy(buf, "PMIXSSL2", 8);
+    put32(buf + 8, uid);
+    put32(buf + 12, gid);
+    put32(buf + 16, (uint32_t) (w >> 32));
+    put32(buf + 20, (uint32_t) (w & 0xffffffffULL));
+    RAND_bytes(buf + 24, 16);
+    buf[off] = role;
+    put32(buf + off + 1, bindlen);
+    memcpy(buf + off + 5, bind->bytes, bind->size);
+    off += 5 + bind->size;
+    put32(buf + off, (uint32_t) chainlen);
+    memcpy(buf + off + 4, chain, chainlen);
     EVP_DigestSignInit(md, NULL, md_for(key), NULL, key);
     EVP_DigestSign(md, NULL, &siglen, buf, signedlen);
     EVP_DigestSign(md, buf + signedlen + 4, &siglen, buf, signedlen);
@@ -330,6 +267,28 @@ static bool native_before_ssl(void)
     return false;
 }
 
+/* the scratch PKI, keys included, on a failure that ends the test early:
+ * every file in the directory the test made, then the directory */
+static void remove_pki(const char *dir)
+{
+    char path[1200];
+    struct dirent *ent;
+    DIR *d;
+
+    d = opendir(dir);
+    if (NULL != d) {
+        while (NULL != (ent = readdir(d))) {
+            if ('.' == ent->d_name[0]) {
+                continue;
+            }
+            snprintf(path, sizeof(path), "%s/%s", dir, ent->d_name);
+            (void) unlink(path);
+        }
+        closedir(d);
+    }
+    (void) rmdir(dir);
+}
+
 static bool open_psec(void)
 {
     if (PMIX_SUCCESS != pmix_mca_base_framework_open(&pmix_psec_base_framework, 0) ||
@@ -348,13 +307,16 @@ int main(int argc, char **argv)
 {
     char dir[] = "/tmp/pmix_psec_ssl.XXXXXX";
     char path[1024], cafile[1024], crlfile[1024], certfile[1024], keyfile[1024];
-    char edcert[1024], edkey[1024], openkey[1024];
+    char edcert[1024], edkey[1024], openkey[1024], bothcert[1024];
     EVP_PKEY *cakey, *intkey, *key, *otherkey, *edk, *rootca2key;
     X509 *ca, *intca, *leaf, *leaf_int, *leaf_other, *leaf_expired, *leaf_server,
-        *leaf_nouser, *leaf_revoked, *leaf_ed;
+        *leaf_nouser, *leaf_revoked, *leaf_ed, *leaf_both;
+    pmix_byte_object_t bind, other;
+    uid_t buid;
+    gid_t bgid;
     X509_CRL *crl;
-    char *pem, *c_leaf, *c_int, *c_other, *c_expired, *c_server, *c_nouser, *c_revoked;
-    size_t n, l_leaf, l_int, l_other, l_expired, l_server, l_nouser, l_revoked;
+    char *pem, *c_leaf, *c_int, *c_other, *c_expired, *c_server, *c_nouser, *c_revoked, *c_both;
+    size_t n, l_leaf, l_int, l_other, l_expired, l_server, l_nouser, l_revoked, l_both;
     pmix_byte_object_t cred, trunc;
     pmix_info_t *results = NULL, *ptr;
     size_t nresults = 0, i;
@@ -396,6 +358,7 @@ int main(int argc, char **argv)
     leaf_nouser = make_cert(key, "pmix-no-such-user-q7x", ca, cakey, 15, -60, 86400, "clientAuth");
     leaf_revoked = make_cert(key, pw->pw_name, ca, cakey, 99, -60, 86400, "clientAuth");
     leaf_ed = make_cert(edk, pw->pw_name, ca, cakey, 16, -60, 86400, "clientAuth");
+    leaf_both = make_cert(key, pw->pw_name, ca, cakey, 17, -60, 86400, "clientAuth,serverAuth");
     crl = make_crl(ca, cakey, 99);
     c_leaf = chain_pem(leaf, NULL, &l_leaf);
     c_int = chain_pem(leaf_int, intca, &l_int);
@@ -419,6 +382,9 @@ int main(int argc, char **argv)
     free(pem);
     snprintf(edkey, sizeof(edkey), "%s/ed.key", dir);
     write_key(edkey, edk, 0600);
+    snprintf(bothcert, sizeof(bothcert), "%s/both.pem", dir);
+    c_both = chain_pem(leaf_both, NULL, &l_both);
+    write_file(bothcert, c_both, l_both, 0644);
     snprintf(openkey, sizeof(openkey), "%s/open.key", dir);
     write_key(openkey, key, 0644);
     snprintf(crlfile, sizeof(crlfile), "%s/crl.pem", dir);
@@ -428,6 +394,7 @@ int main(int argc, char **argv)
     rc = pmix_init_util(NULL, 0, NULL);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "pmix_init_util failed: %d\n", rc);
+        remove_pki(dir);
         return 1;
     }
 
@@ -447,6 +414,7 @@ int main(int argc, char **argv)
     fprintf(stdout, "\n=== unconfigured ===\n");
     if (!open_psec()) {
         report("psec opens with nothing configured", 0);
+        remove_pki(dir);
         return 1;
     }
     report("ssl is not active when nothing is configured",
@@ -461,6 +429,7 @@ int main(int argc, char **argv)
     setenv("PMIX_MCA_psec_ssl_max_skew", "30", 1);
     if (!open_psec() || NULL == (mod = pmix_psec_base_assign_module("ssl"))) {
         report("ssl is active once configured", 0);
+        remove_pki(dir);
         return 1;
     }
     report("ssl is active once configured", 1);
@@ -648,7 +617,121 @@ int main(int argc, char **argv)
         PMIX_INFO_DESTRUCT(&directive);
         PMIX_BYTE_OBJECT_DESTRUCT(&cred);
     }
+
+    /* a certificate for clients only proves a tool, never a server */
+    bind.bytes = (char *) "pmix-ra1Sone-connection's-two-nonces-xx";
+    bind.size = strlen(bind.bytes);
+    report("with a CA and an identity, ssl can authenticate across hosts",
+           pmix_psec_base_remote_capable(mod));
+    rc = mod->create_bound(&bind, false, (uid_t) -1, &cred);
+    report("a bound credential is made as a tool",
+           PMIX_SUCCESS == rc && PMIX_SUCCESS == mod->validate_bound(&bind, false, &cred, &buid,
+                                                                     &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    rc = mod->create_bound(&bind, true, (uid_t) -1, &cred);
+    report("a certificate for client use only does not prove a server",
+           PMIX_SUCCESS == rc &&
+               PMIX_ERR_INVALID_CRED == mod->validate_bound(&bind, true, &cred, &buid, &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
     close_psec();
+
+    /* ---- credentials for one connection between hosts ---- */
+    fprintf(stdout, "\n=== bound credentials ===\n");
+    setenv("PMIX_MCA_psec_ssl_cert_file", bothcert, 1);
+    if (!open_psec() || NULL == (mod = pmix_psec_base_assign_module("ssl"))) {
+        report("ssl is active with a client and server certificate", 0);
+        remove_pki(dir);
+        return 1;
+    }
+    other.bytes = (char *) "pmix-ra1Sone-connection's-two-nonces-xy";
+    other.size = strlen(other.bytes);
+
+    rc = mod->create_bound(&bind, true, (uid_t) -1, &cred);
+    buid = (uid_t) -1;
+    bgid = (gid_t) -1;
+    report("a server's bound credential is accepted as a server's",
+           PMIX_SUCCESS == rc &&
+               PMIX_SUCCESS == mod->validate_bound(&bind, true, &cred, &buid, &bgid));
+    report("and gives the identity it proves", me == (uint32_t) buid && mygid == (uint32_t) bgid);
+    report("the same credential is refused a second time",
+           PMIX_ERR_INVALID_CRED == mod->validate_bound(&bind, true, &cred, &buid, &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    rc = mod->create_bound(&bind, true, (uid_t) -1, &cred);
+    report("a server's bound credential is refused as a tool's",
+           PMIX_SUCCESS == rc &&
+               PMIX_ERR_INVALID_CRED == mod->validate_bound(&bind, false, &cred, &buid, &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    rc = mod->create_bound(&bind, false, (uid_t) -1, &cred);
+    report("a tool's bound credential is refused as a server's",
+           PMIX_SUCCESS == rc &&
+               PMIX_ERR_INVALID_CRED == mod->validate_bound(&bind, true, &cred, &buid, &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    rc = mod->create_bound(&bind, false, (uid_t) -1, &cred);
+    report("a credential bound to other bytes is refused",
+           PMIX_SUCCESS == rc &&
+               PMIX_ERR_INVALID_CRED == mod->validate_bound(&other, false, &cred, &buid, &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    rc = mod->create_bound(&bind, false, (uid_t) -1, &cred);
+    report("a bound credential is refused by validate_cred",
+           PMIX_SUCCESS == rc && PMIX_ERR_INVALID_CRED == check(mod, &cred));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    rc = mod->create_cred((struct pmix_peer_t *) peer, NULL, 0, NULL, NULL, &cred);
+    report("a credential for PMIx_Validate_credential is refused as a bound one",
+           PMIX_SUCCESS == rc &&
+               PMIX_ERR_INVALID_CRED == mod->validate_bound(&bind, false, &cred, &buid, &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    /* the documented layout, built by hand: a change to the format fails
+     * the good case as well as the bad ones */
+    build_bound(&cred, key, c_both, l_both, me, mygid, now, 0, &bind, (uint32_t) bind.size);
+    report("a hand-built bound credential in the documented format is accepted",
+           PMIX_SUCCESS == mod->validate_bound(&bind, false, &cred, &buid, &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    build_bound(&cred, key, c_both, l_both, me, mygid, now, 1, &bind, (uint32_t) bind.size);
+    report("...and as a server's, with role 1",
+           PMIX_SUCCESS == mod->validate_bound(&bind, true, &cred, &buid, &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    build_bound(&cred, key, c_both, l_both, me, mygid, now, 2, &bind, (uint32_t) bind.size);
+    report("a role that is neither is refused",
+           PMIX_ERR_INVALID_CRED == mod->validate_bound(&bind, true, &cred, &buid, &bgid) &&
+               PMIX_ERR_INVALID_CRED == mod->validate_bound(&bind, false, &cred, &buid, &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    build_bound(&cred, key, c_both, l_both, me, mygid, now, 0, &bind, (uint32_t) bind.size - 1);
+    report("a bind length that is not the bytes' is refused",
+           PMIX_ERR_INVALID_CRED == mod->validate_bound(&bind, false, &cred, &buid, &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    build_bound(&cred, key, c_both, l_both, me, mygid, now, 0, &bind, 0x7fffffff);
+    report("a bind length past the end of the credential is refused",
+           PMIX_ERR_INVALID_CRED == mod->validate_bound(&bind, false, &cred, &buid, &bgid));
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    rc = mod->create_bound(&bind, false, (uid_t) -1, &cred);
+    all_refused = (PMIX_SUCCESS == rc);
+    for (n = 0; all_refused && n < cred.size; n++) {
+        trunc.bytes = cred.bytes;
+        trunc.size = n;
+        if (PMIX_ERR_INVALID_CRED != mod->validate_bound(&bind, false, &trunc, &buid, &bgid)) {
+            all_refused = false;
+        }
+    }
+    report("every truncation of a bound credential is refused", all_refused);
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    close_psec();
+
+    /* ---- a CA alone: accept, but prove nothing ---- */
+    fprintf(stdout, "\n=== CA, no identity ===\n");
+    unsetenv("PMIX_MCA_psec_ssl_cert_file");
+    unsetenv("PMIX_MCA_psec_ssl_key_file");
+    if (!open_psec() || NULL == (mod = pmix_psec_base_assign_module("ssl"))) {
+        report("ssl is active with a CA alone", 0);
+        remove_pki(dir);
+        return 1;
+    }
+    report("with no identity, ssl cannot authenticate across hosts",
+           !pmix_psec_base_remote_capable(mod));
+    close_psec();
+    setenv("PMIX_MCA_psec_ssl_cert_file", certfile, 1);
+    setenv("PMIX_MCA_psec_ssl_key_file", keyfile, 1);
 
     /* ---- revocation, and an Ed25519 identity ---- */
     fprintf(stdout, "\n=== CRL + Ed25519 identity ===\n");
@@ -657,6 +740,7 @@ int main(int argc, char **argv)
     setenv("PMIX_MCA_psec_ssl_key_file", edkey, 1);
     if (!open_psec() || NULL == (mod = pmix_psec_base_assign_module("ssl"))) {
         report("ssl is active with a CRL", 0);
+        remove_pki(dir);
         return 1;
     }
     PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
@@ -680,10 +764,12 @@ int main(int argc, char **argv)
     setenv("PMIX_MCA_psec_ssl_key_file", keyfile, 1);
     if (!open_psec() || NULL == (mod = pmix_psec_base_assign_module("ssl"))) {
         report("ssl is active with an identity alone", 0);
+        remove_pki(dir);
         return 1;
     }
     report("with no CA, ssl is still available to connect with", lists_ssl(false));
     report("but is not offered to peers", !lists_ssl(true));
+    report("nor can it authenticate across hosts", !pmix_psec_base_remote_capable(mod));
     close_psec();
     setenv("PMIX_MCA_psec_ssl_ca_file", cafile, 1);
 
@@ -693,6 +779,7 @@ int main(int argc, char **argv)
     setenv("PMIX_MCA_psec_ssl_key_file", openkey, 1);
     if (!open_psec()) {
         report("psec opens with an exposed key", 0);
+        remove_pki(dir);
         return 1;
     }
     report("ssl refuses to start with a world-readable key",
@@ -705,6 +792,7 @@ int main(int argc, char **argv)
     setenv("PMIX_MCA_psec_ssl_key_file", path, 1);
     if (!open_psec()) {
         report("psec opens with a mismatched key", 0);
+        remove_pki(dir);
         return 1;
     }
     report("ssl refuses a key that is not the certificate's",
@@ -721,6 +809,7 @@ int main(int argc, char **argv)
     unlink(keyfile);
     unlink(edcert);
     unlink(edkey);
+    unlink(bothcert);
     unlink(openkey);
     unlink(crlfile);
     unlink(path);
@@ -733,6 +822,7 @@ int main(int argc, char **argv)
     free(c_server);
     free(c_nouser);
     free(c_revoked);
+    free(c_both);
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
     return (nfail > 0) ? 1 : 0;
