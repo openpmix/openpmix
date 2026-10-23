@@ -135,14 +135,15 @@ These MCA parameters adjust the checks PMIx makes on connections:
      - ``false``
      - When ``true``, ``native`` accepts a peer connecting over TCP on
        the identity it gives, on a platform whose kernel has no table of
-       TCP connections to confirm it with (any but Linux and macOS),
+       TCP connections to confirm it with (any but Linux, macOS and
+       FreeBSD),
        instead of refusing it.
    * - ``ptl_base_legacy_peers``
      - ``false``
      - When ``true``, a server takes clients and tools of PMIx releases
        before v7.0, which connect over TCP; a host's
        ``PMIX_SERVER_LEGACY_PEERS`` overrides it. Older clients need it -
-       and, on a platform other than Linux or macOS,
+       and, on a platform other than Linux, macOS or FreeBSD,
        ``psec_native_legacy_auth`` as well. A PMIx configured
        ``--disable-legacy-peers`` refuses it.
    * - ``ptl_base_if_include`` / ``ptl_base_if_exclude``

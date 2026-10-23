@@ -793,8 +793,14 @@ port are our peer address, its remote address and port are ours — and
 the table says which uid created it. There is one route per platform,
 each compiled only there: Linux asks `sock_diag` netlink for that one
 socket and falls back to scanning `/proc/net/tcp{,6}`; macOS reads the
-`net.inet.tcp.pcblist64` sysctl. Anything else answers
-`PMIX_ERR_NOT_SUPPORTED`.
+`net.inet.tcp.pcblist64` sysctl, and FreeBSD (12 and later) the
+`net.inet.tcp.pcblist` one, sharing `read_pcblist()`. The two sysctls
+are framed alike but their records are not: FreeBSD's `struct xtcpcb`
+opens with a 64-bit `ksize_t` length where macOS has 32 bits, and keeps
+the addresses in `xt_inp.inp_inc`. A non-root reader on FreeBSD sees
+other users' connections only while `security.bsd.see_other_uids` is 1,
+the default; with it off another user's peer is `PMIX_ERR_NOT_FOUND`.
+Anything else answers `PMIX_ERR_NOT_SUPPORTED`.
 
 Three rules, each of which a plausible "simplification" breaks:
 

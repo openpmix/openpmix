@@ -107,10 +107,12 @@ Limits
   connects from an address that is not this host's, and must use
   ``munge`` or ``ssl``.
 
-* On platforms other than Linux and macOS, step 2 is not available, so
-  a peer connecting over TCP is refused unless ``psec_native_legacy_auth``
-  is ``true``. A client or tool of an earlier release on such a platform
-  needs it.
+* On platforms other than Linux, macOS and FreeBSD, step 2 is not
+  available, so a peer connecting over TCP is refused unless
+  ``psec_native_legacy_auth`` is ``true``. A client or tool of an earlier
+  release on such a platform needs it. On FreeBSD, a server that does
+  not run as root confirms another user's peer only while
+  ``security.bsd.see_other_uids`` is left at its default of ``1``.
 
 * A peer that reaches the server over TCP through a relay on the server's
   host (``socat``, ``docker-proxy``, or any other process that accepts the
