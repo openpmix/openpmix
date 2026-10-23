@@ -616,10 +616,9 @@ The base and every transport are built into `libpmix`. Editing a
 `Makefile.am` only needs a plain `make`; adding or removing a *component directory* changes the build
 wiring resolved by `configure`, so re-run
 `./autogen.pl && ./configure … && make`. `ptl` **does** ship its own
-`show_help` file, `base/help-ptl-base.txt` — per the top-level golden
-rule, after any add/delete/modify of that text you must
-`rm src/util/pmix_show_help_content.* && make` to regenerate the compiled
-help content.
+`show_help` file, `base/help-ptl-base.txt`, whose content is compiled
+into the library; in a git clone a plain `make` regenerates it (see the
+top-level guide for a tarball).
 
 ## When working in this framework
 

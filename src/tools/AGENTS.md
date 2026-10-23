@@ -189,10 +189,10 @@ generated `src/util/pmix_show_help_content.c` — so a runtime
 `pmix_show_help("help-foo.txt", "topic", …)` call resolves against that
 compiled table regardless of which tool emits it. Consequences:
 
-- **After editing any `help-*.txt`, regenerate the content pair** exactly
-  as the top-level guide says:
-  `rm src/util/pmix_show_help_content.* && make`. A plain `make` will
-  *not* pick up the new text otherwise.
+- **An edit to any `help-*.txt` reaches the tools only through a
+  rebuild of `libpmix`.** In a git clone a plain `make` regenerates the
+  content; in a tarball, `rm src/util/pmix_show_help_content.c && make`
+  (see the top-level guide).
 - Because all help content lives in one table, `pevent` and `pctrl`
   currently source their `--pid` error messages from **`help-pquery.txt`**
   (topics `bad-option-input`, `file-open-error`, `bad-file`) rather than

@@ -45,9 +45,8 @@ that history survive and you must respect them:
 
 1. **`help-ploc.txt`** — the `show_help` file keeps the old name. It is
    referenced by string literal (`pmix_show_help("help-ploc.txt", …)`) in
-   `pmix_hwloc.c`. Per the top-level golden rule, if you touch this file
-   you must `rm src/util/pmix_show_help_content.*` and rebuild so the
-   compiled-in help content is regenerated.
+   `pmix_hwloc.c`. Its content is compiled into the library; a plain
+   `make` in a git clone regenerates it (top-level guide).
 2. **The `pmix_ploc_base_*` shims** at the bottom of `pmix_hwloc.h` /
    `pmix_hwloc_datatype.c` (`_destruct_cpuset`, `_release_cpuset`,
    `_destruct_topology`, `_release_topology`). They exist **only** to
@@ -303,9 +302,8 @@ decided by [`config/pmix_setup_hwloc.m4`](../../config/pmix_setup_hwloc.m4),
 which enforces a **minimum hwloc of 2.1.0** (the code assumes 2.x APIs
 throughout — `hwloc_shmem_*`, component blacklisting, `osdev.type`, etc.,
 with no version `#if` guards). Editing `Makefile.include` only needs a
-plain `make`. Touching `help-ploc.txt` requires the
-`rm src/util/pmix_show_help_content.* && make` dance (top-level golden
-rule). Because the environment always has hwloc on the dev machines,
+plain `make`, and so does touching `help-ploc.txt` in a git clone
+(top-level guide). Because the environment always has hwloc on the dev machines,
 `--enable-test-build` is not needed to compile-check this directory, but
 a normal build does exercise it.
 

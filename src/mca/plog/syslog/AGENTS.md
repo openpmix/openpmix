@@ -65,8 +65,8 @@ Note the struct's static initializer sets `level = LOG_ERR`, but the
 registered string default is `"info"`, so after registration the
 effective default level is `LOG_INFO`. Both `syslog:unrec-*` help texts
 live in [`../base/help-pmix-plog.txt`](../base/help-pmix-plog.txt) — edits
-there require regenerating the `show_help` content (`rm
-src/util/pmix_show_help_content.*` then `make`).
+there are compiled into the library, and a plain `make` in a git clone
+regenerates them.
 
 ### `component_query`
 

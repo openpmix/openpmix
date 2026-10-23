@@ -533,10 +533,9 @@ Golden rules that bite here:
   wiring resolved by `configure`**, so re-run
   `./autogen.pl && ./configure ... && make`.
 - `pcompress` ships its own `show_help` file,
-  `base/help-pcompress.txt`. Per the top-level golden rule, after any
-  add/delete/modify of that text you must
-  `rm src/util/pmix_show_help_content.* && make` to regenerate the
-  compiled help content.
+  `base/help-pcompress.txt`, whose content is compiled into the
+  library; in a git clone a plain `make` regenerates it (see the
+  top-level guide for a tarball).
 
 ## When working in this framework
 
