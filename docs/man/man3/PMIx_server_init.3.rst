@@ -191,15 +191,19 @@ Role and support attributes
   ``PMIX_TCP_IF_EXCLUDE``. Its URI names the first; the others are stored as
   ``PMIX_MYSERVER_ALT_URIS`` and listed in its contact files, where tools
   finding the server by file, PID or namespace try them if the URI's address
-  cannot be reached. A remote tool must authenticate with a mechanism that
-  works across hosts: the default ``native`` mechanism confirms a peer's
-  identity through the server's own kernel, which cannot name a peer on
-  another host, and the server refuses a peer on another host that names
-  it. A server asked for remote connections with neither ``ssl`` nor
-  ``munge`` able to validate a peer fails its init. Use ``ssl`` - PMIx configured
-  ``--with-openssl``, the server given ``psec_ssl_ca_file``, and the tool
-  given ``psec_ssl_cert_file``/``psec_ssl_key_file`` and
-  ``PMIX_MCA_psec=ssl`` - or ``munge``.
+  cannot be reached. A remote tool and the server authenticate each other,
+  the server first, with ``munge`` or ``ssl``: the default ``native``
+  mechanism confirms a peer's identity through the server's own kernel,
+  which cannot name a process on another host. The server refuses a peer
+  on another host that does not take part - one of an earlier release,
+  or one with only ``native`` - and a server asked for remote
+  connections with neither ``ssl`` nor ``munge`` able to take part fails
+  its init. For ``ssl``, PMIx is configured ``--with-openssl``, and the
+  server and the tool are each given a certificate and key
+  (``psec_ssl_cert_file``, ``psec_ssl_key_file``) and the certificate
+  authority the other's certificate is issued by (``psec_ssl_ca_file``).
+  A tool connecting to a server on another host chooses ``munge`` or
+  ``ssl`` itself.
 * ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` (bool) |mdash| mark the rendezvous
   files as readable by all users and allow tools running under user IDs other
   than that of the server to connect. Defaults to ``false``: without it, a

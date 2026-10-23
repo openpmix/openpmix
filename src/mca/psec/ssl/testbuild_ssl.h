@@ -46,6 +46,7 @@ STACK_OF(X509);
 #define X509_FILETYPE_PEM       1
 #define X509_V_FLAG_CRL_CHECK   0x4
 #define X509_PURPOSE_SSL_CLIENT 1
+#define X509_PURPOSE_SSL_SERVER 2
 
 static inline unsigned long ERR_get_error(void) { return 0; }
 static inline void ERR_clear_error(void) { }

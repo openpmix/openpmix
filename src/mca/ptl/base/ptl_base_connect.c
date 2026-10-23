@@ -554,6 +554,7 @@ static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
         cn = (pmix_connection_t *) pmix_list_get_first(&connections);
         peer->protocol = PMIX_PROTOCOL_V2;
         PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+        pmix_ptl_base.server_release_vouched = cn->vouched;
         /* speak a wire format and security mechanism the server accepts */
         rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, cn);
         if (PMIX_SUCCESS != rc) {
@@ -590,6 +591,7 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
         cn = (pmix_connection_t *) pmix_list_get_first(&connections);
         peer->protocol = PMIX_PROTOCOL_V2;
         PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+        pmix_ptl_base.server_release_vouched = cn->vouched;
         /* speak a wire format and security mechanism the server accepts */
         rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, cn);
         if (PMIX_SUCCESS != rc) {
@@ -826,6 +828,12 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
+    /* what a server we found before listed, or was believed of, is not
+     * this one's */
+    if (NULL != peer->nptr) {
+        peer->nptr->compat.rpsec = NULL;
+    }
+    pmix_ptl_base.server_release_vouched = false;
 
     /* check any provided directives
      * to see where they want us to connect to */
@@ -1368,6 +1376,7 @@ complete:
 cleanup:
     /* an identity we were told to expect was for this connect alone */
     pmix_ptl_base.server_expect_given = false;
+    pmix_ptl_base.server_release_vouched = false;
     *suriout = suri;
     free(alts);
     if (NULL != nspace) {

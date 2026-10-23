@@ -588,6 +588,7 @@ static void free_server_access(void)
     pmix_ptl_base.access_gids = NULL;
     pmix_ptl_base.naccess_gids = 0;
     pmix_ptl_base.server_expect_given = false;
+    pmix_ptl_base.server_release_vouched = false;
 }
 
 static void open_cleanup(void)
@@ -841,6 +842,12 @@ static void pccon(pmix_pending_connection_t *p)
     p->proc_type.release = PMIX_RELEASE_WILDCARD;
     p->proc_type.flag = 0;
     p->psecmod = NULL;
+    p->proved = false;
+    p->auth_bound = false;
+    p->authmod = NULL;
+    p->auth_uid = (uid_t) -1;
+    memset(p->auth_tool, 0, sizeof(p->auth_tool));
+    memset(p->auth_srv, 0, sizeof(p->auth_srv));
     p->nptr = NULL;
     p->rinfo = NULL;
     p->bfropsmod = NULL;
@@ -1000,6 +1007,7 @@ static void ccon(pmix_connection_t *p)
     p->local_uri = NULL;
     p->bfrops = NULL;
     p->psec = NULL;
+    p->vouched = false;
 }
 static void dcon(pmix_connection_t *p)
 {

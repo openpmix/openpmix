@@ -38,6 +38,10 @@ BEGIN_C_DECLS
 #define PMIX_ERR_FABRIC_NOT_PARSEABLE -1363
 #define PMIX_ERR_TAKE_NEXT_OPTION     -1366
 #define PMIX_ERR_TEMP_UNAVAILABLE     -1367
+/* a server's answer to a peer on another host that sent its connect-ack
+ * without having the server prove who it is first: do that, and connect
+ * again - see "Between hosts" in src/mca/ptl/base/base.h */
+#define PMIX_ERR_PROVE_FIRST          -1368
 
 #define PMIX_INTERNAL_ERR_DONE   -2000
 

@@ -410,7 +410,6 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
     int sd, fdflags;
 
     memset(&addr, 0, sizeof(addr));
-    struct timeval tv;
     pmix_pending_connection_t *pending_connection, *pnd;
     /* the primary listener or one of the alternates - whichever fired */
     pmix_listener_t *lt = (pmix_listener_t *) cbdata;
@@ -517,22 +516,58 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
                             pmix_ptl_base.pending_cap, pnd->sd);
         pmix_ptl_base_drop_pending_connection(pnd, PMIX_ERR_OUT_OF_RESOURCE);
     }
-    pmix_list_append(&pmix_ptl_base.pending_connections, &pending_connection->super);
-    if (0 < pmix_ptl_base.connect_ack_timeout) {
-        pmix_event_evtimer_set(pmix_globals.evbase, &pending_connection->timer,
-                               connect_ack_expired, pending_connection);
-        tv.tv_sec = pmix_ptl_base.connect_ack_timeout;
+    pmix_ptl_base_await_connect_ack(pending_connection, false);
+}
+
+void pmix_ptl_base_await_connect_ack(pmix_pending_connection_t *pnd, bool resume)
+{
+    pmix_pending_connection_t *item;
+    struct timeval tv, now;
+    long left = pmix_ptl_base.connect_ack_timeout;
+
+    if (resume) {
+        /* the wait goes on from where it was: the timeout runs from the
+         * connection's arrival, and it keeps its place by arrival among the
+         * connections still waiting - so the oldest is still dropped first */
+        if (0 < left) {
+            pmix_ptl_base_monotime(&now);
+            left -= (long) (now.tv_sec - pnd->waiting.tv_sec);
+            if (now.tv_usec < pnd->waiting.tv_usec) {
+                ++left;
+            }
+            if (0 >= left) {
+                pmix_list_append(&pmix_ptl_base.pending_connections, &pnd->super);
+                pmix_ptl_base_drop_pending_connection(pnd, PMIX_ERR_TIMEOUT);
+                return;
+            }
+        }
+        PMIX_LIST_FOREACH (item, &pmix_ptl_base.pending_connections, pmix_pending_connection_t) {
+            if (timercmp(&pnd->waiting, &item->waiting, <)) {
+                break;
+            }
+        }
+        if (&item->super == pmix_list_get_end(&pmix_ptl_base.pending_connections)) {
+            pmix_list_append(&pmix_ptl_base.pending_connections, &pnd->super);
+        } else {
+            pmix_list_insert_pos(&pmix_ptl_base.pending_connections, &item->super, &pnd->super);
+        }
+    } else {
+        pmix_list_append(&pmix_ptl_base.pending_connections, &pnd->super);
+    }
+    if (0 < left) {
+        pmix_event_evtimer_set(pmix_globals.evbase, &pnd->timer, connect_ack_expired, pnd);
+        tv.tv_sec = left;
         tv.tv_usec = 0;
-        if (0 == pmix_event_evtimer_add(&pending_connection->timer, &tv)) {
-            pending_connection->timer_active = true;
+        if (0 == pmix_event_evtimer_add(&pnd->timer, &tv)) {
+            pnd->timer_active = true;
         }
     }
     /* post the object */
-    PMIX_POST_OBJECT(pending_connection);
-    if (0 != pmix_event_add(&pending_connection->ev, NULL)) {
+    PMIX_POST_OBJECT(pnd);
+    if (0 != pmix_event_add(&pnd->ev, NULL)) {
         /* nothing will ever service this connection */
         PMIX_ERROR_LOG(PMIX_ERROR);
-        pmix_ptl_base_drop_pending_connection(pending_connection, PMIX_ERROR);
+        pmix_ptl_base_drop_pending_connection(pnd, PMIX_ERROR);
     }
 }
 

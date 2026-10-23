@@ -144,7 +144,9 @@ unused pointers stay `NULL`, and the framework macros guard on them.
 | `create_cred` | `(peer, directives, ndirs, &info, &ninfo, cred)` | client | build a credential blob for this process |
 | `validate_cred` | `(peer, directives, ndirs, &info, &ninfo, cred)` | server | check a received credential; required - a module without it is never selected |
 | `validates` | `(void) -> bool` | server | whether the module, as configured, can check a peer's credential; `NULL` means always. `ssl` with an identity and no CA can connect but not accept |
-| `remote` | `bool` | server | whether the module validates a credential made on another host - `munge` and `ssl` do, `native` (which asks this host's kernel) does not. ptl refuses a TCP peer whose address is not this host's that names a module without it, and a server asked for remote connections fails its init unless an active module has it and `validates` (`pmix_psec_base_remote_available`) |
+| `create_bound` | `(bind, server, cred) -> pmix_status_t` | both | make a credential for one connection between hosts, carrying the bytes `bind` and whether it is a server's (`server`) or a tool's. NULL for a module that cannot authenticate across hosts (`native`) |
+| `validate_bound` | `(bind, server, cred, &uid, &gid) -> pmix_status_t` | both | check one: it must carry exactly `bind` and have been made as a server if `server`, as a tool if not; on success, the identity it proves. NULL with `create_bound` |
+| `mutual` | `(void) -> bool` | both | whether the module, as configured, can do both - each end of a connection between hosts proves who it is and checks the other. `NULL` means always. `ssl` needs a certificate and key and a CA |
 
 The `directives`/`info` pairs carry the attribute arrays required of
 every PMIx interface: `directives` are caller inputs (e.g.
@@ -286,7 +288,31 @@ carried in the `ptl` handshake rather than in the payload:
    `PMIX_SUCCESS` refuses the peer.
 The psec interface went to 2.0.0 when `validate_cred` was given the
 peer, so a module can see the identity the peer was registered or
-connected as, and to 4.0.0 when the handshake slots were removed.
+connected as, to 4.0.0 when the handshake slots were removed, and to
+5.0.0 when `remote` gave way to `create_bound`/`validate_bound`/`mutual`.
+
+## Between hosts
+
+A tool and a server on different hosts authenticate each other, the
+server first (ptl: "Between hosts" in [`../ptl/base/base.h`](../ptl/base/base.h),
+and [`../ptl/base/AGENTS.md`](../ptl/base/AGENTS.md)). Each credential is
+made for that one connection: ptl hands `create_bound` and
+`validate_bound` the bytes both ends know - a label, whose credential it
+is, the tool's nonce and the server's - and a credential carrying other
+bytes, or made as the other role, is refused. These two are reached only
+from ptl. `PMIx_Get_credential` and `PMIx_Validate_credential` go through
+`create_cred`/`validate_cred`, whose directives a client can choose, so
+nothing a caller passes there can make or accept a bound credential.
+
+`pmix_psec_base_remote_capable(mod)` says whether a module can take part
+as configured (both entry points, and `mutual`).
+`pmix_psec_base_remote_available()` - a server asked for remote
+connections fails its init without one - and
+`pmix_psec_base_remote_module(prefer)` - what a tool uses with a server
+on another host: `prefer` if it can, else the highest-priority active
+module that can - and `pmix_psec_base_remote_module_among(list)` - the
+highest-priority active module that can, of those a server's file lists
+- are built on it.
 
 ## The `PMIX_PSEC_*` macros ([`psec.h`](psec.h))
 
@@ -328,7 +354,7 @@ Default priorities come from each component's `component_query`:
 |-----------|----------|-------|-------------|
 | `munge` | 80 | single-shot | built only if `--with-munge` was given and libmunge is found; `init` succeeds only if the `munged` daemon issues a credential |
 | `native` | 10 | single-shot | always (no `configure.m4`, no gate); authenticates **peers on this host's kernel**, containers included |
-| `ssl` | 5 | single-shot | built only with `--with-openssl`; active only when `psec_ssl_ca_file` or a cert/key pair is configured; authenticates remote peers by X.509 certificate |
+| `ssl` | 5 | single-shot | built only with `--with-openssl`; active only when `psec_ssl_ca_file` or a cert/key pair is configured; authenticates a tool and a server on different hosts to each other by X.509 certificate, with all three configured on each |
 
 Because the list is priority-ordered and `assign_module(NULL)` returns
 the highest-priority module, a peer that does not name a mechanism gets
@@ -401,7 +427,7 @@ src/mca/psec/
 │   └── psec_base_fns.c       get_available_modules + assign_module (name lookup)
 ├── native/                   uid/gid from the kernel: the local socket's peer, or the TCP socket's owner (default, always available)
 ├── munge/                    MUNGE credentials (conditional on libmunge)
-└── ssl/                      X.509-signed credentials for remote peers (conditional on OpenSSL)
+└── ssl/                      X.509-signed credentials between hosts (conditional on OpenSSL)
 ```
 
 ## Building
