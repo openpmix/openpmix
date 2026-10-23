@@ -3265,8 +3265,15 @@ static int case_notice_held(int how)
     int sdA = -1, sdB = -1;
     uint32_t u32;
 
-    if (1 != how) {
+    /* The second client's wait counts from its accept, and it spends
+     * 0.75s of it connected before the server reads its request - the
+     * pause, then the held progress thread. A second of it left that a
+     * quarter-second short of a refusal on a loaded host, so it is given
+     * two */
+    if (0 == how) {
         setenv("PMIX_MCA_ptl_base_handshake_wait_time", "1", 1);
+    } else if (2 == how) {
+        setenv("PMIX_MCA_ptl_base_handshake_wait_time", "2", 1);
     }
     host_mode = tool ? HOST_DEFERS_TOOLS : HOST_DEFERS;
     max_deferred = 1;
