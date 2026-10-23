@@ -64,9 +64,13 @@ AC_DEFUN([MCA_pmix_psec_ssl_CONFIG],[
 
     PMIX_SUMMARY_ADD([External Packages], [OpenSSL (psec/ssl)], [], [${psec_ssl_SUMMARY}])
 
-    # test/unit/psec_ssl links OpenSSL itself to mint certificates, so it
-    # is built only against the real library - never against the shim
-    AM_CONDITIONAL([PMIX_HAVE_PSEC_SSL], [test "$psec_ssl_support" = "1"])
+    # test/unit/psec_ssl_auth and ptl_remote_auth link OpenSSL themselves
+    # to mint certificates, so they are built only against the real
+    # library - never against the shim - and only when the component is:
+    # --enable-mca-no-build=psec-ssl leaves should_build 0 here, with
+    # OpenSSL found all the same
+    AM_CONDITIONAL([PMIX_HAVE_PSEC_SSL],
+                   [test "$psec_ssl_support" = "1" && test "$should_build" = "1"])
 
     # set build flags to use in makefile
     AC_SUBST([psec_ssl_CPPFLAGS])

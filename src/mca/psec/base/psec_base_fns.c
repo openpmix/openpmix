@@ -74,20 +74,64 @@ char *pmix_psec_base_get_accepted_modules(void)
     return list_modules(true);
 }
 
+bool pmix_psec_base_remote_capable(const pmix_psec_module_t *mod)
+{
+    return NULL != mod && NULL != mod->create_bound && NULL != mod->validate_bound &&
+           (NULL == mod->mutual || mod->mutual());
+}
+
 bool pmix_psec_base_remote_available(void)
+{
+    return NULL != pmix_psec_base_remote_module(NULL);
+}
+
+pmix_psec_module_t *pmix_psec_base_remote_module(pmix_psec_module_t *prefer)
 {
     pmix_psec_base_active_module_t *active;
 
     if (!pmix_psec_globals.initialized) {
-        return false;
+        return NULL;
     }
     PMIX_LIST_FOREACH (active, &pmix_psec_globals.actives, pmix_psec_base_active_module_t) {
-        if (active->module->remote &&
-            (NULL == active->module->validates || active->module->validates())) {
-            return true;
+        if (active->module == prefer && pmix_psec_base_remote_capable(prefer)) {
+            return prefer;
         }
     }
-    return false;
+    PMIX_LIST_FOREACH (active, &pmix_psec_globals.actives, pmix_psec_base_active_module_t) {
+        if (pmix_psec_base_remote_capable(active->module)) {
+            return active->module;
+        }
+    }
+    return NULL;
+}
+
+pmix_psec_module_t *pmix_psec_base_remote_module_among(const char *list)
+{
+    pmix_psec_base_active_module_t *active;
+    pmix_psec_module_t *mod = NULL;
+    char **names;
+    int n;
+
+    if (!pmix_psec_globals.initialized || NULL == list) {
+        return NULL;
+    }
+    names = PMIx_Argv_split(list, ',');
+    PMIX_LIST_FOREACH (active, &pmix_psec_globals.actives, pmix_psec_base_active_module_t) {
+        if (!pmix_psec_base_remote_capable(active->module)) {
+            continue;
+        }
+        for (n = 0; NULL != names && NULL != names[n]; n++) {
+            if (0 == strcmp(names[n], active->module->name)) {
+                mod = active->module;
+                break;
+            }
+        }
+        if (NULL != mod) {
+            break;
+        }
+    }
+    PMIx_Argv_free(names);
+    return mod;
 }
 
 pmix_psec_module_t *pmix_psec_base_assign_module(const char *options)

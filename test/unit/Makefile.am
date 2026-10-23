@@ -370,14 +370,27 @@ pmdl_paramfile_LDADD = \
 # built only where the component was built against the real library. See
 # the header comment in psec_ssl_auth.c.
 if PMIX_HAVE_PSEC_SSL
-check_PROGRAMS += psec_ssl_auth
-TESTS += psec_ssl_auth
+check_PROGRAMS += psec_ssl_auth ptl_remote_auth
+TESTS += psec_ssl_auth ptl_remote_auth
 endif
 psec_ssl_auth_SOURCES = \
-        psec_ssl_auth.c
+        psec_ssl_auth.c \
+        ssl_test_pki.h
 psec_ssl_auth_CPPFLAGS = $(psec_ssl_CPPFLAGS)
 psec_ssl_auth_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(psec_ssl_LDFLAGS)
 psec_ssl_auth_LDADD = \
+    $(top_builddir)/src/libpmix.la \
+    $(psec_ssl_LIBS)
+
+# A tool and a server on different hosts authenticating each other, with
+# psec/ssl and a PKI the test makes - see ptl_remote_auth.c. It skips in a
+# build without remote tools
+ptl_remote_auth_SOURCES = \
+        ptl_remote_auth.c \
+        ssl_test_pki.h
+ptl_remote_auth_CPPFLAGS = $(psec_ssl_CPPFLAGS)
+ptl_remote_auth_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(psec_ssl_LDFLAGS)
+ptl_remote_auth_LDADD = \
     $(top_builddir)/src/libpmix.la \
     $(psec_ssl_LIBS)
 

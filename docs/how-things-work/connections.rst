@@ -179,8 +179,9 @@ settings rule out. Then:
   first gives the URI; the others are *alternate* addresses. Only a
   PMIx configured ``--enable-remote-tools`` does this. In one without
   it, a host that asks fails its init. In one with it, a host that asks
-  fails its init when neither ``munge`` nor ``ssl`` can validate a
-  peer's credential.
+  fails its init when neither ``munge`` nor ``ssl`` can authenticate a
+  peer on another host and the server to it (see `A server on another
+  host`_).
 * **With no loopback interface,** a PMIx configured
   ``--enable-remote-tools`` uses a public interface - unless
   ``PMIX_SERVER_REMOTE_CONNECTIONS`` was explicitly set to false, in
@@ -368,6 +369,7 @@ gives it the local socket. From there the two do the same:
    the local socket connects there and nowhere else: if it cannot reach
    the socket, it fails to initialize, and says why.
 #. **On the local socket, check the server** (below).
+#. **With a server on another host, have it prove who it is** (below).
 #. **Send the connection request.**
 #. **Read the replies**, each also bounded by
    ``ptl_base_handshake_wait_time``.
@@ -402,8 +404,124 @@ connections - a user, but no group. A process applies the same rule by
 user alone: a server running as its own user, as root, or as a user
 ``ptl_base_server_access`` names. A server at an address of this host
 that the table does not show is refused. One at any other address - on
-another host, or in another network namespace - is not checked, nor is
-any on a platform with no table to ask.
+another host, or in another network namespace - is checked by what it
+proves instead (below). So is one on this host when the kernel has no
+table to ask - see "A server the kernel cannot name" below.
+
+A server on another host
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+A process connecting over TCP to an address that is not its own host's
+- not a loopback address, and not the address of one of its
+interfaces - has the server prove who it is before it sends its
+connection request:
+
+#. **It chooses ``munge`` or ``ssl``**: the mechanism chosen for the
+   server, if that is one of them, else the highest-priority one it has
+   that can both prove who it is and check another. ``native`` cannot. A
+   process with neither sends nothing and fails, saying so. For ``ssl``
+   that means a certificate and key of its own and the certificate
+   authority the server's certificate is issued by.
+#. **It sends an opening message**, in the connection request's
+   framing: the mechanism's name, a zero credential length, the kind of
+   peer ``11``, its version, the length of a random value (a *nonce*) of
+   its own, that nonce, its uid, and a byte that says whether it binds
+   the connection too (below). A server ignores anything after that
+   byte, which a later release may append, and takes an opening without
+   it as not binding.
+#. **The server answers** with a status. A server that takes no tools,
+   or - for a process on another host - takes no processes from other
+   hosts (no ``PMIX_SERVER_REMOTE_CONNECTIONS``), or does not have that
+   mechanism able to do both, refuses. Otherwise
+   the answer carries a nonce of the server's, the length of a
+   credential, and that credential, which the server made for this
+   exchange: it names who the server is, and is bound to both nonces and
+   to its being a server's. With ``munge``, only a process of the uid
+   the opening named can decode it.
+#. **The process checks that credential**, and then whom it names, by
+   the rule for any other process above: its own user, root, or one
+   ``ptl_base_server_access`` names - or the uid and gid it was given
+   for the server. A server that fails either check is not talked to.
+#. **Its connection request then carries a credential made for this
+   exchange too**, bound to the same two nonces as a tool's - with
+   ``munge``, decodable only by the server's uid - and claiming the uid
+   its opening named. Neither credential is accepted for any other
+   connection, nor by ``PMIx_Validate_credential``.
+
+A server of a release before v7.0 does not take part, and a process of
+this release does not connect to one on another host. For ``ssl``, a
+server's certificate must allow server authentication and a process's
+client authentication, where they restrict their key's use; and the user
+each certificate names must be a user of the other end's host, with the
+same uid, holding the group the credential claims.
+
+A process can take a server to be on its own host when the server does
+not - one reached through a port forward or a proxy on the process's
+host, say. Such a server answers the connection request with
+``PMIX_ERR_PROVE_FIRST``, and the process connects again and has it
+prove who it is, as above. A process with neither ``munge`` nor ``ssl``
+then fails, saying why.
+
+What the exchange establishes is who is at each end when the connection
+opens: the server's user to the process, and the process's to the
+server. It does not establish which host or address the process
+reached, and the traffic after the connection request is neither
+encrypted nor signed.
+
+A server the kernel cannot name
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A process connecting over TCP to a server at an address of its own host
+asks the kernel's table of TCP connections who runs the server. Where
+the platform has no table to ask, the process has the server prove who
+it is by the same exchange - for any address an interface of its host
+holds, by the kernel's own list, which names some the interface list
+does not - and checks whom it names by the same rule. A client does not:
+its server is the one named for it - by the environment it was started
+with, or by its caller. A
+singleton, which finds a system server's file in a shared directory,
+does. Any other failure to read the table refuses the server.
+
+The process's opening says that it binds the connection: both
+credentials are then also bound to the connection's two ends -
+addresses and ports - as each end reads them from its own socket. A
+connection relayed through another process has different ends on each
+side, and fails. A server answers such an opening from a process at an
+address of its own host when it takes tools - whether or not it takes
+processes from other hosts - and only where its own kernel cannot name
+its peers either, as it cannot when the process's cannot. A tool on
+another host that reaches the server through a proxy on the server's
+host does not bind the connection, and is answered as one on another
+host. Only this decision goes by the kernel's list: an address it holds
+may still lead to another host, as a Kubernetes service address does.
+
+Then:
+
+* a process with neither ``munge`` nor ``ssl`` fails, saying so. A
+  server of v7.0 or later also listens on a local socket, where the
+  kernel names it; a process given the server's rendezvous file
+  connects there;
+* a server that does not answer - one of a release before v7.0, say - is
+  not talked to;
+* except that a process that knows the server is of a release before
+  v7.0 connects to it as before, unchecked. It knows that from the
+  environment a server started it with, or from a file the caller named
+  for the server - its rendezvous or report file, given as
+  ``file:<path>`` or ``PMIX_TOOL_ATTACHMENT_FILE``. A file it finds in a
+  directory anyone can write to, or at a fixed name there, is not
+  enough: its server may be long gone and its port another's. The file
+  is believed only when it is the one at the name, not a link to one nor
+  one of several names for it, only its owner can write it, and its
+  owner is a user whose server the process may talk to by the rule above
+  (the user it was told to expect, if it was). Its version chooses the
+  wire format either way. A process given only the server's address does
+  not know its release, and is told to use the file.
+
+The process's connection request then carries a credential made for the
+exchange, which the server checks as it checks one from another host. A
+process of an earlier release does not ask; the server checks it as any
+other process on its host - see :doc:`authentication/native`, and
+``psec_native_legacy_auth`` for a platform with no table.
 
 The connection request
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -515,6 +633,12 @@ Each ``psec`` component makes its own credential:
 * **ssl** sends the peer's uid, gid, a timestamp, a random value, its
   certificate chain, and a signature over all of them.
 
+To a server on another host, ``munge`` and ``ssl`` send a credential
+made for the exchange that preceded the request (see `A server on
+another host`_): ``munge`` carries the exchange's nonces as its
+payload, and ``ssl`` signs them, and whether the credential is a
+server's or a process's, with the rest.
+
 The replies
 ^^^^^^^^^^^
 
@@ -568,12 +692,26 @@ peer:
   the local socket whether it does or not: no earlier release has that
   transport.
 
+A request whose kind is ``11`` is not a connection request: it is a
+peer on another host asking the server to prove who it is first (see `A
+server on another host`_). The server answers it only over TCP, only
+once per connection, only when it takes tools and its host asked for
+remote connections in a PMIx configured ``--enable-remote-tools``, and
+only with ``munge`` or ``ssl`` able to both prove who the server is and
+check the peer. It then waits for the peer's connection request as it
+waited for this message - for what is left of the same
+``ptl_base_connect_ack_timeout``, which runs from the connection's
+arrival.
+
 Before the security component is asked, a peer that connected over TCP
 from an address that is not this host's - not a loopback address, and
-not the address of one of its interfaces - must name a component that
-validates a credential made on another host: ``munge`` or ``ssl``. One
-that names ``native`` is refused with ``PMIX_ERR_NO_PERMISSIONS``, as is
-any such peer in a PMIx configured without ``--enable-remote-tools``.
+not the address of one of its interfaces - must have had the server
+prove who it is first. One of this release that did not is told to,
+with ``PMIX_ERR_PROVE_FIRST``, when the server would; any other is
+refused with ``PMIX_ERR_NO_PERMISSIONS``. One that did must name this
+release or a later one, and send a credential made for that exchange,
+with the same mechanism, as a tool's, naming the uid and gid it claims
+and the uid its opening named; anything else is refused.
 
 The rest depends on whether the peer is a client (kinds 0 and 9) or a
 tool (all the others).

@@ -295,6 +295,10 @@ typedef struct pmix_personality_t {
     pmix_bfrops_module_t *bfrops;
     pmix_psec_module_t *psec;
     pmix_gds_base_module_t *gds;
+    /* of the mechanisms a server lists, the highest of ours that can
+     * prove who either end is - for the exchange in
+     * src/mca/ptl/base/ptl_base_auth.c. NULL when its list is unknown */
+    pmix_psec_module_t *rpsec;
 } pmix_personality_t;
 
 /* define a set of structs for tracking post-termination cleanup. Each

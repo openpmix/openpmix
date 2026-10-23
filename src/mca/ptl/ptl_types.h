@@ -337,6 +337,10 @@ typedef uint16_t pmix_listener_protocol_t;
 #define PMIX_PROTOCOL_UNDEF 0
 #define PMIX_PROTOCOL_V2    2 // tcp
 
+/* the length of each nonce a credential between hosts is bound to - see
+ * "Between hosts" in base/base.h */
+#define PMIX_PTL_AUTH_NONCE_LEN 16
+
 /* connection support */
 typedef struct {
     /* on pmix_ptl_base.pending_connections while its connect-ack is
@@ -382,6 +386,16 @@ typedef struct {
     /* the psec module (pmix_psec_module_t *) the peer asked to be
      * validated with */
     void *psecmod;
+    /* This server proved who it is to a peer on another host before the
+     * peer sent its connect-ack: `proved`, with the module they use
+     * (pmix_psec_module_t *) and the two nonces the peer's credential must
+     * be bound to. See "Between hosts" in base/base.h */
+    bool proved;
+    void *authmod;
+    uid_t auth_uid;     // the user the peer's opening said it runs as
+    bool auth_bound;    // ...and that it binds the connection's two ends too
+    unsigned char auth_tool[PMIX_PTL_AUTH_NONCE_LEN];
+    unsigned char auth_srv[PMIX_PTL_AUTH_NONCE_LEN];
     /* Everything below belongs to the connection until it is accepted,
      * and its destructor releases whatever is still here - so a refused
      * connection unwinds in one place. Accepting it hands each on (and

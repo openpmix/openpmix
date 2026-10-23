@@ -200,6 +200,7 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
                 pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
                 peer->protocol = PMIX_PROTOCOL_V2;
                 PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+                pmix_ptl_base.server_release_vouched = cn->vouched;
                 /* speak a wire format and security mechanism it accepts,
                  * then go ahead and try to connect */
                 rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, cn);
@@ -298,6 +299,7 @@ error:
     }
     /* an identity we were told to expect was for this connect alone */
     pmix_ptl_base.server_expect_given = false;
+    pmix_ptl_base.server_release_vouched = false;
     free(localuri);
     PMIX_LIST_DESTRUCT(&connections);
     if (NULL != urispec) {

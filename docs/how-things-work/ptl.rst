@@ -290,7 +290,11 @@ whom it found. Over TCP, the kernel's table of TCP connections names the
 user - no group - of a server on the same host, and the same rule is
 applied by user alone. A server at an address of this host that the table
 does not show is refused; one at any other address is on another host,
-and is not checked - nor is any, on a platform with no table to ask.
+and proves who it is instead - see "A server on another host" in
+:doc:`connections`. A process other than a client has one on its own
+host prove who it is the same way when the platform has no table to
+ask, unless it knows the server is of an earlier release - see "A server
+the kernel cannot name" there.
 
 Choosing what to speak
 ~~~~~~~~~~~~~~~~~~~~~~

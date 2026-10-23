@@ -106,6 +106,24 @@ Both use `pmix_psec_base_check_directives()` for the `PMIX_CRED_TYPE`
 screen rather than open-coding the loop — see the framework
 [`AGENTS.md`](../AGENTS.md).
 
+- **`create_bound`** encodes a fresh credential whose payload is a role
+  byte (`S` a server's, `T` a tool's) and then the bytes it is bound to
+  ("Between hosts" in the framework [`AGENTS.md`](../AGENTS.md)); MUNGE
+  seals the payload with the credential. Given a user `to`, it sets
+  `MUNGE_OPT_UID_RESTRICTION`, so only a process of that user can decode
+  it. It never hands out the cached `mycred`.
+- **`validate_bound`** decodes it - same NUL-termination check first -
+  and accepts it only if the payload is exactly the expected role and
+  bytes, returning the `uid`/`gid` MUNGE recovered. MUNGE's own replay
+  check refuses a credential decoded on this host before. `mutual` is
+  NULL: a running `munged` both encodes and decodes.
+- **`validate_cred` refuses a credential with a payload.** One made here
+  by `create_cred` carries none, and one that does was made by
+  `create_bound` for one connection between hosts, and is accepted
+  nowhere else - not by a connection on this host, and not by
+  `PMIx_Validate_credential`. Decoding without asking for the payload
+  would accept it.
+
 ## Gotchas
 
 - **Testing this component needs a live `munged`.** It is not built at

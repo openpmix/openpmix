@@ -116,11 +116,14 @@ static pmix_status_t check_sd(int sd)
 {
     pmix_peer_t *peer;
     pmix_status_t rc;
+    bool prove;
 
     peer = PMIX_NEW(pmix_peer_t);
     peer->sd = sd; /* closed when the peer is released */
     peer->transport = NULL;
-    rc = pmix_ptl_base_check_server(peer, false, 0, 0);
+    /* this host has a table, so the server is never left to prove
+     * itself on the connection here */
+    rc = pmix_ptl_base_check_server(peer, false, 0, 0, false, &prove);
     PMIX_RELEASE(peer);
     return rc;
 }
