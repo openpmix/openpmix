@@ -137,7 +137,7 @@ Server identity and directories
   ``PMIX_SERVER_TMPDIR`` environment variable is used, then ``TMPDIR``,
   ``TEMP`` and ``TMP``, and finally ``/tmp``. The server's local socket is
   made here too, and its path must fit a socket address (see `The local
-  socket`_).
+  socket`_). The directory must already exist.
 * ``PMIX_SYSTEM_TMPDIR`` (char\*) |mdash| temporary directory in which the
   server is to place its system-level rendezvous files (system server,
   scheduler, system controller). If not given, the ``PMIX_SYSTEM_TMPDIR``

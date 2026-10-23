@@ -30,8 +30,10 @@
 #include "src/util/pmix_fd.h"
 #include "src/util/pmix_getid.h"
 #include "src/util/pmix_idname.h"
+#include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
+#include "src/util/pmix_random_bytes.h"
 #include "src/util/pmix_show_help.h"
 
 #include "src/mca/ptl/base/base.h"
@@ -61,24 +63,83 @@ static const char *socket_name(const char *path)
     return (NULL == slash) ? path : slash + 1;
 }
 
+/* The name a directory of our own takes in the session tmpdir */
+#define USOCK_DIR_PREFIX "pmix-"
+#define USOCK_DIR_NRAND  6
+
+/* Make a directory of our own, 0700, at a fresh name in the directory
+ * pdfd is open on, and leave its name in name - as mkdtemp() does, but
+ * relative to a descriptor rather than by a path */
+static int make_dir_at(int pdfd, char name[sizeof(USOCK_DIR_PREFIX) + USOCK_DIR_NRAND])
+{
+    static const char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    unsigned char rnd[USOCK_DIR_NRAND];
+    size_t i;
+    int tries;
+
+    memcpy(name, USOCK_DIR_PREFIX, sizeof(USOCK_DIR_PREFIX) - 1);
+    for (tries = 0; tries < 100; tries++) {
+        if (PMIX_SUCCESS != pmix_util_random_bytes(rnd, sizeof(rnd))) {
+            errno = EIO;
+            return -1;
+        }
+        for (i = 0; i < USOCK_DIR_NRAND; i++) {
+            name[sizeof(USOCK_DIR_PREFIX) - 1 + i] = chars[rnd[i] % (sizeof(chars) - 1)];
+        }
+        name[sizeof(USOCK_DIR_PREFIX) - 1 + USOCK_DIR_NRAND] = '\0';
+        if (0 == mkdirat(pdfd, name, S_IRWXU)) {
+            return 0;
+        }
+        if (EEXIST != errno) {
+            return -1;
+        }
+    }
+    return -1;
+}
+
+/* Keep everything: our directory goes only once it is empty */
+static bool keep_all(int dirfd, const char *name)
+{
+    PMIX_HIDE_UNUSED_PARAMS(dirfd, name);
+    return false;
+}
+
+/* Remove our directory, if it is empty, through the directory holding it
+ * - so from wherever the two have come to be, and under whatever name it
+ * has there now - and only the directory we made */
+static void remove_dir_at(int pdfd, const char *name, const struct stat *ours)
+{
+    if (0 <= pdfd) {
+        (void) pmix_os_dirpath_destroy_at(pdfd, name, ours, false, keep_all, NULL);
+    }
+}
+
 /* Remove the socket and its directory, if this process made them */
 static void usock_close(void)
 {
+    struct stat ours;
+
     if (0 <= pmix_mca_ptl_usock_component.dfd) {
         if (NULL != pmix_mca_ptl_usock_component.path) {
             (void) unlinkat(pmix_mca_ptl_usock_component.dfd,
                             socket_name(pmix_mca_ptl_usock_component.path), 0);
         }
+        if (NULL != pmix_mca_ptl_usock_component.dir &&
+            0 == fstat(pmix_mca_ptl_usock_component.dfd, &ours)) {
+            remove_dir_at(pmix_mca_ptl_usock_component.pdfd,
+                          socket_name(pmix_mca_ptl_usock_component.dir), &ours);
+        }
         close(pmix_mca_ptl_usock_component.dfd);
         pmix_mca_ptl_usock_component.dfd = -1;
     }
+    if (0 <= pmix_mca_ptl_usock_component.pdfd) {
+        close(pmix_mca_ptl_usock_component.pdfd);
+        pmix_mca_ptl_usock_component.pdfd = -1;
+    }
     free(pmix_mca_ptl_usock_component.path);
     pmix_mca_ptl_usock_component.path = NULL;
-    if (NULL != pmix_mca_ptl_usock_component.dir) {
-        (void) rmdir(pmix_mca_ptl_usock_component.dir);
-        free(pmix_mca_ptl_usock_component.dir);
-        pmix_mca_ptl_usock_component.dir = NULL;
-    }
+    free(pmix_mca_ptl_usock_component.dir);
+    pmix_mca_ptl_usock_component.dir = NULL;
 }
 
 /* A directive naming the socket's mode: a uint32 */
@@ -128,10 +189,13 @@ static pmix_status_t usock_setup_listener(pmix_info_t info[], size_t ninfo,
     mode_t mode = S_IRUSR | S_IWUSR, dmode = S_IRWXU;
     uint32_t val;
     char *dir = NULL, *path = NULL;
+    char name[sizeof(USOCK_DIR_PREFIX) + USOCK_DIR_NRAND];
     const char *why = NULL;
     pmix_status_t rc = PMIX_SUCCESS;
     size_t n;
-    int sd = -1, dfd = -1, flags;
+    int sd = -1, dfd = -1, pdfd = -1, flags;
+    struct stat made;
+    bool made_it = false;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "ptl:usock:setup_listener");
 
@@ -176,18 +240,23 @@ static pmix_status_t usock_setup_listener(pmix_info_t info[], size_t ninfo,
     if (NULL == pmix_ptl_base.session_tmpdir) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
-    if (0 > pmix_asprintf(&dir, "%s/pmix-XXXXXX", pmix_ptl_base.session_tmpdir)) {
-        return PMIX_ERR_NOMEM;
-    }
-    /* mkdtemp makes it 0700, owned by us */
-    if (NULL == mkdtemp(dir)) {
+    /* Our directory is made, and later removed, through a descriptor on
+     * the session tmpdir, so that it is removed from wherever the tmpdir
+     * has come to be by then */
+    pdfd = pmix_os_dirpath_open_dir(pmix_ptl_base.session_tmpdir);
+    if (0 > pdfd || 0 != make_dir_at(pdfd, name) ||
+        0 != fstatat(pdfd, name, &made, AT_SYMLINK_NOFOLLOW)) {
         why = strerror(errno);
-        path = dir;
-        dir = NULL;
+        path = strdup(pmix_ptl_base.session_tmpdir);
         goto fail;
     }
+    made_it = true;
+    if (0 > pmix_asprintf(&dir, "%s/%s", pmix_ptl_base.session_tmpdir, name)) {
+        rc = PMIX_ERR_NOMEM;
+        goto cleanup;
+    }
     /* hold it - and be sure what is held is the directory just made */
-    dfd = open(dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    dfd = openat(pdfd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (0 > dfd || 0 != fstat(dfd, &st) || !S_ISDIR(st.st_mode) || geteuid() != st.st_uid ||
         S_IRWXU != (st.st_mode & 07777)) {
         why = "the directory made for it was not the one found at its name";
@@ -260,6 +329,7 @@ static pmix_status_t usock_setup_listener(pmix_info_t info[], size_t ninfo,
     pmix_mca_ptl_usock_component.dir = dir;
     pmix_mca_ptl_usock_component.path = path;
     pmix_mca_ptl_usock_component.dfd = dfd;
+    pmix_mca_ptl_usock_component.pdfd = pdfd;
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "ptl:usock URI %s",
                         lt->uri);
     return PMIX_SUCCESS;
@@ -272,16 +342,22 @@ cleanup:
     if (0 <= sd) {
         CLOSE_THE_SOCKET(sd);
     }
+    if (0 <= dfd && NULL != path) {
+        (void) unlinkat(dfd, socket_name(path), 0);
+    }
+    /* the directory we made, whether or not we got as far as holding it -
+     * only an empty one can go, and only the one we made - while dfd, if
+     * we have it, keeps its identity its own */
+    if (made_it) {
+        remove_dir_at(pdfd, name, &made);
+    }
     if (0 <= dfd) {
-        if (NULL != path) {
-            (void) unlinkat(dfd, socket_name(path), 0);
-        }
         close(dfd);
     }
-    if (NULL != dir) {
-        (void) rmdir(dir);
-        free(dir);
+    if (0 <= pdfd) {
+        close(pdfd);
     }
+    free(dir);
     free(path);
     return rc;
 }

@@ -3537,9 +3537,10 @@ misbehave by design).
 - **`pmix_server_globals.system_tmpdir` is read by the directory-removal
   guard, so finalize must not free it early.** Only the string is freed
   here; the directory is removed by `pmix_ptl_close()` (inside
-  `pmix_rte_finalize()`) and only if that code created it. But the second
-  guard, in `pmix_os_dirpath_destroy()`, decides by comparing its path
-  against this string, and treats NULL as "the caller has no system
+  `pmix_rte_finalize()`) and only if that code created it - through
+  `pmix_os_dirpath_destroy_at()`, which reads no guard. But the guard in
+  `pmix_os_dirpath_destroy()`, which a host's own call can still reach
+  during finalize, decides by comparing its path against this string, and treats NULL as "the caller has no system
   tmpdir of its own" - the ordinary case for a client or tool, which
   takes the *unconditional* `rmdir` arm. Free it above any
   session-directory cleanup and that guard becomes an `rmdir` of a
