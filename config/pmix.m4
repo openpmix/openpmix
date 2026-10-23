@@ -1569,6 +1569,7 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([WANT_PRIMARY_HEADERS], [test "x$pmix_install_primary_headers" = "xyes"])
         AM_CONDITIONAL(NEED_LIBPMIX, [test "$pmix_need_libpmix" = "1"])
         AM_CONDITIONAL([PMIX_PICKY_COMPILERS], [test "$WANT_PICKY_COMPILER" = "1"])
+        AM_CONDITIONAL([PMIX_DEVEL_BUILD], [test "$pmix_git_repo_build" = "yes"])
     ])
     pmix_did_am_conditionals=yes
 ])dnl

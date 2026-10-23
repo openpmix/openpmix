@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -42,21 +42,21 @@
  * **The "filename" is a name, not a file.** Nothing here opens
  * anything at run time, and installing a help file somewhere PMIx can
  * see it accomplishes nothing.  The help-*.txt files in the source
- * tree are read at *build* time by contrib/convert-help.py, which
+ * tree are read at *build* time by src/util/convert-help.py, which
  * generates src/util/pmix_show_help_content.c - a static table that is
  * compiled into libpmix - and the filename is simply the key that
  * table is indexed by.  Two consequences:
  *
- * - After adding, removing or editing any show_help content you must
- *   delete the generated pair and rebuild, or the library keeps
- *   emitting the old text:
+ * - Show_help content is fixed when the library is built.  In a git
+ *   clone, every make re-runs the generator, so a plain make picks up
+ *   an added, removed or edited message.  A tarball ships the generated
+ *   file and does not regenerate it; there, delete it and rebuild:
  *
- *       rm src/util/pmix_show_help_content.* && make
+ *       rm src/util/pmix_show_help_content.c && make
  *
  *   Under --enable-devel-check the generator also runs with --purge,
- *   which makes a topic that no code references a hard build error.  So
- *   removing the last caller of a topic breaks the build for whoever
- *   regenerates next - on a fresh clone, that is CI.
+ *   which makes a topic that no code references a hard build error -
+ *   so removing the last caller of a topic means removing the topic.
  *
  * - A project outside this tree contributes its own messages by
  *   generating a table of its own and registering it with
