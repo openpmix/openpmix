@@ -43,6 +43,7 @@
 #    include <net/if.h>
 #endif
 #include <ctype.h>
+#include <sys/file.h>
 #include <strings.h>
 #include <errno.h>
 #include <time.h>
@@ -267,7 +268,8 @@ void pmix_ptl_base_parse_version(const char *vers, uint8_t *major,
  *
  * A file the caller named is opened with fopen(). A file found by walking
  * a directory, or at one of the fixed rendezvous names, is opened
- * non-blocking and kept only if the open descriptor is a regular file. */
+ * non-blocking and kept only if the open descriptor is a regular file no
+ * larger than any server writes. */
 static FILE *open_conn_file(const char *filename, bool regular_only)
 {
     int fd, flags;
@@ -281,7 +283,7 @@ static FILE *open_conn_file(const char *filename, bool regular_only)
     if (0 > fd) {
         return NULL;
     }
-    if (0 != fstat(fd, &st) || !S_ISREG(st.st_mode)) {
+    if (0 != fstat(fd, &st) || !S_ISREG(st.st_mode) || PMIX_PTL_MAX_CONN_FILE < st.st_size) {
         close(fd);
         errno = ENOENT;
         return NULL;
@@ -295,6 +297,172 @@ static FILE *open_conn_file(const char *filename, bool regular_only)
         close(fd);
     }
     return fp;
+}
+
+char *pmix_ptl_base_getline(FILE *fp, size_t *budget)
+{
+    char *line, *grown;
+    size_t len = 0, size = 128;
+    int c;
+
+    if (0 == *budget || NULL == (line = (char *) malloc(size))) {
+        return NULL;
+    }
+    while (0 < *budget && EOF != (c = getc(fp))) {
+        --*budget;
+        if ('\n' == c) {
+            line[len] = '\0';
+            return line;
+        }
+        if ('\0' == c) {
+            /* handed back as a C string, the rest would silently vanish */
+            free(line);
+            return NULL;
+        }
+        if (len + 1 == size) {
+            size *= 2;
+            if (NULL == (grown = (char *) realloc(line, size))) {
+                free(line);
+                return NULL;
+            }
+            line = grown;
+        }
+        line[len++] = (char) c;
+    }
+    /* a final line with no newline is still a line - one the budget cut
+     * short, or a read failed partway thru, is not */
+    if (0 == len || ferror(fp) || (0 == *budget && !feof(fp))) {
+        free(line);
+        return NULL;
+    }
+    line[len] = '\0';
+    return line;
+}
+
+char *pmix_ptl_base_lock_name(const char *name)
+{
+    const char *base = strrchr(name, PMIX_PATH_SEP[0]);
+    char *lname = NULL;
+    int dlen;
+
+    /* a '.' before the file's own name, in the same directory */
+    base = (NULL == base) ? name : base + 1;
+    dlen = (int) (base - name);
+    if (0 > pmix_asprintf(&lname, "%.*s.%s%s", dlen, name, base, PMIX_PTL_LOCK_SUFFIX)) {
+        return NULL;
+    }
+    return lname;
+}
+
+#ifdef O_CLOEXEC
+#    define PTL_O_CLOEXEC O_CLOEXEC
+#else
+#    define PTL_O_CLOEXEC 0
+#endif
+
+int pmix_ptl_base_take_lock(int dirfd, const char *name)
+{
+    struct stat st, now;
+    struct timespec wait = {0, 10000000};
+    char *lname;
+    int fd, rc, tries, busy = 0;
+
+    if (NULL == (lname = pmix_ptl_base_lock_name(name))) {
+        return -1;
+    }
+    for (tries = 0; tries < 2; tries++) {
+        fd = openat(dirfd, lname, O_RDWR | O_CREAT | O_NOFOLLOW | O_NONBLOCK | PTL_O_CLOEXEC,
+                    S_IRUSR | S_IWUSR);
+        if (0 > fd) {
+            break;
+        }
+        (void) fcntl(fd, F_SETFD, FD_CLOEXEC);
+        /* ours alone - one another user left at the name is not */
+        if (0 != fstat(fd, &st) || !S_ISREG(st.st_mode) || geteuid() != st.st_uid ||
+            1 != st.st_nlink || 0 != (st.st_mode & (S_IRWXG | S_IRWXO))) {
+            close(fd);
+            fd = -1;
+            break;
+        }
+        /* and held by no other server - a reader asking whether one runs
+         * holds it for a moment, and is waited out */
+        rc = flock(fd, LOCK_EX | LOCK_NB);
+        while (0 != rc && EWOULDBLOCK == errno && busy < 20) {
+            ++busy;
+            (void) nanosleep(&wait, NULL);
+            rc = flock(fd, LOCK_EX | LOCK_NB);
+        }
+        if (0 != rc) {
+            busy = (EWOULDBLOCK == errno);
+            close(fd);
+            fd = busy ? PMIX_PTL_LOCK_BUSY : -1;
+            break;
+        }
+        /* and still the file at the name: a server finalizing removes
+         * its own, and a lock on a file no longer there says nothing to
+         * anyone - take the one now there */
+        if (0 == fstatat(dirfd, lname, &now, AT_SYMLINK_NOFOLLOW) && now.st_dev == st.st_dev &&
+            now.st_ino == st.st_ino) {
+            break;
+        }
+        close(fd);
+        fd = -1;
+    }
+    free(lname);
+    return fd;
+}
+
+bool pmix_ptl_base_server_gone(int dirfd, const char *name, uid_t owner, const char *lock)
+{
+    return PMIX_PTL_LOCK_GONE == pmix_ptl_base_lock_state(dirfd, name, owner, lock);
+}
+
+pmix_ptl_lock_state_t pmix_ptl_base_lock_state(int dirfd, const char *name, uid_t owner,
+                                               const char *lock)
+{
+    pmix_ptl_lock_state_t state = PMIX_PTL_LOCK_UNKNOWN;
+    struct stat lst, fst, ours;
+    char *lname;
+    size_t n;
+    int fd;
+
+    if (NULL == lock || 0 != strcmp(lock, PMIX_PTL_LOCK_FLOCK) ||
+        NULL == (lname = pmix_ptl_base_lock_name(name))) {
+        return PMIX_PTL_LOCK_UNKNOWN;
+    }
+    /* the server's own: one name, that only its owner can open - no
+     * other file linked to the name, nor one another can lock */
+    if (0 != fstatat(dirfd, lname, &lst, AT_SYMLINK_NOFOLLOW) || !S_ISREG(lst.st_mode) ||
+        owner != lst.st_uid || 1 != lst.st_nlink || 0 != (lst.st_mode & (S_IRWXG | S_IRWXO))) {
+        free(lname);
+        return PMIX_PTL_LOCK_UNKNOWN;
+    }
+    /* one we hold is our own server's: never opened here, as closing a
+     * descriptor on it lets go of our lock where flock is done with
+     * fcntl's locks, as over NFS */
+    for (n = 0; n < pmix_ptl_base.nrndz_lockfd; n++) {
+        if (0 == fstat(pmix_ptl_base.rndz_lockfd[n], &ours) && ours.st_dev == lst.st_dev &&
+            ours.st_ino == lst.st_ino) {
+            free(lname);
+            return PMIX_PTL_LOCK_UNKNOWN;
+        }
+    }
+    fd = openat(dirfd, lname, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | PTL_O_CLOEXEC);
+    free(lname);
+    if (0 > fd) {
+        return PMIX_PTL_LOCK_UNKNOWN;
+    }
+    if (0 == fstat(fd, &fst) && fst.st_dev == lst.st_dev && fst.st_ino == lst.st_ino) {
+        if (0 == flock(fd, LOCK_SH | LOCK_NB)) {
+            state = PMIX_PTL_LOCK_GONE;
+            (void) flock(fd, LOCK_UN);
+        } else if (EWOULDBLOCK == errno) {
+            /* held by its server - any other failure says nothing */
+            state = PMIX_PTL_LOCK_HELD;
+        }
+    }
+    close(fd);
+    return state;
 }
 
 /* Decide what a directory-walk entry is. Only a real directory is
@@ -526,7 +694,10 @@ static pmix_status_t parse_conn_file(char *filename, bool optional, bool found_b
     char *bfrops = NULL, *psec = NULL, **dest;
     const char *tag;
     size_t taglen;
-    bool owned;
+    char *lock = NULL;
+    bool gone, owned;
+    int nlines = 0;
+    size_t budget = PMIX_PTL_MAX_CONN_FILE;
     struct stat st;
 
     /* if we cannot open the file, then the server must not
@@ -591,7 +762,7 @@ process:
      * the file but not yet finished writing into it. So give
      * us a chance to get the required info */
     for (retries = 0; retries < 3; retries++) {
-        srvr = pmix_getline(fp, NULL);
+        srvr = pmix_ptl_base_getline(fp, &budget);
         if (NULL != srvr) {
             break;
         }
@@ -614,14 +785,14 @@ process:
     }
 
     /* see if this file contains the server's version */
-    p = pmix_getline(fp, NULL);
+    p = pmix_ptl_base_getline(fp, &budget);
     /* and whether it lists other addresses the server listens on, and the
      * wire formats and security mechanisms it accepts. They follow every
      * line a released reader takes by position, and are found by their
      * tag rather than by where they fall. The first of each counts */
     alt = NULL;
     if (NULL != p) {
-        while (NULL != (line = pmix_getline(fp, NULL))) {
+        while (nlines++ < PMIX_PTL_MAX_TAG_LINES && NULL != (line = pmix_ptl_base_getline(fp, &budget))) {
             if (0 == strncmp(line, PMIX_PTL_ALT_URIS_TAG, strlen(PMIX_PTL_ALT_URIS_TAG))) {
                 tag = PMIX_PTL_ALT_URIS_TAG;
                 dest = &alt;
@@ -635,6 +806,9 @@ process:
             } else if (0 == strncmp(line, PMIX_PTL_PSEC_TAG, strlen(PMIX_PTL_PSEC_TAG))) {
                 tag = PMIX_PTL_PSEC_TAG;
                 dest = &psec;
+            } else if (0 == strncmp(line, PMIX_PTL_LOCK_TAG, strlen(PMIX_PTL_LOCK_TAG))) {
+                tag = PMIX_PTL_LOCK_TAG;
+                dest = &lock;
             } else {
                 free(line);
                 continue;
@@ -646,9 +820,26 @@ process:
             free(line);
         }
     }
-    /* whose file it is */
+    /* whose file it is - and, for a search, whether the server that
+     * wrote it is gone: it passes over such a file, so that the file of
+     * one still running is the one found */
     owned = (0 == fstat(fileno(fp), &st));
+    gone = found_by_search && owned &&
+           pmix_ptl_base_server_gone(AT_FDCWD, filename, st.st_uid, lock);
+    free(lock);
     fclose(fp);
+    if (gone) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "pmix:tool: passing over %s - the server that wrote it is gone",
+                            filename);
+        free(srvr);
+        free(p);
+        free(alt);
+        free(local);
+        free(bfrops);
+        free(psec);
+        return PMIX_ERR_NOT_FOUND;
+    }
 
     /* parse the URI */
     rc = pmix_ptl_base_parse_uri(srvr, &nspace, &rank, &uri);
@@ -2838,7 +3029,10 @@ static void check_server(char *filename, pmix_list_t *servers)
     pmix_list_t mylist;
     uint32_t u32;
     pmix_status_t rc;
-    bool ok;
+    bool ok, gone;
+    char *lock = NULL;
+    struct stat st;
+    size_t budget = PMIX_PTL_MAX_CONN_FILE;
 
     /* this file was just listed by the directory walk, so it cannot be
      * a server that is "still starting up" - if it is gone or unreadable
@@ -2859,7 +3053,7 @@ static void check_server(char *filename, pmix_list_t *servers)
      * the file but not yet finished writing into it. So give
      * us a chance to get the required info */
     for (retries = 0; retries < 3; retries++) {
-        srvr = pmix_getline(fp, NULL);
+        srvr = pmix_ptl_base_getline(fp, &budget);
         if (NULL != srvr) {
             break;
         }
@@ -2915,7 +3109,7 @@ static void check_server(char *filename, pmix_list_t *servers)
     /* see if this file contains the server's version - every server
      * since v2.1 writes one, so a file without it came from a v2.0
      * server, which the connection will then refuse */
-    p2 = pmix_getline(fp, NULL);
+    p2 = pmix_ptl_base_getline(fp, &budget);
     if (NULL == p2) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V20 SERVER DETECTED");
         ok = add_info(&mylist, PMIX_VERSION_INFO, "v2.0", PMIX_STRING);
@@ -2929,8 +3123,9 @@ static void check_server(char *filename, pmix_list_t *servers)
         goto nomem;
     }
 
-    /* see if the file contains the pid */
-    p2 = pmix_getline(fp, NULL);
+    /* see if the file contains the pid - and, below, leave out a server
+     * that is gone */
+    p2 = pmix_ptl_base_getline(fp, &budget);
     if (NULL == p2) {
         goto complete;
     }
@@ -2941,7 +3136,7 @@ static void check_server(char *filename, pmix_list_t *servers)
     }
 
     /* check for uid:gid */
-    p2 = pmix_getline(fp, NULL);
+    p2 = pmix_ptl_base_getline(fp, &budget);
     if (NULL == p2) {
         goto complete;
     }
@@ -2965,7 +3160,7 @@ static void check_server(char *filename, pmix_list_t *servers)
     }
 
     /* check for timestamp */
-    p2 = pmix_getline(fp, NULL);
+    p2 = pmix_ptl_base_getline(fp, &budget);
     if (NULL == p2) {
         goto complete;
     }
@@ -2976,7 +3171,24 @@ static void check_server(char *filename, pmix_list_t *servers)
     }
 
 complete:
+    /* whether its server holds it locked is on a tagged line, after the
+     * timestamp */
+    for (n = 0; n < PMIX_PTL_MAX_TAG_LINES && NULL != (p2 = pmix_ptl_base_getline(fp, &budget)); n++) {
+        if (NULL == lock && 0 == strncmp(p2, PMIX_PTL_LOCK_TAG, strlen(PMIX_PTL_LOCK_TAG))) {
+            lock = strdup(p2 + strlen(PMIX_PTL_LOCK_TAG));
+        }
+        free(p2);
+    }
+    gone = (0 == fstat(fileno(fp), &st) &&
+            pmix_ptl_base_server_gone(AT_FDCWD, filename, st.st_uid, lock));
+    free(lock);
     fclose(fp);
+    if (gone) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "pmix:tcp: %s was written by a server that is gone", filename);
+        PMIX_LIST_DESTRUCT(&mylist);
+        return;
+    }
 
     /* convert the list to an array */
     ndata = pmix_list_get_size(&mylist);

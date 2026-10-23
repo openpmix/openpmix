@@ -324,6 +324,19 @@ interfaces were found after applying any include or exclude directives:
 Please adjust your include or exclude to allow selection of an
 available interface.
 #
+[rndz-name-held]
+A PMIx server was unable to take the name of the rendezvous file by
+which its peers locate it, because another server holds it:
+
+  Role:   %s
+  File:   %s
+  Held:   %s
+
+Only one server can fill a given role on a node at a time. The lock is
+held by a running process - the server in that role, or, if it has gone,
+a process it started without exec'ing another program, which holds the
+lock until it exits. Removing the file does not free the name.
+#
 [rndz-file-in-use]
 A PMIx server was unable to create the rendezvous file by which its
 peers locate it because that file already exists and belongs to a

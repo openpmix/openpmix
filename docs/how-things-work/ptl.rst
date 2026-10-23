@@ -172,7 +172,12 @@ socket - the first two steps below are the ``tcp`` transport's, in
    more tagged lines follow: ``bfrops:`` lists the wire
    formats (``bfrops`` components) the server accepts and ``psec:`` its
    security mechanisms, each comma-delimited in the server's priority
-   order and limited by its MCA parameters. Readers find every tagged
+   order and limited by its MCA parameters. A line ``lock:flock`` says
+   that the server holds a lock (``flock``) for as long as it runs on a
+   file of its own beside this one, ``.<name>.lock``, mode 0600, which
+   no search for ``pmix.*`` files matches; the kernel lets go of the
+   lock however the server exits.
+   Readers find every tagged
    line by its tag; older readers stop before them. The ``pmix_ptl_base`` state struct
    records (via its ``created_*`` flags) exactly which files and
    directories this process created, so ``pmix_ptl_close`` can remove
@@ -257,8 +262,26 @@ most specific to least:
   ``PMIX_CONNECT_TO_SYS_CONTROLLER`` — each mapping to a well-known
   rendezvous filename;
 * a specific server PID or nspace; or
-* a directory search of the session tmpdir, taking the first
-  ``pmix.<host>.tool*`` server that answers.
+* a directory search of the system tmpdir for ``pmix.<host>.tool*``
+  files. Every file found must name the same server; files naming
+  different ones fail the search, saying so. A file whose server is gone
+  is passed over, here and by a ``PMIX_QUERY_AVAIL_SERVERS`` query: it
+  says its server holds the lock beside it, and the searching process
+  can take that lock - whatever PID namespace, container or jail either
+  runs in. A file is kept when it has no such line (from an earlier
+  release), names another kind of lock, or has no lock file; when its
+  lock file has another name or others could open it; and when the
+  searching process cannot open it - only the server's user and root
+  can. One larger than any server writes is passed over. A server
+  starting under a name whose lock another server holds takes the name
+  as in use (``rndz-name-held``), whatever its PID says - except the
+  file named for its own PID, which collides only with a server in
+  another PID namespace and which it then does not write: a tool here
+  that looks for this server by PID finds that one, and checks it as it
+  checks any. Otherwise it judges a file at the name by its PID, as
+  before. At finalize it removes each of its files only while it is still
+  the file it wrote, and its lock file only while it is the one it
+  holds.
 
 A tool started by a server has ``PMIX_SERVER_LOCAL_URI`` in its
 environment, as a client does. A rendezvous or report file with a

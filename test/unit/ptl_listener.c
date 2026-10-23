@@ -517,6 +517,7 @@ static void empty_report_uri_child(void)
 {
     pmix_info_t info;
     int fds[2];
+    bool ok;
 
     /* give the child a stdin we know is open */
     if (0 != pipe(fds) || 0 > dup2(fds[0], 0)) {
@@ -526,7 +527,10 @@ static void empty_report_uri_child(void)
     if (PMIX_SUCCESS != PMIx_server_init(&mymodule, &info, 1)) {
         _exit(CHILD_FAIL);
     }
-    _exit(-1 != fcntl(0, F_GETFD) ? CHILD_PASS : CHILD_FAIL);
+    ok = (-1 != fcntl(0, F_GETFD));
+    /* and leaves nothing behind in the shared tmpdir */
+    PMIx_server_finalize();
+    _exit(ok ? CHILD_PASS : CHILD_FAIL);
 }
 
 static void report_uri_file_child(void)
