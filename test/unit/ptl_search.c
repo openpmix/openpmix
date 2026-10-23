@@ -17,10 +17,16 @@
  *    contact file is skipped rather than opened with fopen();
  *  - never follow a symbolic link to a directory, so a link back up the
  *    tree ("ln -s . a") is not descended into;
- *  - skip a contact file that cannot be read or parsed and carry on, so a
- *    valid file readdir() lists after it is still found.
+ *  - skip a contact file that cannot be read or parsed, or is larger than
+ *    any server writes, and carry on, so a valid file readdir() lists
+ *    after it is still found;
+ *  - pass over the file of a server that is gone - the file says its
+ *    server holds the lock beside it, and nothing does - as a server
+ *    that is killed leaves one behind next to a running server's. A file
+ *    whose server holds that lock, one that does not say it locks, one
+ *    naming a lock we do not know, and one with no lock file are kept.
  *
- * The directory built here holds all three next to one valid contact
+ * The directory built here holds all four next to one valid contact
  * file, and both walks must come back promptly having found that one
  * file. A watchdog turns a hang into a failure rather than a stalled
  * "make check". There are thirty unreadable files so that a readdir()
@@ -52,7 +58,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/file.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #define NJUNK 30
@@ -103,7 +112,8 @@ static int write_file(const char *name, const char *content)
 
 static int build_searchdir(void)
 {
-    char path[PMIX_PATH_MAX + 128], name[64];
+    char path[PMIX_PATH_MAX + 128], name[64], *big;
+    size_t at;
     int n;
 
     /* a FIFO nobody will ever write to, named like a contact file */
@@ -128,11 +138,87 @@ static int build_searchdir(void)
             return -1;
         }
     }
-    /* and the one a search should find */
-    if (0 != write_file("pmix.test.good", "goodns.0;tcp4://127.0.0.1:4242\n4.2.0\n")) {
+    /* and one larger than any server writes, though it starts as one
+     * does - a reader that took it line by line could be kept at it */
+    big = malloc(PMIX_PTL_MAX_CONN_FILE + 2);
+    if (NULL == big) {
         return -1;
     }
-    return 0;
+    at = (size_t) snprintf(big, PMIX_PTL_MAX_CONN_FILE, "bigns.0;tcp4://127.0.0.1:4240\n7.0.0\n");
+    memset(big + at, 'x', PMIX_PTL_MAX_CONN_FILE + 1 - at);
+    big[PMIX_PTL_MAX_CONN_FILE + 1] = '\0';
+    n = write_file("pmix.test.huge", big);
+    free(big);
+    return n;
+}
+
+/* a pid no process has: a child that has exited and been reaped */
+static pid_t gone_pid(void)
+{
+    pid_t pid;
+    int st;
+
+    pid = fork();
+    if (0 == pid) {
+        _exit(0);
+    }
+    if (0 > pid || pid != waitpid(pid, &st, 0)) {
+        return -1;
+    }
+    return pid;
+}
+
+/* a lock file nothing holds, with the given mode */
+static int write_lock_file(const char *name, mode_t mode)
+{
+    char path[PMIX_PATH_MAX + 128];
+
+    if (0 != write_file(name, "")) {
+        return -1;
+    }
+    snprintf(path, sizeof(path), "%s/%s", searchdir, name);
+    return chmod(path, mode);
+}
+
+/* the lock beside a file, held as a running server holds its own */
+static int heldfd = -1;
+
+static int hold(const char *path)
+{
+    char *lname = pmix_ptl_base_lock_name(path);
+    int fd;
+
+    if (NULL == lname) {
+        return -1;
+    }
+    fd = open(lname, O_RDWR | O_CREAT, 0600);
+    free(lname);
+    if (0 > fd || 0 != flock(fd, LOCK_EX | LOCK_NB)) {
+        if (0 <= fd) {
+            close(fd);
+        }
+        return -1;
+    }
+    return fd;
+}
+
+/* the file of a server that is gone - it says it holds the lock beside
+ * it, and nothing does - and the one a search should find, whose lock
+ * this process holds */
+static int add_lock_files(void)
+{
+    char path[PMIX_PATH_MAX + 128];
+
+    if (0 != write_file("pmix.test.dead", "deadns.0;tcp4://127.0.0.1:4241\n7.0.0\n1\n0:0\nnow\n"
+                                          PMIX_PTL_LOCK_TAG PMIX_PTL_LOCK_FLOCK "\n") ||
+        0 != write_lock_file(".pmix.test.dead" PMIX_PTL_LOCK_SUFFIX, 0600) ||
+        0 != write_file("pmix.test.good", "goodns.0;tcp4://127.0.0.1:4242\n4.2.0\n1\n0:0\nnow\n"
+                                          PMIX_PTL_LOCK_TAG PMIX_PTL_LOCK_FLOCK "\n")) {
+        return -1;
+    }
+    snprintf(path, sizeof(path), "%s/pmix.test.good", searchdir);
+    heldfd = hold(path);
+    return (0 > heldfd) ? -1 : 0;
 }
 
 static void test_df_search(void)
@@ -143,7 +229,8 @@ static void test_df_search(void)
 
     PMIX_CONSTRUCT(&connections, pmix_list_t);
     rc = pmix_ptl_base_df_search(searchdir, "pmix.test.", false, NULL, 0, true, &connections);
-    report("df_search: returns success past a FIFO, link loops and unreadable files",
+    report("df_search: returns success past a FIFO, link loops, unreadable files and a "
+           "server that is gone",
            PMIX_SUCCESS == rc, PMIx_Error_string(rc));
     report("df_search: finds exactly the one valid contact file",
            1 == pmix_list_get_size(&connections), "wrong number of connections");
@@ -160,6 +247,79 @@ static void test_df_search(void)
                (NULL == cn->version) ? "NULL" : cn->version);
     }
     PMIX_LIST_DESTRUCT(&connections);
+}
+
+/* A file is kept when its server holds the lock beside it, when it does
+ * not say it locks - from an earlier release, whose pid is no process's
+ * here - when it names a lock we do not know, when it has no lock file,
+ * and when its lock file is one others could open. Each but the held one
+ * has a lock file nothing holds beside it, but the one with none */
+static void test_df_search_kept(void)
+{
+    char dir[PMIX_PATH_MAX + 16], path[PMIX_PATH_MAX + 160], buf[512];
+    const char *names[6] = {"pmix.k.held", "pmix.k.untagged", "pmix.k.otherlock",
+                            "pmix.k.nolockfile", "pmix.k.openlock", "pmix.k.linkedlock"};
+    char other[PMIX_PATH_MAX + 200] = "";
+    char *lname;
+    pmix_list_t connections;
+    pmix_status_t rc;
+    pid_t pid;
+    FILE *fp;
+    int n, fd = -1;
+
+    snprintf(dir, sizeof(dir), "%s.kept", searchdir);
+    if (0 != mkdir(dir, 0700) || 0 > (pid = gone_pid())) {
+        report("df_search kept: setup", 0, "mkdir or fork failed");
+        return;
+    }
+    for (n = 0; n < 6; n++) {
+        snprintf(buf, sizeof(buf), "ns%d.0;tcp4://127.0.0.1:%d\n7.0.0\n%lu\n0:0\nnow\n%s\n", n,
+                 4250 + n, (unsigned long) pid,
+                 (1 == n) ? "" : (2 == n) ? PMIX_PTL_LOCK_TAG "fcntl"
+                                          : PMIX_PTL_LOCK_TAG PMIX_PTL_LOCK_FLOCK);
+        snprintf(path, sizeof(path), "%s/%s", dir, names[n]);
+        if (NULL != (fp = fopen(path, "w"))) {
+            fputs(buf, fp);
+            fclose(fp);
+        }
+        if (0 == n) {
+            fd = hold(path);
+        } else if (3 != n && NULL != (lname = pmix_ptl_base_lock_name(path))) {
+            if (NULL != (fp = fopen(lname, "w"))) {
+                fclose(fp);
+                chmod(lname, (4 == n) ? 0644 : 0600);
+            }
+            if (5 == n) {
+                /* a lock file with a second name */
+                snprintf(other, sizeof(other), "%s.other", lname);
+                if (0 != link(lname, other)) {
+                    other[0] = '\0';
+                }
+            }
+            free(lname);
+        }
+    }
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    rc = pmix_ptl_base_df_search(dir, "pmix.k.", false, NULL, 0, true, &connections);
+    report("df_search kept: a file whose server holds the lock beside it, one that does not "
+           "say it locks, one naming another lock, one with no lock file, one whose lock "
+           "file others could open, and one whose lock file has another name are all kept",
+           0 <= fd && PMIX_SUCCESS == rc && 6 == pmix_list_get_size(&connections),
+           "a file was passed over");
+    PMIX_LIST_DESTRUCT(&connections);
+    if (0 <= fd) {
+        close(fd);
+    }
+    if ('\0' != other[0]) {
+        unlink(other);
+    }
+    for (n = 0; n < 6; n++) {
+        snprintf(path, sizeof(path), "%s/%s", dir, names[n]);
+        unlink(path);
+        snprintf(path, sizeof(path), "%s/.%s" PMIX_PTL_LOCK_SUFFIX, dir, names[n]);
+        unlink(path);
+    }
+    rmdir(dir);
 }
 
 /* A search for a particular server takes only a file of exactly that
@@ -312,7 +472,10 @@ static void test_rndz_file(void)
 {
     char path[PMIX_PATH_MAX + 128];
     pmix_list_t connections;
+    pmix_connection_t *cn;
     pmix_status_t rc;
+    FILE *fp;
+    size_t n;
 
     /* a FIFO at a rendezvous name is refused, not waited on */
     snprintf(path, sizeof(path), "%s/pmix.test.fifo", searchdir);
@@ -338,6 +501,28 @@ static void test_rndz_file(void)
            PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&connections),
            PMIx_Error_string(rc));
     PMIX_LIST_DESTRUCT(&connections);
+
+    /* a file the caller names is not refused for its size - but nothing
+     * past as much as any server writes is read: here, the tagged line
+     * after a line longer than that */
+    snprintf(path, sizeof(path), "%s/named.uri", searchdir);
+    if (NULL != (fp = fopen(path, "w"))) {
+        fputs("namedns.0;tcp4://127.0.0.1:4260\n7.0.0\n", fp);
+        for (n = 0; n < PMIX_PTL_MAX_CONN_FILE + 16; n++) {
+            fputc('x', fp);
+        }
+        fputs("\n" PMIX_PTL_ALT_URIS_TAG "tcp4://127.0.0.1:4261\n", fp);
+        fclose(fp);
+        PMIX_CONSTRUCT(&connections, pmix_list_t);
+        rc = pmix_ptl_base_parse_uri_file(path, true, &connections);
+        cn = (1 == pmix_list_get_size(&connections))
+                 ? (pmix_connection_t *) pmix_list_get_first(&connections) : NULL;
+        report("named file: read no further than any server writes",
+               PMIX_SUCCESS == rc && NULL != cn && NULL == cn->alt_uris,
+               (NULL != cn && NULL != cn->alt_uris) ? "read past it" : PMIx_Error_string(rc));
+        PMIX_LIST_DESTRUCT(&connections);
+        unlink(path);
+    }
 }
 
 /* A server's file names the wire formats and security mechanisms it
@@ -465,7 +650,8 @@ static void test_query_servers(void)
     PMIX_QUERY_CONSTRUCT(&query);
     PMIx_Argv_append_nosize(&query.keys, PMIX_QUERY_AVAIL_SERVERS);
     rc = PMIx_Query_info(&query, 1, &results, &nresults);
-    report("query avail servers: returns success past a FIFO and link loops",
+    report("query avail servers: returns success past a FIFO, link loops and a server that is "
+           "gone",
            PMIX_SUCCESS == rc, PMIx_Error_string(rc));
     for (n = 0; n < nresults; n++) {
         if (!PMIX_CHECK_KEY(&results[n], PMIX_SERVER_INFO_ARRAY) ||
@@ -540,11 +726,18 @@ int main(int argc, char **argv)
     }
 
     fprintf(stdout, "\n=== ptl rendezvous directory walk unit tests ===\n\n");
+    if (0 != add_lock_files()) {
+        fprintf(stderr, "could not write the locked files\n");
+        PMIx_server_finalize();
+        cleanup();
+        return 1;
+    }
 
     signal(SIGALRM, watchdog);
     alarm(WATCHDOG_SECS);
     test_df_search();
     test_df_search_exact();
+    test_df_search_kept();
     test_df_search_depth();
     test_query_servers();
     test_rndz_file();
@@ -554,6 +747,9 @@ int main(int argc, char **argv)
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
 
     PMIx_server_finalize();
+    if (0 <= heldfd) {
+        close(heldfd);
+    }
     cleanup();
 
     return (0 == nfail) ? 0 : 1;

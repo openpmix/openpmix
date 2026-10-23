@@ -22,7 +22,8 @@
  * that boundary: a file whose owner is gone (or that carries no usable
  * pid at all, as happens when its creator died partway thru writing it)
  * must be reclaimed, while a file whose owner is still alive must be left
- * untouched and must still fail the init.
+ * untouched and must still fail the init. A file whose writer holds the
+ * lock beside it is in use whatever its pid says.
  *
  * Each case runs in a forked child because PMIx_server_init() can only be
  * meaningfully called once per process. The "crashed predecessor" case
@@ -36,9 +37,11 @@
 #include "include/pmix_server.h"
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -127,6 +130,21 @@ static void plant_file_pid(const char *path, const char *pidline)
     fprintf(fp, "testns.0;tcp4://127.0.0.1:1\n%s\n%s\n%lu:%lu\nsome time\n", PMIX_VERSION,
             pidline, (unsigned long) getuid(), (unsigned long) getgid());
     fclose(fp);
+}
+
+/* a pid no process has: a child that has exited and been reaped */
+static pid_t reaped(void)
+{
+    pid_t pid = fork();
+    int st;
+
+    if (0 == pid) {
+        _exit(0);
+    }
+    if (0 < pid) {
+        (void) waitpid(pid, &st, 0);
+    }
+    return pid;
 }
 
 static bool file_exists(const char *path)
@@ -263,7 +281,9 @@ int main(void)
 {
     const char *base;
     char *path = NULL;
-    int rc;
+    char lname[PMIX_PATH_MAX + 16];
+    FILE *fp;
+    int rc, held, lockfd;
 
     fprintf(stdout, "Stale rendezvous file handling\n");
 
@@ -318,6 +338,93 @@ int main(void)
     report("live owner is not disturbed", CHILD_INITFAIL == rc, "init should have failed");
     report("live owner's file is preserved", file_exists(path), "file was removed");
     unlink(path);
+
+    /* a file whose writer says it holds the lock beside it: one something
+     * holds is in use, whatever its pid - which from another pid
+     * namespace says nothing; one nothing holds is judged by its pid as
+     * before, since a lock file can be removed from under a running
+     * server - taken when the pid is gone, kept when it runs */
+    for (held = 0; held < 3; held++) {
+        fp = fopen(path, "w");
+        if (NULL == fp) {
+            report("a locked file: setup", 0, "could not write it");
+            break;
+        }
+        fprintf(fp, "testns.0;tcp4://127.0.0.1:1\n%s\n%lu\n%lu:%lu\nsome time\nlock:flock\n",
+                PMIX_VERSION, (unsigned long) ((2 == held) ? getpid() : reaped()),
+                (unsigned long) getuid(), (unsigned long) getgid());
+        fclose(fp);
+        snprintf(lname, sizeof(lname), "%.*s.%s.lock", (int) (strrchr(path, '/') + 1 - path),
+                 path, strrchr(path, '/') + 1);
+        lockfd = open(lname, O_RDWR | O_CREAT, 0600);
+        if (0 > lockfd || (0 == held && 0 != flock(lockfd, LOCK_EX | LOCK_NB))) {
+            report("a locked file: setup", 0, "could not lock it");
+            break;
+        }
+        if (0 != held) {
+            close(lockfd);
+        }
+        rc = run_child(true);
+        if (0 == held) {
+            report("a file whose lock is held is not reclaimed, though its pid is gone",
+                   CHILD_INITFAIL == rc,
+                   "init should have failed");
+            report("...and is preserved", file_exists(path), "file was removed");
+            close(lockfd);
+        } else if (1 == held) {
+            report("a file whose lock nothing holds, and whose pid is gone, is reclaimed",
+                   CHILD_OK == rc, "init failed");
+        } else {
+            report("...but not one whose pid runs", CHILD_INITFAIL == rc,
+                   "init should have failed");
+        }
+        unlink(path);
+        unlink(lname);
+    }
+
+    /* a name whose lock another server holds is that server's, whether
+     * its file is there yet or not */
+    snprintf(lname, sizeof(lname), "%.*s.%s.lock", (int) (strrchr(path, '/') + 1 - path), path,
+             strrchr(path, '/') + 1);
+    lockfd = open(lname, O_RDWR | O_CREAT, 0600);
+    if (0 > lockfd || 0 != flock(lockfd, LOCK_EX | LOCK_NB)) {
+        report("a held name: setup", 0, "could not lock it");
+    } else {
+        unlink(path);
+        rc = run_child(true);
+        report("a name whose lock another server holds is refused", CHILD_INITFAIL == rc,
+               "init should have failed");
+    }
+    if (0 <= lockfd) {
+        close(lockfd);
+    }
+    unlink(lname);
+
+    /* and a file whose lock is held is in use though the name's lock
+     * cannot be taken for another reason - here, a lock file only its
+     * owner may read, which the next server opens to lock and cannot -
+     * whatever its pid says */
+    fp = fopen(path, "w");
+    if (NULL != fp) {
+        fprintf(fp, "testns.0;tcp4://127.0.0.1:1\n%s\n%lu\n%lu:%lu\nsome time\nlock:flock\n",
+                PMIX_VERSION, (unsigned long) reaped(), (unsigned long) getuid(),
+                (unsigned long) getgid());
+        fclose(fp);
+        lockfd = open(lname, O_RDONLY | O_CREAT, 0400);
+        if (0 > lockfd || 0 != flock(lockfd, LOCK_EX | LOCK_NB)) {
+            report("a read-only lock: setup", 0, "could not lock it");
+        } else {
+            rc = run_child(true);
+            report("a file whose lock is held is in use, whatever takes the name",
+                   CHILD_INITFAIL == rc, "init should have failed");
+            report("...and is preserved", file_exists(path), "file was removed");
+        }
+        if (0 <= lockfd) {
+            close(lockfd);
+        }
+        unlink(path);
+        unlink(lname);
+    }
 
     /* a file that was never completely written names no owner at all,
      * so it too must be reclaimed */
@@ -429,7 +536,12 @@ int main(void)
         }
         snprintf(moved, sizeof(moved), "%s/%s", moveddir, strrchr(path, '/') + 1);
         unlink(moved);
-        rmdir(moveddir);
+        /* and what else the server made there - its session and socket
+         * directories, which finalize removes by name */
+        snprintf(moved, sizeof(moved), "rm -rf '%s'", moveddir);
+        if (0 != system(moved)) {
+            fprintf(stderr, "could not remove %s\n", moveddir);
+        }
         unlink(path);
     }
 
