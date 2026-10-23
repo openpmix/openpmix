@@ -206,9 +206,11 @@ two disagree, the README wins, and please fix this file.
   `SWARM_REMOTE_TOOLS=1`: asked without the support, a server fails its
   init. It is not a PRRTE bug. `SWARM_REMOTE_TOOLS=1` must be given to
   `build.sh` too, which then configures `--enable-remote-tools
-  --with-openssl`; the suites make a throwaway CA and tool certificates
-  in `/opt/prte/ssl` (`ssl_make_certs`) and run the remote tools with
-  `psec=ssl` (`SWARM_TOOL_ENV`).
+  --with-openssl`; the suites make a throwaway CA with server and tool
+  certificates in `/opt/prte/ssl` (`ssl_make_certs`). A tool and a server
+  on different nodes authenticate each other, so the DVMs get a
+  certificate, key and the CA (`SWARM_SERVER_ENV`) and the tools the
+  same (`SWARM_TOOL_ENV`); a tool picks `ssl` for a remote server itself.
 
 - **`prterun` has no `--dvm-uri`; `prun` does.** A stage that wants a
   tool attached to a *persistent* DVM has to use `prun`. `prterun` brings

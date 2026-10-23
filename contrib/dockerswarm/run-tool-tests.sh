@@ -284,8 +284,8 @@ test_linux() {
         RC=$?
     }
     INVALID_CRED=244    # PMIX_ERR_INVALID_CRED, -12
-    NO_PERMISSIONS=233  # PMIX_ERR_NO_PERMISSIONS, -23
     UNREACH=231         # PMIX_ERR_UNREACH, -25
+    NOT_SUPPORTED=209   # PMIX_ERR_NOT_SUPPORTED, -47
     case "$addr_b" in
         usock)
             remote_try ""
@@ -299,9 +299,15 @@ test_linux() {
         *)
             remote_try "$SWARM_TOOL_ENV"
             if [ "$RC" = 0 ]; then
-                ok "a tool whose certificate the server's CA signed is taken"
+                ok "a tool and a server whose certificates one CA issued authenticate each other"
             else
-                bad "a tool whose certificate the server's CA signed: exit $RC ($(echo "$OUT" | tr '\n' ' ' | tail -c 240))"
+                bad "a tool and a server whose certificates one CA issued: exit $RC ($(echo "$OUT" | tr '\n' ' ' | tail -c 240))"
+            fi
+            remote_try "$SWARM_DOUBTER_ENV"
+            if [ "$RC" = "$INVALID_CRED" ] && echo "$OUT" | grep -q "did not prove who it is"; then
+                ok "a tool that does not trust the server's CA refuses the server: PMIX_ERR_INVALID_CRED"
+            else
+                bad "a tool that does not trust the server's CA: exit $RC, not PMIX_ERR_INVALID_CRED from the tool ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
             fi
             remote_try "$SWARM_ROGUE_ENV"
             if [ "$RC" = "$INVALID_CRED" ]; then
@@ -310,10 +316,10 @@ test_linux() {
                 bad "a tool whose certificate another CA signed: exit $RC, not PMIX_ERR_INVALID_CRED ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
             fi
             remote_try ""
-            if [ "$RC" = "$NO_PERMISSIONS" ]; then
-                ok "a tool with no certificate, from another node, is refused: PMIX_ERR_NO_PERMISSIONS"
+            if [ "$RC" = "$NOT_SUPPORTED" ] && echo "$OUT" | grep -q "has neither as configured"; then
+                ok "a tool with no certificate sends nothing to a server on another node: PMIX_ERR_NOT_SUPPORTED"
             else
-                bad "a tool with no certificate, from another node: exit $RC, not PMIX_ERR_NO_PERMISSIONS ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
+                bad "a tool with no certificate, to a server on another node: exit $RC, not PMIX_ERR_NOT_SUPPORTED ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
             fi ;;
     esac
 
