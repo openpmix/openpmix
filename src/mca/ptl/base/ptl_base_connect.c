@@ -834,6 +834,9 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         peer->nptr->compat.rpsec = NULL;
     }
     pmix_ptl_base.server_release_vouched = false;
+    /* nor is the URI an earlier connect was given */
+    free(pmix_ptl_base.uri);
+    pmix_ptl_base.uri = NULL;
 
     /* check any provided directives
      * to see where they want us to connect to */
