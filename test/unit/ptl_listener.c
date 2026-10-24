@@ -541,12 +541,19 @@ static void report_uri_file_child(void)
 
     snprintf(path, sizeof(path), "%s/uri.txt", tmpdir);
     unlink(path);
+    /* so that the mode is the one the server asks for */
+    umask(0);
     PMIX_INFO_LOAD(&info, PMIX_TCP_REPORT_URI, path, PMIX_STRING);
     if (PMIX_SUCCESS != PMIx_server_init(&mymodule, &info, 1)) {
         _exit(CHILD_FAIL);
     }
     if (0 != stat(path, &st)) {
         fprintf(stderr, "report file %s was not written\n", path);
+        _exit(CHILD_FAIL);
+    }
+    /* anyone may read it; only its server writes it */
+    if (0 != (st.st_mode & (S_IWGRP | S_IWOTH))) {
+        fprintf(stderr, "report file %s is mode %o\n", path, (unsigned) (st.st_mode & 07777));
         _exit(CHILD_FAIL);
     }
     PMIx_server_finalize();
@@ -933,7 +940,9 @@ int main(int argc, char **argv)
              include_noprefix_child);
     run_case("a PMIX_TCP_IPV4_PORT past 65535 is refused", big_port_child);
     run_case("an empty PMIX_TCP_REPORT_URI leaves stdin alone", empty_report_uri_child);
-    run_case("a report file named by directive is removed at finalize", report_uri_file_child);
+    run_case("a report file named by directive is written by its server alone, and removed at "
+             "finalize",
+             report_uri_file_child);
     run_case("a report file is not written through a symlink", report_uri_symlink_child);
     run_case("a report file is not written through a second hard link",
              report_uri_hardlink_child);
