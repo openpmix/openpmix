@@ -272,6 +272,11 @@ build_linux() {
                     rm -rf "$prte_src"; cp -a /src/prrte "$prte_src"; }
             fi
             was=$(git -C "$prte_src" rev-parse HEAD 2>/dev/null || echo none)
+            # fetch from the repository named this time: a clone made from
+            # another - GitHub, say - would otherwise fetch from there, fail
+            # to find a branch that lives only in a clone on this host, and
+            # build whatever it had before
+            git -C "$prte_src" remote set-url origin "$PRRTE_REPO" 2>/dev/null || true
             if git -C "$prte_src" fetch --quiet origin "$PRRTE_REF" 2>/dev/null; then
                 git -C "$prte_src" checkout --quiet --detach FETCH_HEAD
                 git -C "$prte_src" submodule --quiet update --init --recursive
