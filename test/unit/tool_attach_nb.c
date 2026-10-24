@@ -34,6 +34,9 @@
  *                   both an attach and a PMIx_tool_init that connects must
  *                   fail at once with PMIX_ERR_NOT_SUPPORTED, not wait out
  *                   the timer.
+ *   stale URI       an attach given PMIX_SERVER_URI, then one that names a
+ *                   server by namespace instead: the second must look for
+ *                   that namespace, not dial the first one's URI again.
  *
  * Attaching to a real server is covered by the existing tool tests
  * (tool_api, tool_rndz, run_toolswitch.pl), which go through the same
@@ -357,6 +360,54 @@ static int handshake_init_child(int port)
     return ATT_OK;
 }
 
+/* The URI one attach was given is not used by the next, which names its
+ * server another way: here a namespace no server has, which a search
+ * fails to find at once. Dialling the first URI again would sit in the
+ * listener's backlog until the handshake wait expires */
+static int stale_uri_child(int port)
+{
+    attach_t at;
+    pmix_info_t info;
+    pmix_proc_t server;
+    struct timeval start;
+    pmix_status_t rc;
+    double secs;
+    char dir[] = "/tmp/pmix_stale_uri.XXXXXX";
+
+    signal(SIGALRM, on_alarm);
+    alarm(4 * ATTACH_WAIT);
+    if (NULL == mkdtemp(dir)) {
+        return ATT_SETUP;
+    }
+    setenv("PMIX_SYSTEM_TMPDIR", dir, 1);
+    if (0 != tool_up()) {
+        rmdir(dir);
+        return ATT_SETUP;
+    }
+    memset(&at, 0, sizeof(at));
+    at.port = port;
+    (void) attach_thread(&at);
+    if (PMIX_SUCCESS == at.rc) {
+        fprintf(stdout, "    the first attach succeeded against a closed connection\n");
+        rmdir(dir);
+        return ATT_FAILED;
+    }
+    PMIX_INFO_LOAD(&info, PMIX_SERVER_NSPACE, "no-such-namespace", PMIX_STRING);
+    gettimeofday(&start, NULL);
+    rc = PMIx_tool_attach_to_server(NULL, &server, &info, 1);
+    secs = since(&start);
+    PMIX_INFO_DESTRUCT(&info);
+    alarm(0);
+    rmdir(dir);
+    fprintf(stdout, "    the second attach: %s after %.1fs\n", PMIx_Error_string(rc), secs);
+    if (PMIX_SUCCESS == rc || PMIX_ERR_TIMEOUT == rc || (double) ATTACH_WAIT - 1.0 < secs) {
+        fprintf(stdout, "    it dialled the first attach's URI again\n");
+        return ATT_FAILED;
+    }
+    PMIx_tool_finalize();
+    return ATT_OK;
+}
+
 /* what the separate acceptor process does with the connection */
 #define ACCEPT_NONE      0 // nothing accepts it: the listener's backlog holds it
 #define ACCEPT_CLOSE     1 // accept and close at once
@@ -446,6 +497,8 @@ int main(int argc, char **argv)
              handshake_attach_child, ACCEPT_HANDSHAKE);
     run_case("a tool connecting to a server that asks for a security handshake fails at once",
              handshake_init_child, ACCEPT_HANDSHAKE);
+    run_case("an attach does not dial the URI an earlier attach was given", stale_uri_child,
+             ACCEPT_CLOSE);
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;
