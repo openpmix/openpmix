@@ -1429,10 +1429,10 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                 FILE *fp = NULL;
                 struct stat sbuf;
                 int fd;
+                /* anyone may read it; only we write it */
                 fd = pmix_os_dirpath_open_file(pmix_ptl_base.report_uri,
                                                O_WRONLY | O_CREAT,
-                                               S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP
-                                               | S_IROTH | S_IWOTH);
+                                               S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
                 if (0 <= fd) {
                     if (0 != fstat(fd, &sbuf) || !S_ISREG(sbuf.st_mode) ||
                         1 != sbuf.st_nlink || 0 != ftruncate(fd, 0) ||
