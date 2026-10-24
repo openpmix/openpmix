@@ -60,6 +60,10 @@ PMIX_EXPORT pmix_status_t pmix_util_getpid(int sd, pid_t *pid);
  *                           on another host or in another network
  *                           namespace, or has already gone away
  *   PMIX_ERR_NOT_SUPPORTED  this platform offers no way to ask
+ *   PMIX_ERR_OUT_OF_RESOURCE  it does, but this process could not ask it
+ *                           now - it is out of descriptors or memory, or
+ *                           the table kept growing past the buffer. No
+ *                           answer, and not to be taken for the one above
  *   PMIX_ERR_BAD_PARAM      `sd` is not a connected IPv4/IPv6 socket
  *
  * *uid is written only on PMIX_SUCCESS. */
