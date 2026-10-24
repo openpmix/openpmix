@@ -64,10 +64,15 @@ After the `PMIX_CRED_TYPE` screen and the protocol checks (a
 4. **Over TCP, the kernel cannot.** A peer at an address of this host
    (`peer_on_host`) that the table does not show (`PMIX_ERR_NOT_FOUND`) is
    refused whatever `legacy_auth` says (`unowned-peer`): its end is in the
-   table once it has sent. Otherwise - a platform with no table
-   (`PMIX_ERR_NOT_SUPPORTED`) - accepted on its claim when `legacy_auth`
-   is true, the claim still matching the recorded uid/gid, else refused
-   (`legacy-peer`). A peer at an address not this host's never gets here:
+   table once it has sent. A platform with no table
+   (`PMIX_ERR_NOT_SUPPORTED`, and only that) - accepted on its claim when
+   `legacy_auth` is true, the claim still matching the recorded uid/gid,
+   else refused (`legacy-peer`). Any other failed lookup -
+   `PMIX_ERR_OUT_OF_RESOURCE` (the server is out of descriptors or
+   memory), `PMIX_ERR_BAD_PARAM`, `PMIX_ERR_NOT_FOUND` for a peer not at
+   an address of this host - is no answer, and refuses the peer
+   (`PMIX_ERR_INVALID_CRED`, verbose output only), whatever
+   `legacy_auth` says. A peer at an address not this host's never gets here:
    ptl refuses it first - native has no `create_bound`/`validate_bound`,
    and such a peer must authenticate with a module that has.
 

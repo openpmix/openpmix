@@ -815,7 +815,21 @@ other users' connections only while `security.bsd.see_other_uids` is 1,
 the default; with it off another user's peer is `PMIX_ERR_NOT_FOUND`.
 Anything else answers `PMIX_ERR_NOT_SUPPORTED`.
 
-Four rules, each of which a plausible "simplification" breaks:
+Five rules, each of which a plausible "simplification" breaks:
+
+- **Running out is not "no table".** Where the process could not ask -
+  `socket`, `open`, `sendto` or `recv` failing with `EMFILE`, `ENFILE`,
+  `ENOMEM` or `ENOBUFS` on the Linux routes (`lookup_failed()`), or a
+  pcblist that outgrew the buffer on every one of `read_pcblist()`'s five
+  tries on macOS and FreeBSD - the
+  answer is `PMIX_ERR_OUT_OF_RESOURCE`, never `PMIX_ERR_NOT_SUPPORTED`,
+  and the `/proc` fallback does not paper over it. Callers depend on the
+  difference: `psec/native` takes a peer on its claim under
+  `legacy_auth` only on `NOT_SUPPORTED`, and refuses on anything else; a
+  tool's `pmix_ptl_base_check_server` refuses the server
+  (`server-unidentified`). Read as "no table", a process that ran out of
+  descriptors would have accepted a claimed identity.
+  `test_tcp_out_of_descriptors` pins it.
 
 - **Only an `ESTABLISHED` entry is an answer.** A `TIME_WAIT`/`FIN_WAIT`
   entry carries no owner, and Linux reports uid 0 for it. A connection

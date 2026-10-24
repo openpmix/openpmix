@@ -344,6 +344,19 @@ static pmix_status_t get_tuple(int sd, tcp_tuple_t *t)
     return PMIX_ERR_BAD_PARAM;
 }
 
+#if PMIX_HAVE_SOCK_DIAG || PMIX_HAVE_PROC_NET_TCP
+/* Why a table could not be read, from errno: the process has run out of
+ * descriptors or memory - which says nothing of whether the platform has
+ * a table, and passes - or it has none to offer */
+static pmix_status_t lookup_failed(void)
+{
+    if (EMFILE == errno || ENFILE == errno || ENOMEM == errno || ENOBUFS == errno) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+#endif
+
 #if PMIX_HAVE_SOCK_DIAG
 /* compare a 16-byte address field of a diag message against one of
  * ours: an AF_INET entry carries its address in the first four bytes, an
@@ -380,7 +393,7 @@ static pmix_status_t lookup_sock_diag(const tcp_tuple_t *t, uid_t *uid)
 
     nl = socket(AF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, NETLINK_SOCK_DIAG);
     if (0 > nl) {
-        return PMIX_ERR_NOT_SUPPORTED;
+        return lookup_failed();
     }
     memset(&sa, 0, sizeof(sa));
     sa.nl_family = AF_NETLINK;
@@ -409,16 +422,19 @@ static pmix_status_t lookup_sock_diag(const tcp_tuple_t *t, uid_t *uid)
 
     if ((ssize_t) sizeof(msg) != sendto(nl, &msg, sizeof(msg), 0,
                                         (struct sockaddr *) &sa, sizeof(sa))) {
+        rc = lookup_failed();
         close(nl);
-        return PMIX_ERR_NOT_SUPPORTED;
+        return rc;
     }
     /* the kernel answers a request to itself before sendto() returns, so
      * the reply is already queued - never wait for one that is not */
     n = recv(nl, &rsp, sizeof(rsp), MSG_DONTWAIT);
-    close(nl);
     if (0 >= n) {
-        return PMIX_ERR_NOT_SUPPORTED;
+        rc = (0 > n) ? lookup_failed() : PMIX_ERR_NOT_SUPPORTED;
+        close(nl);
+        return rc;
     }
+    close(nl);
 
     /* walked by hand rather than with NLMSG_OK/NLMSG_NEXT, whose mix of
      * signed and unsigned lengths does not survive -Wsign-compare */
@@ -496,12 +512,13 @@ static pmix_status_t scan_proc_net(const char *path, bool v6, const tcp_tuple_t 
 
     fd = open(path, O_RDONLY | O_CLOEXEC);
     if (0 > fd) {
-        return PMIX_ERR_NOT_SUPPORTED;
+        return lookup_failed();
     }
     fp = fdopen(fd, "r");
     if (NULL == fp) {
+        rc = lookup_failed();
         close(fd);
-        return PMIX_ERR_NOT_SUPPORTED;
+        return rc;
     }
     if (v6) {
         pa = &t->peer6;
@@ -552,10 +569,13 @@ static pmix_status_t lookup_proc_net(const tcp_tuple_t *t, uid_t *uid)
         if (PMIX_SUCCESS == rc) {
             return rc;
         }
+        if (PMIX_ERR_OUT_OF_RESOURCE == rc) {
+            return rc;
+        }
         answered = (PMIX_ERR_NOT_FOUND == rc);
     }
     rc = scan_proc_net("/proc/net/tcp6", true, t, uid);
-    if (PMIX_SUCCESS == rc) {
+    if (PMIX_SUCCESS == rc || PMIX_ERR_OUT_OF_RESOURCE == rc) {
         return rc;
     }
     /* a table that was read and did not list the connection is an
@@ -570,7 +590,9 @@ static pmix_status_t lookup_proc_net(const tcp_tuple_t *t, uid_t *uid)
 #if PMIX_HAVE_PCBLIST64 || PMIX_HAVE_XTCPCB
 /* read the whole of a pcblist sysctl into *bufp. The table can grow
  * between asking its size and reading it, so ask for headroom and try
- * again if that was not enough */
+ * again if that was not enough. A table that keeps outgrowing it is
+ * there to read, just not now - PMIX_ERR_OUT_OF_RESOURCE, never "no
+ * table" */
 static pmix_status_t read_pcblist(const char *name, char **bufp, size_t *lenp)
 {
     size_t len = 0;
@@ -596,7 +618,7 @@ static pmix_status_t read_pcblist(const char *name, char **bufp, size_t *lenp)
             return PMIX_ERR_NOT_SUPPORTED;
         }
     }
-    return PMIX_ERR_NOT_SUPPORTED;
+    return PMIX_ERR_OUT_OF_RESOURCE;
 }
 #endif
 

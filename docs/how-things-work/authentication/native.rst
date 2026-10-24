@@ -38,7 +38,9 @@ the first that decides the matter.
    does not show is refused. On a platform with no table to ask, a TCP
    peer is refused unless ``psec_native_legacy_auth`` is set to
    ``true``; then it is accepted on the uid and gid it claims, as every
-   earlier release accepted it.
+   earlier release accepted it. A table there is but that could not be
+   read - the server is out of descriptors or memory - is no answer, and
+   the peer is refused whatever that parameter says.
 
 A peer that connects over TCP from an address that is not this host's
 never reaches ``native``: the server refuses it before any security

@@ -21,7 +21,10 @@
  * with. Its cases cover what it answers and what it declines: a loopback
  * connection in every address shape the listener can hand us is owned by
  * us, and a connection whose peer has already closed answers
- * PMIX_ERR_NOT_FOUND.
+ * PMIX_ERR_NOT_FOUND. A process out of descriptors - which on Linux
+ * cannot open what it asks the kernel through - is not told that the
+ * platform has no table (PMIX_ERR_NOT_SUPPORTED): native would then take
+ * a peer at its word under psec_native_legacy_auth.
  *
  * pmix_util_getpid() is what the server hands its host as a connecting
  * process's pid. A child that connects to our AF_UNIX listener must be
@@ -46,6 +49,7 @@
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
+#include <sys/resource.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 
@@ -297,6 +301,41 @@ static void test_tcp_peer_gone(void)
     close(server);
 }
 
+/* Out of descriptors, the lookup is no answer - but never "no table".
+ * Run in a child, which spends every descriptor it may open */
+static void test_tcp_out_of_descriptors(void)
+{
+    int client, server, status;
+    struct rlimit rl;
+    pid_t pid;
+    uid_t uid;
+    pmix_status_t rc;
+
+    if (!tcp_pair(AF_INET, false, &client, &server)) {
+        fprintf(stdout, "  SKIP: out-of-descriptors case (no IPv4 loopback)\n");
+        return;
+    }
+    fflush(stdout);
+    pid = fork();
+    if (0 == pid) {
+        if (0 == getrlimit(RLIMIT_NOFILE, &rl) && 64 < rl.rlim_cur) {
+            rl.rlim_cur = 64;
+            (void) setrlimit(RLIMIT_NOFILE, &rl);
+        }
+        while (0 <= dup(0)) {
+        }
+        rc = pmix_util_getid_tcp(server, &uid);
+        fprintf(stdout, "    with no descriptor left: %s\n", PMIx_Error_string(rc));
+        fflush(stdout);
+        _exit(PMIX_ERR_NOT_SUPPORTED == rc ? 1 : 0);
+    }
+    report("getid_tcp out of descriptors does not answer that there is no table",
+           0 < pid && pid == waitpid(pid, &status, 0) && WIFEXITED(status) &&
+               0 == WEXITSTATUS(status));
+    close(client);
+    close(server);
+}
+
 /* Every case above connects this process to itself, so the peer's uid
  * and ours are the same number - and a lookup that found the wrong end of
  * the connection, our own socket instead of the peer's, would pass them
@@ -526,6 +565,7 @@ int main(int argc, char **argv)
     test_tcp_shape("IPv6", AF_INET6, false);
     test_tcp_shape("v4-mapped IPv6", AF_INET6, true);
     test_tcp_peer_gone();
+    test_tcp_out_of_descriptors();
     test_tcp_other_user();
     if (tcp_pair(AF_INET, false, &c, &s)) {
         pid_t p = 0;
