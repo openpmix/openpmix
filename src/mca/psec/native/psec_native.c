@@ -299,6 +299,15 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
         }
         return PMIX_ERR_INVALID_CRED;
 
+    } else if (PMIX_ERR_NOT_SUPPORTED != rc) {
+        /* the table could not be read - this process is out of
+         * descriptors or memory, say. That is no answer, and no reason to
+         * take the peer at its word */
+        pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
+                            "psec: native could not ask the kernel who the peer at %s is: %s",
+                            pmix_fd_get_peer_name(pr->sd), PMIx_Error_string(rc));
+        return PMIX_ERR_INVALID_CRED;
+
     } else if (pmix_psec_native_params.legacy_auth) {
         /* nothing the kernel can tell us - take the peer at its word, as
          * every earlier release did */
