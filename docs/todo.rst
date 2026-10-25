@@ -69,9 +69,158 @@ launch; the TSD finalize ordering; ``gds/shmem3`` on macOS; the
 client-side tombstone generation; and three ``src/hwloc`` findings.
 Each is listed in full under `Coverage gaps`_.
 
+**Connections with earlier releases — 9.**  Found in the review of
+connection behavior that preceded the removal of tools on other hosts.
+Each is listed in full under `Connections with earlier releases`_.
+
 **Review coverage — 3 directories unread**, plus ``src/common`` and four
 lower-priority directories whose code has moved since their review.
 Nothing outside ``src/`` has been reviewed at all.
+
+Connections with earlier releases
+---------------------------------
+
+Found in a review of how servers, clients and tools of different releases
+connect (2026-10-24), and checked against the tree on 2026-10-25.  Every
+entry is a behavior a site running a mix of releases can meet.  Each says
+what happens, when, and what would close it.
+
+.. _todo-conn-client-owner:
+
+A client refuses an older server run by another user
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*Deferred work.*  Over TCP, a client checks who owns its server's end of
+the connection (``pmix_ptl_base_check_server`` in
+``src/mca/ptl/base/ptl_base_fns.c``).  A server of this release gives the
+client its uid, and the kernel's answer must match it.  An older server
+gives nothing, so the owner must be the client's own user, root, or a
+user listed in ``ptl_base_server_access``.
+
+That refuses a client whose host runs as a service account - a resource
+manager daemon with its own user - and one in a rootless container, where
+the kernel names the server's owner as the overflow uid (65534).  Both
+worked with every earlier release.
+
+To close: a client is named for its server by that server's own
+environment, as ``check_unnamed`` already accepts where there is no
+table.  Skip the owner check for a client of an older server, and keep it
+for tools.
+
+.. _todo-conn-unaccepted-root:
+
+A connection not yet accepted is reported as root's
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*Deferred work.*  On Linux kernels through 6.x, a TCP connection still in
+the server's accept queue has no socket of its own yet, and the kernel
+gives its owner as uid 0.  ``sock_diag`` reports that with an inode of 0;
+``/proc/net/tcp`` does the same in its inode column.  A tool that looks
+up its server's owner before the server has called ``accept()`` therefore
+sees root.  Against a server of this release, root does not match the uid
+the server gave, and the tool is refused.  Kernel 7.0 reports the real
+owner.
+
+To close: treat an inode of 0 as "not yet known"
+(``PMIX_ERR_NOT_FOUND``) in ``src/util/pmix_getid.c``, so the existing
+retry asks again.
+
+.. _todo-conn-retry-window:
+
+A busy server can outlast the tool's retry
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*Deferred work.*  When the kernel does not list the connection yet, the
+tool retries the lookup for about one second and then gives up.  A server
+with a full accept queue - many tools starting at once - can take longer
+than that, and the tool fails although nothing is wrong.
+
+To close: tie the retry to the handshake's own deadline, or make it an
+MCA parameter.
+
+.. _todo-conn-bare-uri-wire:
+
+A bare TCP URI speaks a wire format older servers lack
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*Deferred work.*  A tool given only a TCP URI, with no file, knows
+nothing of its server's release.  ``pmix_ptl_base_select_compat`` then
+picks no wire format, and the tool uses its newest, ``v61``.  A server of
+v5.0 or earlier has no ``v61`` and refuses the connection.
+
+To close: with no version to go by, use the newest wire format every
+supported server has, so that a server of a later release still accepts
+it.
+
+.. _todo-conn-table-unreadable:
+
+A table that cannot be read counts as "not listed"
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*Deferred work.*  On Linux, ``sock_diag`` answers ``ENOENT`` both for a
+connection it does not have and when the kernel has no TCP handler
+loaded.  ``pmix_util_getid_tcp`` then reads ``/proc/net``.  If that
+cannot be read either - ``hidepid``, or a restricted ``/proc`` in a
+container - the answer stays ``PMIX_ERR_NOT_FOUND``.  A server refuses
+such a peer as unowned, and a tool retries and fails, where the right
+answer is ``PMIX_ERR_NOT_SUPPORTED``: no table to ask.  With legacy peers
+on, that would take the peer as the platforms with no table do.
+
+To close: return ``PMIX_ERR_NOT_SUPPORTED`` when ``sock_diag`` said
+``ENOENT`` and ``/proc/net`` could not be read.
+
+.. _todo-conn-launcher-rndz:
+
+``PMIX_LAUNCHER_RNDZ_URI`` vouches for nothing
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*Deferred work.*  On a platform with no table of TCP connections, a tool
+connects to a TCP server only when a file its caller named vouches for
+it.  A launcher's rendezvous URI is given in ``PMIX_LAUNCHER_RNDZ_URI``
+instead, so a tool given one is refused there.
+
+To close: have the launcher's rendezvous name a file the tool can check,
+or treat that variable as the caller naming the server.
+
+.. _todo-conn-docs-old-clients:
+
+The connections page misdescribes v2.1 and v3.2 clients
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*Deferred work (docs).*  ``docs/how-things-work/connections.rst`` says a
+client of an earlier release, given the local socket's URI, initializes
+as a singleton and returns ``PMIX_ERR_UNREACH``.  A v2.1 or v3.2 client
+does not come up as a singleton: its ``PMIx_Init`` fails.
+
+To close: give each release's behavior separately.
+
+.. _todo-conn-ompi5-singletons:
+
+An Open MPI 5 job runs as singletons under a server without legacy peers
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*Open decision.*  When the server does not take legacy peers, an Open MPI
+5 process (a v5.0 client) is given only the local socket's URI, which it
+cannot use.  It comes up as a singleton, so an N-process job runs as N
+separate one-process jobs, and the only sign is an error line from each.
+
+The decision is what the server should do.  It could leave the client's
+variables unset so that the client fails outright, or set something every
+earlier release reads as "no server".  Either changes what an earlier
+release sees, so it needs to be checked against each release from v2.1.
+
+.. _todo-conn-empty-nspace:
+
+A v5.0 scheduler with an empty namespace is untested
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*Coverage gap.*  A tool that connects with an empty namespace is refused
+("names no process", ``src/mca/ptl/base/ptl_base_connection_hdlr.c``).
+Read from the v5.0 source, a v5.0 scheduler may connect that way.  No test
+connects one, so whether it is refused is unconfirmed.
+
+To close: add a case to the cross-version tests with a v5.0 scheduler
+connecting to a server of this release.
 
 Open decisions
 --------------
