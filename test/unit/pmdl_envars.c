@@ -111,6 +111,7 @@ static pmix_status_t register_job(const char *nspace, uint32_t napps)
     uint32_t u32, n, m, nprocs, jobsize = 0;
     uint16_t u16;
     char tmp[256];
+    pmix_nspace_t ns;
 
     /* app n holds n+2 procs, so the sizes and the leaders differ */
     for (n = 0; n < napps; n++) {
@@ -167,7 +168,9 @@ static pmix_status_t register_job(const char *nspace, uint32_t napps)
     PMIX_INFO_LIST_RELEASE(jinfo);
     info = (pmix_info_t *) darray.array;
     ninfo = darray.size;
-    rc = PMIx_server_register_nspace((char *) nspace, jobsize, info, ninfo, NULL, NULL);
+    // the server API takes a full pmix_nspace_t, not a shorter string
+    PMIX_LOAD_NSPACE(ns, nspace);
+    rc = PMIx_server_register_nspace(ns, jobsize, info, ninfo, NULL, NULL);
     PMIX_DATA_ARRAY_DESTRUCT(&darray);
     /* with no callback the registration completes inline, and says so */
     return (PMIX_OPERATION_SUCCEEDED == rc) ? PMIX_SUCCESS : rc;

@@ -1721,7 +1721,7 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
     size_t offset, j, n, m, bufsize;
     char *buffer, qprint[15], *cptr;
     unsigned char uc;
-    const char *usestring;
+    const char *usestring, *at;
     bool bufcopy;
     pmix_cb_t cb2;
     pmix_info_t optional;
@@ -1792,12 +1792,12 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
     if (myflags->xml) {
         if (myflags->tag) {
             /* find the '@' delimiter in the nspace */
-            cptr = strrchr(name->nspace, '@');
-            if (NULL == cptr) {
+            at = strrchr(name->nspace, '@');
+            if (NULL == at) {
                 usestring = name->nspace;  // just use the whole thing
             } else {
-                ++cptr;
-                usestring = cptr; // use the jobid portion
+                ++at;
+                usestring = at; // use the jobid portion
             }
             pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                           "<%s %s=\"%s\" rank=\"%s\"", suffix,
@@ -1889,12 +1889,12 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
     } else {
         if (myflags->tag) {
             /* find the '@' delimiter in the nspace */
-            cptr = strrchr(name->nspace, '@');
-            if (NULL == cptr) {
+            at = strrchr(name->nspace, '@');
+            if (NULL == at) {
                 usestring = name->nspace;  // just use the whole thing
             } else {
-                ++cptr;
-                usestring = cptr; // use the jobid portion
+                ++at;
+                usestring = at; // use the jobid portion
             }
             pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
                           "[%s,%s]<%s>: ",
@@ -1906,12 +1906,12 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
                 usestring = name->nspace;
             } else {
                 /* find the '@' delimiter in the nspace */
-                cptr = strrchr(name->nspace, '@');
-                if (NULL == cptr) {
+                at = strrchr(name->nspace, '@');
+                if (NULL == at) {
                     usestring = name->nspace;  // just use the whole thing
                 } else {
-                    ++cptr;
-                    usestring = cptr; // use the jobid portion
+                    ++at;
+                    usestring = at; // use the jobid portion
                 }
             }
             /* we need the hostname and pid of the source */

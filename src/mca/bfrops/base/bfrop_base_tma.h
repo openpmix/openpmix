@@ -534,10 +534,14 @@ void pmix_bfrops_base_tma_multicluster_nspace_construct(pmix_nspace_t target,
 {
     pmix_bfrops_base_tma_load_nspace(target, NULL, tma);
     size_t len = pmix_nslen(cluster);
-    if ((len + pmix_nslen(nspace)) < PMIX_MAX_NSLEN) {
-        pmix_strncpy((char*)target, cluster, PMIX_MAX_NSLEN);
+    size_t nlen = pmix_nslen(nspace);
+    // copy exactly the lengths measured, so the bound on the result
+    // is the test itself: len + 1 + nlen <= PMIX_MAX_NSLEN
+    if ((len + nlen) < PMIX_MAX_NSLEN) {
+        memcpy(target, cluster, len);
         target[len] = ':';
-        pmix_strncpy((char*)&target[len+1], nspace, PMIX_MAX_NSLEN - len);
+        memcpy(&target[len + 1], nspace, nlen);
+        target[len + 1 + nlen] = '\0';
     }
 }
 
