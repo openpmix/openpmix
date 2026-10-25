@@ -873,7 +873,7 @@ void pmix_info_out(const char *pretty_message, const char *plain_message, const 
                 value = quoted_value;
             }
 
-            char *colon = strchr(value, ':');
+            const char *colon = strchr(value, ':');
             if (NULL != colon) {
                 printf("%s:\"%s\"\n", plain_message, value);
             } else {
