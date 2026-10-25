@@ -495,6 +495,10 @@ static void set_namespace(int nprocs, char *ranks, char *nspace, pmix_op_cbfunc_
     pmix_info_t *info, *iptr, *ip;
     myxfer_t cd, lock;
     pmix_status_t rc;
+    pmix_nspace_t ns;
+
+    // the server APIs take a full pmix_nspace_t, not a shorter string
+    PMIX_LOAD_NSPACE(ns, nspace);
 
     if (arrays) {
         x->ninfo = 15 + nprocs;
@@ -541,7 +545,7 @@ static void set_namespace(int nprocs, char *ranks, char *nspace, pmix_op_cbfunc_
     free(rks);
     PMIX_INFO_LOAD(&ip[1], PMIX_ALLOC_NETWORK_SEC_KEY, NULL, PMIX_BOOL);
     PMIX_CONSTRUCT(&cd, myxfer_t);
-    if (PMIX_SUCCESS != (rc = PMIx_server_setup_application(nspace, iptr, 4, setup_cbfunc, &cd))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_setup_application(ns, iptr, 4, setup_cbfunc, &cd))) {
         pmix_output(0, "[%s:%d] PMIx_server_setup_application failed: %s", __FILE__, __LINE__,
                     PMIx_Error_string(rc));
         DEBUG_DESTRUCT_LOCK(&cd.lock);
@@ -552,7 +556,7 @@ static void set_namespace(int nprocs, char *ranks, char *nspace, pmix_op_cbfunc_
     /* use the results to setup the local subsystems */
     PMIX_CONSTRUCT(&lock, myxfer_t);
     if (PMIX_SUCCESS
-        != (rc = PMIx_server_setup_local_support(nspace, cd.info, cd.ninfo, opcbfunc, &lock))) {
+        != (rc = PMIx_server_setup_local_support(ns, cd.info, cd.ninfo, opcbfunc, &lock))) {
         pmix_output(0, "[%s:%d] PMIx_server_setup_local_support failed: %s", __FILE__, __LINE__,
                     PMIx_Error_string(rc));
     } else {
@@ -664,7 +668,7 @@ static void set_namespace(int nprocs, char *ranks, char *nspace, pmix_op_cbfunc_
         /* move to next proc */
         ++n;
     }
-    PMIx_server_register_nspace(nspace, nprocs, x->info, x->ninfo, cbfunc, x);
+    PMIx_server_register_nspace(ns, nprocs, x->info, x->ninfo, cbfunc, x);
 }
 
 static void errhandler(size_t evhdlr_registration_id, pmix_status_t status,
