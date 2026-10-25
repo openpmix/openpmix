@@ -18,6 +18,8 @@
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -739,6 +741,11 @@ typedef struct {
     pmix_iof_cbfunc_t cbfunc;
     pmix_hdlr_reg_cbfunc_t regcbfunc;
     void *cbdata;
+    /* inheritance: clone_id names an original request once it has been
+     * cloned; root_id is set on a clone and names the original it
+     * descends from, at any depth. 0 is neither */
+    uint64_t clone_id;
+    uint64_t root_id;
 } pmix_iof_req_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_req_t);
 

@@ -530,6 +530,175 @@ static void deliver_from(const char *nspace, pmix_rank_t rank)
     PMIX_INFO_DESTRUCT(&local);
 }
 
+/* the host's half of a deregistration: done at once */
+static pmix_status_t stub_iof_pull(const pmix_proc_t procs[], size_t nprocs,
+                                   const pmix_info_t directives[], size_t ndirs,
+                                   pmix_iof_channel_t channels,
+                                   pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(procs, nprocs, directives, ndirs, channels, cbfunc, cbdata);
+    return PMIX_OPERATION_SUCCEEDED;
+}
+
+/* pmix_server_iofdereg answers through this with its own caddy */
+static void dereg_done(pmix_status_t status, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+
+    PMIX_HIDE_UNUSED_PARAMS(status);
+    PMIX_RELEASE(cd);
+}
+
+/* A subscription follows into a job once, whichever generation it came
+ * through, and its clones go when it is deregistered.
+ *
+ * linC's first output reaches us before linB has printed, so the walk
+ * clones the watcher's subscription from linA. linB's output then gives
+ * linB its own clone, and linC's spawn completing here clones what
+ * covers linB - which is that clone, descended from the same original. */
+static void test_clone_lineage(void)
+{
+    pmix_peer_t *watcher, *spawner;
+    pmix_buffer_t *buf;
+    size_t ninfo = 0, refid;
+    pmix_status_t rc;
+    int count;
+
+    watcher = mkpeer("toolns", 0, true);
+    PMIX_RETAIN(pmix_globals.mypeer->nptr);
+    watcher->nptr = pmix_globals.mypeer->nptr;
+    refid = (size_t) watch_job(watcher, "linA", PMIX_FWD_STDERR_CHANNEL, 21);
+    if (PMIX_SUCCESS != register_child("linB", "linA", 0) ||
+        PMIX_SUCCESS != register_child("linC", "linB", 0)) {
+        report("lineage: could not register the namespaces", false);
+        goto cleanup;
+    }
+
+    deliver_from("linC", 0);
+    deliver_from("linB", 0);
+    spawner = mkpeer("linB", 0, false);
+    run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "linC");
+    PMIX_RELEASE(spawner);
+    find_watch("linC", &count);
+    report("lineage: a clone through another generation is not duplicated", 1 == count);
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &refid, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_server_iofdereg(watcher, buf, dereg_done, NULL);
+    }
+    PMIX_RELEASE(buf);
+    report("lineage: the original subscription is deregistered", PMIX_SUCCESS == rc);
+    find_watch("linB", &count);
+    report("lineage: its clone on the child goes with it", 0 == count);
+    find_watch("linC", &count);
+    report("lineage: and its clone on the grandchild", 0 == count);
+
+cleanup:
+    drop_watches("linC");
+    drop_watches("linB");
+    drop_watches("linA");
+    PMIX_RELEASE(watcher);
+}
+
+/* A deregistered job's clones go with it: nothing can be forwarded for a
+ * job that is gone, and a long-lived tool would otherwise collect one
+ * clone per watcher for every job ever spawned under it. */
+static void test_job_gone(void)
+{
+    pmix_peer_t *watcher;
+    pmix_nspace_t ns;
+    int count;
+
+    watcher = mkpeer("toolgone", 0, true);
+    watch_job(watcher, "goneP", PMIX_FWD_STDERR_CHANNEL, 61);
+    if (PMIX_SUCCESS != register_child("goneC", "goneP", 0)) {
+        report("gone: could not register the namespace", false);
+    } else {
+        deliver_from("goneC", 0);
+        find_watch("goneC", &count);
+        report("gone: the child has its clone", 1 == count);
+        PMIX_LOAD_NSPACE(ns, "goneC");
+        PMIx_server_deregister_nspace(ns, NULL, NULL);
+        find_watch("goneC", &count);
+        report("gone: deregistering the child removes it", 0 == count);
+    }
+    drop_watches("goneC");
+    drop_watches("goneP");
+    PMIX_RELEASE(watcher);
+}
+
+/* One pull naming both the grandparent and the grandchild. The parent
+ * gets a clone of it; that clone must not be cloned onto the grandchild,
+ * which the original already covers. */
+static void test_original_covers(void)
+{
+    pmix_peer_t *watcher, *spawner;
+    pmix_iof_req_t *req;
+    int idx, count;
+
+    watcher = mkpeer("toolboth", 0, true);
+    req = PMIX_NEW(pmix_iof_req_t);
+    PMIX_RETAIN(watcher);
+    req->requestor = watcher;
+    req->nprocs = 2;
+    PMIX_PROC_CREATE(req->procs, 2);
+    PMIX_LOAD_PROCID(&req->procs[0], "bothG", PMIX_RANK_WILDCARD);
+    PMIX_LOAD_PROCID(&req->procs[1], "bothC", PMIX_RANK_WILDCARD);
+    req->channels = PMIX_FWD_STDERR_CHANNEL;
+    req->remote_id = 91;
+    idx = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    req->local_id = (size_t) idx;
+    if (PMIX_SUCCESS != register_child("bothP", "bothG", 0) ||
+        PMIX_SUCCESS != register_child("bothC", "bothP", 0)) {
+        report("both: could not register the namespaces", false);
+    } else {
+        spawner = mkpeer("bothG", 0, false);
+        run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "bothP");
+        PMIX_RELEASE(spawner);
+        spawner = mkpeer("bothP", 0, false);
+        run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "bothC");
+        PMIX_RELEASE(spawner);
+        find_watch("bothC", &count);
+        report("both: the grandchild the pull names gets no clone", 0 == count);
+    }
+    drop_watches("bothC");
+    drop_watches("bothP");
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, idx, NULL);
+    PMIX_RELEASE(req);
+    PMIX_RELEASE(watcher);
+}
+
+/* A subscription that already covers the child itself is not cloned. A
+ * pull naming every job covers the parent and the child alike. Run last:
+ * while it exists it matches every job's output. */
+static void test_covering_pull(void)
+{
+    pmix_peer_t *watcher, *spawner;
+    pmix_iof_req_t *req;
+    int idx, count;
+
+    watcher = mkpeer("toolall", 0, true);
+    idx = watch_job(watcher, "", PMIX_FWD_STDERR_CHANNEL, 51);
+    if (PMIX_SUCCESS != register_child("covC", "covP", 0)) {
+        report("cover: could not register the namespace", false);
+    } else {
+        spawner = mkpeer("covP", 0, false);
+        run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "covC");
+        PMIX_RELEASE(spawner);
+        find_watch("covC", &count);
+        report("cover: a pull covering every job is not cloned onto the child", 1 == count);
+    }
+    req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, idx);
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, idx, NULL);
+    PMIX_RELEASE(req);
+    drop_watches("covC");
+    PMIX_RELEASE(watcher);
+}
+
 /* The delivery-time half of inheritance.
  *
  * The spawn-time clone above is made by the server that PROCESSED the
@@ -543,9 +712,9 @@ static void deliver_from(const char *nspace, pmix_rank_t rank)
  */
 static void test_delivery_ancestry(void)
 {
-    pmix_peer_t *watcher;
+    pmix_peer_t *watcher, *spawner;
     pmix_iof_req_t *req;
-    int count;
+    int count, idx;
 
     watcher = mkpeer("toolns", 0, true);
 
@@ -573,6 +742,40 @@ static void test_delivery_ancestry(void)
                PMIX_FWD_STDERR_CHANNEL == req->channels);
         report("ancestry: it keeps the watcher's handler id", 9 == req->remote_id);
     }
+
+    /* ---- the two halves together clone once, in either order ----
+     *
+     * On a multi-node DVM a spawned job's first output routinely reaches
+     * the tool's server before the spawn completes on the spawner's, so
+     * the delivery-time clone exists when the spawn-time half runs. A
+     * second clone forwarded every line twice, and a spawn chain doubled
+     * it per generation, since each child copies all of its parent's. The
+     * reverse order is reached by a chunk on a channel the watcher did not
+     * subscribe to: it matches nothing, so the ancestry walk runs again. */
+    spawner = mkpeer("parentjob", 0, false);
+    run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "childjob");
+    find_watch("childjob", &count);
+    report("ancestry: spawn-time after delivery adds no second clone", 1 == count);
+    drop_watches("childjob");
+    run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "childjob");
+    deliver_from("childjob", 0);
+    find_watch("childjob", &count);
+    report("ancestry: delivery after spawn-time adds no second clone", 1 == count);
+
+    /* ---- a second subscription follows into the child too ----
+     *
+     * Same requestor and handler id, different channels: it is a distinct
+     * subscription, and the child gets its own clone of it. Not stdout: the cache holds stdout chunks from the cases
+     * above, and a clone that matched them would try to forward them to
+     * these socketless peers. */
+    idx = watch_job(watcher, "parentjob", PMIX_FWD_STDDIAG_CHANNEL, 9);
+    run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "childjob");
+    find_watch("childjob", &count);
+    report("ancestry: a subscription on other channels is cloned too", 2 == count);
+    req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, idx);
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, idx, NULL);
+    PMIX_RELEASE(req);
+    PMIX_RELEASE(spawner);
 
     /* ---- the walk is transitive ----
      *
@@ -801,6 +1004,7 @@ int main(int argc, char **argv)
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
+    mymodule.iof_pull = stub_iof_pull;
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
@@ -813,6 +1017,10 @@ int main(int argc, char **argv)
     test_parser_agreement();
     test_walk_stops();
     test_inherit_access();
+    test_clone_lineage();
+    test_job_gone();
+    test_original_covers();
+    test_covering_pull();
 
     PMIx_server_finalize();
 

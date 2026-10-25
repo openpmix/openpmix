@@ -12,6 +12,8 @@
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1306,6 +1308,9 @@ static pmix_status_t release_nspace(pmix_proc_t *proc)
 
     /* the job's connection tokens go with it */
     pmix_ptl_base_drop_tokens(proc->nspace, PMIX_RANK_WILDCARD);
+
+    /* and so do the output subscriptions it inherited */
+    pmix_server_iof_job_gone(proc->nspace);
 
     /* release any job-level network resources */
     pmix_pnet.deregister_nspace(proc->nspace);

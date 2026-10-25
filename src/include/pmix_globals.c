@@ -11,6 +11,8 @@
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -535,6 +537,8 @@ static void iofreqcon(pmix_iof_req_t *p)
     p->cbfunc = NULL;
     p->regcbfunc = NULL;
     p->cbdata = NULL;
+    p->clone_id = 0;
+    p->root_id = 0;
 }
 static void iofreqdes(pmix_iof_req_t *p)
 {
