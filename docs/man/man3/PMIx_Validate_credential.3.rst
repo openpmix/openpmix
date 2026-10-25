@@ -115,8 +115,8 @@ handled by the internal plugins. Note that the ``native`` plugin cannot validate
 a credential presented this way: its credential is only the identity its creator
 claims, which ``native`` confirms by asking the operating system who owns a
 connection - and a credential handed to this API arrives on none, so it is
-refused. A credential from the ``ssl`` or ``munge`` plugins carries its own proof
-and can be validated this way.
+refused. A credential from the ``munge`` plugin carries its own proof and can be
+validated this way.
 
 
 DIRECTIVES

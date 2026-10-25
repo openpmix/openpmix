@@ -7,8 +7,8 @@
 #
 # $HEADER$
 #
-# Exercise src/tool -- the tool-role half of libpmix -- against servers
-# that are really on different nodes.
+# Exercise src/tool -- the tool-role half of libpmix -- with its servers
+# and the ranks they serve spread over several nodes.
 #
 #   ./run-tool-tests.sh linux    # in the 10-container swarm
 #                                #   (requires: ./build.sh && docker compose up -d)
@@ -39,19 +39,10 @@
 #     tool_iof_handler never sees a payload that was relayed daemon to
 #     daemon before it arrived.
 #
-# So every stage here puts the tool and at least one of its servers on
-# DIFFERENT nodes.
+# A tool reaches only a server on its own node: neither end takes a
+# connection from another node. So the stages here put the tool beside its
+# server and the work it asks for on OTHER nodes:
 #
-# What the stages reach that `make check` cannot:
-#
-#   * toolswitch -- a tool whose local server is node1's daemon and whose
-#     second server is a daemon on node2, cycling
-#     attach-as-primary -> get_servers -> set_server(local/self/remote) ->
-#     disconnect -> finalize.  Each cycle re-inits, so it is also the
-#     re-init path with a real remote peer in the clients array rather
-#     than a loopback one.  The queries in the middle are the part that
-#     needs two hosts: the same PMIx_Query_info_nb has to travel to a
-#     different machine depending on which server is primary at the time.
 #   * IOF forwarded to a tool from ranks on several other nodes.  prterun
 #     IS a tool; running it against a persistent DVM with ranks on nodes
 #     it is not on means every byte it prints arrived through
@@ -60,21 +51,12 @@
 #     (prun, not prterun: prterun brings up a DVM of its own, while prun
 #     attaches to the persistent one as a tool, which is the shape we
 #     want.)
-#   * a tool whose REMOTE primary server dies.  The node-local version of
-#     this lives in run-ptl-tests.sh; across nodes the drop is a real
-#     socket close from another host rather than a peer vanishing inside
-#     the same kernel.
-#   * a valgrind pass on the tool itself.  Every other suite valgrinds a
-#     client or (in run-server-tests.sh) the daemon; a client never runs
-#     src/tool at all, so this is the only leak coverage the tool library
-#     gets, and it is the only one that gets it with real remote peers
-#     attached and detached.
+#   * a server on another node, which a tool must refuse to dial and say
+#     so - PMIX_ERR_UNREACH - rather than hang or reach the wrong server.
 #
-# The cross-node stages need the DVMs to take tools from other nodes: a
-# PMIx configured --enable-remote-tools, with munge or ssl to authenticate
-# them, and PRRTE asking for remote connections. Set SWARM_REMOTE_TOOLS=1
-# when the swarm's PMIx has them. Otherwise the DVMs listen only on their
-# local sockets, and those stages are skipped with the reason named.
+# The switching bookkeeping (toolswitch: attach-as-primary -> get_servers
+# -> set_server -> disconnect -> finalize) needs two servers the tool can
+# reach, which means two on its own node; the macos mode below runs it.
 #
 # WHAT THIS DOES NOT COVER:
 #
@@ -107,9 +89,8 @@ here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 
 # The examples this runner drives.
-#   toolswitch - the multi-server model across nodes (see the header)
-#   tool       - attach by URI / by nspace, used for the lost-server case
-TOOL_EXAMPLES="${TOOL_EXAMPLES:-toolswitch tool}"
+#   tool       - attach by URI, used for the unreachable-server case
+TOOL_EXAMPLES="${TOOL_EXAMPLES:-tool}"
 
 # See run-server-tests.sh: these are COMPILED in a throwaway builder
 # container and RUN in the long-lived node containers, so they must link the
@@ -140,28 +121,12 @@ wait_for_uri() {
     return 1
 }
 
-# Pull the address out of "<nspace>.<rank>;tcp4://<addr>:<port>", split from
-# the back the way pmix_ptl_base_parse_uri does - or "usock" for a URI that
-# names a server's local socket, which no other node can reach.
-uri_addr() {
-    case "$1" in
-        *";usock://"*) echo usock; return ;;
-    esac
-    local a="${1#*//}"; echo "${a%%:*}"
-}
-# Ask the DVMs for remote connections only when the swarm's PMIx can take
-# them: a PMIx without remote tool support, or with no mechanism that can
-# authenticate a tool on another node, fails its init when asked. The
-# settings - and the certificates the tools present - are in
-# swarm-common.sh.
-REMOTE_ENV="$SWARM_SERVER_ENV"
-
 ########################################################################
 # Linux: the 10-node swarm.
 ########################################################################
 
 test_linux() {
-    local rc uri_a uri_b addr_b nodecount
+    local rc uri_a uri_b n2addr port_b nsp_b nodecount
 
     swarm_up_or_die
 
@@ -225,15 +190,6 @@ test_linux() {
     fi
     ok "built: $TOOL_EXAMPLES"
 
-    if [ "${SWARM_REMOTE_TOOLS:-0}" = 1 ]; then
-        if ssl_make_certs; then
-            ok "a CA, a tool certificate it signs, and one it does not, in $SSL_DIR"
-        else
-            bad "could not make the tool certificates"
-            return
-        fi
-    fi
-
     # ------------------------------------------------------------------
     # Two INDEPENDENT DVMs, one headed on node1 and one headed on node2.
     #
@@ -245,16 +201,10 @@ test_linux() {
     banner "bring up two DVMs on different nodes"
     cleanup_swarm
     ON 1 "rm -f $URI_A"; ON 2 "rm -f $URI_B"
-    # PRTE_MCA_pmix_remote_connections=1 (REMOTE_ENV, with
-    # SWARM_REMOTE_TOOLS=1) is what makes the cross-node stages possible.
-    # Without remote connections a PMIx server takes no TCP connection from
-    # another node, so every cross-node stage below skips itself, naming
-    # why. It is a PRRTE-side MCA parameter that ends up as the
-    # PMIX_SERVER_REMOTE_CONNECTIONS directive on PMIx_server_init.
-    ON 1 "export PRTE_ALLOW_RUN_AS_ROOT=1 PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1 $REMOTE_ENV;
+    ON 1 "export PRTE_ALLOW_RUN_AS_ROOT=1 PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1;
           . /opt/prte/env.sh; prte --daemonize --report-uri $URI_A \
               --host node1:1,node3:1,node4:1 >/tmp/toolsuite-a.log 2>&1" >/dev/null 2>&1
-    ON 2 "export PRTE_ALLOW_RUN_AS_ROOT=1 PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1 $REMOTE_ENV;
+    ON 2 "export PRTE_ALLOW_RUN_AS_ROOT=1 PRTE_ALLOW_RUN_AS_ROOT_CONFIRM=1;
           . /opt/prte/env.sh; prte --daemonize --report-uri $URI_B \
               --host node2:1 >/tmp/toolsuite-b.log 2>&1" >/dev/null 2>&1
 
@@ -267,175 +217,38 @@ test_linux() {
         return
     fi
     ok "DVM A on node1 and DVM B on node2 both reported a URI"
-    addr_b="$(uri_addr "$uri_b")"
 
     # ------------------------------------------------------------------
-    # Who a server on another node takes. A DVM of a PMIx without remote
-    # tools cannot be reached from another node at all: it reports its
-    # local socket. One with them takes a tool whose certificate its CA
-    # signed, and refuses one whose certificate another CA signed, and
-    # one that brings no certificate (native, which serves only its own
-    # host).
+    # A server on another node cannot be reached. A server listens only
+    # on its own node - its local socket, or a loopback TCP address for
+    # peers of earlier releases - and a tool does not dial an address
+    # that is not its own node's. DVM B reports its local socket by
+    # default, whose path on node1 leads nowhere, so a tool handed that
+    # fails for another reason: hand it node2's IPv4 address instead,
+    # with DVM B's port when it has a TCP one, and require the refusal
+    # to say why.
     # ------------------------------------------------------------------
-    banner "who a server on another node takes"
+    banner "a server on another node cannot be reached"
     # examples/tool exits with its PMIx_tool_init status, as a byte
-    remote_try() {      # $1 = tool environment; sets OUT, RC
-        OUT="$(ON 1 "${1:+export $1;} timeout 60 $TESTDIR/tool -u '$uri_b' 2>&1")"
-        RC=$?
-    }
-    INVALID_CRED=244    # PMIX_ERR_INVALID_CRED, -12
     UNREACH=231         # PMIX_ERR_UNREACH, -25
-    NOT_SUPPORTED=209   # PMIX_ERR_NOT_SUPPORTED, -47
-    case "$addr_b" in
-        usock)
-            remote_try ""
-            if [ "$RC" = "$UNREACH" ]; then
-                ok "a DVM without remote tools cannot be reached from another node: PMIX_ERR_UNREACH"
-            else
-                bad "a DVM without remote tools, from another node: exit $RC, not PMIX_ERR_UNREACH ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
-            fi ;;
-        127.*|::1|localhost|"")
-            skp "remote tool authentication (DVM B's listener is on loopback: ${addr_b:-unparseable})" ;;
-        *)
-            remote_try "$SWARM_TOOL_ENV"
-            if [ "$RC" = 0 ]; then
-                ok "a tool and a server whose certificates one CA issued authenticate each other"
-            else
-                bad "a tool and a server whose certificates one CA issued: exit $RC ($(echo "$OUT" | tr '\n' ' ' | tail -c 240))"
-            fi
-            remote_try "$SWARM_DOUBTER_ENV"
-            if [ "$RC" = "$INVALID_CRED" ] && echo "$OUT" | grep -q "did not prove who it is"; then
-                ok "a tool that does not trust the server's CA refuses the server: PMIX_ERR_INVALID_CRED"
-            else
-                bad "a tool that does not trust the server's CA: exit $RC, not PMIX_ERR_INVALID_CRED from the tool ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
-            fi
-            remote_try "$SWARM_ROGUE_ENV"
-            if [ "$RC" = "$INVALID_CRED" ]; then
-                ok "a tool whose certificate another CA signed is refused: PMIX_ERR_INVALID_CRED"
-            else
-                bad "a tool whose certificate another CA signed: exit $RC, not PMIX_ERR_INVALID_CRED ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
-            fi
-            remote_try ""
-            if [ "$RC" = "$NOT_SUPPORTED" ] && echo "$OUT" | grep -q "has neither as configured"; then
-                ok "a tool with no certificate sends nothing to a server on another node: PMIX_ERR_NOT_SUPPORTED"
-            else
-                bad "a tool with no certificate, to a server on another node: exit $RC, not PMIX_ERR_NOT_SUPPORTED ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
-            fi ;;
+    n2addr="$(ON 2 "hostname -I 2>/dev/null || hostname -i" | tr ' ' '\n' \
+              | grep -E '^[0-9]+(\.[0-9]+){3}$' | grep -v '^127\.' | head -1)"
+    case "$uri_b" in
+        *";tcp4://"*) port_b="${uri_b##*:}" ;;
+        *) port_b=1 ;;
     esac
-
-    # ------------------------------------------------------------------
-    # The multi-server model, with the two servers on two hosts.
-    # ------------------------------------------------------------------
-    banner "a tool switching its primary between servers on different nodes"
-    case "$addr_b" in
-        usock)
-            skp "toolswitch (DVM B takes no remote tools - set SWARM_REMOTE_TOOLS=1 with a PMIx that has them)"
-            skp "toolswitch under valgrind (no remote URI)" ;;
-        127.*|::1|localhost|"")
-            # A loopback URI is unreachable from node1 by construction.
-            # Whether PRRTE asked for remote connections is PRRTE's
-            # business, so this is a skip with the reason named.
-            skp "toolswitch (DVM B's listener is on loopback: ${addr_b:-unparseable})"
-            skp "toolswitch under valgrind (no remote URI)" ;;
-        *)
-            OUT="$(ON 1 "${SWARM_TOOL_ENV:+export $SWARM_TOOL_ENV;} timeout 180 $TESTDIR/toolswitch -u '$uri_b' -n 5 2>&1")"
-            RC=$?
-            if [ "$RC" = 124 ]; then
-                bad "toolswitch: HUNG"
-            elif echo "$OUT" | grep -qiE 'Segmentation|core dumped|Assertion'; then
-                bad "toolswitch: crashed ($(echo "$OUT" | grep -iE 'Segmentation|core dumped|Assertion' | head -1))"
-            elif [ "$RC" != 0 ]; then
-                bad "toolswitch: exit $RC ($(echo "$OUT" | tr '\n' ' ' | tail -c 300))"
-            elif ! echo "$OUT" | grep -q 'toolswitch: PASS'; then
-                bad "toolswitch: no PASS marker ($(echo "$OUT" | tr '\n' ' ' | tail -c 300))"
-            else
-                ok "toolswitch: attach/switch/disconnect across nodes, 5 cycles"
-            fi
-
-            # ----------------------------------------------------------
-            # The same thing under valgrind.  This is the only leak
-            # coverage src/tool has anywhere, and the only place it runs
-            # with real remote peers being attached and released.
-            #
-            # Only "definitely lost" blocks whose stack names a src/tool
-            # frame are failed on: libpmix and PRRTE both leak at exit in
-            # ways that are not this suite's business, and a whole-process
-            # clean bill would make the stage permanently red and
-            # therefore ignored.
-            # ----------------------------------------------------------
-            banner "tool library under valgrind, with a remote server attached"
-            if ! ON 1 'command -v valgrind >/dev/null 2>&1'; then
-                # The image is a build image, not a debug one, and it is
-                # shared with the other swarm, so rebuilding it to add a
-                # package moves it under that swarm's feet. Install into
-                # the one node we need it on, at run time.
-                ON 1 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq valgrind >/dev/null 2>&1' || true
-            fi
-            if ! ON 1 'command -v valgrind >/dev/null 2>&1'; then
-                skp "valgrind-tool (valgrind unavailable and could not be installed)"
-            else
-                ON 1 'rm -f /tmp/toolsuite-vg.log'
-                # --fullpath-after= (empty argument) makes valgrind print
-                # the FULL source path in each frame. Without it a frame
-                # reads "pmix_tool.c:123", which is unmatchable by path --
-                # and PRRTE ships files of its own whose basenames collide
-                # with ours, so a basename match would attribute their
-                # leaks to us.
-                OUT="$(ON 1 "${SWARM_TOOL_ENV:+export $SWARM_TOOL_ENV;} valgrind --leak-check=full --show-leak-kinds=definite \
-                                 --error-exitcode=0 --fullpath-after= \
-                                 --log-file=/tmp/toolsuite-vg.log \
-                                 timeout 300 $TESTDIR/toolswitch -u '$uri_b' -n 2 2>&1")"
-                RC=$?
-                if [ "$RC" = 124 ]; then
-                    bad "valgrind-tool: HUNG"
-                elif [ "$RC" != 0 ]; then
-                    bad "valgrind-tool: the run itself failed (exit $RC): $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
-                else
-                    local tlleaks
-                    # --show-leak-kinds=definite means the log holds
-                    # definite-leak records and the summary, nothing else,
-                    # so a src/tool frame anywhere in it is a frame in a
-                    # definite leak's allocation stack
-                    tlleaks="$(ON 1 "grep -c 'src/tool/pmix_tool' /tmp/toolsuite-vg.log" 2>/dev/null | tr -dc '0-9')"
-                    tlleaks="${tlleaks:-0}"
-                    if [ "$tlleaks" = 0 ]; then
-                        ok "valgrind-tool: no definite leak attributed to a src/tool frame"
-                    else
-                        bad "valgrind-tool: $tlleaks definite-leak frames in src/tool"
-                        ON 1 'grep -B2 -A12 "definitely lost" /tmp/toolsuite-vg.log | head -60' >&2
-                    fi
-                fi
-            fi ;;
-    esac
-
-    # ------------------------------------------------------------------
-    # A tool whose REMOTE primary server dies.
-    #
-    # The tool must notice the drop and unwind rather than hang.  The
-    # node-local version of this is in run-ptl-tests.sh; here the close
-    # arrives over a socket from another machine, which is the case a
-    # single host cannot produce.
-    # ------------------------------------------------------------------
-    banner "a tool whose server on another node goes away"
-    case "$addr_b" in
-        usock)
-            skp "remote server death (DVM B takes no remote tools)" ;;
-        127.*|::1|localhost|"")
-            skp "remote server death (DVM B's listener is on loopback)" ;;
-        *)
-            # kill DVM B out from under a tool on node1 that is attached
-            # to it by URI
-            ON 2 "( sleep 5; . /opt/prte/env.sh; pterm --dvm-uri '$uri_b' >/dev/null 2>&1 ) &" >/dev/null 2>&1
-            OUT="$(ON 1 "${SWARM_TOOL_ENV:+export $SWARM_TOOL_ENV;} timeout 90 $TESTDIR/tool -u '$uri_b' 2>&1")"
-            RC=$?
-            if [ "$RC" = 124 ]; then
-                bad "remote server death: HUNG (never noticed the drop)"
-            elif echo "$OUT" | grep -qiE 'Segmentation|core dumped|Assertion'; then
-                bad "remote server death: crashed ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
-            else
-                ok "remote server death: unwound and exited (exit $RC)"
-            fi ;;
-    esac
+    nsp_b="${uri_b%%;*}"; nsp_b="${nsp_b%.*}"
+    if [ -z "$n2addr" ]; then
+        skp "a server on another node (no IPv4 address for node2)"
+    else
+        OUT="$(ON 1 "timeout 60 $TESTDIR/tool -u '$nsp_b.0;tcp4://$n2addr:$port_b' 2>&1")"
+        RC=$?
+        if [ "$RC" = "$UNREACH" ] && echo "$OUT" | grep -q "not this host's"; then
+            ok "a DVM on another node cannot be reached: PMIX_ERR_UNREACH, not this host's"
+        else
+            bad "a DVM on another node: exit $RC, not PMIX_ERR_UNREACH saying not this host's ($(echo "$OUT" | tr '\n' ' ' | tail -c 200))"
+        fi
+    fi
 
     # ------------------------------------------------------------------
     # IOF delivered to a tool from ranks on other nodes.
@@ -473,7 +286,7 @@ test_linux() {
     ON 1 ". /opt/prte/env.sh; pterm --dvm-uri '$uri_a' >/dev/null 2>&1" >/dev/null 2>&1
     ON 2 ". /opt/prte/env.sh; pterm --dvm-uri '$uri_b' >/dev/null 2>&1" >/dev/null 2>&1
     cleanup_swarm
-    ON 1 "rm -f $URI_A /tmp/toolsuite-a.log /tmp/toolsuite-vg.log"
+    ON 1 "rm -f $URI_A /tmp/toolsuite-a.log"
     ON 2 "rm -f $URI_B /tmp/toolsuite-b.log"
     if [ "$(prted_count 1 2 3 4 5 6 7 8 9 10)" = 0 ]; then
         ok "no stray prted left behind"
@@ -499,8 +312,8 @@ test_macos() {
     [ -d "$prefix" ] || prefix="/opt/prte/pmix"
 
     banner "native single-host tool pass"
-    echo "  NOTE: one host means both servers are loopback -- the remote"
-    echo "        half of this suite is NOT covered here. Use the linux mode."
+    echo "  NOTE: one host means the IOF relayed from other nodes is NOT"
+    echo "        covered here. Use the linux mode for that."
     if [ ! -x "$prefix/bin/prterun" ] && ! command -v prterun >/dev/null; then
         skp "no prterun available -- run ./build.sh macos first"
         return

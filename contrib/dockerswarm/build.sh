@@ -58,9 +58,6 @@ if [ -d "$PRRTE_REPO" ]; then
     PRRTE_MOUNT=(-v "$_gd":/prrte-repo:ro)
     PRRTE_REPO=/prrte-repo
 fi
-# SWARM_REMOTE_TOOLS=1 builds a PMIx that takes tools from other nodes:
-# --enable-remote-tools, with OpenSSL for psec/ssl to authenticate them.
-SWARM_REMOTE_TOOLS="${SWARM_REMOTE_TOOLS:-0}"
 
 # the group example programs that exercise the construction methods; built as
 # standalone clients against the installed PMIx and launched by prterun/prun.
@@ -183,7 +180,6 @@ build_linux() {
         -e PYTHON_BINDINGS="$PYTHON_BINDINGS" \
         -e PRRTE_REPO="$PRRTE_REPO" \
         -e PRRTE_REF="$PRRTE_REF" \
-        -e SWARM_REMOTE_TOOLS="$SWARM_REMOTE_TOOLS" \
         ${PRRTE_MOUNT[@]+"${PRRTE_MOUNT[@]}"} \
         "$IMAGE" bash -euo pipefail -c '
             jobs=$(nproc)
@@ -191,15 +187,15 @@ build_linux() {
             # legacy peers: the ptl suite runs a server that takes them
             opts="--enable-legacy-peers"
             [ "$PYTHON_BINDINGS" = yes ] && opts="$opts --enable-python-bindings"
-            [ "$SWARM_REMOTE_TOOLS" = 1 ] && opts="$opts --with-openssl --enable-remote-tools"
 
             echo ">>>> PMIx from bind-mounted /pmix-src -> /opt/prte/pmix"
             mkdir -p /opt/prte/vpath-pmix && cd /opt/prte/vpath-pmix
             # Reconfigure when the build directory was configured with a
             # different set of options than we want now -- otherwise flipping
-            # PYTHON_BINDINGS or SWARM_REMOTE_TOOLS would be silently
-            # ignored, since the guard below only asks whether *a* configure
-            # has ever run here.
+            # PYTHON_BINDINGS would be silently ignored, since the guard
+            # below only asks whether *a* configure has ever run here. The
+            # two options PMIx no longer has stay in the list, so a volume
+            # configured with them is configured afresh.
             if [ -f config.status ]; then
                 _have=" $(./config.status --config 2>/dev/null) "
                 for _o in --enable-legacy-peers --enable-python-bindings --with-openssl --enable-remote-tools; do

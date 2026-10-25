@@ -44,10 +44,6 @@ BEGIN_C_DECLS
  *  9 => singleton client - treated like a tool that has an identifier
  * ------------------------------------------
  * 10 => scheduler
- * ------------------------------------------
- * 11 => not a connect-ack: a tool on another host asking the server to
- *       prove who it is, before it sends its connect-ack - see "Between
- *       hosts" in base.h
  */
 typedef uint8_t pmix_rnd_flag_t;
 #define PMIX_SIMPLE_CLIENT      0
@@ -61,7 +57,6 @@ typedef uint8_t pmix_rnd_flag_t;
 #define PMIX_LAUNCHER_CLIENT    8
 #define PMIX_SINGLETON_CLIENT   9
 #define PMIX_SCHEDULER_WITH_ID 10
-#define PMIX_REMOTE_AUTH       11
 
 /* The following macros are used in the ptl_base_connection_hdlr.c
  * file to parse the handshake message and extract its fields */

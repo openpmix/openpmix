@@ -252,6 +252,9 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
                                                                     //        order of the group membership. It existed only to undo a sort of
                                                                     //        the membership that is no longer done - the membership now keeps
                                                                     //        the order the participants gave it - and is ignored.
+#define PMIX_SERVER_REMOTE_CONNECTIONS      "pmix.srvr.remote"      // (bool) ***** DEPRECATED ***** Allow connections from tools on other
+                                                                    //        hosts. A server takes connections from its own host only:
+                                                                    //        true fails PMIx_server_init, false changes nothing
 
 
 /* DUPLICATES */

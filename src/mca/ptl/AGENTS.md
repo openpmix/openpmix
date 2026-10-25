@@ -371,8 +371,12 @@ init. Two implementations:
 
 Both converge on **`pmix_ptl_base_make_connection`**:
 `setup_connection` (parse the `tcp4://host:port` URI into a
-`sockaddr_storage`) → `pmix_ptl_base_connect` (open the socket, retrying)
-→ `send_connect_ack` (`construct_message` builds the handshake blob) →
+`sockaddr_storage`) → `pmix_ptl_base_server_on_host` (a TCP address that
+is not this host's is not dialled: `PMIX_ERR_UNREACH`) →
+`pmix_ptl_base_connect` (open the socket, retrying) →
+`pmix_ptl_base_check_server` (the far end must be a server we may talk
+to, by what the kernel says of it; with no TCP table, one something
+vouches for - see `base/AGENTS.md`) → `send_connect_ack` (`construct_message` builds the handshake blob) →
 `recv_connect_ack` (run the client or tool handshake) → assign the lower
 half of the dynamic-tag space. Then `pmix_ptl_base_complete_connection`
 sets the `connected` flag, records the server's nspace/rank, and arms the
@@ -391,9 +395,7 @@ the real work on the progress thread:
 2. Parse it with the `PMIX_PTL_GET_*` macros
    ([`base/ptl_base_handshake.h`](base/ptl_base_handshake.h)): psec name,
    credential, a **flag** (`pmix_rnd_flag_t`, 0–10) identifying the kind
-   of connector - or 11, a tool on another host asking the server to
-   prove who it is first (see "Between hosts" in
-   [`base/AGENTS.md`](base/AGENTS.md)), the peer's procid/uid/gid, version, bfrops module, buffer
+   of connector, the peer's procid/uid/gid, version, bfrops module, buffer
    type, gds module, and an optional info blob. A v1.x or v2.0 peer is
    refused at the version string - see "Version floors" in
    [`base/AGENTS.md`](base/AGENTS.md).
@@ -447,14 +449,15 @@ transport open the socket (`pmix_ptl_base_listen`), and publishes what
 the transport made. The local transport's listener is always made; the
 tcp transport's only when the server takes legacy peers
 (`pmix_ptl_base.legacy_peers`, from `ptl_base_legacy_peers` or
-`PMIX_SERVER_LEGACY_PEERS`) or remote tools. The tcp transport's part is
-the first two steps:
+`PMIX_SERVER_LEGACY_PEERS`). The tcp transport's part is the first two
+steps:
 
 - **Interface selection.** Enumerate interfaces, filter through
-  `if_include`/`if_exclude`, and default to a **loopback** device. Only
-  if remote or tool connections were requested does it fall back to a
-  public interface; the various "no interfaces" `show_help` topics fire
-  when the request cannot be satisfied.
+  `if_include`/`if_exclude`, and take a **loopback** device. It never
+  falls back to a public interface: directives that leave no loopback
+  device fail the init (`no-loopback-interfaces`), and a host that asks
+  for connections from other hosts (`PMIX_SERVER_REMOTE_CONNECTIONS`
+  true) fails it too (`remote-connections-not-supported`).
 - **Bind.** Try each port from `ipv4_ports` / `ipv6_ports` (default `0` =
   let the kernel choose), set `SO_REUSEADDR` and close-on-exec, `listen`
   with `SOMAXCONN`, and make the socket non-blocking.
@@ -462,8 +465,8 @@ the first two steps:
   stores the server's URI - the TCP one when there is a TCP listener,
   else the local socket's - in `gds` under both `PMIX_MYSERVER_URI` and
   (for older tools) `PMIX_SERVER_URI`, optionally emits it via
-  `report_uri` (`-`=stdout, `+`=stderr, an integer pipe fd, or a file),
-  and puts it first in the rendezvous files.
+  `report_uri` (`-`=stdout, `+`=stderr, an integer pipe fd, or a file,
+  created mode 0644), and puts it first in the rendezvous files.
 - **Rendezvous files.** Depending on role/flags, drop contact files a
   peer can discover: `pmix.sched.<host>` (scheduler),
   `pmix.sysctrlr.<host>` (system controller), `pmix.sys.<host>` (system

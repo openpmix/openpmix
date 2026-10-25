@@ -25,16 +25,18 @@ handshake. The user-facing description is
 
 | File | Contents |
 |------|----------|
-| `psec_native.h` | Declares the component and module symbols, and `pmix_psec_native_params`. |
-| `psec_native_component.c` | Component struct, MCA parameters, `component_query` (priority **10**, always available). |
+| `psec_native.h` | Declares the component and module symbols. |
+| `psec_native_component.c` | Component struct and `component_query` (priority **10**, always available). |
 | `psec_native.c` | The module: the credential and the identity rules. |
-| `help-psec-native.txt` | Why a connection was refused: `legacy-peer`, `unowned-peer`, `foreign-group`. |
+| `help-psec-native.txt` | Why a connection was refused: `unowned-peer`, `foreign-group`. |
 
 ## MCA parameters
 
-| Parameter | Default | Meaning |
-|-----------|---------|---------|
-| `psec_native_legacy_auth` | `false` | Accept a peer connecting over TCP on its claimed identity on a platform with no TCP table to ask. |
+None. Whether a TCP peer the kernel cannot name is taken on its claim is
+`pmix_ptl_base.legacy_peers` (`ptl_base_legacy_peers` or
+`PMIX_SERVER_LEGACY_PEERS`): a server opens a TCP listener only to take
+legacy peers, and a claim is all a peer of an earlier release has to
+give.
 
 ## The credential
 
@@ -63,18 +65,18 @@ After the `PMIX_CRED_TYPE` screen and the protocol checks (a
    socket). Then `settle_identity()`, with the gid not attested.
 4. **Over TCP, the kernel cannot.** A peer at an address of this host
    (`peer_on_host`) that the table does not show (`PMIX_ERR_NOT_FOUND`) is
-   refused whatever `legacy_auth` says (`unowned-peer`): its end is in the
-   table once it has sent. A platform with no table
-   (`PMIX_ERR_NOT_SUPPORTED`, and only that) - accepted on its claim when
-   `legacy_auth` is true, the claim still matching the recorded uid/gid,
-   else refused (`legacy-peer`). Any other failed lookup -
+   refused (`unowned-peer`): its end is in the table once it has sent. A
+   platform with no table (`PMIX_ERR_NOT_SUPPORTED`, and only that) -
+   accepted on its claim when the server takes legacy peers, whatever
+   release the peer is of, the claim still matching the recorded uid/gid;
+   else refused (verbose output only - there is no
+   TCP listener to reach it then). Any other failed lookup -
    `PMIX_ERR_OUT_OF_RESOURCE` (the server is out of descriptors or
    memory), `PMIX_ERR_BAD_PARAM`, `PMIX_ERR_NOT_FOUND` for a peer not at
    an address of this host - is no answer, and refuses the peer
-   (`PMIX_ERR_INVALID_CRED`, verbose output only), whatever
-   `legacy_auth` says. A peer at an address not this host's never gets here:
-   ptl refuses it first - native has no `create_bound`/`validate_bound`,
-   and such a peer must authenticate with a module that has.
+   (`PMIX_ERR_INVALID_CRED`, verbose output only). A peer at an address
+   not this host's never gets here:
+   ptl refuses it first - a server takes peers on its own host only.
 
 ### `settle_identity()` — registered vs. claimed
 
@@ -107,14 +109,16 @@ On success `*info` carries `PMIX_CRED_TYPE`, and `PMIX_USERID` /
   user: that is whose socket the server is connected to. Nothing in the
   connection tells a relay apart from the peer itself, so this is
   documented in `native.rst` (Limits), not handled in code.
-- **Remote peers use another mechanism.** native serves peers on this
-  host's kernel and has no `create_bound`/`validate_bound`: ptl refuses a
-  TCP peer whose address is not this host's unless it and the server
-  have authenticated each other with a module that has, before native is
-  asked. Remote tools use `munge` or [`ssl`](../ssl/AGENTS.md).
+- **There are no remote peers.** ptl refuses a TCP peer whose address
+  is not this host's before native is asked, whatever mechanism it
+  names. A tool where the kernel cannot name the server either may
+  connect to a server of this release given its rendezvous file by name
+  while it runs - see `pmix_ptl_base_check_server` in
+  [`../../ptl/base/AGENTS.md`](../../ptl/base/AGENTS.md).
 - **The `PMIX_PROTOCOL_UNDEF` rejection is explicit on purpose.** It does
   not rely on the `(uid_t) -1` initializers of `euid`/`egid` failing a
   comparison. Keep it explicit.
 - **`test/unit/psec_credentials.c`** covers the credential's shape, both
-  identity rules and the legacy switch; `test/unit/ptl_accept.c` covers a
-  local-transport peer whose credential claims another user.
+  identity rules, a platform with no table with and without legacy
+  peers (`pmix_util_getid_test_no_tcp_table`); `test/unit/ptl_accept.c`
+  covers a local-transport peer whose credential claims another user.

@@ -22,14 +22,11 @@
 # same server.  That reaches the framing code but not much else, and the
 # parts it misses are exactly the parts that are hard to reason about:
 #
-#   * INTERFACE SELECTION.  A server listens on TCP only for clients and
-#     tools of earlier releases, on a loopback device, and for tools on
-#     other hosts, on public ones - the latter only in a PMIx configured
-#     --enable-remote-tools whose host asks for remote connections.  On one
-#     host the public branch -- along with every "no interfaces"
-#     diagnostic guarding it -- is dead code.  A tool on another node can
-#     only reach a server that took it; a server with no TCP listener
-#     reports its local socket, which no other node can reach.
+#   * NO PEER ON ANOTHER HOST.  A server listens on its local socket, and
+#     on TCP only for clients and tools of earlier releases, on a loopback
+#     device.  A tool given the address of a server on another node must
+#     refuse to dial it, and say so -- which one host cannot show, since
+#     every address it can name is its own.
 #
 #   * DISCOVERY IS NODE-LOCAL.  The rendezvous files a server drops
 #     (pmix.<host>.tool, pmix.<host>.tool.<pid>, pmix.<host>.tool.<nspace>)
@@ -182,11 +179,6 @@ test_linux() {
         bad "could not build the transport examples (rc=$rc)"; return
     fi
     ok "built: $PTL_EXAMPLES"
-    # with SWARM_REMOTE_TOOLS=1 the DVM below takes tools from other nodes,
-    # which present a certificate (see swarm-common.sh)
-    if ! ssl_make_certs; then
-        bad "could not make the tool certificates"; return
-    fi
 
     ####################################################################
     banner "a job whose ranks are behind different servers"
@@ -239,7 +231,7 @@ test_linux() {
     # fail cleanly.
     cleanup_swarm
     nsp=""
-    OUT="$(RUN "rm -f $DVM_URI_FILE; ${SWARM_SERVER_ENV:+export $SWARM_SERVER_ENV;} prte --daemonize --report-uri $DVM_URI_FILE 2>&1")"
+    OUT="$(RUN "rm -f $DVM_URI_FILE; prte --daemonize --report-uri $DVM_URI_FILE 2>&1")"
     # --daemonize returns as soon as the DVM is forked, so poll for the
     # file rather than guessing how long it takes to write it
     for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -250,7 +242,7 @@ test_linux() {
     if [ -z "$uri" ]; then
         skp "tool by nspace (DVM did not report a URI)"
         skp "tool discovery is node-local (no DVM)"
-        skp "tool by URI from another node (no DVM)"
+        skp "a server on another node is not dialled (no DVM)"
     else
         # "<nspace>.<rank>;tcp4://<addr>:<port>" - split it the way
         # pmix_ptl_base_parse_uri does, from the back - or a local socket's
@@ -295,34 +287,35 @@ test_linux() {
         fi
 
         ################################################################
-        banner "a tool attaching to a server on another node"
+        banner "a server on another node is not dialled"
         ################################################################
-        # This is the case only a swarm can run. It needs the DVM's PMIx
-        # listener to have bound a PUBLIC interface: the default is
-        # loopback, and a loopback URI is unreachable from node2 by
-        # construction. Whether PRRTE asked for remote connections is
-        # PRRTE's business, so a loopback URI is a skip with the reason
-        # named, not a failure of the transport.
+        # This is the case only a swarm can run. The DVM listens on node1
+        # only, so a tool on node2 given node1's address - with the DVM's
+        # own port when it has a TCP one - must refuse before it dials:
+        # PMIX_ERR_UNREACH, saying the address is not its host's.
+        # node1's first IPv4 address - hostname -i may list an IPv6 one
+        # first, and loopback names node2's own host
+        n1addr="$(RUN "hostname -I 2>/dev/null || hostname -i" | tr ' ' '\n' \
+                  | grep -E '^[0-9]+(\.[0-9]+){3}$' | grep -v '^127\.' | head -1)"
         case "$addr" in
-            usock)
-                skp "tool by URI from another node (the DVM takes no remote tools - set SWARM_REMOTE_TOOLS=1 with a PMIx that has them: $uri)" ;;
-            127.*|::1|localhost)
-                skp "tool by URI from another node (DVM listener is on loopback: $addr)" ;;
-            "")
-                skp "tool by URI from another node (could not parse an address out of $uri)" ;;
-            *)
-                OUT="$(ON 2 "${SWARM_TOOL_ENV:+export $SWARM_TOOL_ENV;} timeout 60 $TESTDIR/tool -u '$uri' 2>&1")"
-                RC=$?
-                if [ "$RC" = 124 ]; then
-                    bad "tool by URI across nodes: HUNG"
-                elif [ "$RC" != 0 ]; then
-                    bad "tool by URI across nodes: exit $RC ($(echo "$OUT" | tr '\n' ' ' | tail -c 240))"
-                elif echo "$OUT" | grep -qiE 'Segmentation|core dumped'; then
-                    bad "tool by URI across nodes: crashed"
-                else
-                    ok "tool by URI across nodes: handshake completed over a public interface"
-                fi ;;
+            usock|"") port=1 ;;
+            *) port="${uri##*:}" ;;
         esac
+        if [ -z "$n1addr" ]; then
+            skp "a server on another node is not dialled (no address for node1)"
+        else
+            OUT="$(ON 2 "timeout 60 $TESTDIR/tool -u '$nsp.0;tcp4://$n1addr:$port' 2>&1")"
+            RC=$?
+            if [ "$RC" = 124 ]; then
+                bad "tool by URI across nodes: HUNG instead of refusing"
+            elif echo "$OUT" | grep -qiE 'Segmentation|core dumped'; then
+                bad "tool by URI across nodes: crashed"
+            elif [ "$RC" = 231 ] && echo "$OUT" | grep -q "not this host's"; then
+                ok "tool by URI across nodes: refused before dialling (PMIX_ERR_UNREACH)"
+            else
+                bad "tool by URI across nodes: exit $RC, not PMIX_ERR_UNREACH ($(echo "$OUT" | tr '\n' ' ' | tail -c 240))"
+            fi
+        fi
 
         ################################################################
         banner "a tool whose server goes away"
@@ -345,6 +338,46 @@ test_linux() {
             ok "tool loses its server: unwound and exited (exit $RC)"
         fi
     fi
+    cleanup_swarm
+
+    ####################################################################
+    banner "a server taking legacy peers names a TCP tool by the kernel"
+    ####################################################################
+    # A server run by an ordinary user that takes legacy peers listens on
+    # TCP on loopback, and asks the kernel who owns the far end of each
+    # connection: a tool connecting to it over TCP is taken as its own
+    # user. prterun, not a persistent DVM, so the server's own output is
+    # in the log should the case fail
+    cleanup_swarm
+    ON 1 "rm -f /tmp/ptl-legacy.uri /tmp/ptl-legacy.log" >/dev/null 2>&1
+    docker exec -u ubuntu "${NODE}1" bash -lc ". /opt/prte/env.sh; cd /tmp; \
+        PMIX_MCA_ptl_base_legacy_peers=1 nohup prterun --report-uri /tmp/ptl-legacy.uri \
+        -n 1 sleep 120 >/tmp/ptl-legacy.log 2>&1 &" >/dev/null 2>&1
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        ON 1 "test -s /tmp/ptl-legacy.uri" && break
+        sleep 2
+    done
+    uri="$(ON 1 "cat /tmp/ptl-legacy.uri 2>/dev/null" | head -1)"
+    case "$uri" in
+        *";tcp4://"*)
+            nsp="${uri%%;*}"; nsp="${nsp%.*}"
+            port="${uri##*:}"
+            ok "a server run by ubuntu with legacy peers listens on TCP ($port)"
+            OUT="$(docker exec -u ubuntu "${NODE}1" bash -lc ". /opt/prte/env.sh; \
+                timeout 60 $TESTDIR/tool -u '$nsp.0;tcp4://127.0.0.1:$port' 2>&1")"
+            RC=$?
+            if [ "$RC" = 0 ]; then
+                ok "a tool over TCP is taken as its own user"
+            else
+                bad "a tool over TCP: exit $RC ($(echo "$OUT" | tr '\n' ' ' | tail -c 240)) ($(ON 1 "tr '\n' ' ' </tmp/ptl-legacy.log" | tail -c 240))"
+            fi
+            ;;
+        *)
+            bad "a server run by ubuntu with legacy peers reported no TCP URI ($uri)"
+            ;;
+    esac
+    ON 1 'pkill -9 -u ubuntu prterun 2>/dev/null; true' >/dev/null 2>&1
+    ON 1 "rm -f /tmp/ptl-legacy.uri /tmp/ptl-legacy.log" >/dev/null 2>&1
     cleanup_swarm
 
     ####################################################################

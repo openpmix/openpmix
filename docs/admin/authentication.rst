@@ -11,12 +11,13 @@ How PMIx authenticates connections
 ----------------------------------
 
 When a process connects to a PMIx server, a security (``psec``)
-component establishes the process's user and group. Three exist:
+component establishes the process's user and group. Two exist:
 
-* ``native`` - asks the kernel; serves processes on the same node only.
-  Always built, and the default.
-* ``munge`` - uses the MUNGE daemon; works across nodes.
-* ``ssl`` - uses X.509 certificates; works across nodes.
+* ``native`` - asks the kernel. Always built, and the default.
+* ``munge`` - uses the MUNGE daemon.
+
+Either serves processes on the server's own node only: a server takes
+no connection from another node.
 
 What each one checks is described in :doc:`/hosts/connections`. The host
 environment then makes its own checks before accepting the connection.
@@ -33,10 +34,8 @@ permanent to the least.
 1. Do not build the component
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``munge`` and ``ssl`` are built only when you ask for them:
-
-* ``--with-munge[=DIR]`` builds ``munge``.
-* ``--with-openssl[=DIR]`` builds ``ssl``.
+``munge`` is built only when you ask for it, with
+``--with-munge[=DIR]``.
 
 To leave out a component that would otherwise build, name it in
 ``--enable-mca-no-build``:
@@ -62,8 +61,8 @@ with a leading ``^``, those that may not:
    # use only munge
    psec = munge
 
-   # use anything except ssl
-   psec = ^ssl
+   # use anything except munge
+   psec = ^munge
 
 Put the setting in a parameter file. A parameter file belongs to one
 PMIx installation: each PMIx library reads the files under its own
@@ -108,7 +107,7 @@ built by mistake:
 
 .. code-block:: sh
 
-   shell$ rm $prefix/lib/pmix/pmix_mca_psec_ssl.so
+   shell$ rm $prefix/lib/pmix/pmix_mca_psec_munge.so
 
 Components built into the library itself (the default) cannot be
 removed this way. Use the parameter file instead.
@@ -131,20 +130,15 @@ These MCA parameters adjust the checks PMIx makes on connections:
    * - Parameter
      - Default
      - Effect
-   * - ``psec_native_legacy_auth``
-     - ``false``
-     - When ``true``, ``native`` accepts a peer connecting over TCP on
-       the identity it gives, on a platform whose kernel has no table of
-       TCP connections to confirm it with (any but Linux, macOS and
-       FreeBSD),
-       instead of refusing it.
    * - ``ptl_base_legacy_peers``
      - ``false``
      - When ``true``, a server takes clients and tools of PMIx releases
        before v7.0, which connect over TCP; a host's
-       ``PMIX_SERVER_LEGACY_PEERS`` overrides it. Older clients need it -
-       and, on a platform other than Linux, macOS or FreeBSD,
-       ``psec_native_legacy_auth`` as well. Only a PMIx configured
+       ``PMIX_SERVER_LEGACY_PEERS`` overrides it. Older clients need it.
+       On a platform whose kernel has no table of TCP connections to
+       confirm a peer with (any but Linux, macOS and FreeBSD 12 or
+       later), ``native`` then takes such a peer on the identity it
+       gives, as every earlier release did. Only a PMIx configured
        ``--enable-legacy-peers`` takes them; any other refuses the
        setting and fails its init.
    * - ``ptl_base_if_include`` / ``ptl_base_if_exclude``
@@ -172,16 +166,6 @@ These MCA parameters adjust the checks PMIx makes on connections:
        kernel records no group for a TCP connection. A name the system
        does not know, an empty list, or a directive given twice makes
        the process fail to initialize.
-   * - ``psec_ssl_ca_file``, ``psec_ssl_cert_file``,
-       ``psec_ssl_key_file``, ``psec_ssl_crl_file``,
-       ``psec_ssl_max_skew``
-     - (none), 300
-     - Certificates and limits for ``ssl``. ``ssl`` is not used unless
-       a CA file, or a certificate and key, is given. A process and a
-       server on different hosts each need all three: a certificate and
-       key to prove who they are, and the CA the other's certificate is
-       issued by. A server's certificate must allow server
-       authentication, and a tool's client authentication.
 
 To see every parameter and its current value:
 
@@ -199,26 +183,13 @@ parameters, because they depend on how the host is deployed:
   the server's local socket to them (``PMIX_SOCKET_MODE``, with
   ``PMIX_GRPID`` for a group): by default only the server's user can
   connect to it.
-* **Whether processes on other nodes may connect.** By default a
-  server takes no TCP connection at all, and when it takes clients and
-  tools of earlier releases it listens for them on loopback only. In a
-  PMIx configured
-  ``--enable-remote-tools`` - which also requires ``--with-munge`` or
-  ``--with-openssl`` - a host can listen on other interfaces
-  (``PMIX_SERVER_REMOTE_CONNECTIONS``); without that option, a host that
-  asks fails its init. A process on another node and the server
-  authenticate each other with ``munge`` or ``ssl``, the server first:
-  the server proves who it is before the process sends its connection
-  request, and each credential is good for that one connection. With
-  ``ssl``, the user a server's certificate names must exist on the
-  process's host, with the same uid, and hold the server's group there,
-  as a process's must on the server's host. The process refuses
-  a server that does not prove who it is, or proves it is a user the
-  process may not talk to (its own, root, or one
-  ``ptl_base_server_access`` names). The server refuses a process on
-  another node that does not take part - one of an earlier release, or
-  one with only ``native`` - and a server asked for remote connections
-  that cannot take part fails its init.
+* **Processes on other nodes never connect.** A server takes no TCP
+  connection at all by default, and when it takes clients and tools of
+  earlier releases it listens for them on loopback only. A host that
+  asks for connections from other nodes
+  (``PMIX_SERVER_REMOTE_CONNECTIONS`` set to true) fails its init. A
+  client or tool refuses to dial a server at an address that is not its
+  own host's, and a server refuses a TCP peer at such an address.
 * **Clients are always checked** against the user and group the host
   registered them with. No setting changes that.
 

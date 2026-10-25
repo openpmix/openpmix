@@ -171,7 +171,7 @@ PMIx has addressed this by utilizing a plugin-based architecture that allows bot
 
 That support has limits in both directions:
 
-* A server supports clients and tools using PMIx v2.1 or later. Those of releases before v7.0 connect over TCP, and a server takes them only when its ``ptl_base_legacy_peers`` MCA parameter, or its host's ``PMIX_SERVER_LEGACY_PEERS`` attribute, says so. Both are off by default, and only a PMIx configured ``--enable-legacy-peers`` can take them at all - by default it cannot, as clients and tools are to be updated along with their servers. On a platform other than Linux, macOS and FreeBSD, one that authenticates with ``native`` is taken only when ``psec_native_legacy_auth`` is also set to ``true``.
+* A server supports clients and tools using PMIx v2.1 or later. Those of releases before v7.0 connect over TCP, and a server takes them only when its ``ptl_base_legacy_peers`` MCA parameter, or its host's ``PMIX_SERVER_LEGACY_PEERS`` attribute, says so. Both are off by default, and only a PMIx configured ``--enable-legacy-peers`` can take them at all - by default it cannot, as clients and tools are to be updated along with their servers. On a platform whose kernel keeps no table of TCP connections - any but Linux, macOS and FreeBSD 12 or later - one that authenticates with ``native`` is taken on the identity it claims, as every earlier release took it.
 * A client or tool supports servers using PMIx v3.2 or later.
 
 Connections outside those limits are refused, with a message naming the version that was found, rather than being allowed to fail later in some less obvious way. In particular:

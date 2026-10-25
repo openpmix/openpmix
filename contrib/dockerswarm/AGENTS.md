@@ -67,10 +67,10 @@ two disagree, the README wins, and please fix this file.
 | `run-mca-tests.sh` | The `src/mca/base` unit suite plus malformed MCA parameters, in the `--enable-mca-dso` configuration where the component repository is actually exercised (README §14) |
 | `run-bfrops-tests.sh` | The `src/mca/bfrops` unit programs on Linux/optimized/`--enable-mca-dso`, **plus** `examples/datatypes` moving every data type between ranks on different nodes (README §15) |
 | `run-gds-tests.sh` | The `src/mca/gds` datastore: compiles `shmem3` (which macOS does not build at all), the gds unit programs in two configurations, and the collective/direct/fallback modex paths across separate servers (README §16) |
-| `run-ptl-tests.sh` | The `src/mca/ptl` transport over real sockets between real hosts: interface selection, node-local rendezvous discovery, a tool attaching across nodes, the inbound message-size ceiling, an exhausted port range (README §17) |
+| `run-ptl-tests.sh` | The `src/mca/ptl` transport over real sockets between real hosts: node-local rendezvous discovery, a tool refusing to dial a server on another node, the inbound message-size ceiling, an exhausted port range (README §17) |
 | `run-runtime-tests.sh` | The `src/runtime` bring-up/tear-down suite in the optimized configuration and on Linux — where the progress thread's CPU-affinity path exists at all — plus that path driven through a real `PMIx_Init`, and node identity across real servers (README §18) |
 | `run-server-tests.sh` | `src/server` — the server-role half of libpmix — across separate servers: direct modex, cross-namespace get, group blocks spanning nodes, IOF pull/dereg against a persistent DVM, and a valgrind pass on the daemon (README §19) |
-| `run-tool-tests.sh` | `src/tool` — the tool-role half of libpmix — with the tool and its servers on different nodes: switching the primary between two independent DVMs, a remote server dying, IOF relayed to a tool from other nodes, and the only valgrind pass the tool library gets (README §20) |
+| `run-tool-tests.sh` | `src/tool` — the tool-role half of libpmix — with the ranks a tool's server runs on other nodes: IOF relayed to a tool from other nodes, and a DVM on another node refused with `PMIX_ERR_UNREACH`; the macos mode runs the switching bookkeeping against two local DVMs (README §20) |
 | `run-spawn-iof.sh` | Output forwarding for a job spawned by an ordinary client, with the spawning rank on a daemon other than the tool's — the reproducer for `docs/how-things-work/iof_inheritance.rst` (README §21) |
 | `swarm-common.sh` | **Sourced, never executed.** `$PMIX_SWARM` naming and the one copy of `cleanup_swarm` |
 
@@ -195,33 +195,25 @@ two disagree, the README wins, and please fix this file.
   cleanly. The image carries no valgrind, so the stage installs it into
   the one node it needs at run time and skips if there is no network.
 
-- **A PMIx server takes no TCP connection from another node unless it
-  has remote tools.** That needs a PMIx configured `--enable-remote-tools`,
-  `munge` or `ssl` to authenticate the tools, and the host asking. Without
-  them a server reports its local socket (`usock://`), which no other node
-  can reach - so every cross-node tool stage is a skip, naming why.
-  `run-tool-tests.sh` asks its DVMs for remote connections
-  (`PRTE_MCA_pmix_remote_connections=1`, the PRRTE-side parameter that
-  becomes `PMIX_SERVER_REMOTE_CONNECTIONS`) only with
-  `SWARM_REMOTE_TOOLS=1`: asked without the support, a server fails its
-  init. It is not a PRRTE bug. `SWARM_REMOTE_TOOLS=1` must be given to
-  `build.sh` too, which then configures `--enable-remote-tools
-  --with-openssl`; the suites make a throwaway CA with server and tool
-  certificates in `/opt/prte/ssl` (`ssl_make_certs`). A tool and a server
-  on different nodes authenticate each other, so the DVMs get a
-  certificate, key and the CA (`SWARM_SERVER_ENV`) and the tools the
-  same (`SWARM_TOOL_ENV`); a tool picks `ssl` for a remote server itself.
+- **A PMIx server takes no connection from another node, ever.** It
+  listens on its local socket (`usock://`), and on TCP only for peers of
+  earlier releases, on loopback. A tool does not dial an address that is
+  not its own node's (`PMIX_ERR_UNREACH`). So no stage can attach a tool
+  to a DVM on another node: the suites that put a tool on one node and
+  its server on another assert that refusal instead, and the work that
+  crosses nodes is the DVM's own (IOF relayed from ranks elsewhere,
+  direct modex).
 
 - **`prterun` has no `--dvm-uri`; `prun` does.** A stage that wants a
   tool attached to a *persistent* DVM has to use `prun`. `prterun` brings
   up a DVM of its own, and handing it `--dvm-uri` fails the command line
   with an unrelated-looking usage error.
 
-- **A tool on one node reaches a server on another over TCP, on its
-  claim.** Every node is its own network namespace on one kernel, so
-  `psec/native` cannot find a peer on another node in its TCP table, and
-  accepts it on the identity it claims because `psec_native_legacy_auth`
-  is true by default.
+- **A tool on one node cannot reach a server on another.** Every node
+  is its own network namespace on one kernel, so another node's address
+  is not this host's: a tool given another node's server refuses it
+  before dialling (`PMIX_ERR_UNREACH`), and a server refuses a peer from
+  another node. Anything across nodes goes through PRRTE's daemons.
 
 - **The build volume outlives your branch.** `pmix-build` persists
   across runs and across checkouts, so a tree in it can be older than
