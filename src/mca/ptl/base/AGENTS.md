@@ -96,11 +96,10 @@ drives the pair directly and will catch the drift.
 
 **A server accepts peers from v2.1 on; a client or tool connects only to
 a server from v3.2 on.** Both are enforced here, by version, before
-anything is read that depends on it. **Between hosts the floor is this
-release on both ends**: a tool of this release has a server on another
-host prove who it is first, which no earlier release can, and a server
-refuses a peer on another host that has not had it do so (see "Between
-hosts" below).
+anything is read that depends on it. **Neither end takes a peer on
+another host**: a process does not dial a server at an address that is
+not its host's (`pmix_ptl_base_server_on_host`), and a server refuses a
+TCP peer at one.
 
 - The connection handler refuses a peer whose version string says v1.x
   or v2.0 (`unsupported-client-version`), and sends it `PMIX_ERR_OUTDATED`
@@ -247,11 +246,8 @@ Four functions, in this order, all on the progress thread:
 3. **Settle the identity.** `validate` first refuses, with
    `PMIX_ERR_NO_PERMISSIONS`, a TCP peer whose address (`pnd->addr`,
    recorded at accept) is not this host's - not loopback, not one of its
-   interfaces' (`pmix_ptl_base_tcp_peer_remote`) - unless this server
-   proved who it is to that peer first (`pnd->proved`; see "Between
-   hosts" below). A peer that did is checked by `validate_bound`
-   instead: a credential made for that exchange, with the same module,
-   as a tool's, naming the uid and gid it claimed. Both paths validate the credential on a
+   interfaces' (`pmix_ptl_base_addr_on_host`). It validates the
+   credential on a
    *scratch* peer (`scratch_peer`), so a module that settles an identity
    rewrites nothing shared. A client is validated as its rank entry's
    registration - whoever made it - and must be that identity; a tool's
@@ -351,7 +347,7 @@ Four functions, in this order, all on the progress thread:
    found for a tool the host launched, which it then counts in
    `connecting`, or the entry its namespace lists for the rank it named),
    and `tool_answered` checks again once the entry is final. On the
-   tool's side, `pmix_ptl_base_make_connection_alts` answers
+   tool's side, `pmix_ptl_base_make_connection` answers
    `PMIX_ERR_EXISTS` for a tool that took its rank from the environment
    (`PMIX_PROC_CLIENT_TOOL`/`CLIENT_LAUNCHER`, and its name equal to
    `PMIX_NAMESPACE`/`PMIX_RANK` - a name its caller gave it is kept) by
@@ -579,92 +575,109 @@ server path; a client has its own, simpler one (`ptl_base_client.c`).
   value names: a server of an earlier release, started under one of
   this release, sets the other variables and leaves this one stale.
 - A tool that finds a server through a file connects to its `local:`
-  line when it has one for this host (`take_address`), and drops the TCP
-  alternates. The line is `local:<host>;<uri>`; a report file may be read
-  on another host, which uses the TCP URI. A singleton reaching a system
-  server uses that file's `local:` line too.
+  line when it has one for this host (`take_address`), else to the first
+  line's TCP URI. The line is `local:<host>;<uri>`; a report file read on
+  another host is left with the TCP URI, which is not that host's, and
+  is not dialled. A singleton reaching a system server uses that file's
+  `local:` line too.
+- **Only a server on this host is dialled.** After `uri_to_addr`, both
+  connect paths (`pmix_ptl_base_make_connection`,
+  `pmix_ptl_base_start_connection`) call
+  `pmix_ptl_base_server_on_host(addr, transport)`: the local transport
+  always passes; a TCP address `local_addr()` does not call this host's
+  is refused with `PMIX_ERR_UNREACH` and the `server-not-local` topic,
+  before any `connect()`. A client's connect maps that `UNREACH`, as
+  every failure to reach a server it was given, to
+  `PMIX_ERR_COMM_FAILURE` (`ptl_base_client.c`): `UNREACH` is what makes
+  `PMIx_Init` a singleton.
+- **`local_addr()` is the tool side's "this host".** An address on the
+  interface list (`pmix_ptl_base_addr_on_host`), or one an interface
+  holds by the kernel's own list (`getifaddrs`), which names some the
+  list made at init leaves out: an address added since, a secondary
+  address on Linux, a point-to-point or link-local one on BSD (whose
+  scope BSD writes into bytes 2-3 of the listed address; it is ours only
+  with the scope id of the interface that holds it). An address the
+  kernel holds may still lead elsewhere (a Kubernetes service address);
+  the TCP table then has no answer and `check_server` refuses it. The
+  server side (`validate()`) uses `pmix_ptl_base_addr_on_host` alone.
+- **`pmix_ptl_base.uri` is reset at the start of every `do_connect`.** It
+  holds a `PMIX_SERVER_URI`/`PMIX_TCP_URI` directive's value, and a later
+  attach given none used to dial the earlier attach's URI
+  (`tool_attach_nb`).
 - **The server is checked before anything is sent.** Once the socket is
-  connected - `make_connection_alts` and `cnct_connected` alike -
-  `pmix_ptl_base_check_server` asks the transport what the kernel says of
-  the far end. Expected identity: an exact uid and gid match - after
-  `pmix_util_id_to_parent` maps the kernel's ids through
-  `/proc/self/{uid,gid}_map` when they differ, since in a user namespace
-  the kernel reports the server's ids as that namespace numbers them. None: our
-  own uid, root, or one `ptl_base_server_access` allows
-  (`users=a:b,groups=c:d`, resolved at open by
-  `pmix_ptl_base_parse_server_access`; a bad value fails open). A
+  connected - `make_connection` and `cnct_connected` alike -
+  `pmix_ptl_base_check_server(peer, given, uid, gid, vouched)` asks the
+  transport what the kernel says of the far end. Expected identity: an
+  exact uid and gid match - after `pmix_util_id_to_parent` maps the
+  kernel's ids through `/proc/self/{uid,gid}_map` when they differ, since
+  in a user namespace the kernel reports the server's ids as that
+  namespace numbers them. None: our own uid, root, or one
+  `ptl_base_server_access` allows (`users=a:b,groups=c:d`, resolved at
+  open by `pmix_ptl_base_parse_server_access`; a bad value fails open). A
   transport with no `peer_identity` (tcp) asks `pmix_util_getid_tcp`
   instead: when this host's TCP table has the server's end, its owner -
   a uid, no gid - must be the given uid, or else our own, root or a
-  `users=` entry (`server-identity-tcp`). With no table to ask
-  (`PMIX_ERR_NOT_SUPPORTED`, or `pmix_ptl_base_test_no_tcp_table` in a
-  test), a server at an address `pmix_ptl_base_tcp_peer_held` says this
-  host holds - the interface list, or the kernel's own list
-  (`pmix_ptl_base_addr_held`, getifaddrs), which names some the list
-  leaves out: a secondary address on Linux, a point-to-point or
-  link-local one on BSD, one added since - makes any process but a
-  client (a singleton included: it finds its server in `/tmp`) set
-  `*prove` and run the exchange below with it (`prove_unidentified`), or
-  fail at once (`local-no-psec-tool`) with no mechanism that can; a
-  refusal is reported as `local-auth-refused`. Otherwise, when the
-  address is this host's by `pmix_ptl_base_tcp_peer_remote` (the
-  interface list, and the test hook) and the lookup fails, the server is
-  refused (`server-unidentified`; `PMIX_ERR_NOMEM` is returned as is) -
-  after a `PMIX_ERR_NOT_FOUND` has been retried for up to about a second.
-  The retry is not optional: our end is connected on the server's
-  SYN-ACK, and the server's is not `ESTABLISHED` until its kernel has
-  taken our ACK, which on loopback can come a moment later - until then
-  macOS shows it in `SYN_RECEIVED`, and Linux and FreeBSD not at all.
-  Checking once refused a real server now and then (`tool_alt_uris`, on
-  macOS CI).
-  Only the binding decision goes by the kernel's list: an address it
-  holds may lead elsewhere (a Kubernetes IPVS service address), and
-  taking it as this host's for the table lookup refused such servers. A
-  server whose release is known to be before v7 is connected to as
-  before, with no check - only when that may be believed
-  (`server_release_vouched`, carried with the connect like
-  `server_expect_*`): from the environment a server started us with, or
-  from a file the caller named (`vouched_earlier()`: not one found by a
-  search or at a fixed name in the system tmpdir, whose server may be
-  gone and its port another's; the file at the name - `lstat` dev/ino =
-  the opened file's - with one name, not group- or world-writable,
-  owned by the expected uid if given, else our own, root or a `users=`
-  entry). The version itself is never rewritten: it chooses the wire
-  format (`select_compat`), and a v3.2 to v5 server has no v61 to be
-  spoken to with. The opening then carries a byte after the uid: bound.
-  Both ends bind the connection's two ends into the credentials
-  (`pmix_ptl_base_auth_conn`: each reads them from its own socket, the
-  tool's end first), so a relay fails the exchange. The tool binds when
-  it proves for this reason (`local`) - not on a `PMIX_ERR_PROVE_FIRST`
-  retry, nor for a server on another host - and the server binds exactly
-  when the opening says so (`pnd->auth_bound`): deciding by the peer's
-  address broke a tool on another host behind a proxy on the server's
-  host. The server answers a bound opening with tool support alone, but
-  only from an address `pmix_ptl_base_tcp_peer_held` says this host holds
-  and only where its own `pmix_util_getid_tcp` answers
-  `PMIX_ERR_NOT_SUPPORTED` too - a bound opening from elsewhere could
-  otherwise prove a tool from another host past `remote_connections`. An
-  unbound one is a tool on another host's, gated by `remote_connections`.
-  The mechanism for the exchange is the one chosen for the server if it
-  can, else the highest of ours that can among those the server's file
-  lists (`compat.rpsec`, reset by every connect and by `select_compat`),
-  else the highest of ours that can. A server
-  at any other
-  address proves who it is instead, by the exchange below, and is held
-  to the same rule (`pmix_ptl_base_check_ids`, which both share).
+  `users=` entry (`server-identity-tcp`). When the lookup fails:
+  - a far end `getpeername` cannot give - the server has closed the
+    connection - is `PMIX_ERR_UNREACH`, with no help text; one at an
+    address `local_addr()` does not call this host's is refused with
+    `PMIX_ERR_UNREACH` (`server-not-local`) - another host, or another
+    network namespace;
+  - with no table to ask (`PMIX_ERR_NOT_SUPPORTED`, which
+    `pmix_util_getid_test_no_tcp_table` makes every answer in a test),
+    `check_unnamed()`
+    decides: a client (not a tool or singleton) connects regardless -
+    its server is the one named for it; any other process connects only
+    when `vouched`, else it is refused (`server-unnamed`,
+    `PMIX_ERR_INVALID_CRED`);
+  - otherwise the server is refused (`server-unidentified`,
+    `PMIX_ERR_INVALID_CRED`; `PMIX_ERR_NOMEM` is returned as is) -
+    including `PMIX_ERR_OUT_OF_RESOURCE`, a table this process could not
+    read for want of descriptors or memory, which is no answer - after a
+    `PMIX_ERR_NOT_FOUND`
+    has been retried for up to about a second. The retry is not
+    optional: our end is connected on the server's SYN-ACK, and the
+    server's is not `ESTABLISHED` until its kernel has taken our ACK,
+    which on loopback can come a moment later - until then macOS shows
+    it in `SYN_RECEIVED`, and Linux and FreeBSD not at all. Checking
+    once refused a real server now and then on macOS CI.
+- **`vouched` is `pmix_ptl_base.server_release_vouched`**, carried with
+  the connect like `server_expect_*` and reset by every connect. It is
+  set when the server that started us named itself in our environment
+  (`pmix_ptl_base_set_peer`), whatever its release - it is the one named
+  for us, as a client's is - or from the server's file (`cn->vouched`,
+  by `vouched()` in `parse_conn_file`). A file vouches only when:
+  - its version line names a release: digits after an optional `v`, a
+    major of 1-254 (`PMIX_MAJOR_WILDCARD` and up, 0, and a line with no
+    digits vouch for nothing);
+  - the release is before v7, or it is v7 or later and the file carries
+    a `lock:` line whose lock beside the file is held
+    (`pmix_ptl_base_lock_state` == `PMIX_PTL_LOCK_HELD`): the server is
+    running. A server of v7 or later lists a TCP URI only when it takes
+    legacy peers, and then takes a peer it cannot name on its claim, as
+    `psec/native` does on such a platform. A report file has no lock
+    line, so it vouches only for an earlier release; a server of this
+    release is vouched for by its rendezvous file given by name;
+  - the caller named the file (`parse_uri_file` - `file:<path>` or
+    `PMIX_TOOL_ATTACHMENT_FILE` - not `parse_rndz_file`: not one found by
+    a search or at a fixed name in the system tmpdir), it is the file at
+    the name (`lstat` dev/ino = the opened file's) with one name, not
+    group- or world-writable, and owned by the expected uid if given,
+    else our own, root or a `users=` entry.
+
+  The version itself is never rewritten: it chooses the wire format
+  (`select_compat`), and a v3.2 to v5 server has no v61 to be spoken to
+  with.
 
 Both converge on `pmix_ptl_base_make_connection` (`ptl_base_fns.c`):
 
 ```
 uri_to_addr()               the transport whose scheme the URI has parses it
                             ("tcp4://host:port", "usock:///path") into a sockaddr
+server_on_host()            a TCP address that is not this host's is not dialled
 pmix_ptl_base_connect()     socket() + connect(), retrying
-check_server()              a local transport's far end must be a server we
-                            may talk to
-auth_server()               a server on another host proves who it is first
-                            (see "Between hosts")
-send_connect_ack()          construct_message() builds the blob - its
-                            credential bound to the exchange, after one
+check_server()              the far end must be a server we may talk to
+send_connect_ack()          construct_message() builds the blob
 recv_connect_ack()          client or tool handshake, per our own role
                             assign the LOWER half of the dynamic tag space
 ```
@@ -854,85 +867,34 @@ to one valid file and drives both walks under a watchdog.
   back onto the same `pmix_rank_t`. A digits-only parse would refuse
   those servers, which are inside the interoperability floor.
 
-## Between hosts
+## Only this host
 
-A tool and a server on different hosts authenticate each other, the
-server first, before the tool sends its connect-ack. Shared pieces and
-the tool's half are in `ptl_base_auth.c`; the server's answer is
-`answer_auth()` in `ptl_base_connection_hdlr.c`.
+A server takes connections from its own host only, and a process
+connects only to a server on its own host. There is no exchange for a
+peer on another host, and none of the remote-tool machinery (an
+authentication file, a connector flag for it, bound credentials,
+alternate listeners) exists any more.
 
-- **Who is on another host.** A TCP peer whose address
-  `pmix_ptl_base_addr_on_host` does not claim
-  (`pmix_ptl_base_tcp_peer_remote`, `pmix_ptl_base_server_remote` on the
-  tool's side). A connection on the local transport never is.
-  `pmix_ptl_base_test_remote` makes every TCP peer count as remote - for
-  `test/unit/ptl_remote_auth.c`, which runs both ends on one host; it is
-  a plain variable, set by nothing but a test's own code.
-- **The tool opens** with a message in the connect-ack's framing
-  (`pmix_ptl_base_auth_request`): the psec name, a zero-length
-  credential, the connector flag `PMIX_REMOTE_AUTH` (11), our version,
-  the nonce's length (`PMIX_PTL_AUTH_NONCE_LEN`), the nonce, our euid.
-  The server ignores anything after the euid, so a later release can
-  append fields. The reply has no framing length of its own: status,
-  nonce, credential length, credential - anything added to it later has
-  to be keyed on the version the opening carries. The mechanism is
-  `pmix_ptl_base_auth_module`: the one chosen for the server if it can
-  authenticate across hosts, else the highest of ours that can - and if
-  none can, nothing is sent (`remote-no-psec-tool`).
-- **The server answers** from the connection handler, which recognizes
-  the flag right after reading it: only over TCP, once per connection,
-  with no credential attached, in a build with remote tools whose host
-  asked for them, and with that mechanism able to both prove and check
-  (`pmix_psec_base_remote_capable`). All of that, and tool support, is
-  settled before anything is made for the peer. Anything else is refused
-  with a status. Otherwise it sends `PMIX_SUCCESS`, its own nonce, the
-  credential's length and a credential from `create_bound` as a server,
-  for the euid the opening named (no larger than `PMIX_MAX_CRED_SIZE`,
-  what a tool reads), with `send_bounded()` - each write bounded by
-  `SO_SNDTIMEO` at the connect-ack timeout, which is cleared again
-  afterwards, since `pmix_ptl_base_send_blocking` cycles on the `EAGAIN`
-  a timed-out send returns. It records `proved`, `authmod`, `auth_uid`
-  and both nonces on the pending connection, resets the read state, and
-  waits for the connect-ack as it waited for this message
-  (`pmix_ptl_base_await_connect_ack(pnd, true)`): for what is left of the
-  timeout that began when the connection arrived, in its place by arrival
-  on the pending list, so the drop-the-oldest rule still reaches it.
-- **The tool checks the answer** (`pmix_ptl_base_auth_reply`):
-  `validate_bound` as a server's, then `pmix_ptl_base_check_ids` with
-  the identity it proves (`server-identity-remote` on a refusal; no
-  user-namespace mapping, as those ids are another host's). Then its
-  connect-ack goes out with a credential from `create_bound` as a
-  tool's, for the server's proved uid (`construct_message`'s `bind` and
-  `to`).
-- **A tool that took the server to be on its own host** - through a
-  port forward, say - sends a plain connect-ack, and a server that sees
-  it as on another host answers `PMIX_ERR_PROVE_FIRST` (internal, in
-  `src/util/pmix_error.h`) when it would take part, `PMIX_ERR_NO_PERMISSIONS`
-  otherwise or to a peer of an earlier release. Both connect paths then
-  connect again, once, with the exchange (`prove`).
-- **After the exchange** the server requires the connect-ack to name this
-  release or later, and `validate_bound` requires the credential's uid
-  to be both the one the connect-ack claims and the opening's
-  (`auth_uid`).
-- **Both connect paths do it.** The blocking path in
-  `pmix_ptl_base_make_connection_alts` (`pmix_ptl_base_auth_server`), and
-  the event-driven one, with states `PMIX_CNCT_AUTH_*` and the reply's
-  credential read into `op->cred` (`op->rbuf` points at it). Keep them in
-  step, as for the rest of the handshake.
-- **The binding** (`pmix_ptl_base_auth_bind`) is a label, `S` or `T`, the
-  tool's nonce and the server's. A credential bound to anything else, or
-  made as the other role, is refused - so neither end's credential is
-  any use on another connection.
-- **What is not covered.** The exchange establishes the users at the two
-  ends when the connection opens; not which host or address the tool
-  reached, and the traffic after the connect-ack is neither encrypted
-  nor signed. A peer of an earlier release never asks, and is refused
-  from another host whatever `ptl_base_legacy_peers` says. The opening's
-  framing length, like the connect-ack's, is in host byte order, so two
-  hosts of different byte order do not connect.
-- **Which hosts are this host.** `pmix_ptl_base_addr_on_host` takes a
-  link-local IPv6 address as ours only with the scope id of the
-  interface that holds it.
+- **The server** refuses a TCP peer whose address
+  `pmix_ptl_base_addr_on_host` does not claim, in `validate()`, with
+  `PMIX_ERR_NO_PERMISSIONS`, before the security module is asked. A
+  connection on the local transport is always on this host. A host that
+  sets `PMIX_SERVER_REMOTE_CONNECTIONS` true fails
+  `pmix_ptl_base_setup_listener` (`remote-connections-not-supported`);
+  false is accepted and changes nothing. The attribute is in
+  `pmix_deprecated.h`: it has been in a release, so it stays defined.
+- **The process** does not dial a TCP address that is not this host's
+  by `local_addr()` (`pmix_ptl_base_server_on_host`, `PMIX_ERR_UNREACH`),
+  and `check_server` refuses one it finds itself connected to anyway.
+- **Which hosts are this host.** The server asks
+  `pmix_ptl_base_addr_on_host`: a loopback address, or one on the
+  interface list (an IPv4 peer arriving v4-mapped is unwrapped first). A
+  link-local IPv6 address is ours only with the scope id of the
+  interface that holds it. The process asks `local_addr()`, which also
+  takes an address the kernel's own list says an interface holds. A TCP address that
+  leads elsewhere through this host - a port forward, a proxy - reaches
+  a server that sees its peer at an address not its host's, and is
+  refused there.
 
 ## A process that execs loses its connection
 
@@ -1064,52 +1026,23 @@ that bite:
 transport's, has the highest-priority transport that listens open the
 socket (`pmix_ptl_base_listen`), publishes the URI into `gds`, and drops
 rendezvous files. The tcp transport (`../tcp/ptl_tcp.c`) picks the
-interface (loopback by default; a public one only if remote or tool
-connections were asked for), binds, and makes the URI.
+interface (a loopback one, or none), binds, and makes the URI.
 
-- **Remote connections are a build option.** `PMIX_ENABLE_REMOTE_TOOLS`
-  (configure `--enable-remote-tools`, default off) decides whether
-  `PMIX_SERVER_REMOTE_CONNECTIONS` can be honored: in a build without
-  it, the directive set true fails the init (`remote-tools-not-built`),
-  and tcp never falls back to a public interface when the directives
-  leave no loopback one. Whatever the build, a loopback candidate must
-  carry a loopback address (`pmix_net_islocalhost`): any other address
-  on a loopback device counts as public. In a build with it, the directive set true
-  fails the init unless `pmix_psec_base_remote_available()`
-  (`remote-no-psec`).
-
-- **With remote connections, every public interface is listened on - but
-  the URI still names one.** The scan keeps going past the first public
-  interface and tcp's `open_alternates()` binds a `pmix_listener_t` on each
-  of the others (`pmix_ptl_base.alt_listeners`), trying the primary's port
-  first. Where they are is `pmix_ptl_base.alt_uris`, a comma-delimited
-  list of address-only `tcpX://host:port` strings, stored as
-  `PMIX_MYSERVER_ALT_URIS` and written after everything a released reader
-  takes from a rendezvous or report file, on a line tagged
-  `PMIX_PTL_ALT_URIS_TAG`. **Never put a second address in the URI itself,
-  in `PMIX_SERVER_URI`/`PMIX_MYSERVER_URI`, or in the `PMIX_SERVER_URI*`
-  environment variables**: every released parser (`parse_uri` wants exactly
-  two `;` fields, `setup_connection` one `host:port`) refuses it, and a
-  client refused that way silently runs as a singleton. Likewise never
-  write an extra *file* per address - tool discovery compares the URIs of
-  every matching file and refuses (`too-many-conns`) when they differ. An
-  alternate that cannot be bound is skipped; it costs a remote tool one
-  route, not the server its init. The accept handler takes its listener
-  from `cbdata`, so the primary and the alternates share it, and
-  `pmix_ptl_base_stop_listening` releases the alternates whether or not
-  they were ever armed.
-- **A tool moves to an alternate only when it cannot connect.** The file
-  reader finds the tagged line by its tag, not its position;
-  `PMIX_SERVER_ALT_URIS` supplies the same list with an explicit URI.
-  `connect_any()` (blocking) and `cnct_begin()` (event-driven) try the
-  next address only after `connect()` fails; once a socket is up, the
-  handshake's verdict is the server's answer. A primary that does not
-  parse is still an error, as it always was; an alternate that does not
-  parse is passed over. `test/unit/tool_alt_uris.c` covers both paths,
-  a garbled file entry, no alternates, and a bad directive; the listener
-  half is in `test/unit/ptl_listener.c` and needs a host with two public
-  addresses (it skips otherwise - an IPv6-enabled build on a host with
-  global IPv6 addresses exercises it).
+- **The TCP listener is on a loopback interface, or nowhere.** It is
+  opened only for legacy peers. A loopback candidate must carry a
+  loopback address (`pmix_net_islocalhost`): any other address on a
+  loopback device counts as public, and tcp never takes a public one -
+  directives that leave no loopback interface fail the init
+  (`no-loopback-interfaces`). `PMIX_SERVER_REMOTE_CONNECTIONS` set true
+  fails it too (`remote-connections-not-supported`).
+- **Never put a second address in the URI itself, in
+  `PMIX_SERVER_URI`/`PMIX_MYSERVER_URI`, or in the `PMIX_SERVER_URI*`
+  environment variables**: every released parser (`parse_uri` wants
+  exactly two `;` fields, `setup_connection` one `host:port`) refuses it,
+  and a client refused that way silently runs as a singleton. Likewise
+  never write an extra *file* per address - tool discovery compares the
+  URIs of every matching file and refuses (`too-many-conns`) when they
+  differ.
 
 - **A process that finds a server through a file learns from it what to
   speak.** The connect message names one wire format (bfrops component)
@@ -1128,9 +1061,8 @@ connections were asked for), binds, and makes the URI.
   write the lines it falls back to the server's version - the highest of
   our formats named for a release no later than the server's - which a
   restricted server can make wrong; that is the legacy case only. Its
-  security mechanism is then munge if we have it, else native, and never
-  ssl (no older server has it); with neither, the connection is not
-  attempted. A bare
+  security mechanism is then munge if we have it, else native; with
+  neither, the connection is not attempted. A bare
   URI carries neither, so we send our newest, as always; if the server
   then closes without sending a status, `hint_closed_no_reply()` (both the
   blocking and the event-driven reader) suggests `file:<path>`, once, and
@@ -1215,8 +1147,8 @@ three rules apply:
 
 - **`pmix_ptl_close` puts every global back to its initializer value.**
   That covers more than the allocated strings. The listener's role flags
-  (`remote_connections`, `tool_support`, `system_tool`, `session_tool`,
-  `allow_foreign_tools`, `connections_specified`) are set only from the
+  (`legacy_peers`, `tool_support`, `system_tool`, `session_tool`,
+  `allow_foreign_tools`) are set only from the
   directives the caller passes, never cleared by the listener itself. A
   flag left over from the last cycle once made a second server listen on
   a public interface it never asked for. Add a new flag to the reset.
@@ -1308,10 +1240,9 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_sendrecv.c` | lost-connection completion per peer, a split header, a sendrecv to a closed peer or to a tool itself, a message too large to frame, writes split by the cap, and `flush_sends` past `FD_SETSIZE` |
 | `test/unit/ptl_legacy_ack.c` | a v4.1-shaped connect-ack, pad byte and all, still connects as a client and as a tool |
 | `test/unit/ptl_loopback.c` | a server's request to itself reaches its switchyard and is answered once; a loopback reply nobody waits for is not read as a command |
-| `test/unit/ptl_listener.c` | accept out of descriptors pauses the listener and it accepts again; finalize while paused; the retry policy for each kind of accept error; mistyped, out-of-range and empty directives; a directive-named report file is removed; with remote connections every public interface accepts connections and is advertised where older readers do not look |
-| `test/unit/tool_alt_uris.c` | a tool whose URI's address is unreachable connects at an alternate - by directive, from a contact file, and through the event-driven attach - and still fails when there is none |
+| `test/unit/ptl_listener.c` | accept out of descriptors pauses the listener and it accepts again; finalize while paused; the retry policy for each kind of accept error; mistyped, out-of-range and empty directives; a directive-named report file is removed; the report file has no group or other write bit |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
-| `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one |
+| `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one; `test_vouched`: a named file vouches for its server when it names an earlier release, or names this one with a held lock; not with the lock free, with no lock line, group-writable, at a fixed name nobody named, or with a version line that names no release |
 | `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them; at the pending-connection cap the oldest is dropped, and the default cap follows the descriptor limit |
 | `test/unit/ptl_nosigpipe.c` | a blocking send and a vector write to a peer that has reset return an error, with `SIGPIPE` at its default action |
 | `test/unit/ptl_recv_timeout.c` | `pmix_ptl_base_recv_blocking` ends a blocking socket's receive at its timeout, and still waits out `EAGAIN` on a non-blocking one |
@@ -1321,10 +1252,12 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_tcp_server.c` | over TCP a tool checks a server on its host by the kernel's TCP table: a server on loopback the table does not show (Linux `TCP_DEFER_ACCEPT`) is refused before anything is sent; as root, a server of another user is refused before anything is sent, and one `ptl_base_server_access` names gets past it; a server of the tool's own user is taken |
 | `test/unit/ptl_pfexec_token.c` | a process a launcher starts itself (pfexec) gets no token, not even one in the launcher's environment, and connects back without one |
 | `test/unit/ptl_token.c` | setup_fork's token: hex after the making server's name in the environment, added to a connect-ack only for a server of that name, different per rank, replaced when the rank is prepared again; only the kept token is taken (another, none, short, long, non-hex, one digit off refused); a rank never prepared takes anything; a rankless process gets none and loses an inherited one; deregistering the rank, then the job, forgets them |
-| `test/unit/ptl_remote.c` | which peer addresses are this host's; which psec modules authenticate across hosts; remote connections asked for fail the init in a build without them (and with only native in one with them); directives leaving no loopback interface fail the init rather than take a public one in a build without them |
-| `test/unit/ptl_remote_auth.c` | a tool and a server on different hosts (by `pmix_ptl_base_test_remote`), with ssl and munge: connected by both connect paths; a tool with neither sends nothing; a server that takes no remote tools refuses to prove who it is; a tool refuses a server whose certificate it does not trust or is for clients only; a server refuses a tool it does not trust, and one that skipped the exchange |
+| `test/unit/ptl_remote.c` | which peer addresses are this host's; a server at an address not this host's is not dialled (`pmix_ptl_base_server_on_host`, `PMIX_ERR_UNREACH`, saying why) and one on loopback is; `PMIX_SERVER_REMOTE_CONNECTIONS` true fails the init, false does not; directives leaving no loopback interface fail the init rather than take a public one |
+| `test/unit/ptl_unnamed.c` | end to end with no TCP table on either side (`pmix_util_getid_test_no_tcp_table`): a real server with legacy peers, which takes the tool on its claim, real tools by `PMIx_tool_init` and by an event-driven attach - a bare TCP URI refused; this release's file with a held lock taken, with the lock free refused; a group-writable or linked file, or one with no lock line, refused; an earlier release's file taken; an off-host address `PMIX_ERR_UNREACH`, saying it is not this host's |
+| `test/unit/tool_attach_nb.c` | (among its cases) an attach does not dial the URI an earlier attach was given |
+| `test/unit/ptl_check_server.c` | a server of our own is ours the moment we are connected (the `NOT_FOUND` retry), one whose end has closed is refused soon; with no table (`pmix_util_getid_test_no_tcp_table`) a server nothing vouches for is refused and one its file vouches for is taken |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |
-| `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: tools connecting across nodes, discovery by pid/nspace, remote-connection interface selection |
+| `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: a tool refusing to dial a server on another node, discovery by pid/nspace; and a tool through a relay root runs refused |
 
 Anything in here that can be expressed as a pure function of its inputs
 should get a unit test — the parsers and the handshake macros both went

@@ -88,11 +88,11 @@ that can run is active, and each opens its own listening socket:
        ``AF_UNIX`` socket, whose far end the kernel identifies - its uid,
        gid and pid. Its URI is ``<nspace>.<rank>;usock://<path>``.
    * - ``tcp``
-     - Peers of earlier releases, and tools on other hosts. Its URI is
+     - Peers of earlier releases on the server's host. Its URI is
        ``<nspace>.<rank>;tcp4://<host>:<port>`` (``tcp6://`` for IPv6).
-       A server listens on it only when it takes legacy peers
-       (``ptl_base_legacy_peers``, ``PMIX_SERVER_LEGACY_PEERS``) or
-       remote tools (``PMIX_SERVER_REMOTE_CONNECTIONS``).
+       A server listens on it, on a loopback interface, only when it
+       takes legacy peers (``ptl_base_legacy_peers``,
+       ``PMIX_SERVER_LEGACY_PEERS``).
 
 Both are always built: ``configure`` stops with an error if either is
 excluded. Which transport a URI belongs to is the transport that
@@ -115,18 +115,14 @@ socket - the first two steps below are the ``tcp`` transport's, in
 ``src/mca/ptl/tcp/ptl_tcp.c`` - and does the rest itself:
 
 #. **Choose an interface.** Enumerate the node's interfaces, filter them
-   through any ``if_include`` / ``if_exclude`` directives, and default to
-   a **loopback** device. An entry that is neither an interface name nor
+   through any ``if_include`` / ``if_exclude`` directives, and take a
+   **loopback** device. An entry that is neither an interface name nor
    a subnet, or an include list none of whose entries is on this host,
    stops the listener from opening at all. A loopback device's address
-   must be a loopback address. A PMIx configured ``--enable-remote-tools``
-   falls back to a public interface when the directives leave no loopback
-   one and the host did not say no remote connections; one without it
-   never does. When remote
-   connections are accepted, *every* public interface the directives leave
-   is used: the first carries the URI, and each of the others gets a
-   listener of its own (on the same port where it is free), so a remote
-   tool on any of the host's networks can reach the server.
+   must be a loopback address. Directives that leave no loopback device
+   fail the server's init: a public interface is never taken instead. A
+   host that asks for connections from other hosts
+   (``PMIX_SERVER_REMOTE_CONNECTIONS`` set to true) fails its init too.
 #. **Bind a listen socket.** Try each configured port (default ``0`` —
    let the kernel assign one), set ``SO_REUSEADDR`` and close-on-exec,
    ``listen`` with ``SOMAXCONN``, and make the socket non-blocking.
@@ -136,11 +132,9 @@ socket - the first two steps below are the ``tcp`` transport's, in
    ``gds`` under both ``PMIX_MYSERVER_URI`` and (for older tools)
    ``PMIX_SERVER_URI``. If
    ``report_uri`` is set, also emit it to stdout (``-``), stderr (``+``),
-   an integer pipe fd, or a named file. The other addresses, if any, are
-   stored as ``PMIX_MYSERVER_ALT_URIS`` - a comma-delimited list of
-   ``tcp4://host:port`` / ``tcp6://host:port`` - and follow the version
-   in a report file on a line tagged ``alturis:``. A report file also
-   carries the ``bfrops:`` and ``psec:`` lines described below.
+   an integer pipe fd, or a named file (created mode 0644). A report
+   file also carries the ``local:``, ``bfrops:``, ``psec:`` and
+   ``auth:`` lines described below, but no ``lock:`` line.
 #. **Drop rendezvous files.** Depending on the server's role and flags,
    write well-known contact files that a client or tool can later
    discover in the tmpdir tree:
@@ -165,20 +159,18 @@ socket - the first two steps below are the ``tcp`` transport's, in
         - any tool-supporting server (keyed by nspace)
 
    Each file contains the URI, the server's version, its PID, its
-   ``uid:gid``, and a timestamp, and then - only when the server listens
-   on more than one address - a line tagged ``alturis:`` listing the
-   others. A line tagged ``local:`` carries the server's host name and
-   the local socket's URI, as ``local:<host>;<uri>``. Two
-   more tagged lines follow: ``bfrops:`` lists the wire
-   formats (``bfrops`` components) the server accepts and ``psec:`` its
-   security mechanisms, each comma-delimited in the server's priority
-   order and limited by its MCA parameters. A line ``lock:flock`` says
-   that the server holds a lock (``flock``) for as long as it runs on a
-   file of its own beside this one, ``.<name>.lock``, mode 0600, which
-   no search for ``pmix.*`` files matches; the kernel lets go of the
-   lock however the server exits.
-   Readers find every tagged
-   line by its tag; older readers stop before them. The ``pmix_ptl_base`` state struct
+   ``uid:gid``, and a timestamp. A line tagged ``local:`` carries the
+   server's host name and the local socket's URI, as
+   ``local:<host>;<uri>``. Three more tagged lines follow. ``bfrops:``
+   lists the wire formats (``bfrops`` components) the server accepts and
+   ``psec:`` its security mechanisms, each comma-delimited in the
+   server's priority order and limited by its MCA parameters.
+   ``lock:flock`` says that the server holds a lock (``flock``) for as
+   long as it runs on a file of its own beside this one,
+   ``.<name>.lock``, mode 0600, which no search for ``pmix.*`` files
+   matches; the kernel lets go of the lock however the server exits.
+   Readers find every tagged line by its tag; older readers stop before
+   them. The ``pmix_ptl_base`` state struct
    records (via its ``created_*`` flags and ``pmix_ptl_made_dir_t``
    records) exactly which files and directories this process created, so
    ``pmix_ptl_close`` can remove precisely those at shutdown and nothing
@@ -220,8 +212,8 @@ The local socket's URI reaches a client in its environment, as
 ``PMIX_SERVER_LOCAL_URI``, and a tool on the rendezvous file's ``local:``
 line. ``PMIX_SERVER_URI``, ``PMIX_MYSERVER_URI``, the report and the
 first line of the rendezvous files are the TCP URI when the server
-listens on TCP - they reach processes on other hosts, and older peers,
-which cannot use the local socket - and the local socket's otherwise.
+listens on TCP - they reach older peers, which cannot use the local
+socket - and the local socket's otherwise.
 The ``PMIX_SERVER_URIxx`` variables are the TCP URI only when the server
 takes legacy peers, which are the processes that read them alone.
 
@@ -297,9 +289,10 @@ most specific to least:
 A tool started by a server has ``PMIX_SERVER_LOCAL_URI`` in its
 environment, as a client does. A rendezvous or report file with a
 ``local:`` line for the tool's own host takes it to the local socket, and
-only there. A file without one is an older server's, and one whose
-``local:`` line names another host - a report file read elsewhere - is
-for a tool on that host: the tool uses the file's TCP URI.
+only there. A file without one is an older server's, and the tool uses
+its TCP URI. One whose ``local:`` line names another host - a report
+file read elsewhere - is for a tool on that host; a tool here is left
+with the TCP URI, which is not its host's, and does not dial it.
 
 A client's or tool's connection to its server is close-on-exec whichever
 transport it is on: a process that execs leaves its connection behind,
@@ -322,13 +315,18 @@ tool checks it before it sends anything that matters:
 A server that fails the check is not talked to, and the process says
 whom it found. Over TCP, the kernel's table of TCP connections names the
 user - no group - of a server on the same host, and the same rule is
-applied by user alone. A server at an address of this host that the table
-does not show is refused; one at any other address is on another host,
-and proves who it is instead - see "A server on another host" in
-:doc:`connections`. A process other than a client has one on its own
-host prove who it is the same way when the platform has no table to
-ask, unless it knows the server is of an earlier release - see "A server
-the kernel cannot name" there.
+applied by user alone. A server the table does not show is refused. A
+server at an address that is not this host's - by the interface list,
+or by the kernel's own list of the addresses its interfaces hold - is
+never dialled (``PMIX_ERR_UNREACH``): a process connects only to a
+server on its own host. Where the platform has no table to ask, a
+process connects only to a server named for it - a client's, or the one
+that started it - or one whose file vouches for it - see "A server the
+kernel cannot name" in :doc:`connections`.
+
+Each connect starts afresh: a URI given to one connect by
+``PMIX_SERVER_URI`` or ``PMIX_TCP_URI`` is not used by a later attach
+that was given none.
 
 Choosing what to speak
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -349,8 +347,7 @@ the server's file:
   release no later than the server's. That assumes the server runs every
   format up to its own, which an MCA parameter on the server can make
   untrue, so it is a fallback for older servers only. For the security
-  mechanism it uses ``munge`` if it has it, else ``native`` - never
-  ``ssl``, which no such server has;
+  mechanism it uses ``munge`` if it has it, else ``native``;
 * a URI given directly carries neither, and the tool uses its newest. If
   the server then closes the connection without answering - what a server
   does with a format or mechanism it lacks - the tool suggests giving it
@@ -360,28 +357,9 @@ For a tool's first server the choice becomes the tool's own, as a client's
 does. A server it attaches to later gets its own choice, which leaves how
 the tool speaks to its other servers unchanged.
 
-A server may be reachable at more than one address: the rendezvous file's
-``alturis:`` line, or a ``PMIX_SERVER_ALT_URIS`` directive given with the
-URI, lists the rest. If the URI's address cannot be connected to, the tool
-tries each of those in order; a failed handshake, by contrast, is the
-server's answer and is not retried elsewhere.
-
-Why the other addresses are not simply in the URI
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Clients and tools of one release must be able to connect to servers of
-another, and every released parser refuses a URI that carries more than
-one address - a client refused that way even runs as a singleton rather
-than reporting an error. So the URI keeps exactly its historical form
-everywhere it appears (stored values, environment variables, and the first
-line of every contact file), and the additional addresses travel only where
-no older reader looks: after the five lines a contact file has always held,
-which every release reads by position, and in keys older libraries do not
-know. An older tool therefore connects exactly as it always has, and a
-newer tool facing an older server simply finds no alternates.
-
 Both paths converge on ``pmix_ptl_base_make_connection``, which parses the
-URI into a socket address, opens the connection (with retries), sends the
+URI into a socket address, refuses one that is not this host's, opens the
+connection (with retries), sends the
 connect-ack, runs the handshake, and — on success —
 ``pmix_ptl_base_complete_connection`` records the server and arms the
 steady-state send/receive events.

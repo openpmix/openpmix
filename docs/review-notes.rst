@@ -110,6 +110,10 @@ now has to validate a credential, a handshake runs only when
 ``validate_cred`` asks for one, and a tool's runs before the host is told
 of it - never after the identity replies.
 
+*Update, later:* the ``native`` handshake was removed again. A peer of
+this release reaches its server over the local socket, where the kernel
+names it, and a TCP peer is one of an earlier release.
+
 **The connecting side's half was fixed.**  ``pmix_tool_retry_attach`` -
 behind ``PMIx_tool_attach_to_server``, a tool connecting to its parent at
 init, and a server attaching upstream - ran the whole connect on the

@@ -13,7 +13,7 @@
  * and - wherever libmunge and a live munged are present -
  * src/mca/psec/munge/psec_munge.c).
  *
- * Three things are checked here, each of which was broken:
+ * These are checked here:
  *
  * 1. pmix_psec_base_check_directives() - the PMIX_CRED_TYPE screening
  *    every module applies to a caller's directives. This used to be five
@@ -62,9 +62,14 @@
  *
  * 5. What native does when the kernel cannot name the owner of a TCP
  *    connection from an address of this host - a connection whose far end
- *    has closed: the peer is refused, whatever psec_native_legacy_auth
- *    says. That parameter decides only where the platform has no table of
- *    TCP connections to ask.
+ *    has closed: the peer is refused, even by a server that takes legacy
+ *    peers. That takes a peer on its claim only where the platform has no
+ *    table of TCP connections to ask.
+ *
+ * 6. Where the platform has no table of TCP connections
+ *    (pmix_util_getid_test_no_tcp_table), a server that takes legacy peers
+ *    takes a peer on the identity it claims, as long as that matches the
+ *    one recorded for it; one that does not, refuses it.
  *
  * Like the pstat tests, this needs the MCA up but no server:
  * pmix_init_util() establishes the install dirs, the variable system and
@@ -84,7 +89,9 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/class/pmix_list.h"
 #include "src/mca/psec/base/base.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_init_util.h"
+#include "src/util/pmix_getid.h"
 
 #include <errno.h>
 #include <pthread.h>
@@ -253,18 +260,13 @@ static void make_cred(pmix_byte_object_t *cred, uid_t uid, gid_t gid)
     memcpy(cred->bytes + sizeof(uid_t), &gid, sizeof(gid_t));
 }
 
-/* the storage behind one of native's MCA variables - it aliases the
- * component's own, so a write through it changes what native reads */
-static void *native_param(const char *name)
+/* Whether this platform keeps a table of TCP connections to ask - where
+ * it does not, native has no kernel's answer to check a peer against */
+static bool have_tcp_table(int sd)
 {
-    void *storage = NULL;
-    int idx;
+    uid_t owner;
 
-    idx = pmix_mca_base_var_find("pmix", "psec", "native", name);
-    if (0 > idx || PMIX_SUCCESS != pmix_mca_base_var_get_value(idx, &storage, NULL, NULL)) {
-        return NULL;
-    }
-    return storage;
+    return PMIX_ERR_NOT_SUPPORTED != pmix_util_getid_tcp(sd, &owner);
 }
 
 /* Drive one module's create/validate pair twice, whatever module it is.
@@ -713,6 +715,14 @@ static void native_identity_checks(void)
         PMIX_RELEASE(peer);
         return;
     }
+    if (!have_tcp_table(peer->sd)) {
+        fprintf(stdout, "  SKIP: identity cases - no table of TCP connections\n");
+        close(client);
+        PMIX_RELEASE(peer->info);
+        peer->info = NULL;
+        PMIX_RELEASE(peer);
+        return;
+    }
 
     /* Someone else's uid - root's, unless that is us. A client the host
      * registered as that user, and whose credential claims to be it, is
@@ -833,16 +843,13 @@ static void native_unconfirmed(void)
     pmix_info_t *results = NULL;
     size_t nresults = 0;
     pmix_status_t rc;
-    bool *legacy;
     int client;
 
     mod = pmix_psec_base_assign_module("native");
-    legacy = (bool *) native_param("legacy_auth");
-    report("native's legacy_auth parameter is registered", NULL != legacy);
-    if (NULL == mod || NULL == legacy) {
+    if (NULL == mod) {
+        report("native module is available for the unconfirmed cases", 0);
         return;
     }
-    report("legacy_auth defaults to false", !*legacy);
     peer = PMIX_NEW(pmix_peer_t);
     peer->protocol = PMIX_PROTOCOL_V2;
     peer->info = PMIX_NEW(pmix_rank_info_t);
@@ -856,13 +863,21 @@ static void native_unconfirmed(void)
         PMIX_RELEASE(peer);
         return;
     }
+    if (!have_tcp_table(peer->sd)) {
+        fprintf(stdout, "  SKIP: unconfirmed cases - no table of TCP connections\n");
+        close(client);
+        PMIX_RELEASE(peer->info);
+        peer->info = NULL;
+        PMIX_RELEASE(peer);
+        return;
+    }
     close(client);
     usleep(100000);
 
     /* a peer the kernel cannot vouch for, which has no other way to say who
      * it is */
     make_cred(&cred, geteuid(), getegid());
-    *legacy = false;
+    pmix_ptl_base.legacy_peers = false;
     rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
     report("a peer on this host the kernel cannot confirm is refused", PMIX_ERR_INVALID_CRED == rc);
     if (NULL != results) {
@@ -870,18 +885,89 @@ static void native_unconfirmed(void)
         results = NULL;
         nresults = 0;
     }
-    *legacy = true;
+    pmix_ptl_base.legacy_peers = true;
     rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
-    report("...even when psec_native_legacy_auth would take its claim",
+    report("...even by a server that takes legacy peers",
            PMIX_ERR_INVALID_CRED == rc);
     if (NULL != results) {
         PMIX_INFO_FREE(results, nresults);
         results = NULL;
         nresults = 0;
     }
-    *legacy = false;
+    pmix_ptl_base.legacy_peers = false;
     PMIX_BYTE_OBJECT_DESTRUCT(&cred);
 
+    PMIX_RELEASE(peer->info);
+    peer->info = NULL;
+    PMIX_RELEASE(peer); /* closes peer->sd */
+}
+
+/* Where there is no table of TCP connections to ask */
+static void native_no_table(void)
+{
+    pmix_psec_module_t *mod;
+    pmix_peer_t *peer;
+    pmix_byte_object_t cred;
+    pmix_info_t *results = NULL;
+    size_t nresults = 0;
+    pmix_status_t rc;
+    int client;
+
+    mod = pmix_psec_base_assign_module("native");
+    if (NULL == mod) {
+        report("native module is available for the no-table cases", 0);
+        return;
+    }
+    peer = PMIX_NEW(pmix_peer_t);
+    peer->protocol = PMIX_PROTOCOL_V2;
+    peer->info = PMIX_NEW(pmix_rank_info_t);
+    peer->info->host_registered = true;
+    peer->info->uid = geteuid();
+    peer->info->gid = getegid();
+    if (!loopback_pair(&client, &peer->sd)) {
+        report("no-table cases: loopback connection", 0);
+        PMIX_RELEASE(peer->info);
+        peer->info = NULL;
+        PMIX_RELEASE(peer);
+        return;
+    }
+    pmix_util_getid_test_no_tcp_table = true;
+
+    make_cred(&cred, geteuid(), getegid());
+    pmix_ptl_base.legacy_peers = false;
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report("no table: a server that takes no legacy peers refuses a TCP peer",
+           PMIX_ERR_INVALID_CRED == rc);
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+        results = NULL;
+        nresults = 0;
+    }
+    pmix_ptl_base.legacy_peers = true;
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report("no table: a server that takes legacy peers takes one on its claim",
+           PMIX_SUCCESS == rc);
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+        results = NULL;
+        nresults = 0;
+    }
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    /* a claim that is not the identity recorded for it */
+    make_cred(&cred, geteuid() + 1, getegid());
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report("no table: ...but not a claim of another uid than the one recorded",
+           PMIX_ERR_INVALID_CRED == rc);
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    make_cred(&cred, geteuid(), getegid() + 1);
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    report("no table: ...nor of another gid", PMIX_ERR_INVALID_CRED == rc);
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    pmix_ptl_base.legacy_peers = false;
+    pmix_util_getid_test_no_tcp_table = false;
+    close(client);
     PMIX_RELEASE(peer->info);
     peer->info = NULL;
     PMIX_RELEASE(peer); /* closes peer->sd */
@@ -1009,6 +1095,7 @@ int main(int argc, char **argv)
     native_round_trip();
     native_identity_checks();
     native_unconfirmed();
+    native_no_table();
     native_unverified();
     no_credential_module();
 

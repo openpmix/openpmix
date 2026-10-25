@@ -14,12 +14,15 @@
  * connected once the server's SYN-ACK arrives, a moment before the
  * server's kernel has taken our ACK and made its end an established
  * connection. A check that looked once refused a real server now and then
- * (tool_alt_uris, on macOS CI). So: connect to a listener of our own,
+ * (on macOS CI). So: connect to a listener of our own,
  * check it the instant the socket is writable, many times over - it must
  * be ours every time.
  *
  * And the waiting is bounded: a connection whose server end is no longer
  * an established one - the server has closed it - is refused, and soon.
+ *
+ * Where there is no table to ask (pmix_util_getid_test_no_tcp_table), a
+ * server is refused unless its file vouches for it, and taken if it does.
  */
 
 #include "src/include/pmix_config.h"
@@ -112,20 +115,48 @@ static int connect_now(const struct sockaddr_in *addr)
     return sd;
 }
 
-static pmix_status_t check_sd(int sd)
+static pmix_status_t check_sd_vouched(int sd, bool vouched)
 {
     pmix_peer_t *peer;
     pmix_status_t rc;
-    bool prove;
 
     peer = PMIX_NEW(pmix_peer_t);
     peer->sd = sd; /* closed when the peer is released */
     peer->transport = NULL;
-    /* this host has a table, so the server is never left to prove
-     * itself on the connection here */
-    rc = pmix_ptl_base_check_server(peer, false, 0, 0, false, &prove);
+    rc = pmix_ptl_base_check_server(peer, false, 0, 0, vouched);
     PMIX_RELEASE(peer);
     return rc;
+}
+
+static pmix_status_t check_sd(int sd)
+{
+    return check_sd_vouched(sd, false);
+}
+
+/* with no table to ask: refused, unless vouched for */
+static void test_no_table(const struct sockaddr_in *addr, int ls)
+{
+    pmix_status_t rc;
+    int sd, as;
+
+    pmix_util_getid_test_no_tcp_table = true;
+    sd = connect_now(addr);
+    as = accept(ls, NULL, NULL);
+    rc = (0 > sd) ? PMIX_ERROR : check_sd_vouched(sd, false);
+    report("no table: a server nothing vouches for is refused", PMIX_ERR_INVALID_CRED == rc,
+           PMIx_Error_string(rc));
+    if (0 <= as) {
+        close(as);
+    }
+    sd = connect_now(addr);
+    as = accept(ls, NULL, NULL);
+    rc = (0 > sd) ? PMIX_ERROR : check_sd_vouched(sd, true);
+    report("no table: a server its file vouches for is taken", PMIX_SUCCESS == rc,
+           PMIx_Error_string(rc));
+    if (0 <= as) {
+        close(as);
+    }
+    pmix_util_getid_test_no_tcp_table = false;
 }
 
 static double now(void)
@@ -159,7 +190,9 @@ int main(void)
         return 1;
     }
 
-    /* is there a table to ask? Without one there is nothing to check */
+    test_no_table(&addr, ls);
+
+    /* is there a table to ask? Without one there is nothing more to check */
     sd = connect_now(&addr);
     as = accept(ls, NULL, NULL);
     rc = (0 > sd) ? PMIX_ERROR : pmix_util_getid_tcp(sd, &uid);

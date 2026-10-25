@@ -69,6 +69,11 @@ PMIX_EXPORT pmix_status_t pmix_util_getpid(int sd, pid_t *pid);
  * *uid is written only on PMIX_SUCCESS. */
 PMIX_EXPORT pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid);
 
+/* For the unit tests alone, and nothing outside a test's own code sets
+ * it: pmix_util_getid_tcp() answers as on a platform with no table of TCP
+ * connections */
+PMIX_EXPORT extern bool pmix_util_getid_test_no_tcp_table;
+
 /* An id the kernel reported, in this process's user namespace, as the
  * parent of that namespace numbers it - where a server outside it runs.
  * The kernel reports a peer's ids translated into the reader's namespace,

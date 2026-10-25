@@ -760,6 +760,8 @@ static pmix_status_t lookup_xtcpcb(const tcp_tuple_t *t, uid_t *uid)
 }
 #endif /* PMIX_HAVE_XTCPCB */
 
+bool pmix_util_getid_test_no_tcp_table = false;
+
 pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid)
 {
     tcp_tuple_t t;
@@ -771,29 +773,33 @@ pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid)
         return rc;
     }
 
+    if (pmix_util_getid_test_no_tcp_table) {
+        rc = PMIX_ERR_NOT_SUPPORTED;
+    } else {
 #if PMIX_HAVE_SOCK_DIAG
-    rc = lookup_sock_diag(&t, &owner);
-    if (PMIX_ERR_NOT_SUPPORTED == rc) {
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "getid: sock_diag unavailable - scanning /proc/net");
-        rc = lookup_proc_net(&t, &owner);
-    } else if (PMIX_ERR_NOT_FOUND == rc &&
-               PMIX_SUCCESS == lookup_proc_net(&t, &owner)) {
-        /* a kernel whose TCP diag handler is a module it cannot load
-         * answers every request "no such connection" - /proc/net still
-         * lists it. A table that does not either, or cannot be read,
-         * leaves the answer as it was */
-        rc = PMIX_SUCCESS;
-    }
+        rc = lookup_sock_diag(&t, &owner);
+        if (PMIX_ERR_NOT_SUPPORTED == rc) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "getid: sock_diag unavailable - scanning /proc/net");
+            rc = lookup_proc_net(&t, &owner);
+        } else if (PMIX_ERR_NOT_FOUND == rc &&
+                   PMIX_SUCCESS == lookup_proc_net(&t, &owner)) {
+            /* a kernel whose TCP diag handler is a module it cannot load
+             * answers every request "no such connection" - /proc/net still
+             * lists it. A table that does not either, or cannot be read,
+             * leaves the answer as it was */
+            rc = PMIX_SUCCESS;
+        }
 #elif PMIX_HAVE_PROC_NET_TCP
-    rc = lookup_proc_net(&t, &owner);
+        rc = lookup_proc_net(&t, &owner);
 #elif PMIX_HAVE_PCBLIST64
-    rc = lookup_pcblist64(&t, &owner);
+        rc = lookup_pcblist64(&t, &owner);
 #elif PMIX_HAVE_XTCPCB
-    rc = lookup_xtcpcb(&t, &owner);
+        rc = lookup_xtcpcb(&t, &owner);
 #else
-    rc = PMIX_ERR_NOT_SUPPORTED;
+        rc = PMIX_ERR_NOT_SUPPORTED;
 #endif
+    }
 
     if (PMIX_SUCCESS == rc) {
         *uid = owner;

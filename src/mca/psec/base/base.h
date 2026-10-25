@@ -77,7 +77,6 @@ typedef struct pmix_psec_globals_t pmix_psec_globals_t;
 PMIX_EXPORT extern pmix_psec_globals_t pmix_psec_globals;
 
 PMIX_EXPORT char *pmix_psec_base_get_available_modules(void);
-PMIX_EXPORT char *pmix_psec_base_get_accepted_modules(void);
 PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options);
 
 /**
@@ -100,10 +99,9 @@ PMIX_EXPORT bool pmix_psec_base_check_directives(const char *name,
  * Whether the user `uid` may act as the group `gid`: its primary group,
  * or a group that lists the user as a member. Root may act as any group.
  *
- * A peer names its own group, and nothing a mechanism can check records
- * one - neither the kernel's socket table (native) nor an X.509
- * certificate (ssl) - so a mechanism that has authenticated the *user*
- * asks this before believing the *group*. Consults the passwd and group
+ * A peer names its own group, and the kernel's table of TCP connections
+ * (native) records none - so a mechanism that has authenticated the
+ * *user* asks this before believing the *group*. Consults the passwd and group
  * databases, so it can block on a directory service; call it only where
  * a peer's group has not been vouched for some other way. A uid with no
  * passwd entry holds no group.

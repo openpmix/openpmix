@@ -5,7 +5,7 @@ The ``native`` Mechanism
 daemon, library, or key. It establishes the user ID (uid) and group ID
 (gid) of a peer through the kernel of the host the server runs on, so it
 serves peers on that host only |mdash| including peers inside containers
-on it. A peer on another host authenticates with ``munge`` or ``ssl``.
+on it. A server takes no peer from another host, whatever its mechanism.
 
 This page describes what ``native`` checks, in what order, and what a
 container needs for it to work.
@@ -36,11 +36,13 @@ the first that decides the matter.
 #. **Otherwise, refuse it - or, where there is no table, take the
    peer's claim.** A TCP peer at an address of this host that the table
    does not show is refused. On a platform with no table to ask, a TCP
-   peer is refused unless ``psec_native_legacy_auth`` is set to
-   ``true``; then it is accepted on the uid and gid it claims, as every
-   earlier release accepted it. A table there is but that could not be
+   peer is accepted on the uid and gid it claims, as every earlier
+   release accepted it. A server opens its TCP listener only to take peers of earlier
+   releases (``ptl_base_legacy_peers``), which have no other way to say
+   who they are; a peer of this release that connects over TCP all the
+   same is taken the same way. A table there is but that could not be
    read - the server is out of descriptors or memory - is no answer, and
-   the peer is refused whatever that parameter says.
+   the peer is refused.
 
 A peer that connects over TCP from an address that is not this host's
 never reaches ``native``: the server refuses it before any security
@@ -89,15 +91,6 @@ user and group must be mapped into the container's namespace, as they are
 when the container runs as the user who started the job.
 
 
-MCA Parameters
---------------
-
-``psec_native_legacy_auth`` (bool)
-   Whether to accept a peer connecting over TCP on the identity it
-   claims, on a platform whose kernel has no table of TCP connections to
-   ask. Default: ``false``.
-
-
 Limits
 ------
 
@@ -106,14 +99,14 @@ Limits
   nothing to ask the kernel about.
 
 * A peer on another host, or in a container with a network of its own,
-  connects from an address that is not this host's. It and the server
-  authenticate each other with ``munge`` or ``ssl`` instead - see "A
-  server on another host" in :doc:`../connections`.
+  connects from an address that is not this host's. The server refuses
+  it before ``native`` is asked - see :doc:`../connections`.
 
-* On platforms other than Linux, macOS and FreeBSD, step 2 is not
-  available, so a peer connecting over TCP is refused unless
-  ``psec_native_legacy_auth`` is ``true``. A client or tool of an earlier
-  release on such a platform needs it. On FreeBSD, a server that does
+* On a platform whose kernel keeps no table of TCP connections - any
+  but Linux, macOS and FreeBSD 12 or later, and a Linux host where
+  neither ``sock_diag`` nor ``/proc/net/tcp`` can be read - step 2 is
+  not available, so a server that takes legacy peers takes a peer
+  connecting over TCP on the identity it claims. On FreeBSD, a server that does
   not run as root confirms another user's peer only while
   ``security.bsd.see_other_uids`` is left at its default of ``1``.
 
