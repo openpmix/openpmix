@@ -283,13 +283,13 @@ be used with ``configure``:
             host over ``usock``, and a server of an earlier release
             over ``tcp``.
 
-* ``--disable-legacy-peers``: Build without support for clients and
-  tools of PMIx releases before v7.0, which connect to a server over TCP.
-  With it - the default - a server takes them only when the
-  ``ptl_base_legacy_peers`` MCA parameter, or its host's
-  ``PMIX_SERVER_LEGACY_PEERS`` attribute, says so; the parameter
-  defaults to ``false``. Without it, a server never takes them, and
-  asking for them fails its init.
+* ``--enable-legacy-peers``: Build with support for clients and tools
+  of PMIx releases before v7.0, which connect to a server over TCP. With
+  it, a server takes them only when the ``ptl_base_legacy_peers`` MCA
+  parameter, or its host's ``PMIX_SERVER_LEGACY_PEERS`` attribute, says
+  so; the parameter defaults to ``false``. Without it - the default - a
+  server never takes them, and asking for them fails its init: clients
+  and tools are to be updated along with their servers.
 
 * ``--enable-remote-tools``: Build support for tools that connect to a
   PMIx server from other hosts. Without it - the default - a server

@@ -1554,20 +1554,21 @@ PMIX_SUMMARY_ADD([Miscellaneous], [Remote tools], [], [$pmix_remote_tools_msg])
 # They connect over TCP, which a process of this release on the server's
 # host never uses to reach a server of this release. Without it a server
 # takes no such connection, whatever its host or the ptl_base_legacy_peers
-# parameter asks.
+# parameter asks. Off unless asked for: clients are to be updated with
+# their servers.
 #
 AC_MSG_CHECKING([if want support for clients and tools of earlier PMIx releases])
 AC_ARG_ENABLE([legacy-peers],
-    [AS_HELP_STRING([--disable-legacy-peers],
-        [Build without support for clients and tools of PMIx releases before v7.0, which connect to a server over TCP. With it, the ptl_base_legacy_peers parameter or the PMIX_SERVER_LEGACY_PEERS attribute turns it on (default: enabled)])])
-if test "$enable_legacy_peers" = "no"; then
-    AC_MSG_RESULT([no])
-    pmix_legacy_peers=0
-    pmix_legacy_peers_msg=no
-else
+    [AS_HELP_STRING([--enable-legacy-peers],
+        [Build with support for clients and tools of PMIx releases before v7.0, which connect to a server over TCP. With it, the ptl_base_legacy_peers parameter or the PMIX_SERVER_LEGACY_PEERS attribute turns it on (default: disabled)])])
+if test "$enable_legacy_peers" = "yes"; then
     AC_MSG_RESULT([yes])
     pmix_legacy_peers=1
     pmix_legacy_peers_msg=yes
+else
+    AC_MSG_RESULT([no])
+    pmix_legacy_peers=0
+    pmix_legacy_peers_msg=no
 fi
 AC_DEFINE_UNQUOTED([PMIX_ENABLE_LEGACY_PEERS], [$pmix_legacy_peers],
                    [Whether a server can take connections from clients and tools of earlier releases])

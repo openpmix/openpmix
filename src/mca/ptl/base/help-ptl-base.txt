@@ -203,9 +203,9 @@ connections.
 [legacy-peers-not-built]
 The PMIx server on %s was asked, by %s, to take
 connections from clients and tools of PMIx releases before v7.0, but
-this PMIx was built without support for them (--disable-legacy-peers).
+this PMIx was built without support for them.
 
-Rebuild PMIx without --disable-legacy-peers, or do not ask for them.
+Rebuild PMIx configured --enable-legacy-peers, or do not ask for them.
 #
 [remote-no-psec]
 The host asked the PMIx server on %s to take connections from tools on

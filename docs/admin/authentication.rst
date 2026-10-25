@@ -144,8 +144,9 @@ These MCA parameters adjust the checks PMIx makes on connections:
        before v7.0, which connect over TCP; a host's
        ``PMIX_SERVER_LEGACY_PEERS`` overrides it. Older clients need it -
        and, on a platform other than Linux, macOS or FreeBSD,
-       ``psec_native_legacy_auth`` as well. A PMIx configured
-       ``--disable-legacy-peers`` refuses it.
+       ``psec_native_legacy_auth`` as well. Only a PMIx configured
+       ``--enable-legacy-peers`` takes them; any other refuses the
+       setting and fails its init.
    * - ``ptl_base_if_include`` / ``ptl_base_if_exclude``
      - none
      - Network interfaces the server may or may not listen on. Keep

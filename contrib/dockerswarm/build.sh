@@ -188,7 +188,8 @@ build_linux() {
         "$IMAGE" bash -euo pipefail -c '
             jobs=$(nproc)
 
-            opts=""
+            # legacy peers: the ptl suite runs a server that takes them
+            opts="--enable-legacy-peers"
             [ "$PYTHON_BINDINGS" = yes ] && opts="$opts --enable-python-bindings"
             [ "$SWARM_REMOTE_TOOLS" = 1 ] && opts="$opts --with-openssl --enable-remote-tools"
 
@@ -201,7 +202,7 @@ build_linux() {
             # has ever run here.
             if [ -f config.status ]; then
                 _have=" $(./config.status --config 2>/dev/null) "
-                for _o in --enable-python-bindings --with-openssl --enable-remote-tools; do
+                for _o in --enable-legacy-peers --enable-python-bindings --with-openssl --enable-remote-tools; do
                     case " $opts " in *" $_o "*) _want=1 ;; *) _want=0 ;; esac
                     case "$_have" in *"$_o"*) _got=1 ;; *) _got=0 ;; esac
                     if [ "$_want" != "$_got" ]; then
