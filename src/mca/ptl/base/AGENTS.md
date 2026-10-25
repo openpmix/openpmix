@@ -121,7 +121,7 @@ hosts" below).
   it came. `legacy_peers` is settled at `setup_listener` from the
   `ptl_base_legacy_peers` parameter (`legacy_peers_param`, default false)
   and then `PMIX_SERVER_LEGACY_PEERS`; asking for it in a build without
-  `PMIX_ENABLE_LEGACY_PEERS` (`--disable-legacy-peers`) fails the init
+  `PMIX_ENABLE_LEGACY_PEERS` (`--enable-legacy-peers`, off by default) fails the init
   (`legacy-peers-not-built`).
 - `pmix_ptl_base_make_connection()` refuses a server known to be older
   than v3.2 (`unsupported-server-version`) before opening a socket. Such

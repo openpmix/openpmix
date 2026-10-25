@@ -181,8 +181,8 @@ Role and support attributes
   variables those releases read; without it - and without
   ``PMIX_SERVER_REMOTE_CONNECTIONS`` - the server has no TCP listener,
   and a client or tool of an earlier release cannot connect. Only a PMIx
-  built with legacy peer support (the default; ``--disable-legacy-peers``
-  removes it) can take them: in one without it, asking fails the init.
+  configured ``--enable-legacy-peers`` can take them (the default is
+  not to): in one without it, asking fails the init.
 * ``PMIX_SERVER_REMOTE_CONNECTIONS`` (bool) |mdash| allow (or disable)
   connections from remote tools. Only a PMIx configured
   ``--enable-remote-tools`` can allow them: in one without it, asking

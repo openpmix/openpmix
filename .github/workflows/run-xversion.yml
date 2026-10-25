@@ -11,8 +11,9 @@ jobs:
     env:
       # A server takes clients and tools of earlier releases only when
       # asked (see "Version floors" in src/mca/ptl/base/AGENTS.md), and
-      # every server here is asked. Servers of earlier releases have no
-      # such parameter and ignore it.
+      # every server here is asked. Both builds below configure
+      # --enable-legacy-peers, without which the parameter fails the init;
+      # releases without that option ignore both.
       PMIX_MCA_ptl_base_legacy_peers: 1
     strategy:
       matrix:
@@ -49,7 +50,7 @@ jobs:
       run: |
         cd pr
         ./autogen.pl
-        ./configure --prefix=$RUNNER_TEMP/prinstall --disable-debug --enable-static --disable-shared --disable-dlopen --disable-per-user-config-files
+        ./configure --prefix=$RUNNER_TEMP/prinstall --disable-debug --enable-static --disable-shared --disable-dlopen --disable-per-user-config-files --enable-legacy-peers
         make -j
         make install
         cd test
@@ -68,7 +69,7 @@ jobs:
       run: |
         cd checkbranch
         ./autogen.pl
-        ./configure --prefix=$RUNNER_TEMP/branchinstall --disable-debug --enable-static --disable-shared --disable-dlopen --disable-per-user-config-files
+        ./configure --prefix=$RUNNER_TEMP/branchinstall --disable-debug --enable-static --disable-shared --disable-dlopen --disable-per-user-config-files --enable-legacy-peers
         make -j
         make install
         cd test
