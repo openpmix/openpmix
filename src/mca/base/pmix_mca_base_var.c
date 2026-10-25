@@ -163,9 +163,10 @@ int pmix_mca_base_var_generate_full_name4(const char *project, const char *frame
 
     *full_name = NULL;
 
-    for (i = 0, len = 0; i < 4; ++i) {
+    /* the terminator, and each name with the '_' that may follow it -
+     * so that with no names at all the result is still a string */
+    for (i = 0, len = 1; i < 4; ++i) {
         if (NULL != names[i]) {
-            /* Add space for the string + _ or \0 */
             len += strlen(names[i]) + 1;
         }
     }
