@@ -22,22 +22,21 @@ and turns its URIs into addresses.
 |------|----------|
 | `ptl_tcp.h` | The component struct (with the primary listener's address) and `pmix_ptl_tcp_split_and_resolve`. |
 | `ptl_tcp_component.c` | Component struct + `component_query` (always available, priority 30). |
-| `ptl_tcp.c` | The module: `tcp_setup_listener`, `uri_to_addr`, the alternate listeners, and the interface helpers. |
+| `ptl_tcp.c` | The module: `tcp_setup_listener`, `uri_to_addr`, and the interface helpers. |
 | `configure.m4` | Makes the component static - always part of the library, never a plugin. |
 
 ## What it does
 
 - **`setup_listener`** acts on the directives that are TCP's -
   `PMIX_TCP_IF_INCLUDE`/`EXCLUDE`, `PMIX_TCP_IPV4_PORT`/`IPV6_PORT`,
-  `PMIX_TCP_DISABLE_IPV4`/`IPV6` - picks the interface (loopback unless
-  remote connections are wanted or the directives leave none - and in a
-  build without `PMIX_ENABLE_REMOTE_TOOLS`, loopback or none), tries each
-  port, binds, listens, and makes the URI
-  `<nspace>.<rank>;tcp4://host:port` (or `tcp6://[addr]:port`). With remote
-  connections it also opens a listener on each other public interface,
-  appended to `pmix_ptl_base.alt_listeners`, with their address-only URIs
-  joined in `pmix_ptl_base.alt_uris`. The base stores the URIs, reports
-  them, and writes the rendezvous files.
+  `PMIX_TCP_DISABLE_IPV4`/`IPV6` - picks the interface (the first
+  loopback device the directives leave, or none: then it reports
+  `no-loopback-interfaces` and fails, and never takes a public one),
+  tries each port, binds, listens, and makes the URI
+  `<nspace>.<rank>;tcp4://host:port` (or `tcp6://[addr]:port`). The base
+  stores the URI, reports it, and writes the rendezvous files. The
+  transport serves peers of earlier releases on this host, and nothing
+  else.
 - **`uri_to_addr`** turns `tcp4://` and `tcp6://` URIs into a
   `sockaddr_storage`, refusing a malformed address or a port that is not
   1-65535. Any other scheme gets `PMIX_ERR_NOT_SUPPORTED`, so the base asks
@@ -66,8 +65,7 @@ parameters.
 ## Gotchas
 
 - **Never put a second address in the primary URI.** Released parsers
-  take exactly one `host:port` after the `;`; see the alternates in
-  `base/AGENTS.md`.
+  take exactly one `host:port` after the `;`.
 - `test/unit/ptl_uri.c` and `test/unit/ptl_listener.c` reach into this
   component by name (`pmix_ptl_tcp_split_and_resolve`,
   `pmix_mca_ptl_tcp_component.connection`). That is why it must stay

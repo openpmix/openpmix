@@ -669,7 +669,7 @@ The array carries:
   the client connected, which the security component checked against the
   kernel and against the client's registration.
 * ``PMIX_CRED_TYPE`` - the name of the security component that established
-  them (``native``, ``munge``, ``ssl``).
+  them (``native``, ``munge``).
 * ``PMIX_PROC_PID`` - the client's pid. The client's PMIx library obtains it with
   ``getpid()`` and sends it when it connects, since the kernel does not report the
   pid at the other end of a TCP connection. A client in a container with its own

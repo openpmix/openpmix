@@ -12,7 +12,7 @@
  * A client's sockets are close-on-exec, so its connection closes when the
  * process execs - on the local socket and over TCP alike, and over TCP
  * also where the kernel cannot name the server's user, which a client
- * does not have prove who it is. The server
+ * connects to regardless: its server is the one named for it. The server
  * handles that as it handles any connection that ends without a
  * finalize: the rank is lost at once, as it is for a client that dies.
  *
@@ -44,6 +44,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/pmix_getid.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,7 +100,7 @@ static int init_and_wait(void)
     char c = 'r';
 
     if (NULL != getenv(RI_NOTABLE)) {
-        pmix_ptl_base_test_no_tcp_table = true;
+        pmix_util_getid_test_no_tcp_table = true;
     }
     rc = PMIx_Init(&me, NULL, 0);
     if (PMIX_SUCCESS != rc) {
@@ -731,12 +732,11 @@ static int run_exec_lost_tcp(char *self)
 }
 
 /* and where the kernel cannot name the server's user: a client connects
- * as before - only a process its server did not start has the server
- * prove who it is - and is checked by the server as before */
+ * as before - its server is the one named for it - and is checked by the
+ * server as before */
 static int run_exec_lost_tcp_notable(char *self)
 {
     setenv(RI_NOTABLE, "1", 1);
-    setenv("PMIX_MCA_psec_native_legacy_auth", "1", 1);
     return run_exec_lost_tcp(self);
 }
 #endif

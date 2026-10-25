@@ -22,13 +22,6 @@ BEGIN_C_DECLS
 PMIX_EXPORT extern pmix_psec_base_component_t pmix_mca_psec_native_component;
 extern pmix_psec_module_t pmix_native_module;
 
-typedef struct {
-    /* accept a peer on the identity it claims, when it connects over TCP
-     * and the kernel cannot confirm who owns the connection */
-    bool legacy_auth;
-} pmix_psec_native_params_t;
-PMIX_EXPORT extern pmix_psec_native_params_t pmix_psec_native_params;
-
 END_C_DECLS
 
 #endif

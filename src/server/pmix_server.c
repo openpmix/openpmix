@@ -430,13 +430,8 @@ pmix_status_t pmix_server_initialize(void)
                                   pmix_server_globals.group_verbose);
     }
 
-    /* the security modules a child may connect to us with - those that
-     * can check its credential. A process that can check none (a tool
-     * that only connects out) passes on what it has */
-    security_mode = pmix_psec_base_get_accepted_modules();
-    if (NULL == security_mode) {
-        security_mode = pmix_psec_base_get_available_modules();
-    }
+    /* get our available security modules */
+    security_mode = pmix_psec_base_get_available_modules();
 
     /* get our available bfrop modules */
     bfrops_mode = pmix_bfrops_base_get_available_modules();

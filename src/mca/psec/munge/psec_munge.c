@@ -19,7 +19,6 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 
-#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -64,24 +63,6 @@ static inline  const char * munge_strerror (munge_err_t e)
     return "munge testbuild shim - not functional";
 }
 
-#define MUNGE_OPT_UID_RESTRICTION 1
-
-static inline munge_ctx_t munge_ctx_create(void)
-{
-    return NULL;
-}
-
-static inline void munge_ctx_destroy(munge_ctx_t ctx)
-{
-    PMIX_HIDE_UNUSED_PARAMS(ctx);
-}
-
-static inline munge_err_t munge_ctx_set(munge_ctx_t ctx, int opt, ...)
-{
-    PMIX_HIDE_UNUSED_PARAMS(ctx, opt);
-    return EMUNGE_SNAFU;
-}
-
 #else
 #include <munge.h>
 #endif
@@ -98,18 +79,12 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
 static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
                                    size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                    const pmix_byte_object_t *cred);
-static pmix_status_t create_bound(const pmix_byte_object_t *bind, bool server, uid_t to,
-                                  pmix_byte_object_t *cred);
-static pmix_status_t validate_bound(const pmix_byte_object_t *bind, bool server,
-                                    const pmix_byte_object_t *cred, uid_t *uid, gid_t *gid);
 
 pmix_psec_module_t pmix_munge_module = {.name = "munge",
                                         .init = munge_init,
                                         .finalize = munge_finalize,
                                         .create_cred = create_cred,
-                                        .validate_cred = validate_cred,
-                                        .create_bound = create_bound,
-                                        .validate_bound = validate_bound};
+                                        .validate_cred = validate_cred};
 
 static char *mycred = NULL;
 static bool initialized = false;
@@ -260,7 +235,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     }
 
     /* munge_decode takes a NUL-terminated string. The credential reaches
-     * us as a counted byte object that a remote peer supplied, so we
+     * us as a counted byte object that a connecting peer supplied, so we
      * cannot assume it is terminated - hand it on only once we have
      * confirmed that it is */
     if (NULL == cred || NULL == cred->bytes || 0 == cred->size
@@ -271,8 +246,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     }
 
     /* parse the inbound string. A credential made here carries nothing
-     * else; one with a payload was made for one connection between hosts
-     * (create_bound), and is accepted nowhere but there */
+     * else, and one with a payload is not one of ours */
     if (EMUNGE_SUCCESS != (rc = munge_decode(cred->bytes, NULL, &payload, &plen, &euid, &egid))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "psec: munge failed to decode credential: %s", munge_strerror(rc));
@@ -315,107 +289,5 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
         u32 = egid;
         PMIX_INFO_LOAD(&(*info)[2], PMIX_GRPID, &u32, PMIX_UINT32);
     }
-    return PMIX_SUCCESS;
-}
-
-/* A credential for one connection between hosts carries the bytes it is
- * bound to as its payload, behind a byte saying whose it is, and munge
- * seals both with the credential. It may be decoded only by a process of
- * the user `to`, when that is given. A credential is encoded afresh for
- * each call: munge accepts each one only once on a host */
-#define MUNGE_ROLE_SERVER 'S'
-#define MUNGE_ROLE_TOOL   'T'
-
-static pmix_status_t create_bound(const pmix_byte_object_t *bind, bool server, uid_t to,
-                                  pmix_byte_object_t *cred)
-{
-    char *c = NULL, *payload;
-    munge_ctx_t ctx = NULL;
-    munge_err_t rc;
-
-    PMIX_BYTE_OBJECT_CONSTRUCT(cred);
-    if (NULL == bind || NULL == bind->bytes || 0 == bind->size || INT_MAX < bind->size) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    pmix_mutex_lock(&credlock);
-    if (!initialized) {
-        pmix_mutex_unlock(&credlock);
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-    pmix_mutex_unlock(&credlock);
-
-    payload = (char *) malloc(bind->size + 1);
-    if (NULL == payload) {
-        return PMIX_ERR_NOMEM;
-    }
-    payload[0] = server ? MUNGE_ROLE_SERVER : MUNGE_ROLE_TOOL;
-    memcpy(payload + 1, bind->bytes, bind->size);
-    if ((uid_t) -1 != to) {
-        ctx = munge_ctx_create();
-        if (NULL == ctx || EMUNGE_SUCCESS != munge_ctx_set(ctx, MUNGE_OPT_UID_RESTRICTION, to)) {
-            if (NULL != ctx) {
-                munge_ctx_destroy(ctx);
-            }
-            free(payload);
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-    }
-    rc = munge_encode(&c, ctx, payload, (int) bind->size + 1);
-    if (NULL != ctx) {
-        munge_ctx_destroy(ctx);
-    }
-    free(payload);
-    if (EMUNGE_SUCCESS != rc || NULL == c) {
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "psec: munge failed to create a bound credential: %s",
-                            munge_strerror(rc));
-        free(c);
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-    cred->bytes = c;
-    cred->size = strlen(c) + 1;
-    return PMIX_SUCCESS;
-}
-
-static pmix_status_t validate_bound(const pmix_byte_object_t *bind, bool server,
-                                    const pmix_byte_object_t *cred, uid_t *uid, gid_t *gid)
-{
-    void *payload = NULL;
-    int len = 0;
-    uid_t euid;
-    gid_t egid;
-    munge_err_t rc;
-    bool match;
-
-    if (NULL == bind || NULL == bind->bytes || 0 == bind->size) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    /* munge_decode takes a NUL-terminated string - see validate_cred */
-    if (NULL == cred || NULL == cred->bytes || 0 == cred->size ||
-        '\0' != cred->bytes[cred->size - 1]) {
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "psec: munge given a malformed bound credential");
-        return PMIX_ERR_INVALID_CRED;
-    }
-    rc = munge_decode(cred->bytes, NULL, &payload, &len, &euid, &egid);
-    if (EMUNGE_SUCCESS != rc) {
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "psec: munge failed to decode a bound credential: %s",
-                            munge_strerror(rc));
-        free(payload);
-        return PMIX_ERR_INVALID_CRED;
-    }
-    match = (NULL != payload && 0 <= len && (size_t) len == bind->size + 1 &&
-             (server ? MUNGE_ROLE_SERVER : MUNGE_ROLE_TOOL) == ((char *) payload)[0] &&
-             0 == memcmp((char *) payload + 1, bind->bytes, bind->size));
-    free(payload);
-    if (!match) {
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "psec: munge bound credential was made for another connection, "
-                            "or as the other role");
-        return PMIX_ERR_INVALID_CRED;
-    }
-    *uid = euid;
-    *gid = egid;
     return PMIX_SUCCESS;
 }

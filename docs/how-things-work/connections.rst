@@ -52,7 +52,7 @@ The pieces
        ``ptl_base_fns.c``, ``src/mca/ptl/base/ptl_base_client.c``
      - Builds and sends the connection request, reads the replies.
    * - Security (``psec``)
-     - ``src/mca/psec/{native,munge,ssl}``
+     - ``src/mca/psec/{native,munge}``
      - Creates a credential on the connecting side; checks it, and runs
        any further exchange, on the server.
    * - Host up-calls
@@ -137,9 +137,11 @@ A server listens on its **local socket**, where every client and tool of
 this release on its host connects. It listens on **TCP** only for those
 who use it: clients and tools of earlier releases, when it takes them
 (``ptl_base_legacy_peers``, or the host's ``PMIX_SERVER_LEGACY_PEERS``;
-off by default), and tools on other hosts, when its host asks
-(``PMIX_SERVER_REMOTE_CONNECTIONS``). A server that cannot open a socket
-it needs fails ``PMIx_server_init``.
+off by default). A server takes connections from its own host only: a
+host that asks for connections from other hosts
+(``PMIX_SERVER_REMOTE_CONNECTIONS`` set to true) fails
+``PMIx_server_init``. A server that cannot open a socket it needs fails
+``PMIx_server_init`` too.
 
 The local socket
 ^^^^^^^^^^^^^^^^
@@ -172,20 +174,10 @@ For TCP, the server considers each network interface that has an IPv4 address
 (or IPv6, if enabled), skipping any the ``if_include`` / ``if_exclude``
 settings rule out. Then:
 
-* **By default it listens on loopback only.** Only processes on the
-  same node can reach it.
-* **With ``PMIX_SERVER_REMOTE_CONNECTIONS``,** it listens on the first
-  public interface, and on every other public interface as well. The
-  first gives the URI; the others are *alternate* addresses. Only a
-  PMIx configured ``--enable-remote-tools`` does this. In one without
-  it, a host that asks fails its init. In one with it, a host that asks
-  fails its init when neither ``munge`` nor ``ssl`` can authenticate a
-  peer on another host and the server to it (see `A server on another
-  host`_).
-* **With no loopback interface,** a PMIx configured
-  ``--enable-remote-tools`` uses a public interface - unless
-  ``PMIX_SERVER_REMOTE_CONNECTIONS`` was explicitly set to false, in
-  which case it fails. One without that option fails.
+* **It listens on loopback only.** Only processes on the same node can
+  reach it.
+* **With no loopback interface left,** it fails its init. It never
+  takes a public interface instead.
 
 The port is the first free one from ``ptl_base_ipv4_ports`` (or the
 ``PMIX_TCP_IPV4_PORT`` directive), and by default is chosen by the
@@ -204,16 +196,16 @@ Each address is a URI:
 (``tcp6://`` for IPv6). The server's URI is its TCP one when it listens
 on TCP, and its local socket's when it does not. The server stores it
 under ``PMIX_MYSERVER_URI`` and ``PMIX_SERVER_URI``, reports it, and
-puts it first in its rendezvous files; any alternates go, comma-separated,
-under ``PMIX_MYSERVER_ALT_URIS``. A TCP URI reaches processes on other
-hosts and older peers, which cannot use the local socket. When the
+puts it first in its rendezvous files. A TCP URI reaches older peers,
+which cannot use the local socket. When the
 server has one, the local socket's URI is given beside it where a
 process on the host reads it: the environment of the processes the
 server starts (see below) and the rendezvous files.
 
 The server can also report the URI on request (``ptl_base_report_uri``
 or the ``PMIX_TCP_REPORT_URI`` directive): to stdout (``-``), stderr
-(``+``), an open file descriptor (a number), or a file.
+(``+``), an open file descriptor (a number), or a file. A file is
+created mode 0644: only the server's user can write it.
 
 Rendezvous files
 ^^^^^^^^^^^^^^^^
@@ -221,9 +213,10 @@ Rendezvous files
 A server that supports tools writes rendezvous files, through which
 tools find it. Which files it writes, and where, is described in
 :doc:`ptl`; that part is being redesigned. Each file holds the URI, the
-server's version, pid, uid and gid, the local socket's URI, and the
-wire formats and security mechanisms it accepts. The server removes the
-files it wrote when it finalizes.
+server's version, pid, uid and gid, the local socket's URI, the wire
+formats and security mechanisms it accepts, and the lock that shows it
+is running (see `A server the kernel cannot name`_). The server removes
+the files it wrote when it finalizes.
 
 Accepting
 ^^^^^^^^^
@@ -267,8 +260,7 @@ environment, before the client starts. The host:
 
 A client is local to its server by definition: the host registers it
 and prepares its environment on the server's node. It connects to the
-local socket. ``PMIX_SERVER_REMOTE_CONNECTIONS`` lets tools on other
-nodes reach the server.
+local socket.
 
 ``PMIx_server_setup_fork`` sets:
 
@@ -363,13 +355,17 @@ from a ``PMIX_SERVER_URI`` directive to ``PMIx_Init``). A tool finds its
 server as described in :doc:`ptl`; a rendezvous file of this release
 gives it the local socket. From there the two do the same:
 
-#. **Open a connection** to the URI's address. For TCP, try each
-   alternate address if that fails. Each attempt is bounded by
-   ``ptl_base_handshake_wait_time`` (default 60 seconds). A process given
-   the local socket connects there and nowhere else: if it cannot reach
-   the socket, it fails to initialize, and says why.
-#. **On the local socket, check the server** (below).
-#. **With a server on another host, have it prove who it is** (below).
+#. **Open a connection** to the URI's address - only an address of this
+   host. A TCP address that is not this host's - not a loopback address,
+   and not an address one of its interfaces holds, by the interface list
+   PMIx made at init or by the kernel's own list - is not dialled, and
+   the process says why. A tool fails with ``PMIX_ERR_UNREACH``; a
+   client, which was told where its server is, fails ``PMIx_Init`` with
+   ``PMIX_ERR_COMM_FAILURE`` rather than coming up as a singleton. Each attempt
+   is bounded by ``ptl_base_handshake_wait_time`` (default 60 seconds).
+   A process given the local socket connects there and nowhere else: if
+   it cannot reach the socket, it fails to initialize, and says why.
+#. **Check the server** (below).
 #. **Send the connection request.**
 #. **Read the replies**, each also bounded by
    ``ptl_base_handshake_wait_time``.
@@ -402,126 +398,67 @@ Over TCP, the kernel names the owner of the server's end of the
 connection when the server is on the same host, from its table of TCP
 connections - a user, but no group. A process applies the same rule by
 user alone: a server running as its own user, as root, or as a user
-``ptl_base_server_access`` names. A server at an address of this host
-that the table does not show is refused. One at any other address - on
-another host, or in another network namespace - is checked by what it
-proves instead (below). So is one on this host when the kernel has no
-table to ask - see "A server the kernel cannot name" below.
+``ptl_base_server_access`` names. A server the table does not show is
+refused (``PMIX_ERR_INVALID_CRED``), and so is one the process could not
+ask about because it is out of descriptors or memory. When the table has
+no answer:
 
-A server on another host
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-A process connecting over TCP to an address that is not its own host's
-- not a loopback address, and not the address of one of its
-interfaces - has the server prove who it is before it sends its
-connection request:
-
-#. **It chooses ``munge`` or ``ssl``**: the mechanism chosen for the
-   server, if that is one of them, else the highest-priority one it has
-   that can both prove who it is and check another. ``native`` cannot. A
-   process with neither sends nothing and fails, saying so. For ``ssl``
-   that means a certificate and key of its own and the certificate
-   authority the server's certificate is issued by.
-#. **It sends an opening message**, in the connection request's
-   framing: the mechanism's name, a zero credential length, the kind of
-   peer ``11``, its version, the length of a random value (a *nonce*) of
-   its own, that nonce, its uid, and a byte that says whether it binds
-   the connection too (below). A server ignores anything after that
-   byte, which a later release may append, and takes an opening without
-   it as not binding.
-#. **The server answers** with a status. A server that takes no tools,
-   or - for a process on another host - takes no processes from other
-   hosts (no ``PMIX_SERVER_REMOTE_CONNECTIONS``), or does not have that
-   mechanism able to do both, refuses. Otherwise
-   the answer carries a nonce of the server's, the length of a
-   credential, and that credential, which the server made for this
-   exchange: it names who the server is, and is bound to both nonces and
-   to its being a server's. With ``munge``, only a process of the uid
-   the opening named can decode it.
-#. **The process checks that credential**, and then whom it names, by
-   the rule for any other process above: its own user, root, or one
-   ``ptl_base_server_access`` names - or the uid and gid it was given
-   for the server. A server that fails either check is not talked to.
-#. **Its connection request then carries a credential made for this
-   exchange too**, bound to the same two nonces as a tool's - with
-   ``munge``, decodable only by the server's uid - and claiming the uid
-   its opening named. Neither credential is accepted for any other
-   connection, nor by ``PMIx_Validate_credential``.
-
-A server of a release before v7.0 does not take part, and a process of
-this release does not connect to one on another host. For ``ssl``, a
-server's certificate must allow server authentication and a process's
-client authentication, where they restrict their key's use; and the user
-each certificate names must be a user of the other end's host, with the
-same uid, holding the group the credential claims.
-
-A process can take a server to be on its own host when the server does
-not - one reached through a port forward or a proxy on the process's
-host, say. Such a server answers the connection request with
-``PMIX_ERR_PROVE_FIRST``, and the process connects again and has it
-prove who it is, as above. A process with neither ``munge`` nor ``ssl``
-then fails, saying why.
-
-What the exchange establishes is who is at each end when the connection
-opens: the server's user to the process, and the process's to the
-server. It does not establish which host or address the process
-reached, and the traffic after the connection request is neither
-encrypted nor signed.
+* a connection whose far end is no longer there - the server closed it -
+  fails with ``PMIX_ERR_UNREACH``;
+* a far end that is not at an address of this host - one reached through
+  another network namespace, say - is refused with ``PMIX_ERR_UNREACH``,
+  saying the address is not this host's;
+* a server on this host when the kernel has no table to ask is refused
+  with ``PMIX_ERR_INVALID_CRED``, unless something vouches for it - see
+  "A server the kernel cannot name" below.
 
 A server the kernel cannot name
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A process connecting over TCP to a server at an address of its own host
-asks the kernel's table of TCP connections who runs the server. Where
-the platform has no table to ask, the process has the server prove who
-it is by the same exchange - for any address an interface of its host
-holds, by the kernel's own list, which names some the interface list
-does not - and checks whom it names by the same rule. A client does not:
-its server is the one named for it - by the environment it was started
-with, or by its caller. A
-singleton, which finds a system server's file in a shared directory,
-does. Any other failure to read the table refuses the server.
+A process connecting over TCP to a server on its own host asks the
+kernel's table of TCP connections who runs the server. Linux, macOS and
+FreeBSD 12 and later have such a table. Any other platform has none, and
+neither does a Linux host where neither the ``sock_diag`` netlink
+interface nor ``/proc/net/tcp`` can be read.
 
-The process's opening says that it binds the connection: both
-credentials are then also bound to the connection's two ends -
-addresses and ports - as each end reads them from its own socket. A
-connection relayed through another process has different ends on each
-side, and fails. A server answers such an opening from a process at an
-address of its own host when it takes tools - whether or not it takes
-processes from other hosts - and only where its own kernel cannot name
-its peers either, as it cannot when the process's cannot. A tool on
-another host that reaches the server through a proxy on the server's
-host does not bind the connection, and is answered as one on another
-host. Only this decision goes by the kernel's list: an address it holds
-may still lead to another host, as a Kubernetes service address does.
+Where there is no table to ask, a process connects to the server only
+when one of these vouches for it:
 
-Then:
+* **The server named itself to the process.** A client always connects:
+  its server is the one named for it, by the environment it was started
+  with or by its caller. So does a tool or other process whose server
+  started it and named itself in its environment, whatever its release.
+* **The server's file, given by the caller.** A tool or a singleton is
+  given the file as ``file:<path>`` or ``PMIX_TOOL_ATTACHMENT_FILE``. A
+  file found by a search, or at a fixed name in a shared directory, is
+  not enough. The file vouches when:
 
-* a process with neither ``munge`` nor ``ssl`` fails, saying so. A
-  server of v7.0 or later also listens on a local socket, where the
-  kernel names it; a process given the server's rendezvous file
-  connects there;
-* a server that does not answer - one of a release before v7.0, say - is
-  not talked to;
-* except that a process that knows the server is of a release before
-  v7.0 connects to it as before, unchecked. It knows that from the
-  environment a server started it with, or from a file the caller named
-  for the server - its rendezvous or report file, given as
-  ``file:<path>`` or ``PMIX_TOOL_ATTACHMENT_FILE``. A file it finds in a
-  directory anyone can write to, or at a fixed name there, is not
-  enough: its server may be long gone and its port another's. The file
-  is believed only when it is the one at the name, not a link to one nor
-  one of several names for it, only its owner can write it, and its
-  owner is a user whose server the process may talk to by the rule above
-  (the user it was told to expect, if it was). Its version chooses the
-  wire format either way. A process given only the server's address does
-  not know its release, and is told to use the file.
+  - its version line names a release - digits, after an optional ``v``,
+    with a major between 1 and 254; any other line vouches for nothing;
+  - the release is before v7.0, which has no way to be named; or it is
+    v7.0 or later and the server is still running: the file's
+    ``lock:flock`` line names a lock beside it that is held. A report
+    file has no lock line, so it vouches only for a server of an earlier
+    release; a server of this release is vouched for by its rendezvous
+    file;
+  - it is the file at the name, not a link to one nor one of several
+    names for it, only its owner can write it, and its owner is a user
+    whose server the process may talk to by the rule above (the user it
+    was told to expect, if it was).
 
-The process's connection request then carries a credential made for the
-exchange, which the server checks as it checks one from another host. A
-process of an earlier release does not ask; the server checks it as any
-other process on its host - see :doc:`authentication/native`, and
-``psec_native_legacy_auth`` for a platform with no table.
+  The file's version chooses the wire format whether or not it vouches.
+  A server of v7.0 or later lists a TCP URI only when it takes legacy
+  peers, which it takes on their claim where it cannot name them either.
+
+A server nothing vouches for is refused with ``PMIX_ERR_INVALID_CRED``,
+and the process says how to connect (help topic ``server-unnamed``). A
+server of v7.0 or later also listens on a local socket, where the kernel
+names it; a process whose file names that socket connects there, and
+none of this applies.
+
+A process of an earlier release does none of this; the server checks it
+as any other process on its host - see :doc:`authentication/native`
+for a platform with no table.
 
 The connection request
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -627,17 +564,12 @@ The credential
 
 Each ``psec`` component makes its own credential:
 
-* **native** sends the peer's effective uid and gid. The server does
-  not take them on trust: see :doc:`authentication/native`.
-* **munge** sends a credential encoded by the MUNGE daemon.
-* **ssl** sends the peer's uid, gid, a timestamp, a random value, its
-  certificate chain, and a signature over all of them.
-
-To a server on another host, ``munge`` and ``ssl`` send a credential
-made for the exchange that preceded the request (see `A server on
-another host`_): ``munge`` carries the exchange's nonces as its
-payload, and ``ssl`` signs them, and whether the credential is a
-server's or a process's, with the rest.
+* **native** sends the peer's effective uid and gid. The server takes
+  the uid from its kernel instead where it can, and takes the claim only
+  where its kernel keeps no table of TCP connections and it takes legacy
+  peers: see :doc:`authentication/native`.
+* **munge** sends a credential encoded by the MUNGE daemon. It carries
+  no payload: the server refuses a ``munge`` credential that does.
 
 The replies
 ^^^^^^^^^^^
@@ -692,26 +624,10 @@ peer:
   the local socket whether it does or not: no earlier release has that
   transport.
 
-A request whose kind is ``11`` is not a connection request: it is a
-peer on another host asking the server to prove who it is first (see `A
-server on another host`_). The server answers it only over TCP, only
-once per connection, only when it takes tools and its host asked for
-remote connections in a PMIx configured ``--enable-remote-tools``, and
-only with ``munge`` or ``ssl`` able to both prove who the server is and
-check the peer. It then waits for the peer's connection request as it
-waited for this message - for what is left of the same
-``ptl_base_connect_ack_timeout``, which runs from the connection's
-arrival.
-
 Before the security component is asked, a peer that connected over TCP
 from an address that is not this host's - not a loopback address, and
-not the address of one of its interfaces - must have had the server
-prove who it is first. One of this release that did not is told to,
-with ``PMIX_ERR_PROVE_FIRST``, when the server would; any other is
-refused with ``PMIX_ERR_NO_PERMISSIONS``. One that did must name this
-release or a later one, and send a credential made for that exchange,
-with the same mechanism, as a tool's, naming the uid and gid it claims
-and the uid its opening named; anything else is refused.
+not the address of one of its interfaces - is refused with
+``PMIX_ERR_NO_PERMISSIONS``. A server takes peers on its own host only.
 
 The rest depends on whether the peer is a client (kinds 0 and 9) or a
 tool (all the others).
@@ -786,26 +702,22 @@ depends on the component:
 * **native**, on the local socket, takes the uid and gid the kernel
   reports for the connection. Over TCP it asks the server's own kernel
   who owns the peer's end of the connection, which gives the uid; a peer
-  at an address of this host that the table does not show is refused. A
-  peer on another node never reaches it (see above). On a platform with
-  no table to ask, a TCP peer is accepted on its claim only while
-  ``psec_native_legacy_auth`` is ``true``. See
+  the table does not show is refused. A peer at an address that is not
+  this host's never reaches it (see above). On a platform with no table
+  to ask, a TCP peer is accepted on its claim: the server has a TCP
+  listener only when it takes legacy peers. A table the server could
+  not read - it is out of descriptors or memory, say -
+  is no answer, and the peer is refused. See
   :doc:`authentication/native`.
 * **munge** decodes the credential through the MUNGE daemon. The
   decoded uid and gid must equal the peer's registered (client) or
   claimed (tool) identity.
-* **ssl** verifies the certificate chain against the configured
-  certificate authority, checks the signature and the timestamp, and
-  checks that the certificate names a local account with the claimed
-  uid, which holds the claimed gid. The random value may not be reused.
 
 The result is one uid and one gid. They are what the host is given, and
 what every later access decision for this peer uses.
 
-Where settling the identity takes an exchange with the peer, the server
-drives it as a small state machine per connection: each step runs when
-the peer's socket becomes readable, and a time limit ends the exchange.
-While one connection waits, the server serves everyone else.
+Settling the identity is a single step: no component runs an exchange
+with the peer.
 
 Calling the host
 ^^^^^^^^^^^^^^^^

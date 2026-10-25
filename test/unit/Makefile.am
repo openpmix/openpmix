@@ -63,9 +63,9 @@ dist_check_SCRIPTS = check_static_init.pl check_ctor_coverage.py
 
 EXTRA_DIST = ctor_coverage_baseline.txt run_gds_fallback.pl.in run_simpcycle.pl.in run_toolcycle.pl.in run_toolswitch.pl.in run_grpmember.pl.in run_grpref.pl.in run_grpbadinfo.pl.in run_getconcurrent.pl.in run_grpinvite.pl.in run_grpinviteendpts.pl.in run_grpinviteothers.pl.in run_grpinvitesuppress.pl.in run_grpinvitenb.pl.in run_grptimeout.pl.in run_grpdecline.pl.in run_grpabort.pl.in run_grpmemberfail.pl.in run_grpleader.pl.in run_grpcabort.pl.in run_grpctimeout.pl.in run_monitor.pl.in run_tools.pl.in
 
-check_PROGRAMS = gds_request_realm pfexec_params pfexec_iof client_api client_commit get_api data_pack_peer common_api compress compress_block preg bfrops_regex2 bfrops_alloc_inherit bfrops_darray bfrops_malformed bfrops_get_number bfrops_null_object bfrops_print_timeval bfrops_helpers nested_darray gds_fallback gds_datastore pmix_log collective_status collect_job_info trk_complete tracker_match trk_peer_lost client_cycle tool_cycle event_chain hwloc_datatype hwloc_devices hwloc_setup_fail hwloc_adopt progress_threads info_support singleton_register rndz_stale iof_pattern iof_flow iof_output iof_pending iof_inherit iof_sink_arm iof_sender iof_pull_approval iof_file_perms iof_finalize_sinks proc_array_id get_perf ptl_uri ptl_search ptl_frame ptl_sendrecv ptl_listener ptl_loopback ptl_legacy_ack ptl_validate_first ptl_accept ptl_exec ptl_handshake ptl_stalled_peer ptl_recv_timeout ptl_nosigpipe ptl_transport ptl_remote ptl_check_server ptl_legacy ptl_token ptl_pfexec_token ptl_tcp_server ptl_select ptl_usock ptl_local_connect idenv client_connect_fail tool_nspace tool_alt_uris tool_delete tool_replies tool_rndz tool_api tool_attach_nb tool_evcache tool_relay runtime_init server_get server_group server_group_members server_invite group_event_source resolve_api spawn_api server_control server_events server_dmodex server_dmodex_access server_inventory server_registration server_ops server_op_replies server_fabric server_fence server_connect server_resolve server_requester_id info_relayed server_access server_access_checks server_setup server_identity attr_dictionary event_forward session_update update_attach_fail job_data_update server_extprogress pgpu_visible_devices pgpu_affinity_mask pgpu_envar_blob pstat_parse pstat_frame pstat_query pstat_peers psensor_scope pnet_assigned_devices pnet_envar_blob pnet_opa_seckey pnet_tcp_ports pnet_simptest_map pmdl_envars pmdl_paramfile plog_routing plog_gsys psec_credentials threads_primitives pif_discovery pinstalldirs_expand
+check_PROGRAMS = gds_request_realm pfexec_params pfexec_iof client_api client_commit get_api data_pack_peer common_api compress compress_block preg bfrops_regex2 bfrops_alloc_inherit bfrops_darray bfrops_malformed bfrops_get_number bfrops_null_object bfrops_print_timeval bfrops_helpers nested_darray gds_fallback gds_datastore pmix_log collective_status collect_job_info trk_complete tracker_match trk_peer_lost client_cycle tool_cycle event_chain hwloc_datatype hwloc_devices hwloc_setup_fail hwloc_adopt progress_threads info_support singleton_register rndz_stale iof_pattern iof_flow iof_output iof_pending iof_inherit iof_sink_arm iof_sender iof_pull_approval iof_file_perms iof_finalize_sinks proc_array_id get_perf ptl_uri ptl_search ptl_frame ptl_sendrecv ptl_listener ptl_loopback ptl_legacy_ack ptl_validate_first ptl_accept ptl_exec ptl_handshake ptl_stalled_peer ptl_recv_timeout ptl_nosigpipe ptl_transport ptl_remote ptl_check_server ptl_unnamed ptl_legacy ptl_token ptl_pfexec_token ptl_tcp_server ptl_select ptl_usock ptl_local_connect idenv client_connect_fail tool_nspace tool_delete tool_replies tool_rndz tool_api tool_attach_nb tool_evcache tool_relay runtime_init server_get server_group server_group_members server_invite group_event_source resolve_api spawn_api server_control server_events server_dmodex server_dmodex_access server_inventory server_registration server_ops server_op_replies server_fabric server_fence server_connect server_resolve server_requester_id info_relayed server_access server_access_checks server_setup server_identity attr_dictionary event_forward session_update update_attach_fail job_data_update server_extprogress pgpu_visible_devices pgpu_affinity_mask pgpu_envar_blob pstat_parse pstat_frame pstat_query pstat_peers psensor_scope pnet_assigned_devices pnet_envar_blob pnet_opa_seckey pnet_tcp_ports pnet_simptest_map pmdl_envars pmdl_paramfile plog_routing plog_gsys psec_credentials threads_primitives pif_discovery pinstalldirs_expand
 
-TESTS = gds_request_realm pfexec_params pfexec_iof client_api client_commit get_api data_pack_peer common_api compress compress_block preg bfrops_regex2 bfrops_alloc_inherit bfrops_darray bfrops_malformed bfrops_get_number bfrops_null_object bfrops_print_timeval bfrops_helpers nested_darray gds_fallback run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_toolswitch.pl run_grpmember.pl run_grpref.pl run_grpbadinfo.pl run_getconcurrent.pl run_grpinvite.pl run_grpinviteendpts.pl run_grpinviteothers.pl run_grpinvitesuppress.pl run_grpinvitenb.pl run_grptimeout.pl run_grpdecline.pl run_grpabort.pl run_grpmemberfail.pl run_grpleader.pl run_grpcabort.pl run_grpctimeout.pl run_monitor.pl run_tools.pl pmix_log collective_status collect_job_info trk_complete tracker_match trk_peer_lost client_cycle tool_cycle event_chain hwloc_datatype hwloc_devices hwloc_setup_fail hwloc_adopt progress_threads info_support singleton_register rndz_stale iof_pattern iof_flow iof_output iof_pending iof_inherit iof_sink_arm iof_sender iof_pull_approval iof_file_perms iof_finalize_sinks proc_array_id gds_datastore get_perf ptl_uri ptl_search ptl_frame ptl_sendrecv ptl_listener ptl_loopback ptl_legacy_ack ptl_validate_first ptl_accept ptl_exec ptl_handshake ptl_stalled_peer ptl_recv_timeout ptl_nosigpipe ptl_transport ptl_remote ptl_check_server ptl_legacy ptl_token ptl_pfexec_token ptl_tcp_server ptl_select ptl_usock ptl_local_connect idenv client_connect_fail tool_nspace tool_alt_uris tool_delete tool_replies tool_rndz tool_api tool_attach_nb tool_evcache tool_relay runtime_init server_get server_group server_group_members server_invite group_event_source resolve_api spawn_api server_control server_events server_dmodex server_dmodex_access server_inventory server_registration server_ops server_op_replies server_fabric server_fence server_connect server_resolve server_requester_id info_relayed server_access server_access_checks server_setup server_identity attr_dictionary event_forward session_update update_attach_fail job_data_update server_extprogress pgpu_visible_devices pgpu_affinity_mask pgpu_envar_blob pstat_parse pstat_frame pstat_query pstat_peers psensor_scope pnet_assigned_devices pnet_envar_blob pnet_opa_seckey pnet_tcp_ports pnet_simptest_map pmdl_envars pmdl_paramfile plog_routing plog_gsys psec_credentials threads_primitives pif_discovery pinstalldirs_expand check_static_init.pl check_ctor_coverage.py
+TESTS = gds_request_realm pfexec_params pfexec_iof client_api client_commit get_api data_pack_peer common_api compress compress_block preg bfrops_regex2 bfrops_alloc_inherit bfrops_darray bfrops_malformed bfrops_get_number bfrops_null_object bfrops_print_timeval bfrops_helpers nested_darray gds_fallback run_gds_fallback.pl run_simpcycle.pl run_toolcycle.pl run_toolswitch.pl run_grpmember.pl run_grpref.pl run_grpbadinfo.pl run_getconcurrent.pl run_grpinvite.pl run_grpinviteendpts.pl run_grpinviteothers.pl run_grpinvitesuppress.pl run_grpinvitenb.pl run_grptimeout.pl run_grpdecline.pl run_grpabort.pl run_grpmemberfail.pl run_grpleader.pl run_grpcabort.pl run_grpctimeout.pl run_monitor.pl run_tools.pl pmix_log collective_status collect_job_info trk_complete tracker_match trk_peer_lost client_cycle tool_cycle event_chain hwloc_datatype hwloc_devices hwloc_setup_fail hwloc_adopt progress_threads info_support singleton_register rndz_stale iof_pattern iof_flow iof_output iof_pending iof_inherit iof_sink_arm iof_sender iof_pull_approval iof_file_perms iof_finalize_sinks proc_array_id gds_datastore get_perf ptl_uri ptl_search ptl_frame ptl_sendrecv ptl_listener ptl_loopback ptl_legacy_ack ptl_validate_first ptl_accept ptl_exec ptl_handshake ptl_stalled_peer ptl_recv_timeout ptl_nosigpipe ptl_transport ptl_remote ptl_check_server ptl_unnamed ptl_legacy ptl_token ptl_pfexec_token ptl_tcp_server ptl_select ptl_usock ptl_local_connect idenv client_connect_fail tool_nspace tool_delete tool_replies tool_rndz tool_api tool_attach_nb tool_evcache tool_relay runtime_init server_get server_group server_group_members server_invite group_event_source resolve_api spawn_api server_control server_events server_dmodex server_dmodex_access server_inventory server_registration server_ops server_op_replies server_fabric server_fence server_connect server_resolve server_requester_id info_relayed server_access server_access_checks server_setup server_identity attr_dictionary event_forward session_update update_attach_fail job_data_update server_extprogress pgpu_visible_devices pgpu_affinity_mask pgpu_envar_blob pstat_parse pstat_frame pstat_query pstat_peers psensor_scope pnet_assigned_devices pnet_envar_blob pnet_opa_seckey pnet_tcp_ports pnet_simptest_map pmdl_envars pmdl_paramfile plog_routing plog_gsys psec_credentials threads_primitives pif_discovery pinstalldirs_expand check_static_init.pl check_ctor_coverage.py
 
 client_api_SOURCES = \
         client_api.c
@@ -365,35 +365,6 @@ pmdl_paramfile_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 pmdl_paramfile_LDADD = \
     $(top_builddir)/src/libpmix.la
 
-# psec/ssl: X.509 certificate authentication. The test mints its own CAs,
-# certificates and hand-built credentials, so it links OpenSSL itself and is
-# built only where the component was built against the real library. See
-# the header comment in psec_ssl_auth.c.
-if PMIX_HAVE_PSEC_SSL
-check_PROGRAMS += psec_ssl_auth ptl_remote_auth
-TESTS += psec_ssl_auth ptl_remote_auth
-endif
-psec_ssl_auth_SOURCES = \
-        psec_ssl_auth.c \
-        ssl_test_pki.h
-psec_ssl_auth_CPPFLAGS = $(psec_ssl_CPPFLAGS)
-psec_ssl_auth_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(psec_ssl_LDFLAGS)
-psec_ssl_auth_LDADD = \
-    $(top_builddir)/src/libpmix.la \
-    $(psec_ssl_LIBS)
-
-# A tool and a server on different hosts authenticating each other, with
-# psec/ssl and a PKI the test makes - see ptl_remote_auth.c. It skips in a
-# build without remote tools
-ptl_remote_auth_SOURCES = \
-        ptl_remote_auth.c \
-        ssl_test_pki.h
-ptl_remote_auth_CPPFLAGS = $(psec_ssl_CPPFLAGS)
-ptl_remote_auth_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(psec_ssl_LDFLAGS)
-ptl_remote_auth_LDADD = \
-    $(top_builddir)/src/libpmix.la \
-    $(psec_ssl_LIBS)
-
 pmdl_envars_SOURCES = \
         pmdl_envars.c
 pmdl_envars_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -632,6 +603,12 @@ ptl_remote_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 ptl_remote_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+ptl_unnamed_SOURCES = \
+        ptl_unnamed.c
+ptl_unnamed_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+ptl_unnamed_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 ptl_check_server_SOURCES = \
         ptl_check_server.c
 ptl_check_server_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
@@ -672,12 +649,6 @@ tool_nspace_SOURCES = \
         tool_nspace.c
 tool_nspace_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 tool_nspace_LDADD = \
-    $(top_builddir)/src/libpmix.la
-
-tool_alt_uris_SOURCES = \
-        tool_alt_uris.c
-tool_alt_uris_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
-tool_alt_uris_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 tool_delete_SOURCES = \

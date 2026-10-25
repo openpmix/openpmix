@@ -83,7 +83,7 @@ unreliable: `pmix_if_list` is the list being built, so a device whose
 IPv4 address has not been discovered yet is simply absent from it, and a
 bare `IFF_UP` loses `IFF_LOOPBACK` — which makes `::1` look like an
 ordinary routable address to everything downstream, including the code
-that picks which address to advertise to other hosts. The middle branch
+that picks which address a listener takes. The middle branch
 still makes the component prefer to run *after* `posix_ipv4`, which is
 the static-components order on Linux; keep it intact.
 

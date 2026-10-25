@@ -33,15 +33,10 @@
 #include "psec_native.h"
 #include "src/mca/psec/psec.h"
 
-static pmix_status_t component_register(void);
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
 static pmix_psec_module_t *assign_module(void);
-
-pmix_psec_native_params_t pmix_psec_native_params = {
-    .legacy_auth = false
-};
 
 /*
  * Instantiate the public struct with all of our public information
@@ -59,7 +54,6 @@ pmix_psec_base_component_t pmix_mca_psec_native_component = {
                                    PMIX_RELEASE_VERSION),
 
         /* Component open and close functions */
-        .pmix_mca_register_component_params = component_register,
         .pmix_mca_open_component = component_open,
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
@@ -67,19 +61,6 @@ pmix_psec_base_component_t pmix_mca_psec_native_component = {
     .assign_module = assign_module
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, psec, native)
-
-static int component_register(void)
-{
-    pmix_mca_base_component_t *c = &pmix_mca_psec_native_component.base;
-
-    (void) pmix_mca_base_component_var_register(
-        c, "legacy_auth",
-        "Accept a peer connecting over TCP on the user and group it claims, when the "
-        "kernel cannot confirm them - a peer of an earlier PMIx release, or one in a "
-        "container with a network of its own. When false, such a peer is refused",
-        PMIX_MCA_BASE_VAR_TYPE_BOOL, &pmix_psec_native_params.legacy_auth);
-    return PMIX_SUCCESS;
-}
 
 static int component_open(void)
 {

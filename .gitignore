@@ -366,7 +366,7 @@ test/unit/ptl_nosigpipe
 test/unit/ptl_transport
 test/unit/ptl_remote
 test/unit/ptl_check_server
-test/unit/ptl_remote_auth
+test/unit/ptl_unnamed
 test/unit/ptl_legacy
 test/unit/ptl_token
 test/unit/ptl_pfexec_token
@@ -381,7 +381,6 @@ test/unit/client_connect_fail
 test/unit/tool_delete
 test/unit/tool_replies
 test/unit/tool_nspace
-test/unit/tool_alt_uris
 test/unit/tool_rndz
 test/unit/tool_api
 test/unit/tool_attach_nb
@@ -403,7 +402,6 @@ test/unit/pmdl_paramfile
 test/unit/plog_gsys
 test/unit/plog_routing
 test/unit/psec_credentials
-test/unit/psec_ssl_auth
 test/unit/threads_primitives
 test/unit/pif_discovery
 test/unit/pinstalldirs_expand

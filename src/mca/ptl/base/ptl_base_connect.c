@@ -511,13 +511,9 @@ static pmix_status_t check_connections(pmix_list_t *connections)
 }
 
 /* The address to connect to from a server's file: its local transport's
- * when the file names one - and then none of its others, which a process
- * of this release on this host does not use - else the first line's and
- * the alternates */
-static void take_address(pmix_connection_t *cn, char **suri, char **alts)
+ * when the file names one, else the first line's */
+static void take_address(pmix_connection_t *cn, char **suri)
 {
-    free(*alts);
-    *alts = NULL;
     if (NULL != cn->local_uri) {
         *suri = cn->local_uri;
         cn->local_uri = NULL;
@@ -525,12 +521,10 @@ static void take_address(pmix_connection_t *cn, char **suri, char **alts)
     }
     *suri = cn->uri;
     cn->uri = NULL;
-    *alts = cn->alt_uris;
-    cn->alt_uris = NULL;
 }
 
 static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
-                             pmix_rank_t *rank, char **suri, char **alts,
+                             pmix_rank_t *rank, char **suri,
                              bool optional, bool rndz, char *filename)
 {
     pmix_list_t connections;
@@ -564,14 +558,14 @@ static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
         *nspace = cn->nspace;
         cn->nspace = NULL;
         *rank = cn->rank;
-        take_address(cn, suri, alts);
+        take_address(cn, suri);
     }
     PMIX_LIST_DESTRUCT(&connections);
     return rc;
 }
 
 static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
-                               pmix_rank_t *rank, char **suri, char **alts,
+                               pmix_rank_t *rank, char **suri,
                                char *filename, bool exact, pmix_info_t *iptr,
                                size_t niptr, bool optional)
 {
@@ -601,7 +595,7 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
         *nspace = cn->nspace;
         cn->nspace = NULL;
         *rank = cn->rank;
-        take_address(cn, suri, alts);
+        take_address(cn, suri);
         PMIX_LIST_DESTRUCT(&connections);
         return rc;
     } else if (1 < pmix_list_get_size(&connections)) {
@@ -740,21 +734,6 @@ pmix_status_t pmix_ptl_base_check_connect_directives(const pmix_info_t info[], s
                 return PMIX_ERR_BAD_PARAM;
             }
 
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_ALT_URIS)) {
-            /* each entry is an address as a URI carries it after its ';' */
-            if (!is_string_value(&info[n])) {
-                return PMIX_ERR_BAD_PARAM;
-            }
-            order = PMIx_Argv_split(info[n].value.data.string, ',');
-            for (m = 0; NULL != order && NULL != order[m]; m++) {
-                rc = pmix_ptl_base_setup_connection(order[m], &addr, &len);
-                if (PMIX_SUCCESS != rc) {
-                    PMIx_Argv_free(order);
-                    return (PMIX_ERR_NOMEM == rc) ? rc : PMIX_ERR_BAD_PARAM;
-                }
-            }
-            PMIx_Argv_free(order);
-
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_URI) ||
                    PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
             if (!is_string_value(&info[n])) {
@@ -796,8 +775,6 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                                 pmix_ptl_connect_nb_cbfunc_t cbfunc, void *cbdata)
 {
     char *suri = NULL, *evar, *localuri = NULL;
-    char *alts = NULL;              // the server's other addresses, if we know any
-    const char *diralts = NULL;     // ...as given by PMIX_SERVER_ALT_URIS
     char *filename, *nspace = NULL;
     char **order = NULL;
     const char* tmp;
@@ -828,13 +805,9 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
-    /* what a server we found before listed, or was believed of, is not
-     * this one's */
-    if (NULL != peer->nptr) {
-        peer->nptr->compat.rpsec = NULL;
-    }
+    /* what was believed of a server we found before is not this one's -
+     * nor is the URI an earlier connect was given */
     pmix_ptl_base.server_release_vouched = false;
-    /* nor is the URI an earlier connect was given */
     free(pmix_ptl_base.uri);
     pmix_ptl_base.uri = NULL;
 
@@ -966,11 +939,6 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
                 optional = PMIX_INFO_TRUE(&info[n]);
-
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_ALT_URIS)) {
-                /* vetted by pmix_ptl_base_check_connect_directives; only
-                 * meaningful with the URI it accompanies */
-                diralts = info[n].value.data.string;
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_URI)
                        || PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
@@ -1134,7 +1102,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         if (0 == strncmp(pmix_ptl_base.uri, "file:", 5)) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tool:tool getting connection info from %s", pmix_ptl_base.uri);
-            rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, false, &pmix_ptl_base.uri[5]);
+            rc = tryfile(peer, &nspace, &rank, &suri, optional, false, &pmix_ptl_base.uri[5]);
             if (PMIX_SUCCESS != rc) {
                 goto cleanup;
             }
@@ -1151,19 +1119,12 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
             rc = PMIX_ERR_BAD_PARAM;
             goto cleanup;
         }
-        if (NULL != diralts) {
-            alts = strdup(diralts);
-            if (NULL == alts) {
-                rc = PMIX_ERR_NOMEM;
-                goto cleanup;
-            }
-        }
         goto complete;
     }
 
     /* if they gave us a rendezvous file, use it */
     if (NULL != rendfile) {
-        rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, false, rendfile);
+        rc = tryfile(peer, &nspace, &rank, &suri, optional, false, rendfile);
         if (PMIX_SUCCESS != rc) {
             /* they gave us a specific rendfile and we couldn't read it,
              * so we have no URI to connect to - whether or not the
@@ -1185,7 +1146,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "ptl:tool:tool looking for system server at %s", filename);
                 // this is always optional as we are going to fallback to non-system servers
-                rc = tryfile(peer, &nspace, &rank, &suri, &alts, true, true, filename);
+                rc = tryfile(peer, &nspace, &rank, &suri, true, true, filename);
                 free(filename);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
@@ -1200,7 +1161,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                 }
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "ptl:tool:tool looking for system server at %s", filename);
-                rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, true, filename);
+                rc = tryfile(peer, &nspace, &rank, &suri, optional, true, filename);
                 free(filename);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
@@ -1220,7 +1181,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                 }
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "ptl:tool:tool looking for scheduler at %s", filename);
-                rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, true, filename);
+                rc = tryfile(peer, &nspace, &rank, &suri, optional, true, filename);
                 free(filename);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SCHEDULER);
@@ -1240,7 +1201,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                 }
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "ptl:tool:tool looking for system controller at %s", filename);
-                rc = tryfile(peer, &nspace, &rank, &suri, &alts, optional, true, filename);
+                rc = tryfile(peer, &nspace, &rank, &suri, optional, true, filename);
                 free(filename);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SYS_CTRLR);
@@ -1262,7 +1223,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tool:tool searching for given session server %s", filename);
-        rc = trysearch(peer, &nspace, &rank, &suri, &alts, filename, true, iptr, niptr, optional);
+        rc = trysearch(peer, &nspace, &rank, &suri, filename, true, iptr, niptr, optional);
         free(filename);
         if (PMIX_SUCCESS != rc) {
             /* since they gave us a specific pid and we couldn't
@@ -1281,7 +1242,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tool:tool searching for given nspace server %s", filename);
-        rc = trysearch(peer, &nspace, &rank, &suri, &alts, filename, true, iptr, niptr, optional);
+        rc = trysearch(peer, &nspace, &rank, &suri, filename, true, iptr, niptr, optional);
         free(filename);
         if (PMIX_SUCCESS != rc) {
             /* since they gave us a specific nspace and we couldn't
@@ -1330,7 +1291,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tool:tool searching for session server %s", filename);
-        rc = trysearch(peer, &nspace, &rank, &suri, &alts, filename, false, iptr, niptr, optional);
+        rc = trysearch(peer, &nspace, &rank, &suri, filename, false, iptr, niptr, optional);
         free(filename);
         if (PMIX_SUCCESS == rc) {
             PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
@@ -1353,7 +1314,7 @@ complete:
         }
     }
     if (NULL != cbfunc) {
-        rc = pmix_ptl_base_start_connection(peer, nspace, rank, suri, alts, iptr, niptr,
+        rc = pmix_ptl_base_start_connection(peer, nspace, rank, suri, iptr, niptr,
                                             cbfunc, cbdata);
         if (PMIX_SUCCESS == rc) {
             /* all three belong to the connection now */
@@ -1366,7 +1327,7 @@ complete:
         goto cleanup;
     }
 
-    rc = pmix_ptl_base_make_connection_alts(peer, &suri, alts, iptr, niptr);
+    rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
     if (PMIX_SUCCESS != rc) {
         goto cleanup;
     }
@@ -1381,7 +1342,6 @@ cleanup:
     pmix_ptl_base.server_expect_given = false;
     pmix_ptl_base.server_release_vouched = false;
     *suriout = suri;
-    free(alts);
     if (NULL != nspace) {
         free(nspace);
     }

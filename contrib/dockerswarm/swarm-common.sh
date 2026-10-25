@@ -105,61 +105,6 @@ cleanup_swarm() {
     done
 }
 
-# --- tools on other nodes ---------------------------------------------------
-# A server takes tools from other nodes only in a PMIx built with
-# SWARM_REMOTE_TOOLS=1 (./build.sh configures it --enable-remote-tools
-# --with-openssl), when its host asks - PRRTE's pmix_remote_connections -
-# and with a mechanism that lets a tool and a server on different nodes
-# authenticate each other: here psec/ssl. Each end needs a certificate
-# and key of its own and the CA that issued the other's. ssl_make_certs
-# puts a throwaway CA in the build volume, with a server certificate and
-# a tool certificate it signs, and a second CA and tool certificate the
-# servers do not trust. The CN is the user the DVMs and tools run as on
-# every node: root. A tool picks ssl for a server on another node itself.
-#   SWARM_SERVER_ENV  - for a DVM: remote connections, its identity, the CA
-#   SWARM_TOOL_ENV    - for a tool on another node: its identity, the CA
-#   SWARM_ROGUE_ENV   - a tool whose certificate the untrusted CA issued
-#   SWARM_DOUBTER_ENV - a tool that trusts only the untrusted CA, and so
-#                       not the servers
-SSL_DIR=/opt/prte/ssl
-if [ "${SWARM_REMOTE_TOOLS:-0}" = 1 ]; then
-    SWARM_SERVER_ENV="PRTE_MCA_pmix_remote_connections=1 PMIX_MCA_psec_ssl_ca_file=$SSL_DIR/ca.pem PMIX_MCA_psec_ssl_cert_file=$SSL_DIR/server.pem PMIX_MCA_psec_ssl_key_file=$SSL_DIR/server.key"
-    SWARM_TOOL_ENV="PMIX_MCA_psec_ssl_ca_file=$SSL_DIR/ca.pem PMIX_MCA_psec_ssl_cert_file=$SSL_DIR/tool.pem PMIX_MCA_psec_ssl_key_file=$SSL_DIR/tool.key"
-    SWARM_ROGUE_ENV="PMIX_MCA_psec_ssl_ca_file=$SSL_DIR/ca.pem PMIX_MCA_psec_ssl_cert_file=$SSL_DIR/rogue.pem PMIX_MCA_psec_ssl_key_file=$SSL_DIR/rogue.key"
-    SWARM_DOUBTER_ENV="PMIX_MCA_psec_ssl_ca_file=$SSL_DIR/rogue-ca.pem PMIX_MCA_psec_ssl_cert_file=$SSL_DIR/tool.pem PMIX_MCA_psec_ssl_key_file=$SSL_DIR/tool.key"
-else
-    SWARM_SERVER_ENV=""
-    SWARM_TOOL_ENV=""
-    SWARM_ROGUE_ENV=""
-    SWARM_DOUBTER_ENV=""
-fi
-ssl_make_certs() {
-    [ "${SWARM_REMOTE_TOOLS:-0}" = 1 ] || return 0
-    docker run --rm -v "$VOLUME":/opt/prte -e D="$SSL_DIR" "$IMAGE" bash -euo pipefail -c '
-        rm -rf "$D" && mkdir -p "$D" && cd "$D"
-        umask 077
-        for who in ca rogue-ca; do
-            openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=swarm $who" \
-                -keyout $who.key -out $who.pem >/dev/null 2>&1
-        done
-        # a tool certificate is for client authentication, a server
-        # certificate for server authentication
-        for leaf in tool:ca:clientAuth rogue:rogue-ca:clientAuth server:ca:serverAuth; do
-            IFS=: read -r name ca use <<< "$leaf"
-            printf "basicConstraints=CA:FALSE\nkeyUsage=digitalSignature\nextendedKeyUsage=%s\n" \
-                "$use" > $name.ext
-            openssl req -new -newkey rsa:2048 -nodes -subj "/CN=root" \
-                -keyout $name.key -out $name.csr >/dev/null 2>&1
-            openssl x509 -req -in $name.csr -CA $ca.pem -CAkey $ca.key -CAcreateserial \
-                -days 2 -extfile $name.ext -out $name.pem >/dev/null 2>&1
-        done
-        rm -f ./*.ext ./*.csr ./*.srl
-        chmod 644 ./*.pem
-        chmod 600 ./*.key
-        openssl verify -CAfile ca.pem tool.pem server.pem >/dev/null
-    '
-}
-
 # --- macOS: keep this run inside its own clone ------------------------------
 # The native subsets run on the developer's own machine, where another clone
 # of openpmix may be running this very same script.  Nothing may reach a
