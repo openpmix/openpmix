@@ -58,11 +58,14 @@ jobs:
             visibility=--disable-visibility
         fi
 
+        # the vpath builds take clients and tools of earlier releases,
+        # so make check runs the TCP path; the others build without it,
+        # the default
         c=./configure
         if test "${{ matrix.path }}" = vpath; then
             mkdir build
             cd build
-            c=../configure
+            c="../configure --enable-legacy-peers"
         fi
 
         $c --prefix=${PWD}/install $sphinx $visibility \
@@ -126,11 +129,14 @@ jobs:
             visibility=--disable-visibility
         fi
 
+        # the vpath builds take clients and tools of earlier releases,
+        # so make check runs the TCP path; the others build without it,
+        # the default
         c=./configure
         if test "${{ matrix.path }}" = vpath; then
             mkdir build
             cd build
-            c=../configure
+            c="../configure --enable-legacy-peers"
         fi
 
         $c --prefix=${PWD}/install $sphinx $visibility --enable-devel-check
