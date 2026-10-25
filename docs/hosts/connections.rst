@@ -235,7 +235,7 @@ when a connection ends.
 Authentication methods
 ----------------------
 
-The ``psec`` framework does the authentication. Three components exist:
+The ``psec`` framework does the authentication. Two components exist:
 
 .. list-table::
    :header-rows: 1
@@ -247,20 +247,13 @@ The ``psec`` framework does the authentication. Three components exist:
    * - ``native``
      - Takes the uid and gid the kernel reports for a connection on the
        local socket. Over TCP, asks the server's own kernel who owns the
-       peer's end of the connection. Serves peers on the same node only.
+       peer's end of the connection.
      - Always built. The default.
    * - ``munge``
-     - Decodes a credential issued by the MUNGE daemon. Works across
-       nodes.
+     - Decodes a credential issued by the MUNGE daemon.
      - Built only when configured ``--with-munge``. Preferred over
        ``native`` when present, and skipped at run time if the MUNGE
        daemon does not respond.
-   * - ``ssl``
-     - Verifies an X.509 certificate against a certificate authority.
-       The certificate names a local account, whose uid must match.
-       Authenticates the connection; does not encrypt it.
-     - Built only when configured ``--with-openssl``. Active only when
-       given a CA file or a certificate and key.
 
 A server loads every component that is available and permitted, and
 uses for each peer the one that peer names. A server with no usable
@@ -268,8 +261,10 @@ component fails to start; it never accepts unauthenticated
 connections.
 
 From v7.0, ``native`` takes the peer's uid from the kernel rather than
-from the peer. For how it works, and what a container needs for it,
-see :doc:`/how-things-work/authentication/native`. For a survey of
+from the peer - except over TCP on a platform whose kernel keeps no table
+of TCP connections, where a server that takes legacy peers takes the uid
+and gid the peer claims. For how it works, and what a container needs
+for it, see :doc:`/how-things-work/authentication/native`. For a survey of
 methods for authenticating a peer in a container, see
 :doc:`/how-things-work/authentication/methods`.
 

@@ -43,7 +43,7 @@ is only the nickname.
 | `run-mca-tests.sh` | Runs `test/unit/mca` plus the malformed MCA-parameter cases in the `--enable-mca-dso` configuration, where the component repository is actually exercised. See §14. |
 | `run-bfrops-tests.sh` | Runs the `src/mca/bfrops` unit programs on Linux in an optimized `--enable-mca-dso` build, **and** moves one value of every PMIx data type between ranks on *different* nodes. The only place the peer-assigned bfrops module and the negotiated buffer type are observable at all. See §15. |
 | `run-gds-tests.sh` | Runs the `src/mca/gds` datastore suite. See §16. |
-| `run-ptl-tests.sh` | Runs `src/mca/ptl` -- the transport itself -- over real sockets between real hosts: interface selection, node-local rendezvous discovery, a tool attaching across nodes, the inbound message-size ceiling, and an exhausted listener port range. See §17. |
+| `run-ptl-tests.sh` | Runs `src/mca/ptl` -- the transport itself -- over real sockets between real hosts: node-local rendezvous discovery, a tool refusing to dial a server on another node, the inbound message-size ceiling, and an exhausted listener port range. See §17. |
 | `swarm-common.sh` | Sourced by all the scripts above: which swarm to drive (`PMIX_SWARM`), how to reach a node, and how to clean one. The three runners each carried their own copy of that once, and the copies drifted. |
 | `python/` | The swarm's own Python clients (`swarm_client.py`, `swarm_group.py`, `swarm_cpuset.py`, `swarm_datatypes.py`, `swarm_nonblocking.py`). |
 | `Dockerfile` | Base image: toolchain, PRRTE master *source* (autogen'd), SSH wiring, node entrypoint. It contains **no** PMIx and **no** built PRRTE. |
@@ -272,7 +272,6 @@ swarm's `/tmp`, because the containers are different containers.
 | move the baked PRRTE forward | `docker build --no-cache --build-arg PRRTE_REF=master -t pmix-swarm:latest .`, then wipe the volume's VPATH dirs and recreate the containers - see below |
 | rebuild the base image (different PRRTE branch) | `PRRTE_REF=v3.0.x ./build.sh image` |
 | build against a local PRRTE branch | `PRRTE_REPO=~/prrte/wt-mine PRRTE_REF=topic/mine ./build.sh` - best in a swarm of its own (`PMIX_SWARM`), so the volume's PRRTE clone starts from that repository |
-| build a PMIx that takes tools from other nodes | `SWARM_REMOTE_TOOLS=1 ./build.sh` (configures `--enable-remote-tools --with-openssl`; changing it reconfigures), and run the suites with `SWARM_REMOTE_TOOLS=1` too |
 | tear down the swarm | `docker compose down` (the `pmix-build` volume persists) |
 | run a second, independent swarm | `export PMIX_SWARM=alt` and repeat the quick start — see §4. Every command in this table then names that swarm's volume (`alt-build`) and containers (`alt-node*`), and **a `docker compose down` without the variable takes down the *default* swarm** |
 
@@ -1022,13 +1021,11 @@ A developer's own `make check` drives the PTL hard, but always over
 loopback, on one host, between processes one server started. Four things
 it therefore cannot reach:
 
-* **Interface selection.** A server listens on TCP only for clients and
-  tools of earlier releases, on a loopback device, and for tools on other
-  hosts, on public ones - the latter only in a PMIx configured
-  `--enable-remote-tools` whose host asks. On one host the public branch
-  — plus the `no-remote-interfaces` / `no-available-interfaces`
-  diagnostics guarding it — is dead code. A tool on another node can only
-  reach a server that took it.
+* **No peer on another host.** A server listens on its local socket,
+  and on TCP only for clients and tools of earlier releases, on a
+  loopback device. A tool given the address of a server on another node
+  must refuse to dial it, and say so — which one host cannot show, since
+  every address it can name is its own.
 
 * **Discovery is node-local, and nothing proves it.** The rendezvous
   files a server drops (`pmix.<host>.tool`, `pmix.<host>.tool.<pid>`,
@@ -1060,23 +1057,17 @@ it therefore cannot reach:
 | `max_msg_size=32` | an explicit ceiling still passes traffic under it |
 | tool by nspace | rendezvous-file discovery on the tool's own node |
 | tool discovery is node-local | the same namespace from another node fails **promptly and cleanly** — not a hang, not a crash, and not a false success |
-| tool by URI across nodes | the handshake over a public interface. Skipped, with the address named, when the DVM's listener bound loopback — whether PRRTE asked for remote connections is PRRTE's business, not the transport's |
+| a server on another node is not dialled | a tool on `node2` given `node1`'s first IPv4 address (and the DVM's port, when it has a TCP one) refuses before it dials: `PMIX_ERR_UNREACH`, saying the address is not its host's |
 | tool loses its server | the client half of `lost_connection`: the tool must notice the drop and unwind rather than block forever on a reply that will never come |
 | exhausted port range | told to use one port and finding it taken, the listener must fail. It used to run off the end of its port loop, and `listen()` on an unbound socket happily gets a port of the kernel's choosing — so the server came up advertising an address that had nothing to do with what it was told to use |
 
 ### Things to know
 
-**The DVM URI is parsed the way PMIx parses it.** The case that attaches
-a tool across nodes splits `<nspace>.<rank>;tcp4://<addr>:<port>` from
-the *back*, because a namespace may itself contain dots (PRRTE names one
-after the host). Splitting from the front finds the wrong separator on
-exactly the namespaces this harness produces.
-
-**A DVM that takes no remote tools is a skip, not a failure.** The
-remote-tool case depends on the DVM having enabled remote connections.
-When it did not, the reported URI names its local socket (or, with legacy
-peers on, `127.0.0.1`), and the case says so and skips: failing there
-would be blaming the transport for a launcher configuration.
+**The DVM URI is parsed the way PMIx parses it.** The cases that use it
+split `<nspace>.<rank>;tcp4://<addr>:<port>` from the *back*, because a
+namespace may itself contain dots (PRRTE names one after the host).
+Splitting from the front finds the wrong separator on exactly the
+namespaces this harness produces.
 
 **The port-range case needs the port actually occupied.** It parks a
 Python listener on node1 and *verifies* the port is taken before
@@ -1322,21 +1313,15 @@ held in `pmix_server_globals.clients`, and their reference accounting has
 to balance exactly against `PMIx_tool_finalize`.
 
 `test/simple/tool_server_switch` (run by `make check` through
-`test/unit/run_toolswitch.pl`) already drives that API in a loop, and it
-is a good *bookkeeping* test. But both of its servers are on one host,
-and everything the switch is **for** is invisible in that configuration:
+`test/unit/run_toolswitch.pl`) already drives that API in a loop, with
+both servers on one host - which is the only place a tool's servers can
+be: a tool reaches only a server on its own node. What one host cannot
+show is what crosses nodes behind those servers:
 
-- both connections are loopback, so a server that is unreachable because
-  it is on another machine cannot be produced at all;
-- a request answered by "the other server" never leaves the host, so
-  nothing distinguishes a correct primary-server choice from a wrong one
-  that reaches a server anyway;
 - the IOF a tool receives is generated on its own node, so
   `tool_iof_handler` never sees a payload that was relayed daemon to
-  daemon before it arrived.
-
-So every stage here puts the tool and at least one of its servers on
-**different nodes**.
+  daemon before it arrived;
+- a server on another machine, which the tool must refuse to dial.
 
 ### Two DVMs, not one
 
@@ -1346,60 +1331,26 @@ DVM the tool would have to be handed some non-head daemon's URI, and
 nothing publishes those; two heads each report their own through
 `--report-uri`.
 
-### Remote connections are load-bearing
+### A server on another node is refused
 
-A PMIx server takes TCP connections from other nodes only in a PMIx
-configured `--enable-remote-tools`, only with `munge` or `ssl` to
-authenticate the tools, and only when its host asks. Otherwise it has no
-TCP listener at all - or one on loopback, for clients of earlier
-releases - and reports its local socket, which no other node can reach.
-With `SWARM_REMOTE_TOOLS=1` both DVMs are started with
-`PRTE_MCA_pmix_remote_connections=1`, the PRRTE-side MCA parameter that
-becomes the `PMIX_SERVER_REMOTE_CONNECTIONS` directive on
-`PMIx_server_init`. A tool and a server on different nodes authenticate
-each other, the server first, so each end has a certificate and key of
-its own and the CA that issued the other's: the suite makes a throwaway
-CA in the build volume (`/opt/prte/ssl`, by `ssl_make_certs` in
-`swarm-common.sh`) and a server and a tool certificate it signs, both
-`CN=root` - the user every node runs as. The DVMs get theirs from
-`SWARM_SERVER_ENV`, the tools theirs from `SWARM_TOOL_ENV`; a tool picks
-`ssl` for a server on another node itself. Set it only for a swarm built
-with `SWARM_REMOTE_TOOLS=1`, or the DVMs fail to start. Without it every
-cross-node stage skips itself, naming why.
-
-The first stage asserts who a server on another node takes. With remote
-tools: a tool and a server whose certificates the CA issued authenticate
-each other; a tool that trusts only a second CA refuses the server; a
-tool whose certificate the second CA issued is refused by the server;
-and a tool with no certificate (only `native`, which serves only its own
-host) sends nothing and fails. Without them: a tool on another node
-cannot reach the DVM at all, since it reports its local socket.
+A PMIx server takes no connection from another node: it listens on its
+local socket, and on TCP only for clients of earlier releases, on
+loopback. A tool does not dial an address that is not its own node's.
+The first stage hands a tool on `node1` a TCP URI at `node2`'s first
+IPv4 address (DVM B's port when it has a TCP one): it must fail with
+`PMIX_ERR_UNREACH` and say the address is not its host's. DVM B's own
+URI names its local socket by default, whose path on `node1` leads
+nowhere - a tool handed that would fail for the wrong reason.
 
 | Stage | What it drives |
 |-------|----------------|
-| `toolswitch` | `examples/toolswitch.c`: a tool whose *local* server is `node1`'s daemon and whose second server is a daemon on `node2`, cycling attach-as-primary → `get_servers` → `set_server(local/self/remote)` → `disconnect` → `finalize`, five times. Each cycle re-inits, so it is also the re-init path with a real **remote** peer in the clients array. The `PMIx_Query_info_nb` in the middle is the part that needs two hosts: the same call has to travel to a different machine depending on which server is primary at the time. |
-| `valgrind-tool` | The same program under valgrind — the only leak coverage `src/tool` has anywhere (see below). |
-| remote server death | `pterm` kills DVM B out from under a tool on `node1` attached to it by URI. The tool must notice and unwind rather than hang. The node-local version of this is in `run-ptl-tests.sh` §17; here the close is a real socket close from another host. |
+| a server on another node | a tool on `node1` given a `tcp4://` URI at `node2`'s address fails with `PMIX_ERR_UNREACH`, saying the address is not its host's - not a hang, not a crash, not some other server |
 | tool IOF across nodes | `prun` attached to the persistent DVM **is** a tool, so every byte it prints arrived through `tool_iof_handler`. The job is placed on `node3`/`node4`, which the tool is not on, so each payload was relayed by a daemon other than the tool's own. The assertion is that output arrives from *two* distinct nodes: one would mean the tool only ever received its own node's output. |
 
 `prun`, not `prterun`, for the IOF stage: `prterun` brings up a DVM of
 its own, while `prun --dvm-uri` attaches to the persistent one as a tool,
 which is the shape we want. (`prterun` also has no `--dvm-uri` option and
 fails the command line outright.)
-
-### The valgrind stage
-
-Every other suite valgrinds a client, and a client never executes
-`src/tool` at all; `run-server-tests.sh` valgrinds the daemon, which does
-not either. This is the only place the tool library is leak-checked, and
-the only place it is leak-checked with real remote peers being attached,
-switched between, and released.
-
-The same two mechanics as §19 apply: `--fullpath-after=` so frames carry
-full paths (PRRTE ships basenames that collide with ours), and only
-*definitely lost* blocks whose allocation stack passes through `src/tool`
-are failed on — `libpmix` and `prte` both leak at exit in ways that are
-not this suite's business.
 
 ### What this deliberately does not cover
 
@@ -1418,13 +1369,13 @@ forward-to-a-real-server arm remains uncovered anywhere.
 
 ### macOS mode
 
-One host means both servers are loopback, so the remote half of the suite
-is not reproducible. What the native mode still does is bring up two
-independent DVMs on this machine, which gives the tool two *distinct*
-servers — so the attach/switch/disconnect reference accounting runs for
-real. It runs `toolswitch -q` (queries skipped: a second DVM on the same
-host answers out of the same state as the first). Do not let it stand in
-for the linux mode.
+One host means the IOF relayed from other nodes is not reproducible.
+What the native mode does is bring up two independent DVMs on this
+machine, which gives the tool two *distinct* servers — so the
+attach/switch/disconnect reference accounting runs for real. It runs
+`toolswitch -q` (queries skipped: a second DVM on the same host answers
+out of the same state as the first). Do not let it stand in for the
+linux mode.
 
 ---
 

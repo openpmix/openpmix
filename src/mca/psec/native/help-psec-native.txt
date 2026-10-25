@@ -9,23 +9,12 @@
 #
 # This is the US/English help file for the native security component
 #
-[legacy-peer]
-A process at %s asked to connect to this PMIx server over TCP using the
-"native" security mechanism, claiming to be uid %lu. The operating
-system could not confirm who owns the connection, so the request was
-refused.
-
-This server accepts such a claim only when the MCA parameter
-psec_native_legacy_auth is true. A process of this PMIx release on this
-host connects over the server's local socket instead, where the kernel
-identifies it.
-#
 [unowned-peer]
 A process at %s, an address of this host, asked to connect to this
 PMIx server over TCP using the "native" security mechanism, claiming to
 be uid %lu. The operating system has no established connection of that
 process's in its table of TCP connections, so it cannot say who owns it,
-and the request was refused - whatever psec_native_legacy_auth says.
+and the request was refused.
 #
 [foreign-group]
 A process owned by uid %lu asked to connect to this PMIx server as a

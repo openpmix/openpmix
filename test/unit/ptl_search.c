@@ -511,18 +511,96 @@ static void test_rndz_file(void)
         for (n = 0; n < PMIX_PTL_MAX_CONN_FILE + 16; n++) {
             fputc('x', fp);
         }
-        fputs("\n" PMIX_PTL_ALT_URIS_TAG "tcp4://127.0.0.1:4261\n", fp);
+        fputs("\n" PMIX_PTL_PSEC_TAG "native\n", fp);
         fclose(fp);
         PMIX_CONSTRUCT(&connections, pmix_list_t);
         rc = pmix_ptl_base_parse_uri_file(path, true, &connections);
         cn = (1 == pmix_list_get_size(&connections))
                  ? (pmix_connection_t *) pmix_list_get_first(&connections) : NULL;
         report("named file: read no further than any server writes",
-               PMIX_SUCCESS == rc && NULL != cn && NULL == cn->alt_uris,
-               (NULL != cn && NULL != cn->alt_uris) ? "read past it" : PMIx_Error_string(rc));
+               PMIX_SUCCESS == rc && NULL != cn && NULL == cn->psec,
+               (NULL != cn && NULL != cn->psec) ? "read past it" : PMIx_Error_string(rc));
         PMIX_LIST_DESTRUCT(&connections);
         unlink(path);
     }
+}
+
+/* A server the kernel cannot name is connected to only where its file
+ * vouches for it: it says the server is of an earlier release, or that
+ * it is of this one and running - the lock beside its file is held.
+ * Believed only of a file the caller named, that only its owner can
+ * write, and that is owned by a user whose server we may talk to */
+static bool vouched_by(const char *version, const char *tail, mode_t mode, bool named, bool held)
+{
+    char path[PMIX_PATH_MAX + 128];
+    pmix_list_t connections;
+    pmix_connection_t *cn;
+    pmix_status_t rc;
+    bool vouched = false;
+    char *lname;
+    int fd = -1;
+    FILE *fp;
+
+    snprintf(path, sizeof(path), "%s/vouch.uri", searchdir);
+    unlink(path);
+    fp = fopen(path, "w");
+    if (NULL == fp) {
+        return false;
+    }
+    fprintf(fp, "vns.0;tcp4://127.0.0.1:4260\n%s\n%s", version, tail);
+    fclose(fp);
+    chmod(path, mode);
+    if (held) {
+        fd = hold(path);
+    }
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    if (named) {
+        rc = pmix_ptl_base_parse_uri_file(path, true, &connections);
+    } else {
+        rc = pmix_ptl_base_parse_rndz_file(path, true, &connections);
+    }
+    if (PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&connections)) {
+        cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+        vouched = cn->vouched;
+    }
+    PMIX_LIST_DESTRUCT(&connections);
+    if (0 <= fd) {
+        close(fd);
+    }
+    if (NULL != (lname = pmix_ptl_base_lock_name(path))) {
+        unlink(lname);
+        free(lname);
+    }
+    unlink(path);
+    return vouched;
+}
+
+static void test_vouched(void)
+{
+    char cur[32], earlier[32];
+    const char *locked = PMIX_PTL_LOCK_TAG PMIX_PTL_LOCK_FLOCK "\n";
+
+    snprintf(cur, sizeof(cur), "v%d.0.0", PMIX_PTL_LOCAL_MAJOR);
+    snprintf(earlier, sizeof(earlier), "v%d.2.0", PMIX_PTL_LOCAL_MAJOR - 3);
+    report("vouched: a named file of an earlier release",
+           vouched_by(earlier, "", 0644, true, false), "not vouched for");
+    report("vouched: a named file of this release whose server is running",
+           vouched_by(cur, locked, 0644, true, true), "not vouched for");
+    report("vouched: not one whose server is not running - nothing holds its lock",
+           !vouched_by(cur, locked, 0644, true, false), "vouched for");
+    report("vouched: not one that says nothing of a lock",
+           !vouched_by(cur, "", 0644, true, true), "vouched for");
+    report("vouched: not a file its group may write",
+           !vouched_by(cur, locked, 0664, true, true), "vouched for");
+    report("vouched: not a file at a fixed name nobody named",
+           !vouched_by(earlier, "", 0644, false, false), "vouched for");
+    /* a version line that names no release says nothing of an earlier one */
+    report("vouched: not a version line with no digits",
+           !vouched_by("vfoo", "", 0644, true, false), "vouched for");
+    report("vouched: not a major of 0", !vouched_by("v0.0", "", 0644, true, false),
+           "vouched for");
+    report("vouched: not a major past any release",
+           !vouched_by("v257.0.0", "", 0644, true, false), "vouched for");
 }
 
 /* A server's file names the wire formats and security mechanisms it
@@ -742,6 +820,7 @@ int main(int argc, char **argv)
     test_query_servers();
     test_rndz_file();
     test_compat();
+    test_vouched();
     alarm(0);
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);

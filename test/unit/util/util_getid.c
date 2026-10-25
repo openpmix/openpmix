@@ -24,7 +24,7 @@
  * PMIX_ERR_NOT_FOUND. A process out of descriptors - which on Linux
  * cannot open what it asks the kernel through - is not told that the
  * platform has no table (PMIX_ERR_NOT_SUPPORTED): native would then take
- * a peer at its word under psec_native_legacy_auth.
+ * a peer at its word, in a server that takes legacy peers.
  *
  * pmix_util_getpid() is what the server hands its host as a connecting
  * process's pid. A child that connects to our AF_UNIX listener must be

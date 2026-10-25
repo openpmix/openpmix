@@ -813,7 +813,9 @@ opens with a 64-bit `ksize_t` length where macOS has 32 bits, and keeps
 the addresses in `xt_inp.inp_inc`. A non-root reader on FreeBSD sees
 other users' connections only while `security.bsd.see_other_uids` is 1,
 the default; with it off another user's peer is `PMIX_ERR_NOT_FOUND`.
-Anything else answers `PMIX_ERR_NOT_SUPPORTED`.
+Anything else answers `PMIX_ERR_NOT_SUPPORTED`. A unit test can set
+`pmix_util_getid_test_no_tcp_table` to have every lookup answer that, as
+on a platform with no table - for a server and a tool alike.
 
 Five rules, each of which a plausible "simplification" breaks:
 
@@ -824,8 +826,8 @@ Five rules, each of which a plausible "simplification" breaks:
   tries on macOS and FreeBSD - the
   answer is `PMIX_ERR_OUT_OF_RESOURCE`, never `PMIX_ERR_NOT_SUPPORTED`,
   and the `/proc` fallback does not paper over it. Callers depend on the
-  difference: `psec/native` takes a peer on its claim under
-  `legacy_auth` only on `NOT_SUPPORTED`, and refuses on anything else; a
+  difference: `psec/native`, in a server that takes legacy peers, takes a
+  peer on its claim only on `NOT_SUPPORTED`, and refuses on anything else; a
   tool's `pmix_ptl_base_check_server` refuses the server
   (`server-unidentified`). Read as "no table", a process that ran out of
   descriptors would have accepted a claimed identity.

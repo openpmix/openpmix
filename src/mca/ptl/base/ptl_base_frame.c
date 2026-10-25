@@ -110,8 +110,6 @@ pmix_ptl_base_t pmix_ptl_base = {
     .pid_dirfd = -1,
     .urifile_dirfd = -1,
     .urifile_fd = -1,
-    .remote_connections = false,
-    .connections_specified = false,
     .legacy_peers_param = false,
     .legacy_peers = false,
     .system_tool = false,
@@ -471,11 +469,9 @@ static pmix_status_t pmix_ptl_close(void)
 
     /* The same goes for the role flags pmix_ptl_base_setup_listener reads
      * out of its caller's directives: it only ever sets the ones it is
-     * given, so a flag left over from the previous cycle - remote
-     * connections, tool support - would silently apply to a server that
-     * never asked for it. Put back the defaults from the initializer. */
-    pmix_ptl_base.remote_connections = false;
-    pmix_ptl_base.connections_specified = false;
+     * given, so a flag left over from the previous cycle - legacy peers,
+     * tool support - would silently apply to a server that never asked
+     * for it. Put back the defaults from the initializer. */
     pmix_ptl_base.legacy_peers = false;
     pmix_ptl_base.system_tool = false;
     pmix_ptl_base.allow_foreign_tools = false;
@@ -505,8 +501,6 @@ static pmix_status_t pmix_ptl_close(void)
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
     PMIX_DESTRUCT(&pmix_ptl_base.listener);
     PMIX_DESTRUCT(&pmix_ptl_base.local_listener);
-    /* stop_listening above released every alternate and their list */
-    PMIX_LIST_DESTRUCT(&pmix_ptl_base.alt_listeners);
     /* stop_listening above has already closed and released anything
      * that was still on it, and on the tool queue */
     PMIX_DESTRUCT(&pmix_ptl_base.pending_connections);
@@ -644,7 +638,6 @@ static void open_cleanup(void)
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
     PMIX_DESTRUCT(&pmix_ptl_base.listener);
     PMIX_DESTRUCT(&pmix_ptl_base.local_listener);
-    PMIX_LIST_DESTRUCT(&pmix_ptl_base.alt_listeners);
     PMIX_DESTRUCT(&pmix_ptl_base.pending_connections);
     PMIX_DESTRUCT(&pmix_ptl_base.tool_queue);
     PMIX_DESTRUCT(&pmix_ptl_base.tool_asking);
@@ -666,8 +659,6 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
     PMIX_CONSTRUCT(&pmix_ptl_base.posted_recvs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.listener, pmix_listener_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.local_listener, pmix_listener_t);
-    PMIX_CONSTRUCT(&pmix_ptl_base.alt_listeners, pmix_list_t);
-    pmix_ptl_base.alt_uris = NULL;
     PMIX_CONSTRUCT(&pmix_ptl_base.pending_connections, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.tool_queue, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.tool_asking, pmix_list_t);
@@ -880,12 +871,6 @@ static void pccon(pmix_pending_connection_t *p)
     p->proc_type.release = PMIX_RELEASE_WILDCARD;
     p->proc_type.flag = 0;
     p->psecmod = NULL;
-    p->proved = false;
-    p->auth_bound = false;
-    p->authmod = NULL;
-    p->auth_uid = (uid_t) -1;
-    memset(p->auth_tool, 0, sizeof(p->auth_tool));
-    memset(p->auth_srv, 0, sizeof(p->auth_srv));
     p->nptr = NULL;
     p->rinfo = NULL;
     p->bfropsmod = NULL;
@@ -1041,7 +1026,6 @@ static void ccon(pmix_connection_t *p)
     p->rank = PMIX_RANK_INVALID;
     p->uri = NULL;
     p->version = NULL;
-    p->alt_uris = NULL;
     p->local_uri = NULL;
     p->bfrops = NULL;
     p->psec = NULL;
@@ -1058,7 +1042,6 @@ static void dcon(pmix_connection_t *p)
     if (NULL != p->version) {
         free(p->version);
     }
-    free(p->alt_uris);
     free(p->local_uri);
     free(p->bfrops);
     free(p->psec);

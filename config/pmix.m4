@@ -888,7 +888,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     # Every process of this release on a host connects to its server over
     # the usock transport, and the server listens on tcp too - for older
-    # peers and for tools on other hosts. Neither can be left out.
+    # peers. Neither can be left out.
     for pmix_ptl_required in usock tcp ; do
         AS_CASE([" $MCA_pmix_ptl_STATIC_COMPONENTS $MCA_pmix_ptl_DSO_COMPONENTS "],
                 [*" $pmix_ptl_required "*], [],
@@ -897,23 +897,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
                  AC_MSG_WARN([--enable-mca-no-build.])
                  AC_MSG_ERROR([Cannot continue])])
     done
-
-    # A tool on another host authenticates itself, and the server it
-    # connects to, with munge or ssl: native asks this host's kernel, which
-    # knows nothing of a process on another host. A build that takes
-    # remote tools needs one of them.
-    AS_IF([test "$pmix_remote_tools" = "1"],
-          [pmix_remote_psec=no
-           for pmix_psec_remote in munge ssl ; do
-               AS_CASE([" $MCA_pmix_psec_STATIC_COMPONENTS $MCA_pmix_psec_DSO_COMPONENTS "],
-                       [*" $pmix_psec_remote "*], [pmix_remote_psec=yes])
-           done
-           AS_IF([test "$pmix_remote_psec" = "no"],
-                 [AC_MSG_WARN([--enable-remote-tools was given, but neither the munge nor the])
-                  AC_MSG_WARN([ssl security component is being built. A tool on another host])
-                  AC_MSG_WARN([and its server authenticate each other with one of them.])
-                  AC_MSG_WARN([Configure with --with-munge or --with-openssl as well.])
-                  AC_MSG_ERROR([Cannot continue])])])
 
 
     ############################################################################
@@ -1522,32 +1505,6 @@ AC_DEFINE_UNQUOTED([PMIX_ENABLE_IPV6], [$pmix_want_ipv6],
                    [Enable IPv6 support, but only if the underlying system supports it])
 
 PMIX_SUMMARY_ADD([Miscellaneous], [IPv6 Support], [], [$pmix_ipv6_enabled])
-
-#
-# Do we want to build support for tools on other hosts? Without it a
-# server listens for TCP connections on a loopback interface only, and a
-# host that asks for remote connections fails its init. The tcp transport
-# is built either way: a client or tool of this release still reaches an
-# older server over it. With it, munge or ssl must be built too - that is
-# checked once the components are configured, in PMIX_SETUP_CORE.
-#
-AC_MSG_CHECKING([if want support for remote tools])
-AC_ARG_ENABLE([remote-tools],
-    [AS_HELP_STRING([--enable-remote-tools],
-        [Build support for tools connecting to a PMIx server from other hosts, which requires --with-munge or --with-openssl: a tool on another host and its server authenticate each other with munge or ssl. Without it, a server takes TCP connections on a loopback interface only (default: disabled)])])
-if test "$enable_remote_tools" = "yes"; then
-    AC_MSG_RESULT([yes])
-    pmix_remote_tools=1
-    pmix_remote_tools_msg=yes
-else
-    AC_MSG_RESULT([no])
-    pmix_remote_tools=0
-    pmix_remote_tools_msg=no
-fi
-AC_DEFINE_UNQUOTED([PMIX_ENABLE_REMOTE_TOOLS], [$pmix_remote_tools],
-                   [Whether a server can take connections from tools on other hosts])
-
-PMIX_SUMMARY_ADD([Miscellaneous], [Remote tools], [], [$pmix_remote_tools_msg])
 
 #
 # Do we want to build support for clients and tools of earlier releases?

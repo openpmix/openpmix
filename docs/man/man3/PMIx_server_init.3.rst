@@ -178,32 +178,15 @@ Role and support attributes
   TCP. Overrides the ``ptl_base_legacy_peers`` MCA parameter, which
   defaults to ``false``. With it, the server listens on a loopback
   interface for them and gives its clients the TCP address in the
-  variables those releases read; without it - and without
-  ``PMIX_SERVER_REMOTE_CONNECTIONS`` - the server has no TCP listener,
-  and a client or tool of an earlier release cannot connect. Only a PMIx
+  variables those releases read; without it the server has no TCP
+  listener, and a client or tool of an earlier release cannot connect. Only a PMIx
   configured ``--enable-legacy-peers`` can take them (the default is
   not to): in one without it, asking fails the init.
-* ``PMIX_SERVER_REMOTE_CONNECTIONS`` (bool) |mdash| allow (or disable)
-  connections from remote tools. Only a PMIx configured
-  ``--enable-remote-tools`` can allow them: in one without it, asking
-  for them fails the init. When allowed, the server listens on every
-  non-loopback interface left by ``PMIX_TCP_IF_INCLUDE`` /
-  ``PMIX_TCP_IF_EXCLUDE``. Its URI names the first; the others are stored as
-  ``PMIX_MYSERVER_ALT_URIS`` and listed in its contact files, where tools
-  finding the server by file, PID or namespace try them if the URI's address
-  cannot be reached. A remote tool and the server authenticate each other,
-  the server first, with ``munge`` or ``ssl``: the default ``native``
-  mechanism confirms a peer's identity through the server's own kernel,
-  which cannot name a process on another host. The server refuses a peer
-  on another host that does not take part - one of an earlier release,
-  or one with only ``native`` - and a server asked for remote
-  connections with neither ``ssl`` nor ``munge`` able to take part fails
-  its init. For ``ssl``, PMIx is configured ``--with-openssl``, and the
-  server and the tool are each given a certificate and key
-  (``psec_ssl_cert_file``, ``psec_ssl_key_file``) and the certificate
-  authority the other's certificate is issued by (``psec_ssl_ca_file``).
-  A tool connecting to a server on another host chooses ``munge`` or
-  ``ssl`` itself.
+* ``PMIX_SERVER_REMOTE_CONNECTIONS`` (bool) |mdash| **deprecated**. A server
+  takes connections from its own host only: ``true`` fails the init, and
+  ``false`` changes nothing. A client or tool does not dial a server at an
+  address that is not its own host's, and the server refuses a TCP peer at
+  such an address.
 * ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` (bool) |mdash| mark the rendezvous
   files as readable by all users and allow tools running under user IDs other
   than that of the server to connect. Defaults to ``false``: without it, a
@@ -329,9 +312,9 @@ The local socket
 ^^^^^^^^^^^^^^^^
 
 Every server listens on a local (``AF_UNIX``) socket, where the clients and
-tools of this release on its host connect. It listens on TCP only for peers
-of earlier releases (``PMIX_SERVER_LEGACY_PEERS``) and for tools on other
-hosts (``PMIX_SERVER_REMOTE_CONNECTIONS``). The kernel identifies the process at
+tools of this release on its host connect. It listens on TCP, on a loopback
+interface, only for peers of earlier releases (``PMIX_SERVER_LEGACY_PEERS``).
+The kernel identifies the process at
 each end of a connection to the local socket: the server knows each peer's
 uid, gid and pid, and each peer can check the server's uid and gid.
 
@@ -413,8 +396,8 @@ replaced. One whose PID is still running belongs to another server, and
 ``PMIx_server_init`` fails rather than take it over.
 
 A file named by ``PMIX_TCP_REPORT_URI`` is not a rendezvous file and none of
-the above applies to it: it is written with default permissions, subject to the
-umask, and removed at finalize.
+the above applies to it: it is created mode 0644 - readable by all, writable
+only by the server's user - and removed at finalize.
 
 
 .. seealso::

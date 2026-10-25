@@ -291,21 +291,6 @@ be used with ``configure``:
   server never takes them, and asking for them fails its init: clients
   and tools are to be updated along with their servers.
 
-* ``--enable-remote-tools``: Build support for tools that connect to a
-  PMIx server from other hosts. Without it - the default - a server
-  takes TCP connections on a loopback interface only, never on a public
-  one, and a host that asks for connections from other hosts
-  (``PMIX_SERVER_REMOTE_CONNECTIONS``) fails its init. With it, the
-  host still decides at run time with that attribute.
-
-  It requires ``--with-munge`` or ``--with-openssl`` as well:
-  ``configure`` stops with an error otherwise. A tool on another host
-  and its server authenticate each other with ``munge`` or ``ssl``, the
-  server first. A server refuses a peer on another host that does not
-  take part - one of an earlier release, or one with only ``native`` -
-  and a server asked for remote connections that cannot take part fails
-  its init.
-
 * ``--disable-show-load-errors-by-default``:
   Set the default value of the ``mca_base_component_show_load_errors``
   MCA variable: the ``--enable`` form of this option sets the MCA
