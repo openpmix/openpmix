@@ -174,6 +174,9 @@ operation. Placement, mapping, and resource selection:
   to assume for the application (e.g., ``"ompi"``).
 * ``PMIX_MAPBY`` (char\*) / ``PMIX_RANKBY`` (char\*) / ``PMIX_BINDTO`` (char\*)
   |mdash| mapping, ranking, and binding policies for the spawned processes.
+* ``PMIX_MEMBIND`` (char\*) |mdash| memory attribute (e.g., ``"latency"`` or
+  ``"bandwidth"``) to be used when selecting the memory targets to which each
+  spawned process is to be bound.
 * ``PMIX_PPR`` (char\*) |mdash| number of processes to spawn on each identified
   resource.
 * ``PMIX_CPUS_PER_PROC`` (uint32_t) |mdash| number of CPUs to assign to each rank.
