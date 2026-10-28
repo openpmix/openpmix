@@ -697,3 +697,4 @@ pmix.alloc.dir         666   PMIX_ALLOC_REQ_DIRECTIVE
 pmix.alloc.seq         667   PMIX_ALLOC_SEQUENCE
 pmix.dev.dist.origin   670   PMIX_DEVICE_DIST_ORIGIN
 pmix.srvr.legacy       671   PMIX_SERVER_LEGACY_PEERS
+pmix.membind           672   PMIX_MEMBIND
