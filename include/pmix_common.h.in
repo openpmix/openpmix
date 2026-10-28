@@ -554,6 +554,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_MAPBY                          "pmix.mapby"            // (char*) mapping policy
 #define PMIX_RANKBY                         "pmix.rankby"           // (char*) ranking policy
 #define PMIX_BINDTO                         "pmix.bindto"           // (char*) binding policy
+#define PMIX_MEMBIND                        "pmix.membind"          // (char*) memory attribute (e.g., "latency" or "bandwidth") to be used
+                                                                    //        when selecting the memory targets to which a process is to be bound
 #define PMIX_PRELOAD_BIN                    "pmix.preloadbin"       // (bool) preload binaries
 #define PMIX_PRELOAD_FILES                  "pmix.preloadfiles"     // (char*) comma-delimited list of files to pre-position
 #define PMIX_STDIN_TGT                      "pmix.stdin"            // (pmix_proc_t*) proc that is to receive stdin
