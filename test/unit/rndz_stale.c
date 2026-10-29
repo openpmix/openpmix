@@ -29,6 +29,12 @@
  * meaningfully called once per process. The "crashed predecessor" case
  * relies on that too: the child _exit()s without finalizing, which is
  * precisely how a real orphan is created.
+ *
+ * Every server here makes its socket beneath the tmpdir it is given, and
+ * a tmpdir too long for a socket's path fails its init for that reason
+ * alone - which says nothing about rendezvous files. So a child whose
+ * socket would not fit says so instead of trying, and the program skips;
+ * the symlink case, whose name is longer than the rest, skips by itself.
  */
 
 #include "src/include/pmix_config.h"
@@ -44,6 +50,7 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -51,6 +58,7 @@
 #define CHILD_OK       0 /* init succeeded */
 #define CHILD_INITFAIL 1 /* init failed */
 #define CHILD_NOTMADE  2 /* init succeeded, but not everything was made */
+#define CHILD_TOOLONG  3 /* the tmpdir cannot hold the server's socket */
 
 #define SCHED_PREFIX "pmix.sched."
 
@@ -63,6 +71,11 @@ static const char *schedname = NULL;
 /* the cases in which the server makes its directories itself: 1 moves
  * them all away, 2 puts another directory at the system tmpdir's name */
 static int made_case = 0;
+/* set by a case that points the server at a longer tmpdir than the
+ * rest, and so handles CHILD_TOOLONG itself */
+static bool may_be_too_long = false;
+
+static void cleanup(void);
 
 static pmix_server_module_t mymodule = {0};
 
@@ -238,6 +251,22 @@ static void child(bool clean)
     size_t ninfo = 1;
     pmix_status_t rc;
 
+    /* ptl/usock makes the socket at <tmpdir>/pmix-XXXXXX/pmix-<pid>, and
+     * refuses a path that does not fit in a sockaddr_un. That failure is
+     * about the tmpdir's length and nothing this program tests, so say
+     * so rather than report it as the init failing */
+    {
+        struct sockaddr_un addr;
+        const char *dir = getenv("PMIX_SERVER_TMPDIR");
+        size_t len;
+
+        len = strlen(NULL == dir ? tmpdir : dir) + strlen("/pmix-XXXXXX/pmix-") +
+              (size_t) snprintf(NULL, 0, "%lu", (unsigned long) getpid());
+        if (sizeof(addr.sun_path) <= len) {
+            _exit(CHILD_TOOLONG);
+        }
+    }
+
     /* a case that stalls - e.g., on opening a FIFO - fails rather
      * than hanging the test suite */
     alarm(60);
@@ -357,6 +386,15 @@ static int run_child(bool clean)
     }
     if (!WIFEXITED(status)) {
         return -1;
+    }
+    if (CHILD_TOOLONG == WEXITSTATUS(status) && !may_be_too_long) {
+        /* the base tmpdir itself, so nothing further can run. A skip
+         * status would hide a case that already failed */
+        fprintf(stdout, "  SKIP: %s is too long to hold a server's socket - "
+                        "set TMPDIR to a shorter directory\n", tmpdir);
+        cleanup();
+        fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
+        exit((0 < nfail) ? 1 : 77);
     }
     return WEXITSTATUS(status);
 }
@@ -598,14 +636,22 @@ int main(void)
         if (0 == symlink(tmpdir, link)) {
             setenv("PMIX_SYSTEM_TMPDIR", link, 1);
             setenv("PMIX_SERVER_TMPDIR", link, 1);
+            may_be_too_long = true;
             rc = run_child(true);
-            report("a tmpdir named through our own symlink is used", CHILD_OK == rc,
-                   "init failed");
-            report("its file is removed at finalize", !file_exists(path), "file still present");
-            if (0 == geteuid() && 0 == lchown(link, 65534, 65534)) {
-                rc = run_child(true);
-                report("a tmpdir named through another user's symlink is refused",
-                       CHILD_INITFAIL == rc, "init should have failed");
+            may_be_too_long = false;
+            if (CHILD_TOOLONG == rc) {
+                fprintf(stdout, "  SKIP: %s is too long to hold a server's socket, so no "
+                                "symlinked tmpdir to check\n", link);
+            } else {
+                report("a tmpdir named through our own symlink is used", CHILD_OK == rc,
+                       "init failed");
+                report("its file is removed at finalize", !file_exists(path),
+                       "file still present");
+                if (0 == geteuid() && 0 == lchown(link, 65534, 65534)) {
+                    rc = run_child(true);
+                    report("a tmpdir named through another user's symlink is refused",
+                           CHILD_INITFAIL == rc, "init should have failed");
+                }
             }
             setenv("PMIX_SYSTEM_TMPDIR", tmpdir, 1);
             setenv("PMIX_SERVER_TMPDIR", tmpdir, 1);

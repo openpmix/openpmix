@@ -244,7 +244,7 @@ static void do_fence(int sd, short args, void *cbdata)
     fut_req_t *r = (fut_req_t *) cbdata;
     pmix_buffer_t buf;
     pmix_server_caddy_t *cd;
-    pmix_proc_t proc;
+    pmix_proc_t *procs = NULL;
     pmix_info_t dir;
     pmix_status_t rc;
     size_t n;
@@ -257,14 +257,29 @@ static void do_fence(int sd, short args, void *cbdata)
     PMIX_BFROPS_ASSIGN_TYPE(pmix_globals.mypeer, &buf);
 
     /* the proc count, then the procs. The two may disagree on purpose:
-     * that is the whole point of the malformed-count cases. */
+     * that is the whole point of the malformed-count cases. The procs go
+     * out in one pack, as a client sends them: packing them one at a time
+     * puts that many one-element arrays on the wire, and the handler
+     * rightly refuses the first as an array shorter than its count - so
+     * any case naming more than one proc would fail for the harness's
+     * sake rather than the handler's. */
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &r->nprocs, 1, PMIX_SIZE);
-    for (n = 0; PMIX_SUCCESS == rc && n < r->nprocs_real; n++) {
-        /* a namespace this server has never been told about: new_tracker
-         * then marks the tracker non-local and definition-complete, so a
-         * well-formed request completes on this one contribution */
-        PMIX_LOAD_PROCID(&proc, "fence.ut.ns", (pmix_rank_t) n);
-        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &proc, 1, PMIX_PROC);
+    if (PMIX_SUCCESS == rc && 0 < r->nprocs_real) {
+        PMIX_PROC_CREATE(procs, r->nprocs_real);
+        if (NULL == procs) {
+            rc = PMIX_ERR_NOMEM;
+        }
+        for (n = 0; PMIX_SUCCESS == rc && n < r->nprocs_real; n++) {
+            /* a namespace this server has never been told about:
+             * new_tracker then marks the tracker non-local and
+             * definition-complete, so a well-formed request completes on
+             * this one contribution */
+            PMIX_LOAD_PROCID(&procs[n], "fence.ut.ns", (pmix_rank_t) n);
+        }
+        if (PMIX_SUCCESS == rc) {
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, procs, r->nprocs_real, PMIX_PROC);
+        }
+        PMIX_PROC_FREE(procs, r->nprocs_real);
     }
     /* the info count, then the info structs */
     if (PMIX_SUCCESS == rc) {
