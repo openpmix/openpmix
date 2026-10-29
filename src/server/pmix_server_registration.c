@@ -329,7 +329,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
                              * hand the datastore a value that was never
                              * populated and then report the store's result
                              * as though the transfer had succeeded */
-                            rc = gds->store(&proc, PMIX_REMOTE, kv);
+                            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_REMOTE, kv);
                         }
                         PMIX_RELEASE(kv); // maintain refcount
                         if (PMIX_SUCCESS != rc) {
@@ -353,7 +353,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
                          * discarded, leaving the check below to re-read the
                          * transfer's result and report success for a store
                          * that had failed */
-                        rc = gds->store(&proc, PMIX_GLOBAL, kv);
+                        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_GLOBAL, kv);
                     }
                     PMIX_RELEASE(kv); // maintain refcount
                     if (PMIX_SUCCESS != rc) {
@@ -395,7 +395,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
                         continue;
                     }
                     // first entry is the nspace, followed by the job info
-                    rc = gds->cache_job_info((struct pmix_namespace_t*)nptr, cd->info, cd->ninfo);
+                    PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, cd->info, cd->ninfo);
                     if (PMIX_SUCCESS != rc) {
                         goto release;
                     }
