@@ -145,6 +145,9 @@ PMIX_EXPORT bool pmix_client_proc_is_included(const pmix_proc_t *procs, size_t n
 PMIX_EXPORT void pmix_client_post_data_recvs(void);
 PMIX_EXPORT void pmix_client_mark_initialized(void);
 PMIX_EXPORT void pmix_client_release_held_deletes(void);
+/* the job data hashes kept for gets; see pmix_client_get.c */
+void pmix_client_forget_job_data_hash(const char *nspace);
+void pmix_client_release_job_data_hashes(void);
 
 END_C_DECLS
 

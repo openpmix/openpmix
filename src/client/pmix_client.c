@@ -355,6 +355,10 @@ static void client_gds_update_handler(struct pmix_peer_t *pr,
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }
+    /* The kept hashes stay: the update rewrites our copy from the
+     * server's own data, so a namespace whose data it changed no longer
+     * matches the server's hash and is resent at its next get, while one
+     * it left alone still matches. */
 }
 
 static void client_data_delete_handler(struct pmix_peer_t *pr,
@@ -1198,6 +1202,7 @@ static void client_teardown(void)
      * sentinel, but PMIX_DESTRUCT also zeroes the object's magic id, so a
      * second destruct without a construct between them is an abort. */
     pmix_client_release_held_deletes();
+    pmix_client_release_job_data_hashes();
     /* drop the delta-commit record, and leave the flag set so a second
      * PMIx_Init in this process starts cumulative rather than trusting
      * what a previous cycle told a previous server */

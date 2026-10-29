@@ -9,6 +9,7 @@
  *
  * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS). All Rights Reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,6 +31,180 @@
 #include "src/mca/gds/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/server/pmix_server_ops.h"
+#include "src/client/pmix_client_ops.h"
+
+/* What the marks since the last hash covered: every namespace, or the
+ * one named here. A run of writes to one namespace - a reply stored one
+ * key at a time - then walks the list once. Before the first hash every
+ * namespace is unmarked already, so the stores made during init do not
+ * walk the list at all. */
+static bool all_marked = true;
+static pmix_nspace_t last_marked = {0};
+
+/* Marks made from a thread other than the progress thread: the namespace
+ * list, the marks above and the client's hashes are its state, so such a
+ * mark only counts itself here. The progress thread acts on the count
+ * when it next looks - see pmix_gds_base_job_data_sync() and
+ * pmix_gds_base_offthread_marks(). A wait for the progress thread instead
+ * would never end under PMIX_EXTERNAL_PROGRESS, where nobody may be
+ * running it. */
+static pmix_atomic_int32_t offthread_marks = 0;
+static uint32_t offthread_seen = 0;
+
+static void mark_job_data(const char *nspace);
+
+static bool is_server(void)
+{
+    return NULL != pmix_globals.mypeer && PMIX_PEER_IS_SERVER(pmix_globals.mypeer);
+}
+
+void pmix_gds_base_job_data_changed(const char *nspace)
+{
+    if (!pmix_progress_thread_is_current()) {
+        (void) atomic_fetch_add_explicit(&offthread_marks, 1, memory_order_release);
+        return;
+    }
+    /* a local write: the copy we hold no longer matches a hash we kept
+     * for it as a client */
+    if (NULL == nspace) {
+        pmix_client_release_job_data_hashes();
+    } else {
+        pmix_client_forget_job_data_hash(nspace);
+    }
+    if (is_server()) {
+        mark_job_data(nspace);
+    }
+}
+
+void pmix_gds_base_job_data_received(void)
+{
+    /* job data that arrived with its own hash, or that made the client
+     * drop it: only the hashes we serve are affected */
+    if (!is_server()) {
+        return;
+    }
+    if (!pmix_progress_thread_is_current()) {
+        (void) atomic_fetch_add_explicit(&offthread_marks, 1, memory_order_release);
+        return;
+    }
+    mark_job_data(NULL);
+}
+
+void pmix_gds_base_job_info_stored(const char *nspace)
+{
+    if (!pmix_progress_thread_is_current()) {
+        (void) atomic_fetch_add_explicit(&offthread_marks, 1, memory_order_release);
+        return;
+    }
+    pmix_client_forget_job_data_hash(nspace);
+    pmix_gds_base_job_data_received();
+}
+
+/* acquire: seeing a count means seeing the write made before it */
+uint32_t pmix_gds_base_offthread_marks(void)
+{
+    return (uint32_t) atomic_load_explicit(&offthread_marks, memory_order_acquire);
+}
+
+void pmix_gds_base_job_data_sync(void)
+{
+    uint32_t now = pmix_gds_base_offthread_marks();
+
+    if (now != offthread_seen) {
+        offthread_seen = now;
+        mark_job_data(NULL);
+    }
+}
+
+static void mark_job_data(const char *nspace)
+{
+    pmix_namespace_t *ns;
+
+    if (all_marked || (NULL != nspace && PMIX_CHECK_NSPACE_STRICT(last_marked, nspace))) {
+        return;
+    }
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (NULL == nspace) {
+            ns->jobdata_hash_valid = false;
+        } else if (NULL != ns->nspace && 0 == strcmp(ns->nspace, nspace)) {
+            ns->jobdata_hash_valid = false;
+            break;
+        }
+    }
+    if (NULL == nspace) {
+        all_marked = true;
+    } else {
+        PMIX_LOAD_NSPACE(last_marked, nspace);
+    }
+}
+
+static void forget_marks(bool all)
+{
+    all_marked = all;
+    memset(last_marked, 0, sizeof(last_marked));
+}
+
+void pmix_gds_base_job_data_hashed(void)
+{
+    forget_marks(false);
+}
+
+void pmix_gds_base_job_data_reset(void)
+{
+    forget_marks(true);
+}
+
+bool pmix_gds_base_session_key(const char *key)
+{
+    return PMIx_Check_key(key, PMIX_SESSION_INFO_ARRAY) || pmix_check_session_info(key);
+}
+
+void pmix_gds_base_kv_stored(const pmix_proc_t *proc, pmix_scope_t scope, const char *key)
+{
+    bool self;
+
+    /* a client neither serves a hash nor keeps one for its own namespace,
+     * which is where every PMIx_Put lands */
+    if (NULL == key ||
+        (!is_server() && PMIX_CHECK_NSPACE(proc->nspace, pmix_globals.myid.nspace))) {
+        return;
+    }
+    /* gds/hash files these into the session, node and app tables and the
+     * job size, whatever the rank and scope (pmix_gds_hash_store). All are
+     * reserved keys, so an application key is turned away on the prefix */
+    if (PMIx_Check_reserved_key(key)) {
+        if (PMIx_Check_key(key, PMIX_SESSION_INFO_ARRAY)) {
+            pmix_gds_base_job_data_changed(NULL);
+            return;
+        }
+        if (PMIx_Check_key(key, PMIX_NODE_INFO_ARRAY) ||
+            PMIx_Check_key(key, PMIX_APP_INFO_ARRAY) || PMIx_Check_key(key, PMIX_JOB_SIZE)) {
+            pmix_gds_base_job_data_changed(proc->nspace);
+            return;
+        }
+    }
+    /* the same test gds/hash makes */
+    self = (proc->rank == pmix_globals.myid.rank &&
+            PMIX_CHECK_NSPACE(proc->nspace, pmix_globals.myid.nspace));
+    if (PMIX_RANK_WILDCARD == proc->rank || PMIX_INTERNAL == scope || PMIX_DEL_INTERNAL == scope ||
+        PMIX_DEL_LOCAL == scope || PMIX_DEL_REMOTE == scope || PMIX_DEL_GLOBAL == scope || self) {
+        pmix_gds_base_job_data_changed(pmix_gds_base_session_key(key) ? NULL : proc->nspace);
+    }
+}
+
+void pmix_gds_base_job_info_changed(const char *nspace, const pmix_info_t info[], size_t ninfo)
+{
+    size_t n;
+
+    for (n = 0; n < ninfo; n++) {
+        if (pmix_gds_base_session_key(info[n].key)) {
+            nspace = NULL;
+            break;
+        }
+    }
+    pmix_gds_base_job_data_changed(nspace);
+}
 
 /* carries a fetch across to the progress thread - see
  * pmix_gds_base_fetch_kv_tsafe() below */

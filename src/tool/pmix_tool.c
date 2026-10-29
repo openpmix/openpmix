@@ -1861,6 +1861,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
      * pmix_client_post_data_recvs() on every init - which is what makes
      * a destruct per cycle safe. */
     pmix_client_release_held_deletes();
+    pmix_client_release_job_data_hashes();
     /* drop the delta-commit record, and leave the flag set so a second
      * PMIx_tool_init in this process starts cumulative (matches the
      * client finalize) */
@@ -2022,6 +2023,8 @@ static void attach_complete(pmix_status_t status, struct pmix_peer_t *pr,
             /* the incoming server has seen nothing we published, so the
              * next commit owes it everything rather than a delta */
             pmix_client_commit_resync();
+            /* and holds none of the job data hashes the outgoing one issued */
+            pmix_client_release_job_data_hashes();
             if (NULL != pmix_client_globals.myserver) {
                 PMIX_RELEASE(pmix_client_globals.myserver);
             }
@@ -2240,6 +2243,8 @@ static void disc(int sd, short args, void *cbdata)
         pmix_peer_t *departing = peer;
         /* whatever we next connect to has seen nothing we published */
         pmix_client_commit_resync();
+        /* and holds none of the job data hashes the outgoing one issued */
+        pmix_client_release_job_data_hashes();
         PMIX_RETAIN(pmix_globals.mypeer);
         /* switch servers - we are in an event, so it is
          * safe to do so */
@@ -2422,6 +2427,8 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
          * ourselves (see PMIx_tool_init and PMIx_tool_finalize) */
         /* whatever we next connect to has seen nothing we published */
         pmix_client_commit_resync();
+        /* and holds none of the job data hashes the outgoing one issued */
+        pmix_client_release_job_data_hashes();
         if (NULL != pmix_client_globals.myserver) {
             PMIX_RELEASE(pmix_client_globals.myserver);
         }
@@ -2490,6 +2497,8 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
     /* the incoming server has seen nothing we published, so the next
      * commit owes it everything rather than a delta */
     pmix_client_commit_resync();
+    /* and holds none of the job data hashes the outgoing one issued */
+    pmix_client_release_job_data_hashes();
     if (NULL != pmix_client_globals.myserver) {
         PMIX_RELEASE(pmix_client_globals.myserver);
     }
