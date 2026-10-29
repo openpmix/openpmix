@@ -68,6 +68,7 @@ headers = \
         pmix_context_fns.h \
         pmix_pty.h \
         pmix_few.h \
+        pmix_fnv.h \
         pmix_string_copy.h \
         pmix_getcwd.h \
         pmix_tty.h

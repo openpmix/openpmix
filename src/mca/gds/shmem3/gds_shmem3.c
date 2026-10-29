@@ -22,6 +22,7 @@
 
 #include "src/include/pmix_dictionary.h"
 
+#include "src/util/pmix_fnv.h"
 #include "src/util/pmix_hash.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_string_copy.h"
@@ -1476,16 +1477,10 @@ static inline uint64_t
 nspace_scatter(
     const char *nspace
 ) {
-    uint64_t h = 14695981039346656037ULL;
-
     if (NULL == nspace) {
         return 0;
     }
-    for (const unsigned char *p = (const unsigned char *)nspace; *p; ++p) {
-        h ^= (uint64_t)*p;
-        h *= 1099511628211ULL;
-    }
-    return h;
+    return pmix_fnv1a64(PMIX_FNV1A64_INIT, nspace, strlen(nspace));
 }
 
 /**
