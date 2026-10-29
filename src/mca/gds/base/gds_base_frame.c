@@ -90,6 +90,7 @@ static pmix_status_t pmix_gds_open(pmix_mca_base_open_flag_t flags)
     pmix_gds_globals.initialized = true;
     pmix_gds_globals.all_mods = NULL;
     PMIX_CONSTRUCT(&pmix_gds_globals.actives, pmix_list_t);
+    pmix_gds_base_job_data_reset();
 
     /* Open up all available components */
     rc = pmix_mca_base_framework_components_open(&pmix_gds_base_framework, flags);

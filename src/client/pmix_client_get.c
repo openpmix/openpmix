@@ -10,6 +10,7 @@
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS). All Rights Reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -66,7 +67,8 @@
 
 static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
                                 pmix_rank_t rank,
-                                pmix_cmd_t cmd);
+                                pmix_cmd_t cmd,
+                                const uint64_t *held);
 
 static void get_data(int sd, short args, void *cbdata);
 
@@ -847,13 +849,136 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata)
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
+/* The PMIX_JOB_DATA_HASH of the job data of each other namespace this
+ * client was sent, to return with its next get for one of its procs. */
+typedef struct {
+    pmix_list_item_t super;
+    pmix_nspace_t nspace;
+    uint64_t hash;
+} job_data_hash_t;
+
+static void jhcon(job_data_hash_t *p)
+{
+    memset(p->nspace, 0, sizeof(p->nspace));
+    p->hash = 0;
+}
+static PMIX_CLASS_INSTANCE(job_data_hash_t, pmix_list_item_t, jhcon, NULL);
+
+static pmix_list_t job_data_hashes = PMIX_LIST_STATIC_INIT(job_data_hashes);
+/* the count of off-thread marks this list last took in */
+static uint32_t offthread_seen = 0;
+
+static job_data_hash_t *find_job_data_hash(const char *nspace)
+{
+    job_data_hash_t *h;
+
+    PMIX_LIST_FOREACH (h, &job_data_hashes, job_data_hash_t) {
+        if (PMIX_CHECK_NSPACE_STRICT(h->nspace, nspace)) {
+            return h;
+        }
+    }
+    return NULL;
+}
+
+/* take every hash entry out of the job values a reply handed back - they
+ * are ours, not job data - and return the first */
+static pmix_kval_t *take_job_data_hash(pmix_list_t *jobvals)
+{
+    pmix_kval_t *kv, *next, *stamp = NULL;
+
+    PMIX_LIST_FOREACH_SAFE (kv, next, jobvals, pmix_kval_t) {
+        if (PMIX_CHECK_KEY(kv, PMIX_JOB_DATA_HASH)) {
+            pmix_list_remove_item(jobvals, &kv->super);
+            if (NULL == stamp) {
+                stamp = kv;
+            } else {
+                PMIX_RELEASE(kv);
+            }
+        }
+    }
+    return stamp;
+}
+
+/* take the hash a reply stamped its job data with out of the job values
+ * it handed back, and keep it. A hash with no value marks job data that
+ * came unstamped, so the kept one is dropped. A stamp equal to the hash
+ * the get sent may have come alone, which only says the copy we held is
+ * current - so if the copy was dropped meanwhile, nothing is kept. A
+ * reply carrying part of the job data (partial) only confirms: what it
+ * merged is current exactly when the kept hash equals the stamp. That
+ * holds only for job-realm values: a node, app or session value is filed
+ * by what its key says, not by the qualifier that chose it, so it may
+ * land where the server holds something else (job_realm false) */
+static void keep_job_data_hash(const char *nspace, pmix_list_t *jobvals, const uint64_t *sent,
+                               bool partial, bool job_realm)
+{
+    pmix_kval_t *stamp = take_job_data_hash(jobvals);
+    job_data_hash_t *h;
+    uint64_t hash;
+    pmix_status_t rc;
+
+    if (NULL == stamp) {
+        return;
+    }
+    rc = (NULL == stamp->value) ? PMIX_ERR_BAD_PARAM
+                                : PMIx_Value_get_number(stamp->value, &hash, PMIX_UINT64);
+    PMIX_RELEASE(stamp);
+    if (PMIX_SUCCESS != rc) {
+        pmix_client_forget_job_data_hash(nspace);
+        return;
+    }
+    h = find_job_data_hash(nspace);
+    if (partial) {
+        if (!job_realm || (NULL != h && h->hash != hash)) {
+            pmix_client_forget_job_data_hash(nspace);
+        }
+        return;
+    }
+    if (NULL == h) {
+        if (NULL != sent && *sent == hash) {
+            return;
+        }
+        h = PMIX_NEW(job_data_hash_t);
+        if (NULL == h) {
+            return;
+        }
+        PMIX_LOAD_NSPACE(h->nspace, nspace);
+        pmix_list_append(&job_data_hashes, &h->super);
+    }
+    h->hash = hash;
+}
+
+/* the namespace's job data has been dropped from our store, so its hash
+ * no longer says what we hold */
+void pmix_client_forget_job_data_hash(const char *nspace)
+{
+    job_data_hash_t *h = find_job_data_hash(nspace);
+
+    if (NULL != h) {
+        pmix_list_remove_item(&job_data_hashes, &h->super);
+        PMIX_RELEASE(h);
+    }
+}
+
+void pmix_client_release_job_data_hashes(void)
+{
+    job_data_hash_t *h;
+
+    while (NULL != (h = (job_data_hash_t *) pmix_list_remove_first(&job_data_hashes))) {
+        PMIX_RELEASE(h);
+    }
+}
+
 static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
                                 pmix_rank_t rank,
-                                pmix_cmd_t cmd)
+                                pmix_cmd_t cmd,
+                                const uint64_t *held)
 {
     pmix_buffer_t *msg;
     pmix_status_t rc;
     char *nspace = cb->proc->nspace;
+    pmix_info_t *info = cb->info, hinfo;
+    size_t ninfo = cb->ninfo;
 
     /* nope - see if we can get it */
     msg = PMIX_NEW(pmix_buffer_t);
@@ -883,20 +1008,22 @@ static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
         PMIX_RELEASE(msg);
         return NULL;
     }
+    if (NULL != held && 0 == ninfo) {
+        // only sent with no other directive, which is when the server uses
+        // it - a request with directives keeps them
+        PMIX_INFO_LOAD(&hinfo, PMIX_GET_JOB_DATA_HASH, held, PMIX_UINT64);
+        info = &hinfo;
+        ninfo = 1;
+    }
     /* pack the number of info structs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cb->ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc && 0 < ninfo) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
+    }
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
-    }
-    if (0 < cb->ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, cb->info, cb->ninfo, PMIX_INFO);
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            return NULL;
-        }
     }
     if (NULL != cb->key) {
         /* pack the key */
@@ -1047,6 +1174,17 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
          * nothing the caller could act on, for a reply that did arrive */
         PMIX_ERROR_LOG(rc);
         ret = rc;
+        /* the stamp and the marker are ours, not job values to deliver */
+        kv = take_job_data_hash(&jobvals);
+        if (NULL != kv) {
+            PMIX_RELEASE(kv);
+        }
+        pmix_client_forget_job_data_hash(bymember ? member.nspace : lg->p.nspace);
+    } else {
+        keep_job_data_hash(bymember ? member.nspace : lg->p.nspace, &jobvals,
+                           lg->sent_hash ? &lg->sent_hash_value : NULL,
+                           0 < cb->ninfo || (PMIX_RANK_WILDCARD == lg->p.rank && NULL != cb->key),
+                           PMIX_REALM_JOB == lg->realm);
     }
 
 done:
@@ -1856,8 +1994,24 @@ doget:
         }
     }
 
+    /* a write from another thread may have changed a copy we kept a hash
+     * for, and only counted itself - see pmix_gds_base_job_data_changed() */
+    if (pmix_gds_base_offthread_marks() != offthread_seen) {
+        offthread_seen = pmix_gds_base_offthread_marks();
+        pmix_client_release_job_data_hashes();
+    }
     /* we don't have a pending request, so let's create one */
-    msg = _pack_get(cb, proc.rank, PMIX_GETNB_CMD);
+    {
+        job_data_hash_t *h = NULL;
+
+        if (PMIX_RANK_WILDCARD != proc.rank && 0 == cb->ninfo &&
+            !PMIX_CHECK_NSPACE(proc.nspace, pmix_globals.myid.nspace)) {
+            h = find_job_data_hash(proc.nspace);
+        }
+        lg->sent_hash = (NULL != h);
+        lg->sent_hash_value = (NULL != h) ? h->hash : 0;
+    }
+    msg = _pack_get(cb, proc.rank, PMIX_GETNB_CMD, lg->sent_hash ? &lg->sent_hash_value : NULL);
     if (PMIX_UNLIKELY(NULL == msg)) {
         cb->status = PMIX_ERROR;
         PMIX_ERROR_LOG(cb->status);
