@@ -70,6 +70,7 @@
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/pmix_fnv.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "pmix_server_ops.h"
@@ -1279,14 +1280,13 @@ static pmix_modex_mark_t *modex_mark_get(pmix_rank_info_t *info, uint64_t sig)
 
 static uint64_t participant_signature(const pmix_proc_t *procs, size_t nprocs)
 {
-    uint64_t h = 14695981039346656037ULL; /* FNV-1a 64-bit offset basis */
+    uint64_t h = PMIX_FNV1A64_INIT;
     size_t n, i;
-    const unsigned char *p;
 
 #define PMIX_SIG_BYTE(b)                            \
     do {                                            \
-        h ^= (uint64_t) (unsigned char) (b);        \
-        h *= 1099511628211ULL;                      \
+        unsigned char _c = (unsigned char) (b);     \
+        h = pmix_fnv1a64(h, &_c, 1);                \
     } while (0)
 
     for (i = 0; i < sizeof(nprocs); i++) {
@@ -1296,10 +1296,8 @@ static uint64_t participant_signature(const pmix_proc_t *procs, size_t nprocs)
         return h;
     }
     for (n = 0; n < nprocs; n++) {
-        for (p = (const unsigned char *) procs[n].nspace; '\0' != *p; p++) {
-            PMIX_SIG_BYTE(*p);
-        }
-        PMIX_SIG_BYTE(0);
+        /* the name and its terminator */
+        h = pmix_fnv1a64(h, procs[n].nspace, strlen(procs[n].nspace) + 1);
         for (i = 0; i < sizeof(pmix_rank_t); i++) {
             PMIX_SIG_BYTE((procs[n].rank >> (8 * i)) & 0xff);
         }
