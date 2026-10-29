@@ -138,7 +138,7 @@ pmix_status_t pmix_gds_hash_fetch_sessioninfo(pmix_peer_t *peer,
     size_t n;
     pmix_status_t rc;
     uint32_t sid = UINT32_MAX;
-    pmix_session_t *sptr;
+    pmix_session_t *sptr, *prior;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "FETCHING SESSION INFO");
@@ -155,7 +155,13 @@ pmix_status_t pmix_gds_hash_fetch_sessioninfo(pmix_peer_t *peer,
         }
     }
 
+    /* the check binds a job that has no session to the named one, or
+     * moves it off the default one, which changes the job's data */
+    prior = (NULL == trk) ? NULL : trk->session;
     sptr = pmix_gds_hash_check_session(trk, sid, false);
+    if (NULL != trk && prior != trk->session) {
+        pmix_gds_base_job_data_changed(trk->ns);
+    }
     if (NULL == sptr) {
         return PMIX_ERR_NOT_FOUND;
     }

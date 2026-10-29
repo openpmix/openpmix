@@ -165,6 +165,8 @@ static void nscon(pmix_namespace_t *p)
     p->ndelivered = 0;
     p->nfinalized = 0;
     p->local_app_fini_fired = false;
+    p->jobdata_hash_valid = false;
+    p->jobdata_hash = 0;
     PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
     memset(&p->compat, 0, sizeof(p->compat));
     PMIX_CONSTRUCT(&p->epilog.cleanup_dirs, pmix_list_t);
@@ -627,6 +629,8 @@ static void lgcon(pmix_get_logic_t *p)
      * otherwise: a caddy that never got that far must not be treated as
      * answerable on the caller's thread */
     p->plain = false;
+    p->sent_hash = false;
+    p->sent_hash_value = 0;
 }
 static void lgdes(pmix_get_logic_t *p)
 {

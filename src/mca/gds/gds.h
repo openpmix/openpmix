@@ -7,6 +7,7 @@
  * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS). All Rights Reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -186,6 +187,8 @@ typedef pmix_status_t (*pmix_gds_base_module_accept_kvs_resp_fn_t)(pmix_buffer_t
                                 __FILE__, __LINE__, _g->name);                 \
             (s) = _g->accept_kvs_resp((b), (j));                                      \
         }                                                                      \
+        /* the reply may carry job and session data */                         \
+        pmix_gds_base_job_data_received();                                     \
     } while (0)
 
 /* SERVER FN: cache job-level info in the server's GDS until client
@@ -208,6 +211,7 @@ typedef pmix_status_t (*pmix_gds_base_module_cache_job_info_fn_t)(struct pmix_na
         } else {                                                                           \
             (s) = _g->cache_job_info((struct pmix_namespace_t *) (n), (i), (ni));          \
         }                                                                                  \
+        pmix_gds_base_job_info_changed(((pmix_namespace_t *) (n))->nspace, (i), (ni));     \
     } while (0)
 
 /* register job-level info - this is provided as a special function
@@ -265,6 +269,8 @@ typedef pmix_status_t (*pmix_gds_base_module_store_job_info_fn_t)(const char *ns
         pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS STORE JOB INFO WITH %s", \
                             __FILE__, __LINE__, _g->name);                                 \
         (s) = _g->store_job_info(n, b);                                                    \
+        /* job data with no hash of its own, which may carry session data */               \
+        pmix_gds_base_job_info_stored(n);                                                  \
     } while (0)
 
 /**
@@ -288,6 +294,39 @@ typedef pmix_status_t (*pmix_gds_base_module_store_job_info_fn_t)(const char *ns
 typedef pmix_status_t (*pmix_gds_base_module_store_fn_t)(const pmix_proc_t *proc,
                                                          pmix_scope_t scope, pmix_kval_t *kv);
 
+/* A local write to a namespace's (NULL: every namespace's) job-level
+ * data. Every macro that writes it calls this: a server marks the
+ * PMIX_JOB_DATA_HASH it caches out of date, to be recomputed when a get
+ * next needs it, and a client drops the hash it kept for its copy. */
+PMIX_EXPORT void pmix_gds_base_job_data_changed(const char *nspace);
+/* Job-level data received from our server, which carries its own hash
+ * or the instruction to drop it: only the hashes a server caches are
+ * marked */
+PMIX_EXPORT void pmix_gds_base_job_data_received(void);
+/* A namespace's job-info blob stored outside a get (connect, spawn,
+ * local support): a client drops the hash it kept for that namespace,
+ * and a server marks every namespace, as the blob may carry session data */
+PMIX_EXPORT void pmix_gds_base_job_info_stored(const char *nspace);
+/* How many marks have been made from threads other than the progress
+ * thread; a client drops every hash it kept when this moves */
+uint32_t pmix_gds_base_offthread_marks(void);
+/* Session data is part of the job data of every namespace in the
+ * session, so a write carrying any marks them all. */
+PMIX_EXPORT bool pmix_gds_base_session_key(const char *key);
+PMIX_EXPORT void pmix_gds_base_job_info_changed(const char *nspace, const pmix_info_t info[],
+                                                size_t ninfo);
+/* A store or delete of one key for a proc: marks the job data stale when
+ * it lands in it - at the job level, in a rank's internal entries (every
+ * delete, and every store of our own proc's data, reaches those), in the
+ * session, node or app tables, or in the job size */
+PMIX_EXPORT void pmix_gds_base_kv_stored(const pmix_proc_t *proc, pmix_scope_t scope,
+                                         const char *key);
+/* A hash has been computed, so a namespace may hold a current one again */
+void pmix_gds_base_job_data_hashed(void);
+/* Take in the marks made from other threads since the last call. Called
+ * on the progress thread before a cached hash is trusted */
+void pmix_gds_base_job_data_sync(void);
+
 /* define a convenience macro for storing key-val pairs based on peer */
 #define PMIX_GDS_STORE_KV(s, p, pc, sc, k)                                     \
     do {                                                                       \
@@ -306,6 +345,7 @@ typedef pmix_status_t (*pmix_gds_base_module_store_fn_t)(const pmix_proc_t *proc
                                 __FILE__, __LINE__, _g->name);                 \
             (s) = _g->store(pc, sc, k);                                        \
         }                                                                      \
+        pmix_gds_base_kv_stored((pc), (sc), (k)->key);                         \
     } while (0)
 
 /**
@@ -502,6 +542,7 @@ typedef pmix_status_t (*pmix_gds_base_module_add_nspace_fn_t)(const char *nspace
                 (s) = PMIX_ERROR;                                                           \
             }                                                                               \
         }                                                                                   \
+        pmix_gds_base_job_data_changed(n);                                                  \
     } while (0)
 
 /**
@@ -530,6 +571,7 @@ typedef pmix_status_t (*pmix_gds_base_module_del_nspace_fn_t)(const char *nspace
                 (s) = PMIX_ERROR;                                                           \
             }                                                                               \
         }                                                                                   \
+        pmix_gds_base_job_data_changed(n);                                                  \
     } while (0)
 
 /**
@@ -570,6 +612,7 @@ typedef pmix_status_t (*pmix_gds_base_module_add_session_fn_t)(uint32_t sessionI
                 (s) = PMIX_ERROR;                                                            \
             }                                                                                \
         }                                                                                    \
+        pmix_gds_base_job_data_changed(NULL);                                                \
     } while (0)
 
 /**
@@ -607,6 +650,7 @@ typedef pmix_status_t (*pmix_gds_base_module_del_session_fn_t)(uint32_t sessionI
                 (s) = PMIX_ERROR;                                                            \
             }                                                                                \
         }                                                                                    \
+        pmix_gds_base_job_data_changed(NULL);                                                \
     } while (0)
 
 /**
@@ -659,6 +703,7 @@ typedef pmix_status_t (*pmix_gds_base_module_accept_update_fn_t)(pmix_buffer_t *
         } else {                                                            \
             (s) = _g->accept_update(b);                                     \
         }                                                                   \
+        pmix_gds_base_job_data_received();                                  \
     } while (0)
 
 /**
@@ -710,6 +755,7 @@ typedef pmix_status_t (*pmix_gds_base_module_add_job_data_fn_t)(const char *nspa
                 (s) = PMIX_ERROR;                                           \
             }                                                               \
         }                                                                   \
+        pmix_gds_base_job_info_changed((n), (i), (ni));                     \
     } while (0)
 
 /**
@@ -748,6 +794,13 @@ typedef pmix_status_t (*pmix_gds_base_module_del_key_fn_t)(const pmix_proc_t *pr
             if (NULL != _g->del_key) {                                                      \
                 (s) = _g->del_key((pc), (k));                                               \
             }                                                                               \
+        }                                                                                   \
+        /* the deleted data is the proc's namespace's, whichever module holds it */         \
+        if (NULL != (pc) || NULL != (ns)) {                                                 \
+            pmix_gds_base_job_data_changed(                                                 \
+                (NULL != (k) && pmix_gds_base_session_key(k))                               \
+                    ? NULL                                                                  \
+                    : (NULL != (pc) ? (pc)->nspace : (ns)->nspace));                        \
         }                                                                                   \
     } while (0)
 

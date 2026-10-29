@@ -7,6 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS). All Rights Reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -2214,7 +2215,8 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf, pmix_list_t *jobvals)
     pmix_kval_t kv;
     pmix_proc_t proct;
     pmix_rank_t wildrank;
-    bool keep_jobdata;
+    bool keep_jobdata, stamped;
+    pmix_kval_t *jk;
 
     /* the incoming payload is provided as a set of packed
      * byte objects, one for each rank. A pmix_proc_t is the first
@@ -2264,6 +2266,7 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf, pmix_list_t *jobvals)
          * store below is right. */
         keep_jobdata = (PMIX_RANK_WILDCARD == wildrank) &&
                        !PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash");
+        stamped = false;
 
         cnt = 1;
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
@@ -2277,11 +2280,14 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf, pmix_list_t *jobvals)
                 rc = store_node_info(proct.nspace, &kv);
             } else if (PMIX_CHECK_KEY(&kv, PMIX_APP_INFO_ARRAY)) {
                 rc = store_app_info(proct.nspace, &kv);
-            } else if (keep_jobdata) {
+            } else if (keep_jobdata || PMIX_CHECK_KEY(&kv, PMIX_JOB_DATA_HASH)) {
                 /* job-level, and this client reads its job data
                  * elsewhere - hand it back for the request in flight
-                 * rather than keeping a copy nothing will refresh */
-                pmix_kval_t *jk = PMIX_NEW(pmix_kval_t);
+                 * rather than keeping a copy nothing will refresh. The
+                 * hash of the job data always comes back: the client
+                 * keeps it */
+                stamped = stamped || PMIX_CHECK_KEY(&kv, PMIX_JOB_DATA_HASH);
+                jk = PMIX_NEW(pmix_kval_t);
                 if (NULL == jk) {
                     rc = PMIX_ERR_NOMEM;
                 } else {
@@ -2330,6 +2336,21 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf, pmix_list_t *jobvals)
             return rc;
         }
         PMIX_DESTRUCT(&pbkt);
+        /* job data that came without its hash may have replaced part of
+         * what a kept hash describes: hand back a hash with no value, so
+         * the client drops it */
+        if (PMIX_RANK_WILDCARD == wildrank && !stamped && NULL != jobvals) {
+            jk = PMIX_NEW(pmix_kval_t);
+            if (NULL == jk) {
+                return PMIX_ERR_NOMEM;
+            }
+            jk->key = strdup(PMIX_JOB_DATA_HASH);
+            if (NULL == jk->key) {
+                PMIX_RELEASE(jk);
+                return PMIX_ERR_NOMEM;
+            }
+            pmix_list_append(jobvals, &jk->super);
+        }
         /* get the next one */
         cnt = 1;
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &bo, &cnt, PMIX_BYTE_OBJECT);

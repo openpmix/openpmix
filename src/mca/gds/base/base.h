@@ -213,6 +213,9 @@ PMIX_EXPORT void pmix_gds_base_release_session_info(pmix_value_t *val);
 
 PMIX_EXPORT pmix_status_t pmix_gds_base_fetch_kv_tsafe(struct pmix_peer_t *peer, pmix_cb_t *cb);
 
+/* no hash computed yet: see pmix_gds_base_job_data_changed() */
+void pmix_gds_base_job_data_reset(void);
+
 /* Which realm answers this request. The ONLY place that decides it -
  * see the note on the definition. Callers cache the answer (on a
  * pmix_cb_t, or in pmix_get_logic_t) so it is computed once per fetch. */

@@ -10,6 +10,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS). All Rights Reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -53,6 +54,7 @@
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_fnv.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_output.h"
@@ -100,8 +102,8 @@ static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char 
                                           pmix_info_t info[], size_t ninfo,
                                           pmix_modex_cbfunc_t cbfunc, void *cbdata,
                                           pmix_dmdx_local_t **lcd, pmix_dmdx_request_t **rq);
-static pmix_status_t get_job_data(char *nspace, pmix_server_caddy_t *cd,
-                                  char *key, pmix_buffer_t *pbkt);
+static pmix_status_t get_job_data(pmix_namespace_t *nptr, pmix_server_caddy_t *cd,
+                                  char *key, bool may_skip, pmix_buffer_t *pbkt);
 static void get_timeout(int sd, short args, void *cbdata);
 static pmix_peer_t *local_peer_of_nspace(pmix_namespace_t *nptr);
 static bool list_has_key(pmix_list_t *kvs, const char *key);
@@ -348,6 +350,34 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
             return rc;
         }
     }
+    /* the hash the requester holds for the target's job data is not a
+     * directive: keep it on the caddy and take it off the array, so no
+     * fetch, directive scan or up-call sees it */
+    for (n = 0; n < cd->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GET_JOB_DATA_HASH)) {
+            cd->jobhash_held = (PMIX_SUCCESS == PMIx_Value_get_number(&cd->info[n].value,
+                                                                      &cd->jobhash, PMIX_UINT64));
+            if (1 == cd->ninfo) {
+                PMIX_INFO_FREE(cd->info, cd->ninfo);
+                cd->ninfo = 0;
+            } else {
+                PMIX_INFO_DESTRUCT(&cd->info[n]);
+                memmove(&cd->info[n], &cd->info[n + 1],
+                        (cd->ninfo - n - 1) * sizeof(pmix_info_t));
+                cd->ninfo--;
+            }
+            break;
+        }
+    }
+    /* a fetch qualified by a session binds a job that has none to it, or
+     * moves it off the default one (pmix_gds_hash_check_session), which
+     * changes that job's job data */
+    for (n = 0; n < cd->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&cd->info[n], PMIX_SESSION_ID)) {
+            pmix_gds_base_job_data_changed(nspace);
+            break;
+        }
+    }
     /* if they provided a specific key, get it */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &key, &cnt, PMIX_STRING);
@@ -545,7 +575,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
         /* they are asking for the job-level info for (or at least a
          * reserved key from) this nspace */
-        rc = get_job_data(nptr->nspace, cd, key, &pbkt);
+        rc = get_job_data(nptr, cd, key, false, &pbkt);
         if (PMIX_SUCCESS != rc) {
             PMIX_DESTRUCT(&pbkt);
             return rc;
@@ -1103,9 +1133,37 @@ void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
     }
 }
 
-static pmix_status_t get_job_data(char *nspace,
+/* Hash job-level values in our own encoding, so the hash does not depend
+ * on the requester the data is packed for */
+static pmix_status_t hash_job_data(pmix_list_t *kvs, uint64_t *hash)
+{
+    pmix_buffer_t buf;
+    pmix_kval_t *kv;
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    PMIX_LIST_FOREACH (kv, kvs, pmix_kval_t) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv, 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            break;
+        }
+    }
+    if (PMIX_SUCCESS == rc) {
+        *hash = pmix_fnv1a64(PMIX_FNV1A64_INIT, buf.base_ptr, buf.bytes_used);
+    }
+    PMIX_DESTRUCT(&buf);
+    return rc;
+}
+
+/* All of a namespace's job-level data (key NULL, no other directive) is
+ * stamped with its hash, for a requester that knows the stamp. When the
+ * requester already holds data with that hash and may_skip is set, the
+ * stamp alone is sent: it tells the requester its copy is current. Part
+ * of the job data is stamped only while the cached hash is current. */
+static pmix_status_t get_job_data(pmix_namespace_t *nptr,
                                   pmix_server_caddy_t *cd,
                                   char *key,
+                                  bool may_skip,
                                   pmix_buffer_t *pbkt)
 {
     pmix_status_t rc;
@@ -1113,44 +1171,117 @@ static pmix_status_t get_job_data(char *nspace,
     pmix_proc_t proc;
     pmix_cb_t cb;
     pmix_byte_object_t bo;
+    pmix_kval_t kv;
+    pmix_value_t val;
+    uint64_t hash = 0;
+    /* a client that predates the hash would keep it as a job-level key. A
+     * deferred reply (check_req) carries our own peer, which says nothing
+     * of the requester's version, so it goes unstamped. A client never
+     * sends a hash for its own namespace, so it is not stamped there */
+    bool stampable = (pmix_globals.mypeer != cd->peer && !PMIX_PEER_IS_EARLIER(cd->peer, 7, 0, 0) &&
+                      NULL != cd->peer->info &&
+                      !PMIX_CHECK_NSPACE_STRICT(cd->peer->info->pname.nspace, nptr->nspace));
+    /* a directive can narrow the job data a fetch returns, and one hash
+     * per namespace describes all of it */
+    bool whole = (NULL == key && stampable && 0 == cd->ninfo);
+    bool claimed = (whole && may_skip && cd->jobhash_held);
+    bool trusted, fetch, skip;
 
-    PMIX_LOAD_PROCID(&proc, nspace, PMIX_RANK_WILDCARD);
+    /* take in any marks made from other threads before trusting a hash */
+    pmix_gds_base_job_data_sync();
+    /* the release path takes the cached hash on trust and skips the fetch */
+    trusted = (claimed && nptr->jobdata_hash_valid && nptr->jobdata_hash == cd->jobhash);
+    fetch = !trusted;
+
+#if PMIX_ENABLE_DEBUG
+    /* check the cached hash against the data: a write that did not mark
+     * it stale shows up here, and is answered with the job data */
+    fetch = true;
+#endif
+    PMIX_LOAD_PROCID(&proc, nptr->nspace, PMIX_RANK_WILDCARD);
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    /* this data is requested by a local client, so give the gds the option
-     * of returning a copy of the data, or a pointer to
-     * local storage */
-    cb.proc = &proc;
-    cb.key = key;
-    cb.scope = PMIX_INTERNAL;
-    cb.copy = false;
-    cb.info = cd->info;
-    cb.ninfo = cd->ninfo;
-    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-    cb.info = NULL;
-    cb.ninfo = 0;
-    if (PMIX_SUCCESS == rc) {
-        PMIX_CONSTRUCT(&pkt, pmix_buffer_t);
-        /* assemble the provided data into a byte object */
-        PMIX_GDS_ASSEMB_KVS_REQ(rc, pmix_globals.mypeer, &proc, &cb.kvs, &pkt, cd);
-        if (rc != PMIX_SUCCESS) {
+    if (fetch) {
+        /* this data is requested by a local client, so give the gds the option
+         * of returning a copy of the data, or a pointer to
+         * local storage */
+        cb.proc = &proc;
+        cb.key = key;
+        cb.scope = PMIX_INTERNAL;
+        cb.copy = false;
+        cb.info = cd->info;
+        cb.ninfo = cd->ninfo;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        cb.info = NULL;
+        cb.ninfo = 0;
+        if (PMIX_SUCCESS != rc && !claimed) {
+            PMIX_DESTRUCT(&cb);
+            return PMIX_SUCCESS;
+        }
+        if (PMIX_SUCCESS != rc) {
+            /* the requester holds a copy of data we no longer have: an
+             * empty object without a stamp makes it drop its hash */
+            PMIX_LIST_DESTRUCT(&cb.kvs);
+            PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
+            nptr->jobdata_hash_valid = false;
+        } else if (whole && (!nptr->jobdata_hash_valid || trusted)) {
+            nptr->jobdata_hash_valid = (PMIX_SUCCESS == hash_job_data(&cb.kvs, &hash));
+            if (trusted && nptr->jobdata_hash_valid && hash != nptr->jobdata_hash) {
+                pmix_output(0, "%s JOB DATA HASH FOR %s WAS STALE: a write did not mark it",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), nptr->nspace);
+            }
+            nptr->jobdata_hash = hash;
+            pmix_gds_base_job_data_hashed();
+            pmix_output_verbose(2, pmix_server_globals.get_output,
+                                "%s JOB DATA FOR %s HASHED %016llx",
+                                PMIX_NAME_PRINT(&pmix_globals.myid), nptr->nspace,
+                                (unsigned long long) nptr->jobdata_hash);
+        }
+    }
+    skip = (claimed && nptr->jobdata_hash_valid && nptr->jobdata_hash == cd->jobhash);
+    if (skip) {
+        if (fetch) {
+            PMIX_LIST_DESTRUCT(&cb.kvs);
+            PMIX_CONSTRUCT(&cb.kvs, pmix_list_t);
+        }
+        pmix_output_verbose(2, pmix_server_globals.get_output,
+                            "%s JOB DATA FOR %s HELD", PMIX_NAME_PRINT(&pmix_globals.myid),
+                            nptr->nspace);
+    }
+    PMIX_CONSTRUCT(&pkt, pmix_buffer_t);
+    /* assemble the provided data into a byte object */
+    PMIX_GDS_ASSEMB_KVS_REQ(rc, pmix_globals.mypeer, &proc, &cb.kvs, &pkt, cd);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&pkt);
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+    /* part of the job data (a key, or a narrowing directive) is stamped
+     * too while the cached hash is current: the requester keeps its own
+     * hash only if the two agree */
+    if (stampable && nptr->jobdata_hash_valid) {
+        kv.key = PMIX_JOB_DATA_HASH;
+        kv.value = &val;
+        val.type = PMIX_UINT64;
+        val.data.uint64 = nptr->jobdata_hash;
+        PMIX_BFROPS_PACK(rc, cd->peer, &pkt, &kv, 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_DESTRUCT(&pkt);
             PMIX_DESTRUCT(&cb);
             return rc;
         }
-        PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
-        PMIX_DESTRUCT(&pkt);
-        /* pack it for transmission */
-        PMIX_BFROPS_PACK(rc, cd->peer, pbkt, &bo, 1, PMIX_BYTE_OBJECT);
-        PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&cb);
-            return rc;
-        }
     }
+    PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
+    PMIX_DESTRUCT(&pkt);
+    /* pack it for transmission */
+    PMIX_BFROPS_PACK(rc, cd->peer, pbkt, &bo, 1, PMIX_BYTE_OBJECT);
+    PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
     PMIX_DESTRUCT(&cb);
-
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
     return PMIX_SUCCESS;
 }
 
@@ -1219,19 +1350,15 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
     PMIX_LOAD_NSPACE(proc.nspace, nptr->nspace);
 
-    /* if the rank is WILDCARD or the target is in an nspace different
-     * from the requester, include a copy of the job-level data */
-    if (PMIX_RANK_WILDCARD == rank || diffnspace) {
-        rc = get_job_data(nptr->nspace, cd, NULL, &pbkt);
+    /* if the rank is WILDCARD, the job-level data is the answer */
+    if (PMIX_RANK_WILDCARD == rank) {
+        rc = get_job_data(nptr, cd, NULL, false, &pbkt);
         if (PMIX_SUCCESS != rc) {
             PMIX_DESTRUCT(&pbkt);
             return rc;
         }
-        if (PMIX_RANK_WILDCARD == rank) {
-            // we are done
-            found = true;
-            goto complete;
-        }
+        found = true;
+        goto complete;
     }
 
     proc.rank = rank;
@@ -1330,6 +1457,18 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
     }
     cb.info = NULL;
     cb.ninfo = 0;
+    /* a target in an nspace different from the requester's comes with a
+     * copy of the job-level data. The requester's own copy stands in for
+     * it only when this answer has the key: a client that does not keep
+     * job data (gds/shmem3) is answered a key it lacks from that copy */
+    if (diffnspace) {
+        rc = get_job_data(nptr, cd, NULL, NULL != key && list_has_key(&cb.kvs, key), &pbkt);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&cb);
+            PMIX_DESTRUCT(&pbkt);
+            return rc;
+        }
+    }
     found = true;
     PMIX_CONSTRUCT(&pkt, pmix_buffer_t);
     /* assemble the provided data into a byte object */
@@ -1379,8 +1518,7 @@ complete:
     }
 
     /* nothing is being passed back, so nothing will call relfn for us -
-     * the buffer may still carry the job-level data packed above (the
-     * cross-namespace case), and that allocation is ours to free */
+     * whatever the buffer holds is ours to free */
     if (NULL != data) {
         free(data);
     }

@@ -71,6 +71,12 @@ BEGIN_C_DECLS
 #define PMIX_PNET_SETUP_APP \
     "pmix.pnet.setapp" // (pmix_byte_object_t) blob containing info to be given to
                        //      pnet framework on remote nodes
+#define PMIX_JOB_DATA_HASH \
+    "pmix.jobdata.hash" // (uint64_t) hash of a namespace's job-level data, as
+                        //      its server sent it
+#define PMIX_GET_JOB_DATA_HASH \
+    "pmix.get.jobhash"  // (uint64_t) the PMIX_JOB_DATA_HASH the requester of a
+                        //      get holds for the target namespace
 
 // define some bit handling macros
 #define PMIX_SET_BIT(a, f) \
@@ -448,6 +454,8 @@ typedef struct {
     pmix_iof_flags_t iof_flags;   // output formatting flags
     pmix_list_t sinks;   // IOF write events for output to files or directories
     pmix_access_t access; // who may access this namespace - see pmix_access_t
+    bool jobdata_hash_valid; // jobdata_hash describes the job-level data we hold
+    uint64_t jobdata_hash;   // PMIX_JOB_DATA_HASH of that data, computed when needed
 } pmix_namespace_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_namespace_t);
 
@@ -824,6 +832,9 @@ typedef struct {
      * contribution was packed up to, applied to its mark only if the
      * fence completes successfully - see pmix_server_modex_contributed */
     uint64_t modex_upto;
+    /* a get's PMIX_GET_JOB_DATA_HASH, taken off info */
+    bool jobhash_held;
+    uint64_t jobhash;
 } pmix_server_caddy_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
 
@@ -931,6 +942,10 @@ typedef struct {
      * because the test used to live in another function entirely and was
      * therefore easy to add a qualifier without noticing. */
     bool plain;
+    /* the request carried our PMIX_GET_JOB_DATA_HASH for the target's
+     * namespace, and its value */
+    bool sent_hash;
+    uint64_t sent_hash_value;
 } pmix_get_logic_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_get_logic_t);
 
