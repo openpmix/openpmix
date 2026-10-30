@@ -2485,9 +2485,20 @@ subscription is. Four things about it are load-bearing:
   grandchild of a watched job is watched; the chain is host-supplied
   data, so the bound is what stops a malformed or circular one from
   spinning the progress thread.
-- **The two halves are independent.** Neither needs the other to have
-  run, and where both apply the second finds the subscription the first
-  created and does nothing.
+- **The two halves are independent, and run in either order.** Neither
+  needs the other to have run, and where both apply the second finds the
+  subscription the first created and does not clone it again -
+  `clone_iof_reqs()` checks for an existing clone (same requestor,
+  `remote_id` and channels, naming the child job) before making one.
+  The channels are part of the match because `remote_id` is not unique:
+  a tool's default handler and its spawns' subscriptions all use 0. The check has to
+  be there rather than in either caller: on a multi-node DVM the child's
+  first output routinely reaches the tool's server before the spawn
+  completes on the spawner's, so the delivery-time clone exists when the
+  spawn-time half runs. Without it every line arrived twice, and a chain
+  of spawns doubled the count per generation, since each child copies
+  all of its parent's subscriptions. `test/unit/iof_inherit.c` runs both
+  orders.
 
 **The host gets the final say through `PMIX_IOF_INHERIT`, and where it is
 read follows from the two halves being on different daemons.** The

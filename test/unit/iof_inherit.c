@@ -1,5 +1,7 @@
 /*
  * Copyright (c) 2026      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -509,9 +511,9 @@ static void deliver_from(const char *nspace, pmix_rank_t rank)
  */
 static void test_delivery_ancestry(void)
 {
-    pmix_peer_t *watcher;
+    pmix_peer_t *watcher, *spawner;
     pmix_iof_req_t *req;
-    int count;
+    int count, idx;
 
     watcher = mkpeer("toolns", 0, true);
 
@@ -539,6 +541,40 @@ static void test_delivery_ancestry(void)
                PMIX_FWD_STDERR_CHANNEL == req->channels);
         report("ancestry: it keeps the watcher's handler id", 9 == req->remote_id);
     }
+
+    /* ---- the two halves together clone once, in either order ----
+     *
+     * On a multi-node DVM a spawned job's first output routinely reaches
+     * the tool's server before the spawn completes on the spawner's, so
+     * the delivery-time clone exists when the spawn-time half runs. A
+     * second clone forwarded every line twice, and a spawn chain doubled
+     * it per generation, since each child copies all of its parent's. The
+     * reverse order is reached by a chunk on a channel the watcher did not
+     * subscribe to: it matches nothing, so the ancestry walk runs again. */
+    spawner = mkpeer("parentjob", 0, false);
+    run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "childjob");
+    find_watch("childjob", &count);
+    report("ancestry: spawn-time after delivery adds no second clone", 1 == count);
+    deliver_from("childjob", 0);
+    find_watch("childjob", &count);
+    report("ancestry: delivery after spawn-time adds no second clone", 1 == count);
+
+    /* ---- a subscription on other channels is not a duplicate ----
+     *
+     * Same requestor and handler id, different channels: remote_id is not
+     * unique (a tool's default handler and its spawns' subscriptions all
+     * use 0), so treating this as already cloned would drop the child's
+     * stddiag. Not stdout: the cache holds stdout chunks from the cases
+     * above, and a clone that matched them would try to forward them to
+     * these socketless peers. */
+    idx = watch_job(watcher, "parentjob", PMIX_FWD_STDDIAG_CHANNEL, 9);
+    run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "childjob");
+    find_watch("childjob", &count);
+    report("ancestry: a subscription on other channels is cloned too", 2 == count);
+    req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, idx);
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, idx, NULL);
+    PMIX_RELEASE(req);
+    PMIX_RELEASE(spawner);
 
     /* ---- the walk is transitive ----
      *

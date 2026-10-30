@@ -12,6 +12,8 @@
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -541,6 +543,31 @@ static void drain_cache(const char *nspace)
     }
 }
 
+/* Has "req" already been cloned onto "nspace"? A clone keeps the
+ * original's requestor, remote_id and channels and names the job as a
+ * whole. The channels are part of the match because remote_id is not
+ * unique: a tool's default handler and every subscription its spawns
+ * create share id 0. The namespace is compared exactly: PMIX_CHECK_NSPACE
+ * reads an empty name as a wildcard. */
+static bool already_cloned(const pmix_iof_req_t *req, const char *nspace)
+{
+    pmix_iof_req_t *r;
+    int i;
+
+    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+        r = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL == r || r == req || 1 != r->nprocs) {
+            continue;
+        }
+        if (r->requestor == req->requestor && r->remote_id == req->remote_id &&
+            r->channels == req->channels && PMIX_RANK_WILDCARD == r->procs[0].rank &&
+            0 == strncmp(r->procs[0].nspace, nspace, PMIX_MAX_NSLEN)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Clone every subscription covering "parent" onto "nspace".
  *
  * "The parent's settings" are not recorded anywhere as settings - what
@@ -554,13 +581,18 @@ static void drain_cache(const char *nspace)
  * output arrives at the requestor under the same handler id the parent's
  * does and is treated identically there.
  *
- * Returns the number of subscriptions cloned - zero means nobody is
- * watching that parent here.
+ * A subscription that already follows into the child is not cloned again.
+ * The spawn-time and delivery-time halves both come here, in either order,
+ * and a second clone delivers every line twice - and doubles again in each
+ * generation of a spawn chain, since the next clone copies both.
+ *
+ * Returns the number of subscriptions covering the child from this parent,
+ * cloned now or before - zero means nobody is watching that parent here.
  */
 static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
 {
     pmix_iof_req_t *req, *nreq;
-    size_t m, ninherited = 0;
+    size_t m, ncovered = 0, ninherited = 0;
     int i, limit, idx;
     pmix_namespace_t *ns, *child = NULL;
 
@@ -612,6 +644,12 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
         if (!pmix_server_peer_permitted(req->requestor, child)) {
             continue;
         }
+        /* both halves of inheritance clone through here, and either can
+         * run first: the subscription may already follow into the child */
+        if (already_cloned(req, nspace)) {
+            ++ncovered;
+            continue;
+        }
 
         nreq = PMIX_NEW(pmix_iof_req_t);
         if (NULL == nreq) {
@@ -661,7 +699,7 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
     if (0 < ninherited) {
         drain_cache(nspace);
     }
-    return ninherited;
+    return ncovered + ninherited;
 }
 
 /* Does the host allow this job to inherit? PMIX_IOF_INHERIT is job-level
