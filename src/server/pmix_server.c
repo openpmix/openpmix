@@ -451,6 +451,88 @@ pmix_status_t pmix_server_initialize(void)
     return PMIX_SUCCESS;
 }
 
+/* What a server owes its peers before its progress thread stops: the
+ * messages already queued for them. A reply is queued as a write event that fires
+ * once the peer's socket can take it, and stopping the progress thread
+ * flushes only events already active - so a reply queued just before
+ * finalize was dropped whenever the stop came first, and the peer's
+ * request failed with PMIX_ERR_COMM_FAILURE. A tool asking a host to shut
+ * down is answered exactly then: pterm reported a DVM it had just halted
+ * as a failure, intermittently and only under load.
+ *
+ * So before the thread stops, it is asked every 10 ms whether any peer
+ * still has a message queued or part-written, and the stop goes on once
+ * none does - the first answer only after one pass of the loop, which costs
+ * 10 ms and is what lets a reply still on its way into a queue be seen. A
+ * peer whose connection is already closed is owed nothing, and a peer that
+ * has stopped reading holds the host for two seconds at most. This runs
+ * from PMIx_Progress_thread_stop() (pmix_progress_thread_set_flush), since
+ * a host may stop the thread well before it finalizes us. */
+#define PMIX_SERVER_FLUSH_POLL_USEC 10000
+#define PMIX_SERVER_FLUSH_MAX_POLLS 200
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    int polls;
+} pmix_server_flush_t;
+
+static bool sends_pending(void)
+{
+    pmix_peer_t *peer;
+    int i;
+
+    for (i = 0; i < pmix_server_globals.clients.size; i++) {
+        peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, i);
+        if (NULL == peer || 0 > peer->sd) {
+            continue;
+        }
+        if (NULL != peer->send_msg || 0 < pmix_list_get_size(&peer->send_queue)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void flush_check(int sd, short args, void *cbdata)
+{
+    pmix_server_flush_t *f = (pmix_server_flush_t *) cbdata;
+    struct timeval tv = {.tv_sec = 0, .tv_usec = PMIX_SERVER_FLUSH_POLL_USEC};
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    /* Never conclude on the first look. A reply reaches a peer's queue by
+     * way of events of its own - the completion that packs it, the send
+     * request it posts - which may be queued behind this one, so the queue
+     * can look empty while a reply is on its way into it. One pass of the
+     * loop runs them, and a poll gives the socket its chance to be
+     * written; only then does an empty queue mean what it says. */
+    if ((0 < f->polls && !sends_pending()) || PMIX_SERVER_FLUSH_MAX_POLLS <= f->polls) {
+        PMIX_WAKEUP_THREAD(&f->lock);
+        return;
+    }
+    ++f->polls;
+    pmix_event_evtimer_set(pmix_globals.evbase, &f->ev, flush_check, f);
+    pmix_event_evtimer_add(&f->ev, &tv);
+}
+
+static void flush_peer_sends(void)
+{
+    pmix_server_flush_t f;
+
+    /* with nobody running the loop, nothing would ever be written - nor
+     * would our check run */
+    if (!pmix_progress_thread_running()) {
+        return;
+    }
+    PMIX_CONSTRUCT_LOCK(&f.lock);
+    f.polls = 0;
+    pmix_event_assign(&f.ev, pmix_globals.evbase, -1, EV_WRITE, flush_check, &f);
+    PMIX_POST_OBJECT(&f);
+    pmix_event_active(&f.ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&f.lock);
+    PMIX_DESTRUCT_LOCK(&f.lock);
+}
+
 /* Give back everything an init built.
  *
  * Shared by PMIx_server_finalize and by PMIx_server_init's own unwind, so
@@ -479,8 +561,11 @@ static void server_teardown(void)
         keepalive_fd = -1;
     }
 
-    /* wait here until all active events have been processed */
+    /* wait here until what is already queued for our peers has gone out -
+     * the stop runs flush_peer_sends() first - and all active events have
+     * been processed */
     PMIx_Progress_thread_stop(NULL, 0);
+    pmix_progress_thread_set_flush(NULL);
 
     /* flush any residual IOF into their respective channels */
     pmix_iof_flush_residuals();
@@ -1497,6 +1582,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
      * start answering the connections the kernel has been holding in the
      * backlog since pmix_ptl_base_create_listener bound the socket. */
     pmix_ptl_base_start_listening();
+
+    /* and when the progress thread is stopped - by our finalize, or by a
+     * host that stops it first - let what we have queued for our peers go
+     * out before it does */
+    pmix_progress_thread_set_flush(flush_peer_sends);
 
     // mark ourselves as initialized
     pmix_atomic_set_bool(&pmix_globals.initialized);
