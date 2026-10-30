@@ -338,6 +338,73 @@ pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info
     return PMIX_SUCCESS;
 }
 
+pmix_status_t pmix_server_add_requester_type(pmix_peer_t *peer, pmix_info_t **info,
+                                             size_t *ninfo)
+{
+    pmix_info_t *old = *info, *new;
+    size_t n, m, nold = *ninfo;
+    bool tool, client, relayed = false;
+
+    if (NULL == peer || NULL == peer->info) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* what the connection says the requester is - unless a server relaying
+     * the request for the process that made it already said so, which is
+     * the same rule pmix_server_add_requester_id applies to the identity */
+    tool = PMIX_PEER_IS_TOOL(peer) ? true : false;
+    client = PMIX_PEER_IS_CLIENT(peer) ? true : false;
+    for (n = 0; n < nold; n++) {
+        if (PMIx_Info_is_relayed(&old[n]) &&
+            (PMIx_Check_key(old[n].key, PMIX_REQUESTOR_IS_TOOL) ||
+             PMIx_Check_key(old[n].key, PMIX_REQUESTOR_IS_CLIENT))) {
+            relayed = true;
+            tool = false;
+            client = false;
+            break;
+        }
+    }
+    for (n = 0; relayed && n < nold; n++) {
+        if (!PMIx_Info_is_relayed(&old[n])) {
+            continue;
+        }
+        if (PMIx_Check_key(old[n].key, PMIX_REQUESTOR_IS_TOOL)) {
+            tool = PMIX_INFO_TRUE(&old[n]);
+        } else if (PMIx_Check_key(old[n].key, PMIX_REQUESTOR_IS_CLIENT)) {
+            client = PMIX_INFO_TRUE(&old[n]);
+        }
+    }
+    new = PMIx_Info_create(nold + 2);
+    if (NULL == new) {
+        return PMIX_ERR_NOMEM;
+    }
+    /* move every entry except the ones the requester supplied about itself */
+    m = 0;
+    for (n = 0; n < nold; n++) {
+        if (PMIx_Check_key(old[n].key, PMIX_REQUESTOR_IS_TOOL) ||
+            PMIx_Check_key(old[n].key, PMIX_REQUESTOR_IS_CLIENT)) {
+            PMIx_Info_destruct(&old[n]);
+            continue;
+        }
+        memcpy(&new[m], &old[n], sizeof(pmix_info_t));
+        ++m;
+    }
+    PMIx_Info_load(&new[m], PMIX_REQUESTOR_IS_TOOL, &tool, PMIX_BOOL);
+    if (relayed) {
+        PMIx_Info_relayed(&new[m]);
+    }
+    ++m;
+    PMIx_Info_load(&new[m], PMIX_REQUESTOR_IS_CLIENT, &client, PMIX_BOOL);
+    if (relayed) {
+        PMIx_Info_relayed(&new[m]);
+    }
+    ++m;
+    /* only the block is left to release - see pmix_server_add_requester_id */
+    free(old);
+    *info = new;
+    *ninfo = m;
+    return PMIX_SUCCESS;
+}
+
 /* nested info arrays are followed no deeper than this */
 #define PMIX_SERVER_IDS_MAXDEPTH 8
 
@@ -1228,6 +1295,14 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
     if (NULL != pmix_host_server.spawn) {
         /* pass the requester's identity to the host */
         rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        /* ...and whether it is a tool or a client. The name alone cannot
+         * say: a tool started by one of a job's processes inherits that
+         * process's identity, and its launch is not that process's spawn */
+        rc = pmix_server_add_requester_type(peer, &cd->info, &cd->ninfo);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto cleanup;

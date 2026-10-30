@@ -47,6 +47,15 @@
  *                                  choice when it made one
  *   resolve_peers               -> the same, for the query the server
  *                                  builds itself
+ *   pmix_server_add_requester_type
+ *      a client                 -> PMIX_REQUESTOR_IS_CLIENT only, and one
+ *                                  it claimed to be a tool is replaced
+ *      a launcher               -> PMIX_REQUESTOR_IS_TOOL only
+ *      a launcher that took a
+ *         job's identity        -> both: it is a tool, though its name is
+ *                                  a client's
+ *      a pair marked
+ *         PMIX_INFO_RELAYED     -> kept, still marked
  */
 
 #include "src/include/pmix_config.h"
@@ -466,6 +475,76 @@ static void test_helper(void)
     }
 }
 
+/* the pair the type helper appended, read off the end of the array */
+static bool saw_type(const pmix_info_t *info, size_t ninfo, bool tool, bool client)
+{
+    size_t n, ntool = 0, nclient = 0;
+    bool t = !tool, c = !client;
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIx_Check_key(info[n].key, PMIX_REQUESTOR_IS_TOOL)) {
+            ++ntool;
+            t = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIx_Check_key(info[n].key, PMIX_REQUESTOR_IS_CLIENT)) {
+            ++nclient;
+            c = PMIX_INFO_TRUE(&info[n]);
+        }
+    }
+    return (1 == ntool && 1 == nclient && tool == t && client == c);
+}
+
+static void test_type(void)
+{
+    pmix_info_t *info = NULL;
+    size_t ninfo = 0;
+    uint32_t saved = requester->proc_type.type;
+    bool yes = true;
+    pmix_status_t rc;
+    int ok;
+
+    requester->proc_type.type = PMIX_PROC_CLIENT;
+    info = PMIx_Info_create(2);
+    PMIx_Info_load(&info[0], RID_UNKNOWN_KEY, &yes, PMIX_BOOL);
+    PMIx_Info_load(&info[1], PMIX_REQUESTOR_IS_TOOL, &yes, PMIX_BOOL);
+    ninfo = 2;
+    rc = pmix_server_add_requester_type(requester, &info, &ninfo);
+    ok = (PMIX_SUCCESS == rc && 3 == ninfo && PMIx_Check_key(info[0].key, RID_UNKNOWN_KEY) &&
+          saw_type(info, ninfo, false, true));
+    report("a client is a client, whatever it claims, and the rest is kept", ok);
+    PMIx_Info_free(info, ninfo);
+
+    requester->proc_type.type = PMIX_PROC_LAUNCHER;
+    info = NULL;
+    ninfo = 0;
+    rc = pmix_server_add_requester_type(requester, &info, &ninfo);
+    report("a launcher is a tool", PMIX_SUCCESS == rc && saw_type(info, ninfo, true, false));
+    PMIx_Info_free(info, ninfo);
+
+    /* the prun in a job script: it took the job's name from its
+     * environment, and its spawn is still not that job's */
+    requester->proc_type.type = PMIX_PROC_CLIENT_LAUNCHER;
+    info = NULL;
+    ninfo = 0;
+    rc = pmix_server_add_requester_type(requester, &info, &ninfo);
+    report("a launcher holding a job's identity is a tool as well as a client",
+           PMIX_SUCCESS == rc && saw_type(info, ninfo, true, true));
+    PMIx_Info_free(info, ninfo);
+
+    /* a server relaying the request said what the process that made it is */
+    requester->proc_type.type = PMIX_PROC_LAUNCHER;
+    info = PMIx_Info_create(1);
+    PMIx_Info_load(&info[0], PMIX_REQUESTOR_IS_CLIENT, &yes, PMIX_BOOL);
+    PMIx_Info_relayed(&info[0]);
+    ninfo = 1;
+    rc = pmix_server_add_requester_type(requester, &info, &ninfo);
+    ok = (PMIX_SUCCESS == rc && saw_type(info, ninfo, false, true) && 2 == ninfo &&
+          PMIx_Info_is_relayed(&info[0]) && PMIx_Info_is_relayed(&info[1]));
+    report("a relayed type is kept, still marked", ok);
+    PMIx_Info_free(info, ninfo);
+
+    requester->proc_type.type = saved;
+}
+
 static void test_query(void)
 {
     pmix_status_t rc;
@@ -521,6 +600,7 @@ int main(int argc, char **argv)
     }
 
     test_helper();
+    test_type();
     test_query();
     test_resolve();
 
