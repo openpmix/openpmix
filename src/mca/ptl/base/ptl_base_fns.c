@@ -46,6 +46,8 @@
 #include <sys/file.h>
 #include <strings.h>
 #include <errno.h>
+#include <limits.h>
+#include <signal.h>
 #include <time.h>
 
 #include "src/include/pmix_globals.h"
@@ -438,8 +440,46 @@ int pmix_ptl_base_take_lock(int dirfd, const char *name)
     return fd;
 }
 
-bool pmix_ptl_base_server_gone(int dirfd, const char *name, uid_t owner, const char *lock)
+bool pmix_ptl_base_rndz_pid(const char *line, pid_t *pid)
 {
+    unsigned long val;
+    char *endptr = NULL;
+
+    if (NULL == line) {
+        return false;
+    }
+    errno = 0;
+    val = strtoul(line, &endptr, 10);
+    if (0 != errno || NULL == endptr || endptr == line || 0 == val ||
+        (unsigned long) INT_MAX < val || val != (unsigned long) (pid_t) val) {
+        return false;
+    }
+    *pid = (pid_t) val;
+    return true;
+}
+
+bool pmix_ptl_base_pid_gone(pid_t pid)
+{
+    if (pid == pmix_globals.pid) {
+        return true;
+    }
+    return (0 != kill(pid, 0) && EPERM != errno);
+}
+
+bool pmix_ptl_base_server_gone(int dirfd, const char *name, uid_t owner, const char *lock,
+                               pid_t pid)
+{
+    /* A file without the lock line was written by an earlier release,
+     * which held no lock - and keeping every such file made one left
+     * behind by a server long gone stop the search for any other on this
+     * node with too-many-conns, however well the files of current servers
+     * said they were running. Its pid is what such a file has to say for
+     * itself, and what a server starting at its name already goes by. A
+     * file WITH the line is not judged by its pid: from another pid
+     * namespace sharing the directory, the pid is another process or none */
+    if (NULL == lock) {
+        return (0 < pid && pmix_ptl_base_pid_gone(pid));
+    }
     return PMIX_PTL_LOCK_GONE == pmix_ptl_base_lock_state(dirfd, name, owner, lock);
 }
 
@@ -735,6 +775,7 @@ static pmix_status_t parse_conn_file(char *filename, bool optional, bool found_b
     size_t taglen;
     char *lock = NULL;
     bool gone, owned, believed;
+    pid_t pid = 0;
     int nlines = 0;
     size_t budget = PMIX_PTL_MAX_CONN_FILE;
     struct stat st;
@@ -831,6 +872,11 @@ process:
      * rather than by where they fall. The first of each counts */
     if (NULL != p) {
         while (nlines++ < PMIX_PTL_MAX_TAG_LINES && NULL != (line = pmix_ptl_base_getline(fp, &budget))) {
+            /* the line after the version is its writer's pid */
+            if (1 == nlines && pmix_ptl_base_rndz_pid(line, &pid)) {
+                free(line);
+                continue;
+            }
             if (0 == strncmp(line, PMIX_PTL_LOCAL_URI_TAG,
                                     strlen(PMIX_PTL_LOCAL_URI_TAG))) {
                 tag = PMIX_PTL_LOCAL_URI_TAG;
@@ -860,7 +906,7 @@ process:
      * one still running is the one found */
     owned = (0 == fstat(fileno(fp), &st));
     gone = found_by_search && owned &&
-           pmix_ptl_base_server_gone(AT_FDCWD, filename, st.st_uid, lock);
+           pmix_ptl_base_server_gone(AT_FDCWD, filename, st.st_uid, lock, pid);
     believed = !gone && vouched(p, lock, !regular_only, owned ? &st : NULL, filename);
     free(lock);
     fclose(fp);
@@ -2803,6 +2849,7 @@ static void check_server(char *filename, pmix_list_t *servers)
     uint32_t u32;
     pmix_status_t rc;
     bool ok, gone;
+    pid_t pid = 0;
     char *lock = NULL;
     struct stat st;
     size_t budget = PMIX_PTL_MAX_CONN_FILE;
@@ -2903,6 +2950,9 @@ static void check_server(char *filename, pmix_list_t *servers)
         goto complete;
     }
     u32 = strtoul(p2, NULL, 10);
+    if (!pmix_ptl_base_rndz_pid(p2, &pid)) {
+        pid = 0;
+    }
     free(p2);
     if (!add_info(&mylist, PMIX_SERVER_PIDINFO, &u32, PMIX_UINT32)) {
         goto nomem;
@@ -2953,7 +3003,7 @@ complete:
         free(p2);
     }
     gone = (0 == fstat(fileno(fp), &st) &&
-            pmix_ptl_base_server_gone(AT_FDCWD, filename, st.st_uid, lock));
+            pmix_ptl_base_server_gone(AT_FDCWD, filename, st.st_uid, lock, pid));
     free(lock);
     fclose(fp);
     if (gone) {

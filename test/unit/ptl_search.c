@@ -250,15 +250,31 @@ static void test_df_search(void)
 }
 
 /* A file is kept when its server holds the lock beside it, when it does
- * not say it locks - from an earlier release, whose pid is no process's
- * here - when it names a lock we do not know, when it has no lock file,
+ * not say it locks - from an earlier release - and the pid it records is
+ * running, when it names a lock we do not know, when it has no lock file,
  * and when its lock file is one others could open. Each but the held one
- * has a lock file nothing holds beside it, but the one with none */
+ * has a lock file nothing holds beside it, but the one with none. A file
+ * that does not say it locks and whose pid is no process's here is a
+ * server that is gone, and is passed over: one such left behind by an
+ * earlier release used to stop every search on its node. */
+static bool found_ns(pmix_list_t *connections, const char *nspace)
+{
+    pmix_connection_t *cn;
+
+    PMIX_LIST_FOREACH (cn, connections, pmix_connection_t) {
+        if (NULL != cn->nspace && 0 == strcmp(cn->nspace, nspace)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void test_df_search_kept(void)
 {
     char dir[PMIX_PATH_MAX + 16], path[PMIX_PATH_MAX + 160], buf[512];
-    const char *names[6] = {"pmix.k.held", "pmix.k.untagged", "pmix.k.otherlock",
-                            "pmix.k.nolockfile", "pmix.k.openlock", "pmix.k.linkedlock"};
+    const char *names[7] = {"pmix.k.held", "pmix.k.untagged", "pmix.k.otherlock",
+                            "pmix.k.nolockfile", "pmix.k.openlock", "pmix.k.linkedlock",
+                            "pmix.k.untaggedgone"};
     char other[PMIX_PATH_MAX + 200] = "";
     char *lname;
     pmix_list_t connections;
@@ -272,11 +288,13 @@ static void test_df_search_kept(void)
         report("df_search kept: setup", 0, "mkdir or fork failed");
         return;
     }
-    for (n = 0; n < 6; n++) {
+    for (n = 0; n < 7; n++) {
+        /* the untagged file that is kept names a process that runs - our
+         * parent; our own pid would be a leftover of an earlier process */
         snprintf(buf, sizeof(buf), "ns%d.0;tcp4://127.0.0.1:%d\n7.0.0\n%lu\n0:0\nnow\n%s\n", n,
-                 4250 + n, (unsigned long) pid,
-                 (1 == n) ? "" : (2 == n) ? PMIX_PTL_LOCK_TAG "fcntl"
-                                          : PMIX_PTL_LOCK_TAG PMIX_PTL_LOCK_FLOCK);
+                 4250 + n, (1 == n) ? (unsigned long) getppid() : (unsigned long) pid,
+                 (1 == n || 6 == n) ? "" : (2 == n) ? PMIX_PTL_LOCK_TAG "fcntl"
+                                                    : PMIX_PTL_LOCK_TAG PMIX_PTL_LOCK_FLOCK);
         snprintf(path, sizeof(path), "%s/%s", dir, names[n]);
         if (NULL != (fp = fopen(path, "w"))) {
             fputs(buf, fp);
@@ -284,7 +302,7 @@ static void test_df_search_kept(void)
         }
         if (0 == n) {
             fd = hold(path);
-        } else if (3 != n && NULL != (lname = pmix_ptl_base_lock_name(path))) {
+        } else if (3 != n && 6 != n && NULL != (lname = pmix_ptl_base_lock_name(path))) {
             if (NULL != (fp = fopen(lname, "w"))) {
                 fclose(fp);
                 chmod(lname, (4 == n) ? 0644 : 0600);
@@ -302,10 +320,14 @@ static void test_df_search_kept(void)
     PMIX_CONSTRUCT(&connections, pmix_list_t);
     rc = pmix_ptl_base_df_search(dir, "pmix.k.", false, NULL, 0, true, &connections);
     report("df_search kept: a file whose server holds the lock beside it, one that does not "
-           "say it locks, one naming another lock, one with no lock file, one whose lock "
-           "file others could open, and one whose lock file has another name are all kept",
+           "say it locks whose process runs, one naming another lock, one with no lock file, "
+           "one whose lock file others could open, and one whose lock file has another name "
+           "are all kept",
            0 <= fd && PMIX_SUCCESS == rc && 6 == pmix_list_get_size(&connections),
-           "a file was passed over");
+           "a file was passed over, or the gone one kept");
+    report("df_search kept: ...and one that does not say it locks, whose process is gone, "
+           "is passed over",
+           !found_ns(&connections, "ns6"), "the file of a server that is gone was kept");
     PMIX_LIST_DESTRUCT(&connections);
     if (0 <= fd) {
         close(fd);
@@ -313,7 +335,7 @@ static void test_df_search_kept(void)
     if ('\0' != other[0]) {
         unlink(other);
     }
-    for (n = 0; n < 6; n++) {
+    for (n = 0; n < 7; n++) {
         snprintf(path, sizeof(path), "%s/%s", dir, names[n]);
         unlink(path);
         snprintf(path, sizeof(path), "%s/.%s" PMIX_PTL_LOCK_SUFFIX, dir, names[n]);
