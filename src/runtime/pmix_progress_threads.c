@@ -123,6 +123,18 @@ static pmix_progress_tracker_t *shared_thread_tracker = NULL;
  */
 static pthread_t shared_loop_thread = (pthread_t) -1;
 
+static pmix_progress_flush_fn_t flush_hook = NULL;
+
+void pmix_progress_thread_set_flush(pmix_progress_flush_fn_t fn)
+{
+    flush_hook = fn;
+}
+
+bool pmix_progress_thread_running(void)
+{
+    return ((pthread_t) -1 != shared_loop_thread);
+}
+
 bool pmix_progress_thread_is_current(void)
 {
     pthread_t owner = shared_loop_thread;
@@ -266,6 +278,11 @@ void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo)
         if (0 == strcmp(name, trk->name)) {
             /* If the progress thread is active, stop it */
             if (trk->ev_active) {
+                if (flush && NULL != flush_hook && trk == shared_thread_tracker) {
+                    /* what is owed before the thread goes - see
+                     * pmix_progress_thread_set_flush */
+                    flush_hook();
+                }
                 if (flush) {
                     // put a marker event at the end of the event list
                     PMIX_CONSTRUCT_LOCK(&lock);
