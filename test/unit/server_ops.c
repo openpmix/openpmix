@@ -104,8 +104,10 @@ static size_t publish_ngid = 0;
 static bool lookup_fired = false;
 
 static bool spawn_fired = false;
-static size_t spawn_ninfo = 0;   /* not counting the requester's identity */
+static size_t spawn_ninfo = 0;   /* not counting the requester's identity or type */
 static size_t spawn_nident = 0;  /* PMIX_USERID and PMIX_GRPID entries */
+static size_t spawn_ntype = 0;   /* PMIX_REQUESTOR_IS_TOOL and _IS_CLIENT entries */
+static bool spawn_by_tool = false;
 static bool spawn_refuse = false;
 /* the uid a spawn's PMIX_ACCESS_PERMISSIONS reached the host with, and
  * whether it arrived as a number */
@@ -237,11 +239,18 @@ static pmix_status_t stub_spawn(const pmix_proc_t *proc,
     spawn_fired = true;
     spawn_ninfo = 0;
     spawn_nident = 0;
+    spawn_ntype = 0;
+    spawn_by_tool = false;
     spawn_access_numeric = false;
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&job_info[n], PMIX_USERID) ||
             PMIX_CHECK_KEY(&job_info[n], PMIX_GRPID)) {
             ++spawn_nident;
+        } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_REQUESTOR_IS_TOOL)) {
+            ++spawn_ntype;
+            spawn_by_tool = PMIX_INFO_TRUE(&job_info[n]);
+        } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_REQUESTOR_IS_CLIENT)) {
+            ++spawn_ntype;
         } else {
             ++spawn_ninfo;
         }
@@ -735,8 +744,9 @@ int main(int argc, char **argv)
      * never saw a line of its job's output. */
     rc = drive(OPSUT_SPAWN, 0, 0, 0, 0, true);
     report("a spawn with no directives is accepted", PMIX_SUCCESS == rc);
-    report("it reached the host with only the requester's identity",
-           spawn_fired && 0 == spawn_ninfo && 2 == spawn_nident);
+    report("it reached the host with only the requester's identity and type",
+           spawn_fired && 0 == spawn_ninfo && 2 == spawn_nident && 2 == spawn_ntype);
+    report("...which says the requester is a tool", spawn_by_tool);
     channels = child_iof_channels();
     report("a tool's child job has its stdout forwarded",
            0 != (channels & PMIX_FWD_STDOUT_CHANNEL));

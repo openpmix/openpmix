@@ -383,6 +383,18 @@ PMIX_EXPORT void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t 
 PMIX_EXPORT pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info,
                                                        size_t *ninfo);
 
+/* Mark a spawn request about to be passed up to the host with what kind of
+ * process made it: exactly one PMIX_REQUESTOR_IS_TOOL and one
+ * PMIX_REQUESTOR_IS_CLIENT, both booleans, as the Standard requires of the
+ * spawn upcall. They come from the peer's type recorded at connection; a
+ * tool that took a job's identity from its environment is both. Any the
+ * requester supplied about itself are dropped - unless marked
+ * PMIX_INFO_RELAYED, a server relaying the request for the process that
+ * made it, and then they are kept, still marked. The pair is appended and
+ * the array replaced, exactly as pmix_server_add_requester_id does. */
+PMIX_EXPORT pmix_status_t pmix_server_add_requester_type(pmix_peer_t *peer, pmix_info_t **info,
+                                                         size_t *ninfo);
+
 /* Access to a namespace by user and group - see
  * docs/hosts/access-control.rst and pmix_server_access.c.
  *
