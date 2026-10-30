@@ -348,9 +348,25 @@ typedef enum {
 PMIX_EXPORT pmix_ptl_lock_state_t pmix_ptl_base_lock_state(int dirfd, const char *name,
                                                           uid_t owner, const char *lock);
 
-/* Whether that says the server is gone */
+/* The pid a rendezvous file records for its writer (its third line), in
+ * *pid. False for a line that is not one - garbled, or wider than this
+ * system's pid_t: narrowed, 4294967295 would become -1, which asks kill()
+ * about every process we may signal */
+PMIX_EXPORT bool pmix_ptl_base_rndz_pid(const char *line, pid_t *pid);
+
+/* Whether the process a rendezvous file names has gone: it is not running,
+ * or it is us - and we did not write the file, so it is a leftover from an
+ * earlier process that was given our pid. A process of another user is
+ * running (kill() answers EPERM) */
+PMIX_EXPORT bool pmix_ptl_base_pid_gone(pid_t pid);
+
+/* Whether the server that wrote a rendezvous file is gone. Its lock says,
+ * when it has one. A file with no lock line - one of an earlier release -
+ * is judged by the pid it records instead (`pid`, 0 if it has none):
+ * rendezvous files are a node's own, so that is a process here. One with
+ * the line that the lock does not settle is kept */
 PMIX_EXPORT bool pmix_ptl_base_server_gone(int dirfd, const char *name, uid_t owner,
-                                           const char *lock);
+                                           const char *lock, pid_t pid);
 
 /* The lock file's name for a rendezvous file's - a path, or a name alone.
  * Caller frees; NULL if out of memory */

@@ -271,11 +271,13 @@ most specific to least:
   is passed over, here and by a ``PMIX_QUERY_AVAIL_SERVERS`` query: it
   says its server holds the lock beside it, and the searching process
   can take that lock - whatever PID namespace, container or jail either
-  runs in. A file is kept when it has no such line (from an earlier
-  release), names another kind of lock, or has no lock file; when its
-  lock file has another name or others could open it; and when the
-  searching process cannot open it - only the server's user and root
-  can. One larger than any server writes is passed over. A server
+  runs in. A file with no such line, from an earlier release, is
+  judged instead by the PID it records, as a server starting at its
+  name judges it: it is passed over when that process is not running.
+  A file is kept when it names another kind of lock or has no lock
+  file; when its lock file has another name or others could open it;
+  and when the searching process cannot open it - only the server's
+  user and root can. One larger than any server writes is passed over. A server
   starting under a name whose lock another server holds takes the name
   as in use (``rndz-name-held``), whatever its PID says - except the
   file named for its own PID, which collides only with a server in

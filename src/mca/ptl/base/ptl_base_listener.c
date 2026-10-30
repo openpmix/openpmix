@@ -541,8 +541,8 @@ static char *rndz_file_owner(int dirfd, const char *name, bool held)
 {
     FILE *fp;
     struct stat buf;
-    char *line, *endptr, *owner = NULL, *lock = NULL;
-    unsigned long pid = 0;
+    char *line, *owner = NULL, *lock = NULL;
+    pid_t pid = 0;
     bool havepid = false;
     pmix_ptl_lock_state_t state;
     size_t budget = PMIX_PTL_MAX_CONN_FILE;
@@ -580,18 +580,9 @@ static char *rndz_file_owner(int dirfd, const char *name, bool held)
             break;
         }
         if (2 == n) {
-            endptr = NULL;
-            errno = 0;
-            pid = strtoul(line, &endptr, 10);
-            /* the value has to fit in a pid_t. One that does not - a
-             * garbled line, or a pid wider than this system's - narrows
-             * to some other number, and 4294967295 narrows to -1, which
-             * asks kill() about every process we may signal and so
-             * always found a "live owner" */
-            if (0 == errno && NULL != endptr && endptr != line && 0 < pid &&
-                (unsigned long) INT_MAX >= pid && pid == (unsigned long) (pid_t) pid) {
-                havepid = true;
-            }
+            /* a pid that does not fit in a pid_t is no pid - see
+             * pmix_ptl_base_rndz_pid */
+            havepid = pmix_ptl_base_rndz_pid(line, &pid);
         }
         free(line);
     }
@@ -619,7 +610,8 @@ static char *rndz_file_owner(int dirfd, const char *name, bool held)
     free(lock);
     fclose(fp);
     if (PMIX_PTL_LOCK_HELD == state) {
-        if (0 > pmix_asprintf(&owner, "pid %lu, which holds the lock beside the file", pid)) {
+        if (0 > pmix_asprintf(&owner, "pid %lu, which holds the lock beside the file",
+                              (unsigned long) pid)) {
             return inuse_unknown;
         }
         return owner;
@@ -628,19 +620,13 @@ static char *rndz_file_owner(int dirfd, const char *name, bool held)
     if (!havepid) {
         return NULL;
     }
-    /* if the recorded pid is our own, then the file cannot belong to
-     * a live owner - we did not write it, so it is a leftover from an
-     * earlier process that happened to be given the same pid */
-    if ((pid_t)pid == pmix_globals.pid) {
+    /* if that process is gone - or is us, who did not write it - the file
+     * is a leftover; if it is still running, the file is in use and we
+     * must not touch it */
+    if (pmix_ptl_base_pid_gone(pid)) {
         return NULL;
     }
-    /* if that process is still running, then the file is in use and
-     * we must not touch it. Note that a "permission denied" response
-     * means the process does exist, but belongs to another user */
-    if (0 != kill((pid_t)pid, 0) && EPERM != errno) {
-        return NULL;
-    }
-    if (0 > pmix_asprintf(&owner, "pid %lu", pid)) {
+    if (0 > pmix_asprintf(&owner, "pid %lu", (unsigned long) pid)) {
         return inuse_unknown;
     }
     return owner;
