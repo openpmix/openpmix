@@ -92,6 +92,28 @@ PMIX_EXPORT pmix_status_t pmix_progress_thread_resume(const char *name);
 PMIX_EXPORT bool pmix_progress_thread_is_current(void);
 
 /**
+ * Is a thread running the shared event loop now?
+ *
+ * Something posted to the loop will be run when this is true. It is
+ * false before the progress thread starts and after it stops, and with
+ * PMIX_EXTERNAL_PROGRESS except while the host is inside PMIx_Progress().
+ */
+PMIX_EXPORT bool pmix_progress_thread_running(void);
+
+/**
+ * What must run on the shared progress thread before it stops.
+ *
+ * PMIx_Progress_thread_stop() calls the function, if one is set, when it
+ * flushes the shared thread and before it stops it, on the caller's thread.
+ * A server sets one to write out what it has already queued for its peers
+ * (see pmix_server.c): the stop otherwise drains only events already
+ * active, and a host may stop the thread well ahead of finalizing - PRRTE
+ * does, so that no upcall reaches it while it tears down. NULL clears it.
+ */
+typedef void (*pmix_progress_flush_fn_t)(void);
+PMIX_EXPORT void pmix_progress_thread_set_flush(pmix_progress_flush_fn_t fn);
+
+/**
  * Guard the entry to a blocking PMIx API.
  *
  * Returns true - and reports the error to the user - when the caller is
