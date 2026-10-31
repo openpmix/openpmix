@@ -12,24 +12,24 @@
 
 `v61` is the `bfrops` component for the **PMIx 6.1** wire format. Read the
 framework [`AGENTS.md`](../AGENTS.md) first; this file covers only what is
-specific to `v61`. It is the **highest-priority (70)** component, so it is
-the module `pmix_bfrops_base_assign_module(NULL)` hands back — i.e. the
-native format a freshly-built process uses for itself and offers to peers.
+specific to `v61`. Its priority (65) sits between `v51` (60) and `v70`
+(70), so it is chosen for a peer that names `"v61"`, which a v6.1 peer
+does. It is not this build's native format; `v70` is.
 
 ## Files
 
 | File | Contents |
 |------|----------|
 | `bfrop_pmix61.h` | Declares the component and module symbols. |
-| `bfrop_pmix61_component.c` | Component struct + `component_query` (priority **70**), `component_open`/`close` (build/tear down the `types` array), `assign_module`. |
+| `bfrop_pmix61_component.c` | Component struct + `component_query` (priority **65**), `component_open`/`close` (build/tear down the `types` array), `assign_module`. |
 | `bfrop_pmix61.c` | The module `pmix_bfrops_pmix61_module` and its `init` type-registration table. |
 
 ## When it is selected
 
 `v61` is always available (no `configure.m4`, no runtime gate;
-`component_query` unconditionally returns the module at priority 70).
-Being highest priority, it wins `assign_module(NULL)` and is the module
-chosen for any peer that advertises `"v61"`.
+`component_query` unconditionally returns the module at priority 65).
+It is the module chosen for any peer that advertises `"v61"`, and the one
+a tool picks for a v6.1 server whose file names only its version.
 
 ## The module
 
@@ -58,28 +58,25 @@ all — the version is defined entirely by its `init` table.
 
 ## What its `init` registers
 
-`v61` registers the full modern type set: every type `v51` registers,
-**plus** three types new in 6.1:
+`v61` registers exactly what v6.1.0 registered: every type `v51`
+registers, **plus** one:
 
 | Added type | Handlers |
 |------------|----------|
-| `PMIX_ALLOC_INHERIT` | `pack_alloc_inheritance` / `unpack_alloc_inheritance` / `std_copy` / `print_alloc_inheritance` |
 | `PMIX_NODE_PID` | `pack_nodepid` / `unpack_nodepid` / `copy_nodepid` / `print_nodepid` |
-| `PMIX_REGEX2` | `pack_regex2` / `unpack_regex2` / `copy_regex2` / `print_regex2` |
 
-(69 registered types total.) All handlers are `pmix_bfrops_base_*`
+(67 registered types total.) `PMIX_ALLOC_INHERIT` and `PMIX_REGEX2` were
+added after v6.1.0 and belong to `v70`. Master once registered them here
+too, so a v7 peer and a v6.1 peer both said `v61` while speaking different
+sets; they were taken out again for that reason.
+`test/unit/bfrops_versions.c` checks the set. All handlers are `pmix_bfrops_base_*`
 functions; `finalize` frees the type array.
 
 ## Gotchas
 
-- **This is the version everyone else negotiates *down* from.** When you
-  add a new PMIx data type, register it **here** (and add its base
-  handlers) — but do **not** add it to `v51` or any older component, or
-  you will offer a type to peers that cannot unpack it.
-- **A new wire format is a new component, not an edit to `v61`.** Once
-  6.1 has shipped, `v61`'s bytes are frozen. A 6.2 encoding change means
-  a `v62` component with a higher priority; `v61` stays to talk to 6.1
-  peers.
+- **Frozen.** v6.1.0 shipped this component, so its type set must not
+  change. A new PMIx data type goes in the newest component (`v70`),
+  never here.
 - Because `v61` shares the base pack code with `v51`/`v41`/`v4`, the only
-  wire difference from `v51` is the three added types above. Everything
+  wire difference from `v51` is the one added type above. Everything
   both versions register is byte-identical.
