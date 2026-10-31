@@ -145,8 +145,8 @@ A bare TCP URI speaks a wire format older servers lack
 
 *Deferred work.*  A tool given only a TCP URI, with no file, knows
 nothing of its server's release.  ``pmix_ptl_base_select_compat`` then
-picks no wire format, and the tool uses its newest, ``v61``.  A server of
-v5.0 or earlier has no ``v61`` and refuses the connection.
+picks no wire format, and the tool uses its newest, ``v70``.  A server of
+v6.1 or earlier has no ``v70`` and refuses the connection.
 
 To close: with no version to go by, use the newest wire format every
 supported server has, so that a server of a later release still accepts

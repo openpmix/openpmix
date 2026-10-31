@@ -666,7 +666,7 @@ server path; a client has its own, simpler one (`ptl_base_client.c`).
     else our own, root or a `users=` entry.
 
   The version itself is never rewritten: it chooses the wire format
-  (`select_compat`), and a v3.2 to v5 server has no v61 to be spoken to
+  (`select_compat`), and a v3.2 to v6.1 server has no v70 to be spoken to
   with.
 
 Both converge on `pmix_ptl_base_make_connection` (`ptl_base_fns.c`):
