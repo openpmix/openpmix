@@ -446,7 +446,7 @@ static void adopt_modules(pmix_pending_connection_t *pnd, pmix_peer_t *peer,
      * so now. This is what PMIx_Data_pack/unpack fall back on for an
      * nspace with no connected peer left, and they hand it to
      * pmix_bfrops_base_assign_module() - which matches a component name
-     * ("v61"), not the peer's library release ("7.0.0") */
+     * ("v70"), not the peer's library release ("7.0.0") */
     if (!nptr->version_stored) {
         PMIX_INFO_LOAD(&ginfo, PMIX_BFROPS_MODULE, nptr->compat.bfrops->version, PMIX_STRING);
         PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, &ginfo, 1);

@@ -294,9 +294,9 @@ The PMIx library provides full ``bfrops`` serialization support for the
 new type - pack, unpack, copy (including the standard-copy sizing and
 the TMA allocator copy path), compare, and print - in the base
 functions, with the type registered in the most recent wire-format
-component (``v61``). Older ``bfrops`` components are intentionally left
+component (``v70``). Older ``bfrops`` components are intentionally left
 unchanged so that the wire format of prior versions is preserved for
-interoperability; a v61 peer is required to exchange the
+interoperability; a v70 peer is required to exchange the
 ``PMIX_ALLOC_INHERIT`` type.
 
 A string converter is provided for diagnostics and logging:
