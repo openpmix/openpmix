@@ -245,11 +245,6 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_unpack_resblock_directive, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_resblock_directive, &pmix_mca_bfrops_v61_component.types);
 
-    PMIX_REGISTER_TYPE("PMIX_ALLOC_INHERIT", PMIX_ALLOC_INHERIT,
-                       pmix_bfrops_base_pack_alloc_inheritance,
-                       pmix_bfrops_base_unpack_alloc_inheritance, pmix_bfrops_base_std_copy,
-                       pmix_bfrops_base_print_alloc_inheritance, &pmix_mca_bfrops_v61_component.types);
-
     PMIX_REGISTER_TYPE("PMIX_IOF_CHANNEL", PMIX_IOF_CHANNEL, pmix_bfrops_base_pack_iof_channel,
                        pmix_bfrops_base_unpack_iof_channel, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_iof_channel, &pmix_mca_bfrops_v61_component.types);
@@ -346,10 +341,6 @@ static pmix_status_t init(void)
     PMIX_REGISTER_TYPE("PMIX_NODE_PID", PMIX_NODE_PID, pmix_bfrops_base_pack_nodepid,
                        pmix_bfrops_base_unpack_nodepid, pmix_bfrops_base_copy_nodepid,
                        pmix_bfrops_base_print_nodepid, &pmix_mca_bfrops_v61_component.types);
-
-    PMIX_REGISTER_TYPE("PMIX_REGEX2", PMIX_REGEX2, pmix_bfrops_base_pack_regex2,
-                       pmix_bfrops_base_unpack_regex2, pmix_bfrops_base_copy_regex2,
-                       pmix_bfrops_base_print_regex2, &pmix_mca_bfrops_v61_component.types);
 
     return PMIX_SUCCESS;
 }
