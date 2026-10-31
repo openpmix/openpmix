@@ -17,7 +17,7 @@
  * the connection handler recorded for that namespace when its first peer
  * connected, and hands it to pmix_bfrops_base_assign_module().
  *
- * That function matches a bfrops *component name* ("v61"). The PTL
+ * That function matches a bfrops *component name* ("v70"). The PTL
  * refactor had the handler record the peer's *library release* ("7.0.0")
  * instead, so nothing ever matched, and every such pack or unpack failed -
  * reported, misleadingly, as PMIX_ERR_NOMEM.

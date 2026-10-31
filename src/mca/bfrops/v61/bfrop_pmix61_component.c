@@ -62,7 +62,7 @@ pmix_bfrops_base_component_t pmix_mca_bfrops_v61_component = {
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
     },
-    .priority = 70,
+    .priority = 65,
     .assign_module = assign_module
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, bfrops, v61)

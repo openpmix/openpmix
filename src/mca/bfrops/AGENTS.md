@@ -22,7 +22,7 @@ specific to `bfrops`: what the framework is for, why it is multi-select,
 how a component maps to a wire-format version, the very large body of
 shared code in `base/`, and the rules you must obey to avoid silently
 breaking cross-version communication. Each component subdirectory
-(`v21/`, `v3/`, `v4/`, `v41/`, `v51/`, `v61/`) carries
+(`v21/`, `v3/`, `v4/`, `v41/`, `v51/`, `v61/`, `v70/`) carries
 its own `AGENTS.md` describing that version's deltas, and
 [`base/AGENTS.md`](base/AGENTS.md) covers the shared implementation —
 including the six per-type operations that have to agree with each
@@ -99,7 +99,7 @@ Defined in [`bfrops.h`](bfrops.h). Every component fills in all of these
 
 | Field | Signature (typedef) | Purpose |
 |-------|---------------------|---------|
-| `version` | `char *` | the version string, identical to the component/directory name (`"v61"`, …); this is what the handshake matches on |
+| `version` | `char *` | the version string, identical to the component/directory name (`"v70"`, …); this is what the handshake matches on |
 | `init` | `pmix_bfrop_init_fn_t` | register this version's data-type table (see registration below) |
 | `finalize` | `pmix_bfrop_finalize_fn_t` | release the registered-type array |
 | `pack` | `pmix_bfrop_pack_fn_t` | `(buffer, src, num_values, type)` |
@@ -167,7 +167,7 @@ is needed by everyone.
     comma-separated list of acceptable component names; the function walks
     the priority-ordered actives and returns the first whose component
     name matches one of them. Matching is by **component name string**
-    (`"v61"`, `"v4"`, …), never by numeric comparison.
+    (`"v70"`, `"v4"`, …), never by numeric comparison.
   - `pmix_bfrops_base_get_available_modules()` — comma-joined list of
     active component names.
   - `PMIx_Data_type_string()` — the public type-name API, which walks the
@@ -185,7 +185,8 @@ assign a module live in `ptl_base_connection_hdlr.c`, `ptl_base_client.c`,
 
 | Component | Priority | PMIx era | Encoding family | Notes |
 |-----------|----------|----------|-----------------|-------|
-| `v61` | 70 | 6.1 | modern (base, flex ints) | newest; native for this build |
+| `v70` | 70 | 7.0 | modern (base, flex ints) | newest; native for this build |
+| `v61` | 65 | 6.1 | modern | frozen at v6.1.0's type set |
 | `v51` | 60 | 5.1 | modern | |
 | `v41` | 58 | 4.1 | modern | |
 | `v4`  | 50 | 4.0 | modern | **flex-int break**; dropped deprecated `MODEX`/`INFO_ARRAY` |
@@ -193,8 +194,16 @@ assign a module live in `ptl_base_connection_hdlr.c`, `ptl_base_client.c`,
 | `v21` | 30 | 2.1 | converged, fixed-width ints | oldest supported; first built on the base driver |
 
 Because `assign_module(NULL)` returns the highest priority, a fresh
-build's local peer always uses `v61`. Two peers negotiate down to a
+build's local peer always uses `v70`. Two peers negotiate down to a
 version both possess.
+
+**Why `v70` exists.** `v61` was first shipped in v6.1.0. After that,
+master went on registering new types in it (`PMIX_REGEX2`,
+`PMIX_ALLOC_INHERIT`), so a v6.1 peer and a v7 peer both said `v61`
+while speaking different type sets. A v6.1 peer sent one of the new types
+could not unpack the message. `v70` now carries the full set, and `v61`
+is back to exactly what v6.1.0 registered (`v51` plus `PMIX_NODE_PID`).
+`test/unit/bfrops_versions.c` pins both sets down.
 
 ## The two families of components (read before editing any component)
 
@@ -217,7 +226,7 @@ its first message. The connection handler refuses both by version (see
    `pmixNN_bfrop_pack_modex` / `pack_array` handlers). `v21` introduced
    the base-driver framing; `v3` merely adds `PMIX_IOF_CHANNEL` and
    `PMIX_ENVAR`.
-2. **Modern (`v4`, `v41`, `v51`, `v61`).** These delegate integers to
+2. **Modern (`v4`, `v41`, `v51`, `v61`, `v70`).** These delegate integers to
    `pmix_bfrops_base_pack_general_int` — the **flexible ("squashed")
    base-7 varint** encoding — and drop the deprecated types. Adjacent
    modern versions differ *only* by which additional data types their
@@ -397,7 +406,7 @@ src/mca/bfrops/
 │   ├── bfrop_base_fns.c     buffer helpers, value load/unload/xfer, public Info_list APIs
 │   └── bfrop_base_macro_backers.c  out-of-line bodies for public PMIx_* inline macros
 ├── v21/  v3/                base-driver framing, own fixed-width integer packers
-└── v4/  v41/  v51/  v61/    modern (flex ints), differ only by registered type set
+└── v4/  v41/  v51/  v61/  v70/  modern (flex ints), differ only by registered type set
 ```
 
 ## Building
@@ -475,7 +484,8 @@ read outside the buffer it was given" in
 | [`test/unit/bfrops_get_number.c`](../../../test/unit/bfrops_get_number.c) | `PMIx_Value_get_number` numeric conversions, as properties over every source/destination pair |
 | [`test/unit/bfrops_null_object.c`](../../../test/unit/bfrops_null_object.c) | every value-level operation against a value that names a pointer-backed type and carries no object |
 | [`test/unit/nested_darray.c`](../../../test/unit/nested_darray.c) | array nesting and the `max_array_depth` cap |
-| [`test/unit/bfrops_regex2.c`](../../../test/unit/bfrops_regex2.c), [`bfrops_alloc_inherit.c`](../../../test/unit/bfrops_alloc_inherit.c) | the two newest `v61` types |
+| [`test/unit/bfrops_regex2.c`](../../../test/unit/bfrops_regex2.c), [`bfrops_alloc_inherit.c`](../../../test/unit/bfrops_alloc_inherit.c) | the two newest `v70` types |
+| [`test/unit/bfrops_versions.c`](../../../test/unit/bfrops_versions.c) | each modern component's type set: `v61` is v6.1.0's, `v70` adds the newer types, and `v70` is native |
 | [`examples/datatypes.c`](../../../examples/datatypes.c) | one value of every interesting type published by each rank and verified by every other rank |
 | [`contrib/dockerswarm/run-bfrops-tests.sh`](../../../contrib/dockerswarm/AGENTS.md) | drives `datatypes` with the ranks on **different nodes**, plus the unit programs on Linux in an optimized `--enable-mca-dso` build |
 

@@ -285,7 +285,7 @@ local socket.
      - present them to the server of that name, however it reaches it,
        and to no other. Clients of earlier releases ignore it
    * - ``PMIX_SERVER_URI<NN>``, one per wire format the server accepts
-       (for example ``PMIX_SERVER_URI61``, ``PMIX_SERVER_URI51``)
+       (for example ``PMIX_SERVER_URI70``, ``PMIX_SERVER_URI61``)
      - the server's TCP URI when it takes clients of earlier releases,
        else its local socket's URI
      - choose the newest wire format both sides share: the first

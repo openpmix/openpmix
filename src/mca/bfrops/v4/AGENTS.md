@@ -27,7 +27,7 @@ framework's history.
 ## When it is selected
 
 Always available. Chosen for a peer advertising `"v4"`; it is the
-fallback modern format when a peer is too old for `v41`/`v51`/`v61` but
+fallback modern format when a peer is too old for `v41`/`v51`/`v61`/`v70` but
 new enough to speak the flexible encoding.
 
 ## The module and the flexible-integer break
@@ -64,11 +64,11 @@ thirteen new ones:
 ## Gotchas
 
 - **`v4` is where "modern" begins.** All newer components (`v41`, `v51`,
-  `v61`) are `v4` plus additional registered types and a higher priority;
+  `v61`, `v70`) are `v4` plus additional registered types and a higher priority;
   they share `v4`'s base pack code verbatim, so anything they all
   register is byte-identical.
 - The integer encoding here differs from `v3`/`v21`. Never "unify" a
   fixed-width component with a flexible one — the two produce different
   bytes by design.
 - Frozen at the 4.0 type set. New types belong only in the newest
-  component (`v61`).
+  component (`v70`).

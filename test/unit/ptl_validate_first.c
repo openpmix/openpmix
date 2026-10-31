@@ -325,7 +325,7 @@ static int case_disagreeing_client(void)
     if (PMIX_SUCCESS != start_server(true)) {
         return CHILD_SETUP;
     }
-    msg = build_ack(false, true, "v61", PMIX_BFROP_BUFFER_NON_DESC, NULL, &sz);
+    msg = build_ack(false, true, "v70", PMIX_BFROP_BUFFER_NON_DESC, NULL, &sz);
     reply = send_ack(msg, sz, &sd1);
     free(msg);
     if (PMIX_SUCCESS != reply) {
@@ -342,7 +342,7 @@ static int case_disagreeing_client(void)
         return CHILD_FAIL;
     }
     if (NULL == ns || NULL == ns->compat.bfrops ||
-        0 != strcmp(ns->compat.bfrops->version, "v61") ||
+        0 != strcmp(ns->compat.bfrops->version, "v70") ||
         PMIX_BFROP_BUFFER_NON_DESC != ns->compat.type) {
         fprintf(stdout, "    the namespace's wire format was changed\n");
         return CHILD_FAIL;
@@ -360,7 +360,7 @@ static int case_tool(bool goodcred)
     if (PMIX_SUCCESS != start_server(false)) {
         return CHILD_SETUP;
     }
-    msg = build_ack(true, goodcred, "v61", PMIX_BFROP_BUFFER_NON_DESC, NULL, &sz);
+    msg = build_ack(true, goodcred, "v70", PMIX_BFROP_BUFFER_NON_DESC, NULL, &sz);
     reply = send_ack(msg, sz, &sd);
     free(msg);
     usleep(200000);

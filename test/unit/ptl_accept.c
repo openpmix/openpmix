@@ -130,10 +130,11 @@
 #define AC_TOOLNS  "accept.tool"
 #define AC_OTHERNS "accept.other"
 #define AC_VERSION "7.0.0"
-/* an earlier release that speaks the same wire format */
+/* an earlier release, and the wire format it speaks */
 #define AC_TCP_VERSION "6.1.0"
+#define AC_TCP_BFROPS  "v61"
 #define AC_GDS     "hash"
-#define AC_BFROPS  "v61"
+#define AC_BFROPS  "v70"
 #define AC_PID     424242
 
 #define CHILD_PASS  0
@@ -1597,7 +1598,7 @@ static int case_nameless_tool(int how)
     pmix_status_t reply;
 
     ack_version = (1 == how) ? "7.0.0rc1" : "5.0.11";
-    ack_bfrops = (1 == how) ? "v61" : "v41";
+    ack_bfrops = (1 == how) ? AC_BFROPS : "v41";
     if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
         return CHILD_SETUP;
     }
@@ -1662,6 +1663,7 @@ static int case_token(int how)
     ack_local = (5 > how || 10 == how);
     if (7 == how || 10 == how) {
         ack_version = AC_TCP_VERSION;
+        ack_bfrops = AC_TCP_BFROPS;
     }
     ac_unprepared = (9 == how);
     if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {

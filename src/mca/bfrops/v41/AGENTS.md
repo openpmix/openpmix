@@ -35,7 +35,7 @@ Modern shape: `pmix41_pack`/`unpack`/`copy`/`print` trampoline into
 `pmix_bfrops_base_*` with `&pmix_mca_bfrops_v41_component.types`;
 `copy_payload` and the `value_*` slots are the base functions. Integers
 use the **flexible base-7 varint** encoding (shared with `v4`/`v51`/
-`v61`).
+`v61`/`v70`).
 
 ## What its `init` registers
 
@@ -57,5 +57,5 @@ the storage family and two others:
 ## Gotchas
 
 - Frozen at the 4.1 type set. New types go in the newest component only.
-- Byte-identical to `v4`/`v51`/`v61` for any type they share — the
+- Byte-identical to `v4`/`v51`/`v61`/`v70` for any type they share — the
   distinction is purely the registered type set plus version/priority.

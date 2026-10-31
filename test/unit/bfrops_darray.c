@@ -55,7 +55,7 @@ static void report(const char *name, int passed)
 }
 
 /* Every data type the newest bfrops component registers. Keep this in
- * step with src/mca/bfrops/v61/bfrop_pmix61.c: a type that appears there
+ * step with src/mca/bfrops/v70/bfrop_pmix70.c: a type that appears there
  * and not here simply goes untested. */
 static pmix_data_type_t all_types[] = {
     PMIX_BOOL, PMIX_BYTE, PMIX_STRING, PMIX_SIZE, PMIX_PID, PMIX_INT,

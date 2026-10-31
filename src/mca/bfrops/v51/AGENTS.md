@@ -49,7 +49,8 @@ varint** encoding.
 | `PMIX_RESBLOCK_DIRECTIVE` | `pack_resblock_directive` / `unpack_resblock_directive` / `std_copy` / `print_resblock_directive` |
 
 (66 registered types.) It does **not** register `PMIX_ALLOC_INHERIT`,
-`PMIX_NODE_PID`, or `PMIX_REGEX2` — those are `v61`'s additions. A `v51`
+`PMIX_NODE_PID`, or `PMIX_REGEX2`. `PMIX_NODE_PID` is `v61`'s addition;
+the other two were added in `v70`. A `v51`
 peer therefore cannot be sent those types, which is exactly why traffic
 to it must use this module.
 
@@ -57,7 +58,7 @@ to it must use this module.
 
 - **Do not add newer types here.** `v51` must stay frozen at the 5.1 type
   set so it keeps refusing (via the empty-slot "unknown type" path) what
-  5.1 peers cannot read. New types belong in `v61`.
-- Everything `v51` and `v61` both register is byte-identical on the wire
+  5.1 peers cannot read. New types belong in the newest component (`v70`).
+- Everything `v51` and the newer components both register is byte-identical on the wire
   (shared base code) — the components differ only by type set and
   version/priority.

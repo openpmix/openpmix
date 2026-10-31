@@ -68,7 +68,7 @@ disagreeing:
 | How do I release an **array** of them? | the `case` for it in `pmix_bfrops_base_tma_data_array_destruct()` |
 
 The last three are the ones that get forgotten, because nothing forces
-them to be written. A type registered in `v61` with pack, unpack and
+them to be written. A type registered in `v70` with pack, unpack and
 copy but no arm in `data_array_construct()` looks completely finished:
 it works as a scalar value, and it packs perfectly well inside an array.
 It only fails on the way *back*, because `unpack_darray()` builds its

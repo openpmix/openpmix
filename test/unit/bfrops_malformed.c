@@ -1274,6 +1274,7 @@ int main(int argc, char **argv)
     test_legacy_info_array_value("v21");
     test_legacy_info_array_value("v3");
     test_info_array_value_unknown("v61");
+    test_info_array_value_unknown("v70");
     test_count_fits_boundaries();
     test_nested_info_counts_bounded();
     test_sparse_array_counts();
