@@ -693,65 +693,47 @@ pmix_status_t pmix_ptl_base_parse_rndz_file(char *filename,
     return parse_conn_file(filename, optional, false, true, connections);
 }
 
-/* A TCP server on this host that the kernel cannot name the user of - on
- * a platform with no table of TCP connections - is connected to only when
- * its file says either that it is of an earlier release, which has no way
- * to be named, or that it is of this one: a server of this release opens
- * a TCP listener only to take legacy peers, which it takes on their claim
- * where it cannot name them either. Either is believed only of a
- * file the caller named (`named`), not one found in a directory anyone
- * can write to or at a fixed name there, whose server may be long gone
- * and its port another's; and only of one a server we may talk to wrote:
- * the file at the name, not a link to one or one of several names for it,
- * that only its owner can write, owned by the user we were told to
- * expect, or else by our own user, root, or a user ptl_base_server_access
- * names. A server of this release says too that it is running: the lock
- * beside its file (`lock`) is held. The version itself is kept as the
- * file says, whatever is believed of it: it chooses the wire format */
-static bool vouched(const char *version, const char *lock, bool named,
-                    const struct stat *st, const char *filename)
+bool pmix_ptl_base_rndz_file_sound(const char *filename, const struct stat *st)
 {
-    unsigned long major;
-    const char *v;
-    char *end;
     struct stat lst;
-    size_t n;
-    bool ok, current;
 
-    if (NULL == version) {
-        return false;
-    }
-    /* a line that names no release - no digits, or a major of 0 or one
-     * no release has - says nothing of one */
-    v = ('v' == version[0]) ? version + 1 : version;
-    if (!isdigit((unsigned char) v[0])) {
-        return false;
-    }
-    errno = 0;
-    major = strtoul(v, &end, 10);
-    if (0 != errno || 0 == major || PMIX_MAJOR_WILDCARD <= major ||
-        ('\0' != *end && '.' != *end)) {
-        return false;
-    }
-    current = (PMIX_PTL_LOCAL_MAJOR <= major);
-    ok = (named && NULL != st && 0 == lstat(filename, &lst) && S_ISREG(lst.st_mode) &&
-          lst.st_dev == st->st_dev && lst.st_ino == st->st_ino && 1 == st->st_nlink &&
-          0 == (st->st_mode & (S_IWGRP | S_IWOTH)));
-    if (ok && pmix_ptl_base.server_expect_given) {
-        ok = (pmix_ptl_base.server_expect_uid == st->st_uid);
-    } else if (ok) {
-        ok = (geteuid() == st->st_uid || 0 == st->st_uid);
+    return (NULL != st && 0 == lstat(filename, &lst) && S_ISREG(lst.st_mode) &&
+            lst.st_dev == st->st_dev && lst.st_ino == st->st_ino && 1 == st->st_nlink &&
+            0 == (st->st_mode & (S_IWGRP | S_IWOTH)));
+}
+
+/* Whether the kernel's answer names an id we can make sense of: one
+ * mapped into our user namespace. A map that cannot be read - no user
+ * namespaces, as off Linux - maps every id */
+static bool id_named(const char *mapfile, uint32_t id)
+{
+    uint32_t out;
+
+    return (PMIX_ERR_NOT_FOUND != pmix_util_id_to_parent(mapfile, id, &out));
+}
+
+bool pmix_ptl_base_named_file_vouches(const char *filename, const struct stat *st,
+                                      const char *uidmap)
+{
+    size_t n;
+    bool ok;
+
+    if (!pmix_ptl_base_rndz_file_sound(filename, st)) {
+        ok = false;
+    } else {
+        ok = ((pmix_ptl_base.server_expect_given &&
+               pmix_ptl_base.server_expect_uid == st->st_uid) ||
+              geteuid() == st->st_uid || 0 == st->st_uid);
         for (n = 0; !ok && n < pmix_ptl_base.naccess_uids; n++) {
             ok = (pmix_ptl_base.access_uids[n] == st->st_uid);
         }
-    }
-    if (ok && current) {
-        ok = (PMIX_PTL_LOCK_HELD == pmix_ptl_base_lock_state(AT_FDCWD, filename, st->st_uid, lock));
+        if (!ok) {
+            ok = !id_named(uidmap, (uint32_t) st->st_uid);
+        }
     }
     if (!ok) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:base: a server's file says it may be connected to unnamed - "
-                            "not believed of this one");
+                            "ptl:base: %s does not vouch for its server", filename);
     }
     return ok;
 }
@@ -907,7 +889,11 @@ process:
     owned = (0 == fstat(fileno(fp), &st));
     gone = found_by_search && owned &&
            pmix_ptl_base_server_gone(AT_FDCWD, filename, st.st_uid, lock, pid);
-    believed = !gone && vouched(p, lock, !regular_only, owned ? &st : NULL, filename);
+    /* a file the caller named vouches for its server; one found by a
+     * search, or at a fixed name, never does */
+    believed = !gone && !regular_only &&
+               pmix_ptl_base_named_file_vouches(filename, owned ? &st : NULL,
+                                                "/proc/self/uid_map");
     free(lock);
     fclose(fp);
     if (gone) {
@@ -1211,55 +1197,106 @@ pmix_status_t pmix_ptl_base_use_local_env(const char *server, char **uri)
     return PMIX_SUCCESS;
 }
 
-/* A TCP server on this host that the kernel cannot name the user of, as
- * on a platform with no table of TCP connections, is connected to only
- * where its file vouches for it (`vouched`): it is of an earlier release,
- * or of this one and still running. A client is not asked: its
- * server is the one named for it, by the environment it was started with
- * or by its caller */
-static pmix_status_t check_unnamed(const struct sockaddr_storage *sa, bool vouched)
+pmix_ptl_judgement_t pmix_ptl_base_judge_server(const char *uidmap, const char *gidmap,
+                                                bool answered, uid_t kuid, bool havegid,
+                                                gid_t kgid, bool given, uid_t uid, gid_t gid,
+                                                bool vouched)
 {
-    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) && !PMIX_PEER_IS_TOOL(pmix_globals.mypeer) &&
-        !PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) {
-        return PMIX_SUCCESS;
+    uint32_t puid, pgid;
+    size_t n;
+    bool ok;
+
+    /* An answer that names nobody we know - no answer, or an id from
+     * outside our user namespace, which the kernel shows as the overflow
+     * id - says nothing of who runs the server. Then only where its
+     * address came from does */
+    if (!answered || !id_named(uidmap, (uint32_t) kuid) ||
+        (havegid && !id_named(gidmap, (uint32_t) kgid))) {
+        return vouched ? PMIX_PTL_SERVER_OK_VOUCHED : PMIX_PTL_SERVER_UNNAMED;
     }
-    if (vouched) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:base: the kernel names no user for the server at %s:%d, "
-                            "whose file vouches for it - connecting",
-                            pmix_net_get_hostname((struct sockaddr *) sa),
-                            pmix_net_get_port((struct sockaddr *) sa));
-        return PMIX_SUCCESS;
+    if (given) {
+        /* the server that started us said who it is - in its own user
+         * namespace, which is the parent of ours if we run in one: the
+         * kernel reports the server's ids translated into ours */
+        ok = (kuid == uid && (!havegid || kgid == gid));
+        if (!ok) {
+            ok = (PMIX_SUCCESS == pmix_util_id_to_parent(uidmap, (uint32_t) kuid, &puid) &&
+                  puid == (uint32_t) uid);
+            if (ok && havegid) {
+                ok = (PMIX_SUCCESS == pmix_util_id_to_parent(gidmap, (uint32_t) kgid, &pgid) &&
+                      pgid == (uint32_t) gid);
+            }
+        }
+        return ok ? PMIX_PTL_SERVER_OK : PMIX_PTL_SERVER_WRONG_USER;
     }
-    pmix_show_help("help-ptl-base.txt", "server-unnamed", true, pmix_globals.hostname,
-                   pmix_net_get_hostname((struct sockaddr *) sa),
-                   pmix_net_get_port((struct sockaddr *) sa));
-    return PMIX_ERR_INVALID_CRED;
+    ok = (kuid == geteuid() || 0 == kuid);
+    for (n = 0; !ok && n < pmix_ptl_base.naccess_uids; n++) {
+        ok = (kuid == pmix_ptl_base.access_uids[n]);
+    }
+    for (n = 0; !ok && havegid && n < pmix_ptl_base.naccess_gids; n++) {
+        ok = (kgid == pmix_ptl_base.access_gids[n]);
+    }
+    return ok ? PMIX_PTL_SERVER_OK : PMIX_PTL_SERVER_WRONG_USER;
 }
+
+/* How check_peer waits for a TCP connection the kernel's table does not
+ * list yet - one the server has yet to accept: CHECK_WAIT asks again for
+ * up to about a second, sleeping between (the blocking connect, on its
+ * caller's thread); CHECK_ONCE asks once and returns PMIX_ERR_NOT_FOUND,
+ * saying nothing, for the caller to ask again later (the event-driven
+ * connect, which must not hold the progress thread); CHECK_LAST asks once
+ * more and takes no answer for an answer */
+typedef enum {
+    CHECK_WAIT,
+    CHECK_ONCE,
+    CHECK_LAST
+} check_wait_t;
+
+/* the delay before the n'th look again, and how many there are */
+#define CHECK_TRIES 10
+#define CHECK_DELAY_USEC(n) (1000L << (n))
+
+static pmix_status_t check_peer(pmix_peer_t *peer, bool given, uid_t uid, gid_t gid,
+                                bool vouched, check_wait_t wait);
 
 pmix_status_t pmix_ptl_base_check_server(pmix_peer_t *peer, bool given, uid_t uid, gid_t gid,
                                          bool vouched)
 {
-    uid_t kuid;
+    return check_peer(peer, given, uid, gid, vouched, CHECK_WAIT);
+}
+
+static pmix_status_t check_peer(pmix_peer_t *peer, bool given, uid_t uid, gid_t gid,
+                                bool vouched, check_wait_t wait)
+{
+    uid_t kuid = 0;
     gid_t kgid = 0;
     pid_t kpid;
     size_t n;
-    bool ok, tcp = false;
+    bool tcp = false, answered = true;
     char want[128];
     struct sockaddr_storage sa;
     pmix_socklen_t salen = sizeof(sa);
     pmix_status_t rc;
+    pmix_ptl_judgement_t verdict;
 
+    /* a client's server is the one named for it - by the environment it
+     * was started with, or by its caller */
+    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) && !PMIX_PEER_IS_TOOL(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) {
+        vouched = true;
+    }
+
+    memset(&sa, 0, sizeof(sa));
     if (NULL == peer->transport || NULL == peer->transport->peer_identity) {
         /* Over TCP, the kernel names the owner of the server's end of the
          * connection, from its table of TCP connections - a user, but no
          * group */
+        tcp = true;
         rc = pmix_util_getid_tcp(peer->sd, &kuid);
         if (PMIX_SUCCESS != rc) {
             /* Only a server on this host is talked to: one at any address
              * that is not this host's is on another host, or in another
              * network namespace */
-            memset(&sa, 0, sizeof(sa));
             if (0 != getpeername(peer->sd, (struct sockaddr *) &sa, &salen)) {
                 /* the server has closed the connection already */
                 return PMIX_ERR_UNREACH;
@@ -1270,10 +1307,6 @@ pmix_status_t pmix_ptl_base_check_server(pmix_peer_t *peer, bool given, uid_t ui
                                pmix_net_get_port((struct sockaddr *) &sa));
                 return PMIX_ERR_UNREACH;
             }
-            /* With no table to ask */
-            if (PMIX_ERR_NOT_SUPPORTED == rc) {
-                return check_unnamed(&sa, vouched);
-            }
             /* One whose address is this host's has its end in that table,
              * as an established connection - but not always yet. Our end
              * is connected once the server's SYN-ACK arrives, and the
@@ -1282,84 +1315,86 @@ pmix_status_t pmix_ptl_base_check_server(pmix_peer_t *peer, bool given, uid_t ui
              * then macOS holds it in SYN_RECEIVED, Linux as a request in
              * SYN_RECV, and FreeBSD in its syncache, outside the table.
              * Give it that moment */
-            if (PMIX_ERR_NOT_FOUND == rc) {
-                struct timeval tv = {0, 1000};
+            if (PMIX_ERR_NOT_FOUND == rc && CHECK_ONCE == wait) {
+                return PMIX_ERR_NOT_FOUND;
+            }
+            if (PMIX_ERR_NOT_FOUND == rc && CHECK_WAIT == wait) {
+                struct timeval tv;
 
-                for (n = 0; PMIX_ERR_NOT_FOUND == rc && n < 10; n++) {
+                for (n = 0; PMIX_ERR_NOT_FOUND == rc && n < CHECK_TRIES; n++) {
+                    tv.tv_sec = 0;
+                    tv.tv_usec = CHECK_DELAY_USEC(n);
                     retry_wait(&tv);
-                    tv.tv_usec *= 2;
                     rc = pmix_util_getid_tcp(peer->sd, &kuid);
                 }
             }
             if (PMIX_ERR_NOMEM == rc) {
                 return rc;
             }
-            /* Any other failure to read the table is no answer */
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_ERR_NOT_SUPPORTED == rc) {
+                /* no table to ask, or one that cannot be read */
+                answered = false;
+            } else if (PMIX_SUCCESS != rc) {
+                /* any other failure to read the table is no answer */
                 pmix_show_help("help-ptl-base.txt", "server-unidentified", true,
                                pmix_globals.hostname);
                 return PMIX_ERR_INVALID_CRED;
             }
         }
-        tcp = true;
     } else if (PMIX_SUCCESS != peer->transport->peer_identity(peer->sd, &kuid, &kgid, &kpid)) {
         pmix_show_help("help-ptl-base.txt", "server-unidentified", true, pmix_globals.hostname);
         return PMIX_ERR_INVALID_CRED;
     }
-    if (tcp) {
-        /* a user, and no group to check */
-        if (given) {
-            ok = (kuid == uid);
+
+    verdict = pmix_ptl_base_judge_server("/proc/self/uid_map", "/proc/self/gid_map", answered,
+                                         kuid, !tcp, kgid, given, uid, gid, vouched);
+    switch (verdict) {
+    case PMIX_PTL_SERVER_OK:
+        return PMIX_SUCCESS;
+    case PMIX_PTL_SERVER_OK_VOUCHED:
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: the kernel names no user for the server, whose "
+                            "address came from a source that vouches for it - connecting");
+        return PMIX_SUCCESS;
+    case PMIX_PTL_SERVER_UNNAMED:
+        if (!answered) {
+            if (0 == sa.ss_family) {
+                (void) getpeername(peer->sd, (struct sockaddr *) &sa, &salen);
+            }
+            pmix_show_help("help-ptl-base.txt", "server-unnamed", true, pmix_globals.hostname,
+                           pmix_net_get_hostname((struct sockaddr *) &sa),
+                           pmix_net_get_port((struct sockaddr *) &sa));
+        } else {
+            pmix_show_help("help-ptl-base.txt", "server-unmapped", true, pmix_globals.hostname,
+                           (unsigned long) kuid);
+        }
+        return PMIX_ERR_INVALID_CRED;
+    default:
+        break;
+    }
+    if (given) {
+        if (tcp) {
             snprintf(want, sizeof(want), "uid %lu, as the server that started this process said",
                      (unsigned long) uid);
         } else {
-            ok = (kuid == geteuid() || 0 == kuid);
-            for (n = 0; !ok && n < pmix_ptl_base.naccess_uids; n++) {
-                ok = (kuid == pmix_ptl_base.access_uids[n]);
-            }
-            snprintf(want, sizeof(want), "this process's own user, root, or a user "
-                     "pmix_ptl_base_server_access names");
+            snprintf(want, sizeof(want), "uid %lu gid %lu, as the server that started this "
+                     "process said", (unsigned long) uid, (unsigned long) gid);
         }
-        if (!ok) {
-            pmix_show_help("help-ptl-base.txt", "server-identity-tcp", true,
-                           pmix_globals.hostname, (unsigned long) kuid, want);
-            return PMIX_ERR_INVALID_CRED;
-        }
-        return PMIX_SUCCESS;
-    }
-    if (given) {
-        /* the server that started us said who it is - in its own user
-         * namespace, which is the parent of ours if we run in one: the
-         * kernel reports the server's ids translated into ours */
-        ok = (kuid == uid && kgid == gid);
-        if (!ok) {
-            uint32_t puid, pgid;
-
-            ok = (PMIX_SUCCESS == pmix_util_id_to_parent("/proc/self/uid_map", (uint32_t) kuid,
-                                                         &puid) &&
-                  PMIX_SUCCESS == pmix_util_id_to_parent("/proc/self/gid_map", (uint32_t) kgid,
-                                                         &pgid) &&
-                  puid == (uint32_t) uid && pgid == (uint32_t) gid);
-        }
-        snprintf(want, sizeof(want), "uid %lu gid %lu, as the server that started this "
-                 "process said", (unsigned long) uid, (unsigned long) gid);
+    } else if (tcp) {
+        snprintf(want, sizeof(want), "this process's own user, root, or a user "
+                 "pmix_ptl_base_server_access names");
     } else {
-        ok = (kuid == geteuid() || 0 == kuid);
-        for (n = 0; !ok && n < pmix_ptl_base.naccess_uids; n++) {
-            ok = (kuid == pmix_ptl_base.access_uids[n]);
-        }
-        for (n = 0; !ok && n < pmix_ptl_base.naccess_gids; n++) {
-            ok = (kgid == pmix_ptl_base.access_gids[n]);
-        }
         snprintf(want, sizeof(want), "this process's own user, root, or one "
                  "pmix_ptl_base_server_access allows");
     }
-    if (!ok) {
+    if (tcp) {
+        pmix_show_help("help-ptl-base.txt", "server-identity-tcp", true,
+                       pmix_globals.hostname, (unsigned long) kuid, want);
+    } else {
         pmix_show_help("help-ptl-base.txt", "server-identity", true, pmix_globals.hostname,
                        (unsigned long) kuid, (unsigned long) kgid, want);
-        return PMIX_ERR_INVALID_CRED;
     }
-    return PMIX_SUCCESS;
+    return PMIX_ERR_INVALID_CRED;
 }
 
 /* One name or number of a ptl_base_server_access list, as an id */
@@ -1948,6 +1983,7 @@ typedef struct {
     bool ev_active;
     pmix_event_t timer;
     bool timer_active;
+    int check_tries;              // looks again at a server the table does not list yet
     pmix_ptl_connect_nb_cbfunc_t cbfunc;
     void *cbdata;
 } pmix_ptl_connect_op_t;
@@ -1981,6 +2017,7 @@ static void cnopcon(pmix_ptl_connect_op_t *p)
     p->ev_active = false;
     memset(&p->timer, 0, sizeof(p->timer));
     p->timer_active = false;
+    p->check_tries = 0;
     p->cbfunc = NULL;
     p->cbdata = NULL;
 }
@@ -2008,6 +2045,7 @@ static PMIX_CLASS_INSTANCE(pmix_ptl_connect_op_t,
 
 static void cnct_begin(int sd, short args, void *cbdata);
 static void cnct_connected(int sd, short args, void *cbdata);
+static void cnct_check(int sd, short args, void *cbdata);
 static void cnct_send(int sd, short args, void *cbdata);
 static void cnct_recv(int sd, short args, void *cbdata);
 
@@ -2130,10 +2168,8 @@ static void cnct_begin(int sd, short args, void *cbdata)
 static void cnct_connected(int sd, short args, void *cbdata)
 {
     pmix_ptl_connect_op_t *op = (pmix_ptl_connect_op_t *) cbdata;
-    pmix_status_t rc;
     int err = 0;
     pmix_socklen_t errlen = sizeof(err);
-    size_t sdsize = 0;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(op);
@@ -2150,12 +2186,63 @@ static void cnct_connected(int sd, short args, void *cbdata)
         return;
     }
 
-    /* connected - to a server we may talk to, by what the kernel says of
-     * it - and then build the same connect-ack send_connect_ack sends */
     op->peer->sd = op->sd;
     op->peer->transport = op->transport;
-    rc = pmix_ptl_base_check_server(op->peer, op->expect_given, op->expect_uid,
-                                    op->expect_gid, op->vouched);
+    op->check_tries = 0;
+    cnct_check(-1, 0, op);
+}
+
+/* Connected - to a server we may talk to, by what the kernel says of it?
+ * A TCP connection the server has yet to accept is not in the kernel's
+ * table yet; look again from a timer rather than sleep, as the blocking
+ * connect does, on the progress thread - and for as long as the connect's
+ * own deadline allows, so a server slow to accept is still reached, and
+ * one that never does ends as any silent server does, PMIX_ERR_TIMEOUT.
+ * With no deadline, as long as the blocking connect would. Then build the
+ * same connect-ack send_connect_ack sends */
+/* Has the server closed its end - or the connection failed - while we
+ * waited for its kernel's table to list it? A server sends nothing before
+ * our request, so anything readable is the close */
+static bool peer_closed(int sd)
+{
+    char c;
+    ssize_t n = recv(sd, &c, 1, MSG_PEEK | MSG_DONTWAIT);
+
+    return (0 == n || (0 > n && EAGAIN != errno && EWOULDBLOCK != errno && EINTR != errno));
+}
+
+static void cnct_check(int sd, short args, void *cbdata)
+{
+    pmix_ptl_connect_op_t *op = (pmix_ptl_connect_op_t *) cbdata;
+    pmix_status_t rc;
+    size_t sdsize = 0;
+    struct timeval tv;
+    check_wait_t mode;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(op);
+    op->ev_active = false;
+    mode = (op->timer_active || CHECK_TRIES > op->check_tries) ? CHECK_ONCE : CHECK_LAST;
+    rc = check_peer(op->peer, op->expect_given, op->expect_uid, op->expect_gid, op->vouched,
+                    mode);
+    if (PMIX_ERR_NOT_FOUND == rc && CHECK_ONCE == mode && peer_closed(op->sd)) {
+        /* it will not be listed now - and there is nobody to talk to */
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:connect: the server closed the connection before "
+                            "its kernel listed it");
+        rc = PMIX_ERR_UNREACH;
+    } else if (PMIX_ERR_NOT_FOUND == rc && CHECK_ONCE == mode) {
+        tv.tv_sec = 0;
+        tv.tv_usec = CHECK_DELAY_USEC((6 < op->check_tries) ? 6 : op->check_tries);
+        ++op->check_tries;
+        pmix_event_assign(&op->ev, pmix_globals.evbase, -1, 0, cnct_check, op);
+        PMIX_POST_OBJECT(op);
+        if (0 == pmix_event_add(&op->ev, &tv)) {
+            op->ev_active = true;
+            return;
+        }
+        rc = PMIX_ERROR;
+    }
     if (PMIX_SUCCESS != rc) {
         cnct_finish(op, rc);
         return;

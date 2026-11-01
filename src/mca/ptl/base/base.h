@@ -113,9 +113,10 @@ struct pmix_ptl_base_t {
     uid_t server_expect_uid;
     gid_t server_expect_gid;
     /* whether the server may be connected to where the kernel cannot name
-     * its user - its file, or the environment it started us with, vouches
-     * for it: see pmix_ptl_base_check_server. Set with the server's
-     * version, for one connect */
+     * its user - its address came from a source that vouches for it: the
+     * environment it started us with, a URI passed directly, or a file the
+     * caller named that passes pmix_ptl_base_named_file_vouches. See
+     * pmix_ptl_base_check_server. Set for one connect */
     bool server_release_vouched;
     char *server_access;
     uid_t *access_uids;
@@ -279,13 +280,58 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_use_local_env(const char *server, char *
  * Only a server on this host is talked to: one over TCP at an address
  * that is not this host's is reported, and PMIX_ERR_UNREACH returned.
  *
- * A server over TCP on a platform with no table of TCP connections to ask
- * cannot be named, and is connected to only when `vouched` (see
- * server_release_vouched) - else it is reported, and
- * PMIX_ERR_INVALID_CRED returned. A client's server is connected to
- * regardless: it is the one named for it */
+ * The kernel's answer is used whenever it names a real user. It cannot
+ * when there is no table of TCP connections to ask, or one that cannot be
+ * read, or when it reports an id from outside this process's user
+ * namespace (see pmix_ptl_base_judge_server). Such a server is connected
+ * to only when `vouched` - its address came from a source the user or the
+ * launcher answers for (see server_release_vouched) - else it is
+ * reported, and PMIX_ERR_INVALID_CRED returned. A client's server always
+ * is: it is the one named for it */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_check_server(pmix_peer_t *peer, bool given, uid_t uid,
                                                      gid_t gid, bool vouched);
+
+/* What pmix_ptl_base_judge_server makes of a server */
+typedef enum {
+    PMIX_PTL_SERVER_OK,          // the kernel names it, and it may be talked to
+    PMIX_PTL_SERVER_OK_VOUCHED,  // the kernel cannot name it, and its source vouches for it
+    PMIX_PTL_SERVER_WRONG_USER,  // the kernel names it, and it may not be talked to
+    PMIX_PTL_SERVER_UNNAMED      // the kernel cannot name it, and nothing vouches for it
+} pmix_ptl_judgement_t;
+
+/* The decision pmix_ptl_base_check_server makes, apart from the socket.
+ *
+ * `answered` says the kernel gave the server's uid (`kuid`), and its gid
+ * (`kgid`) when `havegid` - TCP gives none. Its answer can be used when
+ * every id it gave is mapped into this process's user namespace, by the
+ * map files given (/proc/self/uid_map and gid_map; a map that cannot be
+ * read, as off Linux, maps every id). A server it cannot name is judged
+ * by `vouched` alone.
+ *
+ * A named one must be the uid and gid the server that started us gave
+ * (`given`) - directly, or as the ids the maps translate the kernel's to -
+ * else our own user, root, or a user (or, with a gid, a group)
+ * ptl_base_server_access names */
+PMIX_EXPORT pmix_ptl_judgement_t pmix_ptl_base_judge_server(const char *uidmap,
+                                                            const char *gidmap, bool answered,
+                                                            uid_t kuid, bool havegid, gid_t kgid,
+                                                            bool given, uid_t uid, gid_t gid,
+                                                            bool vouched);
+
+/* Whether a server's file at `filename`, opened as `st` describes, can be
+ * trusted as a file: it is the file at the name - not a link to one, nor
+ * one of several names for it - and a regular file only its owner can
+ * write. Who that owner must be is the caller's question */
+PMIX_EXPORT bool pmix_ptl_base_rndz_file_sound(const char *filename, const struct stat *st);
+
+/* Whether a file the caller named vouches for its server: it is sound
+ * (pmix_ptl_base_rndz_file_sound) and owned by the user we were told to
+ * expect, our own user, root, a user ptl_base_server_access names, or an
+ * id from outside our user namespace - a process inside one cannot make a
+ * file such an id owns, so it was made outside, and the user named it.
+ * `uidmap` is the map that decides the last (/proc/self/uid_map) */
+PMIX_EXPORT bool pmix_ptl_base_named_file_vouches(const char *filename, const struct stat *st,
+                                                  const char *uidmap);
 
 /* Whether a server at `addr`, reached by `transport`, is on this host - the
  * local transport's always is. One that is not is reported, and

@@ -661,67 +661,71 @@ server path; a client has its own, simpler one (`ptl_base_client.c`).
 - **The server is checked before anything is sent.** Once the socket is
   connected - `make_connection` and `cnct_connected` alike -
   `pmix_ptl_base_check_server(peer, given, uid, gid, vouched)` asks the
-  transport what the kernel says of the far end. Expected identity: an
-  exact uid and gid match - after `pmix_util_id_to_parent` maps the
-  kernel's ids through `/proc/self/{uid,gid}_map` when they differ, since
-  in a user namespace the kernel reports the server's ids as that
-  namespace numbers them. None: our own uid, root, or one
-  `ptl_base_server_access` allows (`users=a:b,groups=c:d`, resolved at
-  open by `pmix_ptl_base_parse_server_access`; a bad value fails open). A
-  transport with no `peer_identity` (tcp) asks `pmix_util_getid_tcp`
-  instead: when this host's TCP table has the server's end, its owner -
-  a uid, no gid - must be the given uid, or else our own, root or a
-  `users=` entry (`server-identity-tcp`). When the lookup fails:
-  - a far end `getpeername` cannot give - the server has closed the
-    connection - is `PMIX_ERR_UNREACH`, with no help text; one at an
-    address `local_addr()` does not call this host's is refused with
-    `PMIX_ERR_UNREACH` (`server-not-local`) - another host, or another
-    network namespace;
-  - with no table to ask (`PMIX_ERR_NOT_SUPPORTED`, which
-    `pmix_util_getid_test_no_tcp_table` makes every answer in a test),
-    `check_unnamed()`
-    decides: a client (not a tool or singleton) connects regardless -
-    its server is the one named for it; any other process connects only
-    when `vouched`, else it is refused (`server-unnamed`,
-    `PMIX_ERR_INVALID_CRED`);
-  - otherwise the server is refused (`server-unidentified`,
-    `PMIX_ERR_INVALID_CRED`; `PMIX_ERR_NOMEM` is returned as is) -
-    including `PMIX_ERR_OUT_OF_RESOURCE`, a table this process could not
-    read for want of descriptors or memory, which is no answer - after a
-    `PMIX_ERR_NOT_FOUND`
-    has been retried for up to about a second. The retry is not
-    optional: our end is connected on the server's SYN-ACK, and the
-    server's is not `ESTABLISHED` until its kernel has taken our ACK,
-    which on loopback can come a moment later - until then macOS shows
-    it in `SYN_RECEIVED`, and Linux and FreeBSD not at all. Checking
-    once refused a real server now and then on macOS CI.
+  transport what the kernel says of the far end, and
+  `pmix_ptl_base_judge_server()` decides - a function of the answer and
+  the map files alone, so `ptl_check_server.c` tests it with fake maps:
+  - **Can the answer be used?** Not when there is none - over TCP, no
+    table (`PMIX_ERR_NOT_SUPPORTED`, which
+    `pmix_util_getid_test_no_tcp_table` makes every answer in a test,
+    and which `pmix_getid` also returns for a table that cannot be read)
+    - nor when an id it gives has no entry in `/proc/self/uid_map` (or
+    `gid_map`): one from outside our user namespace, shown as 65534.
+    `pmix_util_id_to_parent`'s `PMIX_ERR_NOT_SUPPORTED` (no map file,
+    as off Linux) counts as mapped.
+  - **Unusable:** taken only when `vouched` (`PMIX_PTL_SERVER_OK_VOUCHED`),
+    else refused, `PMIX_ERR_INVALID_CRED`, with `server-unnamed` (TCP,
+    no answer) or `server-unmapped` (an id from outside). A client (not a
+    tool or singleton) is always vouched: its server is the one named for
+    it.
+  - **Usable:** the expected identity, if given - an exact uid and gid
+    match, or the ids `pmix_util_id_to_parent` translates the kernel's to;
+    otherwise our own uid, root, or one `ptl_base_server_access` allows
+    (`users=a:b,groups=c:d`, resolved at open by
+    `pmix_ptl_base_parse_server_access`; a bad value fails open). TCP gives
+    no gid, so only the uid is checked there (`server-identity-tcp`).
+  - Before any of that, over TCP: a far end `getpeername` cannot give -
+    the server has closed the connection - is `PMIX_ERR_UNREACH`, with no
+    help text; one at an address `local_addr()` does not call this
+    host's is refused with `PMIX_ERR_UNREACH` (`server-not-local`) -
+    another host, or another network namespace; a `PMIX_ERR_NOT_FOUND` is
+    asked again (`check_peer()`'s `check_wait_t`), and any failure other
+    than `NOT_SUPPORTED` then refuses the server (`server-unidentified`;
+    `PMIX_ERR_NOMEM` is returned as is), including
+    `PMIX_ERR_OUT_OF_RESOURCE`. The blocking connect sleeps between asks
+    for up to about a second (`CHECK_WAIT`). The event-driven one
+    (`cnct_check()`) must not hold the progress thread: it asks once
+    (`CHECK_ONCE`) and, while the table does not list the connection,
+    asks again from a timer, for as long as the connect's own deadline
+    runs - so a server that never accepts ends in `PMIX_ERR_TIMEOUT`, as
+    any silent server does (`tool_attach_nb.c`) - or, with no deadline,
+    ten times (`CHECK_LAST` the last). The asking again is not optional: our end is
+    connected on the server's SYN-ACK, and the server's is not
+    `ESTABLISHED` until its kernel has taken our ACK, which on loopback
+    can come a moment later - until then macOS shows it in
+    `SYN_RECEIVED`, and Linux and FreeBSD not at all, and Linux lists a
+    connection still in the accept queue with inode 0 and the
+    listener's owner, which `pmix_getid` treats as not found yet.
 - **`vouched` is `pmix_ptl_base.server_release_vouched`**, carried with
-  the connect like `server_expect_*` and reset by every connect. It is
-  set when the server that started us named itself in our environment
-  (`pmix_ptl_base_set_peer`), whatever its release - it is the one named
-  for us, as a client's is - or from the server's file (`cn->vouched`,
-  by `vouched()` in `parse_conn_file`). A file vouches only when:
-  - its version line names a release: digits after an optional `v`, a
-    major of 1-254 (`PMIX_MAJOR_WILDCARD` and up, 0, and a line with no
-    digits vouch for nothing);
-  - the release is before v7, or it is v7 or later and the file carries
-    a `lock:` line whose lock beside the file is held
-    (`pmix_ptl_base_lock_state` == `PMIX_PTL_LOCK_HELD`): the server is
-    running. A server of v7 or later lists a TCP URI only when it takes
-    legacy peers, and then takes a peer it cannot name on its claim, as
-    `psec/native` does on such a platform. A report file has no lock
-    line, so it vouches only for an earlier release; a server of this
-    release is vouched for by its rendezvous file given by name;
-  - the caller named the file (`parse_uri_file` - `file:<path>` or
-    `PMIX_TOOL_ATTACHMENT_FILE` - not `parse_rndz_file`: not one found by
-    a search or at a fixed name in the system tmpdir), it is the file at
-    the name (`lstat` dev/ino = the opened file's) with one name, not
-    group- or world-writable, and owned by the expected uid if given,
-    else our own, root or a `users=` entry.
+  the connect like `server_expect_*` and reset by every connect. It
+  says the address came from a source the user or the launcher answers
+  for. It is set when:
+  - the server that started us named itself in our environment
+    (`pmix_ptl_base_set_peer`), whatever its release;
+  - a URI was passed directly (`PMIX_SERVER_URI`/`PMIX_TCP_URI`), which
+    is also how a launcher's `PMIX_LAUNCHER_RNDZ_URI` arrives;
+  - the caller named the server's file (`parse_uri_file` - `file:<path>`
+    or `PMIX_TOOL_ATTACHMENT_FILE` - not `parse_rndz_file`) and
+    `pmix_ptl_base_named_file_vouches()` passes it:
+    `pmix_ptl_base_rndz_file_sound()` (the file at the name - `lstat`
+    dev/ino = the opened file's - with one name, a regular file, not
+    group- or world-writable), and owned by the expected uid, our own,
+    root, a `users=` entry, or an id from outside our user namespace.
 
-  The version itself is never rewritten: it chooses the wire format
-  (`select_compat`), and a v3.2 to v6.1 server has no v70 to be spoken to
-  with.
+  A file found by a search, or at a fixed name, never vouches. What
+  release a file names, and whether anything holds its lock, play no
+  part. The version is still read: it chooses the wire format
+  (`select_compat`), and a v3.2 to v6.1 server has no v70 to be spoken
+  to with.
 
 Both converge on `pmix_ptl_base_make_connection` (`ptl_base_fns.c`):
 
@@ -1296,7 +1300,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_loopback.c` | a server's request to itself reaches its switchyard and is answered once; a loopback reply nobody waits for is not read as a command |
 | `test/unit/ptl_listener.c` | accept out of descriptors pauses the listener and it accepts again; finalize while paused; the retry policy for each kind of accept error; mistyped, out-of-range and empty directives; a directive-named report file is removed; the report file has no group or other write bit |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
-| `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one; `test_vouched`: a named file vouches for its server when it names an earlier release, or names this one with a held lock; not with the lock free, with no lock line, group-writable, at a fixed name nobody named, or with a version line that names no release |
+| `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one; `test_vouched`: a named file vouches for its server whatever release it names and whether or not its lock is held; not group-writable, nor at a fixed name nobody named; as root, not another known user's, and yes for an owner from outside the user namespace (a fake map) |
 | `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them; at the pending-connection cap the oldest is dropped, and the default cap follows the descriptor limit |
 | `test/unit/ptl_nosigpipe.c` | a blocking send and a vector write to a peer that has reset return an error, with `SIGPIPE` at its default action |
 | `test/unit/ptl_recv_timeout.c` | `pmix_ptl_base_recv_blocking` ends a blocking socket's receive at its timeout, and still waits out `EAGAIN` on a non-blocking one |
@@ -1307,9 +1311,9 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_pfexec_token.c` | a process a launcher starts itself (pfexec) gets no token, not even one in the launcher's environment, and connects back without one |
 | `test/unit/ptl_token.c` | setup_fork's token: hex after the making server's name in the environment, added to a connect-ack only for a server of that name, different per rank, replaced when the rank is prepared again; only the kept token is taken (another, none, short, long, non-hex, one digit off refused); a rank never prepared takes anything; a rankless process gets none and loses an inherited one; deregistering the rank, then the job, forgets them |
 | `test/unit/ptl_remote.c` | which peer addresses are this host's; a server at an address not this host's is not dialled (`pmix_ptl_base_server_on_host`, `PMIX_ERR_UNREACH`, saying why) and one on loopback is; `PMIX_SERVER_REMOTE_CONNECTIONS` true fails the init, false does not; directives leaving no loopback interface fail the init rather than take a public one |
-| `test/unit/ptl_unnamed.c` | end to end with no TCP table on either side (`pmix_util_getid_test_no_tcp_table`): a real server with legacy peers, which takes the tool on its claim, real tools by `PMIx_tool_init` and by an event-driven attach - a bare TCP URI refused; this release's file with a held lock taken, with the lock free refused; a group-writable or linked file, or one with no lock line, refused; an earlier release's file taken; an off-host address `PMIX_ERR_UNREACH`, saying it is not this host's |
+| `test/unit/ptl_unnamed.c` | end to end with no TCP table on either side (`pmix_util_getid_test_no_tcp_table`): a real server with legacy peers, which takes the tool on its claim, real tools by `PMIx_tool_init` and by an event-driven attach - a bare TCP URI passed directly taken; a named file taken whatever release it names, with or without its lock held or a lock line; a group-writable or linked file refused; an off-host address `PMIX_ERR_UNREACH`, saying it is not this host's |
 | `test/unit/tool_attach_nb.c` | (among its cases) an attach does not dial the URI an earlier attach was given |
-| `test/unit/ptl_check_server.c` | a server of our own is ours the moment we are connected (the `NOT_FOUND` retry), one whose end has closed is refused soon; with no table (`pmix_util_getid_test_no_tcp_table`) a server nothing vouches for is refused and one its file vouches for is taken |
+| `test/unit/ptl_check_server.c` | a server of our own is ours the moment we are connected (the `NOT_FOUND` retry, with the listener accepting from a thread of its own, as a server does: Linux lists a connection not yet accepted with inode 0, which is not found yet), one whose end has closed is refused soon; with no table (`pmix_util_getid_test_no_tcp_table`) a server nothing vouches for is refused and one its file vouches for is taken; `test_judge`: `pmix_ptl_base_judge_server` with fake map files - mapped and unmapped uid and gid, identity given and not, vouched and not |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |
 | `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: a tool refusing to dial a server on another node, discovery by pid/nspace; and a tool through a relay root runs refused |
 

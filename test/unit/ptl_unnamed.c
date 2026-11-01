@@ -10,15 +10,14 @@
  * TCP connections (pmix_util_getid_test_no_tcp_table), so nothing names
  * the server's user, nor the tool's. The server takes legacy peers, so it
  * takes the tool on its claim. The tool connects - by PMIx_tool_init, and
- * by an event-driven PMIx_tool_attach_to_server - only when the file it
- * was given for the server vouches for it:
+ * by an event-driven PMIx_tool_attach_to_server - only when the address
+ * came from a source that vouches for the server:
  *
- *   - its bare TCP URI: refused, saying why
- *   - a file naming this release, with the lock beside it held: taken
- *   - ...with nothing holding that lock: refused
- *   - ...or one that names no lock: refused
- *   - a file naming an earlier release: taken
- *   - a file its group may write, or one reached through a link: refused
+ *   - its bare TCP URI, passed directly: taken
+ *   - a file it was given by name: taken, whatever release it names and
+ *     whether or not anything holds the lock beside it
+ *   - a file its group may write, or one reached through a link: refused,
+ *     saying why
  *
  * and a server at an address that is not this host's is not dialled at
  * all: PMIX_ERR_UNREACH, saying so.
@@ -359,30 +358,26 @@ int main(void)
 
     memset(&c, 0, sizeof(c));
     c.mode = 0644;
-    both("a tool given a server's bare TCP URI is refused", &c, PMIX_ERR_INVALID_CRED, unnamed,
-         dir);
+    both("a tool given a server's bare TCP URI is taken - it was passed directly", &c,
+         PMIX_SUCCESS, NULL, dir);
 
     c.version = cur;
     c.tail = PMIX_PTL_LOCK_TAG PMIX_PTL_LOCK_FLOCK "\n";
     c.held = true;
-    both("a file of this release whose server is running is taken", &c,
+    both("a named file of this release whose server holds its lock is taken", &c,
          PMIX_SUCCESS, NULL, dir);
     c.held = false;
-    both("...but not one whose lock nothing holds", &c, PMIX_ERR_INVALID_CRED, unnamed, dir);
-    c.held = true;
+    one_case("...and one whose lock nothing holds", &c, false, PMIX_SUCCESS, NULL, dir);
+    c.tail = "";
+    one_case("...and one that names no lock", &c, false, PMIX_SUCCESS, NULL, dir);
+    c.version = earlier;
+    one_case("...and one naming an earlier release", &c, false, PMIX_SUCCESS, NULL, dir);
     c.mode = 0664;
-    one_case("...nor one its group may write", &c, false, PMIX_ERR_INVALID_CRED, unnamed, dir);
+    one_case("but not one its group may write", &c, false, PMIX_ERR_INVALID_CRED, unnamed, dir);
     c.mode = 0644;
     c.linked = true;
-    one_case("...nor one reached through a link", &c, false, PMIX_ERR_INVALID_CRED, unnamed, dir);
+    both("...nor one reached through a link", &c, PMIX_ERR_INVALID_CRED, unnamed, dir);
     c.linked = false;
-    c.tail = "";
-    one_case("...nor one that names no lock", &c, false, PMIX_ERR_INVALID_CRED, unnamed, dir);
-
-    c.version = earlier;
-    c.tail = "";
-    c.held = false;
-    both("a file naming an earlier release is taken", &c, PMIX_SUCCESS, NULL, dir);
 
     memset(&c, 0, sizeof(c));
     c.offhost = true;
