@@ -142,6 +142,46 @@ static bool add_job_update(pmix_info_t **array, size_t *n,
     return true;
 }
 
+/* The PMIX_USER_GRPIDS a job's registration gives for its owner - at the
+ * top level, or in a PMIX_JOB_INFO_ARRAY - registered as that user's
+ * groups */
+static pmix_status_t register_owner_groups(uid_t owner, const pmix_info_t *info, size_t ninfo)
+{
+    const pmix_info_t *iptr;
+    pmix_data_array_t *da;
+    gid_t *gids = NULL;
+    size_t n, m, ngids = 0;
+    pmix_status_t rc;
+
+    for (n = 0; NULL != info && n < ninfo; n++) {
+        iptr = NULL;
+        if (PMIX_CHECK_KEY(&info[n], PMIX_USER_GRPIDS)) {
+            iptr = &info[n];
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_JOB_INFO_ARRAY) &&
+                   PMIX_DATA_ARRAY == info[n].value.type &&
+                   NULL != (da = info[n].value.data.darray) && PMIX_INFO == da->type &&
+                   NULL != da->array) {
+            for (m = 0; m < da->size; m++) {
+                if (PMIX_CHECK_KEY(&((pmix_info_t *) da->array)[m], PMIX_USER_GRPIDS)) {
+                    iptr = &((pmix_info_t *) da->array)[m];
+                    break;
+                }
+            }
+        }
+        if (NULL == iptr) {
+            continue;
+        }
+        rc = pmix_server_gids_from_value(&iptr->value, &gids, &ngids);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        rc = pmix_server_user_register(owner, gids, ngids);
+        free(gids);
+        return rc;
+    }
+    return PMIX_SUCCESS;
+}
+
 static pmix_status_t release_nspace(pmix_proc_t *proc);
 
 static void _register_nspace(int sd, short args, void *cbdata)
@@ -249,9 +289,20 @@ static void _register_nspace(int sd, short args, void *cbdata)
         }
         goto release;
     }
-    /* the job's owner is a user this server now knows */
+    /* the groups the job's owner belongs to, if the host says - the
+     * library never looks them up. Without them, the owner's access
+     * to other jobs is judged by the one group its requests are made
+     * under */
     if (PMIX_OWNER_UNKNOWN != nptr->access.source) {
-        pmix_server_user_add(nptr->access.uid);
+        rc = register_owner_groups(nptr->access.uid, cd->info, cd->ninfo);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            if (created) {
+                pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
+                PMIX_RELEASE(nptr);
+            }
+            goto release;
+        }
     }
     if (0 > cd->nlocalprocs) {
         /* An update revises what we already hold. If we hold nothing

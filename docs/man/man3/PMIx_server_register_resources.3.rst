@@ -123,15 +123,20 @@ following attributes, which receive special handling:
 * ``PMIX_GROUP_JOB_INFO`` (pmix_byte_object_t) |mdash| packed job-level
   information associated with the group.
 * ``PMIX_USERID`` (uint32_t, or a user name as a string) |mdash| a user the
-  server is to know when deciding access to a job by user and group. With it,
-  ``PMIX_GRPID`` may give the groups that user belongs to, as one group id or a
-  ``pmix_data_array_t`` of them (numbers or names): the server keeps those and
-  looks nothing up. Without ``PMIX_GRPID`` the server looks the user's groups up
-  itself, once. This is an identity,
-  not information about the resources, and is not passed to any job. The server
-  also records a user when a job it owns is registered or it connects as a tool,
-  and a requester nobody registered at its first check; a user already recorded
-  is left as it is. The record is kept until the user is deregistered with
+  server is to know when deciding access to a job by user and group, with the
+  groups it belongs to:
+
+  * ``PMIX_USER_GRPIDS`` (``pmix_data_array_t`` of group ids or names) |mdash|
+    every group the user belongs to, primary and supplementary;
+  * or a single ``PMIX_GRPID`` |mdash| the user belongs to that group alone.
+    A ``PMIX_GRPID`` array is refused with ``PMIX_ERR_BAD_PARAM``: the groups
+    are ``PMIX_USER_GRPIDS``.
+
+  The server keeps the groups given, replacing any it had for the user, and
+  never looks them up. A ``PMIX_USERID`` given with neither records nothing: the
+  user is then judged by the one group each of its requests is made under. This
+  is an identity, not information about the resources, and is not passed to any
+  job. The record is kept until the user is deregistered with
   :ref:`PMIx_server_deregister_resources(3) <man3-PMIx_server_deregister_resources>`.
 
 

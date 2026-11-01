@@ -591,38 +591,39 @@ static void test_monitor(void)
     uint32_t requid = ACC_REQ_UID;
     bool host;
     uid_t uid;
+    gid_t gid;
     pmix_status_t rc;
 
     /* a connected client is its own requester */
     PMIX_LOAD_PROCID(&rproc, NS_REQ, 0);
-    rc = pmix_server_access_requester(&rproc, NULL, 0, &rpeer, &host, &uid);
+    rc = pmix_server_access_requester(&rproc, NULL, 0, &rpeer, &host, &uid, &gid);
     report("monitoring: a client is the requester",
            PMIX_SUCCESS == rc && requester == rpeer && !host && ACC_REQ_UID == uid);
     report("monitoring: a client may see its own job and a job naming it, not another user's",
-           pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_REQ)) &&
-               pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_SHARED)) &&
-               !pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_OTHER)));
+           pmix_server_access_requester_may(rpeer, host, uid, gid, find_ns(NS_REQ)) &&
+               pmix_server_access_requester_may(rpeer, host, uid, gid, find_ns(NS_SHARED)) &&
+               !pmix_server_access_requester_may(rpeer, host, uid, gid, find_ns(NS_OTHER)));
 
     /* the host's own request */
-    rc = pmix_server_access_requester(&pmix_globals.myid, NULL, 0, &rpeer, &host, &uid);
+    rc = pmix_server_access_requester(&pmix_globals.myid, NULL, 0, &rpeer, &host, &uid, &gid);
     report("monitoring: the host may see any job",
            PMIX_SUCCESS == rc && NULL == rpeer && host &&
-               pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_OTHER)));
+               pmix_server_access_requester_may(rpeer, host, uid, gid, find_ns(NS_OTHER)));
 
     /* a request the host relays from another node, for the requester's
      * user - the requester is not connected here */
     PMIX_LOAD_PROCID(&rproc, "acc2-remote", 0);
     PMIX_INFO_LOAD(&relay[0], PMIX_MONITOR_PROXY, &rproc, PMIX_PROC);
     PMIX_INFO_LOAD(&relay[1], PMIX_USERID, &requid, PMIX_UINT32);
-    rc = pmix_server_access_requester(&rproc, relay, 2, &rpeer, &host, &uid);
+    rc = pmix_server_access_requester(&rproc, relay, 2, &rpeer, &host, &uid, &gid);
     report("monitoring: a relayed request is held to the user it is for",
            PMIX_SUCCESS == rc && NULL == rpeer && !host && ACC_REQ_UID == uid &&
-               pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_REQ)) &&
-               pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_SHARED)) &&
-               !pmix_server_access_requester_may(rpeer, host, uid, find_ns(NS_OTHER)));
+               pmix_server_access_requester_may(rpeer, host, uid, gid, find_ns(NS_REQ)) &&
+               pmix_server_access_requester_may(rpeer, host, uid, gid, find_ns(NS_SHARED)) &&
+               !pmix_server_access_requester_may(rpeer, host, uid, gid, find_ns(NS_OTHER)));
 
     /* relayed, but not saying for whom - it must not pass as the host's */
-    rc = pmix_server_access_requester(&rproc, relay, 1, &rpeer, &host, &uid);
+    rc = pmix_server_access_requester(&rproc, relay, 1, &rpeer, &host, &uid, &gid);
     report("monitoring: a relayed request that does not name its user is refused",
            PMIX_ERR_NO_PERMISSIONS == rc);
     PMIX_INFO_DESTRUCT(&relay[0]);
@@ -739,16 +740,18 @@ int main(int argc, char **argv)
         return 1;
     }
     requester->index = pmix_pointer_array_add(&pmix_server_globals.clients, requester);
-    /* the requester's user belongs to its group. It has no account for the
-     * server to look that up in, so record it the way a lookup would */
-    user = pmix_server_user_get((uid_t) ACC_REQ_UID);
-    if (NULL == user || NULL == (user->gids = (gid_t *) malloc(sizeof(gid_t)))) {
-        fprintf(stderr, "could not record the requester's groups\n");
-        PMIx_server_finalize();
-        return 1;
+    /* the requester's user belongs to its group - which the server knows
+     * only because the host says so, as a host does */
+    {
+        gid_t g = (gid_t) ACC_REQ_GID;
+
+        if (PMIX_SUCCESS != pmix_server_user_register((uid_t) ACC_REQ_UID, &g, 1) ||
+            NULL == (user = pmix_server_user_find((uid_t) ACC_REQ_UID))) {
+            fprintf(stderr, "could not record the requester's groups\n");
+            PMIx_server_finalize();
+            return 1;
+        }
     }
-    user->gids[0] = (gid_t) ACC_REQ_GID;
-    user->ngids = 1;
 
     test_rule();
     test_get();

@@ -297,6 +297,14 @@ The job's ``PMIX_USERID`` and ``PMIX_GRPID`` may be given either as numbers
 resolves a name when the namespace is registered, and stores and reports only
 the number. The ``info`` array itself is not changed.
 
+``PMIX_USER_GRPIDS`` (a ``pmix_data_array_t`` of group ids or names) gives the
+groups the job's owner belongs to - primary and supplementary - and may also be
+given inside ``PMIX_JOB_INFO_ARRAY``. **The host is responsible for providing
+it**: the library never looks a user's groups up. Without it, the owner's
+requests are judged by the one group each is made under, so a group in another
+job's access list admits the owner only if it is exactly that group. A later
+registration that gives it replaces the groups the library had for that user.
+
 These identify the job's *owner*, and ``PMIX_ACCESS_PERMISSIONS`` (holding
 ``PMIX_ACCESS_USERIDS`` and/or ``PMIX_ACCESS_GRPIDS``, whose entries may also be
 names) names further users and groups allowed to access the job. The library
