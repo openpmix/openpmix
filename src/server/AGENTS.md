@@ -3471,7 +3471,11 @@ misbehave by design).
   the length of `nptr->ranks`, so a second entry for a rank pushes that
   list permanently past `nlocalprocs`, `all_registered` is never set, and
   every collective involving the namespace hangs with nothing reporting
-  why. It now says so with `PMIX_ERR_DUPLICATE_KEY` instead.
+  why. A rank registered again is now updated in place - its uid, gid and
+  `server_object` replaced - and `PMIX_UPDATED` returned; a host
+  re-registers a process it restarts. The one exception is a rank held by
+  a live connection of another uid or gid: the entry is shared with that
+  connection, so it is left alone and `PMIX_ERR_EXISTS` returned.
 - **The `nlocalprocs < 0` arm of `_register_nspace` is the *update* path,
   and it has its own rules.** It stores each directive through the gds
   module by hand rather than going through `PMIX_GDS_ADD_NSPACE`. Three

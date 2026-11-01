@@ -586,6 +586,20 @@ static pmix_namespace_t *find_nspace(const char *nspace)
 }
 
 
+static size_t count_rank(pmix_namespace_t *ns, pmix_rank_t rank, pmix_rank_info_t **out)
+{
+    pmix_rank_info_t *info;
+    size_t count = 0;
+
+    PMIX_LIST_FOREACH (info, &ns->ranks, pmix_rank_info_t) {
+        if (info->pname.rank == rank) {
+            ++count;
+            *out = info;
+        }
+    }
+    return count;
+}
+
 static void opcb(pmix_status_t status, void *cbdata)
 {
     pmix_status_t *st = (pmix_status_t *) cbdata;
@@ -796,6 +810,8 @@ int main(int argc, char **argv)
 {
     pmix_status_t rc;
     pmix_info_t sinfo;
+    pmix_namespace_t *ns;
+    pmix_rank_info_t *info = NULL;
     pmix_nspace_t job;
     volatile pmix_status_t st;
     bool flag = true, ok;
@@ -886,6 +902,31 @@ int main(int argc, char **argv)
     vanished_case();
     dereg_cases();
     takeback_cases();
+
+    /* registering a rank again updates it, and says so */
+    report("registering a rank again reports PMIX_UPDATED",
+           PMIX_UPDATED == register_client(NSM_JOB, 0, getuid() + 7, getgid()));
+    ns = find_nspace(NSM_JOB);
+    report("and updates the one entry for it",
+           NULL != ns && 1 == count_rank(ns, 0, &info) && NULL != info &&
+           getuid() + 7 == info->uid);
+    /* one held by a connection of another identity is left alone */
+    {
+        held_t hr;
+        bool held;
+
+        report("registering it back to us is an update too",
+               PMIX_UPDATED == register_client(NSM_JOB, 0, getuid(), getgid()));
+        held = hold_as(NSM_JOB, "0", true, &hr);
+        report("a tool-client holds the rank", held);
+        report("re-registering a held rank as another user changes nothing",
+               held && PMIX_ERR_EXISTS == register_client(NSM_JOB, 0, getuid() + 7, getgid()) &&
+               NULL != (ns = find_nspace(NSM_JOB)) && 1 == count_rank(ns, 0, &info) &&
+               getuid() == info->uid);
+        report("re-registering it as its own user updates it",
+               held && PMIX_UPDATED == register_client(NSM_JOB, 0, getuid(), getgid()));
+        report("and the tool-client leaves cleanly", held && CHILD_CONNECTED == let_go(&hr));
+    }
 
     PMIx_server_finalize();
 

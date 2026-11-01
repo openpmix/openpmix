@@ -96,8 +96,9 @@ When ``cbfunc`` is provided, it has the signature ``pmix_op_cbfunc_t``:
    typedef void (*pmix_op_cbfunc_t)(pmix_status_t status, void *cbdata);
 
 The library invokes ``cbfunc`` from its progress thread once the client has
-been registered. ``status`` is ``PMIX_SUCCESS`` on success, or a negative PMIx
-error constant otherwise. ``cbdata`` is the opaque pointer passed to
+been registered. ``status`` is ``PMIX_SUCCESS`` on success, ``PMIX_UPDATED``
+when the rank was already registered and has been updated (also a success), or
+a negative PMIx error constant otherwise. ``cbdata`` is the opaque pointer passed to
 ``PMIx_server_register_client``.
 
 
@@ -120,14 +121,14 @@ result directly:
   registration.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| ``proc`` is ``NULL`` or names an empty
   namespace.
-* ``PMIX_ERR_DUPLICATE_KEY`` |mdash| a client with this namespace and rank has
-  already been registered. The host is required to call this function exactly
-  once per rank; a second call would push the namespace's rank list permanently
-  past its local-process count, after which every collective involving the
-  namespace would hang.
-* ``PMIX_ERR_EXISTS`` |mdash| the singleton this server was started for holds
-  the rank, or is being accepted on it, and its uid or gid is not the one given
-  here. The rank is left to that connection.
+* ``PMIX_UPDATED`` |mdash| the host had already registered the rank, and it
+  has been updated: the ``uid``, ``gid`` and ``server_object`` given here
+  replace the ones it had. This is a success, not an error. The first
+  registration of a rank the library made an entry for itself - the singleton
+  named by ``PMIX_SINGLETON`` - returns ``PMIX_SUCCESS``.
+* ``PMIX_ERR_EXISTS`` |mdash| the rank is already registered, a process is
+  connected as it (or is being accepted on it), and that process's uid or gid
+  is not the one given here. Nothing is changed.
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the namespace belongs to a self-started
   tool. A namespace holds either processes the host started (clients and
   tool-clients) or self-started tools, never both. Registering the namespace in
@@ -165,6 +166,15 @@ functions in the other order. The exception is the singleton named by
 registered itself: it was not prepared, so no token is asked of it. The
 registration takes its rank over only for the uid and gid of the
 connection that holds it: for any other it returns ``PMIX_ERR_EXISTS``.
+
+Registering a rank the host has already registered updates it: the new
+``uid``, ``gid`` and ``server_object`` replace the old ones, and the call
+returns ``PMIX_UPDATED``. A host uses this to re-register a process it restarts. The
+rank keeps the connection token already handed out for it. An update never adds
+a second entry for the rank, so the namespace's count of local processes is not
+disturbed. Per-process data such as binding and locality is updated with
+:ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`
+instead, as an update (negative ``nlocalprocs``).
 
 A process that was not registered cannot connect as a client or as a
 tool-client (a tool the host starts, which is registered with this function in
