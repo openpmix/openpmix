@@ -57,6 +57,7 @@ headers = \
         pmix_getid.h \
         pmix_random_bytes.h \
         pmix_idname.h \
+        pmix_runas.h \
         pmix_strnlen.h \
         pmix_shmem.h \
         pmix_vmem.h \
@@ -93,6 +94,7 @@ sources = \
         pmix_getid.c \
         pmix_random_bytes.c \
         pmix_idname.c \
+        pmix_runas.c \
         pmix_shmem.c \
         pmix_vmem.c \
         pmix_hash.c \

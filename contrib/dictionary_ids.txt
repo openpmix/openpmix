@@ -706,3 +706,4 @@ pmix.orig.pid          677   PMIX_ORIGIN_PID
 pmix.orig.tool         678   PMIX_ORIGIN_IS_TOOL
 pmix.orig.client       679   PMIX_ORIGIN_IS_CLIENT
 pmix.ugids             680   PMIX_USER_GRPIDS
+pmix.iof.fwriter       681   PMIX_IOF_FILE_WRITER

@@ -382,6 +382,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             if (PMIX_CHECK_KEY(&job_info[n], PMIX_SETUP_APP_ENVARS)) {
                 /* harvested and applied to our copy of the apps, below */
                 joblevel_envars = true;
+            } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_IOF_FILE_WRITER)) {
+                /* ours to add, below - never the caller's */
+                continue;
             } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_PARENT_ID)) {
                 /* the directive comes straight from the caller, so verify it
                  * really carries a proc before dereferencing the union - a
@@ -397,6 +400,20 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                 proxy = true;
             }
             rc = PMIx_Info_list_xfer(xlist, &job_info[n]);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIx_Info_list_release(xlist);
+                PMIX_RELEASE(fcd);
+                return rc;
+            }
+        }
+        /* A tool is sent the output of the jobs it spawns, so it writes
+         * their output files itself, with its own permissions, rather
+         * than leave them to servers that may run as another user - and
+         * those of the jobs they spawn, which is why it is named even
+         * for a job with none. The server checks this, and drops it when
+         * it does not hold */
+        if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+            rc = PMIx_Info_list_add(xlist, PMIX_IOF_FILE_WRITER, &pmix_globals.myid, PMIX_PROC);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIx_Info_list_release(xlist);
                 PMIX_RELEASE(fcd);
@@ -906,7 +923,10 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
                 }
                 pmix_list_append(&pmix_globals.nspaces, &nptr->super);
             }
-            /* as a client, we only handle a select set of the flags */
+            /* as a client, we only handle a select set of the flags. Any
+             * files the namespace already has are ours to give back */
+            free(nptr->iof_flags.file);
+            free(nptr->iof_flags.directory);
             memcpy(&nptr->iof_flags, &fcd->flags, sizeof(pmix_iof_flags_t));
             nptr->iof_flags.file = NULL;
             nptr->iof_flags.directory = NULL;
@@ -914,6 +934,9 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
             if (fcd->flags.nocopy) {
                 nptr->iof_flags.local_output = false;
             }
+            /* ...unless the server sent us the job's files to write, with
+             * its first output - see PMIX_IOF_FILE_WRITER */
+            pmix_iof_apply_forwarded_files(nptr);
             /* The namespace now carries its own flags, which is the answer
              * any output we held for it has been waiting for. Release it
              * here, before the count is dropped below, so it is written

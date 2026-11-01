@@ -1101,6 +1101,71 @@ void pmix_server_spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
     PMIX_THREADSHIFT(cd, _spcbfunc);
 }
 
+/* PMIX_IOF_FILE_WRITER names the process that writes a job's output
+ * files, as itself - see pmix_common.h. A requester may name only itself,
+ * and only as a tool the job's output is sent to: what it names is who
+ * the servers leave the files to. It is kept for a job with no output
+ * files too, to be passed on: a job's process that spawns a job with
+ * output files passes its own job's writer on, when the new job's output
+ * follows its parent's to the same place. */
+static pmix_status_t screen_file_writer(pmix_peer_t *peer, pmix_setup_caddy_t *cd)
+{
+    pmix_info_t *old = cd->info, *new;
+    size_t n, m, nold = cd->ninfo, named = 0;
+    bool self = false, keep, files;
+
+    files = (NULL != cd->flags.file || NULL != cd->flags.directory);
+    for (n = 0; n < nold; n++) {
+        if (PMIx_Check_key(old[n].key, PMIX_IOF_FILE_WRITER)) {
+            ++named;
+            self = (PMIX_PROC == old[n].value.type && NULL != old[n].value.data.proc &&
+                    PMIX_CHECK_NAMES(old[n].value.data.proc, &peer->info->pname));
+        }
+    }
+    if (0 < named) {
+        keep = (1 == named && self && PMIX_PEER_IS_TOOL(peer) && !cd->inherit_iof &&
+                0 != (cd->channels & (PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL)));
+        if (keep) {
+            return PMIX_SUCCESS;
+        }
+        /* the servers write the files, as without it */
+        m = 0;
+        for (n = 0; n < nold; n++) {
+            if (PMIx_Check_key(old[n].key, PMIX_IOF_FILE_WRITER)) {
+                PMIx_Info_destruct(&old[n]);
+                continue;
+            }
+            if (m != n) {
+                memcpy(&old[m], &old[n], sizeof(pmix_info_t));
+            }
+            ++m;
+        }
+        cd->ninfo = m;
+        if (0 == m) {
+            free(old);
+            cd->info = NULL;
+        }
+        return PMIX_SUCCESS;
+    }
+    if (!files || !cd->inherit_iof || !PMIX_PEER_IS_CLIENT(peer) || NULL == peer->nptr ||
+        !peer->nptr->iof_flags.writer_given) {
+        return PMIX_SUCCESS;
+    }
+    new = PMIx_Info_create(nold + 1);
+    if (NULL == new) {
+        return PMIX_ERR_NOMEM;
+    }
+    /* moved, not copied - see stamp_requester */
+    if (0 < nold) {
+        memcpy(new, old, nold * sizeof(pmix_info_t));
+    }
+    PMIx_Info_load(&new[nold], PMIX_IOF_FILE_WRITER, &peer->nptr->iof_flags.writer, PMIX_PROC);
+    free(old);
+    cd->info = new;
+    cd->ninfo = nold + 1;
+    return PMIX_SUCCESS;
+}
+
 void pmix_server_spawn_parser(pmix_peer_t *peer,
                               pmix_iof_channel_t *channels,
                               pmix_iof_flags_t *flags,
@@ -1299,6 +1364,11 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
      * PMIx_Spawn_nb parse unconditionally for the same reason. */
     pmix_server_spawn_parser(peer, &cd->channels, &cd->flags,
                              &cd->inherit_iof, cd->info, cd->ninfo);
+    rc = screen_file_writer(peer, cd);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
 
     /* unpack the number of apps */
     cnt = 1;

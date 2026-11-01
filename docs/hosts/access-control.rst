@@ -282,25 +282,41 @@ Output files and shared memory
 ------------------------------
 
 **Output files** (``PMIX_IOF_OUTPUT_TO_FILE``,
-``PMIX_IOF_OUTPUT_TO_DIRECTORY``). By default only the job's owner reads
-them:
+``PMIX_IOF_OUTPUT_TO_DIRECTORY``). The paths a job names are the job
+owner's, and **everything about its output files is done as the owner**:
+the directories are created, and the files opened, checked, emptied and
+given their mode, by the owner - in place when the server runs as the
+owner, and otherwise in a short-lived child of the server that has
+dropped to the owner's uid, gid and the groups the host registered for it
+(``PMIX_USER_GRPIDS``; with none, the owner's gid alone). So the kernel
+applies the owner's own permissions to every path the job named: a
+privileged server creates nothing, and writes over nothing, that the
+owner could not.
 
-* When the file belongs to the owner - the server runs as the owner, or
-  runs as root and gives the file to them - it is created with mode
-  ``0600``, and the directories the server creates for it ``0700``.
+* A file and its directories belong to the owner from creation: ``0600``
+  and ``0700``.
 * If the access list names groups, the files are made readable by the
-  first listed group (``0640``, directories ``0750``), where the server
-  can set that group. File modes can express only an owner and one group,
-  so further users and groups in the list are not applied to files.
-  Access control lists are not used, as they are not portable.
-* A server that cannot give the file to the owner - one running as a
-  service account other than root - makes it readable by the owner's own
-  group (``0640``) if it can set that group, and otherwise leaves it
-  readable by everyone (``0644``), so the owner can still read their
-  output. Its directories are then ``0755``: they must let the owner
-  reach the files, whose own modes decide who reads them.
-* An output file that is not a regular file with a single name is not
-  written.
+  first listed group (``0640``, directories ``0750``), where the owner can
+  set that group. File modes can express only an owner and one group, so
+  further users and groups in the list are not applied to files. Access
+  control lists are not used, as they are not portable.
+* An output file that is not a regular file with a single name, **owned by
+  the job's owner**, is not written - an existing file of someone else's
+  is refused and left as it was, even where the owner could write it.
+* **The launcher writes them, when it can.** A tool that spawns a job and
+  is sent the job's output - ``prun``, say - names itself the job's file
+  writer (``PMIX_IOF_FILE_WRITER``). The server that takes the spawn
+  accepts that only from the tool it names, and passes it on to jobs that
+  the job's processes spawn with output files of their own. No
+  server then writes that job's files: the one sending the job's output
+  to the tool sends the file directives with the first of it, and the
+  tool writes the files as itself. So a server running as a service
+  account other than root can run another user's job with output files.
+  The files are written where the tool runs, not where each process
+  runs.
+* Otherwise a server that can neither run as the owner nor become it -
+  one running as a service account other than root - writes no output
+  files for that owner's jobs, and says so once per job.
 
 **Shared-memory job data** (``gds/shmem3``). Only the server writes a
 segment: clients open its backing file read-only and map it read-only.

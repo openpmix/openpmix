@@ -45,6 +45,7 @@
 
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_runas.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_printf.h"
@@ -326,6 +327,10 @@ void pmix_output_close(int output_id)
  */
 PMIX_EXPORT void pmix_output(int output_id, const char *format, ...)
 {
+    /* see pmix_util_runas_child */
+    if (pmix_util_runas_child) {
+        return;
+    }
     if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS) {
         va_list arglist;
         va_start(arglist, format);
