@@ -536,13 +536,8 @@ pmix_status_t pmix_bfrops_base_pack_info(pmix_pointer_array_t *regtypes, pmix_bu
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
-        /* pack info directives. Only a server relays a request for
-         * another process, so only a server's library sends a value
-         * marked as relayed - anyone else speaks for itself */
+        /* pack info directives */
         flags = info[i].flags;
-        if (NULL == pmix_globals.mypeer || !PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
-            flags &= ~PMIX_INFO_RELAYED;
-        }
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &flags, 1, PMIX_INFO_DIRECTIVES, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
