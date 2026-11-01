@@ -603,10 +603,11 @@ pmix_status_t pmix_pstat_base_targets(const pmix_proc_t *requestor,
     pmix_rank_info_t *info;
     bool host, given = false;
     uid_t uid, owner;
+    gid_t gid;
     size_t n, m, sz;
     pmix_status_t rc;
 
-    rc = pmix_server_access_requester(requestor, directives, ndirs, &rpeer, &host, &uid);
+    rc = pmix_server_access_requester(requestor, directives, ndirs, &rpeer, &host, &uid, &gid);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
@@ -628,7 +629,7 @@ pmix_status_t pmix_pstat_base_targets(const pmix_proc_t *requestor,
                     /* not a job of this node's - the host covers others */
                     continue;
                 }
-                if (!pmix_server_access_requester_may(rpeer, host, uid, nptr)) {
+                if (!pmix_server_access_requester_may(rpeer, host, uid, gid, nptr)) {
                     return PMIX_ERR_NO_PERMISSIONS;
                 }
                 if (PMIX_RANK_WILDCARD == procs[m].rank) {
@@ -694,7 +695,7 @@ pmix_status_t pmix_pstat_base_targets(const pmix_proc_t *requestor,
          * access */
         PMIX_LIST_FOREACH (nptr, &pmix_globals.nspaces, pmix_namespace_t) {
             if (NULL == nptr->nspace ||
-                !pmix_server_access_requester_may(rpeer, host, uid, nptr)) {
+                !pmix_server_access_requester_may(rpeer, host, uid, gid, nptr)) {
                 continue;
             }
             rc = add_job(targets, nptr);

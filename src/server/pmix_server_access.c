@@ -19,6 +19,7 @@
 
 #include "src/include/pmix_config.h"
 
+#include <errno.h>
 #include <grp.h>
 #include <pwd.h>
 #include <stdlib.h>
@@ -52,7 +53,7 @@ static void udes(pmix_user_t *p)
 }
 PMIX_CLASS_INSTANCE(pmix_user_t, pmix_list_item_t, ucon, udes);
 
-/* The users this server knows - see pmix_server_user_get(). Progress
+/* The users whose groups the host registered - see pmix_server_user_find(). Progress
  * thread only; a host keeps its own */
 static pmix_list_t users;
 static bool users_constructed = false;
@@ -85,11 +86,28 @@ pmix_status_t pmix_server_user_refresh(pmix_user_t *user)
     if (0 >= bufsz) {
         bufsz = 16384;
     }
-    buf = (char *) malloc((size_t) bufsz);
-    if (NULL == buf) {
-        return PMIX_ERR_NOMEM;
+    /* A lookup that fails says nothing about the user's groups - a
+     * transient directory error, or a buffer too small for the entry - so
+     * the groups it had are kept, and a buffer too small is retried with a
+     * larger one. Only an answer that there is no such user clears them */
+    for (;;) {
+        buf = (char *) malloc((size_t) bufsz);
+        if (NULL == buf) {
+            return PMIX_ERR_NOMEM;
+        }
+        rc = getpwuid_r(user->uid, &pw, buf, (size_t) bufsz, &res);
+        if (ERANGE == rc && bufsz < (1L << 24)) {
+            free(buf);
+            bufsz *= 2;
+            continue;
+        }
+        break;
     }
-    if (0 != getpwuid_r(user->uid, &pw, buf, (size_t) bufsz, &res) || NULL == res) {
+    if (0 != rc) {
+        free(buf);
+        return PMIX_ERR_UNREACH;
+    }
+    if (NULL == res) {
         /* no account - no groups to be found */
         free(buf);
         free(user->gids);
@@ -134,77 +152,37 @@ pmix_status_t pmix_server_user_refresh(pmix_user_t *user)
     return PMIX_SUCCESS;
 }
 
-pmix_user_t *pmix_server_user_get(uid_t uid)
+pmix_user_t *pmix_server_user_find(uid_t uid)
 {
     pmix_user_t *user;
 
     if (!users_constructed) {
-        PMIX_CONSTRUCT(&users, pmix_list_t);
-        users_constructed = true;
+        return NULL;
     }
     PMIX_LIST_FOREACH (user, &users, pmix_user_t) {
         if (user->uid == uid) {
             return user;
         }
     }
-    user = pmix_server_user_create(uid);
-    if (NULL != user) {
-        pmix_list_append(&users, &user->super);
-    }
-    return user;
-}
-
-void pmix_server_user_add(uid_t uid)
-{
-    pmix_user_t *user;
-
-    /* root and our own user are allowed everything - their groups are
-     * never needed */
-    if (0 == uid || geteuid() == uid) {
-        return;
-    }
-    if (!users_constructed) {
-        PMIX_CONSTRUCT(&users, pmix_list_t);
-        users_constructed = true;
-    }
-    PMIX_LIST_FOREACH (user, &users, pmix_user_t) {
-        if (user->uid == uid) {
-            return;
-        }
-    }
-    user = pmix_server_user_create(uid);
-    if (NULL == user) {
-        return;
-    }
-    (void) pmix_server_user_refresh(user);
-    pmix_list_append(&users, &user->super);
+    return NULL;
 }
 
 pmix_status_t pmix_server_user_register(uid_t uid, const gid_t *gids, size_t ngids)
 {
-    pmix_user_t *user = NULL, *u;
+    pmix_user_t *user;
     gid_t *copy;
 
-    if (NULL == gids) {
-        /* the host did not say - find out ourselves */
-        pmix_server_user_add(uid);
-        return PMIX_SUCCESS;
-    }
+    /* root and our own user are allowed everything - their groups are
+     * never needed */
     if (0 == uid || geteuid() == uid) {
         return PMIX_SUCCESS;
     }
-    if (UINT16_MAX < ngids) {
+    if (UINT16_MAX < ngids || (NULL == gids && 0 < ngids)) {
         return PMIX_ERR_BAD_PARAM;
     }
     if (!users_constructed) {
         PMIX_CONSTRUCT(&users, pmix_list_t);
         users_constructed = true;
-    }
-    PMIX_LIST_FOREACH (u, &users, pmix_user_t) {
-        if (u->uid == uid) {
-            user = u;
-            break;
-        }
     }
     copy = (gid_t *) malloc((0 < ngids ? ngids : 1) * sizeof(gid_t));
     if (NULL == copy) {
@@ -213,6 +191,7 @@ pmix_status_t pmix_server_user_register(uid_t uid, const gid_t *gids, size_t ngi
     if (0 < ngids) {
         memcpy(copy, gids, ngids * sizeof(gid_t));
     }
+    user = pmix_server_user_find(uid);
     if (NULL == user) {
         user = pmix_server_user_create(uid);
         if (NULL == user) {
@@ -221,7 +200,8 @@ pmix_status_t pmix_server_user_register(uid_t uid, const gid_t *gids, size_t ngi
         }
         pmix_list_append(&users, &user->super);
     }
-    /* the host's word replaces what we had - no lookup of our own */
+    /* the host's word replaces what we had - nothing is looked up, now or
+     * later */
     free(user->gids);
     user->gids = copy;
     user->ngids = (uint16_t) ngids;
@@ -372,24 +352,19 @@ pmix_status_t pmix_server_access_check(pmix_user_t *requester, const pmix_access
             return PMIX_SUCCESS;
         }
     }
-    /* groups the owner allowed - and if the user is in none of them, its
-     * groups may have changed since they were last looked up (or never
-     * have been), so look again before refusing */
-    if (0 == job->ngids) {
-        return PMIX_ERR_NO_PERMISSIONS;
-    }
-    if (in_groups(requester, job)) {
-        return PMIX_SUCCESS;
-    }
-    if (PMIX_SUCCESS == pmix_server_user_refresh(requester) && in_groups(requester, job)) {
+    /* groups the owner allowed - as the requester's record lists them.
+     * Nothing is looked up: the groups are what the host said they are */
+    if (0 < job->ngids && in_groups(requester, job)) {
         return PMIX_SUCCESS;
     }
     return PMIX_ERR_NO_PERMISSIONS;
 }
 
-bool pmix_server_access_permitted(uid_t uid, const pmix_namespace_t *nptr)
+bool pmix_server_access_permitted(uid_t uid, gid_t gid, const pmix_namespace_t *nptr)
 {
-    pmix_user_t *user;
+    pmix_user_t *user, single;
+    gid_t one = gid;
+    bool ok;
 
     /* root and our own user need no record */
     if (0 == uid || geteuid() == uid) {
@@ -398,11 +373,24 @@ bool pmix_server_access_permitted(uid_t uid, const pmix_namespace_t *nptr)
     if (NULL == nptr) {
         return false;
     }
-    user = pmix_server_user_get(uid);
-    if (NULL == user) {
-        return false;
+    /* the groups the host registered for this user - else the one group
+     * the request is made under, and no other */
+    user = pmix_server_user_find(uid);
+    if (NULL != user) {
+        return (PMIX_SUCCESS == pmix_server_access_check(user, &nptr->access));
     }
-    return (PMIX_SUCCESS == pmix_server_access_check(user, &nptr->access));
+    PMIX_CONSTRUCT(&single, pmix_user_t);
+    single.uid = uid;
+    if ((gid_t) -1 != gid) {
+        single.gids = &one;
+        single.ngids = 1;
+    }
+    ok = (PMIX_SUCCESS == pmix_server_access_check(&single, &nptr->access));
+    /* the gid was borrowed */
+    single.gids = NULL;
+    single.ngids = 0;
+    PMIX_DESTRUCT(&single);
+    return ok;
 }
 
 bool pmix_server_peer_permitted(const pmix_peer_t *peer, const pmix_namespace_t *nptr)
@@ -416,7 +404,7 @@ bool pmix_server_peer_permitted(const pmix_peer_t *peer, const pmix_namespace_t 
                          (NULL != pmix_globals.mypeer && pmix_globals.mypeer->nptr == nptr))) {
         return true;
     }
-    return pmix_server_access_permitted(peer->info->uid, nptr);
+    return pmix_server_access_permitted(peer->info->uid, peer->info->gid, nptr);
 }
 
 bool pmix_server_peer_may_access_nspace(const pmix_peer_t *peer, const char *nspace)
@@ -558,7 +546,7 @@ bool pmix_server_peer_may_use_copy_nspace(const pmix_peer_t *peer, const char *n
 pmix_status_t pmix_server_access_check_remote(const pmix_namespace_t *nptr,
                                               const pmix_info_t *info, size_t ninfo)
 {
-    uint32_t uid = 0;
+    uint32_t uid = 0, gid = UINT32_MAX;
     const pmix_proc_t *requestor = NULL;
     bool haveuid = false;
     size_t n;
@@ -569,6 +557,11 @@ pmix_status_t pmix_server_access_check_remote(const pmix_namespace_t *nptr,
                 return PMIX_ERR_BAD_PARAM;
             }
             haveuid = true;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GRPID)) {
+            /* the group the requester's own server says it connected with */
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &gid, PMIX_UINT32)) {
+                return PMIX_ERR_BAD_PARAM;
+            }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_REQUESTOR)) {
             if (PMIX_PROC != info[n].value.type || NULL == info[n].value.data.proc) {
                 return PMIX_ERR_BAD_PARAM;
@@ -585,7 +578,7 @@ pmix_status_t pmix_server_access_check_remote(const pmix_namespace_t *nptr,
         0 == strncmp(requestor->nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
         return PMIX_SUCCESS;
     }
-    if (pmix_server_access_permitted((uid_t) uid, nptr)) {
+    if (pmix_server_access_permitted((uid_t) uid, (gid_t) gid, nptr)) {
         return PMIX_SUCCESS;
     }
     return PMIX_ERR_NO_PERMISSIONS;
@@ -646,21 +639,24 @@ pmix_status_t pmix_server_access_identify(const pmix_peer_t *peer, pmix_info_t *
 
 pmix_status_t pmix_server_access_requester(const pmix_proc_t *requestor,
                                            const pmix_info_t *directives, size_t ndirs,
-                                           pmix_peer_t **peer, bool *host, uid_t *uid)
+                                           pmix_peer_t **peer, bool *host, uid_t *uid,
+                                           gid_t *gid)
 {
     pmix_peer_t *rpeer;
-    uint32_t u32 = 0;
+    uint32_t u32 = 0, g32 = UINT32_MAX;
     bool have_uid = false, relayed = false;
     size_t n;
 
     *peer = NULL;
     *host = false;
     *uid = (uid_t) -1;
+    *gid = (gid_t) -1;
 
     rpeer = (NULL == requestor) ? NULL : pmix_server_access_find_peer(requestor);
     if (NULL != rpeer) {
         *peer = rpeer;
         *uid = rpeer->info->uid;
+        *gid = rpeer->info->gid;
         return PMIX_SUCCESS;
     }
     /* a request that is not from one of our clients or tools is our
@@ -674,12 +670,20 @@ pmix_status_t pmix_server_access_requester(const pmix_proc_t *requestor,
                 return PMIX_ERR_BAD_PARAM;
             }
             have_uid = true;
+        } else if (PMIx_Check_key(directives[n].key, PMIX_GRPID)) {
+            /* the group the requester's own server says it connected with
+             * - the one its access is judged by, absent groups the host
+             * registered for that user */
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&directives[n].value, &g32, PMIX_UINT32)) {
+                return PMIX_ERR_BAD_PARAM;
+            }
         } else if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_PROXY)) {
             relayed = true;
         }
     }
     if (have_uid) {
         *uid = (uid_t) u32;
+        *gid = (gid_t) g32;
         return PMIX_SUCCESS;
     }
     if (relayed) {
@@ -688,10 +692,11 @@ pmix_status_t pmix_server_access_requester(const pmix_proc_t *requestor,
     }
     *host = true;
     *uid = geteuid();
+    *gid = getegid();
     return PMIX_SUCCESS;
 }
 
-bool pmix_server_access_requester_may(pmix_peer_t *peer, bool host, uid_t uid,
+bool pmix_server_access_requester_may(pmix_peer_t *peer, bool host, uid_t uid, gid_t gid,
                                       pmix_namespace_t *nptr)
 {
     if (host) {
@@ -700,7 +705,7 @@ bool pmix_server_access_requester_may(pmix_peer_t *peer, bool host, uid_t uid,
     if (NULL != peer) {
         return pmix_server_peer_permitted(peer, nptr);
     }
-    return pmix_server_access_permitted(uid, nptr);
+    return pmix_server_access_permitted(uid, gid, nptr);
 }
 
 /* ------------------------------------------------------------------ */
@@ -950,7 +955,4 @@ void pmix_server_access_set_owner(pmix_namespace_t *nptr, uid_t uid, gid_t gid,
     nptr->access.uid = uid;
     nptr->access.gid = gid;
     nptr->access.source = source;
-    /* a user this server now knows - a tool, or the user a job's clients
-     * run as */
-    pmix_server_user_add(uid);
 }

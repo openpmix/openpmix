@@ -39,21 +39,21 @@
  *                                                         not naming a list
  *                                                         keeps it
  *   the rule                                           -> each branch
- *   a user's groups                                    -> looked up when
- *                                                         first needed, and
- *                                                         again when a check
- *                                                         would otherwise
- *                                                         refuse
- *   a user the host registers (register_resources
- *   with PMIX_USERID)                                  -> known, with its
- *                                                         groups; dropped on
+ *   a user's groups                                    -> only what the host
+ *                                                         gives: never looked
+ *                                                         up, never refreshed
+ *   a user registered with PMIX_USER_GRPIDS            -> the host's groups
+ *                                                         kept; dropped on
  *                                                         deregistration
- *   a job registered with an owner                     -> the owner known,
- *                                                         with its groups
- *   a user registered with its groups (PMIX_GRPID
- *   as a data array)                                   -> the host's groups
- *                                                         kept, nothing
- *                                                         looked up
+ *   ... with one PMIX_GRPID                            -> that group alone
+ *   ... with a PMIX_GRPID array                        -> refused
+ *   ... with neither                                   -> no record
+ *   a job registered with PMIX_USER_GRPIDS             -> its owner's groups
+ *                                                         recorded; without,
+ *                                                         nothing
+ *   a requester with no record                         -> judged by the group
+ *                                                         its request is made
+ *                                                         under
  *   a job's rule as a host keeps it
  *   (pmix_server_access_load)                          -> names resolved; a
  *                                                         malformed list
@@ -207,12 +207,12 @@ static void test_registered_policy(void)
     }
 
     /* the rule */
-    report("the owner is allowed", pmix_server_access_permitted(ACC_OWNER, ns));
-    report("a listed user is allowed", pmix_server_access_permitted(ACC_USER, ns));
-    report("anyone else is refused", !pmix_server_access_permitted(ACC_STRANGER, ns));
-    report("root is allowed", pmix_server_access_permitted(0, ns));
+    report("the owner is allowed", pmix_server_access_permitted(ACC_OWNER, (gid_t) -1, ns));
+    report("a listed user is allowed", pmix_server_access_permitted(ACC_USER, (gid_t) -1, ns));
+    report("anyone else is refused", !pmix_server_access_permitted(ACC_STRANGER, (gid_t) -1, ns));
+    report("root is allowed", pmix_server_access_permitted(0, (gid_t) -1, ns));
     report("the server's own user is allowed",
-           pmix_server_access_permitted(geteuid(), ns));
+           pmix_server_access_permitted(geteuid(), (gid_t) -1, ns));
 
     /* an update naming a new user list replaces it, and leaves the
      * group list alone */
@@ -225,7 +225,7 @@ static void test_registered_policy(void)
     PMIX_INFO_DESTRUCT(&perms[0]);
     report("the new list replaces the old",
            1 == ns->access.nuids && ACC_USER + 1 == ns->access.uids[0] &&
-           !pmix_server_access_permitted(ACC_USER, ns));
+           !pmix_server_access_permitted(ACC_USER, (gid_t) -1, ns));
     report("the list the update did not name is kept",
            1 == ns->access.ngids && ACC_GROUP == ns->access.gids[0]);
     report("and so is the owner",
@@ -338,7 +338,7 @@ static void test_owner_fallback(void)
     ns = find_ns("acc-c");
     report("with no owner registered, the client's user owns the job",
            NULL != ns && PMIX_OWNER_FROM_CLIENT == ns->access.source &&
-           ACC_CLIENT == ns->access.uid && pmix_server_access_permitted(ACC_CLIENT, ns));
+           ACC_CLIENT == ns->access.uid && pmix_server_access_permitted(ACC_CLIENT, (gid_t) -1, ns));
     (void) rc;
 
     PMIX_INFO_LOAD(&info, PMIX_USERID, &uid, PMIX_UINT32);
@@ -346,7 +346,7 @@ static void test_owner_fallback(void)
     PMIX_INFO_DESTRUCT(&info);
     report("a registered owner replaces the client's",
            registered(rc) && NULL != ns && PMIX_OWNER_REGISTERED == ns->access.source &&
-           ACC_CLIENT + 100 == ns->access.uid && !pmix_server_access_permitted(ACC_CLIENT, ns));
+           ACC_CLIENT + 100 == ns->access.uid && !pmix_server_access_permitted(ACC_CLIENT, (gid_t) -1, ns));
 
     PMIX_LOAD_PROCID(&proc, "acc-c", 1);
     rc = PMIx_server_register_client(&proc, ACC_CLIENT + 5, ACC_CLIENT + 6, NULL, NULL, NULL);
@@ -359,9 +359,9 @@ static void test_owner_fallback(void)
     ns = find_ns("acc-d");
     report("with no owner known, only the server's user and root are allowed",
            registered(rc) && NULL != ns && PMIX_OWNER_UNKNOWN == ns->access.source &&
-           !pmix_server_access_permitted(ACC_CLIENT, ns) &&
-           pmix_server_access_permitted(geteuid(), ns) &&
-           pmix_server_access_permitted(0, ns));
+           !pmix_server_access_permitted(ACC_CLIENT, (gid_t) -1, ns) &&
+           pmix_server_access_permitted(geteuid(), (gid_t) -1, ns) &&
+           pmix_server_access_permitted(0, (gid_t) -1, ns));
 }
 
 /* a user who is neither root nor us, with an account and so a group -
@@ -388,19 +388,33 @@ static bool has_gid(const pmix_user_t *user, gid_t gid)
     return false;
 }
 
+/* a PMIX_USER_GRPIDS of two groups */
+static void load_ugids(pmix_info_t *info, uint32_t g0, uint32_t g1)
+{
+    pmix_data_array_t *gda;
+
+    PMIX_DATA_ARRAY_CREATE(gda, 2, PMIX_UINT32);
+    ((uint32_t *) gda->array)[0] = g0;
+    ((uint32_t *) gda->array)[1] = g1;
+    PMIX_INFO_LOAD(info, PMIX_USER_GRPIDS, gda, PMIX_DATA_ARRAY);
+    PMIX_DATA_ARRAY_FREE(gda);
+}
+
 static void test_users(void)
 {
-    pmix_user_t *user, *again;
-    pmix_info_t info;
-    struct passwd *pw;
+    pmix_user_t *user;
+    pmix_info_t info, reginfo[2];
+    pmix_access_t job;
+    pmix_namespace_t *ns;
     gid_t mine[256];
-    uint32_t id;
+    uint32_t fake = ACC_USER + 7, jgid = ACC_GROUP, owner = ACC_OWNER, one = ACC_GROUP;
     int nmine, i;
     bool all = true;
     pmix_status_t rc;
 
+    /* the lookup a host may use for its own records */
     user = pmix_server_user_create(geteuid());
-    report("a new user's groups are not looked up yet", NULL != user && 0 == user->ngids);
+    report("a new user's groups are not looked up", NULL != user && 0 == user->ngids);
     if (NULL == user) {
         return;
     }
@@ -412,7 +426,8 @@ static void test_users(void)
             all = false;
         }
     }
-    report("a refresh finds every group we belong to", PMIX_SUCCESS == rc && 0 < nmine && all);
+    report("a host's refresh finds every group we belong to",
+           PMIX_SUCCESS == rc && 0 < nmine && all);
     PMIX_RELEASE(user);
 
     user = pmix_server_user_create((uid_t) ACC_STRANGER);
@@ -421,19 +436,41 @@ static void test_users(void)
            PMIX_SUCCESS == rc && 0 == user->ngids);
     PMIX_RELEASE(user);
 
-    user = pmix_server_user_get((uid_t) ACC_STRANGER);
-    again = pmix_server_user_get((uid_t) ACC_STRANGER);
-    report("the server keeps one record per user", NULL != user && user == again);
+    /* the server keeps only what the host gives it */
+    report("a user nobody registered has no record",
+           NULL == pmix_server_user_find((uid_t) ACC_STRANGER));
 
     /* the host registers a user AND its groups: taken as given, nothing
      * looked up - this user has no account, so a lookup would find none */
-    {
-        pmix_info_t reginfo[2];
-        pmix_data_array_t *gda;
-        pmix_access_t job;
-        uint32_t fake = ACC_USER + 7, jgid = ACC_GROUP, owner = ACC_OWNER;
+    PMIX_INFO_LOAD(&reginfo[0], PMIX_USERID, &fake, PMIX_UINT32);
+    load_ugids(&reginfo[1], ACC_OGROUP, ACC_GROUP);
+    rc = PMIx_server_register_resources(reginfo, 2, NULL, NULL);
+    progress_barrier();
+    user = pmix_server_user_find((uid_t) fake);
+    report("a user registered with PMIX_USER_GRPIDS keeps the host's groups",
+           registered(rc) && NULL != user && 2 == user->ngids && has_gid(user, ACC_OGROUP) &&
+           has_gid(user, ACC_GROUP));
+    pmix_server_access_construct(&job);
+    PMIX_INFO_LOAD(&info, PMIX_USERID, &owner, PMIX_UINT32);
+    (void) pmix_server_access_load(&job, &info, 1);
+    PMIX_INFO_DESTRUCT(&info);
+    job.gids = &jgid;
+    job.ngids = 1;
+    report("the rule uses the host's groups",
+           NULL != user && PMIX_SUCCESS == pmix_server_access_check(user, &job));
+    job.gids = NULL;
+    job.ngids = 0;
+    pmix_server_access_destruct(&job);
+    rc = PMIx_server_deregister_resources(reginfo, 1, NULL, NULL);
+    progress_barrier();
+    report("deregistering the user drops its record",
+           registered(rc) && NULL == pmix_server_user_find((uid_t) fake));
+    PMIX_INFO_DESTRUCT(&reginfo[1]);
 
-        PMIX_INFO_LOAD(&reginfo[0], PMIX_USERID, &fake, PMIX_UINT32);
+    /* PMIX_GRPID is one group; an array of them is PMIX_USER_GRPIDS */
+    {
+        pmix_data_array_t *gda;
+
         PMIX_DATA_ARRAY_CREATE(gda, 2, PMIX_UINT32);
         ((uint32_t *) gda->array)[0] = ACC_OGROUP;
         ((uint32_t *) gda->array)[1] = ACC_GROUP;
@@ -441,60 +478,48 @@ static void test_users(void)
         PMIX_DATA_ARRAY_FREE(gda);
         rc = PMIx_server_register_resources(reginfo, 2, NULL, NULL);
         progress_barrier();
-        user = pmix_server_user_get((uid_t) fake);
-        report("a user registered with its groups keeps the host's groups",
-               registered(rc) && NULL != user && 2 == user->ngids &&
-               has_gid(user, ACC_OGROUP) && has_gid(user, ACC_GROUP));
-        pmix_server_access_construct(&job);
-        PMIX_INFO_LOAD(&info, PMIX_USERID, &owner, PMIX_UINT32);
-        (void) pmix_server_access_load(&job, &info, 1);
-        PMIX_INFO_DESTRUCT(&info);
-        job.gids = &jgid;
-        job.ngids = 1;
-        report("the rule uses the host's groups",
-               PMIX_SUCCESS == pmix_server_access_check(user, &job));
-        job.gids = NULL;
-        job.ngids = 0;
-        pmix_server_access_destruct(&job);
-        rc = PMIx_server_deregister_resources(reginfo, 1, NULL, NULL);
-        progress_barrier();
-        PMIX_INFO_DESTRUCT(&reginfo[0]);
+        report("a PMIX_GRPID array is refused - groups are PMIX_USER_GRPIDS",
+               PMIX_ERR_BAD_PARAM == rc && NULL == pmix_server_user_find((uid_t) fake));
         PMIX_INFO_DESTRUCT(&reginfo[1]);
-        user = pmix_server_user_get((uid_t) fake);
-        report("deregistering it drops the host's groups",
-               registered(rc) && NULL != user && 0 == user->ngids);
-        pmix_server_user_remove((uid_t) fake);
     }
+    PMIX_INFO_LOAD(&reginfo[1], PMIX_GRPID, &one, PMIX_UINT32);
+    rc = PMIx_server_register_resources(reginfo, 2, NULL, NULL);
+    progress_barrier();
+    user = pmix_server_user_find((uid_t) fake);
+    report("a single PMIX_GRPID is that group alone",
+           registered(rc) && NULL != user && 1 == user->ngids && has_gid(user, ACC_GROUP));
+    pmix_server_user_remove((uid_t) fake);
+    PMIX_INFO_DESTRUCT(&reginfo[1]);
 
-    pw = other_user();
-    if (NULL == pw) {
-        fprintf(stdout, "  SKIP: registering a user - no \"nobody\" account\n");
-        return;
+    rc = PMIx_server_register_resources(reginfo, 1, NULL, NULL);
+    progress_barrier();
+    report("a user registered with no groups is looked up for nothing - it has no record",
+           registered(rc) && NULL == pmix_server_user_find((uid_t) fake));
+    PMIX_INFO_DESTRUCT(&reginfo[0]);
+
+    /* a job's registration gives its owner's groups */
+    PMIX_INFO_LOAD(&reginfo[0], PMIX_USERID, &fake, PMIX_UINT32);
+    load_ugids(&reginfo[1], ACC_OGROUP, ACC_GROUP);
+    rc = reg("acc-owned", 1, reginfo, 2);
+    user = pmix_server_user_find((uid_t) fake);
+    report("a job registered with PMIX_USER_GRPIDS records its owner's groups",
+           registered(rc) && NULL != user && 2 == user->ngids && has_gid(user, ACC_GROUP));
+    pmix_server_user_remove((uid_t) fake);
+    PMIX_INFO_DESTRUCT(&reginfo[1]);
+    rc = reg("acc-owned2", 1, reginfo, 1);
+    report("a job registered without them records nothing for its owner",
+           registered(rc) && NULL == pmix_server_user_find((uid_t) fake));
+    PMIX_INFO_DESTRUCT(&reginfo[0]);
+
+    /* a requester with no record is judged by the one group its request
+     * is made under */
+    ns = find_ns("acc-a");
+    if (NULL != ns && 0 < ns->access.ngids) {
+        report("with no record, the request's own group admits it to a job naming it",
+               pmix_server_access_permitted(ACC_STRANGER, (gid_t) ns->access.gids[0], ns));
+        report("and another group does not",
+               !pmix_server_access_permitted(ACC_STRANGER, (gid_t) ns->access.gids[0] + 1, ns));
     }
-    /* the host registers a user: its groups are looked up then */
-    id = (uint32_t) pw->pw_uid;
-    PMIX_INFO_LOAD(&info, PMIX_USERID, &id, PMIX_UINT32);
-    rc = PMIx_server_register_resources(&info, 1, NULL, NULL);
-    progress_barrier();
-    user = pmix_server_user_get(pw->pw_uid);
-    report("a user the host registers is known, with its groups",
-           registered(rc) && NULL != user && has_gid(user, pw->pw_gid));
-    rc = PMIx_server_deregister_resources(&info, 1, NULL, NULL);
-    progress_barrier();
-    PMIX_INFO_DESTRUCT(&info);
-    user = pmix_server_user_get(pw->pw_uid);
-    report("deregistering the user drops the record",
-           registered(rc) && NULL != user && 0 == user->ngids);
-    pmix_server_user_remove(pw->pw_uid);
-
-    /* registering a job it owns makes the user known, groups and all */
-    PMIX_INFO_LOAD(&info, PMIX_USERID, &id, PMIX_UINT32);
-    rc = reg("acc-owned", 1, &info, 1);
-    PMIX_INFO_DESTRUCT(&info);
-    user = pmix_server_user_get(pw->pw_uid);
-    report("a job's owner is known once the job is registered, with its groups",
-           registered(rc) && NULL != user && has_gid(user, pw->pw_gid));
-    pmix_server_user_remove(pw->pw_uid);
 }
 
 static void test_check(void)
@@ -547,17 +572,22 @@ static void test_check(void)
 
     if (NULL != pw) {
         user = pmix_server_user_create(pw->pw_uid);
-        report("the rule: a member of a listed group is allowed, its groups looked up then",
-               PMIX_SUCCESS == pmix_server_access_check(user, &job) &&
-               has_gid(user, pw->pw_gid));
-        /* a group list gone stale - the user has since joined the group */
-        free(user->gids);
+        report("the rule: a user whose record lists no groups is refused - nothing is "
+               "looked up",
+               PMIX_ERR_NO_PERMISSIONS == pmix_server_access_check(user, &job) &&
+               0 == user->ngids);
         user->gids = (gid_t *) malloc(sizeof(gid_t));
-        user->gids[0] = (gid_t) bogus;
+        user->gids[0] = pw->pw_gid;
         user->ngids = 1;
-        report("the rule: a stale group list is looked up again before refusing",
-               PMIX_SUCCESS == pmix_server_access_check(user, &job) &&
-               has_gid(user, pw->pw_gid));
+        report("the rule: a member of a listed group, as its record says, is allowed",
+               PMIX_SUCCESS == pmix_server_access_check(user, &job));
+        /* the record is the host's word - a list that no longer names the
+         * group is not looked up again */
+        user->gids[0] = (gid_t) bogus;
+        report("the rule: a record that does not name the group is refused, not refreshed",
+               PMIX_ERR_NO_PERMISSIONS == pmix_server_access_check(user, &job) &&
+               1 == user->ngids && (gid_t) bogus == user->gids[0]);
+        user->gids[0] = pw->pw_gid;
 
         /* groups count only for a job that names them */
         pmix_server_access_construct(&bare);

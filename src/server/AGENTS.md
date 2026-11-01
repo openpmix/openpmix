@@ -3278,23 +3278,25 @@ misbehave by design).
     stronger one). With no owner at all, the server's own user stands in.
   - The one rule is `pmix_server_access_check(user, access)`: root, the
     server's own user, the owner, a listed user, or a member of a listed
-    group. `pmix_server_access_permitted(uid, nptr)` applies it to a
-    namespace with the server's record for the user, and
+    group. `pmix_server_access_permitted(uid, gid, nptr)` applies it to a
+    namespace with the server's record for the user, or with `gid` - the
+    group the request is made under - alone when there is no record, and
     `pmix_server_peer_permitted()` to a connected peer. Never write a
     second version of the rule at a call site.
-  - A user's groups (`pmix_user_t`) are those of its account. A host that
-    registers the user gives them too (`PMIX_GRPID` as an array, with
-    `PMIX_USERID`, to `register_resources` - `pmix_server_user_register()`)
-    and nothing is looked up; otherwise they are looked up once when the
-    user becomes known (`pmix_server_user_add()`: the host registers it or
-    a job it owns, or it connects as a tool - root and our own user
-    excepted, as they need no groups). Either way they are looked up again
-    whenever a check would otherwise refuse -
-    so there is no timeout to tune, and a user added to a group gets in
-    on its next request. A requester nobody told us about (a remote one)
-    gets its record at its first check (`pmix_server_user_get()`). The
-    process's own gid is not consulted.
-  - The server's user records (`pmix_server_user_get()`) live until the
+  - A user's groups (`pmix_user_t`) are **only what the host gives**:
+    `PMIX_USER_GRPIDS` for a job's owner in `register_nspace`
+    (`register_owner_groups`), or with `PMIX_USERID` in
+    `register_resources` (a single `PMIX_GRPID` there is that group
+    alone; an array is refused). `pmix_server_user_register()` keeps them.
+    **The library never looks a user's groups up** - no NSS call for
+    groups on the progress thread, at registration or on a failed check
+    (that was M5's group half, and it let a host's list be replaced by
+    NSS's on the first miss: N23). A user with no record is judged by the
+    one gid its request is made under - the peer's connection gid, or the
+    `PMIX_GRPID` a relayed request carries. `pmix_server_user_refresh()`
+    stays for hosts, which call it on their own threads; its lookup keeps
+    the old groups on an error and retries `ERANGE`.
+  - The server's user records (`pmix_server_user_find()`) live until the
     host deregisters the user (`PMIx_server_deregister_resources` with
     `PMIX_USERID`) or the server finalizes - never on a refcount, because
     nothing pairs up the ways a user arrives (a registration, a tool, a

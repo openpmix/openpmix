@@ -94,9 +94,12 @@ static void _register_resources(int sd, short args, void *cbdata)
     PMIX_CONSTRUCT(&grpinfo, pmix_list_t);
     PMIX_CONSTRUCT(&endpts, pmix_list_t);
 
-    /* A user this server is to know (PMIX_USERID), and - in a PMIX_GRPID
-     * in the same call - the groups it belongs to, so the server need not
-     * look them up itself. See pmix_server_user_register() */
+    /* A user this server is to know (PMIX_USERID), and - in a
+     * PMIX_USER_GRPIDS in the same call - the groups it belongs to. The
+     * server never looks them up: a single PMIX_GRPID instead says the
+     * user belongs to that group alone, and with neither the user has no
+     * record, and is judged by the group each request is made under. See
+     * pmix_server_user_register() */
     for (n = 0; n < cd->ninfo; n++) {
         if (PMIX_CHECK_KEY(&cd->info[n], PMIX_USERID)) {
             rc = pmix_util_uid_from_value(&cd->info[n].value, &user_id);
@@ -110,7 +113,7 @@ static void _register_resources(int sd, short args, void *cbdata)
     }
     if (have_user) {
         for (n = 0; n < cd->ninfo; n++) {
-            if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GRPID)) {
+            if (PMIX_CHECK_KEY(&cd->info[n], PMIX_USER_GRPIDS)) {
                 rc = pmix_server_gids_from_value(&cd->info[n].value, &user_gids, &user_ngids);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
@@ -121,13 +124,32 @@ static void _register_resources(int sd, short args, void *cbdata)
                 break;
             }
         }
-        rc = pmix_server_user_register((uid_t) user_id, have_gids ? user_gids : NULL,
-                                       user_ngids);
-        free(user_gids);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            ret = rc;
-            goto release;
+        for (n = 0; !have_gids && n < cd->ninfo; n++) {
+            if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GRPID)) {
+                /* one group - an array of them is PMIX_USER_GRPIDS */
+                if (PMIX_DATA_ARRAY == cd->info[n].value.type) {
+                    ret = PMIX_ERR_BAD_PARAM;
+                    PMIX_ERROR_LOG(ret);
+                    goto release;
+                }
+                rc = pmix_server_gids_from_value(&cd->info[n].value, &user_gids, &user_ngids);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    ret = rc;
+                    goto release;
+                }
+                have_gids = true;
+                break;
+            }
+        }
+        if (have_gids) {
+            rc = pmix_server_user_register((uid_t) user_id, user_gids, user_ngids);
+            free(user_gids);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                ret = rc;
+                goto release;
+            }
         }
     }
 
@@ -199,7 +221,8 @@ static void _register_resources(int sd, short args, void *cbdata)
             pbo = &cd->info[n].value.data.bo;
 
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_USERID) ||
-                   (have_user && PMIX_CHECK_KEY(&cd->info[n], PMIX_GRPID))) {
+                   (have_user && (PMIX_CHECK_KEY(&cd->info[n], PMIX_GRPID) ||
+                                  PMIX_CHECK_KEY(&cd->info[n], PMIX_USER_GRPIDS)))) {
             /* the user registered above - an identity, not data for the
              * jobs, so it goes nowhere else */
             continue;
