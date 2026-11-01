@@ -21,11 +21,18 @@
  * arrives, here, where the platform can - is refused the same way, and is
  * sent nothing.
  *
+ * The tools here are of this release, which a server of this release
+ * takes only on its local socket: one that gets past its own check of the
+ * server is refused by the server with PMIX_ERR_LOCAL_URI_REQUIRED. That
+ * status is how a case knows the tool took the server - one that did not
+ * is refused by the tool itself, with PMIX_ERR_INVALID_CRED, and sends
+ * nothing.
+ *
  * Run as root, the server runs as another user (65534) and two tools as
  * a third (1): one is refused by that check, and one that names the
- * server's user in ptl_base_server_access gets past it, to be refused by
- * the server as a tool of another user. A tool of the server's user is
- * taken - which, run as anyone else, is the only case.
+ * server's user in ptl_base_server_access gets past it. A tool of the
+ * server's user gets past it - which, run as anyone else, is the only
+ * case.
  */
 
 #include "src/include/pmix_config.h"
@@ -254,15 +261,17 @@ int main(void)
                -st == PMIX_ERR_INVALID_CRED, detail);
         st = run_tool(uri, TOOL_UID, "users=65534");
         snprintf(detail, sizeof(detail), "the tool's init returned %d", -st);
-        report("a tool takes one ptl_base_server_access names - and that server refuses "
-               "a tool of another user",
-               -st == PMIX_ERR_NOT_SUPPORTED, detail);
+        report("a tool takes one ptl_base_server_access names - and the server sends it "
+               "to the local socket",
+               -st == PMIX_ERR_LOCAL_URI_REQUIRED, detail);
     } else {
         fprintf(stdout, "  (not root: the server is this user's)\n");
     }
     st = run_tool(uri, (0 == getuid()) ? SERVER_UID : 0, NULL);
     snprintf(detail, sizeof(detail), "the tool's init returned %d", -st);
-    report("a tool takes a server of its own user over TCP", 0 == st, detail);
+    report("a tool takes a server of its own user over TCP - and the server sends it to the "
+           "local socket",
+           -st == PMIX_ERR_LOCAL_URI_REQUIRED, detail);
 
     if (1 != write(gop[1], "x", 1)) {
         return 1;

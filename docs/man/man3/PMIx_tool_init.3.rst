@@ -273,6 +273,11 @@ a PMIx error constant is returned, including:
 * ``PMIX_ERR_OUTDATED`` |mdash| the requested PMIx server uses a version of the
   PMIx library older than this one can connect to (v3.2), and the connection was
   not optional. A message naming the server's version is printed.
+* ``PMIX_ERR_LOCAL_URI_REQUIRED`` |mdash| the tool was given the server's TCP
+  address - as a URI, or in a file that names no local socket - and the server
+  is of v7.0 or later, which offers TCP only to tools of earlier releases. A
+  message says to pass the ``usock://`` URI the server reports, or its own
+  report file.
 * ``PMIX_ERR_NOMEM`` |mdash| the library could not allocate required internal
   storage.
 * ``PMIX_ERR_EXISTS`` |mdash| the namespace and rank the tool was to connect

@@ -1809,6 +1809,9 @@ typedef int pmix_status_t;
 #define PMIX_ERR_NOT_AVAILABLE                      -64
 #define PMIX_ERR_OUTDATED                           -76     // the peer's PMIx library is older than the oldest version
                                                              // this library supports, so no connection was made
+#define PMIX_ERR_LOCAL_URI_REQUIRED                 -77     // the server is of this release and takes a peer of this
+                                                             // release only on its local socket: the TCP address the
+                                                             // peer was given is for peers of earlier releases
 
 /* Process set */
 #define PMIX_PROCESS_SET_DEFINE                     -55

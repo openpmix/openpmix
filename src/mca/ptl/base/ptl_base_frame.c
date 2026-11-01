@@ -83,6 +83,7 @@ pmix_ptl_base_t pmix_ptl_base = {
     .system_tmpdir = NULL,
     .report_uri = NULL,
     .uri = NULL,
+    .source_file = NULL,
     .urifile = NULL,
     .sysctrlr_filename = NULL,
     .scheduler_filename = NULL,
@@ -557,6 +558,8 @@ static pmix_status_t pmix_ptl_close(void)
         free(pmix_ptl_base.uri);
         pmix_ptl_base.uri = NULL;
     }
+    free(pmix_ptl_base.source_file);
+    pmix_ptl_base.source_file = NULL;
     if (NULL != pmix_ptl_base.urifile) {
         /* the report file we wrote, from the directory we wrote it in,
          * and only while it is still that file */

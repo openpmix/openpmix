@@ -12,7 +12,9 @@
  * peer it accepts is given its listener's. A tool records the transport
  * whose address it connected to, by the blocking connect PMIx_tool_init
  * makes and by the event-driven one PMIx_tool_attach_to_server makes.
- * Today every one is tcp.
+ * A tool of this release connects on the server's local socket - a
+ * server of this release takes it nowhere else - so every one is usock.
+ * The TCP listener, opened for peers of earlier releases, records tcp.
  *
  * Each tool runs in a child forked before any PMIx call, one after the
  * other, and reports what it recorded through its exit status; the pipes
@@ -28,6 +30,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/tcp/ptl_tcp.h"
+#include "src/mca/ptl/usock/ptl_usock.h"
 #include "src/server/pmix_server_ops.h"
 
 #include <stdio.h>
@@ -38,7 +41,7 @@
 #include <unistd.h>
 
 #define SERVER_NSPACE "transport.server"
-/* a tool's exit status when its server peer had no transport, or not tcp */
+/* a tool's exit status when its server peer had no transport, or not usock */
 #define TOOL_EXIT_WRONG_TRANSPORT 3
 
 static int npass = 0;
@@ -119,7 +122,7 @@ static int run_tool(bool attach, int urifd, int readyfd, int gofd)
     }
 
     srv = pmix_client_globals.myserver;
-    if (NULL == srv || &pmix_ptl_tcp_module != srv->transport) {
+    if (NULL == srv || &pmix_ptl_usock_module != srv->transport) {
         fprintf(stderr, "  tool: its server peer records transport %s\n",
                 (NULL == srv || NULL == srv->transport) ? "(none)" : srv->transport->name);
         ret = TOOL_EXIT_WRONG_TRANSPORT;
@@ -133,8 +136,8 @@ static int run_tool(bool attach, int urifd, int readyfd, int gofd)
     return ret;
 }
 
-/* the server's look: every peer it holds records tcp */
-static bool peers_record_tcp(int *npeers)
+/* the server's look: every peer it holds records usock */
+static bool peers_record_usock(int *npeers)
 {
     pmix_peer_t *pr;
     int i;
@@ -146,7 +149,7 @@ static bool peers_record_tcp(int *npeers)
             continue;
         }
         ++*npeers;
-        if (&pmix_ptl_tcp_module != pr->transport) {
+        if (&pmix_ptl_usock_module != pr->transport) {
             return false;
         }
     }
@@ -211,8 +214,8 @@ static void run_one(tool_t *t, const char *uri)
             snprintf(name, sizeof(name), "%s connected", how);
             report(name, 0, "the tool never reported ready");
         } else {
-            snprintf(name, sizeof(name), "the server's peer for %s records tcp", how);
-            report(name, peers_record_tcp(&npeers) && 0 < npeers,
+            snprintf(name, sizeof(name), "the server's peer for %s records usock", how);
+            report(name, peers_record_usock(&npeers) && 0 < npeers,
                    "a peer records another, or none");
         }
     } else {
@@ -228,7 +231,7 @@ static void run_one(tool_t *t, const char *uri)
     if (NULL == uri) {
         return;
     }
-    snprintf(name, sizeof(name), "%s records tcp for its server", how);
+    snprintf(name, sizeof(name), "%s records usock for its server", how);
     report(name, WIFEXITED(status) && 0 == WEXITSTATUS(status),
            (WIFEXITED(status) && TOOL_EXIT_WRONG_TRANSPORT == WEXITSTATUS(status))
                ? "it records another, or none" : "the tool failed");
@@ -243,13 +246,9 @@ int main(int argc, char **argv)
     tool_t tools[2];
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 #if PMIX_ENABLE_LEGACY_PEERS
-    /* these cases are about the TCP listener, which a server opens for
-     * clients and tools of earlier releases */
+    /* the TCP listener too, which a server opens for clients and tools of
+     * earlier releases */
     setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
-#else
-    fprintf(stdout, "this PMIx takes no clients or tools of earlier releases, so a "
-                    "server has no TCP listener for these cases\n");
-    return 77;
 #endif
 
     fprintf(stdout, "\n=== ptl transport recorded per connection ===\n\n");
@@ -271,12 +270,15 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    report("the listener records the transport that opened it",
+#if PMIX_ENABLE_LEGACY_PEERS
+    report("the TCP listener records the transport that opened it",
            &pmix_ptl_tcp_module == pmix_ptl_base.listener.transport, "not tcp");
+#endif
+    report("the local listener records the transport that opened it",
+           &pmix_ptl_usock_module == pmix_ptl_base.local_listener.transport, "not usock");
 
-    /* white-box: the URI is stored against our own rank under internal
-     * scope, so read it off the listener */
-    uri = pmix_ptl_base.listener.uri;
+    /* white-box: read the local socket's URI off its listener */
+    uri = pmix_ptl_base.local_listener.uri;
     report("the server published its URI", NULL != uri, "the listener has no URI");
     run_one(&tools[0], uri);
     run_one(&tools[1], uri);
