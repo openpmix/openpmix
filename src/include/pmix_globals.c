@@ -376,6 +376,7 @@ static void info_con(pmix_rank_info_t *info)
     info->connecting = 0;
     info->server_object = NULL;
     info->host_registered = false;
+    info->registered_by_host = false;
     PMIX_CONSTRUCT(&info->modex_log, pmix_list_t);
     info->modex_next_id = 0;
     PMIX_CONSTRUCT(&info->modex_marks, pmix_list_t);

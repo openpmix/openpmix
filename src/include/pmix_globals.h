@@ -533,6 +533,12 @@ typedef struct pmix_rank_info_t {
      * belongs to a self-started tool, made by the connection handler from
      * the identity the tool was validated as. */
     bool host_registered;
+    /* True once the host itself has called PMIx_server_register_client
+     * for the rank. A second such call is the host updating the rank, and
+     * says so with PMIX_UPDATED; the first - including one for an entry
+     * this server made itself, a singleton's or a pfexec child's - is a
+     * registration like any other */
+    bool registered_by_host;
     /* Modex bookkeeping, server side - see pmix_server_collect_data.
      *
      * modex_log holds every PMIX_REMOTE/GLOBAL kval this rank has
