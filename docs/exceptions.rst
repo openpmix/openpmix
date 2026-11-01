@@ -1333,6 +1333,16 @@ Attributes
        Not checked by the library: the host
        decides whether the requester may use it
 
+   * - ``PMIX_USER_GRPIDS`` ``"pmix.ugids"``
+     - ``(pmix_data_array_t*)``
+     - The groups a user belongs to - primary
+       and supplementary - as group ids or
+       names. Given by the host for a job's
+       owner to PMIx_server_register_nspace, or
+       with PMIX_USERID to
+       PMIx_server_register_resources. The
+       library never looks a user's groups up
+
    * - ``PMIX_ORIGIN_USERID`` ``"pmix.orig.euid"``
      - ``(uint32_t)``
      - Effective uid of the process that first

@@ -126,23 +126,33 @@ The host passes the list on when it registers the job, on every node
 that hosts a part of it. The same attributes already govern access to
 published data (``PMIx_Publish``), so users meet one vocabulary.
 
-**Group membership** is the groups a user belongs to by its account -
-its primary group and its supplementary groups - and not the group a
-process happens to be running as. The server keeps a record of each user
-it knows, keyed by user ID. The host registers each user
-(``PMIx_server_register_resources`` with ``PMIX_USERID``), and may give
-the groups it belongs to with it (``PMIX_GRPID``, as an array), in which
-case the server looks nothing up. Otherwise the server looks the groups
-up once, when the user becomes known: the host registers it or a job it
-owns, or it connects as a tool.
-Root and the server's own user are never recorded - they need no groups.
-A requester the server was never told about - one on another node (see
-`Data held on another node`_) - is recorded at its first check. A check
-that finds the user in none of the job's groups looks them up again
-before refusing, so a user added to a group is admitted from its next
-request. A record is dropped when the host deregisters that user
+**Group membership** is the groups a user belongs to - its primary group
+and its supplementary groups - **as the host says**. The library never
+looks a user's groups up: no directory lookup runs on its behalf, now or
+later. The host gives them with ``PMIX_USER_GRPIDS`` (a data array of
+group IDs, numbers or names):
+
+* for a job's owner, in that job's ``PMIx_server_register_nspace``;
+* for any other user - a tool's user, say - in
+  ``PMIx_server_register_resources`` with ``PMIX_USERID``. A single
+  ``PMIX_GRPID`` there says the user belongs to that group alone.
+
+**Providing them is the host's responsibility.** The library uses exactly
+the groups it was given until the host gives them again; a host whose
+users' groups change registers them again (with the user's next job, for
+example). A user the host gave no groups for has no record, and is judged
+by the **one group its request is made under**: for a client or tool, the
+gid it connected with; for a request the host relays from another node,
+the ``PMIX_GRPID`` carried with it. A group check for such a user passes
+only if the job's access list names exactly that group. Root and the
+server's own user are never recorded - they need no groups. A record is
+dropped when the host deregisters that user
 (``PMIx_server_deregister_resources`` with ``PMIX_USERID``), and at
 finalize.
+
+A host that keeps its own records and wants the account's groups may call
+``pmix_server_user_refresh()`` from its own thread; the library itself
+never does.
 
 What is covered
 ---------------
@@ -413,8 +423,8 @@ Status
    * - 5
      - ``pmix_server_access_check()``, the rule as a function a host
        calls with its own copies of a job's access list and the
-       requester's groups; users registered and deregistered by the host;
-       group membership looked up again before refusing; a monitor
+       requester's groups; users registered and deregistered by the host,
+       their groups as the host gives them (``PMIX_USER_GRPIDS``); a monitor
        request relayed from another node checked for the requester it
        names. PRRTE carries each job's access list (``--rtos
        users=,groups=``, and ``PMIX_ACCESS_PERMISSIONS`` at spawn) and

@@ -448,20 +448,21 @@ typedef struct {
 } pmix_user_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_user_t);
 
-/* A new user record for uid, its groups not yet looked up -
- * pmix_server_access_check() looks them up when it needs them */
+/* A new user record for uid, belonging to no groups yet */
 PMIX_EXPORT pmix_user_t *pmix_server_user_create(uid_t uid);
 
-/* Look the user's groups up again. A user with no account belongs to
- * none. */
+/* Look the user's groups up, with getpwuid_r and getgrouplist - for a host
+ * that keeps its own records and looks the groups up on its own thread.
+ * The library itself never calls it. A user with no account belongs to
+ * none. A lookup that fails keeps the groups the record had, and returns
+ * PMIX_ERR_UNREACH; a buffer too small is retried with a larger one */
 PMIX_EXPORT pmix_status_t pmix_server_user_refresh(pmix_user_t *user);
 
 /* The rule: may requester access job? PMIX_SUCCESS for root, the user
  * this process runs as, the job's owner (our own user when it has none),
- * a user its access list names, or a member of a group it names - else
- * PMIX_ERR_NO_PERMISSIONS. A requester found in none of the job's groups
- * has its groups looked up again, in place, in case they changed, before
- * it is refused. */
+ * a user its access list names, or a member of a group it names, as the
+ * requester's record lists its groups - else PMIX_ERR_NO_PERMISSIONS.
+ * Nothing is looked up. */
 PMIX_EXPORT pmix_status_t pmix_server_access_check(pmix_user_t *requester,
                                                    const pmix_access_t *job);
 
@@ -477,32 +478,31 @@ PMIX_EXPORT pmix_status_t pmix_server_access_load(pmix_access_t *acc, const pmix
                                                   size_t ninfo);
 PMIX_EXPORT void pmix_server_access_destruct(pmix_access_t *acc);
 
-/* The server's user records. A user is added, its groups looked up then,
- * when the host registers it (PMIx_server_register_resources with
- * PMIX_USERID), registers a job it owns, or when it connects as a tool -
- * once per user, and never for root or our own user, who need no groups.
- * pmix_server_user_get() returns the record, making one whose groups are
- * looked up at its first check for a requester nobody registered (one on
- * another node). Records are kept until the host deregisters the user -
- * pmix_server_user_remove(), on PMIx_server_deregister_resources naming
- * the PMIX_USERID - or the server finalizes. */
-PMIX_EXPORT void pmix_server_user_add(uid_t uid);
-
-/* A user the host registers (PMIx_server_register_resources with
- * PMIX_USERID): with gids - the groups the host says it belongs to, from a
- * PMIX_GRPID in the same call - the record takes them, replacing any it
- * had, and nothing is looked up; without, as pmix_server_user_add() */
+/* The server's user records: the groups the host says a user belongs to,
+ * from PMIX_USER_GRPIDS - with PMIX_USERID in
+ * PMIx_server_register_resources, or for the job's owner in
+ * PMIx_server_register_nspace. The library never looks a user's groups up
+ * itself. pmix_server_user_register() replaces the record's groups with
+ * the host's; a user the host gave no groups for has no record, and is
+ * judged by the one group its request is made under (see
+ * pmix_server_access_permitted). Root and our own user, who need no
+ * groups, are never recorded. Records are kept until the host deregisters
+ * the user - pmix_server_user_remove(), on
+ * PMIx_server_deregister_resources naming the PMIX_USERID - or the server
+ * finalizes. */
 PMIX_EXPORT pmix_status_t pmix_server_user_register(uid_t uid, const gid_t *gids, size_t ngids);
 
-/* The groups a PMIX_GRPID names: one group, or a data array of them, each a
- * number or a name. *gids is allocated; the caller frees it */
+/* The groups a PMIX_USER_GRPIDS names: a data array of them (or one group),
+ * each a number or a name. *gids is allocated; the caller frees it */
 PMIX_EXPORT pmix_status_t pmix_server_gids_from_value(const pmix_value_t *val, gid_t **gids,
                                                       size_t *ngids);
-PMIX_EXPORT pmix_user_t *pmix_server_user_get(uid_t uid);
+PMIX_EXPORT pmix_user_t *pmix_server_user_find(uid_t uid);
 PMIX_EXPORT void pmix_server_user_remove(uid_t uid);
 
-/* pmix_server_access_check for nptr, with the server's record for uid */
-PMIX_EXPORT bool pmix_server_access_permitted(uid_t uid, const pmix_namespace_t *nptr);
+/* pmix_server_access_check for nptr: with the groups the host registered
+ * for uid if it did, else with gid - the group the request is made under,
+ * (gid_t) -1 for none - alone */
+PMIX_EXPORT bool pmix_server_access_permitted(uid_t uid, gid_t gid, const pmix_namespace_t *nptr);
 
 /* the same for a connected peer, by the identity it connected with - and
  * a job's own processes, and anyone reading the server's own namespace,
@@ -569,21 +569,23 @@ PMIX_EXPORT pmix_status_t pmix_server_access_identify(const pmix_peer_t *peer, p
 PMIX_EXPORT pmix_peer_t *pmix_server_access_find_peer(const pmix_proc_t *proc);
 
 /* Who a request acting on processes is for.
- *   - a connected client or tool: *peer is it, *uid its user;
+ *   - a connected client or tool: *peer is it, *uid and *gid its user
+ *     and group;
  *   - a request the host relays for a user (its directives carry
- *     PMIX_USERID): *uid is that user;
- *   - otherwise the host's own: *host is set and *uid is our own user.
+ *     PMIX_USERID): *uid is that user, and *gid the PMIX_GRPID with it, or
+ *     (gid_t) -1;
+ *   - otherwise the host's own: *host is set and *uid, *gid are our own.
  * A request marked as relayed (PMIX_MONITOR_PROXY) that does not say for
  * whom is refused with PMIX_ERR_NO_PERMISSIONS - it would otherwise pass
  * as the host's own, which is not restricted. */
 PMIX_EXPORT pmix_status_t pmix_server_access_requester(const pmix_proc_t *requestor,
                                                        const pmix_info_t *directives,
                                                        size_t ndirs, pmix_peer_t **peer,
-                                                       bool *host, uid_t *uid);
+                                                       bool *host, uid_t *uid, gid_t *gid);
 
 /* May that requester act on this job? The host may act on any */
 PMIX_EXPORT bool pmix_server_access_requester_may(pmix_peer_t *peer, bool host, uid_t uid,
-                                                  pmix_namespace_t *nptr);
+                                                  gid_t gid, pmix_namespace_t *nptr);
 
 /* release the server's user records */
 PMIX_EXPORT void pmix_server_access_finalize(void);
