@@ -1346,6 +1346,37 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer
         }
     }
 
+    /* Say who raised it - the host decides by that whether to pass the
+     * event on (a debugger release reaching another user's job, say), so
+     * it is the identity the connection established, not one the client
+     * wrote into the event. The array's last slot is the spare kept for
+     * the marker below: stamp the entries before it, then give the marker
+     * a slot again */
+    {
+        pmix_info_t *stamped;
+        size_t nreal = cd->ninfo - 1;
+
+        rc = pmix_server_add_requester_id(peer, &cd->info, &nreal);
+        if (PMIX_SUCCESS != rc) {
+            /* the array is as it was, spare slot and all */
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+        stamped = PMIx_Info_create(nreal + 1);
+        if (NULL == stamped) {
+            PMIx_Info_free(cd->info, nreal);
+            cd->info = NULL;
+            cd->ninfo = 0;
+            rc = PMIX_ERR_NOMEM;
+            goto exit;
+        }
+        /* moved, not copied - only the old block is left to release */
+        memcpy(stamped, cd->info, nreal * sizeof(pmix_info_t));
+        free(cd->info);
+        cd->info = stamped;
+        cd->ninfo = nreal + 1;
+    }
+
     /* add an info object to mark that we recvd this internally */
     PMIX_INFO_LOAD(&cd->info[cd->ninfo - 1], PMIX_SERVER_INTERNAL_NOTIFY, NULL, PMIX_BOOL);
 

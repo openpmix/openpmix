@@ -2438,7 +2438,7 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
          * a server, which is exactly the state disc() leaves behind when
          * it drops the primary - mark it the same way. Claiming to be
          * connected here would send the finalize handshake (and anything
-         * else guarded on this flag, such as pmix_tool_relay_op) to our
+         * else guarded on this flag) to our
          * own already-finalized peer. */
         pmix_atomic_unset_bool(&pmix_globals.connected);
         goto done;

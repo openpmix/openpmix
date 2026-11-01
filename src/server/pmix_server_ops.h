@@ -361,37 +361,69 @@ PMIX_EXPORT pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_bu
 
 PMIX_EXPORT void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t *buf);
 
+/* True if the peer's pid is the one the kernel reported for its
+ * connection - the local transport, on a platform that reports one - and
+ * then *pid holds it. Over TCP the pid on record is only what the peer's
+ * library sent, and the answer is false. */
+PMIX_EXPORT bool pmix_server_verified_pid(const pmix_peer_t *peer, pid_t *pid);
+
+/* True for the keys that say who made a request - PMIX_USERID,
+ * PMIX_GRPID, PMIX_REQUESTOR_PID, PMIX_REQUESTED_GRPID - and for a
+ * relaying host's PMIX_ORIGIN_* claims */
+PMIX_EXPORT bool pmix_server_is_identity_key(const char *key);
+
 /* Mark an array about to be passed up to the host with the identity of
- * the peer the request came from, so it holds exactly one PMIX_USERID and
- * one PMIX_GRPID:
- *  - PMIX_USERID is the uid recorded for the peer at connection; any the
- *    requester supplied is dropped - unless it is marked
- *    PMIX_INFO_RELAYED, a server relaying the request for the process that
- *    made it, and then it is kept, still marked.
- *  - PMIX_GRPID likewise, if relayed. Otherwise it is the requester's
- *    choice if it supplied one - a group to charge the work to, which the
- *    host decides whether to accept - given as a number or a group name,
- *    and always passed on as a uint32; otherwise the gid recorded at
- *    connection. Only the first supplied PMIX_GRPID counts. If it cannot
- *    be resolved the array is left as it was and the error is returned
- *    (PMIX_ERR_NOT_FOUND for an unknown name, PMIX_ERR_BAD_PARAM for a
- *    value of the wrong type).
- * The pair is appended at the end of the array. The array is replaced by
- * a new one - *info and *ninfo are updated, and the old array is released
- * - so the caller must own it. A NULL/zero array is fine and comes back
- * holding just the pair. */
+ * the peer the request came from, as its connection established it. The
+ * host authorizes on these; see docs/hosts/authorization.rst.
+ *  - PMIX_USERID and PMIX_GRPID are the uid and gid recorded for the peer
+ *    at connection, always. Any the requester supplied about itself is
+ *    dropped.
+ *  - PMIX_REQUESTOR_PID is the pid the kernel reported for the peer's
+ *    connection - added only when there is one (the local transport, on
+ *    a platform that reports it), never over TCP, where the pid on record
+ *    is only what the peer's library sent. Any the requester supplied is
+ *    dropped.
+ *  - PMIX_REQUESTED_GRPID is the group the requester asked to have the
+ *    work charged to, if it named one - as PMIX_GRPID (what earlier
+ *    releases passed up for it) or PMIX_REQUESTED_GRPID, by number or by
+ *    name - always passed on as a uint32. The host decides whether to
+ *    accept it.
+ *  - The PMIX_ORIGIN_* keys, a relaying host's claim about the process
+ *    that first made the request, are passed on untouched: only the host
+ *    can judge them.
+ * The array is refused (PMIX_ERR_BAD_PARAM) if it names a requested group
+ * more than once, or carries any PMIX_ORIGIN_* key more than once, so the
+ * host and any check can never read different copies. A requested group
+ * that cannot be resolved is refused too (PMIX_ERR_NOT_FOUND for an
+ * unknown name, PMIX_ERR_BAD_PARAM for a value of the wrong type). On a
+ * refusal the array is left as it was.
+ * The stamped entries are appended at the end of the array. The array is
+ * replaced by a new one - *info and *ninfo are updated, and the old array
+ * is released - so the caller must own it. A NULL/zero array is fine and
+ * comes back holding just the stamped entries. */
 PMIX_EXPORT pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info,
                                                        size_t *ninfo);
+
+/* The same, for a publish: only PMIX_USERID and PMIX_GRPID are added, and a
+ * requested group the publisher named is dropped rather than passed on. A
+ * publish's info is the data being published, and a host stores every key
+ * it does not recognize as part of it - so anything more the library adds
+ * becomes a published key of its own, which the publisher's next publish
+ * then collides with */
+PMIX_EXPORT pmix_status_t pmix_server_add_requester_publisher(pmix_peer_t *peer,
+                                                              pmix_info_t **info, size_t *ninfo);
 
 /* Mark a spawn request about to be passed up to the host with what kind of
  * process made it: exactly one PMIX_REQUESTOR_IS_TOOL and one
  * PMIX_REQUESTOR_IS_CLIENT, both booleans, as the Standard requires of the
  * spawn upcall. They come from the peer's type recorded at connection; a
  * tool that took a job's identity from its environment is both. Any the
- * requester supplied about itself are dropped - unless marked
- * PMIX_INFO_RELAYED, a server relaying the request for the process that
- * made it, and then they are kept, still marked. The pair is appended and
- * the array replaced, exactly as pmix_server_add_requester_id does. */
+ * requester supplied about itself are dropped. A relaying host's claim
+ * about the process that first made the request travels separately, as
+ * PMIX_ORIGIN_IS_TOOL/_IS_CLIENT, and pmix_server_add_requester_id - which
+ * every caller of this one calls first - refuses duplicates of those. The
+ * pair is appended and the array replaced, exactly as
+ * pmix_server_add_requester_id does. */
 PMIX_EXPORT pmix_status_t pmix_server_add_requester_type(pmix_peer_t *peer, pmix_info_t **info,
                                                          size_t *ninfo);
 
@@ -525,8 +557,10 @@ PMIX_EXPORT pmix_status_t pmix_server_access_check_remote(const pmix_namespace_t
                                                           const pmix_info_t *info, size_t ninfo);
 
 /* Name the requester on directives going to our host for a direct modex:
- * any PMIX_USERID, PMIX_GRPID or PMIX_REQUESTOR already there is replaced
- * by the peer's connection uid and gid and its process ID. The array is
+ * any PMIX_REQUESTOR, and any of the identity keys
+ * (pmix_server_is_identity_key) already there, is dropped, and the peer's
+ * connection uid and gid, its kernel-reported pid where there is one
+ * (pmix_server_verified_pid), and its process ID are added. The array is
  * replaced; the old one freed */
 PMIX_EXPORT pmix_status_t pmix_server_access_identify(const pmix_peer_t *peer, pmix_info_t **info,
                                                       size_t *ninfo);
@@ -575,7 +609,8 @@ PMIX_EXPORT pmix_status_t pmix_server_add_requester_proc(pmix_peer_t *peer, pmix
 
 /* A collective (fence, connect, disconnect) is made for all of its
  * participants, so its up-call names no requester: remove any
- * PMIX_USERID or PMIX_GRPID among the first nfrom entries of info - the
+ * PMIX_USERID, PMIX_GRPID, PMIX_REQUESTOR_PID, PMIX_REQUESTED_GRPID or
+ * PMIX_ORIGIN_* among the first nfrom entries of info - the
  * ones a participant sent - and move the entries after them, through
  * ninfo, down to close the gap. The slots freed at the end are left
  * empty. Returns how many were removed, which the caller takes off both

@@ -698,3 +698,10 @@ pmix.alloc.seq         667   PMIX_ALLOC_SEQUENCE
 pmix.dev.dist.origin   670   PMIX_DEVICE_DIST_ORIGIN
 pmix.srvr.legacy       671   PMIX_SERVER_LEGACY_PEERS
 pmix.membind           672   PMIX_MEMBIND
+pmix.req.pid           673   PMIX_REQUESTOR_PID
+pmix.req.grp           674   PMIX_REQUESTED_GRPID
+pmix.orig.euid         675   PMIX_ORIGIN_USERID
+pmix.orig.egid         676   PMIX_ORIGIN_GRPID
+pmix.orig.pid          677   PMIX_ORIGIN_PID
+pmix.orig.tool         678   PMIX_ORIGIN_IS_TOOL
+pmix.orig.client       679   PMIX_ORIGIN_IS_CLIENT

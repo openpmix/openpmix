@@ -71,6 +71,7 @@
 #define PMIX_CAP_ACCESS_CHECK    24
 #define PMIX_CAP_INFO_RELAYED    25
 #define PMIX_CAP_ABORT2          26
+#define PMIX_CAP_ORIGIN_ID       27
 
 
 /*****    DEPRECATED    *****/

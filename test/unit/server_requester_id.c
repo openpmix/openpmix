@@ -12,14 +12,17 @@
  * A server answers requests on behalf of its clients and tools, and the
  * host is the one that decides what each requester may see or do. So the
  * host is told who is asking: the requester's proc, and exactly one
- * PMIX_USERID and one PMIX_GRPID. The uid is always the one recorded for
- * the peer when it connected, in place of any the requester put in the
- * request. The gid is the requester's own choice if the request names one
- * - a group to charge the work to, which the host decides whether to
- * accept - and otherwise the one recorded at connection.
+ * PMIX_USERID and one PMIX_GRPID - always the ones recorded for the peer
+ * when it connected, in place of any the requester put in the request -
+ * and the pid the kernel reported for the connection, where it reported
+ * one. A group the requester asks to have the work charged to goes up
+ * beside them, as PMIX_REQUESTED_GRPID, for the host to judge. A relaying
+ * host's claim about who first made the request (PMIX_ORIGIN_*) goes up
+ * as it was given: only the host can judge whether the relay may speak
+ * for another, and nothing it claims replaces the relay's own identity.
  *
- * The requesting peer here is a stand-in with a namespace, rank, uid and
- * gid of its own, so nothing the server says about itself can be
+ * The requesting peer here is a stand-in with a namespace, rank, uid, gid
+ * and pid of its own, so nothing the server says about itself can be
  * mistaken for what it says about the requester.
  *
  * Test cases:
@@ -27,24 +30,29 @@
  *   pmix_server_add_requester_id
  *      on an empty array        -> the connection's pair alone
  *      on an array that carries
- *         a uid and gid of its own -> the uid is replaced by the
- *                                    connection's, the gid is kept, and
- *                                    everything else is kept in order
- *      a gid given as a group name -> resolved to its number
- *      a gid that cannot be
+ *         a uid and gid of its own -> both replaced by the connection's;
+ *                                    the gid it gave goes up as the
+ *                                    requested group, and everything
+ *                                    else is kept in order
+ *      a requested group given
+ *         as a group name          -> resolved to its number
+ *      one that cannot be
  *         resolved                 -> the request is refused, and the
  *                                    array left as it was
- *      a second gid                -> dropped
- *      a uid and gid marked
- *         PMIX_INFO_RELAYED        -> kept, still marked (a server
- *                                    relaying for the process that made
- *                                    the request); an unmarked one is
- *                                    replaced as before
+ *      a second requested group    -> refused
+ *      the connection's pid        -> passed up on the local transport,
+ *                                     never over TCP, and never the one
+ *                                     the requester gave
+ *      PMIX_ORIGIN_* claims        -> passed up untouched, beside the
+ *                                     connection's own identity
+ *      a second copy of one        -> refused
  *   query the server cannot
  *      answer itself            -> the host is given the requester's proc
  *                                  and, in the qualifiers, one uid and
- *                                  one gid - the requester's own gid
- *                                  choice when it made one
+ *                                  one gid - the connection's - and the
+ *                                  requester's group choice beside them
+ *      and no host query        -> refused: a peer's query is not passed
+ *                                  on to any server of our own
  *   resolve_peers               -> the same, for the query the server
  *                                  builds itself
  *   pmix_server_add_requester_type
@@ -54,8 +62,9 @@
  *      a launcher that took a
  *         job's identity        -> both: it is a tool, though its name is
  *                                  a client's
- *      a pair marked
- *         PMIX_INFO_RELAYED     -> kept, still marked
+ *      a relay's claim about
+ *         the origin's type     -> passed up as PMIX_ORIGIN_IS_*, beside
+ *                                  the relay's own type
  */
 
 #include "src/include/pmix_config.h"
@@ -65,6 +74,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/ptl/ptl.h"
 #include "src/server/pmix_server_ops.h"
 
 #include <grp.h>
@@ -77,6 +87,7 @@
 #define RID_RANK        3
 #define RID_UID         4242
 #define RID_GID         4343
+#define RID_PID         5151
 #define RID_CLAIMED     7777
 #define RID_UNKNOWN_KEY "reqid-ut.unknown-key"
 
@@ -121,8 +132,27 @@ static pmix_peer_t *make_requester(void)
     p->info->pname.rank = RID_RANK;
     p->info->uid = RID_UID;
     p->info->gid = RID_GID;
+    /* a pid on record, which only the local transport vouches for - the
+     * stand-in has no transport, as over TCP, until a case gives it one */
+    p->info->pid = RID_PID;
     return p;
 }
+
+/* a transport whose sockets the kernel reports a peer for, as usock's do */
+static pmix_status_t fake_identity(int sd, uid_t *uid, gid_t *gid, pid_t *pid)
+{
+    (void) sd;
+    *uid = RID_UID;
+    *gid = RID_GID;
+    *pid = RID_PID;
+    return PMIX_SUCCESS;
+}
+
+static pmix_ptl_module_t local_transport = {
+    .name = "reqid-ut-local",
+    .local = true,
+    .peer_identity = fake_identity,
+};
 
 /* ------------------------------------------------------------------ */
 /* what the host was handed                                            */
@@ -135,6 +165,8 @@ typedef struct {
     size_t ngid;
     uint32_t uid;
     uint32_t gid;
+    size_t nreq;
+    uint32_t reqgid;
     size_t nother;
 } rid_seen_t;
 
@@ -154,6 +186,11 @@ static void record_identity(const pmix_info_t *info, size_t ninfo)
             ++seen.ngid;
             if (PMIX_UINT32 == info[n].value.type) {
                 seen.gid = info[n].value.data.uint32;
+            }
+        } else if (PMIx_Check_key(info[n].key, PMIX_REQUESTED_GRPID)) {
+            ++seen.nreq;
+            if (PMIX_UINT32 == info[n].value.type) {
+                seen.reqgid = info[n].value.data.uint32;
             }
         } else {
             ++seen.nother;
@@ -192,9 +229,9 @@ static bool saw_requester(void)
            RID_RANK == seen.proct.rank;
 }
 
-static bool saw_identity_once(uint32_t gid)
+static bool saw_identity_once(void)
 {
-    return 1 == seen.nuid && 1 == seen.ngid && RID_UID == seen.uid && gid == seen.gid;
+    return 1 == seen.nuid && 1 == seen.ngid && RID_UID == seen.uid && RID_GID == seen.gid;
 }
 
 /* ------------------------------------------------------------------ */
@@ -228,12 +265,14 @@ static pmix_server_caddy_t *make_caddy(void)
     return cd;
 }
 
+static pmix_status_t qry_status = PMIX_SUCCESS;
+
 static void qry_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                        pmix_release_cbfunc_t relfn, void *relcbd)
 {
     pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
 
-    (void) status;
+    qry_status = status;
     (void) info;
     (void) ninfo;
     if (NULL != relfn) {
@@ -338,12 +377,38 @@ static pmix_status_t do_resolve_peers(void)
 /* the cases                                                           */
 /* ------------------------------------------------------------------ */
 
+/* how many entries carry the key, and the uint32 or pid the last one held */
+static size_t count_key(const pmix_info_t *info, size_t ninfo, const char *key, uint64_t *val)
+{
+    size_t n, cnt = 0;
+
+    for (n = 0; n < ninfo; n++) {
+        if (!PMIx_Check_key(info[n].key, key)) {
+            continue;
+        }
+        ++cnt;
+        if (NULL == val) {
+            continue;
+        }
+        if (PMIX_UINT32 == info[n].value.type) {
+            *val = info[n].value.data.uint32;
+        } else if (PMIX_PID == info[n].value.type) {
+            *val = (uint64_t) info[n].value.data.pid;
+        } else if (PMIX_BOOL == info[n].value.type) {
+            *val = info[n].value.data.flag ? 1 : 0;
+        }
+    }
+    return cnt;
+}
+
 static void test_helper(void)
 {
     pmix_info_t *info = NULL;
     size_t ninfo = 0;
     uint32_t claimed = RID_CLAIMED, other = RID_CLAIMED + 1;
+    pid_t fakepid = RID_PID + 1;
     bool flag = true;
+    uint64_t v = 0;
     struct group *gr;
     pmix_status_t rc;
     int ok;
@@ -362,14 +427,26 @@ static void test_helper(void)
     PMIX_INFO_LOAD(&info[2], "reqid-ut.second", "two", PMIX_STRING);
     PMIX_INFO_LOAD(&info[3], PMIX_GRPID, &claimed, PMIX_UINT32);
     rc = pmix_server_add_requester_id(requester, &info, &ninfo);
-    ok = (PMIX_SUCCESS == rc && 4 == ninfo && NULL != info &&
+    ok = (PMIX_SUCCESS == rc && 5 == ninfo && NULL != info &&
           PMIx_Check_key(info[0].key, "reqid-ut.first") &&
           0 == strcmp("one", info[0].value.data.string) &&
           PMIx_Check_key(info[1].key, "reqid-ut.second") &&
           0 == strcmp("two", info[1].value.data.string) &&
           PMIx_Check_key(info[2].key, PMIX_USERID) && RID_UID == info[2].value.data.uint32 &&
-          PMIx_Check_key(info[3].key, PMIX_GRPID) && RID_CLAIMED == info[3].value.data.uint32);
-    report("a supplied uid is replaced, a supplied gid kept, the rest kept in order", ok);
+          PMIx_Check_key(info[3].key, PMIX_GRPID) && RID_GID == info[3].value.data.uint32 &&
+          PMIx_Check_key(info[4].key, PMIX_REQUESTED_GRPID) &&
+          RID_CLAIMED == info[4].value.data.uint32);
+    report("a supplied uid and gid are replaced, the gid goes up as the requested group, "
+           "and the rest is kept in order", ok);
+    PMIX_INFO_FREE(info, ninfo);
+
+    ninfo = 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    PMIX_INFO_LOAD(&info[0], PMIX_REQUESTED_GRPID, &claimed, PMIX_UINT32);
+    rc = pmix_server_add_requester_id(requester, &info, &ninfo);
+    ok = (PMIX_SUCCESS == rc && 1 == count_key(info, ninfo, PMIX_REQUESTED_GRPID, &v) &&
+          RID_CLAIMED == v && 1 == count_key(info, ninfo, PMIX_GRPID, &v) && RID_GID == v);
+    report("a requested group named as such goes up beside the connection's gid", ok);
     PMIX_INFO_FREE(info, ninfo);
 
     gr = getgrgid(getegid());
@@ -378,10 +455,11 @@ static void test_helper(void)
         PMIX_INFO_CREATE(info, ninfo);
         PMIX_INFO_LOAD(&info[0], PMIX_GRPID, gr->gr_name, PMIX_STRING);
         rc = pmix_server_add_requester_id(requester, &info, &ninfo);
-        ok = (PMIX_SUCCESS == rc && 2 == ninfo && NULL != info &&
-              PMIx_Check_key(info[1].key, PMIX_GRPID) && PMIX_UINT32 == info[1].value.type &&
-              (uint32_t) getegid() == info[1].value.data.uint32);
-        report("a gid given as a group name is passed on as its number", ok);
+        ok = (PMIX_SUCCESS == rc && 3 == ninfo && NULL != info &&
+              PMIx_Check_key(info[2].key, PMIX_REQUESTED_GRPID) &&
+              PMIX_UINT32 == info[2].value.type &&
+              (uint32_t) getegid() == info[2].value.data.uint32);
+        report("a requested group given by name is passed on as its number", ok);
         PMIX_INFO_FREE(info, ninfo);
     } else {
         fprintf(stdout, "  SKIP: this process's group has no name\n");
@@ -393,86 +471,88 @@ static void test_helper(void)
     rc = pmix_server_add_requester_id(requester, &info, &ninfo);
     ok = (PMIX_ERR_NOT_FOUND == rc && 1 == ninfo && NULL != info &&
           PMIx_Check_key(info[0].key, PMIX_GRPID) && PMIX_STRING == info[0].value.type);
-    report("a gid naming no group is refused, and the array left as it was", ok);
+    report("a requested group naming no group is refused, and the array left as it was", ok);
     PMIX_INFO_FREE(info, ninfo);
 
     ninfo = 1;
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_GRPID, &flag, PMIX_BOOL);
     rc = pmix_server_add_requester_id(requester, &info, &ninfo);
-    report("a gid of the wrong type is refused", PMIX_ERR_BAD_PARAM == rc && 1 == ninfo);
+    report("a requested group of the wrong type is refused",
+           PMIX_ERR_BAD_PARAM == rc && 1 == ninfo);
     PMIX_INFO_FREE(info, ninfo);
 
     ninfo = 2;
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_GRPID, &claimed, PMIX_UINT32);
-    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &other, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_REQUESTED_GRPID, &other, PMIX_UINT32);
     rc = pmix_server_add_requester_id(requester, &info, &ninfo);
-    ok = (PMIX_SUCCESS == rc && 2 == ninfo && NULL != info &&
-          PMIx_Check_key(info[0].key, PMIX_USERID) && RID_UID == info[0].value.data.uint32 &&
-          PMIx_Check_key(info[1].key, PMIX_GRPID) && RID_CLAIMED == info[1].value.data.uint32);
-    report("of two supplied gids only the first is kept", ok);
+    report("two requested groups are refused", PMIX_ERR_BAD_PARAM == rc && 2 == ninfo);
     PMIX_INFO_FREE(info, ninfo);
 
-    /* a server relaying a request passes on the identity of the process
-     * that made it, marked as relayed - kept, and still marked */
-    ninfo = 2;
-    PMIX_INFO_CREATE(info, ninfo);
-    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &claimed, PMIX_UINT32);
-    PMIx_Info_relayed(&info[0]);
-    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &other, PMIX_UINT32);
-    PMIx_Info_relayed(&info[1]);
-    rc = pmix_server_add_requester_id(requester, &info, &ninfo);
-    ok = (PMIX_SUCCESS == rc && 2 == ninfo && NULL != info &&
-          PMIx_Check_key(info[0].key, PMIX_USERID) && RID_CLAIMED == info[0].value.data.uint32 &&
-          PMIx_Info_is_relayed(&info[0]) &&
-          PMIx_Check_key(info[1].key, PMIX_GRPID) && RID_CLAIMED + 1 == info[1].value.data.uint32 &&
-          PMIx_Info_is_relayed(&info[1]));
-    report("a relayed uid and gid are kept, still marked", ok);
-    PMIX_INFO_FREE(info, ninfo);
-
-    /* only what is marked is kept */
-    ninfo = 2;
-    PMIX_INFO_CREATE(info, ninfo);
-    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &claimed, PMIX_UINT32);
-    PMIx_Info_relayed(&info[0]);
-    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &other, PMIX_UINT32);
-    rc = pmix_server_add_requester_id(requester, &info, &ninfo);
-    ok = (PMIX_SUCCESS == rc && 2 == ninfo && NULL != info &&
-          RID_CLAIMED == info[0].value.data.uint32 && PMIx_Info_is_relayed(&info[0]) &&
-          RID_CLAIMED + 1 == info[1].value.data.uint32 && !PMIx_Info_is_relayed(&info[1]));
-    report("a relayed uid with an unmarked gid: the gid is the requester's choice", ok);
-    PMIX_INFO_FREE(info, ninfo);
-
+    /* the pid: never one the requester gave, and never over TCP */
     ninfo = 1;
     PMIX_INFO_CREATE(info, ninfo);
-    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &claimed, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[0], PMIX_REQUESTOR_PID, &fakepid, PMIX_PID);
     rc = pmix_server_add_requester_id(requester, &info, &ninfo);
-    ok = (PMIX_SUCCESS == rc && 2 == ninfo && NULL != info &&
-          RID_UID == info[0].value.data.uint32 && !PMIx_Info_is_relayed(&info[0]));
-    report("an unmarked uid is still replaced", ok);
+    report("over TCP no pid goes up, and one the requester gave is dropped",
+           PMIX_SUCCESS == rc && 0 == count_key(info, ninfo, PMIX_REQUESTOR_PID, NULL));
     PMIX_INFO_FREE(info, ninfo);
 
-    /* this process is a server, and a server's library sends the mark */
-    {
-        pmix_data_buffer_t buf;
-        pmix_info_t in, out;
-        int32_t cnt = 1;
+    requester->transport = &local_transport;
+    ninfo = 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    PMIX_INFO_LOAD(&info[0], PMIX_REQUESTOR_PID, &fakepid, PMIX_PID);
+    rc = pmix_server_add_requester_id(requester, &info, &ninfo);
+    ok = (PMIX_SUCCESS == rc && 1 == count_key(info, ninfo, PMIX_REQUESTOR_PID, &v) &&
+          RID_PID == v);
+    report("on the local transport the connection's pid goes up, not the one given", ok);
+    PMIX_INFO_FREE(info, ninfo);
 
-        PMIX_INFO_LOAD(&in, PMIX_USERID, &claimed, PMIX_UINT32);
-        PMIx_Info_relayed(&in);
-        PMIX_DATA_BUFFER_CONSTRUCT(&buf);
-        PMIX_INFO_CONSTRUCT(&out);
-        rc = PMIx_Data_pack(NULL, &buf, &in, 1, PMIX_INFO);
-        if (PMIX_SUCCESS == rc) {
-            rc = PMIx_Data_unpack(NULL, &buf, &out, &cnt, PMIX_INFO);
-        }
-        report("a server's library sends the relayed mark",
-               PMIX_SUCCESS == rc && PMIx_Info_is_relayed(&out));
-        PMIX_INFO_DESTRUCT(&out);
-        PMIX_INFO_DESTRUCT(&in);
-        PMIX_DATA_BUFFER_DESTRUCT(&buf);
-    }
+    /* a publish's info is the data published - a host keeps every key it
+     * does not know as part of it, so only the uid and gid are added */
+    ninfo = 2;
+    PMIX_INFO_CREATE(info, ninfo);
+    PMIX_INFO_LOAD(&info[0], "reqid-ut.published", "v", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &claimed, PMIX_UINT32);
+    rc = pmix_server_add_requester_publisher(requester, &info, &ninfo);
+    ok = (PMIX_SUCCESS == rc && 3 == ninfo &&
+          1 == count_key(info, ninfo, "reqid-ut.published", NULL) &&
+          1 == count_key(info, ninfo, PMIX_USERID, &v) && RID_UID == v &&
+          1 == count_key(info, ninfo, PMIX_GRPID, &v) && RID_GID == v &&
+          0 == count_key(info, ninfo, PMIX_REQUESTOR_PID, NULL) &&
+          0 == count_key(info, ninfo, PMIX_REQUESTED_GRPID, NULL));
+    report("a publish gets only the connection's uid and gid, beside its data", ok);
+    PMIX_INFO_FREE(info, ninfo);
+    requester->transport = NULL;
+
+    /* a relaying host's claim about who first asked goes up as given,
+     * and does not displace the relay's own identity */
+    ninfo = 5;
+    PMIX_INFO_CREATE(info, ninfo);
+    PMIX_INFO_LOAD(&info[0], PMIX_ORIGIN_USERID, &claimed, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_ORIGIN_GRPID, &other, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[2], PMIX_ORIGIN_PID, &fakepid, PMIX_PID);
+    PMIX_INFO_LOAD(&info[3], PMIX_ORIGIN_IS_TOOL, &flag, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[4], PMIX_USERID, &claimed, PMIX_UINT32);
+    rc = pmix_server_add_requester_id(requester, &info, &ninfo);
+    ok = (PMIX_SUCCESS == rc && 6 == ninfo &&
+          1 == count_key(info, ninfo, PMIX_ORIGIN_USERID, &v) && RID_CLAIMED == v &&
+          1 == count_key(info, ninfo, PMIX_ORIGIN_GRPID, &v) && RID_CLAIMED + 1 == v &&
+          1 == count_key(info, ninfo, PMIX_ORIGIN_PID, &v) && (uint64_t) fakepid == v &&
+          1 == count_key(info, ninfo, PMIX_ORIGIN_IS_TOOL, &v) && 1 == v &&
+          1 == count_key(info, ninfo, PMIX_USERID, &v) && RID_UID == v &&
+          1 == count_key(info, ninfo, PMIX_GRPID, &v) && RID_GID == v);
+    report("a relay's origin claims go up untouched, beside its own identity", ok);
+    PMIX_INFO_FREE(info, ninfo);
+
+    ninfo = 2;
+    PMIX_INFO_CREATE(info, ninfo);
+    PMIX_INFO_LOAD(&info[0], PMIX_ORIGIN_USERID, &claimed, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_ORIGIN_USERID, &other, PMIX_UINT32);
+    rc = pmix_server_add_requester_id(requester, &info, &ninfo);
+    report("two copies of an origin claim are refused", PMIX_ERR_BAD_PARAM == rc && 2 == ninfo);
+    PMIX_INFO_FREE(info, ninfo);
 }
 
 /* the pair the type helper appended, read off the end of the array */
@@ -530,16 +610,16 @@ static void test_type(void)
            PMIX_SUCCESS == rc && saw_type(info, ninfo, true, true));
     PMIx_Info_free(info, ninfo);
 
-    /* a server relaying the request said what the process that made it is */
+    /* a relay said what the process that made the request is - that
+     * goes up as its claim, and the relay is still what it is */
     requester->proc_type.type = PMIX_PROC_LAUNCHER;
     info = PMIx_Info_create(1);
-    PMIx_Info_load(&info[0], PMIX_REQUESTOR_IS_CLIENT, &yes, PMIX_BOOL);
-    PMIx_Info_relayed(&info[0]);
+    PMIx_Info_load(&info[0], PMIX_ORIGIN_IS_CLIENT, &yes, PMIX_BOOL);
     ninfo = 1;
     rc = pmix_server_add_requester_type(requester, &info, &ninfo);
-    ok = (PMIX_SUCCESS == rc && saw_type(info, ninfo, false, true) && 2 == ninfo &&
-          PMIx_Info_is_relayed(&info[0]) && PMIx_Info_is_relayed(&info[1]));
-    report("a relayed type is kept, still marked", ok);
+    ok = (PMIX_SUCCESS == rc && saw_type(info, ninfo, true, false) && 3 == ninfo &&
+          PMIx_Check_key(info[0].key, PMIX_ORIGIN_IS_CLIENT) && PMIX_INFO_TRUE(&info[0]));
+    report("a relay's claim about the origin's type goes up beside its own", ok);
     PMIx_Info_free(info, ninfo);
 
     requester->proc_type.type = saved;
@@ -547,20 +627,32 @@ static void test_type(void)
 
 static void test_query(void)
 {
+    pmix_server_query_fn_t saved = pmix_host_server.query;
     pmix_status_t rc;
 
     reset_seen();
     rc = do_query(false);
     report("a query the server cannot answer is accepted", PMIX_SUCCESS == rc);
     report("the host is told the query is from the requester", saw_requester());
-    report("the host is given the connection's uid and gid once each",
-           saw_identity_once(RID_GID));
+    report("the host is given the connection's uid and gid once each", saw_identity_once());
 
     reset_seen();
     rc = do_query(true);
     report("a query carrying its own uid and gid is accepted", PMIX_SUCCESS == rc);
-    report("the host is given the connection's uid and the requester's gid",
-           saw_identity_once(RID_CLAIMED));
+    report("the host is given the connection's uid and gid, not the ones claimed",
+           saw_identity_once());
+    report("the gid the requester gave goes up as its requested group",
+           1 == seen.nreq && RID_CLAIMED == seen.reqgid);
+
+    /* with no host to ask, a peer's query goes no further - it is not
+     * passed to any server of ours under our own identity */
+    pmix_host_server.query = NULL;
+    reset_seen();
+    qry_status = PMIX_SUCCESS;
+    rc = do_query(false);
+    report("with no host query, a peer's query is taken", PMIX_SUCCESS == rc);
+    report("and answered as not supported", PMIX_ERR_NOT_SUPPORTED == qry_status);
+    pmix_host_server.query = saved;
 }
 
 static void test_resolve(void)
@@ -572,7 +664,7 @@ static void test_resolve(void)
     report("resolve_peers is accepted", PMIX_SUCCESS == rc);
     report("the host is told resolve_peers is from the requester", saw_requester());
     report("the host is given the requester's uid and gid for resolve_peers",
-           saw_identity_once(RID_GID));
+           saw_identity_once());
     report("resolve_peers kept its own qualifiers", 2 == seen.nother);
 }
 
