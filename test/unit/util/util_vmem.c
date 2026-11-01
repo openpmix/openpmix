@@ -491,7 +491,7 @@ static void test_scan_a_map_we_wrote(void)
     static const char *const names[] = {
         "plain", "tagged", "garbage", "longline", "heapstack", "tight"
     };
-    char victim[512];
+    char target[512];
 
     snprintf(tmpl, sizeof(tmpl), "%s/pmix_vmem_test_XXXXXX",
              (NULL == tmp || '\0' == tmp[0]) ? "/tmp" : tmp);
@@ -509,8 +509,8 @@ static void test_scan_a_map_we_wrote(void)
     test_no_room_is_reported();
 
     for (i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
-        snprintf(victim, sizeof(victim), "%s/%s", mapdir, names[i]);
-        (void) unlink(victim);
+        snprintf(target, sizeof(target), "%s/%s", mapdir, names[i]);
+        (void) unlink(target);
     }
     (void) rmdir(mapdir);
 }

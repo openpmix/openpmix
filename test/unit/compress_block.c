@@ -82,7 +82,7 @@ static void fill_modexish(uint8_t *p, size_t len)
 
 /* The decompressors' output buffer: sized from the compressed length, grown
  * as output arrives, and never past one byte beyond the claim. Checked
- * directly because a component test can only see that a forged blob was
+ * directly because a component test can only see that a altered blob was
  * refused, not how much memory was committed before it was. */
 static void test_outbuf_policy(void)
 {
@@ -154,20 +154,20 @@ static void test_outbuf_policy(void)
 static void check_forged_claim(const uint8_t *zip, size_t ziplen, uint32_t claim,
                                const char *what)
 {
-    uint8_t *forged, *back = NULL;
+    uint8_t *altered, *back = NULL;
     char *strback = NULL;
     size_t backlen = 0;
 
-    forged = (uint8_t *) malloc(ziplen);
-    if (NULL == forged) {
+    altered = (uint8_t *) malloc(ziplen);
+    if (NULL == altered) {
         fprintf(stderr, "out of memory\n");
         ++errors;
         return;
     }
-    memcpy(forged, zip, ziplen);
-    memcpy(forged, &claim, sizeof(uint32_t));
+    memcpy(altered, zip, ziplen);
+    memcpy(altered, &claim, sizeof(uint32_t));
 
-    if (pmix_compress.decompress(&back, &backlen, forged, ziplen)) {
+    if (pmix_compress.decompress(&back, &backlen, altered, ziplen)) {
         CHECK(false, "decompress accepted a blob whose prefix %s", what);
         free(back);
     } else {
@@ -175,7 +175,7 @@ static void check_forged_claim(const uint8_t *zip, size_t ziplen, uint32_t claim
               what, backlen);
     }
     if (NULL != pmix_compress.decompress_string) {
-        if (pmix_compress.decompress_string(&strback, forged, ziplen)) {
+        if (pmix_compress.decompress_string(&strback, altered, ziplen)) {
             CHECK(false, "decompress_string accepted a blob whose prefix %s", what);
             free(strback);
         } else {
@@ -183,12 +183,12 @@ static void check_forged_claim(const uint8_t *zip, size_t ziplen, uint32_t claim
                   "string behind", what);
         }
     }
-    free(forged);
+    free(altered);
 }
 
 /* A payload that compresses far better than the first guess the output
  * buffer is sized from, so the decoder has to grow it repeatedly, then the
- * same blob with its prefix forged in every direction. */
+ * same blob with its prefix altered in every direction. */
 static void test_claims(void)
 {
     size_t len = 8 * 1024 * 1024, n, ziplen = 0, backlen = 0;

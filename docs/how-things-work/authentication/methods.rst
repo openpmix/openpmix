@@ -62,7 +62,7 @@ The socket can be used in two ways:
 
 * **As the transport.** Use the Unix socket instead of TCP. The server
   reads ``SO_PEERCRED`` and ``SO_PEERGROUPS``, which are already
-  translated into its own view of the IDs. Nothing can be forged, and
+  translated into its own view of the IDs. Nothing can be claimed falsely, and
   there is no secret to manage.
 
 * **As an authenticator for the TCP connection.** The client

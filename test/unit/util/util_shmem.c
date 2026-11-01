@@ -437,7 +437,7 @@ static void test_attach_on_attached_handle_is_refused(void)
  * gds/shmem3 leaves between the create and shmem3_segment_fix_perms(). */
 static void test_perms_refuse_a_swapped_directory(void)
 {
-    char dir[512], moved[512], elsewhere[512], seg[600], victim[600];
+    char dir[512], moved[512], elsewhere[512], seg[600], target[600];
     struct stat before, after;
     pmix_shmem_t *shmem;
     pmix_status_t rc;
@@ -446,10 +446,10 @@ static void test_perms_refuse_a_swapped_directory(void)
     snprintf(moved, sizeof(moved), "%s/segdir.moved", tmpbase);
     snprintf(elsewhere, sizeof(elsewhere), "%s/elsewhere", tmpbase);
     snprintf(seg, sizeof(seg), "%s/swapped.seg", dir);
-    snprintf(victim, sizeof(victim), "%s/swapped.seg", elsewhere);
+    snprintf(target, sizeof(target), "%s/swapped.seg", elsewhere);
 
     if (0 != mkdir(dir, S_IRWXU) || 0 != mkdir(elsewhere, S_IRWXU) ||
-        0 != make_bystander(victim, &before)) {
+        0 != make_bystander(target, &before)) {
         report("swapped dir: fixture", 0);
         return;
     }
@@ -477,7 +477,7 @@ static void test_perms_refuse_a_swapped_directory(void)
     report("swapped dir: chown acts on the segment", PMIX_SUCCESS == rc);
     rc = pmix_shmem_segment_chmod(shmem, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     report("swapped dir: chmod acts on the segment", PMIX_SUCCESS == rc);
-    if (0 != stat(victim, &after)) {
+    if (0 != stat(target, &after)) {
         report("swapped dir: bystander still exists", 0);
     } else {
         report("swapped dir: bystander mode unchanged",
@@ -494,7 +494,7 @@ static void test_perms_refuse_a_swapped_directory(void)
     }
     PMIX_RELEASE(shmem);
     unlink(seg);
-    unlink(victim);
+    unlink(target);
     unlink(dir);
     rmdir(moved);
     rmdir(elsewhere);
@@ -592,7 +592,7 @@ static void test_perms_need_a_created_segment(void)
  * directory link to a file of the same name that is not ours. */
 static void test_unlink_follows_the_directory(void)
 {
-    char dir[512], moved[512], elsewhere[512], seg[600], victim[600];
+    char dir[512], moved[512], elsewhere[512], seg[600], target[600];
     struct stat before;
     pmix_shmem_t *shmem;
     pmix_status_t rc;
@@ -601,10 +601,10 @@ static void test_unlink_follows_the_directory(void)
     snprintf(moved, sizeof(moved), "%s/unlinkdir.moved", tmpbase);
     snprintf(elsewhere, sizeof(elsewhere), "%s/unlinkelse", tmpbase);
     snprintf(seg, sizeof(seg), "%s/unlink.seg", dir);
-    snprintf(victim, sizeof(victim), "%s/unlink.seg", elsewhere);
+    snprintf(target, sizeof(target), "%s/unlink.seg", elsewhere);
 
     if (0 != mkdir(dir, S_IRWXU) || 0 != mkdir(elsewhere, S_IRWXU) ||
-        0 != make_bystander(victim, &before)) {
+        0 != make_bystander(target, &before)) {
         report("unlink dir: fixture", 0);
         return;
     }
@@ -624,13 +624,13 @@ static void test_unlink_follows_the_directory(void)
 
     rc = pmix_shmem_segment_unlink(shmem);
     report("unlink dir: unlink succeeded", PMIX_SUCCESS == rc);
-    report("unlink dir: bystander left alone", 0 == access(victim, F_OK));
+    report("unlink dir: bystander left alone", 0 == access(target, F_OK));
     snprintf(seg, sizeof(seg), "%s/unlink.seg", moved);
     report("unlink dir: segment removed from its own directory", 0 != access(seg, F_OK));
 
     PMIX_RELEASE(shmem);
     unlink(seg);
-    unlink(victim);
+    unlink(target);
     unlink(dir);
     rmdir(moved);
     rmdir(elsewhere);

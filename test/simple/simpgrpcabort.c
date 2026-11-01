@@ -23,7 +23,7 @@
  * it rather than silently forming a reduced group.
  *
  * The whole job is the group membership. All ranks sync with a fence. The last
- * rank is the victim: it leaves WITHOUT calling PMIx_Group_construct and WITHOUT
+ * rank is the departing rank: it leaves WITHOUT calling PMIx_Group_construct and WITHOUT
  * calling PMIx_Finalize (after a short delay so the survivors have entered the
  * construct and their server has built the local tracker), so the server sees a
  * dropped connection. Every surviving rank calls PMIx_Group_construct with no
@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     pmix_status_t rc;
     pmix_value_t *val = NULL;
     pmix_proc_t proc, *procs;
-    uint32_t nprocs, n, victim;
+    uint32_t nprocs, n, departing;
     pmix_info_t *results = NULL;
     size_t nresults = 0;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -88,10 +88,10 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    /* the entire job is the group membership; the last rank is the victim */
-    victim = nprocs - 1;
+    /* the entire job is the group membership; the last rank is the departing rank */
+    departing = nprocs - 1;
 
-    if (myproc.rank == victim) {
+    if (myproc.rank == departing) {
         /* leave before contributing, without finalizing, so the server sees a
          * dropped connection and must run its lost-connection accounting. Exit
          * 0 so the harness does not treat this as a real failure. */
@@ -128,7 +128,7 @@ int main(int argc, char **argv)
     }
 
     fprintf(stderr, "Client %s:%d saw construct ABORT on loss of rank %d OK\n",
-            myproc.nspace, myproc.rank, victim);
+            myproc.nspace, myproc.rank, departing);
     fflush(stderr);
     return 0;
 }

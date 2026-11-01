@@ -361,23 +361,23 @@ static void test_create_on_symlink(void)
 
 static void test_destroy_does_not_follow_symlink(void)
 {
-    char victim[512];
-    char victimfile[512];
+    char target[512];
+    char targetfile[512];
     char base[512];
     char link[512];
     int rc;
 
-    snprintf(victim, sizeof(victim), "%s/victim", tmpbase);
-    snprintf(victimfile, sizeof(victimfile), "%s/victim/precious", tmpbase);
+    snprintf(target, sizeof(target), "%s/target", tmpbase);
+    snprintf(targetfile, sizeof(targetfile), "%s/target/precious", tmpbase);
     snprintf(base, sizeof(base), "%s/walkme", tmpbase);
     snprintf(link, sizeof(link), "%s/walkme/escape", tmpbase);
-    mkdir(victim, S_IRWXU);
-    make_file(victimfile);
+    mkdir(target, S_IRWXU);
+    make_file(targetfile);
     mkdir(base, S_IRWXU);
-    if (0 != symlink(victim, link)) {
+    if (0 != symlink(target, link)) {
         report("destroy_does_not_follow_symlink: SKIPPED (symlink unavailable)", 1);
-        unlink(victimfile);
-        rmdir(victim);
+        unlink(targetfile);
+        rmdir(target);
         rmdir(base);
         return;
     }
@@ -385,41 +385,41 @@ static void test_destroy_does_not_follow_symlink(void)
     rc = pmix_os_dirpath_destroy(base, true, NULL);
     report("destroy_does_not_follow_symlink: returns SUCCESS", PMIX_SUCCESS == rc);
     report("destroy_does_not_follow_symlink: tree removed", !dir_exists(base));
-    report("destroy_does_not_follow_symlink: target survives", dir_exists(victim));
+    report("destroy_does_not_follow_symlink: target survives", dir_exists(target));
     report("destroy_does_not_follow_symlink: target contents survive",
-           file_exists(victimfile));
+           file_exists(targetfile));
 
-    unlink(victimfile);
-    rmdir(victim);
+    unlink(targetfile);
+    rmdir(target);
 }
 
 static void test_destroy_symlink_base(void)
 {
-    char victim[512];
-    char victimfile[512];
+    char target[512];
+    char targetfile[512];
     char link[512];
     int rc;
 
-    snprintf(victim, sizeof(victim), "%s/basevictim", tmpbase);
-    snprintf(victimfile, sizeof(victimfile), "%s/basevictim/precious", tmpbase);
+    snprintf(target, sizeof(target), "%s/basetarget", tmpbase);
+    snprintf(targetfile, sizeof(targetfile), "%s/basetarget/precious", tmpbase);
     snprintf(link, sizeof(link), "%s/baselink", tmpbase);
-    mkdir(victim, S_IRWXU);
-    make_file(victimfile);
-    if (0 != symlink(victim, link)) {
+    mkdir(target, S_IRWXU);
+    make_file(targetfile);
+    if (0 != symlink(target, link)) {
         report("destroy_symlink_base: SKIPPED (symlink unavailable)", 1);
-        unlink(victimfile);
-        rmdir(victim);
+        unlink(targetfile);
+        rmdir(target);
         return;
     }
 
     rc = pmix_os_dirpath_destroy(link, true, NULL);
     report("destroy_symlink_base: refused", PMIX_SUCCESS != rc);
-    report("destroy_symlink_base: target survives", dir_exists(victim));
-    report("destroy_symlink_base: target contents survive", file_exists(victimfile));
+    report("destroy_symlink_base: target survives", dir_exists(target));
+    report("destroy_symlink_base: target contents survive", file_exists(targetfile));
 
     unlink(link);
-    unlink(victimfile);
-    rmdir(victim);
+    unlink(targetfile);
+    rmdir(target);
 }
 
 static void test_is_empty_symlink(void)
@@ -767,18 +767,18 @@ static void test_destroy_trailing_separator(void)
 
 static void test_destroy_symlink_base_trailing_separator(void)
 {
-    char victim[512], victimfile[600], link[512], arg[600];
+    char target[512], targetfile[600], link[512], arg[600];
     int rc;
 
-    snprintf(victim, sizeof(victim), "%s/tsvictim", tmpbase);
-    snprintf(victimfile, sizeof(victimfile), "%s/precious", victim);
+    snprintf(target, sizeof(target), "%s/tstarget", tmpbase);
+    snprintf(targetfile, sizeof(targetfile), "%s/precious", target);
     snprintf(link, sizeof(link), "%s/tslink", tmpbase);
-    mkdir(victim, S_IRWXU);
-    make_file(victimfile);
-    if (0 != symlink(victim, link)) {
+    mkdir(target, S_IRWXU);
+    make_file(targetfile);
+    if (0 != symlink(target, link)) {
         report("destroy_symlink_base_trailing_separator: SKIPPED (symlink unavailable)", 1);
-        unlink(victimfile);
-        rmdir(victim);
+        unlink(targetfile);
+        rmdir(target);
         return;
     }
 
@@ -786,12 +786,12 @@ static void test_destroy_symlink_base_trailing_separator(void)
     rc = pmix_os_dirpath_destroy(arg, true, NULL);
     report("destroy_symlink_base_trailing_separator: refused", PMIX_SUCCESS != rc);
     report("destroy_symlink_base_trailing_separator: target contents survive",
-           file_exists(victimfile));
+           file_exists(targetfile));
     report("destroy_symlink_base_trailing_separator: link left in place", is_symlink(link));
 
     unlink(link);
-    unlink(victimfile);
-    rmdir(victim);
+    unlink(targetfile);
+    rmdir(target);
 }
 
 static void test_create_on_symlink_trailing_separator(void)
@@ -1188,26 +1188,26 @@ static void test_create_file_reclaims_leftover(void)
  * lands on a new file - never on whatever the link pointed at. */
 static void test_create_file_symlink_at_name(void)
 {
-    char path[512], victim[512];
+    char path[512], target[512];
     int fd;
 
     snprintf(path, sizeof(path), "%s/cf_link", tmpbase);
-    snprintf(victim, sizeof(victim), "%s/cf_victim", tmpbase);
-    write_file(victim, "precious");
-    if (0 != symlink(victim, path)) {
+    snprintf(target, sizeof(target), "%s/cf_target", tmpbase);
+    write_file(target, "precious");
+    if (0 != symlink(target, path)) {
         report("create_file_symlink: fixture", 0);
-        unlink(victim);
+        unlink(target);
         return;
     }
     fd = pmix_os_dirpath_create_file(path, O_RDWR, 0600, NULL, NULL);
     report("create_file_symlink: opened", 0 <= fd);
     report("create_file_symlink: name is now a regular file", file_exists(path) && !is_symlink(path));
-    report("create_file_symlink: target untouched", 8 == file_size(victim));
+    report("create_file_symlink: target untouched", 8 == file_size(target));
     if (0 <= fd) {
         close(fd);
     }
     unlink(path);
-    unlink(victim);
+    unlink(target);
 }
 
 static int reclaim_calls;

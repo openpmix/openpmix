@@ -62,7 +62,7 @@
 static pmix_proc_t myproc;
 static int nerrs = 0;
 
-#define DELKEY  "delete_key.victim"
+#define DELKEY  "delete_key.removed"
 #define KEEPKEY "delete_key.keeper"
 /* what rank 0 re-publishes DELKEY as, chosen so it cannot be mistaken
  * for the rank number the first round put there */

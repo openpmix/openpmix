@@ -62,7 +62,7 @@ extern char **environ;
 #define NSM_LOST  "nsm.lost"   // a self-started tool's job, left without finalizing
 #define NSM_GONE  "nsm.gone"   // a self-started tool's job, deregistered during an upcall
 #define NSM_DEREG "nsm.dereg"  // a job the host deregisters with a process still on it
-#define NSM_SQUAT "nsm.squat"  // a name a self-started tool takes before the host's job
+#define NSM_TAKEN "nsm.taken"  // a name a self-started tool takes before the host's job
 
 /* child exit statuses */
 #define CHILD_CONNECTED 0
@@ -737,8 +737,8 @@ static void takeback_cases(void)
     probe_t p;
     bool ok;
 
-    PMIX_LOAD_NSPACE(job, NSM_SQUAT);
-    if (!hold(NSM_SQUAT, "0", &h)) {
+    PMIX_LOAD_NSPACE(job, NSM_TAKEN);
+    if (!hold(NSM_TAKEN, "0", &h)) {
         report("a self-started tool takes a name the host will use", 0);
         (void) let_go(&h);
         return;
@@ -748,14 +748,14 @@ static void takeback_cases(void)
     st = PMIX_ERR_NOT_AVAILABLE + 1000;
     ok = PMIX_SUCCESS ==
          await(PMIx_server_register_nspace(job, -1, NULL, 0, opcb, (void *) &st), &st);
-    probe(NSM_SQUAT, 0, &p);
+    probe(NSM_TAKEN, 0, &p);
     report("an update of the tool's namespace leaves the tool in it",
            ok && p.listed && p.self_started && 1 == p.nranks && 1 == p.nconnected);
 
     st = PMIX_ERR_NOT_AVAILABLE + 1000;
     ok = PMIX_SUCCESS ==
          await(PMIx_server_register_nspace(job, 1, NULL, 0, opcb, (void *) &st), &st);
-    probe(NSM_SQUAT, 0, &p);
+    probe(NSM_TAKEN, 0, &p);
     report("the host's full registration takes the name back",
            ok && p.listed && !p.self_started && 0 == p.nranks);
     report("and the tool that held it is closed", 0 == p.nconnected);
@@ -763,10 +763,10 @@ static void takeback_cases(void)
     (void) let_go(&h);
 
     report("the host registers its client into the name",
-           PMIX_SUCCESS == register_client(NSM_SQUAT, 0, getuid(), getgid()));
-    report("and its tool-client connects there", CHILD_CONNECTED == tool(NSM_SQUAT, "0", true));
+           PMIX_SUCCESS == register_client(NSM_TAKEN, 0, getuid(), getgid()));
+    report("and its tool-client connects there", CHILD_CONNECTED == tool(NSM_TAKEN, "0", true));
     report("a self-started tool can no longer take the name",
-           CHILD_REFUSED == tool(NSM_SQUAT, "1", false));
+           CHILD_REFUSED == tool(NSM_TAKEN, "1", false));
     st = PMIX_ERR_NOT_AVAILABLE + 1000;
     PMIx_server_deregister_nspace(job, opcb, (void *) &st);
     (void) await(PMIX_SUCCESS, &st);

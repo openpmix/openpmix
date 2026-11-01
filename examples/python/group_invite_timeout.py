@@ -29,7 +29,7 @@ INVITE_TIMEOUT = 3
 
 client = PMIxClient()
 myproc = {}
-victim = 0
+departing = 0
 complete_seen = threading.Event()
 failed_seen = threading.Event()
 failed_proc = {}
@@ -48,7 +48,7 @@ def invite_handler(evhdlr, status, source, info, results):
         # our own invitation - ignore
         return PMIX_EVENT_ACTION_COMPLETE, None
 
-    if myproc['rank'] == victim:
+    if myproc['rank'] == departing:
         # the non-responder: deliberately do NOT answer so the leader's
         # timeout fires
         eprint("%s:%d INVITED but deliberately NOT responding "
@@ -93,7 +93,7 @@ def register_handler(code, fn):
 
 
 def main():
-    global myproc, victim
+    global myproc, departing
 
     rc, myproc = client.init(None)
     if PMIX_SUCCESS != rc:
@@ -112,9 +112,9 @@ def main():
             eprint("This example requires a minimum of 3 processes")
         sys.exit(1)
     # the last rank is the one that will not answer the invitation
-    victim = nprocs - 1
+    departing = nprocs - 1
     eprint("Client %s:%d job size %d (non-responder is rank %d)"
-           % (myproc['nspace'], myproc['rank'], nprocs, victim))
+           % (myproc['nspace'], myproc['rank'], nprocs, departing))
 
     rc = register_handler(PMIX_GROUP_INVITED, invite_handler)
     if PMIX_SUCCESS != rc:
@@ -166,22 +166,22 @@ def main():
                    "PMIX_GROUP_INVITE_FAILED"
                    % (myproc['nspace'], myproc['rank']))
             return done(PMIX_ERROR)
-        if failed_proc.get('rank') != victim:
+        if failed_proc.get('rank') != departing:
             eprint("Client ns %s rank %d: FAILED - wrong failed rank %d "
                    "(expected %d)"
                    % (myproc['nspace'], myproc['rank'],
-                      failed_proc.get('rank', PMIX_RANK_UNDEF), victim))
+                      failed_proc.get('rank', PMIX_RANK_UNDEF), departing))
             return done(PMIX_ERROR)
         eprint("%d PMIX_GROUP_INVITE_FAILED for non-responder: PASS"
                % myproc['rank'])
-    elif myproc['rank'] == victim:
+    elif myproc['rank'] == departing:
         # the non-responder does not join; it only reports and waits at
         # the closing barrier
         eprint("%d not joining the group (non-responder)" % myproc['rank'])
 
     # the leader and the accepting members must be notified of completion;
     # the non-responder must NOT be (it is not part of the group)
-    if myproc['rank'] != victim:
+    if myproc['rank'] != departing:
         if not complete_seen.wait(timeout=10):
             eprint("Client ns %s rank %d: FAILED - never received "
                    "PMIX_GROUP_CONSTRUCT_COMPLETE"

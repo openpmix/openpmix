@@ -355,7 +355,7 @@ static void test_list_release(void)
 static void test_insert_negative_index(void)
 {
     pmix_list_t list;
-    int_item_t *victim;
+    int_item_t *extra;
     bool ok;
 
     PMIX_CONSTRUCT(&list, pmix_list_t);
@@ -363,22 +363,22 @@ static void test_insert_negative_index(void)
     pmix_list_append(&list, (pmix_list_item_t *) make_item(20));
     pmix_list_append(&list, (pmix_list_item_t *) make_item(30));
 
-    victim = make_item(99);
-    ok = pmix_list_insert(&list, (pmix_list_item_t *) victim, -1);
+    extra = make_item(99);
+    ok = pmix_list_insert(&list, (pmix_list_item_t *) extra, -1);
     report("insert at -1: rejected", !ok);
     report("insert at -1: length unchanged", 3 == pmix_list_get_size(&list));
 
     if (!ok) {
         /* rejected, so we still own it */
-        PMIX_RELEASE(victim);
+        PMIX_RELEASE(extra);
     }
 
-    victim = make_item(98);
-    ok = pmix_list_insert(&list, (pmix_list_item_t *) victim, -100);
+    extra = make_item(98);
+    ok = pmix_list_insert(&list, (pmix_list_item_t *) extra, -100);
     report("insert at -100: rejected", !ok);
     report("insert at -100: length unchanged", 3 == pmix_list_get_size(&list));
     if (!ok) {
-        PMIX_RELEASE(victim);
+        PMIX_RELEASE(extra);
     }
 
     /* the list is still in the order we built it */
@@ -399,12 +399,12 @@ static void test_insert_negative_index(void)
     /* an empty list rejects every index, negative ones included */
     PMIX_LIST_DESTRUCT(&list);
     PMIX_CONSTRUCT(&list, pmix_list_t);
-    victim = make_item(1);
-    ok = pmix_list_insert(&list, (pmix_list_item_t *) victim, -1);
+    extra = make_item(1);
+    ok = pmix_list_insert(&list, (pmix_list_item_t *) extra, -1);
     report("insert at -1 into an empty list: rejected", !ok);
     report("insert at -1 into an empty list: still empty", pmix_list_is_empty(&list));
     if (!ok) {
-        PMIX_RELEASE(victim);
+        PMIX_RELEASE(extra);
     }
     PMIX_LIST_DESTRUCT(&list);
 }

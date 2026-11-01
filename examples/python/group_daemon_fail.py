@@ -14,7 +14,7 @@
 # pending when the harness kills that rank's daemon. Every surviving
 # member must see the construct abort rather than hang.
 #
-# This one needs an external harness to kill the victim's daemon while the
+# This one needs an external harness to kill the departing rank's daemon while the
 # construct is outstanding; run it by hand rather than under `make check`.
 #
 # Requires a minimum of 4 processes.
@@ -54,12 +54,12 @@ def main():
                % (myproc['nspace'], myproc['rank'], client.error_string(rc)))
         sys.exit(1)
 
-    # the entire job is the group membership; the last rank is the victim
+    # the entire job is the group membership; the last rank is the departing rank
     # - it stays alive but never contributes, so the construct is pending
     # when the harness kills its daemon
-    victim = nprocs - 1
+    departing = nprocs - 1
 
-    if myproc['rank'] == victim:
+    if myproc['rank'] == departing:
         eprint("%d alive but NOT joining the construct - awaiting daemon "
                "kill" % myproc['rank'])
         time.sleep(60)

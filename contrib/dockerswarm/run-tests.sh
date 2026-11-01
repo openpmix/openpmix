@@ -155,7 +155,7 @@ test_linux() {
     # hanging. Two requirements make this observable through the launcher:
     #   * --rtos recoverable, so PRRTE does not tear the whole job down when the
     #     member vanishes without finalizing (which would kill the survivors);
-    #   * whole-job membership + --map-by node, so the victim's node always also
+    #   * whole-job membership + --map-by node, so the departing rank's node always also
     #     hosts a surviving member -- the one whose call created the local
     #     tracker that the loss accounting then completes.
     # Before groups tracked participation by identity this hung to the timeout.
@@ -209,7 +209,7 @@ test_linux() {
     # registered for PMIX_GROUP_LEFT and reports PASS on receipt; the departing
     # rank reports SUCCESS. Whole-job membership + --map-by node ensures the
     # departing rank's node also hosts a survivor, exercising both local and
-    # remote delivery. The victim leaves and finalizes cleanly, so no
+    # remote delivery. The departing rank leaves and finalizes cleanly, so no
     # --rtos recoverable is needed.
     if RUN 'test -x /opt/prte/tests/group_leave'; then
         OUT="$(RUN 'prterun --host node1:2,node2:2 -np 4 --map-by node --timeout 60 /opt/prte/tests/group_leave 2>&1')"

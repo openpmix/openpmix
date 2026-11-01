@@ -25,15 +25,15 @@
  * whole job is the group membership. Every rank registers a handler for
  * PMIX_GROUP_MEMBER_FAILED and constructs the group with
  * PMIX_GROUP_NOTIFY_TERMINATION, then all ranks sync with a fence so a live
- * group exists everywhere. The last rank is the victim: it leaves WITHOUT
+ * group exists everywhere. The last rank is the departing rank: it leaves WITHOUT
  * calling PMIx_Group_destruct and WITHOUT calling PMIx_Finalize (after a short
  * delay so the survivors have entered the destruct and their server has built
  * the local tracker), so the server sees a dropped connection. Every surviving
  * rank calls PMIx_Group_destruct; because the group requested termination
  * notification, the server accounts for the departed member, completes the
  * destruct on the survivors with SUCCESS, and notifies each survivor with a
- * PMIX_GROUP_MEMBER_FAILED event naming the victim. Each survivor verifies it
- * received that event for the victim and that the destruct returned success,
+ * PMIX_GROUP_MEMBER_FAILED event naming the departing rank. Each survivor verifies it
+ * received that event for the departing rank and that the destruct returned success,
  * then prints a distinctive success line.
  *
  * Without PMIX_GROUP_NOTIFY_TERMINATION the destruct would instead complete
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
     pmix_status_t rc;
     pmix_value_t *val = NULL;
     pmix_proc_t proc, *procs;
-    uint32_t nprocs, n, victim;
+    uint32_t nprocs, n, departing;
     pmix_info_t info[2];
     pmix_info_t *results = NULL;
     size_t nresults = 0;
@@ -129,10 +129,10 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    /* the entire job is the group membership; the last rank is the victim */
-    victim = nprocs - 1;
+    /* the entire job is the group membership; the last rank is the departing rank */
+    departing = nprocs - 1;
 
-    /* every rank (including the victim) constructs the group, requesting
+    /* every rank (including the departing rank) constructs the group, requesting
      * termination notification so that a member lost before the later destruct
      * is reported to the survivors via PMIX_GROUP_MEMBER_FAILED rather than
      * causing the destruct to report an error */
@@ -163,7 +163,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    if (myproc.rank == victim) {
+    if (myproc.rank == departing) {
         /* leave before contributing to the destruct, without finalizing, so the
          * server sees a dropped connection and must run its lost-connection
          * accounting. Exit 0 so the harness does not treat this as a real
@@ -200,10 +200,10 @@ int main(int argc, char **argv)
         PMIx_Finalize(NULL, 0);
         exit(1);
     }
-    if (failed_proc.rank != victim ||
+    if (failed_proc.rank != departing ||
         0 != strncmp(failed_proc.nspace, myproc.nspace, PMIX_MAX_NSLEN)) {
-        fprintf(stderr, "Client %s:%d FAIL: member-failed named %s:%d, expected victim rank %d\n",
-                myproc.nspace, myproc.rank, failed_proc.nspace, failed_proc.rank, victim);
+        fprintf(stderr, "Client %s:%d FAIL: member-failed named %s:%d, expected departing rank %d\n",
+                myproc.nspace, myproc.rank, failed_proc.nspace, failed_proc.rank, departing);
         PMIx_Finalize(NULL, 0);
         exit(1);
     }
@@ -214,8 +214,8 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    fprintf(stderr, "Client %s:%d saw member-failed for victim rank %d OK\n",
-            myproc.nspace, myproc.rank, victim);
+    fprintf(stderr, "Client %s:%d saw member-failed for departing rank %d OK\n",
+            myproc.nspace, myproc.rank, departing);
     fflush(stderr);
     return 0;
 }

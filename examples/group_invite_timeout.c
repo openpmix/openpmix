@@ -55,7 +55,7 @@
 #define INVITE_TIMEOUT 3
 
 static pmix_proc_t myproc;
-static uint32_t victim = 0;
+static uint32_t departing = 0;
 static volatile bool complete_seen = false;
 static volatile bool failed_seen = false;
 static pmix_proc_t failed_proc;
@@ -81,7 +81,7 @@ static void invite_handler(size_t evhdlr_registration_id, pmix_status_t status,
         return;
     }
 
-    if (myproc.rank == victim) {
+    if (myproc.rank == departing) {
         /* the non-responder: deliberately do NOT answer so the leader's timeout
          * fires */
         fprintf(stderr, "%s:%d INVITED but deliberately NOT responding (drives timeout)\n",
@@ -203,9 +203,9 @@ int main(int argc, char **argv)
         exit(1);
     }
     /* the last rank is the one that will not answer the invitation */
-    victim = nprocs - 1;
+    departing = nprocs - 1;
     fprintf(stderr, "Client %s:%d job size %d (non-responder is rank %d)\n",
-            myproc.nspace, myproc.rank, nprocs, victim);
+            myproc.nspace, myproc.rank, nprocs, departing);
 
     if (PMIX_SUCCESS != (rc = register_handler(PMIX_GROUP_INVITED, invite_handler))) {
         fprintf(stderr, "%d: failed to register invited handler: %s\n", myproc.rank,
@@ -265,14 +265,14 @@ int main(int argc, char **argv)
             rc = PMIX_ERROR;
             goto done;
         }
-        if (failed_proc.rank != victim) {
+        if (failed_proc.rank != departing) {
             fprintf(stderr, "Client ns %s rank %d: FAILED - wrong failed rank %d (expected %d)\n",
-                    myproc.nspace, myproc.rank, failed_proc.rank, victim);
+                    myproc.nspace, myproc.rank, failed_proc.rank, departing);
             rc = PMIX_ERROR;
             goto done;
         }
         fprintf(stderr, "%d PMIX_GROUP_INVITE_FAILED for non-responder: PASS\n", myproc.rank);
-    } else if (myproc.rank == victim) {
+    } else if (myproc.rank == departing) {
         /* the non-responder does not join; it only reports and waits at the
          * closing barrier */
         fprintf(stderr, "%d not joining the group (non-responder)\n", myproc.rank);
@@ -280,7 +280,7 @@ int main(int argc, char **argv)
 
     /* the leader and the accepting members must be notified of completion; the
      * non-responder must NOT be (it is not part of the group) */
-    if (myproc.rank != victim) {
+    if (myproc.rank != departing) {
         for (waited = 0; !complete_seen && waited < 100; waited++) {
             usleep(100000); /* 0.1s; up to 10s total */
         }
