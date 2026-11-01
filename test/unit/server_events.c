@@ -66,6 +66,16 @@
  *      system event code the host is not already forwarding and a host
  *      that answers PMIX_SUCCESS rather than completing atomically -
  *      which is what the stub below does.
+ *
+ *   the host is told who raised an event
+ *      A client's event that goes beyond this server reaches the host's
+ *      notify_event, and the host decides by the raiser's identity
+ *      whether to pass it on - a debugger release that would reach
+ *      another user's job, above all. The event arrived as the client
+ *      sent it, so a PMIX_USERID it wrote in claimed any user it liked,
+ *      and nothing said who it really was. The host is now given the
+ *      identity the connection established, once, whatever the event
+ *      carried.
  */
 
 #include "src/include/pmix_config.h"
@@ -163,6 +173,41 @@ static pmix_status_t stub_register_events(pmix_status_t *codes, size_t ncodes,
     host_regcb = cbfunc;
     host_regcbdata = cbdata;
     return PMIX_SUCCESS;
+}
+
+/* what the host's notify_event was last handed */
+static bool host_notified = false;
+static size_t host_nuid = 0;
+static uint32_t host_uid = 0;
+static size_t host_ngid = 0;
+static uint32_t host_gid = 0;
+
+static pmix_status_t stub_notify_event(pmix_status_t code, const pmix_proc_t *source,
+                                       pmix_data_range_t range, pmix_info_t info[], size_t ninfo,
+                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    size_t n;
+
+    (void) code;
+    (void) source;
+    (void) range;
+    (void) cbfunc;
+    (void) cbdata;
+
+    host_notified = true;
+    host_nuid = 0;
+    host_ngid = 0;
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_USERID)) {
+            ++host_nuid;
+            (void) PMIx_Value_get_number(&info[n].value, &host_uid, PMIX_UINT32);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GRPID)) {
+            ++host_ngid;
+            (void) PMIx_Value_get_number(&info[n].value, &host_gid, PMIX_UINT32);
+        }
+    }
+    /* nothing to forward it to - done here */
+    return PMIX_OPERATION_SUCCEEDED;
 }
 
 static void report(const char *what, bool ok)
@@ -597,6 +642,47 @@ static void test_debugger_release(void)
     PMIX_RELEASE(stranger);
 }
 
+/* A client's event that goes beyond this server reaches the host with
+ * the identity its connection established, not one it wrote in */
+static void test_event_identity(void)
+{
+    uid_t other = geteuid() + 2;
+    gid_t ogrp = getegid() + 2;
+    uint32_t forged = 0;
+    pmix_info_t info[2];
+    pmix_peer_t *raiser;
+    pmix_status_t rc;
+
+    if (PMIX_SUCCESS != reg_job("seut-raiser", other, ogrp) ||
+        NULL == (raiser = stranger_peer("seut-raiser", other, ogrp))) {
+        report("event identity: setup", 0);
+        return;
+    }
+    host_notified = false;
+    rc = do_notify_as(raiser, SEUT_CODE, PMIX_RANGE_SESSION, 0, NULL);
+    settle();
+    report("a client's session-wide event is taken",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    report("the host is told who raised it",
+           host_notified && 1 == host_nuid && (uint32_t) other == host_uid &&
+               1 == host_ngid && (uint32_t) ogrp == host_gid);
+
+    /* claiming to be root changes nothing the host is told */
+    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &forged, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &forged, PMIX_UINT32);
+    host_notified = false;
+    rc = do_notify_as(raiser, SEUT_CODE, PMIX_RANGE_SESSION, 2, info);
+    settle();
+    report("an event claiming another identity is taken",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    report("the host is told the raiser's own uid and gid, once each",
+           host_notified && 1 == host_nuid && (uint32_t) other == host_uid &&
+               1 == host_ngid && (uint32_t) ogrp == host_gid);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    PMIX_RELEASE(raiser);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -613,6 +699,7 @@ int main(int argc, char **argv)
     fprintf(stdout, "server_events: server-side event registration and notification\n");
 
     mymodule.register_events = stub_register_events;
+    mymodule.notify_event = stub_notify_event;
 
     rc = PMIx_server_init(&mymodule, NULL, 0);
     if (PMIX_SUCCESS != rc) {
@@ -773,6 +860,8 @@ int main(int argc, char **argv)
 
     drain_queued();
     test_debugger_release();
+    drain_queued();
+    test_event_identity();
     drain_queued();
     PMIX_INFO_DESTRUCT(&dir);
     release_standin();

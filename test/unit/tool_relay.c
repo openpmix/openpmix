@@ -7,24 +7,24 @@
  * $HEADER$
  *
  * Regression test for what a tool does with a spawn request sent to it by
- * ANOTHER tool - the one path through src/tool/pmix_tool_ops.c, and the
- * only case in which a tool's server switchyard is ever entered.
+ * ANOTHER tool - the only case in which a tool's server switchyard is ever
+ * entered.
  *
  * A tool has no clients of its own, but another tool can connect to it as
  * that tool's primary server (a debugger fork/exec'ing a launcher is the
- * motivating case). When the downstream tool sends a command the
- * receiving tool cannot service itself, server_switchyard() hands it to
- * pmix_tool_relay_op().
+ * motivating case). The downstream tool's spawn goes to the receiving
+ * tool's spawn handler like any peer's: to its host's spawn up-call if it
+ * has one, else - a launcher with pfexec open, attached to nothing - it
+ * fork/execs the job itself, for a peer of its own user. A launcher that
+ * is attached to a server and has no host to ask refuses: it once relayed
+ * the request upward under its own identity, with nobody deciding whether
+ * it should, and that is a host's policy to set.
  *
- * The rule is: relay it if we are attached to a server, service it
- * ourselves otherwise. PMIx_Spawn has always applied that rule to a
- * launcher's own requests - see the top of pmix_client_spawn.c, which
- * sets "forkexec" when it is not connected and we are a launcher. The
- * proxied path did not: pmix_tool_relay_op answered PMIX_ERR_UNREACH,
- * the switchyard returned it (it fell through to the logic tree only on
- * PMIX_ERR_NOT_SUPPORTED), and the downstream tool got an error instead
- * of a launched job - even though the receiving launcher had pfexec open
- * and was perfectly able to run it.
+ * The local launch has a history worth pinning down. The relay answered
+ * PMIX_ERR_UNREACH when there was no server to relay to, the switchyard
+ * returned it, and the downstream tool got an error instead of a launched
+ * job - even though the receiving launcher had pfexec open and was
+ * perfectly able to run it.
  *
  * So this test builds exactly that shape, with nothing attached upstream:
  *
@@ -34,10 +34,9 @@
  *   child  - a plain tool whose PMIX_SERVER_URI is the parent, which
  *            calls PMIx_Spawn.
  *
- * The child's spawn reaches the parent as PMIX_SPAWNNB_CMD, finds no
- * server to relay to, and must be fork/exec'd by the parent. A pass is
- * the child getting PMIX_SUCCESS and a namespace back; against the
- * unfixed library it gets PMIX_ERR_UNREACH.
+ * The child's spawn reaches the parent as PMIX_SPAWNNB_CMD and must be
+ * fork/exec'd by the parent. A pass is the child getting PMIX_SUCCESS and
+ * a namespace back.
  */
 
 #include "src/include/pmix_config.h"
@@ -152,7 +151,7 @@ static int run_downstream(int urifd)
 
     /* Two apps, deliberately.
      *
-     * The first exits at once, which is all the relay itself needs. The
+     * The first exits at once, which is all the launch itself needs. The
      * second outlives us, so that when the upstream launcher finalizes it
      * still has a child on pmix_pfexec_globals.children and therefore
      * actually runs the kill sequence - kill_proc, SIGCONT, SIGTERM,
@@ -227,7 +226,7 @@ int main(int argc, char **argv)
     int status = 0;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
-    fprintf(stdout, "\n=== tool-to-tool spawn relay unit test ===\n\n");
+    fprintf(stdout, "\n=== tool-to-tool spawn unit test ===\n\n");
 
     if (0 != pipe(uripipe)) {
         fprintf(stderr, "pipe() failed\n");
@@ -251,7 +250,7 @@ int main(int argc, char **argv)
 
     /* A LAUNCHER, so we start a listener and open pfexec, and
      * DO_NOT_CONNECT so we have no server of our own - which is what
-     * makes the downstream tool's spawn unrelayable. */
+     * lets us launch the downstream tool's spawn ourselves. */
     PMIX_INFO_LOAD(&tinfo[0], PMIX_LAUNCHER, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&tinfo[1], PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
     /* the downstream tool connects to us, which a launcher takes only
@@ -267,7 +266,7 @@ int main(int argc, char **argv)
     }
     report("upstream launcher initialized", 1, NULL);
     report("upstream launcher has no server of its own", !PMIx_tool_is_connected(),
-           "it is connected to something - the relay would be taken instead");
+           "it is connected to something - the spawn would be refused instead");
 
     /* hand the downstream tool our contact information - read straight
      * off the listener, as this test is white-box anyway */

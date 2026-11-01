@@ -597,26 +597,27 @@ pmix_status_t pmix_server_access_identify(const pmix_peer_t *peer, pmix_info_t *
     pmix_info_t *iptr;
     pmix_proc_t me;
     uint32_t uid, gid;
+    pid_t pid = 0;
+    bool have_pid;
     size_t n, m, nkeep = 0;
 
     if (NULL == peer || NULL == peer->info || NULL == peer->info->pname.nspace) {
         return PMIX_ERR_BAD_PARAM;
     }
     for (n = 0; n < *ninfo; n++) {
-        if (!PMIX_CHECK_KEY(&(*info)[n], PMIX_USERID) &&
-            !PMIX_CHECK_KEY(&(*info)[n], PMIX_GRPID) &&
+        if (!pmix_server_is_identity_key((*info)[n].key) &&
             !PMIX_CHECK_KEY(&(*info)[n], PMIX_REQUESTOR)) {
             ++nkeep;
         }
     }
-    PMIX_INFO_CREATE(iptr, nkeep + 3);
+    have_pid = pmix_server_verified_pid(peer, &pid);
+    PMIX_INFO_CREATE(iptr, nkeep + 4);
     if (NULL == iptr) {
         return PMIX_ERR_NOMEM;
     }
     m = 0;
     for (n = 0; n < *ninfo; n++) {
-        if (!PMIX_CHECK_KEY(&(*info)[n], PMIX_USERID) &&
-            !PMIX_CHECK_KEY(&(*info)[n], PMIX_GRPID) &&
+        if (!pmix_server_is_identity_key((*info)[n].key) &&
             !PMIX_CHECK_KEY(&(*info)[n], PMIX_REQUESTOR)) {
             PMIX_INFO_XFER(&iptr[m], &(*info)[n]);
             ++m;
@@ -626,13 +627,20 @@ pmix_status_t pmix_server_access_identify(const pmix_peer_t *peer, pmix_info_t *
     gid = (uint32_t) peer->info->gid;
     PMIX_LOAD_PROCID(&me, peer->info->pname.nspace, peer->info->pname.rank);
     PMIX_INFO_LOAD(&iptr[m], PMIX_USERID, &uid, PMIX_UINT32);
-    PMIX_INFO_LOAD(&iptr[m + 1], PMIX_GRPID, &gid, PMIX_UINT32);
-    PMIX_INFO_LOAD(&iptr[m + 2], PMIX_REQUESTOR, &me, PMIX_PROC);
+    ++m;
+    PMIX_INFO_LOAD(&iptr[m], PMIX_GRPID, &gid, PMIX_UINT32);
+    ++m;
+    if (have_pid) {
+        PMIX_INFO_LOAD(&iptr[m], PMIX_REQUESTOR_PID, &pid, PMIX_PID);
+        ++m;
+    }
+    PMIX_INFO_LOAD(&iptr[m], PMIX_REQUESTOR, &me, PMIX_PROC);
+    ++m;
     if (NULL != *info) {
         PMIX_INFO_FREE(*info, *ninfo);
     }
     *info = iptr;
-    *ninfo = nkeep + 3;
+    *ninfo = m;
     return PMIX_SUCCESS;
 }
 

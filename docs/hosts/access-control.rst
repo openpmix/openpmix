@@ -59,15 +59,14 @@ registration). It is not something the request itself can claim.
 
 A request can pass through more than one server: a host relays what one
 of its clients or tools asked for to another server - a workflow
-manager to the resource manager, a launcher to a scheduler. The identity
-is fixed where the request entered, and a relaying host passes it on
-with its ``PMIX_USERID`` and ``PMIX_GRPID`` marked ``PMIX_INFO_RELAYED``
-(:ref:`PMIx_Info_relayed(3) <man3-PMIx_Info_relayed>`). The next server
-keeps them, so the operation is judged by who asked for it rather than
-by the relaying process. Only a PMIx server's library sends the mark -
-any other process's library clears it - so a process that is not a
-server speaks only for itself. A server trusts the account a relaying
-server gives.
+manager to the resource manager, a launcher to a scheduler. The next
+server is told who is connected to it - the relaying host - and, beside
+that, what the relay claims about who first asked
+(``PMIX_ORIGIN_USERID`` and the other ``PMIX_ORIGIN_*`` attributes).
+Whether to believe that claim is the receiving host's decision, made
+from the relay's own verified identity; the library never substitutes
+the claim for it. See "Requests that pass through more than one
+server" in :doc:`/hosts/authorization`.
 
 Terms
 -----
@@ -331,7 +330,10 @@ Compatibility
   connection, so nothing changes for them.
 * **Hosts** can detect the library's support through capability flags
   in ``pmix_version.h``: ``PMIX_CAP_REQUESTER_ID`` (the requester's
-  identity on up-calls), ``PMIX_CAP_DMODEX_REQUEST2``
+  identity on up-calls), ``PMIX_CAP_ORIGIN_ID`` (an up-call's
+  identity is always the connected peer's, with ``PMIX_REQUESTOR_PID``,
+  ``PMIX_REQUESTED_GRPID`` and a relay's ``PMIX_ORIGIN_*`` claims
+  beside it), ``PMIX_CAP_DMODEX_REQUEST2``
   (``PMIx_server_dmodex_request2``) and ``PMIX_CAP_ACCESS_CHECK``
   (``pmix_server_access_check()``).
 

@@ -305,6 +305,32 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_VERSION_INFO                   "pmix.version"          // (char*) PMIx version of contactor
 #define PMIX_REQUESTOR_IS_TOOL              "pmix.req.tool"         // (bool) requesting process is a tool
 #define PMIX_REQUESTOR_IS_CLIENT            "pmix.req.client"       // (bool) requesting process is a client process
+#define PMIX_REQUESTOR_PID                  "pmix.req.pid"          // (pid_t) pid of the requesting process, as the kernel
+                                                                    //        reported it for the requester's connection. Set by
+                                                                    //        the server library on the requests it passes to its
+                                                                    //        host, and only when the kernel reported one - never
+                                                                    //        over TCP. Any value the requester supplied is dropped
+#define PMIX_REQUESTED_GRPID                "pmix.req.grp"          // (uint32_t) group the requester asks to have the
+                                                                    //        operation charged to. May also be given as a group
+                                                                    //        name (char*), which the server library resolves to
+                                                                    //        the number. A PMIX_GRPID a requester supplies is
+                                                                    //        passed to the host as this attribute. Not checked by
+                                                                    //        the library: the host decides whether the requester
+                                                                    //        may use the group
+#define PMIX_ORIGIN_USERID                  "pmix.orig.euid"        // (uint32_t) effective user id of the process that first
+                                                                    //        made a request, as claimed by a host relaying the
+                                                                    //        request for it. The server library passes it to its
+                                                                    //        host as given: only the host can decide whether the
+                                                                    //        relay - whose own identity is in PMIX_USERID - may
+                                                                    //        speak for another
+#define PMIX_ORIGIN_GRPID                   "pmix.orig.egid"        // (uint32_t) effective group id of the process that first
+                                                                    //        made a request, claimed as PMIX_ORIGIN_USERID is
+#define PMIX_ORIGIN_PID                     "pmix.orig.pid"         // (pid_t) pid of the process that first made a request,
+                                                                    //        claimed as PMIX_ORIGIN_USERID is
+#define PMIX_ORIGIN_IS_TOOL                 "pmix.orig.tool"        // (bool) the process that first made a request is a tool,
+                                                                    //        claimed as PMIX_ORIGIN_USERID is
+#define PMIX_ORIGIN_IS_CLIENT               "pmix.orig.client"      // (bool) the process that first made a request is a client
+                                                                    //        process, claimed as PMIX_ORIGIN_USERID is
 #define PMIX_PSET_NAME                      "pmix.pset.nm"          // (char*) The name of the newly defined process set.
 #define PMIX_PSET_NAMES                     "pmix.pset.nms"         // (pmix_data_array_t*) Returns an array of string names of the
                                                                     //          process sets in which the given process is a member.

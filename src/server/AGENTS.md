@@ -216,20 +216,22 @@ Host up-calls use a tri-state return convention throughout:
 invoke the completion yourself"; any error = "rejected." Handle all
 three on every up-call site.
 
-**A spawn is relayed when we are attached to a server and fork/exec'd
-when we are not.** `server_switchyard` hands a command from a downstream
-tool to `pmix_tool_relay_op` whenever *we* are a tool, and falls through
-to the logic tree on **both** `PMIX_ERR_NOT_SUPPORTED` ("not a command we
-relay") and `PMIX_ERR_UNREACH` ("no server to relay it to"). The second
-arm is why `pmix_server_spawn` will fork/exec when it has no
-`pmix_host_server.spawn` but `pfexec` is open — the same rule
-`PMIx_Spawn` applies to a launcher's own requests. Two details make the
-gate safe: `pmix_pfexec_base_open()` is called from exactly one place in
-the tree (`PMIx_tool_init`, for a launcher or scheduler), so
+**A tool relays no peer's request; a spawn is fork/exec'd only when we
+are attached to nothing.** A downstream tool's command goes through the
+logic tree like any peer's. `pmix_server_spawn` hands it to
+`pmix_host_server.spawn` when there is one. Without one it fork/execs
+when `pfexec` is open and we are not connected - the same rule
+`PMIx_Spawn` applies to a launcher's own requests - and refuses
+(`PMIX_ERR_NOT_SUPPORTED`) when we are connected: passing the request to
+our own server would make it there under our identity, with nobody
+deciding it should go, and that is a host's policy, not the library's.
+`pmix_parse_localquery` follows the same rule for a peer's query (one
+with `cd->requestor` set): the host's `query`, else
+`PMIX_ERR_NOT_SUPPORTED` - never `send_for_help`, which is only for the
+process's own queries. `pmix_pfexec_base_open()` is called from exactly
+one place in the tree (`PMIx_tool_init`, for a launcher or scheduler), so
 `pmix_pfexec_globals.initialized` really is the "can I fork/exec"
-question and a plain PMIx server is unaffected; and `pmix_tool_relay_op`
-returns both statuses **before** rewinding the buffer, so the
-fall-through keeps the unpack position the `cmd` read left. The pfexec
+question and a plain PMIx server is unaffected. The pfexec
 arm hands `pmix_pfexec_base_spawn_job` a *second* setup caddy that
 borrows the first one's apps and directives with `copied` left false —
 pfexec releases the caddy it is given, and the arrays belong to the one
@@ -3226,20 +3228,26 @@ misbehave by design).
 - **Every up-call made for a peer tells the host who is asking.** The
   host is the one that authorizes a request, so it is given the
   requester's `pmix_proc_t` as the up-call's process argument, and the
-  requester's `PMIX_USERID` and `PMIX_GRPID` in the up-call's info or
-  directives array - exactly one of each. `pmix_server_add_requester_id()`
-  (in `pmix_server_ops.c`) does the second half. The uid is the one in
-  `peer->info`; any the requester sent is dropped. The gid is the
-  requester's if it sent one (the first `uint32`) - many sites charge work
-  to a group, and a user may ask for a request to be charged to a group
-  other than the one it started with - and otherwise the one in
-  `peer->info`. The exception is a relay: a uid or gid marked
-  `PMIX_INFO_RELAYED` is the identity of the process that made the request,
-  fixed by the server where it entered and passed on by a host relaying it,
-  and is kept, still marked. Only a server's library sends the mark - the
-  bfrops info packer clears it in any other process - and that one place is
-  the whole of the enforcement, so do not add a second wire path for info
-  that skips `pmix_bfrops_base_pack_info()`. It replaces the array, so
+  requester's identity in the up-call's info or directives array.
+  `pmix_server_add_requester_id()` (in `pmix_server_ops.c`) does the
+  second half: exactly one `PMIX_USERID` and one `PMIX_GRPID`, always the
+  ones in `peer->info`, and `PMIX_REQUESTOR_PID` when
+  `pmix_server_verified_pid()` says the pid on record is the kernel's (the
+  local transport only - over TCP it is whatever the peer's library sent).
+  Whatever the requester said about itself is dropped, except the group it
+  asks to have the work charged to - many sites charge work to a group,
+  and a user may ask for a request to be charged to one other than the one
+  it started with. That goes up as `PMIX_REQUESTED_GRPID` (named as that,
+  or as `PMIX_GRPID`, as earlier releases did), for the host to judge.
+  **Relays are the host's business.** A relaying host names the process
+  that first asked with `PMIX_ORIGIN_*`; they pass through untouched and
+  never replace the relay's own identity - the receiving host decides
+  whether that relay may speak for another. There is no flag that makes
+  the library believe a claim, and must not be one: a check made on the
+  sending side enforces nothing, since a user can link their own build
+  or write the bytes themselves. A request carrying a requested group, or
+  any `PMIX_ORIGIN_*` key, more than once is refused, so the host and any
+  check cannot read different copies. It replaces the array, so
   call it on an array the caddy owns, and make sure the caddy's "owns it"
   flag is set afterwards even when the requester sent no array at all.
   An up-call with no array to carry them cannot tell the host, which is
@@ -3292,8 +3300,8 @@ misbehave by design).
     nothing but their arguments; keep them that way. The server's records
     belong to the progress thread and are never handed to a host.
     `PMIX_CAP_ACCESS_CHECK` advertises them. Never use an up-call's
-    `PMIX_GRPID` as an identity: it is the group the requester chose to
-    charge the work to, and is not verified.
+    `PMIX_REQUESTED_GRPID` as an identity: it is the group the requester
+    chose to charge the work to, and is not verified.
   - The host is never subject to it - only requests from clients and
     tools are. A request with no connected client or tool behind it
     (`pmix_server_access_find_peer()` finds none) is the host's. So is a
@@ -3350,8 +3358,8 @@ misbehave by design).
   **A user or group may be given by name, and is resolved to its number
   where it enters the library** - after that, only the number is used,
   internally and with the host. The entry points: requests from peers
-  (`pmix_server_add_requester_id`, which resolves a named `PMIX_GRPID` and
-  refuses one that does not resolve), and the host's own
+  (`pmix_server_add_requester_id`, which resolves a named requested group
+  and refuses one that does not resolve), and the host's own
   `PMIx_server_register_nspace` and `PMIx_server_setup_application`
   (`pmix_server_normalize_ids`, which works from a resolved copy of the
   host's array, following nested info arrays, and hands the host its own
@@ -3375,12 +3383,15 @@ misbehave by design).
   register_events, query (on every query's qualifiers), both resolve
   handlers (on the query they build), log (host path only), alloc,
   job_control, monitor, get/validate credential, iofreg, iofdereg, stdin,
-  session_control, resource_block and both fabric handlers.
+  session_control, resource_block, both fabric handlers, and every event a
+  client raises (`pmix_server_event_recvd_from_client`, before the
+  internal-notify marker is added - the host's `notify_event` judges a
+  debugger release beyond this server's jobs by it).
 
   The collectives are the other way round: fence, connect, disconnect and
   group are made for all of their participants, so their up-calls name
-  no requester, and a `PMIX_USERID` or `PMIX_GRPID` a participant sent is
-  removed. Fence, connect and disconnect use
+  no requester, and any identity a participant sent
+  (`pmix_server_is_identity_key()`) is removed. Fence, connect and disconnect use
   `pmix_server_strip_requester_id()`, which keeps the seeded slots
   closing the array (fence reads its status slot by position); group
   drops them in the loop that already compacts its array. Two up-calls have no process

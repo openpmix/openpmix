@@ -47,20 +47,14 @@ Because of this, almost everything in `pmix_tool.c` reaches into
 tmpdirs). `pmix_server_initialize()` is called **unconditionally** on
 every `PMIx_tool_init` (even for a plain tool), because a tool may later
 be handed a server module via `PMIx_tool_set_server_module`, and because
-it needs the server-side receive/relay machinery to talk to other tools.
+it needs the server-side receive machinery to talk to other tools.
 
 ## The files
 
 | File | Public API / role |
 |------|-------------------|
 | `pmix_tool.c` | `PMIx_tool_init`, `PMIx_tool_finalize`, and the multi-server management API: `PMIx_tool_connect_to_server`, `PMIx_tool_attach_to_server`, `PMIx_tool_disconnect`, `PMIx_tool_get_servers`, `PMIx_tool_set_server`, `PMIx_tool_is_connected`, `PMIx_tool_set_server_module`. Also the internal `pmix_tool_init_info` (synthesizes singleton job data) and all the PTL receive callbacks. |
-| `pmix_tool_ops.c` | The tool-to-tool **relay** engine: `pmix_tool_relay_op` (relay an unsupported command — currently only `PMIX_SPAWNNB_CMD` — from a tool that connected to *us* onward to a real server) and its response `tool_switchyard`. Plus the two server-switching thread-shift handlers `pmix_tool_retry_set` and `pmix_tool_retry_attach` (declared here, so the server switchyard can reach them; **defined in `pmix_tool.c`**). |
-| `pmix_tool_ops.h` | Declares the three `PMIX_EXPORT` symbols above. |
-
-> Naming caution: `pmix_tool_ops.h` declares `pmix_tool_retry_set` /
-> `pmix_tool_retry_attach`, but their bodies live in `pmix_tool.c`, while
-> `pmix_tool_relay_op` / `tool_switchyard` live in `pmix_tool_ops.c`. Do
-> not assume the header and the `_ops.c` file are a matched pair.
+| `pmix_tool_ops.h` | Declares the two server-switching thread-shift handlers `pmix_tool_retry_set` and `pmix_tool_retry_attach`, so the server side can reach them. Their bodies are in `pmix_tool.c`; there is no `pmix_tool_ops.c`. |
 
 ## `PMIx_tool_init`: the long pole
 
@@ -264,56 +258,33 @@ memory-ordering rules.
 > handshake to our own already-finalized peer, got `PMIX_ERR_UNREACH`,
 > and returned it — before doing any teardown at all.
 
-## The tool-to-tool relay (`pmix_tool_ops.c`)
+## A spawn or query from a downstream tool
 
 A tool has no clients of its own (it is a tool, not a server), but
 another tool can connect to it as that tool's primary server — e.g. a
 debugger fork/exec's a launcher and points the launcher at the debugger.
-When such a downstream tool sends a command the receiving tool cannot
-service itself (a `spawn`), the server switchyard calls
-`pmix_tool_relay_op`, which:
+The downstream tool's commands go through the server logic tree like any
+peer's. **The library relays none of them.** It once did: a tool attached
+to a server copied a downstream tool's spawn there, under its own
+identity, with nobody deciding whether it should. Whether to pass a
+request on is the host's policy, so now:
 
-1. rejects anything not in the small `relaycmds` allow-list (only
-   `PMIX_SPAWNNB_CMD` today) with `PMIX_ERR_NOT_SUPPORTED`;
-2. requires we are actually `connected` to an upstream server;
-3. copies the original request payload into a fresh buffer and
-   `PMIX_PTL_SEND_RECV`s it to *our* `myserver`, stashing the original
-   requester's peer + reply tag in a `pmix_shift_caddy_t`
-   (`s->ncodes` reuse = the tag);
-4. on the reply, `tool_switchyard` copies the answer back and
-   `PMIX_SERVER_QUEUE_REPLY`s it to the original downstream tool at its
-   saved tag.
+- a **spawn** goes to `pmix_host_server.spawn` if a host module was set
+  (`PMIx_tool_set_server_module`). Without one, a launcher attached to
+  nothing fork/execs it itself — the rule `PMIx_Spawn` applies to a
+  launcher's own requests, at the top of `pmix_client_spawn.c` — for a
+  requester of its own user; a tool attached to a server refuses it with
+  `PMIX_ERR_NOT_SUPPORTED`. See `pmix_server_spawn()`;
+- a **query** goes to the host's `query`, else is refused with
+  `PMIX_ERR_NOT_SUPPORTED`; only the process's own queries use
+  `send_for_help` (`pmix_parse_localquery`, `cd->requestor`).
 
-If you add a relayable command, extend `relaycmds` **and** make sure the
-response path round-trips correctly (the spawn case needs the separate
-cbfunc precisely so the response can be intercepted and forwarded).
-
-**The rule for a spawn is: relay it if we are attached to a server;
-otherwise fork/exec it ourselves.** `PMIx_Spawn` already implements
-exactly that for a spawn we issue on our own behalf — see the top of
-`pmix_client_spawn.c`, which sets `forkexec` when we are not connected
-and `PMIX_PEER_IS_LAUNCHER(mypeer)`, and otherwise sends the request to
-our server. That is why `server_switchyard` routing to
-`pmix_tool_relay_op` on `PMIX_PEER_IS_TOOL(mypeer)` is right even though
-`PMIX_PROC_LAUNCHER` includes the `PMIX_PROC_TOOL` bit: a launcher with a
-server attached *should* pass the request up.
-
-A spawn **proxied for a downstream tool** follows the same rule, and
-used not to: `pmix_tool_relay_op` answers `PMIX_ERR_UNREACH` when we have
-no server, and `server_switchyard` fell through to the logic tree only on
-`PMIX_ERR_NOT_SUPPORTED` — so the downstream tool got an error instead of
-a launched job. The switchyard now falls through on **both**, and
-`pmix_server_spawn()` fork/execs when it has no `pmix_host_server.spawn`
-but `pfexec` is open. Two things make that gate right:
 `pmix_pfexec_base_open()` is called from exactly one place in the tree
 (`PMIx_tool_init`, for a launcher or scheduler), so
 `pmix_pfexec_globals.initialized` *is* the "can I fork/exec" question and
-a plain PMIx server's behavior is unchanged; and `pmix_tool_relay_op`
-returns both of those statuses **before** it rewinds the buffer, so the
-fall-through still has the unpack position the `cmd` read left.
+a plain PMIx server's behavior is unchanged.
 
-Covered by [`test/unit/tool_relay`](../../test/unit/tool_relay.c), which
-is also the only automated coverage `pmix_tool_ops.c` has.
+Covered by [`test/unit/tool_relay`](../../test/unit/tool_relay.c).
 
 ## PTL receive callbacks (in `pmix_tool.c`)
 
@@ -383,7 +354,7 @@ progress thread has stopped.
   connect-optional / disconnected paths, `myserver` points at
   `pmix_globals.mypeer` and `pmix_globals.connected` is unset. Guard
   server round-trips on `pmix_atomic_check_bool(&pmix_globals.connected)`
-  (as `pmix_tool_relay_op` does), not on `myserver != NULL`.
+  (as `pmix_server_spawn` does), not on `myserver != NULL`.
 - **`pmix_server_globals` is live even in a plain tool.** Do not assume
   server structures are absent just because no server module was set.
 - **Tools are pinned to the `hash` gds** for server interaction; do not
@@ -484,9 +455,9 @@ named are the ones that fail against the unfixed library.
    and then hangs.
 5. **FIXED — leaks on the multi-server and rendezvous paths.**
    `pmix_tool_retry_attach` leaked the URI `connect_to_peer` hands back
-   whenever the new server was not requested as primary;
-   `tool_switchyard` leaked its shift caddy — and the peer reference it
-   holds — when the payload copy failed; the rendezvous caddy never set
+   whenever the new server was not requested as primary; the (since
+   removed) relay leaked its shift caddy — and the peer reference it
+   held — when the payload copy failed; the rendezvous caddy never set
    `infocopy`, so its three directives leaked on every launcher init; the
    `myserver->info` rank-info was allocated a second time on both
    self-assign paths (the same defect as item 2, one object over); and
@@ -598,23 +569,6 @@ named are the ones that fail against the unfixed library.
   Covered by [`test/unit/event_forward.c`](../../test/unit/event_forward.c),
   which drives a real client behind a real socket; both of its cases
   fail against the unfixed library.
-- **FIXED — the relay assumed both peers negotiated the same bfrops
-  module and buffer type.** `pmix_tool_relay_op` copies the downstream
-  tool's raw payload into a fresh buffer and sends it to `myserver`
-  unchanged, and `tool_switchyard` does the reverse, so a relay that
-  crossed an encoding boundary would be *misread* at the far end rather
-  than refused. A tool forces the same modules on itself and its server,
-  so this still holds by construction — the point is that the code now
-  says so instead of assuming it, and reports
-  `relay-encoding-mismatch` plus `PMIX_ERR_PACK_MISMATCH` if it ever
-  stops holding.
-
-  **The status matters as much as the check.** `server_switchyard`
-  falls through to its logic tree on `PMIX_ERR_NOT_SUPPORTED` and
-  `PMIX_ERR_UNREACH`, so returning either of those would have made an
-  encoding mismatch fork/exec the spawn locally instead of reporting
-  it. Any new refusal added here needs a status outside that pair.
-
 ## Testing
 
 `make check` coverage for this directory, all under
@@ -626,7 +580,7 @@ named are the ones that fail against the unfixed library.
 | `tool_api` | the API surface a single unconnected tool can reach: identity values, `set_server` wait/timeout semantics, the server list of an unconnected tool, malformed directives (in forked children), and a second full cycle that sets a server module again |
 | `tool_rndz` | the whole `PMIX_LAUNCHER_RNDZ_URI` flow against a real server, including the restore of the original primary |
 | `tool_evcache` | affected-process restriction on events delivered to a tool, end to end with two handlers. Its header records that it does **not** reach the caching branch, and why |
-| `tool_relay` | a downstream tool's spawn arriving at a launcher tool with no server of its own: the relay declines, the switchyard falls through, and the launcher fork/execs it. The only automated coverage of `pmix_tool_ops.c` |
+| `tool_relay` | a downstream tool's spawn arriving at a launcher tool with no server of its own: the launcher fork/execs it |
 | `tool_nspace` | a connecting tool leaves exactly one namespace object on the server's list |
 | `test/simple/tool_server_switch` (via `run_toolswitch.pl`) | the multi-server switch loop against two servers |
 
@@ -643,8 +597,8 @@ non-unwinding invariant above.
 ## Building
 
 `src/tool` compiles straight into `libpmix` via `Makefile.include` (which
-appends `pmix_tool.c`/`pmix_tool_ops.c` to `sources` and
-`pmix_tool_ops.h` to `headers` — there is no `Makefile.am` here).
+appends `pmix_tool.c` to `sources` and `pmix_tool_ops.h` to `headers` —
+there is no `Makefile.am` here).
 Nothing is conditionally compiled, so a change takes effect with a plain
 top-level `make` on an already-configured tree; you need
 `autogen.pl`/`configure` only if you add or remove a source file. This
