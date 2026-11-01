@@ -69,7 +69,7 @@ launch; the TSD finalize ordering; ``gds/shmem3`` on macOS; the
 client-side tombstone generation; and three ``src/hwloc`` findings.
 Each is listed in full under `Coverage gaps`_.
 
-**Connections with earlier releases — 5.**  Found in the review of
+**Connections with earlier releases — 4.**  Found in the review of
 connection behavior that preceded the removal of tools on other hosts.
 Each is listed in full under `Connections with earlier releases`_.
 
@@ -111,18 +111,6 @@ v6.1 or earlier has no ``v70`` and refuses the connection.
 To close: with no version to go by, use the newest wire format every
 supported server has, so that a server of a later release still accepts
 it.
-
-.. _todo-conn-docs-old-clients:
-
-The connections page misdescribes v2.1 and v3.2 clients
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-*Deferred work (docs).*  ``docs/how-things-work/connections.rst`` says a
-client of an earlier release, given the local socket's URI, initializes
-as a singleton and returns ``PMIX_ERR_UNREACH``.  A v2.1 or v3.2 client
-does not come up as a singleton: its ``PMIx_Init`` fails.
-
-To close: give each release's behavior separately.
 
 .. _todo-conn-ompi5-singletons:
 

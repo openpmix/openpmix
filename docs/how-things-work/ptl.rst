@@ -131,10 +131,15 @@ socket - the first two steps below are the ``tcp`` transport's, in
    this one when there is a TCP listener, else the local socket's - in
    ``gds`` under both ``PMIX_MYSERVER_URI`` and (for older tools)
    ``PMIX_SERVER_URI``. If
-   ``report_uri`` is set, also emit it to stdout (``-``), stderr (``+``),
-   an integer pipe fd, or a named file (created mode 0644). A report
-   file also carries the ``local:``, ``bfrops:``, ``psec:`` and
-   ``auth:`` lines described below, but no ``lock:`` line.
+   ``report_uri`` is set, also emit it: the local socket's URI to stdout
+   (``-``) or stderr (``+``); the TCP URI to stdout (``tcp-``) or stderr
+   (``tcp+``), which fail the init with no TCP listener; to an integer
+   pipe fd, the TCP URI's ``<varnames>;<uri>`` string and then the local
+   socket's, each with its NUL, in one write (the local socket's alone
+   with no TCP listener); or to a named file (created mode 0644). A
+   report file also carries the ``local:``, ``bfrops:``, ``psec:`` and
+   ``auth:`` lines described below, but no ``lock:`` line. See
+   :doc:`connections` for the table.
 #. **Drop rendezvous files.** Depending on the server's role and flags,
    write well-known contact files that a client or tool can later
    discover in the tmpdir tree:

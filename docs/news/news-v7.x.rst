@@ -7,6 +7,22 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - With legacy peers on, ``--report-uri -`` and ``+`` (the
+   ``ptl_base_report_uri`` parameter, ``PMIX_TCP_REPORT_URI``) now print
+   the local socket's URI, which a client or tool of this release uses,
+   instead of the TCP URI. The new values ``tcp-`` and ``tcp+`` print
+   the TCP URI, for a reader of an earlier release: a launch script that
+   sends ``-``'s output to an older tool must change to ``tcp-``. They
+   fail the init when the server takes no legacy peers. A pipe now gets
+   two strings, the TCP URI's and then the local socket's; a reader
+   linked to an earlier release takes the first, as before. A server of
+   this release refuses a client or tool of this release that connects
+   over TCP, with ``PMIX_ERR_LOCAL_URI_REQUIRED``. A client or tool now
+   connects to a server whose user the kernel cannot name - no table of
+   TCP connections, one that cannot be read, or a user from outside its
+   user namespace, as in a rootless container - when the server's
+   address came from a source that vouches for it, including a URI
+   passed directly and ``PMIX_LAUNCHER_RNDZ_URI``.
  - The pgpu/amd and pgpu/nvd components now activate on the nodes that
    have their vendor's GPUs. Both asked the topology for one exact PCI
    class/subclass, and one vendor's GPUs do not agree on a subclass: a
