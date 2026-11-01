@@ -547,12 +547,15 @@ static void test_rndz_file(void)
     }
 }
 
-/* A server the kernel cannot name is connected to only where its file
- * vouches for it: it says the server is of an earlier release, or that
- * it is of this one and running - the lock beside its file is held.
- * Believed only of a file the caller named, that only its owner can
- * write, and that is owned by a user whose server we may talk to */
-static bool vouched_by(const char *version, const char *tail, mode_t mode, bool named, bool held)
+/* A server the kernel cannot name is connected to only where its address
+ * came from a source that vouches for it. A file the caller named does,
+ * when it is the file at the name, only its owner can write it, and it is
+ * owned by our own user, root, a user we were told to expect or that
+ * ptl_base_server_access names, or an id from outside our user namespace.
+ * What release it names, and whether its server holds its lock, are no
+ * part of it. A file at a fixed name, or found by a search, never does */
+static bool vouched_by(const char *version, const char *tail, mode_t mode, bool named, bool held,
+                       uid_t owner)
 {
     char path[PMIX_PATH_MAX + 128];
     pmix_list_t connections;
@@ -572,6 +575,10 @@ static bool vouched_by(const char *version, const char *tail, mode_t mode, bool 
     fprintf(fp, "vns.0;tcp4://127.0.0.1:4260\n%s\n%s", version, tail);
     fclose(fp);
     chmod(path, mode);
+    if ((uid_t) -1 != owner && 0 != chown(path, owner, (gid_t) -1)) {
+        unlink(path);
+        return false;
+    }
     if (held) {
         fd = hold(path);
     }
@@ -597,32 +604,75 @@ static bool vouched_by(const char *version, const char *tail, mode_t mode, bool 
     return vouched;
 }
 
+/* a map file of the form /proc/self/uid_map has */
+static int write_map(const char *name, const char *body)
+{
+    char path[PMIX_PATH_MAX + 128];
+    FILE *fp;
+
+    snprintf(path, sizeof(path), "%s/%s", searchdir, name);
+    fp = fopen(path, "w");
+    if (NULL == fp) {
+        return -1;
+    }
+    fputs(body, fp);
+    fclose(fp);
+    return 0;
+}
+
 static void test_vouched(void)
 {
-    char cur[32], earlier[32];
+    char cur[32], earlier[32], path[PMIX_PATH_MAX + 128], map[PMIX_PATH_MAX + 128];
     const char *locked = PMIX_PTL_LOCK_TAG PMIX_PTL_LOCK_FLOCK "\n";
+    struct stat st;
+    FILE *fp;
 
     snprintf(cur, sizeof(cur), "v%d.0.0", PMIX_PTL_LOCAL_MAJOR);
     snprintf(earlier, sizeof(earlier), "v%d.2.0", PMIX_PTL_LOCAL_MAJOR - 3);
     report("vouched: a named file of an earlier release",
-           vouched_by(earlier, "", 0644, true, false), "not vouched for");
-    report("vouched: a named file of this release whose server is running",
-           vouched_by(cur, locked, 0644, true, true), "not vouched for");
-    report("vouched: not one whose server is not running - nothing holds its lock",
-           !vouched_by(cur, locked, 0644, true, false), "vouched for");
-    report("vouched: not one that says nothing of a lock",
-           !vouched_by(cur, "", 0644, true, true), "vouched for");
+           vouched_by(earlier, "", 0644, true, false, (uid_t) -1), "not vouched for");
+    report("vouched: a named file of this release whose server holds its lock",
+           vouched_by(cur, locked, 0644, true, true, (uid_t) -1), "not vouched for");
+    report("vouched: ...and one whose lock nothing holds - the lock is no part of it",
+           vouched_by(cur, locked, 0644, true, false, (uid_t) -1), "not vouched for");
+    report("vouched: ...and one that names no release at all",
+           vouched_by("vfoo", "", 0644, true, false, (uid_t) -1), "not vouched for");
     report("vouched: not a file its group may write",
-           !vouched_by(cur, locked, 0664, true, true), "vouched for");
+           !vouched_by(cur, locked, 0664, true, true, (uid_t) -1), "vouched for");
     report("vouched: not a file at a fixed name nobody named",
-           !vouched_by(earlier, "", 0644, false, false), "vouched for");
-    /* a version line that names no release says nothing of an earlier one */
-    report("vouched: not a version line with no digits",
-           !vouched_by("vfoo", "", 0644, true, false), "vouched for");
-    report("vouched: not a major of 0", !vouched_by("v0.0", "", 0644, true, false),
-           "vouched for");
-    report("vouched: not a major past any release",
-           !vouched_by("v257.0.0", "", 0644, true, false), "vouched for");
+           !vouched_by(earlier, "", 0644, false, false, (uid_t) -1), "vouched for");
+
+    /* who owns a named file. The owner is decided by a map file, so a
+     * fake one stands in for /proc/self/uid_map: OTHER is mapped into our
+     * namespace by one, and from outside it by the other */
+    snprintf(path, sizeof(path), "%s/owned.uri", searchdir);
+    fp = fopen(path, "w");
+    if (NULL == fp) {
+        report("vouched: owner fixture", 0, "could not write the file");
+        return;
+    }
+    fputs("vns.0;tcp4://127.0.0.1:4260\n", fp);
+    fclose(fp);
+    chmod(path, 0644);
+    if (0 != geteuid()) {
+        fprintf(stdout, "  SKIP: a named file of another user's - not running as root\n");
+    } else if (0 != chown(path, 4242, (gid_t) -1) || 0 != stat(path, &st) ||
+               0 != write_map("map.all", "0 0 4294967295\n") ||
+               0 != write_map("map.some", "0 0 1000\n")) {
+        report("vouched: owner fixture", 0, "could not set up the owner");
+    } else {
+        snprintf(map, sizeof(map), "%s/map.all", searchdir);
+        report("vouched: not a named file of another user we know",
+               !pmix_ptl_base_named_file_vouches(path, &st, map), "vouched for");
+        snprintf(map, sizeof(map), "%s/map.some", searchdir);
+        report("vouched: a named file whose owner is from outside our user namespace",
+               pmix_ptl_base_named_file_vouches(path, &st, map), "not vouched for");
+        snprintf(map, sizeof(map), "%s/map.all", searchdir);
+        unlink(map);
+        snprintf(map, sizeof(map), "%s/map.some", searchdir);
+        unlink(map);
+    }
+    unlink(path);
 }
 
 /* A server's file names the wire formats and security mechanisms it

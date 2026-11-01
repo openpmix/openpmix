@@ -384,7 +384,8 @@ sends its request:
   is shown the server's ids as its namespace maps them; it maps them back
   to its parent namespace's, through ``/proc/self/uid_map`` and
   ``gid_map``, before comparing. A server whose ids its namespace does
-  not map cannot be checked, and is refused.
+  not map - the kernel shows them as the overflow id, 65534 - cannot be
+  named; see "A server the kernel cannot name" below.
 * **Any other process** - a tool that found the server through a
   rendezvous file, say - talks to a server running as its own user or as
   root, or as a user or group the ``ptl_base_server_access`` parameter
@@ -400,61 +401,79 @@ connections - a user, but no group. A process applies the same rule by
 user alone: a server running as its own user, as root, or as a user
 ``ptl_base_server_access`` names. A server the table does not show is
 refused (``PMIX_ERR_INVALID_CRED``), and so is one the process could not
-ask about because it is out of descriptors or memory. When the table has
-no answer:
+ask about because it is out of descriptors or memory. A table that
+cannot be read - ``/proc`` mounted with ``hidepid``, or kept from a
+container - counts as no table. When the table has no answer:
 
 * a connection whose far end is no longer there - the server closed it -
   fails with ``PMIX_ERR_UNREACH``;
 * a far end that is not at an address of this host - one reached through
   another network namespace, say - is refused with ``PMIX_ERR_UNREACH``,
   saying the address is not this host's;
-* a server on this host when the kernel has no table to ask is refused
-  with ``PMIX_ERR_INVALID_CRED``, unless something vouches for it - see
-  "A server the kernel cannot name" below.
+* a server on this host when the kernel has no table to ask is
+  connected to only when its source vouches for it - see "A server the
+  kernel cannot name" below.
 
 A server the kernel cannot name
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A process connecting over TCP to a server on its own host asks the
-kernel's table of TCP connections who runs the server. Linux, macOS and
-FreeBSD 12 and later have such a table. Any other platform has none, and
-neither does a Linux host where neither the ``sock_diag`` netlink
-interface nor ``/proc/net/tcp`` can be read.
+The kernel's answer is used whenever it names a real user. It cannot in
+three cases:
 
-Where there is no table to ask, a process connects to the server only
-when one of these vouches for it:
+* **TCP with no table of connections.** Linux, macOS and FreeBSD 12 and
+  later have one. Any other platform has none.
+* **TCP with a table that cannot be read**, such as ``/proc`` mounted
+  with ``hidepid``, or restricted in a container, where neither the
+  ``sock_diag`` netlink interface nor ``/proc/net/tcp`` answers.
+* **An id from outside the process's user namespace.** The kernel shows
+  such an id as the overflow id (65534), on the local socket and in the
+  TCP table alike. A process finds it has no entry in
+  ``/proc/self/uid_map`` (or ``gid_map``). This happens in a rootless
+  container whose server runs on the host as root - Slurm's OCI
+  containers, for one. Linux only: elsewhere every id is named.
 
-* **The server named itself to the process.** A client always connects:
-  its server is the one named for it, by the environment it was started
-  with or by its caller. So does a tool or other process whose server
-  started it and named itself in its environment, whatever its release.
-* **The server's file, given by the caller.** A tool or a singleton is
-  given the file as ``file:<path>`` or ``PMIX_TOOL_ATTACHMENT_FILE``. A
-  file found by a search, or at a fixed name in a shared directory, is
-  not enough. The file vouches when:
+Such a server is connected to only when the address came from a source
+that **vouches** for it - one the user or the launcher answers for:
 
-  - its version line names a release - digits, after an optional ``v``,
-    with a major between 1 and 254; any other line vouches for nothing;
-  - the release is before v7.0, which has no way to be named; or it is
-    v7.0 or later and the server is still running: the file's
-    ``lock:flock`` line names a lock beside it that is held. A report
-    file has no lock line, so it vouches only for a server of an earlier
-    release; a server of this release is vouched for by its rendezvous
-    file;
+* **A client's server**, always: it is the one named for the client, by
+  the environment it was started with or by its caller.
+* **A server that named itself in the environment** of a tool or other
+  process it started.
+* **A URI passed directly** (``PMIX_SERVER_URI`` or ``PMIX_TCP_URI``),
+  including the launcher's ``PMIX_LAUNCHER_RNDZ_URI``.
+* **A file the caller named**, as ``file:<path>`` or
+  ``PMIX_TOOL_ATTACHMENT_FILE``, when:
+
   - it is the file at the name, not a link to one nor one of several
-    names for it, only its owner can write it, and its owner is a user
-    whose server the process may talk to by the rule above (the user it
-    was told to expect, if it was).
+    names for it, and a regular file only its owner can write;
+  - its owner is the user the process was told to expect, the process's
+    own user, root, a user ``ptl_base_server_access`` names, or an id
+    from outside the process's user namespace. A process inside a
+    namespace cannot make a file such an id owns, so the file was made
+    outside, and the user named it.
 
-  The file's version chooses the wire format whether or not it vouches.
-  A server of v7.0 or later lists a TCP URI only when it takes legacy
-  peers, which it takes on their claim where it cannot name them either.
+  What release the file names, and whether its server is still running,
+  play no part.
+
+**A server found by a search**, or at a fixed name in a shared
+directory, never vouches. Neither does anything else.
+
+**The user is responsible for passing the right address.** A source
+that vouches is taken at its word: PMIx cannot check, for such a
+server, who runs it.
 
 A server nothing vouches for is refused with ``PMIX_ERR_INVALID_CRED``,
-and the process says how to connect (help topic ``server-unnamed``). A
-server of v7.0 or later also listens on a local socket, where the kernel
-names it; a process whose file names that socket connects there, and
-none of this applies.
+and the process says to name the server's file or pass its URI (help
+topics ``server-unnamed`` and ``server-unmapped``). A server of v7.0 or
+later also listens on a local socket, where the kernel names its user
+outside a user namespace; a process whose file names that socket
+connects there.
+
+**A server that runs as** ``nobody``, **or as a service account,** on
+the host itself has a mapped id - it is named, not unnamed - so the
+normal rule applies: it is refused unless ``ptl_base_server_access``
+names that user. That holds too for a client of an earlier-release
+server run by a service account.
 
 A process of an earlier release does none of this; the server checks it
 as any other process on its host - see :doc:`authentication/native`

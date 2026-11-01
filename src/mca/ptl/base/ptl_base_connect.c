@@ -1119,6 +1119,10 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
             rc = PMIX_ERR_BAD_PARAM;
             goto cleanup;
         }
+        /* a URI passed directly - by the caller, or as the launcher's
+         * PMIX_LAUNCHER_RNDZ_URI - is the caller's word for the server,
+         * as a file it names is */
+        pmix_ptl_base.server_release_vouched = true;
         goto complete;
     }
 
