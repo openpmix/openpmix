@@ -1412,13 +1412,23 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_IOF_MERGE_STDERR_STDOUT        "pmix.iof.mrg"          // (bool) merge stdout and stderr streams from application procs
 #define PMIX_IOF_XML_OUTPUT                 "pmix.iof.xml"          // (bool) Format output in XML
 #define PMIX_IOF_OUTPUT_TO_FILE             "pmix.iof.file"         // (char*) direct application output into files of form
-                                                                    //         "<filename>.rank" with both stdout and stderr redirected into it
+                                                                    //         "<filename>.rank" with both stdout and stderr redirected into it.
+                                                                    //         The path is resolved, and the files created, with the
+                                                                    //         permissions of the job's owner, whoever the server runs as
 #define PMIX_IOF_FILE_PATTERN               "pmix.iof.fpt"          // (bool) Specified output file is to be treated as a pattern and not
                                                                     //        automatically annotated by nspace, rank, or other parameters
 #define PMIX_IOF_OUTPUT_TO_DIRECTORY        "pmix.iof.dir"          // (char*) direct application output into files of form
-                                                                    //         "<directory>/<jobid>/rank.<rank>/stdout[err]"
+                                                                    //         "<directory>/<jobid>/rank.<rank>/stdout[err]". The path is
+                                                                    //         resolved, and the files created, with the permissions of
+                                                                    //         the job's owner, whoever the server runs as
 #define PMIX_IOF_FILE_ONLY                  "pmix.iof.fonly"        // (bool) output only into designated files - do not also output
                                                                     //        a copy to stdout/stderr
+#define PMIX_IOF_FILE_WRITER                "pmix.iof.fwriter"      // (pmix_proc_t*) the process that writes the job's output files, with
+                                                                    //        its own permissions - the tool that spawned the job and is
+                                                                    //        sent its output. Servers then do not write the job's files
+                                                                    //        themselves; the one sending the job's output to that process
+                                                                    //        sends the file directives with it. Added by the PMIx library
+                                                                    //        and accepted by a server only from the process it names
 #define PMIX_IOF_COPY                       "pmix.iof.cpy"          // (bool) Requests that the host environment deliver a copy of the
                                                                     //        specified output stream(s) to the tool, letting the stream(s)
                                                                     //        continue to also be delivered to the default location. This

@@ -497,6 +497,13 @@ PMIX_EXPORT pmix_status_t pmix_server_user_register(uid_t uid, const gid_t *gids
 PMIX_EXPORT pmix_status_t pmix_server_gids_from_value(const pmix_value_t *val, gid_t **gids,
                                                       size_t *ngids);
 PMIX_EXPORT pmix_user_t *pmix_server_user_find(uid_t uid);
+
+/* The groups to do work as uid with - in a child that drops to it, see
+ * pmix_util_run_as(): those the host registered for the user, else gid
+ * alone. *gids is allocated; the caller frees it. Read from the record,
+ * so no lookup is made */
+PMIX_EXPORT pmix_status_t pmix_server_user_groups(uid_t uid, gid_t gid, gid_t **gids,
+                                                  size_t *ngids);
 PMIX_EXPORT void pmix_server_user_remove(uid_t uid);
 
 /* pmix_server_access_check for nptr: with the groups the host registered

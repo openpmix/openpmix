@@ -36,6 +36,7 @@
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
+#include "src/util/pmix_runas.h"
 
 int pmix_show_help_enabled = 0;
 static time_t show_help_time_last_displayed = 0;
@@ -813,6 +814,10 @@ pmix_status_t pmix_show_help(const char *filename,
     va_list arglist;
     char *output;
 
+    /* see pmix_util_runas_child */
+    if (pmix_util_runas_child) {
+        return PMIX_SUCCESS;
+    }
     va_start(arglist, want_error_header);
     output = pmix_show_help_vstring(filename, topic,
                                     want_error_header, arglist);

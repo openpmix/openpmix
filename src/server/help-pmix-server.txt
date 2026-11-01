@@ -89,3 +89,19 @@ The PMIx server was given a directive of the wrong data type:
 
 A key states only what the directive is, never what its value holds, so
 the server cannot use this one. It is unable to continue.
+#
+[iof-files-not-owner]
+The output files of a job were not written:
+
+  Job:            %s
+  Owner's uid:    %lu
+  Server's uid:   %lu
+
+A job's output files are created as its owner, and this server runs as
+another user that cannot act as the owner. The job's output is not
+written to files here.
+
+A launcher can write them itself, with its own permissions: one whose
+PMIx library supports PMIX_IOF_FILE_WRITER does so for the jobs it
+starts. Updating the launcher, or running it against a server that runs
+as root or as the job's owner, writes the files.

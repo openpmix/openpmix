@@ -65,6 +65,8 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_os_path.h"
+#include "src/util/pmix_runas.h"
+#include "src/server/pmix_server_ops.h"
 
 const char* PMIX_PROXY_VERSION = PMIX_PROXY_VERSION_STRING;
 const char* PMIX_PROXY_BUGREPORT = PMIX_PROXY_BUGREPORT_STRING;
@@ -177,6 +179,9 @@ static void nscon(pmix_namespace_t *p)
     PMIX_CONSTRUCT(&p->departed, pmix_list_t);
     pmix_iof_init_flags(&p->iof_flags);
     PMIX_CONSTRUCT(&p->sinks, pmix_list_t);
+    memset(&p->fwd_files, 0, sizeof(p->fwd_files));
+    p->writer_told = false;
+    p->files_refused = false;
     /* no owner until the host names one or registers a client; until
      * then the server's own identity stands in (see pmix_access_t) */
     p->access.registered = false;
@@ -214,6 +219,8 @@ static void nsdes(pmix_namespace_t *p)
     if (NULL != p->iof_flags.directory) {
         free(p->iof_flags.directory);
     }
+    free(p->fwd_files.file);
+    free(p->fwd_files.directory);
     PMIX_LIST_DESTRUCT(&p->sinks);
     if (NULL != p->access.uids) {
         free(p->access.uids);
@@ -1032,81 +1039,47 @@ static void epilog_drain(pmix_epilog_t *epi)
  * never on a hot path, so a fork per privileged cleanup is affordable and
  * the window simply does not exist.
  */
+typedef struct {
+    pmix_epilog_t *epi;
+    uid_t uid;
+    gid_t gid;
+} epilog_walk_t;
+
+static int epilog_walk_fn(void *arg)
+{
+    epilog_walk_t *w = (epilog_walk_t *) arg;
+
+    epilog_walk(w->epi, w->uid, w->gid);
+    return 0;
+}
+
 /* One identity's walk: in place when we already are that identity, else
- * in a child that drops to it */
+ * in a child that drops to it - with the groups the host registered for
+ * that user, else its one group. Taking the user's own groups, rather
+ * than none, lets the walk remove what the user reaches through a
+ * supplementary group, and no more: the groups are read from the server's
+ * record here, before the fork, as NSS is not safe in the child */
 static void epilog_run_as(pmix_epilog_t *epi, uid_t uid, gid_t gid)
 {
-#if defined(HAVE_FORK) && defined(HAVE_WAITPID)
-    pid_t pid, r;
-    int status;
-#endif
+    epilog_walk_t w;
+    gid_t *gids = NULL;
+    size_t ngids = 0;
 
     if ((uid_t) -1 == uid || (gid_t) -1 == gid) {
         /* nobody vouched for these entries - see above */
         return;
     }
+    w.epi = epi;
+    w.uid = uid;
+    w.gid = gid;
     if (geteuid() == uid && getegid() == gid) {
         epilog_walk(epi, uid, gid);
         return;
     }
-
-#if defined(HAVE_FORK) && defined(HAVE_WAITPID)
-    pid = fork();
-    if (0 > pid) {
-        /* we cannot get to the requester's identity, and doing the
-         * removals as ourselves is the behavior this function exists to
-         * stop */
-        pmix_output_verbose(10, pmix_globals.debug_output,
-                            "epilog: cannot fork to drop privileges: %s", strerror(errno));
+    if (PMIX_SUCCESS != pmix_server_user_groups(uid, gid, &gids, &ngids)) {
         return;
     }
-    if (0 == pid) {
-        /* Child. Nothing here may return: every path out is _exit(), not
-         * exit(), because this is a forked child of a threaded process
-         * and running the parent's atexit handlers would tear down a
-         * library that is still very much alive in the parent. */
-#ifdef HAVE_SETGROUPS
-        /* setuid() does not touch the supplementary groups, so without
-         * this the child keeps *our* group memberships and can reach a
-         * file the requester cannot. Dropping them all rather than
-         * adopting the requester's own set errs toward removing too
-         * little, which is the safe direction for a deletion - and an
-         * entry records only a uid and a gid, so the requester's set is
-         * not ours to look up here anyway (getpwuid() in a forked child
-         * would reach NSS). */
-        if (0 != setgroups(0, NULL)) {
-            _exit(1);
-        }
-#endif
-        /* group first: once the uid is gone so is the privilege needed
-         * to change the gid */
-        if (0 != setgid(gid)) {
-            _exit(1);
-        }
-        if (0 != setuid(uid)) {
-            _exit(1);
-        }
-        /* a drop that silently did not take would have us doing the
-         * removals with our original identity, in a child, which is the
-         * whole thing we are avoiding */
-        if (geteuid() != uid || getuid() != uid) {
-            _exit(1);
-        }
-        epilog_walk(epi, uid, gid);
-        _exit(0);
-    }
-
-    /* Parent. Wait for our own child by pid, and only our own.
-     * PMIx installs no SIGCHLD handler - pfexec polls per-pid, see
-     * child_poll() in src/common/pmix_pfexec.c - but the host process we
-     * are embedded in may sweep with waitpid(-1) or set SIGCHLD to
-     * SIG_IGN, in which case our child is reaped out from under us and
-     * ECHILD means "already gone", not "failed". */
-    status = 0;
-    do {
-        r = waitpid(pid, &status, 0);
-    } while (0 > r && EINTR == errno);
-    if (pid == r && WIFEXITED(status) && 0 != WEXITSTATUS(status)) {
+    if (0 != pmix_util_run_as(uid, gid, gids, ngids, false, epilog_walk_fn, &w)) {
         /* the child could not become the requester and so removed
          * nothing. That is the correct outcome, but it is also the one
          * that looks exactly like a cleanup that quietly did not happen,
@@ -1115,9 +1088,7 @@ static void epilog_run_as(pmix_epilog_t *epi, uid_t uid, gid_t gid)
                             "epilog: could not assume uid %lu gid %lu - nothing removed",
                             (unsigned long) uid, (unsigned long) gid);
     }
-#else
-    PMIX_HIDE_UNUSED_PARAMS(epi);
-#endif
+    free(gids);
 }
 
 /* Has an entry ahead of `stop` on the epilog's lists - files first, then

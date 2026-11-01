@@ -351,6 +351,11 @@ PMIX_EXPORT pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels,
                                                pmix_iof_req_t *req);
 PMIX_EXPORT void pmix_iof_init_flags(pmix_iof_flags_t *flags);
 PMIX_EXPORT void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags);
+/* A tool's side of PMIX_IOF_FILE_WRITER: record the file directives its
+ * server sent with a job's output, and give them to the job's flags */
+PMIX_EXPORT void pmix_iof_record_forwarded_files(const pmix_proc_t *source,
+                                                 const pmix_info_t *info, size_t ninfo);
+PMIX_EXPORT void pmix_iof_apply_forwarded_files(pmix_namespace_t *nptr);
 
 /* Holding output until a spawn reply says how to format it.
  *

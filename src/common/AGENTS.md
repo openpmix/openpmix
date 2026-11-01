@@ -408,19 +408,51 @@ Two rules to keep when touching it:
   [`test/unit/iof_pattern.c`](../../test/unit/iof_pattern.c) on both
   sides of each power of ten.
 
-**Who owns and reads an output file is settled through its descriptor**
-(`output_perms()`, `output_fd()`; see `docs/hosts/access-control.rst`).
-`output_perms()` decides once per job from `nptr->access`: the owner, the
-group to give read access to (the first one the access list names, else
-the owner's), and the mode for the directories we create - `0700`/`0750`
-when we run as the owner, `0755` otherwise, since the owner must be able
-to reach files whose own modes decide who reads them. `output_fd()` then
-vets and settles each file: it must be a regular file with one link
-(the name is ours, but may sit in a directory the owner controls), it is
-opened without `O_TRUNC` and emptied only after that check, and it is
-given to the owner (`0600`, `0640` with a listed group), or failing that
-to the group (`0640`), or left `0644` so the owner can still read it. A
-new place that opens an output file goes through both.
+**An output file is made by the job's owner, never for it.**
+`output_perms()` decides once per job from `nptr->access`: the owner and
+its gid, the group to give read access to (the first one the access list
+names, else the owner's), and the directory mode (`0700`, `0750` with a
+listed group). `output_as_owner()` then runs `open_output()` through
+`pmix_util_run_as()` (`src/util/pmix_runas.c`): in place when we are the
+owner, else in a child that has dropped to the owner with the groups from
+the host's record (`pmix_server_user_groups()`), which passes the
+descriptor back with `SCM_RIGHTS`. `open_output()` creates the
+directories, opens the file without `O_TRUNC`, checks it is a regular
+file with one link **owned by the owner**, and only then empties it and
+sets its group and mode. The parent checks the descriptor again and
+changes nothing on it. So under a root server the kernel judges every
+path the user named as that user; there is no fallback that loosens a
+mode when the file cannot be given away. `open_output()` runs in a forked
+child of a threaded process: it logs nothing (`pmix_output` and
+`pmix_show_help` are no-ops there - `pmix_util_runas_child`), and any new
+step in it must be async-signal-safe in spirit. A new place that opens an
+output file goes through `output_as_owner()`.
+
+**Who writes a job's files: `PMIX_IOF_FILE_WRITER`.** A tool that spawns a
+job adds itself as the writer (`PMIx_Spawn_nb`, tool only, a caller's
+own value dropped) - for a job with no files too, so the jobs it spawns
+can inherit it. `screen_file_writer()` in
+`src/server/pmix_server_ops.c` keeps it only from the tool it names, when
+the job's output is sent to that tool, and adds the parent job's writer to
+a child job with files of its own that inherits its parent's forwarding.
+The host carries it into every daemon's registration, where
+`pmix_iof_check_flags()` sets `writer`/`writer_given`. Then:
+
+- `files_are_ours()` in `write_output()` is false on every server that is
+  not the writer, so none opens a sink; only the copy to our own stdout
+  the job would have had beside its files is written. The same helper
+  refuses (once per job, `files_refused`, `iof-files-not-owner`) when a
+  non-root server is not the owner - the case the writer exists for.
+- `pmix_iof_process_iof()` appends the job's file directives to the first
+  chunk it sends to the writer (`add_writer_directives()`, then
+  `writer_told`), after checking the writer's uid is the job's owner.
+- The tool records them (`pmix_iof_record_forwarded_files()`, from
+  `pmix_tool.c`) in `nptr->fwd_files`, and they reach `nptr->iof_flags`
+  through `pmix_iof_apply_forwarded_files()` - at once when the job's
+  flags are known, on the spawn reply (which used to clear the files),
+  or in `write_output()` from the stand-in flags for a job the tool did
+  not spawn. Keep those three in step: the spawn reply's `memcpy` would
+  otherwise drop files the tool was already sent.
 
 **Sinks are closed at finalize before the residual list goes.** A sink
 flushes its partial line from `pmix_server_globals.iof_residuals` into its

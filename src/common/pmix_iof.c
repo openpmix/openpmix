@@ -38,6 +38,8 @@
 #include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/threads/pmix_threads.h"
+#include "src/util/pmix_runas.h"
+#include "src/util/pmix_show_help.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_error.h"
@@ -1100,14 +1102,15 @@ static ssize_t pattern_literal_head(const char *pattern)
     return head;
 }
 
-/* Who is to read a job's output files, and what can be arranged - see
- * docs/hosts/access-control.rst. By default only the job's owner reads them. A
- * group the owner allowed in the job's access list may too. */
+/* Who is to read a job's output files - see docs/hosts/access-control.rst.
+ * By default only the job's owner reads them. A group the owner allowed in
+ * the job's access list may too. */
 typedef struct {
     uid_t owner;
-    gid_t group;    /* a group the access list names, else the owner's */
-    bool listed;    /* the group is one the access list names */
-    mode_t dmode;   /* for the directories we create */
+    gid_t owner_gid; /* the group the owner's work is done as */
+    gid_t group;     /* a group the access list names, else the owner's */
+    bool listed;     /* the group is one the access list names */
+    mode_t dmode;    /* for the directories the owner creates */
 } pmix_iof_perms_t;
 
 static void output_perms(const pmix_namespace_t *nptr, pmix_iof_perms_t *op)
@@ -1115,71 +1118,121 @@ static void output_perms(const pmix_namespace_t *nptr, pmix_iof_perms_t *op)
     bool known = (PMIX_OWNER_UNKNOWN != nptr->access.source);
 
     op->owner = known ? nptr->access.uid : geteuid();
+    op->owner_gid = known ? nptr->access.gid : getegid();
     op->listed = (0 < nptr->access.ngids);
     if (op->listed) {
         op->group = (gid_t) nptr->access.gids[0];
     } else {
-        op->group = known ? nptr->access.gid : getegid();
+        op->group = op->owner_gid;
     }
-    /* Running as the owner, the directories can be the owner's alone.
-     * Otherwise the owner has to be able to reach the files below them -
-     * whose own modes decide who reads them - so they can be entered. */
-    if (op->owner == geteuid()) {
-        op->dmode = op->listed ? (S_IRWXU | S_IRGRP | S_IXGRP) : S_IRWXU;
-    } else {
-        op->dmode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
-    }
+    /* the owner creates the directories, so they can be the owner's alone
+     * - entered by a group the owner allowed, too */
+    op->dmode = op->listed ? (S_IRWXU | S_IRGRP | S_IXGRP) : S_IRWXU;
 }
 
-/* Settle who owns and reads an output file we just opened, through its
- * descriptor. Owner-only when the file belongs to the job's owner - we
- * run as the owner, or can give it to them - and readable by a group the
- * access list names. When the file cannot be given to the owner, it is
- * made readable by the group (a listed one, else the owner's own) if we
- * can set that, and by everyone otherwise, so the owner can still read
- * their output.
- *
- * Only a regular file with a single name is written: the name is one we
- * composed, but it may sit in a directory the job's owner controls, and
- * a file reached through a second name is some other file. The file is
- * opened without O_TRUNC and emptied here, once it has passed. Returns the
- * descriptor, or -1 having closed it. */
-static int output_fd(int fd, const pmix_iof_perms_t *op)
+/* Where an output file goes. Everything about it is done as the job's
+ * owner - see open_output() */
+typedef struct {
+    const pmix_iof_perms_t *op;
+    const char *prefix; /* the caller's own directory, created as one path; NULL for none */
+    const char *root;   /* what the rest is opened under */
+    const char *subdir; /* levels PMIx composed under root, made one at a time; NULL for none */
+    const char *file;   /* the file, relative to root */
+} pmix_iof_output_t;
+
+/* Is fd a file we may write output to: a regular file with one name,
+ * owned by the job's owner? The name is one we composed, but it may sit
+ * in a directory the owner controls, so a file reached through a second
+ * name is some other file - and one the owner does not own is not theirs
+ * to have written over, even where they could write it themselves */
+static bool output_file_ok(int fd, uid_t owner)
 {
     struct stat buf;
-    mode_t mode = S_IRUSR | S_IWUSR;
 
-    if (0 > fd) {
-        return fd;
-    }
-    if (0 != fstat(fd, &buf) || !S_ISREG(buf.st_mode) || 1 != buf.st_nlink) {
-        pmix_output_verbose(2, pmix_server_globals.iof_output,
-                            "IOF: output file is not a regular file with one name - not written");
-        close(fd);
-        return -1;
-    }
-    /* opened without O_TRUNC so that nothing is emptied before this check */
-    if (0 != ftruncate(fd, 0)) {
-        close(fd);
-        return -1;
-    }
-    if (op->owner == geteuid()) {
-        if (op->listed && 0 == fchown(fd, (uid_t) -1, op->group)) {
-            mode |= S_IRGRP;
+    return (0 == fstat(fd, &buf) && S_ISREG(buf.st_mode) && 1 == buf.st_nlink &&
+            owner == buf.st_uid);
+}
+
+/* Create the directories and open the file - run AS THE JOB'S OWNER,
+ * in place when we are the owner and in a child that has dropped to the
+ * owner otherwise (pmix_util_run_as). So the kernel applies the owner's
+ * own permissions to every path the owner named: a privileged server
+ * neither creates nor writes anything there the owner could not, nor
+ * changes the owner or mode of anything.
+ *
+ * The file is opened without O_TRUNC, checked, and only then emptied and
+ * given its group and mode, through its descriptor. Nothing may be logged
+ * here: in a child, the logging locks are not safe to take. Returns the
+ * descriptor, or -1. */
+static int open_output(void *arg)
+{
+    pmix_iof_output_t *out = (pmix_iof_output_t *) arg;
+    const pmix_iof_perms_t *op = out->op;
+    mode_t mode = S_IRUSR | S_IWUSR;
+    int rc, fd;
+
+    if (NULL != out->prefix) {
+        rc = pmix_os_dirpath_create(out->prefix, op->dmode);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
+            return -1;
         }
-    } else if (0 == fchown(fd, op->owner, op->group)) {
+    }
+    if (NULL != out->subdir) {
+        rc = pmix_os_dirpath_create_under(out->root, out->subdir, op->dmode);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
+            return -1;
+        }
+        /* a group the owner allowed has to be able to reach the file */
         if (op->listed) {
-            mode |= S_IRGRP;
+            (void) pmix_os_dirpath_chgrp_under(out->root, out->subdir, op->group);
         }
-    } else if (0 == fchown(fd, (uid_t) -1, op->group)) {
-        mode |= S_IRGRP;
-    } else {
-        mode |= S_IRGRP | S_IROTH;
     }
-    if (0 != fchmod(fd, mode)) {
+    fd = pmix_os_dirpath_open_file_under(out->root, out->file, O_CREAT | O_RDWR,
+                                         S_IRUSR | S_IWUSR);
+    if (0 > fd) {
+        return -1;
+    }
+    if (!output_file_ok(fd, op->owner) || 0 != ftruncate(fd, 0)) {
+        close(fd);
+        return -1;
+    }
+    if (op->listed && 0 == fchown(fd, (uid_t) -1, op->group)) {
+        mode |= S_IRGRP;
+    }
+    (void) fchmod(fd, mode);
+    return fd;
+}
+
+/* Open an output file as the job's owner, with the groups the host gave
+ * for it. The descriptor that comes back is checked again here before it
+ * is used, and nothing on it is changed. Returns it, or -1 */
+static int output_as_owner(pmix_iof_output_t *out)
+{
+    const pmix_iof_perms_t *op = out->op;
+    gid_t *gids = NULL;
+    size_t ngids = 0;
+    int fd;
+
+    if (geteuid() != op->owner || getegid() != op->owner_gid) {
+        if (PMIX_SUCCESS != pmix_server_user_groups(op->owner, op->owner_gid, &gids, &ngids)) {
+            return -1;
+        }
+    }
+    fd = pmix_util_run_as(op->owner, op->owner_gid, gids, ngids, true, open_output, out);
+    free(gids);
+    if (0 > fd) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
-                            "IOF: setting the mode of an output file failed: %s",
-                            strerror(errno));
+                            "IOF: output file %s/%s could not be opened as uid %lu - "
+                            "not written", out->root, out->file, (unsigned long) op->owner);
+        return -1;
+    }
+    if (!output_file_ok(fd, op->owner)) {
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "IOF: output file %s/%s is not a regular file of uid %lu with "
+                            "one name - not written", out->root, out->file,
+                            (unsigned long) op->owner);
+        close(fd);
+        return -1;
     }
     return fd;
 }
@@ -1192,15 +1245,16 @@ static int output_fd(int fd, const pmix_iof_perms_t *op)
  * yet expects it to be made.  Only what PMIx composes BELOW that prefix
  * is walked a component at a time - see pattern_literal_head() for where
  * the prefix ends, and pmix_os_dirpath_create_under() for why the rest
- * cannot be handed to the kernel as one string.
- *
- * `name` is modified in place while the directory part is taken off it,
- * and is put back before returning. */
-static int open_composed_output(const char *pattern, char *name, const pmix_iof_perms_t *op)
+ * cannot be handed to the kernel as one string. All of it is done as the
+ * job's owner. */
+static int open_composed_output(const char *pattern, const char *name, const pmix_iof_perms_t *op)
 {
     ssize_t head = pattern_literal_head(pattern);
-    char *root, *tail, *sep;
-    int rc, fd;
+    pmix_iof_output_t out;
+    char *root, *subdir = NULL;
+    const char *sep;
+    const char *tail;
+    int fd;
 
     if (0 > head) {
         root = strdup(".");
@@ -1220,41 +1274,48 @@ static int open_composed_output(const char *pattern, char *name, const pmix_iof_
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return -1;
     }
-
-    /* The caller's own prefix has to exist before anything can be walked
-     * under it, and nothing else will create it.  Leaving this out made
-     * every pattern naming a directory that did not already exist fail to
-     * open, with mkdir reporting ENOENT for the prefix itself. */
-    if (0 < head) {
-        rc = pmix_os_dirpath_create(root, op->dmode);
-        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
-            PMIX_ERROR_LOG(rc);
-            free(root);
-            return -1;
-        }
-    }
-
-    /* any directory levels inside the composed part have to exist first */
+    /* any directory levels inside the composed part */
     sep = strrchr(tail, '/');
     if (NULL != sep) {
-        *sep = '\0';
-        rc = pmix_os_dirpath_create_under(root, tail, op->dmode);
-        /* a group the owner allowed has to be able to reach the file */
-        if ((PMIX_SUCCESS == rc || PMIX_ERR_EXISTS == rc) && op->listed &&
-            op->owner == geteuid()) {
-            (void) pmix_os_dirpath_chgrp_under(root, tail, op->group);
-        }
-        *sep = '/';
-        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
-            PMIX_ERROR_LOG(rc);
+        subdir = strndup(tail, (size_t) (sep - tail));
+        if (NULL == subdir) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             free(root);
             return -1;
         }
     }
-
-    fd = pmix_os_dirpath_open_file_under(root, tail, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    out.op = op;
+    /* The caller's own prefix has to exist before anything can be walked
+     * under it, and nothing else will create it */
+    out.prefix = (0 < head) ? root : NULL;
+    out.root = root;
+    out.subdir = subdir;
+    out.file = tail;
+    fd = output_as_owner(&out);
+    free(subdir);
     free(root);
-    return output_fd(fd, op);
+    return fd;
+}
+
+/* The file a job's output goes to under PMIX_IOF_OUTPUT_TO_DIRECTORY -
+ * <directory>/<nspace>/rank.N/<file> - opened as the job's owner */
+static int open_directory_output(const char *directory, const char *outdir, const char *outfile,
+                                 const pmix_iof_perms_t *op)
+{
+    pmix_iof_output_t out;
+
+    out.op = op;
+    /* The caller's own directory is created as one path - it is theirs to
+     * name, and naming one that does not exist yet is the ordinary case -
+     * and only the namespace and rank levels below it are walked a
+     * component at a time. An existing directory is fine: the job may
+     * legitimately be writing into one that is already there (a rerun,
+     * or another rank that got here first) */
+    out.prefix = directory;
+    out.root = directory;
+    out.subdir = outdir;
+    out.file = outfile;
+    return output_as_owner(&out);
 }
 
 /* How wide the zero-padded rank field has to be for a job of this size.
@@ -1314,30 +1375,6 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             return NULL;
         }
-        /* ensure the directory exists. An existing directory is fine:
-         * the job may legitimately be writing into one that is already
-         * there (a rerun, or another rank that got here first).
-         *
-         * The caller's own directory is created as one path - it is theirs
-         * to name, and naming one that does not exist yet is the ordinary
-         * case - and only the namespace and rank levels below it are walked
-         * a component at a time. */
-        rc = pmix_os_dirpath_create(nptr->iof_flags.directory, op.dmode);
-        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
-            PMIX_ERROR_LOG(rc);
-            free(outdir);
-            return NULL;
-        }
-        rc = pmix_os_dirpath_create_under(nptr->iof_flags.directory, outdir, op.dmode);
-        if (PMIX_SUCCESS != rc && PMIX_ERR_EXISTS != rc) {
-            PMIX_ERROR_LOG(rc);
-            free(outdir);
-            return NULL;
-        }
-        /* a group the owner allowed has to be able to reach the files */
-        if (op.listed && op.owner == geteuid()) {
-            (void) pmix_os_dirpath_chgrp_under(nptr->iof_flags.directory, outdir, op.group);
-        }
         if (PMIX_FWD_STDOUT_CHANNEL & stream ||
             nptr->iof_flags.merge) {
             /* setup the stdout sink */
@@ -1347,10 +1384,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 free(outdir);
                 return NULL;
             }
-            fdout = output_fd(pmix_os_dirpath_open_file_under(nptr->iof_flags.directory, outfile,
-                                                              O_CREAT | O_RDWR,
-                                                              S_IRUSR | S_IWUSR),
-                              &op);
+            fdout = open_directory_output(nptr->iof_flags.directory, outdir, outfile, &op);
             free(outfile);
             if (0 > fdout) {
                 /* couldn't be opened */
@@ -1384,10 +1418,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 free(outdir);
                 return NULL;
             }
-            fdout = output_fd(pmix_os_dirpath_open_file_under(nptr->iof_flags.directory, outfile,
-                                                              O_CREAT | O_RDWR,
-                                                              S_IRUSR | S_IWUSR),
-                              &op);
+            fdout = open_directory_output(nptr->iof_flags.directory, outdir, outfile, &op);
             free(outfile);
             if (0 > fdout) {
                 /* couldn't be opened */
@@ -1578,6 +1609,13 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
                PMIX_CHECK_KEY(info, PMIX_OUTPUT_NOCOPY)) {
         flags->nocopy = PMIX_INFO_TRUE(info);
         flags->set = true;
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_WRITER)) {
+        /* a qualifier, like the pattern below: it says who writes the
+         * files, not how output looks */
+        if (PMIX_PROC == info->value.type && NULL != info->value.data.proc) {
+            PMIX_XFER_PROCID(&flags->writer, info->value.data.proc);
+            flags->writer_given = true;
+        }
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_MERGE_STDERR_STDOUT) ||
                PMIX_CHECK_KEY(info, PMIX_MERGE_STDERR_STDOUT)) {
         flags->merge = PMIX_INFO_TRUE(info);
@@ -1595,6 +1633,10 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
     }
 }
 
+static pmix_namespace_t *add_writer_directives(const pmix_proc_t *source, pmix_peer_t *peer,
+                                               const pmix_info_t *info, size_t ninfo,
+                                               pmix_info_t **xinfo, size_t *nxinfo);
+
 pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_t *source,
                                    const pmix_byte_object_t *bo, const pmix_info_t *info,
                                    size_t ninfo, pmix_iof_req_t *req)
@@ -1603,6 +1645,9 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
     size_t m;
     pmix_buffer_t *msg;
     pmix_status_t rc;
+    pmix_namespace_t *told;
+    pmix_info_t *xinfo = NULL;
+    size_t nxinfo = 0;
 
     /* if the channel wasn't included, then ignore it */
     if (!(channels & req->channels)) {
@@ -1666,11 +1711,21 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
         PMIX_RELEASE(msg);
         return rc;
     }
+    /* the first of a job's output to go to its file writer brings the
+     * file directives with it - see PMIX_IOF_FILE_WRITER */
+    told = add_writer_directives(source, req->requestor, info, ninfo, &xinfo, &nxinfo);
+    if (NULL != told) {
+        info = xinfo;
+        ninfo = nxinfo;
+    }
     /* pack the number of info's provided */
     PMIX_BFROPS_PACK(rc, req->requestor, msg, &ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
+        if (NULL != xinfo) {
+            PMIx_Info_free(xinfo, nxinfo);
+        }
         return rc;
     }
     /* if some were provided, then pack them too */
@@ -1679,8 +1734,14 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
+            if (NULL != xinfo) {
+                PMIx_Info_free(xinfo, nxinfo);
+            }
             return rc;
         }
+    }
+    if (NULL != xinfo) {
+        PMIx_Info_free(xinfo, nxinfo);
     }
 
     /* pack the data */
@@ -1704,6 +1765,9 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
+    }
+    if (NULL != told) {
+        told->writer_told = true;
     }
     return PMIX_OPERATION_SUCCEEDED;
 }
@@ -2499,6 +2563,202 @@ void pmix_iof_spawn_end(void)
     PMIX_DESTRUCT_LOCK(&sd.lock);
 }
 
+/* Are this job's output files ours to write? Not when the job names
+ * another process as their writer (PMIX_IOF_FILE_WRITER) - that process
+ * is sent them and writes them as itself. Nor when we cannot create them
+ * as the job's owner: only the owner, or root acting as the owner, may.
+ * That case is reported once, and the job's files are then left alone. */
+static bool files_are_ours(pmix_namespace_t *nptr)
+{
+    pmix_iof_perms_t op;
+
+    if (nptr->iof_flags.writer_given &&
+        !PMIX_CHECK_NAMES(&nptr->iof_flags.writer, &pmix_globals.myid)) {
+        return false;
+    }
+    if (nptr->files_refused) {
+        return false;
+    }
+    output_perms(nptr, &op);
+    if (0 != geteuid() && geteuid() != op.owner) {
+        nptr->files_refused = true;
+        pmix_show_help("help-pmix-server.txt", "iof-files-not-owner", true,
+                       nptr->nspace, (unsigned long) op.owner, (unsigned long) geteuid());
+        return false;
+    }
+    return true;
+}
+
+/* Give a job we were sent file directives for the files, on top of its
+ * other flags. We write them as ourselves - see PMIX_IOF_FILE_WRITER */
+void pmix_iof_apply_forwarded_files(pmix_namespace_t *nptr)
+{
+    pmix_iof_flags_t *fwd = &nptr->fwd_files;
+
+    if (!fwd->set) {
+        return;
+    }
+    free(nptr->iof_flags.file);
+    nptr->iof_flags.file = NULL;
+    free(nptr->iof_flags.directory);
+    nptr->iof_flags.directory = NULL;
+    if (NULL != fwd->file) {
+        nptr->iof_flags.file = strdup(fwd->file);
+    }
+    if (NULL != fwd->directory) {
+        nptr->iof_flags.directory = strdup(fwd->directory);
+    }
+    if (NULL == nptr->iof_flags.file && NULL == nptr->iof_flags.directory) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+    }
+    nptr->iof_flags.pattern = fwd->pattern;
+    nptr->iof_flags.nocopy = fwd->nocopy;
+    if (fwd->merge) {
+        nptr->iof_flags.merge = true;
+    }
+    /* writing the files is local output, whatever a file-only spawn
+     * reply said about the terminal - nocopy still decides that */
+    nptr->iof_flags.local_output = true;
+    nptr->iof_flags.local_output_given = true;
+    nptr->iof_flags.set = true;
+}
+
+/* Record the file directives the server sent with a job's output, which
+ * it does only to the job's file writer. Called by a tool for every chunk
+ * it is forwarded; only the first that carries them counts */
+void pmix_iof_record_forwarded_files(const pmix_proc_t *source, const pmix_info_t *info,
+                                     size_t ninfo)
+{
+    pmix_namespace_t *nptr = NULL, *ns;
+    pmix_iof_flags_t fwd;
+    bool mine = false;
+    size_t n;
+
+    if (NULL == info || 0 == ninfo) {
+        return;
+    }
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_FILE_WRITER) &&
+            PMIX_PROC == info[n].value.type && NULL != info[n].value.data.proc &&
+            PMIX_CHECK_NAMES(info[n].value.data.proc, &pmix_globals.myid)) {
+            mine = true;
+            break;
+        }
+    }
+    if (!mine) {
+        return;
+    }
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(ns->nspace, source->nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL != nptr && nptr->fwd_files.set) {
+        return;
+    }
+    pmix_iof_init_flags(&fwd);
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_OUTPUT_TO_FILE) ||
+            PMIX_CHECK_KEY(&info[n], PMIX_IOF_OUTPUT_TO_DIRECTORY) ||
+            PMIX_CHECK_KEY(&info[n], PMIX_IOF_FILE_PATTERN) ||
+            PMIX_CHECK_KEY(&info[n], PMIX_IOF_FILE_ONLY) ||
+            PMIX_CHECK_KEY(&info[n], PMIX_IOF_MERGE_STDERR_STDOUT)) {
+            pmix_iof_check_flags((pmix_info_t *) &info[n], &fwd);
+        }
+    }
+    if (NULL == fwd.file && NULL == fwd.directory) {
+        return;
+    }
+    if (NULL == nptr) {
+        /* output can come before the spawn reply that would make this */
+        nptr = PMIX_NEW(pmix_namespace_t);
+        if (NULL == nptr) {
+            free(fwd.file);
+            free(fwd.directory);
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return;
+        }
+        nptr->nspace = strdup(source->nspace);
+        if (NULL == nptr->nspace) {
+            free(fwd.file);
+            free(fwd.directory);
+            PMIX_RELEASE(nptr);
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return;
+        }
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+    }
+    nptr->fwd_files = fwd;
+    nptr->fwd_files.set = true;
+    pmix_output_verbose(2, pmix_client_globals.iof_output,
+                        "%s iof: writing the output files of %s - %s %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid), nptr->nspace,
+                        (NULL != fwd.directory) ? "directory" : "file",
+                        (NULL != fwd.directory) ? fwd.directory : fwd.file);
+    /* a job whose flags we already have takes the files now; one whose
+     * spawn reply has yet to come takes them with it, and any other when
+     * its output is first written */
+    if (nptr->iof_flags.set) {
+        pmix_iof_apply_forwarded_files(nptr);
+    }
+}
+
+/* The file directives for the job's file writer, appended to "info" when
+ * this chunk is the first of the job's output to go to it. Returns the
+ * job when they were, for the caller to mark them sent once they are */
+static pmix_namespace_t *add_writer_directives(const pmix_proc_t *source, pmix_peer_t *peer,
+                                               const pmix_info_t *info, size_t ninfo,
+                                               pmix_info_t **xinfo, size_t *nxinfo)
+{
+    pmix_namespace_t *nptr = NULL, *ns;
+    pmix_iof_perms_t op;
+    pmix_info_t *out;
+    size_t n, m;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(ns->nspace, source->nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL == nptr || !nptr->iof_flags.writer_given || nptr->writer_told ||
+        (NULL == nptr->iof_flags.file && NULL == nptr->iof_flags.directory) ||
+        !PMIX_CHECK_NAMES(&nptr->iof_flags.writer, &peer->info->pname)) {
+        return NULL;
+    }
+    /* the writer creates the files as itself, so it has to be the job's
+     * owner - the server that took the spawn makes sure of that, and this
+     * is the check where the files are handed over */
+    output_perms(nptr, &op);
+    if (peer->info->uid != op.owner) {
+        return NULL;
+    }
+    out = PMIx_Info_create(ninfo + 6);
+    if (NULL == out) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return NULL;
+    }
+    for (n = 0; n < ninfo; n++) {
+        PMIx_Info_xfer(&out[n], &info[n]);
+    }
+    m = ninfo;
+    PMIx_Info_load(&out[m++], PMIX_IOF_FILE_WRITER, &nptr->iof_flags.writer, PMIX_PROC);
+    if (NULL != nptr->iof_flags.directory) {
+        PMIx_Info_load(&out[m++], PMIX_IOF_OUTPUT_TO_DIRECTORY, nptr->iof_flags.directory,
+                       PMIX_STRING);
+    }
+    if (NULL != nptr->iof_flags.file) {
+        PMIx_Info_load(&out[m++], PMIX_IOF_OUTPUT_TO_FILE, nptr->iof_flags.file, PMIX_STRING);
+    }
+    PMIx_Info_load(&out[m++], PMIX_IOF_FILE_PATTERN, &nptr->iof_flags.pattern, PMIX_BOOL);
+    PMIx_Info_load(&out[m++], PMIX_IOF_FILE_ONLY, &nptr->iof_flags.nocopy, PMIX_BOOL);
+    PMIx_Info_load(&out[m++], PMIX_IOF_MERGE_STDERR_STDOUT, &nptr->iof_flags.merge, PMIX_BOOL);
+    *xinfo = out;
+    *nxinfo = m;
+    return nptr;
+}
+
 /* The body of pmix_iof_write_output(). "may_hold" is false only when the
  * caller is the pending cache draining itself, which must not be handed its
  * own output back - see release_pending(). */
@@ -2521,6 +2781,7 @@ static pmix_status_t write_output(const pmix_proc_t *name,
     char *inputdata;
     size_t inputsize;
     bool copied;
+    bool skipfiles = false;
 
     /* stdin doesn't come thru here*/
     if (PMIX_FWD_STDIN_CHANNEL & stream) {
@@ -2553,15 +2814,34 @@ static pmix_status_t write_output(const pmix_proc_t *name,
     }
 
     if (NULL != nptr) {
+        /* we were sent this job's files to write but nothing else about
+         * it - a job we did not spawn ourselves. Its output is formatted
+         * as any such job's is, and goes to the files too */
+        if (!nptr->iof_flags.set && nptr->fwd_files.set) {
+            nptr->iof_flags = stand_in_flags(&outputio);
+            nptr->iof_flags.file = NULL;
+            nptr->iof_flags.directory = NULL;
+            pmix_iof_apply_forwarded_files(nptr);
+        }
         if (nptr->iof_flags.set) {
             if (nptr->iof_flags.local_output_given) {
                 outputio = nptr->iof_flags.local_output;
+            }
+            if ((NULL != nptr->iof_flags.directory || NULL != nptr->iof_flags.file) &&
+                !files_are_ours(nptr)) {
+                /* What the files turned on, we leave off: only the copy
+                 * to our own stdout the job would have had alongside
+                 * them is written here */
+                skipfiles = true;
+                outputio = pmix_globals.iof_flags.local_output && !nptr->iof_flags.nocopy;
             }
             if (!outputio) {
                 return PMIX_SUCCESS;
             }
             /* do we need an IOF channel for this source? */
-            if (NULL != nptr->iof_flags.directory) {
+            if (skipfiles) {
+                /* no - the default channel below */
+            } else if (NULL != nptr->iof_flags.directory) {
                 /* see if we already have one */
                 PMIX_LIST_FOREACH(sink, &nptr->sinks, pmix_iof_sink_t) {
                     if (sink->name.rank == name->rank &&
