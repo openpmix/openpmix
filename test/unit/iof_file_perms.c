@@ -21,15 +21,24 @@
  *   the same, with a group in the
  *   access list                     -> files 0640 and directories 0750,
  *                                      given to that group
- *   another user's job              -> as root, the files are given to
- *                                      the owner, 0600; otherwise
- *                                      readable by the owner's group
- *                                      (0640) when this server can set
- *                                      it, and by everyone (0644) when it
- *                                      cannot - the owner must still be
- *                                      able to read its output
+ *   another user's job              -> everything done as the owner:
+ *                                      as root, the files and directories
+ *                                      are the owner's from creation
+ *                                      (0600, 0700); a server that cannot
+ *                                      become the owner writes nothing
+ *   as root only: another user's
+ *   existing file                   -> refused, left as it was
+ *   ... a directory only root may
+ *   write                           -> refused
+ *   ... a directory the owner
+ *   reaches through a supplementary
+ *   group the host registered       -> works
  *   a file left by an earlier run   -> made owner-only
  *   a file with a second name       -> not written
+ *   a job whose files another
+ *   process writes
+ *   (PMIX_IOF_FILE_WRITER)          -> the server writes none
+ *   ... naming the server itself    -> written as usual
  */
 
 #include "src/include/pmix_config.h"
@@ -188,12 +197,77 @@ static void test_listed_group(void)
                owned_by(rankdir, geteuid(), getegid()));
 }
 
+static bool exists(const char *path)
+{
+    struct stat buf;
+
+    return 0 == lstat(path, &buf);
+}
+
+static bool holds(const char *path, const char *want)
+{
+    char buf[64] = {0};
+    FILE *fp = fopen(path, "r");
+    size_t n;
+
+    if (NULL == fp) {
+        return false;
+    }
+    n = fread(buf, 1, sizeof(buf) - 1, fp);
+    fclose(fp);
+    buf[n] = '\0';
+    return 0 == strcmp(buf, want);
+}
+
+/* register the job as reg() does, and the groups its owner belongs to */
+static pmix_status_t reg_with_groups(const char *name, const char *where, uint32_t uid,
+                                     uint32_t gid, uint32_t extra)
+{
+    pmix_info_t info[5];
+    pmix_data_array_t *ugids;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t one = 1;
+    size_t n;
+
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_IOF_OUTPUT_TO_DIRECTORY, where, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_USERID, &uid, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[3], PMIX_GRPID, &gid, PMIX_UINT32);
+    PMIX_DATA_ARRAY_CREATE(ugids, 2, PMIX_UINT32);
+    ((uint32_t *) ugids->array)[0] = gid;
+    ((uint32_t *) ugids->array)[1] = extra;
+    PMIX_INFO_LOAD(&info[4], PMIX_USER_GRPIDS, ugids, PMIX_DATA_ARRAY);
+    PMIX_DATA_ARRAY_FREE(ugids);
+    PMIX_LOAD_NSPACE(ns, name);
+    rc = PMIx_server_register_nspace(ns, 1, info, 5, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    progress_barrier();
+    for (n = 0; n < 5; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    return rc;
+}
+
+/* Another user's job. Everything about its output is done as that user
+ * - in a child that drops to it - so a server that cannot become the
+ * owner writes nothing for it, and a root server writes only what the
+ * owner could, owned by the owner from creation */
 static void test_other_owner(void)
 {
     char dir[1024], nsdir[1024], rankdir[1024], file[1024];
 
-    /* the owner's group is one we are in, so we can set it */
     snprintf(dir, sizeof(dir), "%s/other", base);
+    if (0 == geteuid()) {
+        /* somewhere the owner may write */
+        if (0 != chmod(base, 0755) || 0 != mkdir(dir, 0755) ||
+            0 != chown(dir, OTHER_UID, getegid())) {
+            report("other: fixture", 0);
+            return;
+        }
+    }
     if (PMIX_SUCCESS != reg("perms-other", PMIX_IOF_OUTPUT_TO_DIRECTORY, dir, OTHER_UID,
                             getegid(), (gid_t) -1)) {
         report("other: fixture", 0);
@@ -202,16 +276,23 @@ static void test_other_owner(void)
     deliver("perms-other");
     paths(dir, "perms-other", nsdir, rankdir, file);
     if (0 == geteuid()) {
-        report("another user's job: as root, the file is given to its owner, owner-only",
+        report("another user's job: as root, the file is made by its owner, owner-only",
                mode_is(file, 0600) && owned_by(file, OTHER_UID, (gid_t) -1));
+        report("another user's job: as root, its directories are the owner's alone",
+               mode_is(rankdir, 0700) && owned_by(rankdir, OTHER_UID, (gid_t) -1));
     } else {
-        report("another user's job: the file is readable by the owner's group",
-               mode_is(file, 0640) && owned_by(file, geteuid(), getegid()));
+        report("another user's job: a server that cannot become the owner writes nothing",
+               !exists(dir));
     }
-    report("another user's job: its directories can be entered", mode_is(rankdir, 0755));
 
     /* the owner's group is one we are not in */
     snprintf(dir, sizeof(dir), "%s/foreign", base);
+    if (0 == geteuid()) {
+        if (0 != mkdir(dir, 0755) || 0 != chown(dir, OTHER_UID, OTHER_GID)) {
+            report("foreign: fixture", 0);
+            return;
+        }
+    }
     if (PMIX_SUCCESS != reg("perms-foreign", PMIX_IOF_OUTPUT_TO_DIRECTORY, dir, OTHER_UID,
                             OTHER_GID, (gid_t) -1)) {
         report("foreign: fixture", 0);
@@ -220,17 +301,82 @@ static void test_other_owner(void)
     deliver("perms-foreign");
     paths(dir, "perms-foreign", nsdir, rankdir, file);
     if (0 == geteuid()) {
-        report("a group we cannot set: as root, the file is given to its owner, owner-only",
+        report("a group we are not in: as root, the file is the owner's, owner-only",
                mode_is(file, 0600) && owned_by(file, OTHER_UID, OTHER_GID));
     } else {
-        report("a group we cannot set: the file is readable by everyone",
-               mode_is(file, 0644));
+        report("a group we are not in: a server that cannot become the owner writes nothing",
+               !exists(dir));
     }
+
+    if (0 != geteuid()) {
+        fprintf(stdout, "  SKIP: the cases a root server must refuse - not running as root\n");
+        return;
+    }
+
+    /* an existing output file of someone else's, which the owner could
+     * write - and a root server once truncated and gave to the owner */
+    {
+        char held[1024];
+        FILE *fp;
+
+        snprintf(dir, sizeof(dir), "%s/takeover", base);
+        paths(dir, "perms-held", nsdir, rankdir, held);
+        if (0 != mkdir(dir, 0755) || 0 != mkdir(nsdir, 0755) || 0 != mkdir(rankdir, 0755) ||
+            0 != chown(dir, OTHER_UID, getegid()) || 0 != chown(nsdir, OTHER_UID, getegid()) ||
+            0 != chown(rankdir, OTHER_UID, getegid()) || NULL == (fp = fopen(held, "w"))) {
+            report("held: fixture", 0);
+            return;
+        }
+        fputs("keep", fp);
+        fclose(fp);
+        (void) chmod(held, 0666);
+        if (PMIX_SUCCESS != reg("perms-held", PMIX_IOF_OUTPUT_TO_DIRECTORY, dir, OTHER_UID,
+                                getegid(), (gid_t) -1)) {
+            report("held: fixture", 0);
+            return;
+        }
+        deliver("perms-held");
+        report("a file the owner does not own is refused and left as it was",
+               holds(held, "keep") && owned_by(held, 0, (gid_t) -1) && mode_is(held, 0666));
+    }
+
+    /* a directory only root may write: the owner cannot make its output
+     * there, and nor does a root server for it */
+    snprintf(dir, sizeof(dir), "%s/rootonly", base);
+    if (0 != mkdir(dir, 0755)) {
+        report("rootonly: fixture", 0);
+        return;
+    }
+    strncat(dir, "/out", sizeof(dir) - strlen(dir) - 1);
+    if (PMIX_SUCCESS != reg("perms-rootonly", PMIX_IOF_OUTPUT_TO_DIRECTORY, dir, OTHER_UID,
+                            getegid(), (gid_t) -1)) {
+        report("rootonly: fixture", 0);
+        return;
+    }
+    deliver("perms-rootonly");
+    report("a directory only root may write is refused", !exists(dir));
+
+    /* a directory the owner reaches only through a supplementary group -
+     * one the host registered for it */
+    snprintf(dir, sizeof(dir), "%s/grouponly", base);
+    if (0 != mkdir(dir, 0770) || 0 != chown(dir, 0, OTHER_GID + 1) || 0 != chmod(dir, 0770)) {
+        report("grouponly: fixture", 0);
+        return;
+    }
+    if (PMIX_SUCCESS != reg_with_groups("perms-grouponly", dir, OTHER_UID, OTHER_GID,
+                                        OTHER_GID + 1)) {
+        report("grouponly: fixture", 0);
+        return;
+    }
+    deliver("perms-grouponly");
+    paths(dir, "perms-grouponly", nsdir, rankdir, file);
+    report("a directory reached through a group the host registered for the owner works",
+           owned_by(file, OTHER_UID, (gid_t) -1) && mode_is(file, 0600));
 }
 
 static void test_files(void)
 {
-    char prefix[1024], file[2048], victim[2048], linked[2048];
+    char prefix[1024], file[2048], other[2048], linked[2048];
     char buf[16] = {0};
     int fd;
 
@@ -251,16 +397,16 @@ static void test_files(void)
     report("a file left by an earlier run is made owner-only", mode_is(file, 0600));
 
     /* the output file's name already leads to another file */
-    snprintf(victim, sizeof(victim), "%s/victim", base);
+    snprintf(other, sizeof(other), "%s/other-file", base);
     snprintf(prefix, sizeof(prefix), "%s/lnk", base);
     snprintf(linked, sizeof(linked), "%s.perms-link.0.out", prefix);
-    fd = open(victim, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    fd = open(other, O_CREAT | O_WRONLY | O_TRUNC, 0644);
     if (0 > fd || 4 != write(fd, "keep", 4)) {
         report("link: fixture", 0);
         return;
     }
     close(fd);
-    if (0 != link(victim, linked)) {
+    if (0 != link(other, linked)) {
         report("link: fixture", 0);
         return;
     }
@@ -270,7 +416,7 @@ static void test_files(void)
         return;
     }
     deliver("perms-link");
-    fd = open(victim, O_RDONLY);
+    fd = open(other, O_RDONLY);
     if (0 <= fd) {
         if (0 > read(fd, buf, sizeof(buf) - 1)) {
             buf[0] = '\0';
@@ -278,7 +424,64 @@ static void test_files(void)
         close(fd);
     }
     report("a file reached through a second name is not written",
-           0 == strcmp(buf, "keep") && mode_is(victim, 0644));
+           0 == strcmp(buf, "keep") && mode_is(other, 0644));
+}
+
+/* a job of ours whose output files "writer" writes */
+static pmix_status_t reg_with_writer(const char *name, const char *where, const pmix_proc_t *writer)
+{
+    pmix_info_t info[5];
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t one = 1, uid = (uint32_t) geteuid(), gid = (uint32_t) getegid();
+    size_t n;
+
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_IOF_OUTPUT_TO_DIRECTORY, where, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_USERID, &uid, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[3], PMIX_GRPID, &gid, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[4], PMIX_IOF_FILE_WRITER, writer, PMIX_PROC);
+    PMIX_LOAD_NSPACE(ns, name);
+    rc = PMIx_server_register_nspace(ns, 1, info, 5, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    progress_barrier();
+    for (n = 0; n < 5; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    return rc;
+}
+
+static void test_writer(void)
+{
+    char dir[1024], nsdir[1024], rankdir[1024], file[1024];
+    pmix_proc_t tool;
+
+    /* a tool's, which is sent the output and writes the files itself */
+    PMIX_LOAD_PROCID(&tool, "perms-launcher", 0);
+    snprintf(dir, sizeof(dir), "%s/elsewhere", base);
+    if (0 != mkdir(dir, 0700) ||
+        PMIX_SUCCESS != reg_with_writer("perms-elsewhere", dir, &tool)) {
+        report("writer: fixture", 0);
+        return;
+    }
+    deliver("perms-elsewhere");
+    paths(dir, "perms-elsewhere", nsdir, rankdir, file);
+    report("a job whose files another process writes gets none from the server",
+           !exists(nsdir));
+
+    /* the server's own */
+    snprintf(dir, sizeof(dir), "%s/self", base);
+    if (0 != mkdir(dir, 0700) ||
+        PMIX_SUCCESS != reg_with_writer("perms-self", dir, &pmix_globals.myid)) {
+        report("writer self: fixture", 0);
+        return;
+    }
+    deliver("perms-self");
+    paths(dir, "perms-self", nsdir, rankdir, file);
+    report("a job whose files the server itself writes gets them",
+           holds(file, "hello\n") && mode_is(file, 0600));
 }
 
 int main(int argc, char **argv)
@@ -311,6 +514,7 @@ int main(int argc, char **argv)
     test_listed_group();
     test_other_owner();
     test_files();
+    test_writer();
 
     PMIx_server_finalize();
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", base);

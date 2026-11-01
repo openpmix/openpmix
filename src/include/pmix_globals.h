@@ -358,6 +358,9 @@ typedef struct {
     bool local_output_given;
     bool pattern;
     bool raw;
+    /* PMIX_IOF_FILE_WRITER: the process that writes the output files */
+    pmix_proc_t writer;
+    bool writer_given;
 } pmix_iof_flags_t;
 
 #define PMIX_IOF_FLAGS_STATIC_INIT  \
@@ -461,6 +464,15 @@ typedef struct {
                             // for setting up the local node for this nspace/application
     pmix_iof_flags_t iof_flags;   // output formatting flags
     pmix_list_t sinks;   // IOF write events for output to files or directories
+    /* A tool's: the file directives sent with this job's output, which
+     * make us its file writer (PMIX_IOF_FILE_WRITER). Only file,
+     * directory, pattern, nocopy and merge are used; "set" says they came */
+    pmix_iof_flags_t fwd_files;
+    /* A server's: the file directives have gone to the job's file writer */
+    bool writer_told;
+    /* A server's: we may not write this job's output files - see
+     * pmix_iof_setup() - and have said so */
+    bool files_refused;
     pmix_access_t access; // who may access this namespace - see pmix_access_t
     bool jobdata_hash_valid; // jobdata_hash describes the job-level data we hold
     uint64_t jobdata_hash;   // PMIX_JOB_DATA_HASH of that data, computed when needed

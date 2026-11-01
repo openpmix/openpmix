@@ -450,22 +450,30 @@ Formatting and destination of the forwarded output:
   into files of the form ``<directory>/<jobid>/rank.<rank>/stdout[err]``.
   The named directory is used as given; the ``<jobid>`` and ``rank.<rank>``
   directories beneath it (and any directory levels a
-  ``PMIX_IOF_FILE_PATTERN`` expands to) are created by PMIx, and one that
-  already exists is used only if it belongs to the user the server runs
-  as.
+  ``PMIX_IOF_FILE_PATTERN`` expands to) are created by PMIx, as the job's
+  owner.
 
   Output files - for this attribute and ``PMIX_IOF_OUTPUT_TO_FILE`` - are
-  readable only by the job's owner (mode ``0600``), or also by the first
-  group the job's ``PMIX_ACCESS_PERMISSIONS`` names (``0640``). A server
-  that cannot give the files to the job's owner makes them readable by
-  the owner's group, or failing that by everyone. An output file that is
-  not a regular file with a single name is not written. See
+  created as the job's owner and readable only by the owner (mode
+  ``0600``), or also by the first group the job's
+  ``PMIX_ACCESS_PERMISSIONS`` names (``0640``). An output file that is
+  not a regular file with a single name, owned by the job's owner, is
+  not written. A tool that is sent the job's output writes its files
+  itself, where the tool runs (see ``PMIX_IOF_FILE_WRITER``); otherwise a
+  server that cannot act as the job's owner writes none. See
   :doc:`/hosts/access-control`.
 * ``PMIX_IOF_FILE_PATTERN`` (bool) |mdash| treat the ``PMIX_IOF_OUTPUT_TO_FILE``
   value as a pattern, suppressing the automatic annotation by nspace, rank, or
   other parameters.
 * ``PMIX_IOF_FILE_ONLY`` (bool) |mdash| output only into the designated files; do
   not also emit a copy to ``stdout``/``stderr``.
+* ``PMIX_IOF_FILE_WRITER`` (pmix_proc_t\*) |mdash| the process that writes the
+  job's output files, as itself. Added by the PMIx library of a tool that
+  spawns a job, naming the tool; a server accepts it
+  only from the process it names, and only when the job's output is sent
+  to that process. Servers then leave the job's files to it, and the one
+  sending it the job's output sends the file directives with the first of
+  it. A caller's own value is ignored.
 
 .. note::
    Several attributes historically used with ``PMIx_Spawn`` to control output

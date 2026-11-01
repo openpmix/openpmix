@@ -167,6 +167,31 @@ pmix_user_t *pmix_server_user_find(uid_t uid)
     return NULL;
 }
 
+pmix_status_t pmix_server_user_groups(uid_t uid, gid_t gid, gid_t **gids, size_t *ngids)
+{
+    pmix_user_t *user;
+    gid_t *out;
+    size_t n;
+
+    *gids = NULL;
+    *ngids = 0;
+    user = pmix_server_user_find(uid);
+    n = (NULL != user && NULL != user->gids && 0 < user->ngids) ? user->ngids : 1;
+    out = (gid_t *) malloc(n * sizeof(gid_t));
+    if (NULL == out) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (NULL != user && NULL != user->gids && 0 < user->ngids) {
+        memcpy(out, user->gids, n * sizeof(gid_t));
+    } else {
+        /* the host gave none - the user's one group, and no other */
+        out[0] = gid;
+    }
+    *gids = out;
+    *ngids = n;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_server_user_register(uid_t uid, const gid_t *gids, size_t ngids)
 {
     pmix_user_t *user;

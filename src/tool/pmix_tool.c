@@ -364,6 +364,9 @@ static void tool_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
+    /* the first of a job's output can bring the job's file directives,
+     * when we are to write its files - see PMIX_IOF_FILE_WRITER */
+    pmix_iof_record_forwarded_files(&source, info, ninfo);
     /* lookup the handler for this IOF package */
     req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid);
     if (NULL != req && NULL != req->cbfunc) {
