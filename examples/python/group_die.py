@@ -21,9 +21,9 @@
 # docs/how-things-work/collectives.
 #
 # The whole job is the membership (rather than a subset) so that, when
-# launched across nodes, the victim's node always also hosts a surviving
+# launched across nodes, the departing rank's node always also hosts a surviving
 # member. Launch with a launcher that does not kill the job when the
-# victim exits; under PRRTE that is `prterun --rtos recoverable ...`.
+# departing rank exits; under PRRTE that is `prterun --rtos recoverable ...`.
 #
 # Requires a minimum of 4 processes.
 
@@ -64,11 +64,11 @@ def main():
                % (myproc['nspace'], myproc['rank'], client.error_string(rc)))
         sys.exit(1)
 
-    # the entire job is the group membership; the last rank is the victim
-    victim = nprocs - 1
+    # the entire job is the group membership; the last rank is the departing rank
+    departing = nprocs - 1
 
-    if myproc['rank'] == victim:
-        # the "victim": a member that leaves before contributing. Delay
+    if myproc['rank'] == departing:
+        # the departing rank: a member that leaves before contributing. Delay
         # briefly so the other members have entered the construct and
         # their servers have built the local trackers, then leave without
         # calling it - and without calling finalize, so the server sees a

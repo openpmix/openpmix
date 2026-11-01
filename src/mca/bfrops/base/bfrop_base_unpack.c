@@ -367,7 +367,7 @@ pmix_status_t pmix_bfrops_base_unpack_string(pmix_pointer_array_t *regtypes, pmi
             return ret;
         }
         if (0 >= len) { /* zero-length string - unpack the NULL */
-            /* a negative length can only come from a corrupt or hostile
+            /* a negative length can only come from a corrupt or deliberately malformed
              * buffer; treat it the same as absent rather than handing it
              * to malloc, where it becomes a huge size_t */
             sdest[i] = NULL;

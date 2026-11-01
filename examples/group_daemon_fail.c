@@ -30,7 +30,7 @@
  * PMIX_GROUP_CONSTRUCT_ABORT. Each survivor prints a distinctive success line.
  *
  * Requires a launcher that keeps the job alive across a daemon loss; under PRRTE
- * that is `prterun --rtos recoverable ...`. The victim must be alone on its node
+ * that is `prterun --rtos recoverable ...`. The departing rank must be alone on its node
  * so that killing that node's daemon does not also remove a surviving member.
  */
 
@@ -51,7 +51,7 @@ int main(int argc, char **argv)
     pmix_status_t rc;
     pmix_value_t *val = NULL;
     pmix_proc_t proc, *procs;
-    uint32_t nprocs, n, victim;
+    uint32_t nprocs, n, departing;
     pmix_info_t *results;
     size_t nresults;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
@@ -86,12 +86,12 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    /* the entire job is the group membership; the last rank is the victim - it
+    /* the entire job is the group membership; the last rank is the departing rank - it
      * stays alive but never contributes, so the construct is pending when the
      * harness kills its daemon */
-    victim = nprocs - 1;
+    departing = nprocs - 1;
 
-    if (myproc.rank == victim) {
+    if (myproc.rank == departing) {
         fprintf(stderr, "%d alive but NOT joining the construct - awaiting daemon kill\n",
                 myproc.rank);
         sleep(60);

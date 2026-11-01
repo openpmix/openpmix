@@ -10,7 +10,7 @@
  *
  * Everything the unpacker reads came off a socket. A peer that is
  * truncated, that is running a different version than it claimed, or
- * that is simply hostile can put any bytes at all in front of these
+ * that is simply misbehaving can put any bytes at all in front of these
  * functions, and the count that says how many values follow is itself
  * one of those bytes. The contract this file pins down is narrow but
  * absolute: no input may make the unpacker read outside the buffer it

@@ -588,7 +588,7 @@ static pmix_status_t array2string(char **outstring,
 /* An "#include" chain has to terminate: a topic that includes itself,
  * or two that include each other, would otherwise recurse until the
  * stack runs out.  This content is generated from the help-*.txt files,
- * so that is a typo away rather than an attack, but the failure is the
+ * so that is a typo away rather than deliberate, but the failure is the
  * same either way. */
 #define PMIX_SHOW_HELP_MAX_INCLUDE_DEPTH 16
 

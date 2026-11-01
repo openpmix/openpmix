@@ -90,7 +90,7 @@ int main(int argc, char **argv)
     int rc;
     pmix_value_t *val = NULL;
     pmix_proc_t proc, *procs;
-    uint32_t nprocs, n, victim;
+    uint32_t nprocs, n, departing;
     pmix_info_t *results;
     size_t nresults;
     mylock_t lock;
@@ -142,7 +142,7 @@ int main(int argc, char **argv)
 
     /* the entire job is the group membership; the last rank is the one that
      * will voluntarily leave */
-    victim = nprocs - 1;
+    departing = nprocs - 1;
 
     fprintf(stderr, "%d executing Group_construct\n", myproc.rank);
     PMIX_PROC_CREATE(procs, nprocs);
@@ -169,7 +169,7 @@ int main(int argc, char **argv)
         goto done;
     }
 
-    if (myproc.rank == victim) {
+    if (myproc.rank == departing) {
         /* voluntarily depart the group - this must generate the PMIX_GROUP_LEFT
          * event to the remaining members and return success once locally
          * generated */
@@ -192,9 +192,9 @@ int main(int argc, char **argv)
             rc = PMIX_ERR_TIMEOUT;
             goto done;
         }
-        if (departed.rank != victim) {
+        if (departed.rank != departing) {
             fprintf(stderr, "Client ns %s rank %d: FAILED - wrong departed rank %d (expected %d)\n",
-                    myproc.nspace, myproc.rank, departed.rank, victim);
+                    myproc.nspace, myproc.rank, departed.rank, departing);
             rc = PMIX_ERROR;
             goto done;
         }

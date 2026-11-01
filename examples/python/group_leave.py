@@ -87,7 +87,7 @@ def main():
 
     # the entire job is the group membership; the last rank is the one
     # that will voluntarily leave
-    victim = nprocs - 1
+    departing = nprocs - 1
 
     eprint("%d executing Group_construct" % myproc['rank'])
     procs = [{'nspace': myproc['nspace'], 'rank': n} for n in range(nprocs)]
@@ -104,7 +104,7 @@ def main():
                % (myproc['nspace'], myproc['rank'], client.error_string(rc)))
         return done(rc)
 
-    if myproc['rank'] == victim:
+    if myproc['rank'] == departing:
         # voluntarily depart the group - this must generate the
         # PMIX_GROUP_LEFT event to the remaining members and return
         # success once locally generated
@@ -123,11 +123,11 @@ def main():
             eprint("Client ns %s rank %d: FAILED - never received "
                    "PMIX_GROUP_LEFT" % (myproc['nspace'], myproc['rank']))
             return done(PMIX_ERR_TIMEOUT)
-        if departed.get('rank') != victim:
+        if departed.get('rank') != departing:
             eprint("Client ns %s rank %d: FAILED - wrong departed rank %d "
                    "(expected %d)" % (myproc['nspace'], myproc['rank'],
                                       departed.get('rank', PMIX_RANK_UNDEF),
-                                      victim))
+                                      departing))
             return done(PMIX_ERROR)
         eprint("%d PMIX_GROUP_LEFT correctly received: PASS"
                % myproc['rank'])

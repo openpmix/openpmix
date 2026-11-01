@@ -648,7 +648,7 @@ static void test_event_identity(void)
 {
     uid_t other = geteuid() + 2;
     gid_t ogrp = getegid() + 2;
-    uint32_t forged = 0;
+    uint32_t claimed = 0;
     pmix_info_t info[2];
     pmix_peer_t *raiser;
     pmix_status_t rc;
@@ -668,8 +668,8 @@ static void test_event_identity(void)
                1 == host_ngid && (uint32_t) ogrp == host_gid);
 
     /* claiming to be root changes nothing the host is told */
-    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &forged, PMIX_UINT32);
-    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &forged, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &claimed, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &claimed, PMIX_UINT32);
     host_notified = false;
     rc = do_notify_as(raiser, SEUT_CODE, PMIX_RANGE_SESSION, 2, info);
     settle();

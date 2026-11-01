@@ -37,10 +37,10 @@
  * complete the connect on the survivors rather than hang.
  *
  * The whole job is the connect set (rather than a subset) so that, when
- * launched across nodes, the victim's node always also hosts a surviving
+ * launched across nodes, the departing rank's node always also hosts a surviving
  * participant -- the one that creates the local tracker the loss accounting
  * then completes.  Launch with a launcher that does not kill the job when the
- * victim exits; under PRRTE that is `prterun --rtos recoverable ...`.
+ * departing rank exits; under PRRTE that is `prterun --rtos recoverable ...`.
  */
 
 #define _GNU_SOURCE
@@ -61,7 +61,7 @@ int main(int argc, char **argv)
     pmix_value_t *val = NULL;
     pmix_value_t value;
     pmix_proc_t proc, *procs;
-    uint32_t nprocs, n, victim;
+    uint32_t nprocs, n, departing;
     char key[64];
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
@@ -113,11 +113,11 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    /* the entire job is the connect set; the last rank is the victim */
-    victim = nprocs - 1;
+    /* the entire job is the connect set; the last rank is the departing rank */
+    departing = nprocs - 1;
 
-    if (myproc.rank == victim) {
-        /* the "victim": a participant that leaves before contributing.  Delay
+    if (myproc.rank == departing) {
+        /* the departing rank: a participant that leaves before contributing.  Delay
          * briefly so the other participants have entered the connect and their
          * servers have built the local trackers, then leave without calling it
          * - and without calling PMIx_Finalize, so the server sees a dropped

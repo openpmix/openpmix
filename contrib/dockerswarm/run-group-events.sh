@@ -69,12 +69,12 @@
 #   * group_construct_abort-- a required member is lost mid-construct (its client
 #                             exits before contributing) with no
 #                             PMIX_GROUP_FT_COLLECTIVE; the construct must ABORT
-#                             on every survivor. The victim shares a server with a
+#                             on every survivor. The departing rank shares a server with a
 #                             survivor and the other survivors are on other nodes,
-#                             so the victim's server aborts locally AND issues
+#                             so the departing rank's server aborts locally AND issues
 #                             PMIX_GROUP_CANCEL to abort the cross-server
 #                             collective (else the remote survivors would hang).
-#   * group_daemon_fail    -- a whole daemon is lost mid-construct: the victim is
+#   * group_daemon_fail    -- a whole daemon is lost mid-construct: the departing rank is
 #                             placed alone on a node and the harness kills that
 #                             node's prted while the construct is pending. PRRTE's
 #                             grpcomm fault handler must abort the pending
@@ -376,7 +376,7 @@ test_linux() {
     # Same two requirements as group_die/connect_die make the loss observable:
     #   * --rtos recoverable, so PRRTE does not tear the whole job down when the
     #     member vanishes without finalizing;
-    #   * whole-job membership + --map-by node, so the victim's node also hosts a
+    #   * whole-job membership + --map-by node, so the departing rank's node also hosts a
     #     surviving member (the one whose call created the local tracker the loss
     #     accounting then completes).
     if RUN 'test -x /opt/prte/tests/group_destruct_die'; then
@@ -402,18 +402,18 @@ test_linux() {
     cleanup_swarm
     # group_construct_abort: the whole job is the membership; every rank EXCEPT
     # the last enters PMIx_Group_construct WITHOUT PMIX_GROUP_FT_COLLECTIVE, and
-    # the last rank (the victim) exits before contributing (and without
+    # the last rank (the departing rank) exits before contributing (and without
     # finalizing). Because fault-tolerant collective tracking was not requested,
     # the loss of a required member must ABORT the construct on every survivor
     # rather than form a reduced group.
     #
-    # The layout puts the victim (rank 3) on node1 alongside a survivor (rank 0),
+    # The layout puts the departing rank (rank 3) on node1 alongside a survivor (rank 0),
     # with the other survivors on node2 and node3 (--host node1:2,node2:1,node3:1
-    # --map-by node). So the victim's server has a local construct participant to
+    # --map-by node). So the departing rank's server has a local construct participant to
     # abort directly AND must issue PMIX_GROUP_CANCEL to the host to abort the
     # cross-server collective the node2/node3 servers already joined -- if the
     # cancel were not propagated those survivors would hang forever. --rtos
-    # recoverable keeps the job alive when the victim vanishes.
+    # recoverable keeps the job alive when the departing rank vanishes.
     if RUN 'test -x /opt/prte/tests/group_construct_abort'; then
         OUT="$(RUN 'prterun --rtos recoverable --host node1:2,node2:1,node3:1 -np 4 --map-by node --timeout 60 /opt/prte/tests/group_construct_abort 2>&1')"
         n=$(echo "$OUT" | grep -c 'construct ABORT on member loss: PASS')
@@ -438,7 +438,7 @@ test_linux() {
     banner "daemon lost mid-construct (recover, abort the pending construct)"
     cleanup_swarm
     # group_daemon_fail: the whole job is the membership; every rank EXCEPT the
-    # last enters PMIx_Group_construct and blocks. The victim (rank 3) stays alive
+    # last enters PMIx_Group_construct and blocks. The departing rank (rank 3) stays alive
     # but never contributes, and is placed ALONE on its own node
     # (--host node1:1,node2:1,node3:1,node4:1 --map-by node puts rank 3 on node4
     # by itself). Once the construct is pending, the harness kills node4's prted.
@@ -460,13 +460,13 @@ test_linux() {
     # (orphaned prteds) as a failure of the group path.
     if RUN 'test -x /opt/prte/tests/group_daemon_fail'; then
         RUN 'rm -f /tmp/gdf.out; nohup prterun --rtos recoverable --host node1:1,node2:1,node3:1,node4:1 -np 4 --map-by node --timeout 90 /opt/prte/tests/group_daemon_fail >/tmp/gdf.out 2>&1 </dev/null & disown; echo launched' >/dev/null
-        # wait for the construct to be pending: the victim announces it is waiting
+        # wait for the construct to be pending: the departing rank announces it is waiting
         reached=0
         for _ in $(seq 1 40); do
             if RUN 'grep -q "awaiting daemon kill" /tmp/gdf.out 2>/dev/null'; then reached=1; break; fi
             sleep 1
         done
-        # let the survivors settle into the collective, then kill the victim's daemon
+        # let the survivors settle into the collective, then kill the departing rank's daemon
         sleep 3
         ON 4 'pkill -9 -x prted' >/dev/null 2>&1 || true
         # wait for the launch to wind down (bounded); the pre-existing teardown
@@ -481,7 +481,7 @@ test_linux() {
         OUT="$(RUN 'tr -d "\000" < /tmp/gdf.out 2>/dev/null')"
         n=$(echo "$OUT" | grep -c 'construct ABORT after daemon loss: PASS')
         if [ "$reached" = 0 ]; then
-            bad "group_daemon_fail: construct never became pending (victim never reached wait)"
+            bad "group_daemon_fail: construct never became pending (the departing rank never reached wait)"
         elif echo "$OUT" | grep -qiE 'expected PMIX_GROUP_CONSTRUCT_ABORT: FAILED'; then
             bad "group_daemon_fail: a survivor got the wrong status: $(echo "$OUT" | tr '\n' ' ' | tail -c 200)"
         elif [ "$n" -ge 3 ]; then
@@ -619,7 +619,7 @@ test_macos() {
         skp "group_construct_abort (not built)"
     fi
 
-    # group_daemon_fail is a multi-node test: it needs the victim alone on a node
+    # group_daemon_fail is a multi-node test: it needs the departing rank alone on a node
     # whose prted the harness can kill without taking a survivor with it. A native
     # single-host DVM has one prted for the whole job, so killing it kills every
     # rank -- there is nothing to recover. Exercise it in the Linux swarm only.

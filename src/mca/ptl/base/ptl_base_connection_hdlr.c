@@ -55,7 +55,7 @@
  * A connection is accepted as a sequence of steps, each run on the
  * progress thread from an event: its connect-ack arriving, the host
  * deciding.
- * Nothing waits on a peer in between, so a slow or hostile peer holds only
+ * Nothing waits on a peer in between, so a slow or misbehaving peer holds only
  * its own connection. See docs/how-things-work/connections.rst.
  *
  * The pending connection carries everything the connection holds until

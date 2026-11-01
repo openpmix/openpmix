@@ -34,7 +34,7 @@
  * on the other nodes would hang forever. Each survivor prints a distinctive
  * success line.
  *
- * Launch with a launcher that does not kill the job when the victim exits;
+ * Launch with a launcher that does not kill the job when the departing rank exits;
  * under PRRTE that is `prterun --rtos recoverable ...`.
  */
 
@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     pmix_status_t rc;
     pmix_value_t *val = NULL;
     pmix_proc_t proc, *procs;
-    uint32_t nprocs, n, victim;
+    uint32_t nprocs, n, departing;
     pmix_info_t *results;
     size_t nresults;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
@@ -90,10 +90,10 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    /* the entire job is the group membership; the last rank is the victim */
-    victim = nprocs - 1;
+    /* the entire job is the group membership; the last rank is the departing rank */
+    departing = nprocs - 1;
 
-    if (myproc.rank == victim) {
+    if (myproc.rank == departing) {
         /* leave before contributing, without finalizing, so the server sees a
          * dropped connection. Exit 0 so the launcher does not abort the job. */
         fprintf(stderr, "%d leaving BEFORE group construct (simulated failure)\n", myproc.rank);

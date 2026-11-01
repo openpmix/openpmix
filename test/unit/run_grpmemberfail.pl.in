@@ -13,7 +13,7 @@
 # the last rank leaves without contributing (and without finalizing) so the
 # server sees a dropped connection. The survivors call PMIx_Group_construct; the
 # server must complete the construct on the survivors AND notify each of them
-# with a PMIX_GROUP_MEMBER_FAILED event naming the victim. A regression that
+# with a PMIX_GROUP_MEMBER_FAILED event naming the departing rank. A regression that
 # fails to synthesize the event (or hangs the construct) makes a client exit
 # non-zero, or wedges the run until the timeout fires. See
 # src/server/pmix_server_group.c and docs/how-things-work/collectives.
@@ -109,8 +109,8 @@ if (0 != $status) {
 
 # Confirm the run actually exercised the path: every survivor prints the
 # "saw member-failed" line only after receiving PMIX_GROUP_MEMBER_FAILED for
-# the victim, and simptest prints its own line after all clients are gone.
-my @saw = ($output =~ /saw member-failed for victim rank/g);
+# the departing rank, and simptest prints its own line after all clients are gone.
+my @saw = ($output =~ /saw member-failed for departing rank/g);
 my $server_done = ($output =~ /Test finished OK!/);
 if (3 != scalar(@saw)) {
     printf("FAIL: expected 3 survivors to see member-failed, saw %d\n", scalar(@saw));
@@ -120,5 +120,5 @@ if (!$server_done) {
     print "FAIL: server did not finish cleanly after the clients ran\n";
     exit(1);
 }
-print "PASS: all survivors received PMIX_GROUP_MEMBER_FAILED for the victim\n";
+print "PASS: all survivors received PMIX_GROUP_MEMBER_FAILED for the departing rank\n";
 exit(0);

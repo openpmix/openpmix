@@ -78,7 +78,7 @@ mca_programs() {
         | tr -s ' \t\n' ' '
 }
 
-# The hostile-input cases, as one shell fragment so the linux and macos halves
+# The malformed-input cases, as one shell fragment so the linux and macos halves
 # cannot drift.  $1 is the directory holding an installed pmix_info.  Every
 # case asserts that the process SURVIVES -- what it prints is not the subject,
 # and a malformed MCA parameter is an ordinary user mistake, not something
@@ -180,7 +180,7 @@ srcdir_blocks_vpath() {
 
 ########################################################################
 # Linux: build the DSO configuration in a builder container, run the
-# suite and the hostile-input cases against it, then a contention pass.
+# suite and the malformed-input cases against it, then a contention pass.
 ########################################################################
 
 test_linux() {
@@ -298,7 +298,7 @@ test_linux() {
               2>/dev/null | tr -d '\r')
     case "$out" in
         ""|*PREFLIGHT*)
-            bad "the hostile-input stage never ran: ${out:-no output at all}" ;;
+            bad "the malformed-input stage never ran: ${out:-no output at all}" ;;
         *)
             while read -r label verdict; do
                 [ -n "$label" ] || continue
@@ -404,7 +404,7 @@ test_macos() {
           DYLD_LIBRARY_PATH="$dso/install/lib" bash -c "$BAD_INPUT_CASES" 2>/dev/null)
     case "$out" in
         ""|*PREFLIGHT*)
-            bad "the hostile-input stage never ran: ${out:-no output at all}" ;;
+            bad "the malformed-input stage never ran: ${out:-no output at all}" ;;
         *)
             while read -r label verdict; do
                 [ -n "$label" ] || continue
