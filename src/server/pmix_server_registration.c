@@ -246,7 +246,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
      * the tool's namespace holds goes - its ranks, its data, and the
      * connections of any tool process still in it, which are closed - and
      * the host's job is built fresh, as though the name had been free. A
-     * tool that squatted on a job's name therefore never becomes one of
+     * tool that took a job's name first therefore never becomes one of
      * the job's processes, and a stale namespace left by a tool that has
      * gone is simply replaced. An update (nlocalprocs < 0) revises what
      * the tool's namespace holds, as for any other */

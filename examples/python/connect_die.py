@@ -25,9 +25,9 @@
 # complete the connect on the survivors rather than hang.
 #
 # The whole job is the connect set (rather than a subset) so that, when
-# launched across nodes, the victim's node always also hosts a surviving
+# launched across nodes, the departing rank's node always also hosts a surviving
 # participant. Launch with a launcher that does not kill the job when the
-# victim exits; under PRRTE that is `prterun --rtos recoverable ...`.
+# departing rank exits; under PRRTE that is `prterun --rtos recoverable ...`.
 #
 # Requires a minimum of 4 processes.
 
@@ -82,11 +82,11 @@ def main():
                % (myproc['nspace'], myproc['rank'], client.error_string(rc)))
         sys.exit(1)
 
-    # the entire job is the connect set; the last rank is the victim
-    victim = nprocs - 1
+    # the entire job is the connect set; the last rank is the departing rank
+    departing = nprocs - 1
 
-    if myproc['rank'] == victim:
-        # the "victim": a participant that leaves before contributing.
+    if myproc['rank'] == departing:
+        # the departing rank: a participant that leaves before contributing.
         # Delay briefly so the other participants have entered the connect
         # and their servers have built the local trackers, then leave
         # without calling it - and without calling finalize, so the server

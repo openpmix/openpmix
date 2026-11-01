@@ -1104,7 +1104,7 @@ static int dirpath_destroy_under(int parentfd, const char *base, const struct st
     /* O_NOFOLLOW: never destroy through a symlinked base path - the
      * session directories sit under a world-writable root with
      * predictable names, so a link planted there would otherwise
-     * redirect this whole recursive removal at a tree of the attacker's
+     * redirect this whole recursive removal at a tree of someone else's
      * choosing */
     fd = openat(parentfd, base, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | PMIX_O_CLOEXEC);
     if (0 > fd) {

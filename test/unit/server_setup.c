@@ -54,7 +54,7 @@
  * Three groups of case here kill an unfixed library rather than failing
  * it - the argument screens and both mistyped arrays - which is the same
  * bargain test/unit/iof_output.c makes, and the point of it: every one of
- * them is reachable from an ordinary host, not from a hostile one. That
+ * them is reachable from an ordinary host, not from a misbehaving one. That
  * was verified rather than assumed, by reverting each screen in turn and
  * re-running: SIGSEGV (exit 139) each time, with no output at all, since
  * stdout is block-buffered when the harness captures it. So a regression

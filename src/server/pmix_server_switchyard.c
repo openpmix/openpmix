@@ -360,7 +360,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
             PMIX_ERROR_LOG(rc);
             return rc;
         }
-        /* guard against a malformed/malicious client: a zero-length string
+        /* guard against a malformed client: a zero-length string
          * unpacks to NULL, and PMIX_INFO_LOAD would strdup(NULL) and crash */
         if (NULL == modname) {
             return PMIX_ERR_BAD_PARAM;

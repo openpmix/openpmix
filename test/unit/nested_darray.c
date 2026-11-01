@@ -469,7 +469,7 @@ static pmix_status_t pack_chain(pmix_data_buffer_t *buf, int levels)
 }
 
 /* Nesting up to the limit has to keep working - the cap is there to
- * bound a hostile peer, not to break legitimate data. */
+ * bound a misbehaving peer, not to break legitimate data. */
 static void test_depth_at_limit_is_accepted(void)
 {
     pmix_data_buffer_t buf;

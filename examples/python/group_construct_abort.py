@@ -16,7 +16,7 @@
 # construct on every surviving member, across all servers - rather than
 # completing it on a reduced membership.
 #
-# Launch with a launcher that does not kill the job when the victim
+# Launch with a launcher that does not kill the job when the departing rank
 # exits; under PRRTE that is `prterun --rtos recoverable ...`.
 #
 # Requires a minimum of 4 processes.
@@ -57,10 +57,10 @@ def main():
                % (myproc['nspace'], myproc['rank'], client.error_string(rc)))
         sys.exit(1)
 
-    # the entire job is the group membership; the last rank is the victim
-    victim = nprocs - 1
+    # the entire job is the group membership; the last rank is the departing rank
+    departing = nprocs - 1
 
-    if myproc['rank'] == victim:
+    if myproc['rank'] == departing:
         # leave before contributing, without finalizing, so the server
         # sees a dropped connection. Exit 0 so the launcher does not abort
         # the job
