@@ -346,7 +346,10 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                       &pmix_ptl_base.max_pending_connections);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "report_uri",
-                                     "Output URI [- => stdout, + => stderr, or filename]",
+                                     "Output URI [- => stdout, + => stderr: the local socket's URI; "
+                                     "tcp- => stdout, tcp+ => stderr: the TCP URI, for a reader of "
+                                     "a release before v7.0 (needs legacy peers); a number => that "
+                                     "pipe; else a filename]",
                                      PMIX_MCA_BASE_VAR_TYPE_STRING,
                                      &pmix_ptl_base.report_uri);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "report_uri",
@@ -694,8 +697,11 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
         goto error;
     }
 
+    /* "tcp-" and "tcp+" are no more file names than "-" and "+" are */
     if (NULL != pmix_ptl_base.report_uri && 0 != strcmp(pmix_ptl_base.report_uri, "-")
-        && 0 != strcmp(pmix_ptl_base.report_uri, "+")) {
+        && 0 != strcmp(pmix_ptl_base.report_uri, "+")
+        && 0 != strcmp(pmix_ptl_base.report_uri, "tcp-")
+        && 0 != strcmp(pmix_ptl_base.report_uri, "tcp+")) {
         pmix_ptl_base.urifile = strdup(pmix_ptl_base.report_uri);
         if (NULL == pmix_ptl_base.urifile) {
             rc = PMIX_ERR_NOMEM;

@@ -1300,14 +1300,29 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         goto sockerror;
     }
 
-    /* an empty value names nowhere to report to */
+    /* an empty value names nowhere to report to.
+     *
+     * "-" and "+" print the URI a reader of this release uses - the local
+     * socket's - on stdout or stderr. "tcp-" and "tcp+" print the TCP URI
+     * instead, for a person pointing a reader of an earlier release at us;
+     * they are refused when there is no TCP listener. A pipe gets both
+     * where we listen on TCP, TCP first: a program reading it - Open MPI,
+     * say - built against an earlier release takes the first string, and
+     * one of this release the second. The file is below */
     if (NULL != pmix_ptl_base.report_uri && '\0' != pmix_ptl_base.report_uri[0]) {
-        /* if the string is a "-", then output to stdout */
         if (0 == strcmp(pmix_ptl_base.report_uri, "-")) {
-            fprintf(stdout, "%s\n", uri);
+            fprintf(stdout, "%s\n", llt->uri);
         } else if (0 == strcmp(pmix_ptl_base.report_uri, "+")) {
-            /* output to stderr */
-            fprintf(stderr, "%s\n", uri);
+            fprintf(stderr, "%s\n", llt->uri);
+        } else if (0 == strcmp(pmix_ptl_base.report_uri, "tcp-") ||
+                   0 == strcmp(pmix_ptl_base.report_uri, "tcp+")) {
+            if (NULL == lt->uri) {
+                pmix_show_help("help-ptl-base.txt", "report-tcp-no-listener", true,
+                               pmix_ptl_base.report_uri);
+                rc = PMIX_ERR_SILENT;
+                goto sockerror;
+            }
+            fprintf(('-' == pmix_ptl_base.report_uri[3]) ? stdout : stderr, "%s\n", lt->uri);
         } else {
             /* see if it is an integer pipe. It is one only if there were
              * digits and nothing after them: strtol consumes nothing of
@@ -1317,13 +1332,44 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
             outpipe = strtol(pmix_ptl_base.report_uri, &leftover, 10);
             if (NULL != leftover && leftover != pmix_ptl_base.report_uri &&
                 '\0' == *leftover) {
-                /* stitch together the var names and URI */
-                if (0 > pmix_asprintf(&leftover, "%s;%s", lt->varname, uri)) {
+                char *usock = NULL;
+                size_t len;
+
+                /* stitch together the var names and URI - each string with
+                 * its NUL, and the TCP one first where there is one */
+                if (0 > pmix_asprintf(&usock, "%s;%s", llt->varname, llt->uri)) {
                     rc = PMIX_ERR_NOMEM;
                     goto sockerror;
                 }
-                /* output to the pipe */
-                rc = pmix_fd_write_nosigpipe(outpipe, strlen(leftover) + 1, leftover);
+                if (NULL != lt->uri) {
+                    char *tcp = NULL;
+                    size_t tlen;
+
+                    if (0 > pmix_asprintf(&tcp, "%s;%s", lt->varname, lt->uri)) {
+                        free(usock);
+                        rc = PMIX_ERR_NOMEM;
+                        goto sockerror;
+                    }
+                    tlen = strlen(tcp) + 1;
+                    len = tlen + strlen(usock) + 1;
+                    leftover = (char *) malloc(len);
+                    if (NULL == leftover) {
+                        free(tcp);
+                        free(usock);
+                        rc = PMIX_ERR_NOMEM;
+                        goto sockerror;
+                    }
+                    memcpy(leftover, tcp, tlen);
+                    memcpy(leftover + tlen, usock, strlen(usock) + 1);
+                    free(tcp);
+                    free(usock);
+                } else {
+                    leftover = usock;
+                    len = strlen(usock) + 1;
+                }
+                /* output to the pipe - in one write, well under PIPE_BUF,
+                 * so a reader that stops early cannot split it */
+                rc = pmix_fd_write_nosigpipe(outpipe, len, leftover);
                 free(leftover);
                 close(outpipe);
                 if (PMIX_SUCCESS != rc) {

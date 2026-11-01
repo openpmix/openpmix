@@ -203,8 +203,34 @@ process on the host reads it: the environment of the processes the
 server starts (see below) and the rendezvous files.
 
 The server can also report the URI on request (``ptl_base_report_uri``
-or the ``PMIX_TCP_REPORT_URI`` directive): to stdout (``-``), stderr
-(``+``), an open file descriptor (a number), or a file. A file is
+or the ``PMIX_TCP_REPORT_URI`` directive):
+
+.. list-table::
+   :header-rows: 1
+
+   * - Value
+     - Legacy peers on
+     - Legacy peers off
+   * - ``-`` (stdout), ``+`` (stderr)
+     - the local socket's URI
+     - the local socket's URI
+   * - ``tcp-`` (stdout), ``tcp+`` (stderr)
+     - the TCP URI, for a reader of an earlier release
+     - refused at init: there is no TCP listener
+   * - a number (an open pipe, then closed)
+     - ``<varnames>;<tcp uri>`` and ``<varnames>;<usock uri>``, each
+       ending in a NUL, in one write
+     - ``<varnames>;<usock uri>`` and a NUL
+   * - anything else (a file name)
+     - line 1 the TCP URI, line 2 the version, then the ``local:`` line
+     - line 1 the local socket's URI, line 2 the version, then the
+       ``local:`` line
+
+So ``-`` and ``+`` always print what a client or tool of this release
+uses, and ``tcp-``/``tcp+`` are for a person pointing a reader of an
+earlier release at this server. A program reading the pipe and linked to
+an earlier release - Open MPI's, say - takes the first string, as it
+always has; one linked to this release takes the second. A file is
 created mode 0644: only the server's user can write it.
 
 Rendezvous files
@@ -290,10 +316,13 @@ local socket.
        else its local socket's URI
      - choose the newest wire format both sides share: the first
        variable the client recognizes wins. A client of an earlier
-       release also connects to this URI - and, given the local
-       socket's, which it cannot use, initializes as a singleton and
-       returns ``PMIX_ERR_UNREACH`` (a v5.0 client also prints a
-       ``PMIX_ERR_BAD_PARAM`` error line as it does)
+       release also connects to this URI. Given the local socket's,
+       which it cannot use, it depends on the release: a v4.x or v5.0
+       client initializes as a singleton and returns
+       ``PMIX_ERR_UNREACH`` (a v5.0 client also prints a
+       ``PMIX_ERR_BAD_PARAM`` error line as it does); a v2.1 or v3.2
+       client does not come up as a singleton - its ``PMIx_Init``
+       fails
    * - ``PMIX_VERSION``
      - the server's version
      - know which features the server has

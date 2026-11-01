@@ -214,9 +214,13 @@ Connection attributes
   information |mdash| for example, so that a debugger can find a launcher.
   Missing directories on the path are created.
 * ``PMIX_TCP_REPORT_URI`` (char\*) |mdash| report the server's URI: ``-``
-  writes it to stdout, ``+`` to stderr, an integer writes it to that open file
-  descriptor (which is then closed), and anything else is taken as the name of
-  a file to write it to.
+  writes the local socket's URI to stdout and ``+`` to stderr; ``tcp-`` and
+  ``tcp+`` write the TCP URI instead, for a reader of a release before v7.0,
+  and fail the init when the server takes no legacy peers and so has no TCP
+  listener. An integer writes to that open file descriptor, which is then
+  closed: the TCP URI's string and then the local socket's, each ending in a
+  NUL, when the server takes legacy peers, else the local socket's alone.
+  Anything else is taken as the name of a file to write it to.
 * ``PMIX_TCP_IF_INCLUDE`` (char\*) |mdash| comma-delimited list of devices
   and/or CIDR notation to listen on. Cannot be combined with
   ``PMIX_TCP_IF_EXCLUDE``.

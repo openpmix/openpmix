@@ -557,6 +557,165 @@ static void report_uri_file_child(void)
     _exit(CHILD_PASS);
 }
 
+/* ---- the reported URI ------------------------------------------------ */
+
+/* Run a server reporting to `where` with its output stream `fd` (1 or 2)
+ * sent to a file, and return what it printed there - NULL on failure. With
+ * `init_fails`, the init must fail instead, and "" is returned */
+static char *reported(const char *where, int fd, bool init_fails)
+{
+    static char buf[4096];
+    char path[PMIX_PATH_MAX + 16];
+    pmix_info_t info;
+    pmix_status_t rc;
+    int out, save;
+    ssize_t n;
+
+    snprintf(path, sizeof(path), "%s/printed.%d", tmpdir, (int) getpid());
+    out = open(path, O_RDWR | O_CREAT | O_TRUNC, 0600);
+    if (0 > out) {
+        return NULL;
+    }
+    fflush(stdout);
+    fflush(stderr);
+    save = dup(fd);
+    dup2(out, fd);
+    PMIX_INFO_LOAD(&info, PMIX_TCP_REPORT_URI, where, PMIX_STRING);
+    rc = PMIx_server_init(&mymodule, &info, 1);
+    PMIX_INFO_DESTRUCT(&info);
+    fflush(stdout);
+    fflush(stderr);
+    dup2(save, fd);
+    close(save);
+    if (init_fails) {
+        close(out);
+        unlink(path);
+        if (PMIX_SUCCESS == rc) {
+            fprintf(stderr, "the init asked to report \"%s\" succeeded\n", where);
+            return NULL;
+        }
+        buf[0] = '\0';
+        return buf;
+    }
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "the init asked to report \"%s\" failed: %s\n", where,
+                PMIx_Error_string(rc));
+        close(out);
+        unlink(path);
+        return NULL;
+    }
+    /* "tcp-" and "tcp+" are no file names: nothing to remove at finalize */
+    if (NULL != pmix_ptl_base.urifile && '-' != where[0] && '+' != where[0]) {
+        fprintf(stderr, "\"%s\" was taken as a file name\n", where);
+        close(out);
+        unlink(path);
+        return NULL;
+    }
+    lseek(out, 0, SEEK_SET);
+    n = read(out, buf, sizeof(buf) - 1);
+    close(out);
+    unlink(path);
+    buf[(0 < n) ? n : 0] = '\0';
+    return buf;
+}
+
+/* "-" and "+" print the local socket's URI, "tcp-" and "tcp+" the TCP
+ * one - legacy peers on, as main sets them */
+static void report_std_child(const char *where, int fd, const char *want, const char *not)
+{
+    char *got = reported(where, fd, false), *nl;
+
+    if (NULL == got) {
+        _exit(CHILD_FAIL);
+    }
+    nl = strchr(got, '\n');
+    /* one line, holding the one URI */
+    if (NULL == strstr(got, want) || NULL != strstr(got, not) || NULL == nl || '\0' != nl[1]) {
+        fprintf(stderr, "\"%s\" printed \"%s\"\n", where, got);
+        _exit(CHILD_FAIL);
+    }
+    PMIx_server_finalize();
+    _exit(CHILD_PASS);
+}
+static void report_stdout_child(void)
+{
+    report_std_child("-", 1, "usock://", "tcp");
+}
+static void report_stderr_child(void)
+{
+    report_std_child("+", 2, "usock://", "tcp");
+}
+static void report_tcp_stdout_child(void)
+{
+    report_std_child("tcp-", 1, "tcp", "usock://");
+}
+static void report_tcp_stderr_child(void)
+{
+    report_std_child("tcp+", 2, "tcp", "usock://");
+}
+
+/* with no TCP listener, "tcp-" is refused at init */
+static void report_tcp_nolegacy_child(void)
+{
+    setenv("PMIX_MCA_ptl_base_legacy_peers", "0", 1);
+    _exit(NULL == reported("tcp-", 1, true) ? CHILD_FAIL : CHILD_PASS);
+}
+
+/* A pipe gets the TCP URI's string and then the local socket's, each with
+ * its NUL, in one write - or the local socket's alone with no TCP
+ * listener */
+static void report_pipe_child(bool legacy)
+{
+    char buf[4096], num[16], *second;
+    pmix_info_t info;
+    int fds[2];
+    ssize_t n, got = 0;
+
+    if (!legacy) {
+        setenv("PMIX_MCA_ptl_base_legacy_peers", "0", 1);
+    }
+    if (0 != pipe(fds)) {
+        _exit(CHILD_FAIL);
+    }
+    snprintf(num, sizeof(num), "%d", fds[1]);
+    PMIX_INFO_LOAD(&info, PMIX_TCP_REPORT_URI, num, PMIX_STRING);
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, &info, 1)) {
+        _exit(CHILD_FAIL);
+    }
+    /* the server closed its end when it had written */
+    while (0 < (n = read(fds[0], buf + got, sizeof(buf) - 1 - got))) {
+        got += n;
+    }
+    buf[got] = '\0';
+    if (0 == got || '\0' != buf[got - 1]) {
+        fprintf(stderr, "the pipe got %ld bytes, not ending in a NUL\n", (long) got);
+        _exit(CHILD_FAIL);
+    }
+    second = buf + strlen(buf) + 1;
+    if (legacy) {
+        if (NULL == strstr(buf, "tcp") || second >= buf + got ||
+            NULL == strstr(second, "usock://") || second + strlen(second) + 1 != buf + got) {
+            fprintf(stderr, "the pipe got \"%s\" then \"%s\"\n", buf,
+                    (second < buf + got) ? second : "(nothing)");
+            _exit(CHILD_FAIL);
+        }
+    } else if (NULL == strstr(buf, "usock://") || second != buf + got) {
+        fprintf(stderr, "the pipe got \"%s\" and %ld bytes more\n", buf,
+                (long) (buf + got - second));
+        _exit(CHILD_FAIL);
+    }
+    PMIx_server_finalize();
+    _exit(CHILD_PASS);
+}
+static void report_pipe_legacy_child(void)
+{
+    report_pipe_child(true);
+}
+static void report_pipe_nolegacy_child(void)
+{
+    report_pipe_child(false);
+}
+
 /* Write a known line to path. */
 static int put_marker(const char *path)
 {
@@ -782,6 +941,15 @@ int main(int argc, char **argv)
     run_case("an existing report file is replaced", report_uri_replace_child);
     run_case("the report file lists the wire formats and security mechanisms this server runs",
              compat_lines_child);
+    run_case("\"-\" prints the local socket's URI on stdout, alone", report_stdout_child);
+    run_case("\"+\" prints it on stderr", report_stderr_child);
+    run_case("\"tcp-\" prints the TCP URI on stdout, and is no file name",
+             report_tcp_stdout_child);
+    run_case("\"tcp+\" prints it on stderr", report_tcp_stderr_child);
+    run_case("\"tcp-\" with no TCP listener fails the init", report_tcp_nolegacy_child);
+    run_case("a pipe gets the TCP URI's string, then the local socket's",
+             report_pipe_legacy_child);
+    run_case("...and the local socket's alone with no TCP listener", report_pipe_nolegacy_child);
 
     rmdir(tmpdir);
     fprintf(stdout, "\n%d passed, %d failed, %d skipped\n", npass, nfail, nskip);

@@ -371,3 +371,17 @@ connects on the server's local socket, which the server's own report
 or rendezvous file names on its "local:" line. This file names only the
 TCP address - it was written by hand, or is read on a host other than
 the server's. Use the server's own file, on the server's host.
+#
+[report-tcp-no-listener]
+The PMIx server was asked to report its TCP URI:
+
+  %s
+
+but it has no TCP listener: it opens one only to take clients and tools
+of releases before v7.0, when legacy peers are on (the
+ptl_base_legacy_peers parameter, or PMIX_SERVER_LEGACY_PEERS, in a PMIx
+built with --enable-legacy-peers). A reader of an earlier release could
+not connect to this server in any case.
+
+To report the URI a client or tool of v7.0 or later uses, give "-"
+(stdout) or "+" (stderr).
