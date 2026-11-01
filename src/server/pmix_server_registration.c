@@ -1757,7 +1757,7 @@ static void _register_client(int sd, short args, void *cbdata)
     pmix_namespace_t *nptr, *ns;
     pmix_server_trkr_t *trk;
     pmix_trkr_caddy_t *tcd;
-    bool all_def;
+    bool all_def, updated = false;
     size_t i;
     pmix_status_t rc;
     pmix_rank_info_t *adopted;
@@ -1816,40 +1816,29 @@ static void _register_client(int sd, short args, void *cbdata)
      * collective involving this namespace hangs with nothing anywhere
      * reporting why.
      *
-     * The host registering a rank we already hold is not automatically
-     * that error, though. A proc that connected before anyone registered
-     * it - a self-started tool, or the singleton case - was given its
-     * entry by the connection handler, and the host registering it
-     * afterwards is the ordinary sequence rather than a mistake. Adopt
-     * the host's description into that entry; only a second *host*
-     * registration is the duplicate worth refusing. */
+     * So a rank we already hold is updated rather than added. Every entry
+     * a client's namespace holds was registered before its process
+     * started - by the host, by pfexec, or as the singleton this server
+     * was started for. The host registering one it registered before is
+     * updating it - a host that restarts a process re-registers it - and
+     * its uid, gid and server_object are what the rank is from here on.
+     * That is reported as PMIX_UPDATED, not as a failure. */
     adopted = NULL;
     PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
-        if (info->pname.rank != cd->proc.rank) {
-            continue;
+        if (info->pname.rank == cd->proc.rank) {
+            adopted = info;
+            break;
         }
-        if (info->host_registered) {
-            /* the host really is registering the same rank twice */
-            PMIX_ERROR_LOG(PMIX_ERR_DUPLICATE_KEY);
-            rc = PMIX_ERR_DUPLICATE_KEY;
-            goto cleanup;
-        }
-        /* We made this entry ourselves when the proc connected ahead of
-         * being registered - a self-started tool or singleton. It is the
-         * same rank, so take the host's description of it rather than
-         * adding a second entry: the uid, gid and server_object it
-         * carries are ours only from here, and the server_object in
-         * particular is what every client_connected, client_finalized
-         * and abort upcall hands back to the host to identify the proc.
-         * Refusing this call left those upcalls with NULL and left the
-         * host to recognize its own process some other way. */
-        adopted = info;
-        break;
     }
+    /* only the host's own second registration is an update - an entry this
+     * server made (the singleton it was started for, a pfexec child) is
+     * being registered by the host for the first time */
+    updated = (NULL != adopted && adopted->registered_by_host);
     /* The entry is the identity of the connection that holds it, or is
-     * being accepted on it: one whose uid or gid is not the host's for the
-     * rank is a connection of another process, and the rank is refused to
-     * the host rather than handed to that connection */
+     * being accepted on it - the entry is shared with that connection, so
+     * a new uid would re-label a running process. One whose uid or gid is
+     * not the host's for the rank keeps it: nothing is changed, and the
+     * host is told */
     if (NULL != adopted && (0 < adopted->proc_cnt || 0 < adopted->connecting) &&
         (adopted->uid != cd->uid || adopted->gid != cd->gid)) {
         pmix_output_verbose(2, pmix_server_globals.base_output,
@@ -1861,10 +1850,9 @@ static void _register_client(int sd, short args, void *cbdata)
         goto cleanup;
     }
     /* From its registration on, a rank is taken only with the token
-     * PMIx_server_setup_fork hands out for it. An entry already here is
-     * the singleton the server was started for (PMIX_SINGLETON), or a
-     * process that connected before it was registered: neither was
-     * prepared, so neither has a token to present */
+     * PMIx_server_setup_fork hands out for it. A rank already here keeps
+     * the token it has - the singleton the server was started for was not
+     * prepared, and has none */
     if (NULL == adopted && PMIX_SUCCESS != (rc = pmix_ptl_base_reserve_token(&cd->proc))) {
         goto cleanup;
     }
@@ -1874,6 +1862,7 @@ static void _register_client(int sd, short args, void *cbdata)
         info->gid = cd->gid;
         info->server_object = cd->server_object;
         info->host_registered = true;
+        info->registered_by_host = true;
     } else {
         info = PMIX_NEW(pmix_rank_info_t);
         if (NULL == info) {
@@ -1891,6 +1880,7 @@ static void _register_client(int sd, short args, void *cbdata)
         info->gid = cd->gid;
         info->server_object = cd->server_object;
         info->host_registered = true;
+        info->registered_by_host = true;
         pmix_list_append(&nptr->ranks, &info->super);
     }
     /* with no owner named by the host, the job belongs to the user its
@@ -1988,7 +1978,7 @@ static void _register_client(int sd, short args, void *cbdata)
          * participant namespace we had not been told about */
         pmix_server_grp_check_pending();
     }
-    rc = PMIX_SUCCESS;
+    rc = updated ? PMIX_UPDATED : PMIX_SUCCESS;
 
 cleanup:
     /* let the caller know we are done */

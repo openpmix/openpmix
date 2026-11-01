@@ -22,8 +22,8 @@
  * PMIx_server_register_client gives a rank a token nobody is handed:
  * until the rank is prepared, nothing is taken for it, and then only the
  * token it was handed. Registering a rank already prepared keeps the
- * token it was handed; one that connected before it was registered is
- * given none.
+ * token it was handed; one this server made before the host registered it
+ * - the singleton it was started for - is given none.
  *
  * A process prepared with no rank of its own gets no token, and one it
  * would have inherited is taken out of its environment.
@@ -137,8 +137,9 @@ static bool registered(pmix_status_t rc)
     return PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc;
 }
 
-/* A rank the connection handler made an entry for - one that connected
- * before it was registered - registered by the host afterwards. Runs the
+/* A rank this server made an entry for before the host registered it - as
+ * it does for the singleton it was started for - registered by the host
+ * afterwards. Runs the
  * entry's setup on the progress thread, where the handler would */
 typedef struct {
     pmix_event_t ev;
@@ -177,7 +178,9 @@ static void adopt_case(void)
 
     PMIX_LOAD_PROCID(&proc, "token.adopt", 0);
     rc = PMIx_server_register_client(&proc, getuid(), getgid(), NULL, NULL, NULL);
-    report("a rank that connected before it was registered is given none",
+    /* the host has not registered this rank before, so this is a first
+     * registration, not an update */
+    report("a rank this server made before the host registered it is given none",
            registered(rc) && PMIX_SUCCESS == pmix_ptl_base_check_token("token.adopt", 0, NULL));
 }
 
