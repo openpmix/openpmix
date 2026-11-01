@@ -347,3 +347,27 @@ its address, as:
 
 That file says which release the server runs and, from recent releases
 on, exactly what it accepts - so this process can choose a match.
+#
+[local-uri-required-uri]
+The PMIx server would not take this process at the address it was
+given:
+
+  %s
+
+That is the server's TCP address, which a server of PMIx v7.0 or later
+offers only to clients and tools of earlier releases. A client or tool
+of v7.0 or later connects on the server's local socket: pass the
+"usock://" URI the server reports, or name the server's report file
+("file:<path>"), whose "local:" line gives that socket.
+#
+[local-uri-required-file]
+The PMIx server would not take this process at the TCP address the file
+
+  %s
+
+gave for it. A server of PMIx v7.0 or later offers TCP only to clients
+and tools of earlier releases; a client or tool of v7.0 or later
+connects on the server's local socket, which the server's own report
+or rendezvous file names on its "local:" line. This file names only the
+TCP address - it was written by hand, or is read on a host other than
+the server's. Use the server's own file, on the server's host.

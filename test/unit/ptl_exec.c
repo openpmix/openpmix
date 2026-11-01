@@ -9,12 +9,11 @@
  * Unit test: what becomes of a client's rank when its process execs, and
  * of the processes a client starts.
  *
- * A client's sockets are close-on-exec, so its connection closes when the
- * process execs - on the local socket and over TCP alike, and over TCP
- * also where the kernel cannot name the server's user, which a client
- * connects to regardless: its server is the one named for it. The server
- * handles that as it handles any connection that ends without a
- * finalize: the rank is lost at once, as it is for a client that dies.
+ * A client's socket is close-on-exec, so its connection closes when the
+ * process execs. A client of this release connects on the local socket -
+ * a server of this release takes it nowhere else. The server handles the
+ * close as it handles any connection that ends without a finalize: the
+ * rank is lost at once, as it is for a client that dies.
  *
  * A client takes the variables that say who it is and how it reaches its
  * server out of its environment as it initializes, so nothing it starts
@@ -62,8 +61,6 @@ extern char **environ;
 /* the descriptors a client and the server signal each other on */
 #define RI_TOSERVER   "PMIX_UT_REINIT_TOSERVER"
 #define RI_FROMSERVER "PMIX_UT_REINIT_FROMSERVER"
-/* set: a client takes its kernel to name no TCP server's user */
-#define RI_NOTABLE    "PMIX_UT_REINIT_NOTABLE"
 
 #define CHILD_PASS  0
 #define CHILD_FAIL  1
@@ -99,9 +96,6 @@ static int init_and_wait(void)
     pmix_status_t rc;
     char c = 'r';
 
-    if (NULL != getenv(RI_NOTABLE)) {
-        pmix_util_getid_test_no_tcp_table = true;
-    }
     rc = PMIx_Init(&me, NULL, 0);
     if (PMIX_SUCCESS != rc) {
         fprintf(stdout, "    PMIx_Init failed: %s\n", PMIx_Error_string(rc));
@@ -448,10 +442,6 @@ typedef struct {
 } client_t;
 
 /* start this program as `rank`, in `role` */
-/* set to start clients without the local socket's address, so they
- * connect over TCP as a client of an earlier release does */
-static bool client_on_tcp = false;
-
 static bool start_client(char *self, pmix_rank_t rank, const char *role, client_t *cl)
 {
     pmix_proc_t proc;
@@ -467,9 +457,6 @@ static bool start_client(char *self, pmix_rank_t rank, const char *role, client_
     PMIX_LOAD_PROCID(&proc, RI_NSPACE, rank);
     if (PMIX_SUCCESS != PMIx_server_setup_fork(&proc, &env)) {
         return false;
-    }
-    if (client_on_tcp) {
-        (void) pmix_unsetenv(PMIX_PTL_LOCAL_URI_ENV, &env);
     }
     snprintf(num, sizeof(num), "%d", to[1]);
     PMIx_Setenv(RI_TOSERVER, num, true, &env);
@@ -721,25 +708,6 @@ static int run_exec_lost(char *self)
     return CHILD_PASS;
 }
 
-#if PMIX_ENABLE_LEGACY_PEERS
-/* the same over TCP - where the server listens only when it takes clients
- * of earlier releases */
-static int run_exec_lost_tcp(char *self)
-{
-    setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
-    client_on_tcp = true;
-    return run_exec_lost(self);
-}
-
-/* and where the kernel cannot name the server's user: a client connects
- * as before - its server is the one named for it - and is checked by the
- * server as before */
-static int run_exec_lost_tcp_notable(char *self)
-{
-    setenv(RI_NOTABLE, "1", 1);
-    return run_exec_lost_tcp(self);
-}
-#endif
 
 /* a client dies without finalizing: it is lost at once */
 static int run_died(char *self)
@@ -842,12 +810,6 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "\n=== a client that execs, and the processes a client starts ===\n\n");
     run_case("a client whose process execs is lost at once", run_exec_lost, argv[0]);
-#if PMIX_ENABLE_LEGACY_PEERS
-    run_case("a client on TCP whose process execs is lost at once", run_exec_lost_tcp,
-             argv[0]);
-    run_case("...also where the kernel cannot name its server", run_exec_lost_tcp_notable,
-             argv[0]);
-#endif
     run_case("a program a client execs has none of its identity, and is a singleton",
              run_exec_singleton, argv[0]);
     run_case("a process a client forks and execs has none of its identity, and is a singleton",

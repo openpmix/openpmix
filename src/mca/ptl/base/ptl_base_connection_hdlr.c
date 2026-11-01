@@ -826,6 +826,19 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         rc = PMIX_ERR_NOT_SUPPORTED;
         goto error;
     }
+    /* ...while a peer of this release uses the local socket, where the
+     * kernel names it. The TCP listener exists only to take peers of
+     * earlier releases, and takes them on their claim where it cannot
+     * name them - so a peer of this release is not taken there. It is
+     * told why, so it can say which address to use instead */
+    if (PMIX_PTL_LOCAL_MAJOR <= major && !local_peer(pnd)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:connection_handler: refusing a peer of release %s on "
+                            "TCP - a peer of this release uses the local socket",
+                            pnd->version);
+        rc = PMIX_ERR_LOCAL_URI_REQUIRED;
+        goto error;
+    }
 
     /* A process that names itself must name a process: a namespace, and a
      * rank. An empty namespace would match every namespace wherever names

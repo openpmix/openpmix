@@ -378,8 +378,11 @@ static void tool_case(kid_t *kp, const char *name)
 }
 
 /* A tool given the server's URI, or a file holding it: over the local
- * socket or TCP, as `want_local` says */
-static void tool_uri_case(kid_t *kp, const char *name, const char *uri, bool want_local)
+ * socket - or, at a TCP address, refused by the server as `want` says,
+ * since a server of this release takes a tool of this release only on its
+ * local socket */
+static void tool_uri_case(kid_t *kp, const char *name, const char *uri, bool want_local,
+                          pmix_status_t want)
 {
     kid_t k = *kp;
     char *env[2] = {NULL, NULL};
@@ -395,6 +398,10 @@ static void tool_uri_case(kid_t *kp, const char *name, const char *uri, bool wan
     rc = finish_kid(&k, &status);
     snprintf(detail, sizeof(detail), "init %s, exit %d", PMIx_Error_string(rc),
              WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    if (PMIX_SUCCESS != want) {
+        report(name, want == rc, detail);
+        return;
+    }
     report(name, PMIX_SUCCESS == rc && WIFEXITED(status) &&
                      (want_local ? KID_OK : KID_NOT_LOCAL) == WEXITSTATUS(status),
            detail);
@@ -649,15 +656,17 @@ int main(int argc, char **argv)
 
     tool_case(&kids[4], "a tool finding the server by its file connects over the local socket");
 
-    client_case(&kids[5], "a client given another server's local URI ignores it and uses TCP",
-                "other.server.7;usock:///tmp/pmix-no-such-dir/pmix-1;0:0", PMIX_SUCCESS, false);
+    client_case(&kids[5], "a client given another server's local URI ignores it, and is sent "
+                "back to the local socket from TCP",
+                "other.server.7;usock:///tmp/pmix-no-such-dir/pmix-1;0:0",
+                PMIX_ERR_LOCAL_URI_REQUIRED, false);
 
     value = tcp_uri();
     if (NULL == value) {
         return 1;
     }
-    tool_uri_case(&kids[6], "a tool given the TCP URI connects over TCP, close-on-exec", value,
-                  false);
+    tool_uri_case(&kids[6], "a tool given the TCP URI is sent to the local socket", value, false,
+                  PMIX_ERR_LOCAL_URI_REQUIRED);
     free(value);
 
     singleton_case(&kids[7], "a singleton reaches the server started for it over its local "
@@ -667,14 +676,15 @@ int main(int argc, char **argv)
         return 1;
     }
     tool_uri_case(&kids[8], "a tool given the report file connects over the local socket", value,
-                  true);
+                  true, PMIX_SUCCESS);
     free(value);
     copy = other_host_copy(report);
     if (NULL == copy || 0 > asprintf(&value, "file:%s", copy)) {
         return 1;
     }
-    tool_uri_case(&kids[9], "a tool reading a file whose local socket is another host's uses TCP",
-                  value, false);
+    tool_uri_case(&kids[9], "a tool reading a file whose local socket is another host's is "
+                  "sent to the local socket from TCP",
+                  value, false, PMIX_ERR_LOCAL_URI_REQUIRED);
     free(value);
     unlink(copy);
     free(copy);
