@@ -736,6 +736,14 @@ PMIX_EXPORT bool pmix_server_prune_reginfo(pmix_regevents_info_t *reginfo);
  * docs/how-things-work/init-finalize.rst. */
 PMIX_EXPORT void pmix_server_peer_finalized(pmix_peer_t *peer);
 
+/* A process of a self-started tool's namespace has gone, finalized or
+ * not. The host did not start it and may never be told it left, so this
+ * is what retires it: the peer at once, its rank entry when no connected
+ * process holds that rank, and the namespace - with everything the server
+ * held for it - when no process is left in it. A tool that comes back
+ * builds them again */
+PMIX_EXPORT void pmix_server_tool_departed(pmix_peer_t *peer);
+
 PMIX_EXPORT pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                                                       pmix_info_cbfunc_t cbfunc);
 

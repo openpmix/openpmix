@@ -537,6 +537,60 @@ and put *that* on the list. `test/unit/tool_nspace.c` pins the property
 by driving a real tool connection; note that the entry count alone does
 not catch it, which the test says in a comment.
 
+### Who may join a namespace
+
+A namespace holds one of two kinds of process, never both:
+
+- **Processes the host (or this server) started** - clients and
+  tool-clients. Each was registered before it started: by the host's
+  `PMIx_server_register_client`, or by `pmix_pfexec` when this server
+  fork/execs it, or as the singleton this server was started for. Its
+  rank entry has `host_registered` set, and its uid and gid are what a
+  process connecting as that rank must be.
+- **Self-started tools.** The first one's connection builds the
+  namespace and marks it `nptr->self_started`; its rank entries are made
+  from the identity each tool was validated as.
+
+The connection handler enforces the split:
+
+- A **client** attaches only to a rank with `host_registered` set, in a
+  namespace that is not a self-started tool's (`accept_client`).
+- A **tool-client** (`PMIX_TOOL_CLIENT`/`PMIX_LAUNCHER_CLIENT`) is
+  refused if its namespace is unknown or a self-started tool's, or its
+  rank was not registered; otherwise it must be the rank's uid and gid
+  (`place_tool`). Nothing is built for one. It presents its rank's token
+  as a client does.
+- A **self-started tool** naming an existing namespace may join it only
+  if it is a self-started tool's, as its user (`nspace_is_tools`) - or,
+  in a namespace whose processes the host or this server started, as the
+  rank registered for it, with that rank's uid and gid. That is a launcher
+  this server fork/exec'd connecting back under the identity pfexec gave
+  it (PRRTE's debugger `indirect` example); the rank's token proves it is
+  that process. No other rank of such a namespace is a tool's to take.
+- `consolidate_nspace()` applies the rule when a namespace of the tool's
+  name appeared while the host decided. One with no ranks - the host's
+  registration of the tool's own job during the `tool_connected` upcall,
+  which is what PRRTE does - is joined and marked `self_started`. One
+  holding ranks is joined only if it is a self-started tool's; NULL
+  refuses.
+- A self-started tool whose namespace went while the host decided (the
+  host deregistered it, or its last process left) gets a fresh one under
+  the same name, as though it had found none.
+
+The identity match is exact: the same uid and gid.
+
+The registration side keeps the split too: `_register_client` refuses a
+self-started tool's namespace, and a **full** `_register_nspace` of one
+takes the name back - `release_nspace` tears the tool's namespace down,
+closing any tool still connected in it, and the host's job is built
+fresh. An update (`nlocalprocs < 0`) leaves it be.
+
+A self-started tool's namespace lasts only while one of its processes is
+connected: `lost_connection` hands every departing peer of one to
+`pmix_server_tool_departed` (`src/server`), and reports its lost
+connection at once rather than after the event window. See
+`test/unit/nspace_membership.c`.
+
 **`_check_cached_events()` in this file is one of three replays of the
 notification hotel, and it is not the one you are likely to be looking
 at.** A newly-connected peer gets whatever it is a target of; so does a

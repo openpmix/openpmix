@@ -125,9 +125,15 @@ result directly:
   once per rank; a second call would push the namespace's rank list permanently
   past its local-process count, after which every collective involving the
   namespace would hang.
-* ``PMIX_ERR_EXISTS`` |mdash| a process that connected before it was registered
-  holds the rank, or is being accepted on it, and its uid or gid is not the one
-  given here. The rank is left to that connection.
+* ``PMIX_ERR_EXISTS`` |mdash| the singleton this server was started for holds
+  the rank, or is being accepted on it, and its uid or gid is not the one given
+  here. The rank is left to that connection.
+* ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the namespace belongs to a self-started
+  tool. A namespace holds either processes the host started (clients and
+  tool-clients) or self-started tools, never both. Registering the namespace in
+  full with
+  :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`
+  first takes the name back.
 * ``PMIX_ERR_WOULD_BLOCK`` |mdash| the blocking form was called from the
   library's own progress thread. See `PROGRESS THREAD RESTRICTION`_.
 
@@ -154,17 +160,20 @@ From registration on, a process of this release that connects as the rank
 must present the token ``PMIx_server_setup_fork`` hands out for it, and
 is refused with ``PMIX_ERR_INVALID_CRED`` until then: registration keeps
 a token for the rank that nobody is handed. A host may also call the two
-functions in the other order. The exception is a rank this server
-already holds when the host registers it - the singleton named by
-``PMIX_SINGLETON`` when the server was initialized, or a process that
-connected before it was registered. Neither was prepared, so no token is
-asked of it. The registration takes such a rank over only for the uid and
-gid of the connection that holds it: for any other it returns
-``PMIX_ERR_EXISTS``.
+functions in the other order. The exception is the singleton named by
+``PMIX_SINGLETON`` when the server was initialized, which this server
+registered itself: it was not prepared, so no token is asked of it. The
+registration takes its rank over only for the uid and gid of the
+connection that holds it: for any other it returns ``PMIX_ERR_EXISTS``.
 
-For security, PMIx server implementations should verify the user and group IDs
-of a connecting process against those registered here before completing the
-connection.
+A process that was not registered cannot connect as a client or as a
+tool-client (a tool the host starts, which is registered with this function in
+the same way). Any process that connects as this namespace and rank must have
+the uid and gid registered here, and only one may be connected as it at a time.
+A registration lasts until the host calls
+:ref:`PMIx_server_deregister_client(3) <man3-PMIx_server_deregister_client>` or
+:ref:`PMIx_server_deregister_nspace(3) <man3-PMIx_server_deregister_nspace>`
+|mdash| a client that finalizes, or exits, does not end it.
 
 
 .. include:: /man/no-blocking-in-progress-thread.rst
