@@ -464,7 +464,10 @@ static pmix_status_t lookup_sock_diag(const tcp_tuple_t *t, uid_t *uid)
             continue;
         }
         r = (struct inet_diag_msg *) NLMSG_DATA(nlh);
-        if (TCP_ESTABLISHED != r->idiag_state ||
+        /* a connection the server has not yet accepted is in the table
+         * with no socket - inode 0 - and the listener's owner: not yet
+         * the server's own end, so not yet an answer */
+        if (TCP_ESTABLISHED != r->idiag_state || 0 == r->idiag_inode ||
             r->id.idiag_sport != t->peer_port ||
             r->id.idiag_dport != t->local_port ||
             !diag_addr_matches(r->idiag_family, r->id.idiag_src, t, true) ||
@@ -503,7 +506,7 @@ static pmix_status_t scan_proc_net(const char *path, bool v6, const tcp_tuple_t 
 {
     char line[1024], laddr[33], raddr[33];
     unsigned int lport, rport, st;
-    unsigned long owner;
+    unsigned long owner, inode;
     const void *pa, *la;
     size_t alen;
     FILE *fp;
@@ -540,11 +543,13 @@ static pmix_status_t scan_proc_net(const char *path, bool v6, const tcp_tuple_t 
             }
             continue;
         }
-        if (6 != sscanf(line, " %*u: %32[0-9A-Fa-f]:%x %32[0-9A-Fa-f]:%x %x %*x:%*x %*x:%*x %*x %lu",
-                        laddr, &lport, raddr, &rport, &st, &owner)) {
+        if (7 != sscanf(line,
+                        " %*u: %32[0-9A-Fa-f]:%x %32[0-9A-Fa-f]:%x %x %*x:%*x %*x:%*x %*x %lu %*d %lu",
+                        laddr, &lport, raddr, &rport, &st, &owner, &inode)) {
             continue; /* the header, or something we do not recognize */
         }
-        if (0x01 != st ||                           /* TCP_ESTABLISHED */
+        /* inode 0: not yet accepted - see lookup_sock_diag */
+        if (0x01 != st || 0 == inode ||             /* TCP_ESTABLISHED */
             lport != ntohs(t->peer_port) || rport != ntohs(t->local_port) ||
             !proc_addr_matches(laddr, pa, alen) || !proc_addr_matches(raddr, la, alen)) {
             continue;
@@ -782,13 +787,21 @@ pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid)
             pmix_output_verbose(2, pmix_globals.debug_output,
                                 "getid: sock_diag unavailable - scanning /proc/net");
             rc = lookup_proc_net(&t, &owner);
-        } else if (PMIX_ERR_NOT_FOUND == rc &&
-                   PMIX_SUCCESS == lookup_proc_net(&t, &owner)) {
+        } else if (PMIX_ERR_NOT_FOUND == rc) {
             /* a kernel whose TCP diag handler is a module it cannot load
              * answers every request "no such connection" - /proc/net still
-             * lists it. A table that does not either, or cannot be read,
-             * leaves the answer as it was */
-            rc = PMIX_SUCCESS;
+             * lists it. One that does not list it either confirms the
+             * answer. One that cannot be read - /proc mounted with
+             * hidepid, or kept from a container - leaves "no such
+             * connection" unconfirmed, and so no answer at all: there is
+             * no table to ask */
+            pmix_status_t prc = lookup_proc_net(&t, &owner);
+
+            if (PMIX_SUCCESS == prc) {
+                rc = PMIX_SUCCESS;
+            } else if (PMIX_ERR_NOT_SUPPORTED == prc) {
+                rc = PMIX_ERR_NOT_SUPPORTED;
+            }
         }
 #elif PMIX_HAVE_PROC_NET_TCP
         rc = lookup_proc_net(&t, &owner);

@@ -80,18 +80,37 @@ This process on %s will not connect to the PMIx server at
 
   %s:%d
 
-The kernel here keeps no table of TCP connections that says which user
-runs that server, so this process cannot tell whether it may talk to
-it.
+The kernel here keeps no table of TCP connections that this process can
+read, so it cannot tell which user runs that server.
 
-It connects to such a server when it is given the server's rendezvous
-file ("file:<path>", or PMIX_TOOL_ATTACHMENT_FILE) and that file says
-either that the server is of a release before v7.0, or that it is of a
-later release and still running - and the file is one that only its
-owner can write, owned by this process's user, root, or a user
-pmix_ptl_base_server_access names. A server of
-v7.0 or later also listens on a local socket, which needs none of this:
-its rendezvous file names it, and a process on this host connects there.
+It connects to a server the kernel cannot name only when the server's
+address came from a source that answers for it: the environment the
+server started this process with, a URI passed directly (PMIX_SERVER_URI
+or PMIX_TCP_URI), or the server's rendezvous file named by the caller
+("file:<path>" or PMIX_TOOL_ATTACHMENT_FILE) - a file only its owner can
+write, owned by this process's user, root, or a user
+pmix_ptl_base_server_access names. A server found by searching for its
+file never qualifies. Name the server's file, or pass its URI.
+
+A server of v7.0 or later also listens on a local socket, where the
+kernel names its user: its rendezvous file names that socket.
+#
+[server-unmapped]
+This process on %s will not connect to the PMIx server it reached: the
+kernel reports that server's user as
+
+  uid %lu
+
+an id from outside this process's user namespace, so it cannot tell who
+runs the server. This is usual in a rootless container whose server runs
+on the host.
+
+It connects to such a server only when the server's address came from a
+source that answers for it: the environment the server started this
+process with, a URI passed directly (PMIX_SERVER_URI or PMIX_TCP_URI),
+or the server's rendezvous file named by the caller ("file:<path>" or
+PMIX_TOOL_ATTACHMENT_FILE). A server found by searching for its file
+never qualifies. Name the server's file, or pass its URI.
 #
 [server-identity]
 The PMIx server this process connected to on host %s is not one it may
