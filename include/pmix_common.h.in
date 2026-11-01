@@ -363,7 +363,10 @@ typedef uint32_t pmix_rank_t;
                                                                     //           "spread" (threads load-balanced across available cpus)
 
 /* attributes for TCP connections */
-#define PMIX_TCP_REPORT_URI                 "pmix.tcp.repuri"       // (char*) output URI - '-' => stdout, '+' => stderr, or filename
+#define PMIX_TCP_REPORT_URI                 "pmix.tcp.repuri"       // (char*) output URI - '-' => stdout, '+' => stderr (the local
+                                                                    //         socket's URI); "tcp-", "tcp+" => the same, with the
+                                                                    //         TCP URI for readers of earlier releases (legacy peers
+                                                                    //         only); a number => that pipe; else a filename
 #define PMIX_TCP_URI                        "pmix.tcp.uri"          // (char*) URI of server to connect to, or file:<name of file containing it>
 #define PMIX_TCP_IF_INCLUDE                 "pmix.tcp.ifinclude"    // (char*) comma-delimited list of devices and/or CIDR notation
 #define PMIX_TCP_IF_EXCLUDE                 "pmix.tcp.ifexclude"    // (char*) comma-delimited list of devices and/or CIDR notation
