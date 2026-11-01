@@ -2209,7 +2209,14 @@ deregistration. Only a *stranded* peer that a newer connection has
 already displaced is freed immediately. This deferral keeps concurrent
 spawn/connect/disconnect collectives and direct-modex gets — which
 resolve ranks through `info->peerid` — from racing peer teardown. Do not
-"simplify" this by freeing peers eagerly. `pmix_server_purge_events`
+"simplify" this by freeing peers eagerly. A **self-started tool** is the
+exception: nothing resolves it through `info->peerid`, and the host may
+never learn it left, so `pmix_server_tool_departed` retires its peer at
+once and removes its rank entry and namespace when no connected process
+holds them. `release_nspace` is the teardown it shares with
+`_deregister_nspace` and with `_register_nspace`'s take-back of a name a
+self-started tool holds. See "Who may join a namespace" in
+[`../mca/ptl/base/AGENTS.md`](../mca/ptl/base/AGENTS.md). `pmix_server_purge_events`
 scrubs a departing peer from the event-registration store and pending
 notifications.
 

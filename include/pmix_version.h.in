@@ -71,6 +71,7 @@
 #define PMIX_CAP_ACCESS_CHECK    24
 #define PMIX_CAP_ABORT2          26
 #define PMIX_CAP_ORIGIN_ID       27
+#define PMIX_CAP_TOOL_NSPACE_RELEASE 28
 
 
 /*****    DEPRECATED    *****/

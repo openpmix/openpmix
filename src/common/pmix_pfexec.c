@@ -545,6 +545,9 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             info->pname.rank = child->proc.rank;
             info->uid = pmix_globals.uid;
             info->gid = pmix_globals.gid;
+            /* registered before it starts, as the host registers a
+             * client - so whatever connects as this rank must be us */
+            info->host_registered = true;
             pmix_list_append(&nptr->ranks, &info->super);
 
             /* setup the environment */
