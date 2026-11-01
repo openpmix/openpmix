@@ -342,6 +342,9 @@ static pmix_status_t register_singleton(char *name)
      * has to defend against */
     pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     rinfo->pname.rank = rank;
+    /* the process this server was started for - registered, as a host
+     * registers a client, before it connects */
+    rinfo->host_registered = true;
     rinfo->realuid = getuid();
     rinfo->uid = geteuid();
     rinfo->realgid = getgid();

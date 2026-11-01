@@ -281,6 +281,16 @@ been registered with its ``nlocalprocs`` count.
 Large ``PMIX_NODE_MAP`` and ``PMIX_PROC_MAP`` values are commonly generated in
 compressed form using ``PMIx_generate_regex2`` prior to registration.
 
+A self-started tool - one the host did not start - may have taken a namespace
+name for itself. Registering that name in full (``nlocalprocs`` zero or more)
+takes it back: the tool's namespace, and everything the library held for it, is
+removed, any tool process still connected in it is closed, and the host's job
+is built fresh as though the name had been free. An update (negative
+``nlocalprocs``) revises what the tool's namespace holds and leaves the tool
+connected. A host that registers a namespace for a tool during its
+``tool_connected2`` upcall gives the tool that name; see
+:ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>`.
+
 The job's ``PMIX_USERID`` and ``PMIX_GRPID`` may be given either as numbers
 (``uint32_t``) or as a user and group name (``char*``), at the top level of
 ``info`` or inside an info array such as ``PMIX_JOB_INFO_ARRAY``. The library

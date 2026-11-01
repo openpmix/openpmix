@@ -381,6 +381,7 @@ test/unit/client_connect_fail
 test/unit/tool_delete
 test/unit/tool_replies
 test/unit/tool_nspace
+test/unit/nspace_membership
 test/unit/tool_rndz
 test/unit/tool_api
 test/unit/tool_attach_nb

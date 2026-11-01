@@ -35,7 +35,6 @@
 
 #include "include/pmix_socket_errno.h"
 #include "src/client/pmix_client_ops.h"
-#include "src/common/pmix_pfexec.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
@@ -970,7 +969,14 @@ static void accept_client(pmix_pending_connection_t *pnd)
         return;
     }
     info = find_rank(nptr, pnd->proc.rank);
-    if (NULL == info) {
+    /* only a rank registered before its process started takes a client -
+     * never one a self-started tool's connection made, nor any rank of a
+     * self-started tool's namespace */
+    if (NULL == info || !info->host_registered || nptr->self_started) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "refusing client %s:%u - %s", pnd->proc.nspace, pnd->proc.rank,
+                            (NULL == info) ? "no such rank is registered"
+                                           : "the rank belongs to a self-started tool");
         refuse(pnd, PMIX_ERR_NOT_FOUND);
         return;
     }
@@ -1405,116 +1411,91 @@ static pmix_status_t place_tool(pmix_pending_connection_t *pnd)
 {
     pmix_namespace_t *nptr = NULL;
     pmix_rank_info_t *info;
-    pmix_peer_t *p2;
-    pmix_pfexec_child_t *child;
-    bool found;
 
     if (!host_names_tool(pnd)) {
         nptr = find_nspace(pnd->proc.nspace);
     }
 
     if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
-        /* A tool we launched - the host may have registered it as a
-         * client. It is possible that this is a tool inside of a
-         * job-script as part of a multi-spawn operation: each tool
-         * invocation may have finalized and terminated, causing us to
-         * clean up all references to it, and then reappear. So it is not
-         * refused for being unknown - the namespace and rank are built
-         * for it, and the host decides whether that is allowed */
-        if (NULL == nptr) {
-            nptr = PMIX_NEW(pmix_namespace_t);
-            if (NULL == nptr) {
-                return PMIX_ERR_NOMEM;
-            }
-            nptr->nspace = strdup(pnd->proc.nspace);
-            /* the tool's job belongs to the user it connected as */
-            pmix_server_access_set_owner(nptr, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
-            nptr->version.major = pnd->proc_type.major;
-            nptr->version.minor = pnd->proc_type.minor;
-            nptr->version.release = pnd->proc_type.release;
-            pnd->nspace_created = true;
-            pnd->nptr = nptr;
-        } else {
-            PMIX_RETAIN(nptr);
-            pnd->nptr = nptr;
+        /* A tool-client - a tool the host, or this server, started - was
+         * registered before it started, as every client is: its namespace
+         * and rank are already here, and it has to be the identity they
+         * were registered with. Nothing is built for one that was not, as
+         * nothing is for a client: its registration lasts until the host
+         * deregisters it, so a tool-client that finalizes and comes back
+         * finds its rank still there */
+        if (NULL == nptr || nptr->self_started) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "refusing tool-client %s:%u - %s", pnd->proc.nspace,
+                                pnd->proc.rank,
+                                (NULL == nptr) ? "its namespace is not registered"
+                                               : "the namespace belongs to a self-started tool");
+            return (NULL == nptr) ? PMIX_ERR_NOT_FOUND : PMIX_ERR_NOT_SUPPORTED;
         }
         info = find_rank(nptr, pnd->proc.rank);
-        if (NULL != info) {
-            /* it must be the identity its rank was registered with */
-            if (info->uid != pnd->uid || info->gid != pnd->gid) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "tool %s:%u is uid %lu gid %lu - its rank is uid %lu gid %lu",
-                                    pnd->proc.nspace, pnd->proc.rank, (unsigned long) pnd->uid,
-                                    (unsigned long) pnd->gid, (unsigned long) info->uid,
-                                    (unsigned long) info->gid);
-                return PMIX_ERR_INVALID_CRED;
-            }
-            PMIX_RETAIN(info);
-        } else {
-            /* A rank the namespace does not have is built for the tool -
-             * see above - but only in a namespace that is the tool's own
-             * user's: its owner, and every process already in it. A rank
-             * in it would make the tool one of the job's own processes */
-            if (!pnd->nspace_created && !nspace_is_tools(nptr, pnd->uid, pnd->gid)) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "tool %s:%u is uid %lu gid %lu - the namespace is not "
-                                    "that user's",
-                                    pnd->proc.nspace, pnd->proc.rank,
-                                    (unsigned long) pnd->uid, (unsigned long) pnd->gid);
-                return PMIX_ERR_NO_PERMISSIONS;
-            }
-            /* see above about not finding the namespace */
-            info = PMIX_NEW(pmix_rank_info_t);
-            if (NULL == info) {
-                return PMIX_ERR_NOMEM;
-            }
-            info->pname.nspace = strdup(pnd->proc.nspace);
-            info->pname.rank = pnd->proc.rank;
-            info->uid = pnd->uid;
-            info->gid = pnd->gid;
-            pnd->rinfo_created = true;
+        if (NULL == info || !info->host_registered) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "refusing tool-client %s:%u - its rank is not registered",
+                                pnd->proc.nspace, pnd->proc.rank);
+            return PMIX_ERR_NOT_FOUND;
         }
+        /* it must be the identity its rank was registered with */
+        if (info->uid != pnd->uid || info->gid != pnd->gid) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "tool %s:%u is uid %lu gid %lu - its rank is uid %lu gid %lu",
+                                pnd->proc.nspace, pnd->proc.rank, (unsigned long) pnd->uid,
+                                (unsigned long) pnd->gid, (unsigned long) info->uid,
+                                (unsigned long) info->gid);
+            return PMIX_ERR_INVALID_CRED;
+        }
+        PMIX_RETAIN(nptr);
+        pnd->nptr = nptr;
+        PMIX_RETAIN(info);
+        pnd->rinfo = info;
+        return PMIX_SUCCESS;
+    }
+
+    if (NULL != nptr && !nptr->self_started) {
+        /* A tool naming a namespace whose processes the host or this
+         * server started. It may be one of them - a launcher this server
+         * fork/exec'd connects back under the identity pfexec registered
+         * for it - and then it takes the rank registered for it, as that
+         * rank's uid and gid. The rank's token, checked once the tool is
+         * read, says it is that process. Any other rank of such a
+         * namespace is not a self-started tool's to take */
+        info = find_rank(nptr, pnd->proc.rank);
+        if (NULL == info || !info->host_registered) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "refusing tool %s:%u - the namespace is not a self-started "
+                                "tool's, and the rank was not registered for it",
+                                pnd->proc.nspace, pnd->proc.rank);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        if (info->uid != pnd->uid || info->gid != pnd->gid) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "tool %s:%u is uid %lu gid %lu - its rank is uid %lu gid %lu",
+                                pnd->proc.nspace, pnd->proc.rank, (unsigned long) pnd->uid,
+                                (unsigned long) pnd->gid, (unsigned long) info->uid,
+                                (unsigned long) info->gid);
+            return PMIX_ERR_INVALID_CRED;
+        }
+        PMIX_RETAIN(nptr);
+        pnd->nptr = nptr;
+        PMIX_RETAIN(info);
         pnd->rinfo = info;
         return PMIX_SUCCESS;
     }
 
     if (NULL != nptr) {
-        /* A tool or launcher that names a namespace we already know, which
-         * the host did not register. A prior instance of the tool must
-         * have connected for us to know it, and every process of a
-         * namespace is of one uid and gid */
-        if (pmix_list_is_empty(&nptr->ranks)) {
-            /* the namespace can only exist because a prior instance of
-             * the tool already connected */
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-        info = (pmix_rank_info_t *) pmix_list_get_first(&nptr->ranks);
-        if (-1 == info->peerid) {
-            /* the tool may be one we fork/exec'd ourselves - check the
-             * local children to see */
-            found = false;
-            PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-                if (PMIx_Check_nspace(child->proc.nspace, nptr->nspace)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                return PMIX_ERR_NOT_SUPPORTED;
-            }
-        } else {
-            p2 = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
-                                                             info->peerid);
-            if (NULL == p2) {
-                return PMIX_ERR_NOT_FOUND;
-            }
-            if (!PMIX_PEER_IS_TOOL(p2)) {
-                /* the entire namespace must be a tool's if this tool
-                 * claims to be a member of it */
-                return PMIX_ERR_NOT_SUPPORTED;
-            }
-        }
-        if (info->uid != pnd->uid || info->gid != pnd->gid) {
+        /* A self-started tool naming the namespace of other self-started
+         * tools. It must be the user that job belongs to, as every process
+         * in it is */
+        if (!nspace_is_tools(nptr, pnd->uid, pnd->gid)) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "tool %s:%u is uid %lu gid %lu - the namespace is not "
+                                "that user's",
+                                pnd->proc.nspace, pnd->proc.rank,
+                                (unsigned long) pnd->uid, (unsigned long) pnd->gid);
             return PMIX_ERR_NOT_SUPPORTED;
         }
         PMIX_RETAIN(nptr);
@@ -1532,8 +1513,10 @@ static pmix_status_t place_tool(pmix_pending_connection_t *pnd)
     if (!host_names_tool(pnd)) {
         nptr->nspace = strdup(pnd->proc.nspace);
     }
-    /* the tool's job belongs to the user it connected as */
+    /* the tool's job belongs to the user it connected as, and holds
+     * self-started tools only */
     pmix_server_access_set_owner(nptr, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
+    nptr->self_started = true;
     nptr->version.major = pnd->proc_type.major;
     nptr->version.minor = pnd->proc_type.minor;
     nptr->version.release = pnd->proc_type.release;
@@ -2079,7 +2062,16 @@ static pmix_namespace_t *consolidate_nspace(pmix_pending_connection_t *pnd,
     if (NULL == existing) {
         return nptr;
     }
-    /* someone got there first - use their object, and drop ours */
+    /* Someone got there first - normally the host, registering the tool's
+     * job during the upcall, which leaves a namespace with no ranks yet.
+     * One that has ranks must be a job of other self-started tools; one
+     * whose processes the host started is never joined by a self-started
+     * tool. The caller checks the user */
+    if (!existing->self_started && !pmix_list_is_empty(&existing->ranks)) {
+        return NULL;
+    }
+    existing->self_started = true;
+    /* use their object, and drop ours */
     PMIX_RETAIN(existing);
     PMIX_RELEASE(nptr);
     pnd->nptr = existing;
@@ -2169,6 +2161,31 @@ static void tool_answered(int sd, short args, void *cbdata)
     /* What is left for the tool to read is the last status: anything that
      * turns it away from here on is reported there */
 
+    /* A self-started tool joining a namespace that went while the host
+     * decided - the host deregistered it, or its last process left - is
+     * where it would have been had it found none: in a namespace of its
+     * own, under the name it chose */
+    if (!pnd->nspace_created && !nspace_listed(nptr) && NULL == pnd->rinfo &&
+        PMIX_TOOL_CLIENT != pnd->flag && PMIX_LAUNCHER_CLIENT != pnd->flag) {
+        pmix_namespace_t *fresh = PMIX_NEW(pmix_namespace_t);
+
+        if (NULL == fresh || NULL == (fresh->nspace = strdup(id.nspace))) {
+            if (NULL != fresh) {
+                PMIX_RELEASE(fresh);
+            }
+            refuse_accepted(pnd, &id, PMIX_ERR_NOMEM);
+            return;
+        }
+        pmix_server_access_set_owner(fresh, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
+        fresh->self_started = true;
+        fresh->version.major = pnd->proc_type.major;
+        fresh->version.minor = pnd->proc_type.minor;
+        fresh->version.release = pnd->proc_type.release;
+        PMIX_RELEASE(nptr);
+        pnd->nptr = nptr = fresh;
+        pnd->nspace_created = true;
+    }
+
     if (pnd->nspace_created) {
         if (NULL == nptr->nspace) {
             nptr->nspace = strdup(id.nspace);
@@ -2178,6 +2195,15 @@ static void tool_answered(int sd, short args, void *cbdata)
             }
         }
         nptr = consolidate_nspace(pnd, nptr);
+        if (NULL == nptr) {
+            /* the name is a job the host started meanwhile */
+            nptr = (pmix_namespace_t *) pnd->nptr;
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "tool %s:%u may not join namespace %s - the host's processes "
+                                "are in it", id.nspace, id.rank, id.nspace);
+            refuse_accepted(pnd, &id, PMIX_ERR_NOT_SUPPORTED);
+            return;
+        }
         /* one that appeared while the host decided - another tool's,
          * decided on at the same time - is joined only by its own user, as
          * a namespace known before the host was asked is */

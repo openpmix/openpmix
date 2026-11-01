@@ -1487,10 +1487,10 @@ static int case_tool_names_nobody(void)
     return expect_status("a tool naming nobody", reply, PMIX_ERR_BAD_PARAM);
 }
 
-/* A tool on a client's rank naming a rank its namespace does not have is
- * given one - when the namespace is its own user's. In another user's
- * namespace it is refused before the host is asked: a rank there would
- * make it one of that job's own processes */
+/* A tool-client - a tool its host started - naming a rank the host never
+ * registered, in its own user's namespace or another's: it is refused
+ * before the host is asked, as a client would be. Nothing is built for
+ * it */
 static int case_tool_new_rank(bool other)
 {
     char *msg;
@@ -1504,19 +1504,15 @@ static int case_tool_new_rank(bool other)
     msg = build_ack(PMIX_TOOL_CLIENT, AC_NSPACE, 7, "native", NULL, false, &sz);
     reply = send_ack(msg, sz, &sd);
     free(msg);
-    if (!other) {
-        if (PMIX_SUCCESS == reply) {
-            reply = tool_replies(sd);
-        }
-        return expect_status("a tool on a new rank of its own user's namespace", reply,
-                             PMIX_SUCCESS);
-    }
     if (0 != ntool_connected) {
         fprintf(stdout, "    the host was asked about the tool\n");
         return CHILD_FAIL;
     }
-    return expect_status("a tool on a new rank of another user's namespace", reply,
-                         PMIX_ERR_NO_PERMISSIONS);
+    return expect_status(other ? "a tool-client on an unregistered rank of another user's "
+                                 "namespace"
+                               : "a tool-client on an unregistered rank of its own user's "
+                                 "namespace",
+                         reply, PMIX_ERR_NOT_FOUND);
 }
 static int run_new_rank_own(void)
 {
@@ -1527,18 +1523,19 @@ static int run_new_rank_other(void)
     return case_tool_new_rank(true);
 }
 
-/* A tool holds a new rank of its own user's namespace, and the host then
- * registers that rank: for the tool's own uid and gid the registration
- * takes the entry over; for another uid it is refused, and the tool's
- * entry keeps the tool's identity */
+/* A tool-client named a rank the host had not registered, and was refused.
+ * Nothing was left behind for it: the host registering that rank
+ * afterwards - as the tool's uid, or another - adds a fresh entry with the
+ * identity the host gives */
 static int case_register_held(bool other)
 {
     pmix_namespace_t *ns;
     pmix_rank_info_t *info, *held = NULL;
     pmix_proc_t proc;
     char *msg;
-    size_t sz;
+    size_t sz, nentries = 0;
     int sd = -1;
+    uid_t want = other ? getuid() + 4242 : getuid();
     pmix_status_t reply, rc;
 
     if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
@@ -1547,33 +1544,27 @@ static int case_register_held(bool other)
     msg = build_ack(PMIX_TOOL_CLIENT, AC_NSPACE, 7, "native", NULL, false, &sz);
     reply = send_ack(msg, sz, &sd);
     free(msg);
-    if (PMIX_SUCCESS == reply) {
-        reply = tool_replies(sd);
-    }
-    if (PMIX_SUCCESS != reply) {
-        return CHILD_SETUP;
+    if (PMIX_ERR_NOT_FOUND != reply) {
+        return expect_status("a tool-client on an unregistered rank", reply, PMIX_ERR_NOT_FOUND);
     }
     usleep(100000);
     PMIX_LOAD_PROCID(&proc, AC_NSPACE, 7);
-    rc = PMIx_server_register_client(&proc, other ? getuid() + 4242 : getuid(), getgid(), NULL,
-                                     NULL, NULL);
+    rc = PMIx_server_register_client(&proc, want, getgid(), NULL, NULL, NULL);
     if (NULL != (ns = find_ns(AC_NSPACE))) {
         PMIX_LIST_FOREACH (info, &ns->ranks, pmix_rank_info_t) {
             if (7 == info->pname.rank) {
                 held = info;
+                ++nentries;
             }
         }
     }
-    if (NULL == held || getuid() != held->uid) {
-        fprintf(stdout, "    the rank's entry is %s uid %lu\n", (NULL == held) ? "gone," : "",
-                (NULL == held) ? 0UL : (unsigned long) held->uid);
+    if (1 != nentries || want != held->uid || !held->host_registered) {
+        fprintf(stdout, "    the rank has %lu entries%s uid %lu\n", (unsigned long) nentries,
+                (NULL == held) ? "" : ", the last", (NULL == held) ? 0UL : (unsigned long) held->uid);
         return CHILD_FAIL;
     }
-    if (!other) {
-        return expect_status("registering the tool's own identity",
-                             (PMIX_OPERATION_SUCCEEDED == rc) ? PMIX_SUCCESS : rc, PMIX_SUCCESS);
-    }
-    return expect_status("registering another uid on a rank a tool holds", rc, PMIX_ERR_EXISTS);
+    return expect_status("registering the rank", (PMIX_OPERATION_SUCCEEDED == rc) ? PMIX_SUCCESS : rc,
+                         PMIX_SUCCESS);
 }
 static int run_register_held_own(void)
 {
@@ -2594,21 +2585,25 @@ static int case_tool_queue(int how)
     uint8_t flag = (1 == how) ? PMIX_TOOL_CLIENT : PMIX_TOOL_GIVEN_ID;
     int nasked = (3 == how || 4 == how) ? 2 : 1;
 
+    /* tools the host launched were registered by it before they started,
+     * as clients are - their rank is the registered one */
+    const char *tns = (1 == how) ? AC_NSPACE : AC_TOOLNS;
+
     host_mode = HOST_DEFERS_TOOLS;
-    if (PMIX_SUCCESS != start_server(&mymodule, false, getuid())) {
+    if (PMIX_SUCCESS != start_server(&mymodule, 1 == how, getuid())) {
         return CHILD_SETUP;
     }
     if (4 == how) {
         msg = build_ack(PMIX_TOOL_NEEDS_ID, "", 0, "native", NULL, false, &sz);
     } else {
-        msg = build_ack(flag, AC_TOOLNS, 0, "native", NULL, false, &sz);
+        msg = build_ack(flag, tns, 0, "native", NULL, false, &sz);
     }
     if (!open_ack(msg, sz, &sd1)) {
         return CHILD_SETUP;
     }
     free(msg);
     usleep(200000);
-    msg = build_ack(flag, AC_TOOLNS, (3 == how) ? 1 : 0, "native", NULL, false, &sz);
+    msg = build_ack(flag, tns, (3 == how) ? 1 : 0, "native", NULL, false, &sz);
     if (!open_ack(msg, sz, &sd2)) {
         return CHILD_SETUP;
     }
@@ -3612,13 +3607,17 @@ int main(int argc, char **argv)
              run_tool_second_client_format);
     run_case("a tool bringing its own identity that names no namespace or rank is refused",
              case_tool_names_nobody);
-    run_case("a tool naming a new rank in its own user's namespace is given it",
+    run_case("a tool-client naming a rank not registered in its own user's namespace is "
+             "refused before the host is asked",
              run_new_rank_own);
-    run_case("registering a rank a tool holds, for the tool's own uid, takes its entry over",
+    run_case("a refused tool-client leaves nothing behind: the host registers the rank as "
+             "the tool's uid",
              run_register_held_own);
-    run_case("registering a rank a tool holds, for another uid, is refused",
+    run_case("a refused tool-client leaves nothing behind: the host registers the rank as "
+             "another uid",
              run_register_held_other);
-    run_case("a tool naming a new rank in another user's namespace is refused",
+    run_case("a tool-client naming a rank not registered in another user's namespace is "
+             "refused before the host is asked",
              run_new_rank_other);
     run_case("a nameless v5.0 tool on a client's rank is named by the host", run_nameless_v50);
     run_case("a client presenting its rank's token is taken", run_token_right);

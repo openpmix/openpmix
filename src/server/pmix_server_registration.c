@@ -142,6 +142,8 @@ static bool add_job_update(pmix_info_t **array, size_t *n,
     return true;
 }
 
+static pmix_status_t release_nspace(pmix_proc_t *proc);
+
 static void _register_nspace(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
@@ -197,6 +199,25 @@ static void _register_nspace(int sd, short args, void *cbdata)
             break;
         }
     }
+    /* A self-started tool chose this name for itself - or the host gave
+     * it the name while deciding on the tool, which is then the tool's.
+     * The host registering the name in full is registering a job of its
+     * own, and the name is the host's to give: take it back. Everything
+     * the tool's namespace holds goes - its ranks, its data, and the
+     * connections of any tool process still in it, which are closed - and
+     * the host's job is built fresh, as though the name had been free. A
+     * tool that squatted on a job's name therefore never becomes one of
+     * the job's processes, and a stale namespace left by a tool that has
+     * gone is simply replaced. An update (nlocalprocs < 0) revises what
+     * the tool's namespace holds, as for any other */
+    if (NULL != nptr && nptr->self_started && 0 <= cd->nlocalprocs) {
+        PMIX_LOAD_PROCID(&proc, cd->proc.nspace, PMIX_RANK_WILDCARD);
+        pmix_output_verbose(2, pmix_server_globals.base_output,
+                            "pmix:server _register_nspace %s - taking the name back from "
+                            "a self-started tool", cd->proc.nspace);
+        (void) release_nspace(&proc);
+        nptr = NULL;
+    }
     if (NULL == nptr) {
         nptr = PMIX_NEW(pmix_namespace_t);
         if (NULL == nptr) {
@@ -242,8 +263,13 @@ static void _register_nspace(int sd, short args, void *cbdata)
          * from a namespace that was actually updated.
          *
          * Take it back off the list and say what is true. Not registered
-         * is exactly what PMIX_ERR_NOT_FOUND says. */
-        if (!nptr->job_info_recvd && SIZE_MAX == nptr->nlocalprocs) {
+         * is exactly what PMIX_ERR_NOT_FOUND says.
+         *
+         * Not so a self-started tool's namespace, which the host never
+         * registered but which is there all the same - its tools are in
+         * it, and an update for them (the endpoints of a connect they are
+         * part of, say) is one it holds */
+        if (!nptr->job_info_recvd && SIZE_MAX == nptr->nlocalprocs && !nptr->self_started) {
             pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
             PMIX_RELEASE(nptr);
             rc = PMIX_ERR_NOT_FOUND;
@@ -1102,19 +1128,17 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
     return;
 }
 
-static void _deregister_nspace(int sd, short args, void *cbdata)
+/* Release everything this server holds for a namespace - its job-level
+ * resources, its data, the events and requests naming it, its connection
+ * tokens, its rank entries and any peers still on them, whose connections
+ * are closed - and the namespace object itself. Three things end a
+ * namespace: the host deregistering it; the last process of a self-started
+ * tool's namespace leaving, which the host need never hear of; and the
+ * host registering the name in full while a self-started tool holds it */
+static pmix_status_t release_nspace(pmix_proc_t *proc)
 {
-    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     pmix_namespace_t *tmp, *nptr;
     pmix_status_t rc;
-
-    PMIX_ACQUIRE_OBJECT(cd);
-
-    pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "pmix:server _deregister_nspace %s",
-                        cd->proc.nspace);
-
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* flush anything that is still trying to be written out */
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
@@ -1126,30 +1150,30 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
      * for weeks, nothing else would ever reclaim them.  Before the GDS
      * and event teardown below, so a notice raised here still has
      * somewhere to go. */
-    pmix_show_help_purge_nspace(cd->proc.nspace);
+    pmix_show_help_purge_nspace(proc->nspace);
 
     /* the job's connection tokens go with it */
-    pmix_ptl_base_drop_tokens(cd->proc.nspace, PMIX_RANK_WILDCARD);
+    pmix_ptl_base_drop_tokens(proc->nspace, PMIX_RANK_WILDCARD);
 
     /* release any job-level network resources */
-    pmix_pnet.deregister_nspace(cd->proc.nspace);
+    pmix_pnet.deregister_nspace(proc->nspace);
 
     /* and any job-level GPU resources.  pgpu caches one envar list per
      * namespace, holding a reference on the namespace object while it
      * does, and this is the only thing that releases it - without this
      * call a persistent server accumulates one of each per job it ever
      * ran */
-    pmix_pgpu.deregister_nspace(cd->proc.nspace);
+    pmix_pgpu.deregister_nspace(proc->nspace);
 
     /* release any programming model info */
-    pmix_pmdl.deregister_nspace(cd->proc.nspace);
+    pmix_pmdl.deregister_nspace(proc->nspace);
 
     /* let our local storage clean up */
-    PMIX_GDS_DEL_NSPACE(rc, cd->proc.nspace);
+    PMIX_GDS_DEL_NSPACE(rc, proc->nspace);
 
     /* remove any event registrations, IOF registrations, and
      * cached notifications targeting procs from this nspace */
-    pmix_server_purge_events(NULL, &cd->proc, PMIX_ERR_NOT_FOUND);
+    pmix_server_purge_events(NULL, proc, PMIX_ERR_NOT_FOUND);
 
     /* find the nspace object. Compare exactly, as every other lookup in
      * this file does: PMIX_CHECK_NSPACE answers true whenever *either*
@@ -1160,14 +1184,14 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
      * would match is not a name registration could have created. */
     nptr = NULL;
     PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(tmp->nspace, cd->proc.nspace)) {
+        if (0 == strcmp(tmp->nspace, proc->nspace)) {
             nptr = tmp;
             break;
         }
     }
     if (NULL == nptr) {
         /* nothing to do */
-        goto cleanup;
+        return rc;
     }
 
     // ensure all local clients have been deregistered
@@ -1184,8 +1208,24 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
     /* remove and release it */
     pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
     PMIX_RELEASE(nptr);
+    return rc;
+}
 
-cleanup:
+static void _deregister_nspace(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server _deregister_nspace %s",
+                        cd->proc.nspace);
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    rc = release_nspace(&cd->proc);
+
     /* release the caller, if there is one waiting - a request that had to
      * be completed asynchronously because it came from the progress
      * thread carries no callback */
@@ -1193,6 +1233,77 @@ cleanup:
         cd->opcbfunc(rc, cd->cbdata);
     }
     PMIX_RELEASE(cd);
+}
+
+void pmix_server_tool_departed(pmix_peer_t *peer)
+{
+    pmix_namespace_t *nptr = peer->nptr, *ns;
+    pmix_rank_info_t *info = peer->info;
+    pmix_peer_t *pr;
+    pmix_proc_t proc;
+    bool rank_live = false, nspace_live = false;
+    int i;
+
+    if (NULL == nptr || NULL == info) {
+        pmix_server_peer_finalized(peer);
+        return;
+    }
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server self-started tool %s:%u departed",
+                        nptr->nspace, info->pname.rank);
+
+    /* the peer may be freed below, and the rank entry and namespace with
+     * it - hold them until we are done looking at them */
+    PMIX_RETAIN(nptr);
+    PMIX_RETAIN(info);
+
+    /* retire the peer. One that left without finalizing is counted as
+     * finalized here, as remove_client would count it */
+    if (!peer->finalized) {
+        peer->finalized = true;
+        ++nptr->nfinalized;
+    }
+    pmix_server_peer_finalized(peer);
+
+    /* Every peer of this namespace still in the clients array is a
+     * connected process: one that leaves comes through here and is taken
+     * out */
+    for (i = 0; i < pmix_server_globals.clients.size; i++) {
+        pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, i);
+        if (NULL == pr || pr->nptr != nptr) {
+            continue;
+        }
+        nspace_live = true;
+        if (pr->info == info) {
+            rank_live = true;
+            break;
+        }
+    }
+    /* a connection still waiting on the host for the namespace keeps it,
+     * and for the rank keeps the rank */
+    if (0 < info->connecting) {
+        rank_live = true;
+        nspace_live = true;
+    }
+
+    if (!nspace_live) {
+        /* the namespace's last process has gone. Release it by name only
+         * if it is still the one listed under that name - it is released
+         * already if not, and the name may belong to a newer one */
+        PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (ns == nptr) {
+                PMIX_LOAD_PROCID(&proc, nptr->nspace, PMIX_RANK_WILDCARD);
+                (void) release_nspace(&proc);
+                break;
+            }
+        }
+    } else if (!rank_live) {
+        /* others remain, but none as this rank */
+        pmix_list_remove_item(&nptr->ranks, &info->super);
+        PMIX_RELEASE(info);
+    }
+    PMIX_RELEASE(info);
+    PMIX_RELEASE(nptr);
 }
 
 static void _register_session(int sd, short args, void *cbdata)
@@ -1685,6 +1796,16 @@ static void _register_client(int sd, short args, void *cbdata)
             goto cleanup;
         }
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+    }
+    /* A self-started tool's namespace holds self-started tools and
+     * nothing else - see pmix_namespace_t. The host takes the name back
+     * by registering the namespace in full first */
+    if (nptr->self_started) {
+        pmix_output_verbose(2, pmix_server_globals.base_output,
+                            "pmix:server _register_client: %s belongs to a self-started tool",
+                            cd->proc.nspace);
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto cleanup;
     }
     /* Set up a rank entry for this client.
      *

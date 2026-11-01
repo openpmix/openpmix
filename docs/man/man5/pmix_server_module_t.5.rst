@@ -303,9 +303,12 @@ client_finalized
 ^^^^^^^^^^^^^^^^^
 
 ``client_finalized`` (``pmix_server_client_finalized_fn_t``) |mdash| Notifies the
-host that a local client has called `PMIx_Finalize`. The client is held blocked
-until the host invokes ``cbfunc``. The host should release any per-client state
-it associated with the process via ``PMIx_server_register_client``.
+host that a local client has called `PMIx_Finalize`, or a connected tool has
+called `PMIx_tool_finalize`. The process is held blocked until the host invokes
+``cbfunc``. The host should release any per-client state it associated with the
+process via ``PMIx_server_register_client``. For a tool the host did not
+register, ``server_object`` is NULL; see ``tool_connected2`` for how long that
+tool's namespace lasts.
 
 .. _man5-pmix_server_module_t-abort:
 
@@ -763,6 +766,28 @@ that is too late, and an accepted tool that cannot be connected after all, are
 handled as for ``client_connected2``: the tool is refused with
 ``PMIX_ERR_TIMEOUT``, its name held until the answer, and a yes is followed by a
 ``PMIX_ERR_LOST_CONNECTION`` event naming the tool.
+
+A tool the host did not start (a self-started tool, as opposed to a tool-client
+the host registered with
+:ref:`PMIx_server_register_client(3) <man3-PMIx_server_register_client>`) has a
+namespace of its own, which holds self-started tools only:
+
+* It may join an existing namespace only if that is a self-started tool's of the
+  same user, or one the host registers for it during this upcall.
+* It lasts only while one of its processes is connected. When the last one
+  disconnects, finalized or not, the library removes the namespace and
+  everything held for it - including any job data the host registered for it
+  during this upcall - as
+  :ref:`PMIx_server_deregister_nspace(3) <man3-PMIx_server_deregister_nspace>`
+  would, and reports the lost connection at once. A later deregistration by the
+  host does nothing. A tool that reconnects under the same namespace is a new
+  connection: this upcall is made again.
+* The host registering the same name in full with
+  :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`
+  takes the name back: the tool's namespace is removed, any tool still connected
+  in it is closed, and the host's job is built fresh.
+
+A library that does this defines ``PMIX_CAP_TOOL_NSPACE_RELEASE``.
 
 .. _man5-pmix_server_module_t-log2:
 
