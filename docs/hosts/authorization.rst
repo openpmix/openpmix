@@ -16,32 +16,54 @@ clients and tools.
 Who is asking
 -------------
 
-Every up-call made for a client or tool identifies the requester:
+Every up-call made for a client or tool identifies the requester - the
+process connected to this server - as its connection established it:
 
 * **The requester's process ID** is the up-call's ``proc`` argument.
   Where an up-call has no such argument (``iof_pull``,
   ``register_events``), it is ``PMIX_REQUESTOR`` in the info array.
-* **PMIX_USERID** is the uid PMIx established when the requester
-  connected. Any ``PMIX_USERID`` the requester put in its request is
-  removed. This is the identity to authorize.
-* **PMIX_GRPID** is the group the requester asked to charge the work
-  to, if it named one, and otherwise the gid established at connection.
-  PMIx resolves a group name to a number but **does not check that the
+* **PMIX_USERID** and **PMIX_GRPID** are the uid and gid PMIx
+  established when the requester connected. Any the requester put in
+  its request are removed. This is the identity to authorize.
+* **PMIX_REQUESTOR_PID** is the pid the kernel reported for the
+  requester's connection. It is present only where the kernel reports
+  one: on the local transport, on platforms that do. It is never
+  present for a peer connected over TCP, where the only pid on record
+  is the one the peer's library sent. Any ``PMIX_REQUESTOR_PID`` the
+  requester put in its request is removed.
+* **PMIX_REQUESTED_GRPID** is the group the requester asked to have the
+  work charged to, if it named one - as ``PMIX_REQUESTED_GRPID``, or as
+  ``PMIX_GRPID``, which earlier releases passed up for it. PMIx
+  resolves a group name to a number but **does not check that the
   requester belongs to the group it names**. If the group matters to
   your decision, check membership yourself, and refuse the request
-  (for example with ``PMIX_ERR_NO_PERMISSIONS``) if it fails.
+  (for example with ``PMIX_ERR_NO_PERMISSIONS``) if it fails. A request
+  that names more than one, or a name that cannot be resolved, is
+  refused before it reaches you.
 
-Each appears exactly once. A few up-calls differ:
+Each appears at most once. A few up-calls differ:
 
 * ``fence_nb``, ``connect``, ``disconnect`` and ``group`` are made for
   all participants, not for one requester. They carry no identity.
   PMIx has already checked that each local caller is a participant.
-* ``direct_modex`` carries ``PMIX_REQUESTOR``, ``PMIX_USERID`` and
-  ``PMIX_GRPID`` for the requesters it stands for. Here ``PMIX_GRPID``
-  is always the gid established at connection.
-* ``notify_event`` carries no identity. Events are not governed by the
-  access rule: the process raising an event chooses who receives it
-  through the event's range.
+* ``publish`` carries only ``PMIX_USERID`` and ``PMIX_GRPID``: its info array
+  is the data being published, so nothing more is added that a host might
+  store as a published key. Skip those, and any ``PMIX_ORIGIN_*``, when you
+  store the data.
+* ``direct_modex`` carries ``PMIX_REQUESTOR``, ``PMIX_USERID``,
+  ``PMIX_GRPID`` and, where there is one, ``PMIX_REQUESTOR_PID`` for
+  the requesters it stands for. It carries no requested group.
+* ``notify_event``, for an event a client raised, carries that
+  client's ``PMIX_USERID``, ``PMIX_GRPID`` and, where there is one,
+  ``PMIX_REQUESTOR_PID``; the ``source`` argument is the client. A
+  host passing an event on decides with that identity whether it may.
+  **For** ``PMIX_DEBUGGER_RELEASE``, **check, before relaying or
+  delivering it, that the user may access every job the release can
+  reach** - the jobs named in a custom range (a wildcard namespace
+  meaning every job); the source's own job for
+  ``PMIX_RANGE_NAMESPACE``; and for any wider range, every job you
+  would deliver it to. PMIx applies that rule itself to the jobs
+  registered with this server; for any other, the decision is yours.
 * The deprecated ``abort`` has no info array; use ``abort2``, which
   carries the identity.
 
@@ -57,15 +79,34 @@ Requests that pass through more than one server
 
 A request can travel through several servers. For example, a workflow
 manager relays a request from its own client to the resource manager,
-or a launcher relays one to a scheduler. The operation should be judged
-by who first asked for it, not by the process relaying it.
+or a launcher relays one to a scheduler. Whether to pass a request on,
+and whether to believe what a relay says about who first asked for it,
+is policy - and it belongs to the host at each level. PMIx does not
+make that decision, and does not relay a peer's request on its own: a
+request it cannot serve goes to your up-call, and is refused if you
+have none.
 
-* **When you relay a request,** pass the original requester's
-  ``PMIX_USERID`` and ``PMIX_GRPID`` with it, marked as relayed with
-  :ref:`PMIx_Info_relayed(3) <man3-PMIx_Info_relayed>`.
-* **The receiving server keeps a relayed identity** instead of
-  replacing it with the relaying process's own. Only a PMIx server's
-  library sends the mark; any other process's library clears it.
+* **What you are told is always the relay.** ``PMIX_USERID``,
+  ``PMIX_GRPID`` and ``PMIX_REQUESTOR_PID`` in an up-call describe the
+  process connected to you, as its connection established it. Nothing
+  a relay sends replaces them. A host that knows nothing of relays
+  therefore judges the request as the relay's own - it fails safe.
+* **What the relay claims comes beside it.** A relay names the process
+  that first made the request with ``PMIX_ORIGIN_USERID``,
+  ``PMIX_ORIGIN_GRPID``, ``PMIX_ORIGIN_PID``, ``PMIX_ORIGIN_IS_TOOL``
+  and ``PMIX_ORIGIN_IS_CLIENT``, and with ``PMIX_REQUESTOR`` for its
+  process ID. PMIx passes these to you untouched - only you can judge
+  them - and refuses a request that carries any of them more than once.
+* **When you accept relays,** decide from the verified identity (and
+  pid) whether this peer may speak for others. If it may, attribute the
+  work to the ``PMIX_ORIGIN_*`` claim, and check any
+  ``PMIX_REQUESTED_GRPID`` against whoever you attribute the work to. If
+  it may not, judge the request as the relay's own, or refuse it.
+* **When you relay a request,** copy the identity you attributed the
+  work to into the ``PMIX_ORIGIN_*`` attributes. At the first hop that
+  is the up-call's own ``PMIX_USERID``, ``PMIX_GRPID`` and
+  ``PMIX_REQUESTOR_PID``. Carry a requested group on as
+  ``PMIX_REQUESTED_GRPID``.
 * **Carry the identity between your own daemons** when you forward a
   request from one node to another.
 
@@ -172,8 +213,14 @@ Summary for host developers
   with the job.
 * Authorize every operation PMIx passes up, using ``PMIX_USERID`` from
   the up-call - never an identity the request itself claims.
-* Check group membership yourself before acting on a ``PMIX_GRPID``.
-* Carry the requester's identity, marked as relayed, when you pass a
-  request to another server, and with
+* Check group membership yourself before acting on a
+  ``PMIX_REQUESTED_GRPID``.
+* Before relaying or delivering a ``PMIX_DEBUGGER_RELEASE``, check that
+  its raiser may access every job it can reach.
+* Accept a ``PMIX_ORIGIN_*`` claim only from a relay you trust to make
+  it. Carry the identity you attributed the work to in
+  ``PMIX_ORIGIN_*`` when you pass a request to another server.
+* Carry the requester's ``PMIX_USERID``, ``PMIX_GRPID`` and
+  ``PMIX_REQUESTOR`` with
   :ref:`PMIx_server_dmodex_request2(3) <man3-PMIx_server_dmodex_request2>`
   when you fetch data for it.

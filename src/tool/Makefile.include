@@ -11,5 +11,4 @@ headers += \
         tool/pmix_tool_ops.h
 
 sources += \
-        tool/pmix_tool.c \
-        tool/pmix_tool_ops.c
+        tool/pmix_tool.c

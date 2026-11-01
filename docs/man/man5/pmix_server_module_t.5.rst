@@ -146,20 +146,44 @@ what that process may see or do:
   the requester is named in the directives or info with ``PMIX_REQUESTOR``,
   in place of any ``PMIX_REQUESTOR`` the requester supplied.
 * The up-call's info or directives array carries exactly one ``PMIX_USERID``
-  and one ``PMIX_GRPID``. For ``query`` they are in the qualifiers of every
+  and one ``PMIX_GRPID``, and at most one ``PMIX_REQUESTOR_PID`` and one
+  ``PMIX_REQUESTED_GRPID``. For ``query`` they are in the qualifiers of every
   query.
-* ``PMIX_USERID`` is always the user ID established when the process
-  connected. Any ``PMIX_USERID`` the requester put in its own request is
-  removed.
-* ``PMIX_GRPID`` is the requester's choice if its request names one (the
-  first one given) |mdash| typically the group, or account, the work is to be
-  charged to. The requester may give it as a number or as a group name; the
-  library resolves a name and always passes a ``uint32_t`` to the host. A
-  group that cannot be resolved fails the request (``PMIX_ERR_NOT_FOUND``
-  for an unknown name) rather than charging the work elsewhere. Otherwise it
-  is the group ID established when the process connected. The library does not check that the requester belongs to
-  a group it names: the host decides whether the requester may use it, and
-  refuses the request (for example with ``PMIX_ERR_NO_PERMISSIONS``) if not.
+* ``PMIX_USERID`` and ``PMIX_GRPID`` are always the user and group IDs
+  established when the process connected. Any the requester put in its own
+  request are removed. These describe the process connected to this server
+  |mdash| a relay, if the request was relayed |mdash| and are what the host
+  authorizes on.
+* ``PMIX_REQUESTOR_PID`` is the process ID the kernel reported for the
+  requester's connection. It is included only where the kernel reports one
+  (the local transport, on platforms that do), never for a peer connected
+  over TCP. Any the requester supplied is removed.
+* ``PMIX_REQUESTED_GRPID`` is the group the requester asked to have the work
+  charged to, if its request names one |mdash| typically the group, or
+  account, the work is to be charged to. The requester may name it with
+  ``PMIX_REQUESTED_GRPID``, or with ``PMIX_GRPID`` as earlier releases
+  expected, and as a number or a group name; the library resolves a name and
+  always passes a ``uint32_t`` to the host. A group that cannot be resolved
+  fails the request (``PMIX_ERR_NOT_FOUND`` for an unknown name) rather than
+  charging the work elsewhere, and a request that names more than one is
+  refused (``PMIX_ERR_BAD_PARAM``). The library does not check that the
+  requester belongs to a group it names: the host decides whether the
+  requester may use it, and refuses the request (for example with
+  ``PMIX_ERR_NO_PERMISSIONS``) if not.
+* A host relaying a request names the process that first made it with
+  ``PMIX_ORIGIN_USERID``, ``PMIX_ORIGIN_GRPID``, ``PMIX_ORIGIN_PID``,
+  ``PMIX_ORIGIN_IS_TOOL`` and ``PMIX_ORIGIN_IS_CLIENT``. The library passes
+  these on untouched |mdash| only the host can decide whether the relay may
+  speak for another |mdash| and refuses a request that carries any of them
+  more than once (``PMIX_ERR_BAD_PARAM``). They never replace the relay's own
+  identity. See "Requests that pass through more than one server" in
+  :doc:`/hosts/authorization`.
+
+The library itself relays no peer's request. A request it cannot serve goes
+to the host's up-call, and is refused (``PMIX_ERR_NOT_SUPPORTED``) when the
+host provides none |mdash| including a tool's ``spawn`` or ``query`` sent to
+a launcher that is attached to a server of its own. A launcher attached to
+nothing still launches a ``spawn`` itself, for a requester of its own user.
 
 Work the library does itself for a request |mdash| cleanup registered through
 ``job_control``, a spawn it launches when the host provides no ``spawn``
@@ -169,7 +193,8 @@ library does after the host completes a request happens only when the host
 reports success.
 
 This applies to ``publish``, ``lookup``, ``unpublish``, ``spawn``,
-``register_events``, ``query`` (including the queries behind
+``register_events``, ``notify_event`` for an event a client raised,
+``query`` (including the queries behind
 :ref:`PMIx_Resolve_peers(3) <man3-PMIx_Resolve_peers>` and
 :ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>`), ``tool_connected`` and
 ``tool_connected2``, ``log`` and ``log2``, ``allocate``, ``job_control``,
@@ -181,13 +206,22 @@ requester identity beyond its process argument.
 ``fence_nb``, ``connect``, ``disconnect`` and ``group`` are made for all of
 their participants rather than for one requester, so they carry no
 requester identity: any ``PMIX_USERID`` or ``PMIX_GRPID`` a participant put in
-its directives is removed before the up-call.
+its directives |mdash| or any ``PMIX_REQUESTOR_PID``,
+``PMIX_REQUESTED_GRPID`` or ``PMIX_ORIGIN_*`` |mdash| is removed before the
+up-call.
+
+``publish`` carries ``PMIX_USERID`` and ``PMIX_GRPID`` but neither
+``PMIX_REQUESTOR_PID`` nor ``PMIX_REQUESTED_GRPID``: its info array is the data
+being published, and the library adds nothing to it a host might take for a
+published key. A host must still skip ``PMIX_USERID``, ``PMIX_GRPID`` and any
+``PMIX_ORIGIN_*`` entries when it stores the data.
 
 ``direct_modex`` is made for the target process, and may stand for several
 local requesters that share one identity; its info array names that
 identity with ``PMIX_REQUESTOR``, ``PMIX_USERID`` and ``PMIX_GRPID``, each
-exactly once. Here ``PMIX_GRPID`` is always the group ID established at
-connection, never one named in the request: the server that holds the data
+exactly once, and ``PMIX_REQUESTOR_PID`` where there is one. It carries no
+requested group: the group is always the one established at connection,
+never one named in the request: the server that holds the data
 decides by group membership, and a group the requester merely names must
 not count. The host passes these on to the holding server with
 :ref:`PMIx_server_dmodex_request2(3) <man3-PMIx_server_dmodex_request2>`.
@@ -473,6 +507,17 @@ notify_event
 the server or one of its local clients must be delivered beyond the local node.
 The host propagates the event (identified by ``code``, ``source``, and ``range``)
 and reports completion through a ``pmix_op_cbfunc_t``.
+
+For an event a client raised, ``source`` is that client and the info array
+carries its identity (see *The requester's identity* above). The host decides
+with it whether to pass the event on. For ``PMIX_DEBUGGER_RELEASE`` the host
+**must**, before relaying or delivering the event, check that this user may
+access every job the release can reach |mdash| each job named in a custom
+range (a wildcard namespace meaning every job), the source's own job for
+``PMIX_RANGE_NAMESPACE``, and every job the host would deliver it to for any
+wider range |mdash| and otherwise refuse it (``PMIX_ERR_NO_PERMISSIONS``)
+through the callback. The library applies that rule itself to the jobs
+registered with this server, and passes the rest up for the host to decide.
 
 .. _man5-pmix_server_module_t-query:
 

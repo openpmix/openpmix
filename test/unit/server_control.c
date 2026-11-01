@@ -233,12 +233,15 @@ static void skip(const char *name, const char *why)
 /* The requester's PMIX_USERID and PMIX_GRPID in an array handed to the
  * host: how many of each, and their values. Every up-call made for a
  * client carries exactly one of each, from the pair recorded for the peer
- * when it connected. */
+ * when it connected - and a group it asked to be charged to, if it named
+ * one, as PMIX_REQUESTED_GRPID. */
 typedef struct {
     size_t nuid;
     size_t ngid;
+    size_t nreq;
     uint32_t uid;
     uint32_t gid;
+    uint32_t reqgid;
 } ctlut_ident_t;
 
 /* count the entries that are not the identity, and record the identity */
@@ -254,6 +257,9 @@ static size_t count_ident(const pmix_info_t *info, size_t ninfo, ctlut_ident_t *
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GRPID)) {
             ++id->ngid;
             id->gid = info[n].value.data.uint32;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_REQUESTED_GRPID)) {
+            ++id->nreq;
+            id->reqgid = info[n].value.data.uint32;
         } else {
             ++nother;
         }
@@ -1245,7 +1251,8 @@ int main(int argc, char **argv)
            ident_is_requester(&log_ident));
 
     /* --- a record naming a uid and gid of its own ------------------------ *
-     * the uid is replaced, the gid is the requester's choice and is kept */
+     * both are replaced; the gid goes up as the group the requester asks
+     * to be charged to */
     {
         pmix_info_t claimdirs[2];
         uint32_t claimed = 7777;
@@ -1254,10 +1261,10 @@ int main(int argc, char **argv)
         PMIX_INFO_LOAD(&claimdirs[1], PMIX_GRPID, &claimed, PMIX_UINT32);
         rc = do_log(0, 1, &data, 1, 2, claimdirs, 2);
         report("log naming its own uid and gid accepted", PMIX_SUCCESS == rc);
-        report("the host was given the connection's uid and the record's gid",
-               1 == log_ident.nuid && 1 == log_ident.ngid &&
-               (uint32_t) pmix_globals.mypeer->info->uid == log_ident.uid &&
-               claimed == log_ident.gid && 1 == log_ndirs && log_saw_source);
+        report("the host was given the connection's uid and gid, and the record's "
+               "gid as the requested group",
+               ident_is_requester(&log_ident) && 1 == log_ident.nreq &&
+               claimed == log_ident.reqgid && 1 == log_ndirs && log_saw_source);
         PMIX_INFO_DESTRUCT(&claimdirs[0]);
         PMIX_INFO_DESTRUCT(&claimdirs[1]);
     }

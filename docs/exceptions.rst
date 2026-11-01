@@ -1329,6 +1329,56 @@ Attributes
        exists to say the same thing where
        there is no parameter to say it in
 
+   * - ``PMIX_REQUESTOR_PID`` ``"pmix.req.pid"``
+     - ``(pid_t)``
+     - Pid of the requesting process, as the
+       kernel reported it for the requester's
+       connection. Set by the server library on
+       the requests it passes to its host, and
+       only where the kernel reported one (never
+       over TCP)
+
+   * - ``PMIX_REQUESTED_GRPID`` ``"pmix.req.grp"``
+     - ``(uint32_t)``
+     - Group the requester asks to have the
+       operation charged to - also accepted as a
+       group name. A ``PMIX_GRPID`` a requester
+       supplies is passed to the host as this.
+       Not checked by the library: the host
+       decides whether the requester may use it
+
+   * - ``PMIX_ORIGIN_USERID`` ``"pmix.orig.euid"``
+     - ``(uint32_t)``
+     - Effective uid of the process that first
+       made a request, as claimed by a host
+       relaying it. Passed to the receiving host
+       as given, beside the relay's own
+       ``PMIX_USERID``, for that host to judge
+
+   * - ``PMIX_ORIGIN_GRPID`` ``"pmix.orig.egid"``
+     - ``(uint32_t)``
+     - Effective gid of the process that first
+       made a request, claimed as
+       ``PMIX_ORIGIN_USERID`` is
+
+   * - ``PMIX_ORIGIN_PID`` ``"pmix.orig.pid"``
+     - ``(pid_t)``
+     - Pid of the process that first made a
+       request, claimed as ``PMIX_ORIGIN_USERID``
+       is
+
+   * - ``PMIX_ORIGIN_IS_TOOL`` ``"pmix.orig.tool"``
+     - ``(bool)``
+     - The process that first made a request is
+       a tool, claimed as ``PMIX_ORIGIN_USERID``
+       is
+
+   * - ``PMIX_ORIGIN_IS_CLIENT`` ``"pmix.orig.client"``
+     - ``(bool)``
+     - The process that first made a request is
+       a client, claimed as ``PMIX_ORIGIN_USERID``
+       is
+
 .. note:: The attribute ``PMIX_DEBUG_STOP_IN_APP`` has been modified
           to only support a ``PMIX_BOOL`` value instead of an optional
           array of ranks due to questions over the use-case calling

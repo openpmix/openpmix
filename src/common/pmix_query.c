@@ -267,6 +267,15 @@ static pmix_status_t request_help(pmix_query_caddy_t *cd)
         return rc;
     }
 
+    /* A query a peer made of us goes no further than our host. Passing it
+     * to a server of our own would make it there under our identity, not
+     * the peer's, with nobody having decided it should go - and that is
+     * the host's policy to set. With no host to ask, what we could not
+     * answer ourselves goes unanswered */
+    if (NULL != cd->requestor) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
     /* if we aren't connected, don't attempt to send */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;

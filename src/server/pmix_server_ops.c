@@ -251,68 +251,108 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info,
-                                           size_t *ninfo)
+/* The identity keys a requester may not set for itself: the server's
+ * library says who the requester is, from its connection */
+static bool is_stamped_key(const char *key)
+{
+    return (PMIx_Check_key(key, PMIX_USERID) || PMIx_Check_key(key, PMIX_GRPID) ||
+            PMIx_Check_key(key, PMIX_REQUESTOR_PID) ||
+            PMIx_Check_key(key, PMIX_REQUESTED_GRPID));
+}
+
+/* A relaying host's claim about the process that first made a request */
+static bool is_origin_key(const char *key)
+{
+    return (PMIx_Check_key(key, PMIX_ORIGIN_USERID) || PMIx_Check_key(key, PMIX_ORIGIN_GRPID) ||
+            PMIx_Check_key(key, PMIX_ORIGIN_PID) || PMIx_Check_key(key, PMIX_ORIGIN_IS_TOOL) ||
+            PMIx_Check_key(key, PMIX_ORIGIN_IS_CLIENT));
+}
+
+bool pmix_server_is_identity_key(const char *key)
+{
+    return is_stamped_key(key) || is_origin_key(key);
+}
+
+/* The pid the kernel reported for the peer's connection. Only the local
+ * transport has one to report: over TCP the pid on record is whatever the
+ * peer's library sent, and a host must not mistake it for a fact */
+bool pmix_server_verified_pid(const pmix_peer_t *peer, pid_t *pid)
+{
+    if (NULL == peer->transport || NULL == peer->transport->peer_identity ||
+        0 >= peer->info->pid) {
+        return false;
+    }
+    *pid = peer->info->pid;
+    return true;
+}
+
+/* Stamp the requester's identity - with the pid the kernel reported and
+ * the group it asked for when "all", and only its uid and gid when not */
+static pmix_status_t stamp_requester(pmix_peer_t *peer, pmix_info_t **info, size_t *ninfo,
+                                     bool all)
 {
     pmix_info_t *old = *info, *new;
-    size_t n, m, nold = *ninfo;
-    uint32_t id, gid;
-    bool uid_relayed = false, gid_relayed = false;
+    size_t n, k, m, nold = *ninfo, norigin[5] = {0, 0, 0, 0, 0};
+    const char *origins[5] = {PMIX_ORIGIN_USERID, PMIX_ORIGIN_GRPID, PMIX_ORIGIN_PID,
+                              PMIX_ORIGIN_IS_TOOL, PMIX_ORIGIN_IS_CLIENT};
+    uint32_t id, gid, reqgid = 0;
+    bool have_req = false, have_pid;
+    pid_t pid = 0;
     pmix_status_t rc;
 
     if (NULL == peer || NULL == peer->info) {
         return PMIX_ERR_BAD_PARAM;
     }
-    /* A server relaying a request for the process that made it marks the
-     * PMIX_USERID and PMIX_GRPID it was given as relayed - its peer's
-     * server stamped them where the request entered - and they are kept.
-     * Only a server's library sends the mark (see the bfrops info packer),
-     * so anyone else speaks for itself. */
+    /* The requester is who its connection says it is. What it says about
+     * itself is dropped - except the group it asks to be charged to,
+     * which goes to the host as a request (PMIX_REQUESTED_GRPID), for the
+     * host to judge. Asked for as PMIX_GRPID or PMIX_REQUESTED_GRPID, by
+     * number or by name - but once: two would let the host and a check
+     * read different ones. A name that cannot be resolved refuses the
+     * request rather than quietly charging it to another group */
+    for (n = 0; n < nold; n++) {
+        if (PMIx_Check_key(old[n].key, PMIX_GRPID) ||
+            PMIx_Check_key(old[n].key, PMIX_REQUESTED_GRPID)) {
+            if (have_req) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            rc = pmix_util_gid_from_value(&old[n].value, &reqgid);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            have_req = true;
+            continue;
+        }
+        /* A relaying host's claim about who first made the request is
+         * passed up untouched - only the host can judge it - but once
+         * each, for the same reason */
+        for (k = 0; k < 5; k++) {
+            if (PMIx_Check_key(old[n].key, origins[k])) {
+                if (0 < norigin[k]) {
+                    return PMIX_ERR_BAD_PARAM;
+                }
+                ++norigin[k];
+                break;
+            }
+        }
+    }
     id = (uint32_t) peer->info->uid;
-    for (n = 0; n < nold; n++) {
-        if (PMIx_Check_key(old[n].key, PMIX_USERID) && PMIx_Info_is_relayed(&old[n])) {
-            rc = pmix_util_uid_from_value(&old[n].value, &id);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-            uid_relayed = true;
-            break;
-        }
-    }
-    /* the group is a relayed one, else the requester's choice if it named
-     * one - by number or by name. A group it named that cannot be resolved
-     * refuses the request rather than quietly charging it to another */
     gid = (uint32_t) peer->info->gid;
-    for (n = 0; n < nold; n++) {
-        if (PMIx_Check_key(old[n].key, PMIX_GRPID) && PMIx_Info_is_relayed(&old[n])) {
-            rc = pmix_util_gid_from_value(&old[n].value, &gid);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-            gid_relayed = true;
-            break;
-        }
+    have_pid = all && pmix_server_verified_pid(peer, &pid);
+    if (!all) {
+        have_req = false;
     }
-    for (n = 0; !gid_relayed && n < nold; n++) {
-        if (PMIx_Check_key(old[n].key, PMIX_GRPID)) {
-            rc = pmix_util_gid_from_value(&old[n].value, &gid);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-            break;
-        }
-    }
-    new = PMIx_Info_create(nold + 2);
+
+    new = PMIx_Info_create(nold + 4);
     if (NULL == new) {
         return PMIX_ERR_NOMEM;
     }
-    /* move every entry except the uid and gid the requester supplied -
-     * the entries are moved, not copied, so the old block is released
-     * below without destructing them */
+    /* move every entry except the identity the requester supplied - the
+     * entries are moved, not copied, so the old block is released below
+     * without destructing them */
     m = 0;
     for (n = 0; n < nold; n++) {
-        if (PMIx_Check_key(old[n].key, PMIX_USERID) ||
-            PMIx_Check_key(old[n].key, PMIX_GRPID)) {
+        if (is_stamped_key(old[n].key)) {
             PMIx_Info_destruct(&old[n]);
             continue;
         }
@@ -320,15 +360,17 @@ pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info
         ++m;
     }
     PMIx_Info_load(&new[m], PMIX_USERID, &id, PMIX_UINT32);
-    if (uid_relayed) {
-        PMIx_Info_relayed(&new[m]);
-    }
     ++m;
     PMIx_Info_load(&new[m], PMIX_GRPID, &gid, PMIX_UINT32);
-    if (gid_relayed) {
-        PMIx_Info_relayed(&new[m]);
-    }
     ++m;
+    if (have_pid) {
+        PMIx_Info_load(&new[m], PMIX_REQUESTOR_PID, &pid, PMIX_PID);
+        ++m;
+    }
+    if (have_req) {
+        PMIx_Info_load(&new[m], PMIX_REQUESTED_GRPID, &reqgid, PMIX_UINT32);
+        ++m;
+    }
     /* only the block is left to release - its entries were moved or
      * destructed above. PMIx_Info_free will not do it: given no
      * elements, it frees nothing */
@@ -338,41 +380,33 @@ pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info
     return PMIX_SUCCESS;
 }
 
+pmix_status_t pmix_server_add_requester_id(pmix_peer_t *peer, pmix_info_t **info,
+                                           size_t *ninfo)
+{
+    return stamp_requester(peer, info, ninfo, true);
+}
+
+pmix_status_t pmix_server_add_requester_publisher(pmix_peer_t *peer, pmix_info_t **info,
+                                                  size_t *ninfo)
+{
+    return stamp_requester(peer, info, ninfo, false);
+}
+
 pmix_status_t pmix_server_add_requester_type(pmix_peer_t *peer, pmix_info_t **info,
                                              size_t *ninfo)
 {
     pmix_info_t *old = *info, *new;
     size_t n, m, nold = *ninfo;
-    bool tool, client, relayed = false;
+    bool tool, client;
 
     if (NULL == peer || NULL == peer->info) {
         return PMIX_ERR_BAD_PARAM;
     }
-    /* what the connection says the requester is - unless a server relaying
-     * the request for the process that made it already said so, which is
-     * the same rule pmix_server_add_requester_id applies to the identity */
+    /* what the connection says the requester is. What it says about
+     * itself is dropped; a relaying host's claim about who first made the
+     * request travels separately, as PMIX_ORIGIN_IS_TOOL/_IS_CLIENT */
     tool = PMIX_PEER_IS_TOOL(peer) ? true : false;
     client = PMIX_PEER_IS_CLIENT(peer) ? true : false;
-    for (n = 0; n < nold; n++) {
-        if (PMIx_Info_is_relayed(&old[n]) &&
-            (PMIx_Check_key(old[n].key, PMIX_REQUESTOR_IS_TOOL) ||
-             PMIx_Check_key(old[n].key, PMIX_REQUESTOR_IS_CLIENT))) {
-            relayed = true;
-            tool = false;
-            client = false;
-            break;
-        }
-    }
-    for (n = 0; relayed && n < nold; n++) {
-        if (!PMIx_Info_is_relayed(&old[n])) {
-            continue;
-        }
-        if (PMIx_Check_key(old[n].key, PMIX_REQUESTOR_IS_TOOL)) {
-            tool = PMIX_INFO_TRUE(&old[n]);
-        } else if (PMIx_Check_key(old[n].key, PMIX_REQUESTOR_IS_CLIENT)) {
-            client = PMIX_INFO_TRUE(&old[n]);
-        }
-    }
     new = PMIx_Info_create(nold + 2);
     if (NULL == new) {
         return PMIX_ERR_NOMEM;
@@ -389,14 +423,8 @@ pmix_status_t pmix_server_add_requester_type(pmix_peer_t *peer, pmix_info_t **in
         ++m;
     }
     PMIx_Info_load(&new[m], PMIX_REQUESTOR_IS_TOOL, &tool, PMIX_BOOL);
-    if (relayed) {
-        PMIx_Info_relayed(&new[m]);
-    }
     ++m;
     PMIx_Info_load(&new[m], PMIX_REQUESTOR_IS_CLIENT, &client, PMIX_BOOL);
-    if (relayed) {
-        PMIx_Info_relayed(&new[m]);
-    }
     ++m;
     /* only the block is left to release - see pmix_server_add_requester_id */
     free(old);
@@ -622,8 +650,7 @@ size_t pmix_server_strip_requester_id(pmix_info_t *info, size_t nfrom, size_t ni
     size_t n, m = 0;
 
     for (n = 0; n < ninfo; n++) {
-        if (n < nfrom && (PMIx_Check_key(info[n].key, PMIX_USERID) ||
-                          PMIx_Check_key(info[n].key, PMIX_GRPID))) {
+        if (n < nfrom && pmix_server_is_identity_key(info[n].key)) {
             PMIx_Info_destruct(&info[n]);
             continue;
         }
@@ -713,8 +740,11 @@ pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
     /* the host decides access to published data by the requester's
      * identity, so pass the pair recorded for this peer at connection,
-     * in place of any the requester supplied */
-    rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
+     * in place of any the requester supplied. Only the pair: what a
+     * publish carries is the data being published, and a host keeps every
+     * key it does not know as part of it - a pid there was published as a
+     * key of its own, and the requester's next publish collided with it */
+    rc = pmix_server_add_requester_publisher(peer, &cd->info, &cd->ninfo);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
@@ -1171,6 +1201,17 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
      * so this flag is exactly the "can I fork/exec" question - a plain
      * PMIx server never has it set and its behavior is unchanged. */
     if (NULL == pmix_host_server.spawn && !pmix_pfexec_globals.initialized) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    /* A launcher attached to a server of its own once relayed the request
+     * there, under its own identity and with nobody deciding whether it
+     * should. It no longer does: passing a request on is the host's
+     * policy, and with no host to ask there is nobody to make it. Nor
+     * does it start the job here instead - the requester asked for the
+     * system the launcher is attached to, not for a local launch */
+    if (NULL == pmix_host_server.spawn && pmix_atomic_check_bool(&pmix_globals.connected)) {
+        pmix_output_verbose(2, pmix_server_globals.spawn_output,
+                            "refusing SPAWN: no host to pass it to");
         return PMIX_ERR_NOT_SUPPORTED;
     }
     /* Without a host, the children are started by this process, as this
