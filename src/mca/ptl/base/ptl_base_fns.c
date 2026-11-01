@@ -2307,6 +2307,22 @@ static pmix_status_t server_status(uint32_t u32)
 {
     pmix_status_t reply = (pmix_status_t) u32;
 
+    if (PMIX_ERR_LOCAL_URI_REQUIRED == reply) {
+        /* say where the address came from, and what to use instead. A
+         * file that gave us only TCP is a hand-made one, or one read on
+         * another host than the server's: the server's own report file
+         * names its local socket too */
+        if (NULL != pmix_ptl_base.uri && 0 != strncmp(pmix_ptl_base.uri, "file:", 5)) {
+            pmix_show_help("help-ptl-base.txt", "local-uri-required-uri", true,
+                           pmix_ptl_base.uri);
+        } else {
+            pmix_show_help("help-ptl-base.txt", "local-uri-required-file", true,
+                           (NULL != pmix_ptl_base.source_file) ? pmix_ptl_base.source_file
+                                                               : "(the server's file)");
+        }
+        return reply;
+    }
+
     if (PMIX_ERR_READY_FOR_HANDSHAKE == reply) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "pmix: the server asked for a security handshake, which this "

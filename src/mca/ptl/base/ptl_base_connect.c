@@ -531,6 +531,8 @@ static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
     pmix_status_t rc;
     pmix_connection_t *cn;
 
+    free(pmix_ptl_base.source_file);
+    pmix_ptl_base.source_file = strdup(filename);
     /* try to read the file - one of the fixed rendezvous names is used
      * only if it is a regular file */
     PMIX_CONSTRUCT(&connections, pmix_list_t);
@@ -810,6 +812,8 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
     pmix_ptl_base.server_release_vouched = false;
     free(pmix_ptl_base.uri);
     pmix_ptl_base.uri = NULL;
+    free(pmix_ptl_base.source_file);
+    pmix_ptl_base.source_file = NULL;
 
     /* check any provided directives
      * to see where they want us to connect to */

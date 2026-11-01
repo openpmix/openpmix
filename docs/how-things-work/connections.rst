@@ -641,7 +641,12 @@ peer:
   supported floors. A peer of any release before v7.0 is refused with
   ``PMIX_ERR_NOT_SUPPORTED`` unless the server takes legacy peers, and on
   the local socket whether it does or not: no earlier release has that
-  transport.
+  transport. A peer of v7.0 or later is refused on TCP with
+  ``PMIX_ERR_LOCAL_URI_REQUIRED``: it uses the local socket, where the
+  kernel names it, and the TCP listener exists only to take earlier
+  releases - on their claim, where the kernel cannot name them. The peer
+  says which address it was given and what to use instead (help topics
+  ``local-uri-required-uri`` and ``local-uri-required-file``).
 
 Before the security component is asked, a peer that connected over TCP
 from an address that is not this host's - not a loopback address, and

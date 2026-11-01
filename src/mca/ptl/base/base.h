@@ -118,6 +118,10 @@ struct pmix_ptl_base_t {
      * caller named that passes pmix_ptl_base_named_file_vouches. See
      * pmix_ptl_base_check_server. Set for one connect */
     bool server_release_vouched;
+    /* the file the server's address was read from, for one connect -
+     * for saying which file to replace when the server will not take us
+     * at the address in it */
+    char *source_file;
     char *server_access;
     uid_t *access_uids;
     size_t naccess_uids;

@@ -145,8 +145,32 @@ static int npass = 0;
 static int nfail = 0;
 /* the version a connect-ack names */
 static const char *ack_version = AC_VERSION;
+/* send this release's version over TCP rather than an earlier one's */
+static bool ack_tcp_current = false;
+/* connect to the server's local listener rather than its TCP one */
+static bool ack_local = false;
 /* the wire format a connect-ack names */
 static const char *ack_bfrops = AC_BFROPS;
+
+/* A server of this release takes a peer of this release only on its local
+ * socket, so over TCP a connect-ack - and the info blob it carries - claims
+ * an earlier release, with its wire format, unless the case is about that
+ * refusal or names a version of its own */
+static bool tcp_downgrade(void)
+{
+    return !ack_local && !ack_tcp_current && 0 == strcmp(ack_version, AC_VERSION);
+}
+static const char *eff_version(void)
+{
+    return tcp_downgrade() ? AC_TCP_VERSION : ack_version;
+}
+static const char *eff_bfrops(void)
+{
+    /* a wire format the case chose stays - an earlier release has more
+     * than one - but not this release's own, which none of them has */
+    return (tcp_downgrade() && 0 == strcmp(ack_bfrops, AC_BFROPS)) ? AC_TCP_BFROPS : ack_bfrops;
+}
+
 /* send a credential native refuses - a malformed trailer */
 static bool ack_badcred = false;
 
@@ -416,13 +440,14 @@ static bool names_ac_rank(const char *nspace, pmix_rank_t rank)
  * format we use */
 static bool build_blob_pid(pmix_byte_object_t *out, pid_t pid)
 {
-    pmix_bfrops_module_t *mod = pmix_bfrops_base_assign_module(AC_BFROPS);
+    pmix_bfrops_module_t *mod;
     pmix_buffer_t buf;
     pmix_info_t info[4];
     uint32_t other = (uint32_t) getuid() + 4242;
     size_t n = 3, k;
     pmix_status_t rc;
 
+    mod = pmix_bfrops_base_assign_module(eff_bfrops());
     if (NULL == mod) {
         return false;
     }
@@ -462,12 +487,13 @@ static bool build_blob(pmix_byte_object_t *out)
 /* an info blob holding a connection token, in the wire format we use */
 static bool build_blob_token(pmix_byte_object_t *out, const char *token)
 {
-    pmix_bfrops_module_t *mod = pmix_bfrops_base_assign_module(AC_BFROPS);
+    pmix_bfrops_module_t *mod;
     pmix_buffer_t buf;
     pmix_info_t info;
     size_t n = 1;
     pmix_status_t rc;
 
+    mod = pmix_bfrops_base_assign_module(eff_bfrops());
     if (NULL == mod) {
         return false;
     }
@@ -496,7 +522,7 @@ static bool build_blob_token(pmix_byte_object_t *out, const char *token)
 #define NDUPS 17
 static bool build_blob_dups(pmix_byte_object_t *out)
 {
-    pmix_bfrops_module_t *mod = pmix_bfrops_base_assign_module(AC_BFROPS);
+    pmix_bfrops_module_t *mod;
     pmix_buffer_t buf;
     pmix_info_t info[NDUPS];
     uint32_t zero = 0, other = (uint32_t) getgid() + 4242;
@@ -506,6 +532,7 @@ static bool build_blob_dups(pmix_byte_object_t *out)
     size_t n = NDUPS, k;
     pmix_status_t rc;
 
+    mod = pmix_bfrops_base_assign_module(eff_bfrops());
     if (NULL == mod) {
         return false;
     }
@@ -577,7 +604,7 @@ static char *build_ack_as_given(uint8_t flag, const char *nspace, pmix_rank_t ra
         if (PMIX_TOOL_NEEDS_ID != flag) {
             payload += strlen(proc.nspace) + 1 + sizeof(uint32_t);
         }
-        payload += strlen(ack_version) + 1 + strlen(ack_bfrops) + 1 + 1 + strlen(AC_GDS) + 1;
+        payload += strlen(eff_version()) + 1 + strlen(eff_bfrops()) + 1 + 1 + strlen(AC_GDS) + 1;
         if (NULL != blob) {
             payload += blob->size;
         }
@@ -607,8 +634,8 @@ static char *build_ack_as_given(uint8_t flag, const char *nspace, pmix_rank_t ra
     if (PMIX_TOOL_NEEDS_ID != flag) {
         PMIX_PTL_PUT_PROCID(proc);
     }
-    PMIX_PTL_PUT_STRING(ack_version);
-    PMIX_PTL_PUT_STRING(ack_bfrops);
+    PMIX_PTL_PUT_STRING(eff_version());
+    PMIX_PTL_PUT_STRING(eff_bfrops());
     PMIX_PTL_PUT_U8(bftype);
     PMIX_PTL_PUT_STRING(AC_GDS);
     if (NULL != blob) {
@@ -651,8 +678,6 @@ static bool read_u32(int sd, uint32_t *u32)
 }
 
 /* connect to the server, leaving the socket in *sdp */
-/* connect to the server's local listener rather than its TCP one */
-static bool ack_local = false;
 
 static bool connect_local(int *sdp)
 {
@@ -752,12 +777,13 @@ static pmix_status_t tool_replies(int sd)
  * library does */
 static bool send_finalize_request(int sd, uint32_t index)
 {
-    pmix_bfrops_module_t *mod = pmix_bfrops_base_assign_module(AC_BFROPS);
+    pmix_bfrops_module_t *mod;
     pmix_buffer_t buf;
     pmix_cmd_t cmd = PMIX_FINALIZE_CMD;
     pmix_ptl_hdr_t hdr;
     bool ok;
 
+    mod = pmix_bfrops_base_assign_module(eff_bfrops());
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     buf.type = PMIX_BFROP_BUFFER_NON_DESC;
     if (NULL == mod || PMIX_SUCCESS != mod->pack(&buf, &cmd, 1, PMIX_COMMAND)) {
@@ -1342,7 +1368,8 @@ static bool local_client(int *sd, bool close_it)
 }
 
 /* A live client on the local socket is not taken over by a TCP
- * connection sending its pid */
+ * connection sending its pid - which a server of this release refuses
+ * outright, as it does any peer of this release on TCP */
 static int case_live_local_tcp_pid(void)
 {
     pmix_byte_object_t blob;
@@ -1359,11 +1386,15 @@ static int case_live_local_tcp_pid(void)
     if (!local_client(&sd1, false)) {
         return CHILD_SETUP;
     }
+    /* the live client is of this release, so a connection naming its rank
+     * over TCP claims this release too - and is refused before anything
+     * of the rank is looked at */
     ack_local = false;
+    ack_tcp_current = true;
     msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native", &blob, false, &sz);
     reply = send_ack(msg, sz, &sd2);
     free(msg);
-    if (PMIX_ERR_EXISTS != reply) {
+    if (PMIX_ERR_LOCAL_URI_REQUIRED != reply) {
         fprintf(stdout, "    a TCP connection sending the live client's pid read %s\n",
                 PMIx_Error_string(reply));
         return CHILD_FAIL;
@@ -1579,7 +1610,6 @@ static int run_register_held_other(void)
  * or rank says it is on a client's rank, and sends no name: the host gives
  * it one, and the tool reads the replies it always did. `how`:
  *   0 - a v5.0 tool;
- *   1 - a v7.0.0rc1 tool, which sends what a v5.0 tool does;
  *   2 - a v5.0 launcher */
 static int case_nameless_tool(int how)
 {
@@ -1588,8 +1618,8 @@ static int case_nameless_tool(int how)
     int sd = -1;
     pmix_status_t reply;
 
-    ack_version = (1 == how) ? "7.0.0rc1" : "5.0.11";
-    ack_bfrops = (1 == how) ? AC_BFROPS : "v41";
+    ack_version = "5.0.11";
+    ack_bfrops = "v41";
     if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
         return CHILD_SETUP;
     }
@@ -1611,10 +1641,6 @@ static int run_nameless_v50(void)
 {
     return case_nameless_tool(0);
 }
-static int run_nameless_v70rc(void)
-{
-    return case_nameless_tool(1);
-}
 static int run_nameless_launcher(void)
 {
     return case_nameless_tool(2);
@@ -1630,12 +1656,14 @@ static int run_nameless_launcher(void)
  *       not asked;
  *   4 - a tool on the client's rank presenting it is taken, and the host
  *       is not given the token;
- *   5 - a client of this release over TCP presenting none is refused;
- *   6 - one presenting it over TCP is taken;
+ *   5 - a client of this release over TCP presenting none is refused
+ *       with PMIX_ERR_LOCAL_URI_REQUIRED: this release uses the local
+ *       socket;
+ *   6 - ...and one presenting it, the same;
  *   7 - a client of an earlier release over TCP, which has none to
  *       present, is taken;
- *   8 - a tool of this release on the client's rank over TCP presenting
- *       none is refused;
+ *   8 - a tool of this release on the client's rank over TCP, the same
+ *       as 5;
  *   9 - a client naming a rank registered but not yet prepared is
  *       refused, the host not asked;
  *  10 - a client declaring an earlier release on the local socket - which
@@ -1651,7 +1679,8 @@ static int case_token(int how)
     pmix_status_t reply;
 
     /* the token is checked on whichever socket the connection comes */
-    ack_local = (5 > how || 10 == how);
+    ack_local = (5 > how || 9 == how || 10 == how);
+    ack_tcp_current = (5 == how || 6 == how || 8 == how);
     if (7 == how || 10 == how) {
         ack_version = AC_TCP_VERSION;
         ack_bfrops = AC_TCP_BFROPS;
@@ -1687,7 +1716,7 @@ static int case_token(int how)
     reply = send_ack(msg, sz, &sd);
     free(msg);
     free(blob.bytes);
-    if (0 == how || 4 == how || 6 == how || 7 == how) {
+    if (0 == how || 4 == how || 7 == how) {
         if (4 == how && PMIX_SUCCESS == reply) {
             reply = tool_replies(sd);
         }
@@ -1704,6 +1733,9 @@ static int case_token(int how)
     if (10 == how) {
         return expect_status("an earlier release on the local socket", reply,
                              PMIX_ERR_NOT_SUPPORTED);
+    }
+    if (5 == how || 6 == how || 8 == how) {
+        return expect_status("this release over TCP", reply, PMIX_ERR_LOCAL_URI_REQUIRED);
     }
     return expect_status((1 == how) ? "presenting another token" : "presenting none", reply,
                          PMIX_ERR_INVALID_CRED);
@@ -3633,20 +3665,18 @@ int main(int argc, char **argv)
     run_case("a tool on a client's rank presenting its token is taken, and the host is not "
              "given it",
              run_token_tool_right);
-    run_case("a client of this release over TCP presenting no token is refused",
+    run_case("a client of this release over TCP is told to use the local socket",
              run_token_tcp_none);
-    run_case("a client of this release over TCP presenting its token is taken",
+    run_case("...even presenting its token",
              run_token_tcp_right);
     run_case("a client of an earlier release over TCP, with no token to present, is taken",
              run_token_tcp_earlier);
     run_case("a client declaring an earlier release on the local socket is refused",
              run_earlier_local);
-    run_case("a tool of this release on a client's rank over TCP presenting no token is refused",
+    run_case("a tool of this release on a client's rank over TCP is told the same",
              run_token_tcp_tool_none);
     run_case("a server taking no legacy peers refuses a v5.0 client", run_legacy_refused_client);
     run_case("a server taking no legacy peers refuses a v5.0 tool", run_legacy_refused_tool);
-    run_case("a nameless v7.0.0rc1 tool on a client's rank is named by the host",
-             run_nameless_v70rc);
     run_case("a nameless v5.0 launcher on a client's rank is named by the host",
              run_nameless_launcher);
     run_case("a tool on a client's rank that finalizes leaves the rank to the next",

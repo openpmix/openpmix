@@ -122,6 +122,20 @@ TCP peer at one.
   and then `PMIX_SERVER_LEGACY_PEERS`; asking for it in a build without
   `PMIX_ENABLE_LEGACY_PEERS` (`--enable-legacy-peers`, off by default) fails the init
   (`legacy-peers-not-built`).
+- **A peer of this release is taken only on the local socket.** On TCP
+  the handler refuses it with `PMIX_ERR_LOCAL_URI_REQUIRED` (-77), beside
+  the gate that keeps earlier releases off the local socket. The TCP
+  listener exists for legacy peers alone, and takes them on their claim
+  where the kernel cannot name them; a peer of this release has the local
+  socket, where it can. Only a server of this release sends -77, and only
+  to a peer of this release, so no earlier release sees it. The peer's
+  `server_status()` prints `local-uri-required-uri` (a URI passed
+  directly, `pmix_ptl_base.uri`) or `local-uri-required-file` (the file
+  `tryfile` read, `pmix_ptl_base.source_file`). A unit test that used a
+  peer of this release on TCP as a stand-in for an older one now claims
+  an earlier release (`ptl_accept.c`'s `eff_version()`/`eff_bfrops()`), or
+  expects -77 as the sign the peer got past its own check of the server
+  (`ptl_tcp_server.c`, `ptl_unnamed.c`, `ptl_local_connect.c`).
 - `pmix_ptl_base_make_connection()` refuses a server known to be older
   than v3.2 (`unsupported-server-version`) before opening a socket. Such
   a server accepts the connection and then leaves the client waiting on

@@ -273,6 +273,10 @@ a PMIx error constant is returned, including:
 * ``PMIX_ERR_OUTDATED`` |mdash| a PMIx server was found, but it uses a version
   of the PMIx library older than this one can connect to (v3.2). A message
   naming the server's version is printed. The library is **not** initialized.
+* ``PMIX_ERR_LOCAL_URI_REQUIRED`` |mdash| the process was given the server's TCP
+  address, and the server is of v7.0 or later, which offers TCP only to clients
+  of earlier releases. A message says to use the ``usock://`` URI the server
+  reports, or its report file. The library is **not** initialized.
 * ``PMIX_ERR_LOST_CONNECTION`` |mdash| a server was reached, but the connection
   failed before it delivered the caller's job information. Unlike
   ``PMIX_ERR_UNREACH`` above, the library is **not** initialized.
