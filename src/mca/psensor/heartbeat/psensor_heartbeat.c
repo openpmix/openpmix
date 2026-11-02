@@ -54,8 +54,6 @@ typedef struct {
     pmix_status_t error;
     pmix_data_range_t range;
     pmix_proc_t source;
-    pmix_info_t *info;
-    size_t ninfo;
     bool claimed;  // holds one of the requestor's monitors - see pmix_psensor_base_claim
     bool stopped;
 } pmix_heartbeat_trkr_t;
@@ -76,8 +74,6 @@ static void ft_constructor(pmix_heartbeat_trkr_t *ft)
     ft->error = PMIX_SUCCESS;
     ft->range = PMIX_RANGE_NAMESPACE;
     PMIX_PROC_CONSTRUCT(&ft->source);
-    ft->info = NULL;
-    ft->ninfo = 0;
     ft->claimed = false;
     ft->stopped = false;
 }
@@ -94,9 +90,6 @@ static void ft_destructor(pmix_heartbeat_trkr_t *ft)
     }
     if (ft->event_active) {
         pmix_event_del(&ft->ev);
-    }
-    if (NULL != ft->info) {
-        PMIX_INFO_FREE(ft->info, ft->ninfo);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_heartbeat_trkr_t, pmix_list_item_t, ft_constructor, ft_destructor);
@@ -341,10 +334,50 @@ static pmix_status_t heartbeat_stop(pmix_peer_t *requestor, char *id)
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t *) cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t *) cb->cbdata;
     PMIX_HIDE_UNUSED_PARAMS(status);
 
     PMIX_RELEASE(ft); // maintain accounting
+    PMIX_RELEASE(cb); // and the alert's info with it
+}
+
+/* What the alert says about the monitor that tripped: its ID, if the
+ * request named one, its settings, and how many beats were missed. A
+ * monitor can trip again once beats resume and stop again, so each alert
+ * carries an array of its own, which PMIx_Notify_event borrows until
+ * opcbfunc */
+static pmix_cb_t *alert_info(pmix_heartbeat_trkr_t *ft)
+{
+    pmix_cb_t *cb;
+    uint32_t u32;
+    bool flag = true;
+    size_t n = 0;
+
+    cb = PMIX_NEW(pmix_cb_t);
+    if (NULL == cb) {
+        return NULL;
+    }
+    cb->ninfo = (NULL == ft->id) ? 4 : 5;
+    PMIX_INFO_CREATE(cb->info, cb->ninfo);
+    if (NULL == cb->info) {
+        PMIX_RELEASE(cb);
+        return NULL;
+    }
+    cb->infocopy = true;
+    if (NULL != ft->id) {
+        PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_ID, ft->id, PMIX_STRING);
+        ++n;
+    }
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_HEARTBEAT, &flag, PMIX_BOOL);
+    ++n;
+    u32 = (uint32_t) ft->tv.tv_sec;
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_HEARTBEAT_TIME, &u32, PMIX_UINT32);
+    ++n;
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_HEARTBEAT_DROPS, &ft->ndrops, PMIX_UINT32);
+    ++n;
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_HEARTBEAT_MISSED, &ft->nmissed, PMIX_UINT32);
+    return cb;
 }
 
 /* this function automatically gets periodically called
@@ -355,6 +388,7 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
 {
     pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t *) cbdata;
     pmix_status_t rc;
+    pmix_cb_t *cb;
 
     PMIX_ACQUIRE_OBJECT(ft);
     PMIX_HIDE_UNUSED_PARAMS(fd, dummy);
@@ -394,11 +428,20 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
         /* mark that the process appears stopped so we don't
          * continue to report it */
         ft->stopped = true;
+        cb = alert_info(ft);
+        if (NULL == cb) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            PMIX_RELEASE(ft);
+            ft->nbeats = 0;
+            return;
+        }
+        cb->cbdata = ft;
         rc = PMIx_Notify_event((PMIX_SUCCESS == ft->error) ? PMIX_MONITOR_HEARTBEAT_ALERT
                                                             : ft->error,
-                               &ft->source, ft->range, ft->info,
-                               ft->ninfo, opcbfunc, ft);
+                               &ft->source, ft->range, cb->info,
+                               cb->ninfo, opcbfunc, cb);
         if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(cb);
             PMIX_ERROR_LOG(rc);
             /* opcbfunc is not going to run - PMIx_Notify_event rejects a
              * request outright (PMIX_ERR_NOT_AVAILABLE once the progress

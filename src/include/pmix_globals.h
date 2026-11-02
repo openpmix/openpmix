@@ -671,8 +671,10 @@ typedef struct pmix_peer_t {
     bool stdin_producer;     // peer has pushed stdin to us, and is therefore
                              // somebody IOF flow control has to reach when the
                              // host tells us to stop taking stdin
-    bool upstream;           // we opened this connection - the peer is a
-                             // server we connected to
+    bool upstream;           // the peer is a server of ours: one we connected
+                             // to, or one we made our server - a launcher
+                             // that connected back to us, then made our
+                             // server with PMIx_tool_set_server
     pmix_event_t send_event; /**< registration with event thread for send events */
     bool send_ev_active;
     pmix_event_t recv_event; /**< registration with event thread for recv events */
@@ -1371,6 +1373,17 @@ static inline bool pmix_check_node_info(const char *key)
         }
     }
     return false;
+}
+
+/* May a process put - and so commit - this key? The "pmix" prefix
+ * belongs to the Standard and the library, and PMIx_Put(3) refuses it,
+ * except for PMIX_QUALIFIED_VALUE: the documented way to post a value
+ * with qualifiers, the caller's own key being the first element of the
+ * array it carries. PMIx_Put asks this, and so does the server of a
+ * commit, which is the same rule seen from the other end */
+static inline bool pmix_key_may_be_put(const char *key)
+{
+    return !PMIx_Check_reserved_key(key) || 0 == strcmp(key, PMIX_QUALIFIED_VALUE);
 }
 
 static inline bool pmix_check_app_info(const char *key)

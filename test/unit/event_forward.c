@@ -37,13 +37,22 @@
  * rejected by the time the second handler exists. Without that, a
  * library that never parks anything would still pass by delivering the
  * event live.
+ *
+ * Case 3 - a client takes an event (PMIX_PTL_TAG_NOTIFY) only from the
+ * server it connected to. The client puts one event through its own
+ * receive path as though a peer it did not connect to had sent it - a
+ * peer that is its server in every respect but that one - and another
+ * from its server, and only the second may reach its handler.
  */
 
 #include "src/include/pmix_config.h"
 
 #include "include/pmix.h"
 #include "include/pmix_server.h"
+#include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/bfrops/bfrops.h"
+#include "src/mca/ptl/base/base.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,6 +67,9 @@ extern char **environ;
 /* codes with no meaning to the library, so nothing else reacts to them */
 #define CODE_DROP  (PMIX_EXTERNAL_ERR_BASE - 51)
 #define CODE_PARK  (PMIX_EXTERNAL_ERR_BASE - 52)
+/* case 3: from a peer the client did not connect to, and from its server */
+#define CODE_DOWNSTREAM (PMIX_EXTERNAL_ERR_BASE - 53)
+#define CODE_UPSTREAM   (PMIX_EXTERNAL_ERR_BASE - 54)
 
 #define NSPACE     "event-fwd"
 /* processes that are neither the client nor each other */
@@ -135,6 +147,88 @@ static void hdlr_late(size_t id, pmix_status_t status, const pmix_proc_t *source
     (void) id; (void) status; (void) source; (void) info; (void) ninfo;
     (void) results; (void) nresults;
     count_hdlr(&fired_late, cbfunc, cbdata);
+}
+
+static volatile int fired_down = 0;
+static volatile int fired_up = 0;
+
+static void hdlr_sender(size_t id, pmix_status_t status, const pmix_proc_t *source,
+                        pmix_info_t info[], size_t ninfo, pmix_info_t results[], size_t nresults,
+                        pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    (void) id; (void) source; (void) info; (void) ninfo;
+    (void) results; (void) nresults;
+    count_hdlr((CODE_DOWNSTREAM == status) ? &fired_down : &fired_up, cbfunc, cbdata);
+}
+
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_lock_t lock;
+} barrier_t;
+static PMIX_CLASS_INSTANCE(barrier_t, pmix_object_t, NULL, NULL);
+
+static void barrier_cb(int sd, short args, void *cbdata)
+{
+    barrier_t *b = (barrier_t *) cbdata;
+    (void) sd; (void) args;
+    PMIX_WAKEUP_THREAD(&b->lock);
+}
+
+/* everything already posted to the progress thread has run */
+static void progress_barrier(void)
+{
+    barrier_t *b = PMIX_NEW(barrier_t);
+
+    PMIX_CONSTRUCT_LOCK(&b->lock);
+    PMIX_THREADSHIFT(b, barrier_cb);
+    PMIX_WAIT_THREAD(&b->lock);
+    PMIX_DESTRUCT_LOCK(&b->lock);
+    PMIX_RELEASE(b);
+}
+
+/* hand an event to our receive path as a message "peer" sent - where a
+ * message read off that peer's socket goes */
+static bool deliver_event(pmix_peer_t *peer, pmix_status_t code)
+{
+    pmix_peer_t *server = pmix_client_globals.myserver;
+    pmix_buffer_t *payload;
+    pmix_ptl_recv_t *msg;
+    pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
+    pmix_proc_t source;
+    pmix_data_range_t range = PMIX_RANGE_LOCAL;
+    size_t ninfo = 0, nbytes = 0;
+    pmix_status_t rc;
+
+    PMIX_LOAD_PROCID(&source, NSPACE, PMIX_RANK_WILDCARD);
+    payload = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, server, payload, &cmd, 1, PMIX_COMMAND);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, server, payload, &code, 1, PMIX_STATUS);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, server, payload, &source, 1, PMIX_PROC);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, server, payload, &ninfo, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, server, payload, &range, 1, PMIX_DATA_RANGE);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(payload);
+        return false;
+    }
+    msg = PMIX_NEW(pmix_ptl_recv_t);
+    PMIX_RETAIN(peer);
+    msg->peer = peer;
+    msg->hdr.tag = PMIX_PTL_TAG_NOTIFY;
+    PMIX_UNLOAD_BUFFER(payload, msg->data, nbytes);
+    msg->hdr.nbytes = (uint32_t) nbytes;
+    PMIX_RELEASE(payload);
+    PMIX_THREADSHIFT(msg, pmix_ptl_base_process_msg);
+    progress_barrier();
+    return true;
 }
 
 static void reg_cbfunc(pmix_status_t status, size_t refid, void *cbdata)
@@ -300,10 +394,59 @@ static int run_client(int readyfd, int gofd)
            "that registers afterwards",
            1 == fires, "it was dropped");
 
+    /* ---- case 3: an event only from the server we connected to ---- */
+    {
+        pmix_status_t sendercodes[2] = {CODE_DOWNSTREAM, CODE_UPSTREAM};
+        pmix_peer_t *server = pmix_client_globals.myserver;
+        pmix_peer_t *other;
+        pmix_status_t regstatus = PMIX_ERR_WOULD_BLOCK;
+        int i;
+
+        if (NULL == server || !server->upstream) {
+            report("the client's server is a peer it connected to", 0, "it is not");
+            goto done;
+        }
+        PMIx_Register_event_handler(sendercodes, 2, NULL, 0, hdlr_sender, reg_cbfunc,
+                                    (void *) &regstatus);
+        for (i = 0; i < 400 && PMIX_ERR_WOULD_BLOCK == regstatus; i++) {
+            usleep(50000);
+        }
+        if (0 > regstatus) {
+            fprintf(stderr, "  client: sender registration failed: %s\n",
+                    PMIx_Error_string(regstatus));
+            goto done;
+        }
+        /* our server in every respect but one: we did not open the
+         * connection to it */
+        other = PMIX_NEW(pmix_peer_t);
+        PMIX_RETAIN(server->nptr);
+        other->nptr = server->nptr;
+        PMIX_RETAIN(server->info);
+        other->info = server->info;
+        other->gds = server->gds;
+        memcpy(&other->proc_type, &server->proc_type, sizeof(pmix_proc_type_t));
+        other->upstream = false;
+
+        /* the server's is delivered after the other's, on the same
+         * thread, so once it has fired the other has had its chance */
+        if (!deliver_event(other, CODE_DOWNSTREAM) || !deliver_event(server, CODE_UPSTREAM)) {
+            fprintf(stderr, "  client: could not pack the events\n");
+            PMIX_RELEASE(other);
+            goto done;
+        }
+        fires = wait_fires(&fired_up, LOUD_SECS);
+        progress_barrier();
+        report("a client acts on an event from its server", 1 == fires,
+               "its handler did not fire");
+        report("a client ignores an event from a peer it did not connect to",
+               0 == fired_down, "its handler fired");
+        PMIX_RELEASE(other);
+    }
+
 done:
     PMIx_Finalize(NULL, 0);
     fprintf(stdout, "  client: %d passed, %d failed\n", npass, nfail);
-    return (0 == nfail && 4 == npass) ? 0 : 1;
+    return (0 == nfail && 6 == npass) ? 0 : 1;
 }
 
 /* ------------------------------------------------------------------ */

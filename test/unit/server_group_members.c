@@ -44,6 +44,12 @@
  *                       a group the caller is not in, or a fence, connect
  *                       or disconnect doing so, is PMIX_ERR_NOT_A_MEMBER
  *   get              -> the whole group, or a group rank past it, refused
+ *   join             -> a construct still collecting here is joined by a
+ *                       listed participant, by rank or by job; a process
+ *                       outside the listed membership naming the ID with
+ *                       a list of only itself is PMIX_ERR_NOT_A_MEMBER and
+ *                       is not parked on it; a destruct naming the ID is
+ *                       PMIX_ERR_BAD_PARAM
  */
 
 #include "src/include/pmix_config.h"
@@ -648,10 +654,94 @@ static void test_collectives(pmix_peer_t *a1)
     pmix_server_grp_drop("coll");
 }
 
+/* has the server queued anything for this peer? */
+static bool has_reply(pmix_peer_t *peer)
+{
+    return NULL != peer->send_msg || 0 < pmix_list_get_size(&peer->send_queue);
+}
+
+/* A call naming the ID of a construct still collecting here joins that
+ * block only for an operation of the same kind and - when the call that
+ * made the block listed every participant - only as one of them. The
+ * stub host declines, so the block is torn down and every participant
+ * on it answered the moment it goes up: a refused caller that had been
+ * parked on it would be answered too. */
+static void test_join(pmix_peer_t *a0, pmix_peer_t *a1, pmix_peer_t *a2, pmix_peer_t *a3,
+                      pmix_peer_t *b0)
+{
+    pmix_proc_t mbrs[2], self;
+    size_t base;
+    pmix_status_t rc;
+
+    progress_barrier();
+    base = pmix_list_get_size(&pmix_server_globals.grp_collectives);
+
+    /* by rank: A:1 and A:2, both local, so A:1 alone leaves it collecting */
+    PMIX_LOAD_PROCID(&mbrs[0], NS_A, 1);
+    PMIX_LOAD_PROCID(&mbrs[1], NS_A, 2);
+    rc = do_group(a1, PMIX_GROUP_CONSTRUCT, "join", mbrs, 2);
+    report("a construct waits here for its other local participant",
+           PMIX_SUCCESS == rc && !host_called &&
+               base + 1 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+
+    /* A:3 is not in the listed membership, and names the ID with a list
+     * of only itself */
+    PMIX_LOAD_PROCID(&self, NS_A, 3);
+    rc = do_group(a3, PMIX_GROUP_CONSTRUCT, "join", &self, 1);
+    report("a process outside the listed membership may not join it",
+           PMIX_ERR_NOT_A_MEMBER == rc && !host_called);
+    report("...and the construct is still waiting, on the same block",
+           base + 1 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+
+    /* a participant asking to destruct an ID still being constructed */
+    rc = do_group(a2, PMIX_GROUP_DESTRUCT, "join", mbrs, 2);
+    report("a destruct of an ID still being constructed is refused",
+           PMIX_ERR_BAD_PARAM == rc && !host_called);
+    report("...and the construct is still waiting",
+           base + 1 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+
+    /* the other listed participant, with the same membership */
+    rc = do_group(a2, PMIX_GROUP_CONSTRUCT, "join", mbrs, 2);
+    report("the other listed participant joins and the construct goes up",
+           PMIX_SUCCESS == rc && host_called && 2 == host_nprocs);
+    report("...and leaves no block behind",
+           base == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+    report("...the participant that started it is answered", has_reply(a1));
+    report("...and the refused process was never parked on it", !has_reply(a3));
+    drain(a1);
+    drain(a3);
+
+    /* by job: every rank of A, so a joiner is matched by its job */
+    PMIX_LOAD_PROCID(&mbrs[0], NS_A, PMIX_RANK_WILDCARD);
+    rc = do_group(a1, PMIX_GROUP_CONSTRUCT, "join-job", mbrs, 1);
+    report("a construct over a whole job waits for the job's local ranks",
+           PMIX_SUCCESS == rc && !host_called &&
+               base + 1 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+    PMIX_LOAD_PROCID(&self, NS_B, 0);
+    rc = do_group(b0, PMIX_GROUP_CONSTRUCT, "join-job", &self, 1);
+    report("a process of another job may not join it",
+           PMIX_ERR_NOT_A_MEMBER == rc && !host_called);
+    rc = do_group(a2, PMIX_GROUP_CONSTRUCT, "join-job", mbrs, 1);
+    report("a rank of the job joins it", PMIX_SUCCESS == rc && !host_called);
+    rc = do_group(a3, PMIX_GROUP_CONSTRUCT, "join-job", mbrs, 1);
+    report("so does another", PMIX_SUCCESS == rc && !host_called);
+    rc = do_group(a0, PMIX_GROUP_CONSTRUCT, "join-job", mbrs, 1);
+    report("the last local rank completes it",
+           PMIX_SUCCESS == rc && host_called &&
+               base == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+    report("...each joined rank is answered",
+           has_reply(a1) && has_reply(a2) && has_reply(a3));
+    report("...and the process of another job is not", !has_reply(b0));
+    drain(a1);
+    drain(a2);
+    drain(a3);
+    drain(b0);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
-    pmix_peer_t *a0, *a1;
+    pmix_peer_t *a0, *a1, *a2, *a3, *b0;
     pmix_status_t rc;
 
     (void) argc;
@@ -684,6 +774,24 @@ int main(int argc, char **argv)
     test_host_events();
     test_participants(a1);
     test_collectives(a1);
+
+    a2 = make_client(NS_A, 2);
+    a3 = make_client(NS_A, 3);
+    b0 = make_client(NS_B, 0);
+    if (NULL == a2 || NULL == a3 || NULL == b0) {
+        report("the clients for the join cases were created", 0);
+    } else {
+        test_join(a0, a1, a2, a3, b0);
+    }
+    if (NULL != a2) {
+        drop_client(a2);
+    }
+    if (NULL != a3) {
+        drop_client(a3);
+    }
+    if (NULL != b0) {
+        drop_client(b0);
+    }
 
     drop_client(a0);
     drop_client(a1);

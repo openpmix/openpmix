@@ -92,6 +92,13 @@
  *
  *      The case below builds three trackers in a known order and reads
  *      back what a registration did to each.
+ *
+ *   a commit carries only keys a process may put
+ *      pmix_server_commit refuses a commit naming any "pmix" key other
+ *      than PMIX_QUALIFIED_VALUE - the rule PMIx_Put applies, through the
+ *      same pmix_key_may_be_put - and refuses it before storing anything,
+ *      so ordinary keys earlier in the commit are not stored either. A
+ *      commit of ordinary keys and a qualified value is stored as before.
  */
 
 #include "src/include/pmix_config.h"
@@ -1029,6 +1036,148 @@ static bool kept_bucket_has(const char *key)
     return d.saw_key;
 }
 
+/* --------------------------------------------------------------------
+ * A commit carries only keys a process may put.
+ *
+ * PMIx_Put refuses the "pmix" prefix except for PMIX_QUALIFIED_VALUE
+ * (pmix_key_may_be_put), and so does pmix_server_commit: it refuses a
+ * commit naming any other such key whole, before anything in it is stored: not the ordinary keys ahead of
+ * it in its own scope block, nor those in an earlier block.
+ *
+ * The buffers are packed the way _commitfn packs them - per scope, the
+ * scope and then a buffer of kvals - and handed to pmix_server_commit,
+ * on the progress thread, with a peer for a registered rank. */
+#define CMTNS "fence-commit-ns"
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_buffer_t *buf;   /* the commit; NULL to only probe */
+    const char **probe;   /* NULL-terminated keys to look for afterwards */
+    pmix_status_t status;
+    bool found[8];        /* each probe key: in the store */
+    bool logged[8];       /*                 on the rank's modex log */
+    size_t nlog;
+    int ncommit;
+    bool recvd;
+} commitrun_t;
+
+static pmix_peer_t *commit_peer = NULL;
+
+static pmix_peer_t *get_commit_peer(void)
+{
+    pmix_namespace_t *ns;
+    pmix_rank_info_t *rinfo;
+
+    if (NULL != commit_peer) {
+        return commit_peer;
+    }
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(ns->nspace, CMTNS)) {
+            if (0 == pmix_list_get_size(&ns->ranks)) {
+                return NULL;
+            }
+            /* a client that has not connected has no modules yet */
+            if (NULL == ns->compat.bfrops) {
+                memcpy(&ns->compat, &pmix_globals.mypeer->nptr->compat,
+                       sizeof(pmix_personality_t));
+            }
+            rinfo = (pmix_rank_info_t *) pmix_list_get_first(&ns->ranks);
+            commit_peer = PMIX_NEW(pmix_peer_t);
+            PMIX_RETAIN(ns);
+            commit_peer->nptr = ns;
+            PMIX_RETAIN(rinfo);
+            commit_peer->info = rinfo;
+            memcpy(&commit_peer->proc_type, &pmix_globals.mypeer->proc_type,
+                   sizeof(pmix_proc_type_t));
+            return commit_peer;
+        }
+    }
+    return NULL;
+}
+
+static void run_commit(int sd, short args, void *cbdata)
+{
+    commitrun_t *c = (commitrun_t *) cbdata;
+    pmix_peer_t *peer;
+    pmix_modex_entry_t *ment;
+    pmix_proc_t p;
+    pmix_cb_t cb;
+    pmix_status_t rc;
+    size_t n;
+
+    (void) sd;
+    (void) args;
+
+    peer = get_commit_peer();
+    if (NULL == peer) {
+        c->status = PMIX_ERR_NOT_FOUND;
+        PMIX_WAKEUP_THREAD(&c->lock);
+        return;
+    }
+    if (NULL != c->buf) {
+        c->status = pmix_server_commit(peer, c->buf);
+    }
+    PMIX_LOAD_PROCID(&p, CMTNS, peer->info->pname.rank);
+    for (n = 0; NULL != c->probe && NULL != c->probe[n] && n < 8; n++) {
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &p;
+        cb.key = (char *) c->probe[n];
+        cb.scope = PMIX_SCOPE_UNDEF;
+        cb.copy = true;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        c->found[n] = (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&cb.kvs));
+        cb.key = NULL;
+        cb.proc = NULL;
+        PMIX_DESTRUCT(&cb);
+        PMIX_LIST_FOREACH (ment, &peer->info->modex_log, pmix_modex_entry_t) {
+            if (NULL != ment->kv && NULL != ment->kv->key
+                && 0 == strcmp(ment->kv->key, c->probe[n])) {
+                c->logged[n] = true;
+            }
+        }
+    }
+    c->nlog = pmix_list_get_size(&peer->info->modex_log);
+    c->ncommit = peer->commit_cnt;
+    c->recvd = peer->info->modex_recvd;
+    PMIX_WAKEUP_THREAD(&c->lock);
+}
+
+static void commit_run(commitrun_t *c, pmix_buffer_t *buf, const char **probe)
+{
+    memset(c, 0, sizeof(*c));
+    c->buf = buf;
+    c->probe = probe;
+    PMIX_CONSTRUCT_LOCK(&c->lock);
+    PMIX_THREADSHIFT(c, run_commit);
+    PMIX_WAIT_THREAD(&c->lock);
+    PMIX_DESTRUCT_LOCK(&c->lock);
+}
+
+/* append one scope block, as pack_commit_scope does */
+static bool commit_block(pmix_buffer_t *msg, pmix_scope_t scope, pmix_kval_t *kvs, size_t n)
+{
+    pmix_buffer_t bkt;
+    pmix_status_t rc;
+    size_t i;
+
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, msg, &scope, 1, PMIX_SCOPE);
+    if (PMIX_SUCCESS != rc) {
+        return false;
+    }
+    PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
+    for (i = 0; i < n; i++) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bkt, &kvs[i], 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&bkt);
+            return false;
+        }
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, msg, &bkt, 1, PMIX_BUFFER);
+    PMIX_DESTRUCT(&bkt);
+    return PMIX_SUCCESS == rc;
+}
+
 /* one collecting fence over the same participant set each time, completed
  * by "the host" with the given status; returns the handler's status */
 static pmix_status_t collecting_fence(pmix_status_t completion, bool *reached)
@@ -1425,6 +1574,133 @@ int main(int argc, char **argv)
         fence_ndata = 0;
         fence_collect = false;
         fence_accept = false;
+    }
+
+    /* --- a commit carrying a reserved key is refused whole --- */
+    {
+        static const char *r1keys[] = {"commit-ut.r1.local", "commit-ut.r1.remote", NULL};
+        static const char *r2keys[] = {"commit-ut.r2.global", "pmix.foo", NULL};
+        static const char *okkeys[] = {"commit-ut.ok.local", "commit-ut.ok.remote",
+                                       PMIX_QUALIFIED_VALUE, NULL};
+        commitrun_t c;
+        pmix_proc_t pr;
+        pmix_nspace_t ns;
+        pmix_buffer_t *msg;
+        pmix_kval_t kvs[2];
+        pmix_value_t v[2];
+        pmix_info_t ssn, qual[2];
+        pmix_data_array_t sarr, qarr;
+        uint32_t sid = 4242;
+        size_t nlog0;
+        int ncommit0;
+        bool packed;
+
+        PMIX_LOAD_PROCID(&pr, CMTNS, 0);
+        PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
+        PMIX_LOAD_NSPACE(ns, CMTNS);
+        PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        progress_barrier();
+
+        commit_run(&c, NULL, NULL);
+        report("a rank to commit for was registered", PMIX_SUCCESS == c.status);
+        nlog0 = c.nlog;
+        ncommit0 = c.ncommit;
+
+        /* an ordinary block, then a block whose second key is
+         * PMIX_SESSION_INFO_ARRAY */
+        msg = PMIX_NEW(pmix_buffer_t);
+        PMIX_VALUE_LOAD(&v[0], "l", PMIX_STRING);
+        kvs[0].key = (char *) r1keys[0];
+        kvs[0].value = &v[0];
+        packed = commit_block(msg, PMIX_LOCAL, kvs, 1);
+        PMIX_VALUE_DESTRUCT(&v[0]);
+        PMIX_INFO_LOAD(&ssn, PMIX_SESSION_ID, &sid, PMIX_UINT32);
+        sarr.type = PMIX_INFO;
+        sarr.size = 1;
+        sarr.array = &ssn;
+        PMIX_VALUE_LOAD(&v[0], "r", PMIX_STRING);
+        kvs[0].key = (char *) r1keys[1];
+        kvs[0].value = &v[0];
+        PMIX_VALUE_CONSTRUCT(&v[1]);
+        v[1].type = PMIX_DATA_ARRAY;
+        v[1].data.darray = &sarr;
+        kvs[1].key = PMIX_SESSION_INFO_ARRAY;
+        kvs[1].value = &v[1];
+        packed = packed && commit_block(msg, PMIX_REMOTE, kvs, 2);
+        PMIX_VALUE_DESTRUCT(&v[0]);
+        PMIX_INFO_DESTRUCT(&ssn);
+        report("a commit naming PMIX_SESSION_INFO_ARRAY was packed", packed);
+        commit_run(&c, msg, r1keys);
+        PMIX_RELEASE(msg);
+        report("a commit naming PMIX_SESSION_INFO_ARRAY is refused",
+               PMIX_ERR_BAD_PARAM == c.status);
+        report("...an ordinary key in an earlier block is not stored", !c.found[0]);
+        report("...nor one ahead of it in its own block", !c.found[1] && !c.logged[1]);
+        report("...nothing is added to the rank's modex log", nlog0 == c.nlog);
+        report("...and it does not count as a commit",
+               ncommit0 == c.ncommit && !c.recvd);
+
+        /* any other "pmix" key, in a single global block */
+        msg = PMIX_NEW(pmix_buffer_t);
+        PMIX_VALUE_LOAD(&v[0], "g", PMIX_STRING);
+        PMIX_VALUE_LOAD(&v[1], "x", PMIX_STRING);
+        kvs[0].key = (char *) r2keys[0];
+        kvs[0].value = &v[0];
+        kvs[1].key = (char *) r2keys[1];
+        kvs[1].value = &v[1];
+        packed = commit_block(msg, PMIX_GLOBAL, kvs, 2);
+        PMIX_VALUE_DESTRUCT(&v[0]);
+        PMIX_VALUE_DESTRUCT(&v[1]);
+        report("a commit naming pmix.foo was packed", packed);
+        commit_run(&c, msg, r2keys);
+        PMIX_RELEASE(msg);
+        report("a commit naming any other pmix-prefixed key is refused",
+               PMIX_ERR_BAD_PARAM == c.status);
+        report("...and stores none of its keys",
+               !c.found[0] && !c.logged[0] && !c.found[1] && !c.logged[1]);
+        report("...nor adds to the log or the commit count",
+               nlog0 == c.nlog && ncommit0 == c.ncommit && !c.recvd);
+
+        /* ordinary keys and a qualified value are what a commit is for */
+        msg = PMIX_NEW(pmix_buffer_t);
+        PMIX_VALUE_LOAD(&v[0], "l", PMIX_STRING);
+        kvs[0].key = (char *) okkeys[0];
+        kvs[0].value = &v[0];
+        packed = commit_block(msg, PMIX_LOCAL, kvs, 1);
+        PMIX_VALUE_DESTRUCT(&v[0]);
+        PMIX_INFO_LOAD(&qual[0], "commit-ut.ok.qualified", "q", PMIX_STRING);
+        PMIX_INFO_LOAD(&qual[1], PMIX_HOSTNAME, "somehost", PMIX_STRING);
+        PMIX_INFO_SET_QUALIFIER(&qual[1]);
+        qarr.type = PMIX_INFO;
+        qarr.size = 2;
+        qarr.array = qual;
+        PMIX_VALUE_LOAD(&v[0], "r", PMIX_STRING);
+        kvs[0].key = (char *) okkeys[1];
+        kvs[0].value = &v[0];
+        PMIX_VALUE_CONSTRUCT(&v[1]);
+        v[1].type = PMIX_DATA_ARRAY;
+        v[1].data.darray = &qarr;
+        kvs[1].key = PMIX_QUALIFIED_VALUE;
+        kvs[1].value = &v[1];
+        packed = packed && commit_block(msg, PMIX_REMOTE, kvs, 2);
+        PMIX_VALUE_DESTRUCT(&v[0]);
+        PMIX_INFO_DESTRUCT(&qual[0]);
+        PMIX_INFO_DESTRUCT(&qual[1]);
+        report("a commit of ordinary keys and a qualified value was packed", packed);
+        commit_run(&c, msg, okkeys);
+        PMIX_RELEASE(msg);
+        report("a commit of ordinary keys and PMIX_QUALIFIED_VALUE is accepted",
+               PMIX_SUCCESS == c.status);
+        report("...its local key is stored", c.found[0]);
+        report("...its remote key is stored and logged", c.found[1] && c.logged[1]);
+        report("...the qualified value is logged", c.logged[2]);
+        report("...and it counts as a commit",
+               nlog0 + 2 == c.nlog && ncommit0 + 1 == c.ncommit && c.recvd);
+
+        if (NULL != commit_peer) {
+            PMIX_RELEASE(commit_peer);
+            commit_peer = NULL;
+        }
     }
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);

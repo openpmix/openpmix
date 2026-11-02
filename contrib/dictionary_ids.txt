@@ -708,3 +708,5 @@ pmix.orig.client       679   PMIX_ORIGIN_IS_CLIENT
 pmix.ugids             680   PMIX_USER_GRPIDS
 pmix.iof.fwriter       681   PMIX_IOF_FILE_WRITER
 pmix.ssn.rndz.id       682   PMIX_SESSION_RNDZ_ID
+pmix.monitor.bmiss     683   PMIX_MONITOR_HEARTBEAT_MISSED
+pmix.monitor.fmiss     684   PMIX_MONITOR_FILE_MISSED

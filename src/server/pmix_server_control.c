@@ -1068,6 +1068,23 @@ exit:
     return rc;
 }
 
+/* The event a client's monitor may raise: PMIX_SUCCESS (the monitor's
+ * own code), one of the monitor codes, or a code of the user's - one
+ * beyond PMIX_EXTERNAL_ERR_BASE or a positive one, which PMIx never
+ * defines. Any other code is refused */
+static bool monitor_code_permitted(pmix_status_t code)
+{
+    switch (code) {
+    case PMIX_SUCCESS:
+    case PMIX_MONITOR_HEARTBEAT_ALERT:
+    case PMIX_MONITOR_FILE_ALERT:
+    case PMIX_MONITOR_RESUSAGE_UPDATE:
+        return true;
+    default:
+        return 0 < code || PMIX_EXTERNAL_ERR_BASE >= code;
+    }
+}
+
 pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
                                   pmix_info_cbfunc_t cbfunc,
                                   void *cbdata)
@@ -1116,6 +1133,13 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cb->status, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    if (!monitor_code_permitted(cb->status)) {
+        pmix_output_verbose(2, pmix_server_globals.base_output,
+                            "monitor request from %s refused - it may not raise %s",
+                            PMIX_PEER_PRINT(peer), PMIx_Error_string(cb->status));
+        rc = PMIX_ERR_BAD_PARAM;
         goto exit;
     }
 

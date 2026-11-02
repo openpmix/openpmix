@@ -138,7 +138,8 @@ pmix_status_t pmix_gds_hash_fetch_sessioninfo(pmix_peer_t *peer,
     size_t n;
     pmix_status_t rc;
     uint32_t sid = UINT32_MAX;
-    pmix_session_t *sptr, *prior;
+    bool named = false;
+    pmix_session_t *sptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "FETCHING SESSION INFO");
@@ -151,16 +152,21 @@ pmix_status_t pmix_gds_hash_fetch_sessioninfo(pmix_peer_t *peer,
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
+            named = true;
             break;
         }
     }
 
-    /* the check binds a job that has no session to the named one, or
-     * moves it off the default one, which changes the job's data */
-    prior = (NULL == trk) ? NULL : trk->session;
-    sptr = pmix_gds_hash_check_session(trk, sid, false);
-    if (NULL != trk && prior != trk->session) {
-        pmix_gds_base_job_data_changed(trk->ns);
+    /* A session the get names only qualifies it: it does not say the job
+     * is in that session, so it is looked up on its own (a NULL tracker
+     * searches the list) and the job keeps the session it has. With none
+     * named - or UINT32_MAX, which names none - the job's own session
+     * answers, and a job that has none is in the default one, which this
+     * records */
+    if (named && UINT32_MAX != sid) {
+        sptr = pmix_gds_hash_check_session(NULL, sid, false);
+    } else {
+        sptr = pmix_gds_hash_check_session(trk, UINT32_MAX, false);
     }
     if (NULL == sptr) {
         return PMIX_ERR_NOT_FOUND;

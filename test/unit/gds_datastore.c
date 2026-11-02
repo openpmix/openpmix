@@ -2386,6 +2386,190 @@ static void test_session_update_via_job(void)
     PMIX_RELEASE(p3);
 }
 
+/* Read PMIX_UNIV_SIZE for a job through its peer, the get qualified by
+ * PMIX_SESSION_ID = *sid when sid is given. Returns the fetch status;
+ * the value is in *out only when that is PMIX_SUCCESS with one result */
+static pmix_status_t fetch_univ(pmix_peer_t *peer, const char *nsname, const uint32_t *sid,
+                                uint32_t *out)
+{
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    pmix_info_t qual;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+
+    *out = 0;
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, nsname, PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = PMIX_UNIV_SIZE;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    if (NULL != sid) {
+        PMIX_INFO_LOAD(&qual, PMIX_SESSION_ID, sid, PMIX_UINT32);
+        PMIX_INFO_SET_QUALIFIER(&qual);
+        cb.info = &qual;
+        cb.ninfo = 1;
+    }
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    if (PMIX_SUCCESS == rc) {
+        if (1 == pmix_list_get_size(&cb.kvs)) {
+            kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+            rc = PMIx_Value_get_number(kv->value, out, PMIX_UINT32);
+        } else {
+            rc = PMIX_ERROR;
+        }
+    }
+    cb.key = NULL;
+    cb.proc = NULL;
+    cb.info = NULL;
+    cb.ninfo = 0;
+    PMIX_DESTRUCT(&cb);
+    if (NULL != sid) {
+        PMIX_INFO_DESTRUCT(&qual);
+    }
+    return rc;
+}
+
+/* report a PMIX_UNIV_SIZE read against what it should have answered */
+static void check_univ(const char *what, pmix_status_t rc, uint32_t got, uint32_t want)
+{
+    report(what, PMIX_SUCCESS == rc && want == got);
+    if (PMIX_SUCCESS != rc || want != got) {
+        fprintf(stdout, "        (%s, %u - expected %u)\n", PMIx_Error_string(rc),
+                (unsigned) got, (unsigned) want);
+    }
+}
+
+/* A get qualified by a session reads that session and changes nothing.
+ * PMIX_SESSION_ID on a get names the session the value is to come from;
+ * the job stays in its own session.
+ *
+ * Two named sessions with distinct sizes, a job in the first and a job
+ * of no session. A get for each job naming the second session answers
+ * the second session's size; afterwards an unqualified get for each
+ * still answers from the job's own session. Naming UINT32_MAX names no
+ * session, so it answers from the job's own.
+ *
+ * Through whichever module is assigned, as the session cases above. */
+static void test_session_qualified_get(void)
+{
+    pmix_gds_base_module_t *mod;
+    pmix_info_t sinfo[1], *info;
+    pmix_peer_t *pa = NULL, *pb = NULL, *pc = NULL;
+    pmix_buffer_t *reply;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t size1 = 13, size2 = 27, size0 = 41, got = 0, base = 0, nprocs = 2;
+    const uint32_t sid1 = 7301, sid2 = 7302, nosid = UINT32_MAX;
+    char *nodemap, *procmap;
+
+    fprintf(stdout, "\n-- a session-qualified get --\n");
+
+    mod = pmix_gds_base_assign_module(NULL, 0);
+    if (NULL == mod) {
+        fprintf(stdout, "    SKIP  no gds module available\n");
+        return;
+    }
+
+    PMIX_INFO_LOAD(&sinfo[0], PMIX_UNIV_SIZE, &size1, PMIX_UINT32);
+    rc = PMIx_server_register_session(sid1, sinfo, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&sinfo[0]);
+    PMIX_INFO_LOAD(&sinfo[0], PMIX_UNIV_SIZE, &size2, PMIX_UINT32);
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_server_register_session(sid2, sinfo, 1, NULL, NULL);
+    }
+    PMIX_INFO_DESTRUCT(&sinfo[0]);
+    report("two sessions of different sizes register", PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS != rc) {
+        return;
+    }
+
+    /* a job in each - the second's gives its session a segment where
+     * the module keeps one */
+    pa = register_session_job("gds-sq-a", sid1, mod, &reply, &rc);
+    if (NULL != pa) {
+        PMIX_RELEASE(reply);
+    }
+    if (NULL != pa && PMIX_SUCCESS == rc) {
+        pb = register_session_job("gds-sq-b", sid2, mod, &reply, &rc);
+        if (NULL != pb) {
+            PMIX_RELEASE(reply);
+        }
+    }
+    /* and a job that names no session, carrying a session-level value
+     * of its own, which puts it on the default session */
+    if (NULL != pb && PMIX_SUCCESS == rc) {
+        nodemap = strdup(pmix_globals.hostname);
+        procmap = strdup("0-1");
+        PMIX_INFO_CREATE(info, 4);
+        PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+        PMIX_INFO_LOAD(&info[1], PMIX_NODE_MAP, nodemap, PMIX_STRING);
+        PMIX_INFO_LOAD(&info[2], PMIX_PROC_MAP, procmap, PMIX_STRING);
+        PMIX_INFO_LOAD(&info[3], PMIX_UNIV_SIZE, &size0, PMIX_UINT32);
+        PMIX_LOAD_NSPACE(ns, "gds-sq-c");
+        rc = PMIx_server_register_nspace(ns, nprocs, info, 4, NULL, NULL);
+        PMIX_INFO_FREE(info, 4);
+        free(nodemap);
+        free(procmap);
+        if (registered(rc)) {
+            pc = mkgdspeer("gds-sq-c", nprocs, mod);
+            reply = PMIX_NEW(pmix_buffer_t);
+            PMIX_GDS_REGISTER_JOB_INFO(rc, pc, reply);
+            PMIX_RELEASE(reply);
+        }
+    }
+    report("a job in each session, and one of no session, register",
+           NULL != pc && PMIX_SUCCESS == rc);
+    if (NULL == pc || PMIX_SUCCESS != rc) {
+        goto done;
+    }
+
+    /* the job in the first session */
+    rc = fetch_univ(pa, "gds-sq-a", NULL, &got);
+    check_univ("a job's unqualified get answers from its session", rc, got, size1);
+    rc = fetch_univ(pa, "gds-sq-a", &sid2, &got);
+    check_univ("a get for it naming another session answers from that session", rc, got,
+               size2);
+    rc = fetch_univ(pa, "gds-sq-a", NULL, &got);
+    check_univ("...and the job is still in its own session afterwards", rc, got, size1);
+    rc = fetch_univ(pa, "gds-sq-a", &nosid, &got);
+    check_univ("a get naming UINT32_MAX answers from the job's own session", rc, got, size1);
+
+    /* the job of no session: whatever the default session says now is
+     * its value - other cases here describe that session too */
+    rc = fetch_univ(pc, "gds-sq-c", NULL, &base);
+    report("a job of no session answers from the default session",
+           PMIX_SUCCESS == rc && size2 != base);
+    if (PMIX_SUCCESS != rc || size2 == base) {
+        fprintf(stdout, "        (%s, %u)\n", PMIx_Error_string(rc), (unsigned) base);
+        goto done;
+    }
+    rc = fetch_univ(pc, "gds-sq-c", &sid2, &got);
+    check_univ("a get for it naming a session answers from that session", rc, got, size2);
+    rc = fetch_univ(pc, "gds-sq-c", NULL, &got);
+    check_univ("...and the job is not moved into it: it still answers from the default",
+               rc, got, base);
+    rc = fetch_univ(pc, "gds-sq-c", &nosid, &got);
+    check_univ("...as does a get for it naming UINT32_MAX", rc, got, base);
+
+done:
+    PMIx_server_deregister_session(sid1, NULL, NULL);
+    PMIx_server_deregister_session(sid2, NULL, NULL);
+    if (NULL != pa) {
+        PMIX_GDS_DEL_NSPACE(rc, "gds-sq-a");
+        PMIX_RELEASE(pa);
+    }
+    if (NULL != pb) {
+        PMIX_GDS_DEL_NSPACE(rc, "gds-sq-b");
+        PMIX_RELEASE(pb);
+    }
+    if (NULL != pc) {
+        PMIX_GDS_DEL_NSPACE(rc, "gds-sq-c");
+        PMIX_RELEASE(pc);
+    }
+}
+
 /* A session's description changes under it.
  *
  * This is the case the whole session series exists for: a session's
@@ -2809,6 +2993,7 @@ int main(int argc, char **argv)
     test_session_registration();
     test_session_update();
     test_session_update_via_job();
+    test_session_qualified_get();
     test_register_resources_after_nspace();
     test_qualified_deregistration();
 

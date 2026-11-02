@@ -59,6 +59,15 @@
  * A tool that needs an identity is refused if the host accepts it without
  * one.
  *
+ * A namespace the host registers is a job of the host's. A tool that
+ * named itself is refused with PMIX_ERR_EXISTS when the host registers a
+ * namespace of its name during the up-call - with no ranks yet, or with
+ * another user's - and the job stays the host's, which goes on to
+ * register its processes; it is refused the same, before the host is
+ * asked, naming a rank the host did not register in a namespace it did.
+ * A tool the host names may join the namespace the host registers for
+ * it, with no ranks, during the up-call.
+ *
  * A tool of the legacy kind only v2.1 sends is sent the replies a v2.1
  * reader takes: after its status, the namespace the host gave it, then
  * the server's namespace and rank, then the last status.
@@ -2022,8 +2031,163 @@ static int case_tool_joins_other_user(void)
     }
     free(msg);
     reply = tool_outcome(sd, true);
+    /* the namespace holds the host's processes: a job of the host's,
+     * whose name is taken */
     return expect_status("a tool given a rank in another user's namespace", reply,
-                         PMIX_ERR_NOT_SUPPORTED);
+                         PMIX_ERR_EXISTS);
+}
+
+/* The host registers a job of the name a tool is deciding on, during the
+ * up-call: with no ranks yet, or - with reg_other_rank - with rank 0 as
+ * another uid */
+#define AC_JOBNS "accept.job"
+static bool reg_other_rank = false;
+static void register_job_ns(void)
+{
+    pmix_proc_t proc;
+    pmix_nspace_t ns;
+
+    PMIX_LOAD_NSPACE(ns, AC_JOBNS);
+    PMIx_server_register_nspace(ns, 2, NULL, 0, noop_cb, NULL);
+    if (reg_other_rank) {
+        PMIX_LOAD_PROCID(&proc, AC_JOBNS, 0);
+        PMIx_server_register_client(&proc, getuid() + 1, getgid(), NULL, noop_cb, NULL);
+    }
+}
+
+/* A tool that named itself, whose name the host registers as a job of
+ * its own while it decides on the tool, is refused with PMIX_ERR_EXISTS -
+ * whether the job has no ranks yet or has another user's - and the job
+ * is left as the host's: it is not marked as a self-started tool's, and
+ * the host then registers the job's processes. `other`: the host
+ * registers rank 0 as another uid along with the namespace */
+static int case_self_named_host_registers(bool other)
+{
+    pmix_namespace_t *ns;
+    pmix_proc_t proc;
+    char *msg;
+    size_t sz;
+    int sd = -1, rc;
+    pmix_status_t reply;
+
+    if (PMIX_SUCCESS != start_server(&mymodule, false, getuid())) {
+        return CHILD_SETUP;
+    }
+    reg_other_rank = other;
+    tool_hook = register_job_ns;
+    msg = build_ack(PMIX_TOOL_GIVEN_ID, AC_JOBNS, 1, "native", NULL, false, &sz);
+    if (!open_ack(msg, sz, &sd)) {
+        return CHILD_SETUP;
+    }
+    free(msg);
+    reply = tool_outcome(sd, false);
+    if (1 != ntool_connected) {
+        fprintf(stdout, "    the host was asked about the tool %d times\n", ntool_connected);
+        return CHILD_FAIL;
+    }
+    rc = expect_status(other ? "a self-named tool whose name the host registers with another "
+                               "user's rank"
+                             : "a self-named tool whose name the host registers with no ranks",
+                       reply, PMIX_ERR_EXISTS);
+    if (CHILD_PASS != rc) {
+        return rc;
+    }
+    usleep(200000);
+    ns = find_ns(AC_JOBNS);
+    if (NULL == ns || ns->self_started) {
+        fprintf(stdout, "    the host's namespace is %s\n",
+                (NULL == ns) ? "gone" : "marked as a self-started tool's");
+        return CHILD_FAIL;
+    }
+    /* the host goes on to register the job's processes */
+    PMIX_LOAD_PROCID(&proc, AC_JOBNS, 1);
+    reply = PMIx_server_register_client(&proc, getuid(), getgid(), NULL, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == reply) {
+        reply = PMIX_SUCCESS;
+    }
+    return expect_status("the host registering a process of its job", reply, PMIX_SUCCESS);
+}
+static int run_self_named_job_noranks(void)
+{
+    return case_self_named_host_registers(false);
+}
+static int run_self_named_job_other(void)
+{
+    return case_self_named_host_registers(true);
+}
+
+/* A tool the host names, whose namespace the host registers for it - with
+ * no ranks - while it decides, joins that namespace: the name came from
+ * the host. One namespace of the name, holding the tool's rank */
+static int case_host_named_joins_registered(void)
+{
+    pmix_namespace_t *ns;
+    pmix_rank_info_t *info;
+    char *msg;
+    size_t sz;
+    int sd = -1, nns = 0, n0 = 0, nother = 0;
+    pmix_status_t reply;
+
+    if (PMIX_SUCCESS != start_server(&mymodule, false, getuid())) {
+        return CHILD_SETUP;
+    }
+    reg_other_rank = false;
+    tool_hook = register_job_ns;
+    PMIX_LOAD_PROCID(&tool_answer, AC_JOBNS, 0);
+    msg = build_ack(PMIX_TOOL_NEEDS_ID, "", 0, "native", NULL, false, &sz);
+    if (!open_ack(msg, sz, &sd)) {
+        return CHILD_SETUP;
+    }
+    free(msg);
+    reply = tool_outcome(sd, true);
+    if (PMIX_SUCCESS != reply) {
+        return expect_status("a host-named tool whose namespace the host registers", reply,
+                             PMIX_SUCCESS);
+    }
+    usleep(200000);
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (NULL == ns->nspace || 0 != strcmp(ns->nspace, AC_JOBNS)) {
+            continue;
+        }
+        ++nns;
+        PMIX_LIST_FOREACH (info, &ns->ranks, pmix_rank_info_t) {
+            if (0 == info->pname.rank) {
+                ++n0;
+            } else {
+                ++nother;
+            }
+        }
+    }
+    if (1 != nns || 1 != n0 || 0 != nother) {
+        fprintf(stdout, "    %d namespaces of the name, %d entries for rank 0, %d others\n", nns,
+                n0, nother);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
+/* A tool that named itself into a namespace the host registered before it
+ * connected, on a rank the host did not register: the name is a job of
+ * the host's, and is taken. Refused before the host is asked */
+static int case_self_named_host_job_rank(void)
+{
+    char *msg;
+    size_t sz;
+    int sd = -1;
+    pmix_status_t reply;
+
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    msg = build_ack(PMIX_TOOL_GIVEN_ID, AC_NSPACE, 7, "native", NULL, false, &sz);
+    reply = send_ack(msg, sz, &sd);
+    free(msg);
+    if (0 != ntool_connected) {
+        fprintf(stdout, "    the host was asked about the tool\n");
+        return CHILD_FAIL;
+    }
+    return expect_status("a self-named tool on an unregistered rank of a host's job", reply,
+                         PMIX_ERR_EXISTS);
 }
 
 static void dereg_client_rank(void)
@@ -3700,6 +3864,18 @@ int main(int argc, char **argv)
              case_tool_cap_listener);
     run_case("a tool the host names into another user's new namespace is refused",
              case_tool_joins_other_user);
+    run_case("a self-named tool whose name the host registers meanwhile, with no ranks, is "
+             "refused and leaves the job to the host",
+             run_self_named_job_noranks);
+    run_case("a self-named tool whose name the host registers meanwhile, with another "
+             "user's rank, is refused and leaves the job to the host",
+             run_self_named_job_other);
+    run_case("a tool the host names into a namespace it registers meanwhile, with no ranks, "
+             "joins it",
+             case_host_named_joins_registered);
+    run_case("a self-named tool on an unregistered rank of a host's job is refused before "
+             "the host is asked",
+             case_self_named_host_job_rank);
     run_case("a tool whose name the host gives another meanwhile is refused",
              run_queue_assigned_name);
     run_case("a waiting tool that goes away is never put to the host", run_queue_gone);

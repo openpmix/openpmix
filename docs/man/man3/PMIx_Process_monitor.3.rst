@@ -66,7 +66,17 @@ INPUT PARAMETERS
   life. A ``NULL`` value returns ``PMIX_ERR_BAD_PARAM``.
 * ``error``: The ``pmix_status_t`` code the monitor is to use when generating an
   event notification alerting that the monitored condition has been triggered (or
-  to carry a periodic resource-usage update). The default range of the resulting
+  to carry a periodic resource-usage update). It must be one of:
+
+  * ``PMIX_SUCCESS``, for the monitor's own code (``PMIX_MONITOR_HEARTBEAT_ALERT``
+    or ``PMIX_MONITOR_FILE_ALERT``);
+  * ``PMIX_MONITOR_HEARTBEAT_ALERT``, ``PMIX_MONITOR_FILE_ALERT`` or
+    ``PMIX_MONITOR_RESUSAGE_UPDATE``;
+  * a code of the caller's own: a negative value beyond
+    ``PMIX_EXTERNAL_ERR_BASE``, or a positive value. A code of its own ensures
+    nothing else in the system handles the event.
+
+  Any other code is refused with ``PMIX_ERR_BAD_PARAM``. The default range of the resulting
   event is ``PMIX_RANGE_NAMESPACE``; this can be changed with a ``PMIX_RANGE``
   directive.
 * ``directives``: Pointer to an array of :ref:`pmix_info_t(5) <man5-pmix_info_t>`
@@ -225,6 +235,17 @@ by that process's PMIx server.
   exactly as a file that does not exist: the request succeeds, and the monitor
   never raises an alert for it. Ownership is checked each time the file is
   examined, so a monitor may name a file that is created later.
+* **The alert describes the monitor that tripped.** Its source is the monitored
+  process, and its info carries the ``PMIX_MONITOR_ID`` the request gave, if
+  any, and the monitor's settings:
+
+  * heartbeat: ``PMIX_MONITOR_HEARTBEAT``, ``PMIX_MONITOR_HEARTBEAT_TIME``,
+    ``PMIX_MONITOR_HEARTBEAT_DROPS``, and ``PMIX_MONITOR_HEARTBEAT_MISSED``
+    (uint32_t) - the heartbeats missed in a row;
+  * file: ``PMIX_MONITOR_FILE``, whichever of ``PMIX_MONITOR_FILE_SIZE``,
+    ``PMIX_MONITOR_FILE_ACCESS`` and ``PMIX_MONITOR_FILE_MODIFY`` were asked
+    for, ``PMIX_MONITOR_FILE_CHECK_TIME``, ``PMIX_MONITOR_FILE_DROPS``, and
+    ``PMIX_MONITOR_FILE_MISSED`` (uint32_t) - the checks missed.
 * **Each process may hold a limited number of liveness monitors**, heartbeat and
   file monitors together - 16 by default, set by the
   ``psensor_base_max_monitors_per_peer`` MCA parameter. A request beyond the

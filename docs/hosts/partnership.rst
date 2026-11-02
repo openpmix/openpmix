@@ -119,6 +119,10 @@ rules are on :doc:`connections`; in brief:
 * **You decide on one tool of a name at a time.** A slow answer delays
   the tools of that name waiting behind it, and their time waiting
   counts against their own wait.
+* **Do not register the namespace of a tool that named itself** while
+  you decide on it: the tool is then refused with ``PMIX_ERR_EXISTS``,
+  as one naming a job of yours. It needs nothing from you - the tool
+  library sets its job values itself.
 * **Be ready to name a tool you launched.** A tool you started, whose
   namespace and rank are already in use - several tools started by one
   job script, say - connects again as a tool that needs an identity,

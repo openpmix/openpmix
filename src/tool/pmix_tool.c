@@ -148,7 +148,7 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     pmix_event_chain_t *chain;
     size_t ninfo;
     pmix_data_range_t range;
-    PMIX_HIDE_UNUSED_PARAMS(peer, hdr, cbdata);
+    PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "pmix:tool_notify_recv - processing event");
@@ -156,6 +156,10 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
     if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        return;
+    }
+    /* act only on an event from a server of this process */
+    if (!pmix_iof_sender_is_upstream(peer)) {
         return;
     }
 
@@ -2484,6 +2488,13 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
         PMIX_POST_OBJECT(cb);
         return;
     }
+
+    /* The peer is our server now, whichever way the connection was made.
+     * A launcher this tool started connects back to us as a client
+     * (PMIX_LAUNCHER_RNDZ_URI), and the tool then makes it its server
+     * over that same connection: what only a server sends - events, IOF,
+     * store updates - comes to us on it from here on */
+    peer->upstream = true;
 
     /* if this is the current active server, then ignore the request */
     if (peer == pmix_client_globals.myserver) {
