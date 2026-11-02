@@ -38,6 +38,7 @@ sources += \
         base/ptl_base_sendrecv.c \
         base/ptl_base_listener.c \
         base/ptl_base_rndz.c \
+        base/ptl_base_tmpdir.c \
         base/ptl_base_stubs.c \
         base/ptl_base_connect.c \
         base/ptl_base_fns.c \

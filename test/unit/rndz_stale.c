@@ -600,12 +600,25 @@ int main(void)
         unlink(path);
     }
 
-    /* the directory's mode is not held against it: a root-owned 0777
-     * volume, such as a Kubernetes emptyDir at /tmp, is a normal place
-     * for a containerized server to work. Ours at 0777 stands in */
+    /* A tmpdir others may write, without the sticky bit, is one another
+     * user could swap the server's directories in: refused by default.
+     * A container's own such volume - a Kubernetes emptyDir at /tmp, root's
+     * 0777 - is a normal place for a containerized server to work, which
+     * ptl_base_tmpdir_check=warn or =silent allows. Ours at 0777 stands in */
     chmod(tmpdir, 0777);
     rc = run_child(true);
-    report("world-writable directory is accepted", CHILD_OK == rc, "init failed");
+    report("a world-writable tmpdir without the sticky bit is refused by default",
+           CHILD_OK != rc, "init succeeded");
+    setenv("PMIX_MCA_ptl_base_tmpdir_check", "warn", 1);
+    rc = run_child(true);
+    report("...and accepted with ptl_base_tmpdir_check=warn", CHILD_OK == rc, "init failed");
+    setenv("PMIX_MCA_ptl_base_tmpdir_check", "silent", 1);
+    rc = run_child(true);
+    report("...or =silent", CHILD_OK == rc, "init failed");
+    unsetenv("PMIX_MCA_ptl_base_tmpdir_check");
+    chmod(tmpdir, 01777);
+    rc = run_child(true);
+    report("...and accepted by default with the sticky bit", CHILD_OK == rc, "init failed");
     chmod(tmpdir, 0700);
 
     /* The directory is one we were handed, so whoever owns it is not

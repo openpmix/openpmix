@@ -430,3 +430,52 @@ it as another server of its own. It runs on: its clients reach it by
 the address they are given, but tools cannot find it by that file.
 
 The file's owner, or an administrator, can remove it.
+#
+[tmpdir-unsafe]
+This PMIx server's %s tmpdir
+
+  %s
+
+lies below a directory another user could change:
+
+  Directory:  %s
+  Owner:      uid %lu
+  Mode:       %04o
+  Why:        %s
+
+That user could move this server's directories aside and put others at
+their names, and the server's clients would fail to connect. So the
+server will not start.
+
+Every directory above a tmpdir must be owned by root or by this
+server's user, and writable by nobody else - unless it has the sticky
+bit, as /tmp does, or its group's only member is its owner. The tmpdir
+itself may be any user's, if nobody else can write it.
+
+Where no other user shares the directory - a container's own volume,
+such as a Kubernetes emptyDir mounted at /tmp - set the MCA parameter
+ptl_base_tmpdir_check to "warn" to start anyway and say so, or to
+"silent" not to check. Or give the directory the sticky bit.
+#
+[tmpdir-unsafe-warn]
+This PMIx server's %s tmpdir
+
+  %s
+
+lies below a directory another user could change:
+
+  Directory:  %s
+  Owner:      uid %lu
+  Mode:       %04o
+  Why:        %s
+
+That user could move this server's directories aside and put others at
+their names, and the server's clients would fail to connect. The server
+runs on, as ptl_base_tmpdir_check=warn says; "silent" would not check.
+#
+[tmpdir-check-bad]
+The value of ptl_base_tmpdir_check could not be used:
+
+  %s
+
+It must be "refuse" (the default), "warn", or "silent".
