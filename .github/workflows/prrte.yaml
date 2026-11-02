@@ -65,3 +65,11 @@ jobs:
          prterun -n 5 ./examples/pubstress 30
       if:   ${{ true }}
       timeout-minutes: 10
+    - name: Run multi-user output files check
+      run: |
+         # a DVM of one user, prun of another, writing output files; the
+         # two accounts must reach both installs, below $HOME
+         sudo chmod o+x "$HOME" "$HOME/work" "$RUNNER_TEMP"
+         sudo env PMIX_PREFIX=$RUNNER_TEMP/pmixinstall PRTE_PREFIX=$RUNNER_TEMP/prteinstall \
+              ./test/multiuser/output-files.sh
+      timeout-minutes: 10
