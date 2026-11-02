@@ -143,6 +143,20 @@ host that asks for connections from other hosts
 ``PMIx_server_init``. A server that cannot open a socket it needs fails
 ``PMIx_server_init`` too.
 
+.. _label-conn-earlier-clients:
+
+.. important:: A server that does not take legacy peers cannot run clients
+   of earlier releases. Such a client - an Open MPI 5 process, say, with
+   its bundled PMIx v5.0 - is given only the local socket's URI, which it
+   cannot use. Its connection fails, it logs one ``PMIX ERROR: BAD-PARAM``
+   line, and it comes up as a singleton: an N-process job runs as N
+   separate one-process jobs. Nothing the server could set instead makes
+   every earlier release stop rather than run alone - to such a client, no
+   server and an unusable one both mean "singleton". The remedy is the
+   site's: build with ``--enable-legacy-peers`` and turn legacy peers on
+   (``ptl_base_legacy_peers``, or the host's ``PMIX_SERVER_LEGACY_PEERS``),
+   or update the clients along with their servers.
+
 The local socket
 ^^^^^^^^^^^^^^^^
 

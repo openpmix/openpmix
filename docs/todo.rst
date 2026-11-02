@@ -112,21 +112,6 @@ To close: with no version to go by, use the newest wire format every
 supported server has, so that a server of a later release still accepts
 it.
 
-.. _todo-conn-ompi5-singletons:
-
-An Open MPI 5 job runs as singletons under a server without legacy peers
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-*Open decision.*  When the server does not take legacy peers, an Open MPI
-5 process (a v5.0 client) is given only the local socket's URI, which it
-cannot use.  It comes up as a singleton, so an N-process job runs as N
-separate one-process jobs, and the only sign is an error line from each.
-
-The decision is what the server should do.  It could leave the client's
-variables unset so that the client fails outright, or set something every
-earlier release reads as "no server".  Either changes what an earlier
-release sees, so it needs to be checked against each release from v2.1.
-
 .. _todo-conn-empty-nspace:
 
 A v5.0 scheduler with an empty namespace is untested
