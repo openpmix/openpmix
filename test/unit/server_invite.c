@@ -31,6 +31,12 @@
  *      The host reports a loss with the lost process as the source; one
  *      raised by some other process naming it is not a loss.
  *
+ *   an ID a group holds here is refused
+ *      A group keeps its ID until it is destructed: an invitation under
+ *      the ID of one that completed is refused at once, and one whose ID a
+ *      group took while it was out is aborted rather than announced - the
+ *      group that holds the ID is kept.
+ *
  *   an empty group id is refused
  *      A zero-length string unpacks as NULL with success, and the handler
  *      uses the id as a string - strdup'd into the invitation, and
@@ -281,6 +287,62 @@ static pmix_status_t invite(const char *grp, pmix_proc_t *procs, size_t nprocs)
     return r.status;
 }
 
+/* ---- the group records, on the progress thread ---- */
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    const char *grp;
+    const pmix_proc_t *members;
+    size_t nmembers;
+    pmix_status_t status;
+    size_t held;
+    bool has_first;
+} recreq_t;
+
+static void do_record(int sd, short args, void *cbdata)
+{
+    recreq_t *r = (recreq_t *) cbdata;
+    pmix_group_t *g;
+    size_t n;
+
+    (void) sd;
+    (void) args;
+    if (0 < r->nmembers) {
+        r->status = pmix_server_grp_record(r->grp, r->members, r->nmembers, SIZE_MAX, false,
+                                           true);
+    }
+    g = pmix_server_grp_find(r->grp);
+    r->held = (NULL == g) ? 0 : g->nmbrs;
+    for (n = 0; NULL != g && NULL != r->members && n < g->nmbrs; n++) {
+        if (0 == strncmp(g->members[n].nspace, r->members[0].nspace, PMIX_MAX_NSLEN) &&
+            g->members[n].rank == r->members[0].rank) {
+            r->has_first = true;
+        }
+    }
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+/* record a group of these members (none: only look), and say how many it
+ * then holds and whether the first given is among them */
+static pmix_status_t record(const char *grp, const pmix_proc_t *members, size_t n,
+                            bool look_only, size_t *held, bool *has_first)
+{
+    recreq_t r;
+
+    memset(&r, 0, sizeof(r));
+    PMIX_CONSTRUCT_LOCK(&r.lock);
+    r.grp = grp;
+    r.members = members;
+    r.nmembers = look_only ? 0 : n;
+    PMIX_THREADSHIFT(&r, do_record);
+    PMIX_WAIT_THREAD(&r.lock);
+    PMIX_DESTRUCT_LOCK(&r.lock);
+    *held = r.held;
+    *has_first = r.has_first;
+    return r.status;
+}
+
 /* ---- answers, raised locally under a chosen source ---- */
 
 /* a contribution naming "who", carrying one value */
@@ -369,6 +431,36 @@ int main(int argc, char **argv)
            !saw_outcome("srvinv-g1", 6));
     answer(PMIX_GROUP_INVITE_ACCEPTED, &p1, "srvinv-g1", NULL);
     report("an acceptance naming the group completes it", saw_complete("srvinv-g1", 40));
+
+    /* --- an ID a group holds here is refused --- *
+     * srvinv-g1 completed above and is recorded: its ID is in use until
+     * it is destructed */
+    {
+        pmix_proc_t others[2];
+        size_t held = 0;
+        bool kept = false;
+
+        reset_host();
+        rc = invite("srvinv-g1", procs, 2);
+        report("an invitation under the ID of a group held here is refused",
+               PMIX_ERR_EXISTS == rc);
+        report("...and invites nobody", !saw_outcome("srvinv-g1", 6));
+
+        /* a group takes the ID while the invitation is out */
+        reset_host();
+        rc = invite("srvinv-g5", procs, 2);
+        report("an invitation under a free ID starts", PMIX_SUCCESS == rc);
+        PMIX_LOAD_PROCID(&others[0], INVNS, 6);
+        PMIX_LOAD_PROCID(&others[1], INVNS, 7);
+        rc = record("srvinv-g5", others, 2, false, &held, &kept);
+        report("a group is recorded under its ID meanwhile", PMIX_SUCCESS == rc);
+        answer(PMIX_GROUP_INVITE_ACCEPTED, &p1, "srvinv-g5", NULL);
+        report("the invitation is resolved", saw_outcome("srvinv-g5", 40));
+        report("...by an abort, not a second group under the ID",
+               !saw_complete("srvinv-g5", 2));
+        (void) record("srvinv-g5", others, 2, true, &held, &kept);
+        report("...and the group that holds the ID is kept", 2 == held && kept);
+    }
 
     /* --- a contribution counts only for its contributor --- */
     reset_host();

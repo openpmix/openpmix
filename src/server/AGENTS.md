@@ -1886,6 +1886,27 @@ in `pmix_server_grpmbr.c`, and a v7.0 client connected to it keeps none
   members is our client. Invited groups are sorted, as clients have
   always held them. Clients cannot raise that event (above), so the host
   path is the only other way in.
+- **An ID is one group's until it is destructed.**
+  `pmix_server_grp_record` takes the same membership again - in any
+  order: the leader's server hears its own announcement back, and a host
+  may answer each bootstrap up-call apart - as a no-op success (adopting a
+  context ID the first report lacked), and refuses another with
+  `PMIX_ERR_EXISTS` and the `group-id-in-use` message, keeping the record.
+  Its callers act on the refusal: the construct reply answers the local
+  participants `PMIX_ERR_EXISTS`, `invite_broadcast` aborts the invitation
+  instead of announcing, and the host-event path only logs. Construct and
+  invite requests are refused with `PMIX_ERR_EXISTS` before the host sees
+  them when the ID is recorded here - followers and add-members constructs
+  excepted, as they join one another participant started. Uniqueness
+  across nodes, and against namespaces, is the host's (N07).
+- **A destruct of a held group runs over the record.** Whatever procs the
+  client named, `pmix_server_group` replaces them with the recorded
+  membership, and the requester must be among it - even when it names
+  procs, as a client before v7.0 does, and whatever directives came with
+  it. So a client cannot end a group it is not in by naming itself, nor a
+  subset end it for the rest; every member's server holds the same record,
+  so all hand the host the same list. With no record, the named procs are
+  used as before, and a destruct naming none is `PMIX_ERR_NOT_FOUND`.
 - A `PMIX_GROUP_LEFT` removes the member - both where it is raised and
   where the host delivers it. A destruct drops the group whatever it
   reports, and `pmix_server_grp_sweep` drops any group none of whose

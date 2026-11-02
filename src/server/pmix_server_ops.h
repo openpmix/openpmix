@@ -976,7 +976,9 @@ PMIX_EXPORT void pmix_server_grp_finalize(void);
 
 /* The membership of the groups this server's clients belong to - see
  * pmix_server_grpmbr.c. A synchronous construct is recorded in the host's
- * order; an invited group sorted (sort), as clients have always held it */
+ * order; an invited group sorted (sort), as clients have always held it.
+ * The same membership again under a held ID is a success that changes
+ * nothing; another is PMIX_ERR_EXISTS, reported, and the record kept */
 PMIX_EXPORT pmix_status_t pmix_server_grp_record(const char *grpid, const pmix_proc_t *members,
                                                  size_t nmembers, size_t ctxid, bool notterm,
                                                  bool sort);

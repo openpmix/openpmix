@@ -17,8 +17,10 @@
  * Test cases:
  *
  *   recording        -> a synchronous construct keeps the host's order, an
- *                       invited group is sorted; the same ID recorded
- *                       again replaces it
+ *                       invited group is sorted; the same membership
+ *                       recorded again, in another order, changes nothing,
+ *                       and another under a held ID is PMIX_ERR_EXISTS
+ *                       with the record kept
  *   expansion        -> the ID with PMIX_RANK_WILDCARD gives every member,
  *                       once; a group rank gives one, counting across a
  *                       member given by job; a group rank past the
@@ -198,10 +200,19 @@ static void test_record(void)
            NULL != grp && 3 == grp->nmbrs && same(&grp->members[0], NS_A, 0) &&
                same(&grp->members[1], NS_A, 1) && same(&grp->members[2], NS_A, 2));
 
-    pmix_server_grp_record("rec-sync", mbrs, 1, 8, false, false);
+    /* the invited group's sorted members, as the leader's server would
+     * record them hearing its own announcement */
+    report("the same membership again, in another order, changes nothing",
+           PMIX_SUCCESS == pmix_server_grp_record("rec-sync", grp->members, 3, 9, false,
+                                                  true) &&
+               NULL != (grp = pmix_server_grp_find("rec-sync")) && 3 == grp->nmbrs &&
+               same(&grp->members[0], NS_A, 2) && 7 == grp->ctxid && grp->notterm);
+
+    report("another membership under a held ID is refused",
+           PMIX_ERR_EXISTS == pmix_server_grp_record("rec-sync", mbrs, 1, 8, false, false));
     grp = pmix_server_grp_find("rec-sync");
-    report("the same ID recorded again replaces it",
-           NULL != grp && 1 == grp->nmbrs && 8 == grp->ctxid && !grp->notterm);
+    report("...and the group that holds it is kept",
+           NULL != grp && 3 == grp->nmbrs && 7 == grp->ctxid && grp->notterm);
 
     pmix_server_grp_drop("rec-sync");
     pmix_server_grp_drop("rec-inv");

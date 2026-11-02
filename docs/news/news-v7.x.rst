@@ -7,6 +7,15 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A group ID is one group's, on a server, until it is destructed. A
+   construct or invitation under an ID a group holds there is refused
+   with ``PMIX_ERR_EXISTS``; a host that completes one anyway - another
+   membership under a held ID - gets the construct failed for the
+   server's participants, or the invitation aborted, and the group that
+   holds the ID is kept, where it used to be replaced. A destruct of a
+   held group runs over its recorded members whatever procs it names,
+   and only a member may ask for it. That a group ID is unique across
+   the system, and never a namespace, remains the host's to ensure.
  - A server checks the path of its session and system tmpdirs at init,
    as OpenSSH's ``StrictModes`` does, and will not start where another
    user could rename its directories: a directory above a tmpdir that is

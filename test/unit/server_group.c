@@ -41,6 +41,15 @@
  *   two bootstrap blocks,
  *      host accepts both     -> each block survives until its own completion
  *                               arrives (kills an unfixed library)
+ *   a held group's ID        -> the record keeps one group per ID: the same
+ *                               membership again changes nothing, another
+ *                               is PMIX_ERR_EXISTS; a construct of a held
+ *                               ID is refused before the host sees it
+ *   a held group's destruct  -> runs over the recorded members whatever
+ *                               procs were named, and only for a member
+ *   a construct the host
+ *      completes over an ID
+ *      recorded meanwhile    -> the record is kept, not replaced
  *
  * Every case asserts that grp_collectives is empty afterwards, because a
  * block left parked there with participants on it hangs those clients for
@@ -98,6 +107,8 @@ static bool group_has_id = false;
 static bool next_ids = false;
 /* the PMIX_GROUP_INFO the host was given: its leading proc and size */
 static bool group_contrib_seen = false;
+static pmix_group_operation_t group_op = PMIX_GROUP_NONE;
+static size_t group_nprocs = 0;
 static pmix_proc_t group_contrib;
 static size_t group_contrib_size = 0;
 static char *group_id = NULL;
@@ -116,11 +127,11 @@ static pmix_status_t stub_group(pmix_group_operation_t op, char grp[],
                                 const pmix_info_t directives[], size_t ndirs,
                                 pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
-    (void) op;
     (void) procs;
-    (void) nprocs;
 
     group_fired = true;
+    group_op = op;
+    group_nprocs = nprocs;
     group_ninfo = ndirs;
     group_status_last = false;
     group_contrib_seen = false;
@@ -202,6 +213,10 @@ typedef struct {
     bool bare_contribution;
     /* the second and third infos are a PMIX_USERID and a PMIX_GRPID */
     bool ids;
+    /* the operation - a construct unless set - and the peer asking, the
+     * server's own unless set */
+    pmix_group_operation_t op;
+    pmix_peer_t *peer;
     pmix_status_t status;
 } grp_req_t;
 
@@ -318,11 +333,11 @@ static void do_group(int sd, short args, void *cbdata)
         PMIX_WAKEUP_THREAD(&r->lock);
         return;
     }
-    PMIX_RETAIN(pmix_globals.mypeer);
-    cd->peer = pmix_globals.mypeer;
+    cd->peer = (NULL != r->peer) ? r->peer : pmix_globals.mypeer;
+    PMIX_RETAIN(cd->peer);
     cd->hdr.tag = 0;
 
-    rc = pmix_server_group(cd, &buf, PMIX_GROUP_CONSTRUCT);
+    rc = pmix_server_group(cd, &buf, r->op);
     if (PMIX_SUCCESS != rc) {
         /* the switchyard owns the caddy on a non-success return */
         PMIX_RELEASE(cd);
@@ -406,6 +421,130 @@ static pmix_status_t drive_group_procs(const char *grpid,
     rc = req.status;
     PMIX_DESTRUCT_LOCK(&req.lock);
     return rc;
+}
+
+/* Drive a construct or destruct naming these procs (none: NULL, 0), asked
+ * by `peer` (NULL: the server's own) */
+static pmix_status_t drive_op(pmix_group_operation_t op, const char *grpid,
+                              const pmix_proc_t *procs, size_t nprocs, pmix_peer_t *peer)
+{
+    grp_req_t req;
+    pmix_status_t rc;
+
+    memset(&req, 0, sizeof(req));
+    PMIX_CONSTRUCT_LOCK(&req.lock);
+    req.op = op;
+    req.grpid = grpid;
+    req.plist = procs;
+    req.nprocs = nprocs;
+    req.nprocs_real = nprocs;
+    req.peer = peer;
+    group_fired = false;
+    group_op = PMIX_GROUP_NONE;
+    group_nprocs = 0;
+    PMIX_THREADSHIFT(&req, do_group);
+    PMIX_WAIT_THREAD(&req.lock);
+    rc = req.status;
+    PMIX_DESTRUCT_LOCK(&req.lock);
+    return rc;
+}
+
+/* A peer for another process: a client of this server's namespace object,
+ * so what it sends unpacks as the server's own does, but not the server -
+ * which counts as a participant in anything it asks */
+static pmix_peer_t *other_peer(const char *ns, pmix_rank_t rank)
+{
+    pmix_peer_t *peer = PMIX_NEW(pmix_peer_t);
+
+    peer->info = PMIX_NEW(pmix_rank_info_t);
+    peer->info->pname.nspace = strdup(ns);
+    peer->info->pname.rank = rank;
+    peer->nptr = pmix_globals.mypeer->nptr;
+    PMIX_RETAIN(peer->nptr);
+    peer->proc_type = pmix_globals.mypeer->proc_type;
+    return peer;
+}
+
+/* The group records live on the progress thread */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    const char *grpid;
+    const pmix_proc_t *members;
+    size_t nmembers;
+    bool lookup;                /* only look the group up */
+    pmix_status_t status;
+    size_t held;                /* members recorded, after */
+    bool has_first;             /* ...and whether the first given is one */
+} rec_req_t;
+
+static void do_record(int sd, short args, void *cbdata)
+{
+    rec_req_t *r = (rec_req_t *) cbdata;
+    pmix_group_t *grp;
+    size_t n;
+
+    (void) sd;
+    (void) args;
+    if (!r->lookup && NULL != r->members) {
+        r->status = pmix_server_grp_record(r->grpid, r->members, r->nmembers, SIZE_MAX,
+                                           false, false);
+    }
+    grp = pmix_server_grp_find(r->grpid);
+    r->held = (NULL == grp) ? 0 : grp->nmbrs;
+    r->has_first = false;
+    for (n = 0; NULL != grp && NULL != r->members && n < grp->nmbrs; n++) {
+        if (0 == strcmp(grp->members[n].nspace, r->members[0].nspace) &&
+            grp->members[n].rank == r->members[0].rank) {
+            r->has_first = true;
+        }
+    }
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+static pmix_status_t record_or_look(const char *grpid, const pmix_proc_t *members, size_t n,
+                                    bool lookup, size_t *held, bool *has_first)
+{
+    rec_req_t req;
+
+    memset(&req, 0, sizeof(req));
+    PMIX_CONSTRUCT_LOCK(&req.lock);
+    req.grpid = grpid;
+    req.members = members;
+    req.nmembers = n;
+    req.lookup = lookup;
+    PMIX_THREADSHIFT(&req, do_record);
+    PMIX_WAIT_THREAD(&req.lock);
+    PMIX_DESTRUCT_LOCK(&req.lock);
+    if (NULL != held) {
+        *held = req.held;
+    }
+    if (NULL != has_first) {
+        *has_first = req.has_first;
+    }
+    return req.status;
+}
+
+/* record a group of these members */
+static pmix_status_t record(const char *grpid, const pmix_proc_t *members, size_t n,
+                            size_t *held, bool *has_first)
+{
+    return record_or_look(grpid, members, n, false, held, has_first);
+}
+
+/* how many members the group held under this ID has, and whether `first` is
+ * one of them - recording nothing */
+static size_t held_with(const char *grpid, const pmix_proc_t *first, bool *has_first)
+{
+    size_t held = 0;
+
+    (void) record_or_look(grpid, first, (NULL == first) ? 0 : 1, true, &held, has_first);
+    return held;
+}
+
+static size_t held_members(const char *grpid)
+{
+    return held_with(grpid, NULL, NULL);
 }
 
 /* Register a namespace that places no procs on this node. That is enough
@@ -669,6 +808,116 @@ int main(int argc, char **argv)
     progress_barrier();
     report("a repeated membership is counted once per proc", group_fired);
     report("and its block does not park forever", nothing_parked());
+
+    /* --- one group per ID --- *
+     * A group's ID is its own until it is destructed. The same membership
+     * reported again - in another order, as an invited group is sorted and
+     * a construct is not - is the same formation, and changes nothing;
+     * another membership is refused and the record kept. Against an
+     * unfixed library the second membership replaced the first. */
+    {
+        pmix_proc_t mine[2], rev[2], theirs[1], me1[1], others[2];
+        pmix_peer_t *outsider;
+        size_t held = 0;
+        bool kept = false;
+
+        /* members of a namespace the server knows, so a request naming them
+         * reaches the host rather than waiting on a registration; the
+         * server's own peer asks, and counts as a participant */
+        PMIX_LOAD_PROCID(&mine[0], GRPUT_NSPACE, 0);
+        PMIX_LOAD_PROCID(&mine[1], GRPUT_NSPACE, 1);
+        memcpy(&rev[0], &mine[1], sizeof(pmix_proc_t));
+        memcpy(&rev[1], &mine[0], sizeof(pmix_proc_t));
+        PMIX_LOAD_PROCID(&theirs[0], GRPUT_NSPACE, 5);
+        memcpy(&me1[0], &mine[0], sizeof(pmix_proc_t));
+
+        rc = record("grput.held", mine, 2, &held, NULL);
+        report("a group is recorded", PMIX_SUCCESS == rc && 2 == held);
+        rc = record("grput.held", rev, 2, &held, NULL);
+        report("the same membership again, in another order, changes nothing",
+               PMIX_SUCCESS == rc && 2 == held);
+        rc = record("grput.held", theirs, 1, NULL, NULL);
+        report("another membership under a held ID is refused",
+               PMIX_ERR_EXISTS == rc);
+        held = held_with("grput.held", &mine[0], &kept);
+        report("...and the group that holds it is kept", 2 == held && kept);
+
+        /* the screen at the request: the host never sees it */
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.held", mine, 2, NULL);
+        report("a construct of a held ID is refused", PMIX_ERR_EXISTS == rc);
+        report("...before it reaches the host", !group_fired);
+        report("...and parks nothing", nothing_parked());
+
+        /* a destruct of it runs over the record - two members - though it
+         * names the server alone */
+        rc = drive_op(PMIX_GROUP_DESTRUCT, "grput.held", me1, 1, NULL);
+        report("a member's destruct naming a subset reaches the host",
+               PMIX_SUCCESS == rc && group_fired && PMIX_GROUP_DESTRUCT == group_op);
+        report("...with the recorded membership, not the procs it named",
+               2 == group_nprocs);
+        report("...and ends the group", nothing_parked() && 0 == held_members("grput.held"));
+
+        /* a client not in a held group may not end it, though it names
+         * itself - against an unfixed library its own list was all that was
+         * checked, and the reply dropped the record */
+        PMIX_LOAD_PROCID(&others[0], GRPUT_NSPACE, 1);
+        PMIX_LOAD_PROCID(&others[1], GRPUT_NSPACE, 2);
+        rc = record("grput.theirs", others, 2, &held, NULL);
+        report("another group is recorded", PMIX_SUCCESS == rc && 2 == held);
+        outsider = other_peer(GRPUT_NSPACE, 7);
+        PMIX_LOAD_PROCID(&me1[0], GRPUT_NSPACE, 7);
+        rc = drive_op(PMIX_GROUP_DESTRUCT, "grput.theirs", me1, 1, outsider);
+        report("a destruct by a process not in a held group is refused",
+               PMIX_ERR_NOT_A_MEMBER == rc && !group_fired);
+        report("...and the group is kept", 2 == held_members("grput.theirs"));
+        rc = drive_op(PMIX_GROUP_DESTRUCT, "grput.theirs", NULL, 0, outsider);
+        report("...as it is when it names no procs", PMIX_ERR_NOT_A_MEMBER == rc &&
+               !group_fired && 2 == held_members("grput.theirs"));
+        PMIX_RELEASE(outsider);
+        /* the record's own end, for the cases after this one */
+        rc = drive_op(PMIX_GROUP_DESTRUCT, "grput.theirs", NULL, 0, NULL);
+        report("its member's destruct ends it", PMIX_SUCCESS == rc &&
+               nothing_parked() && 0 == held_members("grput.theirs"));
+    }
+
+    /* --- a construct the host completes over an ID recorded meanwhile --- *
+     * The screen runs at the request; a group can still be recorded under
+     * the ID before the host answers - by an invited group's announcement,
+     * say, which the host should have refused. Its answer must not replace
+     * that group. */
+    group_accept = true;
+    nheld = 0;
+    {
+        pmix_proc_t mine[1], others[2];
+        pmix_info_t *ans;
+        pmix_data_array_t darray;
+        size_t held = 0;
+        bool kept = false;
+
+        PMIX_LOAD_PROCID(&mine[0], GRPUT_NSPACE, 0);
+        PMIX_LOAD_PROCID(&others[0], GRPUT_NSPACE, 1);
+        PMIX_LOAD_PROCID(&others[1], GRPUT_NSPACE, 2);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.race", mine, 1, NULL);
+        report("a construct of a free ID reaches the host",
+               PMIX_SUCCESS == rc && group_fired && 1 == nheld);
+        rc = record("grput.race", others, 2, &held, NULL);
+        report("a group is recorded under the ID meanwhile", PMIX_SUCCESS == rc);
+        if (1 == nheld) {
+            PMIX_INFO_CREATE(ans, 1);
+            PMIX_DATA_ARRAY_CONSTRUCT(&darray, 1, PMIX_PROC);
+            memcpy(darray.array, mine, sizeof(pmix_proc_t));
+            PMIX_INFO_LOAD(&ans[0], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
+            held_cbfunc[0](PMIX_SUCCESS, ans, 1, held_cbdata[0], NULL, NULL);
+            progress_barrier();
+            held = held_with("grput.race", &others[0], &kept);
+            report("the host's answer does not replace it", 2 == held && kept);
+            report("...and the construct parks nothing", nothing_parked());
+            PMIX_INFO_FREE(ans, 1);
+        }
+    }
+    group_accept = false;
+    nheld = 0;
 
     /* --- two bootstrap blocks the host accepts separately --- *
      * A bootstrap participant gets a block of its own, so two of them on
