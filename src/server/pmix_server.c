@@ -1166,8 +1166,18 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
          * before, and is still taken */
         if (NULL == (evar = getenv("PMIX_SERVER_NSPACE")) &&
             NULL == (evar = getenv("PMIX_SERVER_NAMESPACE"))) {
-            /* use a fake namespace */
-            PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, "pmix-server");
+            /* one of our own, unique on the node and across nodes - its
+             * name is in the file tools find us by, which is one per
+             * namespace in the user's directory */
+            char *tmp = NULL;
+
+            if (0 > pmix_asprintf(&tmp, "pmix-server-%s-%lu", pmix_globals.hostname,
+                                  (unsigned long) getpid())) {
+                PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, "pmix-server");
+            } else {
+                PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, tmp);
+                free(tmp);
+            }
         } else {
             PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, evar);
         }
