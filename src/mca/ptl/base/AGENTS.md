@@ -1195,6 +1195,14 @@ interface (a loopback one, or none), binds, and makes the URI.
 - **`created_*` bookkeeping must stay honest.** Every file and directory
   the listener creates is recorded so `pmix_ptl_close` removes exactly
   what we made and nothing a peer owns.
+- **Another user's file at the name is foreign.** `rndz_reclaim` checks
+  the owner first (`fstatat`, not following a link): one that is not our
+  euid - root's included, unless we are root - is reported
+  (`rndz-file-foreign`), left alone, and `write_rndz_file` returns
+  `PMIX_SUCCESS` with `*file_created` false, so the server runs on
+  without that file. Its pid and lock are never read: they are not ours
+  to judge, and a live pid there would otherwise have made it "in use"
+  and stopped the server.
 - **A stale rendezvous file is reclaimed, not fatal.** `write_rndz_file`
   reads the pid the existing file records; if that process is gone the
   orphan is unlinked and replaced, and if it is alive we fail with the
