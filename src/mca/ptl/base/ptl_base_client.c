@@ -72,7 +72,7 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
     char *evar = NULL, *suri = NULL, *urispec = NULL, *localuri = NULL;
     char *nspace = NULL;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
-    char *rendfile = NULL;
+    char *rendfile = NULL, **dirs = NULL;
     pmix_status_t rc;
     pmix_peer_t *peer = (pmix_peer_t *) pr;
     size_t m, n;
@@ -182,18 +182,28 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
              * for a system server */
             pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
             pmix_client_globals.myserver->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
-            /* setup the system rendezvous file name */
-            if (0 > pmix_asprintf(&rendfile, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
-                             pmix_globals.hostname)) {
-                rc = PMIX_ERR_NOMEM;
-                goto error;
+            /* the system server's file, in the directories a system
+             * server writes it in - and, only with legacy peers on, at the
+             * system tmpdir, where one of an earlier release does */
+            dirs = pmix_ptl_base_rndz_dirs(true);
+            if (pmix_ptl_base_legacy_walk() && !pmix_ptl_base.system_tmpdir_given) {
+                PMIx_Argv_append_unique_nosize(&dirs, pmix_ptl_base.system_tmpdir);
             }
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:client looking for system server at %s", rendfile);
-            /* try to read the file */
-            rc = pmix_ptl_base_parse_rndz_file(rendfile, true, &connections);
-            free(rendfile);
-            rendfile = NULL;
+            rc = PMIX_ERR_NOT_FOUND;
+            for (m = 0; NULL != dirs && NULL != dirs[m] && PMIX_SUCCESS != rc; m++) {
+                if (0 > pmix_asprintf(&rendfile, "%s/pmix.sys.%s", dirs[m],
+                                      pmix_globals.hostname)) {
+                    PMIx_Argv_free(dirs);
+                    rc = PMIX_ERR_NOMEM;
+                    goto error;
+                }
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "ptl:client looking for system server at %s", rendfile);
+                rc = pmix_ptl_base_parse_rndz_file(rendfile, true, &connections);
+                free(rendfile);
+                rendfile = NULL;
+            }
+            PMIx_Argv_free(dirs);
             if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&connections)) {
                 cn = (pmix_connection_t *) pmix_list_get_first(&connections);
                 /* set our protocol to V2 as that is all we support */

@@ -142,7 +142,7 @@ socket - the first two steps below are the ``tcp`` transport's, in
    :doc:`connections` for the table.
 #. **Drop rendezvous files.** Depending on the server's role and flags,
    write well-known contact files that a client or tool can later
-   discover in the tmpdir tree:
+   find (``src/mca/ptl/base/ptl_base_rndz.c``):
 
    .. list-table::
       :header-rows: 1
@@ -162,6 +162,25 @@ socket - the first two steps below are the ``tcp`` transport's, in
         - any tool-supporting server (keyed by PID)
       * - ``pmix.<host>.tool.<nspace>``
         - any tool-supporting server (keyed by nspace)
+
+   **Where they go.** The tool files - ``pmix.<host>.tool``, by PID, by
+   namespace - go in ``<system tmpdir>/pmix-user.<uid>``, a directory of
+   the server's user's own, whatever its session tmpdir is. So only that
+   user (or root) can put a file at those names, and a tool has one
+   place to look. The server makes it mode 0700 - 0711 when it takes
+   tools of other users, which can then open the files at their names
+   but not list them. One that is there is used only if it is a
+   directory, not a link, of the server's user, that no other user can
+   write; it is opened with ``O_DIRECTORY | O_NOFOLLOW`` and checked by
+   ``fstat``. Anything else at the name is reported
+   (``rndz-dir-not-ours``) and the files are not written: the server
+   runs on, and its clients reach it by the URI they are given. The
+   system roles' files - ``pmix.sys``, ``pmix.sched``, ``pmix.sysctrlr`` -
+   go in the system tmpdir when the host named one, as before; otherwise
+   a root server puts them in ``/run/pmix`` (``/var/run/pmix`` where there
+   is no ``/run``; it must be root's, and only root may write it), and a
+   non-root one, or root where neither can be used, in its own
+   ``pmix-user`` directory.
 
    Each file contains the URI, the server's version, its PID, its
    ``uid:gid``, and a timestamp. A line tagged ``local:`` carries the
@@ -270,8 +289,18 @@ most specific to least:
   ``PMIX_CONNECT_TO_SYS_CONTROLLER`` — each mapping to a well-known
   rendezvous filename;
 * a specific server PID or nspace; or
-* a directory search of the system tmpdir for ``pmix.<host>.tool*``
-  files. Every file found must name the same server; files naming
+* a search for ``pmix.<host>.tool*`` files in the ``pmix-user``
+  directories of the users whose servers the tool may talk to - its own,
+  root's, and those ``ptl_base_server_access`` names - each looked in,
+  not below. A system role's file is looked for in the system tmpdir the
+  host named, else ``/run/pmix`` and ``/var/run/pmix``, then root's and
+  the tool's own ``pmix-user`` directories and those of the listed
+  users. Only with legacy peers on (``ptl_base_legacy_peers``) does a
+  tool also walk the whole system tmpdir, ``ptl_base_search_depth``
+  levels deep, and look at the system tmpdir itself for a system role -
+  where a server of an earlier release writes its files. The same goes
+  for a ``PMIX_QUERY_AVAIL_SERVERS`` query. Every file found must name
+  the same server; files naming
   different ones fail the search, saying so. A file whose server is gone
   is passed over, here and by a ``PMIX_QUERY_AVAIL_SERVERS`` query: it
   says its server holds the lock beside it, and the searching process

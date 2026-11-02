@@ -902,9 +902,13 @@ static void release_lock(int dirfd, const char *base, int lockfd)
     close(lockfd);
 }
 
+/* Write a rendezvous file at filename. `given_dirfd`, when not -1, is a
+ * descriptor on the directory it goes in, already opened and checked by
+ * the caller - the file is made there, whatever the directory's name now
+ * leads to - and `made` is then unused */
 static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role, bool optional,
                                      pmix_ptl_made_dir_t *made, bool *file_created,
-                                     int *dirfd_out)
+                                     int *dirfd_out, int given_dirfd)
 {
     int fd, dirfd;
     char *dirname, *tmp, *compat;
@@ -937,16 +941,24 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     if (pmix_ptl_base.allow_foreign_tools) {
         mode |= S_IXGRP | S_IRGRP | S_IXOTH | S_IROTH;
     }
-    dirfd = open_dir(dirname, mode, made, &rc);
-    if (0 > dirfd) {
-        free(dirname);
-        return rc;
+    if (0 <= given_dirfd) {
+        dirfd = fcntl(given_dirfd, F_DUPFD_CLOEXEC, 0);
+        if (0 > dirfd) {
+            free(dirname);
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+    } else {
+        dirfd = open_dir(dirname, mode, made, &rc);
+        if (0 > dirfd) {
+            free(dirname);
+            return rc;
+        }
     }
     /* a directory we were given may keep other users out, in which
      * case a foreign tool cannot reach the file however we mark it.
      * That is the directory owner's call, but say so for whoever is
      * wondering why their tool cannot find us */
-    if (pmix_ptl_base.allow_foreign_tools &&
+    if (pmix_ptl_base.allow_foreign_tools && 0 > given_dirfd &&
         0 == fstat(dirfd, &buf) &&
         (S_IXGRP | S_IXOTH) != (buf.st_mode & (S_IXGRP | S_IXOTH))) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -1188,13 +1200,95 @@ static pmix_status_t store_uri(const char *key, const char *uri)
  * If we are a server and are given a rendezvous file, then that is
  * is the name of the file we are to use to store our listener info.
  */
+/* the scheduler's, the system controller's, or the system server's file,
+ * in `dir` - open on dirfd, or, with dirfd -1, the system tmpdir the host
+ * named, made if need be and removed at finalize if we made it */
+static pmix_status_t write_system_files(const char *dir, int dirfd, char *uri)
+{
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_ptl_made_dir_t *made = (0 > dirfd) ? &pmix_ptl_base.system_dir : NULL;
+
+    if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
+        /* so the system's resource manager can find us */
+        if (0 > pmix_asprintf(&pmix_ptl_base.scheduler_filename, "%s/pmix.sched.%s", dir,
+                              pmix_globals.hostname)) {
+            return PMIX_ERR_NOMEM;
+        }
+        rc = write_rndz_file(pmix_ptl_base.scheduler_filename, uri, "scheduler", false, made,
+                             &pmix_ptl_base.created_scheduler_filename,
+                             &pmix_ptl_base.scheduler_dirfd, dirfd);
+    } else if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+        if (0 > pmix_asprintf(&pmix_ptl_base.sysctrlr_filename, "%s/pmix.sysctrlr.%s", dir,
+                              pmix_globals.hostname)) {
+            return PMIX_ERR_NOMEM;
+        }
+        rc = write_rndz_file(pmix_ptl_base.sysctrlr_filename, uri, "system controller", false,
+                             made, &pmix_ptl_base.created_sysctrlr_filename,
+                             &pmix_ptl_base.sysctrlr_dirfd, dirfd);
+    } else {
+        if (0 > pmix_asprintf(&pmix_ptl_base.system_filename, "%s/pmix.sys.%s", dir,
+                              pmix_globals.hostname)) {
+            return PMIX_ERR_NOMEM;
+        }
+        rc = write_rndz_file(pmix_ptl_base.system_filename, uri, "system tool", false, made,
+                             &pmix_ptl_base.created_system_filename,
+                             &pmix_ptl_base.system_dirfd, dirfd);
+    }
+    return rc;
+}
+
+/* the files a tool finds a server of its user by - "<host>.tool", by pid
+ * and by namespace - in `dir` (open on dirfd) */
+static pmix_status_t write_tool_files(const char *dir, int dirfd, char *uri)
+{
+    pmix_status_t rc;
+
+    if (pmix_ptl_base.session_tool) {
+        if (0 > pmix_asprintf(&pmix_ptl_base.session_filename, "%s/pmix.%s.tool", dir,
+                              pmix_globals.hostname)) {
+            return PMIX_ERR_NOMEM;
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "WRITING SESSION TOOL FILE %s", pmix_ptl_base.session_filename);
+        rc = write_rndz_file(pmix_ptl_base.session_filename, uri, "session tool", false, NULL,
+                             &pmix_ptl_base.created_session_filename,
+                             &pmix_ptl_base.session_dirfd, dirfd);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+    }
+
+    if (0 > pmix_asprintf(&pmix_ptl_base.pid_filename, "%s/pmix.%s.tool.%d", dir,
+                          pmix_globals.hostname, (int) getpid())) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "WRITING PID TOOL FILE %s",
+                        pmix_ptl_base.pid_filename);
+    rc = write_rndz_file(pmix_ptl_base.pid_filename, uri, "tool (by pid)", true, NULL,
+                         &pmix_ptl_base.created_pid_filename, &pmix_ptl_base.pid_dirfd, dirfd);
+    if (PMIX_ERR_EXISTS == rc) {
+        rc = PMIX_SUCCESS;
+    } else if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    if (0 > pmix_asprintf(&pmix_ptl_base.nspace_filename, "%s/pmix.%s.tool.%s", dir,
+                          pmix_globals.hostname, pmix_globals.myid.nspace)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "WRITING NSPACE TOOL FILE %s", pmix_ptl_base.nspace_filename);
+    return write_rndz_file(pmix_ptl_base.nspace_filename, uri, "tool (by namespace)", false,
+                           NULL, &pmix_ptl_base.created_nspace_filename,
+                           &pmix_ptl_base.nspace_dirfd, dirfd);
+}
+
 pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
 {
     pmix_listener_t *lt, *llt = NULL;
     int rc = 0;
-    pid_t mypid;
-    int outpipe;
-    char *leftover, *uri;
+    int outpipe, rdfd;
+    char *leftover, *uri, *rdir = NULL;
     size_t n;
     FILE *fptst;
     const char *legacy_from = "ptl_base_legacy_peers";
@@ -1239,6 +1333,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
             }
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
+            pmix_ptl_base.system_tmpdir_given = true;
             if (!pmix_ptl_base_replace_string(&info[n], &pmix_ptl_base.system_tmpdir, &rc)) {
                 return rc;
             }
@@ -1461,120 +1556,54 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                              "server", false,
                              &pmix_ptl_base.rendezvous_dir,
                              &pmix_ptl_base.created_rendezvous_file,
-                             &pmix_ptl_base.rendezvous_dirfd);
+                             &pmix_ptl_base.rendezvous_dirfd, -1);
         if (PMIX_SUCCESS != rc) {
             goto sockerror;
         }
     }
 
 nextstep:
-    /* if we are the scheduler, then drop an appropriately named
-     * contact file so the system's resource manager can find us */
-    if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
-        if (0 > pmix_asprintf(&pmix_ptl_base.scheduler_filename, "%s/pmix.sched.%s",
-                         pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
-            rc = PMIX_ERR_NOMEM;
-            goto sockerror;
-        }
-        rc = write_rndz_file(pmix_ptl_base.scheduler_filename, uri,
-                             "scheduler", false,
-                             &pmix_ptl_base.system_dir,
-                             &pmix_ptl_base.created_scheduler_filename,
-                             &pmix_ptl_base.scheduler_dirfd);
-        if (PMIX_SUCCESS != rc) {
-            goto sockerror;
-        }
-
-    } else if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
-        /* if we are the system controller, then drop an appropriately named
-         * contact file so others can find us */
-            if (0 > pmix_asprintf(&pmix_ptl_base.sysctrlr_filename, "%s/pmix.sysctrlr.%s",
-                         pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
-            rc = PMIX_ERR_NOMEM;
-            goto sockerror;
-        }
-        rc = write_rndz_file(pmix_ptl_base.sysctrlr_filename, uri,
-                             "system controller", false,
-                             &pmix_ptl_base.system_dir,
-                             &pmix_ptl_base.created_sysctrlr_filename,
-                             &pmix_ptl_base.sysctrlr_dirfd);
-        if (PMIX_SUCCESS != rc) {
-            goto sockerror;
-        }
-    } else if (pmix_ptl_base.tool_support) {
-        /* if we are going to support tools, then drop contact file(s) */
-        if (pmix_ptl_base.system_tool) {
-            if (0 > pmix_asprintf(&pmix_ptl_base.system_filename, "%s/pmix.sys.%s",
-                             pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
-                rc = PMIX_ERR_NOMEM;
-                goto sockerror;
-            }
-            rc = write_rndz_file(pmix_ptl_base.system_filename, uri,
-                                 "system tool", false,
-                                 &pmix_ptl_base.system_dir,
-                                 &pmix_ptl_base.created_system_filename,
-                                 &pmix_ptl_base.system_dirfd);
+    /* The files tools find us by. A system role's go in the system
+     * directory - the system tmpdir the host named, else /run/pmix for
+     * root, else our own pmix-user directory - and the others in our own
+     * pmix-user directory, whatever the session tmpdir is: so only our
+     * user (or root) can put a file at those names, and a tool has one
+     * place to look. A directory that is not ours has been reported, and
+     * its files are not written: clients reach us by the URI in their
+     * environment all the same - see ptl_base_rndz.c */
+    if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer) || PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer) ||
+        (pmix_ptl_base.tool_support && pmix_ptl_base.system_tool)) {
+        if (pmix_ptl_base.system_tmpdir_given) {
+            rdir = strdup(pmix_ptl_base.system_tmpdir);
+            rdfd = -1;
+            rc = (NULL == rdir) ? PMIX_ERR_NOMEM : write_system_files(rdir, -1, uri);
             if (PMIX_SUCCESS != rc) {
+                free(rdir);
                 goto sockerror;
             }
-        }
-
-        if (pmix_ptl_base.session_tool) {
-            /* first output to a std file */
-            if (0 > pmix_asprintf(&pmix_ptl_base.session_filename, "%s/pmix.%s.tool",
-                             pmix_ptl_base.session_tmpdir, pmix_globals.hostname)) {
-                rc = PMIX_ERR_NOMEM;
-                goto sockerror;
-            }
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "WRITING SESSION TOOL FILE %s", pmix_ptl_base.session_filename);
-            rc = write_rndz_file(pmix_ptl_base.session_filename, uri,
-                                 "session tool", false,
-                                 NULL,
-                                 &pmix_ptl_base.created_session_filename,
-                                 &pmix_ptl_base.session_dirfd);
+        } else if (0 <= (rdfd = pmix_ptl_base_open_system_dir(&rdir))) {
+            rc = write_system_files(rdir, rdfd, uri);
+            close(rdfd);
             if (PMIX_SUCCESS != rc) {
+                free(rdir);
                 goto sockerror;
             }
         }
-
-        /* now output to a file based on pid */
-        mypid = getpid();
-        if (0 > pmix_asprintf(&pmix_ptl_base.pid_filename, "%s/pmix.%s.tool.%d",
-                         pmix_ptl_base.session_tmpdir, pmix_globals.hostname, mypid)) {
-            rc = PMIX_ERR_NOMEM;
-            goto sockerror;
+        free(rdir);
+        rdir = NULL;
+    }
+    if (pmix_ptl_base.tool_support && !PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+        rdfd = pmix_ptl_base_open_user_dir(&rdir);
+        if (0 <= rdfd) {
+            rc = write_tool_files(rdir, rdfd, uri);
+            close(rdfd);
+            if (PMIX_SUCCESS != rc) {
+                free(rdir);
+                goto sockerror;
+            }
         }
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "WRITING PID TOOL FILE %s",
-                            pmix_ptl_base.pid_filename);
-        rc = write_rndz_file(pmix_ptl_base.pid_filename, uri,
-                             "tool (by pid)", true,
-                             NULL,
-                             &pmix_ptl_base.created_pid_filename,
-                             &pmix_ptl_base.pid_dirfd);
-        if (PMIX_ERR_EXISTS == rc) {
-            rc = PMIX_SUCCESS;
-        } else if (PMIX_SUCCESS != rc) {
-            goto sockerror;
-        }
-
-        /* now output it into a file based on my nspace */
-        if (0 > pmix_asprintf(&pmix_ptl_base.nspace_filename, "%s/pmix.%s.tool.%s",
-                         pmix_ptl_base.session_tmpdir, pmix_globals.hostname,
-                         pmix_globals.myid.nspace)) {
-            rc = PMIX_ERR_NOMEM;
-            goto sockerror;
-        }
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "WRITING NSPACE TOOL FILE %s", pmix_ptl_base.nspace_filename);
-        rc = write_rndz_file(pmix_ptl_base.nspace_filename, uri,
-                             "tool (by namespace)", false,
-                             NULL,
-                             &pmix_ptl_base.created_nspace_filename,
-                             &pmix_ptl_base.nspace_dirfd);
-        if (PMIX_SUCCESS != rc) {
-            goto sockerror;
-        }
+        free(rdir);
     }
 
     return PMIX_SUCCESS;

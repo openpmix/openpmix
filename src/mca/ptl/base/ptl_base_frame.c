@@ -81,6 +81,7 @@ pmix_ptl_base_t pmix_ptl_base = {
     .max_msg_size = 0,
     .session_tmpdir = NULL,
     .system_tmpdir = NULL,
+    .system_tmpdir_given = false,
     .report_uri = NULL,
     .uri = NULL,
     .source_file = NULL,
@@ -692,8 +693,12 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
 
     if (server) {
         tdir = pmix_server_globals.system_tmpdir;
+        pmix_ptl_base.system_tmpdir_given = pmix_server_globals.system_tmpdir_given;
     } else if (NULL == (tdir = getenv("PMIX_SYSTEM_TMPDIR"))) {
         tdir = pmix_tmp_directory();
+        pmix_ptl_base.system_tmpdir_given = false;
+    } else {
+        pmix_ptl_base.system_tmpdir_given = true;
     }
     if (NULL == tdir || NULL == (pmix_ptl_base.system_tmpdir = strdup(tdir))) {
         rc = PMIX_ERR_NOMEM;

@@ -189,6 +189,7 @@ typedef struct {
     bool tool_connections_allowed;
     char *tmpdir;             // temporary directory for this server
     char *system_tmpdir;      // system tmpdir
+    bool system_tmpdir_given; // the host named it, rather than it defaulting
     bool fence_localonly_opt; // local-only fence optimization
     pmix_list_t grp_collectives;  // group-op collectives
     pmix_pointer_array_t monitors;  // monitoring operations
