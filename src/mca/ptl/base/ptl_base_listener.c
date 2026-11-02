@@ -1255,15 +1255,18 @@ static pmix_status_t write_system_files(const char *dir, int dirfd, char *uri)
     return rc;
 }
 
-/* the files a tool finds a server of its user by - "<host>.tool", by pid
+/* the files a tool finds a server of its user by - "<host>.session.<id>", by pid
  * and by namespace - in `dir` (open on dirfd) */
 static pmix_status_t write_tool_files(const char *dir, int dirfd, char *uri)
 {
     pmix_status_t rc;
 
     if (pmix_ptl_base.session_tool) {
-        if (0 > pmix_asprintf(&pmix_ptl_base.session_filename, "%s/pmix.%s.tool", dir,
-                              pmix_globals.hostname)) {
+        /* one per rendezvous ID on a node: a second server given the ID
+         * finds the name held and fails to start - see write_rndz_file */
+        if (0 > pmix_asprintf(&pmix_ptl_base.session_filename, "%s/pmix.%s.session.%lu", dir,
+                              pmix_globals.hostname,
+                              (unsigned long) pmix_ptl_base.session_rndz_id)) {
             return PMIX_ERR_NOMEM;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -1310,6 +1313,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     size_t n;
     FILE *fptst;
     const char *legacy_from = "ptl_base_legacy_peers";
+    pmix_info_t *sessinfo = NULL;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base:setup_listener");
@@ -1318,6 +1322,20 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     for (n = 0; n < ninfo; n++) {
         if (0 == strcmp(info[n].key, PMIX_SERVER_SESSION_SUPPORT)) {
             pmix_ptl_base.session_tool = PMIX_INFO_TRUE(&info[n]);
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_RNDZ_ID)) {
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value,
+                                                      &pmix_ptl_base.session_rndz_id, PMIX_UINT32)) {
+                pmix_show_help("help-ptl-base.txt", "session-rndz-id-bad", true,
+                               pmix_globals.hostname, PMIX_SESSION_RNDZ_ID,
+                               PMIx_Data_type_string(info[n].value.type));
+                return PMIX_ERR_SILENT;
+            }
+            pmix_ptl_base.session_rndz_id_given = true;
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
+            /* the default rendezvous ID - see below */
+            sessinfo = &info[n];
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SYSTEM_SUPPORT)) {
             pmix_ptl_base.system_tool = PMIX_INFO_TRUE(&info[n]);
@@ -1367,6 +1385,27 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
 #else
     PMIX_HIDE_UNUSED_PARAMS(legacy_from);
 #endif
+
+    /* A session-level server's file is named by the ID its host gives it,
+     * PMIX_SESSION_RNDZ_ID, else by the session's PMIX_SESSION_ID: servers
+     * of different sessions share a node, and a tool asks for the one it
+     * wants. Told to be one with neither, we cannot be, and say so */
+    if (pmix_ptl_base.session_tool && !pmix_ptl_base.session_rndz_id_given &&
+        NULL != sessinfo) {
+        if (PMIX_SUCCESS != PMIx_Value_get_number(&sessinfo->value,
+                                                  &pmix_ptl_base.session_rndz_id, PMIX_UINT32)) {
+            pmix_show_help("help-ptl-base.txt", "session-rndz-id-bad", true,
+                           pmix_globals.hostname, PMIX_SESSION_ID,
+                           PMIx_Data_type_string(sessinfo->value.type));
+            return PMIX_ERR_SILENT;
+        }
+        pmix_ptl_base.session_rndz_id_given = true;
+    }
+    if (pmix_ptl_base.session_tool && !pmix_ptl_base.session_rndz_id_given) {
+        pmix_show_help("help-ptl-base.txt", "session-server-no-id", true,
+                       pmix_globals.hostname);
+        return PMIX_ERR_SILENT;
+    }
 
     /* the tmpdirs are where our socket's and pmix-user directories go,
      * and clients reach the socket by its path: one another user could

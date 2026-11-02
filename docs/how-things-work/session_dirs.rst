@@ -78,7 +78,7 @@ The following rendezvous files are provided:
 
 * if the server declares that it will support tool connections (i.e., the ``PMIX_SERVER_TOOL_SUPPORT``
   attribute was provided to ``PMIx_server_init``), then the following rendezvous files will be created
-  under the ``PMIX_SERVER_TMPDIR`` location:
+  in ``<PMIX_SYSTEM_TMPDIR>/pmix-user.<uid>``, a directory of the server's user's own:
 
     * a PID file: "pmix.<hostname>.tool.<pid>"
 
@@ -89,8 +89,10 @@ The following rendezvous files are provided:
   "pmix.sys.<hostname>" will be created in the ``PMIX_SYSTEM_TMPDIR`` location.
 
 * if the server supports tool connections and is also designated as a "session" server (i.e., the
-  ``PMIX_SERVER_SESSION_SUPPORT`` attribute was provided as well), then a rendezvous file named
-  "pmix.<hostname>.tool" will be created in the ``PMIX_SERVER_TMPDIR`` location.
+  ``PMIX_SERVER_SESSION_SUPPORT`` attribute was provided as well, with a ``PMIX_SESSION_RNDZ_ID`` or,
+  failing that, a ``PMIX_SESSION_ID``, without which it fails to start), then a rendezvous file named
+  "pmix.<hostname>.session.<rendezvous ID>" will be created in the same directory. A second server of
+  the same session on the node fails to start.
 
 * if the server is designated as a "scheduler" (i.e., the ``PMIX_SERVER_SCHEDULER`` attribute
   was provided to ``PMIx_server_init``), then a rendezvous file named "pmix.sched.<hostname>" will be

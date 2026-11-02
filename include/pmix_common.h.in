@@ -194,7 +194,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        PMIX_SERVER_ALLOW_FOREIGN_TOOLS is given
 #define PMIX_SERVER_SESSION_SUPPORT         "pmix.srvr.sess"        // (bool) The host RM wants to declare itself as being
                                                                     //        the local session server for PMIx connection
-                                                                    //        requests
+                                                                    //        requests - named by PMIX_SESSION_RNDZ_ID, else
+                                                                    //        by PMIX_SESSION_ID, one of which must be given
 #define PMIX_SERVER_TMPDIR                  "pmix.srvr.tmpdir"      // (char*) temp directory where PMIx server will place
                                                                     //        client rendezvous points and contact info
 #define PMIX_SYSTEM_TMPDIR                  "pmix.sys.tmpdir"       // (char*) temp directory for this system, where PMIx
@@ -227,6 +228,13 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_TOOL_NSPACE                    "pmix.tool.nspace"      // (char*) Name of the nspace to use for this tool
 #define PMIX_TOOL_RANK                      "pmix.tool.rank"        // (uint32_t) Rank of this tool
 #define PMIX_SERVER_PIDINFO                 "pmix.srvr.pidinfo"     // (pid_t) pid of the target server for a tool
+#define PMIX_SESSION_RNDZ_ID                "pmix.ssn.rndz.id"      // (uint32_t) ID naming a session-level server's rendezvous
+                                                                    //        file, one per node: given to PMIx_server_init with
+                                                                    //        PMIX_SERVER_SESSION_SUPPORT, the ID the server is found
+                                                                    //        by; given to a tool, the session-level server to
+                                                                    //        connect to. Chosen by the host, so that the scheduler's
+                                                                    //        PMIX_SESSION_ID is left as it is - which names the
+                                                                    //        file when this is not given
 #define PMIX_CONNECT_TO_SYSTEM              "pmix.cnct.sys"         // (bool) The requestor requires that a connection be made only to
                                                                     //        a local system-level PMIx server
 #define PMIX_CONNECT_SYSTEM_FIRST           "pmix.cnct.sys.first"   // (bool) Preferentially look for a system-level PMIx server first

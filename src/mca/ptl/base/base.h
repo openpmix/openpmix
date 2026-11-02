@@ -220,6 +220,10 @@ struct pmix_ptl_base_t {
     bool system_tool;
     bool allow_foreign_tools;
     bool session_tool;
+    /* the ID naming a session-level server's rendezvous file
+     * (PMIX_SESSION_RNDZ_ID), and whether one was given */
+    uint32_t session_rndz_id;
+    bool session_rndz_id_given;
     bool tool_support;
     char *if_include;
     char *if_exclude;

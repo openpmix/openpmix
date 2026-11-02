@@ -492,3 +492,30 @@ will not start.
 
 Name a file in a directory of your own, or have the file's owner remove
 it.
+#
+[session-server-no-id]
+The PMIx server on %s was asked to be a session-level server
+(PMIX_SERVER_SESSION_SUPPORT) but was not given the ID that names its
+rendezvous file (PMIX_SESSION_RNDZ_ID), nor the session's ID
+(PMIX_SESSION_ID) to name it by instead.
+
+A session-level server's rendezvous file is named by that ID, so that
+servers of different sessions can share a node and a tool can ask for
+the one it wants. The server will not start: give it one of the two, or
+do not ask it to be a session-level server.
+#
+[session-rndz-id-bad]
+The PMIx server on %s was given a %s it could not use to name its
+session-level rendezvous file: a value of type %s, where a uint32_t is
+expected.
+
+The server will not start.
+#
+[too-many-sessions]
+This tool was not told which PMIx server to connect to, and more than
+one session-level server of yours runs on this node:
+
+%s
+Name the one you want: by its rendezvous ID (PMIX_SESSION_RNDZ_ID), its
+namespace (PMIX_SERVER_NSPACE) or its pid (PMIX_SERVER_PIDINFO) - for
+PRRTE's tools, --namespace or --pid - or by its URI or rendezvous file.

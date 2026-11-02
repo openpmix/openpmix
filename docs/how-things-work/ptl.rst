@@ -160,14 +160,14 @@ socket - the first two steps below are the ``tcp`` transport's, in
         - a system controller
       * - ``pmix.sys.<host>``
         - a server offering *system*-level tool support
-      * - ``pmix.<host>.tool``
-        - a server offering *session*-level tool support
+      * - ``pmix.<host>.session.<id>``
+        - a server offering *session*-level tool support, for session ``<id>``
       * - ``pmix.<host>.tool.<pid>``
         - any tool-supporting server (keyed by PID)
       * - ``pmix.<host>.tool.<nspace>``
         - any tool-supporting server (keyed by nspace)
 
-   **Where they go.** The tool files - ``pmix.<host>.tool``, by PID, by
+   **Where they go.** The tool files - ``pmix.<host>.session.<id>``, by PID, by
    namespace - go in ``<system tmpdir>/pmix-user.<uid>``, a directory of
    the server's user's own, whatever its session tmpdir is. So only that
    user (or root) can put a file at those names, and a tool has one
@@ -328,11 +328,20 @@ most specific to least:
   ``PMIX_CONNECT_TO_SYSTEM``, ``PMIX_CONNECT_TO_SCHEDULER``,
   ``PMIX_CONNECT_TO_SYS_CONTROLLER`` — each mapping to a well-known
   rendezvous filename;
-* a specific server PID or nspace; or
-* a search for ``pmix.<host>.tool*`` files in the ``pmix-user``
-  directories of the users whose servers the tool may talk to - its own,
-  root's, and those ``ptl_base_server_access`` names - each looked in,
-  not below. A system role's file is looked for in the system tmpdir the
+* a specific server PID, nspace or session-level server
+  (``PMIX_SESSION_RNDZ_ID``), whose
+  file is looked for in the ``pmix-user`` directories of the users whose
+  servers the tool may talk to - its own, root's, and those
+  ``ptl_base_server_access`` names - each looked in, not below; or
+* told none of those, the session-level servers of the tool's own user on
+  the node - ``pmix.<host>.session.*`` in its own ``pmix-user``
+  directory, a file whose server is gone passed over. The only one is
+  taken; with several the tool is told which there are and fails
+  (``too-many-sessions``), as it cannot know which was meant. A session
+  server needs an ID to name its file by (``PMIX_SESSION_RNDZ_ID`` to
+  ``PMIx_server_init``, its host's choice; else the scheduler's
+  ``PMIX_SESSION_ID`` is used) and fails to start without one, or where a server of its session
+  already runs on the node. A system role's file is looked for in the system tmpdir the
   host named, else ``/run/pmix`` and ``/var/run/pmix``, then root's and
   the tool's own ``pmix-user`` directories and those of the listed
   users. Only with legacy peers on (``ptl_base_legacy_peers``) does a

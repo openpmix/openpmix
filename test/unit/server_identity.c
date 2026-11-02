@@ -41,6 +41,7 @@ static int child(bool attrs, const char *nspace, pmix_rank_t rank)
     pmix_info_t info[2];
     pmix_rank_t r = 9;
     pmix_rank_t want = (PMIX_RANK_UNDEF == rank) ? (pmix_rank_t) getpid() : rank;
+    char dflt[PMIX_MAX_NSLEN + 1];
     int ok;
 
     if (attrs) {
@@ -49,6 +50,13 @@ static int child(bool attrs, const char *nspace, pmix_rank_t rank)
     }
     if (PMIX_SUCCESS != PMIx_server_init(&mymodule, attrs ? info : NULL, attrs ? 2 : 0)) {
         return 2;
+    }
+    /* no nspace: the default one, which carries our host and pid so that
+     * two servers given none do not share it */
+    if (NULL == nspace) {
+        snprintf(dflt, sizeof(dflt), "pmix-server-%s-%lu", pmix_globals.hostname,
+                 (unsigned long) getpid());
+        nspace = dflt;
     }
     ok = (0 == strcmp(pmix_globals.myid.nspace, nspace) && want == pmix_globals.myid.rank);
     if (!ok) {
@@ -107,8 +115,8 @@ int main(void)
              "old.ns", 4);
     run_case("the attributes win over the environment", "PMIX_SERVER_NSPACE", "env.ns", "3",
              true, "attr.ns", 9);
-    run_case("with neither it is pmix-server, ranked by its pid", NULL, NULL, NULL, false,
-             "pmix-server", PMIX_RANK_UNDEF);
+    run_case("with neither it is pmix-server-<host>-<pid>, ranked by its pid", NULL, NULL,
+             NULL, false, NULL, PMIX_RANK_UNDEF);
     rmdir(tmpdir);
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);

@@ -581,6 +581,32 @@ static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
     return rc;
 }
 
+/* Take the first of the servers a search found */
+static pmix_status_t take_connection(pmix_peer_t *peer, pmix_list_t *connections, char **nspace,
+                                     pmix_rank_t *rank, char **suri)
+{
+    pmix_connection_t *cn;
+    pmix_status_t rc;
+
+    cn = (pmix_connection_t *) pmix_list_get_first(connections);
+    /* a file found by a search says whose server it is by its owner */
+    pmix_ptl_base.rndz_owner_given = cn->owner_known;
+    pmix_ptl_base.rndz_owner = cn->owner;
+    peer->protocol = PMIX_PROTOCOL_V2;
+    PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+    pmix_ptl_base.server_release_vouched = cn->vouched;
+    /* speak a wire format and security mechanism the server accepts */
+    rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, cn);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    *nspace = cn->nspace;
+    cn->nspace = NULL;
+    *rank = cn->rank;
+    take_address(cn, suri);
+    return PMIX_SUCCESS;
+}
+
 static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
                                pmix_rank_t *rank, char **suri,
                                char *filename, bool exact, pmix_info_t *iptr,
@@ -588,7 +614,6 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
 {
     pmix_list_t connections;
     pmix_status_t rc;
-    pmix_connection_t *cn;
     char **dirs;
     size_t n;
 
@@ -616,23 +641,7 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
             PMIX_LIST_DESTRUCT(&connections);
             return rc;
         }
-        cn = (pmix_connection_t *) pmix_list_get_first(&connections);
-        /* a file found by a search says whose server it is by its owner */
-        pmix_ptl_base.rndz_owner_given = cn->owner_known;
-        pmix_ptl_base.rndz_owner = cn->owner;
-        peer->protocol = PMIX_PROTOCOL_V2;
-        PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
-        pmix_ptl_base.server_release_vouched = cn->vouched;
-        /* speak a wire format and security mechanism the server accepts */
-        rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, cn);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_LIST_DESTRUCT(&connections);
-            return rc;
-        }
-        *nspace = cn->nspace;
-        cn->nspace = NULL;
-        *rank = cn->rank;
-        take_address(cn, suri);
+        rc = take_connection(peer, &connections, nspace, rank, suri);
         PMIX_LIST_DESTRUCT(&connections);
         return rc;
     } else if (1 < pmix_list_get_size(&connections)) {
@@ -640,6 +649,77 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
     }
     PMIX_LIST_DESTRUCT(&connections);
     return rc;
+}
+
+/* A tool told no server to connect to: the session-level servers of its
+ * own user on this node, each named by its rendezvous ID in the user's
+ * directory (a file whose server is gone is passed over). One is taken;
+ * several are reported, and the tool must say which it wants. With legacy
+ * peers on and none found, the name a server of an earlier release
+ * writes, wherever below the system tmpdir it wrote it */
+static pmix_status_t trysessions(pmix_peer_t *peer, char **nspace, pmix_rank_t *rank,
+                                 char **suri, pmix_info_t *iptr, size_t niptr, bool optional)
+{
+    pmix_list_t connections;
+    pmix_connection_t *cn, *first;
+    pmix_status_t rc = PMIX_ERR_NOT_FOUND;
+    char *dir, *prefix = NULL, *list = NULL, *tmp;
+    bool several = false;
+
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    dir = pmix_ptl_base_user_dir(geteuid());
+    if (NULL == dir ||
+        0 > pmix_asprintf(&prefix, "pmix.%s.session.", pmix_globals.hostname)) {
+        free(dir);
+        PMIX_DESTRUCT(&connections);
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:tool:tool searching %s for session servers %s*", dir, prefix);
+    rc = pmix_ptl_base_df_search_depth(dir, prefix, false, iptr, niptr, optional,
+                                       &connections, 0);
+    free(dir);
+    free(prefix);
+    if (PMIX_ERR_NOMEM == rc) {
+        PMIX_LIST_DESTRUCT(&connections);
+        return rc;
+    }
+    if (0 < pmix_list_get_size(&connections)) {
+        first = (pmix_connection_t *) pmix_list_get_first(&connections);
+        PMIX_LIST_FOREACH (cn, &connections, pmix_connection_t) {
+            if (cn != first && 0 != strcmp(cn->uri, first->uri)) {
+                several = true;
+            }
+        }
+        if (several) {
+            PMIX_LIST_FOREACH (cn, &connections, pmix_connection_t) {
+                if (0 > pmix_asprintf(&tmp, "%s  namespace %s\n", (NULL == list) ? "" : list,
+                                      (NULL == cn->nspace) ? "(unknown)" : cn->nspace)) {
+                    break;
+                }
+                free(list);
+                list = tmp;
+            }
+            pmix_show_help("help-ptl-base.txt", "too-many-sessions", true,
+                           (NULL == list) ? "" : list);
+            free(list);
+            PMIX_LIST_DESTRUCT(&connections);
+            return PMIX_ERR_UNREACH;
+        }
+        rc = take_connection(peer, &connections, nspace, rank, suri);
+        PMIX_LIST_DESTRUCT(&connections);
+        return rc;
+    }
+    PMIX_LIST_DESTRUCT(&connections);
+    if (pmix_ptl_base_legacy_walk()) {
+        if (0 > pmix_asprintf(&prefix, "pmix.%s.tool", pmix_globals.hostname)) {
+            return PMIX_ERR_NOMEM;
+        }
+        rc = trysearch(peer, nspace, rank, suri, prefix, false, iptr, niptr, optional);
+        free(prefix);
+        return rc;
+    }
+    return PMIX_ERR_NOT_FOUND;
 }
 
 /* A system role's file, `name`: in the system directories a server may
@@ -735,6 +815,7 @@ pmix_status_t pmix_ptl_base_check_connect_directives(const pmix_info_t info[], s
     char *uri_nspace = NULL, *suri = NULL;
     pmix_rank_t rank;
     pid_t pid;
+    uint32_t sessid;
     int ival;
     struct sockaddr_storage addr;
     pmix_status_t rc;
@@ -773,6 +854,12 @@ pmix_status_t pmix_ptl_base_check_connect_directives(const pmix_info_t info[], s
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_PIDINFO)) {
             if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &pid, PMIX_PID)) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                return PMIX_ERR_BAD_PARAM;
+            }
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_RNDZ_ID)) {
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &sessid, PMIX_UINT32)) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 return PMIX_ERR_BAD_PARAM;
             }
@@ -859,6 +946,8 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
     int rc;
     size_t n, m;
     pid_t pid = 0;
+    uint32_t sessid = 0;
+    bool sessid_given = false;
     pmix_list_t ilist;
     pmix_info_caddy_t *kv;
     pmix_info_t *iptr = NULL, mypidinfo, mycmdlineinfo, launcher;
@@ -972,6 +1061,14 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                 if (PMIX_SUCCESS != rc) {
                     goto badinput;
                 }
+
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_RNDZ_ID)) {
+                /* the rendezvous ID of the session-level server we want */
+                rc = PMIx_Value_get_number(&info[n].value, &sessid, PMIX_UINT32);
+                if (PMIX_SUCCESS != rc) {
+                    goto badinput;
+                }
+                sessid_given = true;
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_NSPACE)) {
                 // if this is my nspace, then ignore it
@@ -1317,6 +1414,26 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         goto complete;
     }
 
+    /* if they gave a session-level server's rendezvous ID, look for it */
+    if (sessid_given) {
+        if (0 > pmix_asprintf(&filename, "pmix.%s.session.%lu", pmix_globals.hostname,
+                              (unsigned long) sessid)) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:tool:tool searching for given session's server %s", filename);
+        rc = trysearch(peer, &nspace, &rank, &suri, filename, true, iptr, niptr, optional);
+        free(filename);
+        if (PMIX_SUCCESS != rc) {
+            /* they named the server and we couldn't connect to it, so
+             * return an error */
+            goto cleanup;
+        }
+        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+        goto complete;
+    }
+
     /* see if we are a client of some server */
     evar = NULL;
     rc = pmix_ptl_base_set_peer(peer, &evar);
@@ -1344,19 +1461,10 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         goto complete;
     } else if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
                PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        /* we aren't a client, so we will search to see what session-level
-         * tools are available to this user. We will take the first connection
-         * that succeeds - this is based on the likelihood that there is only
-         * one session per user on a node */
-
-        if (0 > pmix_asprintf(&filename, "pmix.%s.tool", pmix_globals.hostname)) {
-            rc = PMIX_ERR_NOMEM;
-            goto cleanup;
-        }
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:tool:tool searching for session server %s", filename);
-        rc = trysearch(peer, &nspace, &rank, &suri, filename, false, iptr, niptr, optional);
-        free(filename);
+        /* we aren't a client and were told no server: the session-level
+         * servers of our own user on this node - the one, or none if there
+         * are several, as we would not know which was meant */
+        rc = trysessions(peer, &nspace, &rank, &suri, iptr, niptr, optional);
         if (PMIX_SUCCESS == rc) {
             PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
             goto complete;

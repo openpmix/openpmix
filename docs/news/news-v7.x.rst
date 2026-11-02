@@ -7,6 +7,19 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A session-level server (``PMIX_SERVER_SESSION_SUPPORT``) is the server
+   of a session, and must be given ``PMIX_SESSION_RNDZ_ID``, a new
+   attribute naming its rendezvous file, or else ``PMIX_SESSION_ID``:
+   ``PMIx_server_init`` fails without either. Its rendezvous file is
+   ``pmix.<host>.session.<id>``, so servers of different sessions - DVMs,
+   say - share a node, and a second server of one session there fails to
+   start. A tool picks a session server by ``PMIX_SESSION_RNDZ_ID``; told no server,
+   it takes its own user's session server on the node when there is one,
+   and fails, listing them, when there are several. A server whose host
+   names no namespace takes ``pmix-server-<host>-<pid>``, so two such
+   servers no longer share a namespace's file. A tool of an earlier
+   release finds none of these files, which are in the per-user
+   directory: give it the server's URI or rendezvous file.
  - A group ID is one group's, on a server, until it is destructed. A
    construct or invitation under an ID a group holds there is refused
    with ``PMIX_ERR_EXISTS``; a host that completes one anyway - another

@@ -408,13 +408,20 @@ static pmix_status_t start_server(pmix_rank_t nprocs)
     pmix_rank_t r;
 
     {
-        /* tools connect here, which a server takes only with tool support */
-        pmix_info_t tsinfo;
+        /* tools connect here, which a server takes only with tool support -
+         * and a tool told no server finds a session-level one, so this is
+         * that, of a session of its own */
+        pmix_info_t tsinfo[3];
         bool tsflag = true;
+        uint32_t sessid = 4242;
 
-        PMIX_INFO_LOAD(&tsinfo, PMIX_SERVER_TOOL_SUPPORT, &tsflag, PMIX_BOOL);
-        rc = PMIx_server_init(&mymodule, &tsinfo, 1);
-        PMIX_INFO_DESTRUCT(&tsinfo);
+        PMIX_INFO_LOAD(&tsinfo[0], PMIX_SERVER_TOOL_SUPPORT, &tsflag, PMIX_BOOL);
+        PMIX_INFO_LOAD(&tsinfo[1], PMIX_SERVER_SESSION_SUPPORT, &tsflag, PMIX_BOOL);
+        PMIX_INFO_LOAD(&tsinfo[2], PMIX_SESSION_RNDZ_ID, &sessid, PMIX_UINT32);
+        rc = PMIx_server_init(&mymodule, tsinfo, 3);
+        PMIX_INFO_DESTRUCT(&tsinfo[0]);
+        PMIX_INFO_DESTRUCT(&tsinfo[1]);
+        PMIX_INFO_DESTRUCT(&tsinfo[2]);
     }
     if (PMIX_SUCCESS != rc) {
         return rc;

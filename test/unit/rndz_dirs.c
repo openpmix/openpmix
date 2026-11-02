@@ -27,6 +27,11 @@
  *     user the tool does not list is not taken
  *   - as root, a file of another user's at a server's name is left alone:
  *     the server starts, writes no file there, and does not touch it
+ *   - a session-level server needs a rendezvous ID, or else the session's
+ *     ID, and its file is named by it: servers of two sessions share a node, a second of one session
+ *     does not start; a tool finds the one whose session it names, the only
+ *     one when it names none, and none when there are several
+ *   - two servers whose host names no namespace start side by side
  *
  * Each server and tool runs in a child of its own.
  */
@@ -130,6 +135,14 @@ static mode_t mode_of(const char *path)
  * default, $TMPDIR, when `name_sys` is false), the session tmpdir `sess`,
  * and the system server role with `system`. It says over `ready` whether
  * its init succeeded, and stays up until `go` is written or closed */
+/* the next server started is a session-level one: with this rendezvous
+ * ID, or with none (NO_ID); NOT_SESSION when it is not one. With
+ * next_sched >= 0 it is given that PMIX_SESSION_ID too */
+#define NOT_SESSION -1
+#define NO_ID -2
+static long next_session = NOT_SESSION;
+static long next_sched = -1;
+
 static pid_t start_server(const char *sys, bool name_sys, const char *sess, bool system,
                           int *readyfd, int *gofd)
 {
@@ -142,12 +155,24 @@ static pid_t start_server(const char *sys, bool name_sys, const char *sess, bool
     }
     pid = fork();
     if (0 == pid) {
-        pmix_info_t info[4];
+        pmix_info_t info[8];
         bool flag = true;
         size_t n = 0;
+        uint32_t sessid, schedid;
         pmix_status_t rc;
 
         close(rp[0]);
+        if (NOT_SESSION != next_session) {
+            PMIX_INFO_LOAD(&info[n++], PMIX_SERVER_SESSION_SUPPORT, &flag, PMIX_BOOL);
+        }
+        if (0 <= next_session) {
+            sessid = (uint32_t) next_session;
+            PMIX_INFO_LOAD(&info[n++], PMIX_SESSION_RNDZ_ID, &sessid, PMIX_UINT32);
+        }
+        if (0 <= next_sched) {
+            schedid = (uint32_t) next_sched;
+            PMIX_INFO_LOAD(&info[n++], PMIX_SESSION_ID, &schedid, PMIX_UINT32);
+        }
         close(gp[1]);
         setenv("TMPDIR", sys, 1);
         PMIX_INFO_LOAD(&info[n++], PMIX_SERVER_TOOL_SUPPORT, &flag, PMIX_BOOL);
@@ -233,6 +258,62 @@ static pmix_status_t tool_by_pid(const char *sys, pid_t spid, bool legacy)
     return rc;
 }
 
+/* a tool in a child that asks for a session's server (sessid >= 0), or for
+ * none - returns its init status, and in *spid the pid of the server it
+ * reached (from its namespace, pmix-server-<host>-<pid>) */
+static pmix_status_t tool_to_session(const char *sys, long sessid, pid_t *spid)
+{
+    int fds[2], status;
+    pmix_status_t rc = PMIX_ERROR;
+    pid_t pid, got = 0;
+
+    if (0 != pipe(fds)) {
+        return rc;
+    }
+    pid = fork();
+    if (0 == pid) {
+        pmix_info_t info[1];
+        pmix_proc_t me;
+        pmix_value_t *val = NULL;
+        uint32_t id = (uint32_t) sessid;
+        const char *dash;
+
+        close(fds[0]);
+        setenv("TMPDIR", sys, 1);
+        setenv("PMIX_MCA_ptl_base_legacy_peers", "0", 1);
+        if (0 <= sessid) {
+            PMIX_INFO_LOAD(&info[0], PMIX_SESSION_RNDZ_ID, &id, PMIX_UINT32);
+        }
+        rc = PMIx_tool_init(&me, (0 <= sessid) ? info : NULL, (0 <= sessid) ? 1 : 0);
+        if (PMIX_SUCCESS == rc &&
+            PMIX_SUCCESS == PMIx_Get(&me, PMIX_SERVER_NSPACE, NULL, 0, &val) &&
+            NULL != val && PMIX_STRING == val->type &&
+            NULL != (dash = strrchr(val->data.string, '-'))) {
+            got = (pid_t) strtol(dash + 1, NULL, 10);
+        }
+        if (NULL != val) {
+            PMIX_VALUE_RELEASE(val);
+        }
+        if ((ssize_t) sizeof(rc) != write(fds[1], &rc, sizeof(rc)) ||
+            (ssize_t) sizeof(got) != write(fds[1], &got, sizeof(got))) {
+            _exit(1);
+        }
+        if (PMIX_SUCCESS == rc) {
+            PMIx_tool_finalize();
+        }
+        _exit(0);
+    }
+    close(fds[1]);
+    if ((ssize_t) sizeof(rc) != read(fds[0], &rc, sizeof(rc)) ||
+        (ssize_t) sizeof(got) != read(fds[0], &got, sizeof(got))) {
+        rc = PMIX_ERROR;
+    }
+    close(fds[0]);
+    waitpid(pid, &status, 0);
+    *spid = got;
+    return rc;
+}
+
 /* a tool in a child that asks for the system server, the system tmpdir
  * named - returns its init status */
 static pmix_status_t tool_to_system(const char *sys)
@@ -306,6 +387,122 @@ static void test_tool_files(void)
     report("a tool finds a server by its pid in that directory",
            PMIX_SUCCESS == tool_by_pid(sys, spid, false), "not found");
     stop_server(spid, ready, go);
+}
+
+static void test_sessions(void)
+{
+    char sys[700], s1[700], s2[700], s3[700], udir[800], path[1024];
+    pid_t a, b, c, got;
+    int ra, ga, rb, gb, rc3, gc;
+    bool aup, bup, cup;
+    pmix_status_t rc;
+
+    scratch(sys, sizeof(sys), "sys5");
+    scratch(s1, sizeof(s1), "sess5a");
+    scratch(s2, sizeof(s2), "sess5b");
+    scratch(s3, sizeof(s3), "sess5c");
+    snprintf(udir, sizeof(udir), "%s/pmix-user.%lu", sys, (unsigned long) geteuid());
+
+    /* a session-level server with no rendezvous ID */
+    next_session = NO_ID;
+    a = start_server(sys, false, s1, false, &ra, &ga);
+    aup = (0 < a && server_up(ra));
+    report("a session-level server given no rendezvous ID does not start", !aup, "it started");
+    if (0 < a) {
+        stop_server(a, ra, ga);
+    }
+
+    /* the session's ID names the file when no rendezvous ID is given */
+    next_sched = 21;
+    a = start_server(sys, false, s1, false, &ra, &ga);
+    aup = (0 < a && server_up(ra));
+    report("...but given the session's ID instead, it starts", aup, "init failed");
+    if (aup) {
+        report("...and its file is named by the session's ID",
+               find_file(udir, "pmix.", ".session.21", path, sizeof(path)), "no such file");
+        rc = tool_to_session(sys, 21, &got);
+        report("...by which a tool reaches it", PMIX_SUCCESS == rc && got == a,
+               PMIx_Error_string(rc));
+    }
+    if (0 < a) {
+        stop_server(a, ra, ga);
+    }
+    /* and a rendezvous ID, given as well, is the one used */
+    next_session = 22;
+    a = start_server(sys, false, s1, false, &ra, &ga);
+    aup = (0 < a && server_up(ra));
+    report("a session-level server given both IDs starts", aup, "init failed");
+    if (aup) {
+        report("...and its file is named by the rendezvous ID, not the session's",
+               find_file(udir, "pmix.", ".session.22", path, sizeof(path)) &&
+                   !find_file(udir, "pmix.", ".session.21", path, sizeof(path)),
+               "named otherwise");
+    }
+    if (0 < a) {
+        stop_server(a, ra, ga);
+    }
+    next_sched = -1;
+
+    /* two sessions on one node */
+    next_session = 11;
+    a = start_server(sys, false, s1, false, &ra, &ga);
+    aup = (0 < a && server_up(ra));
+    report("a session-level server starts", aup, "init failed");
+    if (!aup) {
+        next_session = NOT_SESSION;
+        return;
+    }
+    report("...and its file is named by its session",
+           find_file(udir, "pmix.", ".session.11", path, sizeof(path)), "no such file");
+    rc = tool_to_session(sys, -1, &got);
+    report("a tool that names no server reaches the only session-level one",
+           PMIX_SUCCESS == rc && got == a, PMIx_Error_string(rc));
+
+    next_session = 12;
+    b = start_server(sys, false, s2, false, &rb, &gb);
+    bup = (0 < b && server_up(rb));
+    report("a server of another session starts beside it", bup, "init failed");
+
+    next_session = 11;
+    c = start_server(sys, false, s3, false, &rc3, &gc);
+    cup = (0 < c && server_up(rc3));
+    report("a second server of the first session does not", !cup, "it started");
+    if (0 < c) {
+        stop_server(c, rc3, gc);
+    }
+    next_session = NOT_SESSION;
+
+    if (bup) {
+        rc = tool_to_session(sys, 12, &got);
+        report("a tool that names a session reaches its server", PMIX_SUCCESS == rc && got == b,
+               PMIx_Error_string(rc));
+        rc = tool_to_session(sys, 11, &got);
+        report("...and the other's, naming that one", PMIX_SUCCESS == rc && got == a,
+               PMIx_Error_string(rc));
+        rc = tool_to_session(sys, -1, &got);
+        report("a tool that names none, with two, reaches neither", PMIX_SUCCESS != rc,
+               "it connected");
+        rc = tool_to_session(sys, 13, &got);
+        report("a tool that names a session with no server here is refused", PMIX_SUCCESS != rc,
+               "it connected");
+        stop_server(b, rb, gb);
+    }
+    stop_server(a, ra, ga);
+
+    /* two servers whose host names no namespace - a file is one per
+     * namespace, so the default one must differ between them */
+    a = start_server(sys, false, s1, false, &ra, &ga);
+    aup = (0 < a && server_up(ra));
+    b = start_server(sys, false, s2, false, &rb, &gb);
+    bup = (0 < b && server_up(rb));
+    report("two servers given no namespace start side by side", aup && bup,
+           aup ? "the second failed" : "the first failed");
+    if (0 < b) {
+        stop_server(b, rb, gb);
+    }
+    if (0 < a) {
+        stop_server(a, ra, ga);
+    }
 }
 
 static void test_not_ours(void)
@@ -617,6 +814,7 @@ int main(void)
     alarm(300);
 
     test_tool_files();
+    test_sessions();
     test_not_ours();
     test_system_files();
     test_legacy_walk();
