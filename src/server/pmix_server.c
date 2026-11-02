@@ -98,6 +98,7 @@ pmix_server_globals_t pmix_server_globals = {
     .tool_connections_allowed = false,
     .tmpdir = NULL,
     .system_tmpdir = NULL,
+    .system_tmpdir_given = false,
     .fence_localonly_opt = false,
     .get_output = -1,
     .get_verbose = 0,
@@ -936,6 +937,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                     free(pmix_server_globals.system_tmpdir);
                 }
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
+                pmix_server_globals.system_tmpdir_given = true;
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_NSPACE)) {
                 if (PMIX_STRING != info[n].value.type ||
@@ -1030,6 +1032,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             pmix_server_globals.system_tmpdir = strdup(pmix_tmp_directory());
         } else {
             pmix_server_globals.system_tmpdir = strdup(evar);
+            pmix_server_globals.system_tmpdir_given = true;
         }
     }
 

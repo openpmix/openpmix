@@ -7,6 +7,15 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A server writes the rendezvous files tools find it by in
+   ``<system tmpdir>/pmix-user.<uid>``, a directory only its user can
+   write, rather than in its session tmpdir; a root system server,
+   scheduler or system controller writes its file in ``/run/pmix``
+   unless the host names the system tmpdir. A tool looks in its own
+   user's, root's and the listed users' directories, and walks the
+   whole system tmpdir - where earlier releases write - only with
+   legacy peers on. A ``pmix-user`` directory that is not the server's
+   is reported, and the server runs on without writing its tool files.
  - With legacy peers on, ``--report-uri -`` and ``+`` (the
    ``ptl_base_report_uri`` parameter, ``PMIX_TCP_REPORT_URI``) now print
    the local socket's URI, which a client or tool of this release uses,

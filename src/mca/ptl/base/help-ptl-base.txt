@@ -385,3 +385,17 @@ not connect to this server in any case.
 
 To report the URI a client or tool of v7.0 or later uses, give "-"
 (stdout) or "+" (stderr).
+#
+[rndz-dir-not-ours]
+This PMIx server writes the files tools find it by in a directory that
+only its own user can write:
+
+  %s
+
+but %s. So it does not write those files there, and runs on: its clients
+reach it by the address they are given, but %s.
+
+The directory must be a directory of this server's user, not a link,
+that no other user can write. Another user made it first, or it was left
+with the wrong owner or mode. Removing it - its owner or an
+administrator can - lets the server make it again.

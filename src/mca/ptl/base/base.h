@@ -148,6 +148,10 @@ struct pmix_ptl_base_t {
     size_t max_msg_size;
     char *session_tmpdir;
     char *system_tmpdir;
+    /* the host or the caller named the system tmpdir, rather than it
+     * defaulting - then a system role's rendezvous file goes there, as it
+     * always did, and not in /run/pmix (see ptl_base_rndz.c) */
+    bool system_tmpdir_given;
     char *report_uri;
     char *uri;
     char *urifile;
@@ -642,6 +646,42 @@ PMIX_EXPORT void pmix_ptl_base_parse_version(const char *vers, uint8_t *major,
 /* Search dirname and the directories below it for rendezvous files. With
  * exact, a file's name must be the whole of prefix; otherwise it need
  * only begin with it. */
+/* Where rendezvous files are written and looked for - see
+ * ptl_base_rndz.c */
+#define PMIX_PTL_USER_DIR_PREFIX "pmix-user."
+
+/* "<system tmpdir>/pmix-user.<uid>" - NULL if out of memory */
+PMIX_EXPORT char *pmix_ptl_base_user_dir(uid_t uid);
+
+/* Open this process's own pmix-user directory to write rendezvous files in,
+ * making it if it is not there: a directory, not a link, of our euid, that
+ * nobody else can write, mode 0700 (0711 when tools of other users are
+ * taken). A descriptor, with *path its name - or -1 when what is there is
+ * not ours, which is reported once: the server then writes none of the
+ * files that go there, and runs on */
+PMIX_EXPORT int pmix_ptl_base_open_user_dir(char **path);
+
+/* The directory a system role's rendezvous file goes in: the system tmpdir
+ * the host named; else, for root, /run/pmix or /var/run/pmix; else our own
+ * pmix-user directory. As pmix_ptl_base_open_user_dir */
+PMIX_EXPORT int pmix_ptl_base_open_system_dir(char **path);
+
+/* The directories a reader looks in for a rendezvous file, in order: for a
+ * system role, the system tmpdir if it was named, /run/pmix and
+ * /var/run/pmix, root's pmix-user directory and our own user's; for the others, our own user's and root's; and then those of the
+ * users ptl_base_server_access names. An argv the caller frees */
+PMIX_EXPORT char **pmix_ptl_base_rndz_dirs(bool system_role);
+
+/* Whether a reader also walks the whole system tmpdir, as a reader of an
+ * earlier release did - only with legacy peers on */
+PMIX_EXPORT bool pmix_ptl_base_legacy_walk(void);
+
+/* pmix_ptl_base_df_search, entering at most `depth` levels below dirname */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search_depth(char *dirname, char *prefix, bool exact,
+                                                        pmix_info_t info[], size_t ninfo,
+                                                        bool optional,
+                                                        pmix_list_t *connections, int depth);
+
 PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, bool exact,
                                                   pmix_info_t info[], size_t ninfo, bool optional,
                                                   pmix_list_t *connections);

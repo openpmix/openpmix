@@ -1047,6 +1047,13 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, bool exact,
                      pmix_ptl_base.search_depth);
 }
 
+pmix_status_t pmix_ptl_base_df_search_depth(char *dirname, char *prefix, bool exact,
+                                            pmix_info_t info[], size_t ninfo, bool optional,
+                                            pmix_list_t *connections, int depth)
+{
+    return df_search(dirname, prefix, exact, info, ninfo, optional, connections, depth);
+}
+
 /* The address a URI names, from the transport whose URI it is - and
  * that transport, if asked. A URI no transport speaks is not supported */
 pmix_status_t pmix_ptl_base_uri_to_addr(const char *uri, struct sockaddr_storage *connection,
@@ -3237,15 +3244,40 @@ void pmix_ptl_base_query_servers(int sd, short args, void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
     pmix_list_t servers;
-    size_t n;
+    size_t n, len;
     pmix_infolist_t *iptr;
     pmix_status_t rc;
+    char **dirs, **more;
+    bool legacy;
 
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_CONSTRUCT(&servers, pmix_list_t);
 
-    query_servers(NULL, &servers, pmix_ptl_base.search_depth);
+    /* the directories servers of this release write their files in -
+     * each looked in, not below - and, only with legacy peers on, the
+     * whole system tmpdir, where servers of earlier releases write theirs
+     * (it holds the pmix-user directories too, so they are not looked in
+     * twice) */
+    dirs = pmix_ptl_base_rndz_dirs(true);
+    more = pmix_ptl_base_rndz_dirs(false);
+    for (n = 0; NULL != more && NULL != more[n]; n++) {
+        PMIx_Argv_append_unique_nosize(&dirs, more[n]);
+    }
+    PMIx_Argv_free(more);
+    legacy = pmix_ptl_base_legacy_walk();
+    if (legacy) {
+        query_servers(NULL, &servers, pmix_ptl_base.search_depth);
+    }
+    len = strlen(pmix_ptl_base.system_tmpdir);
+    for (n = 0; NULL != dirs && NULL != dirs[n]; n++) {
+        if (legacy && 0 == strncmp(dirs[n], pmix_ptl_base.system_tmpdir, len) &&
+            ('/' == dirs[n][len] || '\0' == dirs[n][len])) {
+            continue;
+        }
+        query_servers(dirs[n], &servers, 0);
+    }
+    PMIx_Argv_free(dirs);
 
     /* convert the list to an array of pmix_info_t */
     cd->ninfo = pmix_list_get_size(&servers);
