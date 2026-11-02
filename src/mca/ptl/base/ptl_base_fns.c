@@ -896,6 +896,21 @@ process:
                                                 "/proc/self/uid_map");
     free(lock);
     fclose(fp);
+    /* A file we searched for, or found at a fixed name, says whose server
+     * it is by its owner - so it must be the file at the name, with one
+     * name, that only its owner can write. Any other is passed over */
+    if (!gone && (found_by_search || regular_only) &&
+        !pmix_ptl_base_rndz_file_sound(filename, owned ? &st : NULL)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "pmix:tool: passing over %s - not a file only its owner can write, "
+                            "with one name", filename);
+        free(srvr);
+        free(p);
+        free(local);
+        free(bfrops);
+        free(psec);
+        return PMIX_ERR_NOT_FOUND;
+    }
     if (gone) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "pmix:tool: passing over %s - the server that wrote it is gone",
@@ -929,6 +944,8 @@ process:
         cn->uri = uri;
         cn->version = p;
         cn->vouched = believed;
+        cn->owner_known = owned;
+        cn->owner = owned ? st.st_uid : (uid_t) -1;
         cn->bfrops = bfrops;
         cn->psec = psec;
         /* the local address is "<host>;<uri>": used only on the server's
@@ -1263,21 +1280,33 @@ typedef enum {
 #define CHECK_TRIES 10
 #define CHECK_DELAY_USEC(n) (1000L << (n))
 
+/* Who a rendezvous file we searched for, or found at a fixed name, says
+ * runs its server - see pmix_ptl_base.rndz_owner_given */
+typedef struct {
+    bool owner_given;
+    uid_t owner;
+    pid_t pid;
+} rndz_claim_t;
+
 static pmix_status_t check_peer(pmix_peer_t *peer, bool given, uid_t uid, gid_t gid,
-                                bool vouched, check_wait_t wait);
+                                bool vouched, const rndz_claim_t *claim, check_wait_t wait);
 
 pmix_status_t pmix_ptl_base_check_server(pmix_peer_t *peer, bool given, uid_t uid, gid_t gid,
                                          bool vouched)
 {
-    return check_peer(peer, given, uid, gid, vouched, CHECK_WAIT);
+    rndz_claim_t claim = {.owner_given = pmix_ptl_base.rndz_owner_given,
+                          .owner = pmix_ptl_base.rndz_owner,
+                          .pid = pmix_ptl_base.rndz_pid};
+
+    return check_peer(peer, given, uid, gid, vouched, &claim, CHECK_WAIT);
 }
 
 static pmix_status_t check_peer(pmix_peer_t *peer, bool given, uid_t uid, gid_t gid,
-                                bool vouched, check_wait_t wait)
+                                bool vouched, const rndz_claim_t *claim, check_wait_t wait)
 {
     uid_t kuid = 0;
     gid_t kgid = 0;
-    pid_t kpid;
+    pid_t kpid = 0;
     size_t n;
     bool tcp = false, answered = true;
     char want[128];
@@ -1357,6 +1386,23 @@ static pmix_status_t check_peer(pmix_peer_t *peer, bool given, uid_t uid, gid_t 
                                          kuid, !tcp, kgid, given, uid, gid, vouched);
     switch (verdict) {
     case PMIX_PTL_SERVER_OK:
+        /* A server found through its file is the file's: the kernel must
+         * say it runs as the file's owner and, for a file by pid, that it
+         * is that process - where the kernel names a pid, on the local
+         * socket. Anyone else answering at the address it gives is not the
+         * server the file was written by */
+        if (NULL != claim && claim->owner_given && kuid != claim->owner) {
+            pmix_show_help("help-ptl-base.txt", "server-not-file-owner", true,
+                           pmix_globals.hostname, (unsigned long) kuid,
+                           (unsigned long) claim->owner);
+            return PMIX_ERR_INVALID_CRED;
+        }
+        if (NULL != claim && 0 != claim->pid && !tcp && 0 != kpid && kpid != claim->pid) {
+            pmix_show_help("help-ptl-base.txt", "server-not-file-pid", true,
+                           pmix_globals.hostname, (unsigned long) kpid,
+                           (unsigned long) claim->pid);
+            return PMIX_ERR_INVALID_CRED;
+        }
         return PMIX_SUCCESS;
     case PMIX_PTL_SERVER_OK_VOUCHED:
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -1974,6 +2020,7 @@ typedef struct {
     pmix_ptl_module_t *transport; // whose address addr is
     bool expect_given;            // the server's identity, if we were told it
     bool vouched;                 // its file says it may be connected to unnamed
+    rndz_claim_t claim;           // who the file it was found by says runs it
     uid_t expect_uid;
     gid_t expect_gid;
     int sd;
@@ -2008,6 +2055,7 @@ static void cnopcon(pmix_ptl_connect_op_t *p)
     p->transport = NULL;
     p->expect_given = false;
     p->vouched = false;
+    memset(&p->claim, 0, sizeof(p->claim));
     p->expect_uid = (uid_t) -1;
     p->expect_gid = (gid_t) -1;
     p->sd = -1;
@@ -2231,7 +2279,7 @@ static void cnct_check(int sd, short args, void *cbdata)
     op->ev_active = false;
     mode = (op->timer_active || CHECK_TRIES > op->check_tries) ? CHECK_ONCE : CHECK_LAST;
     rc = check_peer(op->peer, op->expect_given, op->expect_uid, op->expect_gid, op->vouched,
-                    mode);
+                    &op->claim, mode);
     if (PMIX_ERR_NOT_FOUND == rc && CHECK_ONCE == mode && peer_closed(op->sd)) {
         /* it will not be listed now - and there is nobody to talk to */
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -2520,6 +2568,9 @@ pmix_status_t pmix_ptl_base_start_connection(pmix_peer_t *peer, char *nspace,
      * with the connect, which completes after this returns */
     op->expect_given = pmix_ptl_base.server_expect_given;
     op->vouched = pmix_ptl_base.server_release_vouched;
+    op->claim.owner_given = pmix_ptl_base.rndz_owner_given;
+    op->claim.owner = pmix_ptl_base.rndz_owner;
+    op->claim.pid = pmix_ptl_base.rndz_pid;
     op->expect_uid = pmix_ptl_base.server_expect_uid;
     op->expect_gid = pmix_ptl_base.server_expect_gid;
     rc = pmix_ptl_base_uri_to_addr(suri, &op->addr, &op->addrlen, &op->transport);

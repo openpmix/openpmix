@@ -299,8 +299,16 @@ most specific to least:
   tool also walk the whole system tmpdir, ``ptl_base_search_depth``
   levels deep, and look at the system tmpdir itself for a system role -
   where a server of an earlier release writes its files. The same goes
-  for a ``PMIX_QUERY_AVAIL_SERVERS`` query. Every file found must name
-  the same server; files naming
+  for a ``PMIX_QUERY_AVAIL_SERVERS`` query. A file found this way, or at
+  a fixed name, is believed only of the server that wrote it: it must be
+  the file at the name, with one name, that only its owner can write
+  (else it is passed over); once connected, the kernel must say the
+  server runs as the file's owner (``server-not-file-owner``) and, for a
+  file by PID, on the local socket, is that process
+  (``server-not-file-pid``). A system role's file is taken only from
+  root, the tool's own user, or a user ``ptl_base_server_access`` names.
+  Such a file never vouches for a server the kernel cannot name. Every
+  file found must name the same server; files naming
   different ones fail the search, saying so. A file whose server is gone
   is passed over, here and by a ``PMIX_QUERY_AVAIL_SERVERS`` query: it
   says its server holds the lock beside it, and the searching process

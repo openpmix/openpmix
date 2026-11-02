@@ -19,6 +19,12 @@
  *   - a tool finds a server by its pid in the server's user's directory;
  *     a file elsewhere below the system tmpdir, where a server of an
  *     earlier release writes, is found only with legacy peers on
+ *   - a file a tool finds is believed only of its writer: one renamed for
+ *     another pid leads to a server the kernel says is not that process,
+ *     which is refused; one others may write is passed over; and, as
+ *     root, one owned by another user leads to a server the kernel says
+ *     is not that user, refused, and a system server's file owned by a
+ *     user the tool does not list is not taken
  *
  * Each server and tool runs in a child of its own.
  */
@@ -225,6 +231,45 @@ static pmix_status_t tool_by_pid(const char *sys, pid_t spid, bool legacy)
     return rc;
 }
 
+/* a tool in a child that asks for the system server, the system tmpdir
+ * named - returns its init status */
+static pmix_status_t tool_to_system(const char *sys)
+{
+    int fds[2], status;
+    pmix_status_t rc = PMIX_ERROR;
+    pid_t pid;
+
+    if (0 != pipe(fds)) {
+        return rc;
+    }
+    pid = fork();
+    if (0 == pid) {
+        pmix_info_t info[2];
+        pmix_proc_t me;
+        bool flag = true;
+
+        close(fds[0]);
+        setenv("TMPDIR", sys, 1);
+        setenv("PMIX_SYSTEM_TMPDIR", sys, 1);
+        PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_TO_SYSTEM, &flag, PMIX_BOOL);
+        rc = PMIx_tool_init(&me, info, 1);
+        if ((ssize_t) sizeof(rc) != write(fds[1], &rc, sizeof(rc))) {
+            _exit(1);
+        }
+        if (PMIX_SUCCESS == rc) {
+            PMIx_tool_finalize();
+        }
+        _exit(0);
+    }
+    close(fds[1]);
+    if ((ssize_t) sizeof(rc) != read(fds[0], &rc, sizeof(rc))) {
+        rc = PMIX_ERROR;
+    }
+    close(fds[0]);
+    waitpid(pid, &status, 0);
+    return rc;
+}
+
 static void scratch(char *path, size_t len, const char *name)
 {
     snprintf(path, len, "%s/%s", base, name);
@@ -309,7 +354,25 @@ static void test_system_files(void)
     int ready, go;
 
     if (0 == geteuid()) {
-        fprintf(stdout, "  SKIP: a non-root system server's file - running as root\n");
+        struct stat st;
+
+        /* root, with no system tmpdir named: /run/pmix, where /run is root's */
+        if (0 != stat("/run", &st) || !S_ISDIR(st.st_mode) || 0 != st.st_uid) {
+            fprintf(stdout, "  SKIP: a root system server's file - no /run of root's here\n");
+        } else {
+            scratch(sys, sizeof(sys), "sys3");
+            scratch(sess, sizeof(sess), "sess3");
+            spid = start_server(sys, false, sess, true, &ready, &go);
+            if (0 > spid || !server_up(ready)) {
+                report("root system file: the server starts", 0, "init failed");
+                return;
+            }
+            report("a root system server's file goes in /run/pmix, made 0755",
+                   find_file("/run/pmix", "pmix.sys.", "", path, sizeof(path)) &&
+                       0755 == mode_of("/run/pmix"),
+                   "not there");
+            stop_server(spid, ready, go);
+        }
     } else {
         scratch(sys, sizeof(sys), "sys3");
         scratch(sess, sizeof(sess), "sess3");
@@ -379,6 +442,111 @@ static void test_legacy_walk(void)
     stop_server(spid, ready, go);
 }
 
+/* the server's file by pid, renamed for `newpid`, with `mode` and owner
+ * `owner` ((uid_t) -1: as it is); returns the new path in to */
+static bool move_pidfile(const char *sys, pid_t spid, pid_t newpid, mode_t mode, uid_t owner,
+                         char *to, size_t len)
+{
+    char dir[800], from[1100], suffix[64], *host, *end;
+
+    snprintf(dir, sizeof(dir), "%s/pmix-user.%lu", sys, (unsigned long) geteuid());
+    snprintf(suffix, sizeof(suffix), ".tool.%lu", (unsigned long) spid);
+    if (!find_file(dir, "pmix.", suffix, from, sizeof(from))) {
+        return false;
+    }
+    /* pmix.<host>.tool.<pid> - keep the host */
+    host = strstr(from, "/pmix.") + strlen("/pmix.");
+    end = strstr(host, ".tool.");
+    snprintf(to, len, "%s/pmix.%.*s.tool.%lu", dir, (int) (end - host), host,
+             (unsigned long) newpid);
+    if (0 != rename(from, to) || 0 != chmod(to, mode)) {
+        return false;
+    }
+    return (uid_t) -1 == owner || 0 == chown(to, owner, (gid_t) -1);
+}
+
+/* the file at `from` back at the name for `spid`, with `mode` */
+static bool move_pidfile_back(const char *from, const char *sys, pid_t spid, mode_t mode)
+{
+    char dir[800], to[1100];
+    const char *host, *end;
+
+    snprintf(dir, sizeof(dir), "%s/pmix-user.%lu", sys, (unsigned long) geteuid());
+    host = strstr(from, "/pmix.") + strlen("/pmix.");
+    end = strstr(host, ".tool.");
+    snprintf(to, sizeof(to), "%s/pmix.%.*s.tool.%lu", dir, (int) (end - host), host,
+             (unsigned long) spid);
+    return 0 == rename(from, to) && 0 == chmod(to, mode);
+}
+
+static void test_claims(void)
+{
+    char sys[700], sess[700], to[1100], path[1024];
+    pid_t spid, other = 999999;
+    int ready, go;
+
+    scratch(sys, sizeof(sys), "sys6");
+    scratch(sess, sizeof(sess), "sess6");
+    spid = start_server(sys, false, sess, false, &ready, &go);
+    if (0 > spid || !server_up(ready)) {
+        report("claims: the server starts", 0, "init failed");
+        return;
+    }
+    /* its file, now named for a process it is not */
+    if (!move_pidfile(sys, spid, other, 0644, (uid_t) -1, to, sizeof(to))) {
+        report("claims: fixture", 0, strerror(errno));
+    } else {
+        report("a file found by pid whose server the kernel says is another process is refused",
+               PMIX_SUCCESS != tool_by_pid(sys, other, false), "taken");
+        /* back at its own name, but one its group may write: passed over */
+        if (!move_pidfile_back(to, sys, spid, 0664)) {
+            report("claims: fixture", 0, strerror(errno));
+        } else {
+            report("a file found by pid that others may write is passed over",
+                   PMIX_SUCCESS != tool_by_pid(sys, spid, false), "taken");
+        }
+    }
+    stop_server(spid, ready, go);
+
+    /* one owned by another user - as root, who can give it one */
+    if (0 != geteuid()) {
+        fprintf(stdout, "  SKIP: a tool file owned by another user - not running as root\n");
+        fprintf(stdout, "  SKIP: a system server's file owned by an unlisted user - not running "
+                        "as root\n");
+        return;
+    }
+    scratch(sys, sizeof(sys), "sys7");
+    scratch(sess, sizeof(sess), "sess7");
+    spid = start_server(sys, false, sess, false, &ready, &go);
+    if (0 > spid || !server_up(ready)) {
+        report("claims as root: the server starts", 0, "init failed");
+        return;
+    }
+    if (!move_pidfile(sys, spid, spid, 0644, 4242, to, sizeof(to))) {
+        report("claims as root: fixture", 0, strerror(errno));
+    } else {
+        report("a file owned by another user whose server the kernel says is ours is refused",
+               PMIX_SUCCESS != tool_by_pid(sys, spid, false), "taken");
+    }
+    stop_server(spid, ready, go);
+
+    scratch(sys, sizeof(sys), "sys8");
+    scratch(sess, sizeof(sess), "sess8");
+    spid = start_server(sys, true, sess, true, &ready, &go);
+    if (0 > spid || !server_up(ready)) {
+        report("system file as root: the server starts", 0, "init failed");
+        return;
+    }
+    if (!find_file(sys, "pmix.sys.", "", path, sizeof(path)) ||
+        0 != chown(path, 4242, (gid_t) -1)) {
+        report("system file as root: fixture", 0, "no system file to give away");
+    } else {
+        report("a system server's file owned by a user this process does not list is not taken",
+               PMIX_SUCCESS != tool_to_system(sys), "taken");
+    }
+    stop_server(spid, ready, go);
+}
+
 int main(void)
 {
     const char *tmp = getenv("TMPDIR");
@@ -404,6 +572,7 @@ int main(void)
     test_not_ours();
     test_system_files();
     test_legacy_walk();
+    test_claims();
 
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", base);
     if (0 != system(cmd)) {
