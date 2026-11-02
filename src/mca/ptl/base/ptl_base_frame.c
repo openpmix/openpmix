@@ -121,6 +121,8 @@ pmix_ptl_base_t pmix_ptl_base = {
     .system_tool = false,
     .allow_foreign_tools = false,
     .session_tool = false,
+    .session_rndz_id = UINT32_MAX,
+    .session_rndz_id_given = false,
     .tool_support = false,
     .if_include = NULL,
     .if_exclude = NULL,
@@ -497,6 +499,8 @@ static pmix_status_t pmix_ptl_close(void)
     pmix_ptl_base.system_tool = false;
     pmix_ptl_base.allow_foreign_tools = false;
     pmix_ptl_base.session_tool = false;
+    pmix_ptl_base.session_rndz_id = UINT32_MAX;
+    pmix_ptl_base.session_rndz_id_given = false;
     pmix_ptl_base.tool_support = false;
     pmix_ptl_base.max_write = INT_MAX;
     pmix_ptl_base.pending_cap = 0;

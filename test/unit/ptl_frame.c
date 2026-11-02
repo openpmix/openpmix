@@ -152,15 +152,17 @@ static void test_role_flags_default(void)
 static int cycle(const char *spec, bool first)
 {
     static pmix_server_module_t mymodule = {0};
-    pmix_info_t info[2];
+    pmix_info_t info[3];
     pmix_status_t rc;
     bool yes = true;
+    uint32_t sessid = 4243;
 
     setenv("PMIX_MCA_ptl_base_ipv4_ports", spec, 1);
     if (first) {
         PMIX_INFO_LOAD(&info[0], PMIX_SERVER_ALLOW_FOREIGN_TOOLS, &yes, PMIX_BOOL);
         PMIX_INFO_LOAD(&info[1], PMIX_SERVER_SESSION_SUPPORT, &yes, PMIX_BOOL);
-        rc = PMIx_server_init(&mymodule, info, 2);
+        PMIX_INFO_LOAD(&info[2], PMIX_SESSION_RNDZ_ID, &sessid, PMIX_UINT32);
+        rc = PMIx_server_init(&mymodule, info, 3);
     } else {
         rc = PMIx_server_init(&mymodule, NULL, 0);
     }

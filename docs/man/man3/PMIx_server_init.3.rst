@@ -165,8 +165,18 @@ Role and support attributes
   only by the host's user ID unless ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` is
   given.
 * ``PMIX_SERVER_SESSION_SUPPORT`` (bool) |mdash| the server is the session
-  server: tools asking for one find it through a session-level rendezvous file.
-  Takes effect only together with ``PMIX_SERVER_TOOL_SUPPORT``.
+  server of its session, found by tools through a rendezvous file named by
+  ``PMIX_SESSION_RNDZ_ID``, else by ``PMIX_SESSION_ID``: without either
+  ``PMIx_server_init`` fails. Servers of different
+  sessions share a node; a second server of one session on a node fails
+  ``PMIx_server_init``. Takes effect only together with
+  ``PMIX_SERVER_TOOL_SUPPORT``.
+* ``PMIX_SESSION_RNDZ_ID`` (uint32_t) |mdash| the ID naming the session
+  server's rendezvous file, unique among the session servers on a node; see
+  ``PMIX_SERVER_SESSION_SUPPORT``. The host chooses it, so that it need
+  not change ``PMIX_SESSION_ID``, the session's ID as the scheduler
+  assigned it, to name the file - which is named by ``PMIX_SESSION_ID``
+  when this is not given.
 * ``PMIX_SERVER_GATEWAY`` (bool) |mdash| the server is acting as a gateway that
   can relay operations (e.g., logging) requiring routing to other nodes.
 * ``PMIX_SERVER_SCHEDULER`` (bool) |mdash| the server is hosting the system
@@ -366,39 +376,43 @@ directives:
      - as given
    * - ``PMIX_SERVER_SCHEDULER``
      - ``pmix.sched.<hostname>``
-     - ``PMIX_SYSTEM_TMPDIR``
+     - the system directory (below)
    * - ``PMIX_SERVER_SYS_CONTROLLER``
      - ``pmix.sysctrlr.<hostname>``
-     - ``PMIX_SYSTEM_TMPDIR``
+     - the system directory
    * - ``PMIX_SERVER_TOOL_SUPPORT`` with ``PMIX_SERVER_SYSTEM_SUPPORT``
      - ``pmix.sys.<hostname>``
-     - ``PMIX_SYSTEM_TMPDIR``
+     - the system directory
    * - ``PMIX_SERVER_TOOL_SUPPORT`` with ``PMIX_SERVER_SESSION_SUPPORT``
-     - ``pmix.<hostname>.tool``
-     - ``PMIX_SERVER_TMPDIR``
+     - ``pmix.<hostname>.session.<rendezvous ID>``
+     - ``<PMIX_SYSTEM_TMPDIR>/pmix-user.<uid>``
    * - ``PMIX_SERVER_TOOL_SUPPORT``
      - ``pmix.<hostname>.tool.<pid>`` and ``pmix.<hostname>.tool.<nspace>``
-     - ``PMIX_SERVER_TMPDIR``
+     - ``<PMIX_SYSTEM_TMPDIR>/pmix-user.<uid>``
 
 A scheduler or system controller writes only its own file; the files under
 ``PMIX_SERVER_TOOL_SUPPORT`` are written by any other server that gives it.
 
+The tool files go in a directory of the server's user's own, whatever the
+server's session tmpdir: ``pmix-user.<uid>`` beneath the system tmpdir. The
+server makes it mode 0700 - 0711 with ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``, so
+other users' tools can open the files at their names but not list them. One
+already there is used only if it is a directory of the server's user, not a
+link, that no other user can write; anything else is reported, and the server
+runs on without writing its tool files. The system directory is
+``PMIX_SYSTEM_TMPDIR`` when the host names one; otherwise ``/run/pmix`` for a
+root server (``/var/run/pmix`` where there is no ``/run``), and the server's
+``pmix-user`` directory for any other.
+
 By default each file is readable only by the server's user ID. With
-``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` it is also readable by all users. Either
-way, the mode is subject to the process umask.
+``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` it is also readable by all users.
 
-A missing directory is created with mode 0700 (0755 with
-``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``), again subject to the umask, and is
-removed at finalize. A directory that already exists |mdash| normally the
-temporary directory the server was given, or ``$TMPDIR`` |mdash| is used as
-found. Its permissions are never changed. So if other users cannot search it,
-their tools cannot find the server however the file itself is marked. A host
-that wants foreign tools to connect must give the server a directory they can
-search.
-
-A file at the same name whose recorded PID is no longer running is removed and
-replaced. One whose PID is still running belongs to another server, and
-``PMIx_server_init`` fails rather than take it over.
+A file at the same name that no running server holds is removed and replaced.
+One a running server holds belongs to that server, and ``PMIx_server_init``
+fails rather than take it over: one system server, scheduler or system
+controller per node, one session server per session on a node, and one server
+per namespace. A server whose host names no namespace takes
+``pmix-server-<hostname>-<pid>``.
 
 A file named by ``PMIX_TCP_REPORT_URI`` is not a rendezvous file and none of
 the above applies to it. A file already at that name is reused only if the

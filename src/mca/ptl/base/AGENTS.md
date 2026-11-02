@@ -764,8 +764,32 @@ steady-state events.
 
 The discovery matrix in `connect_to_peer` is the bulk of that file: a
 caller-specified connection **order**, an explicit URI, a rendezvous or
-attachment file, a server pid, a server nspace, or a search for a
-session server. Things to keep straight:
+attachment file, a server pid, a server nspace, a session server's
+rendezvous ID (`PMIX_SESSION_RNDZ_ID`), or a search for a session server.
+Things to keep straight:
+
+- **A session server is named by its rendezvous ID.** `setup_listener`
+  refuses `PMIX_SERVER_SESSION_SUPPORT` without `PMIX_SESSION_RNDZ_ID`
+  or, as the default, `PMIX_SESSION_ID` (`session-server-no-id`) before
+  anything is made, and writes
+  `pmix.<host>.session.<id>` - not optional, so a second server with the
+  ID on the node fails on the held lock (`rndz-name-held`). The ID is the
+  host's, for naming the file only, so a host - a DVM that makes one up -
+  need not pass a value of its own as `PMIX_SESSION_ID`, the scheduler's
+  ID of the session, which clients and tools read. A tool finds the
+  server by `PMIX_SESSION_RNDZ_ID` only: `PMIX_SESSION_ID` to a tool
+  means other things. A tool given an ID looks for that file through
+  `trysearch`, exact. Told
+  nothing, `trysessions` looks in its own `pmix-user` directory only, by
+  the prefix `pmix.<host>.session.`: one server is taken
+  (`take_connection`, shared with `trysearch`), several are refused with
+  their namespaces listed (`too-many-sessions`), and with legacy peers on
+  and none found it falls back to the old `pmix.<host>.tool` search. A
+  tool told nothing therefore no longer finds a server that is not a
+  session server through its pid or namespace file - which the old
+  prefix, `pmix.<host>.tool`, matched. The default server namespace,
+  when the host names none, is `pmix-server-<host>-<pid>`, so the file
+  by namespace is one per server.
 
 - **Where files are looked for is `pmix_ptl_base_rndz_dirs()`'s.** A
   search (`trysearch`) looks in each `pmix-user.<uid>` directory - our

@@ -9,8 +9,8 @@
  * Where rendezvous files are written and looked for - see
  * docs/how-things-work/ptl.rst, "Rendezvous files".
  *
- * A server writes the files tools find it by - "<host>.tool", by pid, by
- * namespace - in a directory of its user's own beneath the system tmpdir,
+ * A server writes the files tools find it by - "<host>.session.<id>" for
+ * a session-level server, by pid, by namespace - in a directory of its user's own beneath the system tmpdir,
  * pmix-user.<uid>, whatever its session tmpdir is: so only that user can
  * put a file at those names, and a tool has one place to look. A root
  * system server, scheduler or system controller writes its file in
