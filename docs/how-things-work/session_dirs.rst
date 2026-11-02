@@ -37,10 +37,15 @@ The following attributes can be used to pass session directory information to th
   connection information - e.g., a launcher to store contact information so that a debugger
   can attach to it.
 
-* ``PMIX_TDIR_RMCLEAN``: the host environment (often known as the "resource manager" or "RM") will
-  cleanup the session directories. In the absence of this attribute, the PMIx library will
-  remove the files it wrote to any session directory it created, and then the directory itself
-  if nothing else is in it.
+* ``PMIX_TDIR_RMCLEAN``: information for the job, which a host passes in a namespace's
+  registration and a process can retrieve with ``PMIx_Get``: the host environment (often known
+  as the "resource manager" or "RM") will remove the directories and files it created in
+  ``PMIX_TMPDIR``. In practice a host that sets it - Slurm, for one - removes everything below
+  the session directory when the job ends. It does not change what the PMIx library does:
+  set or not, the library removes the files it wrote to any session directory it created, and
+  then the directory itself if nothing else is in it. That is harmless alongside the host's own
+  removal - whichever runs second finds the files gone - and keeps the library's sockets and
+  rendezvous files from being left behind should the host's removal fail or be skipped.
 
 These same attributes can be used in calls to ``PMIx_Get`` by application processes to retrieve
 the session directory locations for their own use.

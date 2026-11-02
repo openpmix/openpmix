@@ -289,7 +289,10 @@ be used with ``configure``:
   parameter, or its host's ``PMIX_SERVER_LEGACY_PEERS`` attribute, says
   so; the parameter defaults to ``false``. Without it - the default - a
   server never takes them, and asking for them fails its init: clients
-  and tools are to be updated along with their servers.
+  and tools are to be updated along with their servers. A client of an
+  earlier release - an Open MPI 5 process, say - run by a server that does
+  not take legacy peers does not fail: it comes up as a singleton (see
+  :ref:`clients of earlier releases <label-conn-earlier-clients>`).
 
 * ``--disable-show-load-errors-by-default``:
   Set the default value of the ``mca_base_component_show_load_errors``
