@@ -325,7 +325,11 @@ most specific to least:
   file named for its own PID, which collides only with a server in
   another PID namespace and which it then does not write: a tool here
   that looks for this server by PID finds that one, and checks it as it
-  checks any. Otherwise it judges a file at the name by its PID, as
+  checks any. A file at the name that another user owns - root's too,
+  unless the server is root - is foreign, whatever its PID or lock
+  says: it is never reclaimed nor taken as in use, and the server writes
+  no file at that name, says why (``rndz-file-foreign``) and runs on.
+  Otherwise it judges a file at the name by its PID, as
   before. At finalize it removes each of its files only while it is still
   the file it wrote, and its lock file only while it is the one it
   holds.

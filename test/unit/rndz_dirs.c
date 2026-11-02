@@ -25,6 +25,8 @@
  *     root, one owned by another user leads to a server the kernel says
  *     is not that user, refused, and a system server's file owned by a
  *     user the tool does not list is not taken
+ *   - as root, a file of another user's at a server's name is left alone:
+ *     the server starts, writes no file there, and does not touch it
  *
  * Each server and tool runs in a child of its own.
  */
@@ -547,6 +549,52 @@ static void test_claims(void)
     stop_server(spid, ready, go);
 }
 
+static void test_foreign(void)
+{
+    char sys[700], sess[700], path[1024], buf[64];
+    const char *body = "another user's file\n";
+    struct stat st;
+    pid_t spid;
+    int ready, go, fd;
+    ssize_t n;
+
+    if (0 != geteuid()) {
+        fprintf(stdout, "  SKIP: another user's file at a server's name - not running as "
+                        "root\n");
+        return;
+    }
+    scratch(sys, sizeof(sys), "sys9");
+    scratch(sess, sizeof(sess), "sess9");
+    /* learn the name: the system server's file, which it removes again */
+    spid = start_server(sys, true, sess, true, &ready, &go);
+    if (0 > spid || !server_up(ready) || !find_file(sys, "pmix.sys.", "", path, sizeof(path))) {
+        report("foreign: fixture", 0, "no system file to learn the name from");
+        return;
+    }
+    stop_server(spid, ready, go);
+    fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0644);
+    if (0 > fd || (ssize_t) strlen(body) != write(fd, body, strlen(body)) ||
+        0 != fchown(fd, 4242, 4242)) {
+        report("foreign: fixture", 0, strerror(errno));
+        return;
+    }
+    close(fd);
+    spid = start_server(sys, true, sess, true, &ready, &go);
+    report("a server finding another user's file at its name starts",
+           0 < spid && server_up(ready), "init failed");
+    stop_server(spid, ready, go);
+    fd = open(path, O_RDONLY);
+    n = (0 > fd) ? -1 : read(fd, buf, sizeof(buf) - 1);
+    if (0 <= fd) {
+        close(fd);
+    }
+    buf[(0 < n) ? n : 0] = '\0';
+    report("...and leaves the file as it was",
+           0 == stat(path, &st) && 4242 == st.st_uid && 0 == strcmp(buf, body),
+           "it was changed or removed");
+    unlink(path);
+}
+
 int main(void)
 {
     const char *tmp = getenv("TMPDIR");
@@ -573,6 +621,7 @@ int main(void)
     test_system_files();
     test_legacy_walk();
     test_claims();
+    test_foreign();
 
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", base);
     if (0 != system(cmd)) {

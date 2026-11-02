@@ -418,3 +418,15 @@ kernel reports it is
 
 but it was looked for, and its rendezvous file found, as pid %lu. The
 process answering at that address is not the one asked for.
+#
+[rndz-file-foreign]
+This PMIx server did not write its %s rendezvous file
+
+  %s
+
+because a file of another user's (uid %lu) is at that name. A server
+never takes over, or removes, another user's file, and does not count
+it as another server of its own. It runs on: its clients reach it by
+the address they are given, but tools cannot find it by that file.
+
+The file's owner, or an administrator, can remove it.
