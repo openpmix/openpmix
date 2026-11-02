@@ -86,6 +86,9 @@ pmix_ptl_base_t pmix_ptl_base = {
     .uri = NULL,
     .source_file = NULL,
     .source_uri = NULL,
+    .rndz_owner_given = false,
+    .rndz_owner = (uid_t) -1,
+    .rndz_pid = 0,
     .urifile = NULL,
     .sysctrlr_filename = NULL,
     .scheduler_filename = NULL,
@@ -1047,6 +1050,8 @@ static void ccon(pmix_connection_t *p)
     p->bfrops = NULL;
     p->psec = NULL;
     p->vouched = false;
+    p->owner_known = false;
+    p->owner = (uid_t) -1;
 }
 static void dcon(pmix_connection_t *p)
 {

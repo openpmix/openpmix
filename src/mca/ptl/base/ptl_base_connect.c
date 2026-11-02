@@ -548,6 +548,21 @@ static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
             return rc;
         }
         cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+        /* A system role's file - at a fixed name - is believed only of a
+         * server run by root, our own user, or a user
+         * ptl_base_server_access names; and its server must be its owner */
+        if (rndz) {
+            if (!pmix_ptl_base_system_owner_ok(cn)) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "ptl:tool: %s is owned by uid %lu, whose system server "
+                                    "this process does not take", filename,
+                                    (unsigned long) cn->owner);
+                PMIX_LIST_DESTRUCT(&connections);
+                return PMIX_ERR_NOT_FOUND;
+            }
+            pmix_ptl_base.rndz_owner_given = true;
+            pmix_ptl_base.rndz_owner = cn->owner;
+        }
         peer->protocol = PMIX_PROTOCOL_V2;
         PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
         pmix_ptl_base.server_release_vouched = cn->vouched;
@@ -602,6 +617,9 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
             return rc;
         }
         cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+        /* a file found by a search says whose server it is by its owner */
+        pmix_ptl_base.rndz_owner_given = cn->owner_known;
+        pmix_ptl_base.rndz_owner = cn->owner;
         peer->protocol = PMIX_PROTOCOL_V2;
         PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
         pmix_ptl_base.server_release_vouched = cn->vouched;
@@ -871,6 +889,8 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
     pmix_ptl_base.source_file = NULL;
     free(pmix_ptl_base.source_uri);
     pmix_ptl_base.source_uri = NULL;
+    pmix_ptl_base.rndz_owner_given = false;
+    pmix_ptl_base.rndz_pid = 0;
 
     /* check any provided directives
      * to see where they want us to connect to */
@@ -1265,6 +1285,8 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:tool:tool searching for given session server %s", filename);
+        /* the server we take must be that process, where the kernel says */
+        pmix_ptl_base.rndz_pid = pid;
         rc = trysearch(peer, &nspace, &rank, &suri, filename, true, iptr, niptr, optional);
         free(filename);
         if (PMIX_SUCCESS != rc) {
@@ -1383,6 +1405,8 @@ cleanup:
     /* an identity we were told to expect was for this connect alone */
     pmix_ptl_base.server_expect_given = false;
     pmix_ptl_base.server_release_vouched = false;
+    pmix_ptl_base.rndz_owner_given = false;
+    pmix_ptl_base.rndz_pid = 0;
     *suriout = suri;
     if (NULL != nspace) {
         free(nspace);

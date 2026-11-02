@@ -781,6 +781,18 @@ session server. Things to keep straight:
   `PMIX_QUERY_AVAIL_SERVERS` query (`pmix_ptl_base_query_servers`) uses
   the same directories, walking the system tmpdir only then, and not
   looking in a `pmix-user` directory below it twice.
+- **A file found is believed only of its writer.** `parse_conn_file`
+  passes over a file found by a search or at a fixed name that is not
+  `pmix_ptl_base_rndz_file_sound()`, and records its owner in the
+  `pmix_connection_t` (`owner_known`/`owner`). `trysearch` and `tryfile`
+  (fixed names - the system roles) set `pmix_ptl_base.rndz_owner_given`
+  and `rndz_owner` from it, and the lookup by pid `rndz_pid`; all three
+  are reset by every connect, and the event-driven connect copies them
+  into the op (`claim`). `check_peer` then refuses a server the kernel
+  names as another user (`server-not-file-owner`) or, on the local
+  socket, another process (`server-not-file-pid`). A system role's file
+  must also be `pmix_ptl_base_system_owner_ok()`: root's, our own user's,
+  or a listed user's - in `tryfile` and the singleton's lookup.
 - **The server's side is `write_tool_files`/`write_system_files` in the
   listener.** The tool files go through a descriptor from
   `pmix_ptl_base_open_user_dir()` (`write_rndz_file`'s `given_dirfd`),

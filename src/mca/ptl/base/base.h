@@ -123,6 +123,14 @@ struct pmix_ptl_base_t {
      * when the server will not take us at that address */
     char *source_file;
     char *source_uri;
+    /* A server found through a rendezvous file we searched for, or at a
+     * fixed name, is the file's: the kernel must report it running as the
+     * file's owner (rndz_owner), and - for a file by pid - as that process
+     * (rndz_pid, 0 for none), where the kernel names one. For one connect -
+     * see pmix_ptl_base_check_server */
+    bool rndz_owner_given;
+    uid_t rndz_owner;
+    pid_t rndz_pid;
     char *server_access;
     uid_t *access_uids;
     size_t naccess_uids;
@@ -447,6 +455,8 @@ typedef struct {
     char *bfrops;    // the server's wire formats, if its file listed them
     char *psec;      // the server's security mechanisms, if its file listed them
     bool vouched;    // its file says it may be connected to unnamed - see pmix_ptl_base_check_server
+    bool owner_known; // the file was opened, and its owner is...
+    uid_t owner;      // ...this user - see pmix_ptl_base.rndz_owner_given
 } pmix_connection_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_connection_t);
 
@@ -681,6 +691,11 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search_depth(char *dirname, char *pre
                                                         pmix_info_t info[], size_t ninfo,
                                                         bool optional,
                                                         pmix_list_t *connections, int depth);
+
+/* Whether a system role's rendezvous file is one whose server a reader
+ * takes: owned by root, our own user, or a user ptl_base_server_access
+ * names */
+PMIX_EXPORT bool pmix_ptl_base_system_owner_ok(const pmix_connection_t *cn);
 
 PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, bool exact,
                                                   pmix_info_t info[], size_t ninfo, bool optional,
