@@ -105,3 +105,16 @@ A launcher can write them itself, with its own permissions: one whose
 PMIx library supports PMIX_IOF_FILE_WRITER does so for the jobs it
 starts. Updating the launcher, or running it against a server that runs
 as root or as the job's owner, writes the files.
+#
+[group-id-in-use]
+The PMIx server %s:%u was told that a group formed under an ID one of
+its clients' groups still holds:
+
+  Group ID:            %s
+  Members it holds:    %lu
+  Members reported:    %lu
+
+A group ID belongs to one group until that group is destructed, so the
+host should have refused the new one. This server keeps the group it
+holds; its clients in the new group are told the construct failed
+(PMIX_ERR_EXISTS) where it reports to them.

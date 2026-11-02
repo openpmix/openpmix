@@ -13,7 +13,11 @@
  * A group is recorded when it forms: a synchronous construct when the host
  * answers it, an invited group when it completes - by the leader's server
  * as it announces the group, and by any other server with a member among
- * its clients when the host delivers the announcement. A member that leaves is
+ * its clients when the host delivers the announcement. An ID is the one
+ * group's until it is destructed: the same formation reported again - the
+ * leader's server hearing its own announcement, or a host answering each
+ * bootstrap up-call apart - changes nothing, and another membership under
+ * an ID still held is refused, the record kept. A member that leaves is
  * removed, a destruct drops the group, and so does the departure of the
  * last member that is a client here - noticed when that member leaves, or
  * when its job is deregistered.
@@ -37,6 +41,7 @@
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_show_help.h"
 
 #include "pmix_server_ops.h"
 
@@ -92,6 +97,44 @@ pmix_group_t *pmix_server_grp_find(const char *grpid)
     return NULL;
 }
 
+/* Whether a membership is the one recorded, in whatever order either lists
+ * it: a synchronous construct keeps the host's order, an invited group is
+ * sorted, and the same formation can reach us both ways */
+static bool same_membership(const pmix_group_t *grp, const pmix_proc_t *members, size_t nmembers)
+{
+    pmix_proc_t *a = NULL, *b = NULL;
+    bool same = false;
+    size_t n;
+
+    if (grp->nmbrs != nmembers) {
+        return false;
+    }
+    PMIX_PROC_CREATE(a, nmembers);
+    PMIX_PROC_CREATE(b, nmembers);
+    if (NULL == a || NULL == b) {
+        goto done;
+    }
+    memcpy(a, grp->members, nmembers * sizeof(pmix_proc_t));
+    memcpy(b, members, nmembers * sizeof(pmix_proc_t));
+    qsort(a, nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
+    qsort(b, nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
+    for (n = 0; n < nmembers; n++) {
+        if (!same_proc(&a[n], &b[n])) {
+            goto done;
+        }
+    }
+    same = true;
+
+done:
+    if (NULL != a) {
+        PMIX_PROC_FREE(a, nmembers);
+    }
+    if (NULL != b) {
+        PMIX_PROC_FREE(b, nmembers);
+    }
+    return same;
+}
+
 pmix_status_t pmix_server_grp_record(const char *grpid, const pmix_proc_t *members,
                                      size_t nmembers, size_t ctxid, bool notterm, bool sort)
 {
@@ -117,6 +160,25 @@ pmix_status_t pmix_server_grp_record(const char *grpid, const pmix_proc_t *membe
     }
 
     grp = pmix_server_grp_find(grpid);
+    if (NULL != grp && NULL != grp->members) {
+        PMIX_PROC_FREE(mbrs, nmembers);
+        if (!same_membership(grp, members, nmembers)) {
+            /* the host completed a construct over an ID a group still holds
+             * here - one it should have refused. Keep the group that is,
+             * and say so: its members would otherwise be answered as
+             * someone else's */
+            pmix_show_help("help-pmix-server.txt", "group-id-in-use", true,
+                           pmix_globals.myid.nspace, pmix_globals.myid.rank, grpid,
+                           (unsigned long) grp->nmbrs, (unsigned long) nmembers);
+            return PMIX_ERR_EXISTS;
+        }
+        /* the same formation again: what it adds is a context ID the first
+         * report did not carry */
+        if (SIZE_MAX == grp->ctxid) {
+            grp->ctxid = ctxid;
+        }
+        return PMIX_SUCCESS;
+    }
     if (NULL == grp) {
         grp = PMIX_NEW(pmix_group_t);
         if (NULL == grp) {
@@ -130,9 +192,6 @@ pmix_status_t pmix_server_grp_record(const char *grpid, const pmix_proc_t *membe
             return PMIX_ERR_NOMEM;
         }
         pmix_list_append(&groups, &grp->super);
-    } else if (NULL != grp->members) {
-        /* the same ID formed again - the new membership is the group */
-        PMIX_PROC_FREE(grp->members, grp->nmbrs);
     }
     grp->members = mbrs;
     grp->nmbrs = nmembers;
@@ -479,8 +538,10 @@ void pmix_server_grp_host_event(pmix_status_t status, const pmix_proc_t *source,
 
     /* PMIX_GROUP_CONSTRUCT_COMPLETE: an invited group, announced by the
      * leader's server through the host - clients cannot raise it (see
-     * server_only_group_event). Record it if any of its members is ours;
-     * the latest announcement of an ID is the group */
+     * server_only_group_event). Record it if any of its members is ours.
+     * Another membership under an ID still held here is refused and said
+     * so by the record; the members it would have made ours have heard
+     * the announcement, but this server answers for the group that is */
     if (PMIX_GROUP_CONSTRUCT_COMPLETE != status || NULL == members) {
         return;
     }
