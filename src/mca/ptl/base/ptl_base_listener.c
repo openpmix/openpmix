@@ -1368,6 +1368,14 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     PMIX_HIDE_UNUSED_PARAMS(legacy_from);
 #endif
 
+    /* the tmpdirs are where our socket's and pmix-user directories go,
+     * and clients reach the socket by its path: one another user could
+     * change is refused before anything is made in it */
+    rc = pmix_ptl_base_check_tmpdirs();
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
     lt = &pmix_ptl_base.listener;
     lt->varname = pmix_bfrops_base_get_components();
     lt->protocol = PMIX_PROTOCOL_V2;

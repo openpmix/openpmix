@@ -339,6 +339,18 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                       &pmix_ptl_base.legacy_peers_param);
 
+    pmix_ptl_base.tmpdir_check = "refuse";
+    (void) pmix_mca_base_var_register("pmix", "ptl", "base", "tmpdir_check",
+                                      "What a server does when another user could change its "
+                                      "tmpdirs - a directory on their path is not root's or its "
+                                      "own, or others may write it without the sticky bit: "
+                                      "\"refuse\" to start (the default), \"warn\" and run on, or "
+                                      "\"silent\": do not check - for a container's own "
+                                      "world-writable volume, such as a Kubernetes emptyDir. "
+                                      "Clients and tools check their server either way",
+                                      PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                      &pmix_ptl_base.tmpdir_check);
+
     (void) pmix_mca_base_var_register("pmix", "ptl", "base", "max_pending_connections",
                                       "Most connections a server holds while their connection "
                                       "requests are still arriving, and separately the most tools "

@@ -137,7 +137,8 @@ Server identity and directories
   ``PMIX_SERVER_TMPDIR`` environment variable is used, then ``TMPDIR``,
   ``TEMP`` and ``TMP``, and finally ``/tmp``. The server's local socket is
   made here too, and its path must fit a socket address (see `The local
-  socket`_). The directory must already exist.
+  socket`_). The directory must already exist. Its path is checked at init,
+  with the system tmpdir's: see `The tmpdirs`_.
 * ``PMIX_SYSTEM_TMPDIR`` (char\*) |mdash| temporary directory in which the
   server is to place its system-level rendezvous files (system server,
   scheduler, system controller). If not given, the ``PMIX_SYSTEM_TMPDIR``
@@ -402,6 +403,25 @@ replaced. One whose PID is still running belongs to another server, and
 A file named by ``PMIX_TCP_REPORT_URI`` is not a rendezvous file and none of
 the above applies to it: it is created mode 0644 - readable by all, writable
 only by the server's user - and removed at finalize.
+
+The tmpdirs
+^^^^^^^^^^^
+
+Before it makes anything in them, the server checks the path of its session
+and system tmpdirs, links resolved, from ``/``. Every directory above a tmpdir
+must be owned by root, the server's user, or a user from outside the server's
+user namespace, and must not be writable by anyone else unless it has the
+sticky bit, or its group's only member is its owner. The tmpdir itself may be
+any user's - a root server is often given a directory it made for the job's
+user - provided only its owner can write it; or else it must pass the rule
+for the directories above, as ``/tmp`` does. Otherwise another user could
+move the server's directories aside, and its clients would fail to connect.
+
+A path that fails makes ``PMIx_server_init`` fail, with a message naming the
+directory. The ``ptl_base_tmpdir_check`` MCA parameter changes that:
+``refuse`` (the default), ``warn`` - report it and continue - or ``silent``,
+not to check. The last two are for a directory no other user shares that the
+rule misjudges, such as a Kubernetes ``emptyDir`` mounted at ``/tmp``.
 
 
 .. seealso::
