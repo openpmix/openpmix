@@ -814,6 +814,8 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
     pmix_ptl_base.uri = NULL;
     free(pmix_ptl_base.source_file);
     pmix_ptl_base.source_file = NULL;
+    free(pmix_ptl_base.source_uri);
+    pmix_ptl_base.source_uri = NULL;
 
     /* check any provided directives
      * to see where they want us to connect to */
