@@ -97,6 +97,30 @@ pmix_group_t *pmix_server_grp_find(const char *grpid)
     return NULL;
 }
 
+/* A group ID names a group, and a namespace names a job; a process is
+ * addressed by either, so one string must not be both. A namespace counts
+ * here when it is ours, the host registered it (nlocalprocs is set), or a
+ * client or tool of it is known (a rank is listed) - not when the only
+ * sign of it is data a dmodex reply brought for procs elsewhere */
+bool pmix_server_grp_id_is_nspace(const char *grpid)
+{
+    pmix_namespace_t *ns;
+
+    if (PMIx_Nspace_invalid(grpid)) {
+        return false;
+    }
+    if (same_nspace(grpid, pmix_globals.myid.nspace)) {
+        return true;
+    }
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (same_nspace(ns->nspace, grpid) &&
+            (SIZE_MAX != ns->nlocalprocs || 0 < pmix_list_get_size(&ns->ranks))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Whether a membership is the one recorded, in whatever order either lists
  * it: a synchronous construct keeps the host's order, an invited group is
  * sorted, and the same formation can reach us both ways */

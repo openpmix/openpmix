@@ -983,6 +983,9 @@ PMIX_EXPORT pmix_status_t pmix_server_grp_record(const char *grpid, const pmix_p
                                                  size_t nmembers, size_t ctxid, bool notterm,
                                                  bool sort);
 PMIX_EXPORT pmix_group_t *pmix_server_grp_find(const char *grpid);
+/* whether a group ID is the name of a job this server knows: its own, one
+ * the host registered, or one with clients or tools here */
+PMIX_EXPORT bool pmix_server_grp_id_is_nspace(const char *grpid);
 PMIX_EXPORT void pmix_server_grp_drop(const char *grpid);
 /* a member left - and the group is dropped once no member is local */
 PMIX_EXPORT void pmix_server_grp_remove_member(const char *grpid, const pmix_proc_t *proc);

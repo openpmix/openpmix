@@ -446,6 +446,13 @@ int main(int argc, char **argv)
                PMIX_ERR_EXISTS == rc);
         report("...and invites nobody", !saw_outcome("srvinv-g1", 6));
 
+        /* nor may it take the name of a job the server knows */
+        reset_host();
+        rc = invite(pmix_globals.myid.nspace, procs, 2);
+        report("an invitation under the server's own namespace is refused",
+               PMIX_ERR_EXISTS == rc);
+        report("...and invites nobody", !saw_outcome(pmix_globals.myid.nspace, 6));
+
         /* a group takes the ID while the invitation is out */
         reset_host();
         rc = invite("srvinv-g5", procs, 2);
