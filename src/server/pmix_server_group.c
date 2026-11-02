@@ -678,7 +678,12 @@ reply:
         NULL != members && 0 < nmembers) {
         rc = pmix_server_grp_record(id, members, nmembers, ctxid_given ? ctxid : SIZE_MAX,
                                     grp_notify_termination(blk), false);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_EXISTS == rc) {
+            /* another group holds the ID here - the record said so. Our
+             * participants are told the construct failed: answered as a
+             * success, they would name a group whose record is another's */
+            scd->status = PMIX_ERR_EXISTS;
+        } else if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
     } else if (PMIX_GROUP_DESTRUCT == op) {
@@ -1528,7 +1533,19 @@ static void invite_broadcast(pmix_server_invite_t *inv)
     /* record it for our clients before they hear of it - see
      * pmix_server_grpmbr.c */
     rc = pmix_server_grp_record(inv->grpid, members, nmembers, inv->ctxid, false, true);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_ERR_EXISTS == rc) {
+        /* a group formed under this ID while the invitation was out, and
+         * holds it here: the record said so. Abort for everyone who joined
+         * rather than announce a second group under the one ID - info[0]
+         * already ranges them */
+        PMIX_INFO_DESTRUCT(&info[1]);
+        PMIX_INFO_LOAD(&info[1], PMIX_GROUP_ID, inv->grpid, PMIX_STRING);
+        invite_raise(inv, PMIX_GROUP_CONSTRUCT_ABORT, info, 2);
+        PMIX_INFO_FREE(info, ninfo);
+        PMIX_PROC_FREE(members, nmembers);
+        invite_done(inv);
+        return;
+    } else if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }
 
@@ -1963,7 +1980,10 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         goto done;
     }
 
-    if (NULL != find_invite(grpid)) {
+    /* an invitation already out under this ID, or a group this server
+     * holds under it - which keeps its ID until it is destructed - is
+     * refused before anyone is invited */
+    if (NULL != find_invite(grpid) || NULL != pmix_server_grp_find(grpid)) {
         rc = PMIX_ERR_EXISTS;
         goto done;
     }
@@ -2362,7 +2382,7 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     bool follower = false;
     bool addmembers = false;
     bool havenotterm = false;
-    pmix_group_t *grp;
+    pmix_group_t *grp = NULL;
     uint32_t tmo = 0;
 
     pmix_output_verbose(2, pmix_server_globals.group_output,
@@ -2566,18 +2586,47 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         }
     }
 
+    /* A construct of an ID this server holds a group for is refused before
+     * the host runs it: the ID is in use until the group is destructed, and
+     * forming it again would take over the record of the group that is. A
+     * follower's contribution names no procs and joins a construct another
+     * participant started, and an "add members" construct lists only some
+     * of its participants, so neither is screened here - should the host
+     * complete such a construct over an ID still held, the record refuses
+     * it (pmix_server_grp_record). That a group ID is unique across the
+     * system - and never a namespace - is the host's to ensure */
+    if (PMIX_GROUP_CONSTRUCT == op && !follower && !addmembers &&
+        NULL != pmix_server_grp_find(grpid)) {
+        rc = PMIX_ERR_EXISTS;
+        goto error;
+    }
+
     /* The group's members, as this server holds them - see
-     * pmix_server_grpmbr.c. A destruct from a client that relies on us for
-     * the membership (v7.0 on) names no procs: the group supplies them,
-     * and the failure policy it was constructed with unless the destruct
-     * gives its own. Otherwise a participant may be named as a group -
-     * except in an "add members" or bootstrap construct, which lists only
-     * some of its participants, or by a follower, which lists none */
-    if (PMIX_GROUP_DESTRUCT == op && 0 == nprocs) {
+     * pmix_server_grpmbr.c. A destruct of a group held here runs over its
+     * recorded members, whatever procs the client named, and only a member
+     * may ask for it: a client naming a list of its own - itself alone, say
+     * - must not end a group it is not in, nor end one for the members it
+     * left out, and every member's server holds the same record, so all
+     * hand the host the same list. A client of v7.0 on names no procs and
+     * relies on this; one of an earlier release names a list that may be
+     * stale, which this also cures. The failure policy is the group's
+     * unless the destruct gives its own. Otherwise a participant may be
+     * named as a group - except in an "add members" or bootstrap
+     * construct, which lists only some of its participants, or by a
+     * follower, which lists none */
+    if (PMIX_GROUP_DESTRUCT == op) {
         grp = pmix_server_grp_find(grpid);
-        if (NULL == grp || 0 == grp->nmbrs) {
-            rc = PMIX_ERR_NOT_FOUND;
-            goto error;
+        if (NULL != grp && 0 == grp->nmbrs) {
+            grp = NULL;
+        }
+    }
+    if (PMIX_GROUP_DESTRUCT == op && NULL == grp && 0 == nprocs) {
+        rc = PMIX_ERR_NOT_FOUND;
+        goto error;
+    } else if (NULL != grp) {
+        if (NULL != procs) {
+            PMIX_PROC_FREE(procs, nprocs);
+            procs = NULL;
         }
         PMIX_PROC_CREATE(procs, grp->nmbrs);
         if (NULL == procs) {
@@ -2597,9 +2646,11 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             goto error;
         }
     }
-    /* the requester must be one of the participants. The client library
-     * checks this too, except when it relies on us for its groups */
-    if (!follower && !bootstrap && !addmembers &&
+    /* the requester must be one of the participants - of a destruct of a
+     * group held here, one of its recorded members, whatever directives
+     * came with it. The client library checks this too, except when it
+     * relies on us for its groups */
+    if ((NULL != grp || (!follower && !bootstrap && !addmembers)) &&
         !pmix_server_grp_is_participant(peer, procs, nprocs)) {
         rc = PMIX_ERR_NOT_A_MEMBER;
         goto error;
