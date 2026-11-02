@@ -1257,7 +1257,10 @@ interface (a loopback one, or none), binds, and makes the URI.
   directive replaces `report_uri` later. The listener therefore records
   the name it actually wrote when it writes it. An empty value reports
   nowhere; it used to read as pipe descriptor 0, and stdin was written
-  and closed.
+  and closed. A file already at the name is reused only if `geteuid()`
+  owns it (`report-file-not-ours` otherwise, fatal: the caller is
+  waiting for it), and is `fchmod`ed to 0644 before it is truncated, so
+  neither the umask nor an earlier run sets its mode.
 - **The tmpdirs' paths are checked before anything is made in them**
   (`pmix_ptl_base_check_tmpdirs()`, `ptl_base_tmpdir.c`, called from
   `setup_listener` once the directives are read). The rule is in the

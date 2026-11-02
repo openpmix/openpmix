@@ -1510,9 +1510,26 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                                                O_WRONLY | O_CREAT,
                                                S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
                 if (0 <= fd) {
+                    /* One already there is reused only if it is ours: a
+                     * file of anyone else's - root's too, unless we are
+                     * root - would stay theirs, to rewrite as they like
+                     * once we had written it. The name is the caller's,
+                     * and the caller is waiting for the file, so say so
+                     * and stop rather than skip it. Ours, or new, it is
+                     * given its mode whatever the umask or an earlier
+                     * run made it: we write it, anyone may read it */
+                    if (0 == fstat(fd, &sbuf) && S_ISREG(sbuf.st_mode) &&
+                        geteuid() != sbuf.st_uid) {
+                        pmix_show_help("help-ptl-base.txt", "report-file-not-ours", true,
+                                       pmix_ptl_base.report_uri, (unsigned long) sbuf.st_uid);
+                        close(fd);
+                        rc = PMIX_ERR_SILENT;
+                        goto sockerror;
+                    }
                     if (0 != fstat(fd, &sbuf) || !S_ISREG(sbuf.st_mode) ||
-                        1 != sbuf.st_nlink || 0 != ftruncate(fd, 0) ||
-                        NULL == (fp = fdopen(fd, "w"))) {
+                        1 != sbuf.st_nlink ||
+                        0 != fchmod(fd, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) ||
+                        0 != ftruncate(fd, 0) || NULL == (fp = fdopen(fd, "w"))) {
                         close(fd);
                         fp = NULL;
                     }

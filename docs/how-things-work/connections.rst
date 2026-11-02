@@ -231,7 +231,9 @@ uses, and ``tcp-``/``tcp+`` are for a person pointing a reader of an
 earlier release at this server. A program reading the pipe and linked to
 an earlier release - Open MPI's, say - takes the first string, as it
 always has; one linked to this release takes the second. A file is
-created mode 0644: only the server's user can write it.
+left mode 0644: only the server's user can write it. One already at the
+name is reused only if it is that user's; another user's stops the
+server starting.
 
 Rendezvous files
 ^^^^^^^^^^^^^^^^
