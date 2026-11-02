@@ -254,6 +254,13 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp:client attempt connect to %s:%u at %s", nspace, rank, suri);
 
+    /* the address we were given, should the server not take us there -
+     * a URI, never a file, on this path */
+    free(pmix_ptl_base.source_file);
+    pmix_ptl_base.source_file = NULL;
+    free(pmix_ptl_base.source_uri);
+    pmix_ptl_base.source_uri = strdup(evar);
+
     rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
     if (PMIX_SUCCESS != rc) {
         if (NULL != localuri && PMIX_ERR_UNREACH == rc) {

@@ -129,9 +129,13 @@ TCP peer at one.
   where the kernel cannot name them; a peer of this release has the local
   socket, where it can. Only a server of this release sends -77, and only
   to a peer of this release, so no earlier release sees it. The peer's
-  `server_status()` prints `local-uri-required-uri` (a URI passed
-  directly, `pmix_ptl_base.uri`) or `local-uri-required-file` (the file
-  `tryfile` read, `pmix_ptl_base.source_file`). A unit test that used a
+  `server_status()` prints `local-uri-required-file` when the address
+  came from a file (`pmix_ptl_base.source_file`, set by `tryfile`), and
+  otherwise `local-uri-required-uri` naming the URI given
+  (`pmix_ptl_base.source_uri` - set by the client path,
+  `ptl_base_client.c`, from a `PMIX_SERVER_URI` directive or the
+  environment - else a tool's `pmix_ptl_base.uri`). Both are reset by
+  every connect. A unit test that used a
   peer of this release on TCP as a stand-in for an older one now claims
   an earlier release (`ptl_accept.c`'s `eff_version()`/`eff_bfrops()`), or
   expects -77 as the sign the peer got past its own check of the server

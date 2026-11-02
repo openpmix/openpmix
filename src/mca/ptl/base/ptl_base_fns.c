@@ -2312,13 +2312,18 @@ static pmix_status_t server_status(uint32_t u32)
          * file that gave us only TCP is a hand-made one, or one read on
          * another host than the server's: the server's own report file
          * names its local socket too */
-        if (NULL != pmix_ptl_base.uri && 0 != strncmp(pmix_ptl_base.uri, "file:", 5)) {
+        if (NULL != pmix_ptl_base.source_file) {
+            pmix_show_help("help-ptl-base.txt", "local-uri-required-file", true,
+                           pmix_ptl_base.source_file);
+        } else if (NULL != pmix_ptl_base.source_uri) {
+            pmix_show_help("help-ptl-base.txt", "local-uri-required-uri", true,
+                           pmix_ptl_base.source_uri);
+        } else if (NULL != pmix_ptl_base.uri && 0 != strncmp(pmix_ptl_base.uri, "file:", 5)) {
             pmix_show_help("help-ptl-base.txt", "local-uri-required-uri", true,
                            pmix_ptl_base.uri);
         } else {
-            pmix_show_help("help-ptl-base.txt", "local-uri-required-file", true,
-                           (NULL != pmix_ptl_base.source_file) ? pmix_ptl_base.source_file
-                                                               : "(the server's file)");
+            pmix_show_help("help-ptl-base.txt", "local-uri-required-uri", true,
+                           "(the address given)");
         }
         return reply;
     }
