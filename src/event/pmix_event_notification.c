@@ -1496,6 +1496,13 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                         if (!pmix_notify_check_range(&rngtrk, &proc)) {
                             continue;
                         }
+                    } else if (NULL == cd->targets && PMIX_RANGE_NAMESPACE == cd->range &&
+                               !PMIX_CHECK_NSPACE(cd->source.nspace,
+                                                  pr->peer->info->pname.nspace)) {
+                        /* a namespace range is the source's namespace,
+                         * whoever raised the event, as in the replay of a
+                         * cached event (pmix_server_events.c) */
+                        continue;
                     }
                     pmix_output_verbose(2, pmix_server_globals.event_output,
                                         "pmix_server: notifying client %s:%u on status %s",

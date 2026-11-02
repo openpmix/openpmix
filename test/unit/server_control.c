@@ -153,6 +153,12 @@
  *      drop we cannot make, and the file must survive - paired with the
  *      same removal under our own identity, so the case cannot pass by
  *      the epilog simply never working.
+ *
+ *   monitor: the event a client's monitor may raise
+ *      A request naming a PMIx code other than the monitor codes is
+ *      refused before it goes anywhere; the monitor codes, PMIX_SUCCESS
+ *      and the user's own codes (beyond PMIX_EXTERNAL_ERR_BASE, or
+ *      positive) reach the host as asked.
  */
 
 #include "src/include/pmix_config.h"
@@ -1068,13 +1074,19 @@ static void mon_release(void *cbdata)
     mon_answer = NULL;
 }
 
+/* whether the host was asked, and for which code */
+static volatile bool mon_host_asked = false;
+static pmix_status_t mon_host_error = PMIX_SUCCESS;
+
 static pmix_status_t stub_monitor(const pmix_proc_t *requestor, const pmix_info_t *monitor,
                                   pmix_status_t error, const pmix_info_t directives[],
                                   size_t ndirs, pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
     uint32_t v = 42;
-    PMIX_HIDE_UNUSED_PARAMS(requestor, monitor, error, directives, ndirs);
+    PMIX_HIDE_UNUSED_PARAMS(requestor, monitor, directives, ndirs);
 
+    mon_host_error = error;
+    mon_host_asked = true;
     PMIX_INFO_CREATE(mon_answer, 1);
     PMIX_INFO_LOAD(&mon_answer[0], CTLUT_MONKEY, &v, PMIX_UINT32);
     cbfunc(PMIX_SUCCESS, mon_answer, 1, cbdata, mon_release, NULL);
@@ -1091,6 +1103,111 @@ static void mon_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, vo
         release_fn(release_cbdata);
     }
     mon_done = true;
+}
+
+/* A monitor request for another node, raising "err" when it trips. On a
+ * PMIX_SUCCESS return this waits for the host's answer to come back. */
+static pmix_status_t do_monitor(pmix_status_t err)
+{
+    pmix_buffer_t *buf;
+    pmix_info_t monitor, dir;
+    pmix_data_array_t da;
+    char *nodes[1] = {"ctlut-elsewhere"};
+    pmix_status_t rc;
+    size_t ndirs = 1;
+    int tries;
+
+    PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_PROC_RESOURCE_USAGE, NULL, PMIX_BOOL);
+    da.type = PMIX_STRING;
+    da.size = 1;
+    da.array = nodes;
+    PMIX_INFO_LOAD(&dir, PMIX_MONITOR_TARGET_NODES, &da, PMIX_DATA_ARRAY);
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &monitor, 1, PMIX_INFO);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &err, 1, PMIX_STATUS);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ndirs, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &dir, 1, PMIX_INFO);
+    }
+    PMIX_INFO_DESTRUCT(&monitor);
+    PMIX_INFO_DESTRUCT(&dir);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return PMIX_ERR_PACK_FAILURE;
+    }
+    mon_done = false;
+    mon_host_asked = false;
+    mon_host_error = PMIX_SUCCESS;
+    rc = pmix_server_monitor(standin(), buf, mon_cbfunc, NULL);
+    PMIX_RELEASE(buf);
+    for (tries = 0; PMIX_SUCCESS == rc && !mon_done && tries < 500; tries++) {
+        usleep(10000);
+    }
+    return rc;
+}
+
+/* ---- monitor: the event a client's monitor may raise ---------------- *
+ * A client may name only the monitor codes (PMIX_SUCCESS means the
+ * monitor's own), or a code of its own - beyond PMIX_EXTERNAL_ERR_BASE,
+ * or positive. Any other PMIx code is refused before the request goes
+ * anywhere. */
+static void test_monitor_codes(void)
+{
+    pmix_status_t refused[] = {
+        PMIX_DEBUGGER_RELEASE, PMIX_PROC_TERMINATED, PMIX_ERR_PROC_ABORTED,
+        PMIX_GROUP_CONSTRUCT_COMPLETE, PMIX_EVENT_JOB_END, PMIX_ERR_NOT_FOUND
+    };
+    pmix_status_t accepted[] = {
+        PMIX_SUCCESS, PMIX_MONITOR_HEARTBEAT_ALERT, PMIX_MONITOR_FILE_ALERT,
+        PMIX_MONITOR_RESUSAGE_UPDATE, PMIX_EXTERNAL_ERR_BASE, PMIX_EXTERNAL_ERR_BASE - 1, 1, 12345
+    };
+    pmix_status_t rc;
+    size_t n;
+    bool ok;
+
+    ok = true;
+    for (n = 0; n < sizeof(refused) / sizeof(refused[0]); n++) {
+        rc = do_monitor(refused[n]);
+        if (PMIX_ERR_BAD_PARAM != rc || mon_host_asked) {
+            fprintf(stdout, "    a monitor raising %s was not refused: %s%s\n",
+                    PMIx_Error_string(refused[n]), PMIx_Error_string(rc),
+                    mon_host_asked ? " (the host was asked)" : "");
+            ok = false;
+        }
+    }
+    report("monitor: a request to raise a PMIx event code is refused", ok);
+
+    rc = do_monitor(PMIX_DEBUGGER_RELEASE);
+    report("monitor: a request to raise a debugger release is refused",
+           PMIX_ERR_BAD_PARAM == rc && !mon_host_asked);
+    rc = do_monitor(PMIX_PROC_TERMINATED);
+    report("monitor: a request to raise a process's termination is refused",
+           PMIX_ERR_BAD_PARAM == rc && !mon_host_asked);
+
+    ok = true;
+    for (n = 0; n < sizeof(accepted) / sizeof(accepted[0]); n++) {
+        rc = do_monitor(accepted[n]);
+        if (PMIX_SUCCESS != rc || !mon_host_asked || accepted[n] != mon_host_error ||
+            !mon_done) {
+            fprintf(stdout, "    a monitor raising %d (%s) was not passed on: %s\n",
+                    (int) accepted[n], PMIx_Error_string(accepted[n]), PMIx_Error_string(rc));
+            ok = false;
+        }
+    }
+    report("monitor: a monitor code, a user code or a positive code is passed to the host", ok);
+
+    rc = do_monitor(PMIX_EXTERNAL_ERR_BASE - 1);
+    report("monitor: a user code beyond PMIX_EXTERNAL_ERR_BASE is accepted",
+           PMIX_SUCCESS == rc && mon_host_asked &&
+               PMIX_EXTERNAL_ERR_BASE - 1 == mon_host_error);
+    rc = do_monitor(7);
+    report("monitor: a positive code is accepted",
+           PMIX_SUCCESS == rc && mon_host_asked && 7 == mon_host_error);
 }
 
 static void test_monitor_host_reply(void)
@@ -2064,6 +2181,7 @@ int main(int argc, char **argv)
     /* --- the host's abort up-call --------------------------------- */
     test_abort_upcall();
     test_monitor_host_reply();
+    test_monitor_codes();
     test_alloc_release();
 
     release_standin();

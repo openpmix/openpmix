@@ -3616,7 +3616,7 @@ bool pmix_iof_sender_is_upstream(struct pmix_peer_t *pr)
         return true;
     }
     pmix_output_verbose(2, pmix_client_globals.iof_output,
-                        "%s iof: ignoring IOF message from a peer we did not connect to",
+                        "%s ignoring a server's message from a peer we did not connect to",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
     return false;
 }

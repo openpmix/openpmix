@@ -409,10 +409,11 @@ PMIX_EXPORT pmix_status_t pmix_iof_flow_control(const pmix_proc_t *source,
                                                 pmix_iof_channel_t channel,
                                                 bool xoff,
                                                 const pmix_info_t directives[], size_t ndirs);
-/* true if "peer" may send this process forwarded output or flow control:
- * a server it connected to, or itself (a server's delivery to itself
- * loops back through the posted recvs). Forwarded output and flow
- * control only ever travel down, from a server to a process it serves */
+/* true if "peer" may send this process what only travels down, from a
+ * server to a process it serves - forwarded output, flow control, events,
+ * key deletions and store updates: a server of its own (peer->upstream),
+ * or itself (a server's delivery to itself loops back through the posted
+ * recvs) */
 PMIX_EXPORT bool pmix_iof_sender_is_upstream(struct pmix_peer_t *peer);
 PMIX_EXPORT void pmix_iof_flow_control_handler(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                                                pmix_buffer_t *buf, void *cbdata);

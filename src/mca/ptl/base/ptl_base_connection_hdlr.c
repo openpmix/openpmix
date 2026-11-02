@@ -1482,7 +1482,7 @@ static pmix_status_t place_tool(pmix_pending_connection_t *pnd)
                                 "refusing tool %s:%u - the namespace is not a self-started "
                                 "tool's, and the rank was not registered for it",
                                 pnd->proc.nspace, pnd->proc.rank);
-            return PMIX_ERR_NOT_SUPPORTED;
+            return PMIX_ERR_EXISTS;
         }
         if (info->uid != pnd->uid || info->gid != pnd->gid) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -2061,11 +2061,11 @@ static bool nspace_is_users(pmix_namespace_t *nptr, uid_t uid, gid_t gid)
     return true;
 }
 
-/* The tool's namespace has its final name now. If the host registered a
- * namespace of that name while it decided - or one was registered
- * meanwhile by another means - the tool joins that one: the server
- * resolves a namespace by scanning its list, so two objects for one name
- * would leave half the library reaching the tool through each */
+/* The tool's namespace has its final name now. If a namespace of that
+ * name was registered while the host decided, the tool joins that one
+ * or none: the server resolves a namespace by scanning its list, so two
+ * objects for one name would leave half the library reaching the tool
+ * through each */
 static pmix_namespace_t *consolidate_nspace(pmix_pending_connection_t *pnd,
                                             pmix_namespace_t *nptr)
 {
@@ -2075,12 +2075,22 @@ static pmix_namespace_t *consolidate_nspace(pmix_pending_connection_t *pnd,
     if (NULL == existing) {
         return nptr;
     }
-    /* Someone got there first - normally the host, registering the tool's
-     * job during the upcall, which leaves a namespace with no ranks yet.
-     * One that has ranks must be a job of other self-started tools; one
-     * whose processes the host started is never joined by a self-started
-     * tool. The caller checks the user */
-    if (!existing->self_started && !pmix_list_is_empty(&existing->ranks)) {
+    /* Someone got there first. A namespace the host registered is a job
+     * of the host's. A tool that named itself never joins one: the host
+     * does not register such a tool's namespace (docs/hosts), so this is
+     * a job that took the name meanwhile, whether or not its ranks are
+     * registered yet. A full registration that comes after the tool takes
+     * the name back
+     * (_register_nspace), so the host has the name in either order.
+     *
+     * A tool the host named may join the namespace the host registered
+     * for it, which has no ranks yet: the name came from the host. One
+     * with ranks is a job of the host's processes all the same.
+     *
+     * One a self-started tool made is joined by that tool's user only:
+     * the caller checks */
+    if (!existing->self_started &&
+        (!host_names_tool(pnd) || !pmix_list_is_empty(&existing->ranks))) {
         return NULL;
     }
     existing->self_started = true;
@@ -2209,12 +2219,12 @@ static void tool_answered(int sd, short args, void *cbdata)
         }
         nptr = consolidate_nspace(pnd, nptr);
         if (NULL == nptr) {
-            /* the name is a job the host started meanwhile */
+            /* the name is a job the host registered meanwhile */
             nptr = (pmix_namespace_t *) pnd->nptr;
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "tool %s:%u may not join namespace %s - the host's processes "
-                                "are in it", id.nspace, id.rank, id.nspace);
-            refuse_accepted(pnd, &id, PMIX_ERR_NOT_SUPPORTED);
+                                "tool %s:%u may not join namespace %s - it is a job of "
+                                "the host's", id.nspace, id.rank, id.nspace);
+            refuse_accepted(pnd, &id, PMIX_ERR_EXISTS);
             return;
         }
         /* one that appeared while the host decided - another tool's,

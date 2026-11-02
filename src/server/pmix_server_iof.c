@@ -1237,6 +1237,13 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
         rc = PMIX_ERR_NOT_FOUND;
         goto exit;
     }
+    /* only the peer that registered it may take it away; another peer
+     * is answered as though it were not there. A peer's requests go when
+     * it does */
+    if (req->requestor != peer) {
+        rc = PMIX_ERR_NOT_FOUND;
+        goto exit;
+    }
 
     /* Take the channel/proc combination off the request before it goes:
      * pmix_server_iof_fn_t is documented as "IF the PMIX_IOF_STOP is

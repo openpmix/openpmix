@@ -99,6 +99,50 @@ static PMIX_CLASS_INSTANCE(rank_blob_t,
 static pmix_status_t modex_log_append(pmix_rank_info_t *info, pmix_kval_t *kv);
 static pmix_modex_mark_t *modex_mark_get(pmix_rank_info_t *info, uint64_t sig);
 
+/* Every key in a commit must be one PMIx_Put takes (pmix_key_may_be_put).
+ * A commit carrying any other is refused whole, before anything in it is
+ * stored. Leaves the buffer where it found it. A malformed commit is left
+ * for the store loop to report */
+static pmix_status_t commit_keys_permitted(pmix_peer_t *peer, pmix_buffer_t *buf)
+{
+    char *mark = buf->unpack_ptr;
+    pmix_scope_t scope;
+    pmix_buffer_t b2;
+    pmix_kval_t *kp;
+    int32_t cnt;
+    pmix_status_t rc, ret = PMIX_SUCCESS;
+
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &scope, &cnt, PMIX_SCOPE);
+    while (PMIX_SUCCESS == rc && PMIX_SUCCESS == ret) {
+        PMIX_CONSTRUCT(&b2, pmix_buffer_t);
+        PMIX_BFROPS_ASSIGN_TYPE(peer, &b2);
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, &b2, &cnt, PMIX_BUFFER);
+        while (PMIX_SUCCESS == rc && PMIX_SUCCESS == ret) {
+            kp = PMIX_NEW(pmix_kval_t);
+            if (NULL == kp) {
+                break;
+            }
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, peer, &b2, kp, &cnt, PMIX_KVAL);
+            if (PMIX_SUCCESS == rc && NULL != kp->key && !pmix_key_may_be_put(kp->key)) {
+                pmix_output_verbose(2, pmix_server_globals.fence_output,
+                                    "%s commit from %s refused - it carries reserved key %s",
+                                    PMIX_NAME_PRINT(&pmix_globals.myid),
+                                    PMIX_PEER_PRINT(peer), kp->key);
+                ret = PMIX_ERR_BAD_PARAM;
+            }
+            PMIX_RELEASE(kp);
+        }
+        PMIX_DESTRUCT(&b2);
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, &scope, &cnt, PMIX_SCOPE);
+    }
+    buf->unpack_ptr = mark;
+    return ret;
+}
+
 pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
 {
     int32_t cnt;
@@ -124,6 +168,11 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                         "%s:%d EXECUTE COMMIT FOR %s:%d",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, nptr->nspace,
                         info->pname.rank);
+
+    rc = commit_keys_permitted(peer, buf);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
 
     /* this buffer will contain one or more buffers, each
      * representing a different scope. These need to be locally

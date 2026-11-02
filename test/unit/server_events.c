@@ -76,6 +76,17 @@
  *      and nothing said who it really was. The host is now given the
  *      identity the connection established, once, whatever the event
  *      carried.
+ *
+ *   a namespace range is the source's job
+ *      An event with PMIX_RANGE_NAMESPACE and no targets of its own is
+ *      sent live only to peers of the source's job, as the replay of the
+ *      same event from the cache is. Registered peers of two jobs are sent the event and only the
+ *      source's job's peer may be given it; a custom range naming the
+ *      other job's process still reaches exactly that process.
+ *
+ *   one custom range per event
+ *      An event naming more than one PMIX_EVENT_CUSTOM_RANGE is refused;
+ *      one naming a single range is taken as before.
  */
 
 #include "src/include/pmix_config.h"
@@ -251,9 +262,8 @@ static void settle(void)
 /* How many messages the server has queued to a peer that has no socket.
  * With sd < 0 the send event is never armed, so they simply come to rest
  * on the peer: the first on send_msg, the rest on send_queue. */
-static size_t queued_count(void)
+static size_t peer_queued_count(pmix_peer_t *peer)
 {
-    pmix_peer_t *peer = standin();
     size_t n = 0;
 
     if (NULL != peer->send_msg) {
@@ -261,6 +271,11 @@ static size_t queued_count(void)
     }
     n += pmix_list_get_size(&peer->send_queue);
     return n;
+}
+
+static size_t queued_count(void)
+{
+    return peer_queued_count(standin());
 }
 
 /* Take the first of those messages and hand back its buffer. */
@@ -281,9 +296,8 @@ static pmix_buffer_t *take_queued_reply(void)
     return buf;
 }
 
-static void drain_queued(void)
+static void peer_drain(pmix_peer_t *peer)
 {
-    pmix_peer_t *peer = standin();
     pmix_ptl_send_t *snd;
 
     if (NULL != peer->send_msg) {
@@ -293,6 +307,11 @@ static void drain_queued(void)
     while (NULL != (snd = (pmix_ptl_send_t *) pmix_list_remove_first(&peer->send_queue))) {
         PMIX_RELEASE(snd);
     }
+}
+
+static void drain_queued(void)
+{
+    peer_drain(standin());
 }
 
 /* Drive one PMIX_REGEVENTS_CMD. The wire form is the code count, the
@@ -563,8 +582,8 @@ static pmix_status_t reg_job(const char *name, uid_t uid, gid_t gid)
     return PMIX_SUCCESS;
 }
 
-/* a connected client of another user's job, as far as the tables go */
-static pmix_peer_t *stranger_peer(const char *nsname, uid_t uid, gid_t gid)
+/* a connected client of a job, as far as the tables go */
+static pmix_peer_t *job_peer(const char *nsname, pmix_rank_t rank, uid_t uid, gid_t gid)
 {
     pmix_namespace_t *ns, *nptr = NULL;
     pmix_peer_t *p;
@@ -586,10 +605,16 @@ static pmix_peer_t *stranger_peer(const char *nsname, uid_t uid, gid_t gid)
     memcpy(&p->proc_type, &pmix_globals.mypeer->proc_type, sizeof(pmix_proc_type_t));
     p->info = PMIX_NEW(pmix_rank_info_t);
     p->info->pname.nspace = strdup(nsname);
-    p->info->pname.rank = 0;
+    p->info->pname.rank = rank;
     p->info->uid = uid;
     p->info->gid = gid;
     return p;
+}
+
+/* a connected client of another user's job */
+static pmix_peer_t *stranger_peer(const char *nsname, uid_t uid, gid_t gid)
+{
+    return job_peer(nsname, 0, uid, gid);
 }
 
 static pmix_status_t release_from(pmix_peer_t *peer, pmix_data_range_t range,
@@ -678,6 +703,205 @@ static void test_event_identity(void)
     report("the host is told the raiser's own uid and gid, once each",
            host_notified && 1 == host_nuid && (uint32_t) other == host_uid &&
                1 == host_ngid && (uint32_t) ogrp == host_gid);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    PMIX_RELEASE(raiser);
+}
+
+/* ------------------------------------------------------------------ */
+/* which registered peers a client's event reaches                      */
+/* ------------------------------------------------------------------ */
+
+/* a code no earlier case raised or cached, so a registration made for it
+ * replays nothing and what a peer is sent afterwards is the live event */
+#define SEUT_RNGCODE (PMIX_EXTERNAL_ERR_BASE - 72)
+
+/* register one peer for one code, as its PMIX_REGEVENTS_CMD would */
+static pmix_status_t register_as(pmix_peer_t *peer, pmix_status_t code)
+{
+    pmix_buffer_t *buf;
+    pmix_status_t rc;
+    size_t ncodes = 1, ninfo = 0;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ncodes, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &code, 1, PMIX_STATUS);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+    rc = pmix_server_register_events(peer, buf, NULL, NULL);
+    PMIX_RELEASE(buf);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    return rc;
+}
+
+/* Was this peer sent a notification of "code"? Everything queued to it
+ * is looked at and then dropped. */
+static bool peer_was_sent(pmix_peer_t *peer, pmix_status_t code)
+{
+    pmix_ptl_send_t *snd;
+    pmix_cmd_t cmd;
+    pmix_status_t rc, status;
+    int32_t cnt;
+    bool found = false;
+
+    if (NULL != peer->send_msg) {
+        pmix_list_prepend(&peer->send_queue, &peer->send_msg->super);
+        peer->send_msg = NULL;
+    }
+    while (NULL != (snd = (pmix_ptl_send_t *) pmix_list_remove_first(&peer->send_queue))) {
+        if (NULL != snd->data) {
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, snd->data, &cmd, &cnt, PMIX_COMMAND);
+            if (PMIX_SUCCESS == rc && PMIX_NOTIFY_CMD == cmd) {
+                cnt = 1;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, snd->data, &status, &cnt,
+                                   PMIX_STATUS);
+                if (PMIX_SUCCESS == rc && code == status) {
+                    found = true;
+                }
+            }
+        }
+        PMIX_RELEASE(snd);
+    }
+    return found;
+}
+
+/* An event with PMIX_RANGE_NAMESPACE and no targets of its own reaches
+ * the source's job only, as a replay of the cached event does - whoever
+ * raised it. A custom range still reaches exactly the processes it
+ * names, in whatever job. */
+static void test_namespace_range(void)
+{
+    pmix_peer_t *a0 = NULL, *a1 = NULL, *b0 = NULL;
+    pmix_info_t info;
+    pmix_proc_t target;
+    pmix_status_t rc;
+    bool toa1, tob0;
+
+    if (PMIX_SUCCESS != reg_job("seut-rng-a", geteuid(), getegid()) ||
+        PMIX_SUCCESS != reg_job("seut-rng-b", geteuid(), getegid()) ||
+        NULL == (a0 = job_peer("seut-rng-a", 0, geteuid(), getegid())) ||
+        NULL == (a1 = job_peer("seut-rng-a", 1, geteuid(), getegid())) ||
+        NULL == (b0 = job_peer("seut-rng-b", 0, geteuid(), getegid())) ||
+        PMIX_SUCCESS != register_as(a1, SEUT_RNGCODE) ||
+        PMIX_SUCCESS != register_as(b0, SEUT_RNGCODE) ||
+        PMIX_SUCCESS != register_as(a1, PMIX_DEBUGGER_RELEASE) ||
+        PMIX_SUCCESS != register_as(b0, PMIX_DEBUGGER_RELEASE)) {
+        report("namespace range: setup", 0);
+        goto cleanup;
+    }
+    /* whatever the registrations replayed is not what is measured */
+    settle();
+    peer_drain(a1);
+    peer_drain(b0);
+
+    rc = do_notify_as(a0, SEUT_RNGCODE, PMIX_RANGE_NAMESPACE, 0, NULL);
+    settle();
+    report("a namespace-range event from a client is taken",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    toa1 = peer_was_sent(a1, SEUT_RNGCODE);
+    tob0 = peer_was_sent(b0, SEUT_RNGCODE);
+    report("a namespace-range event reaches the source's own job", toa1);
+    report("a namespace-range event does not reach another job", !tob0);
+
+    rc = release_from(a0, PMIX_RANGE_NAMESPACE, NULL);
+    settle();
+    report("a namespace-range debugger release from a client is taken",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    toa1 = peer_was_sent(a1, PMIX_DEBUGGER_RELEASE);
+    tob0 = peer_was_sent(b0, PMIX_DEBUGGER_RELEASE);
+    report("a namespace-range release reaches the source's own job", toa1);
+    report("a namespace-range release does not reach another job", !tob0);
+
+    /* a custom range is the processes it names, in any job */
+    PMIX_LOAD_PROCID(&target, "seut-rng-b", 0);
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_CUSTOM_RANGE, &target, PMIX_PROC);
+    rc = do_notify_as(a0, SEUT_RNGCODE, PMIX_RANGE_CUSTOM, 1, &info);
+    PMIX_INFO_DESTRUCT(&info);
+    settle();
+    report("a custom-range event naming another job's process is taken",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    toa1 = peer_was_sent(a1, SEUT_RNGCODE);
+    tob0 = peer_was_sent(b0, SEUT_RNGCODE);
+    report("a custom-range event reaches the process it names", tob0);
+    report("a custom-range event does not reach one it does not name", !toa1);
+
+    /* and the other job's peer does take a release meant for it, so its
+     * not being sent the namespace-range one above says something */
+    rc = release_from(a0, PMIX_RANGE_CUSTOM, "seut-rng-b");
+    settle();
+    report("a custom-range release naming another job is taken",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    toa1 = peer_was_sent(a1, PMIX_DEBUGGER_RELEASE);
+    tob0 = peer_was_sent(b0, PMIX_DEBUGGER_RELEASE);
+    report("a custom-range release reaches the job it names", tob0);
+    report("a custom-range release does not reach the source's job", !toa1);
+
+cleanup:
+    if (NULL != a1) {
+        peer_drain(a1);
+    }
+    if (NULL != b0) {
+        peer_drain(b0);
+    }
+    /* the registrations hold their own references */
+    if (NULL != a0) {
+        PMIX_RELEASE(a0);
+    }
+    if (NULL != a1) {
+        PMIX_RELEASE(a1);
+    }
+    if (NULL != b0) {
+        PMIX_RELEASE(b0);
+    }
+}
+
+/* An event names at most one custom range */
+static void test_custom_range_count(void)
+{
+    uid_t other = geteuid() + 3;
+    gid_t ogrp = getegid() + 3;
+    pmix_info_t info[2];
+    pmix_proc_t target[2];
+    pmix_peer_t *raiser;
+    pmix_status_t rc;
+
+    if (PMIX_SUCCESS != reg_job("seut-crng", other, ogrp) ||
+        NULL == (raiser = stranger_peer("seut-crng", other, ogrp))) {
+        report("custom range count: setup", 0);
+        return;
+    }
+    PMIX_LOAD_PROCID(&target[0], "seut-crng", 0);
+    PMIX_LOAD_PROCID(&target[1], "seut-crng", 1);
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_CUSTOM_RANGE, &target[0], PMIX_PROC);
+    PMIX_INFO_LOAD(&info[1], PMIX_EVENT_CUSTOM_RANGE, &target[1], PMIX_PROC);
+    rc = do_notify_as(raiser, SEUT_CODE, PMIX_RANGE_CUSTOM, 2, info);
+    report("an event with two custom ranges is refused", PMIX_ERR_BAD_PARAM == rc);
+    rc = do_notify_as(raiser, SEUT_CODE, PMIX_RANGE_CUSTOM, 1, info);
+    report("an event with one custom range is taken",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    settle();
+    PMIX_INFO_DESTRUCT(&info[1]);
+
+    /* a release whose first range is the raiser's own job and whose
+     * second is a job of the server's user */
+    PMIX_LOAD_PROCID(&target[1], "seut-mine", 0);
+    PMIX_INFO_LOAD(&info[1], PMIX_EVENT_CUSTOM_RANGE, &target[1], PMIX_PROC);
+    rc = do_notify_as(raiser, PMIX_DEBUGGER_RELEASE, PMIX_RANGE_CUSTOM, 2, info);
+    report("a release with two custom ranges is refused", PMIX_ERR_BAD_PARAM == rc);
+    rc = do_notify_as(raiser, PMIX_DEBUGGER_RELEASE, PMIX_RANGE_CUSTOM, 1, info);
+    report("a release with one custom range, its own job, is taken",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    settle();
     PMIX_INFO_DESTRUCT(&info[0]);
     PMIX_INFO_DESTRUCT(&info[1]);
     PMIX_RELEASE(raiser);
@@ -862,6 +1086,10 @@ int main(int argc, char **argv)
     test_debugger_release();
     drain_queued();
     test_event_identity();
+    drain_queued();
+    test_namespace_range();
+    drain_queued();
+    test_custom_range_count();
     drain_queued();
     PMIX_INFO_DESTRUCT(&dir);
     release_standin();

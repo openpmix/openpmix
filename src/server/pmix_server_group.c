@@ -92,6 +92,8 @@ typedef struct {
                             //    kept alive only for the completion above
     bool def_complete;      // all local procs have been registered and the trk definition is complete
     uint32_t nlocal;        // number of local participants
+    pmix_proc_t *listed;    // the participants the call that made the block
+    size_t nlisted;         //    listed, when it listed them all - see get_tracker
 } grp_block_t;
 static void gbcon(grp_block_t *p)
 {
@@ -115,6 +117,8 @@ static void gbcon(grp_block_t *p)
     p->answered = false;
     p->def_complete = false;
     p->nlocal = 0;
+    p->listed = NULL;
+    p->nlisted = 0;
 }
 static void gbdes(grp_block_t *p)
 {
@@ -132,6 +136,9 @@ static void gbdes(grp_block_t *p)
     }
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+    if (NULL != p->listed) {
+        PMIX_PROC_FREE(p->listed, p->nlisted);
     }
     PMIX_LIST_DESTRUCT(&p->mbrs);
     PMIX_LIST_DESTRUCT(&p->departed);
@@ -320,7 +327,14 @@ static bool grp_blk_locally_complete(grp_block_t *blk)
             pmix_list_get_size(&blk->departed)) >= blk->nlocal;
 }
 
-static pmix_status_t get_tracker(char *grpid, bool bootstrap, bool follower,
+/* A call joins the block of its ID that is still collecting, or makes
+ * one. It joins only an operation of its own kind, and - when the call
+ * that made the block listed all its participants - only as one of them.
+ * A recorded group's ID is checked by the caller; this covers one still
+ * being constructed. An "add members" or bootstrap call lists only some
+ * of its participants, so a block one of them made is joined as before */
+static pmix_status_t get_tracker(char *grpid, int op, bool bootstrap, bool follower,
+                                 bool addmembers, const pmix_peer_t *peer,
                                  pmix_proc_t *procs, size_t nprocs,
                                  pmix_info_t *info, size_t ninfo,
                                  grp_block_t **block, grp_trk_t **tracker)
@@ -339,7 +353,14 @@ static pmix_status_t get_tracker(char *grpid, bool bootstrap, bool follower,
     // see if we already have a block for this ID
     PMIX_LIST_FOREACH(blk, &pmix_server_globals.grp_collectives, grp_block_t) {
         if (0 == strcmp(grpid, blk->id)) {
-            // we do - pass it back
+            // we do - may this call join it?
+            if (PMIX_GROUP_NONE != blk->grpop && op != blk->grpop) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            if (NULL != blk->listed &&
+                !pmix_server_grp_is_participant(peer, blk->listed, blk->nlisted)) {
+                return PMIX_ERR_NOT_A_MEMBER;
+            }
             // new signature, so create a tracker for it
             trk = PMIX_NEW(grp_trk_t);
             if (NULL == trk) {
@@ -376,6 +397,16 @@ newblock:
     if (NULL == blk->id) {
         PMIX_RELEASE(blk);
         return PMIX_ERR_NOMEM;
+    }
+    blk->grpop = op;
+    if (!follower && !bootstrap && !addmembers && NULL != procs && 0 < nprocs) {
+        PMIX_PROC_CREATE(blk->listed, nprocs);
+        if (NULL == blk->listed) {
+            PMIX_RELEASE(blk);
+            return PMIX_ERR_NOMEM;
+        }
+        blk->nlisted = nprocs;
+        memcpy(blk->listed, procs, nprocs * sizeof(pmix_proc_t));
     }
     // setup a tracker for it
     trk = PMIX_NEW(grp_trk_t);
@@ -2667,12 +2698,14 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     }
 
     /* find/create the local tracker for this operation */
-    rc = get_tracker(grpid, bootstrap, follower, procs, nprocs,
+    rc = get_tracker(grpid, op, bootstrap, follower, addmembers, peer, procs, nprocs,
                      info, ninfo, &blk, &trk);
     if (PMIX_SUCCESS != rc) {
         /* it takes our arrays only on success, so everything we unpacked
          * is still ours to free at the error label */
-        PMIX_ERROR_LOG(rc);
+        if (PMIX_ERR_NOMEM == rc) {
+            PMIX_ERROR_LOG(rc);
+        }
         goto error;
     }
     /* the tracker owns the info array now - the old PMIX_EXISTS arm here

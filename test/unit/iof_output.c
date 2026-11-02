@@ -247,6 +247,65 @@ static pmix_status_t do_iofdereg(size_t claimed_ninfo)
     return do_iofdereg_refid(claimed_ninfo, 0);
 }
 
+/* The same deregistration, sent by the given peer */
+static pmix_status_t do_iofdereg_from(pmix_peer_t *peer, size_t refid)
+{
+    pmix_buffer_t *buf;
+    pmix_status_t rc;
+    size_t zero = 0;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    if (NULL == buf) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_BFROPS_PACK(rc, peer, buf, &zero, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, peer, buf, &refid, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(buf);
+        return rc;
+    }
+    rc = pmix_server_iofdereg(peer, buf, iof_op_stub, NULL);
+    PMIX_RELEASE(buf);
+    return rc;
+}
+
+/* A connected peer with no socket, under an identity of its own: the
+ * forwarding path will not send a process its own output, nor anything
+ * to the server itself, so a peer that shared the server's name would
+ * never be forwarded to. It shares the server's namespace object for
+ * its bfrops module. */
+static pmix_peer_t *mkpeer(const char *nspace, pmix_rank_t rank)
+{
+    pmix_peer_t *p;
+
+    p = PMIX_NEW(pmix_peer_t);
+    if (NULL == p) {
+        return NULL;
+    }
+    PMIX_RETAIN(pmix_globals.mypeer->nptr);
+    p->nptr = pmix_globals.mypeer->nptr;
+    memcpy(&p->proc_type, &pmix_globals.mypeer->proc_type, sizeof(pmix_proc_type_t));
+    p->info = PMIX_NEW(pmix_rank_info_t);
+    p->info->pname.nspace = strdup(nspace);
+    p->info->pname.rank = rank;
+    return p;
+}
+
+/* is any output from this namespace sitting in the server's IOF cache? */
+static bool cached_from(const char *nspace)
+{
+    pmix_iof_cache_t *iof;
+
+    PMIX_LIST_FOREACH (iof, &pmix_server_globals.iof, pmix_iof_cache_t) {
+        if (PMIX_CHECK_NSPACE(iof->source.nspace, nspace)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Replace "fd" with the write end of a fresh pipe, handing back a
  * non-blocking read end.
  *
@@ -493,6 +552,78 @@ int main(int argc, char **argv)
                    && PMIX_RANK_WILDCARD == stop_procs[0].rank);
         report("and the local registration is gone",
                NULL == pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid));
+    }
+
+    /* ---- only the peer that registered a request may remove it --------
+     * Another peer naming its refid is answered as though the request
+     * were not there, and the request - and the output it forwards -
+     * stays exactly as it was. Forwarding is observed from
+     * the cache: output a registration takes is not cached, output nobody
+     * has asked for is. */
+    {
+        pmix_peer_t *owner, *other;
+        pmix_iof_req_t *req;
+        pmix_proc_t fsrc;
+        pmix_status_t drc;
+        int refid;
+
+        owner = mkpeer("iof-owner-ut", 0);
+        other = mkpeer("iof-other-ut", 0);
+        if (NULL == owner || NULL == other) {
+            fprintf(out, "could not create the peers\n");
+            PMIx_server_finalize();
+            return 1;
+        }
+        PMIX_LOAD_PROCID(&fsrc, "iof-fwd-ut", 0);
+
+        req = PMIX_NEW(pmix_iof_req_t);
+        PMIX_RETAIN(owner);
+        req->requestor = owner;
+        req->nprocs = 1;
+        PMIX_PROC_CREATE(req->procs, 1);
+        PMIX_LOAD_PROCID(&req->procs[0], "iof-fwd-ut", PMIX_RANK_WILDCARD);
+        req->channels = PMIX_FWD_STDOUT_CHANNEL;
+        refid = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+        req->local_id = refid;
+
+        stop_nprocs = SIZE_MAX;
+        drc = do_iofdereg_from(other, (size_t) refid);
+        report("another peer's deregistration of the request is not found",
+               PMIX_ERR_NOT_FOUND == drc);
+        report("...the host is not asked to stop forwarding", SIZE_MAX == stop_nprocs);
+        report("...the request is still registered, unchanged",
+               req == pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid)
+                   && owner == req->requestor && PMIX_FWD_STDOUT_CHANNEL == req->channels
+                   && 1 == req->nprocs && 0 == strcmp(req->procs[0].nspace, "iof-fwd-ut")
+                   && PMIX_RANK_WILDCARD == req->procs[0].rank);
+
+        if (!deliver(&fsrc, PMIX_FWD_STDOUT_CHANNEL, "fwd-one\n", 8)) {
+            PMIx_server_finalize();
+            return 1;
+        }
+        (void) collect(rfd, buf, 8);
+        report("...and the output it covers is still forwarded, not cached",
+               !cached_from("iof-fwd-ut"));
+
+        /* the owner's own deregistration does what it always did */
+        stop_nprocs = SIZE_MAX;
+        drc = do_iofdereg_from(owner, (size_t) refid);
+        report("the registering peer's own deregistration reaches the host",
+               PMIX_ERR_NOT_SUPPORTED == drc && 1 == stop_nprocs);
+        report("...and removes the request",
+               NULL == pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid));
+
+        /* with nobody registered, the same output is cached - which is
+         * what makes the check above a check */
+        if (!deliver(&fsrc, PMIX_FWD_STDOUT_CHANNEL, "fwd-two\n", 8)) {
+            PMIx_server_finalize();
+            return 1;
+        }
+        (void) collect(rfd, buf, 8);
+        report("...after which that output is cached", cached_from("iof-fwd-ut"));
+
+        PMIX_RELEASE(owner);
+        PMIX_RELEASE(other);
     }
 
     /* --- a blocking PMIx_IOF_pull hands back its handle ----------------- *

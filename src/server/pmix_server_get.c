@@ -369,15 +369,6 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
             break;
         }
     }
-    /* a fetch qualified by a session binds a job that has none to it, or
-     * moves it off the default one (pmix_gds_hash_check_session), which
-     * changes that job's job data */
-    for (n = 0; n < cd->ninfo; n++) {
-        if (PMIX_CHECK_KEY(&cd->info[n], PMIX_SESSION_ID)) {
-            pmix_gds_base_job_data_changed(nspace);
-            break;
-        }
-    }
     /* if they provided a specific key, get it */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &key, &cnt, PMIX_STRING);

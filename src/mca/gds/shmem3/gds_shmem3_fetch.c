@@ -597,8 +597,18 @@ fetch_sessioninfo(
         }
     }
 
+    /* A read changes nothing. A session the get names only qualifies it:
+     * it does not say the job is in that session, so it is looked up on
+     * its own, and the job keeps the session it has -
+     * pmix_gds_shmem3_get_session_tracker() would point the job at it.
+     * With none named, the job's own session answers */
     pmix_gds_shmem3_session_t *sesh;
-    sesh = pmix_gds_shmem3_get_session_tracker(job, sid, false);
+    if (NULL != job &&
+        (UINT32_MAX == sid || (NULL != job->session && sid == job->session->id))) {
+        sesh = job->session;
+    } else {
+        sesh = pmix_gds_shmem3_find_session(sid, false);
+    }
     if (PMIX_UNLIKELY(NULL == sesh)) {
         return PMIX_ERR_NOT_FOUND;
     }

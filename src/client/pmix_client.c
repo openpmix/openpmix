@@ -101,11 +101,15 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
                         "%s pmix:client_notify_recv - processing event",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
-    PMIX_HIDE_UNUSED_PARAMS(peer, hdr, cbdata);
+    PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
     if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        return;
+    }
+    /* act only on an event from a server of this process */
+    if (!pmix_iof_sender_is_upstream(peer)) {
         return;
     }
 
@@ -351,6 +355,10 @@ static void client_gds_update_handler(struct pmix_peer_t *pr,
     if (NULL == sender) {
         sender = pmix_client_globals.myserver;
     }
+    /* act only on an update from a server of this process */
+    if (!pmix_iof_sender_is_upstream(sender)) {
+        return;
+    }
     PMIX_GDS_ACCEPT_UPDATE(rc, sender, buf);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
@@ -386,6 +394,10 @@ static void client_data_delete_handler(struct pmix_peer_t *pr,
      * a secondary server's message with the primary's is a misparse. */
     if (NULL == sender) {
         sender = pmix_client_globals.myserver;
+    }
+    /* act only on a deletion from a server of this process */
+    if (!pmix_iof_sender_is_upstream(sender)) {
+        return;
     }
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, sender, buf, &proc, &cnt, PMIX_PROC);
@@ -2363,8 +2375,7 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
      * qualifiers, the caller's own key being the first element of the
      * data array it carries. So the prefix is refused except for that
      * one carrier. */
-    if (PMIX_UNLIKELY(PMIx_Check_reserved_key(key)
-                      && 0 != strcmp(key, PMIX_QUALIFIED_VALUE))) {
+    if (PMIX_UNLIKELY(!pmix_key_may_be_put(key))) {
         return PMIX_ERR_BAD_PARAM;
     }
     /* A delete names a key to remove and carries no value; anything else

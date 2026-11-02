@@ -1242,6 +1242,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_MONITOR_HEARTBEAT_TIME         "pmix.monitor.btime"    // (uint32_t) time in seconds before declaring heartbeat missed
 #define PMIX_MONITOR_HEARTBEAT_DROPS        "pmix.monitor.bdrop"    // (uint32_t) number of heartbeats that can be missed before
                                                                     //            generating the event
+#define PMIX_MONITOR_HEARTBEAT_MISSED       "pmix.monitor.bmiss"    // (uint32_t) number of heartbeats missed in a row when the
+                                                                    //            heartbeat monitor's alert was raised
 #define PMIX_MONITOR_FILE                   "pmix.monitor.fmon"     // (char*) register to monitor file for signs of life
 #define PMIX_MONITOR_FILE_SIZE              "pmix.monitor.fsize"    // (bool) monitor size of given file is growing to determine app is running
 #define PMIX_MONITOR_FILE_ACCESS            "pmix.monitor.faccess"  // (char*) monitor time since last access of given file to determine app is running
@@ -1249,6 +1251,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_MONITOR_FILE_CHECK_TIME        "pmix.monitor.ftime"    // (uint32_t) time in seconds between checking file
 #define PMIX_MONITOR_FILE_DROPS             "pmix.monitor.fdrop"    // (uint32_t) number of file checks that can be missed before
                                                                     //            generating the event
+#define PMIX_MONITOR_FILE_MISSED            "pmix.monitor.fmiss"    // (uint32_t) number of file checks missed when the file
+                                                                    //            monitor's alert was raised
 #define PMIX_MONITOR_RESOURCE_RATE          "pmix.monitor.resrate"  // (uint32_t) Monitor resource usage every N seconds, where N is the value provided
                                                                     //            by the attribute.
 #define PMIX_MONITOR_TARGET_PROCS           "pmix.monitor.tgtproc"  // (pmix_data_array_t*) Arrray of process IDs specifying the processes to be monitored.
