@@ -9,6 +9,8 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -262,9 +264,12 @@ static void _spawn_for_host(int sd, short args, void *cbdata)
      * requests were included so we can set that up now - helps
      * to catch any early output - and a request for notification
      * of job termination so we can setup the event registration */
-    pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
-                             &fcd->inherit_iof,
-                             fcd->info, fcd->ninfo);
+    rc = pmix_server_spawn_prepare(fcd->peer, fcd, true);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        fcd->status = rc;
+        _lclcbfunc(0, 0, fcd);
+        return;
+    }
     /* a no-op on this branch - the stash is for tools, and the entry
      * point has already excluded them. Kept so the two dispatch paths
      * read the same way, and so relaxing that condition does not
@@ -734,9 +739,11 @@ envars_done:
          * and on this path there is no reply and no gap. The namespace
          * exists, and carries its flags, before the first child is
          * forked. */
-        pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
-                                 &fcd->inherit_iof,
-                                 fcd->info, fcd->ninfo);
+        rc = pmix_server_spawn_prepare(fcd->peer, fcd, false);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_RELEASE(fcd);
+            return rc;
+        }
         rc = pmix_pfexec_base_spawn_job(fcd);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_RELEASE(fcd);

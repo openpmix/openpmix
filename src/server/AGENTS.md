@@ -2602,6 +2602,13 @@ directive carried with the spawn request, or a server-wide default at
 (and the latter cannot express a per-job answer at all, while PRRTE's
 `inherit` is per-job).
 
+**The spawn request's own decision travels as the same key.**
+`pmix_server_spawn_prepare()` runs the parser and adds
+`PMIX_IOF_INHERIT=false` to the spawn directives when it decides against
+inheritance; every path that hands a spawn to the host or pfexec calls it. Do not re-derive the decision on other servers from the raw
+`PMIX_FWD_*` attributes: the parser counts a channel as named whatever its
+value's type, and a tool's spawn names no channel.
+
 **At the spawn-time site, "the host said nothing" and "we cannot ask yet"
 must not be conflated** — it is the one place they are distinguishable.
 That site runs from the spawn *completion*, and whether the child's

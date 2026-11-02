@@ -1,5 +1,7 @@
 /*
  * Copyright (c) 2026      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -107,6 +109,8 @@ static bool spawn_fired = false;
 static size_t spawn_ninfo = 0;   /* not counting the requester's identity or type */
 static size_t spawn_nident = 0;  /* PMIX_USERID and PMIX_GRPID entries */
 static size_t spawn_ntype = 0;   /* PMIX_REQUESTOR_IS_TOOL and _IS_CLIENT entries */
+static size_t spawn_ninherit = 0; /* PMIX_IOF_INHERIT entries */
+static bool spawn_noinherit = false;
 static bool spawn_by_tool = false;
 static bool spawn_refuse = false;
 /* the uid a spawn's PMIX_ACCESS_PERMISSIONS reached the host with, and
@@ -240,6 +244,8 @@ static pmix_status_t stub_spawn(const pmix_proc_t *proc,
     spawn_ninfo = 0;
     spawn_nident = 0;
     spawn_ntype = 0;
+    spawn_ninherit = 0;
+    spawn_noinherit = false;
     spawn_by_tool = false;
     spawn_access_numeric = false;
     for (n = 0; n < ninfo; n++) {
@@ -251,6 +257,10 @@ static pmix_status_t stub_spawn(const pmix_proc_t *proc,
             spawn_by_tool = PMIX_INFO_TRUE(&job_info[n]);
         } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_REQUESTOR_IS_CLIENT)) {
             ++spawn_ntype;
+        } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_IOF_INHERIT)) {
+            ++spawn_ninherit;
+            spawn_noinherit = (PMIX_BOOL == job_info[n].value.type &&
+                               !job_info[n].value.data.flag);
         } else {
             ++spawn_ninfo;
         }
@@ -747,6 +757,10 @@ int main(int argc, char **argv)
     report("it reached the host with only the requester's identity and type",
            spawn_fired && 0 == spawn_ninfo && 2 == spawn_nident && 2 == spawn_ntype);
     report("...which says the requester is a tool", spawn_by_tool);
+    /* a tool's child does not inherit, and the host is told so to register
+     * with the spawned namespace - see pmix_server_spawn_prepare() */
+    report("...and that the child job does not inherit output forwarding",
+           1 == spawn_ninherit && spawn_noinherit);
     channels = child_iof_channels();
     report("a tool's child job has its stdout forwarded",
            0 != (channels & PMIX_FWD_STDOUT_CHANNEL));
@@ -773,6 +787,28 @@ int main(int argc, char **argv)
         } else {
             fprintf(stdout, "  SKIP: this process's user has no name\n");
         }
+    }
+
+    /* --- the host spawning for itself --- *
+     * PMIX_IOF_INHERIT is the host's attribute, so on this path it is the
+     * host's own refusal and must reach the host's spawn function */
+    {
+        pmix_app_t app;
+        pmix_info_t info;
+        pmix_nspace_t child;
+        bool no = false;
+
+        PMIX_APP_CONSTRUCT(&app);
+        app.cmd = strdup("/bin/true");
+        app.maxprocs = 1;
+        PMIX_INFO_LOAD(&info, PMIX_IOF_INHERIT, &no, PMIX_BOOL);
+        spawn_fired = false;
+        rc = PMIx_Spawn(&info, 1, &app, 1, child);
+        report("a host's own spawn is accepted", PMIX_SUCCESS == rc);
+        report("...and its PMIX_IOF_INHERIT=false reaches the host",
+               spawn_fired && 1 == spawn_ninherit && spawn_noinherit);
+        PMIX_INFO_DESTRUCT(&info);
+        PMIX_APP_DESTRUCT(&app);
     }
 
     /* --- a spawn the host declines --- *

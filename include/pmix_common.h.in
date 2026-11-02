@@ -1470,9 +1470,9 @@ typedef uint32_t pmix_rank_t;
                                                                     //        whoever is receiving the parent job's output is to receive
                                                                     //        this job's output as well. Absence of the attribute means
                                                                     //        "true", so a host says nothing unless it is turning
-                                                                    //        inheritance off. Directives on the spawn request itself take
-                                                                    //        precedence: naming any of PMIX_FWD_STDOUT/STDERR/STDDIAG
-                                                                    //        settles the matter and this attribute is not consulted.
+                                                                    //        inheritance off. When the spawn request names any of
+                                                                    //        PMIX_FWD_STDOUT/STDERR/STDDIAG, or comes from a tool, the
+                                                                    //        server adds this attribute, false, for the host to register.
 
 /* Attributes for controlling contents of application setup data */
 #define PMIX_SETUP_APP_ENVARS               "pmix.setup.env"        // (bool) harvest and include relevant envars

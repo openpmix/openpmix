@@ -10,6 +10,8 @@
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -431,6 +433,65 @@ pmix_status_t pmix_server_add_requester_type(pmix_peer_t *peer, pmix_info_t **in
     *info = new;
     *ninfo = m;
     return PMIX_SUCCESS;
+}
+
+/* Add PMIX_IOF_INHERIT=false to spawn directives when "inherit" is false,
+ * dropping any value the requester supplied. The attribute is the
+ * host's, not a spawn directive: a requester that wants no inheritance
+ * names the PMIX_FWD_* channels false */
+static pmix_status_t add_iof_inherit(bool inherit, pmix_info_t **info, size_t *ninfo)
+{
+    pmix_info_t *old = *info, *new;
+    size_t n, m;
+    bool no = false;
+
+    /* drop a requester-supplied PMIX_IOF_INHERIT in place */
+    m = 0;
+    for (n = 0; n < *ninfo; n++) {
+        if (PMIx_Check_key(old[n].key, PMIX_IOF_INHERIT)) {
+            PMIx_Info_destruct(&old[n]);
+            continue;
+        }
+        if (m != n) {
+            memcpy(&old[m], &old[n], sizeof(pmix_info_t));
+        }
+        ++m;
+    }
+    *ninfo = m;
+    if (0 == m && NULL != old) {
+        free(old);
+        old = NULL;
+        *info = NULL;
+    }
+    if (inherit) {
+        return PMIX_SUCCESS;
+    }
+
+    new = PMIx_Info_create(m + 1);
+    if (NULL == new) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (0 < m) {
+        memcpy(new, old, m * sizeof(pmix_info_t));
+    }
+    PMIx_Info_load(&new[m], PMIX_IOF_INHERIT, &no, PMIX_BOOL);
+    /* only the block is left to release - see pmix_server_add_requester_id */
+    free(old);
+    *info = new;
+    *ninfo = m + 1;
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_server_spawn_prepare(pmix_peer_t *peer, pmix_setup_caddy_t *cd,
+                                        bool from_host)
+{
+    pmix_server_spawn_parser(peer, &cd->channels, &cd->flags,
+                             &cd->inherit_iof, cd->info, cd->ninfo);
+    /* the host's own PMIX_IOF_INHERIT is its refusal: keep it */
+    if (from_host && cd->inherit_iof) {
+        return PMIX_SUCCESS;
+    }
+    return add_iof_inherit(cd->inherit_iof, &cd->info, &cd->ninfo);
 }
 
 /* nested info arrays are followed no deeper than this */
@@ -1362,8 +1423,11 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
      * nothing - so a tool such as prun that spawned without directives
      * never saw a line of its job's output. Both call sites in
      * PMIx_Spawn_nb parse unconditionally for the same reason. */
-    pmix_server_spawn_parser(peer, &cd->channels, &cd->flags,
-                             &cd->inherit_iof, cd->info, cd->ninfo);
+    rc = pmix_server_spawn_prepare(peer, cd, false);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
     rc = screen_file_writer(peer, cd);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);

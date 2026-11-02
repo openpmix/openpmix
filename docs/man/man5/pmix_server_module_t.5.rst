@@ -425,6 +425,12 @@ indicating whether the process that issued the spawn request is a tool or a
 client, respectively; a host may use this to apply different policies to
 tool-initiated launches.
 
+The job-level information may also carry ``PMIX_IOF_INHERIT`` set to
+``false`` when the spawned job is not to inherit its parent's output
+forwarding. The host includes it in the job-level information it registers
+for the spawned namespace with
+:ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`.
+
 .. _man5-pmix_server_module_t-connect:
 
 connect
