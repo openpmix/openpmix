@@ -399,3 +399,22 @@ The directory must be a directory of this server's user, not a link,
 that no other user can write. Another user made it first, or it was left
 with the wrong owner or mode. Removing it - its owner or an
 administrator can - lets the server make it again.
+#
+[server-not-file-owner]
+This process on %s will not talk to the PMIx server it reached: the
+kernel reports it runs as
+
+  uid %lu
+
+but the rendezvous file that gave its address is owned by uid %lu. A
+server writes its own file, so the process answering at that address
+is not the one that wrote it.
+#
+[server-not-file-pid]
+This process on %s will not talk to the PMIx server it reached: the
+kernel reports it is
+
+  pid %lu
+
+but it was looked for, and its rendezvous file found, as pid %lu. The
+process answering at that address is not the one asked for.

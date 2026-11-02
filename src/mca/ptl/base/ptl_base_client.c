@@ -204,8 +204,20 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
                 rendfile = NULL;
             }
             PMIx_Argv_free(dirs);
+            if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&connections) &&
+                !pmix_ptl_base_system_owner_ok(
+                    (pmix_connection_t *) pmix_list_get_first(&connections))) {
+                /* not a system server we take - nor its owner's to name */
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "ptl:client: the system server's file is not root's, our "
+                                    "user's, or a listed user's");
+                rc = PMIX_ERR_NOT_FOUND;
+            }
             if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&connections)) {
                 cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+                /* its server must be the file's owner */
+                pmix_ptl_base.rndz_owner_given = true;
+                pmix_ptl_base.rndz_owner = cn->owner;
                 /* set our protocol to V2 as that is all we support */
                 pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
                 peer->protocol = PMIX_PROTOCOL_V2;
@@ -317,6 +329,7 @@ error:
     /* an identity we were told to expect was for this connect alone */
     pmix_ptl_base.server_expect_given = false;
     pmix_ptl_base.server_release_vouched = false;
+    pmix_ptl_base.rndz_owner_given = false;
     free(localuri);
     PMIX_LIST_DESTRUCT(&connections);
     if (NULL != urispec) {

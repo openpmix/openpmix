@@ -252,3 +252,21 @@ bool pmix_ptl_base_legacy_walk(void)
     return false;
 #endif
 }
+
+bool pmix_ptl_base_system_owner_ok(const pmix_connection_t *cn)
+{
+    size_t n;
+
+    if (!cn->owner_known) {
+        return false;
+    }
+    if (0 == cn->owner || geteuid() == cn->owner) {
+        return true;
+    }
+    for (n = 0; n < pmix_ptl_base.naccess_uids; n++) {
+        if (pmix_ptl_base.access_uids[n] == cn->owner) {
+            return true;
+        }
+    }
+    return false;
+}
