@@ -1,5 +1,7 @@
 /*
  * Copyright (c) 2026      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -220,6 +222,38 @@ static pmix_status_t register_child_noinherit(const char *nspace,
     PMIX_INFO_DESTRUCT(&info[0]);
     PMIX_INFO_DESTRUCT(&info[1]);
     PMIX_INFO_DESTRUCT(&info[2]);
+    return rc;
+}
+
+/* Like register_child(), plus extra job-level attributes: the spawn
+ * directives a host passes through to the registration. */
+static pmix_status_t register_child_info(const char *nspace,
+                                         const char *parent_ns,
+                                         pmix_rank_t parent_rank,
+                                         const pmix_info_t *extra, size_t nextra)
+{
+    pmix_info_t *info;
+    pmix_proc_t parent;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t one = 1;
+    size_t n;
+
+    /* see register_child() above for why this is not the caller's string */
+    PMIX_LOAD_NSPACE(ns, nspace);
+    PMIX_LOAD_PROCID(&parent, parent_ns, parent_rank);
+    PMIX_INFO_CREATE(info, 2 + nextra);
+    PMIX_INFO_LOAD(&info[0], PMIX_PARENT_ID, &parent, PMIX_PROC);
+    PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+    for (n = 0; n < nextra; n++) {
+        PMIx_Info_xfer(&info[2 + n], &extra[n]);
+    }
+
+    rc = PMIx_server_register_nspace(ns, 0, info, 2 + nextra, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    PMIX_INFO_FREE(info, 2 + nextra);
     return rc;
 }
 
@@ -593,6 +627,173 @@ cleanup:
     PMIX_RELEASE(watcher);
 }
 
+/* One spawn request, as the spawn server's parser sees it and as the
+ * host passes it through to every other server. */
+typedef struct {
+    const char *name;
+    bool tool;          // requested by a tool
+    size_t ninfo;
+    pmix_info_t info[2];
+} agree_row_t;
+
+#define AGREE_ROWS 13
+
+static void build_rows(agree_row_t *rows)
+{
+    bool yes = true, no = false;
+    int r = 0;
+
+    memset(rows, 0, AGREE_ROWS * sizeof(agree_row_t));
+    rows[r++].name = "nothing named";
+    rows[r].name = "PMIX_FWD_STDOUT=false";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDOUT, &no, PMIX_BOOL);
+    rows[r++].ninfo = 1;
+    rows[r].name = "PMIX_FWD_STDOUT=true";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDOUT, &yes, PMIX_BOOL);
+    rows[r++].ninfo = 1;
+    rows[r].name = "PMIX_FWD_STDERR=true";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDERR, &yes, PMIX_BOOL);
+    rows[r++].ninfo = 1;
+    rows[r].name = "PMIX_FWD_STDDIAG=false";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDDIAG, &no, PMIX_BOOL);
+    rows[r++].ninfo = 1;
+    rows[r].name = "PMIX_FWD_STDOUT as a string";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDOUT, "true", PMIX_STRING);
+    rows[r++].ninfo = 1;
+    rows[r].name = "PMIX_FWD_STDOUT with no value";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDOUT, NULL, PMIX_UNDEF);
+    rows[r++].ninfo = 1;
+    rows[r].name = "only PMIX_FWD_STDIN";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDIN, &yes, PMIX_BOOL);
+    rows[r++].ninfo = 1;
+    rows[r].name = "only a formatting directive";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_IOF_TAG_OUTPUT, &yes, PMIX_BOOL);
+    rows[r++].ninfo = 1;
+    rows[r].name = "a tool, nothing named";
+    rows[r++].tool = true;
+    rows[r].name = "a tool, PMIX_FWD_STDOUT=false";
+    rows[r].tool = true;
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDOUT, &no, PMIX_BOOL);
+    rows[r++].ninfo = 1;
+    /* a requester-supplied PMIX_IOF_INHERIT must not reach the host */
+    rows[r].name = "a client's own PMIX_IOF_INHERIT=false, nothing named";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_IOF_INHERIT, &no, PMIX_BOOL);
+    rows[r++].ninfo = 1;
+    rows[r].name = "a client's own PMIX_IOF_INHERIT=true, PMIX_FWD_STDOUT=false";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_IOF_INHERIT, &yes, PMIX_BOOL);
+    PMIX_INFO_LOAD(&rows[r].info[1], PMIX_FWD_STDOUT, &no, PMIX_BOOL);
+    rows[r++].ninfo = 2;
+}
+
+/* The spawn server and the delivering server agree on every request.
+ * Each row runs a request through pmix_server_spawn_prepare(), registers
+ * the result as a host does, and asserts only that delivery clones
+ * exactly when the parser inherits. */
+static void test_parser_agreement(void)
+{
+    agree_row_t rows[AGREE_ROWS];
+    pmix_peer_t *watcher, *client, *tool, *spawner;
+    pmix_setup_caddy_t *cd;
+    pmix_nspace_t child;
+    char what[160];
+    bool parser_inherits;
+    size_t n;
+    int r, count;
+
+    watcher = mkpeer("toolns", 0, true);
+    client = mkpeer("agreejob", 0, false);
+    tool = mkpeer("agreejob", 0, true);   // a tool carrying a job's name
+    spawner = mkpeer("agreejob", 0, false);
+    watch_job(watcher, "agreejob", PMIX_FWD_STDERR_CHANNEL, 11);
+    build_rows(rows);
+
+    for (r = 0; r < AGREE_ROWS; r++) {
+        cd = PMIX_NEW(pmix_setup_caddy_t);
+        cd->info = PMIx_Info_create(rows[r].ninfo);
+        cd->ninfo = rows[r].ninfo;
+        cd->copied = true;
+        for (n = 0; n < rows[r].ninfo; n++) {
+            PMIx_Info_xfer(&cd->info[n], &rows[r].info[n]);
+        }
+        if (PMIX_SUCCESS != pmix_server_spawn_prepare(rows[r].tool ? tool : client, cd, false)) {
+            snprintf(what, sizeof(what), "agree: %s: could not prepare the request",
+                     rows[r].name);
+            report(what, false);
+            PMIX_RELEASE(cd);
+            for (n = 0; n < rows[r].ninfo; n++) {
+                PMIX_INFO_DESTRUCT(&rows[r].info[n]);
+            }
+            continue;
+        }
+        parser_inherits = cd->inherit_iof;
+        snprintf(child, sizeof(child), "agreechild%d", r);
+        if (PMIX_SUCCESS != register_child_info(child, "agreejob", 0, cd->info, cd->ninfo)) {
+            snprintf(what, sizeof(what), "agree: %s: could not register", rows[r].name);
+            report(what, false);
+        } else {
+            deliver_from(child, 0);
+            find_watch(child, &count);
+            snprintf(what, sizeof(what), "agree: %s: delivery %s like the parser",
+                     rows[r].name, parser_inherits ? "inherits" : "does not inherit");
+            report(what, parser_inherits == (0 < count));
+            drop_watches(child);
+
+            /* the spawn-time half reads the same key; driven as if its
+             * parser had inherited, which is how a host's refusal meets it */
+            run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, child);
+            find_watch(child, &count);
+            snprintf(what, sizeof(what), "agree: %s: spawn-time half %s too",
+                     rows[r].name, parser_inherits ? "inherits" : "does not inherit");
+            report(what, parser_inherits == (0 < count));
+            drop_watches(child);
+        }
+        PMIX_RELEASE(cd);
+        for (n = 0; n < rows[r].ninfo; n++) {
+            PMIX_INFO_DESTRUCT(&rows[r].info[n]);
+        }
+    }
+
+    drop_watches("agreejob");
+    PMIX_RELEASE(spawner);
+    PMIX_RELEASE(tool);
+    PMIX_RELEASE(client);
+    PMIX_RELEASE(watcher);
+}
+
+/* A job that did not inherit ends the ancestry walk.
+ *
+ * Its child names nothing and so inherits - but from its parent, which
+ * forwards nothing on this server. Walking on past it hands the child the
+ * grandparent's watcher, which the parent itself was refused. The parent
+ * is registered as a host registers a job that does not inherit, with
+ * PMIX_IOF_INHERIT=false. */
+static void test_walk_stops(void)
+{
+    pmix_peer_t *watcher;
+    pmix_info_t silence;
+    bool no = false;
+    int count;
+
+    watcher = mkpeer("toolns", 0, true);
+    watch_job(watcher, "walkjob", PMIX_FWD_STDERR_CHANNEL, 12);
+    PMIX_INFO_LOAD(&silence, PMIX_IOF_INHERIT, &no, PMIX_BOOL);
+
+    if (PMIX_SUCCESS != register_child_info("walksilent", "walkjob", 0, &silence, 1) ||
+        PMIX_SUCCESS != register_child("walkchild", "walksilent", 0)) {
+        report("walk: could not register the namespaces", false);
+    } else {
+        deliver_from("walkchild", 0);
+        find_watch("walkchild", &count);
+        report("walk: the walk stops at a job that did not inherit", 0 == count);
+    }
+
+    PMIX_INFO_DESTRUCT(&silence);
+    drop_watches("walkchild");
+    drop_watches("walksilent");
+    drop_watches("walkjob");
+    PMIX_RELEASE(watcher);
+}
+
 static pmix_server_module_t mymodule = {0};
 
 int main(int argc, char **argv)
@@ -609,6 +810,8 @@ int main(int argc, char **argv)
     test_spawn_parser();
     test_inheritance();
     test_delivery_ancestry();
+    test_parser_agreement();
+    test_walk_stops();
     test_inherit_access();
 
     PMIx_server_finalize();

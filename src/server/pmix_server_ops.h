@@ -9,6 +9,8 @@
  * Copyright (c) 2016-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  */
 
@@ -340,6 +342,16 @@ PMIX_EXPORT void pmix_server_spawn_parser(pmix_peer_t *peer,
                                           bool *inherit,
                                           pmix_info_t *info,
                                           size_t ninfo);
+/* Parse cd's directives into cd's IOF fields, then add
+ * PMIX_IOF_INHERIT=false to cd->info when the job is not to inherit,
+ * dropping any value the requester supplied; cd->info may be replaced.
+ * With "from_host" (the host spawning for itself) a job that inherits
+ * keeps the host's own value. Every path that hands a spawn to the host
+ * or pfexec calls this, not the parser. The client's send path calls the
+ * parser alone: the server that receives the request prepares it. */
+PMIX_EXPORT pmix_status_t pmix_server_spawn_prepare(pmix_peer_t *peer,
+                                                    pmix_setup_caddy_t *cd,
+                                                    bool from_host);
 PMIX_EXPORT pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
                                                   char nspace[]);
 

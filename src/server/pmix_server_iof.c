@@ -12,6 +12,8 @@
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -664,11 +666,12 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
     return ninherited;
 }
 
-/* Does the host allow this job to inherit? PMIX_IOF_INHERIT is job-level
- * information the host supplies with the spawned namespace, so it reaches
- * every server the namespace is registered with - which matters, because
- * the two places that ask are on different daemons. Absent means yes: a
- * host says nothing unless it is turning inheritance off.
+/* Does this job inherit its parent's output forwarding? PMIX_IOF_INHERIT
+ * is job-level information the host supplies with the spawned namespace,
+ * so it reaches every server the namespace is registered with - which
+ * matters, because the two places that ask are on different daemons.
+ * Absent means yes. The host sets it false when it refuses inheritance,
+ * and so does the spawn server - see pmix_server_spawn_prepare().
  *
  * "Absent" and "we have never heard of this namespace" are the same
  * answer here, and deliberately so at the only site where they can
@@ -749,7 +752,7 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
     }
     if (!iof_inherit_allowed(nspace)) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
-                            "PMIx:SERVER job %s: host declined output inheritance",
+                            "PMIx:SERVER job %s does not inherit output forwarding",
                             nspace);
         return 0;
     }
@@ -837,6 +840,8 @@ static bool get_parent_id(const pmix_proc_t *proc, pmix_proc_t *parent)
  * says nothing about depth - a grandchild of a watched job is watched.
  * It stops at the first ancestor anybody here is subscribed to: once the
  * clones exist, that generation's watchers are this namespace's watchers.
+ * It also stops at an ancestor that does not inherit: walking past it
+ * would give the child the watcher its parent was refused.
  *
  * A match CLONES rather than delivering once, so every later chunk from
  * this namespace takes the ordinary path above. That costs one entry per
@@ -850,12 +855,12 @@ static size_t inherit_from_ancestry(const pmix_proc_t *source)
     size_t ninherited;
     int depth;
 
-    /* The host's decision, read where it is reliable: output cannot
-     * arrive for a namespace this server has not been told about, so
-     * unlike the spawn-time site there is no "cannot ask yet" here. */
+    /* Read where it is reliable: output cannot arrive for a namespace
+     * this server has not been told about, so unlike the spawn-time site
+     * there is no "cannot ask yet" here. */
     if (!iof_inherit_allowed(source->nspace)) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
-                            "PMIx:SERVER job %s: host declined output inheritance",
+                            "PMIx:SERVER job %s does not inherit output forwarding",
                             source->nspace);
         return 0;
     }
@@ -877,6 +882,12 @@ static size_t inherit_from_ancestry(const pmix_proc_t *source)
                                 source->nspace, (int) ninherited,
                                 PMIX_NAME_PRINT(&parent));
             return ninherited;
+        }
+        if (!iof_inherit_allowed(parent.nspace)) {
+            pmix_output_verbose(2, pmix_server_globals.iof_output,
+                                "PMIx:SERVER job %s: ancestor %s does not inherit",
+                                source->nspace, parent.nspace);
+            return 0;
         }
         PMIX_LOAD_PROCID(&anc, parent.nspace, parent.rank);
     }
