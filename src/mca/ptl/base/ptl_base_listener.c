@@ -638,6 +638,7 @@ typedef struct {
     int dirfd;
     bool held;      // we hold the lock beside the name
     bool reported;
+    bool foreign;   // the file at the name is another user's
 } rndz_reclaim_t;
 
 /* A rendezvous file is already at the name. If a live process owns it,
@@ -648,7 +649,20 @@ typedef struct {
 static bool rndz_reclaim(const char *name, void *cbdata)
 {
     rndz_reclaim_t *ctx = (rndz_reclaim_t *) cbdata;
+    struct stat st;
     char *owner;
+
+    /* A file of another user's - root's too, unless we are root - is not
+     * ours to judge, whatever its pid or lock says: it is never reclaimed,
+     * and never taken as another server of ours in this role. We write no
+     * file at the name, say why, and run on */
+    if (0 == fstatat(ctx->dirfd, name, &st, AT_SYMLINK_NOFOLLOW) && geteuid() != st.st_uid) {
+        pmix_show_help("help-ptl-base.txt", "rndz-file-foreign", true, ctx->role,
+                       ctx->filename, (unsigned long) st.st_uid);
+        ctx->foreign = true;
+        ctx->reported = true;
+        return false;
+    }
 
     owner = rndz_file_owner(ctx->dirfd, name, ctx->held);
     if (NULL != owner) {
@@ -918,7 +932,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     int rc, lockfd = -1;
     size_t n;
     rndz_reclaim_t reclaim = {.role = role, .filename = filename, .dirfd = -1,
-                              .held = false, .reported = false};
+                              .held = false, .reported = false, .foreign = false};
     mode_t mode;
     struct stat buf;
 
@@ -1005,6 +1019,10 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
         *file_created = false;
         release_lock(dirfd, base, lockfd);
         close(dirfd);
+        if (reclaim.foreign) {
+            /* reported - and not ours to stop over */
+            return PMIX_SUCCESS;
+        }
         if (reclaim.reported) {
             return PMIX_ERR_SILENT;
         }
