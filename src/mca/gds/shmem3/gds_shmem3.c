@@ -1879,6 +1879,11 @@ shmem3_segment_fix_perms(
             rc = pmix_shmem_segment_chown(shmem3, (uid_t)-1, gid);
         }
         if (PMIX_SUCCESS != rc) {
+            /* the file stays ours alone: the job's clients take the data
+             * from us instead */
+            PMIX_GDS_SHMEM3_VOUT("%s: could not give %s to uid %ld gid %ld - "
+                                 "readable by this server alone",
+                                 __func__, shmem3->backing_path, (long)(int)uid, (long)(int)gid);
             listed = false;
         }
     }
