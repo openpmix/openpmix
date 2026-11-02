@@ -401,8 +401,11 @@ replaced. One whose PID is still running belongs to another server, and
 ``PMIx_server_init`` fails rather than take it over.
 
 A file named by ``PMIX_TCP_REPORT_URI`` is not a rendezvous file and none of
-the above applies to it: it is created mode 0644 - readable by all, writable
-only by the server's user - and removed at finalize.
+the above applies to it. A file already at that name is reused only if the
+server's user owns it; one of any other user's - root's too, unless the server
+is root - fails ``PMIx_server_init``. The file, reused or new, is given mode
+0644 - readable by all, writable only by the server's user - and is removed at
+finalize.
 
 The tmpdirs
 ^^^^^^^^^^^
