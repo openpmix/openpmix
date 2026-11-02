@@ -1254,6 +1254,22 @@ pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer
         }
     }
 
+    /* an event may carry one custom range at most */
+    {
+        size_t ncustom = 0;
+
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&cd->info[n], PMIX_EVENT_CUSTOM_RANGE)) {
+                ++ncustom;
+            }
+        }
+        if (1 < ncustom) {
+            rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+
     /* a release lets a process held for a debugger go on - only from a
      * peer whose user may act on that process's job */
     if (PMIX_DEBUGGER_RELEASE == cd->status) {

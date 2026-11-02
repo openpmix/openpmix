@@ -19,6 +19,9 @@
  * The monitors run on a progress thread of their own, started by the
  * first of them, so a stat() that blocks does not stall the server.
  *
+ * An alert says which monitor tripped and why: the monitor's ID if the
+ * request named one, its settings, and how many checks it missed.
+ *
  * This runs a real server with a stub host module and calls psensor on
  * the progress thread, where the server calls it. The alerts are raised
  * with PMIX_RANGE_PROC_LOCAL, so this process's own handlers see them.
@@ -44,6 +47,10 @@
 /* the codes the two file monitors raise, so an alert says which fired */
 #define CODE_OWNED   (PMIX_EXTERNAL_ERR_BASE - 11)
 #define CODE_UNOWNED (PMIX_EXTERNAL_ERR_BASE - 12)
+/* and the codes of the monitors whose alerts are read back */
+#define CODE_HB      (PMIX_EXTERNAL_ERR_BASE - 13)
+#define CODE_HB_NOID (PMIX_EXTERNAL_ERR_BASE - 14)
+#define CODE_FILE    (PMIX_EXTERNAL_ERR_BASE - 15)
 
 static int npass = 0;
 static int nfail = 0;
@@ -407,6 +414,245 @@ static void test_isolation(void)
     monitor_barrier();
 }
 
+/* ------------------------------------------------------------------ */
+/* what an alert carries                                               */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+    volatile int fired;
+    int nid;
+    char id[64];
+    bool heartbeat;
+    char file[256];
+    bool fsize, faccess, fmod;
+    int ntime, ndrops, nmissed;
+    uint32_t time, drops, missed;
+} alert_seen_t;
+
+static alert_seen_t seen_hb, seen_hb_noid, seen_file;
+
+static void read_u32(const pmix_info_t *info, int *count, uint32_t *val)
+{
+    ++(*count);
+    if (PMIX_SUCCESS != PMIx_Value_get_number(&info->value, val, PMIX_UINT32)) {
+        *val = UINT32_MAX;
+    }
+}
+
+/* the info is the library's only for the duration of the call, so what
+ * is wanted is copied out here */
+static void info_alert(size_t evhdlr_registration_id, pmix_status_t status,
+                       const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                       pmix_info_t results[], size_t nresults,
+                       pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    alert_seen_t *a = NULL;
+    size_t n;
+
+    (void) evhdlr_registration_id;
+    (void) source;
+    (void) results;
+    (void) nresults;
+    if (CODE_HB == status) {
+        a = &seen_hb;
+    } else if (CODE_HB_NOID == status) {
+        a = &seen_hb_noid;
+    } else if (CODE_FILE == status) {
+        a = &seen_file;
+    }
+    if (NULL != a && 0 == a->fired) {
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_ID)) {
+                ++a->nid;
+                if (PMIX_STRING == info[n].value.type && NULL != info[n].value.data.string) {
+                    snprintf(a->id, sizeof(a->id), "%s", info[n].value.data.string);
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_HEARTBEAT)) {
+                a->heartbeat = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_HEARTBEAT_TIME) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_FILE_CHECK_TIME)) {
+                read_u32(&info[n], &a->ntime, &a->time);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_HEARTBEAT_DROPS) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_FILE_DROPS)) {
+                read_u32(&info[n], &a->ndrops, &a->drops);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_HEARTBEAT_MISSED) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_FILE_MISSED)) {
+                read_u32(&info[n], &a->nmissed, &a->missed);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_FILE)) {
+                if (PMIX_STRING == info[n].value.type && NULL != info[n].value.data.string) {
+                    snprintf(a->file, sizeof(a->file), "%s", info[n].value.data.string);
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_FILE_SIZE)) {
+                a->fsize = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_FILE_ACCESS)) {
+                a->faccess = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_MONITOR_FILE_MODIFY)) {
+                a->fmod = PMIX_INFO_TRUE(&info[n]);
+            }
+        }
+    }
+    if (NULL != a) {
+        ++a->fired;
+    }
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
+    }
+}
+
+/* a monitor started with every directive given here */
+typedef struct {
+    pmix_peer_t *peer;
+    pmix_info_t *monitor;
+    pmix_info_t *dirs;
+    size_t ndirs;
+    pmix_status_t code;
+    pmix_status_t rc;
+} start_full_t;
+
+static void do_start_full(void *arg)
+{
+    start_full_t *st = (start_full_t *) arg;
+
+    st->rc = pmix_psensor.start(st->peer, st->code, st->monitor, st->dirs, st->ndirs);
+}
+
+static pmix_status_t start_heartbeat(pmix_peer_t *peer, pmix_status_t code, const char *id,
+                                     uint32_t interval, uint32_t drops)
+{
+    pmix_info_t monitor, dirs[4];
+    pmix_data_range_t range = PMIX_RANGE_PROC_LOCAL;
+    start_full_t st;
+    size_t n = 0;
+
+    PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_HEARTBEAT, NULL, PMIX_POINTER);
+    PMIX_INFO_LOAD(&dirs[n], PMIX_MONITOR_HEARTBEAT_TIME, &interval, PMIX_UINT32);
+    ++n;
+    PMIX_INFO_LOAD(&dirs[n], PMIX_MONITOR_HEARTBEAT_DROPS, &drops, PMIX_UINT32);
+    ++n;
+    PMIX_INFO_LOAD(&dirs[n], PMIX_RANGE, &range, PMIX_DATA_RANGE);
+    ++n;
+    if (NULL != id) {
+        PMIX_INFO_LOAD(&dirs[n], PMIX_MONITOR_ID, id, PMIX_STRING);
+        ++n;
+    }
+    st.peer = peer;
+    st.monitor = &monitor;
+    st.dirs = dirs;
+    st.ndirs = n;
+    st.code = code;
+    st.rc = PMIX_ERROR;
+    on_progress(do_start_full, &st);
+    PMIX_INFO_DESTRUCT(&monitor);
+    while (0 < n) {
+        --n;
+        PMIX_INFO_DESTRUCT(&dirs[n]);
+    }
+    return st.rc;
+}
+
+static pmix_status_t start_file(pmix_peer_t *peer, pmix_status_t code, const char *id,
+                                const char *path, uint32_t interval, uint32_t drops)
+{
+    pmix_info_t monitor, dirs[6];
+    pmix_data_range_t range = PMIX_RANGE_PROC_LOCAL;
+    bool yes = true;
+    start_full_t st;
+    size_t n = 0;
+
+    PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_FILE, path, PMIX_STRING);
+    PMIX_INFO_LOAD(&dirs[n], PMIX_MONITOR_FILE_SIZE, &yes, PMIX_BOOL);
+    ++n;
+    PMIX_INFO_LOAD(&dirs[n], PMIX_MONITOR_FILE_MODIFY, &yes, PMIX_BOOL);
+    ++n;
+    PMIX_INFO_LOAD(&dirs[n], PMIX_MONITOR_FILE_CHECK_TIME, &interval, PMIX_UINT32);
+    ++n;
+    PMIX_INFO_LOAD(&dirs[n], PMIX_MONITOR_FILE_DROPS, &drops, PMIX_UINT32);
+    ++n;
+    PMIX_INFO_LOAD(&dirs[n], PMIX_RANGE, &range, PMIX_DATA_RANGE);
+    ++n;
+    PMIX_INFO_LOAD(&dirs[n], PMIX_MONITOR_ID, id, PMIX_STRING);
+    ++n;
+    st.peer = peer;
+    st.monitor = &monitor;
+    st.dirs = dirs;
+    st.ndirs = n;
+    st.code = code;
+    st.rc = PMIX_ERROR;
+    on_progress(do_start_full, &st);
+    PMIX_INFO_DESTRUCT(&monitor);
+    while (0 < n) {
+        --n;
+        PMIX_INFO_DESTRUCT(&dirs[n]);
+    }
+    return st.rc;
+}
+
+static void wait_alert(alert_seen_t *a)
+{
+    int k;
+
+    for (k = 0; k < 150 && 0 == a->fired; k++) {
+        usleep(100000);
+    }
+}
+
+/* each alert says which monitor it is and what it saw */
+static void test_alert_info(pmix_peer_t *me, const char *path)
+{
+    pmix_status_t codes[3] = {CODE_HB, CODE_HB_NOID, CODE_FILE};
+    pmix_status_t rc;
+
+    memset(&seen_hb, 0, sizeof(seen_hb));
+    memset(&seen_hb_noid, 0, sizeof(seen_hb_noid));
+    memset(&seen_file, 0, sizeof(seen_file));
+    rc = PMIx_Register_event_handler(codes, 3, NULL, 0, info_alert, NULL, NULL);
+    if (0 > rc) {
+        report("register the alert-info handler", 0);
+        return;
+    }
+
+    /* no beats ever arrive: one missed window is allowed, the second trips */
+    report("a heartbeat monitor with an ID starts",
+           PMIX_SUCCESS == start_heartbeat(me, CODE_HB, "pss-hb", 1, 1));
+    report("a heartbeat monitor without an ID starts",
+           PMIX_SUCCESS == start_heartbeat(me, CODE_HB_NOID, NULL, 1, 0));
+    /* the file never changes: the first look is the baseline, and the
+     * second missed check trips */
+    report("a file monitor with an ID starts",
+           PMIX_SUCCESS == start_file(me, CODE_FILE, "pss-file", path, 1, 2));
+
+    wait_alert(&seen_hb);
+    wait_alert(&seen_hb_noid);
+    wait_alert(&seen_file);
+
+    report("the heartbeat monitor alerts", 0 < seen_hb.fired);
+    report("its alert names the monitor's ID",
+           1 == seen_hb.nid && 0 == strcmp(seen_hb.id, "pss-hb"));
+    report("its alert says it is a heartbeat monitor", seen_hb.heartbeat);
+    report("its alert carries the interval", 1 == seen_hb.ntime && 1 == seen_hb.time);
+    report("its alert carries the threshold", 1 == seen_hb.ndrops && 1 == seen_hb.drops);
+    report("its alert carries the beats missed", 1 == seen_hb.nmissed && 2 == seen_hb.missed);
+
+    report("the heartbeat monitor without an ID alerts", 0 < seen_hb_noid.fired);
+    report("its alert names no ID", 0 == seen_hb_noid.nid);
+    report("its alert carries its settings and the beats missed",
+           seen_hb_noid.heartbeat && 1 == seen_hb_noid.time && 0 == seen_hb_noid.drops &&
+               1 == seen_hb_noid.nmissed && 1 == seen_hb_noid.missed);
+
+    report("the file monitor alerts", 0 < seen_file.fired);
+    report("its alert names the monitor's ID",
+           1 == seen_file.nid && 0 == strcmp(seen_file.id, "pss-file"));
+    report("its alert names the file", 0 == strcmp(seen_file.file, path));
+    report("its alert carries the checks asked for, and no other",
+           seen_file.fsize && seen_file.fmod && !seen_file.faccess);
+    report("its alert carries the check interval", 1 == seen_file.ntime && 1 == seen_file.time);
+    report("its alert carries the threshold", 1 == seen_file.ndrops && 2 == seen_file.drops);
+    report("its alert carries the checks missed",
+           1 == seen_file.nmissed && 2 == seen_file.missed);
+
+    stop_all(me);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -457,6 +703,7 @@ int main(int argc, char **argv)
     test_owner(me, stranger, path);
     test_isolation();
     test_cap(me, other, path);
+    test_alert_info(me, path);
 
     drop_peer(other);
     drop_peer(stranger);

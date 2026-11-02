@@ -324,7 +324,16 @@ for both, through `pmix_client_post_data_recvs()`, so the screen is the
 backstop rather than the mechanism. `PMIX_PTL_TAG_IOF` and
 `PMIX_PTL_TAG_IOF_CONTROL` are posted at server init and at
 `PMIx_tool_init`, ahead of the wildcard, so they never arrive here;
-`PMIX_PTL_TAG_NOTIFY` is unused.
+`PMIX_PTL_TAG_NOTIFY` (0) is posted for every role at `pmix_rte_init`.
+
+**Tags 0, 2-5 travel down only.** Events (`PMIX_PTL_TAG_NOTIFY`), IOF,
+flow control, key deletions and store updates are sent by a server to a
+process it serves. Their recvs are posted with no peer, so they match on
+the tag alone. Every handler for them acts only on a
+message from a server of this process - one it connected to, or one it
+made its server with `PMIx_tool_set_server`, as a tool does with a
+launcher that connected back to it - or from itself
+(`pmix_iof_sender_is_upstream`).
 
 **A new reserved tag needs a posted recv on every role that can be sent
 one.** The screen keeps the cost of getting that wrong at "the message

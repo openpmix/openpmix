@@ -64,6 +64,18 @@ ignored. The client's identity is the one the credential establishes.
   started the server with ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``.
 * A tool that says it is a registered client, or that joins a namespace
   the server already knows, must have that process's uid and gid.
+* **A tool that names its own namespace never joins a job of the
+  host's.** One naming a namespace the host registered, whose rank the
+  host did not register for it, is refused with ``PMIX_ERR_EXISTS`` -
+  and so is one whose namespace the host registers while it decides on
+  the tool, even with no processes in it yet: the namespace is taken to
+  be a job of the host's that took the name meanwhile. **So do not
+  register a self-named tool's namespace while deciding on it**; the
+  tool library sets the well-known job values (job size, local rank,
+  hostname) for itself. A host that registers the name in full after
+  accepting the tool takes the name back: the tool's namespace and data
+  go, its connections are closed, and the host's job is built fresh. A
+  tool the host names may join the namespace the host registers for it.
 * A tool joining a rank that already has a connection is refused with
   ``PMIX_ERR_EXISTS``, as a client is. A tool that execs is lost, as a
   client is - the host is sent ``PMIX_ERR_LOST_CONNECTION`` - and if its

@@ -34,6 +34,13 @@
  * first retry decremented it below zero, and the call reported failure
  * without ever having waited - and reported it as PMIX_ERR_NOT_FOUND
  * rather than the documented PMIX_ERR_TIMEOUT.
+ *
+ * A peer the tool makes its server with PMIx_tool_set_server is a server
+ * of its own from then on, whichever way the connection was made: a
+ * launcher the tool started connects back to it as a client, and the tool
+ * then makes it its server over that connection. What only a server sends
+ * - events, IOF, store updates - is taken from such a peer alone, so it
+ * has to be marked as one (peer->upstream).
  */
 
 #include "src/include/pmix_config.h"
@@ -41,6 +48,8 @@
 #include "include/pmix.h"
 #include "include/pmix_server.h"
 #include "include/pmix_tool.h"
+#include "src/include/pmix_globals.h"
+#include "src/server/pmix_server_ops.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -487,6 +496,31 @@ int main(int argc, char **argv)
     /* switching to ourselves is always legal and needs no directives */
     rc = PMIx_tool_set_server(&myproc, NULL, 0);
     report("set_server(self) succeeds", PMIX_SUCCESS == rc, PMIx_Error_string(rc));
+
+    /* a peer that connected to us - a launcher we started, connecting
+     * back - made our server */
+    {
+        pmix_peer_t *lpeer = PMIX_NEW(pmix_peer_t);
+        pmix_proc_t lproc;
+        int lidx;
+
+        lpeer->info = PMIX_NEW(pmix_rank_info_t);
+        lpeer->info->pname.nspace = strdup("tool-api-launcher");
+        lpeer->info->pname.rank = 0;
+        lpeer->upstream = false;
+        lidx = pmix_pointer_array_add(&pmix_server_globals.clients, lpeer);
+        PMIX_LOAD_PROCID(&lproc, "tool-api-launcher", 0);
+        rc = PMIx_tool_set_server(&lproc, NULL, 0);
+        report("set_server to a peer that connected to us succeeds", PMIX_SUCCESS == rc,
+               PMIx_Error_string(rc));
+        report("...and the peer is a server of ours from then on", lpeer->upstream,
+               "not marked upstream - what only a server sends would be dropped");
+        rc = PMIx_tool_set_server(&myproc, NULL, 0);
+        report("...and set_server(self) switches back from it", PMIX_SUCCESS == rc,
+               PMIx_Error_string(rc));
+        pmix_pointer_array_set_item(&pmix_server_globals.clients, lidx, NULL);
+        PMIX_RELEASE(lpeer);
+    }
 
     /* a server we have never heard of, with no wait requested, fails
      * immediately */

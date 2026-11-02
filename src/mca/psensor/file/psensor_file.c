@@ -71,8 +71,6 @@ typedef struct {
     pmix_status_t error;
     pmix_data_range_t range;
     pmix_proc_t source;
-    pmix_info_t *info;
-    size_t ninfo;
     bool claimed;  // holds one of the requestor's monitors - see pmix_psensor_base_claim
 } file_tracker_t;
 static void ft_constructor(file_tracker_t *ft)
@@ -98,8 +96,6 @@ static void ft_constructor(file_tracker_t *ft)
     ft->error = PMIX_SUCCESS;
     ft->range = PMIX_RANGE_NAMESPACE;
     PMIX_PROC_CONSTRUCT(&ft->source);
-    ft->info = NULL;
-    ft->ninfo = 0;
     ft->claimed = false;
 }
 static void ft_destructor(file_tracker_t *ft)
@@ -118,9 +114,6 @@ static void ft_destructor(file_tracker_t *ft)
     }
     if (NULL != ft->file) {
         free(ft->file);
-    }
-    if (NULL != ft->info) {
-        PMIX_INFO_FREE(ft->info, ft->ninfo);
     }
 }
 PMIX_CLASS_INSTANCE(file_tracker_t,
@@ -358,11 +351,62 @@ static pmix_status_t stop(pmix_peer_t *requestor, char *id)
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
-    file_tracker_t *ft = (file_tracker_t *) cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    file_tracker_t *ft = (file_tracker_t *) cb->cbdata;
 
     PMIX_HIDE_UNUSED_PARAMS(status);
 
     PMIX_RELEASE(ft);
+    PMIX_RELEASE(cb); // and the alert's info with it
+}
+
+/* What the alert says about the monitor that tripped: its ID, if the
+ * request named one, the file, which checks were asked for, the check
+ * interval and threshold, and how many checks were missed.
+ * PMIx_Notify_event borrows the array until opcbfunc */
+static pmix_cb_t *alert_info(file_tracker_t *ft)
+{
+    pmix_cb_t *cb;
+    uint32_t u32;
+    bool flag = true;
+    size_t n = 0;
+
+    cb = PMIX_NEW(pmix_cb_t);
+    if (NULL == cb) {
+        return NULL;
+    }
+    cb->ninfo = 4 + (NULL != ft->id) + ft->file_size + ft->file_access + ft->file_mod;
+    PMIX_INFO_CREATE(cb->info, cb->ninfo);
+    if (NULL == cb->info) {
+        PMIX_RELEASE(cb);
+        return NULL;
+    }
+    cb->infocopy = true;
+    if (NULL != ft->id) {
+        PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_ID, ft->id, PMIX_STRING);
+        ++n;
+    }
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_FILE, ft->file, PMIX_STRING);
+    ++n;
+    if (ft->file_size) {
+        PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_FILE_SIZE, &flag, PMIX_BOOL);
+        ++n;
+    }
+    if (ft->file_access) {
+        PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_FILE_ACCESS, &flag, PMIX_BOOL);
+        ++n;
+    }
+    if (ft->file_mod) {
+        PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_FILE_MODIFY, &flag, PMIX_BOOL);
+        ++n;
+    }
+    u32 = (uint32_t) ft->tv.tv_sec;
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_FILE_CHECK_TIME, &u32, PMIX_UINT32);
+    ++n;
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_FILE_DROPS, &ft->ndrops, PMIX_UINT32);
+    ++n;
+    PMIX_INFO_LOAD(&cb->info[n], PMIX_MONITOR_FILE_MISSED, &ft->nmisses, PMIX_UINT32);
+    return cb;
 }
 
 /* Render a time_t the way ctime() would, but into the caller's buffer.
@@ -390,6 +434,7 @@ static void file_sample(int sd, short args, void *cbdata)
     time_t atime, mtime;
     char atod[32], mtod[32];
     bool changed;
+    pmix_cb_t *cb;
 
     PMIX_ACQUIRE_OBJECT(ft);
 
@@ -506,10 +551,20 @@ static void file_sample(int sd, short args, void *cbdata)
          * processes the event asynchronously, after we return */
         pmix_strncpy(ft->source.nspace, ft->requestor->info->pname.nspace, PMIX_MAX_NSLEN);
         ft->source.rank = ft->requestor->info->pname.rank;
+        cb = alert_info(ft);
+        if (NULL == cb) {
+            /* the tracker has just left the list: ours is its last
+             * reference */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            PMIX_RELEASE(ft);
+            return;
+        }
+        cb->cbdata = ft;
         rc = PMIx_Notify_event((PMIX_SUCCESS == ft->error) ? PMIX_MONITOR_FILE_ALERT : ft->error,
-                               &ft->source, ft->range, ft->info, ft->ninfo,
-                               opcbfunc, ft);
+                               &ft->source, ft->range, cb->info, cb->ninfo,
+                               opcbfunc, cb);
         if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(cb);
             PMIX_ERROR_LOG(rc);
             /* opcbfunc is not going to run - PMIx_Notify_event rejects a
              * request outright (PMIX_ERR_NOT_AVAILABLE once the progress
