@@ -1897,8 +1897,13 @@ in `pmix_server_grpmbr.c`, and a v7.0 client connected to it keeps none
   instead of announcing, and the host-event path only logs. Construct and
   invite requests are refused with `PMIX_ERR_EXISTS` before the host sees
   them when the ID is recorded here - followers and add-members constructs
-  excepted, as they join one another participant started. Uniqueness
-  across nodes, and against namespaces, is the host's (N07).
+  excepted, as they join one another participant started. A construct of
+  any kind, followers' and add-members ones included, and an invitation
+  are refused with `PMIX_ERR_EXISTS` too when the ID names a job this
+  server knows (`pmix_server_grp_id_is_nspace`): its own namespace, one
+  the host registered, or one with clients or tools here - not one known
+  only from a dmodex reply's data. Uniqueness across nodes, and against
+  namespaces this server does not know, is the host's (N07).
 - **A destruct of a held group runs over the record.** Whatever procs the
   client named, `pmix_server_group` replaces them with the recorded
   membership, and the requester must be among it - even when it names

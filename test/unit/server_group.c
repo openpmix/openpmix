@@ -47,6 +47,9 @@
  *                               ID is refused before the host sees it
  *   a held group's destruct  -> runs over the recorded members whatever
  *                               procs were named, and only for a member
+ *   an ID that names a job   -> a construct is refused before the host
+ *                               sees it when the server knows the job,
+ *                               and goes to the host when it does not
  *   a construct the host
  *      completes over an ID
  *      recorded meanwhile    -> the record is kept, not replaced
@@ -465,6 +468,37 @@ static pmix_peer_t *other_peer(const char *ns, pmix_rank_t rank)
     return peer;
 }
 
+/* A namespace known only as a dmodex reply leaves it: no local procs
+ * registered, no clients - on the progress thread, where the list lives */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    const char *ns;
+} bare_ns_t;
+
+static void do_bare_ns(int sd, short args, void *cbdata)
+{
+    bare_ns_t *b = (bare_ns_t *) cbdata;
+    pmix_namespace_t *nptr = PMIX_NEW(pmix_namespace_t);
+
+    (void) sd;
+    (void) args;
+    nptr->nspace = strdup(b->ns);
+    pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+    PMIX_WAKEUP_THREAD(&b->lock);
+}
+
+static void add_bare_nspace(const char *ns)
+{
+    bare_ns_t b;
+
+    PMIX_CONSTRUCT_LOCK(&b.lock);
+    b.ns = ns;
+    PMIX_THREADSHIFT(&b, do_bare_ns);
+    PMIX_WAIT_THREAD(&b.lock);
+    PMIX_DESTRUCT_LOCK(&b.lock);
+}
+
 /* The group records live on the progress thread */
 typedef struct {
     pmix_event_t ev;
@@ -878,6 +912,40 @@ int main(int argc, char **argv)
         rc = drive_op(PMIX_GROUP_DESTRUCT, "grput.theirs", NULL, 0, NULL);
         report("its member's destruct ends it", PMIX_SUCCESS == rc &&
                nothing_parked() && 0 == held_members("grput.theirs"));
+    }
+
+    /* --- an ID that names a job --- *
+     * A group and a job must not answer to one name: a construct under the
+     * namespace of a job the server knows is refused before the host sees
+     * it - one the host registered, or the server's own. One known only
+     * from a dmodex reply's data is not the server's to judge, and goes to
+     * the host as before. */
+    {
+        pmix_proc_t mine[1];
+
+        PMIX_LOAD_PROCID(&mine[0], GRPUT_NSPACE, 0);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, GRPUT_NSPACE, mine, 1, NULL);
+        report("a construct under a registered job's namespace is refused",
+               PMIX_ERR_EXISTS == rc);
+        report("...before it reaches the host", !group_fired);
+        report("...and parks nothing", nothing_parked());
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, pmix_globals.myid.nspace, mine, 1, NULL);
+        report("a construct under the server's own namespace is refused",
+               PMIX_ERR_EXISTS == rc && !group_fired && nothing_parked());
+
+        add_bare_nspace("grput.remote");
+        group_accept = true;
+        nheld = 0;
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.remote", mine, 1, NULL);
+        report("a construct under a namespace known only from remote data reaches the host",
+               PMIX_SUCCESS == rc && group_fired && 1 == nheld);
+        if (1 == nheld) {
+            held_cbfunc[0](PMIX_ERROR, NULL, 0, held_cbdata[0], NULL, NULL);
+            progress_barrier();
+            report("...and, failed by the host, parks nothing", nothing_parked());
+        }
+        group_accept = false;
+        nheld = 0;
     }
 
     /* --- a construct the host completes over an ID recorded meanwhile --- *
