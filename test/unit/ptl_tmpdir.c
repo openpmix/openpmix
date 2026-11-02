@@ -6,7 +6,9 @@
  *
  * $HEADER$
  *
- * The paths a server works in - see src/mca/ptl/base/ptl_base_tmpdir.c.
+ * The paths a server works in, and the report file it writes - see
+ * src/mca/ptl/base/ptl_base_tmpdir.c and the report block of
+ * ptl_base_listener.c.
  *
  *   - pmix_ptl_base_judge_dir, case by case: who owns a directory, who may
  *     write it, the sticky bit, a user private group, the tmpdir itself
@@ -14,6 +16,9 @@
  *     without the sticky bit, will not start; with the sticky bit it does;
  *     as root, one below another user's directory will not, and a tmpdir
  *     of another user's that only they can write is used (Slurm's shape)
+ *   - a report file already there is reused only if it is ours, and is
+ *     left 0644 whatever it was or the umask is; as root, another user's
+ *     file stops the server and is left as it was
  *
  * Each server runs in a child of its own.
  */
@@ -129,6 +134,13 @@ static pmix_status_t server_with(const char *tmpdir, const char *repfile, mode_t
     return (WIFEXITED(status) && 0 == WEXITSTATUS(status)) ? PMIX_SUCCESS : PMIX_ERROR;
 }
 
+static mode_t mode_of(const char *path)
+{
+    struct stat st;
+
+    return (0 == lstat(path, &st)) ? (st.st_mode & 07777) : 0;
+}
+
 static void test_paths(void)
 {
     char parent[700], tmpdir[800];
@@ -174,12 +186,72 @@ static void test_paths(void)
     }
 }
 
+static void test_report_file(void)
+{
+    char tmpdir[700], path[800], kept[900], buf[64];
+    const char *body = "not ours\n";
+    struct stat st;
+    ssize_t n;
+    int fd;
+
+    snprintf(tmpdir, sizeof(tmpdir), "%s/rep", base);
+    snprintf(path, sizeof(path), "%s/uri.txt", tmpdir);
+    snprintf(kept, sizeof(kept), "%s.kept", path);
+    if (0 != mkdir(tmpdir, 0700)) {
+        report("report file: fixture", 0, strerror(errno));
+        return;
+    }
+    /* ours, left 0666 by an earlier run */
+    fd = open(path, O_WRONLY | O_CREAT, 0600);
+    if (0 > fd || 0 != fchmod(fd, 0666)) {
+        report("report file: fixture", 0, strerror(errno));
+        return;
+    }
+    close(fd);
+    report("a report file of ours already there is reused",
+           PMIX_SUCCESS == server_with(tmpdir, path, 022), "refused");
+    report("...and left 0644", 0644 == mode_of(kept), "another mode");
+    unlink(kept);
+    unlink(path);
+
+    /* a new one, whatever the umask */
+    report("a new report file is written under a umask of 077",
+           PMIX_SUCCESS == server_with(tmpdir, path, 077), "refused");
+    report("...and is 0644 all the same", 0644 == mode_of(kept), "another mode");
+    unlink(kept);
+    unlink(path);
+
+    if (0 != geteuid()) {
+        fprintf(stdout, "  SKIP: a report file of another user's - not running as root\n");
+        return;
+    }
+    fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0644);
+    if (0 > fd || (ssize_t) strlen(body) != write(fd, body, strlen(body)) ||
+        0 != fchown(fd, 4242, 4242)) {
+        report("report file as root: fixture", 0, strerror(errno));
+        return;
+    }
+    close(fd);
+    report("a report file of another user's stops the server",
+           PMIX_SUCCESS != server_with(tmpdir, path, 022), "started");
+    fd = open(path, O_RDONLY);
+    n = (0 > fd) ? -1 : read(fd, buf, sizeof(buf) - 1);
+    if (0 <= fd) {
+        close(fd);
+    }
+    buf[(0 < n) ? n : 0] = '\0';
+    report("...and is left as it was",
+           0 == stat(path, &st) && 4242 == st.st_uid && 0 == strcmp(buf, body),
+           "changed or removed");
+    unlink(path);
+}
+
 int main(void)
 {
     const char *tmp = getenv("TMPDIR");
     char cmd[600];
 
-    fprintf(stdout, "\n=== a server's paths ===\n\n");
+    fprintf(stdout, "\n=== a server's paths, and its report file ===\n\n");
     snprintf(base, sizeof(base), "%s/ptltmp.XXXXXX", (NULL == tmp) ? "/tmp" : tmp);
     if (NULL == mkdtemp(base)) {
         fprintf(stdout, "no scratch directory - skipping\n");
@@ -194,6 +266,7 @@ int main(void)
 
     test_judge();
     test_paths();
+    test_report_file();
 
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", base);
     if (0 != system(cmd)) {

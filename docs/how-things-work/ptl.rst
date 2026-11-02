@@ -136,7 +136,11 @@ socket - the first two steps below are the ``tcp`` transport's, in
    (``tcp+``), which fail the init with no TCP listener; to an integer
    pipe fd, the TCP URI's ``<varnames>;<uri>`` string and then the local
    socket's, each with its NUL, in one write (the local socket's alone
-   with no TCP listener); or to a named file (created mode 0644). A
+   with no TCP listener); or to a named file. A file already at that name
+   is reused only if it is the server's user's - a file of anyone
+   else's, root's included unless the server is root, stops the init
+   with a message naming its owner - and the file, reused or new, is
+   given mode 0644 whatever the umask or an earlier run made it. A
    report file also carries the ``local:``, ``bfrops:``, ``psec:`` and
    ``auth:`` lines described below, but no ``lock:`` line. See
    :doc:`connections` for the table.

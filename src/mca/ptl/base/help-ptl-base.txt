@@ -479,3 +479,16 @@ The value of ptl_base_tmpdir_check could not be used:
   %s
 
 It must be "refuse" (the default), "warn", or "silent".
+#
+[report-file-not-ours]
+This PMIx server was asked to report its URI in the file
+
+  %s
+
+but a file of another user's (uid %lu) is at that name. The server
+does not write into another user's file: it would stay theirs, and they
+could rewrite it afterwards to send its readers elsewhere. The server
+will not start.
+
+Name a file in a directory of your own, or have the file's owner remove
+it.

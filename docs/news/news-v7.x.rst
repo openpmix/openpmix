@@ -16,6 +16,10 @@ Detailed changes since v6.1.0:
    a Kubernetes ``emptyDir`` - is refused too: set
    ``ptl_base_tmpdir_check=warn`` to start anyway, saying so, or
    ``silent`` not to check.
+ - A report file (``--report-uri <file>``, ``ptl_base_report_uri``,
+   ``PMIX_TCP_REPORT_URI``) already there is reused only if the server's
+   user owns it; another user's stops the server. The file is always
+   left mode 0644.
  - A server writes the rendezvous files tools find it by in
    ``<system tmpdir>/pmix-user.<uid>``, a directory only its user can
    write, rather than in its session tmpdir; a root system server,
