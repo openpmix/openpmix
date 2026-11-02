@@ -467,8 +467,10 @@ pmix_shmem_segment_chown(
     const bool owner_ok = ((uid_t)-1 == owner || st.st_uid == owner);
     const bool group_ok = ((gid_t)-1 == group || st.st_gid == group);
     if (!(owner_ok && group_ok) && 0 != fchown(fd, owner, group)) {
+        /* Not logged: a server not running as root cannot give the file
+         * to another user, nor to a group it is not in, and its caller
+         * falls back for that - see shmem3_segment_fix_perms */
         rc = PMIX_ERROR;
-        PMIX_ERROR_LOG(rc);
     }
     (void)close(fd);
     return rc;
