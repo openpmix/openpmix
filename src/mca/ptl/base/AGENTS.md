@@ -1258,6 +1258,15 @@ interface (a loopback one, or none), binds, and makes the URI.
   the name it actually wrote when it writes it. An empty value reports
   nowhere; it used to read as pipe descriptor 0, and stdin was written
   and closed.
+- **The tmpdirs' paths are checked before anything is made in them**
+  (`pmix_ptl_base_check_tmpdirs()`, `ptl_base_tmpdir.c`, called from
+  `setup_listener` once the directives are read). The rule is in the
+  file's header and `docs/how-things-work/ptl.rst`; the verdict is
+  `pmix_ptl_base_judge_dir()`, kept pure so `test/unit/ptl_tmpdir.c`
+  can drive it case by case. `ptl_base_tmpdir_check` (`refuse`, `warn`,
+  `silent`) is read only there: clients and tools never check a path,
+  they check the server's uid. The user-private-group lookup
+  (`getgrgid_r`) runs only for a group-writable directory, at init.
 
 ## Framework open and close
 

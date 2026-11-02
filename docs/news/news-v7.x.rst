@@ -7,6 +7,15 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A server checks the path of its session and system tmpdirs at init,
+   as OpenSSH's ``StrictModes`` does, and will not start where another
+   user could rename its directories: a directory above a tmpdir that is
+   not root's, the server's user's, or from outside the server's user
+   namespace, or one others may write without the sticky bit; or a
+   tmpdir others may write. A container's own world-writable ``/tmp`` -
+   a Kubernetes ``emptyDir`` - is refused too: set
+   ``ptl_base_tmpdir_check=warn`` to start anyway, saying so, or
+   ``silent`` not to check.
  - A server writes the rendezvous files tools find it by in
    ``<system tmpdir>/pmix-user.<uid>``, a directory only its user can
    write, rather than in its session tmpdir; a root system server,

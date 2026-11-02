@@ -207,6 +207,42 @@ socket - the first two steps below are the ``tcp`` transport's, in
    anything else in it is another process's, and another server may
    share it.
 
+The tmpdirs
+~~~~~~~~~~~
+
+Before it makes anything in them, a server checks the path of its
+session and system tmpdirs (``src/mca/ptl/base/ptl_base_tmpdir.c``):
+its socket's directory and its ``pmix-user`` directory go there, and
+clients reach the socket by its path, so a user who could rename
+entries in a tmpdir, or in a directory above it, could move them aside
+and put others at their names. That would only stop the server's
+clients connecting - they check the server's uid with the kernel - but
+it is refused. As OpenSSH's ``StrictModes`` does, the server resolves
+the path (``realpath``; a tmpdir not there yet is judged by the deepest
+part that is) and walks it from ``/``:
+
+- **every directory above the tmpdir** must be owned by root, the
+  server's user, or an id from outside the server's user namespace - one
+  with no entry in ``/proc/self/uid_map``, made by the host or the
+  container's setup, counted as root - and writable by nobody else,
+  unless it has the sticky bit or its group's only member is its owner (a
+  user private group);
+- **the tmpdir itself** may be anyone's - Slurm gives its root server a
+  directory owned by the job's user - if nobody but its owner can write
+  it, with the same group exception; or else it must pass the rule
+  above, as ``/tmp`` does. Another user's sticky directory does not
+  pass: its owner can still rename anything in it.
+
+A directory that fails stops the init with a message naming it, its
+owner and mode, and why. ``ptl_base_tmpdir_check`` changes that:
+``refuse`` (the default), ``warn`` - say so and run on - or ``silent``,
+not to check at all. The last two are for a tmpdir no other user
+shares that the rules misjudge: a Kubernetes ``emptyDir`` mounted at
+``/tmp``, root's and 0777 without the sticky bit, or a directory on an
+NFS export with ``root_squash``, owned by ``nobody``. Either gives up
+only availability: a client still refuses a server whose uid is not the
+one it expects. Clients and tools do not read the parameter.
+
 Beside the TCP listener, every server opens its **local socket** - the
 ``usock`` transport's, in ``src/mca/ptl/usock/ptl_usock.c``:
 

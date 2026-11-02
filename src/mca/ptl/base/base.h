@@ -160,6 +160,8 @@ struct pmix_ptl_base_t {
      * defaulting - then a system role's rendezvous file goes there, as it
      * always did, and not in /run/pmix (see ptl_base_rndz.c) */
     bool system_tmpdir_given;
+    /* ptl_base_tmpdir_check: "refuse", "warn" or "silent" - see ptl_base_tmpdir.c */
+    char *tmpdir_check;
     char *report_uri;
     char *uri;
     char *urifile;
@@ -691,6 +693,31 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search_depth(char *dirname, char *pre
                                                         pmix_info_t info[], size_t ninfo,
                                                         bool optional,
                                                         pmix_list_t *connections, int depth);
+
+/* What pmix_ptl_base_judge_dir makes of a directory on a tmpdir's path */
+typedef enum {
+    PMIX_PTL_DIR_OK,
+    PMIX_PTL_DIR_OWNER,    // a directory above the tmpdir, owned by someone else
+    PMIX_PTL_DIR_WRITABLE  // others may write it, and it is not sticky
+} pmix_ptl_dir_verdict_t;
+
+/* Judge one directory on the path of a server's tmpdir - see
+ * ptl_base_tmpdir.c. `last` says it is the tmpdir itself; `owner_unmapped`
+ * that its owner is an id from outside our user namespace; `upg` that its
+ * group's only member is its owner */
+PMIX_EXPORT pmix_ptl_dir_verdict_t pmix_ptl_base_judge_dir(uid_t owner, mode_t mode, bool last,
+                                                           uid_t euid, bool owner_unmapped,
+                                                           bool upg);
+
+/* Whether `group` is `owner`'s private group: every member it lists is the
+ * owner, who is in it */
+PMIX_EXPORT bool pmix_ptl_base_private_group(uid_t owner, gid_t group);
+
+/* Walk the server's session and system tmpdirs from "/", before anything
+ * is made in them, and report the first directory another user could
+ * change. PMIX_ERR_SILENT then, unless ptl_base_tmpdir_check=warn; with
+ * "silent", nothing is checked */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_check_tmpdirs(void);
 
 /* Whether a system role's rendezvous file is one whose server a reader
  * takes: owned by root, our own user, or a user ptl_base_server_access
