@@ -32,6 +32,7 @@ nothing more.
 | [`ptl_base_client.c`](ptl_base_client.c) | a client's own `connect_to_peer` |
 | [`ptl_base_tool.c`](ptl_base_tool.c) | a tool's `setup_listener` wrapper |
 | [`ptl_base_listener.c`](ptl_base_listener.c) | having a transport open the listener, URI publication, rendezvous files, the accept handler |
+| [`ptl_base_rndz.c`](ptl_base_rndz.c) | where rendezvous files go and are looked for: the `pmix-user.<uid>` directory, `/run/pmix`, the readers' directory list, and whether the legacy walk runs |
 | [`ptl_base_connection_hdlr.c`](ptl_base_connection_hdlr.c) | the **inbound** half: parse a connect-ack, build a peer, tell the host |
 | [`ptl_base_connect.c`](ptl_base_connect.c) | the **outbound** half: blocking socket helpers, `connect()`, the tool discovery matrix |
 | [`ptl_base_fns.c`](ptl_base_fns.c) | string/URI parsing, connect-ack construction, the client and tool handshakes, server discovery |
@@ -763,8 +764,31 @@ steady-state events.
 
 The discovery matrix in `connect_to_peer` is the bulk of that file: a
 caller-specified connection **order**, an explicit URI, a rendezvous or
-attachment file, a server pid, a server nspace, or a directory search of
-the session tmpdir. Things to keep straight:
+attachment file, a server pid, a server nspace, or a search for a
+session server. Things to keep straight:
+
+- **Where files are looked for is `pmix_ptl_base_rndz_dirs()`'s.** A
+  search (`trysearch`) looks in each `pmix-user.<uid>` directory - our
+  own, root's, then each `ptl_base_server_access` user's - with
+  `pmix_ptl_base_df_search_depth(..., 0)`, not below, collecting every
+  match before `check_connections`; a system role (`trysystem`, and the
+  singleton's lookup in `ptl_base_client.c`) tries the system tmpdir the
+  host named, else `/run/pmix` and `/var/run/pmix`, then root's and our
+  own `pmix-user` directory and the listed users', first success wins.
+  The old places - the whole system tmpdir walked `search_depth` deep,
+  and the system tmpdir itself for a system role - are looked in only
+  when `pmix_ptl_base_legacy_walk()`: legacy peers on. A
+  `PMIX_QUERY_AVAIL_SERVERS` query (`pmix_ptl_base_query_servers`) uses
+  the same directories, walking the system tmpdir only then, and not
+  looking in a `pmix-user` directory below it twice.
+- **The server's side is `write_tool_files`/`write_system_files` in the
+  listener.** The tool files go through a descriptor from
+  `pmix_ptl_base_open_user_dir()` (`write_rndz_file`'s `given_dirfd`),
+  so they are made in the directory that was checked; a directory that
+  is not ours is reported once (`rndz-dir-not-ours`) and its files are
+  skipped, not fatal. A host-named system tmpdir still goes through
+  `open_dir` - made if missing, and held in `system_dir` for removal -
+  as before; `/run/pmix` and `pmix-user` directories are never removed.
 
 - **Every branch must produce a URI before jumping to `complete:`.**
   Falling through with a NULL `suri` reaches `setup_connection`, which

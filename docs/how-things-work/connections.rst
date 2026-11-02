@@ -237,8 +237,12 @@ Rendezvous files
 ^^^^^^^^^^^^^^^^
 
 A server that supports tools writes rendezvous files, through which
-tools find it. Which files it writes, and where, is described in
-:doc:`ptl`; that part is being redesigned. Each file holds the URI, the
+tools find it, in a directory only its user can write:
+``<system tmpdir>/pmix-user.<uid>``. A root system server, scheduler or
+system controller writes its file in ``/run/pmix``. A tool looks there,
+and in the directories of the other users whose servers it may talk to;
+it walks the whole system tmpdir, as an earlier release did, only with
+legacy peers on. The details are in :doc:`ptl`. Each file holds the URI, the
 server's version, pid, uid and gid, the local socket's URI, the wire
 formats and security mechanisms it accepts, and the lock that shows it
 is running (see `A server the kernel cannot name`_). The server removes

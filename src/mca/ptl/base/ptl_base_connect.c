@@ -574,10 +574,27 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
     pmix_list_t connections;
     pmix_status_t rc;
     pmix_connection_t *cn;
+    char **dirs;
+    size_t n;
 
     PMIX_CONSTRUCT(&connections, pmix_list_t);
-    rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir, filename, exact, iptr, niptr,
-                                 optional, &connections);
+    /* in the pmix-user directories of the users whose servers we may talk
+     * to - each looked in, not below - and, only with legacy peers on,
+     * anywhere below the system tmpdir, where a server of an earlier
+     * release writes */
+    dirs = pmix_ptl_base_rndz_dirs(false);
+    rc = PMIX_ERR_NOT_FOUND;
+    for (n = 0; NULL != dirs && NULL != dirs[n]; n++) {
+        if (PMIX_SUCCESS == pmix_ptl_base_df_search_depth(dirs[n], filename, exact, iptr, niptr,
+                                                          optional, &connections, 0)) {
+            rc = PMIX_SUCCESS;
+        }
+    }
+    PMIx_Argv_free(dirs);
+    if (PMIX_SUCCESS != rc && pmix_ptl_base_legacy_walk()) {
+        rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir, filename, exact, iptr, niptr,
+                                     optional, &connections);
+    }
     if (PMIX_SUCCESS == rc) {
         rc = check_connections(&connections);
         if (PMIX_SUCCESS != rc) {
@@ -604,6 +621,44 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
         pmix_show_help("help-ptl-base.txt", "too-many-conns", true);
     }
     PMIX_LIST_DESTRUCT(&connections);
+    return rc;
+}
+
+/* A system role's file, `name`: in the system directories a server may
+ * write it in (pmix_ptl_base_rndz_dirs) and, only with legacy peers on,
+ * at the system tmpdir, where a server of an earlier release writes it.
+ * The first that connects wins. One that is not optional, and found
+ * nowhere, is reported */
+static pmix_status_t trysystem(pmix_peer_t *peer, char **nspace, pmix_rank_t *rank, char **suri,
+                               const char *name, bool optional)
+{
+    char **dirs, *path;
+    pmix_status_t rc = PMIX_ERR_UNREACH;
+    size_t n;
+
+    dirs = pmix_ptl_base_rndz_dirs(true);
+    if (pmix_ptl_base_legacy_walk() && !pmix_ptl_base.system_tmpdir_given) {
+        PMIx_Argv_append_unique_nosize(&dirs, pmix_ptl_base.system_tmpdir);
+    }
+    for (n = 0; NULL != dirs && NULL != dirs[n]; n++) {
+        if (0 > pmix_asprintf(&path, "%s/%s", dirs[n], name)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:tool:tool looking for %s", path);
+        rc = tryfile(peer, nspace, rank, suri, true, true, path);
+        free(path);
+        if (PMIX_SUCCESS == rc || PMIX_ERR_NOMEM == rc) {
+            break;
+        }
+    }
+    if (PMIX_SUCCESS != rc && PMIX_ERR_NOMEM != rc && !optional) {
+        pmix_show_help("help-ptl-base.txt", "file-not-found", true, name,
+                       "could not be found in any directory a server writes it in");
+        rc = PMIX_ERR_UNREACH;
+    }
+    PMIx_Argv_free(dirs);
     return rc;
 }
 
@@ -792,7 +847,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
     pmix_info_t realuid, effectiveuid, realgid, effectivegid;
     size_t niptr = 0;
     pmix_peer_t *peer = (pmix_peer_t *) pr;
-    bool optional = false;
+    bool optional = false, first;
     bool cmdline_loaded = false;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -974,6 +1029,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                     free(pmix_ptl_base.system_tmpdir);
                 }
                 pmix_ptl_base.system_tmpdir = strdup(info[n].value.data.string);
+                pmix_ptl_base.system_tmpdir_given = true;
                 if (NULL == pmix_ptl_base.system_tmpdir) {
                     rc = PMIX_ERR_NOMEM;
                     goto badinput;
@@ -1147,51 +1203,31 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
     if (NULL != order) {
         // cycle thru the requested order
         for (n=0; NULL != order[n]; n++) {
-            if (0 == strcmp(order[n], PMIX_CONNECT_SYSTEM_FIRST)) {
-                if (0 > pmix_asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
-                                 pmix_globals.hostname)) {
+            if (0 == strcmp(order[n], PMIX_CONNECT_SYSTEM_FIRST) ||
+                0 == strcmp(order[n], PMIX_CONNECT_TO_SYSTEM)) {
+                if (0 > pmix_asprintf(&filename, "pmix.sys.%s", pmix_globals.hostname)) {
                     rc = PMIX_ERR_NOMEM;
                     goto cleanup;
                 }
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "ptl:tool:tool looking for system server at %s", filename);
-                // this is always optional as we are going to fallback to non-system servers
-                rc = tryfile(peer, &nspace, &rank, &suri, true, true, filename);
+                /* the system server first is always optional: we fall back
+                 * to the other servers */
+                first = (0 == strcmp(order[n], PMIX_CONNECT_SYSTEM_FIRST));
+                rc = trysystem(peer, &nspace, &rank, &suri, filename, first || optional);
                 free(filename);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
                     goto complete;
                 }
-
-            } else if (0 == strcmp(order[n], PMIX_CONNECT_TO_SYSTEM)) {
-                if (0 > pmix_asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
-                                 pmix_globals.hostname)) {
-                    rc = PMIX_ERR_NOMEM;
-                    goto cleanup;
-                }
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "ptl:tool:tool looking for system server at %s", filename);
-                rc = tryfile(peer, &nspace, &rank, &suri, optional, true, filename);
-                free(filename);
-                if (PMIX_SUCCESS == rc) {
-                    PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
-                    goto complete;
-                }
-                if (!optional) {
-                    // not optional, so report error
+                if (!first && !optional) {
                     goto cleanup;
                 }
 
             } else if (0 == strcmp(order[n], PMIX_CONNECT_TO_SCHEDULER)) {
-                if (0 > pmix_asprintf(&filename, "%s/pmix.sched.%s",
-                                 pmix_ptl_base.system_tmpdir,
-                                 pmix_globals.hostname)) {
+                if (0 > pmix_asprintf(&filename, "pmix.sched.%s", pmix_globals.hostname)) {
                     rc = PMIX_ERR_NOMEM;
                     goto cleanup;
                 }
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "ptl:tool:tool looking for scheduler at %s", filename);
-                rc = tryfile(peer, &nspace, &rank, &suri, optional, true, filename);
+                rc = trysystem(peer, &nspace, &rank, &suri, filename, optional);
                 free(filename);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SCHEDULER);
@@ -1203,15 +1239,11 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                 }
 
             } else if (0 == strcmp(order[n], PMIX_CONNECT_TO_SYS_CONTROLLER)) {
-                if (0 > pmix_asprintf(&filename, "%s/pmix.sysctrlr.%s",
-                                 pmix_ptl_base.system_tmpdir,
-                                 pmix_globals.hostname)) {
+                if (0 > pmix_asprintf(&filename, "pmix.sysctrlr.%s", pmix_globals.hostname)) {
                     rc = PMIX_ERR_NOMEM;
                     goto cleanup;
                 }
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "ptl:tool:tool looking for system controller at %s", filename);
-                rc = tryfile(peer, &nspace, &rank, &suri, optional, true, filename);
+                rc = trysystem(peer, &nspace, &rank, &suri, filename, optional);
                 free(filename);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SYS_CTRLR);
