@@ -173,4 +173,5 @@ pmix_environ_SOURCES = pmix_environ.c
 pmix_environ_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 pmix_environ_LDADD = $(top_builddir)/src/libpmix.la
 
-EXTRA_DIST = $(noinst_SCRIPTS) pmix_test_env.sh.in
+EXTRA_DIST = $(noinst_SCRIPTS) pmix_test_env.sh.in \
+    multiuser/output-files.sh multiuser/mu_spawn.c
