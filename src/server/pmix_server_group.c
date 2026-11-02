@@ -1982,8 +1982,10 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
 
     /* an invitation already out under this ID, or a group this server
      * holds under it - which keeps its ID until it is destructed - is
-     * refused before anyone is invited */
-    if (NULL != find_invite(grpid) || NULL != pmix_server_grp_find(grpid)) {
+     * refused before anyone is invited, as is an ID that names a job this
+     * server knows */
+    if (NULL != find_invite(grpid) || NULL != pmix_server_grp_find(grpid) ||
+        pmix_server_grp_id_is_nspace(grpid)) {
         rc = PMIX_ERR_EXISTS;
         goto done;
     }
@@ -2594,9 +2596,17 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
      * of its participants, so neither is screened here - should the host
      * complete such a construct over an ID still held, the record refuses
      * it (pmix_server_grp_record). That a group ID is unique across the
-     * system - and never a namespace - is the host's to ensure */
+     * system is the host's to ensure */
     if (PMIX_GROUP_CONSTRUCT == op && !follower && !addmembers &&
         NULL != pmix_server_grp_find(grpid)) {
+        rc = PMIX_ERR_EXISTS;
+        goto error;
+    }
+    /* Nor may any construct - a follower's or an "add members" one
+     * included - take an ID that names a job this server knows: a group
+     * and a job would then answer to one name. The host is still to
+     * ensure it of the jobs this server does not know */
+    if (PMIX_GROUP_CONSTRUCT == op && pmix_server_grp_id_is_nspace(grpid)) {
         rc = PMIX_ERR_EXISTS;
         goto error;
     }
