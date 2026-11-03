@@ -238,6 +238,12 @@ static pmix_status_t add_prefixed_envar(pmix_list_t *ilist, const char *prefix,
     return rc;
 }
 
+#if defined(O_CLOEXEC)
+#    define PMIX_PMDL_OMPI_O_CLOEXEC O_CLOEXEC
+#else
+#    define PMIX_PMDL_OMPI_O_CLOEXEC 0
+#endif
+
 /* Read a param file, or skip it. It is opened once and checked through
  * that descriptor - it must be a regular file and, when "owner" is not
  * (uid_t) -1, belong to that user - and the same descriptor is parsed, so
@@ -263,8 +269,12 @@ static pmix_status_t process_param_file(char *file, uid_t owner, pmix_list_t *il
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    /* O_NONBLOCK so that a FIFO at the name cannot hold up the open */
-    fd = open(file, O_RDONLY | O_NONBLOCK);
+    /* O_NONBLOCK so that a FIFO at the name cannot hold up the open,
+     * O_NOCTTY so that a terminal at the name does not become our
+     * controlling terminal, and O_CLOEXEC so that a child forked while
+     * it is open does not inherit it. A symlink is followed: param files
+     * are commonly linked into place */
+    fd = open(file, O_RDONLY | O_NONBLOCK | O_NOCTTY | PMIX_PMDL_OMPI_O_CLOEXEC);
     if (0 > fd) {
         return PMIX_SUCCESS;
     }

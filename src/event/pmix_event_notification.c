@@ -544,6 +544,47 @@ cleanup:
     return rc;
 }
 
+/* Point the chain at the handler it is about to invoke. The chain holds a
+ * reference on that handler and gives back the one it held on the
+ * previous handler, so a handler deregistered while the chain is in it is
+ * freed only once the chain has moved on or been released.
+ *
+ * A oneshot handler is deregistered here, when the chain takes it: that
+ * way it runs exactly once whether or not further handlers follow it, and
+ * no second event can reach it in the meantime. The chain's reference
+ * keeps it valid until its callback completes. */
+static void chain_take_hdlr(pmix_event_chain_t *chain, pmix_event_hdlr_t *hdlr)
+{
+    PMIX_RETAIN(hdlr);
+    if (NULL != chain->evhdlr) {
+        PMIX_RELEASE(chain->evhdlr);
+    }
+    chain->evhdlr = hdlr;
+    if (hdlr->oneshot && !hdlr->removed) {
+        pmix_deregister_event_hdlr(hdlr->index, NULL);
+    }
+}
+
+/* The item from which to continue walking a handler list after hdlr has
+ * completed, such that pmix_list_get_next() of it is the next handler to
+ * consider: hdlr itself if it is still listed; otherwise the item ahead of
+ * the first handler recorded after it that still is; otherwise the last
+ * item of the list, so that the walk of this list ends. */
+static pmix_list_item_t *resume_point(pmix_event_hdlr_t *hdlr, pmix_list_t *list)
+{
+    pmix_event_hdlr_t *nxt;
+
+    if (!hdlr->removed) {
+        return &hdlr->super;
+    }
+    for (nxt = hdlr->successor; NULL != nxt; nxt = nxt->successor) {
+        if (!nxt->removed) {
+            return pmix_list_get_prev(&nxt->super);
+        }
+    }
+    return pmix_list_get_last(list);
+}
+
 static void cycle_events(int sd, short args, void *cbdata)
 {
     pmix_event_chain_t *chain = (pmix_event_chain_t *) cbdata;
@@ -623,10 +664,7 @@ static void cycle_events(int sd, short args, void *cbdata)
         if (PMIX_EVENT_ACTION_COMPLETE == chain->interim_status) {
             chain->interim_status = PMIX_SUCCESS;
         }
-        if (chain->evhdlr->oneshot) {
-            /* remove this handler */
-            pmix_deregister_event_hdlr(chain->evhdlr->index, NULL);
-        }
+        /* a oneshot handler was deregistered when the chain took it */
         goto complete;
     }
     item = NULL;
@@ -640,7 +678,7 @@ static void cycle_events(int sd, short args, void *cbdata)
     } else if (1 == chain->evhdlr->ncodes) {
         /* the last handler was for a single code - see if there are
          * any others that match this event */
-        item = &chain->evhdlr->super;
+        item = resume_point(chain->evhdlr, &pmix_globals.events.single_events);
     }
     if (NULL != item) {
         while (pmix_list_get_end(&pmix_globals.events.single_events) != (item = pmix_list_get_next(item))) {
@@ -648,7 +686,7 @@ static void cycle_events(int sd, short args, void *cbdata)
             if (nxt->codes[0] == chain->status && pmix_notify_check_range(&nxt->rng, &chain->source)
                 && pmix_notify_check_affected(nxt->affected, nxt->naffected, chain->affected,
                                               chain->naffected)) {
-                chain->evhdlr = nxt;
+                chain_take_hdlr(chain, nxt);
                 /* reset our count to the info provided by the caller */
                 chain->ninfo = chain->nallocated - 2;
                 /* if the handler has a name, then provide it */
@@ -681,7 +719,7 @@ static void cycle_events(int sd, short args, void *cbdata)
          * handler was for a multi-code event */
         if (NULL == item) {
             /* the last handler was multi-code, so start from that point */
-            item = &chain->evhdlr->super;
+            item = resume_point(chain->evhdlr, &pmix_globals.events.multi_events);
         }
         while (pmix_list_get_end(&pmix_globals.events.multi_events)
                != (item = pmix_list_get_next(item))) {
@@ -695,7 +733,7 @@ static void cycle_events(int sd, short args, void *cbdata)
                 /* if this event handler provided a range, check to see if
                  * the source fits within it */
                 if (nxt->codes[n] == chain->status) {
-                    chain->evhdlr = nxt;
+                    chain_take_hdlr(chain, nxt);
                     /* reset our count to the info provided by the caller */
                     chain->ninfo = chain->nallocated - 2;
                     /* if the handler has a name, then provide it */
@@ -727,7 +765,7 @@ static void cycle_events(int sd, short args, void *cbdata)
     if (!chain->nondefault) {
         if (NULL == item) {
             /* the last handler was a default handler, so continue from it */
-            item = &chain->evhdlr->super;
+            item = resume_point(chain->evhdlr, &pmix_globals.events.default_events);
         }
         while (pmix_list_get_end(&pmix_globals.events.default_events) != (item = pmix_list_get_next(item))) {
             nxt = (pmix_event_hdlr_t *) item;
@@ -736,7 +774,7 @@ static void cycle_events(int sd, short args, void *cbdata)
             if (pmix_notify_check_range(&nxt->rng, &chain->source)
                 && pmix_notify_check_affected(nxt->affected, nxt->naffected, chain->affected,
                                               chain->naffected)) {
-                chain->evhdlr = nxt;
+                chain_take_hdlr(chain, nxt);
                 /* reset our count to the info provided by the caller */
                 chain->ninfo = chain->nallocated - 2;
                 /* if the handler has a name, then provide it */
@@ -770,7 +808,7 @@ static void cycle_events(int sd, short args, void *cbdata)
         chain->endchain = true; // ensure we don't do this again
         if (1 == pmix_globals.events.last->ncodes
             && pmix_globals.events.last->codes[0] == chain->status) {
-            chain->evhdlr = pmix_globals.events.last;
+            chain_take_hdlr(chain, pmix_globals.events.last);
             /* reset our count to the info provided by the caller */
             chain->ninfo = chain->nallocated - 2;
             /* if the handler has a name, then provide it */
@@ -794,7 +832,7 @@ static void cycle_events(int sd, short args, void *cbdata)
             /* need to check if this code is included in the array */
             for (n = 0; n < pmix_globals.events.last->ncodes; n++) {
                 if (pmix_globals.events.last->codes[n] == chain->status) {
-                    chain->evhdlr = pmix_globals.events.last;
+                    chain_take_hdlr(chain, pmix_globals.events.last);
                     /* reset our count to the info provided by the caller */
                     chain->ninfo = chain->nallocated - 2;
                     /* if the handler has a name, then provide it */
@@ -819,7 +857,7 @@ static void cycle_events(int sd, short args, void *cbdata)
             }
         } else {
             /* gets run for all codes */
-            chain->evhdlr = pmix_globals.events.last;
+            chain_take_hdlr(chain, pmix_globals.events.last);
             /* reset our count to the info provided by the caller */
             chain->ninfo = chain->nallocated - 2;
             /* if the handler has a name, then provide it */
@@ -843,6 +881,11 @@ static void cycle_events(int sd, short args, void *cbdata)
     }
 
 complete:
+    /* the walk is over, so the chain is done with the last handler */
+    if (NULL != chain->evhdlr) {
+        PMIX_RELEASE(chain->evhdlr);
+        chain->evhdlr = NULL;
+    }
     /* if we get here, there was nothing more to do, but
      * we still have to call their final callback */
     if (NULL != chain->final_cbfunc) {
@@ -1068,7 +1111,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                                           pmix_globals.events.first->naffected, chain->affected,
                                           chain->naffected)) {
             /* invoke the handler */
-            chain->evhdlr = pmix_globals.events.first;
+            chain_take_hdlr(chain, pmix_globals.events.first);
             pmix_output_verbose(8, pmix_client_globals.event_output, "%s INVOKING FIRST %s:%d",
                                 PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
             goto invk;
@@ -1088,7 +1131,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                                               pmix_globals.events.first->naffected,
                                               chain->affected, chain->naffected)) {
                 /* invoke the handler */
-                chain->evhdlr = pmix_globals.events.first;
+                chain_take_hdlr(chain, pmix_globals.events.first);
                 pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
                                     PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
                 goto invk;
@@ -1100,7 +1143,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                                               pmix_globals.events.first->naffected,
                                               chain->affected, chain->naffected)) {
                 /* invoke the handler */
-                chain->evhdlr = pmix_globals.events.first;
+                chain_take_hdlr(chain, pmix_globals.events.first);
                 pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
                                     PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
                 goto invk;
@@ -1118,7 +1161,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                 && pmix_notify_check_affected(evhdlr->affected, evhdlr->naffected, chain->affected,
                                               chain->naffected)) {
                 /* invoke the handler */
-                chain->evhdlr = evhdlr;
+                chain_take_hdlr(chain, evhdlr);
                 pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
                                     PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
                 goto invk;
@@ -1135,7 +1178,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                     && pmix_notify_check_affected(evhdlr->affected, evhdlr->naffected,
                                                   chain->affected, chain->naffected)) {
                     /* invoke the handler */
-                    chain->evhdlr = evhdlr;
+                    chain_take_hdlr(chain, evhdlr);
                     pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
                                         PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
                     goto invk;
@@ -1154,7 +1197,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                 && pmix_notify_check_affected(evhdlr->affected, evhdlr->naffected, chain->affected,
                                               chain->naffected)) {
                 /* invoke the handler */
-                chain->evhdlr = evhdlr;
+                chain_take_hdlr(chain, evhdlr);
                 pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
                                     PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
                 goto invk;
@@ -1172,7 +1215,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
         chain->endchain = true; // ensure we don't do this again
         if (1 == pmix_globals.events.last->ncodes
             && pmix_globals.events.last->codes[0] == chain->status) {
-            chain->evhdlr = pmix_globals.events.last;
+            chain_take_hdlr(chain, pmix_globals.events.last);
             pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
                                 PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
             goto invk;
@@ -1180,7 +1223,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             /* need to check if this code is included in the array */
             for (i = 0; i < pmix_globals.events.last->ncodes; i++) {
                 if (pmix_globals.events.last->codes[i] == chain->status) {
-                    chain->evhdlr = pmix_globals.events.last;
+                    chain_take_hdlr(chain, pmix_globals.events.last);
                     pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
                                         PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
                     goto invk;
@@ -1188,7 +1231,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             }
         } else {
             /* gets run for all codes */
-            chain->evhdlr = pmix_globals.events.last;
+            chain_take_hdlr(chain, pmix_globals.events.last);
             pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
                                 PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
             goto invk;
@@ -1843,7 +1886,7 @@ void pmix_event_timeout_cb(int fd, short flags, void *arg)
  * they could stand ahead of the ones added for the handler. The kept
  * entries close up, and the two slots reserved for the handler items
  * stay at the end. */
-static void strip_handler_items(pmix_event_chain_t *chain)
+void pmix_event_strip_handler_items(pmix_event_chain_t *chain)
 {
     size_t n, k = 0, had = chain->ninfo;
 
@@ -1876,7 +1919,9 @@ pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain, const pmix_info_t
     if (NULL != info && 0 < ninfo) {
         chain->ninfo = ninfo;
         if (NULL == chain->info) {
+            /* the destructor frees the array by nallocated */
             PMIX_INFO_CREATE(chain->info, chain->ninfo);
+            chain->nallocated = chain->ninfo;
         }
         /* need to copy the info */
         for (n = 0; n < ninfo; n++) {
@@ -1950,7 +1995,7 @@ pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain, const pmix_info_t
                 }
             }
         }
-        strip_handler_items(chain);
+        pmix_event_strip_handler_items(chain);
     }
     return PMIX_SUCCESS;
 }
@@ -1976,9 +2021,14 @@ static void sevcon(pmix_event_hdlr_t *p)
     p->cbobject = NULL;
     p->codes = NULL;
     p->ncodes = 0;
+    p->removed = false;
+    p->successor = NULL;
 }
 static void sevdes(pmix_event_hdlr_t *p)
 {
+    if (NULL != p->successor) {
+        PMIX_RELEASE(p->successor);
+    }
     /* an observer can ask the registry to own its object - this is the
      * one place that ownership is discharged, and it is reached from
      * both deregistration and the finalize-time list destruct */
@@ -2085,6 +2135,9 @@ static void chdes(pmix_event_chain_t *p)
     }
     if (NULL != p->results) {
         PMIX_INFO_FREE(p->results, p->nresults);
+    }
+    if (NULL != p->evhdlr) {
+        PMIX_RELEASE(p->evhdlr);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_event_chain_t,

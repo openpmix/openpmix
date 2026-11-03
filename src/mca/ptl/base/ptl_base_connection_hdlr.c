@@ -733,7 +733,7 @@ static pmix_status_t read_connect_ack(pmix_pending_connection_t *pnd)
 void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 {
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
-    pmix_status_t rc;
+    pmix_status_t rc, vrc;
     char *msg = NULL, *mg;
     size_t cnt;
     uint8_t major, minor, release;
@@ -903,13 +903,14 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     /* extract their VERSION */
     PMIX_PTL_GET_STRING(pnd->version);
-    pmix_ptl_base_parse_version(pnd->version, &major, &minor, &release);
+    vrc = pmix_ptl_base_parse_version(pnd->version, &major, &minor, &release);
     PMIX_SET_PROC_MAJOR(&pnd->proc_type, major);
     PMIX_SET_PROC_MINOR(&pnd->proc_type, minor);
     PMIX_SET_PROC_RELEASE(&pnd->proc_type, release);
 
-    /* no release is numbered 0 - this is not a version at all */
-    if (0 == major) {
+    /* no release is numbered 0, and none has a component past 254 - this
+     * is not a version at all */
+    if (PMIX_SUCCESS != vrc || 0 == major) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:base:connection_handler: connect-ack version \"%s\" is "
                             "not a PMIx version",
@@ -1095,7 +1096,13 @@ static pmix_status_t read_client_info(pmix_pending_connection_t *pnd)
 }
 
 /* A client: a process the host registered, before it started, under the
- * namespace and rank it names */
+ * namespace and rank it names.
+ *
+ * A client naming a namespace or rank that takes no client is refused
+ * here, before its credential and token are checked - there is no
+ * registration to check them against. It is answered
+ * PMIX_ERR_INVALID_CRED, as a registered rank with a credential or token
+ * that does not match it is */
 static void accept_client(pmix_pending_connection_t *pnd)
 {
     pmix_namespace_t *nptr;
@@ -1104,7 +1111,10 @@ static void accept_client(pmix_pending_connection_t *pnd)
 
     nptr = find_nspace(pnd->proc.nspace);
     if (NULL == nptr) {
-        refuse(pnd, PMIX_ERR_NOT_FOUND);
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "refusing client %s:%u - no such namespace is registered",
+                            pnd->proc.nspace, pnd->proc.rank);
+        refuse(pnd, PMIX_ERR_INVALID_CRED);
         return;
     }
     info = find_rank(nptr, pnd->proc.rank);
@@ -1116,7 +1126,7 @@ static void accept_client(pmix_pending_connection_t *pnd)
                             "refusing client %s:%u - %s", pnd->proc.nspace, pnd->proc.rank,
                             (NULL == info) ? "no such rank is registered"
                                            : "the rank belongs to a self-started tool");
-        refuse(pnd, PMIX_ERR_NOT_FOUND);
+        refuse(pnd, PMIX_ERR_INVALID_CRED);
         return;
     }
     PMIX_RETAIN(nptr);

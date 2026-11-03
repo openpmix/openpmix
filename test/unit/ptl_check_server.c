@@ -28,7 +28,12 @@
  * socket, with fake map files standing in for /proc/self/uid_map and
  * gid_map: an id mapped into our user namespace and one from outside it,
  * for the uid and the gid; with the server's identity given and not; and
- * with its source vouching and not.
+ * with its source vouching and not. In a user namespace whose map does not
+ * take every id to itself, the overflow id is how the kernel shows any id
+ * from outside it - so it is never matched to an identity, even where the
+ * map has an entry for it (a subordinate-id range that covers 65534), and
+ * the server is judged as unnamed. With the identity map it is an id like
+ * any other.
  */
 
 #include "src/include/pmix_config.h"
@@ -221,9 +226,10 @@ static void write_map(char *path, size_t len, const char *name, const char *body
 
 static void test_judge(void)
 {
-    char all[512], some[512], none[512], shifted[512];
+    char all[512], some[512], none[512], shifted[512], subids[512], body[128];
     const char *tmp = getenv("TMPDIR");
     uid_t me = geteuid();
+    uint32_t ovu, ovg;
     pmix_ptl_judgement_t j;
 
     snprintf(mapdir, sizeof(mapdir), "%s/judge.XXXXXX", (NULL == tmp) ? "/tmp" : tmp);
@@ -238,6 +244,13 @@ static void test_judge(void)
     write_map(some, sizeof(some), "some", some);
     /* inside ids 0-999 are outside ids 100000-100999 */
     write_map(shifted, sizeof(shifted), "shifted", "0 100000 1000\n");
+    /* inside ids from 0 to past the overflow ids are outside ids from
+     * 100000 on, as a rootless container's subordinate ids map them */
+    ovu = pmix_util_overflow_uid();
+    ovg = pmix_util_overflow_gid();
+    snprintf(body, sizeof(body), "0 100000 %lu\n",
+             (unsigned long) ((ovu > ovg) ? ovu : ovg) + 2);
+    write_map(subids, sizeof(subids), "subids", body);
     snprintf(none, sizeof(none), "%s/nonexistent", mapdir);
 
     j = pmix_ptl_base_judge_server(all, all, true, me, true, getegid(), false, 0, 0, false);
@@ -279,9 +292,36 @@ static void test_judge(void)
     j = pmix_ptl_base_judge_server(all, all, true, 4242, false, 0, true, 4242, 4343, false);
     report("judge: over TCP, with no gid, the uid given is enough", PMIX_PTL_SERVER_OK == j,
            "not taken");
+
+    /* the overflow ids, mapped by a subordinate-id range: no identity is
+     * matched to them, by number or as the ids they map to */
+    j = pmix_ptl_base_judge_server(subids, subids, true, ovu, true, ovg, true, ovu, ovg, false);
+    report("judge: the overflow ids do not match an identity given as those numbers",
+           PMIX_PTL_SERVER_UNNAMED == j, "matched");
+    j = pmix_ptl_base_judge_server(subids, subids, true, ovu, true, ovg, true, 100000 + ovu,
+                                   100000 + ovg, false);
+    report("judge: ...nor one given as the ids the map takes them to",
+           PMIX_PTL_SERVER_UNNAMED == j, "matched");
+    j = pmix_ptl_base_judge_server(subids, subids, true, ovu, true, ovg, true, ovu, ovg, true);
+    report("judge: ...and the server is taken only where its source vouches for it",
+           PMIX_PTL_SERVER_OK_VOUCHED == j, "not taken");
+    j = pmix_ptl_base_judge_server(subids, subids, true, 5, true, ovg, true, 100005,
+                                   100000 + ovg, false);
+    report("judge: a mapped uid with the overflow gid matches no identity",
+           PMIX_PTL_SERVER_UNNAMED == j, "matched");
+    j = pmix_ptl_base_judge_server(subids, subids, true, 5, true, 6, true, 100005, 100006, false);
+    report("judge: ids the subordinate range maps match the identity they map to",
+           PMIX_PTL_SERVER_OK == j, "not taken");
+    j = pmix_ptl_base_judge_server(subids, subids, true, ovu, false, 0, true, ovu, 0, false);
+    report("judge: over TCP, the overflow uid matches no identity",
+           PMIX_PTL_SERVER_UNNAMED == j, "matched");
+    j = pmix_ptl_base_judge_server(all, all, true, ovu, true, ovg, true, ovu, ovg, false);
+    report("judge: with the identity map, those numbers are ids like any other",
+           PMIX_PTL_SERVER_OK == j, "not taken");
     unlink(all);
     unlink(some);
     unlink(shifted);
+    unlink(subids);
     rmdir(mapdir);
 }
 

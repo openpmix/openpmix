@@ -233,6 +233,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     bool refresh_cache = false;
     bool scope_given = false;
     bool found = false;
+    bool jobhash_seen = false;
     uint32_t tmo;
     struct timeval tv = {0, 0};
     pmix_buffer_t pbkt;
@@ -241,7 +242,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     pmix_byte_object_t bo;
     pmix_proc_t proc;
     char *data;
-    size_t sz, n;
+    size_t sz, n, m;
     pmix_info_t *info;
     pmix_scope_t scope = PMIX_SCOPE_UNDEF;
     pmix_rank_info_t *iptr;
@@ -351,24 +352,36 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         }
     }
     /* the hash the requester holds for the target's job data is not a
-     * directive: keep it on the caddy and take it off the array, so no
-     * fetch, directive scan or up-call sees it */
+     * directive: keep it on the caddy and take every copy of it off the
+     * array, so no fetch, directive scan or up-call sees one. Copies
+     * that do not all carry the same readable hash leave none held */
+    m = 0;
     for (n = 0; n < cd->ninfo; n++) {
         if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GET_JOB_DATA_HASH)) {
-            cd->jobhash_held = (PMIX_SUCCESS == PMIx_Value_get_number(&cd->info[n].value,
-                                                                      &cd->jobhash, PMIX_UINT64));
-            if (1 == cd->ninfo) {
-                PMIX_INFO_FREE(cd->info, cd->ninfo);
-                cd->ninfo = 0;
-            } else {
-                PMIX_INFO_DESTRUCT(&cd->info[n]);
-                memmove(&cd->info[n], &cd->info[n + 1],
-                        (cd->ninfo - n - 1) * sizeof(pmix_info_t));
-                cd->ninfo--;
+            uint64_t hash = 0;
+            bool readable = (PMIX_SUCCESS == PMIx_Value_get_number(&cd->info[n].value,
+                                                                   &hash, PMIX_UINT64));
+            if (!jobhash_seen) {
+                cd->jobhash_held = readable;
+                cd->jobhash = hash;
+                jobhash_seen = true;
+            } else if (!readable || !cd->jobhash_held || hash != cd->jobhash) {
+                cd->jobhash_held = false;
             }
-            break;
+            PMIX_INFO_DESTRUCT(&cd->info[n]);
+            continue;
         }
+        if (m != n) {
+            memcpy(&cd->info[m], &cd->info[n], sizeof(pmix_info_t));
+        }
+        ++m;
     }
+    if (0 == m && NULL != cd->info) {
+        /* every element has been destructed - only the block is left */
+        free(cd->info);
+        cd->info = NULL;
+    }
+    cd->ninfo = m;
     /* if they provided a specific key, get it */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &key, &cnt, PMIX_STRING);

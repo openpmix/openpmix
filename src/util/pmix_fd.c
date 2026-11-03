@@ -174,6 +174,51 @@ pmix_status_t pmix_fd_set_cloexec(int fd)
     return PMIX_SUCCESS;
 }
 
+FILE *pmix_fd_fopen_cloexec(const char *path, const char *mode)
+{
+    int flags, fd, save;
+    FILE *fp;
+
+    if (NULL == path || NULL == mode) {
+        errno = EINVAL;
+        return NULL;
+    }
+    switch (mode[0]) {
+    case 'r':
+        flags = O_RDONLY;
+        break;
+    case 'w':
+        flags = O_WRONLY | O_CREAT | O_TRUNC;
+        break;
+    case 'a':
+        flags = O_WRONLY | O_CREAT | O_APPEND;
+        break;
+    default:
+        errno = EINVAL;
+        return NULL;
+    }
+    if ('+' == mode[1]) {
+        flags = (flags & ~(O_RDONLY | O_WRONLY)) | O_RDWR;
+    } else if ('\0' != mode[1]) {
+        errno = EINVAL;
+        return NULL;
+    }
+    fd = open(path, flags | PMIX_O_CLOEXEC, 0666);
+    if (0 > fd) {
+        return NULL;
+    }
+    if (0 == PMIX_O_CLOEXEC) {
+        (void) pmix_fd_set_cloexec(fd);
+    }
+    fp = fdopen(fd, mode);
+    if (NULL == fp) {
+        save = errno;
+        close(fd);
+        errno = save;
+    }
+    return fp;
+}
+
 bool pmix_fd_is_regular(int fd)
 {
     struct stat buf;

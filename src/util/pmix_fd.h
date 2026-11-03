@@ -26,6 +26,18 @@ BEGIN_C_DECLS
 #ifdef HAVE_SYS_SOCKET_H
 #    include <sys/socket.h>
 #endif
+#include <fcntl.h>
+#include <stdio.h>
+
+/* Where the platform has it, a file is opened close-on-exec - pass this in
+ * open()'s flags - so no fork and exec on another thread can come between
+ * its open and a pmix_fd_set_cloexec(). Where it is 0, follow the open
+ * with pmix_fd_set_cloexec() */
+#ifdef O_CLOEXEC
+#    define PMIX_O_CLOEXEC O_CLOEXEC
+#else
+#    define PMIX_O_CLOEXEC 0
+#endif
 
 /* Where the platform has it, a socket is created close-on-exec - pass this
  * in socket()'s type - so no fork and exec on another thread can come
@@ -158,6 +170,21 @@ PMIX_EXPORT void pmix_close_open_file_descriptors(int protected_fd);
  * threads at once.  Copy it if you need to keep it.
  */
 PMIX_EXPORT const char *pmix_fd_get_peer_name(int fd);
+
+/**
+ * fopen(3) with the descriptor close-on-exec.
+ *
+ * @param path The file to open.
+ * @param mode "r", "w" or "a", optionally followed by "+": the modes
+ * fopen() takes, with the file created as fopen() creates it (0666, less
+ * the umask) for "w" and "a".
+ *
+ * @returns the stream, or NULL with errno set - EINVAL for a mode not
+ * listed. The descriptor is close-on-exec from the open where the platform
+ * has O_CLOEXEC (fopen's "e" is not portable), and from just after it
+ * elsewhere.
+ */
+PMIX_EXPORT FILE *pmix_fd_fopen_cloexec(const char *path, const char *mode);
 
 /**
  * dup2(2) with the standard streams named by number.

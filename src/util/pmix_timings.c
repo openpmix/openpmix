@@ -41,6 +41,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_fd.h"
 #include "src/util/pmix_printf.h"
 #include "src/runtime/pmix_rte.h"
 
@@ -380,7 +381,7 @@ pmix_status_t pmix_timing_report(pmix_timing_t *t, char *fname)
     int nw;
 
     if (NULL != fname) {
-        fp = fopen(fname, "a");
+        fp = pmix_fd_fopen_cloexec(fname, "a");
         if (NULL == fp) {
             pmix_output(0,
                         "pmix_timing_report: Cannot open %s file"
@@ -527,7 +528,7 @@ pmix_status_t pmix_timing_deltas(pmix_timing_t *t, char *fname)
     size_t buf_size = 0, buf_used = 0, avail;
 
     if (NULL != fname) {
-        fp = fopen(fname, "a");
+        fp = pmix_fd_fopen_cloexec(fname, "a");
         if (NULL == fp) {
             pmix_output(0,
                         "pmix_timing_report: Cannot open %s file"

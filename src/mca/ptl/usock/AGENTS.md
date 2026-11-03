@@ -42,8 +42,11 @@ first; the base owns everything done on a socket once it exists.
   group defaults to our egid, not the directory's) while the directory is
   still closed. Only then is the directory opened to whom the mode lets
   connect - group or others get search permission, never read; a socket
-  given to another user makes it searchable by others. The directory's
-  owner never changes.
+  given to another user makes it searchable by others, and - when the
+  host named the group too (`PMIX_GRPID`, not our egid) - by that group,
+  since the kernel judges a member of the directory's group by the
+  group's bits alone: Slurm's job user in its job group, given 0701,
+  could not reach the socket. The directory's owner never changes.
 - **Every change in the directory goes through `dfd`**, opened
   `O_DIRECTORY|O_NOFOLLOW` through `pdfd` right after it is made, and
   checked (ours, 0700).

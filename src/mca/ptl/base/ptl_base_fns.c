@@ -61,6 +61,7 @@
 #include "src/util/pmix_idname.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_fd.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_net.h"
 #include "src/util/pmix_os_path.h"
@@ -71,6 +72,15 @@
 
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/base/ptl_base_handshake.h"
+
+/* the credential's bytes are zeroed before they are freed */
+static void wipe_cred(pmix_byte_object_t *cred)
+{
+    if (NULL != cred->bytes) {
+        pmix_ptl_base_wipe(cred->bytes, cred->size);
+    }
+    PMIX_BYTE_OBJECT_DESTRUCT(cred);
+}
 
 /****    SUPPORTING FUNCTIONS    ****/
 static void timeout(int sd, short args, void *cbdata);
@@ -238,67 +248,140 @@ pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace, pmix_rank
     return PMIX_SUCCESS;
 }
 
+/* Read one component of a version string at *pp: decimal digits, as a
+ * value no larger than PMIX_MAJOR_WILDCARD - 1. Leaves *pp at the first
+ * character after the digits. False when there are no digits or the value
+ * is larger - the wildcard is never a component a peer can declare */
+static bool version_component(const char **pp, uint8_t *out)
+{
+    const char *p = *pp;
+    unsigned long val = 0;
+
+    if (!isdigit((unsigned char) *p)) {
+        return false;
+    }
+    while (isdigit((unsigned char) *p)) {
+        if (val < PMIX_MAJOR_WILDCARD) {
+            val = val * 10 + (unsigned long) (*p - '0');
+        }
+        ++p;
+    }
+    if (PMIX_MAJOR_WILDCARD <= val) {
+        return false;
+    }
+    *out = (uint8_t) val;
+    *pp = p;
+    return true;
+}
+
 /* Split a "major.minor.release" version string into its components.
  *
  * The strings handed to this come off the wire, so they need not carry
- * all three components - or any of them. Every component we cannot read
- * is reported as zero, and we step over a separator only after
- * confirming the string has not already ended. */
-void pmix_ptl_base_parse_version(const char *vers, uint8_t *major,
-                                 uint8_t *minor, uint8_t *release)
+ * all three components. A component the string does not carry is zero.
+ * Components are separated by '.', and anything else after one ends the
+ * version - a release-candidate suffix such as "7.0.0a1". Each component
+ * the string does carry must be a number from 0 to 254: a string whose
+ * first component, or one following a '.', is not a number, or one
+ * with a component larger than 254, is PMIX_ERR_BAD_PARAM, and every
+ * component is then reported as zero. */
+pmix_status_t pmix_ptl_base_parse_version(const char *vers, uint8_t *major,
+                                          uint8_t *minor, uint8_t *release)
 {
-    char *p;
+    uint8_t *parts[3] = {major, minor, release};
+    const char *p = vers;
+    int n;
 
     *major = 0;
     *minor = 0;
     *release = 0;
     if (NULL == vers) {
-        return;
+        return PMIX_ERR_BAD_PARAM;
     }
-    *major = (uint8_t) strtoul(vers, &p, 10);
-    if ('\0' == *p) {
-        return;
+    for (n = 0; n < 3; n++) {
+        if (!version_component(&p, parts[n])) {
+            *major = 0;
+            *minor = 0;
+            *release = 0;
+            return PMIX_ERR_BAD_PARAM;
+        }
+        /* a separator with nothing after it ends the string */
+        if ('.' != p[0] || '\0' == p[1]) {
+            break;
+        }
+        ++p;
     }
-    *minor = (uint8_t) strtoul(&p[1], &p, 10);
-    if ('\0' == *p) {
-        return;
-    }
-    *release = (uint8_t) strtoul(&p[1], NULL, 10);
+    return PMIX_SUCCESS;
 }
 
-/* Open a connection file for reading.
- *
- * A file the caller named is opened with fopen(). A file found by walking
- * a directory, or at one of the fixed rendezvous names, is opened
- * non-blocking and kept only if the open descriptor is a regular file no
- * larger than any server writes. */
-static FILE *open_conn_file(const char *filename, bool regular_only)
+#ifndef O_NOCTTY
+#    define O_NOCTTY 0
+#endif
+
+FILE *pmix_ptl_base_open_regular(const char *filename, off_t max)
 {
-    int fd, flags;
+    int fd, flags, save;
     struct stat st;
     FILE *fp;
 
-    if (!regular_only) {
-        return fopen(filename, "r");
+    if (NULL == filename) {
+        errno = EINVAL;
+        return NULL;
     }
-    fd = open(filename, O_RDONLY | O_NONBLOCK);
+    /* O_NONBLOCK: a FIFO or a device at the name does not hold the open.
+     * O_NOFOLLOW: nor is a symbolic link at the name followed */
+    fd = open(filename, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_NOCTTY | PMIX_O_CLOEXEC);
     if (0 > fd) {
         return NULL;
     }
-    if (0 != fstat(fd, &st) || !S_ISREG(st.st_mode) || PMIX_PTL_MAX_CONN_FILE < st.st_size) {
+    if (0 == PMIX_O_CLOEXEC) {
+        (void) pmix_fd_set_cloexec(fd);
+    }
+    /* the descriptor is what is checked - the file actually opened */
+    if (0 != fstat(fd, &st) || !S_ISREG(st.st_mode)) {
         close(fd);
-        errno = ENOENT;
+        errno = EINVAL;
         return NULL;
     }
+    if (0 < max && max < st.st_size) {
+        close(fd);
+        errno = EFBIG;
+        return NULL;
+    }
+    /* a regular file never blocks a read, but stdio is given the
+     * descriptor as an ordinary one */
     flags = fcntl(fd, F_GETFL);
     if (0 <= flags) {
         (void) fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
     }
     fp = fdopen(fd, "r");
     if (NULL == fp) {
+        save = errno;
         close(fd);
+        errno = save;
     }
     return fp;
+}
+
+/* Open a connection file for reading - a regular file at the name, by
+ * pmix_ptl_base_open_regular. A file found by walking a directory, or at
+ * one of the fixed rendezvous names, is also kept only if it is no larger
+ * than any server writes; one the caller named is read only as far as
+ * that (pmix_ptl_base_getline's budget). */
+static FILE *open_conn_file(const char *filename, bool regular_only)
+{
+    return pmix_ptl_base_open_regular(filename, regular_only ? PMIX_PTL_MAX_CONN_FILE : 0);
+}
+
+/* What the user is told of a connection file that could not be opened */
+static const char *open_failure(int err)
+{
+    if (EACCES == err) {
+        return "access denied";
+    }
+    if (ENOENT == err) {
+        return "could not be found";
+    }
+    return "is not a regular file (a symbolic link, FIFO, device or directory is not read)";
 }
 
 char *pmix_ptl_base_getline(FILE *fp, size_t *budget)
@@ -808,14 +891,11 @@ static pmix_status_t parse_conn_file(char *filename, bool optional, bool found_b
 process:
     fp = open_conn_file(filename, regular_only);
     if (NULL == fp) {
-        if (!optional) {
-            if (EACCES == errno) {
-                pmix_show_help("help-ptl-base.txt", "file-not-found", true,
-                               filename, "access denied");
-            } else {
-                pmix_show_help("help-ptl-base.txt", "file-not-found", true,
-                               filename, "could not be found");
-            }
+        /* a candidate a search found that cannot be read is passed over,
+         * as one that cannot be parsed is */
+        if (!optional && !found_by_search) {
+            pmix_show_help("help-ptl-base.txt", "file-not-found", true,
+                           filename, open_failure(errno));
         }
         return PMIX_ERR_UNREACH;
     }
@@ -1221,6 +1301,14 @@ pmix_status_t pmix_ptl_base_use_local_env(const char *server, char **uri)
     return PMIX_SUCCESS;
 }
 
+/* Whether `id` is the overflow id of a user namespace that does not map
+ * every id to itself - where the kernel gives that one id for any id the
+ * namespace does not map */
+static bool overflow_unnamed(const char *mapfile, uint32_t id, uint32_t overflow)
+{
+    return (id == overflow && !pmix_util_id_map_is_identity(mapfile));
+}
+
 pmix_ptl_judgement_t pmix_ptl_base_judge_server(const char *uidmap, const char *gidmap,
                                                 bool answered, uid_t kuid, bool havegid,
                                                 gid_t kgid, bool given, uid_t uid, gid_t gid,
@@ -1233,9 +1321,13 @@ pmix_ptl_judgement_t pmix_ptl_base_judge_server(const char *uidmap, const char *
     /* An answer that names nobody we know - no answer, or an id from
      * outside our user namespace, which the kernel shows as the overflow
      * id - says nothing of who runs the server. Then only where its
-     * address came from does */
+     * address came from does. In a user namespace that does not map every
+     * id to itself, the overflow id is how the kernel shows every id from
+     * outside it, so it is no id even where the map has an entry for it */
     if (!answered || !id_named(uidmap, (uint32_t) kuid) ||
-        (havegid && !id_named(gidmap, (uint32_t) kgid))) {
+        (havegid && !id_named(gidmap, (uint32_t) kgid)) ||
+        overflow_unnamed(uidmap, (uint32_t) kuid, pmix_util_overflow_uid()) ||
+        (havegid && overflow_unnamed(gidmap, (uint32_t) kgid, pmix_util_overflow_gid()))) {
         return vouched ? PMIX_PTL_SERVER_OK_VOUCHED : PMIX_PTL_SERVER_UNNAMED;
     }
     if (given) {
@@ -1577,11 +1669,11 @@ static pmix_status_t send_connect_ack(pmix_peer_t *peer, pmix_info_t iptr[], siz
     /* send the entire message across */
     /* the message carries our token, if we have one: it goes no further */
     if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(peer->sd, msg, sdsize)) {
-        pmix_ptl_base_wipe(msg, sdsize);
+        pmix_ptl_base_wipe_released(msg, sdsize);
         free(msg);
         return PMIX_ERR_UNREACH;
     }
-    pmix_ptl_base_wipe(msg, sdsize);
+    pmix_ptl_base_wipe_released(msg, sdsize);
     free(msg);
     return PMIX_SUCCESS;
 }
@@ -2090,8 +2182,10 @@ static void cnopdes(pmix_ptl_connect_op_t *p)
     free(p->nspace);
     free(p->suri);
     if (NULL != p->iptr) {
+        pmix_ptl_base_wipe_token_info(p->iptr, p->niptr);
         PMIX_INFO_FREE(p->iptr, p->niptr);
     }
+    pmix_ptl_base_wipe_released(p->msg, p->msglen);
     free(p->msg);
 }
 static PMIX_CLASS_INSTANCE(pmix_ptl_connect_op_t,
@@ -2179,8 +2273,10 @@ static void cnct_restart(pmix_ptl_connect_op_t *op)
         op->sd = -1;
     }
     op->peer->sd = -1;
+    pmix_ptl_base_wipe_released(op->msg, op->msglen);
     free(op->msg);
     op->msg = NULL;
+    op->msglen = 0;
     cnct_begin(-1, 0, op);
 }
 
@@ -2345,8 +2441,11 @@ static void cnct_send(int sd, short args, void *cbdata)
         cnct_finish(op, PMIX_ERR_UNREACH);
         return;
     }
+    /* the message carries our token, if we have one: it goes no further */
+    pmix_ptl_base_wipe_released(op->msg, op->msglen);
     free(op->msg);
     op->msg = NULL;
+    op->msglen = 0;
 
     /* every connector's answer starts with a status */
     if (PMIX_SUCCESS != cnct_expect(op, PMIX_CNCT_STATUS, sizeof(uint32_t))) {
@@ -2726,6 +2825,14 @@ static bool server_uid(pmix_peer_t *peer, uint32_t *uid)
     return true;
 }
 
+/* The packed info of a connect-ack carries the connection token, when
+ * there is one: zero the buffer before it is released */
+static void release_packed(pmix_buffer_t *buf)
+{
+    pmix_ptl_base_wipe_released(buf->base_ptr, buf->bytes_allocated);
+    PMIX_DESTRUCT(buf);
+}
+
 static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t *sz,
                                        pmix_info_t *iptr, size_t niptr)
 {
@@ -2789,7 +2896,7 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
         PMIX_INFO_DESTRUCT(&dir);
     }
     if (PMIX_SUCCESS != rc) {
-        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+        wipe_cred(&cred);
         return rc;
     }
     sdsize += sizeof(uint32_t); // need to pass the number of bytes
@@ -2826,8 +2933,8 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
              * length of the info section from what is left in the
              * message, so a short one would be read as garbage */
             PMIX_ERROR_LOG(rc);
-            PMIX_BYTE_OBJECT_DESTRUCT(&cred);
-            PMIX_DESTRUCT(&buf);
+            wipe_cred(&cred);
+            release_packed(&buf);
             return rc;
         }
         sdsize += buf.bytes_used;
@@ -2841,9 +2948,9 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
     if (NULL == (msg = (char *) malloc(sdsize))) {
         /* "sec", "bfrops" and "gds" all point into the compat modules
          * we were assigned - they are not ours to free */
-        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+        wipe_cred(&cred);
         if (NULL != iptr) {
-            PMIX_DESTRUCT(&buf);
+            release_packed(&buf);
         }
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -2862,7 +2969,7 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
 
     /* load the credential */
     PMIX_PTL_PUT_BLOB(cred.bytes, cred.size);
-    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    wipe_cred(&cred);
 
     /* load our process type - this is a single byte,
      * so no worry about heterogeneity here */
@@ -2913,8 +3020,9 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
     default:
         /* we don't know what they are! */
         if (NULL != iptr) {
-            PMIX_DESTRUCT(&buf);
+            release_packed(&buf);
         }
+        pmix_ptl_base_wipe_released(msg, sdsize);
         free(msg);
         return PMIX_ERR_NOT_SUPPORTED;
     }
@@ -2934,7 +3042,7 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
     /* provide the info struct bytes */
     if (NULL != iptr) {
         PMIX_PTL_PUT_BLOB(buf.base_ptr, buf.bytes_used);
-        PMIX_DESTRUCT(&buf);
+        release_packed(&buf);
     }
 
     *msgout = msg;
