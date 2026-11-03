@@ -12,6 +12,8 @@
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2026      Jeff Squyres  All rights reserved.
+ * Copyright (c) 2026      Barcelona Supercomputing Center (BSC-CNS).
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1187,6 +1189,8 @@ static void _iofreg(int sd, short args, void *cbdata)
                     PMIX_RELEASE(iof);
                 }
             }
+            /* the jobs it covers pass it on to their descendants */
+            pmix_server_iof_subscribed(req);
         }
     }
 

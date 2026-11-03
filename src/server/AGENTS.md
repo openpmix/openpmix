@@ -2530,7 +2530,7 @@ the server with a wire `ninfo` of zero; `pmix_server_spawn` used to skip
 the parse in that case, leaving `cd->channels` and `cd->inherit_iof` at
 the values `scadcon` gave them — forward nothing, inherit nothing — so
 `pmix_server_process_iof()` returned having registered nothing. A client
-spawning that way was rescued by the delivery-time half above; a tool
+spawning that way was rescued by registration-time resolution; a tool
 spawning that way was not, because ancestry cloning looks for
 subscriptions covering the *parent*, and nobody forwards a tool's own
 output. "Named no channel" and "sent no directives" are the same input
@@ -2543,7 +2543,10 @@ Two things fall out that are easy to get wrong:
   inherit more than one watcher, and a cache entry is consumed the moment
   it is forwarded — so draining per-request would hand the cached head of
   the stream to whichever watcher was cloned first and the rest of the
-  stream to all of them.
+  stream to all of them. For the same reason it runs once per caller,
+  after all of that caller's clones: resolution clones from several
+  ancestors, and a drain after the first would leave the others without
+  the head.
 - **The clone is subject to the same screens `pmix_iof_process_iof`
   applies before forwarding** (non-NULL requestor, non-NULL
   `requestor->info`, not finalized). A request it would refuse is not
@@ -2558,46 +2561,50 @@ attached to. On a single-node DVM or under `prterun` those are the same
 server and the spawn-time clone is the whole story; on a multi-node DVM
 they are not, and the clone gets built where the output never arrives.
 
-So `_iofdeliver` carries the other half: when a chunk of output matches
-no subscription — the point at which it would otherwise go into the
-cache to age out — `inherit_from_ancestry()` walks the source
-namespace's `PMIX_PARENT_ID` chain and clones the subscriptions covering
-the first ancestor anybody here is watching. That decision is taken on
-the server the output *reaches*, which for every PRRTE launcher is the
-HNP: every prted forwards to the HNP, and the HNP hands everything it
-receives to its own PMIx server, where a `prun`/`prterun` tool's
-subscription is. Four things about it are load-bearing:
+So `pmix_server_iof_resolve_job()` carries the other half. It runs when
+a namespace is registered here (`pmix_server_iof_job_registered()`, from
+`_register_nspace`), and for the jobs descended from what a new
+subscription covers (`pmix_server_iof_subscribed()`, from `_iofreg` and
+from `pmix_server_process_iof()` when a spawn's requester subscribes):
+the events that can change a job's inheritance. Output delivery never
+walks. Five things about it are load-bearing:
 
-- **It clones rather than delivering the one chunk.** Every later chunk
-  from that namespace then takes the ordinary walk above, so the
-  datastore is consulted once per namespace instead of once per line of
-  a watched job's output. The clone is made by the same
-  `clone_iof_reqs()` the spawn-time path uses and has the same lifetime,
-  so this adds no lifetime question that was not already there.
+- **It clones.** The clone is made by the same `clone_iof_reqs()` the
+  spawn-time path uses and has the same lifetime; cached early output
+  drains to new clones, so a tool that attaches late still gets it.
 - **`PMIX_PARENT_ID` is per-process job data**, which is why the lookup
   works on a server that had nothing to do with the spawn: PRRTE adds it
   in `prte_pmix_server_register_nspace()` for every daemon that
   registers the namespace. `pmix_pfexec` records it for the job as a
-  whole instead, so `get_parent_id()` tries the specific rank and then
-  the wildcard.
-- **The walk is transitive and bounded** (`PMIX_IOF_MAX_ANCESTRY`). A
-  grandchild of a watched job is watched; the chain is host-supplied
-  data, so the bound is what stops a malformed or circular one from
-  spinning the progress thread.
-- **The two halves are independent, and run in either order.** Neither
-  needs the other to have run, and where both apply the second finds the
-  subscription the first created and does not clone it again -
-  `clone_iof_reqs()` checks for an existing clone before making one. A
-  clone records the original subscription it descends from (`root_id`),
-  at any depth, so a clone that reached the child through another
-  generation of the chain counts too; deregistering the original removes
-  its clones. The check has to be there rather than in either caller: on
-  a multi-node DVM the child's first output routinely reaches the tool's
-  server before the spawn completes on the spawner's, so the
-  delivery-time clone exists when the spawn-time half runs. Without it
-  every line arrived twice, and a chain of spawns doubled the count per
-  generation, since each child copies all of its parent's subscriptions.
-  `test/unit/iof_inherit.c` runs both orders.
+  whole instead, so `get_parent_id()` tries rank 0 and then the
+  wildcard. A host must record it for one of the two.
+- **A job records its ancestry when it is registered**
+  (`pmix_namespace_t.iof_ancestors`), ending at an ancestor that does
+  not inherit and bounded by `PMIX_IOF_MAX_ANCESTRY`. Resolution clones
+  from every recorded ancestor, so the result does not depend on the
+  order of events; the record outlives released middle generations;
+  and a new subscription finds the jobs below it without a fetch. A job
+  registered before its parent records up to the parent and is extended
+  when the parent is registered. An ancestor registered here contributes
+  its own record, copied rather than fetched, so a generation released
+  before the job below it was registered leaves no gap.
+- **Each handler of a requestor gets each channel of a job once.** A
+  clone carries only the channels that handler (requestor and
+  `remote_id`) does not already receive from the job, through a clone or
+  a pull of its own (`channels_for()`). Both halves and repeated
+  resolutions come through there in any order; without it every line
+  arrived twice, and a chain of spawns doubled the count per generation.
+  A tool's separate pulls are separate handlers and each gets its own
+  copy. A pull naming only some ranks of a job does not stop the clone,
+  which names the whole job; at delivery the clone stands aside for a
+  chunk its original takes (`original_takes()`). Only a clone whose
+  original names ranks of its job checks (`root_names_ranks`), so the
+  delivery path pays nothing otherwise.
+- **Removal resolves again.** A clone records the original it descends
+  from (`root_id`). Deregistering the original removes its clones, and
+  the jobs that lost one, or that it named, are resolved again so a
+  pull skipped as a duplicate takes over. Releasing a job removes the
+  clones naming it.
 
 **The host gets the final say through `PMIX_IOF_INHERIT`, and where it is
 read follows from the two halves being on different daemons.** The
@@ -2629,9 +2636,8 @@ register it. A fetch that found nothing would read as "inherit", which is
 the wrong way to be wrong — it would clone against the host's wishes and
 nothing takes a clone back. So `inherit_parent_iof()` looks the namespace
 up in `pmix_globals.nspaces` first and returns without cloning when it is
-absent, leaving the decision to the delivery-time half, which cannot run
-before the namespace exists. Deferring is never behaviorally wrong; it
-only postpones. That is also why `test/unit/iof_inherit.c` registers its
+absent, leaving the decision to `pmix_server_iof_resolve_job()` when the namespace is
+registered. Deferring is never behaviorally wrong; it only postpones. That is also why `test/unit/iof_inherit.c` registers its
 child namespace before driving the spawn-time cases — without that they
 exercise the deferral rather than the inheritance.
 

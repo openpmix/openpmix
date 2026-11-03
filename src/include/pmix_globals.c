@@ -173,6 +173,8 @@ static void nscon(pmix_namespace_t *p)
     p->jobdata_hash_valid = false;
     p->jobdata_hash = 0;
     PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
+    p->iof_ancestors = NULL;
+    p->niof_ancestors = 0;
     memset(&p->compat, 0, sizeof(p->compat));
     PMIX_CONSTRUCT(&p->epilog.cleanup_dirs, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.cleanup_files, pmix_list_t);
@@ -208,6 +210,9 @@ static void nsdes(pmix_namespace_t *p)
         PMIX_RELEASE(p->jobbkt);
     }
     PMIX_LIST_DESTRUCT(&p->ranks);
+    if (NULL != p->iof_ancestors) {
+        PMIX_PROC_FREE(p->iof_ancestors, p->niof_ancestors);
+    }
     PMIX_LIST_DESTRUCT(&p->departed);
     /* perform any epilog */
     pmix_execute_epilog(&p->epilog);
@@ -539,6 +544,7 @@ static void iofreqcon(pmix_iof_req_t *p)
     p->cbdata = NULL;
     p->clone_id = 0;
     p->root_id = 0;
+    p->root_names_ranks = false;
 }
 static void iofreqdes(pmix_iof_req_t *p)
 {

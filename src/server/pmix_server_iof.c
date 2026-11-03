@@ -51,10 +51,6 @@
 
 #include "pmix_server_ops.h"
 
-/* defined below, beside the spawn-time inheritance it is the other half
- * of - _iofdeliver reaches for it on its miss path */
-static size_t inherit_from_ancestry(const pmix_proc_t *source);
-
 void pmix_server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                             pmix_buffer_t *buf, void *cbdata)
 {
@@ -149,6 +145,48 @@ cleanup:
     PMIX_BYTE_OBJECT_DESTRUCT(&bo);
 }
 
+/* Does "req" name "proc", as pmix_iof_process_iof() matches a source? */
+static bool names_proc(const pmix_iof_req_t *req, const pmix_proc_t *proc)
+{
+    size_t m;
+
+    for (m = 0; m < req->nprocs; m++) {
+        if (PMIX_CHECK_PROCID(proc, &req->procs[m])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Does the original of clone "req" take a chunk on "channel" from
+ * "source"? A clone names a whole job, and its original may name some of
+ * that job's ranks as well: one pull naming a job and a rank of its
+ * child. Those ranks reach the handler through the original, so the
+ * clone stands aside for them and no line arrives twice. The original
+ * outlives its clones, and has the same requestor, so the requestor
+ * checks in pmix_iof_process_iof() refuse both or neither; a send that
+ * fails for the original is not retried through the clone. */
+static bool original_takes(const pmix_iof_req_t *req, pmix_iof_channel_t channel,
+                           const pmix_proc_t *source)
+{
+    pmix_iof_req_t *r;
+    int i;
+
+    /* only a clone that would take the chunk itself, and whose original
+     * names ranks of its job, has anything to stand aside from - the scan
+     * below runs only for one */
+    if (!req->root_names_ranks || !(channel & req->channels) || !names_proc(req, source)) {
+        return false;
+    }
+    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+        r = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL != r && 0 == r->root_id && r->clone_id == req->root_id) {
+            return (0 != (channel & r->channels)) && names_proc(r, source);
+        }
+    }
+    return false;
+}
+
 /* the progress-thread half of PMIx_server_IOF_deliver: write the output
  * locally if we are meant to, hand it to every matching registration,
  * and cache it if nobody has registered for it yet */
@@ -210,7 +248,7 @@ static void _iofdeliver(int sd, short args, void *cbdata)
      * this channel from this source */
     for (i = 0; i < pmix_globals.iof_requests.size; i++) {
         req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
-        if (NULL == req) {
+        if (NULL == req || original_takes(req, cd->channels, cd->procs)) {
             continue;
         }
         rc = pmix_iof_process_iof(cd->channels, cd->procs, cd->bo, cd->info, cd->ninfo, req);
@@ -220,28 +258,6 @@ static void _iofdeliver(int sd, short args, void *cbdata)
             found = true;
         } else if (PMIX_SUCCESS != rc && PMIX_SUCCESS == ret) {
             ret = rc;
-        }
-    }
-
-    /* Nobody here took this chunk - but its job may be the child of one
-     * somebody watches. Ask before the bytes go into the cache to age
-     * out: this is the only point at which the server that RECEIVES a
-     * spawned job's output gets to make the inheritance decision, and on
-     * a multi-node DVM it is not the server that processed the spawn.
-     * Clones answer later chunks on their channels; a chunk on a channel
-     * nobody watches walks again. Only new clones need a second pass. */
-    if (!found && 0 < inherit_from_ancestry(cd->procs)) {
-        for (i = 0; i < pmix_globals.iof_requests.size; i++) {
-            req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
-            if (NULL == req) {
-                continue;
-            }
-            rc = pmix_iof_process_iof(cd->channels, cd->procs, cd->bo, cd->info, cd->ninfo, req);
-            if (PMIX_OPERATION_SUCCEEDED == rc) {
-                found = true;
-            } else if (PMIX_SUCCESS != rc && PMIX_SUCCESS == ret) {
-                ret = rc;
-            }
         }
     }
 
@@ -498,6 +514,19 @@ pmix_status_t PMIx_server_IOF_flow_control(const pmix_proc_t *source,
     return PMIX_SUCCESS;
 }
 
+/* Does "req" name job "nspace" in any of its procs? */
+static bool names_job(const pmix_iof_req_t *req, const char *nspace)
+{
+    size_t m;
+
+    for (m = 0; m < req->nprocs; m++) {
+        if (PMIX_CHECK_NSPACE(req->procs[m].nspace, nspace)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Hand the output already in the cache to the subscriptions just built
  * for a job. A job's first bytes routinely beat its own spawn reply back
  * to us, so without this the opening lines of every spawned job are lost.
@@ -507,7 +536,10 @@ pmix_status_t PMIx_server_IOF_flow_control(const pmix_proc_t *source,
  * moment it is forwarded: draining per-request would give the cached
  * head of the stream to whichever watcher happened to be cloned first
  * and the rest of it to all of them. Every request naming the job is
- * offered each entry, and the entry is dropped once anyone took it. */
+ * offered each entry, and the entry is dropped once anyone took it. A
+ * clone that stands aside for an original relies on the original being
+ * offered the entry too, so a request naming the job in any of its procs
+ * is offered it. */
 static void drain_cache(const char *nspace)
 {
     pmix_iof_cache_t *iof, *ionext;
@@ -520,10 +552,8 @@ static void drain_cache(const char *nspace)
         taken = false;
         for (i = 0; i < pmix_globals.iof_requests.size; i++) {
             req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
-            if (NULL == req || 0 == req->nprocs) {
-                continue;
-            }
-            if (!PMIX_CHECK_NSPACE(req->procs[0].nspace, nspace)) {
+            if (NULL == req || !names_job(req, nspace) ||
+                original_takes(req, iof->channel, &iof->source)) {
                 continue;
             }
             /* the source still has to match, so an entry from some other
@@ -540,6 +570,18 @@ static void drain_cache(const char *nspace)
             PMIX_RELEASE(iof);
         }
     }
+}
+
+static pmix_namespace_t *find_nspace(const char *nspace)
+{
+    pmix_namespace_t *ns;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (PMIX_CHECK_NSPACE_STRICT(ns->nspace, nspace)) {
+            return ns;
+        }
+    }
+    return NULL;
 }
 
 static uint64_t next_clone_id = 0;
@@ -577,53 +619,94 @@ static bool covers_job(const pmix_iof_req_t *req, const char *nspace)
     return false;
 }
 
-/* Has the subscription "req" stands for already followed into "nspace"?
- * A clone carries the id of the original it descends from, so one made
- * through another generation of the chain matches too, and so does an
- * original that covers the job itself. */
-static bool already_cloned(const pmix_iof_req_t *req, const char *nspace)
+/* Does the original of "req" - itself, or the one it was cloned from -
+ * name some ranks of "nspace" rather than the whole job? Cloning it onto
+ * that job leaves those ranks matching twice; see original_takes(). The
+ * original outlives its clones, so a clone's is always in the array. */
+static bool original_names_ranks(const pmix_iof_req_t *req, const char *nspace)
 {
-    pmix_iof_req_t *r;
-    uint64_t root = root_peek(req);
+    const pmix_iof_req_t *orig = NULL, *r;
+    size_t m;
     int i;
 
-    if (0 == root) {
-        return false;   // never cloned, so nothing descends from it
+    if (0 == req->root_id) {
+        orig = req;
+    } else {
+        for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+            r = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+            if (NULL != r && 0 == r->root_id && r->clone_id == req->root_id) {
+                orig = r;
+                break;
+            }
+        }
+        if (NULL == orig) {
+            return false;
+        }
     }
-    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
-        r = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
-        if (NULL == r || r == req || root != root_peek(r)) {
-            continue;
-        }
-        if (0 == r->root_id && covers_job(r, nspace)) {
-            return true;    // the original itself covers the job
-        }
-        if (0 != r->root_id && 1 == r->nprocs &&
-            PMIX_CHECK_NSPACE_STRICT(r->procs[0].nspace, nspace)) {
+    for (m = 0; m < orig->nprocs; m++) {
+        if (PMIX_RANK_WILDCARD != orig->procs[m].rank &&
+            PMIX_CHECK_NSPACE(orig->procs[m].nspace, nspace)) {
             return true;
         }
     }
     return false;
 }
 
+/* The channels handler "remote_id" of "requestor" already receives from
+ * the whole of "nspace", through any subscription - its own pull of that
+ * job, one naming every job, or a clone */
+static pmix_iof_channel_t channels_for(const pmix_peer_t *requestor, size_t remote_id,
+                                       const char *nspace)
+{
+    pmix_iof_req_t *r;
+    pmix_iof_channel_t ch = PMIX_FWD_NO_CHANNELS;
+    int i;
+
+    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+        r = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL != r && r->requestor == requestor && r->remote_id == remote_id &&
+            covers_job(r, nspace)) {
+            ch |= r->channels;
+        }
+    }
+    return ch;
+}
+
 /* Remove the clones of an original subscription: they forward on its
- * behalf, so they go with it */
+ * behalf, so they go with it. A job that lost one, or that the original
+ * named itself, may be owed the same channels through another
+ * subscription it skipped as a duplicate, so it is resolved again. The
+ * original must already be out of the array. */
 static void drop_clones(const pmix_iof_req_t *req)
 {
     pmix_iof_req_t *r;
+    pmix_namespace_t *ns;
+    char **jobs = NULL;
     int i;
 
-    if (0 != req->root_id || 0 == req->clone_id) {
+    if (0 != req->root_id) {
         return;
     }
-    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (covers_job(req, ns->nspace)) {
+            PMIx_Argv_append_unique_nosize(&jobs, ns->nspace);
+        }
+    }
+    for (i = 0; 0 != req->clone_id && i < pmix_globals.iof_requests.size; i++) {
         r = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
         if (NULL == r || r->root_id != req->clone_id) {
             continue;
         }
+        if (1 == r->nprocs) {
+            PMIx_Argv_append_unique_nosize(&jobs, r->procs[0].nspace);
+        }
         pmix_pointer_array_set_item(&pmix_globals.iof_requests, i, NULL);
         PMIX_RELEASE(r);
     }
+    for (i = 0; NULL != jobs && NULL != jobs[i]; i++) {
+        (void) pmix_server_iof_resolve_job(jobs[i]);
+    }
+    PMIx_Argv_free(jobs);
 }
 
 /* Remove the clones naming "nspace": its job is gone, so they can
@@ -657,33 +740,31 @@ void pmix_server_iof_job_gone(const char *nspace)
  * output arrives at the requestor under the same handler id the parent's
  * does and is treated identically there.
  *
- * A subscription that already follows into the child is not cloned again.
- * The spawn-time and delivery-time halves both come here, in either order,
- * and a second clone delivers every line twice - and doubles again in each
- * generation of a spawn chain, since the next clone copies both.
+ * Each handler of a requestor gets each channel of a job once: a clone
+ * carries only the channels that handler does not already receive from
+ * the child, through a clone or a subscription of its own. The spawn-time half and resolution both come
+ * here, in either order, and a second clone delivers every line twice -
+ * and doubles again in each generation of a spawn chain.
  *
  * Returns the number of clones made now; *ncovered counts the parent's
  * subscriptions that already followed into the child. Both zero means
- * nobody is watching that parent here.
+ * nobody is watching that parent here. A caller that made clones drains
+ * the cache once it has made all of them - see drain_cache().
  */
 static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace,
                              size_t *ncovered)
 {
     pmix_iof_req_t *req, *nreq;
+    pmix_iof_channel_t want;
     size_t m, ninherited = 0;
     int i, limit, idx;
-    pmix_namespace_t *ns, *child = NULL;
+    pmix_namespace_t *child;
 
     *ncovered = 0;
     /* the child job - its permissions decide who may follow into it. A
      * job the host never registered with us has no owner here, so only
      * root and our own user can */
-    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(ns->nspace, nspace)) {
-            child = ns;
-            break;
-        }
-    }
+    child = find_nspace(nspace);
 
     /* the array grows as we add to it, so bound the walk to what was
      * there when we started - a clone can never be its own parent */
@@ -693,15 +774,17 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace,
         if (NULL == req) {
             continue;
         }
-        /* a request with no requestor peer was registered by this process
-         * for itself and is delivered through its own callback; there is
-         * nothing about it to give the child. The same screens
+        /* a request with no requestor peer, or with this server as its
+         * requestor, was registered by this process for itself and is
+         * delivered through its own callback; there is nothing about it
+         * to give the child. The same screens
          * pmix_iof_process_iof applies before forwarding apply here
          * before cloning - a request it would refuse is not worth
          * inheriting - and the info read is load-bearing rather than
          * defensive, because the verbose line below dereferences it */
         if (NULL == req->requestor || NULL == req->requestor->info ||
-            req->requestor->finalized) {
+            req->requestor->finalized ||
+            PMIX_CHECK_NAMES(&req->requestor->info->pname, &pmix_globals.myid)) {
             continue;
         }
         if (PMIX_FWD_NO_CHANNELS == req->channels) {
@@ -725,7 +808,8 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace,
         }
         /* both halves of inheritance clone through here, and either can
          * run first: the subscription may already follow into the child */
-        if (already_cloned(req, nspace) || covers_job(req, nspace)) {
+        want = req->channels & ~channels_for(req->requestor, req->remote_id, nspace);
+        if (PMIX_FWD_NO_CHANNELS == want) {
             ++(*ncovered);
             continue;
         }
@@ -733,8 +817,8 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace,
         nreq = PMIX_NEW(pmix_iof_req_t);
         if (NULL == nreq) {
             /* break rather than return: the clones already made are live
-             * subscriptions, and the cached head of the stream still has
-             * to be handed to them by the drain below */
+             * subscriptions, and the caller still has to hand them the
+             * cached head of the stream */
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             break;
         }
@@ -747,9 +831,10 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace,
         nreq->nprocs = 1;
         PMIX_LOAD_PROCID(&nreq->procs[0], nspace, PMIX_RANK_WILDCARD);
         nreq->root_id = root_of(req);
+        nreq->root_names_ranks = original_names_ranks(req, nspace);
         PMIX_RETAIN(req->requestor);
         nreq->requestor = req->requestor;
-        nreq->channels = req->channels;
+        nreq->channels = want;
         nreq->remote_id = req->remote_id;
         /* a shallow copy of the flags owns nothing - see the note in
          * pmix_server_process_iof below */
@@ -773,11 +858,6 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace,
                             nspace, PMIx_IOF_channel_string(nreq->channels),
                             PMIX_PNAME_PRINT(&req->requestor->info->pname),
                             PMIX_NAME_PRINT(parent));
-    }
-    /* every clone exists now, so the cached head of the stream can be
-     * shared out among all of them */
-    if (0 < ninherited) {
-        drain_cache(nspace);
     }
     return ninherited;
 }
@@ -831,8 +911,8 @@ static bool iof_inherit_allowed(const char *nspace)
 /* Give the child job the output forwarding its parent has, at the moment
  * the spawn completes. The spawning process is the parent, and it is a
  * local client of ours - so this only ever finds anything on the server
- * that processed the spawn. See inherit_from_ancestry() for the other
- * half, which runs where the output arrives.
+ * that processed the spawn. pmix_server_iof_resolve_job() covers every other server,
+ * when the job is registered there.
  *
  * This is the one site where "the host said nothing" and "we cannot ask
  * yet" are distinguishable and must not be conflated. We run from the
@@ -842,29 +922,26 @@ static bool iof_inherit_allowed(const char *nspace)
  * fetch that finds nothing there would read as "inherit", which is the
  * wrong way to be wrong: it would clone against the host's wishes and
  * nothing would take the clone back. So an unknown namespace defers to
- * the delivery-time half, which cannot run before the namespace exists
- * and therefore always has a real answer.
+ * pmix_server_iof_resolve_job(), which runs when the namespace is registered and
+ * therefore always has a real answer. So does a known one whose job data
+ * has not arrived: one pre-registered with PMIX_REGISTER_NODATA, or one
+ * known only from data another server sent.
  */
 static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
 {
     pmix_proc_t parent;
     size_t ninherited, ncovered;
-    pmix_namespace_t *ns, *nptr = NULL;
+    pmix_namespace_t *nptr;
 
     if (NULL == cd->peer || NULL == cd->peer->info) {
         return 0;
     }
 
-    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (PMIX_CHECK_NSPACE(ns->nspace, nspace)) {
-            nptr = ns;
-            break;
-        }
-    }
-    if (NULL == nptr) {
+    nptr = find_nspace(nspace);
+    if (NULL == nptr || !nptr->job_info_recvd) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
-                            "PMIx:SERVER job %s not registered here yet - "
-                            "leaving inheritance to delivery", nspace);
+                            "PMIx:SERVER job %s has no job data here yet - "
+                            "leaving inheritance to its registration", nspace);
         return 0;
     }
     if (!iof_inherit_allowed(nspace)) {
@@ -878,6 +955,9 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
                      cd->peer->info->pname.rank);
 
     ninherited = clone_iof_reqs(&parent, nspace, &ncovered);
+    if (0 < ninherited) {
+        drain_cache(nspace);
+    }
     return ninherited + ncovered;
 }
 
@@ -941,79 +1021,167 @@ static bool get_parent_id(const pmix_proc_t *proc, pmix_proc_t *parent)
     return found;
 }
 
-/* The delivery-time half of inheritance: output has arrived for a
- * namespace nobody here is subscribed to. Before it is cached and lost,
- * ask whether it belongs to a job that was SPAWNED by one somebody here
- * IS subscribed to - a subscription covering a parent job covers its
- * children.
- *
- * This is what makes inheritance work when the spawn was processed
- * somewhere else. pmix_server_process_iof() runs on the server hosting
- * the spawning process, which on a multi-node DVM is not the server
- * holding the watching tool's subscription; this runs on the server the
- * output actually reaches, which is that one. Neither needs the other to
- * have happened, and no subscription crosses the wire.
- *
- * The walk is transitive because "treated the way its parent is treated"
- * says nothing about depth - a grandchild of a watched job is watched.
- * It stops at the first ancestor with a subscription here, new or
- * already cloned, and at an ancestor that does not inherit: walking past
- * it would give the child the watcher its parent was refused. Returns
- * the number of new clones: an ancestor that is only covered returns 0,
- * and the chunk has nobody new to try.
- *
- * A match CLONES rather than delivering once, so every later chunk from
- * this namespace on the cloned channels takes the ordinary path above.
- * That costs one entry per watcher and gives the fallback the same
- * lifetime the spawn-time clones have; re-deriving it per chunk would put
- * a datastore fetch in front of every line of a watched job's output.
- */
-static size_t inherit_from_ancestry(const pmix_proc_t *source)
+/* Append "procs" to job "ns"'s record of its ancestors, as many of them
+ * as PMIX_IOF_MAX_ANCESTRY leaves room for. Returns false if it appended
+ * none. */
+static bool append_ancestors(pmix_namespace_t *ns, const pmix_proc_t *procs, size_t count)
 {
-    pmix_proc_t anc, parent;
-    size_t ninherited, ncovered;
-    int depth;
+    pmix_proc_t *grown;
+    size_t n = ns->niof_ancestors;
 
-    /* Read where it is reliable: output cannot arrive for a namespace
-     * this server has not been told about, so unlike the spawn-time site
-     * there is no "cannot ask yet" here. */
-    if (!iof_inherit_allowed(source->nspace)) {
+    if (PMIX_IOF_MAX_ANCESTRY - n < count) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
-                            "PMIx:SERVER job %s does not inherit output forwarding",
-                            source->nspace);
+                            "PMIx:SERVER job %s ancestry reaches the bound of %d - "
+                            "not inheriting from its %d farthest ancestor(s)",
+                            ns->nspace, PMIX_IOF_MAX_ANCESTRY,
+                            (int) (count - (PMIX_IOF_MAX_ANCESTRY - n)));
+        count = PMIX_IOF_MAX_ANCESTRY - n;
+    }
+    if (0 == count) {
+        return false;
+    }
+    grown = PMIx_Proc_create(n + count);
+    if (NULL == grown) {
+        return false;
+    }
+    if (0 < n) {
+        memcpy(grown, ns->iof_ancestors, n * sizeof(pmix_proc_t));
+    }
+    memcpy(&grown[n], procs, count * sizeof(pmix_proc_t));
+    if (0 < n) {
+        PMIx_Proc_free(ns->iof_ancestors, n);
+    }
+    ns->iof_ancestors = grown;
+    ns->niof_ancestors = n + count;
+    return true;
+}
+
+/* Extend job "ns"'s record of its ancestors as far as this server now
+ * knows. It ends at an ancestor that does not inherit, which is kept:
+ * its own watchers still apply. Recording it at registration lets later
+ * resolutions reach ancestors whose middle generations have since been
+ * released, and find a subscription's descendants without a fetch.
+ *
+ * An ancestor registered here has a record of its own, which may reach
+ * past a generation already released. That record is copied rather than
+ * fetched again: the released generation's PMIX_PARENT_ID is gone. */
+static void extend_ancestry(pmix_namespace_t *ns)
+{
+    pmix_namespace_t *ans;
+    pmix_proc_t anc, parent;
+    size_t n = ns->niof_ancestors;
+
+    if (0 == n) {
+        /* every process of a job has the same parent */
+        PMIX_LOAD_PROCID(&anc, ns->nspace, 0);
+    } else {
+        PMIX_XFER_PROCID(&anc, &ns->iof_ancestors[n - 1]);
+        if (!iof_inherit_allowed(anc.nspace)) {
+            return;
+        }
+    }
+    while (ns->niof_ancestors < PMIX_IOF_MAX_ANCESTRY) {
+        ans = find_nspace(anc.nspace);
+        if (NULL != ans && ans != ns && 0 < ans->niof_ancestors) {
+            if (!append_ancestors(ns, ans->iof_ancestors, ans->niof_ancestors)) {
+                break;
+            }
+        } else {
+            if (!get_parent_id(&anc, &parent)) {
+                break;
+            }
+            if (PMIX_CHECK_NSPACE(parent.nspace, anc.nspace)) {
+                break;      // a job cannot have spawned itself
+            }
+            if (!append_ancestors(ns, &parent, 1)) {
+                break;
+            }
+        }
+        PMIX_XFER_PROCID(&anc, &ns->iof_ancestors[ns->niof_ancestors - 1]);
+        if (!iof_inherit_allowed(anc.nspace)) {
+            break;
+        }
+    }
+}
+
+/* Give job "nspace" every subscription it inherits on this server: clone
+ * what covers each recorded ancestor. Each handler gets each channel of a
+ * job once, so running this again only adds what is new.
+ *
+ * It runs when the job is registered here, and for a job descended from
+ * what a new subscription covers, the two events that can change the
+ * answer, so output delivery never has to ask. This is what makes
+ * inheritance work where the spawn was processed elsewhere: PMIX_PARENT_ID
+ * is job data, so it reaches every server the job is registered with,
+ * including the one holding the tool's subscription.
+ */
+size_t pmix_server_iof_resolve_job(const char *nspace)
+{
+    pmix_namespace_t *ns;
+    size_t n, ninherited = 0, nnew, ncovered;
+
+    if (NULL == (ns = find_nspace(nspace))) {
         return 0;
     }
-
-    PMIX_LOAD_PROCID(&anc, source->nspace, source->rank);
-
-    for (depth = 0; depth < PMIX_IOF_MAX_ANCESTRY; depth++) {
-        if (!get_parent_id(&anc, &parent)) {
-            return 0;       // no parent recorded - this job is a root
-        }
-        if (PMIX_CHECK_NSPACE(parent.nspace, anc.nspace)) {
-            return 0;       // a job cannot have spawned itself
-        }
-        ninherited = clone_iof_reqs(&parent, source->nspace, &ncovered);
-        if (0 < ninherited) {
+    if (!iof_inherit_allowed(nspace)) {
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "PMIx:SERVER job %s does not inherit output forwarding",
+                            nspace);
+        return 0;
+    }
+    extend_ancestry(ns);
+    for (n = 0; n < ns->niof_ancestors; n++) {
+        nnew = clone_iof_reqs(&ns->iof_ancestors[n], nspace, &ncovered);
+        if (0 < nnew) {
             pmix_output_verbose(2, pmix_server_globals.iof_output,
                                 "PMIx:SERVER job %s inherited %d subscription(s) "
-                                "from ancestor %s at delivery",
-                                source->nspace, (int) ninherited,
-                                PMIX_NAME_PRINT(&parent));
+                                "from ancestor %s",
+                                nspace, (int) nnew, PMIX_NAME_PRINT(&ns->iof_ancestors[n]));
+            ninherited += nnew;
         }
-        if (0 < ninherited || 0 < ncovered) {
-            return ninherited;
-        }
-        if (!iof_inherit_allowed(parent.nspace)) {
-            pmix_output_verbose(2, pmix_server_globals.iof_output,
-                                "PMIx:SERVER job %s: ancestor %s does not inherit",
-                                source->nspace, parent.nspace);
-            return 0;
-        }
-        PMIX_LOAD_PROCID(&anc, parent.nspace, parent.rank);
     }
+    /* after every ancestor's clones exist, so they all share the cached
+     * head of the stream */
+    if (0 < ninherited) {
+        drain_cache(nspace);
+    }
+    return ninherited;
+}
 
-    return 0;
+void pmix_server_iof_job_registered(const char *nspace)
+{
+    pmix_namespace_t *ns;
+
+    (void) pmix_server_iof_resolve_job(nspace);
+    /* a job registered before this one may have recorded it as the end of
+     * its ancestry for want of this one's data: go on from here */
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 < ns->niof_ancestors &&
+            PMIX_CHECK_NSPACE_STRICT(ns->iof_ancestors[ns->niof_ancestors - 1].nspace, nspace)) {
+            (void) pmix_server_iof_resolve_job(ns->nspace);
+        }
+    }
+}
+
+void pmix_server_iof_subscribed(const pmix_iof_req_t *req)
+{
+    pmix_namespace_t *ns;
+    size_t n, m;
+
+    /* only the jobs descended from what it covers can inherit it */
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        for (n = 0; n < ns->niof_ancestors; n++) {
+            for (m = 0; m < req->nprocs; m++) {
+                if (PMIX_CHECK_PROCID(&ns->iof_ancestors[n], &req->procs[m])) {
+                    break;
+                }
+            }
+            if (m < req->nprocs) {
+                (void) pmix_server_iof_resolve_job(ns->nspace);
+                break;
+            }
+        }
+    }
 }
 
 pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
@@ -1080,6 +1248,8 @@ pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
     req->local_id = (size_t) idx;
     /* process any cached IO */
     drain_cache(nspace);
+    /* a job this one spawned may already be registered here */
+    pmix_server_iof_subscribed(req);
     return PMIX_SUCCESS;
 }
 
@@ -1376,6 +1546,12 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
         rc = PMIX_ERR_NOT_FOUND;
         goto exit;
     }
+    /* nor may it take away a clone: no requestor is told a clone's slot,
+     * so a refid naming one is stale, and a clone goes with its original */
+    if (0 != req->root_id) {
+        rc = PMIX_ERR_NOT_FOUND;
+        goto exit;
+    }
 
     /* Take the channel/proc combination off the request before it goes:
      * pmix_server_iof_fn_t is documented as "IF the PMIX_IOF_STOP is
@@ -1403,8 +1579,8 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
         memcpy(cd->procs, req->procs, req->nprocs * sizeof(pmix_proc_t));
     }
 
-    drop_clones(req);
     pmix_pointer_array_set_item(&pmix_globals.iof_requests, refid, NULL);
+    drop_clones(req);
     PMIX_RELEASE(req);
 
     /* tell the server to stop */

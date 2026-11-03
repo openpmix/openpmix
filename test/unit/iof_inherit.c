@@ -47,15 +47,20 @@
 
 #include "src/include/pmix_config.h"
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "include/pmix.h"
 #include "include/pmix_server.h"
+#include "include/pmix_tool.h"
 
 #include "src/common/pmix_iof.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/ptl_types.h"
 #include "src/server/pmix_server_ops.h"
 
@@ -71,8 +76,9 @@ static void report(const char *what, bool pass)
 }
 
 /* Build a peer standing in for a process in the given namespace. Only
- * the identity and the role matter here - nothing in this test packs a
- * message, so no bfrops module is needed. */
+ * the identity and the role matter, so it has no bfrops module and
+ * nothing may pack a message for it. A case that delivers output to a
+ * watcher uses mkcounter() below. */
 static pmix_peer_t *mkpeer(const char *nspace, pmix_rank_t rank, bool tool)
 {
     pmix_peer_t *p;
@@ -85,6 +91,58 @@ static pmix_peer_t *mkpeer(const char *nspace, pmix_rank_t rank, bool tool)
         p->proc_type.type |= PMIX_PROC_TOOL;
     }
     return p;
+}
+
+/* A watcher that output is actually sent to, so a case can count what it
+ * receives. It packs with our own namespace's bfrops. Its descriptor is
+ * /dev/null, so a send gets past the "no connection" test, and its send
+ * event is marked active, so nothing tries to arm it: each message comes
+ * to rest on send_msg or send_queue, where count_sent() reads it. */
+static pmix_peer_t *mkcounter(const char *nspace)
+{
+    pmix_peer_t *p = mkpeer(nspace, 0, true);
+
+    PMIX_RETAIN(pmix_globals.mypeer->nptr);
+    p->nptr = pmix_globals.mypeer->nptr;
+    p->sd = open("/dev/null", O_WRONLY);
+    p->send_ev_active = true;
+    return p;
+}
+
+/* Release a counter. Its send event was never added, so the destructor
+ * must not delete it - whichever release turns out to be the last. */
+static void release_counter(pmix_peer_t *p)
+{
+    p->send_ev_active = false;
+    PMIX_RELEASE(p);
+}
+
+/* Messages sent to a counter: the first rests on send_msg, the rest
+ * queue behind it */
+static size_t count_sent(pmix_peer_t *p)
+{
+    pmix_ptl_send_t *snd;
+    size_t n = 0;
+
+    if (NULL != p->send_msg) {
+        ++n;
+    }
+    PMIX_LIST_FOREACH (snd, &p->send_queue, pmix_ptl_send_t) {
+        ++n;
+    }
+    return n;
+}
+
+/* A send is thread-shifted once more after the delivery that made it
+ * returns. PMIx_Store_internal blocks on the progress thread, so all
+ * that was queued ahead of it has run by the time it returns. */
+static void progress_barrier(void)
+{
+    pmix_value_t v;
+
+    PMIX_VALUE_LOAD(&v, "barrier", PMIX_STRING);
+    PMIx_Store_internal(&pmix_globals.myid, "iofinh-ut.barrier", &v);
+    PMIX_VALUE_DESTRUCT(&v);
 }
 
 /* Register a subscription covering an entire job, as a tool's spawn
@@ -488,11 +546,11 @@ static void test_inheritance(void)
      * the child's processes may never register it at all. The host's
      * PMIX_IOF_INHERIT decision travels with that registration, so
      * cloning now would be deciding on the host's behalf with its answer
-     * unread. The delivery-time path cannot run before the namespace
-     * exists, so it always has a real answer; leave it to that. */
+     * unread. Registration resolves it with a real answer; leave it to
+     * that. */
     run_spawn_iof(client, true, PMIX_FWD_NO_CHANNELS, "unregisteredjob");
     find_watch("unregisteredjob", &count);
-    report("inherit: an unregistered namespace defers to delivery", 0 == count);
+    report("inherit: an unregistered namespace defers to registration", 0 == count);
     drop_watches("unregisteredjob");
 
 done:
@@ -530,6 +588,27 @@ static void deliver_from(const char *nspace, pmix_rank_t rank)
     PMIX_INFO_DESTRUCT(&local);
 }
 
+/* The same on a given channel. Only for cases whose watchers are all
+ * counters: a chunk a subscription takes is packed for its requestor. */
+static void deliver_on(const char *nspace, pmix_rank_t rank, pmix_iof_channel_t channel)
+{
+    pmix_proc_t source;
+    pmix_byte_object_t bo;
+    pmix_info_t local;
+    char text[] = "output\n";
+    bool flag = false;
+
+    PMIX_LOAD_PROCID(&source, nspace, rank);
+    bo.bytes = text;
+    bo.size = strlen(text);
+    PMIX_INFO_LOAD(&local, PMIX_IOF_LOCAL_OUTPUT, &flag, PMIX_BOOL);
+
+    PMIx_server_IOF_deliver(&source, channel, &bo, &local, 1, NULL, NULL);
+    progress_barrier();
+
+    PMIX_INFO_DESTRUCT(&local);
+}
+
 /* the host's half of a deregistration: done at once */
 static pmix_status_t stub_iof_pull(const pmix_proc_t procs[], size_t nprocs,
                                    const pmix_info_t directives[], size_t ndirs,
@@ -552,15 +631,16 @@ static void dereg_done(pmix_status_t status, void *cbdata)
 /* A subscription follows into a job once, whichever generation it came
  * through, and its clones go when it is deregistered.
  *
- * linC's first output reaches us before linB has printed, so the walk
- * clones the watcher's subscription from linA. linB's output then gives
- * linB its own clone, and linC's spawn completing here clones what
- * covers linB - which is that clone, descended from the same original. */
+ * Registering linB gives it a clone of the watcher's subscription on
+ * linA. linC reaches that subscription twice: through linB's clone and
+ * from linA directly, and its spawn completing here offers linB's clone
+ * once more. All three descend from the same original. */
 static void test_clone_lineage(void)
 {
     pmix_peer_t *watcher, *spawner;
+    pmix_iof_req_t *clone;
     pmix_buffer_t *buf;
-    size_t ninfo = 0, refid;
+    size_t ninfo = 0, refid, cloneid;
     pmix_status_t rc;
     int count;
 
@@ -574,13 +654,28 @@ static void test_clone_lineage(void)
         goto cleanup;
     }
 
-    deliver_from("linC", 0);
-    deliver_from("linB", 0);
     spawner = mkpeer("linB", 0, false);
     run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "linC");
     PMIX_RELEASE(spawner);
-    find_watch("linC", &count);
+    clone = find_watch("linC", &count);
     report("lineage: a clone through another generation is not duplicated", 1 == count);
+
+    /* a refid naming a clone's slot is not the requestor's to deregister */
+    if (NULL != clone) {
+        cloneid = clone->local_id;
+        buf = PMIX_NEW(pmix_buffer_t);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
+        if (PMIX_SUCCESS == rc) {
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &cloneid, 1, PMIX_SIZE);
+        }
+        if (PMIX_SUCCESS == rc) {
+            rc = pmix_server_iofdereg(watcher, buf, dereg_done, NULL);
+        }
+        PMIX_RELEASE(buf);
+        report("lineage: deregistering a clone's slot is refused", PMIX_ERR_NOT_FOUND == rc);
+        find_watch("linC", &count);
+        report("lineage: and the clone stays", 1 == count);
+    }
 
     buf = PMIX_NEW(pmix_buffer_t);
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
@@ -618,7 +713,6 @@ static void test_job_gone(void)
     if (PMIX_SUCCESS != register_child("goneC", "goneP", 0)) {
         report("gone: could not register the namespace", false);
     } else {
-        deliver_from("goneC", 0);
         find_watch("goneC", &count);
         report("gone: the child has its clone", 1 == count);
         PMIX_LOAD_NSPACE(ns, "goneC");
@@ -672,6 +766,540 @@ static void test_original_covers(void)
     PMIX_RELEASE(watcher);
 }
 
+/* A job inherits from every ancestor, whatever the order.
+ *
+ * One tool watches colB, another colA, on the same channel. colC is
+ * treated as colB is, and colB inherits colA's watcher - so colC gets
+ * both, whether its registration or its spawn completing comes first. */
+static void test_walk_collects(void)
+{
+    pmix_peer_t *near, *far, *spawner;
+    int count, idx;
+
+    near = mkpeer("toolnear", 0, true);
+    far = mkpeer("toolfar", 0, true);
+    watch_job(near, "colB", PMIX_FWD_STDERR_CHANNEL, 41);
+    watch_job(far, "colA", PMIX_FWD_STDERR_CHANNEL, 42);
+    spawner = mkpeer("colB", 0, false);
+    if (PMIX_SUCCESS != register_child("colB", "colA", 0) ||
+        PMIX_SUCCESS != register_child("colC", "colB", 0)) {
+        report("collect: could not register the namespaces", false);
+    } else {
+        find_watch("colC", &count);
+        report("collect: registration gives the grandchild both watchers", 2 == count);
+        drop_watches("colC");
+        run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "colC");
+        (void) pmix_server_iof_resolve_job("colC");
+        find_watch("colC", &count);
+        report("collect: so does spawn completion first", 2 == count);
+    }
+    drop_watches("colC");
+    drop_watches("colB");
+    drop_watches("colA");
+
+    /* a tool attaching later reaches the grandchild even when the
+     * grandchild was registered before its parent */
+    watch_job(near, "ordB", PMIX_FWD_STDERR_CHANNEL, 43);
+    if (PMIX_SUCCESS != register_child("ordC", "ordB", 0) ||
+        PMIX_SUCCESS != register_child("ordB", "ordA", 0)) {
+        report("collect: could not register the reordered namespaces", false);
+    } else {
+        idx = watch_job(far, "ordA", PMIX_FWD_STDERR_CHANNEL, 44);
+        pmix_server_iof_subscribed(pmix_pointer_array_get_item(&pmix_globals.iof_requests, idx));
+        find_watch("ordC", &count);
+        report("collect: a late tool reaches the grandchild in any order", 2 == count);
+    }
+    drop_watches("ordC");
+    drop_watches("ordB");
+    drop_watches("ordA");
+    PMIX_RELEASE(spawner);
+    PMIX_RELEASE(far);
+    PMIX_RELEASE(near);
+}
+
+/* A job that does not inherit hides the watchers above it from its
+ * children. refB refuses inheritance and has a watcher of its own; refC
+ * gets that one and not refA's. So does refD, whose ancestry is copied
+ * from refC's record. */
+static void test_refusal_mid_chain(void)
+{
+    pmix_peer_t *near, *far;
+    int count;
+
+    near = mkpeer("toolrefb", 0, true);
+    far = mkpeer("toolrefa", 0, true);
+    watch_job(far, "refA", PMIX_FWD_STDERR_CHANNEL, 71);
+    watch_job(near, "refB", PMIX_FWD_STDERR_CHANNEL, 72);
+    if (PMIX_SUCCESS != register_child_noinherit("refB", "refA", 0) ||
+        PMIX_SUCCESS != register_child("refC", "refB", 0)) {
+        report("refuse: could not register the namespaces", false);
+    } else {
+        find_watch("refC", &count);
+        report("refuse: the grandchild gets only its parent's watcher", 1 == count);
+        if (PMIX_SUCCESS != register_child("refD", "refC", 0)) {
+            report("refuse: could not register the last namespace", false);
+        } else {
+            find_watch("refD", &count);
+            report("refuse: a copied ancestry stops there too", 1 == count);
+        }
+    }
+    drop_watches("refD");
+    drop_watches("refC");
+    drop_watches("refB");
+    drop_watches("refA");
+    PMIX_RELEASE(far);
+    PMIX_RELEASE(near);
+}
+
+/* A pull this server made for itself is delivered through its own
+ * callback, and output is never forwarded to this server as a peer - so
+ * there is nothing to clone onto its jobs' children. */
+static void test_own_pull(void)
+{
+    pmix_iof_req_t *req;
+    int idx, count;
+
+    req = PMIX_NEW(pmix_iof_req_t);
+    PMIX_RETAIN(pmix_globals.mypeer);
+    req->requestor = pmix_globals.mypeer;
+    req->nprocs = 1;
+    PMIX_PROC_CREATE(req->procs, 1);
+    PMIX_LOAD_PROCID(&req->procs[0], "ownP", PMIX_RANK_WILDCARD);
+    req->channels = PMIX_FWD_STDERR_CHANNEL;
+    idx = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    req->local_id = (size_t) idx;
+    if (PMIX_SUCCESS != register_child("ownC", "ownP", 0)) {
+        report("own pull: could not register the namespace", false);
+    } else {
+        find_watch("ownC", &count);
+        report("own pull: this server's own pull is not cloned", 0 == count);
+    }
+    drop_watches("ownC");
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, idx, NULL);
+    PMIX_RELEASE(req);
+}
+
+/* Pre-register a namespace with PMIX_REGISTER_NODATA: the host will
+ * send its job data later */
+static pmix_status_t register_nodata(const char *nspace)
+{
+    pmix_info_t info;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+
+    PMIX_LOAD_NSPACE(ns, nspace);
+    PMIX_INFO_LOAD(&info, PMIX_REGISTER_NODATA, NULL, PMIX_BOOL);
+    rc = PMIx_server_register_nspace(ns, 0, &info, 1, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    PMIX_INFO_DESTRUCT(&info);
+    return rc;
+}
+
+/* A spawn that completes before the child's job data arrives leaves the
+ * decision to the registration that brings it. Until then the child's
+ * PMIX_IOF_INHERIT is unknown, and cloning would ignore a refusal the
+ * data carries. */
+static void test_spawn_before_data(void)
+{
+    pmix_peer_t *watcher, *spawner;
+    int count;
+
+    watcher = mkpeer("toolnd", 0, true);
+    spawner = mkpeer("ndP", 0, false);
+    watch_job(watcher, "ndP", PMIX_FWD_STDERR_CHANNEL, 161);
+    if (PMIX_SUCCESS != register_nodata("ndRefused") ||
+        PMIX_SUCCESS != register_nodata("ndAllowed")) {
+        report("no data: could not pre-register the namespaces", false);
+        goto cleanup;
+    }
+
+    run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "ndRefused");
+    find_watch("ndRefused", &count);
+    report("no data: a spawn completing first clones nothing", 0 == count);
+    if (PMIX_SUCCESS != register_child_noinherit("ndRefused", "ndP", 0)) {
+        report("no data: could not register the refused job's data", false);
+    } else {
+        find_watch("ndRefused", &count);
+        report("no data: the refusal its data carries holds", 0 == count);
+    }
+
+    run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "ndAllowed");
+    if (PMIX_SUCCESS != register_child("ndAllowed", "ndP", 0)) {
+        report("no data: could not register the allowed job's data", false);
+    } else {
+        find_watch("ndAllowed", &count);
+        report("no data: a job its data lets inherit inherits then", 1 == count);
+    }
+
+cleanup:
+    drop_watches("ndRefused");
+    drop_watches("ndAllowed");
+    drop_watches("ndP");
+    PMIX_RELEASE(spawner);
+    PMIX_RELEASE(watcher);
+}
+
+/* The same when the job data comes as an update - a negative process
+ * count and a PMIX_JOB_INFO_ARRAY - rather than a second registration */
+static void test_data_by_update(void)
+{
+    pmix_peer_t *watcher;
+    pmix_info_t info, *jinfo;
+    pmix_data_array_t darray;
+    pmix_proc_t parent;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t one = 1;
+    int count;
+
+    watcher = mkpeer("toolupd", 0, true);
+    watch_job(watcher, "updP", PMIX_FWD_STDERR_CHANNEL, 171);
+    if (PMIX_SUCCESS != register_nodata("updC")) {
+        report("update: could not pre-register the namespace", false);
+        goto cleanup;
+    }
+    PMIX_LOAD_NSPACE(ns, "updC");
+    PMIX_LOAD_PROCID(&parent, "updP", 0);
+    PMIX_INFO_CREATE(jinfo, 3);
+    PMIX_INFO_LOAD(&jinfo[0], PMIX_NSPACE, "updC", PMIX_STRING);
+    PMIX_INFO_LOAD(&jinfo[1], PMIX_PARENT_ID, &parent, PMIX_PROC);
+    PMIX_INFO_LOAD(&jinfo[2], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+    darray.type = PMIX_INFO;
+    darray.size = 3;
+    darray.array = jinfo;
+    PMIX_INFO_LOAD(&info, PMIX_JOB_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
+    PMIX_INFO_FREE(jinfo, 3);
+    rc = PMIx_server_register_nspace(ns, -1, &info, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&info);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        report("update: could not send the job data as an update", false);
+        goto cleanup;
+    }
+    find_watch("updC", &count);
+    report("update: job data sent as an update lets the job inherit", 1 == count);
+
+cleanup:
+    drop_watches("updC");
+    drop_watches("updP");
+    PMIX_RELEASE(watcher);
+}
+
+/* A tool that attaches after a job was registered still reaches it: a
+ * new subscription resolves the jobs below what it covers. */
+static void test_late_subscriber(void)
+{
+    pmix_peer_t *watcher;
+    int count, idx;
+
+    watcher = mkpeer("toollate", 0, true);
+    if (PMIX_SUCCESS != register_child("lateC", "lateP", 0)) {
+        report("late: could not register the namespace", false);
+    } else {
+        deliver_from("lateC", 0);
+        find_watch("lateC", &count);
+        report("late: nobody watches the job yet", 0 == count);
+        idx = watch_job(watcher, "lateP", PMIX_FWD_STDERR_CHANNEL, 81);
+        pmix_server_iof_subscribed(pmix_pointer_array_get_item(&pmix_globals.iof_requests, idx));
+        find_watch("lateC", &count);
+        report("late: the new subscription reaches the job", 1 == count);
+    }
+    drop_watches("lateC");
+    drop_watches("lateP");
+    PMIX_RELEASE(watcher);
+}
+
+/* A job spawned before its parent's spawn completed here still reaches
+ * the watcher that completion adds. ssJ2 is registered before the tool's
+ * spawn of ssJ1 completes and adds the tool's subscription on ssJ1. */
+static void test_spawn_completes_late(void)
+{
+    pmix_peer_t *tool;
+    int count;
+
+    tool = mkpeer("toolss", 0, true);
+    if (PMIX_SUCCESS != register_child("ssJ1", "ssJ0", 0) ||
+        PMIX_SUCCESS != register_child("ssJ2", "ssJ1", 0)) {
+        report("spawnlate: could not register the namespaces", false);
+    } else {
+        find_watch("ssJ2", &count);
+        report("spawnlate: nobody watches the grandchild yet", 0 == count);
+        run_spawn_iof(tool, false, PMIX_FWD_STDERR_CHANNEL, "ssJ1");
+        find_watch("ssJ2", &count);
+        report("spawnlate: the spawner's subscription reaches the grandchild", 1 == count);
+    }
+    drop_watches("ssJ2");
+    drop_watches("ssJ1");
+    PMIX_RELEASE(tool);
+}
+
+/* Each handler of a tool gets each channel of a job once.
+ *
+ * Two pulls under two handlers each reach dupJ2, which descends from both.
+ * Two pulls under one handler reach sameJ2 once; when the nearer one
+ * goes, sameJ2 and sameJ1 are resolved again and the other takes over. */
+static void test_one_copy_per_handler(void)
+{
+    pmix_peer_t *watcher;
+    pmix_buffer_t *buf;
+    pmix_iof_req_t *req;
+    size_t ninfo = 0, refid;
+    pmix_status_t rc;
+    int count, idx;
+
+    watcher = mkpeer("tooldup", 0, true);
+    PMIX_RETAIN(pmix_globals.mypeer->nptr);
+    watcher->nptr = pmix_globals.mypeer->nptr;
+    watch_job(watcher, "dupJ0", PMIX_FWD_STDERR_CHANNEL, 101);
+    watch_job(watcher, "dupJ1", PMIX_FWD_STDERR_CHANNEL, 102);
+    idx = watch_job(watcher, "sameJ0", PMIX_FWD_STDERR_CHANNEL, 103);
+    refid = (size_t) watch_job(watcher, "sameJ1", PMIX_FWD_STDERR_CHANNEL, 103);
+    if (PMIX_SUCCESS != register_child("dupJ1", "dupJ0", 0) ||
+        PMIX_SUCCESS != register_child("dupJ2", "dupJ1", 0) ||
+        PMIX_SUCCESS != register_child("sameJ1", "sameJ0", 0) ||
+        PMIX_SUCCESS != register_child("sameJ2", "sameJ1", 0)) {
+        report("dup: could not register the namespaces", false);
+        goto cleanup;
+    }
+    find_watch("dupJ2", &count);
+    report("dup: two handlers each get the grandchild", 2 == count);
+    find_watch("sameJ2", &count);
+    report("dup: one handler gets it once", 1 == count);
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &refid, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_server_iofdereg(watcher, buf, dereg_done, NULL);
+    }
+    PMIX_RELEASE(buf);
+    req = find_watch("sameJ2", &count);
+    report("dup: after the nearer pull goes, the other still reaches it",
+           PMIX_SUCCESS == rc && 1 == count && NULL != req &&
+           ((pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, idx))
+                   ->clone_id == req->root_id);
+    find_watch("sameJ1", &count);
+    report("dup: and the job it named gets the other pull too", 1 == count);
+
+cleanup:
+    drop_watches("dupJ2");
+    drop_watches("dupJ1");
+    drop_watches("dupJ0");
+    drop_watches("sameJ2");
+    drop_watches("sameJ1");
+    drop_watches("sameJ0");
+    PMIX_RELEASE(watcher);
+}
+
+/* A tool attaching after a middle generation has been released still
+ * reaches the job below it: the job recorded its ancestry when it was
+ * registered. */
+static void test_released_middle(void)
+{
+    pmix_peer_t *watcher;
+    pmix_nspace_t ns;
+    int idx, count;
+
+    watcher = mkpeer("toolrel", 0, true);
+    if (PMIX_SUCCESS != register_child("relJ1", "relJ0", 0) ||
+        PMIX_SUCCESS != register_child("relJ2", "relJ1", 0)) {
+        report("released: could not register the namespaces", false);
+    } else {
+        PMIX_LOAD_NSPACE(ns, "relJ1");
+        PMIx_server_deregister_nspace(ns, NULL, NULL);
+        idx = watch_job(watcher, "relJ0", PMIX_FWD_STDERR_CHANNEL, 111);
+        pmix_server_iof_subscribed(pmix_pointer_array_get_item(&pmix_globals.iof_requests, idx));
+        find_watch("relJ2", &count);
+        report("released: a late tool reaches past a released middle job", 1 == count);
+    }
+    drop_watches("relJ2");
+    drop_watches("relJ0");
+    PMIX_RELEASE(watcher);
+}
+
+/* The same when the middle generation is released before the job below
+ * it is registered, as when each generation of a spawn chain exits after
+ * spawning the next. rbC recorded rbB and rbA while rbB was still here;
+ * rbD takes them from rbC's record, since rbB's own data is gone. */
+static void test_released_before_registration(void)
+{
+    pmix_peer_t *watcher;
+    pmix_nspace_t ns;
+    int idx, count;
+
+    watcher = mkpeer("toolrb", 0, true);
+    if (PMIX_SUCCESS != register_child("rbB", "rbA", 0) ||
+        PMIX_SUCCESS != register_child("rbC", "rbB", 0)) {
+        report("released early: could not register the namespaces", false);
+        goto cleanup;
+    }
+    PMIX_LOAD_NSPACE(ns, "rbB");
+    PMIx_server_deregister_nspace(ns, NULL, NULL);
+    if (PMIX_SUCCESS != register_child("rbD", "rbC", 0)) {
+        report("released early: could not register the last namespace", false);
+        goto cleanup;
+    }
+    idx = watch_job(watcher, "rbA", PMIX_FWD_STDERR_CHANNEL, 131);
+    pmix_server_iof_subscribed(pmix_pointer_array_get_item(&pmix_globals.iof_requests, idx));
+    find_watch("rbC", &count);
+    report("released early: a late tool reaches the job below the gap", 1 == count);
+    find_watch("rbD", &count);
+    report("released early: and the job registered after the gap", 1 == count);
+
+cleanup:
+    drop_watches("rbD");
+    drop_watches("rbC");
+    drop_watches("rbA");
+    PMIX_RELEASE(watcher);
+}
+
+/* Output cached before a job is registered reaches every watcher the job
+ * inherits at registration, from whichever ancestor.
+ *
+ * drnC descends from drnB, which descends from drnA. One tool watches
+ * drnB; another watches drnA and may access drnC but not drnB, so drnB has
+ * no clone of its subscription and drnC inherits it from drnA directly.
+ * drnC's first line is cached before drnC is registered here. */
+static void test_drain_all_ancestors(void)
+{
+    pmix_peer_t *near, *far;
+    size_t ncached;
+
+    near = mkcounter("tooldrnnear");
+    far = mkcounter("tooldrnfar");
+    far->info->uid = INH_WATCHER_UID;
+    far->info->gid = INH_WATCHER_UID;
+    watch_job(near, "drnB", PMIX_FWD_STDERR_CHANNEL, 121);
+    watch_job(far, "drnA", PMIX_FWD_STDERR_CHANNEL, 122);
+    if (PMIX_SUCCESS != register_child_owned("drnB", "drnA", INH_OWNER_UID, 0)) {
+        report("drain: could not register the middle namespace", false);
+        goto cleanup;
+    }
+    ncached = pmix_list_get_size(&pmix_server_globals.iof);
+    deliver_on("drnC", 0, PMIX_FWD_STDERR_CHANNEL);
+    report("drain: output from an unregistered job is cached",
+           ncached + 1 == pmix_list_get_size(&pmix_server_globals.iof) &&
+           0 == count_sent(near) && 0 == count_sent(far));
+    if (PMIX_SUCCESS != register_child_owned("drnC", "drnB", INH_OWNER_UID, INH_WATCHER_UID)) {
+        report("drain: could not register the namespace", false);
+        goto cleanup;
+    }
+    progress_barrier();
+    report("drain: the parent's watcher gets the cached line", 1 == count_sent(near));
+    report("drain: so does the grandparent's", 1 == count_sent(far));
+    report("drain: and the cache lets it go",
+           ncached == pmix_list_get_size(&pmix_server_globals.iof));
+
+cleanup:
+    drop_watches("drnC");
+    drop_watches("drnB");
+    drop_watches("drnA");
+    release_counter(far);
+    release_counter(near);
+}
+
+/* A pull naming a whole job and one rank of its child gets each of the
+ * child's lines once.
+ *
+ * The pull is cloned onto the child, because it names only rank 0 of it.
+ * Rank 0's lines then match both the pull and its clone; the clone stands
+ * aside for them. The first two lines are cached before the child is
+ * registered and handed over when its clone is made, the rest arrive
+ * after. */
+static void test_rank_pull_overlap(void)
+{
+    pmix_peer_t *watcher;
+    pmix_iof_req_t *req;
+    size_t ncached;
+    int idx, count;
+
+    watcher = mkcounter("toolrk");
+    ncached = pmix_list_get_size(&pmix_server_globals.iof);
+    deliver_on("rkJ", 0, PMIX_FWD_STDERR_CHANNEL);
+    deliver_on("rkJ", 1, PMIX_FWD_STDERR_CHANNEL);
+
+    req = PMIX_NEW(pmix_iof_req_t);
+    PMIX_RETAIN(watcher);
+    req->requestor = watcher;
+    req->nprocs = 2;
+    PMIX_PROC_CREATE(req->procs, 2);
+    PMIX_LOAD_PROCID(&req->procs[0], "rkP", PMIX_RANK_WILDCARD);
+    PMIX_LOAD_PROCID(&req->procs[1], "rkJ", 0);
+    req->channels = PMIX_FWD_STDERR_CHANNEL;
+    req->remote_id = 141;
+    idx = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    req->local_id = (size_t) idx;
+
+    if (PMIX_SUCCESS != register_child("rkJ", "rkP", 0)) {
+        report("rank pull: could not register the namespace", false);
+        goto cleanup;
+    }
+    progress_barrier();
+    find_watch("rkJ", &count);
+    report("rank pull: the child gets a clone of the pull", 1 == count);
+    report("rank pull: each cached line is handed over once",
+           2 == count_sent(watcher) &&
+           ncached == pmix_list_get_size(&pmix_server_globals.iof));
+    deliver_on("rkJ", 0, PMIX_FWD_STDERR_CHANNEL);
+    report("rank pull: a line from the pulled rank arrives once", 3 == count_sent(watcher));
+    deliver_on("rkJ", 1, PMIX_FWD_STDERR_CHANNEL);
+    report("rank pull: so does one from another rank", 4 == count_sent(watcher));
+
+cleanup:
+    drop_watches("rkJ");
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, idx, NULL);
+    PMIX_RELEASE(req);
+    release_counter(watcher);
+}
+
+/* The same two generations down. gcC's clone is made from gcB's, and
+ * whether it stands aside depends on the pull it descends from, which
+ * names rank 0 of gcC. */
+static void test_rank_pull_grandchild(void)
+{
+    pmix_peer_t *watcher;
+    pmix_iof_req_t *req;
+    int idx, count;
+
+    watcher = mkcounter("toolgc");
+    req = PMIX_NEW(pmix_iof_req_t);
+    PMIX_RETAIN(watcher);
+    req->requestor = watcher;
+    req->nprocs = 2;
+    PMIX_PROC_CREATE(req->procs, 2);
+    PMIX_LOAD_PROCID(&req->procs[0], "gcA", PMIX_RANK_WILDCARD);
+    PMIX_LOAD_PROCID(&req->procs[1], "gcC", 0);
+    req->channels = PMIX_FWD_STDERR_CHANNEL;
+    req->remote_id = 151;
+    idx = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+    req->local_id = (size_t) idx;
+
+    if (PMIX_SUCCESS != register_child("gcB", "gcA", 0) ||
+        PMIX_SUCCESS != register_child("gcC", "gcB", 0)) {
+        report("rank pull: could not register the grandchild namespaces", false);
+        goto cleanup;
+    }
+    find_watch("gcC", &count);
+    report("rank pull: the grandchild gets one clone", 1 == count);
+    deliver_on("gcC", 0, PMIX_FWD_STDERR_CHANNEL);
+    report("rank pull: the grandchild's pulled rank arrives once", 1 == count_sent(watcher));
+    deliver_on("gcC", 1, PMIX_FWD_STDERR_CHANNEL);
+    report("rank pull: so does its other rank", 2 == count_sent(watcher));
+    deliver_on("gcB", 0, PMIX_FWD_STDERR_CHANNEL);
+    report("rank pull: the middle job, which the pull names no rank of, arrives once",
+           3 == count_sent(watcher));
+
+cleanup:
+    drop_watches("gcC");
+    drop_watches("gcB");
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, idx, NULL);
+    PMIX_RELEASE(req);
+    release_counter(watcher);
+}
+
 /* A subscription that already covers the child itself is not cloned. A
  * pull naming every job covers the parent and the child alike. Run last:
  * while it exists it matches every job's output. */
@@ -699,16 +1327,13 @@ static void test_covering_pull(void)
     PMIX_RELEASE(watcher);
 }
 
-/* The delivery-time half of inheritance.
+/* Inheritance where the job is registered.
  *
  * The spawn-time clone above is made by the server that PROCESSED the
- * spawn - the one hosting the spawning process. On a multi-node DVM that
- * is not the server holding the watching tool's subscription, so the
- * clone is built where the output does not arrive and the server that
- * does receive it has nothing to match against. This is the other end:
- * output arrives for a namespace nobody here watches, and before it is
- * cached and lost the server asks whether it is the child of a job that
- * someone here does watch.
+ * spawn. On a multi-node DVM that is not the server holding the watching
+ * tool's subscription; that server learns of the child when the host
+ * registers it there, with its PMIX_PARENT_ID, and resolves its
+ * inheritance then.
  */
 static void test_delivery_ancestry(void)
 {
@@ -721,7 +1346,7 @@ static void test_delivery_ancestry(void)
     /* somebody here watches the parent job's stderr, and nothing at all
      * names the child. The drop is not tidying: a childjob subscription
      * left behind by the spawn-time cases above would let every case
-     * here pass without the delivery-time path running at all. */
+     * here pass without registration resolving anything. */
     drop_watches("childjob");
     watch_job(watcher, "parentjob", PMIX_FWD_STDERR_CHANNEL, 9);
 
@@ -730,10 +1355,9 @@ static void test_delivery_ancestry(void)
         goto cleanup;
     }
 
-    /* ---- output from an unwatched child finds its parent's watcher ---- */
-    deliver_from("childjob", 0);
+    /* ---- registering the child gives it its parent's watcher ---- */
     req = find_watch("childjob", &count);
-    report("ancestry: delivery creates the child's subscription",
+    report("ancestry: registration creates the child's subscription",
            NULL != req && 1 == count);
     if (NULL != req) {
         report("ancestry: it goes to the ancestor's watcher",
@@ -745,29 +1369,27 @@ static void test_delivery_ancestry(void)
 
     /* ---- the two halves together clone once, in either order ----
      *
-     * On a multi-node DVM a spawned job's first output routinely reaches
-     * the tool's server before the spawn completes on the spawner's, so
-     * the delivery-time clone exists when the spawn-time half runs. A
-     * second clone forwarded every line twice, and a spawn chain doubled
-     * it per generation, since each child copies all of its parent's. The
-     * reverse order is reached by a chunk on a channel the watcher did not
-     * subscribe to: it matches nothing, so the ancestry walk runs again. */
+     * Registration and spawn completion both clone, in whatever order the
+     * host runs them. A second clone forwarded every line twice, and a
+     * spawn chain doubled it per generation, since each child copies all
+     * of its parent's. */
     spawner = mkpeer("parentjob", 0, false);
     run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "childjob");
     find_watch("childjob", &count);
-    report("ancestry: spawn-time after delivery adds no second clone", 1 == count);
+    report("ancestry: spawn-time after registration adds no second clone", 1 == count);
     drop_watches("childjob");
     run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "childjob");
-    deliver_from("childjob", 0);
+    (void) pmix_server_iof_resolve_job("childjob");
     find_watch("childjob", &count);
-    report("ancestry: delivery after spawn-time adds no second clone", 1 == count);
+    report("ancestry: registration after spawn-time adds no second clone", 1 == count);
 
     /* ---- a second subscription follows into the child too ----
      *
      * Same requestor and handler id, different channels: it is a distinct
-     * subscription, and the child gets its own clone of it. Not stdout: the cache holds stdout chunks from the cases
-     * above, and a clone that matched them would try to forward them to
-     * these socketless peers. */
+     * subscription, and the child gets its own clone of it. Not stdout:
+     * the cache holds stdout chunks from the cases above, and a clone
+     * that matched them would try to forward them to these socketless
+     * peers. */
     idx = watch_job(watcher, "parentjob", PMIX_FWD_STDDIAG_CHANNEL, 9);
     run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, "childjob");
     find_watch("childjob", &count);
@@ -783,12 +1405,11 @@ static void test_delivery_ancestry(void)
      * treated" says nothing about depth. Note the child's own clone is
      * dropped first, so the grandchild's answer has to come from two
      * levels up rather than from the entry the case above created. */
+    drop_watches("childjob");
     if (PMIX_SUCCESS != register_child("grandchild", "childjob", 0)) {
         report("ancestry: could not register the grandchild namespace", false);
         goto cleanup;
     }
-    drop_watches("childjob");
-    deliver_from("grandchild", 0);
     req = find_watch("grandchild", &count);
     report("ancestry: a grandchild inherits through an unwatched parent",
            NULL != req && 1 == count && (NULL == req || req->requestor == watcher));
@@ -802,7 +1423,6 @@ static void test_delivery_ancestry(void)
         report("ancestry: could not register the orphan namespace", false);
         goto cleanup;
     }
-    deliver_from("orphanjob", 0);
     find_watch("orphanjob", &count);
     report("ancestry: an unwatched ancestry creates no subscription", 0 == count);
 
@@ -817,7 +1437,6 @@ static void test_delivery_ancestry(void)
         report("ancestry: could not register the quiet namespace", false);
         goto cleanup;
     }
-    deliver_from("quietjob", 0);
     find_watch("quietjob", &count);
     report("ancestry: PMIX_IOF_INHERIT=false suppresses inheritance", 0 == count);
 
@@ -888,10 +1507,11 @@ static void build_rows(agree_row_t *rows)
     rows[r++].ninfo = 2;
 }
 
-/* The spawn server and the delivering server agree on every request.
- * Each row runs a request through pmix_server_spawn_prepare(), registers
- * the result as a host does, and asserts only that delivery clones
- * exactly when the parser inherits. */
+/* The spawn server and every server the job is registered with agree on
+ * every request. Each row runs a request through
+ * pmix_server_spawn_prepare(), registers the result as a host does, and
+ * asserts only that registration clones exactly when the parser
+ * inherits. */
 static void test_parser_agreement(void)
 {
     agree_row_t rows[AGREE_ROWS];
@@ -934,9 +1554,8 @@ static void test_parser_agreement(void)
             snprintf(what, sizeof(what), "agree: %s: could not register", rows[r].name);
             report(what, false);
         } else {
-            deliver_from(child, 0);
             find_watch(child, &count);
-            snprintf(what, sizeof(what), "agree: %s: delivery %s like the parser",
+            snprintf(what, sizeof(what), "agree: %s: registration %s like the parser",
                      rows[r].name, parser_inherits ? "inherits" : "does not inherit");
             report(what, parser_inherits == (0 < count));
             drop_watches(child);
@@ -997,17 +1616,140 @@ static void test_walk_stops(void)
     PMIX_RELEASE(watcher);
 }
 
+/* ---- a real tool connecting, for the automatic subscription ---- */
+
+#define INH_TOOL_NSPACE "inhtool"
+
+static void tool_connected_fn(pmix_info_t *info, size_t ninfo,
+                              pmix_tool_connection_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_proc_t proc;
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
+
+    PMIX_LOAD_PROCID(&proc, INH_TOOL_NSPACE, 0);
+    cbfunc(PMIX_SUCCESS, &proc, cbdata);
+}
+
+/* The forked tool: connect to the URI it is handed, say so, and stay
+ * connected until told to go */
+static int run_tool(int urifd, int readyfd, int gofd)
+{
+    char uri[1024], c = 'r';
+    ssize_t n;
+    pmix_proc_t myproc;
+    pmix_info_t tinfo;
+    pmix_status_t rc;
+
+    n = read(urifd, uri, sizeof(uri) - 1);
+    if (0 >= n) {
+        return 1;
+    }
+    uri[n] = '\0';
+    PMIX_INFO_LOAD(&tinfo, PMIX_SERVER_URI, uri, PMIX_STRING);
+    rc = PMIx_tool_init(&myproc, &tinfo, 1);
+    PMIX_INFO_DESTRUCT(&tinfo);
+    if (PMIX_SUCCESS != rc) {
+        return 1;
+    }
+    if (1 != write(readyfd, &c, 1) || 1 != read(gofd, &c, 1)) {
+        PMIx_tool_finalize();
+        return 1;
+    }
+    return (PMIX_SUCCESS == PMIx_tool_finalize()) ? 0 : 1;
+}
+
+/* A tool that connects is subscribed to this server's own output. A job
+ * the server spawned for itself - its parent is the server's own proc -
+ * and registered before the tool connected inherits that subscription,
+ * as it would one the tool asked for. */
+static void test_tool_connects(int uriw, int readyr, int gow, pid_t child)
+{
+    pmix_iof_req_t *req;
+    const char *uri;
+    char c = 'g';
+    int i, count = 0, status = 0;
+
+    if (PMIX_SUCCESS != register_child("srvJ", pmix_globals.myid.nspace,
+                                       pmix_globals.myid.rank)) {
+        report("tool: could not register the server's own job", false);
+        return;
+    }
+    uri = (NULL != pmix_ptl_base.listener.uri) ? pmix_ptl_base.listener.uri
+                                               : pmix_ptl_base.local_listener.uri;
+    if (NULL == uri || (ssize_t) strlen(uri) != write(uriw, uri, strlen(uri))) {
+        report("tool: could not hand the tool the server's URI", false);
+        return;
+    }
+    if (1 != read(readyr, &c, 1)) {
+        report("tool: the tool connected", false);
+        return;
+    }
+    report("tool: the tool connected", true);
+    /* the accept that answered the tool may still be running */
+    progress_barrier();
+
+    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL != req && 0 != req->root_id && 1 == req->nprocs &&
+            PMIX_CHECK_NSPACE(req->procs[0].nspace, "srvJ") && NULL != req->requestor &&
+            NULL != req->requestor->info &&
+            PMIX_CHECK_NSPACE(req->requestor->info->pname.nspace, INH_TOOL_NSPACE)) {
+            ++count;
+        }
+    }
+    report("tool: the server's own job inherits the tool's subscription", 1 == count);
+
+    c = 'g';
+    if (1 != write(gow, &c, 1)) {
+        report("tool: could not tell the tool to go", false);
+    }
+    waitpid(child, &status, 0);
+    report("tool: the tool exited cleanly", WIFEXITED(status) && 0 == WEXITSTATUS(status));
+    drop_watches("srvJ");
+}
+
 static pmix_server_module_t mymodule = {0};
 
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
+    pmix_info_t sinfo;
+    int uripipe[2], readypipe[2], gopipe[2], status;
+    pid_t child;
+    bool flag = true;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
+    /* the tool is forked before the server starts its progress thread */
+    if (0 != pipe(uripipe) || 0 != pipe(readypipe) || 0 != pipe(gopipe)) {
+        fprintf(stderr, "pipe() failed\n");
+        return 1;
+    }
+    child = fork();
+    if (0 > child) {
+        fprintf(stderr, "fork() failed\n");
+        return 1;
+    }
+    if (0 == child) {
+        close(uripipe[1]);
+        close(readypipe[0]);
+        close(gopipe[1]);
+        _exit(run_tool(uripipe[0], readypipe[1], gopipe[0]));
+    }
+    close(uripipe[0]);
+    close(readypipe[1]);
+    close(gopipe[0]);
+
     mymodule.iof_pull = stub_iof_pull;
-    rc = PMIx_server_init(&mymodule, NULL, 0);
+    mymodule.tool_connected = tool_connected_fn;
+    PMIX_INFO_LOAD(&sinfo, PMIX_SERVER_TOOL_SUPPORT, &flag, PMIX_BOOL);
+    rc = PMIx_server_init(&mymodule, &sinfo, 1);
+    PMIX_INFO_DESTRUCT(&sinfo);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
+        close(uripipe[1]);
+        close(gopipe[1]);
+        close(readypipe[0]);
+        waitpid(child, &status, 0);
         return 1;
     }
 
@@ -1020,7 +1762,24 @@ int main(int argc, char **argv)
     test_clone_lineage();
     test_job_gone();
     test_original_covers();
+    test_walk_collects();
+    test_refusal_mid_chain();
+    test_late_subscriber();
+    test_spawn_completes_late();
+    test_spawn_before_data();
+    test_own_pull();
+    test_data_by_update();
+    test_one_copy_per_handler();
+    test_released_middle();
+    test_released_before_registration();
+    test_drain_all_ancestors();
+    test_rank_pull_overlap();
+    test_rank_pull_grandchild();
     test_covering_pull();
+    test_tool_connects(uripipe[1], readypipe[0], gopipe[1], child);
+    close(uripipe[1]);
+    close(gopipe[1]);
+    close(readypipe[0]);
 
     PMIx_server_finalize();
 

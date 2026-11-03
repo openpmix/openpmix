@@ -443,6 +443,10 @@ typedef struct {
                                // fired for this nspace; guards against re-firing it once
                                // per rank while the nspace is torn down
     pmix_list_t ranks;     // list of pmix_rank_info_t for connection support of my clients
+    /* IOF inheritance: the ancestors whose watchers this job inherits,
+     * nearest first, recorded when it is registered here */
+    pmix_proc_t *iof_ancestors;
+    size_t niof_ancestors;
     /* Ranks whose entry above the host has taken back - the proc has
      * terminated. pmix_proclist_t, one per reaped LOCAL rank, kept until
      * this namespace is deregistered.
@@ -746,6 +750,9 @@ typedef struct {
      * descends from, at any depth. 0 is neither */
     uint64_t clone_id;
     uint64_t root_id;
+    /* set on a clone whose original names some ranks of the clone's job:
+     * the clone stands aside for the chunks the original takes */
+    bool root_names_ranks;
 } pmix_iof_req_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_req_t);
 

@@ -2598,6 +2598,10 @@ static void tool_answered(int sd, short args, void *cbdata)
      * refused now, rather than put to the host */
     refuse_queued_conflicts(&id, pnd->uid, pnd->gid);
     activate(pnd, peer);
+    /* a job this server spawned for itself, registered before the tool
+     * connected, inherits that subscription - as it would one the tool
+     * asked for */
+    pmix_server_iof_subscribed(req);
 }
 
 static void _check_cached_events(pmix_peer_t *peer)

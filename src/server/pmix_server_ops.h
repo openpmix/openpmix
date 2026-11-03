@@ -689,8 +689,13 @@ PMIX_EXPORT pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *b
 PMIX_EXPORT pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer, pmix_buffer_t *buf,
                                                pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Remove the inherited IOF subscriptions naming a deregistered job */
-PMIX_EXPORT void pmix_server_iof_job_gone(const char *nspace);
+/* Inherited IOF subscriptions: resolve a job's when it is registered,
+ * those of the jobs descended from what a new subscription covers, and
+ * remove a job's when it is released */
+PMIX_EXPORT size_t pmix_server_iof_resolve_job(const char *nspace);
+void pmix_server_iof_job_registered(const char *nspace);
+PMIX_EXPORT void pmix_server_iof_subscribed(const pmix_iof_req_t *req);
+void pmix_server_iof_job_gone(const char *nspace);
 PMIX_EXPORT pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
                                                pmix_op_cbfunc_t cbfunc, void *cbdata);
 

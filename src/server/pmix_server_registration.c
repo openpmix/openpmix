@@ -210,6 +210,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
     pmix_info_t *hostinfo, *resolved = NULL;
     size_t nhostinfo, nresolved = 0;
     bool created = false;
+    bool first_job_info = false;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
@@ -483,6 +484,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
                      * so a second update carrying job info cached the whole
                      * array all over again */
                     nptr->job_info_recvd = true;
+                    first_job_info = true;
                 } else {
                     /* A plain job-level key. This arm did not exist, so
                      * every such entry was silently dropped - which is
@@ -513,6 +515,11 @@ static void _register_nspace(int sd, short args, void *cbdata)
                 rc = urc;
                 goto release;
             }
+        }
+        /* the job's ancestry arrived with its data, so it can inherit
+         * output forwarding - as at the foot of a full registration */
+        if (first_job_info) {
+            pmix_server_iof_job_registered(nptr->nspace);
         }
         rc = PMIX_SUCCESS;
         goto release;
@@ -683,6 +690,8 @@ static void _register_nspace(int sd, short args, void *cbdata)
     /* and any group block whose definition was blocked on a participant
      * namespace we had not been told about */
     pmix_server_grp_check_pending();
+    /* its ancestry is known now, so it can inherit output forwarding */
+    pmix_server_iof_job_registered(nptr->nspace);
     rc = PMIX_SUCCESS;
     goto release;
 
