@@ -270,6 +270,34 @@ lost-connection handler never sees it at all. A departed rank leaves
 ``nfinalized`` as well, so that ``nlocalprocs == nfinalized`` still means
 "every remaining local process has finalized".
 
+A departed rank can come back: the host starts its process again under the
+same rank - registering it again, with or without having deregistered it,
+or simply handing the new process the rank through
+``PMIx_server_setup_fork``. ``pmix_server_rank_returned()`` then counts it
+back into ``nlocalprocs``, so every collective counted from then on waits for
+it. (A process that execs is not one: the program it becomes finds no
+identity in its environment and comes up as a singleton.)
+
+Collectives in flight when it returns are left as they are, because the new
+process may never join them. If it does, its contribution is counted exactly
+once, by ``pmix_server_trk_join()`` (and ``grp_member_joined()`` for groups):
+
+* lost while the collective waited for it - it is on ``departed``, and is
+  taken off;
+* lost before the collective was counted - it was left out of ``nlocal`` and
+  recorded on the tracker's ``excluded`` list, so it is counted in now. Left
+  alone, its contribution would stand in for a participant that has not
+  called, and the collective would complete without that one;
+* already contributed through the connection it lost - the same process
+  calling again, counted once (``nduplicate``).
+
+A lost rank is left out of a collective's count however the collective names
+it. A whole-namespace count comes from ``nlocalprocs``, which the loss
+lowered; a collective naming ranks individually used to count a lost rank
+that had not yet been deregistered, and so waited for a process that was
+gone. And one left out and then lost again before contributing is not
+counted as departed either, since it was never counted as expected.
+
 Status reporting on loss
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
