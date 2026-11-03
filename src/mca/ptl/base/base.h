@@ -38,6 +38,7 @@
 #    include <sys/stat.h> /* for struct stat */
 #endif
 
+#include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_pointer_array.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/mca.h"
@@ -245,15 +246,33 @@ struct pmix_ptl_base_t {
      * the most tools that may wait on the host (tool_queue and
      * tool_asking), as the max_pending_connections parameter gives it,
      * and as pmix_ptl_base_start_listening works it out from that - 0
-     * there means no limit. See connection_event_handler */
+     * there means no limit. A uid other than the server's and root's may
+     * have at most a quarter of the waiting tools (at least one). See
+     * connection_event_handler and tool_settled */
     int max_pending_connections;
     int pending_cap;
+    /* the most bytes the payload buffers of the connections on
+     * pending_connections may hold between them, as the
+     * max_pending_bytes parameter gives it (0 = no limit), and the bytes
+     * they hold now. A payload buffer is allocated as its bytes arrive -
+     * see read_connect_ack */
+    size_t max_pending_bytes;
+    size_t pending_bytes;
+    /* the tools waiting on the host (tool_queue and tool_asking) of each
+     * uid other than the server's and root's, keyed by uid - see
+     * tool_settled */
+    pmix_hash_table_t tool_uids;
+    /* the queue entries next_tool has looked at, for a test to read */
+    size_t tool_queue_visits;
     /* the most any one writev may carry - see send_msg. Not a tuning
      * parameter: it exists so a test can drive the chunking with a small
      * message instead of a 2 GB one */
     size_t max_write;
 };
 typedef struct pmix_ptl_base_t pmix_ptl_base_t;
+
+/* the default of ptl_base_max_pending_bytes: 16 MiB */
+#define PMIX_PTL_MAX_PENDING_BYTES ((size_t) 16 * 1024 * 1024)
 
 /* The token PMIx_server_setup_fork gives a rank: this many random bytes,
  * in hex in the process's environment under PMIX_PTL_TOKEN_ENV - after the
@@ -538,6 +557,13 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_uri_to_addr(const char *uri,
 /* The tools holding a connection while they wait on the host: queued for
  * it, or being decided on */
 PMIX_EXPORT size_t pmix_ptl_base_waiting_tools(void);
+/* ... of them, those of this uid - kept only for uids other than the
+ * server's and root's, so 0 for those */
+PMIX_EXPORT size_t pmix_ptl_base_waiting_tools_of(uid_t uid);
+/* Count pnd among its uid's waiting tools as it joins tool_queue, and stop
+ * counting it once it is on neither list. Each is done at most once */
+PMIX_EXPORT void pmix_ptl_base_count_tool(pmix_pending_connection_t *pnd);
+PMIX_EXPORT void pmix_ptl_base_uncount_tool(pmix_pending_connection_t *pnd);
 /* Give proc a token: make one, keep it, and put it in *env - or, for a
  * process with no rank of its own, take any it inherited out of *env */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_make_token(const pmix_proc_t *proc, char ***env);
@@ -587,6 +613,9 @@ PMIX_EXPORT void pmix_ptl_base_start_listening(void);
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
 PMIX_EXPORT void pmix_ptl_base_drop_pending_connection(pmix_pending_connection_t *pnd,
                                                        pmix_status_t why);
+/* Take pnd's payload buffer out of pmix_ptl_base.pending_bytes - when it is
+ * freed, or taken off the connection to be parsed */
+PMIX_EXPORT void pmix_ptl_base_uncount_payload(pmix_pending_connection_t *pnd);
 /* What the listener does when accept() on lt fails with err: nothing for an
  * error that concerns only the connection, a pause and a retry a second
  * later for anything else, and a stop once the retries of an error that

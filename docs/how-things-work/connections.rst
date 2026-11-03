@@ -282,6 +282,13 @@ connection arrives:
    not pending connections and are never the ones closed. They have a
    limit of their own, the same number: once that many tools are
    waiting, a further tool is refused with ``PMIX_ERR_OUT_OF_RESOURCE``.
+   A user other than the server's and root may have at most a quarter
+   of that number waiting (at least one); a further tool of that user is
+   refused the same way.
+#. Allocate a connection's request buffer as its bytes arrive: 4 KB at
+   first, doubling up to the length the request names. If the buffers of
+   all pending connections would then pass ``ptl_base_max_pending_bytes``
+   (default 16 MiB, 0 for no limit), close that connection.
 
 If ``accept`` itself fails, the handler retries per-connection errors
 at once. When the process is out of descriptors or memory, it pauses

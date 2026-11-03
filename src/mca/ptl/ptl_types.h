@@ -357,6 +357,10 @@ typedef struct {
     size_t hdr_recvd;
     char *msg;
     size_t msg_recvd;
+    /* the payload bytes msg has room for (it is allocated one longer, for
+     * a terminator) - counted in pmix_ptl_base.pending_bytes while msg is
+     * held here */
+    size_t msg_size;
     bool need_id;
     /* the host names the tool, but the tool reads no name back */
     bool id_unsent;
@@ -427,6 +431,10 @@ typedef struct {
     /* a tool's connection on pmix_ptl_base.tool_asking: the host is
      * deciding on it */
     bool asking;
+    /* a tool's connection counted among its uid's waiting tools - from
+     * when it joins pmix_ptl_base.tool_queue until it leaves that queue
+     * and tool_asking both, or is released */
+    bool uid_counted;
     /* when the peer began to wait for the reply it reads next - the
      * connection's arrival - on a clock that only goes forward */
     struct timeval waiting;

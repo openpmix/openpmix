@@ -70,6 +70,7 @@ static pmix_status_t pmix_psec_close(void)
         PMIX_RELEASE(active);
     }
     PMIX_DESTRUCT(&pmix_psec_globals.actives);
+    pmix_psec_base_gid_cache_flush();
 
     return pmix_mca_base_framework_components_close(&pmix_psec_base_framework, NULL);
 }

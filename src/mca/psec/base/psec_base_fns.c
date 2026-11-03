@@ -158,51 +158,131 @@ static char *entry_buffer(int which, size_t *len)
     return (char *) malloc(*len);
 }
 
-bool pmix_psec_base_gid_held(uid_t uid, gid_t gid)
+static int sys_pwuid(uid_t uid, struct passwd *pwd, char *buf, size_t len,
+                     struct passwd **result)
+{
+    return getpwuid_r(uid, pwd, buf, len, result);
+}
+
+#ifdef HAVE_GRP_H
+static int sys_grgid(gid_t gid, struct group *grp, char *buf, size_t len,
+                     struct group **result)
+{
+    return getgrgid_r(gid, grp, buf, len, result);
+}
+#endif
+
+static time_t sys_now(void)
+{
+    struct timeval tv;
+
+    pmix_ptl_base_monotime(&tv);
+    return tv.tv_sec;
+}
+
+pmix_psec_base_gid_ops_t pmix_psec_base_gid_ops = {
+    .pwuid = sys_pwuid,
+#ifdef HAVE_GRP_H
+    .grgid = sys_grgid,
+#else
+    .grgid = NULL,
+#endif
+    .now = sys_now
+};
+
+/* The cached (uid, gid) answers. An entry is live for
+ * PMIX_PSEC_BASE_GID_CACHE_TTL seconds from `stamp`; `used` orders the
+ * entries by their last use, for dropping the least recently used one,
+ * and is zero in an empty entry */
+typedef struct {
+    uid_t uid;
+    gid_t gid;
+    bool held;
+    time_t stamp;
+    uint64_t used;
+} gid_cache_entry_t;
+
+static gid_cache_entry_t gid_cache[PMIX_PSEC_BASE_GID_CACHE_SIZE];
+static uint64_t gid_cache_tick = 0;
+
+void pmix_psec_base_gid_cache_flush(void)
+{
+    memset(gid_cache, 0, sizeof(gid_cache));
+    gid_cache_tick = 0;
+}
+
+static bool gid_cache_live(const gid_cache_entry_t *e, time_t now)
+{
+    return 0 != e->used && now - e->stamp < PMIX_PSEC_BASE_GID_CACHE_TTL;
+}
+
+/* Ask the passwd and group databases. *answered is false when a buffer
+ * for the entry could not be allocated, so no lookup reached an answer */
+/* A lookup that failed (as opposed to one that found no entry) gives no
+ * answer, so nothing is cached for it. POSIX lets "no entry" come back as
+ * 0, ENOENT, ESRCH, EBADF or EPERM */
+static bool lookup_answered(int rc)
+{
+    return 0 == rc || ENOENT == rc || ESRCH == rc || EBADF == rc || EPERM == rc;
+}
+
+static bool gid_lookup(uid_t uid, gid_t gid, bool *answered)
 {
     struct passwd pwd, *pw = NULL;
     char *pwbuf, *grbuf = NULL, *tmp;
     size_t pwlen, grlen;
     bool held = false;
-    int rc;
+    int rc = 0;
 #ifdef HAVE_GRP_H
     struct group grp, *gr = NULL;
     size_t n;
 #endif
 
-    if (0 == uid) {
-        return true;
-    }
+    *answered = false;
 
     pwbuf = entry_buffer(_SC_GETPW_R_SIZE_MAX, &pwlen);
     while (NULL != pwbuf &&
-           ERANGE == (rc = getpwuid_r(uid, &pwd, pwbuf, pwlen, &pw))) {
+           ERANGE == (rc = pmix_psec_base_gid_ops.pwuid(uid, &pwd, pwbuf, pwlen, &pw))) {
         pwlen *= 2;
         tmp = (char *) realloc(pwbuf, pwlen);
         if (NULL == tmp) {
-            break;
+            goto done;
         }
         pwbuf = tmp;
     }
+    if (NULL == pwbuf) {
+        goto done;
+    }
+    if (NULL == pw && !lookup_answered(rc)) {
+        goto done;
+    }
     if (NULL == pw) {
         /* no passwd entry for this uid - nothing we can say it holds */
+        *answered = true;
         goto done;
     }
     if (pw->pw_gid == gid) {
         held = true;
+        *answered = true;
         goto done;
     }
 
 #ifdef HAVE_GRP_H
     grbuf = entry_buffer(_SC_GETGR_R_SIZE_MAX, &grlen);
     while (NULL != grbuf &&
-           ERANGE == (rc = getgrgid_r(gid, &grp, grbuf, grlen, &gr))) {
+           ERANGE == (rc = pmix_psec_base_gid_ops.grgid(gid, &grp, grbuf, grlen, &gr))) {
         grlen *= 2;
         tmp = (char *) realloc(grbuf, grlen);
         if (NULL == tmp) {
-            break;
+            goto done;
         }
         grbuf = tmp;
+    }
+    if (NULL == grbuf) {
+        goto done;
+    }
+    if (NULL == gr && !lookup_answered(rc)) {
+        goto done;
     }
     if (NULL != gr && NULL != gr->gr_mem) {
         for (n = 0; NULL != gr->gr_mem[n]; n++) {
@@ -215,9 +295,48 @@ bool pmix_psec_base_gid_held(uid_t uid, gid_t gid)
 #else
     PMIX_HIDE_UNUSED_PARAMS(grlen);
 #endif
+    *answered = true;
 
 done:
     free(pwbuf);
     free(grbuf);
+    return held;
+}
+
+bool pmix_psec_base_gid_held(uid_t uid, gid_t gid)
+{
+    gid_cache_entry_t *e, *slot = NULL;
+    time_t now;
+    bool held, answered;
+    size_t n;
+
+    if (0 == uid) {
+        return true;
+    }
+
+    now = pmix_psec_base_gid_ops.now();
+    for (n = 0; n < PMIX_PSEC_BASE_GID_CACHE_SIZE; n++) {
+        e = &gid_cache[n];
+        if (gid_cache_live(e, now) && uid == e->uid && gid == e->gid) {
+            e->used = ++gid_cache_tick;
+            return e->held;
+        }
+        /* the place for a new answer: an empty or expired entry, or
+         * else the least recently used one */
+        if (NULL == slot || (gid_cache_live(slot, now) &&
+                             (!gid_cache_live(e, now) || e->used < slot->used))) {
+            slot = e;
+        }
+    }
+
+    held = gid_lookup(uid, gid, &answered);
+    if (answered) {
+        /* the lookup may have taken a while */
+        slot->uid = uid;
+        slot->gid = gid;
+        slot->held = held;
+        slot->stamp = pmix_psec_base_gid_ops.now();
+        slot->used = ++gid_cache_tick;
+    }
     return held;
 }

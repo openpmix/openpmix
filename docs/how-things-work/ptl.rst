@@ -601,7 +601,13 @@ to deliver their connection request at once, and, separately, how many
 tools may wait for the host's decision; at the first limit the oldest
 connection still delivering its request is dropped, and at the second a
 further tool is refused; default an eighth of the descriptor limit for
-each, -1 for no limit), and
+each, -1 for no limit; a user other than the server's and root may have
+at most a quarter of the waiting tools, at least one),
+``max_pending_bytes`` (the most bytes allocated, between them, for
+connection requests still arriving; each request's buffer starts at 4 KB
+and doubles as its bytes arrive, up to the length it names, and a request
+whose buffer cannot grow within the limit is dropped; default 16 MiB, 0
+for no limit), and
 ``report_uri``. Inspect the current values
 for a build with::
 

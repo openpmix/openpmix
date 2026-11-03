@@ -153,7 +153,15 @@ These MCA parameters adjust the checks PMIx makes on connections:
      - How many connections may still be sending their request, and,
        separately, how many tools may wait for the host's decision. 0
        means an eighth of the process's file-descriptor limit, for each;
-       -1 means no limit.
+       -1 means no limit. A user other than the server's and root may
+       have at most a quarter of the waiting tools (at least one).
+   * - ``ptl_base_max_pending_bytes``
+     - 16777216
+     - Most bytes the server allocates, between them, for connection
+       requests still arriving. Each request's buffer starts at 4 KB and
+       doubles as its bytes arrive, up to the length it names; a request
+       whose buffer cannot grow within the limit is closed. 0 means no
+       limit.
    * - ``ptl_base_max_msg_size``
      - 0
      - Largest message accepted, in megabytes. 0 means no limit.
