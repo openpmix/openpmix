@@ -16,6 +16,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_fd.h"
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_string_copy.h"
@@ -427,7 +428,7 @@ open_created_file(
     }
     const int fd = (0 <= shmem->backing_dirfd)
         ? openat(shmem->backing_dirfd, backing_name(shmem->backing_path),
-                 O_RDONLY | O_NONBLOCK | O_NOFOLLOW)
+                 O_RDONLY | O_NONBLOCK | O_NOFOLLOW | PMIX_O_CLOEXEC)
         : pmix_os_dirpath_open_file(shmem->backing_path, O_RDONLY | O_NONBLOCK, 0);
     if (0 > fd) {
         return PMIX_ERR_FILE_OPEN_FAILURE;

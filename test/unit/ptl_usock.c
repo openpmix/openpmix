@@ -214,6 +214,49 @@ static int other_owner_child(void)
     return ret;
 }
 
+/* as root: a socket given to another user and group leaves the directory
+ * ours, which that user may search as one of the others and as a member
+ * of the group - a member is judged by the group's bits alone */
+static int other_owner_group_child(void)
+{
+    pmix_info_t info[2];
+    uint32_t uid = 65534, gid = 4343;
+    const char *path;
+    char *dir, *slash;
+    struct stat st;
+    int ret = CHILD_PASS;
+
+    if (0 != geteuid()) {
+        /* only root can give a socket away */
+        return CHILD_PASS;
+    }
+    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &uid, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &gid, PMIX_UINT32);
+    if (PMIX_SUCCESS != PMIx_server_init(&mymodule, info, 2)) {
+        return CHILD_FAIL;
+    }
+    path = socket_path();
+    if (NULL == path || 0 != lstat(path, &st) || uid != st.st_uid || gid != st.st_gid) {
+        fprintf(stderr, "  the socket is not owned by %u:%u\n", uid, gid);
+        ret = CHILD_FAIL;
+    }
+    dir = (NULL == path) ? NULL : strdup(path);
+    if (NULL != dir && NULL != (slash = strrchr(dir, '/'))) {
+        *slash = '\0';
+        if (0 != lstat(dir, &st) || 0 != st.st_uid || gid != st.st_gid ||
+            (S_IRWXU | S_IXGRP | S_IXOTH) != (st.st_mode & 0777)) {
+            fprintf(stderr, "  the directory is %lu:%lu mode %o\n", (unsigned long) st.st_uid,
+                    (unsigned long) st.st_gid, (unsigned) (st.st_mode & 0777));
+            ret = CHILD_FAIL;
+        }
+    } else {
+        ret = CHILD_FAIL;
+    }
+    free(dir);
+    PMIx_server_finalize();
+    return ret;
+}
+
 /* the group named by name, as PMIX_GRPID allows; a name no group has fails
  * init */
 static int group_name_child(void)
@@ -386,6 +429,8 @@ int main(int argc, char **argv)
              inherited_group_child);
     run_case("a socket given to another user leaves its directory ours (as root)",
              other_owner_child);
+    run_case("a socket given to another user and group lets the group search its directory "
+             "(as root)", other_owner_group_child);
     run_case("a socket mode of the wrong type or past nine bits fails init", bad_mode_child);
     run_case("a tmpdir leaving no room for the socket's path fails init", long_tmpdir_child);
     run_case("a child is given the URI and our identity, and a tool's file the URI",

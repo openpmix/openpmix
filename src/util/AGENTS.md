@@ -795,6 +795,16 @@ Two things a caller must know, neither of which this function can fix:
 it over a `socketpair()`, and skips its cases on a platform that answers
 `PMIX_ERR_NOT_SUPPORTED`.
 
+**The overflow id.** The kernel reports any id not mapped into the
+reader's user namespace as the overflow id
+(`pmix_util_overflow_uid()`/`pmix_util_overflow_gid()`, read once from
+`/proc/sys/kernel/overflowuid`/`overflowgid`, else 65534). Where the
+namespace's map is not the identity (`pmix_util_id_map_is_identity()`:
+one line, `0 0 4294967295`, or no map file at all), that number may stand
+for anyone from outside, even when a subordinate-id range gives it a map
+entry and `pmix_util_id_to_parent()` translates it.
+`pmix_ptl_base_judge_server` therefore matches no identity to it there.
+
 ### `pmix_util_getid_tcp` — who owns the far end of a local TCP connection
 
 This one has a caller, and it is the one that matters: `psec/native`
@@ -1337,6 +1347,22 @@ installed header, so they are still API. Judge them as API, not as dead
 code; the alternative is to retire them deliberately, which is a
 separate decision.
 
+- **A descriptor the library opens for itself is close-on-exec.**
+  `PMIX_O_CLOEXEC` (in `open()`'s flags) and `PMIX_SOCK_CLOEXEC` (in
+  `socket()`'s type) are the platform's flags where it has them and 0
+  where it does not; follow the call with `pmix_fd_set_cloexec()` when
+  they are 0. `pmix_fd_fopen_cloexec(path, mode)` is `fopen` for modes
+  `r`, `w` and `a` (each with an optional `+`) with the descriptor
+  close-on-exec - fopen's `"e"` is not portable, and macOS ignores it.
+  The short-lived files this directory reads or appends to use it or
+  the flag: the MCA parameter files (`pmix_keyval_parse`), the timing
+  output (`pmix_timings`), `/proc/self/maps` (`pmix_vmem`), the
+  `/proc/self/{uid,gid}_map` and overflow-id files (`pmix_getid`), the
+  files `pmix_path` opens to find a mount, the shmem backing file, the
+  `pmix_runas` socketpair, and every descriptor `pmix_os_dirpath`
+  opens - the directories of a walk and the files its open helpers
+  return. `test/unit/ptl_search.c`'s `test_cloexec` checks an exec'd
+  child has none of the helpers' descriptors.
 - **`pmix_fd_read()` and `pmix_fd_write()` must be given a *blocking*
   fd.** They handle `EAGAIN` by retrying immediately, which on a
   non-blocking descriptor is a spin loop that burns a core until the

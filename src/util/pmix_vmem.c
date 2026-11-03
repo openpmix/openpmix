@@ -13,6 +13,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_fd.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -282,7 +283,7 @@ find_hole(
             return PMIX_ERR_BAD_PARAM;
     }
 
-    file = fopen(mapfile, "r");
+    file = pmix_fd_fopen_cloexec(mapfile, "r");
     if (!file) {
         return PMIX_ERROR;
     }

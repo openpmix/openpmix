@@ -559,7 +559,7 @@ static char *rndz_file_owner(int dirfd, const char *name, bool held)
      * wrote. In each case we cannot identify an owner, so treat it as
      * stale - if it truly is in use, then the removal below will fail
      * and we will report that instead */
-    fd = openat(dirfd, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    fd = openat(dirfd, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | PMIX_O_CLOEXEC);
     if (0 > fd) {
         return NULL;
     }
@@ -1688,9 +1688,11 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     if (NULL != pmix_ptl_base.rendezvous_filename) {
         /* if we are a tool and the file already exists, then we
          * just use it as providing the rendezvous info for our
-         * server */
+         * server. Only a regular file at the name is one: the check
+         * neither follows a symbolic link nor waits on a FIFO there, and
+         * anything else is handled as any role's existing file is */
         if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-            fptst = fopen(pmix_ptl_base.rendezvous_filename, "r");
+            fptst = pmix_ptl_base_open_regular(pmix_ptl_base.rendezvous_filename, 0);
             if (NULL != fptst) {
                 fclose(fptst);
                 goto nextstep;

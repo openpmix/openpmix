@@ -77,6 +77,7 @@
 #include "src/include/pmix_stdint.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_basename.h"
+#include "src/util/pmix_fd.h"
 #include "src/util/pmix_os_path.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_path.h"
@@ -435,11 +436,11 @@ bool pmix_path_nfs(char *fname, char **fstype)
     };
     char *parent;
 
-    fd = open(fname, O_RDONLY);
+    fd = open(fname, O_RDONLY | PMIX_O_CLOEXEC);
     if (0 > fd) {
         // try the parent
         parent = pmix_dirname(fname);
-        fd = open(parent, O_RDONLY);
+        fd = open(parent, O_RDONLY | PMIX_O_CLOEXEC);
         free(parent);
         if (0 > fd) {
             // give up
@@ -467,7 +468,7 @@ bool pmix_path_nfs(char *fname, char **fstype)
 
     // search the mount table for an entry on the same device
     while (getmntent_r(fp, &mnt, buf, sizeof(buf))) {
-        fd = open(mnt.mnt_dir, O_RDONLY);
+        fd = open(mnt.mnt_dir, O_RDONLY | PMIX_O_CLOEXEC);
         if (0 > fd) {
             // probably lack permissions
             continue;

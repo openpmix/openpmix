@@ -820,6 +820,13 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_topology(pmix_pointer_array_t 
                                                            pmix_buffer_t *buffer, void *dest,
                                                            int32_t *num_vals,
                                                            pmix_data_type_t type);
+/* Move the buffer past what unpacking PMIX_TOPO from it would consume -
+ * the count, the type and each topology's XML - without building a
+ * topology from the XML. "module" is the bfrops module that packed the
+ * buffer (a peer's nptr->compat.bfrops). Answers as the unpack would
+ * for a buffer that does not hold one. */
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_skip_topology(pmix_bfrops_module_t *module,
+                                                         pmix_buffer_t *buffer);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_devtype(pmix_pointer_array_t *regtypes,
                                                           pmix_buffer_t *buffer, void *dest,
                                                           int32_t *num_vals, pmix_data_type_t type);

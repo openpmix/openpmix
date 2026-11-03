@@ -972,7 +972,7 @@ static int case_unknown_nspace(void)
     msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native", NULL, false, &sz);
     reply = send_ack(msg, sz, &sd);
     free(msg);
-    return expect_status("unregistered namespace", reply, PMIX_ERR_NOT_FOUND);
+    return expect_status("unregistered namespace", reply, PMIX_ERR_INVALID_CRED);
 }
 
 static int case_unknown_rank(void)
@@ -988,7 +988,7 @@ static int case_unknown_rank(void)
     msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 7, "native", NULL, false, &sz);
     reply = send_ack(msg, sz, &sd);
     free(msg);
-    return expect_status("unregistered rank", reply, PMIX_ERR_NOT_FOUND);
+    return expect_status("unregistered rank", reply, PMIX_ERR_INVALID_CRED);
 }
 
 static int case_unknown_psec(bool tool)
@@ -3101,6 +3101,37 @@ static int case_bad_version(void)
     return expect_status("a version that is not one", reply, PMIX_ERR_BAD_PARAM);
 }
 
+/* A version with a component past 254 is not a version either - it is not
+ * read modulo 256, nor as the wildcard 255 */
+static int case_wide_version(const char *version)
+{
+    char *msg;
+    size_t sz;
+    int sd = -1;
+    pmix_status_t reply;
+
+    ack_version = version;
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native", NULL, false, &sz);
+    reply = send_ack(msg, sz, &sd);
+    free(msg);
+    return expect_status(version, reply, PMIX_ERR_BAD_PARAM);
+}
+static int run_wide_major(void)
+{
+    return case_wide_version("263.0.0");
+}
+static int run_wide_release(void)
+{
+    return case_wide_version("6.1.256");
+}
+static int run_wildcard_version(void)
+{
+    return case_wide_version("255.255.255");
+}
+
 /* an accepted tool is a live process on its rank */
 static int case_tool_counted(void)
 {
@@ -4638,8 +4669,10 @@ int main(int argc, char **argv)
     setenv("PMIX_MCA_psec", "native", 1);
     memset(&tool_answer, 0, sizeof(tool_answer));
 
-    run_case("an unregistered namespace is refused with a status", case_unknown_nspace);
-    run_case("an unregistered rank is refused with a status", case_unknown_rank);
+    run_case("a client naming an unregistered namespace is refused PMIX_ERR_INVALID_CRED, as "
+             "one with a wrong token is", case_unknown_nspace);
+    run_case("a client naming an unregistered rank is refused PMIX_ERR_INVALID_CRED, as one "
+             "with a wrong token is", case_unknown_rank);
     run_case("a client asking for a missing security module is told so", run_bool_false_psec);
     run_case("a tool asking for a missing security module is told so", run_bool_true_psec);
     run_case("a connect-ack cut short is refused with a status", case_truncated);
@@ -4693,6 +4726,10 @@ int main(int argc, char **argv)
     run_case("a tool the host accepts without an identity is refused", case_tool_no_identity);
     run_case("a v2.1 tool is sent the replies its reader takes", case_legacy_tool);
     run_case("a connect-ack whose version is not a version is refused", case_bad_version);
+    run_case("a connect-ack naming major 263 is refused, not read as 7", run_wide_major);
+    run_case("a connect-ack naming release 256 is refused, not read as 0", run_wide_release);
+    run_case("a connect-ack naming 255.255.255 is refused, not read as the wildcard",
+             run_wildcard_version);
     run_case("an accepted tool counts as a live process on its rank", case_tool_counted);
     run_case("a host that calls back and then returns an error refuses with the error",
              run_contract_errs);

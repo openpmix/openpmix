@@ -411,6 +411,15 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_server_access(const char *spec);
  * given: one larger is not a server's, and no more lines than these are
  * read past the ones taken by position */
 #define PMIX_PTL_MAX_CONN_FILE  (64 * 1024)
+
+/* Open `filename` for reading if it is a regular file: without following
+ * a symbolic link at the name, without waiting on a FIFO or device there
+ * (the open is O_NONBLOCK, and the descriptor is then checked with
+ * fstat), close-on-exec, and - when `max` is positive - no larger than
+ * `max` bytes. NULL with errno set otherwise: EINVAL for a file that is
+ * not regular, EFBIG for one larger than `max`, and the open's errno -
+ * ELOOP (EMLINK on some BSDs) for a symbolic link - for the rest */
+PMIX_EXPORT FILE *pmix_ptl_base_open_regular(const char *filename, off_t max);
 #define PMIX_PTL_MAX_TAG_LINES  64
 
 /* A line of a contact file, as pmix_getline reads one - NULL at the end,
@@ -596,6 +605,14 @@ PMIX_EXPORT pid_t pmix_ptl_base_token_pid(const char *nspace, pmix_rank_t rank);
 PMIX_EXPORT void pmix_ptl_base_wipe(void *p, size_t len);
 PMIX_EXPORT void pmix_ptl_base_wipe_token(char *s);
 PMIX_EXPORT void pmix_ptl_base_wipe_token_info(pmix_info_t *info, size_t ninfo);
+/* Zero a connect-ack buffer of a connecting process - the packed info, or
+ * the whole message - before it is released, and hand it to
+ * pmix_ptl_base_wiped_hook if that is set. A NULL `p` is ignored */
+PMIX_EXPORT void pmix_ptl_base_wipe_released(void *p, size_t len);
+/* For a test: called by pmix_ptl_base_wipe_released with each buffer it
+ * has zeroed, before the buffer is freed. NULL (the default) calls
+ * nothing */
+PMIX_EXPORT extern void (*pmix_ptl_base_wiped_hook)(const void *p, size_t len);
 /* Forget the rank's token - every rank's, for PMIX_RANK_WILDCARD */
 PMIX_EXPORT void pmix_ptl_base_drop_tokens(const char *nspace, pmix_rank_t rank);
 /* Add the token in our environment to a connect-ack's info - replacing
@@ -710,8 +727,14 @@ PMIX_EXPORT bool pmix_ptl_base_peer_is_earlier(pmix_peer_t *peer, uint8_t major,
 PMIX_EXPORT void pmix_ptl_base_query_servers(int sd, short args, void *cbdata);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace,
                                                   pmix_rank_t *rank, char **suri);
-PMIX_EXPORT void pmix_ptl_base_parse_version(const char *vers, uint8_t *major,
-                                             uint8_t *minor, uint8_t *release);
+/* Split a version string into major, minor and release: each from 0 to
+ * 254, a component the string does not carry being 0. Anything else -
+ * no number where one belongs, a component larger than 254 - is
+ * PMIX_ERR_BAD_PARAM, with all three reported as 0. 255 is
+ * PMIX_MAJOR_WILDCARD (and the minor and release wildcards), which no
+ * version string sets */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_version(const char *vers, uint8_t *major,
+                                                      uint8_t *minor, uint8_t *release);
 /* Search dirname and the directories below it for rendezvous files. With
  * exact, a file's name must be the whole of prefix; otherwise it need
  * only begin with it. */

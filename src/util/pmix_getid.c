@@ -106,6 +106,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_fd.h"
 #include "src/util/pmix_output.h"
 
 #include "src/util/pmix_getid.h"
@@ -280,42 +281,64 @@ pmix_status_t pmix_util_getpid(int sd, pid_t *pid)
 
 bool pmix_util_getgroups_test_unavailable = false;
 
-#if PMIX_HAVE_PEERGROUPS
-/* The gid the kernel reports for a group not mapped into this process's
- * user namespace: /proc/sys/kernel/overflowgid, 65534 by default */
-static gid_t overflow_gid(void)
+/* The id the kernel reports for one not mapped into this process's user
+ * namespace, from /proc/sys/kernel/overflowuid or overflowgid: 65534 where
+ * the file says nothing */
+static uint32_t read_overflow(const char *path)
+{
+    uint32_t id = 65534;
+    unsigned long v;
+    FILE *fp;
+
+    fp = pmix_fd_fopen_cloexec(path, "r");
+    if (NULL != fp) {
+        if (1 == fscanf(fp, "%lu", &v) && UINT32_MAX >= v) {
+            id = (uint32_t) v;
+        }
+        fclose(fp);
+    }
+    return id;
+}
+
+uint32_t pmix_util_overflow_uid(void)
 {
     static bool done = false;
-    static gid_t gid = 65534;
-    FILE *fp;
-    unsigned long v;
+    static uint32_t uid = 65534;
 
     if (!done) {
+        uid = read_overflow("/proc/sys/kernel/overflowuid");
         done = true;
-        fp = fopen("/proc/sys/kernel/overflowgid", "re");
-        if (NULL != fp) {
-            if (1 == fscanf(fp, "%lu", &v)) {
-                gid = (gid_t) v;
-            }
-            fclose(fp);
-        }
+    }
+    return uid;
+}
+
+uint32_t pmix_util_overflow_gid(void)
+{
+    static bool done = false;
+    static uint32_t gid = 65534;
+
+    if (!done) {
+        gid = read_overflow("/proc/sys/kernel/overflowgid");
+        done = true;
     }
     return gid;
 }
 
-/* Leave out of a peer's group list the overflow gid where it stands for a
- * group not mapped into this process's user namespace - the gid_map maps
- * no group to it */
+#if PMIX_HAVE_PEERGROUPS
+/* Leave the overflow gid out of a peer's group list in a user namespace
+ * whose gid_map is not the identity: there the kernel reports every group
+ * not mapped into the namespace as that gid, as pmix_ptl_base_judge_server
+ * treats the overflow ids */
 static void drop_unmapped(gid_t *gids, size_t *ngids)
 {
-    gid_t ovf = overflow_gid();
-    uint32_t parent;
+    gid_t ovf = (gid_t) pmix_util_overflow_gid();
     size_t n, m = 0;
 
+    if (pmix_util_id_map_is_identity("/proc/self/gid_map")) {
+        return;
+    }
     for (n = 0; n < *ngids; n++) {
-        if (ovf == gids[n] &&
-            PMIX_ERR_NOT_FOUND == pmix_util_id_to_parent("/proc/self/gid_map",
-                                                         (uint32_t) gids[n], &parent)) {
+        if (ovf == gids[n]) {
             continue;
         }
         gids[m++] = gids[n];
@@ -974,7 +997,7 @@ pmix_status_t pmix_util_id_to_parent(const char *mapfile, uint32_t id, uint32_t 
     FILE *fp;
     pmix_status_t rc = PMIX_ERR_NOT_FOUND;
 
-    fp = fopen(mapfile, "r");
+    fp = pmix_fd_fopen_cloexec(mapfile, "r");
     if (NULL == fp) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
@@ -990,4 +1013,27 @@ pmix_status_t pmix_util_id_to_parent(const char *mapfile, uint32_t id, uint32_t 
     }
     fclose(fp);
     return rc;
+}
+
+bool pmix_util_id_map_is_identity(const char *mapfile)
+{
+    unsigned long inside, outside, count;
+    char line[256];
+    FILE *fp;
+    int nlines = 0;
+    bool whole = false;
+
+    fp = pmix_fd_fopen_cloexec(mapfile, "r");
+    if (NULL == fp) {
+        return true;
+    }
+    while (NULL != fgets(line, sizeof(line), fp)) {
+        if (3 != sscanf(line, "%lu %lu %lu", &inside, &outside, &count)) {
+            continue;
+        }
+        ++nlines;
+        whole = (0 == inside && 0 == outside && 4294967295UL == count);
+    }
+    fclose(fp);
+    return (1 == nlines && whole);
 }

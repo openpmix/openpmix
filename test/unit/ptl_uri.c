@@ -323,34 +323,85 @@ static void test_split_and_resolve(void)
 
 /* ---- pmix_ptl_base_parse_version --------------------------------- */
 
-static void check_version(const char *name, const char *vers, uint8_t emaj, uint8_t emin,
-                          uint8_t erel)
+static void check_version(const char *name, const char *vers, pmix_status_t erc, uint8_t emaj,
+                          uint8_t emin, uint8_t erel)
 {
-    uint8_t maj, min, rel;
+    uint8_t maj = 99, min = 99, rel = 99;
+    pmix_status_t rc;
+    char detail[128];
 
-    pmix_ptl_base_parse_version(vers, &maj, &min, &rel);
-    report(name, emaj == maj && emin == min && erel == rel, "wrong triplet");
+    rc = pmix_ptl_base_parse_version(vers, &maj, &min, &rel);
+    snprintf(detail, sizeof(detail), "%s %u.%u.%u", PMIx_Error_string(rc), (unsigned) maj,
+             (unsigned) min, (unsigned) rel);
+    report(name, erc == rc && emaj == maj && emin == min && erel == rel, detail);
+}
+
+/* the same string, the way a client reads its server's version line */
+static void check_peer_version(const char *name, const char *vers, uint8_t emaj, uint8_t emin,
+                               uint8_t erel)
+{
+    pmix_peer_t peer;
+    char detail[128];
+
+    memset(&peer, 0, sizeof(peer));
+    PMIX_SET_PEER_VERSION(&peer, vers, 2, 0);
+    snprintf(detail, sizeof(detail), "%u.%u.%u", (unsigned) peer.proc_type.major,
+             (unsigned) peer.proc_type.minor, (unsigned) peer.proc_type.release);
+    report(name, emaj == peer.proc_type.major && emin == peer.proc_type.minor &&
+                     erel == peer.proc_type.release, detail);
 }
 
 static void test_parse_version(void)
 {
     /* the shape every current peer sends */
-    check_version("parse_version: full triplet", "5.1.2", 5, 1, 2);
-    /* what a release-candidate string looks like - the trailing text is
-     * simply not a number, so the component reads as zero */
-    check_version("parse_version: triplet with suffix", "7.0.0a1", 7, 0, 0);
+    check_version("parse_version: full triplet", "5.1.2", PMIX_SUCCESS, 5, 1, 2);
+    /* what a release-candidate string looks like - the text after the
+     * last number is not part of the version */
+    check_version("parse_version: triplet with suffix", "7.0.0a1", PMIX_SUCCESS, 7, 0, 0);
     /* Short forms. A peer is under no obligation to send all three
      * components, and the parser used to step over a separator that was
      * not there - reading past the end of the string for each one */
-    check_version("parse_version: major and minor only", "4.2", 4, 2, 0);
-    check_version("parse_version: major only", "6", 6, 0, 0);
-    check_version("parse_version: empty string", "", 0, 0, 0);
-    check_version("parse_version: NULL string", NULL, 0, 0, 0);
+    check_version("parse_version: major and minor only", "4.2", PMIX_SUCCESS, 4, 2, 0);
+    check_version("parse_version: major only", "6", PMIX_SUCCESS, 6, 0, 0);
+    check_version("parse_version: empty string", "", PMIX_ERR_BAD_PARAM, 0, 0, 0);
+    check_version("parse_version: NULL string", NULL, PMIX_ERR_BAD_PARAM, 0, 0, 0);
     /* trailing separator with nothing after it */
-    check_version("parse_version: trailing separator", "3.", 3, 0, 0);
-    check_version("parse_version: two trailing separators", "3.1.", 3, 1, 0);
+    check_version("parse_version: trailing separator", "3.", PMIX_SUCCESS, 3, 0, 0);
+    check_version("parse_version: two trailing separators", "3.1.", PMIX_SUCCESS, 3, 1, 0);
     /* not a version at all */
-    check_version("parse_version: non-numeric", "unknown", 0, 0, 0);
+    check_version("parse_version: non-numeric", "unknown", PMIX_ERR_BAD_PARAM, 0, 0, 0);
+
+    /* Each component is a number from 0 to 254. A larger one is refused
+     * rather than read modulo 256 - "263" is not 7 - and 255, the
+     * wildcard, is not a value a version string sets */
+    check_version("parse_version: the largest components", "254.254.254", PMIX_SUCCESS, 254, 254,
+                  254);
+    check_version("parse_version: a major of 263 is refused, not read as 7", "263.0.0",
+                  PMIX_ERR_BAD_PARAM, 0, 0, 0);
+    check_version("parse_version: a major of 255 is refused", "255.0.0", PMIX_ERR_BAD_PARAM, 0, 0,
+                  0);
+    check_version("parse_version: a minor of 255 is refused", "7.255.0", PMIX_ERR_BAD_PARAM, 0, 0,
+                  0);
+    check_version("parse_version: a release of 256 is refused", "7.0.256", PMIX_ERR_BAD_PARAM, 0,
+                  0, 0);
+    check_version("parse_version: a major past 32 bits is refused", "4294967303.0.0",
+                  PMIX_ERR_BAD_PARAM, 0, 0, 0);
+    check_version("parse_version: a long run of digits is refused",
+                  "18446744073709551623.0.0", PMIX_ERR_BAD_PARAM, 0, 0, 0);
+    check_version("parse_version: leading zeros are only digits", "007.000.001", PMIX_SUCCESS, 7,
+                  0, 1);
+    check_version("parse_version: a sign is not a number", "-1.0.0", PMIX_ERR_BAD_PARAM, 0, 0, 0);
+    check_version("parse_version: nor is a leading space", " 7.0.0", PMIX_ERR_BAD_PARAM, 0, 0, 0);
+    check_version("parse_version: a minor that is not a number is refused", "7.x.0",
+                  PMIX_ERR_BAD_PARAM, 0, 0, 0);
+
+    /* a client reads its server's version line the same way, after a
+     * leading 'v': one that is not a version is no release at all */
+    check_peer_version("peer version: a version line is read", "v7.0.0a1", 7, 0, 0);
+    check_peer_version("peer version: a major of 263 is no release, not 7", "v263.0.0", 0, 0, 0);
+    check_peer_version("peer version: 255 is no release, not the wildcard", "v255.255.255", 0, 0,
+                       0);
+    check_peer_version("peer version: no line at all is the default", NULL, 2, 0, 0);
 }
 
 /* ---- pmix_ptl_base_peer_is_earlier ------------------------------- */

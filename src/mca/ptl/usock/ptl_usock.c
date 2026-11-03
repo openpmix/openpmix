@@ -229,12 +229,17 @@ static pmix_status_t usock_setup_listener(pmix_info_t info[], size_t ninfo,
     }
     /* whom the mode lets connect may enter the directory - and nobody but
      * this process's user may list it. A socket given to another user is
-     * reached by that user as one of the others */
+     * reached by that user as one of the others - or, where the directory's
+     * group is one the host named rather than ours, as a member of it: the
+     * kernel applies the group's bits, not the others', to a member */
     if (0 != (mode & S_IRWXG)) {
         dmode |= S_IXGRP;
     }
     if (0 != (mode & S_IRWXO) || ((uid_t) -1 != owner && geteuid() != owner)) {
         dmode |= S_IXOTH;
+    }
+    if ((uid_t) -1 != owner && geteuid() != owner && getegid() != group) {
+        dmode |= S_IXGRP;
     }
 
     if (NULL == pmix_ptl_base.session_tmpdir) {

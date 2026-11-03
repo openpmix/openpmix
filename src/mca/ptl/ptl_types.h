@@ -144,32 +144,26 @@ typedef struct {
 /* Split a version string into the peer's major.minor.release.
  *
  * The string is not ours: it is a line out of a rendezvous file some
- * other process wrote, or the PMIX_VERSION environment variable. It
- * need not carry all three components, so step over a separator only
- * after confirming the string has not already ended - walking past the
- * terminator reads whatever follows the allocation. Components we
- * cannot read are zero. */
-#define PMIX_SET_PEER_VERSION(p, e, a, b)             \
-    do {                                              \
-        char *_e2;                                    \
-        const char *_e1;                              \
-        unsigned long _mj = 0, _mn = 0, _rl = 0;      \
-        if (NULL != (e)) {                            \
-            _e1 = ('v' == (e)[0]) ? &(e)[1] : (e);    \
-            _mj = strtoul(_e1, &_e2, 10);             \
-            if ('\0' != *_e2) {                       \
-                _mn = strtoul(&_e2[1], &_e2, 10);     \
-                if ('\0' != *_e2) {                   \
-                    _rl = strtoul(&_e2[1], NULL, 10); \
-                }                                     \
-            }                                         \
-            PMIX_SET_PEER_MAJOR((p), _mj);            \
-            PMIX_SET_PEER_MINOR((p), _mn);            \
-            PMIX_SET_PEER_RELEASE((p), _rl);          \
-        } else {                                      \
-            PMIX_SET_PEER_MAJOR((p), (a));            \
-            PMIX_SET_PEER_MINOR((p), (b));            \
-        }                                             \
+ * other process wrote, or the PMIX_VERSION environment variable. It is
+ * read by pmix_ptl_base_parse_version (declared in base/base.h, which the
+ * file expanding this includes), after a leading 'v': components it does
+ * not carry are zero, and one that is not a version - no number where one
+ * belongs, a component past 254 - is read as no release at all, 0.0.0.
+ * With no string, the peer is a/b. */
+#define PMIX_SET_PEER_VERSION(p, e, a, b)                                          \
+    do {                                                                           \
+        const char *_e1;                                                           \
+        uint8_t _mj, _mn, _rl;                                                     \
+        if (NULL != (e)) {                                                         \
+            _e1 = ('v' == (e)[0]) ? &(e)[1] : (e);                                 \
+            (void) pmix_ptl_base_parse_version(_e1, &_mj, &_mn, &_rl);             \
+            PMIX_SET_PEER_MAJOR((p), _mj);                                         \
+            PMIX_SET_PEER_MINOR((p), _mn);                                         \
+            PMIX_SET_PEER_RELEASE((p), _rl);                                       \
+        } else {                                                                   \
+            PMIX_SET_PEER_MAJOR((p), (a));                                         \
+            PMIX_SET_PEER_MINOR((p), (b));                                         \
+        }                                                                          \
     } while (0)
 
 #define PMIX_SET_PEER_MAJOR(p, a)   (p)->proc_type.major = (a)

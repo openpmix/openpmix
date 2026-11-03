@@ -188,7 +188,21 @@ The ``directives`` array qualifies how the request is handled. Commonly used dir
 * ``PMIX_LOG_SOURCE`` (pmix_proc_t\*) |mdash| identify the process that is the source of the log
   request.
 * ``PMIX_LOG_AGG`` (bool) |mdash| aggregate log messages and suppress duplicates based on their
-  key/value pairs (see ``PMIX_LOG_KEY`` / ``PMIX_LOG_VAL``).
+  key/value pairs (see ``PMIX_LOG_KEY`` / ``PMIX_LOG_VAL``). Aggregation is on by default for a
+  request that carries both ``PMIX_LOG_KEY`` and ``PMIX_LOG_VAL``; set this to ``false`` to log
+  every copy. The first message with a given key and value is logged, later ones are counted, and
+  the count is reported periodically and when the job ends. Messages are recorded per namespace:
+
+  * a process logging its own message may name the namespace it is recorded under with a
+    ``PMIX_NSPACE`` (char*) directive, and otherwise it is recorded under the process's own
+    namespace;
+  * a request a PMIx server receives from a client or tool is recorded under that requester's
+    namespace. The server sets any ``PMIX_NSPACE`` directive in the request to that namespace
+    before logging the request or passing it to its host.
+
+  The key and value are compared exactly; a ``*`` in either is an ordinary character. The number
+  of messages recorded is bounded by the ``plog_base_max_suppressed`` MCA parameter (see
+  `MCA PARAMETERS`_).
 
 The following directives request that the launcher log specific runtime events on the requestor's
 behalf using ``PMIx_Log``:
@@ -238,6 +252,12 @@ parameters (with current values) can be displayed with ``pmix_info``.
   Both must be set for the ``smtp`` component to be used. ``plog_smtp_timeout=<seconds>`` (default 30)
   bounds how long the component waits for the mail server at each step of sending; ``0`` uses the
   RFC 5321 values, which run to several minutes.
+
+* ``plog_base_max_suppressed=<n>`` (default 1024), the most messages recorded for ``PMIX_LOG_AGG``
+  duplicate suppression, each one a namespace, ``PMIX_LOG_KEY`` and ``PMIX_LOG_VAL``. When a new
+  message would exceed it, the message matched least recently is dropped, after its accumulated
+  count is reported; a later copy of a dropped message is logged again as a first occurrence.
+  ``0`` records nothing, which turns duplicate suppression off.
 
 * ``pmix_log_host_only=<true|false>``. When set to ``true``, the PMIx server library passes all log
   requests to its host environment for processing (via the ``pmix_server_log2_fn_t`` server module

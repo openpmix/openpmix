@@ -217,6 +217,13 @@ PMIX_EXPORT pmix_status_t pmix_show_help_add_data(const char *project,
  * otherwise tell only the first job to trip a diagnostic about it and
  * leave every later one in silence.
  *
+ * All three are compared exactly: a '*' in any of them is an ordinary
+ * character.  At most pmix_show_help_max_tuples entries are kept; when a
+ * new one would exceed that, the entry matched least recently is
+ * dropped, after its accumulated duplicates are displayed.  With a limit
+ * of zero (or less) nothing is recorded, so every call answers
+ * PMIX_ERR_NOT_FOUND.
+ *
  * No argument may be NULL.  Must be called on the progress thread: the
  * duplicate list is process-global and carries no lock.
  */
@@ -253,6 +260,11 @@ PMIX_EXPORT pmix_status_t pmix_show_help_norender(const char *nspace,
                                                   const char *output);
 
 PMIX_EXPORT extern int pmix_show_help_enabled;
+
+/* The most entries pmix_help_check_dups() keeps. Set by the
+ * plog_base_max_suppressed MCA parameter. */
+#define PMIX_SHOW_HELP_MAX_TUPLES_DEFAULT 1024
+PMIX_EXPORT extern int pmix_show_help_max_tuples;
 
 END_C_DECLS
 

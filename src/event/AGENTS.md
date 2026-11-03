@@ -146,7 +146,15 @@ Invariants that keep this machine alive:
 - **Termination.** A handler returning `PMIX_EVENT_ACTION_COMPLETE`
   ends the chain; `chain->endchain` forces single-shot processing (set
   when replaying cached events and when the "last" handler is entered);
-  a `oneshot` handler is deregistered after it completes.
+  a `oneshot` handler is deregistered when the chain takes it
+  (`chain_take_hdlr`), wherever it sits in the chain.
+- **The chain holds a reference on `chain->evhdlr`.** Every assignment
+  goes through `chain_take_hdlr`, which retains the new handler and
+  releases the previous one; the walk's end and the chain destructor
+  release the last. Handlers leave their list through
+  `pmix_event_hdlr_unlink`, which marks them `removed` and retains their
+  `successor`, so `cycle_events` (`resume_point`) can resume after a
+  handler deregistered while the chain was in it.
 - **Completion contract.** If `final_cbfunc` is set, it owns the chain
   (every setter passes the chain itself as `final_cbdata` and releases
   it there); if not, the chain is released when the walk ends. Set one

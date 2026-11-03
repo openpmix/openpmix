@@ -42,6 +42,16 @@
  * The fixed rendezvous names (pmix.sys.<host> and friends) are read with
  * pmix_ptl_base_parse_rndz_file(), which applies the same regular-file
  * rule: a FIFO, or a link to a character device, is refused promptly.
+ *
+ * A file the caller names (pmix_ptl_base_parse_uri_file(), behind
+ * PMIX_TOOL_ATTACHMENT_FILE and "file:<path>") is held to the rule too: a
+ * FIFO is refused at once rather than waited on, and a symbolic link is
+ * not followed - not even to a valid contact file - while that file named
+ * itself is read.
+ *
+ * Every file these open is close-on-exec: a program a child execs has
+ * none of them (pmix_ptl_base_open_regular, pmix_fd_fopen_cloexec,
+ * pmix_os_dirpath_open_file).
  */
 
 #include "src/include/pmix_config.h"
@@ -52,7 +62,10 @@
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/psec/base/base.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/util/pmix_fd.h"
+#include "src/util/pmix_os_dirpath.h"
 
+#include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,9 +75,11 @@
 #include <sys/file.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define NJUNK 30
+#define FDCHECK "fdcheck"
 #define WATCHDOG_SECS 60
 
 static int npass = 0;
@@ -547,6 +562,118 @@ static void test_rndz_file(void)
     }
 }
 
+/* A file the caller names is a regular one, at the name */
+static void test_named_file(void)
+{
+    char path[PMIX_PATH_MAX + 128], link[PMIX_PATH_MAX + 128];
+    pmix_list_t connections;
+    pmix_status_t rc;
+    time_t start;
+
+    /* a FIFO, which an open for reading would wait on for a writer */
+    snprintf(path, sizeof(path), "%s/pmix.test.fifo", searchdir);
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    start = time(NULL);
+    rc = pmix_ptl_base_parse_uri_file(path, true, &connections);
+    report("named file: a FIFO is refused, at once",
+           PMIX_SUCCESS != rc && 0 == pmix_list_get_size(&connections) &&
+               2 >= difftime(time(NULL), start),
+           PMIx_Error_string(rc));
+    PMIX_LIST_DESTRUCT(&connections);
+
+    /* a link to a valid contact file is not followed */
+    snprintf(path, sizeof(path), "%s/pmix.test.good", searchdir);
+    snprintf(link, sizeof(link), "%s/named.link", searchdir);
+    unlink(link);
+    if (0 != symlink(path, link)) {
+        report("named file: setup", 0, strerror(errno));
+        return;
+    }
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    rc = pmix_ptl_base_parse_uri_file(link, true, &connections);
+    report("named file: a symbolic link to a contact file is refused",
+           PMIX_SUCCESS != rc && 0 == pmix_list_get_size(&connections),
+           PMIx_Error_string(rc));
+    PMIX_LIST_DESTRUCT(&connections);
+    unlink(link);
+
+    /* while the contact file itself is read */
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    rc = pmix_ptl_base_parse_uri_file(path, true, &connections);
+    report("named file: a regular contact file is read",
+           PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&connections),
+           PMIx_Error_string(rc));
+    PMIX_LIST_DESTRUCT(&connections);
+}
+
+/* the child: whether descriptor `fd` is open in this exec'd program */
+static int fdcheck(const char *fd)
+{
+    return (0 > fcntl(atoi(fd), F_GETFD) && EBADF == errno) ? 0 : 1;
+}
+
+/* Whether a program a child execs has none of `fd`: the child execs this
+ * program again, which looks for the descriptor */
+static bool not_inherited(const char *argv0, int fd)
+{
+    char num[32];
+    pid_t pid;
+    int status = 0;
+
+    if (0 > fd) {
+        return false;
+    }
+    snprintf(num, sizeof(num), "%d", fd);
+    fflush(stdout);
+    pid = fork();
+    if (0 > pid) {
+        return false;
+    }
+    if (0 == pid) {
+        execl(argv0, argv0, FDCHECK, num, (char *) NULL);
+        _exit(2);
+    }
+    if (pid != waitpid(pid, &status, 0)) {
+        return false;
+    }
+    return WIFEXITED(status) && 0 == WEXITSTATUS(status);
+}
+
+static void test_cloexec(const char *argv0)
+{
+    char path[PMIX_PATH_MAX + 128];
+    FILE *fp;
+    int fd;
+
+    snprintf(path, sizeof(path), "%s/pmix.test.good", searchdir);
+    fp = pmix_ptl_base_open_regular(path, 0);
+    report("cloexec: a contact file is not inherited by a program a child execs",
+           NULL != fp && not_inherited(argv0, fileno(fp)), "inherited");
+    if (NULL != fp) {
+        fclose(fp);
+    }
+    fp = pmix_fd_fopen_cloexec(path, "r");
+    report("cloexec: nor is a file pmix_fd_fopen_cloexec opens for reading",
+           NULL != fp && not_inherited(argv0, fileno(fp)), "inherited");
+    if (NULL != fp) {
+        fclose(fp);
+    }
+    snprintf(path, sizeof(path), "%s/cloexec.out", searchdir);
+    fp = pmix_fd_fopen_cloexec(path, "a");
+    report("cloexec: ...or for appending",
+           NULL != fp && not_inherited(argv0, fileno(fp)), "inherited");
+    if (NULL != fp) {
+        fclose(fp);
+    }
+    fd = pmix_os_dirpath_open_file(path, O_WRONLY, 0);
+    report("cloexec: nor a file pmix_os_dirpath_open_file opens", not_inherited(argv0, fd),
+           "inherited");
+    if (0 <= fd) {
+        close(fd);
+    }
+    unlink(path);
+}
+
 /* A server the kernel cannot name is connected to only where its address
  * came from a source that vouches for it. A file the caller named does,
  * when it is the file at the name, only its owner can write it, and it is
@@ -843,7 +970,9 @@ int main(int argc, char **argv)
     pmix_info_t info[2];
     pmix_status_t rc;
     const char *tdir;
-    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+    if (3 == argc && 0 == strcmp(argv[1], FDCHECK)) {
+        return fdcheck(argv[2]);
+    }
 
     tdir = getenv("TMPDIR");
     if (NULL == tdir) {
@@ -891,6 +1020,8 @@ int main(int argc, char **argv)
     test_df_search_depth();
     test_query_servers();
     test_rndz_file();
+    test_named_file();
+    test_cloexec(argv[0]);
     test_compat();
     test_vouched();
     alarm(0);

@@ -40,6 +40,15 @@
  *      the leak in-process; it exists so that the path is walked under
  *      valgrind, where the leak is one record per request.
  *
+ *   distances are computed from the server's own topology
+ *      The request carries a topology, packed by the requester. The
+ *      server moves past it without building it and computes from its
+ *      own. The case sends a topology holding a network device this
+ *      host does not have, "sfut-net0", in each buffer type, and checks
+ *      that the answer does not name that device and is the answer to
+ *      a request carrying no topology at all. It first computes from
+ *      that topology locally, to show the device is there to be found.
+ *
  * What this cannot assert on every host, and why: hwloc has to find at
  * least one OS device to measure a distance against. A bare macOS host
  * reports none, so pmix_hwloc_compute_distances answers
@@ -118,13 +127,14 @@ static void dist_cbfunc(pmix_status_t status, pmix_device_distance_t *dist,
 }
 
 /* Pack a COMPUTE_DEVICE_DISTANCES request the way a client does: a
- * topology, a cpuset, then the directive count and array. A NULL
- * topology asks the server to use its own. */
-static pmix_status_t do_device_dists_n(pmix_cpuset_t *cpuset, size_t ninfo)
+ * topology, a cpuset, then the directive count and array. An empty
+ * topology is what a client sends when it has none of its own. */
+static pmix_status_t do_device_dists_topo(pmix_topology_t *tp, pmix_cpuset_t *cpuset,
+                                          size_t ninfo)
 {
     pmix_buffer_t *buf;
     pmix_server_caddy_t *cd;
-    pmix_topology_t topo = {NULL, NULL};
+    pmix_topology_t notopo = {NULL, NULL};
     pmix_status_t rc;
 
     dist_fired = false;
@@ -137,7 +147,7 @@ static pmix_status_t do_device_dists_n(pmix_cpuset_t *cpuset, size_t ninfo)
     if (NULL == buf) {
         return PMIX_ERR_NOMEM;
     }
-    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &topo, 1, PMIX_TOPO);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, (NULL == tp) ? &notopo : tp, 1, PMIX_TOPO);
     if (PMIX_SUCCESS == rc) {
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, cpuset, 1, PMIX_PROC_CPUSET);
     }
@@ -167,9 +177,165 @@ static pmix_status_t do_device_dists_n(pmix_cpuset_t *cpuset, size_t ninfo)
     return rc;
 }
 
+static pmix_status_t do_device_dists_n(pmix_cpuset_t *cpuset, size_t ninfo)
+{
+    return do_device_dists_topo(NULL, cpuset, ninfo);
+}
+
 static pmix_status_t do_device_dists(pmix_cpuset_t *cpuset)
 {
     return do_device_dists_n(cpuset, 0);
+}
+
+/* A node with one network device, named "sfut-net0". Written for
+ * hwloc's minimalistic XML parser as well as libxml2's: no comments. */
+static const char sfut_topo_xml[] =
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+    "<!DOCTYPE topology SYSTEM \"hwloc2.dtd\">\n"
+    "<topology version=\"2.0\">\n"
+    " <object type=\"Machine\" os_index=\"0\" cpuset=\"0x00000001\" complete_cpuset=\"0x00000001\""
+    " allowed_cpuset=\"0x00000001\" nodeset=\"0x00000001\" complete_nodeset=\"0x00000001\""
+    " allowed_nodeset=\"0x00000001\" gp_index=\"1\">\n"
+    "  <object type=\"Package\" os_index=\"0\" cpuset=\"0x00000001\" complete_cpuset=\"0x00000001\""
+    " nodeset=\"0x00000001\" complete_nodeset=\"0x00000001\" gp_index=\"2\">\n"
+    "   <object type=\"NUMANode\" os_index=\"0\" cpuset=\"0x00000001\" complete_cpuset=\"0x00000001\""
+    " nodeset=\"0x00000001\" complete_nodeset=\"0x00000001\" gp_index=\"3\""
+    " local_memory=\"1073741824\"/>\n"
+    "   <object type=\"Core\" os_index=\"0\" cpuset=\"0x00000001\" complete_cpuset=\"0x00000001\""
+    " nodeset=\"0x00000001\" complete_nodeset=\"0x00000001\" gp_index=\"4\">\n"
+    "    <object type=\"PU\" os_index=\"0\" cpuset=\"0x00000001\" complete_cpuset=\"0x00000001\""
+    " nodeset=\"0x00000001\" complete_nodeset=\"0x00000001\" gp_index=\"5\"/>\n"
+    "   </object>\n"
+    "   <object type=\"Bridge\" gp_index=\"6\" bridge_type=\"0-1\" depth=\"0\""
+    " bridge_pci=\"0000:[42-42]\">\n"
+    "    <object type=\"PCIDev\" gp_index=\"7\" pci_busid=\"0000:42:00.0\""
+    " pci_type=\"0200 [8086:10d3] [8086:a01f] 00\" pci_link_speed=\"0.250000\">\n"
+    "     <object type=\"OSDev\" gp_index=\"8\" name=\"sfut-net0\" osdev_type=\"2\"/>\n"
+    "    </object>\n"
+    "   </object>\n"
+    "  </object>\n"
+    " </object>\n"
+    "</topology>\n";
+
+static bool load_fixture(pmix_topology_t *topo)
+{
+    hwloc_topology_t t;
+
+    if (0 != hwloc_topology_init(&t)) {
+        return false;
+    }
+    if (0 != hwloc_topology_set_xmlbuffer(t, sfut_topo_xml, (int) sizeof(sfut_topo_xml)) ||
+        0 != hwloc_topology_set_io_types_filter(t, HWLOC_TYPE_FILTER_KEEP_IMPORTANT) ||
+        0 != hwloc_topology_load(t)) {
+        hwloc_topology_destroy(t);
+        return false;
+    }
+    topo->source = strdup("hwloc");
+    topo->topology = t;
+    return true;
+}
+
+static bool names_device(const pmix_device_distance_t *d, size_t nd, const char *name)
+{
+    size_t n;
+
+    for (n = 0; NULL != d && n < nd; n++) {
+        if (NULL != d[n].osname && 0 == strcmp(d[n].osname, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* do two answers name the same devices, in any order: the same count,
+ * and each name in the first is in the second */
+static bool same_devices(const pmix_device_distance_t *a, size_t na,
+                         const pmix_device_distance_t *b, size_t nb)
+{
+    size_t n;
+
+    if (na != nb) {
+        return false;
+    }
+    for (n = 0; n < na; n++) {
+        if (NULL == a[n].osname || !names_device(b, nb, a[n].osname)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void release_answer(void)
+{
+    if (dist_fired && NULL != dist_relfn) {
+        dist_relfn(dist_relcbd);
+    }
+    dist_fired = false;
+    dist_relfn = NULL;
+    dist_array = NULL;
+    dist_ndist = 0;
+}
+
+static void test_own_topology(pmix_cpuset_t *cpuset, pmix_bfrop_buffer_type_t type,
+                              const char *label)
+{
+    pmix_topology_t fixture = {NULL, NULL};
+    pmix_device_distance_t *local = NULL, *own = NULL;
+    size_t nlocal = 0, nown = 0, n;
+    pmix_status_t rc, ownrc;
+    pmix_bfrop_buffer_type_t savetype;
+    bool ownfired;
+    char name[256];
+
+    if (!load_fixture(&fixture)) {
+        snprintf(name, sizeof(name), "%s: the test topology loads", label);
+        report(name, false);
+        return;
+    }
+
+    /* the device is there to be found in that topology */
+    rc = pmix_hwloc_compute_distances(&fixture, cpuset, NULL, 0, &local, &nlocal);
+    snprintf(name, sizeof(name), "%s: computed locally, the test topology has sfut-net0", label);
+    report(name, PMIX_SUCCESS == rc && names_device(local, nlocal, "sfut-net0"));
+    if (NULL != local) {
+        PMIX_DEVICE_DIST_FREE(local, nlocal);
+    }
+
+    /* whether a buffer is described is a property of the peer it is
+     * packed for and unpacked from - here, both ends are our own peer */
+    savetype = pmix_globals.mypeer->nptr->compat.type;
+    pmix_globals.mypeer->nptr->compat.type = type;
+
+    /* the answer to a request with no topology: the server's own. Copy
+     * the names out before releasing it */
+    ownrc = do_device_dists_topo(NULL, cpuset, 0);
+    ownfired = dist_fired;
+    if (ownfired && 0 < dist_ndist) {
+        PMIX_DEVICE_DIST_CREATE(own, dist_ndist);
+        nown = dist_ndist;
+        for (n = 0; n < nown; n++) {
+            own[n].osname = (NULL == dist_array[n].osname) ? NULL : strdup(dist_array[n].osname);
+        }
+    }
+    release_answer();
+
+    /* the same request carrying the test topology */
+    rc = do_device_dists_topo(&fixture, cpuset, 0);
+    pmix_globals.mypeer->nptr->compat.type = savetype;
+    snprintf(name, sizeof(name), "%s: a request carrying a topology is read to its end", label);
+    report(name, (PMIX_SUCCESS == rc || PMIX_ERR_NOT_FOUND == rc) && rc == ownrc);
+    snprintf(name, sizeof(name), "%s: the answer does not come from the topology sent", label);
+    report(name, !names_device(dist_array, dist_ndist, "sfut-net0"));
+    snprintf(name, sizeof(name), "%s: the answer is the server's own", label);
+    report(name, dist_fired == ownfired &&
+                 (!ownfired || same_devices(dist_array, dist_ndist, own, nown)));
+    release_answer();
+
+    if (NULL != own) {
+        PMIX_DEVICE_DIST_FREE(own, nown);
+    }
+    pmix_hwloc_destruct_topology(&fixture);
+    free(fixture.source);
 }
 
 /* A host fabric entry point that records the identity it is handed and
@@ -352,6 +518,10 @@ int main(int argc, char **argv)
             report("releasing through the callback's own function is clean", true);
         }
     }
+
+    /* --- the topology a request carries is not used --- */
+    test_own_topology(&cpuset, PMIX_BFROP_BUFFER_NON_DESC, "non-described buffer");
+    test_own_topology(&cpuset, PMIX_BFROP_BUFFER_FULLY_DESC, "fully-described buffer");
 
     /* --- counts that do not survive the trip through int32_t ---------
      *

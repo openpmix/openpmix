@@ -61,6 +61,7 @@
 
 #include "pmix_common.h"
 #include "src/threads/pmix_threads.h"
+#include "src/util/pmix_fd.h"
 #include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_output.h"
 
@@ -652,7 +653,7 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
 
     pmix_mutex_lock(&keyval_mutex);
 
-    fp = fopen(filename, "r");
+    fp = pmix_fd_fopen_cloexec(filename, "r");
     if (NULL == fp) {
         /* Our caller treats PMIX_ERR_NOT_FOUND as "there is no such file,
          * carry on", which is right for the default parameter files since

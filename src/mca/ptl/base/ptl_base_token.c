@@ -81,6 +81,19 @@ void pmix_ptl_base_wipe(void *p, size_t len)
     }
 }
 
+void (*pmix_ptl_base_wiped_hook)(const void *p, size_t len) = NULL;
+
+void pmix_ptl_base_wipe_released(void *p, size_t len)
+{
+    if (NULL == p) {
+        return;
+    }
+    pmix_ptl_base_wipe(p, len);
+    if (NULL != pmix_ptl_base_wiped_hook) {
+        pmix_ptl_base_wiped_hook(p, len);
+    }
+}
+
 static void tncon(token_ns_t *p)
 {
     p->nspace = NULL;

@@ -41,6 +41,7 @@
 int pmix_show_help_enabled = 0;
 static time_t show_help_time_last_displayed = 0;
 static bool show_help_timer_set = false;
+int pmix_show_help_max_tuples = PMIX_SHOW_HELP_MAX_TUPLES_DEFAULT;
 static pmix_event_t show_help_timer_event;
 static int output_stream = -1;
 static bool pmix_show_help_initialized = false;
@@ -202,52 +203,7 @@ static pmix_list_t abd_tuples;
 static const char *dash_line
     = "--------------------------------------------------------------------------\n";
 
-static pmix_status_t match(const char *a, const char *b)
-{
-    int rc = PMIX_ERROR;
-    char *p1, *p2, *tmp1 = NULL, *tmp2 = NULL;
-    size_t min;
-
-    /* Check straight string match first */
-    if (0 == strcmp(a, b)) {
-        return PMIX_SUCCESS;
-    }
-
-    if (NULL != strchr(a, '*') || NULL != strchr(b, '*')) {
-        tmp1 = strdup(a);
-        if (NULL == tmp1) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        tmp2 = strdup(b);
-        if (NULL == tmp2) {
-            free(tmp1);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        p1 = strchr(tmp1, '*');
-        p2 = strchr(tmp2, '*');
-
-        if (NULL != p1) {
-            *p1 = '\0';
-        }
-        if (NULL != p2) {
-            *p2 = '\0';
-        }
-        min = strlen(tmp1);
-        if (strlen(tmp2) < min) {
-            min = strlen(tmp2);
-        }
-        if (0 == min || 0 == strncmp(tmp1, tmp2, min)) {
-            rc = PMIX_SUCCESS;
-        }
-        free(tmp1);
-        free(tmp2);
-        return rc;
-    }
-
-    /* No match */
-    return PMIX_ERROR;
-}
-
+static void show_tuple_duplicates(tuple_list_item_t *tli);
 
 static pmix_status_t pmix_get_tli(const char *nspace,
                                   const char *filename,
@@ -256,21 +212,40 @@ static pmix_status_t pmix_get_tli(const char *nspace,
 {
     tuple_list_item_t *tli;
 
-    /* Search the list for a duplicate.  The nspace is compared exactly
-     * rather than through match(): a job name is a name, and match()
-     * treats a '*' in either operand as a wildcard - which would make
-     * one job's suppression reach another's. */
+    /* Search the list for a duplicate.  All three fields are compared
+     * exactly - a '*' in any of them is just a character. */
     PMIX_LIST_FOREACH(tli, &abd_tuples, tuple_list_item_t)
     {
         if (0 == strcmp(tli->tli_nspace, nspace) &&
-            PMIX_SUCCESS == match(tli->tli_filename, filename) &&
-            PMIX_SUCCESS == match(tli->tli_topic, topic)) {
+            0 == strcmp(tli->tli_filename, filename) &&
+            0 == strcmp(tli->tli_topic, topic)) {
+            /* keep the list in order of last match, so the entry dropped
+             * when it is full is the one matched least recently */
+            pmix_list_remove_item(&abd_tuples, &tli->super);
+            pmix_list_append(&abd_tuples, &tli->super);
             *tli_ = tli;
             return PMIX_SUCCESS;
         }
     }
 
-    /* Nope, we didn't find it -- make a new one */
+    /* Nope, we didn't find it.  With no room at all, nothing is
+     * recorded and this is simply a first time */
+    *tli_ = NULL;
+    if (0 >= pmix_show_help_max_tuples) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    /* make room by dropping the entries matched least recently - after
+     * saying what each was holding back, as a purge does */
+    while ((size_t) pmix_show_help_max_tuples <= pmix_list_get_size(&abd_tuples)) {
+        tli = (tuple_list_item_t *) pmix_list_remove_first(&abd_tuples);
+        if (NULL == tli) {
+            break;
+        }
+        show_tuple_duplicates(tli);
+        PMIX_RELEASE(tli);
+    }
+
+    /* make a new one */
     tli = PMIX_NEW(tuple_list_item_t);
     if (NULL == tli) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -394,7 +369,7 @@ pmix_status_t pmix_help_check_dups(const char *nspace,
     time_t now = time(NULL);
     int rc;
 
-    /* all three reach strcmp(), two of them by way of match() */
+    /* all three reach strcmp() */
     if (NULL == nspace || NULL == filename || NULL == topic) {
         return PMIX_ERR_BAD_PARAM;
     }

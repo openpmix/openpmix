@@ -74,20 +74,16 @@ static const char path_sep[] = PMIX_PATH_SEP;
 #    define PMIX_O_TRAVERSE O_RDONLY
 #endif
 
-/* Close-on-exec at open time where the platform can do it, so there is
- * no window in which another thread's fork/exec inherits the descriptor.
- * Elsewhere pmix_os_dirpath_create_file() sets it immediately after. */
-#if defined(O_CLOEXEC)
-#    define PMIX_O_CLOEXEC O_CLOEXEC
-#else
-#    define PMIX_O_CLOEXEC 0
-#endif
+/* Close-on-exec at open time where the platform can do it
+ * (PMIX_O_CLOEXEC, from pmix_fd.h), so there is no window in which
+ * another thread's fork/exec inherits the descriptor. Elsewhere
+ * pmix_os_dirpath_create_file() sets it immediately after. */
 
 static int openat_and_close(int dirfd, const char *name, int flags, mode_t mode)
 {
     int fd, save;
 
-    fd = openat(dirfd, name, flags | O_NOFOLLOW, mode);
+    fd = openat(dirfd, name, flags | O_NOFOLLOW | PMIX_O_CLOEXEC, mode);
     save = errno;
     close(dirfd);
     errno = save;
@@ -144,7 +140,7 @@ static int open_trusted_root(const char *root)
         errno = EINVAL;
         return -1;
     }
-    return open(root, PMIX_O_TRAVERSE | O_DIRECTORY);
+    return open(root, PMIX_O_TRAVERSE | O_DIRECTORY | PMIX_O_CLOEXEC);
 }
 
 /**
@@ -276,7 +272,7 @@ static int walk_tail(int fd, const char *root, const char *tail, bool create,
         }
         next = openat(fd, parts[i],
                       (((len - 1) == i) ? last_flags : PMIX_O_TRAVERSE)
-                          | O_DIRECTORY | O_NOFOLLOW);
+                          | O_DIRECTORY | O_NOFOLLOW | PMIX_O_CLOEXEC);
         save = errno;
         close(fd);
         if (0 > next) {
@@ -375,7 +371,7 @@ int pmix_os_dirpath_chgrp_under(const char *root, const char *tail, gid_t gid)
         }
         /* opened for reading, not only to traverse: fchown() is not
          * available on the traverse-only kind */
-        next = openat(fd, parts[i], O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        next = openat(fd, parts[i], O_RDONLY | O_DIRECTORY | O_NOFOLLOW | PMIX_O_CLOEXEC);
         save = errno;
         close(fd);
         if (0 > next) {
@@ -541,7 +537,7 @@ static void close_parent(int dirfd)
  * directory name of its own; this one where it composes only the leaf.
  *
  * @param path  The file to open.
- * @param flags open(2) flags. O_NOFOLLOW is added.
+ * @param flags open(2) flags. O_NOFOLLOW and O_CLOEXEC are added.
  * @param mode  open(2) mode, used only when creating.
  * @retval >=0  A descriptor on the file. The caller closes it.
  * @retval -1   errno says why.
@@ -555,7 +551,7 @@ int pmix_os_dirpath_open_file(const char *path, int flags, mode_t mode)
     if (AT_FDCWD != dirfd && 0 > dirfd) {
         return -1;
     }
-    fd = openat(dirfd, base, flags | O_NOFOLLOW, mode);
+    fd = openat(dirfd, base, flags | O_NOFOLLOW | PMIX_O_CLOEXEC, mode);
     close_parent(dirfd);
     return fd;
 }
@@ -686,7 +682,7 @@ static int dirpath_check_existing(const char *path, const mode_t mode)
     struct stat buf;
     int fd, save;
 
-    fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | PMIX_O_CLOEXEC);
     if (0 > fd && ENOENT != errno) {
         save = errno;
         if (0 == lstat(path, &buf) && S_ISLNK(buf.st_mode)) {
@@ -695,7 +691,7 @@ static int dirpath_check_existing(const char *path, const mode_t mode)
                                (unsigned long) buf.st_uid, (unsigned long) geteuid());
                 return PMIX_ERR_SILENT;
             }
-            fd = open(path, O_RDONLY | O_DIRECTORY);
+            fd = open(path, O_RDONLY | O_DIRECTORY | PMIX_O_CLOEXEC);
         } else {
             errno = save;
         }
@@ -1317,7 +1313,7 @@ bool pmix_os_dirpath_is_empty(const char *path)
         if (NULL == clean) {
             return false;
         }
-        fd = open(clean, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        fd = open(clean, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | PMIX_O_CLOEXEC);
         free(clean);
         if (0 > fd) {
             return false;

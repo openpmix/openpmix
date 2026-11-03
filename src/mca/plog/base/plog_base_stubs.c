@@ -78,7 +78,9 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
                 /* the job this message is ABOUT, which is what scopes
                  * duplicate suppression - not necessarily the job that
                  * sent it, which for a daemon's diagnostic is the
-                 * daemon */
+                 * daemon. In a request a server received from a client
+                 * or tool, pmix_server_log() has set it to that
+                 * requester's own namespace */
                 if (PMIX_STRING == directives[n].value.type) {
                     nspace = directives[n].value.data.string;
                 }

@@ -67,7 +67,9 @@ INPUT PARAMETERS
   the local node is to be used. If the caller's own topology has not yet been
   loaded, the library will attempt to load it (see
   :ref:`PMIx_Load_topology(3) <man3-PMIx_Load_topology>`) or, failing that,
-  relay the request to the local PMIx server.
+  relay the request to the local PMIx server. A topology given here is used
+  only by the calling process's own library: a request relayed to the server
+  is answered from the server's own topology of the node.
 * ``cpuset``: Pointer to a ``pmix_cpuset_t`` identifying the location (the set of
   processing units to which the process is bound) from which distances are to be
   computed. A ``NULL`` value indicates that the caller's own location is to be
@@ -155,9 +157,10 @@ has been invoked.
 
 If the local PMIx library can satisfy the request itself (i.e., it has access to
 a suitable topology and cpuset), it does so directly. Otherwise, a connected
-client or tool relays the request to its local PMIx server. A process acting
-solely as a server, or a process that is not connected to a server and cannot
-compute the distances locally, cannot service the request.
+client or tool relays the request to its local PMIx server, which computes the
+distances from its own topology of the node whatever ``topo`` was given. A
+process acting solely as a server, or a process that is not connected to a
+server and cannot compute the distances locally, cannot service the request.
 
 
 DIRECTIVES
