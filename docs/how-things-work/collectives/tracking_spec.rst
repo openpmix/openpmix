@@ -254,8 +254,21 @@ collective waiting on a finalized rank that never returns then waits
 until its ``PMIX_TIMEOUT``, or indefinitely if it has none. See
 :doc:`/how-things-work/connections`.
 
-.. DRAFT: deregistration does not reach the trackers yet; the
-   connection lifecycle fixes add it.
+A departure also has to reach collectives that do not exist yet. A
+collective over a whole namespace (``PMIX_RANK_WILDCARD`` - what
+``PMIx_Fence(NULL, 0)`` sends, and so what ``MPI_Finalize`` uses) expects
+``nptr->nlocalprocs`` local contributions, so a departed rank must leave
+that count too. Both kinds of departure - an abnormal termination, and the
+host's deregistration - go through one routine,
+``pmix_server_rank_lost()``, which records the rank as departed in every
+tracker in flight and decrements the count, **once**: the rank entry's
+``lost`` flag is how the second of the two to arrive knows the first has
+done it. They can arrive in either order. A host typically deregisters a
+dead process as it reaps it, which can be before the server has read the
+closed socket, and deregistration then closes the socket itself, so the
+lost-connection handler never sees it at all. A departed rank leaves
+``nfinalized`` as well, so that ``nlocalprocs == nfinalized`` still means
+"every remaining local process has finalized".
 
 Status reporting on loss
 ~~~~~~~~~~~~~~~~~~~~~~~~~
