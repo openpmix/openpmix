@@ -259,6 +259,8 @@ APIs (section 3)
    PMIx_server_finalize.3.rst
    PMIx_server_register_nspace.3.rst
    PMIx_server_deregister_nspace.3.rst
+   PMIx_server_register_session.3.rst
+   PMIx_server_deregister_session.3.rst
    PMIx_server_register_client.3.rst
    PMIx_server_deregister_client.3.rst
    PMIx_server_setup_fork.3.rst

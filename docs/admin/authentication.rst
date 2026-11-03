@@ -164,7 +164,7 @@ These MCA parameters adjust the checks PMIx makes on connections:
        whose buffer cannot grow within the limit is closed. 0 means no
        limit.
    * - ``ptl_base_max_msg_size``
-     - 0
+     - 32
      - Largest message accepted, in megabytes. 0 means no limit.
    * - ``ptl_base_server_access``
      - none

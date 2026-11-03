@@ -44,9 +44,29 @@ Mixing versions at run time
 
 Clients and servers of different PMIx releases work together:
 
-* a server accepts clients and tools from PMIx v2.1 on;
+* a server accepts clients and tools from PMIx v2.1 on, **when it is
+  set up to take them** (below);
 * a client or tool connects to servers from PMIx v3.2 on.
 
 This matters most for containers, which carry their own copy of the
-PMIx client library. A container built with an older release runs
-under a server from the latest one. See :ref:`label-version-numbers`.
+PMIx client library.
+
+**A server takes clients and tools of releases before v7.0 only when
+both of these hold:**
+
+* PMIx was configured with ``--enable-legacy-peers``. It is off by
+  default.
+* The server is told to take them: the ``ptl_base_legacy_peers`` MCA
+  parameter set to ``true`` where the host environment's servers read
+  it (a parameter file, or their environment), or the host's
+  ``PMIX_SERVER_LEGACY_PEERS`` attribute.
+
+Without them, such a client does not connect. It runs as a
+*singleton* - a process on its own, unaware of the rest of its job -
+after printing one error line. An application in a container built
+with an older PMIx release behaves this way under a default v7
+server. Either set the server up to take earlier releases, or update
+the PMIx library in the container.
+
+See :ref:`label-version-numbers` and
+:ref:`label-sysadmin-authentication`.

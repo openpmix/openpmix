@@ -9,18 +9,11 @@ The following ``configure`` command line options are for PMIx's
 
 * ``--with-hwloc[=VALUE]``:
 * ``--with-libevent[=VALUE]``:
-* ``--with-libev[=VALUE]``:
 
 These  options specify where to find
   the headers and libraries for the `Hwloc
-  <https://www.open-mpi.org/projects/hwloc/>`_, `Libevent
-  <https://libevent.org/>`_, and `libev <https://metacpan.org/dist/EV/view/libev/ev.pod/>`_ libraries,
-  respectively.
-
-.. note:: Either ``libevent`` *or* ``libev`` must be provided.
-          PMIx's ``configure`` script will error out if both
-          are specified. In the absence of user direction,
-          PMIx will default to using ``libevent``.
+  <https://www.open-mpi.org/projects/hwloc/>`_ and `Libevent
+  <https://libevent.org/>`_ libraries, respectively.
 
   The following ``VALUE``\s are permitted:
 
@@ -30,7 +23,6 @@ These  options specify where to find
 
 * ``--with-hwloc-libdir=LIBDIR``:
 * ``--with-libevent-libdir=LIBDIR``:
-* ``--with-libev-libdir=LIBDIR``:
   :ref:`See the configure CLI
   options conventions <building-pmix-cli-options-conventions-label>`
   for a description of these options.

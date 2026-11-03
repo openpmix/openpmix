@@ -47,7 +47,7 @@ Required 3rd party libraries
 Note that PMIx uses two third-party libraries for core
 functionality:
 
-* Libevent or Libev
+* Libevent
 * Hardware Locality ("hwloc")
 
 These are discussed in detail in the :ref:`required support libraries

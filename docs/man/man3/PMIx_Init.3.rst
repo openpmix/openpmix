@@ -188,7 +188,7 @@ Runtime attributes
   variable is honored, defaulting to the ``hash`` component.
 * ``PMIX_EVENT_BASE`` (void\*) |mdash| pointer to an ``event_base`` to use in
   place of the internal progress thread. The event base **must** be compatible
-  with the event library (e.g., libevent or libev) the PMIx implementation was
+  with the libevent library the PMIx implementation was
   built against.
 * ``PMIX_EXTERNAL_PROGRESS`` (bool) |mdash| the host will progress the PMIx
   library as needed via calls to ``PMIx_Progress`` (see PMIx_Progress(3)),

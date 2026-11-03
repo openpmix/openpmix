@@ -144,23 +144,61 @@ Two kinds of program are exceptions:
   the main such program, which is why each PRRTE series works only
   with particular PMIx series (see :doc:`/admin/prrte`).
 
-The promise was broken in two places between v5.0 and v7.0. A program
-built against PMIx v5.0 that uses either of these needs attention
-before it runs against v7.0:
+The promise was broken in two places between v5.0 and v7.0.
 
-* The ``PMIx_Proc_stats_*``, ``PMIx_Disk_stats_*``,
-  ``PMIx_Net_stats_*`` and ``PMIx_Node_stats_*`` functions, and the
-  ``pmix_*_stats_t`` types, were removed. A program that calls them
-  does not load against v7.0.
-* Three attributes had the same string as another attribute, and their
-  strings were changed to separate them:
-  ``PMIX_FABRIC_DEVICE_COORDINATES``,
-  ``PMIX_JOB_CTRL_CHECKPOINT_TIMEOUT``, and
-  ``PMIX_QUERY_SUPPORTED_QUALIFIERS``. A program built against v5.0
-  still sends the old string, which now means the other attribute.
+**Provisional resource-usage structures, replaced by the final
+definitions.** v5.0 defined four structures for resource-usage
+statistics, with functions to manage them. They were *provisional*,
+as the PMIx Standard defines the term: proposed, but not yet decided
+by the Standard's committee, and open to change. The committee has
+since decided to represent these quantities as arrays of attributes.
+v7.0 implements that final definition and drops the provisional one.
+Removed:
 
-.. DRAFT: the list above depends on whether v7 restores the removed
-   stats functions - Ralph to decide.
+* the types ``pmix_proc_stats_t``, ``pmix_node_stats_t``,
+  ``pmix_disk_stats_t``, and ``pmix_net_stats_t``, and their data type
+  codes ``PMIX_PROC_STATS``, ``PMIX_NODE_STATS``, ``PMIX_DISK_STATS``,
+  and ``PMIX_NET_STATS``;
+* the functions ``PMIx_Proc_stats_construct``, ``_destruct``,
+  ``_create``, and ``_free``, and the same four for ``Node``, ``Disk``,
+  and ``Net``;
+* the ``PMIX_PROC_STATS_*``, ``PMIX_NODE_STATS_*``,
+  ``PMIX_DISK_STATS_*``, and ``PMIX_NET_STATS_*`` macros.
+
+No v5.0 API returned these structures; a program could only build them
+itself. A program that uses them does not build against v7.0, and one
+built against v5.0 cannot run against it. To get resource usage in
+v7.0, call ``PMIx_Process_monitor`` with
+``PMIX_MONITOR_PROC_RESOURCE_USAGE`` (or the ``NODE``, ``DISK``, or
+``NET`` form). The results are arrays of attributes such as
+``PMIX_PROC_RSS`` and ``PMIX_NODE_LOAD_AVG``, one for each field of the
+old structures.
+
+**Three attribute strings, changed to fix a bug.** In v5.0, three
+attributes had the same string as another attribute, so the library
+could not tell the two apart. v7.0 gives each its own string:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 30 30
+
+   * - Attribute
+     - v5.0 string, shared with
+     - v7.0 string
+   * - ``PMIX_FABRIC_DEVICE_COORDINATES``
+     - ``pmix.fab.coord``, ``PMIX_FABRIC_COORDINATES``
+     - ``pmix.fabdev.coord``
+   * - ``PMIX_JOB_CTRL_CHECKPOINT_TIMEOUT``
+     - ``pmix.jctrl.ckptsig``, ``PMIX_JOB_CTRL_CHECKPOINT_SIGNAL``
+     - ``pmix.jctrl.ckpttime``
+   * - ``PMIX_QUERY_SUPPORTED_QUALIFIERS``
+     - ``pmix.qry.quals``, ``PMIX_QUERY_QUALIFIERS``
+     - ``pmix.qry.supqual``
+
+A program built against v5.0 that uses one of these three still sends
+the v5.0 string, which v7.0 reads as the other attribute of the pair.
+Rebuild it against v7.0 to use the new string. A program that uses the
+other attribute of each pair is unaffected.
 
 Cross-Version Compatibility
 ---------------------------
@@ -176,7 +214,7 @@ That support has limits in both directions:
 
 Connections outside those limits are refused, with a message naming the version that was found, rather than being allowed to fail later in some less obvious way. In particular:
 
-* PMIx v1.x clients cannot connect to a current server at all: they only support the ``usock`` transport, which is no longer provided.
+* PMIx v1.x clients cannot connect to a current server at all: they support only the original ``usock`` transport, whose protocol no current server speaks. (The local-socket transport of v7, also named ``usock``, is a different protocol.)
 * PMIx v2.0.x clients are not supported. A server does not advertise itself in the form they look for, and one that reaches a server anyway is refused at its handshake, which does not identify the buffer format it uses, so a server cannot reliably read its messages.
 * A current client or tool will not connect to a server older than v3.2. Such a server accepts the connection, but cannot answer requests that current clients make during initialization.
 * PMIx v4.1 is no longer maintained. Its clients and tools cannot use a server built with ``--enable-debug``: such a server has its clients use fully described buffers, and a v4.1 library built without that option builds its first request in its own default format and fails ``PMIx_Init`` with ``PMIX_ERR_PACK_MISMATCH``. They work with a server built without ``--enable-debug``.
