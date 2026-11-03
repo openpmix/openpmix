@@ -1202,6 +1202,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        definitions. Error if given without a PMIX_SESSION_APP description.
 #define PMIX_SESSION_APP                    "pmix.ssn.app"          // (pmix_data_array_t*) Array of pmix_app_t to be executed in the assigned
                                                                     //        session upon session instantiation
+#define PMIX_SESSION_PROVISION              "pmix.ssn.pvn"          // (pmix_data_array_t*) description of nodes to be provisioned with
+                                                                    //       specified image
 #define PMIX_SESSION_PROVISION_NODES        "pmix.ssn.pvnnds"       // (char*) regex identifying nodes that are to be provisioned
 #define PMIX_SESSION_PROVISION_IMAGE        "pmix.ssn.pvnimg"       // (char*) name of the image that is to be provisioned
 
