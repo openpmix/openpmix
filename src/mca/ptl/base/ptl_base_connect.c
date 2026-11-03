@@ -510,6 +510,33 @@ static pmix_status_t check_connections(pmix_list_t *connections)
     return PMIX_SUCCESS;
 }
 
+/* Pass over the servers a search found whose files say they run as a
+ * user this process does not take a server of - before they are counted,
+ * so that another user's server beside the one we want is no reason to
+ * refuse both */
+static void drop_unowned(pmix_list_t *connections)
+{
+    pmix_connection_t *cn, *next;
+
+    PMIX_LIST_FOREACH_SAFE (cn, next, connections, pmix_connection_t) {
+        if (!pmix_ptl_base_search_owner_ok(cn)) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:tool: passing over the server %s - its file is owned by "
+                                "uid %lu, whose server this process does not take",
+                                (NULL == cn->uri) ? "(unknown)" : cn->uri,
+                                (unsigned long) cn->owner);
+            pmix_list_remove_item(connections, &cn->super);
+            PMIX_RELEASE(cn);
+        }
+    }
+}
+
+pmix_status_t pmix_ptl_base_check_found(pmix_list_t *connections)
+{
+    drop_unowned(connections);
+    return check_connections(connections);
+}
+
 /* The address to connect to from a server's file: its local transport's
  * when the file names one, else the first line's */
 static void take_address(pmix_connection_t *cn, char **suri)
@@ -619,33 +646,34 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
 
     PMIX_CONSTRUCT(&connections, pmix_list_t);
     /* in the pmix-user directories of the users whose servers we may talk
-     * to - each looked in, not below - and, only with legacy peers on,
-     * anywhere below the system tmpdir, where a server of an earlier
-     * release writes */
+     * to - each looked in, not below - and, only with legacy peers on and
+     * no server of a user we take found there, anywhere below the system
+     * tmpdir, where a server of an earlier release writes. A server whose
+     * file says it is another user's is passed over before the servers
+     * found are counted */
     dirs = pmix_ptl_base_rndz_dirs(false);
-    rc = PMIX_ERR_NOT_FOUND;
     for (n = 0; NULL != dirs && NULL != dirs[n]; n++) {
-        if (PMIX_SUCCESS == pmix_ptl_base_df_search_depth(dirs[n], filename, exact, iptr, niptr,
-                                                          optional, &connections, 0)) {
-            rc = PMIX_SUCCESS;
-        }
-    }
-    PMIx_Argv_free(dirs);
-    if (PMIX_SUCCESS != rc && pmix_ptl_base_legacy_walk()) {
-        rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir, filename, exact, iptr, niptr,
-                                     optional, &connections);
-    }
-    if (PMIX_SUCCESS == rc) {
-        rc = check_connections(&connections);
-        if (PMIX_SUCCESS != rc) {
+        rc = pmix_ptl_base_df_search_depth(dirs[n], filename, exact, iptr, niptr, optional,
+                                           &connections, 0);
+        if (PMIX_ERR_NOMEM == rc) {
+            PMIx_Argv_free(dirs);
             PMIX_LIST_DESTRUCT(&connections);
             return rc;
         }
+    }
+    PMIx_Argv_free(dirs);
+    drop_unowned(&connections);
+    if (0 == pmix_list_get_size(&connections) && pmix_ptl_base_legacy_walk()) {
+        rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir, filename, exact, iptr, niptr,
+                                     optional, &connections);
+        if (PMIX_ERR_NOMEM == rc) {
+            PMIX_LIST_DESTRUCT(&connections);
+            return rc;
+        }
+    }
+    rc = pmix_ptl_base_check_found(&connections);
+    if (PMIX_SUCCESS == rc) {
         rc = take_connection(peer, &connections, nspace, rank, suri);
-        PMIX_LIST_DESTRUCT(&connections);
-        return rc;
-    } else if (1 < pmix_list_get_size(&connections)) {
-        pmix_show_help("help-ptl-base.txt", "too-many-conns", true);
     }
     PMIX_LIST_DESTRUCT(&connections);
     return rc;
@@ -684,6 +712,7 @@ static pmix_status_t trysessions(pmix_peer_t *peer, char **nspace, pmix_rank_t *
         PMIX_LIST_DESTRUCT(&connections);
         return rc;
     }
+    drop_unowned(&connections);
     if (0 < pmix_list_get_size(&connections)) {
         first = (pmix_connection_t *) pmix_list_get_first(&connections);
         PMIX_LIST_FOREACH (cn, &connections, pmix_connection_t) {

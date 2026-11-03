@@ -929,6 +929,7 @@ static pmix_status_t lookup_xtcpcb(const tcp_tuple_t *t, uid_t *uid)
 #endif /* PMIX_HAVE_XTCPCB */
 
 bool pmix_util_getid_test_no_tcp_table = false;
+int pmix_util_getid_test_unlisted = 0;
 
 pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid)
 {
@@ -941,7 +942,10 @@ pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid)
         return rc;
     }
 
-    if (pmix_util_getid_test_no_tcp_table) {
+    if (0 < pmix_util_getid_test_unlisted) {
+        --pmix_util_getid_test_unlisted;
+        rc = PMIX_ERR_NOT_FOUND;
+    } else if (pmix_util_getid_test_no_tcp_table) {
         rc = PMIX_ERR_NOT_SUPPORTED;
     } else {
 #if PMIX_HAVE_SOCK_DIAG

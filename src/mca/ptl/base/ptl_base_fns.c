@@ -1356,21 +1356,90 @@ pmix_ptl_judgement_t pmix_ptl_base_judge_server(const char *uidmap, const char *
 }
 
 /* How check_peer waits for a TCP connection the kernel's table does not
- * list yet - one the server has yet to accept: CHECK_WAIT asks again for
- * up to about a second, sleeping between (the blocking connect, on its
+ * list yet - one the server has yet to accept: CHECK_WAIT asks again,
+ * sleeping between, for as long as the connect's deadline runs -
+ * ptl_base_handshake_wait_time - or with no deadline CHECK_TRIES times,
+ * and then refuses the server as unidentified (the blocking connect, on its
  * caller's thread); CHECK_ONCE asks once and returns PMIX_ERR_NOT_FOUND,
  * saying nothing, for the caller to ask again later (the event-driven
- * connect, which must not hold the progress thread); CHECK_LAST asks once
- * more and takes no answer for an answer */
+ * connect, which must not hold the progress thread, and asks again from a
+ * timer on the same terms); CHECK_LAST asks once more and takes no answer
+ * for an answer */
 typedef enum {
     CHECK_WAIT,
     CHECK_ONCE,
     CHECK_LAST
 } check_wait_t;
 
-/* the delay before the n'th look again, and how many there are */
+/* how many times to look again with no deadline, and the delay before the
+ * n'th look again: doubling from a millisecond, up to 64 */
 #define CHECK_TRIES 10
-#define CHECK_DELAY_USEC(n) (1000L << (n))
+#define CHECK_DELAY_USEC(n) (1000L << (((n) < 6) ? (n) : 6))
+
+/* Has the server closed its end - or the connection failed - while we
+ * waited for its kernel's table to list it? A server sends nothing before
+ * our request, so anything readable is the close */
+static bool peer_closed(int sd)
+{
+    char c;
+    ssize_t n = recv(sd, &c, 1, MSG_PEEK | MSG_DONTWAIT);
+
+    return (0 == n || (0 > n && EAGAIN != errno && EWOULDBLOCK != errno && EINTR != errno));
+}
+
+/* The time now plus `secs` - a connect's deadline */
+static void deadline_in(int secs, struct timeval *when)
+{
+    gettimeofday(when, NULL);
+    when->tv_sec += secs;
+}
+
+/* Wait, blocking, while the kernel's table does not list the TCP
+ * connection on `sd`: until it does (PMIX_SUCCESS, with the uid it
+ * names), the server closes its end (PMIX_ERR_UNREACH), or the deadline
+ * passes - with no deadline, CHECK_TRIES more looks - without finding it
+ * (PMIX_ERR_NOT_FOUND). Any other answer of the table's is returned as it
+ * is */
+static pmix_status_t wait_listed(int sd, uid_t *kuid, const struct timeval *deadline)
+{
+    struct timeval tv, now;
+    long left;
+    pmix_status_t rc = PMIX_ERR_NOT_FOUND;
+    int n;
+
+    for (n = 0; PMIX_ERR_NOT_FOUND == rc; n++) {
+        if (peer_closed(sd)) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:base:connect: the server closed the connection before "
+                                "its kernel listed it");
+            return PMIX_ERR_UNREACH;
+        }
+        tv.tv_sec = 0;
+        tv.tv_usec = CHECK_DELAY_USEC(n);
+        if (NULL == deadline) {
+            if (CHECK_TRIES <= n) {
+                return PMIX_ERR_NOT_FOUND;
+            }
+        } else {
+            gettimeofday(&now, NULL);
+            left = (deadline->tv_sec - now.tv_sec) * 1000000L +
+                   (deadline->tv_usec - now.tv_usec);
+            if (0 >= left) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "ptl:base:connect: the server's kernel did not list the "
+                                    "connection within %d seconds",
+                                    pmix_ptl_base.handshake_wait_time);
+                return PMIX_ERR_NOT_FOUND;
+            }
+            if (left < tv.tv_usec) {
+                tv.tv_usec = left;
+            }
+        }
+        retry_wait(&tv);
+        rc = pmix_util_getid_tcp(sd, kuid);
+    }
+    return rc;
+}
 
 /* Who a rendezvous file we searched for, or found at a fixed name, says
  * runs its server - see pmix_ptl_base.rndz_owner_given */
@@ -1399,7 +1468,6 @@ static pmix_status_t check_peer(pmix_peer_t *peer, bool given, uid_t uid, gid_t 
     uid_t kuid = 0;
     gid_t kgid = 0;
     pid_t kpid = 0;
-    size_t n;
     bool tcp = false, answered = true;
     char want[128];
     struct sockaddr_storage sa;
@@ -1447,16 +1515,15 @@ static pmix_status_t check_peer(pmix_peer_t *peer, bool given, uid_t uid, gid_t 
                 return PMIX_ERR_NOT_FOUND;
             }
             if (PMIX_ERR_NOT_FOUND == rc && CHECK_WAIT == wait) {
-                struct timeval tv;
+                struct timeval deadline;
 
-                for (n = 0; PMIX_ERR_NOT_FOUND == rc && n < CHECK_TRIES; n++) {
-                    tv.tv_sec = 0;
-                    tv.tv_usec = CHECK_DELAY_USEC(n);
-                    retry_wait(&tv);
-                    rc = pmix_util_getid_tcp(peer->sd, &kuid);
+                if (0 < pmix_ptl_base.handshake_wait_time) {
+                    deadline_in(pmix_ptl_base.handshake_wait_time, &deadline);
                 }
+                rc = wait_listed(peer->sd, &kuid,
+                                 (0 < pmix_ptl_base.handshake_wait_time) ? &deadline : NULL);
             }
-            if (PMIX_ERR_NOMEM == rc) {
+            if (PMIX_ERR_NOMEM == rc || PMIX_ERR_UNREACH == rc) {
                 return rc;
             }
             if (PMIX_ERR_NOT_SUPPORTED == rc) {
@@ -2351,17 +2418,6 @@ static void cnct_connected(int sd, short args, void *cbdata)
  * one that never does ends as any silent server does, PMIX_ERR_TIMEOUT.
  * With no deadline, as long as the blocking connect would. Then build the
  * same connect-ack send_connect_ack sends */
-/* Has the server closed its end - or the connection failed - while we
- * waited for its kernel's table to list it? A server sends nothing before
- * our request, so anything readable is the close */
-static bool peer_closed(int sd)
-{
-    char c;
-    ssize_t n = recv(sd, &c, 1, MSG_PEEK | MSG_DONTWAIT);
-
-    return (0 == n || (0 > n && EAGAIN != errno && EWOULDBLOCK != errno && EINTR != errno));
-}
-
 static void cnct_check(int sd, short args, void *cbdata)
 {
     pmix_ptl_connect_op_t *op = (pmix_ptl_connect_op_t *) cbdata;
@@ -2384,7 +2440,7 @@ static void cnct_check(int sd, short args, void *cbdata)
         rc = PMIX_ERR_UNREACH;
     } else if (PMIX_ERR_NOT_FOUND == rc && CHECK_ONCE == mode) {
         tv.tv_sec = 0;
-        tv.tv_usec = CHECK_DELAY_USEC((6 < op->check_tries) ? 6 : op->check_tries);
+        tv.tv_usec = CHECK_DELAY_USEC(op->check_tries);
         ++op->check_tries;
         pmix_event_assign(&op->ev, pmix_globals.evbase, -1, 0, cnct_check, op);
         PMIX_POST_OBJECT(op);

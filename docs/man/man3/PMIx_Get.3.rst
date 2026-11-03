@@ -276,9 +276,6 @@ available:
   directory assigned to the namespace.
 * ``PMIX_PROCDIR`` (char*) |mdash| sub-directory of the namespace directory
   assigned to the process.
-* ``PMIX_TDIR_RMCLEAN`` (bool) |mdash| the resource manager will remove the
-  directories and files it created in ``PMIX_TMPDIR``. A host that sets it
-  typically removes everything below that directory when the session ends.
 
 **Process state and launch**
 

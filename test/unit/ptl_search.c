@@ -36,6 +36,10 @@
  * starts, so a tree built deeper than any server places its files is not
  * followed to the bottom.
  *
+ * A search counts only the servers whose files are owned by a user whose
+ * server this process takes: a running server of another user's beside
+ * ours does not make the search find too many.
+ *
  * A search for one particular server - by pid or by namespace - matches
  * the file's whole name, so asking for "tool.12" does not find "tool.123".
  *
@@ -674,6 +678,93 @@ static void test_cloexec(const char *argv0)
     unlink(path);
 }
 
+/* A search counts only the servers whose files say they run as a user
+ * this process takes a server of. Two files whose servers both run - each
+ * names a process that is running and says nothing of a lock - are found
+ * by the walk. Both our own: they name two servers, and the search is
+ * refused as finding too many. One of them another user's: it is passed
+ * over before the servers are counted, and the search takes ours. Running
+ * as root the file is given to another user; otherwise the owner the walk
+ * recorded for it is set to another uid, as the walk records it for a
+ * file of another user's */
+static void test_search_owner(void)
+{
+    char dir[PMIX_PATH_MAX + 16], path[PMIX_PATH_MAX + 160], buf[256];
+    const char *names[2] = {"pmix.o.mine", "pmix.o.other"};
+    uid_t other = (0 == geteuid()) ? 4242 : geteuid() + 4242;
+    pmix_list_t connections;
+    pmix_connection_t *cn;
+    pmix_status_t rc;
+    FILE *fp;
+    int n;
+
+    snprintf(dir, sizeof(dir), "%s.owner", searchdir);
+    if (0 != mkdir(dir, 0700)) {
+        report("search owner: setup", 0, "mkdir failed");
+        return;
+    }
+    for (n = 0; n < 2; n++) {
+        snprintf(buf, sizeof(buf), "ownns%d.0;tcp4://127.0.0.1:%d\n6.1.0\n%lu\n0:0\nnow\n", n,
+                 4270 + n, (unsigned long) getppid());
+        snprintf(path, sizeof(path), "%s/%s", dir, names[n]);
+        if (NULL == (fp = fopen(path, "w"))) {
+            report("search owner: setup", 0, "could not write a file");
+            rmdir(dir);
+            return;
+        }
+        fputs(buf, fp);
+        fclose(fp);
+        chmod(path, 0644);
+    }
+
+    PMIX_CONSTRUCT(&connections, pmix_list_t);
+    rc = pmix_ptl_base_df_search_depth(dir, "pmix.o.", false, NULL, 0, true, &connections, 0);
+    if (PMIX_SUCCESS != rc || 2 != pmix_list_get_size(&connections)) {
+        report("search owner: both running servers' files are found", 0, PMIx_Error_string(rc));
+    } else {
+        rc = pmix_ptl_base_check_found(&connections);
+        report("search owner: two servers of our own are too many", PMIX_ERR_UNREACH == rc,
+               PMIx_Error_string(rc));
+    }
+    PMIX_LIST_DESTRUCT(&connections);
+
+    snprintf(path, sizeof(path), "%s/%s", dir, names[1]);
+    if (0 == geteuid() && 0 != chown(path, other, (gid_t) -1)) {
+        report("search owner: owner fixture", 0, "could not give the file to another user");
+    } else {
+        PMIX_CONSTRUCT(&connections, pmix_list_t);
+        rc = pmix_ptl_base_df_search_depth(dir, "pmix.o.", false, NULL, 0, true, &connections, 0);
+        if (0 != geteuid()) {
+            fprintf(stdout, "  (not running as root: the owner recorded for %s is set to uid "
+                            "%lu)\n",
+                    names[1], (unsigned long) other);
+            PMIX_LIST_FOREACH (cn, &connections, pmix_connection_t) {
+                if (NULL != cn->nspace && 0 == strcmp(cn->nspace, "ownns1")) {
+                    cn->owner = other;
+                }
+            }
+        }
+        if (PMIX_SUCCESS != rc || 2 != pmix_list_get_size(&connections)) {
+            report("search owner: the other user's file is found by the walk", 0,
+                   PMIx_Error_string(rc));
+        } else {
+            rc = pmix_ptl_base_check_found(&connections);
+            cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+            report("search owner: beside another user's running server, ours is taken",
+                   PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&connections) &&
+                       NULL != cn->nspace && 0 == strcmp(cn->nspace, "ownns0"),
+                   PMIX_SUCCESS == rc ? "the other user's server was kept"
+                                      : PMIx_Error_string(rc));
+        }
+        PMIX_LIST_DESTRUCT(&connections);
+    }
+    for (n = 0; n < 2; n++) {
+        snprintf(path, sizeof(path), "%s/%s", dir, names[n]);
+        unlink(path);
+    }
+    rmdir(dir);
+}
+
 /* A server the kernel cannot name is connected to only where its address
  * came from a source that vouches for it. A file the caller named does,
  * when it is the file at the name, only its owner can write it, and it is
@@ -1018,6 +1109,7 @@ int main(int argc, char **argv)
     test_df_search_exact();
     test_df_search_kept();
     test_df_search_depth();
+    test_search_owner();
     test_query_servers();
     test_rndz_file();
     test_named_file();

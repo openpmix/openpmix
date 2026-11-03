@@ -321,7 +321,10 @@ Four functions, in this order, all on the progress thread:
    thread-shift to `client_answered` / `tool_answered`.
 
    **Tools of one name go to the host one at a time.** `tool_settled`
-   checks only the credential and the foreign-user rule, then appends
+   checks only the credential and the foreign-user rule (a tool of a uid
+   other than `pmix_globals.uid`, root's, and the `PMIX_USERID` the host
+   gave `setup_listener` - `pmix_ptl_base.host_uid` - is refused
+   `PMIX_ERR_NOT_SUPPORTED` without `allow_foreign_tools`), then appends
    the connection to `pmix_ptl_base.tool_queue`. `next_tool` takes, in
    order, every queued tool for which `name_busy` is false - no tool of
    its name on `pmix_ptl_base.tool_asking` (the tools the host is
@@ -525,11 +528,13 @@ things take it off:
    credential has been read.
 
    A waiting tool's uid is known, and the waiting tools are counted per
-   uid: a uid other than the server's (`pmix_globals.uid`) and root's may
-   have at most a quarter of `pending_cap` waiting (`tool_share()`,
-   rounded down, at least 1), and a tool of a uid at its share is refused
-   with `PMIX_ERR_OUT_OF_RESOURCE` as it is queued, as one beyond the cap
-   is. The server's uid and root are held to the cap alone. The count is
+   uid: a uid other than the server's (`pmix_globals.uid`), root's and
+   the host's `PMIX_USERID` (`host_side_uid()`) may have at most a
+   quarter of `pending_cap` waiting (`tool_share()`, rounded down, at
+   least 1), and a tool of a uid at its share is refused with
+   `PMIX_ERR_OUT_OF_RESOURCE` as it is queued, as one beyond the cap is.
+   The server's uid, root and the host's `PMIX_USERID` are held to the
+   cap alone. The count is
    `pmix_ptl_base.tool_uids` (`pmix_ptl_base_waiting_tools_of()`):
    `pmix_ptl_base_count_tool` sets `pnd->uid_counted` as the tool joins
    `tool_queue`, and `pmix_ptl_base_uncount_tool` takes it back, once -
@@ -801,14 +806,20 @@ server path; a client has its own, simpler one (`ptl_base_client.c`).
     asked again (`check_peer()`'s `check_wait_t`), and any failure other
     than `NOT_SUPPORTED` then refuses the server (`server-unidentified`;
     `PMIX_ERR_NOMEM` is returned as is), including
-    `PMIX_ERR_OUT_OF_RESOURCE`. The blocking connect sleeps between asks
-    for up to about a second (`CHECK_WAIT`). The event-driven one
-    (`cnct_check()`) must not hold the progress thread: it asks once
-    (`CHECK_ONCE`) and, while the table does not list the connection,
-    asks again from a timer, for as long as the connect's own deadline
-    runs - so a server that never accepts ends in `PMIX_ERR_TIMEOUT`, as
-    any silent server does (`tool_attach_nb.c`) - or, with no deadline,
-    ten times (`CHECK_LAST` the last). The asking again is not optional: our end is
+    `PMIX_ERR_OUT_OF_RESOURCE`. Both connects ask again on the same
+    terms, with the same delays (`CHECK_DELAY_USEC`): for as long as
+    `handshake_wait_time` runs - or, with no deadline, ten times. A
+    server still not listed then is, for the blocking connect, refused as
+    unidentified (`server-unidentified`, `PMIX_ERR_INVALID_CRED`), and
+    for the event-driven one ends in `PMIX_ERR_TIMEOUT`, as any silent
+    server does. A server that closes its end meanwhile
+    (`peer_closed()`) is `PMIX_ERR_UNREACH` at once. The blocking connect
+    sleeps between asks (`CHECK_WAIT`, `wait_listed()`, its deadline
+    `handshake_wait_time` from the first ask; `ptl_check_server.c`, with
+    `pmix_util_getid_test_unlisted`). The event-driven one (`cnct_check()`)
+    must not hold the progress thread: it asks once (`CHECK_ONCE`) and
+    asks again from a timer while the connect's own deadline runs
+    (`tool_attach_nb.c`), `CHECK_LAST` being the last with none. The asking again is not optional: our end is
     connected on the server's SYN-ACK, and the server's is not
     `ESTABLISHED` until its kernel has taken our ACK, which on loopback
     can come a moment later - until then macOS shows it in
@@ -886,7 +897,11 @@ Things to keep straight:
   search (`trysearch`) looks in each `pmix-user.<uid>` directory - our
   own, root's, then each `ptl_base_server_access` user's - with
   `pmix_ptl_base_df_search_depth(..., 0)`, not below, collecting every
-  match before `check_connections`; a system role (`trysystem`, and the
+  match; a file `pmix_ptl_base_search_owner_ok()` refuses - owned by a
+  user whose server `check_peer` would not take - is dropped
+  (`drop_unowned`, also in `trysessions`) before `check_connections`
+  counts them, so another user's running server beside ours is not
+  `too-many-conns` (`pmix_ptl_base_check_found`, `ptl_search.c`); a system role (`trysystem`, and the
   singleton's lookup in `ptl_base_client.c`) tries the system tmpdir the
   host named, else `/run/pmix` and `/var/run/pmix`, then root's and our
   own `pmix-user` directory and the listed users', first success wins.
@@ -1408,7 +1423,7 @@ three rules apply:
 - **`pmix_ptl_close` puts every global back to its initializer value.**
   That covers more than the allocated strings. The listener's role flags
   (`legacy_peers`, `tool_support`, `system_tool`, `session_tool`,
-  `allow_foreign_tools`) are set only from the
+  `allow_foreign_tools`, `host_uid_given`) are set only from the
   directives the caller passes, never cleared by the listener itself. A
   flag left over from the last cycle once made a second server listen on
   a public interface it never asked for. Add a new flag to the reset.
@@ -1503,8 +1518,8 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_loopback.c` | a server's request to itself reaches its switchyard and is answered once; a loopback reply nobody waits for is not read as a command |
 | `test/unit/ptl_listener.c` | accept out of descriptors pauses the listener and it accepts again; finalize while paused; the retry policy for each kind of accept error; mistyped, out-of-range and empty directives; a directive-named report file is removed; the report file has no group or other write bit |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
-| `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one; `test_vouched`: a named file vouches for its server whatever release it names and whether or not its lock is held; not group-writable, nor at a fixed name nobody named; as root, not another known user's, and yes for an owner from outside the user namespace (a fake map); `test_named_file`: a FIFO or a symbolic link given as a named file is refused at once, the file itself read; `test_cloexec`: a contact file, `pmix_fd_fopen_cloexec` (read and append) and `pmix_os_dirpath_open_file` give descriptors an exec'd child does not have |
-| `test/unit/ptl_accept.c` | (among its cases) a rank's token bound to the first client pid on the local socket: that pid connects again, a client in a forked child is refused before the host is asked (after a lost connection or a finalize), and preparing, re-registering, or deregistering and preparing the rank again lets another pid connect; a tool on the rank is taken from another pid once the rank has no live connection, gets `PMIX_ERR_EXISTS` while a client of it is live, and binds nothing, so a client in another pid connecting after it binds the token; connections still sending their connect-ack hold no more than `ptl_base_max_pending_bytes` between them, the ones beyond it are dropped with `PMIX_ERR_OUT_OF_RESOURCE`, the total returns to zero, and a client still connects; a uid other than the server's and root's has a quarter of the waiting-tool cap, root and the server's uid fill it; `next_tool` passes over a queue of tools of one name once per run; a client naming an unregistered namespace or rank is answered `PMIX_ERR_INVALID_CRED`; a connect-ack naming 263.0.0, 6.1.256 or 255.255.255 is `PMIX_ERR_BAD_PARAM` |
+| `test/unit/ptl_search.c` | `test_search_owner`: two running servers' files of our own are `too-many-conns`, and with one another user's it is passed over and ours taken; both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one; `test_vouched`: a named file vouches for its server whatever release it names and whether or not its lock is held; not group-writable, nor at a fixed name nobody named; as root, not another known user's, and yes for an owner from outside the user namespace (a fake map); `test_named_file`: a FIFO or a symbolic link given as a named file is refused at once, the file itself read; `test_cloexec`: a contact file, `pmix_fd_fopen_cloexec` (read and append) and `pmix_os_dirpath_open_file` give descriptors an exec'd child does not have |
+| `test/unit/ptl_accept.c` | (among its cases) a rank's token bound to the first client pid on the local socket: that pid connects again, a client in a forked child is refused before the host is asked (after a lost connection or a finalize), and preparing, re-registering, or deregistering and preparing the rank again lets another pid connect; a tool on the rank is taken from another pid once the rank has no live connection, gets `PMIX_ERR_EXISTS` while a client of it is live, and binds nothing, so a client in another pid connecting after it binds the token; connections still sending their connect-ack hold no more than `ptl_base_max_pending_bytes` between them, the ones beyond it are dropped with `PMIX_ERR_OUT_OF_RESOURCE`, the total returns to zero, and a client still connects; a uid other than the server's and root's has a quarter of the waiting-tool cap, root and the server's uid fill it, and the host's `PMIX_USERID` waits beyond the share; without `PMIX_SERVER_ALLOW_FOREIGN_TOOLS` a tool of the host's `PMIX_USERID`, or root's, is put to the host and one of another uid refused; `next_tool` passes over a queue of tools of one name once per run; a client naming an unregistered namespace or rank is answered `PMIX_ERR_INVALID_CRED`; a connect-ack naming 263.0.0, 6.1.256 or 255.255.255 is `PMIX_ERR_BAD_PARAM` |
 | `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them; at the pending-connection cap the oldest is dropped, and the default cap follows the descriptor limit |
 | `test/unit/ptl_nosigpipe.c` | a blocking send and a vector write to a peer that has reset return an error, with `SIGPIPE` at its default action |
 | `test/unit/ptl_recv_timeout.c` | `pmix_ptl_base_recv_blocking` ends a blocking socket's receive at its timeout, and still waits out `EAGAIN` on a non-blocking one |
@@ -1517,7 +1532,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_remote.c` | which peer addresses are this host's; a server at an address not this host's is not dialled (`pmix_ptl_base_server_on_host`, `PMIX_ERR_UNREACH`, saying why) and one on loopback is; `PMIX_SERVER_REMOTE_CONNECTIONS` true fails the init, false does not; directives leaving no loopback interface fail the init rather than take a public one |
 | `test/unit/ptl_unnamed.c` | end to end with no TCP table on either side (`pmix_util_getid_test_no_tcp_table`): a real server with legacy peers, which takes the tool on its claim, real tools by `PMIx_tool_init` and by an event-driven attach - a bare TCP URI passed directly taken; a named file taken whatever release it names, with or without its lock held or a lock line; a group-writable file refused, and a symbolic link to the file not read (`PMIX_ERR_UNREACH`, not a regular file); an off-host address `PMIX_ERR_UNREACH`, saying it is not this host's |
 | `test/unit/tool_attach_nb.c` | (among its cases) an attach does not dial the URI an earlier attach was given |
-| `test/unit/ptl_check_server.c` | a server of our own is ours the moment we are connected (the `NOT_FOUND` retry, with the listener accepting from a thread of its own, as a server does: Linux lists a connection not yet accepted with inode 0, which is not found yet), one whose end has closed is refused soon; with no table (`pmix_util_getid_test_no_tcp_table`) a server nothing vouches for is refused and one its file vouches for is taken; `test_judge`: `pmix_ptl_base_judge_server` with fake map files - mapped and unmapped uid and gid, identity given and not, vouched and not; the overflow ids, where a subordinate-id map gives them an entry, match no identity - by number or mapped - and are taken only vouched, while with the identity map they are ids like any other |
+| `test/unit/ptl_check_server.c` | while the table does not list the connection (`pmix_util_getid_test_unlisted`) the check asks again until `handshake_wait_time` runs out and then refuses the server (`PMIX_ERR_INVALID_CRED`), a server listed after 1.5 s is taken, one that closes meanwhile is `PMIX_ERR_UNREACH`, and with no wait it is refused soon; a server of our own is ours the moment we are connected (the `NOT_FOUND` retry, with the listener accepting from a thread of its own, as a server does: Linux lists a connection not yet accepted with inode 0, which is not found yet), one whose end has closed is refused soon; with no table (`pmix_util_getid_test_no_tcp_table`) a server nothing vouches for is refused and one its file vouches for is taken; `test_judge`: `pmix_ptl_base_judge_server` with fake map files - mapped and unmapped uid and gid, identity given and not, vouched and not; the overflow ids, where a subordinate-id map gives them an entry, match no identity - by number or mapped - and are taken only vouched, while with the identity map they are ids like any other |
 | `test/unit/ptl_local_connect.c` | (among its cases) a tool given a FIFO by `file:<path>` or `PMIX_TOOL_ATTACHMENT_FILE`, or a symbolic link to the report file, fails init at once, and the report file named either way connects; a launcher whose rendezvous file name has a FIFO at it finishes init promptly; every connect-ack buffer a client releases is zero (`pmix_ptl_base_wiped_hook`) |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |
 | `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: a tool refusing to dial a server on another node, discovery by pid/nspace; and a tool through a relay root runs refused |

@@ -182,6 +182,7 @@ static void nscon(pmix_namespace_t *p)
     memset(&p->fwd_files, 0, sizeof(p->fwd_files));
     p->writer_told = false;
     p->files_refused = false;
+    p->files_unopened = false;
     /* no owner until the host names one or registers a client; until
      * then the server's own identity stands in (see pmix_access_t) */
     p->access.registered = false;

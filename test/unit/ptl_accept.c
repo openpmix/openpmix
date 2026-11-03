@@ -124,6 +124,11 @@
  * refused with PMIX_ERR_OUT_OF_RESOURCE; root and the server's uid are
  * held to the cap alone. Each run of the queue passes over it once.
  *
+ * Without PMIX_SERVER_ALLOW_FOREIGN_TOOLS a tool of another uid than the
+ * server's is refused before the host is asked - but a tool of root's,
+ * or of the uid the host named to PMIx_server_init as PMIX_USERID, is put
+ * to the host.
+ *
  * The host is asked to answer within ptl_base_handshake_wait_time
  * (PMIX_TIMEOUT), and the server waits a little longer. A client or tool
  * whose answer is late is refused with PMIX_ERR_TIMEOUT; its rank, or
@@ -897,6 +902,8 @@ static pmix_namespace_t *find_ns(const char *name)
 static bool no_tool_support = false;
 /* start the server taking tools of other users */
 static bool allow_foreign = false;
+/* start the server naming this user to it as PMIX_USERID */
+static uid_t host_userid = (uid_t) -1;
 
 static pmix_status_t start_server(pmix_server_module_t *module, bool client, uid_t uid)
 {
@@ -908,14 +915,22 @@ static pmix_status_t start_server(pmix_server_module_t *module, bool client, uid
     {
         /* tools connect here, which a server takes only with tool support -
          * unless a case asks for a server without it */
-        pmix_info_t tsinfo[2];
+        pmix_info_t tsinfo[3];
         bool tsflag = !no_tool_support;
+        uint32_t u32 = (uint32_t) host_userid;
+        size_t ntsinfo = 2;
 
         PMIX_INFO_LOAD(&tsinfo[0], PMIX_SERVER_TOOL_SUPPORT, &tsflag, PMIX_BOOL);
         PMIX_INFO_LOAD(&tsinfo[1], PMIX_SERVER_ALLOW_FOREIGN_TOOLS, &allow_foreign, PMIX_BOOL);
-        rc = PMIx_server_init(module, tsinfo, 2);
-        PMIX_INFO_DESTRUCT(&tsinfo[0]);
-        PMIX_INFO_DESTRUCT(&tsinfo[1]);
+        if ((uid_t) -1 != host_userid) {
+            PMIX_INFO_LOAD(&tsinfo[ntsinfo], PMIX_USERID, &u32, PMIX_UINT32);
+            ++ntsinfo;
+        }
+        rc = PMIx_server_init(module, tsinfo, ntsinfo);
+        while (0 < ntsinfo) {
+            --ntsinfo;
+            PMIX_INFO_DESTRUCT(&tsinfo[ntsinfo]);
+        }
     }
     if (PMIX_SUCCESS != rc || !client) {
         return rc;
@@ -3790,6 +3805,127 @@ static int case_tool_uid_share(void)
     return CHILD_PASS;
 }
 
+/* Without PMIX_SERVER_ALLOW_FOREIGN_TOOLS, a tool of a uid other than the
+ * server's is refused with PMIX_ERR_NOT_SUPPORTED before the host is asked
+ * - but not one of the uid the host named to PMIx_server_init as
+ * PMIX_USERID, nor one of root's. Those are put to the host. Running as
+ * root, the server is started naming another uid. A server not running as
+ * root can name only its own uid - the local socket is given to that user,
+ * and only root can give a file away - so it is started naming its own,
+ * which it must record, and the recorded uid is then set to another in its
+ * place, as a root server's would be */
+static int case_tool_host_user(void)
+{
+    uid_t me = geteuid(), hu, other;
+    int sd[3];
+
+    host_mode = HOST_DEFERS_TOOLS;
+    max_deferred = NDEFER;
+    allow_foreign = false;
+    pmix_util_getid_test_no_tcp_table = true;
+    if (0 == me) {
+        hu = 4242;
+        other = 4343;
+        host_userid = hu;
+    } else {
+        hu = me + 101;
+        other = me + 102;
+        host_userid = me;
+    }
+    if (PMIX_SUCCESS != start_server(&mymodule, false, getuid())) {
+        return CHILD_SETUP;
+    }
+    if (!pmix_ptl_base.host_uid_given || host_userid != pmix_ptl_base.host_uid) {
+        fprintf(stdout, "    the server did not record the PMIX_USERID it was given (%lu)\n",
+                (unsigned long) host_userid);
+        return CHILD_FAIL;
+    }
+    if (0 != me) {
+        fprintf(stdout, "    (not running as root: the server named its own uid, and the "
+                        "recorded uid is set to %lu)\n",
+                (unsigned long) hu);
+        pmix_ptl_base.host_uid = hu;
+    }
+    if (!tool_of(hu, 0, PMIX_SUCCESS, &sd[0]) || 1 != ntool_connected) {
+        fprintf(stdout, "    a tool of the host's PMIX_USERID %lu was not put to the host\n",
+                (unsigned long) hu);
+        return CHILD_FAIL;
+    }
+    if (!tool_of(other, 1, PMIX_ERR_NOT_SUPPORTED, &sd[1]) || 1 != ntool_connected) {
+        fprintf(stdout, "    a tool of uid %lu was not refused with PMIX_ERR_NOT_SUPPORTED "
+                        "before the host was asked\n",
+                (unsigned long) other);
+        return CHILD_FAIL;
+    }
+    if (0 != me && (!tool_of(0, 2, PMIX_SUCCESS, &sd[2]) || 2 != ntool_connected)) {
+        fprintf(stdout, "    a tool of root's was not put to the host\n");
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
+/* The uid the host named to PMIx_server_init as PMIX_USERID is held to the
+ * waiting-tool cap alone, as root and the server's own uid are: at a cap
+ * of eight, three of its tools wait where a uid's share is two, while a
+ * third of another uid is still refused. As in case_tool_host_user, a
+ * server not running as root names its own uid and the recorded uid is
+ * then set to another */
+static int case_tool_host_user_share(void)
+{
+    uid_t me = geteuid(), hu, other;
+    int sd[8], n, nsd = 0;
+    pmix_rank_t rank = 0;
+
+    setenv("PMIX_MCA_ptl_base_max_pending_connections", "8", 1);
+    host_mode = HOST_DEFERS_TOOLS;
+    max_deferred = NDEFER;
+    allow_foreign = true;
+    pmix_util_getid_test_no_tcp_table = true;
+    if (0 == me) {
+        hu = 4242;
+        other = 4343;
+        host_userid = hu;
+    } else {
+        hu = me + 101;
+        other = me + 102;
+        host_userid = me;
+    }
+    if (PMIX_SUCCESS != start_server(&mymodule, false, getuid())) {
+        return CHILD_SETUP;
+    }
+    if (8 != pmix_ptl_base.pending_cap || !pmix_ptl_base.host_uid_given) {
+        return CHILD_SETUP;
+    }
+    pmix_ptl_base.host_uid = hu;
+    for (n = 0; n < 3; n++) {
+        if (!tool_of(hu, rank++, PMIX_SUCCESS, &sd[nsd++])) {
+            fprintf(stdout, "    tool %d of the host's PMIX_USERID %lu was not held for the "
+                            "host\n",
+                    n, (unsigned long) hu);
+            return CHILD_FAIL;
+        }
+    }
+    if (3 != ntool_connected) {
+        fprintf(stdout, "    with three tools of uid %lu, the host was asked about %d\n",
+                (unsigned long) hu, ntool_connected);
+        return CHILD_FAIL;
+    }
+    for (n = 0; n < 2; n++) {
+        if (!tool_of(other, rank++, PMIX_SUCCESS, &sd[nsd++])) {
+            fprintf(stdout, "    tool %d of uid %lu was not held for the host\n", n,
+                    (unsigned long) other);
+            return CHILD_FAIL;
+        }
+    }
+    if (!tool_of(other, rank++, PMIX_ERR_OUT_OF_RESOURCE, &sd[nsd++]) || 5 != ntool_connected) {
+        fprintf(stdout, "    a third tool of uid %lu was not refused with "
+                        "PMIX_ERR_OUT_OF_RESOURCE\n",
+                (unsigned long) other);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
 /* next_tool passes over the queue once each time it runs: with six tools
  * of one name waiting behind a seventh the host is deciding on, a tool of
  * another name that arrives is put to the host after the six are looked at
@@ -4834,6 +4970,12 @@ int main(int argc, char **argv)
     run_case("a uid other than the server's and root's may have a quarter of the waiting "
              "tools, and a further one is refused",
              case_tool_uid_share);
+    run_case("a tool of the uid the host named as PMIX_USERID, or of root's, is put to the "
+             "host without PMIX_SERVER_ALLOW_FOREIGN_TOOLS; one of another uid is refused",
+             case_tool_host_user);
+    run_case("the uid the host named as PMIX_USERID is held to the waiting-tool cap alone, "
+             "as root and the server's own uid are",
+             case_tool_host_user_share);
     run_case("each time the tool queue is run, it is passed over once", case_tool_queue_scan);
     run_case("connections still sending their connect-ack hold no more than "
              "ptl_base_max_pending_bytes between them, and a client still connects",
