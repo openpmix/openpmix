@@ -145,9 +145,13 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
  * - Any other identity (a tool, or a process that connected before the
  *   host registered it) is only what the peer claimed. The attested
  *   uid replaces it - the claim may be the uid inside a user namespace,
- *   which is not the uid outside it. The claimed group stands if it is
- *   the attested one or a group the user holds; otherwise an attested
- *   group replaces it, and a group nobody attested is refused.
+ *   which is not the uid outside it. With the group attested (the local
+ *   socket), the claimed group stands if it is one of the process's
+ *   groups (pmix_server_process_in_group: the kernel's list for it, else
+ *   the host's for the uid, else the attested gid alone), and the
+ *   attested gid replaces it otherwise. With it unattested (TCP), the
+ *   claimed group stands if the user holds it (pmix_psec_base_gid_held),
+ *   and is refused otherwise.
  *
  * On success the peer's info carries the identity decided on. A refusal
  * for the group alone - the uid was right - is reported in *group_only,
@@ -177,7 +181,7 @@ static pmix_status_t settle_identity(pmix_peer_t *pr, uid_t uid, gid_t gid, bool
     }
 
     if (gid_attested) {
-        if (claimed != gid && !pmix_psec_base_gid_held(uid, claimed)) {
+        if (claimed != gid && !pmix_server_process_in_group(&pr->kgroups, uid, gid, claimed)) {
             claimed = gid;
         }
     } else if (!(uid == geteuid() && claimed == getegid()) &&

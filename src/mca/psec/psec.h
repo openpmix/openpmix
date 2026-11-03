@@ -72,6 +72,13 @@ typedef pmix_status_t (*pmix_psec_base_module_create_cred_fn_t)(struct pmix_peer
                                                                 size_t *ninfo,
                                                                 pmix_byte_object_t *cred);
 
+/* A directive to create_cred: the uid (PMIX_UINT32) of the server the
+ * credential is for, as the kernel reports the owner of the server's end
+ * of the connection. ptl passes it when it knows that uid. A module whose
+ * mechanism can restrict a credential to one user (munge) does so; the
+ * others ignore it */
+#define PMIX_PSEC_SERVER_UID "pmix.psec.srvuid"
+
 /****    SERVER-SIDE FUNCTIONS    ****/
 /**
  * Validate a client's credential - required of every module. The

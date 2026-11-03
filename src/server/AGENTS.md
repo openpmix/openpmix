@@ -3361,6 +3361,13 @@ misbehave by design).
     group the request is made under - alone when there is no record, and
     `pmix_server_peer_permitted()` to a connected peer. Never write a
     second version of the rule at a call site.
+  - A process on the local socket is judged by **its own groups**, which
+    the kernel reports when it connects (`pmix_ptl_base_read_groups()`
+    records them in `peer->kgroups`; `pmix_server_peer_permitted()` uses
+    them through `pmix_server_process_groups()`). Only where the kernel
+    gives no list does the host's list for the uid apply, and then the
+    kernel's effective gid alone. Everything below is about the host's
+    lists, which also judge TCP peers and relayed requests.
   - A user's groups (`pmix_user_t`) are **only what the host gives**:
     `PMIX_USER_GRPIDS` for a job's owner in `register_nspace`
     (`register_owner_groups`), or with `PMIX_USERID` in

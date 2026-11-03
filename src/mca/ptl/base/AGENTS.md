@@ -197,7 +197,28 @@ dropped, not passed to the host) and checks it with
 about the rank: in `client_settled`, and in `ask_about_tool` for a tool
 that names a rank. A mismatch or absence for a rank that has one is
 `PMIX_ERR_INVALID_CRED`; a rank with none, and a peer of an earlier
-release, are not checked. Every copy is zeroed before it is freed
+release, are not checked.
+
+**A token is bound to the first client pid that connects with it.** Each
+kept token (`token_t`) carries a pid, 0 until bound. `client_settled`
+calls `pmix_ptl_base_check_token_from` with the kernel's pid for a
+local-socket connection (`kernel_pid`), else 0, and sets
+`pnd->token_checked`; a token bound to another pid is
+`PMIX_ERR_INVALID_CRED` there, before the host is asked - so ahead of the
+`rank_connected` check, which a client from the bound pid can still meet.
+A pid of 0 (TCP, or a platform where `pmix_util_getpid` has no answer) is
+not compared and binds nothing. `client_answered` binds it at acceptance
+(`pmix_ptl_base_bind_token`, only if it is unbound and the token the
+connection presented is still the rank's). **Tools are not bound:**
+`ask_about_tool` checks a tool's token with `pmix_ptl_base_check_token`
+alone, whatever its pid, and `tool_answered` binds nothing - so a tool on
+a live rank still meets `PMIX_ERR_EXISTS` (which `take_new_identity`
+answers), and a tool's earlier connection does not bind the token for a
+later client. Nothing a connection does unbinds it - not a finalize, not
+a lost connection. `make_token` replaces it with an unbound one,
+`drop_tokens` forgets it, and `_register_client` unbinds it
+(`pmix_ptl_base_unbind_token`) when it updates a rank entry
+that already exists. Every copy is zeroed before it is freed
 (`pmix_ptl_base_wipe*`): the kept bytes, the pending connection's string,
 its connect-ack blob, and the info arrays that carried it.
 
@@ -1436,7 +1457,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_listener.c` | accept out of descriptors pauses the listener and it accepts again; finalize while paused; the retry policy for each kind of accept error; mistyped, out-of-range and empty directives; a directive-named report file is removed; the report file has no group or other write bit |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
 | `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one; `test_vouched`: a named file vouches for its server whatever release it names and whether or not its lock is held; not group-writable, nor at a fixed name nobody named; as root, not another known user's, and yes for an owner from outside the user namespace (a fake map) |
-| `test/unit/ptl_accept.c` | (among its cases) connections still sending their connect-ack hold no more than `ptl_base_max_pending_bytes` between them, the ones beyond it are dropped with `PMIX_ERR_OUT_OF_RESOURCE`, the total returns to zero, and a client still connects; a uid other than the server's and root's has a quarter of the waiting-tool cap, root and the server's uid fill it; `next_tool` passes over a queue of tools of one name once per run |
+| `test/unit/ptl_accept.c` | (among its cases) a rank's token bound to the first client pid on the local socket: that pid connects again, a client in a forked child is refused before the host is asked (after a lost connection or a finalize), and preparing, re-registering, or deregistering and preparing the rank again lets another pid connect; a tool on the rank is taken from another pid once the rank has no live connection, gets `PMIX_ERR_EXISTS` while a client of it is live, and binds nothing, so a client in another pid connecting after it binds the token; connections still sending their connect-ack hold no more than `ptl_base_max_pending_bytes` between them, the ones beyond it are dropped with `PMIX_ERR_OUT_OF_RESOURCE`, the total returns to zero, and a client still connects; a uid other than the server's and root's has a quarter of the waiting-tool cap, root and the server's uid fill it; `next_tool` passes over a queue of tools of one name once per run |
 | `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them; at the pending-connection cap the oldest is dropped, and the default cap follows the descriptor limit |
 | `test/unit/ptl_nosigpipe.c` | a blocking send and a vector write to a peer that has reset return an error, with `SIGPIPE` at its default action |
 | `test/unit/ptl_recv_timeout.c` | `pmix_ptl_base_recv_blocking` ends a blocking socket's receive at its timeout, and still waits out `EAGAIN` on a non-blocking one |
@@ -1445,7 +1466,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_legacy.c` | by default a server has no TCP listener and reports its local socket in the rendezvous file and `PMIX_SERVER_URIxx`; legacy peers on (attribute or parameter) make the TCP listener and report it, with the local socket beside it; the attribute overrides the parameter; asking in a build without legacy peers fails the init |
 | `test/unit/ptl_tcp_server.c` | over TCP a tool checks a server on its host by the kernel's TCP table: a server on loopback the table does not show (Linux `TCP_DEFER_ACCEPT`) is refused before anything is sent; as root, a server of another user is refused before anything is sent, and one `ptl_base_server_access` names gets past it; a server of the tool's own user is taken |
 | `test/unit/ptl_pfexec_token.c` | a process a launcher starts itself (pfexec) gets no token, not even one in the launcher's environment, and connects back without one |
-| `test/unit/ptl_token.c` | setup_fork's token: hex after the making server's name in the environment, added to a connect-ack only for a server of that name, different per rank, replaced when the rank is prepared again; only the kept token is taken (another, none, short, long, non-hex, one digit off refused); a rank never prepared takes anything; a rankless process gets none and loses an inherited one; deregistering the rank, then the job, forgets them |
+| `test/unit/ptl_token.c` | setup_fork's token: hex after the making server's name in the environment, added to a connect-ack only for a server of that name, different per rank, replaced when the rank is prepared again; only the kept token is taken (another, none, short, long, non-hex, one digit off refused); a rank never prepared takes anything; a bound token is taken from its pid or with no pid, refused from another, not rebound, unbound by registering the rank again and by preparing it again; a rankless process gets none and loses an inherited one; deregistering the rank, then the job, forgets them |
 | `test/unit/ptl_remote.c` | which peer addresses are this host's; a server at an address not this host's is not dialled (`pmix_ptl_base_server_on_host`, `PMIX_ERR_UNREACH`, saying why) and one on loopback is; `PMIX_SERVER_REMOTE_CONNECTIONS` true fails the init, false does not; directives leaving no loopback interface fail the init rather than take a public one |
 | `test/unit/ptl_unnamed.c` | end to end with no TCP table on either side (`pmix_util_getid_test_no_tcp_table`): a real server with legacy peers, which takes the tool on its claim, real tools by `PMIx_tool_init` and by an event-driven attach - a bare TCP URI passed directly taken; a named file taken whatever release it names, with or without its lock held or a lock line; a group-writable or linked file refused; an off-host address `PMIX_ERR_UNREACH`, saying it is not this host's |
 | `test/unit/tool_attach_nb.c` | (among its cases) an attach does not dial the URI an earlier attach was given |

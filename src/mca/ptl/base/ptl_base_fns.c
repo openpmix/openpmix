@@ -2699,6 +2699,33 @@ pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz)
     return flag;
 }
 
+/* The uid of the server at the far end of `peer`'s connection, for the
+ * credential we send it (PMIX_PSEC_SERVER_UID) - where the kernel names
+ * it: on the local socket, as pmix_ptl_base_check_server read it. Over
+ * TCP there is none to give. In a user namespace the uid is given only
+ * where it is the same number in the parent namespace, so it names the
+ * same user to a munged on either side of it; an id from outside our
+ * namespace (the overflow id) is not given */
+static bool server_uid(pmix_peer_t *peer, uint32_t *uid)
+{
+    uid_t kuid;
+    gid_t kgid;
+    pid_t kpid;
+    uint32_t puid;
+    pmix_status_t rc;
+
+    if (NULL == peer->transport || NULL == peer->transport->peer_identity ||
+        PMIX_SUCCESS != peer->transport->peer_identity(peer->sd, &kuid, &kgid, &kpid)) {
+        return false;
+    }
+    rc = pmix_util_id_to_parent("/proc/self/uid_map", (uint32_t) kuid, &puid);
+    if (PMIX_ERR_NOT_SUPPORTED != rc && (PMIX_SUCCESS != rc || puid != (uint32_t) kuid)) {
+        return false;
+    }
+    *uid = (uint32_t) kuid;
+    return true;
+}
+
 static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t *sz,
                                        pmix_info_t *iptr, size_t niptr)
 {
@@ -2710,10 +2737,12 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
     pmix_buffer_t buf;
     pmix_status_t rc;
     pmix_ptl_hdr_t hdr;
-    size_t sdsize, csize;
+    size_t sdsize, csize, ndirs;
     pmix_byte_object_t cred;
     pmix_psec_module_t *psec;
     pmix_bfrops_module_t *bfmod;
+    pmix_info_t dir;
+    uint32_t suid;
 
     sdsize = *sz;
 
@@ -2749,8 +2778,16 @@ static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t 
      * get a credential, if the security system provides one. Not
      * every psec module will do so, thus we must first check */
     PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
-    rc = psec->create_cred((struct pmix_peer_t *) pmix_globals.mypeer, NULL, 0, NULL, NULL,
-                           &cred);
+    ndirs = 0;
+    if (server_uid(peer, &suid)) {
+        PMIX_INFO_LOAD(&dir, PMIX_PSEC_SERVER_UID, &suid, PMIX_UINT32);
+        ndirs = 1;
+    }
+    rc = psec->create_cred((struct pmix_peer_t *) pmix_globals.mypeer,
+                           (0 < ndirs) ? &dir : NULL, ndirs, NULL, NULL, &cred);
+    if (0 < ndirs) {
+        PMIX_INFO_DESTRUCT(&dir);
+    }
     if (PMIX_SUCCESS != rc) {
         PMIX_BYTE_OBJECT_DESTRUCT(&cred);
         return rc;

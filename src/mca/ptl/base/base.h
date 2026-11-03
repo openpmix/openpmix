@@ -575,6 +575,22 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_reserve_token(const pmix_proc_t *proc);
  * PMIX_ERR_INVALID_CRED if not */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_check_token(const char *nspace, pmix_rank_t rank,
                                                     const char *given);
+/* The same, for a connection whose far end the kernel reports as process
+ * `pid` (0 if it reports none). A rank's token bound to a pid is taken
+ * only from that pid: from another one it is PMIX_ERR_INVALID_CRED. A pid
+ * of 0 is not compared */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_check_token_from(const char *nspace, pmix_rank_t rank,
+                                                         const char *given, pid_t pid);
+/* Bind the rank's token to `pid` - the kernel's pid for the first client
+ * connection accepted with it over the local socket - if `given` is still
+ * the rank's token and it is not bound yet. Nothing is done for a pid of 0 */
+PMIX_EXPORT void pmix_ptl_base_bind_token(const char *nspace, pmix_rank_t rank,
+                                          const char *given, pid_t pid);
+/* Leave the rank's token, but no longer bound to any pid */
+PMIX_EXPORT void pmix_ptl_base_unbind_token(const char *nspace, pmix_rank_t rank);
+/* The pid the rank's token is bound to, or 0 if it is not bound or the
+ * rank has no token */
+PMIX_EXPORT pid_t pmix_ptl_base_token_pid(const char *nspace, pmix_rank_t rank);
 /* Zero a token held as a string, or every token in an info array, before
  * it is freed */
 PMIX_EXPORT void pmix_ptl_base_wipe(void *p, size_t len);
@@ -589,6 +605,14 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_add_token(pmix_info_t **info, size_t *ni
 /* Whether a peer's address is this host's: a loopback address, or the
  * address of one of this host's interfaces */
 PMIX_EXPORT bool pmix_ptl_base_addr_on_host(const struct sockaddr_storage *addr);
+
+/* Record in peer->kgroups the groups of the process at the far end of
+ * peer->sd, a connection on the local socket, as the kernel reports them:
+ * its effective gid, and its groups with that gid among them where the
+ * kernel gives a list. A TCP connection, or one the kernel names no one
+ * for, records nothing. PMIX_ERR_NOMEM with no memory to keep the list;
+ * otherwise PMIX_SUCCESS */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_read_groups(pmix_peer_t *peer);
 
 /* Every socket PMIx creates or accepts is the library's alone: it is set
  * close-on-exec, so a program the process execs - or a child it forks

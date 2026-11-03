@@ -936,6 +936,7 @@ static void pccon(pmix_pending_connection_t *p)
     p->psec = NULL;
     p->gds = NULL;
     p->cred = NULL;
+    memset(&p->kgroups, 0, sizeof(p->kgroups));
     p->proc_type.type = PMIX_PROC_UNDEF;
     p->proc_type.major = PMIX_MAJOR_WILDCARD;
     p->proc_type.minor = PMIX_MINOR_WILDCARD;
@@ -962,6 +963,7 @@ static void pccon(pmix_pending_connection_t *p)
     p->asking = false;
     p->uid_counted = false;
     p->token = NULL;
+    p->token_checked = false;
     pmix_ptl_base_monotime(&p->waiting);
     p->host_tmo = 0;
 }
@@ -1029,6 +1031,7 @@ static void pcdes(pmix_pending_connection_t *p)
     if (NULL != p->cred) {
         free(p->cred);
     }
+    free(p->kgroups.gids);
     pmix_ptl_base_wipe_token(p->token);
     free(p->token);
 }

@@ -23,6 +23,19 @@
  * "<server nspace>.<server rank>;<hex>". A process sends it to the server
  * of that name, however it reaches that server, and to no other.
  *
+ * A rank's token is bound to the pid the kernel reports for the first
+ * client connection accepted with it over the local socket, and from then
+ * on a client presenting it is taken only from that pid - so the process
+ * connects again after a finalize, and the program it execs connects, but
+ * no other client process. A tool presenting the token is checked for the
+ * token alone, and its connection binds nothing. The binding outlasts the
+ * connection. It goes when the host replaces the
+ * rank: preparing it again makes a new token, which is not bound;
+ * deregistering the rank or its namespace forgets the token; registering
+ * it again keeps the token and unbinds it. A connection whose kernel
+ * reports no pid - TCP, or a platform with no way to ask - neither binds
+ * a token nor is compared with one that is bound.
+ *
  * Everything here runs on the progress thread: setup_fork, client
  * registration and deregistration, and the connection handler all do. */
 
@@ -43,11 +56,18 @@
 
 #include "src/mca/ptl/base/base.h"
 
+/* a rank's token */
+typedef struct {
+    unsigned char bytes[PMIX_PTL_TOKEN_LEN];
+    /* the pid it is bound to, 0 until a connection binds it */
+    pid_t pid;
+} token_t;
+
 /* one namespace's tokens, by rank */
 typedef struct {
     pmix_list_item_t super;
     char *nspace;
-    pmix_hash_table_t ranks; // rank -> unsigned char[PMIX_PTL_TOKEN_LEN]
+    pmix_hash_table_t ranks; // rank -> token_t *
 } token_ns_t;
 
 /* zero len bytes - through a volatile pointer, so the stores are kept even
@@ -75,7 +95,7 @@ static void tndes(token_ns_t *p)
 
     rc = pmix_hash_table_get_first_key_uint32(&p->ranks, &rank, &tok, &node);
     while (PMIX_SUCCESS == rc) {
-        pmix_ptl_base_wipe(tok, PMIX_PTL_TOKEN_LEN);
+        pmix_ptl_base_wipe(tok, sizeof(token_t));
         free(tok);
         rc = pmix_hash_table_get_next_key_uint32(&p->ranks, &rank, &tok, node, &node);
     }
@@ -117,7 +137,7 @@ static token_ns_t *find_ns(const char *nspace)
 
 /* Keep tok as the rank's token, in place of any it had - and own it,
  * whatever happens */
-static pmix_status_t keep_token(const pmix_proc_t *proc, unsigned char *tok)
+static pmix_status_t keep_token(const pmix_proc_t *proc, token_t *tok)
 {
     token_ns_t *tn;
     void *old;
@@ -129,28 +149,61 @@ static pmix_status_t keep_token(const pmix_proc_t *proc, unsigned char *tok)
             if (NULL != tn) {
                 PMIX_RELEASE(tn);
             }
-            pmix_ptl_base_wipe(tok, PMIX_PTL_TOKEN_LEN);
+            pmix_ptl_base_wipe(tok, sizeof(token_t));
             free(tok);
             return PMIX_ERR_NOMEM;
         }
         pmix_list_append(&pmix_ptl_base.tokens, &tn->super);
     }
     if (PMIX_SUCCESS == pmix_hash_table_get_value_uint32(&tn->ranks, proc->rank, &old)) {
-        pmix_ptl_base_wipe(old, PMIX_PTL_TOKEN_LEN);
+        pmix_ptl_base_wipe(old, sizeof(token_t));
         free(old);
     }
     if (PMIX_SUCCESS != pmix_hash_table_set_value_uint32(&tn->ranks, proc->rank, tok)) {
         (void) pmix_hash_table_remove_value_uint32(&tn->ranks, proc->rank);
-        pmix_ptl_base_wipe(tok, PMIX_PTL_TOKEN_LEN);
+        pmix_ptl_base_wipe(tok, sizeof(token_t));
         free(tok);
         return PMIX_ERR_NOMEM;
     }
     return PMIX_SUCCESS;
 }
 
+/* A new token, bound to no pid, in *tok */
+static pmix_status_t new_token(token_t **tok)
+{
+    token_t *t;
+
+    t = (token_t *) calloc(1, sizeof(token_t));
+    if (NULL == t) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (PMIX_SUCCESS != pmix_util_random_bytes(t->bytes, PMIX_PTL_TOKEN_LEN)) {
+        pmix_output(0, "ptl:base: no secure random source to make a connection token from");
+        pmix_ptl_base_wipe(t, sizeof(token_t));
+        free(t);
+        return PMIX_ERROR;
+    }
+    t->pid = 0;
+    *tok = t;
+    return PMIX_SUCCESS;
+}
+
+/* The rank's token, or NULL if it has none */
+static token_t *find_token(const char *nspace, pmix_rank_t rank)
+{
+    token_ns_t *tn;
+    void *val;
+
+    tn = find_ns(nspace);
+    if (NULL == tn || PMIX_SUCCESS != pmix_hash_table_get_value_uint32(&tn->ranks, rank, &val)) {
+        return NULL;
+    }
+    return (token_t *) val;
+}
+
 pmix_status_t pmix_ptl_base_make_token(const pmix_proc_t *proc, char ***env)
 {
-    unsigned char *tok;
+    token_t *tok;
     char hex[2 * PMIX_PTL_TOKEN_LEN + 1], *value = NULL;
     size_t n;
     pmix_status_t rc;
@@ -161,24 +214,17 @@ pmix_status_t pmix_ptl_base_make_token(const pmix_proc_t *proc, char ***env)
         rc = pmix_unsetenv(PMIX_PTL_TOKEN_ENV, env);
         return (PMIX_ERR_NOT_FOUND == rc) ? PMIX_SUCCESS : rc;
     }
-    tok = (unsigned char *) malloc(PMIX_PTL_TOKEN_LEN);
-    if (NULL == tok) {
-        return PMIX_ERR_NOMEM;
-    }
-    if (PMIX_SUCCESS != pmix_util_random_bytes(tok, PMIX_PTL_TOKEN_LEN)) {
-        pmix_output(0, "ptl:base: no secure random source to make a connection token from");
-        pmix_ptl_base_wipe(tok, PMIX_PTL_TOKEN_LEN);
-        free(tok);
-        return PMIX_ERROR;
+    if (PMIX_SUCCESS != (rc = new_token(&tok))) {
+        return rc;
     }
     for (n = 0; n < PMIX_PTL_TOKEN_LEN; n++) {
-        snprintf(&hex[2 * n], 3, "%02x", (unsigned) tok[n]);
+        snprintf(&hex[2 * n], 3, "%02x", (unsigned) tok->bytes[n]);
     }
     /* with the name of the server it is for: ours */
     if (0 > pmix_asprintf(&value, "%s.%u;%s", pmix_globals.myid.nspace, pmix_globals.myid.rank,
                           hex)) {
         pmix_ptl_base_wipe(hex, sizeof(hex));
-        pmix_ptl_base_wipe(tok, PMIX_PTL_TOKEN_LEN);
+        pmix_ptl_base_wipe(tok, sizeof(token_t));
         free(tok);
         return PMIX_ERR_NOMEM;
     }
@@ -187,40 +233,30 @@ pmix_status_t pmix_ptl_base_make_token(const pmix_proc_t *proc, char ***env)
     pmix_ptl_base_wipe(value, strlen(value));
     free(value);
     if (PMIX_SUCCESS != rc) {
-        pmix_ptl_base_wipe(tok, PMIX_PTL_TOKEN_LEN);
+        pmix_ptl_base_wipe(tok, sizeof(token_t));
         free(tok);
         return rc;
     }
 
     /* a rank prepared again - a process the host starts afresh - gets a
-     * new token, and the old one is no longer good */
+     * new token, bound to no pid, and the old one is no longer good */
     return keep_token(proc, tok);
 }
 
 pmix_status_t pmix_ptl_base_reserve_token(const pmix_proc_t *proc)
 {
-    unsigned char *tok;
-    token_ns_t *tn;
-    void *old;
+    token_t *tok;
+    pmix_status_t rc;
 
     if ('\0' == proc->nspace[0] || !PMIX_RANK_IS_VALID(proc->rank)) {
         return PMIX_SUCCESS;
     }
-    tn = find_ns(proc->nspace);
-    if (NULL != tn &&
-        PMIX_SUCCESS == pmix_hash_table_get_value_uint32(&tn->ranks, proc->rank, &old)) {
+    if (NULL != find_token(proc->nspace, proc->rank)) {
         /* prepared already: the token it was handed stands */
         return PMIX_SUCCESS;
     }
-    tok = (unsigned char *) malloc(PMIX_PTL_TOKEN_LEN);
-    if (NULL == tok) {
-        return PMIX_ERR_NOMEM;
-    }
-    if (PMIX_SUCCESS != pmix_util_random_bytes(tok, PMIX_PTL_TOKEN_LEN)) {
-        pmix_output(0, "ptl:base: no secure random source to make a connection token from");
-        pmix_ptl_base_wipe(tok, PMIX_PTL_TOKEN_LEN);
-        free(tok);
-        return PMIX_ERROR;
+    if (PMIX_SUCCESS != (rc = new_token(&tok))) {
+        return rc;
     }
     return keep_token(proc, tok);
 }
@@ -236,23 +272,15 @@ static int hexval(char c)
     return -1;
 }
 
-pmix_status_t pmix_ptl_base_check_token(const char *nspace, pmix_rank_t rank, const char *given)
+/* Whether `given` is the hex of tok's bytes */
+static bool same_token(const token_t *tok, const char *given)
 {
-    token_ns_t *tn;
-    unsigned char *tok, diff = 0;
-    void *val;
+    unsigned char diff = 0;
     size_t n;
     int hi, lo;
 
-    tn = find_ns(nspace);
-    if (NULL == tn ||
-        PMIX_SUCCESS != pmix_hash_table_get_value_uint32(&tn->ranks, rank, &val)) {
-        /* the rank was never given one */
-        return PMIX_SUCCESS;
-    }
-    tok = (unsigned char *) val;
     if (NULL == given || 2 * PMIX_PTL_TOKEN_LEN != strlen(given)) {
-        return PMIX_ERR_INVALID_CRED;
+        return false;
     }
     /* every byte is compared, whatever the first that differs */
     for (n = 0; n < PMIX_PTL_TOKEN_LEN; n++) {
@@ -262,9 +290,78 @@ pmix_status_t pmix_ptl_base_check_token(const char *nspace, pmix_rank_t rank, co
             diff |= 1;
             continue;
         }
-        diff |= (unsigned char) (((hi << 4) | lo) ^ tok[n]);
+        diff |= (unsigned char) (((hi << 4) | lo) ^ tok->bytes[n]);
     }
-    return (0 == diff) ? PMIX_SUCCESS : PMIX_ERR_INVALID_CRED;
+    return 0 == diff;
+}
+
+pmix_status_t pmix_ptl_base_check_token(const char *nspace, pmix_rank_t rank, const char *given)
+{
+    return pmix_ptl_base_check_token_from(nspace, rank, given, 0);
+}
+
+pmix_status_t pmix_ptl_base_check_token_from(const char *nspace, pmix_rank_t rank,
+                                             const char *given, pid_t pid)
+{
+    token_t *tok;
+
+    tok = find_token(nspace, rank);
+    if (NULL == tok) {
+        /* the rank was never given one */
+        return PMIX_SUCCESS;
+    }
+    if (!same_token(tok, given)) {
+        return PMIX_ERR_INVALID_CRED;
+    }
+    /* A bound token is taken only from the pid it is bound to. A
+     * connection whose kernel reports no pid (pid 0) is not compared -
+     * it is taken on its token alone, as every connection was before
+     * tokens were bound */
+    if (0 < tok->pid && 0 < pid && tok->pid != pid) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: the token of %s:%u is bound to pid %ld, not pid %ld",
+                            nspace, rank, (long) tok->pid, (long) pid);
+        return PMIX_ERR_INVALID_CRED;
+    }
+    return PMIX_SUCCESS;
+}
+
+void pmix_ptl_base_bind_token(const char *nspace, pmix_rank_t rank, const char *given, pid_t pid)
+{
+    token_t *tok;
+
+    if (0 >= pid) {
+        /* the kernel reported no pid for the connection */
+        return;
+    }
+    tok = find_token(nspace, rank);
+    /* only the token the connection presented, which the host may have
+     * replaced while it decided on the connection - and only once */
+    if (NULL == tok || 0 < tok->pid || !same_token(tok, given)) {
+        return;
+    }
+    tok->pid = pid;
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:base: the token of %s:%u is bound to pid %ld", nspace, rank,
+                        (long) pid);
+}
+
+void pmix_ptl_base_unbind_token(const char *nspace, pmix_rank_t rank)
+{
+    token_t *tok;
+
+    tok = find_token(nspace, rank);
+    if (NULL != tok) {
+        tok->pid = 0;
+    }
+}
+
+pid_t pmix_ptl_base_token_pid(const char *nspace, pmix_rank_t rank)
+{
+    token_t *tok;
+
+    tok = find_token(nspace, rank);
+    return (NULL == tok) ? 0 : tok->pid;
 }
 
 void pmix_ptl_base_drop_tokens(const char *nspace, pmix_rank_t rank)
@@ -282,7 +379,7 @@ void pmix_ptl_base_drop_tokens(const char *nspace, pmix_rank_t rank)
         return;
     }
     if (PMIX_SUCCESS == pmix_hash_table_get_value_uint32(&tn->ranks, rank, &val)) {
-        pmix_ptl_base_wipe(val, PMIX_PTL_TOKEN_LEN);
+        pmix_ptl_base_wipe(val, sizeof(token_t));
         free(val);
         (void) pmix_hash_table_remove_value_uint32(&tn->ranks, rank);
     }
