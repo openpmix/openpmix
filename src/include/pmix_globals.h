@@ -536,6 +536,11 @@ typedef struct pmix_rank_info_t {
     int proc_cnt;        // live connections for this rank - one at most
     int connecting;      // connections for this rank waiting on the host's
                          // answer - while one waits, another is refused
+    bool lost;           // the rank will never contribute again - it died, or
+                         // the host deregistered it - and that has been
+                         // accounted for: its namespace's nlocalprocs no
+                         // longer counts it and the collectives in flight have
+                         // it as departed - see pmix_server_rank_lost()
     void *server_object; // pointer to rank-specific object provided by server
     /* True when the rank was registered before its process started: by
      * the host with PMIx_server_register_client, or by this server - the

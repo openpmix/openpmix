@@ -174,29 +174,18 @@ static void lost_connection(pmix_peer_t *peer)
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
 
         if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-            /* Account for the loss of this client in any local collective it
-             * was participating in - the fence/connect/disconnect family and
-             * the group family are tracked on separate lists, so each has its
-             * own entry point. Note that the proc would not have been added
-             * to any collective tracker until after it successfully
-             * connected.
+            /* If the peer simply died without finalizing, account for it:
+             * its job has one local process fewer, and every collective it
+             * was to take part in records it as departed. The host may have
+             * told us first - by deregistering it - and the same routine
+             * then does nothing a second time.
              *
-             * Both routines account only for an ABNORMAL termination. A peer
-             * that dropped its connection by calling PMIx_Finalize has not
-             * left the collectives' accounting - the rank remains expected,
-             * exactly as the untouched nlocalprocs below says it is - and
-             * both routines return without doing anything for it. See
-             * pmix_server_trk_peer_lost() and issue #4113. */
-            pmix_server_trk_peer_lost(peer);
-            pmix_server_grp_peer_lost(peer);
-
-            /* if the peer simply died without finalizing, its job has
-             * one local process fewer - a finalized one stays expected,
-             * since it may initialize again */
+             * A peer that dropped its connection by calling PMIx_Finalize
+             * has not left the accounting - the rank remains expected, since
+             * it may initialize again. See pmix_server_rank_lost() and issue
+             * #4113. */
             if (!peer->finalized) {
-                if (0 < peer->nptr->nlocalprocs) {
-                    --peer->nptr->nlocalprocs;
-                }
+                pmix_server_rank_lost(peer->nptr, peer->info);
             }
         }
         /* The rank's count of live connections goes down whatever kind of

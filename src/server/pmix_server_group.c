@@ -3066,7 +3066,6 @@ void pmix_server_grp_check_pending(void)
  * without it. See pmix_server_trk_peer_lost() and issue #4113. */
 void pmix_server_grp_peer_lost(pmix_peer_t *peer)
 {
-    grp_block_t *blk, *bnext;
     pmix_proc_t proc;
 
     if (peer->finalized) {
@@ -3077,8 +3076,17 @@ void pmix_server_grp_peer_lost(pmix_peer_t *peer)
     /* the peer's identity is carried as a pmix_name_t; account_departed works
      * in terms of pmix_proc_t (as the group membership arrays do), so convert */
     PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
+    pmix_server_grp_proc_lost(&proc);
+}
+
+/* The same for a process known only by name - see pmix_server_trk_proc_lost()
+ * for when that is all there is. The caller has decided this is a loss. */
+void pmix_server_grp_proc_lost(const pmix_proc_t *proc)
+{
+    grp_block_t *blk, *bnext;
+
     PMIX_LIST_FOREACH_SAFE (blk, bnext, &pmix_server_globals.grp_collectives, grp_block_t) {
-        account_departed(blk, &proc);
+        account_departed(blk, proc);
     }
 }
 
