@@ -53,6 +53,10 @@
  *   a construct the host
  *      completes over an ID
  *      recorded meanwhile    -> the record is kept, not replaced
+ *   a member lost and back   -> counted once by the block, whether it was
+ *                               gone when the block was counted, lost
+ *                               while the block waited, or had already
+ *                               called through the connection it lost
  *
  * Every case asserts that grp_collectives is empty afterwards, because a
  * block left parked there with participants on it hangs those clients for
@@ -72,6 +76,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/threads/pmix_threads.h"
 
@@ -79,6 +84,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #define GRPUT_NSPACE "server-group-ut"
@@ -621,6 +627,221 @@ static bool nothing_parked(void)
     return (0 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
 }
 
+/* --- a member that is lost and comes back ---------------------------
+ *
+ * A member of a job registered with three local clients, on that job's own
+ * rank entry - so that losing it (its socket closes and the server reads
+ * the close) and bringing it back (pmix_server_rank_returned, as the
+ * connection handler does when the host's restarted process connects)
+ * act on the state the block is counted from. */
+#define GRPRET_NSPACE "grpret.ns"
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_rank_t rank;
+    int sd;
+    bool returning;
+    bool reap;
+    pmix_peer_t *peer;
+    bool result;
+} member_t;
+
+static pmix_namespace_t *find_ret_ns(void)
+{
+    pmix_namespace_t *ns;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(ns->nspace, GRPRET_NSPACE)) {
+            return ns;
+        }
+    }
+    return NULL;
+}
+
+static void do_member(int sd, short args, void *cbdata)
+{
+    member_t *m = (member_t *) cbdata;
+    pmix_namespace_t *nptr = find_ret_ns();
+    pmix_rank_info_t *info, *found = NULL;
+    pmix_peer_t *p;
+
+    (void) sd;
+    (void) args;
+    m->result = false;
+    if (m->reap) {
+        m->result = pmix_ptl_base_reap_if_closed(m->peer);
+        PMIX_WAKEUP_THREAD(&m->lock);
+        return;
+    }
+    m->peer = NULL;
+    if (NULL != nptr) {
+        PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
+            if (info->pname.rank == m->rank) {
+                found = info;
+                break;
+            }
+        }
+    }
+    if (NULL == found) {
+        PMIX_WAKEUP_THREAD(&m->lock);
+        return;
+    }
+    if (NULL == nptr->compat.bfrops) {
+        memcpy(&nptr->compat, &pmix_globals.mypeer->nptr->compat, sizeof(pmix_personality_t));
+    }
+    p = PMIX_NEW(pmix_peer_t);
+    PMIX_RETAIN(nptr);
+    p->nptr = nptr;
+    PMIX_RETAIN(found);
+    p->info = found;
+    memcpy(&p->proc_type, &pmix_globals.mypeer->proc_type, sizeof(pmix_proc_type_t));
+    p->sd = m->sd;
+    p->index = pmix_pointer_array_add(&pmix_server_globals.clients, p);
+    found->peerid = p->index;
+    found->proc_cnt = 1;
+    if (m->returning) {
+        pmix_server_rank_returned(nptr, found);
+    }
+    m->peer = p;
+    PMIX_WAKEUP_THREAD(&m->lock);
+}
+
+static void run_member(member_t *m)
+{
+    PMIX_CONSTRUCT_LOCK(&m->lock);
+    PMIX_THREADSHIFT(m, do_member);
+    PMIX_WAIT_THREAD(&m->lock);
+    PMIX_DESTRUCT_LOCK(&m->lock);
+}
+
+/* a connected member - with a socket whose other end is in *other, so it
+ * can be lost, when other is non-NULL - or one that is coming back */
+static pmix_peer_t *member(pmix_rank_t rank, int *other, bool returning)
+{
+    member_t m;
+    int sv[2] = {-1, -1};
+
+    memset(&m, 0, sizeof(m));
+    if (NULL != other) {
+        if (0 != socketpair(AF_UNIX, SOCK_STREAM, 0, sv)) {
+            return NULL;
+        }
+        *other = sv[1];
+    }
+    m.rank = rank;
+    m.sd = sv[0];
+    m.returning = returning;
+    run_member(&m);
+    return m.peer;
+}
+
+/* close the far end of a member's socket and have the server notice */
+static bool lose(pmix_peer_t *peer, int other)
+{
+    member_t m;
+
+    memset(&m, 0, sizeof(m));
+    close(other);
+    m.reap = true;
+    m.peer = peer;
+    run_member(&m);
+    return m.result;
+}
+
+/* a construct over the job's three ranks, asked by peer */
+static pmix_status_t construct_by(const char *grpid, pmix_peer_t *peer)
+{
+    pmix_proc_t mbrs[3];
+    pmix_rank_t r;
+
+    for (r = 0; r < 3; r++) {
+        PMIX_LOAD_PROCID(&mbrs[r], GRPRET_NSPACE, r);
+    }
+    return drive_op(PMIX_GROUP_CONSTRUCT, grpid, mbrs, 3, peer);
+}
+
+/* A member lost and then back - the host restarted its process - must be
+ * counted once by a block, whichever way it stands with that block. In
+ * each case the returned member calls BEFORE some member still alive, which
+ * is when an unfixed library hands the block to the host short of one call:
+ * its call stood in for the live member's, and the host was told the group
+ * was assembled while one of its members had not yet asked to join. */
+static void test_returning_member(void)
+{
+    pmix_peer_t *r0, *r1, *r2;
+    pmix_proc_t p;
+    pmix_rank_t r;
+    pmix_status_t rc;
+    int far;
+    size_t baseline;
+
+    if (PMIX_SUCCESS != register_nspace_n(GRPRET_NSPACE, 3)) {
+        report("returning member: the job registers", 0);
+        return;
+    }
+    for (r = 0; r < 3; r++) {
+        PMIX_LOAD_PROCID(&p, GRPRET_NSPACE, r);
+        (void) PMIx_server_register_client(&p, geteuid(), getegid(), NULL, NULL, NULL);
+    }
+    progress_barrier();
+    baseline = pmix_list_get_size(&pmix_server_globals.grp_collectives);
+    r0 = member(0, NULL, false);
+    r1 = member(1, NULL, false);
+
+    /* left out: rank 2 is gone when the block is counted, and back by the
+     * time it calls */
+    r2 = member(2, &far, false);
+    report("returning member: rank 2 is lost", NULL != r2 && lose(r2, far));
+    rc = construct_by("grpret.excluded", r0);
+    report("left out: the first call parks", PMIX_SUCCESS == rc && !group_fired);
+    r2 = member(2, NULL, true);
+    rc = construct_by("grpret.excluded", r2);
+    report("left out: the returned member's call does not stand in for another's",
+           PMIX_SUCCESS == rc && !group_fired);
+    rc = construct_by("grpret.excluded", r1);
+    report("left out: the block goes to the host once every member has called",
+           PMIX_SUCCESS == rc && group_fired);
+    progress_barrier();
+    report("left out: nothing is parked",
+           baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+
+    /* departed: rank 2 is lost while the block waits, and comes back */
+    r2 = member(2, &far, false);
+    rc = construct_by("grpret.departed", r0);
+    report("departed: the first call parks", PMIX_SUCCESS == rc && !group_fired);
+    report("departed: rank 2 is lost while the block waits", lose(r2, far));
+    r2 = member(2, NULL, true);
+    rc = construct_by("grpret.departed", r2);
+    report("departed: the returned member is not counted as departed and as called",
+           PMIX_SUCCESS == rc && !group_fired);
+    rc = construct_by("grpret.departed", r1);
+    report("departed: the block goes to the host once every member has called",
+           PMIX_SUCCESS == rc && group_fired);
+    progress_barrier();
+    report("departed: nothing is parked",
+           baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+
+    /* called twice: rank 0 calls, its connection is lost, and it calls
+     * again once back */
+    r0 = member(0, &far, false);
+    rc = construct_by("grpret.twice", r0);
+    report("twice: the first call parks", PMIX_SUCCESS == rc && !group_fired);
+    report("twice: the caller's connection is lost", lose(r0, far));
+    r0 = member(0, NULL, true);
+    rc = construct_by("grpret.twice", r0);
+    report("twice: its second call parks", PMIX_SUCCESS == rc && !group_fired);
+    rc = construct_by("grpret.twice", r1);
+    report("twice: one process is counted once, so rank 2 is still awaited",
+           PMIX_SUCCESS == rc && !group_fired);
+    rc = construct_by("grpret.twice", r2);
+    report("twice: the block goes to the host once every member has called",
+           PMIX_SUCCESS == rc && group_fired);
+    progress_barrier();
+    report("twice: nothing is parked",
+           baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -1027,6 +1248,8 @@ int main(int argc, char **argv)
                baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
     }
     group_accept = false;
+
+    test_returning_member();
 
     if (NULL != group_id) {
         free(group_id);
