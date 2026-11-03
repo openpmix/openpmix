@@ -1238,7 +1238,10 @@ What the server does:
 #. records the rank as departed, so a later request for its data is
    answered ``PMIX_ERR_NOT_FOUND`` at once;
 #. accounts for its departure in every active collective that names it
-   and has not received its contribution, as for a lost connection;
+   and has not received its contribution, as for a lost connection, and
+   stops counting it among the job's local processes, so a collective
+   over the whole job started afterwards does not wait for it either.
+   Whichever of this and the lost connection comes first does it, once;
 #. once every local process of the job has finalized or been
    deregistered, tells the network and GPU support that the job's
    local processes are done.
@@ -1246,9 +1249,6 @@ What the server does:
 The departure is counted because the rank can never contribute now,
 and because a collective's ``PMIX_TIMEOUT`` is optional: without this
 step, a job whose rank finalized and exited would hang.
-
-.. DRAFT: step 6 is not done today - deregistration does not reach the
-   collective trackers, for a finalized client or a live one.
 
 **Deregistering a job**
 (:ref:`PMIx_server_deregister_nspace(3) <man3-PMIx_server_deregister_nspace>`)

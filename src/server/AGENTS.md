@@ -1011,16 +1011,45 @@ rank that contributed twice. Participation is tracked **by identity**: a peer th
 already contributed (is on `local_cbs`) is never moved to `departed`, so
 its loss can neither complete the collective early nor discard its data.
 
-**`departed` means abnormally terminated, not gone.** The two loss
-entry points — `pmix_server_trk_peer_lost` and
-`pmix_server_grp_peer_lost`, both called from `lost_connection` — return
-immediately for a peer with `finalized` set. A rank that dropped its
-socket by calling `PMIx_Finalize` is still expected: `nlocalprocs` is
+**`departed` means gone for good, not finalized.** A rank becomes
+departed in exactly two ways: its connection drops without a finalize,
+or the host deregisters it (`PMIx_server_deregister_client`, which a host
+calls once the process has terminated, finalized or not). Both go
+through one routine, `pmix_server_rank_lost()` in
+`pmix_server_registration.c`, which records the rank on every in-flight
+tracker's `departed` (through `pmix_server_trk_proc_lost` and
+`pmix_server_grp_proc_lost`) **and** takes it out of `nlocalprocs` - the
+count a whole-namespace (`PMIX_RANK_WILDCARD`) collective started later
+waits for. `pmix_rank_info_t::lost` makes it happen once, whichever of
+the two arrives first.
+
+They arrive in either order, and that is the trap. A host reaps a dead
+process and deregisters it, and that can land before the server has read
+the closed socket - after which `remove_client` closes the socket itself,
+so `lost_connection` never runs for it. `remove_client` used to account
+for nothing there: it set `peer->finalized`, which is the one flag that
+makes a loss read as an orderly exit, so the rank stayed an expected
+participant for the rest of its job. The survivors' next whole-job fence
+- the one in `MPI_Finalize`, for a ULFM application - waited for it
+forever. `test/unit/rank_lost.c` covers both orders.
+
+A departed rank leaves `nfinalized` too (or is never added to it), so
+`nlocalprocs == nfinalized` keeps meaning "every remaining local process
+has finalized". When `lost_connection` decremented `nlocalprocs` and the
+deregistration that followed counted the same rank finalized, that
+equality was reached a finalize early, or never.
+
+**A finalize is not a departure.** The peer-keyed entry points,
+`pmix_server_trk_peer_lost` and `pmix_server_grp_peer_lost`, return
+immediately for a peer with `finalized` set, and `lost_connection` does
+not call `pmix_server_rank_lost` for one. A rank that dropped its socket
+by calling `PMIx_Finalize` is still expected: `nlocalprocs` is
 deliberately *not* decremented for it and its peer object is tombstoned
-rather than retired, so it can `PMIx_Init` again and contribute. Counting
-it in `departed` as well counts the rank twice and lets a collective
-complete without it — which is how a client cycling init/finalize (MPI
-Sessions) desynchronized its fence sequence by whole cycles (#4113).
+rather than retired, so it can `PMIx_Init` again and contribute.
+Counting it in `departed` as well counts the rank twice and lets a
+collective complete without it — which is how a client cycling
+init/finalize (MPI Sessions) desynchronized its fence sequence by whole
+cycles (#4113). Only the host's deregistration ends such a rank.
 
 **`pmix_server_trkr_t::lock` is dead.** `tcon` constructs it and `tdes`
 destructs it, and nothing anywhere in the tree waits on it or wakes it —
