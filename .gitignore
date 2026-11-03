@@ -372,6 +372,9 @@ test/unit/ptl_legacy
 test/unit/ptl_token
 test/unit/ptl_pfexec_token
 test/unit/ptl_tcp_server
+test/unit/ptl_tmpdir
+test/unit/ptl_userns_server
+test/unit/rndz_dirs
 test/unit/ptl_select
 test/unit/ptl_usock
 test/unit/ptl_local_connect
