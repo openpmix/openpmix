@@ -337,6 +337,19 @@ typedef uint16_t pmix_listener_protocol_t;
 #define PMIX_PROTOCOL_UNDEF 0
 #define PMIX_PROTOCOL_V2    2 // tcp
 
+/* The groups of the process at the far end of a connection on the local
+ * socket, as the kernel reported them when it connected - see
+ * pmix_ptl_base_read_groups(). `read` is set once the kernel has answered:
+ * `gid` is then the effective gid it reported, and `gids` the process's
+ * groups, `gid` among them - or NULL when the kernel gave no list. Nothing
+ * is set for a TCP connection */
+typedef struct {
+    bool read;
+    gid_t gid;
+    gid_t *gids;
+    size_t ngids;
+} pmix_kernel_groups_t;
+
 /* connection support */
 typedef struct {
     /* on pmix_ptl_base.pending_connections while its connect-ack is
@@ -382,6 +395,9 @@ typedef struct {
     size_t len;
     uid_t uid;
     gid_t gid;
+    /* the groups the kernel reported for a tool's connection, kept from
+     * its validation until its peer is made */
+    pmix_kernel_groups_t kgroups;
     pmix_proc_type_t proc_type;
     /* the psec module (pmix_psec_module_t *) the peer asked to be
      * validated with */
@@ -411,6 +427,9 @@ typedef struct {
     bool realgid_given;
     /* the connection token its info carried, if any */
     char *token;
+    /* a client's token was checked for the rank it names, and its pid is
+     * bound to the token once the connection is accepted */
+    bool token_checked;
     /* the identity the host gave a tool that asked for one */
     pmix_proc_t assigned;
     /* this connection is counted in its rank entry's `connecting` while it

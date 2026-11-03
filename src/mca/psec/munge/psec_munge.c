@@ -43,6 +43,24 @@ typedef struct munge_ctx *munge_ctx_t;
 #define EMUNGE_SUCCESS 0
 #define EMUNGE_SNAFU   1
 
+#define MUNGE_OPT_UID_RESTRICTION 9
+
+static inline munge_ctx_t munge_ctx_create (void)
+{
+    return NULL;
+}
+
+static inline void munge_ctx_destroy (munge_ctx_t ctx)
+{
+    PMIX_HIDE_UNUSED_PARAMS(ctx);
+}
+
+static inline munge_err_t munge_ctx_set (munge_ctx_t ctx, int opt, ...)
+{
+    PMIX_HIDE_UNUSED_PARAMS(ctx, opt);
+    return EMUNGE_SNAFU;
+}
+
 static inline munge_err_t munge_encode (char **cred, munge_ctx_t ctx,
                                         const void *buf, int len)
 {
@@ -139,11 +157,43 @@ static void munge_finalize(void)
     pmix_mutex_unlock(&credlock);
 }
 
+/* A credential only a process running as `uid` can decode. Returns it in
+ * *out, for the caller to free */
+static pmix_status_t encode_for_uid(uid_t uid, char **out)
+{
+    munge_ctx_t ctx;
+    munge_err_t rc;
+
+    *out = NULL;
+    ctx = munge_ctx_create();
+    if (NULL == ctx) {
+        return PMIX_ERR_NOMEM;
+    }
+    rc = munge_ctx_set(ctx, MUNGE_OPT_UID_RESTRICTION, uid);
+    if (EMUNGE_SUCCESS == rc) {
+        rc = munge_encode(out, ctx, NULL, 0);
+    }
+    munge_ctx_destroy(ctx);
+    if (EMUNGE_SUCCESS != rc) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "psec: munge failed to create credential for uid %lu: %s",
+                            (unsigned long) uid, munge_strerror(rc));
+        free(*out);
+        *out = NULL;
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    return PMIX_SUCCESS;
+}
+
 static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
                                  size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                  pmix_byte_object_t *cred)
 {
     int rc;
+    pmix_status_t prc;
+    size_t n;
+    bool restrict_uid = false;
+    uid_t server = 0;
     PMIX_HIDE_UNUSED_PARAMS(peer);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -158,12 +208,41 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
+    /* the credential is restricted to the server's uid when that uid is
+     * known */
+    for (n = 0; NULL != directives && n < ndirs; n++) {
+        if (PMIx_Check_key(directives[n].key, PMIX_PSEC_SERVER_UID) &&
+            PMIX_UINT32 == directives[n].value.type) {
+            restrict_uid = true;
+            server = (uid_t) directives[n].value.data.uint32;
+        }
+    }
+
     pmix_mutex_lock(&credlock);
     if (!initialized) {
         /* we have no munged daemon to issue a credential, so we cannot
          * hand back an empty one and call it success */
         pmix_mutex_unlock(&credlock);
         return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    if (restrict_uid) {
+        /* a credential of its own, made for this server alone. The one
+         * cached at init serves only the first request, and this is that
+         * request or a later one: from here every credential is encoded
+         * when it is asked for */
+        if (NULL != mycred) {
+            free(mycred);
+            mycred = NULL;
+        }
+        refresh = true;
+        pmix_mutex_unlock(&credlock);
+        prc = encode_for_uid(server, &cred->bytes);
+        if (PMIX_SUCCESS != prc) {
+            return prc;
+        }
+        cred->size = strlen(cred->bytes) + 1;
+        goto mark;
     }
 
     if (!refresh) {
@@ -198,6 +277,7 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
         return PMIX_ERR_NOMEM;
     }
 
+mark:
     if (NULL != info) {
         /* mark that this came from us */
         PMIX_INFO_CREATE(*info, 1);

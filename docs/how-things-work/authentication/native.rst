@@ -63,10 +63,13 @@ reports, not the ones the peer claims:
   differs from the registration, the connection is refused.
 
 * **A tool**, which names its own identity, is given the uid the kernel
-  reports in place of the one it claimed. The group it claimed stands if
-  that user belongs to it. Otherwise, on the local socket the gid the
-  kernel reports replaces it; over TCP, which reports no group, the
-  connection is refused.
+  reports in place of the one it claimed. On the local socket, the group
+  it claimed stands if it is one of the groups the kernel reports for the
+  tool's process (or, where the kernel reports none, the groups the host
+  registered for the user, else the gid the kernel reports), and
+  otherwise the gid the kernel reports replaces it. Over TCP, which
+  reports no group, the group it claimed stands if that user belongs to
+  it, and otherwise the connection is refused.
 
 The identity settled on here is what the server passes to its host and
 what governs the peer's access to jobs and data.

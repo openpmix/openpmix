@@ -43,6 +43,24 @@ PMIX_EXPORT pmix_status_t pmix_util_getid(int sd, uid_t *uid, gid_t *gid);
  * no way to ask. *pid is written only on PMIX_SUCCESS. */
 PMIX_EXPORT pmix_status_t pmix_util_getpid(int sd, pid_t *pid);
 
+/* Ask the kernel for the groups of the process on the far end of the
+ * connected socket `sd`, as they were when it connected, and return them
+ * in *gids (malloc'd, the caller frees it) and *ngids. Linux reports the
+ * supplementary groups; macOS and FreeBSD report at most 16 groups, the
+ * effective gid first. Either way the effective gid may not be among
+ * them, and the list may be empty.
+ *
+ * Returns PMIX_SUCCESS, in which case both out-parameters have been
+ * written; PMIX_ERR_NOT_FOUND if the descriptor has no groups to report;
+ * PMIX_ERR_NOMEM; or PMIX_ERR_NOT_SUPPORTED on a platform that offers no
+ * way to ask. *gids is NULL on anything but PMIX_SUCCESS. Only a connected
+ * AF_UNIX socket gives an answer. */
+PMIX_EXPORT pmix_status_t pmix_util_getgroups(int sd, gid_t **gids, size_t *ngids);
+
+/* For the unit tests alone, and nothing outside a test's own code sets
+ * it: pmix_util_getgroups() answers as on a platform with no way to ask */
+PMIX_EXPORT extern bool pmix_util_getgroups_test_unavailable;
+
 /* Ask the kernel which user owns the far end of the connected TCP
  * socket `sd`, and write it to *uid. This works only when that far end
  * is a socket on this host: the answer comes from the kernel's own table

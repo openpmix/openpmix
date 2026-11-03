@@ -33,10 +33,38 @@ on it.
   (:ref:`PMIx_server_register_client(3) <man3-PMIx_server_register_client>`).
 * The uid and gid the credential establishes must be the ones the host
   registered for that client.
+* A client of this release must present its rank's connection token,
+  the one
+  :ref:`PMIx_server_setup_fork(3) <man3-PMIx_server_setup_fork>` put in
+  its environment. A connection with no token, or another one, is
+  refused with ``PMIX_ERR_INVALID_CRED``, and the host is not asked
+  about it. **The token is bound to the first client process that
+  connects with it.** The first client connection accepted with a
+  rank's token on the local socket binds the token to the pid the kernel
+  reports for that connection, and from then on a client presenting the
+  token is taken only from that pid: the process connects again after it
+  finalizes or loses its connection, and so does a program it execs, but
+  a client connection presenting the token from any other pid is refused
+  with ``PMIX_ERR_INVALID_CRED``, before the host is asked. The binding
+  stays when the connection ends. It ends when the host replaces the
+  rank: preparing the rank again with ``PMIx_server_setup_fork`` issues
+  a new token, not yet bound to any pid, and the old token is refused
+  from then on; deregistering the rank or its namespace drops its
+  token; and registering the rank again with
+  :ref:`PMIx_server_register_client(3) <man3-PMIx_server_register_client>`
+  keeps its token but ends the binding, so the next client process to
+  connect with it binds it. Where the kernel reports no pid for a connection on
+  the local socket, that connection is checked for its token alone and
+  binds nothing. The binding applies to client connections only: a tool
+  that names a client's rank is checked for the rank's token alone,
+  whatever pid it comes from, and its connection binds nothing.
 * A rank takes one connection at a time. A second connection for a
   rank that already has one - live, or waiting on the host's answer -
   is refused with ``PMIX_ERR_EXISTS``, and the host is not asked about
-  it, whatever pid it comes from. A process the client started before
+  it - a tool's as a client's. A client connection from a pid other
+  than the one the rank's token is bound to is refused for its token
+  first, with ``PMIX_ERR_INVALID_CRED``, whether or not the rank has a
+  connection. A process the client started before
   it called ``PMIx_Init`` inherits its identity, and makes such a
   connection if it calls ``PMIx_Init`` too. One it starts afterwards
   inherits none: the client library takes the variables
@@ -58,8 +86,13 @@ ignored. The client's identity is the one the credential establishes.
 **For a tool,** in addition:
 
 * The uid the credential establishes replaces whatever uid the tool
-  claimed. A gid the tool claims stands only if that user belongs to
-  it; otherwise the verified gid replaces it.
+  claimed. On the local socket, a gid the tool claims stands only if it
+  is one of the tool's process's groups - those the kernel reports for
+  the connection, or where it reports none, those the host registered
+  for the tool's user (``PMIX_USER_GRPIDS``), or where it registered
+  none, the effective gid the kernel reports; otherwise that effective
+  gid replaces it. Over TCP, a gid the tool claims stands only if its
+  user belongs to that group (see below); otherwise the tool is refused.
 * A tool whose uid differs from the server's is refused unless the host
   started the server with ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``.
 * A tool that says it is a registered client, or that joins a namespace
@@ -109,12 +142,13 @@ ignored. The client's identity is the one the credential establishes.
   ``PMIX_ERR_EXISTS`` once the host accepts it - the host is then sent
   the notice described below.
 
-When a tool claims a gid other than the one the kernel reports for its
-connection - or connects over TCP, for which the kernel reports no gid,
+When a tool connects over TCP, for which the kernel reports no gid -
 unless it is the server's own user claiming the server's own gid - the
-server checks whether the tool's user belongs to that group in the
+server checks whether the tool's user belongs to the gid it claims in the
 system's user and group database (``getpwuid_r`` and ``getgrgid_r``);
-root belongs to every group without a lookup. The check runs on
+root belongs to every group without a lookup. A tool on the local socket
+is never checked this way: its gid is decided from its process's groups,
+as above. The check runs on
 the server's progress thread, before the host is asked about the tool,
 and waits for the database to answer - which, for a directory service,
 may mean a network round trip. Each answer, whether the user belongs to
@@ -296,7 +330,10 @@ connections.
 From v7.0, ``native`` takes the peer's uid from the kernel rather than
 from the peer - except over TCP on a platform whose kernel keeps no table
 of TCP connections, where a server that takes legacy peers takes the uid
-and gid the peer claims. For how it works, and what a container needs
+and gid the peer claims. While a server takes legacy peers, a connection
+over TCP that declares a release earlier than v7.0 is not checked for a
+connection token, so a process of a user can connect over TCP as any
+rank registered for that user without its token. For how it works, and what a container needs
 for it, see :doc:`/how-things-work/authentication/native`. For a survey of
 methods for authenticating a peer in a container, see
 :doc:`/how-things-work/authentication/methods`.
