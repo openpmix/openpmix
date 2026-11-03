@@ -32,6 +32,7 @@
 #include <grp.h>
 #if defined(__linux__)
 #    include <sched.h>
+#    include <sys/prctl.h>
 #endif
 #include <signal.h>
 #include <stdio.h>
@@ -91,8 +92,11 @@ static int run_kid(int envfd, int resultfd)
         }
     }
 #if defined(__linux__) && defined(CLONE_NEWUSER)
+    /* A process that changed its uid is not dumpable, which leaves its
+     * /proc/self files root's - and the maps below unwritable. Make it
+     * dumpable again before it makes its namespace */
     if (0 != setgroups(0, NULL) || 0 != setgid(JOB_GID) || 0 != setuid(JOB_UID) ||
-        0 != unshare(CLONE_NEWUSER)) {
+        0 != prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) || 0 != unshare(CLONE_NEWUSER)) {
         return KID_NO_USERS;
     }
     /* only our own user and group: root, outside, is unmapped */

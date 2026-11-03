@@ -306,7 +306,6 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
                                        pmix_buffer_t *buf,
                                        pmix_device_dist_cbfunc_t cbfunc)
 {
-    pmix_topology_t topo = {NULL, NULL};
     pmix_cpuset_t cpuset = {NULL, NULL};
     pmix_status_t rc;
     pmix_device_distance_t *distances;
@@ -323,13 +322,11 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-    /* unpack the topology they want us to use */
-    cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &topo, &cnt, PMIX_TOPO);
+    /* The request carries a topology, which we do not use: distances
+     * for a process on this node are computed from this server's own
+     * topology. Move past it without building it */
+    rc = pmix_bfrops_base_skip_topology(cd->peer->nptr->compat.bfrops, buf);
     if (PMIX_SUCCESS != rc) {
-        /* nothing has been built yet - the unpackers leave the topology
-         * untouched on every failure arm - but take the same exit as
-         * every other error here rather than a bare return */
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
@@ -374,17 +371,14 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
         }
     }
 
-    /* if the provided topo is NULL, use my own */
-    if (NULL == topo.topology) {
-        if (NULL == pmix_globals.topology.topology) {
-            /* try to get it */
-            rc = pmix_hwloc_load_topology(&pmix_globals.topology);
-            if (PMIX_SUCCESS != rc) {
-                /* nothing we can do */
-                goto cleanup;
-            }
+    /* use my own topology */
+    if (NULL == pmix_globals.topology.topology) {
+        /* try to get it */
+        rc = pmix_hwloc_load_topology(&pmix_globals.topology);
+        if (PMIX_SUCCESS != rc) {
+            /* nothing we can do */
+            goto cleanup;
         }
-        topo.topology = pmix_globals.topology.topology;
     }
 
     /* measured from a device, the requester's binding plays no part - and
@@ -441,7 +435,8 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
         PMIX_DESTRUCT(&cb);
     }
     /* compute the distances */
-    rc = pmix_hwloc_compute_distances(&topo, &cpuset, cd->info, cd->ninfo, &distances, &ndist);
+    rc = pmix_hwloc_compute_distances(&pmix_globals.topology, &cpuset, cd->info, cd->ninfo,
+                                      &distances, &ndist);
     if (PMIX_SUCCESS == rc) {
         /* Send the reply. The callback only thread-shifts, and the reply
          * is packed from the array on the progress thread after we have
@@ -460,17 +455,6 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
     }
 
 cleanup:
-    if (NULL != topo.topology &&
-        topo.topology != pmix_globals.topology.topology) {
-        pmix_hwloc_destruct_topology(&topo);
-    }
-    /* the unpack strdup's a source string even for the NULL topology that
-     * says "use your own" - and on that path we borrow the global
-     * topology, so the destruct above is skipped and nothing else would
-     * ever free it. It NULLs the member when it does run */
-    if (NULL != topo.source) {
-        free(topo.source);
-    }
     if (NULL != cpuset.bitmap) {
         pmix_hwloc_destruct_cpuset(&cpuset);
     }

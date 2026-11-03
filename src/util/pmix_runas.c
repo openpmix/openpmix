@@ -23,6 +23,7 @@
 #endif
 
 #include "src/util/pmix_runas.h"
+#include "src/util/pmix_fd.h"
 
 volatile bool pmix_util_runas_child = false;
 
@@ -60,6 +61,12 @@ static int send_fd(int sd, int fd)
     return (1 == rc) ? 0 : -1;
 }
 
+#ifdef MSG_CMSG_CLOEXEC
+#    define PMIX_MSG_CMSG_CLOEXEC MSG_CMSG_CLOEXEC
+#else
+#    define PMIX_MSG_CMSG_CLOEXEC 0
+#endif
+
 /* the descriptor the other end of sd sent, or -1 */
 static int recv_fd(int sd)
 {
@@ -83,7 +90,7 @@ static int recv_fd(int sd)
     msg.msg_control = ctl.buf;
     msg.msg_controllen = sizeof(ctl.buf);
     do {
-        rc = recvmsg(sd, &msg, 0);
+        rc = recvmsg(sd, &msg, PMIX_MSG_CMSG_CLOEXEC);
     } while (0 > rc && EINTR == errno);
     if (1 != rc) {
         return -1;
@@ -93,6 +100,10 @@ static int recv_fd(int sd)
             CMSG_LEN(sizeof(int)) == cm->cmsg_len) {
             memcpy(&fd, CMSG_DATA(cm), sizeof(int));
         }
+    }
+    /* close-on-exec on arrival where the platform can, else at once */
+    if (0 <= fd && 0 == PMIX_MSG_CMSG_CLOEXEC) {
+        (void) pmix_fd_set_cloexec(fd);
     }
     return fd;
 }
@@ -125,8 +136,12 @@ int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool
     }
 
 #if defined(HAVE_FORK) && defined(HAVE_WAITPID)
-    if (want_fd && 0 != socketpair(AF_UNIX, SOCK_STREAM, 0, sv)) {
+    if (want_fd && 0 != socketpair(AF_UNIX, SOCK_STREAM | PMIX_SOCK_CLOEXEC, 0, sv)) {
         return -1;
+    }
+    if (want_fd && 0 == PMIX_SOCK_CLOEXEC) {
+        (void) pmix_fd_set_cloexec(sv[0]);
+        (void) pmix_fd_set_cloexec(sv[1]);
     }
     pid = fork();
     if (0 > pid) {

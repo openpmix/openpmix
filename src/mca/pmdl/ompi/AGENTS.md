@@ -116,13 +116,16 @@ some info key is `PMIX_SETUP_APP_ENVARS` — otherwise it returns
 ### `process_param_file` (helper)
 
 Opens the file once (`O_NONBLOCK`, so a FIFO at the name cannot block the
-open), checks it with `fstat` — it must be a regular file, and the user's
-`~/.openmpi/mca-params.conf` must belong to that user — and parses that
-same descriptor through `pmix_mca_base_parse_paramfile_stream()`. Parsing
-by name would open the path a second time and could read something other
-than what was checked. A symlink is followed; its target is what must
-pass. A file that is absent or fails the check is skipped, as a missing
-one always was.
+open; `O_NOCTTY`, so a terminal at the name does not become the server's
+controlling terminal; `O_CLOEXEC`), checks it with `fstat` — it must be a
+regular file, and the user's `~/.openmpi/mca-params.conf` must belong to
+that user — and parses that same descriptor through
+`pmix_mca_base_parse_paramfile_stream()`. Parsing by name would open the
+path a second time and could read something other than what was checked.
+A symlink is followed; its target is what must pass. That is deliberate -
+param files are commonly linked into place by users and by environment
+modules - so do not add `O_NOFOLLOW`. A file that is absent or fails the
+check is skipped, as a missing one always was.
 
 The file is read by the server on a job's behalf, so its size is
 bounded: `pmdl_ompi_max_param_file_size` (bytes, default 1 MiB, 0 for no

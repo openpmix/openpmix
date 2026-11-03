@@ -20,6 +20,16 @@
  * runs in a child of its own, with $HOME pointed at a scratch directory
  * holding the case's file. A case that blocks - a FIFO at the name - is
  * killed after a timeout and fails.
+ *
+ * The terminal case links the name to a pseudo-terminal and runs the
+ * harvest in a new session, which has no controlling terminal. The
+ * terminal is not a regular file, so it is skipped - and opening it to
+ * find that out must not make it the session's controlling terminal.
+ * Whether an open() without O_NOCTTY does that at all is the
+ * platform's choice (Linux does; macOS and the BSDs do not), so a probe
+ * child first opens the terminal that way itself, and the case reports
+ * SKIP where that leaves no controlling terminal: there the case would
+ * pass whatever flags the component used.
  */
 
 #include "src/include/pmix_config.h"
@@ -31,6 +41,7 @@
 #include "src/mca/pmdl/base/base.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +57,8 @@
 #define C_READ    0  /* the file's value reached the environment */
 #define C_SETUP   1
 #define C_SKIPPED 3  /* it did not */
+#define C_CTTY    4  /* the harvest left us with a controlling terminal */
+#define C_NOTAPPLICABLE 5 /* the platform cannot show the difference */
 
 typedef enum {
     CASE_REGULAR,
@@ -53,7 +66,8 @@ typedef enum {
     CASE_FIFO,
     CASE_FOREIGN,
     CASE_LARGE,         /* past the size limit */
-    CASE_LARGE_NOLIMIT  /* the same file, with no limit set */
+    CASE_LARGE_NOLIMIT, /* the same file, with no limit set */
+    CASE_TTY            /* a symlink to a terminal */
 } pfcase_t;
 
 /* the size limit each case runs with - the large file is twice it */
@@ -142,12 +156,63 @@ static int harvest(const char *home, const char *cap)
     return found ? C_READ : C_SKIPPED;
 }
 
+/* child: harvest from a new session, then say whether the session has
+ * acquired a controlling terminal */
+static int harvest_in_session(const char *home)
+{
+    int rc, fd;
+
+    if (0 > setsid()) {
+        return C_SETUP;
+    }
+    rc = harvest(home, PFCAP_STR);
+    fd = open("/dev/tty", O_RDWR | O_NOCTTY);
+    if (0 <= fd) {
+        close(fd);
+        return C_CTTY;
+    }
+    return rc;
+}
+
+/* does an open() of this terminal from a new session, without O_NOCTTY,
+ * make it the session's controlling terminal on this platform? */
+static bool open_acquires_ctty(const char *slave)
+{
+    pid_t pid;
+    int status = 0, fd;
+
+    pid = fork();
+    if (0 > pid) {
+        return false;
+    }
+    if (0 == pid) {
+        if (0 > setsid()) {
+            _exit(2);
+        }
+        fd = open(slave, O_RDWR | O_NONBLOCK);
+        if (0 > fd) {
+            _exit(2);
+        }
+        close(fd);
+        fd = open("/dev/tty", O_RDWR | O_NOCTTY);
+        if (0 <= fd) {
+            close(fd);
+            _exit(0);
+        }
+        _exit(1);
+    }
+    if (pid != waitpid(pid, &status, 0)) {
+        return false;
+    }
+    return WIFEXITED(status) && 0 == WEXITSTATUS(status);
+}
+
 /* run one case in a child and return its report, or -1 */
 static int run_case(pfcase_t which, char *home)
 {
-    char dir[1100], file[1200], real[1200];
+    char dir[1100], file[1200], real[1200], *slave;
     pid_t pid, r;
-    int status = 0, i;
+    int status = 0, i, master = -1;
 
     snprintf(dir, sizeof(dir), "%s/.openmpi", home);
     snprintf(file, sizeof(file), "%s/mca-params.conf", dir);
@@ -183,13 +248,36 @@ static int run_case(pfcase_t which, char *home)
             return -1;
         }
         break;
+    case CASE_TTY:
+        /* the master stays open until the child is done, which is what
+         * keeps the terminal there */
+        master = posix_openpt(O_RDWR | O_NOCTTY);
+        if (0 > master || 0 != grantpt(master) || 0 != unlockpt(master) ||
+            NULL == (slave = ptsname(master)) || 0 != symlink(slave, file)) {
+            if (0 <= master) {
+                close(master);
+            }
+            return -1;
+        }
+        if (!open_acquires_ctty(slave)) {
+            unlink(file);
+            close(master);
+            return C_NOTAPPLICABLE;
+        }
+        break;
     }
 
     pid = fork();
     if (0 > pid) {
+        if (0 <= master) {
+            close(master);
+        }
         return -1;
     }
     if (0 == pid) {
+        if (CASE_TTY == which) {
+            _exit(harvest_in_session(home));
+        }
         _exit(harvest(home, (CASE_LARGE_NOLIMIT == which) ? "0" : PFCAP_STR));
     }
     for (i = 0; i < 300; i++) {
@@ -201,6 +289,9 @@ static int run_case(pfcase_t which, char *home)
     }
     unlink(file);
     unlink(real);
+    if (0 <= master) {
+        close(master);
+    }
     if (300 == i) {
         kill(pid, SIGKILL);
         waitpid(pid, &status, 0);
@@ -217,13 +308,18 @@ static void check(const char *name, pfcase_t which, char *home, int want)
     int got = run_case(which, home);
     char detail[64];
 
-    if (-2 == got) {
+    if (C_NOTAPPLICABLE == got) {
+        fprintf(stdout, "  SKIP: %s (an open() here never makes a terminal the "
+                "controlling terminal)\n", name);
+    } else if (-2 == got) {
         report(name, 0, "the harvest never finished");
     } else if (0 > got || C_SETUP == got) {
         report(name, 0, "the case could not be set up");
     } else {
-        snprintf(detail, sizeof(detail), "the value was %s",
-                 (C_READ == got) ? "read" : "not read");
+        snprintf(detail, sizeof(detail), "%s",
+                 (C_READ == got) ? "the value was read" :
+                 (C_CTTY == got) ? "the terminal became the controlling terminal" :
+                 "the value was not read");
         report(name, want == got, detail);
     }
 }
@@ -248,6 +344,8 @@ int main(int argc, char **argv)
     check("a FIFO at the name is skipped without blocking", CASE_FIFO, home, C_SKIPPED);
     check("a file past the size limit is skipped", CASE_LARGE, home, C_SKIPPED);
     check("the same file is read with no limit", CASE_LARGE_NOLIMIT, home, C_READ);
+    check("a terminal at the name is skipped and does not become the controlling terminal",
+          CASE_TTY, home, C_SKIPPED);
     if (0 == geteuid()) {
         check("a file belonging to another user is skipped", CASE_FOREIGN, home, C_SKIPPED);
     } else {

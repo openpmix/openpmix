@@ -157,6 +157,7 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_shift_caddy_t *cd;
     pmix_proc_t proc;
     time_t timestamp;
+    size_t n;
 
     pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
                         "pmix:server recvd log from client");
@@ -254,6 +255,16 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto exit;
+        }
+    }
+    /* PMIX_NSPACE in a log request names the job whose duplicate
+     * suppression the message falls under. A request from a client or
+     * tool falls under that requester's own namespace, so set it to that
+     * here - before plog or the host sees the request */
+    for (n = 0; n < (size_t) cnt; n++) {
+        if (PMIX_CHECK_KEY(&cd->directives[n], PMIX_NSPACE)) {
+            PMIX_VALUE_DESTRUCT(&cd->directives[n].value);
+            PMIX_VALUE_LOAD(&cd->directives[n].value, proc.nspace, PMIX_STRING);
         }
     }
 

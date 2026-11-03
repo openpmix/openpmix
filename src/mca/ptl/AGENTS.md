@@ -234,7 +234,9 @@ the side that *initiated* it uses the lower half
 `PMIX_PROC_SCHEDULER`, …) with its `major.minor.release` version. The
 `PMIX_PEER_IS_*` / `PMIX_PROC_IS_*` macros test the role bits; the
 `PMIX_PEER_IS_Vxx` / `PMIX_PEER_TRIPLET` macros test versions
-(255 = wildcard). These roles are what `pmix_ptl_base_select` and the
+(255 = wildcard). No version string sets 255: `pmix_ptl_base_parse_version`
+takes components from 0 to 254 and refuses anything else, and
+`PMIX_SET_PEER_VERSION` reads such a string as no release (0.0.0). These roles are what `pmix_ptl_base_select` and the
 connection handler switch on.
 
 ## The public transport macros
@@ -406,10 +408,14 @@ the real work on the progress thread:
    credential, a **flag** (`pmix_rnd_flag_t`, 0–10) identifying the kind
    of connector, the peer's procid/uid/gid, version, bfrops module, buffer
    type, gds module, and an optional info blob. A v1.x or v2.0 peer is
-   refused at the version string - see "Version floors" in
+   refused at the version string, as is one whose version is not one (a
+   component that is not a number, or past 254) - see "Version floors" in
    [`base/AGENTS.md`](base/AGENTS.md).
 3. Branch on the flag: a **simple client / singleton** (`accept_client`)
-   must already be a registered nspace+rank; a **tool/launcher**
+   must already be a registered nspace+rank - one naming a namespace or
+   rank that takes no client is answered `PMIX_ERR_INVALID_CRED`, as a
+   registered rank with a credential or token that does not match is; a
+   **tool/launcher**
    (`accept_tool`) may be given an identity by the host's
    `tool_connected` up-call.
 4. **Settle the identity, check, ask the host, accept - in that order.**
@@ -559,7 +565,7 @@ names are already those synonyms.
 | `disable_ipv4_family` / `disable_ipv6_family` | skip a whole address family (IPv6 disabled by default) |
 | `connection_wait_time` / `max_retries` | how long/often to wait for a server's connection file to appear |
 | `handshake_wait_time` / `handshake_max_retries` | how long a client or tool waits on a server while connecting - each `connect()` attempt and each handshake reply, or the whole event-driven attach (default 60s, 0 = unbounded) - and how often it retries a handshake the server asks it to retry |
-| `connect_ack_timeout` | seconds a server gives an inbound connection to deliver its whole connect-ack, and to answer each step of the blocking handshake after it, before dropping it (default 5; 0 = no limit) |
+| `connect_ack_timeout` | seconds a server gives an inbound connection to deliver its whole connect-ack before dropping it (default 5; 0 = no limit). It ends when the connect-ack is complete: the replies the server writes after it have no time limit |
 | `max_pending_connections` | most inbound connections held while their connect-ack is still arriving, and separately most tools held while the host decides; at the first limit the oldest still arriving is dropped, at the second a further tool is refused - as is a tool of a uid other than the server's and root's that has a quarter of it waiting (default 0 = an eighth of the descriptor limit, for each; -1 = no limit) |
 | `max_pending_bytes` | most bytes allocated, between them, for the payloads of connect-acks still arriving; a payload buffer starts at 4 KB and doubles as it fills, and a connection whose buffer cannot grow within the limit is dropped (`size_t`, default 16777216; 0 = no limit) |
 | `report_uri` | where to print the listener URI |
@@ -582,9 +588,11 @@ to break this framework:
    inbound handshake runs on the server's progress thread, at any moment,
    while that thread is serving every other client. So the server reads
    the connect-ack as its bytes arrive and
-   never waits for them; only the replies after it are blocking writes,
-   bounded by `ptl_base_connect_ack_timeout` — see
-   [`base/AGENTS.md`](base/AGENTS.md).
+   never waits for them, and drops one not complete within
+   `ptl_base_connect_ack_timeout`. The replies after it are blocking
+   writes (`pmix_ptl_base_send_blocking`) of a few words each, with no
+   time limit: no `SO_SNDTIMEO` is set, and the timer is gone once the
+   connect-ack is in — see [`base/AGENTS.md`](base/AGENTS.md).
 2. **Steady-state I/O is entirely on the progress thread.** Every
    `PMIX_PTL_SEND_*` macro thread-shifts; the send/recv handlers,
    `process_msg`, the accept handler, and the connection handler all run

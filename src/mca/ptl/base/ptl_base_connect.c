@@ -469,7 +469,7 @@ char *pmix_ptl_base_get_cmd_line(void)
     /* open the pid's info file */
     mypid = getpid();
     pmix_snprintf(tmp, 512, "/proc/%lu/cmdline", (unsigned long) mypid);
-    fp = fopen(tmp, "r");
+    fp = pmix_fd_fopen_cloexec(tmp, "r");
     if (NULL != fp) {
         /* read the cmd line */
         if (NULL == fgets(tmp, 512, fp)) {

@@ -19,6 +19,17 @@
  * client or tool may talk to, is read as "users=...,groups=..." and
  * anything else refused.
  *
+ * A tool given a file that is not a regular file - a FIFO, or a symbolic
+ * link to the server's report file - at PMIX_SERVER_URI "file:<path>" or
+ * PMIX_TOOL_ATTACHMENT_FILE fails its init at once, rather than waiting
+ * on the FIFO; the report file itself, named either way, connects. A
+ * launcher whose PMIX_LAUNCHER_RENDEZVOUS_FILE name has a FIFO at it
+ * finishes its init promptly.
+ *
+ * Every connect-ack buffer a client releases - the packed info that holds
+ * its connection token, and the message - is zero when it is released
+ * (pmix_ptl_base_wiped_hook).
+ *
  * The client and tool run in children forked before any PMIx call, which
  * are handed their environment through a pipe; the server's look at the
  * host's up-calls happens while they are connected.
@@ -33,6 +44,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/usock/ptl_usock.h"
+#include "src/util/pmix_environ.h"
 #include "src/util/pmix_net.h"
 
 #include <fcntl.h>
@@ -43,8 +55,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define CL_NSPACE "local.connect"
@@ -56,6 +70,7 @@
 #define KID_INIT_FAILED 4   // init failed - the status is written to its pipe
 #define KID_CLOEXEC     5   // its connection is not close-on-exec
 #define KID_NO_USERNS   6   // it could not enter a user namespace of its own
+#define KID_NOT_WIPED   7   // a connect-ack buffer it released was not zero
 
 static int npass = 0;
 static int nfail = 0;
@@ -190,6 +205,24 @@ static bool put(int fd, const void *buf, size_t len)
     return (ssize_t) len == write(fd, buf, len);
 }
 
+/* what the kid's pmix_ptl_base_wiped_hook saw */
+static int nwiped = 0;
+static bool wiped_dirty = false;
+
+static void wiped(const void *p, size_t len)
+{
+    const unsigned char *c = (const unsigned char *) p;
+    size_t n;
+
+    ++nwiped;
+    for (n = 0; n < len; n++) {
+        if (0 != c[n]) {
+            wiped_dirty = true;
+            return;
+        }
+    }
+}
+
 static int run_kid(bool tool, int envfd, int resultfd, int gofd)
 {
     pmix_proc_t me;
@@ -203,6 +236,12 @@ static int run_kid(bool tool, int envfd, int resultfd, int gofd)
     if (!read_env(envfd)) {
         return KID_FAILED;
     }
+    if (NULL != getenv("CL_ALARM")) {
+        alarm((unsigned) strtoul(getenv("CL_ALARM"), NULL, 10));
+    }
+    if (NULL != getenv("CL_WIPE_CHECK")) {
+        pmix_ptl_base_wiped_hook = wiped;
+    }
     if (NULL != getenv("CL_USERNS") && !enter_userns()) {
         rc = PMIX_ERR_NOT_SUPPORTED;
         return put(resultfd, &rc, sizeof(rc)) ? KID_NO_USERNS : KID_FAILED;
@@ -212,6 +251,30 @@ static int run_kid(bool tool, int envfd, int resultfd, int gofd)
         PMIX_INFO_LOAD(&info, PMIX_SERVER_URI, getenv("CL_TOOL_URI"), PMIX_STRING);
         rc = PMIx_tool_init(&me, &info, 1);
         PMIX_INFO_DESTRUCT(&info);
+    } else if (tool && NULL != getenv("CL_TOOL_ATTACH")) {
+        /* the server's file, as an attachment file */
+        PMIX_INFO_LOAD(&info, PMIX_TOOL_ATTACHMENT_FILE, getenv("CL_TOOL_ATTACH"), PMIX_STRING);
+        rc = PMIx_tool_init(&me, &info, 1);
+        PMIX_INFO_DESTRUCT(&info);
+    } else if (tool && NULL != getenv("CL_LAUNCHER_RNDZ")) {
+        /* a launcher, attaching to the server by its file and then
+         * writing its own rendezvous file */
+        pmix_info_t linfo[3];
+        PMIX_INFO_LOAD(&linfo[0], PMIX_LAUNCHER, NULL, PMIX_BOOL);
+        PMIX_INFO_LOAD(&linfo[1], PMIX_SERVER_URI, getenv("CL_LAUNCHER_SERVER"), PMIX_STRING);
+        PMIX_INFO_LOAD(&linfo[2], PMIX_LAUNCHER_RENDEZVOUS_FILE, getenv("CL_LAUNCHER_RNDZ"),
+                       PMIX_STRING);
+        rc = PMIx_tool_init(&me, linfo, 3);
+        PMIX_INFO_DESTRUCT(&linfo[0]);
+        PMIX_INFO_DESTRUCT(&linfo[1]);
+        PMIX_INFO_DESTRUCT(&linfo[2]);
+        if (PMIX_SUCCESS == rc) {
+            if (!put(resultfd, &rc, sizeof(rc)) || 1 != read(gofd, &c, 1)) {
+                ret = KID_FAILED;
+            }
+            PMIx_tool_finalize();
+            return ret;
+        }
     } else if (tool) {
         /* find the server by its pid's rendezvous file */
         spid = (pid_t) strtol(getenv("CL_SERVER_PID"), NULL, 10);
@@ -232,6 +295,12 @@ static int run_kid(bool tool, int envfd, int resultfd, int gofd)
     if (NULL != srv && 0 <= srv->sd && 0 == (fcntl(srv->sd, F_GETFD) & FD_CLOEXEC)) {
         ret = KID_CLOEXEC;
     }
+    /* the packed info and the message, at least, and every one zero */
+    if (NULL != getenv("CL_WIPE_CHECK") && (2 > nwiped || wiped_dirty)) {
+        fprintf(stdout, "    %d connect-ack buffers released, %s\n", nwiped,
+                wiped_dirty ? "one of them not zero" : "all zero");
+        ret = KID_NOT_WIPED;
+    }
     if (!put(resultfd, &rc, sizeof(rc)) || 1 != read(gofd, &c, 1)) {
         ret = KID_FAILED;
     }
@@ -243,7 +312,7 @@ static int run_kid(bool tool, int envfd, int resultfd, int gofd)
     return ret;
 }
 
-static kid_t *started[16];
+static kid_t *started[24];
 static int nstarted = 0;
 
 static bool start_kid(kid_t *k, bool tool)
@@ -407,6 +476,127 @@ static void tool_uri_case(kid_t *kp, const char *name, const char *uri, bool wan
            detail);
 }
 
+/* A tool told of a file that is not a regular one - by `var` (CL_TOOL_URI
+ * for "file:<path>", or CL_TOOL_ATTACH for PMIX_TOOL_ATTACHMENT_FILE) -
+ * fails its init within `limit` seconds, rather than waiting on it. One
+ * that waits is stopped by its alarm, a little after the limit */
+static void tool_file_refused_case(kid_t *kp, const char *name, const char *var,
+                                   const char *value, unsigned limit)
+{
+    kid_t k = *kp;
+    char *env[3] = {NULL, NULL, NULL};
+    int status = 0;
+    pmix_status_t rc;
+    char detail[256];
+    time_t start;
+    double took;
+
+    if (0 > asprintf(&env[0], "%s=%s", var, value) ||
+        0 > asprintf(&env[1], "CL_ALARM=%u", limit + 5)) {
+        return;
+    }
+    start = time(NULL);
+    send_env(&k, env);
+    free(env[0]);
+    free(env[1]);
+    rc = finish_kid(&k, &status);
+    took = difftime(time(NULL), start);
+    snprintf(detail, sizeof(detail), "init %s, %s %d, after %.0f seconds",
+             PMIx_Error_string(rc), WIFSIGNALED(status) ? "signal" : "exit",
+             WIFSIGNALED(status) ? WTERMSIG(status)
+                                 : (WIFEXITED(status) ? WEXITSTATUS(status) : -1),
+             took);
+    report(name, PMIX_SUCCESS != rc && WIFEXITED(status) &&
+                     KID_INIT_FAILED == WEXITSTATUS(status) && took <= (double) limit,
+           detail);
+}
+
+/* A tool told of the server's report file by PMIX_TOOL_ATTACHMENT_FILE
+ * connects over the local socket */
+static void tool_attach_case(kid_t *kp, const char *name, const char *path)
+{
+    kid_t k = *kp;
+    char *env[2] = {NULL, NULL};
+    int status = 0;
+    pmix_status_t rc;
+    char detail[256];
+
+    if (0 > asprintf(&env[0], "CL_TOOL_ATTACH=%s", path)) {
+        return;
+    }
+    send_env(&k, env);
+    free(env[0]);
+    rc = finish_kid(&k, &status);
+    snprintf(detail, sizeof(detail), "init %s, exit %d", PMIx_Error_string(rc),
+             WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    report(name, PMIX_SUCCESS == rc && WIFEXITED(status) && KID_OK == WEXITSTATUS(status),
+           detail);
+}
+
+/* A launcher, attached to the server by `server` ("file:<path>"), whose
+ * rendezvous file name has a FIFO at it finishes its init within `limit`
+ * seconds */
+static void launcher_fifo_case(kid_t *kp, const char *name, const char *server,
+                               const char *path, unsigned limit)
+{
+    kid_t k = *kp;
+    char *env[4] = {NULL, NULL, NULL, NULL};
+    int status = 0;
+    pmix_status_t rc;
+    char detail[256];
+    time_t start;
+    double took;
+
+    if (0 > asprintf(&env[0], "CL_LAUNCHER_RNDZ=%s", path) ||
+        0 > asprintf(&env[1], "CL_ALARM=%u", limit + 5) ||
+        0 > asprintf(&env[2], "CL_LAUNCHER_SERVER=%s", server)) {
+        return;
+    }
+    start = time(NULL);
+    send_env(&k, env);
+    free(env[0]);
+    free(env[1]);
+    free(env[2]);
+    rc = finish_kid(&k, &status);
+    took = difftime(time(NULL), start);
+    snprintf(detail, sizeof(detail), "init %s, %s %d, after %.0f seconds",
+             PMIx_Error_string(rc), WIFSIGNALED(status) ? "signal" : "exit",
+             WIFSIGNALED(status) ? WTERMSIG(status)
+                                 : (WIFEXITED(status) ? WEXITSTATUS(status) : -1),
+             took);
+    report(name, PMIX_SUCCESS == rc && WIFEXITED(status) && took <= (double) limit, detail);
+}
+
+/* A client whose connect-ack buffers are all zero when it releases them */
+static void wipe_case(kid_t *kp, const char *name)
+{
+    kid_t k = *kp;
+    pmix_proc_t proc;
+    char **env = NULL;
+    int status = 0;
+    pmix_status_t rc;
+    char detail[256];
+
+    PMIX_LOAD_PROCID(&proc, CL_NSPACE, 0);
+    if (PMIX_SUCCESS != PMIx_server_setup_fork(&proc, &env)) {
+        report(name, 0, "setup_fork failed");
+        return;
+    }
+    if (NULL == pmix_getenv(PMIX_PTL_TOKEN_ENV, env)) {
+        PMIx_Argv_free(env);
+        report(name, 0, "the client was given no token");
+        return;
+    }
+    set_var(&env, "CL_WIPE_CHECK", "1");
+    send_env(&k, env);
+    PMIx_Argv_free(env);
+    rc = finish_kid(&k, &status);
+    snprintf(detail, sizeof(detail), "init %s, exit %d", PMIx_Error_string(rc),
+             WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    report(name, PMIX_SUCCESS == rc && WIFEXITED(status) && KID_OK == WEXITSTATUS(status),
+           detail);
+}
+
 /* A client the server starts that runs in a user namespace of its own:
  * the kernel reports the server to it by the ids inside, and it maps them
  * back to the ones the server named */
@@ -553,9 +743,10 @@ int main(int argc, char **argv)
     pmix_info_t info[6];
     pmix_proc_t proc;
     char *value = NULL, *uri = NULL, *report = NULL, *copy, host[256], sgltn[512];
+    char *fifo = NULL, *link = NULL, *lfifo = NULL;
     bool flag = true;
     pmix_status_t rc;
-    kid_t kids[12];
+    kid_t kids[18];
     pmix_nspace_t ns;
     int n;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -573,9 +764,10 @@ int main(int argc, char **argv)
     /* every child is forked before any PMIx call: a child of an
      * initialized server has a copy of its state but none of its threads.
      * Each later one lets go of the pipes of those before it */
-    /* 0-3, 5, 7 and 11 are clients; the rest tools */
-    for (n = 0; n < 12; n++) {
-        if (!start_kid(&kids[n], 4 == n || 6 == n || (8 <= n && 10 >= n))) {
+    /* 0-3, 5, 7, 11 and 16 are clients; the rest tools */
+    for (n = 0; n < 18; n++) {
+        if (!start_kid(&kids[n], 4 == n || 6 == n || (8 <= n && 10 >= n) ||
+                                     (12 <= n && 15 >= n) || 17 == n)) {
             fprintf(stderr, "could not start the children\n");
             return 1;
         }
@@ -691,6 +883,45 @@ int main(int argc, char **argv)
     tool_case(&kids[10], "a second tool by the server's pid, after them all");
 
     userns_case(&kids[11], "a client in a user namespace of its own knows its server");
+
+    /* a FIFO, and a symbolic link to the report file, where a tool is told
+     * its server's file is */
+    if (0 > asprintf(&fifo, "%s.fifo", report) || 0 > asprintf(&link, "%s.link", report) ||
+        0 > asprintf(&lfifo, "%s.rndz.fifo", report)) {
+        return 1;
+    }
+    unlink(fifo);
+    unlink(link);
+    unlink(lfifo);
+    if (0 != mkfifo(fifo, 0600) || 0 != symlink(report, link) || 0 != mkfifo(lfifo, 0600) ||
+        0 > asprintf(&value, "file:%s", fifo)) {
+        fprintf(stderr, "could not make the FIFO or the link\n");
+        return 1;
+    }
+    tool_file_refused_case(&kids[12], "a tool given a FIFO as its server's file fails init at "
+                           "once", "CL_TOOL_URI", value, 5);
+    free(value);
+    tool_file_refused_case(&kids[13], "a tool given a FIFO as its attachment file fails init at "
+                           "once", "CL_TOOL_ATTACH", fifo, 5);
+    tool_file_refused_case(&kids[14], "a tool given a symbolic link to the report file as its "
+                           "attachment file fails init", "CL_TOOL_ATTACH", link, 5);
+    tool_attach_case(&kids[15], "a tool given the report file as its attachment file connects",
+                     report);
+    unlink(fifo);
+    unlink(link);
+    free(fifo);
+    free(link);
+
+    wipe_case(&kids[16], "a client releases its connect-ack buffers zeroed");
+
+    if (0 > asprintf(&value, "file:%s", report)) {
+        return 1;
+    }
+    launcher_fifo_case(&kids[17], "a launcher whose rendezvous file name has a FIFO at it "
+                       "finishes its init promptly", value, lfifo, 5);
+    free(value);
+    unlink(lfifo);
+    free(lfifo);
 
     access_cases();
 

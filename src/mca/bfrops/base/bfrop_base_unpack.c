@@ -15,7 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -2233,6 +2233,72 @@ pmix_status_t pmix_bfrops_base_unpack_topology(pmix_pointer_array_t *regtypes,
         if (PMIX_SUCCESS != ret) {
             *num_vals = 0;
             return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_skip_topology(pmix_bfrops_module_t *module,
+                                             pmix_buffer_t *buffer)
+{
+    pmix_bfrops_base_active_module_t *active;
+    pmix_pointer_array_t *regtypes = NULL;
+    pmix_data_type_t local_type;
+    pmix_status_t rc;
+    int32_t num, i, n;
+    char *xml;
+
+    if (NULL == module || NULL == buffer) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* the pieces are read with the type table of the module that packed
+     * them, exactly as that module's unpack would read them */
+    PMIX_LIST_FOREACH (active, &pmix_bfrops_globals.actives, pmix_bfrops_base_active_module_t) {
+        if (active->module == module) {
+            regtypes = &active->component->types;
+            break;
+        }
+    }
+    if (NULL == regtypes) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* the count, as pmix_bfrops_base_unpack() reads it */
+    if (PMIX_BFROP_BUFFER_FULLY_DESC == buffer->type) {
+        rc = pmix_bfrop_get_data_type(regtypes, buffer, &local_type);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        if (PMIX_INT32 != local_type) {
+            return PMIX_ERR_UNPACK_FAILURE;
+        }
+    }
+    n = 1;
+    PMIX_BFROPS_UNPACK_TYPE(rc, buffer, &num, &n, PMIX_INT32, regtypes);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    if (0 > num) {
+        return PMIX_ERR_UNPACK_FAILURE;
+    }
+    /* the type, as pmix_bfrops_base_unpack_buffer() reads it */
+    if (PMIX_BFROP_BUFFER_FULLY_DESC == buffer->type) {
+        rc = pmix_bfrop_get_data_type(regtypes, buffer, &local_type);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        if (PMIX_TOPO != local_type) {
+            return PMIX_ERR_PACK_MISMATCH;
+        }
+    }
+    /* and each topology's XML, as pmix_hwloc_unpack_topology() reads it */
+    for (i = 0; i < num; i++) {
+        xml = NULL;
+        n = 1;
+        PMIX_BFROPS_UNPACK_TYPE(rc, buffer, &xml, &n, PMIX_STRING, regtypes);
+        free(xml);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
         }
     }
     return PMIX_SUCCESS;

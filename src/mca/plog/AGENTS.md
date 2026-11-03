@@ -134,7 +134,16 @@ Its algorithm:
      `show_help`-style messages. When aggregation is on and this
      key/val pair has been seen before (`pmix_help_check_dups`), every
      data item is marked complete via `PMIX_INFO_OP_COMPLETED` so nothing
-     is logged twice.
+     is logged twice. The pair is recorded per namespace: a `PMIX_NSPACE`
+     directive names it, else the source's. `pmix_server_log()` sets any
+     `PMIX_NSPACE` in a request from a client or tool to that requester's
+     namespace before plog or the host sees it, so only a process logging
+     its own message chooses the namespace. Key and value are compared
+     exactly (`*` is not a wildcard), and the table holds at most
+     `plog_base_max_suppressed` entries (default 1024; the least recently
+     matched is dropped, its pending count reported first). Its storage
+     is `pmix_show_help_max_tuples` in `src/util/pmix_show_help.c`, where
+     the table lives. `test/unit/plog_routing.c` covers all three.
 
 2. **Assemble the channel list in request order.** For each *data* item
    not already complete, walk the priority-ordered `pmix_plog_globals.actives`

@@ -98,7 +98,7 @@ typedef struct {
 
 
 /* define a common struct for tracking event handlers */
-typedef struct {
+typedef struct pmix_event_hdlr_t {
     pmix_list_item_t super;
     char *name;
     size_t index;
@@ -134,6 +134,15 @@ typedef struct {
     void *cbobject;
     pmix_status_t *codes;
     size_t ncodes;
+    /* An event chain holds a reference on the handler it is invoking and,
+     * once that handler completes, resumes its walk from the handler's
+     * place in its list. A handler deregistered in the meantime is no
+     * longer on that list, so pmix_event_hdlr_unlink() marks it removed
+     * and records - with a reference of its own - the handler that
+     * followed it (NULL if it was the last). A chain resuming from a
+     * removed handler follows these until it reaches one still listed. */
+    bool removed;
+    struct pmix_event_hdlr_t *successor;
 } pmix_event_hdlr_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_event_hdlr_t);
 
@@ -154,7 +163,9 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_event_hdlr_t);
     .relfn = NULL,                          \
     .cbobject = NULL,                       \
     .codes = NULL,                          \
-    .ncodes = 0                             \
+    .ncodes = 0,                            \
+    .removed = false,                       \
+    .successor = NULL                       \
 }
 
 /* define an object for tracking status codes we are actively
@@ -233,6 +244,9 @@ typedef struct pmix_event_chain_t {
     size_t nresults;
     pmix_info_t *interim;
     size_t ninterim;
+    /* the handler being invoked - the chain holds a reference on it, so a
+     * handler deregistered while the chain is in it stays valid until the
+     * chain moves on or is released */
     pmix_event_hdlr_t *evhdlr;
     pmix_op_cbfunc_t opcbfunc;
     void *cbdata;
@@ -292,6 +306,14 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_rshift_caddy_t);
 PMIX_EXPORT pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain, const pmix_info_t *info,
                                                 size_t ninfo, bool xfer);
 
+/* Drop from the chain's info any PMIX_EVENT_HDLR_NAME or
+ * PMIX_EVENT_RETURN_OBJECT the event itself carries - each handler is
+ * given its own in the two reserved trailing slots. The kept entries
+ * close up and the reserved slots stay at the end. pmix_prep_event_chain
+ * applies it to every live delivery; the replay of a cached event to a
+ * new registration applies it too, so both hand a handler the same info. */
+void pmix_event_strip_handler_items(pmix_event_chain_t *chain);
+
 /* invoke the error handler that is registered against the given
  * status, passing it the provided info on the procs that were
  * affected, plus any additional info provided by the server */
@@ -317,6 +339,13 @@ PMIX_EXPORT bool pmix_notify_check_affected(pmix_proc_t *interested, size_t nint
 
 PMIX_EXPORT pmix_status_t pmix_deregister_event_hdlr(size_t event_hdlr_ref,
                                                      pmix_buffer_t *msg);
+
+/* Take a handler off the list it is on (list is NULL for the first- and
+ * last-overall slots, which the caller clears itself) and mark it removed,
+ * recording its successor for any chain still holding it - see the
+ * removed/successor members above. Does not release the list's reference
+ * on the handler; the caller does that. */
+void pmix_event_hdlr_unlink(pmix_list_t *list, pmix_event_hdlr_t *hdlr);
 
 /* Register a library-internal observer for the given codes. Read the
  * contract on pmix_event_observer_fn_t before writing one.

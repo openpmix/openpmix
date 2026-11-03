@@ -38,6 +38,12 @@
  *
  * Runs with gds/hash: a gds/shmem3 client does not keep job data it is
  * sent this way.
+ *
+ * Last, with the exchange done, the server's get handler is driven
+ * directly with requests carrying PMIX_GET_JOB_DATA_HASH more than once.
+ * Every copy must be taken off the request's directives, the other
+ * directives kept in order, and the hash held only when all the copies
+ * carry the same one.
  */
 
 #include "src/include/pmix_config.h"
@@ -45,6 +51,8 @@
 #include "include/pmix.h"
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/bfrops/bfrops.h"
+#include "src/server/pmix_server_ops.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -455,6 +463,139 @@ static void check_log(FILE *log, int errfd)
     fclose(log);
 }
 
+/* ------------------------------------------------------------------ */
+/* the get handler, driven directly                                    */
+/* ------------------------------------------------------------------ */
+
+#define OTHERKEY "sut.jdh.other"
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_buffer_t *buf;
+    pmix_server_caddy_t *cd;
+    pmix_status_t status;
+    /* what the request's directives held once the handler was done */
+    size_t ninfo;
+    size_t nhash;
+    bool other_first;
+    bool held;
+    uint64_t hash;
+} jdh_req_t;
+
+static void jdh_get_cbfunc(pmix_status_t status, const char *data, size_t ndata,
+                           void *cbdata, pmix_release_cbfunc_t relfn, void *relcbd)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
+
+    (void) status;
+    (void) data;
+    (void) ndata;
+    if (NULL != relfn) {
+        relfn(relcbd);
+    }
+    PMIX_RELEASE(cd);
+}
+
+static void jdh_do_get(int sd, short args, void *cbdata)
+{
+    jdh_req_t *r = (jdh_req_t *) cbdata;
+    size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    r->status = pmix_server_get(r->buf, jdh_get_cbfunc, r->cd);
+    if (PMIX_SUCCESS != r->status) {
+        /* the switchyard owns the caddy on a non-success return */
+        PMIX_RELEASE(r->cd);
+    }
+    /* our own reference keeps the caddy for this */
+    r->ninfo = r->cd->ninfo;
+    r->nhash = 0;
+    for (n = 0; n < r->cd->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&r->cd->info[n], PMIX_GET_JOB_DATA_HASH)) {
+            r->nhash++;
+        }
+    }
+    r->other_first = (0 < r->cd->ninfo && PMIX_CHECK_KEY(&r->cd->info[0], OTHERKEY));
+    r->held = r->cd->jobhash_held;
+    r->hash = r->cd->jobhash;
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+/* a get for B/0's PROCKEY, as a client packs one, with these directives */
+static void drive_get(jdh_req_t *r, pmix_info_t *info, size_t ninfo)
+{
+    char *nspace = NS_B, *key = PROCKEY;
+    pmix_rank_t rank = 0;
+    pmix_status_t rc;
+
+    memset(r, 0, sizeof(*r));
+    r->status = PMIX_ERR_NOMEM;
+    r->buf = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, r->buf, &nspace, 1, PMIX_STRING);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, r->buf, &rank, 1, PMIX_PROC_RANK);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, r->buf, &ninfo, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, r->buf, info, ninfo, PMIX_INFO);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, r->buf, &key, 1, PMIX_STRING);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(r->buf);
+        return;
+    }
+    r->cd = PMIX_NEW(pmix_server_caddy_t);
+    PMIX_RETAIN(pmix_globals.mypeer);
+    r->cd->peer = pmix_globals.mypeer;
+    r->cd->hdr.tag = 0;
+    PMIX_RETAIN(r->cd);
+    PMIX_CONSTRUCT_LOCK(&r->lock);
+    PMIX_THREADSHIFT(r, jdh_do_get);
+    PMIX_WAIT_THREAD(&r->lock);
+    PMIX_DESTRUCT_LOCK(&r->lock);
+    PMIX_RELEASE(r->cd);
+    PMIX_RELEASE(r->buf);
+}
+
+static void test_hash_copies(void)
+{
+    pmix_info_t info[3];
+    jdh_req_t r;
+    uint64_t h1 = 5, h2 = 6;
+    size_t n;
+
+    /* the same hash twice, around another directive */
+    PMIX_INFO_LOAD(&info[0], PMIX_GET_JOB_DATA_HASH, &h1, PMIX_UINT64);
+    PMIX_INFO_LOAD(&info[1], OTHERKEY, "x", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_GET_JOB_DATA_HASH, &h1, PMIX_UINT64);
+    drive_get(&r, info, 3);
+    for (n = 0; n < 3; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    report("a get carrying the job data hash twice is answered", PMIX_SUCCESS == r.status);
+    report("every copy of the job data hash is taken off the get's directives",
+           0 == r.nhash);
+    report("the get's other directive is kept", 1 == r.ninfo && r.other_first);
+    report("the hash the copies agree on is held", r.held && h1 == r.hash);
+
+    /* two copies that disagree */
+    PMIX_INFO_LOAD(&info[0], PMIX_GET_JOB_DATA_HASH, &h1, PMIX_UINT64);
+    PMIX_INFO_LOAD(&info[1], PMIX_GET_JOB_DATA_HASH, &h2, PMIX_UINT64);
+    drive_get(&r, info, 2);
+    for (n = 0; n < 2; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    report("a get carrying two different job data hashes is answered",
+           PMIX_SUCCESS == r.status);
+    report("both of them are taken off the get's directives", 0 == r.ninfo);
+    report("no hash is held when the copies disagree", !r.held);
+}
+
 static int server_up(void)
 {
     pmix_info_t sinfo;
@@ -552,6 +693,7 @@ int main(int argc, char **argv)
         fprintf(stdout, "        (reader exited %d)\n", WEXITSTATUS(status));
     }
     completed = true;
+    test_hash_copies();
 
 done:
     if (!completed) {

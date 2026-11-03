@@ -19,8 +19,10 @@
  *   - its bare TCP URI, passed directly: past the tool's check
  *   - a file it was given by name: past it, whatever release it names and
  *     whether or not anything holds the lock beside it
- *   - a file its group may write, or one reached through a link: refused
- *     by the tool
+ *   - a file its group may write: refused by the tool
+ *   - a symbolic link to the file: not read at all - a named file is opened
+ *     without following a link - so the tool reaches no server:
+ *     PMIX_ERR_UNREACH, saying it is not a regular file
  *
  * and a server at an address that is not this host's is not dialled at
  * all: PMIX_ERR_UNREACH, saying so.
@@ -382,7 +384,8 @@ int main(void)
     one_case("but not one its group may write", &c, false, PMIX_ERR_INVALID_CRED, unnamed, dir);
     c.mode = 0644;
     c.linked = true;
-    both("...nor one reached through a link", &c, PMIX_ERR_INVALID_CRED, unnamed, dir);
+    both("...nor one reached through a link, which is not read", &c, PMIX_ERR_UNREACH,
+         "is not a regular file", dir);
     c.linked = false;
 
     memset(&c, 0, sizeof(c));

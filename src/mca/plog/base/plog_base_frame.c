@@ -23,6 +23,7 @@
 #include "src/mca/plog/base/base.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
+#include "src/util/pmix_show_help.h"
 
 /*
  * The following file was created by configure.  It contains extern
@@ -60,6 +61,20 @@ static int pmix_plog_register(pmix_mca_base_register_flag_t flags)
     if (NULL != order) {
         pmix_plog_globals.channels = PMIx_Argv_split(order, ',');
     }
+
+    /* the registration takes the variable's current value as the default,
+     * so restore it first - a value set before an earlier close must not
+     * become the default of the next registration */
+    pmix_show_help_max_tuples = PMIX_SHOW_HELP_MAX_TUPLES_DEFAULT;
+    pmix_mca_base_var_register("pmix", "plog", "base", "max_suppressed",
+                               "Maximum number of distinct messages (each a job, "
+                               "PMIX_LOG_KEY and PMIX_LOG_VAL) recorded for PMIX_LOG_AGG "
+                               "duplicate suppression. When a new message would exceed it, "
+                               "the one matched least recently is dropped after its "
+                               "accumulated duplicates are reported. 0 records none, which "
+                               "turns duplicate suppression off",
+                               PMIX_MCA_BASE_VAR_TYPE_INT,
+                               &pmix_show_help_max_tuples);
     return PMIX_SUCCESS;
 }
 

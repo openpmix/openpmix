@@ -43,6 +43,18 @@
  * receive path as though a peer it did not connect to had sent it - a
  * peer that is its server in every respect but that one - and another
  * from its server, and only the second may reach its handler.
+ *
+ * Case 4 - a registration the server rejects does not replay cached
+ * events, and leaves nothing behind. The client registers a
+ * process-local handler for a system event code and raises a
+ * process-local event with that code, which the handler receives and the
+ * client caches. It then registers a second handler for the code; that
+ * registration goes to the server, whose host register_events rejects
+ * it. The rejection must be reported, the cached event must not be
+ * delivered again, and the client's count of registrations for the code
+ * must be back where it was - so that a third registration for the code
+ * is sent to the server again. The server counts the host up-calls it
+ * makes for the code and expects one per registration sent.
  */
 
 #include "src/include/pmix_config.h"
@@ -70,6 +82,8 @@ extern char **environ;
 /* case 3: from a peer the client did not connect to, and from its server */
 #define CODE_DOWNSTREAM (PMIX_EXTERNAL_ERR_BASE - 53)
 #define CODE_UPSTREAM   (PMIX_EXTERNAL_ERR_BASE - 54)
+/* case 4: a system event code no part of the library acts on */
+#define CODE_REJECT     (PMIX_EVENT_SYS_BASE - 50)
 
 #define NSPACE     "event-fwd"
 /* processes that are neither the client nor each other */
@@ -151,6 +165,27 @@ static void hdlr_late(size_t id, pmix_status_t status, const pmix_proc_t *source
 
 static volatile int fired_down = 0;
 static volatile int fired_up = 0;
+static volatile int fired_local = 0;
+static volatile int fired_rejected = 0;
+
+static void hdlr_local(size_t id, pmix_status_t status, const pmix_proc_t *source,
+                       pmix_info_t info[], size_t ninfo, pmix_info_t results[], size_t nresults,
+                       pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    (void) id; (void) status; (void) source; (void) info; (void) ninfo;
+    (void) results; (void) nresults;
+    count_hdlr(&fired_local, cbfunc, cbdata);
+}
+
+static void hdlr_rejected(size_t id, pmix_status_t status, const pmix_proc_t *source,
+                          pmix_info_t info[], size_t ninfo, pmix_info_t results[],
+                          size_t nresults, pmix_event_notification_cbfunc_fn_t cbfunc,
+                          void *cbdata)
+{
+    (void) id; (void) status; (void) source; (void) info; (void) ninfo;
+    (void) results; (void) nresults;
+    count_hdlr(&fired_rejected, cbfunc, cbdata);
+}
 
 static void hdlr_sender(size_t id, pmix_status_t status, const pmix_proc_t *source,
                         pmix_info_t info[], size_t ninfo, pmix_info_t results[], size_t nresults,
@@ -238,6 +273,20 @@ static void reg_cbfunc(pmix_status_t status, size_t refid, void *cbdata)
     *sp = status;
 }
 
+/* how many registrations this client holds for a code with its server */
+static size_t actives_for(pmix_status_t code)
+{
+    pmix_active_code_t *active;
+    size_t n = 0;
+
+    PMIX_LIST_FOREACH (active, &pmix_globals.events.actives, pmix_active_code_t) {
+        if (active->code == code) {
+            n += active->nregs;
+        }
+    }
+    return n;
+}
+
 /* register one handler and block until the registration is acknowledged.
  * The info array must stay alive across the wait - the library does not
  * copy it - which is why it is the caller's and not built in here. */
@@ -314,6 +363,7 @@ static int run_client(int readyfd, int gofd)
     pmix_info_t info[2];
     pmix_status_t rc;
     pmix_data_range_t range = PMIX_RANGE_CUSTOM;
+    size_t nactive;
     int fires;
 
     rc = PMIx_Init(&myproc, NULL, 0);
@@ -443,10 +493,60 @@ static int run_client(int readyfd, int gofd)
         PMIX_RELEASE(other);
     }
 
+    /* ---- case 4: a rejected registration replays nothing ---- */
+    {
+        pmix_data_range_t plocal = PMIX_RANGE_PROC_LOCAL;
+
+        PMIX_INFO_LOAD(&info[0], PMIX_RANGE, &plocal, PMIX_DATA_RANGE);
+        rc = register_hdlr(CODE_REJECT, info, 1, hdlr_local);
+        PMIX_INFO_DESTRUCT(&info[0]);
+        if (0 > rc) {
+            fprintf(stderr, "  client: process-local registration failed: %s\n",
+                    PMIx_Error_string(rc));
+            goto done;
+        }
+        rc = PMIx_Notify_event(CODE_REJECT, &myproc, PMIX_RANGE_PROC_LOCAL, NULL, 0,
+                               NULL, NULL);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "  client: process-local notify failed: %s\n",
+                    PMIx_Error_string(rc));
+            goto done;
+        }
+        fires = wait_fires(&fired_local, LOUD_SECS);
+        report("a process-local handler receives a process-local event", 1 == fires,
+               "it did not fire");
+
+        progress_barrier();
+        nactive = actives_for(CODE_REJECT);
+        rc = register_hdlr(CODE_REJECT, NULL, 0, hdlr_rejected);
+        report("the server's rejection of a registration is reported",
+               0 > rc && PMIX_ERR_WOULD_BLOCK != rc, PMIx_Error_string(rc));
+        progress_barrier();
+        usleep(QUIET_SECS * 1000000);
+        progress_barrier();
+        report("a rejected registration does not replay the cached event",
+               1 == fired_local && 0 == fired_rejected, "the cached event was delivered again");
+        report("a rejected registration leaves the code's registration count where it was",
+               nactive == actives_for(CODE_REJECT), "the count was not given back");
+
+        /* the code is not registered with the server, so this one has to
+         * be sent - and the server rejects it again */
+        rc = register_hdlr(CODE_REJECT, NULL, 0, hdlr_rejected);
+        report("a later registration for the code is sent to the server again",
+               0 > rc && PMIX_ERR_WOULD_BLOCK != rc,
+               "it was accepted locally without asking the server");
+        if (0 <= rc) {
+            PMIx_Deregister_event_handler((size_t) rc, NULL, NULL);
+        }
+        progress_barrier();
+        report("the second rejection leaves the count where it was too",
+               nactive == actives_for(CODE_REJECT), "the count was not given back");
+    }
+
 done:
     PMIx_Finalize(NULL, 0);
     fprintf(stdout, "  client: %d passed, %d failed\n", npass, nfail);
-    return (0 == nfail && 6 == npass) ? 0 : 1;
+    return (0 == nfail && 12 == npass) ? 0 : 1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -468,7 +568,29 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
     ++notified;
 }
 
-static pmix_server_module_t mymodule = {0};
+/* case 4: the host rejects every registration for system events, and
+ * counts the ones naming CODE_REJECT */
+static volatile int host_reject_calls = 0;
+
+static pmix_status_t host_register_events(pmix_status_t *codes, size_t ncodes,
+                                          const pmix_info_t info[], size_t ninfo,
+                                          pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    size_t n;
+    (void) info; (void) ninfo; (void) cbfunc; (void) cbdata;
+
+    for (n = 0; n < ncodes; n++) {
+        if (CODE_REJECT == codes[n]) {
+            ++host_reject_calls;
+            break;
+        }
+    }
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+static pmix_server_module_t mymodule = {
+    .register_events = host_register_events
+};
 
 static pmix_status_t register_job(void)
 {
@@ -657,6 +779,12 @@ reap:
         status = WEXITSTATUS(status);
     } else {
         fprintf(stderr, "the client died on a signal\n");
+        status = 1;
+    }
+    /* case 4: the client sent two registrations for CODE_REJECT */
+    report("the server was asked about each registration the client sent for the code",
+           2 == host_reject_calls, "a registration did not reach the server");
+    if (0 != nfail) {
         status = 1;
     }
 

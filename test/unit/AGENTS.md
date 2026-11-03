@@ -969,8 +969,8 @@ waiting can pass them:
 
 The two **cap** cases also run with the timeout disabled, so nothing but
 the cap can close a connection: at a cap of two, a third connection must
-close the first and leave the other two alone, and the default must be a
-quarter of the descriptor limit the child starts with.
+close the first and leave the other two alone, and the default must be an
+eighth of the descriptor limit the child starts with.
 
 The **timeout** case is the one that enables it, at one second, and
 checks that an unfinished connection survives the first moment and is

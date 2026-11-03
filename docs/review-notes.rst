@@ -112,7 +112,9 @@ of it - never after the identity replies.
 
 *Update, later:* the ``native`` handshake was removed again. A peer of
 this release reaches its server over the local socket, where the kernel
-names it, and a TCP peer is one of an earlier release.
+names it, and a TCP peer is one of an earlier release. ``ptl_base_connect_ack_timeout``
+ends once a connection's connect-ack is in; the replies the server
+writes after it have no time limit.
 
 **The connecting side's half was fixed.**  ``pmix_tool_retry_attach`` -
 behind ``PMIx_tool_attach_to_server``, a tool connecting to its parent at

@@ -73,6 +73,27 @@
  *      runs ahead of the entire chain, may deregister itself from inside
  *      its own callback, and hands its object back through the release
  *      callback the registry holds for it.
+ *
+ *  handler deregistered while the chain is in it: a handler that
+ *      deregisters itself (alone, or together with the handler after it)
+ *      from inside its callback, or that is deregistered from another
+ *      thread before it completes, stays valid until the chain resumes,
+ *      the chain goes on to the next handler still registered, and the
+ *      handler is freed once the chain is done with it.
+ *
+ *  oneshot ahead of another handler: a PMIX_EVENT_ONESHOT handler that
+ *      lets the chain continue fires once, is gone for the next event -
+ *      including one that arrives while it is still running - and the
+ *      handler after it fires for every event.
+ *
+ *  deregistration with a message that cannot be packed: a single-code,
+ *      a multi-code and a default handler are each removed, their codes
+ *      given back and the handler freed, and the pack failure returned.
+ *
+ *  cached replay info: a handler registered after an event was cached
+ *      is replayed the same info a handler registered beforehand was
+ *      given live - the event's own handler name and return object are
+ *      dropped and each handler finds only its own.
  */
 
 #include "src/include/pmix_config.h"
@@ -106,8 +127,15 @@
 #define EVUT_CODE_OBSERVER  -9011
 #define EVUT_CODE_OBSERVER2 -9012
 #define EVUT_CODE_MALFORMED -9013
-#define EVUT_CODE_BLOCKING  -9013
+#define EVUT_CODE_BLOCKING  -9019
 #define EVUT_CODE_HDLRITEMS -9014
+#define EVUT_CODE_HELD      -9015
+#define EVUT_CODE_ONESHOT2  -9016
+#define EVUT_CODE_ONESHOT3  -9017
+#define EVUT_CODE_REPLAYINFO -9018
+#define EVUT_CODE_PACKFAIL1 -9020
+#define EVUT_CODE_PACKFAIL2 -9021
+#define EVUT_CODE_PACKFAIL3 -9022
 
 static int npass = 0;
 static int nfail = 0;
@@ -1727,6 +1755,561 @@ static void test_handler_items(void)
     PMIX_RELEASE(chain);
 }
 
+/* ------------------------------------------------------------------ */
+/* A handler deregistered while the chain is in it                     */
+/* ------------------------------------------------------------------ */
+
+/* The handler under test is registered with this as its return object.
+ * Its callback points the handler object's release function at it, so the
+ * test can see exactly when the handler object is freed. */
+typedef struct {
+    volatile int freed;
+} evut_tracker_t;
+
+static void evut_track_release(void *obj)
+{
+    ((evut_tracker_t *) obj)->freed++;
+}
+
+#define EVUT_HELD_SELF  0 // the handler deregisters itself
+#define EVUT_HELD_PAIR  1 // ... and the handler after it
+#define EVUT_HELD_ASYNC 2 // the main thread deregisters it before it completes
+
+static int held_mode = EVUT_HELD_SELF;
+static size_t held_self = SIZE_MAX;
+static size_t held_other = SIZE_MAX;
+static evut_tracker_t held_tracker;
+static volatile int held_ran = 0;
+static volatile int held_freed_at_resume = -1;
+static pmix_event_notification_cbfunc_fn_t held_cbfunc = NULL;
+static void *held_cbdata = NULL;
+
+/* runs on the progress thread once the deregistration has been
+ * processed - let the chain go on from here */
+static void held_continue(pmix_status_t status, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(status, cbdata);
+    held_freed_at_resume = held_tracker.freed;
+    held_cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, held_cbdata);
+}
+
+static void held_other_done(pmix_status_t status, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(status, cbdata);
+    PMIx_Deregister_event_handler(held_self, held_continue, NULL);
+}
+
+static void held_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
+                      const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                      pmix_info_t *results, size_t nresults,
+                      pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    pmix_event_chain_t *chain = (pmix_event_chain_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status, source, info, ninfo, results, nresults);
+
+    if (norder < EVUT_MAX_ORDER) {
+        order[norder] = evhdlr_registration_id;
+    }
+    ++norder;
+    /* the chain is the notification cbdata - have the handler object it
+     * is invoking report when it is freed */
+    chain->evhdlr->relfn = evut_track_release;
+    held_cbfunc = cbfunc;
+    held_cbdata = cbdata;
+    ++held_ran;
+    if (EVUT_HELD_ASYNC == held_mode) {
+        /* the main thread deregisters us and then completes us */
+        return;
+    }
+    if (EVUT_HELD_PAIR == held_mode) {
+        PMIx_Deregister_event_handler(held_other, held_other_done, NULL);
+    } else {
+        PMIx_Deregister_event_handler(held_self, held_continue, NULL);
+    }
+}
+
+static void run_held(const char *label, int mode)
+{
+    pmix_status_t code = EVUT_CODE_HELD;
+    pmix_info_t info[2];
+    size_t idx_a, idx_b, idx_c;
+    size_t expect[3];
+    int nexpect, n, ok;
+    char msg[256];
+
+    norder = 0;
+    held_mode = mode;
+    held_ran = 0;
+    held_freed_at_resume = -1;
+    held_tracker.freed = 0;
+    held_cbfunc = NULL;
+    held_cbdata = NULL;
+
+    /* registration prepends, so the chain runs A, B, C */
+    idx_c = reghdlr(&code, 1, NULL, 0, chain_hdlr);
+    idx_b = reghdlr(&code, 1, NULL, 0, chain_hdlr);
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_HDLR_NAME, "evut-held", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_EVENT_RETURN_OBJECT, &held_tracker, PMIX_POINTER);
+    idx_a = reghdlr(&code, 1, info, 2, held_hdlr);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    snprintf(msg, sizeof(msg), "%s: registrations succeeded", label);
+    report(msg, SIZE_MAX != idx_a && SIZE_MAX != idx_b && SIZE_MAX != idx_c);
+    if (SIZE_MAX == idx_a || SIZE_MAX == idx_b || SIZE_MAX == idx_c) {
+        return;
+    }
+    held_self = idx_a;
+    held_other = idx_b;
+
+    notify_nocache(code, NULL, 0);
+    if (EVUT_HELD_ASYNC == mode) {
+        wait_for_count(&held_ran, 1);
+        /* deregister it from here while the chain is still in it */
+        PMIx_Deregister_event_handler(idx_a, NULL, NULL);
+        held_freed_at_resume = held_tracker.freed;
+        if (NULL != held_cbfunc) {
+            held_cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, held_cbdata);
+        }
+    }
+
+    expect[0] = idx_a;
+    if (EVUT_HELD_PAIR == mode) {
+        expect[1] = idx_c;
+        nexpect = 2;
+    } else {
+        expect[1] = idx_b;
+        expect[2] = idx_c;
+        nexpect = 3;
+    }
+    wait_for_count(&norder, nexpect);
+    grace();
+
+    snprintf(msg, sizeof(msg), "%s: handler still valid when the chain resumes", label);
+    report(msg, 0 == held_freed_at_resume);
+    ok = (nexpect == norder);
+    for (n = 0; ok && n < nexpect; n++) {
+        ok = (order[n] == expect[n]);
+    }
+    snprintf(msg, sizeof(msg), "%s: chain went on to the next registered handler", label);
+    report(msg, ok);
+    if (!ok) {
+        fprintf(stdout, "    expected %d entries got %d [", nexpect, norder);
+        for (n = 0; n < norder && n < EVUT_MAX_ORDER; n++) {
+            fprintf(stdout, " %zu", order[n]);
+        }
+        fprintf(stdout, " ]\n");
+    }
+    snprintf(msg, sizeof(msg), "%s: handler freed once the chain was done with it", label);
+    report(msg, 1 == held_tracker.freed);
+
+    /* a second event reaches only what is still registered */
+    norder = 0;
+    notify_nocache(code, NULL, 0);
+    wait_for_count(&norder, nexpect - 1);
+    grace();
+    ok = (nexpect - 1 == norder);
+    for (n = 1; ok && n < nexpect; n++) {
+        ok = (order[n - 1] == expect[n]);
+    }
+    snprintf(msg, sizeof(msg), "%s: next event reaches only the handlers still registered",
+             label);
+    report(msg, ok && 1 == held_ran);
+
+    if (EVUT_HELD_PAIR != mode) {
+        PMIx_Deregister_event_handler(idx_b, NULL, NULL);
+    }
+    PMIx_Deregister_event_handler(idx_c, NULL, NULL);
+}
+
+static void test_dereg_while_held(void)
+{
+    run_held("deregistered in its own callback", EVUT_HELD_SELF);
+    run_held("deregistered with its successor", EVUT_HELD_PAIR);
+    run_held("deregistered from another thread", EVUT_HELD_ASYNC);
+}
+
+/* ------------------------------------------------------------------ */
+/* A oneshot handler that lets the chain continue                      */
+/* ------------------------------------------------------------------ */
+
+static bool registered(size_t idx)
+{
+    pmix_event_hdlr_t *hdlr;
+
+    PMIX_LIST_FOREACH (hdlr, &pmix_globals.events.single_events, pmix_event_hdlr_t) {
+        if (hdlr->index == idx) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* records itself like chain_hdlr, but completes only when told to */
+static volatile int hold_ran = 0;
+static pmix_event_notification_cbfunc_fn_t hold_cbfunc[2] = {NULL, NULL};
+static void *hold_cbdata[2] = {NULL, NULL};
+
+static void hold_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
+                      const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                      pmix_info_t *results, size_t nresults,
+                      pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo,
+                            results, nresults);
+    if (hold_ran < 2) {
+        hold_cbfunc[hold_ran] = cbfunc;
+        hold_cbdata[hold_ran] = cbdata;
+    } else if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
+    }
+    ++hold_ran;
+}
+
+static void test_oneshot_continues(void)
+{
+    pmix_status_t code = EVUT_CODE_ONESHOT2;
+    pmix_status_t code3 = EVUT_CODE_ONESHOT3;
+    pmix_info_t info[1];
+    size_t idx_o, idx_n;
+    int n;
+
+    /* the oneshot is registered second, so it runs ahead of the other */
+    norder = 0;
+    idx_n = reghdlr(&code, 1, NULL, 0, chain_hdlr);
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_ONESHOT, NULL, PMIX_BOOL);
+    idx_o = reghdlr(&code, 1, info, 1, chain_hdlr);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    report("oneshot ahead of another handler: registrations succeeded",
+           SIZE_MAX != idx_o && SIZE_MAX != idx_n);
+
+    notify_nocache(code, NULL, 0);
+    wait_for_count(&norder, 2);
+    grace();
+    report("oneshot ahead of another handler: both fire on the first event",
+           2 == norder && idx_o == order[0] && idx_n == order[1]);
+    report("oneshot ahead of another handler: oneshot deregistered after it ran",
+           !registered(idx_o) && registered(idx_n));
+
+    notify_nocache(code, NULL, 0);
+    wait_for_count(&norder, 3);
+    grace();
+    report("oneshot ahead of another handler: only the other fires on the next event",
+           3 == norder && idx_n == order[2]);
+    if (registered(idx_o)) {
+        PMIx_Deregister_event_handler(idx_o, NULL, NULL);
+    }
+    PMIx_Deregister_event_handler(idx_n, NULL, NULL);
+
+    /* a second event arriving while the oneshot is still running */
+    norder = 0;
+    hold_ran = 0;
+    idx_n = reghdlr(&code3, 1, NULL, 0, chain_hdlr);
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_ONESHOT, NULL, PMIX_BOOL);
+    idx_o = reghdlr(&code3, 1, info, 1, hold_hdlr);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    notify_nocache(code3, NULL, 0);
+    wait_for_count(&hold_ran, 1);
+    notify_nocache(code3, NULL, 0);
+    wait_for_count(&norder, 1);
+    grace();
+    report("oneshot still running: next event does not reach it",
+           1 == hold_ran && 1 == norder && idx_n == order[0]);
+    for (n = 0; n < 2; n++) {
+        if (NULL != hold_cbfunc[n]) {
+            hold_cbfunc[n](PMIX_SUCCESS, NULL, 0, NULL, NULL, hold_cbdata[n]);
+            hold_cbfunc[n] = NULL;
+        }
+    }
+    wait_for_count(&norder, 2);
+    grace();
+    report("oneshot still running: its own chain goes on to the next handler once it completes",
+           2 == norder && idx_n == order[1]);
+    if (registered(idx_o)) {
+        PMIx_Deregister_event_handler(idx_o, NULL, NULL);
+    }
+    PMIx_Deregister_event_handler(idx_n, NULL, NULL);
+}
+
+/* ------------------------------------------------------------------ */
+/* A replayed event carries the info live delivery gives               */
+/* ------------------------------------------------------------------ */
+
+#define EVUT_MAX_SEEN 16
+
+typedef struct {
+    volatile bool fired;
+    size_t ninfo;
+    pmix_info_t info[EVUT_MAX_SEEN];
+} evut_seen_t;
+
+static evut_seen_t seen_live, seen_replay;
+
+/* keep a copy of the info the handler is given; its return object
+ * says where */
+static void seen_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
+                      const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                      pmix_info_t *results, size_t nresults,
+                      pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    evut_seen_t *seen = NULL;
+    size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
+
+    /* the handler's own object is added as the last of the info, and that
+     * is the one to go by here - whether any other copy of the key
+     * reached the handler is what the test checks */
+    if (0 < ninfo && PMIX_CHECK_KEY(&info[ninfo - 1], PMIX_EVENT_RETURN_OBJECT)) {
+        seen = (evut_seen_t *) info[ninfo - 1].value.data.ptr;
+    }
+    if (NULL != seen && (&seen_live == seen || &seen_replay == seen) && !seen->fired) {
+        for (n = 0; n < ninfo && n < EVUT_MAX_SEEN; n++) {
+            PMIX_INFO_XFER(&seen->info[n], &info[n]);
+        }
+        seen->ninfo = ninfo;
+        seen->fired = true;
+    }
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
+    }
+}
+
+/* how many entries carry the key, and the first of them */
+static size_t seen_count(evut_seen_t *seen, const char *key, pmix_info_t **first)
+{
+    size_t n, cnt = 0;
+
+    *first = NULL;
+    for (n = 0; n < seen->ninfo && n < EVUT_MAX_SEEN; n++) {
+        if (PMIX_CHECK_KEY(&seen->info[n], key)) {
+            if (0 == cnt) {
+                *first = &seen->info[n];
+            }
+            ++cnt;
+        }
+    }
+    return cnt;
+}
+
+static bool seen_own_items(evut_seen_t *seen, const char *name)
+{
+    pmix_info_t *nm, *obj;
+
+    return 1 == seen_count(seen, PMIX_EVENT_HDLR_NAME, &nm) &&
+           1 == seen_count(seen, PMIX_EVENT_RETURN_OBJECT, &obj) &&
+           PMIX_STRING == nm->value.type && 0 == strcmp(nm->value.data.string, name) &&
+           PMIX_POINTER == obj->value.type && seen == obj->value.data.ptr;
+}
+
+/* the event's own entries, in order, with the handler's items left out */
+static bool seen_same_event_info(evut_seen_t *a, evut_seen_t *b)
+{
+    size_t i = 0, j = 0;
+
+    for (;;) {
+        while (i < a->ninfo && (PMIX_CHECK_KEY(&a->info[i], PMIX_EVENT_HDLR_NAME) ||
+                                PMIX_CHECK_KEY(&a->info[i], PMIX_EVENT_RETURN_OBJECT))) {
+            ++i;
+        }
+        while (j < b->ninfo && (PMIX_CHECK_KEY(&b->info[j], PMIX_EVENT_HDLR_NAME) ||
+                                PMIX_CHECK_KEY(&b->info[j], PMIX_EVENT_RETURN_OBJECT))) {
+            ++j;
+        }
+        if (i == a->ninfo || j == b->ninfo) {
+            return i == a->ninfo && j == b->ninfo;
+        }
+        if (!PMIX_CHECK_KEY(&a->info[i], b->info[j].key) ||
+            PMIX_EQUAL != PMIx_Value_compare(&a->info[i].value, &b->info[j].value)) {
+            return false;
+        }
+        ++i;
+        ++j;
+    }
+}
+
+static void seen_clear(evut_seen_t *seen)
+{
+    size_t n;
+
+    for (n = 0; n < seen->ninfo && n < EVUT_MAX_SEEN; n++) {
+        PMIX_INFO_DESTRUCT(&seen->info[n]);
+    }
+    seen->ninfo = 0;
+    seen->fired = false;
+}
+
+static void test_cached_replay_info(void)
+{
+    pmix_status_t code = EVUT_CODE_REPLAYINFO;
+    pmix_info_t reginfo[2], evinfo[3];
+    int other = 3;
+    size_t idx_live, idx_replay, n;
+    int tries;
+    pmix_status_t rc;
+
+    memset(&seen_live, 0, sizeof(seen_live));
+    memset(&seen_replay, 0, sizeof(seen_replay));
+
+    PMIX_INFO_LOAD(&reginfo[0], PMIX_EVENT_HDLR_NAME, "evut-live", PMIX_STRING);
+    PMIX_INFO_LOAD(&reginfo[1], PMIX_EVENT_RETURN_OBJECT, &seen_live, PMIX_POINTER);
+    idx_live = reghdlr(&code, 1, reginfo, 2, seen_hdlr);
+    PMIX_INFO_DESTRUCT(&reginfo[0]);
+    report("cached replay info: live handler registered", SIZE_MAX != idx_live);
+
+    /* the event brings a handler name and return object of its own; it
+     * is left cacheable, so it is both delivered now and kept */
+    PMIX_INFO_LOAD(&evinfo[0], "evut.replay.key", "evut-value", PMIX_STRING);
+    PMIX_INFO_LOAD(&evinfo[1], PMIX_EVENT_HDLR_NAME, "evut-from-event", PMIX_STRING);
+    PMIX_INFO_LOAD(&evinfo[2], PMIX_EVENT_RETURN_OBJECT, &other, PMIX_POINTER);
+    rc = PMIx_Notify_event(code, &pmix_globals.myid, PMIX_RANGE_UNDEF, evinfo, 3, NULL, NULL);
+    for (n = 0; n < 3; n++) {
+        PMIX_INFO_DESTRUCT(&evinfo[n]);
+    }
+    report("cached replay info: notify succeeded", PMIX_SUCCESS == rc);
+    for (tries = 0; !seen_live.fired && tries < 500; tries++) {
+        usleep(10000);
+    }
+    report("cached replay info: live handler received the event", seen_live.fired);
+    if (SIZE_MAX != idx_live) {
+        PMIx_Deregister_event_handler(idx_live, NULL, NULL);
+    }
+
+    /* a handler registered now is replayed the cached event */
+    PMIX_INFO_LOAD(&reginfo[0], PMIX_EVENT_HDLR_NAME, "evut-replay", PMIX_STRING);
+    PMIX_INFO_LOAD(&reginfo[1], PMIX_EVENT_RETURN_OBJECT, &seen_replay, PMIX_POINTER);
+    idx_replay = reghdlr(&code, 1, reginfo, 2, seen_hdlr);
+    PMIX_INFO_DESTRUCT(&reginfo[0]);
+    for (tries = 0; !seen_replay.fired && tries < 500; tries++) {
+        usleep(10000);
+    }
+    report("cached replay info: late handler was replayed the event", seen_replay.fired);
+
+    report("cached replay info: live handler found only its own name and object",
+           seen_live.fired && seen_own_items(&seen_live, "evut-live"));
+    report("cached replay info: replayed handler found only its own name and object",
+           seen_replay.fired && seen_own_items(&seen_replay, "evut-replay"));
+    report("cached replay info: replay carries the same number of entries as live delivery",
+           seen_live.fired && seen_replay.fired && seen_live.ninfo == seen_replay.ninfo);
+    report("cached replay info: replay carries the same event info as live delivery",
+           seen_live.fired && seen_replay.fired && seen_same_event_info(&seen_live, &seen_replay));
+    if (seen_live.ninfo != seen_replay.ninfo) {
+        fprintf(stdout, "    live handler got %zu entries, replayed handler got %zu\n",
+                seen_live.ninfo, seen_replay.ninfo);
+    }
+
+    if (SIZE_MAX != idx_replay) {
+        PMIx_Deregister_event_handler(idx_replay, NULL, NULL);
+    }
+    seen_clear(&seen_live);
+    seen_clear(&seen_replay);
+}
+
+/* ------------------------------------------------------------------ */
+/* Deregistration whose server message cannot be packed                */
+/* ------------------------------------------------------------------ */
+
+/* pmix_deregister_event_hdlr packs into the caller's message the codes the
+ * server should drop. Here the message is a buffer of the other
+ * description type than the one this process packs with, so every pack
+ * into it fails; the handler must still be removed in full. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    size_t ref;
+    pmix_buffer_t *msg;
+    evut_tracker_t *tracker;
+    pmix_status_t status;
+} evut_dereq_t;
+
+static pmix_event_hdlr_t *find_hdlr(size_t idx)
+{
+    pmix_list_t *lists[3] = {&pmix_globals.events.single_events,
+                             &pmix_globals.events.multi_events,
+                             &pmix_globals.events.default_events};
+    pmix_event_hdlr_t *hdlr;
+    int n;
+
+    for (n = 0; n < 3; n++) {
+        PMIX_LIST_FOREACH (hdlr, lists[n], pmix_event_hdlr_t) {
+            if (hdlr->index == idx) {
+                return hdlr;
+            }
+        }
+    }
+    return NULL;
+}
+
+static void do_dereg_with_msg(int sd, short args, void *cbdata)
+{
+    evut_dereq_t *r = (evut_dereq_t *) cbdata;
+    pmix_event_hdlr_t *hdlr;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    hdlr = find_hdlr(r->ref);
+    if (NULL == hdlr) {
+        r->status = PMIX_ERR_NOT_FOUND;
+    } else {
+        /* have the handler object report when it is freed */
+        hdlr->relfn = evut_track_release;
+        r->status = pmix_deregister_event_hdlr(r->ref, r->msg);
+    }
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+static void dereg_packfail(const char *label, pmix_status_t *codes, size_t ncodes)
+{
+    pmix_info_t info;
+    evut_tracker_t tracker = {0};
+    evut_dereq_t r;
+    size_t idx, n;
+    bool given_back;
+    char msg[256];
+
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_RETURN_OBJECT, &tracker, PMIX_POINTER);
+    idx = reghdlr(codes, ncodes, &info, 1, count_hdlr);
+    snprintf(msg, sizeof(msg), "%s: registration succeeded", label);
+    report(msg, SIZE_MAX != idx);
+    if (SIZE_MAX == idx) {
+        return;
+    }
+
+    memset(&r, 0, sizeof(r));
+    PMIX_CONSTRUCT_LOCK(&r.lock);
+    r.ref = idx;
+    r.tracker = &tracker;
+    r.msg = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_BFROP_BUFFER_FULLY_DESC == pmix_client_globals.myserver->nptr->compat.type) {
+        r.msg->type = PMIX_BFROP_BUFFER_NON_DESC;
+    } else {
+        r.msg->type = PMIX_BFROP_BUFFER_FULLY_DESC;
+    }
+    PMIX_THREADSHIFT(&r, do_dereg_with_msg);
+    PMIX_WAIT_THREAD(&r.lock);
+    PMIX_DESTRUCT_LOCK(&r.lock);
+    PMIX_RELEASE(r.msg);
+
+    snprintf(msg, sizeof(msg), "%s: the pack failure is returned", label);
+    report(msg, PMIX_SUCCESS != r.status && PMIX_ERR_NOT_FOUND != r.status);
+    snprintf(msg, sizeof(msg), "%s: handler removed and freed", label);
+    report(msg, NULL == find_hdlr(idx) && 1 == tracker.freed);
+    given_back = true;
+    for (n = 0; n < ncodes; n++) {
+        if (0 != actives_for(codes[n])) {
+            given_back = false;
+        }
+    }
+    snprintf(msg, sizeof(msg), "%s: every code given back", label);
+    report(msg, given_back);
+}
+
+static void test_dereg_packfail(void)
+{
+    pmix_status_t single = EVUT_CODE_PACKFAIL1;
+    pmix_status_t multi[2] = {EVUT_CODE_PACKFAIL2, EVUT_CODE_PACKFAIL3};
+
+    dereg_packfail("unpackable dereg, single-code handler", &single, 1);
+    dereg_packfail("unpackable dereg, multi-code handler", multi, 2);
+    dereg_packfail("unpackable dereg, default handler", NULL, 0);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -1774,6 +2357,18 @@ int main(int argc, char **argv)
     /* events carrying proc directives of an unexpected datatype */
     test_malformed_procs();
     test_handler_items();
+
+    /* replay of a cached event hands over the info live delivery does */
+    test_cached_replay_info();
+
+    /* a oneshot handler that is not the last one in the chain */
+    test_oneshot_continues();
+
+    /* a handler deregistered while the chain is in it */
+    test_dereg_while_held();
+
+    /* deregistration whose server message cannot be packed */
+    test_dereg_packfail();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 

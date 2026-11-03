@@ -132,7 +132,7 @@ PMIX_EXPORT int pmix_os_dirpath_chgrp_under(const char *root, const char *tail, 
  *
  * @param root  A directory that already exists. Trusted; not walked.
  * @param tail  The relative path of the file inside it. Walked.
- * @param flags open(2) flags. O_NOFOLLOW is added.
+ * @param flags open(2) flags. O_NOFOLLOW and O_CLOEXEC are added.
  * @param mode  open(2) mode, used only when creating.
  * @retval >=0  A descriptor on the file. The caller closes it.
  * @retval -1   errno says why.
@@ -153,10 +153,10 @@ PMIX_EXPORT int pmix_os_dirpath_open_file_under(const char *root, const char *ta
  * pmix_os_dirpath_open_file_under() instead.
  *
  * @param path  The file to open.
- * @param flags open(2) flags. O_NOFOLLOW is added. Pass O_EXCL alongside
- *              O_CREAT where the name is one this process creates fresh:
- *              together they refuse anything already at the name rather
- *              than only a symlink.
+ * @param flags open(2) flags. O_NOFOLLOW and O_CLOEXEC are added. Pass
+ *              O_EXCL alongside O_CREAT where the name is one this process
+ *              creates fresh: together they refuse anything already at
+ *              the name rather than only a symlink.
  * @param mode  open(2) mode, used only when creating.
  * @retval >=0  A descriptor on the file. The caller closes it.
  * @retval -1   errno says why.

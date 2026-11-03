@@ -105,6 +105,19 @@ PMIX_EXPORT extern bool pmix_util_getid_test_no_tcp_table;
 PMIX_EXPORT pmix_status_t pmix_util_id_to_parent(const char *mapfile, uint32_t id,
                                                  uint32_t *out);
 
+/* Whether `mapfile` (as for pmix_util_id_to_parent) maps every id to
+ * itself - a single line "0 0 4294967295", as in the initial user
+ * namespace - or cannot be read, as where there are no user namespaces.
+ * In any other namespace some ids are not mapped, and the kernel reports
+ * each of them as the overflow id */
+PMIX_EXPORT bool pmix_util_id_map_is_identity(const char *mapfile);
+
+/* The uid, and the gid, the kernel reports for an id not mapped into this
+ * process's user namespace: /proc/sys/kernel/overflowuid and overflowgid,
+ * 65534 where those cannot be read */
+PMIX_EXPORT uint32_t pmix_util_overflow_uid(void);
+PMIX_EXPORT uint32_t pmix_util_overflow_gid(void);
+
 END_C_DECLS
 
 #endif /* PMIX_GETID_H */
