@@ -60,8 +60,10 @@ The Actors
 
 ``pmix_namespace_t`` (``nptr``)
     The job. Holds the ``ranks`` list, ``nlocalprocs`` (the number of
-    local clients registered for this namespace), ``nfinalized`` (how
-    many of those have finalized), the compatibility modules negotiated
+    local clients the namespace has - the host's count, less every rank
+    that has departed for good: lost without finalizing, or
+    deregistered), ``nfinalized`` (how many of those have finalized),
+    the compatibility modules negotiated
     for the job, the namespace-level epilog, and the association to the
     GDS job data. Persists until the host calls
     ``PMIx_server_deregister_nspace``.
@@ -354,6 +356,15 @@ init again — deregistration also **removes the registration**:
 * Restore any job resources that were charged to the rank (network
   allocations, monitoring/sensors) and honor the peer's epilog, exactly
   as when a client terminates.
+
+* Take the rank out of the job's collectives (``pmix_server_rank_lost``):
+  record it as departed in every one in flight that it has not
+  contributed to, and remove it from ``nlocalprocs`` - and from
+  ``nfinalized``, if it was counted there - so a collective over the
+  whole job started afterwards does not wait for it. This applies
+  whether or not the rank finalized, and is done once: a rank whose
+  connection was lost without a finalize was taken out then, and the
+  rank entry's ``lost`` flag says so.
 
 After a client is deregistered, the rank no longer exists on the server;
 a subsequent connection for that rank would be rejected unless the host
