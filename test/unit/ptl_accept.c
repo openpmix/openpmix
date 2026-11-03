@@ -39,6 +39,11 @@
  * sent. A uid or gid in a client's own info is ignored - the identity is
  * the one the module settled.
  *
+ * A process on the local transport has its groups, as the kernel reports
+ * them, recorded on its accepted peer - a client's and a tool's alike. A
+ * tool claiming one of those groups acts under it, and one claiming a gid
+ * the process does not hold acts under its effective gid.
+ *
  * A host that breaks the one-answer contract does not cost the server its
  * memory: a callback followed by an error return refuses the client with
  * the error, a callback made twice accepts it once, and a tool up-call
@@ -93,6 +98,20 @@
  * was. A tool on a client's rank that finalizes leaves the rank to the
  * next connection.
  *
+ * A rank's token is bound to the pid of the first client accepted with it
+ * on the local socket. That process connects again after it disconnects
+ * or finalizes; a client in another process - a forked child - presenting
+ * the token is refused with PMIX_ERR_INVALID_CRED before the host is
+ * asked, and the disconnect has not unbound it. A tool on the rank is
+ * checked for the token alone: from another process it is taken once the
+ * rank has no live connection, it is refused with PMIX_ERR_EXISTS while a
+ * client of the rank is live, and its connection binds nothing, so a
+ * client in another process connecting after it binds the token. Once the
+ * host prepares the rank again, another process connects with the new
+ * token and the old one is refused; the same after the host deregisters,
+ * registers and prepares it. Registering the rank again keeps its token,
+ * and another process then connects with it.
+ *
  * The host decides on one tool at a time. With its answers held back:
  * of two tools of one name - self-named, or launched into a namespace
  * the host did not register - it is asked once, and the second is refused
@@ -132,6 +151,8 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <ftw.h>
+#include <grp.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -598,6 +619,9 @@ static bool build_blob_dups(pmix_byte_object_t *out)
  * place of our own */
 #define AC_OWN_UID ((uid_t) -1)
 static uid_t ack_cred_uid = AC_OWN_UID;
+/* and a gid in place of our own */
+#define AC_OWN_GID ((gid_t) -1)
+static gid_t ack_cred_gid = AC_OWN_GID;
 
 static char *build_ack_as_given(uint8_t flag, const char *nspace, pmix_rank_t rank,
                                 const char *psec, const pmix_byte_object_t *blob, bool truncate,
@@ -609,7 +633,8 @@ static char *build_ack_as_given(uint8_t flag, const char *nspace, pmix_rank_t ra
     size_t credlen = ack_badcred ? sizeof(uid_t) - 1 : sizeof(credbytes);
     uid_t euid = (AC_OWN_UID != ack_cred_uid) ? ack_cred_uid : geteuid();
     uid_t ruid = (AC_OWN_UID != ack_cred_uid) ? ack_cred_uid : getuid();
-    gid_t egid = getegid();
+    gid_t egid = (AC_OWN_GID != ack_cred_gid) ? ack_cred_gid : getegid();
+    gid_t rgid = (AC_OWN_GID != ack_cred_gid) ? ack_cred_gid : getgid();
     char *msg;
     size_t csize, payload;
     uint8_t bftype = PMIX_BFROP_BUFFER_NON_DESC;
@@ -652,7 +677,7 @@ static char *build_ack_as_given(uint8_t flag, const char *nspace, pmix_rank_t ra
     PMIX_PTL_PUT_U8(flag);
     if (PMIX_SIMPLE_CLIENT != flag) {
         PMIX_PTL_PUT_U32(ruid);
-        PMIX_PTL_PUT_U32(getgid());
+        PMIX_PTL_PUT_U32(rgid);
     }
     if (PMIX_TOOL_NEEDS_ID != flag) {
         PMIX_PTL_PUT_PROCID(proc);
@@ -1323,6 +1348,197 @@ static int run_local_identity_tool(void)
     return case_local_identity(true);
 }
 
+/* ---- a process's groups on the local transport ---- */
+
+static bool gid_listed(const gid_t *gids, size_t n, gid_t gid)
+{
+    size_t m;
+
+    for (m = 0; NULL != gids && m < n; m++) {
+        if (gids[m] == gid) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* this process's groups - getgroups() and the effective gid - into own[],
+ * which holds `max`; root, with no group beside its effective one, is
+ * given one */
+static size_t own_groups(gid_t *own, size_t max)
+{
+    int n = getgroups((int) max - 1, own);
+
+    if (0 > n) {
+        n = 0;
+    }
+    if (!gid_listed(own, (size_t) n, getegid())) {
+        own[n++] = getegid();
+    }
+    if (0 == geteuid() && 1 == n) {
+        own[n++] = (gid_t) 54321;
+        if (0 != setgroups(2, own)) {
+            n = 1;
+        }
+    }
+    return (size_t) n;
+}
+
+/* a gid the process does not hold: one the user database lists for its
+ * user, where there is one, else one no group entry names */
+static gid_t gid_not_held(const gid_t *own, size_t nown)
+{
+    struct passwd *pw = (0 == geteuid()) ? NULL : getpwuid(geteuid());
+    gid_t gid = (gid_t) 54322;
+    int n, ng = 256;
+#if defined(__APPLE__)
+    int list[256];
+#else
+    gid_t list[256];
+#endif
+
+    if (NULL != pw && 0 <= getgrouplist(pw->pw_name, pw->pw_gid, list, &ng)) {
+        for (n = 0; n < ng; n++) {
+            if (!gid_listed(own, nown, (gid_t) list[n])) {
+                return (gid_t) list[n];
+            }
+        }
+    }
+    while (NULL != getgrgid(gid) || gid_listed(own, nown, gid)) {
+        gid++;
+    }
+    return gid;
+}
+
+/* the accepted peer of nspace:rank */
+static pmix_peer_t *accepted_peer(const char *nspace, pmix_rank_t rank)
+{
+    pmix_peer_t *pr;
+    int n;
+
+    for (n = 0; n < pmix_server_globals.clients.size; n++) {
+        pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
+        if (NULL != pr && NULL != pr->info && NULL != pr->info->pname.nspace &&
+            0 == strcmp(pr->info->pname.nspace, nspace) && rank == pr->info->pname.rank) {
+            return pr;
+        }
+    }
+    return NULL;
+}
+
+/* whether the peer records this process's groups, as the kernel reports
+ * them - on macOS and FreeBSD, up to 16 */
+static bool records_groups(const pmix_peer_t *pr, const gid_t *own, size_t nown)
+{
+    size_t n;
+
+    if (NULL == pr || !pr->kgroups.read || getegid() != pr->kgroups.gid) {
+        fprintf(stdout, "    the peer records no effective gid of ours\n");
+        return false;
+    }
+#if defined(SO_PEERGROUPS) || defined(__APPLE__) || defined(__FreeBSD__)
+    if (NULL == pr->kgroups.gids) {
+        fprintf(stdout, "    the peer records no groups\n");
+        return false;
+    }
+    for (n = 0; n < pr->kgroups.ngids; n++) {
+        if (!gid_listed(own, nown, pr->kgroups.gids[n])) {
+            fprintf(stdout, "    the peer records gid %lu, which we do not hold\n",
+                    (unsigned long) pr->kgroups.gids[n]);
+            return false;
+        }
+    }
+    for (n = 0; n < nown; n++) {
+        if (!gid_listed(pr->kgroups.gids, pr->kgroups.ngids, own[n]) &&
+            16 != pr->kgroups.ngids) {
+            fprintf(stdout, "    the peer does not record our gid %lu\n",
+                    (unsigned long) own[n]);
+            return false;
+        }
+    }
+#else
+    PMIX_HIDE_UNUSED_PARAMS(own, nown, n);
+#endif
+    return true;
+}
+
+/* A process on the local transport has the groups the kernel reports for
+ * it recorded on its peer, and a tool acts under the gid it claims only if
+ * that is one of them. `how`:
+ *   0 - a client, which claims its own gid;
+ *   1 - a tool claiming one of its supplementary groups;
+ *   2 - a tool claiming a gid it does not hold */
+static int case_local_groups(int how)
+{
+    pmix_byte_object_t blob;
+    gid_t own[1024], claim, want;
+    size_t nown;
+    char *msg;
+    size_t sz, n;
+    int sd = -1;
+    uint32_t index;
+    pmix_status_t reply;
+    bool tool = (0 != how);
+
+    nown = own_groups(own, sizeof(own) / sizeof(own[0]));
+    claim = getegid();
+    if (1 == how) {
+        for (n = 0; n < nown && own[n] == getegid(); n++) {
+        }
+        if (n == nown) {
+            fprintf(stdout, "    SKIP: this process has no group beside its effective one\n");
+            return CHILD_PASS;
+        }
+        claim = own[n];
+    } else if (2 == how) {
+        claim = gid_not_held(own, nown);
+    }
+    want = (2 == how) ? getegid() : claim;
+    ack_local = true;
+    ack_cred_gid = claim;
+    if (PMIX_SUCCESS != start_server(&mymodule, !tool, getuid()) || !build_blob(&blob)) {
+        return CHILD_SETUP;
+    }
+    if (tool) {
+        msg = build_ack(PMIX_TOOL_GIVEN_ID, AC_TOOLNS, 0, "native", &blob, false, &sz);
+    } else {
+        msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native", &blob, false, &sz);
+    }
+    reply = send_ack(msg, sz, &sd);
+    free(msg);
+    free(blob.bytes);
+    if (PMIX_SUCCESS == reply) {
+        reply = tool ? tool_replies(sd) : (read_u32(sd, &index) ? PMIX_SUCCESS : PMIX_ERR_UNREACH);
+    }
+    if (PMIX_SUCCESS != reply) {
+        fprintf(stdout, "    the %s was refused: %s\n", tool ? "tool" : "client",
+                PMIx_Error_string(reply));
+        return CHILD_FAIL;
+    }
+    usleep(200000);
+    if ((uint32_t) want != host_gid) {
+        fprintf(stdout, "    claimed gid %lu, the host was given gid %u, expected %lu\n",
+                (unsigned long) claim, host_gid, (unsigned long) want);
+        return CHILD_FAIL;
+    }
+    if (!records_groups(accepted_peer(tool ? AC_TOOLNS : AC_NSPACE, 0), own, nown)) {
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+static int run_local_groups_client(void)
+{
+    return case_local_groups(0);
+}
+static int run_local_groups_tool_held(void)
+{
+    return case_local_groups(1);
+}
+static int run_local_groups_tool_not_held(void)
+{
+    return case_local_groups(2);
+}
+
 /* A server whose host did not ask for tool support refuses every tool -
  * however it found the server - before the host is asked */
 static int case_no_tool_support(void)
@@ -1810,6 +2026,393 @@ static int run_token_tcp_tool_none(void)
 static int run_earlier_local(void)
 {
     return case_token(10);
+}
+
+/* ---- a rank's token is bound to the pid that first connects with it ---- */
+
+/* The connect-ack of a client - or, with `tool`, a tool on the client's
+ * rank - naming AC_NSPACE:0 and presenting `token`, on the local socket */
+static char *pid_ack(const char *token, bool tool, size_t *sz)
+{
+    pmix_byte_object_t blob = {NULL, 0};
+    char *msg;
+
+    ack_local = true;
+    if (!build_blob_token(&blob, token)) {
+        return NULL;
+    }
+    msg = build_ack_as_given(tool ? PMIX_TOOL_CLIENT : PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native",
+                             &blob, false, sz);
+    free(blob.bytes);
+    return msg;
+}
+
+/* Connect from this process as AC_NSPACE:0 presenting `token`, and read
+ * the first status - and, for a success, the index, left in *index with
+ * the socket in *sdp */
+static pmix_status_t pid_connect(const char *token, int *sdp, uint32_t *index)
+{
+    pmix_status_t reply;
+    size_t sz;
+    char *msg;
+
+    if (NULL == (msg = pid_ack(token, false, &sz))) {
+        return PMIX_ERROR;
+    }
+    reply = send_ack(msg, sz, sdp);
+    free(msg);
+    if (PMIX_SUCCESS == reply && !read_u32(*sdp, index)) {
+        reply = PMIX_ERR_UNREACH;
+    }
+    return reply;
+}
+
+/* Disconnect a connection pid_connect made - finalizing first, with
+ * `finalize` - and give the server time to see it close */
+static bool pid_disconnect(int sd, uint32_t index, bool finalize)
+{
+    bool ok = true;
+
+    if (finalize) {
+        ok = send_finalize(sd, index);
+    }
+    close(sd);
+    usleep(300000);
+    return ok;
+}
+
+/* Connect as AC_NSPACE:0 presenting `token` from a forked child - another
+ * pid, left in *cpid if given - and return the first status it read. The
+ * child then exits, which closes its connection; the server is given time
+ * to see it */
+static pmix_status_t pid_connect_child(const char *token, bool tool, pid_t *cpid)
+{
+    struct sockaddr_un sa;
+    pmix_status_t reply = PMIX_ERROR;
+    uint32_t u32;
+    size_t sz, got;
+    ssize_t rd;
+    char *msg, *p;
+    int fds[2], sd, status;
+    pid_t pid;
+
+    if (NULL == pmix_ptl_base.local_listener.uri ||
+        NULL == (p = strstr(pmix_ptl_base.local_listener.uri, "usock://")) ||
+        NULL == (msg = pid_ack(token, tool, &sz))) {
+        return PMIX_ERROR;
+    }
+    memset(&sa, 0, sizeof(sa));
+    sa.sun_family = AF_UNIX;
+    snprintf(sa.sun_path, sizeof(sa.sun_path), "%s", p + strlen("usock://"));
+    if (0 != pipe(fds)) {
+        free(msg);
+        return PMIX_ERROR;
+    }
+    fflush(stdout);
+    pid = fork();
+    if (0 == pid) {
+        /* only what is safe in the child of a threaded process */
+        close(fds[0]);
+        u32 = htonl((uint32_t) PMIX_ERR_UNREACH);
+        sd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (0 <= sd && 0 == connect(sd, (struct sockaddr *) &sa, sizeof(sa)) &&
+            (ssize_t) sz == write(sd, msg, sz)) {
+            for (got = 0; got < sizeof(u32); got += (size_t) rd) {
+                rd = read(sd, (char *) &u32 + got, sizeof(u32) - got);
+                if (0 >= rd) {
+                    u32 = htonl((uint32_t) PMIX_ERR_UNREACH);
+                    break;
+                }
+            }
+        }
+        (void) !write(fds[1], &u32, sizeof(u32));
+        _exit(0);
+    }
+    free(msg);
+    close(fds[1]);
+    if (0 < pid && (ssize_t) sizeof(u32) == read(fds[0], &u32, sizeof(u32))) {
+        reply = (pmix_status_t) ntohl(u32);
+    }
+    close(fds[0]);
+    if (0 < pid) {
+        (void) waitpid(pid, &status, 0);
+    }
+    if (NULL != cpid) {
+        *cpid = pid;
+    }
+    usleep(300000);
+    return reply;
+}
+
+/* Connect from this process as a tool on AC_NSPACE:0 presenting `token`,
+ * and read every reply - the socket left in *sdp */
+static pmix_status_t pid_connect_tool(const char *token, int *sdp)
+{
+    pmix_status_t reply;
+    size_t sz;
+    char *msg;
+
+    if (NULL == (msg = pid_ack(token, true, &sz))) {
+        return PMIX_ERROR;
+    }
+    reply = send_ack(msg, sz, sdp);
+    free(msg);
+    if (PMIX_SUCCESS == reply) {
+        reply = tool_replies(*sdp);
+    }
+    return reply;
+}
+
+/* the rank's token, as setup_fork hands it out - prepared again */
+static char *prepare_again(void)
+{
+    pmix_proc_t proc;
+    char **env = NULL, *token, *hex = NULL;
+
+    PMIX_LOAD_PROCID(&proc, AC_NSPACE, 0);
+    if (PMIX_SUCCESS == PMIx_server_setup_fork(&proc, &env) &&
+        NULL != (token = pmix_getenv(PMIX_PTL_TOKEN_ENV, env)) &&
+        NULL != (token = strrchr(token, ';'))) {
+        hex = strdup(token + 1);
+    }
+    PMIx_Argv_free(env);
+    return hex;
+}
+
+/* A rank's token is bound to the pid of the first client process that
+ * connects with it over the local socket. `how`:
+ *   0 - that process connects again after it disconnects;
+ *   1 - another process (a forked child) presenting the token after the
+ *       first disconnected is refused with PMIX_ERR_INVALID_CRED, the host
+ *       not asked, and the first process still connects;
+ *   2 - the same after the first process finalized: a disconnect does not
+ *       unbind the token;
+ *   3 - a tool on the rank from another process, once the rank has no
+ *       live connection, is taken on its token alone, and the token stays
+ *       bound to the first process;
+ *   4 - once the host prepares the rank again, another process connects
+ *       with the new token; the old token is refused, and the new one is
+ *       then bound to the other process;
+ *   5 - once the host deregisters the rank, registers and prepares it
+ *       again, another process connects with the new token, and the old
+ *       one is refused;
+ *   6 - once the host registers the rank again, another process connects
+ *       with the token the rank kept */
+static int case_token_pid(int how)
+{
+    pmix_proc_t proc;
+    pmix_status_t reply;
+    char *fresh = NULL;
+    uint32_t index;
+    int sd = -1, asked, rc = CHILD_PASS;
+
+    ack_local = true;
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    reply = pid_connect(ac_token, &sd, &index);
+    if (PMIX_SUCCESS != reply) {
+        fprintf(stdout, "    the first connection read %s\n", PMIx_Error_string(reply));
+        return CHILD_FAIL;
+    }
+    /* the server binds the token once it has sent the index: by the time
+     * it has seen the connection close, it has */
+    if (!pid_disconnect(sd, index, 2 == how)) {
+        return CHILD_SETUP;
+    }
+    if (getpid() != pmix_ptl_base_token_pid(AC_NSPACE, 0)) {
+        fprintf(stdout, "    the token is bound to pid %ld, not this process's %ld\n",
+                (long) pmix_ptl_base_token_pid(AC_NSPACE, 0), (long) getpid());
+        return CHILD_FAIL;
+    }
+    asked = nclient_connected + ntool_connected;
+
+    switch (how) {
+    case 0:
+        reply = pid_connect(ac_token, &sd, &index);
+        return expect_status("the first process connecting again", reply, PMIX_SUCCESS);
+
+    case 3:
+        reply = pid_connect_child(ac_token, true, NULL);
+        rc = expect_status("a tool in another process presenting the rank's token", reply,
+                           PMIX_SUCCESS);
+        if (CHILD_PASS != rc) {
+            return rc;
+        }
+        if (asked + 1 != nclient_connected + ntool_connected) {
+            fprintf(stdout, "    the host was asked %d times about the tool\n",
+                    nclient_connected + ntool_connected - asked);
+            return CHILD_FAIL;
+        }
+        if (getpid() != pmix_ptl_base_token_pid(AC_NSPACE, 0)) {
+            fprintf(stdout, "    after the tool the token is bound to pid %ld, not %ld\n",
+                    (long) pmix_ptl_base_token_pid(AC_NSPACE, 0), (long) getpid());
+            return CHILD_FAIL;
+        }
+        reply = pid_connect(ac_token, &sd, &index);
+        return expect_status("the first process connecting again after the tool", reply,
+                             PMIX_SUCCESS);
+
+    case 1:
+    case 2:
+        reply = pid_connect_child(ac_token, false, NULL);
+        if (asked != nclient_connected + ntool_connected) {
+            fprintf(stdout, "    the host was asked about the other process\n");
+            return CHILD_FAIL;
+        }
+        rc = expect_status("another process presenting the rank's token", reply,
+                           PMIX_ERR_INVALID_CRED);
+        if (CHILD_PASS != rc) {
+            return rc;
+        }
+        reply = pid_connect(ac_token, &sd, &index);
+        return expect_status("the first process connecting again after it", reply,
+                             PMIX_SUCCESS);
+
+    case 4:
+    case 5:
+        PMIX_LOAD_PROCID(&proc, AC_NSPACE, 0);
+        if (5 == how) {
+            PMIx_server_deregister_client(&proc, NULL, NULL);
+            reply = PMIx_server_register_client(&proc, getuid(), getgid(), NULL, NULL, NULL);
+            if (PMIX_SUCCESS != reply && PMIX_OPERATION_SUCCEEDED != reply) {
+                return CHILD_SETUP;
+            }
+        }
+        if (NULL == (fresh = prepare_again())) {
+            return CHILD_SETUP;
+        }
+        reply = pid_connect(ac_token, &sd, &index);
+        rc = expect_status("the old token", reply, PMIX_ERR_INVALID_CRED);
+        if (CHILD_PASS == rc) {
+            reply = pid_connect_child(fresh, false, NULL);
+            rc = expect_status("another process presenting the new token", reply, PMIX_SUCCESS);
+        }
+        if (CHILD_PASS == rc && 4 == how) {
+            reply = pid_connect(fresh, &sd, &index);
+            rc = expect_status("the first process presenting the new token", reply,
+                               PMIX_ERR_INVALID_CRED);
+        }
+        free(fresh);
+        return rc;
+
+    case 6:
+        PMIX_LOAD_PROCID(&proc, AC_NSPACE, 0);
+        reply = PMIx_server_register_client(&proc, getuid(), getgid(), NULL, NULL, NULL);
+        if (PMIX_SUCCESS != reply && PMIX_OPERATION_SUCCEEDED != reply &&
+            PMIX_UPDATED != reply) {
+            fprintf(stdout, "    registering the rank again read %s\n", PMIx_Error_string(reply));
+            return CHILD_SETUP;
+        }
+        reply = pid_connect_child(ac_token, false, NULL);
+        return expect_status("another process presenting the token the rank kept", reply,
+                             PMIX_SUCCESS);
+    }
+    return CHILD_SETUP;
+}
+static int run_token_pid_same(void)
+{
+    return case_token_pid(0);
+}
+static int run_token_pid_other(void)
+{
+    return case_token_pid(1);
+}
+static int run_token_pid_finalized(void)
+{
+    return case_token_pid(2);
+}
+static int run_token_pid_tool(void)
+{
+    return case_token_pid(3);
+}
+static int run_token_pid_prepared(void)
+{
+    return case_token_pid(4);
+}
+static int run_token_pid_replaced(void)
+{
+    return case_token_pid(5);
+}
+static int run_token_pid_registered(void)
+{
+    return case_token_pid(6);
+}
+
+/* A tool presenting a rank's token is checked for the token alone, and
+ * its connection binds nothing. `how`:
+ *   0 - a tool on the rank while a client of it is live is refused with
+ *       PMIX_ERR_EXISTS, from another process and from the client's own,
+ *       the host not asked;
+ *   1 - a tool connecting first leaves the token bound to no pid: a client
+ *       in another process then connects and binds it, and the tool's
+ *       process is refused as a client */
+static int case_token_tool(int how)
+{
+    pmix_status_t reply;
+    uint32_t index;
+    pid_t cpid = 0;
+    int sd = -1, sd2 = -1, rc;
+
+    ack_local = true;
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    if (0 == how) {
+        reply = pid_connect(ac_token, &sd, &index);
+        if (PMIX_SUCCESS != reply) {
+            fprintf(stdout, "    the client read %s\n", PMIx_Error_string(reply));
+            return CHILD_FAIL;
+        }
+        usleep(100000);
+        reply = pid_connect_child(ac_token, true, NULL);
+        rc = expect_status("a tool in another process on the live rank", reply,
+                           PMIX_ERR_EXISTS);
+        if (CHILD_PASS == rc) {
+            reply = pid_connect_tool(ac_token, &sd2);
+            rc = expect_status("a tool in the client's process on the live rank", reply,
+                               PMIX_ERR_EXISTS);
+        }
+        if (CHILD_PASS == rc && 0 != ntool_connected) {
+            fprintf(stdout, "    the host was asked about a tool\n");
+            rc = CHILD_FAIL;
+        }
+        return rc;
+    }
+
+    reply = pid_connect_tool(ac_token, &sd);
+    if (PMIX_SUCCESS != reply) {
+        fprintf(stdout, "    the tool read %s\n", PMIx_Error_string(reply));
+        return CHILD_FAIL;
+    }
+    close(sd);
+    usleep(300000);
+    if (0 != pmix_ptl_base_token_pid(AC_NSPACE, 0)) {
+        fprintf(stdout, "    the tool bound the token to pid %ld\n",
+                (long) pmix_ptl_base_token_pid(AC_NSPACE, 0));
+        return CHILD_FAIL;
+    }
+    reply = pid_connect_child(ac_token, false, &cpid);
+    rc = expect_status("a client in another process after the tool", reply, PMIX_SUCCESS);
+    if (CHILD_PASS != rc) {
+        return rc;
+    }
+    if (0 >= cpid || cpid != pmix_ptl_base_token_pid(AC_NSPACE, 0)) {
+        fprintf(stdout, "    the token is bound to pid %ld, not the client's %ld\n",
+                (long) pmix_ptl_base_token_pid(AC_NSPACE, 0), (long) cpid);
+        return CHILD_FAIL;
+    }
+    reply = pid_connect(ac_token, &sd, &index);
+    return expect_status("the tool's process connecting as a client", reply,
+                         PMIX_ERR_INVALID_CRED);
+}
+static int run_token_tool_live(void)
+{
+    return case_token_tool(0);
+}
+static int run_token_tool_first(void)
+{
+    return case_token_tool(1);
 }
 
 /* A server that takes no legacy peers refuses a client or tool of an
@@ -4059,6 +4662,14 @@ int main(int argc, char **argv)
              run_local_identity_tool);
     run_case("a client on the local transport claiming another user's uid is refused",
              case_local_claim);
+    run_case("a client on the local transport has its process's groups recorded",
+             run_local_groups_client);
+    run_case("a tool on the local transport claiming one of its process's groups acts "
+             "under it",
+             run_local_groups_tool_held);
+    run_case("a tool on the local transport claiming a gid its process does not hold acts "
+             "under its effective gid",
+             run_local_groups_tool_not_held);
     run_case("a client whose connection closes while its process runs on is lost at once",
              case_closed_is_lost);
     run_case("a live client on the local socket is not taken over by a pid sent over TCP",
@@ -4140,6 +4751,26 @@ int main(int argc, char **argv)
              run_earlier_local);
     run_case("a tool of this release on a client's rank over TCP is told the same",
              run_token_tcp_tool_none);
+    run_case("a rank's token is bound to the first client's pid, which connects with it again",
+             run_token_pid_same);
+    run_case("a client presenting the token from another pid is refused before the host is asked",
+             run_token_pid_other);
+    run_case("...after the first process finalized too: a disconnect leaves the binding",
+             run_token_pid_finalized);
+    run_case("a tool on the rank in another pid is taken on its token, and binds nothing",
+             run_token_pid_tool);
+    run_case("a tool on the rank while a client of it is live is refused as a second "
+             "connection",
+             run_token_tool_live);
+    run_case("a tool connecting first leaves the token for the first client to bind",
+             run_token_tool_first);
+    run_case("the rank prepared again: another pid connects with the new token, the old "
+             "is refused",
+             run_token_pid_prepared);
+    run_case("the rank deregistered, registered and prepared again: another pid connects",
+             run_token_pid_replaced);
+    run_case("the rank registered again: another pid connects with the token it kept",
+             run_token_pid_registered);
     run_case("a server taking no legacy peers refuses a v5.0 client", run_legacy_refused_client);
     run_case("a server taking no legacy peers refuses a v5.0 tool", run_legacy_refused_tool);
     run_case("a nameless v5.0 launcher on a client's rank is named by the host",

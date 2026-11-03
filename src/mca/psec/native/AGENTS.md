@@ -87,11 +87,15 @@ After the `PMIX_CRED_TYPE` screen and the protocol checks (a
   compared: inside a user namespace it is the uid *there*, which is not
   the uid the host knows.
 - **Claimed** (a tool, or a proc that connected before the host
-  registered it): the established uid **replaces** `pr->info->uid`. The
-  claimed group stands if the user holds it
-  (`pmix_psec_base_gid_held()`, or it is our own egid for our own uid).
-  Otherwise an attested group (local transport) replaces it, and an
-  unattested one (TCP) is refused (`foreign-group`).
+  registered it): the established uid **replaces** `pr->info->uid`. On
+  the local transport the claimed group stands if it is one of the
+  process's groups (`pmix_server_process_in_group()`: the kernel's list
+  that ptl recorded in `pr->kgroups` at connect, else the host's
+  `PMIX_USER_GRPIDS` for the uid, else the attested gid alone), and the
+  attested gid replaces it otherwise - the group database is not asked.
+  Over TCP it stands if the user holds it (`pmix_psec_base_gid_held()`,
+  or it is our own egid for our own uid), and is refused otherwise
+  (`foreign-group`).
 
 On success `*info` carries `PMIX_CRED_TYPE`, and `PMIX_USERID` /
 `PMIX_GRPID` set to the identity settled on.

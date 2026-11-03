@@ -141,6 +141,51 @@ static pmix_peer_t *scratch_peer(pmix_pending_connection_t *pnd, const char *nsp
     return peer;
 }
 
+pmix_status_t pmix_ptl_base_read_groups(pmix_peer_t *peer)
+{
+    uid_t uid;
+    gid_t gid, *gids = NULL, *tmp;
+    pid_t pid;
+    size_t n, ngids = 0;
+
+    free(peer->kgroups.gids);
+    memset(&peer->kgroups, 0, sizeof(peer->kgroups));
+    if (0 > peer->sd || NULL == peer->transport || NULL == peer->transport->peer_identity ||
+        PMIX_SUCCESS != peer->transport->peer_identity(peer->sd, &uid, &gid, &pid)) {
+        return PMIX_SUCCESS;
+    }
+    peer->kgroups.read = true;
+    peer->kgroups.gid = gid;
+    switch (pmix_util_getgroups(peer->sd, &gids, &ngids)) {
+    case PMIX_SUCCESS:
+        break;
+    case PMIX_ERR_NOMEM:
+        return PMIX_ERR_NOMEM;
+    default:
+        /* no list */
+        return PMIX_SUCCESS;
+    }
+    /* the effective gid is one of the process's groups, and is first */
+    for (n = 0; n < ngids && gids[n] != gid; n++) {
+    }
+    if (n == ngids) {
+        tmp = (gid_t *) realloc(gids, (ngids + 1) * sizeof(gid_t));
+        if (NULL == tmp) {
+            free(gids);
+            return PMIX_ERR_NOMEM;
+        }
+        gids = tmp;
+        n = ngids++;
+    }
+    if (0 < n) {
+        gids[n] = gids[0];
+    }
+    gids[0] = gid;
+    peer->kgroups.gids = gids;
+    peer->kgroups.ngids = ngids;
+    return PMIX_SUCCESS;
+}
+
 /* Validate the credential the peer sent */
 static pmix_status_t validate(pmix_pending_connection_t *pnd)
 {
@@ -162,7 +207,11 @@ static pmix_status_t validate(pmix_pending_connection_t *pnd)
     cred.bytes = pnd->cred;
     cred.size = pnd->len;
     peer->sd = pnd->sd;
-    PMIX_PSEC_VALIDATE_CONNECTION_WITH(rc, psec, peer, NULL, 0, NULL, NULL, &cred);
+    /* the process's groups, as the kernel has them now */
+    rc = pmix_ptl_base_read_groups(peer);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_PSEC_VALIDATE_CONNECTION_WITH(rc, psec, peer, NULL, 0, NULL, NULL, &cred);
+    }
     peer->sd = -1;
     return rc;
 }
@@ -1216,20 +1265,6 @@ static void client_settled(pmix_pending_connection_t *pnd, pmix_status_t status)
         return;
     }
 
-    /* A process its host prepared with PMIx_server_setup_fork was given a
-     * token for its rank, which a client of this release presents - an
-     * earlier release has none to present */
-    if (PMIX_PTL_LOCAL_MAJOR <= pnd->proc_type.major) {
-        rc = pmix_ptl_base_check_token(info->pname.nspace, info->pname.rank, pnd->token);
-        if (PMIX_SUCCESS != rc) {
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "refusing %s:%u - it did not present its rank's token",
-                                info->pname.nspace, info->pname.rank);
-            refuse(pnd, rc);
-            return;
-        }
-    }
-
     /* The process's pid, as the kernel reports it for this socket, is the
      * one this host can act on - it is in our pid namespace. On the local
      * transport it is the only one: a client whose kernel gives none has
@@ -1238,6 +1273,27 @@ static void client_settled(pmix_pending_connection_t *pnd, pmix_status_t status)
         pnd->pid = kernel_pid(pnd);
     } else if (PMIX_SUCCESS == pmix_util_getpid(pnd->sd, &kpid)) {
         pnd->pid = kpid;
+    }
+
+    /* A process its host prepared with PMIx_server_setup_fork was given a
+     * token for its rank, which a client of this release presents - an
+     * earlier release has none to present. Once a client connection over
+     * the local socket has been accepted with it, the token is taken from
+     * a client only from that connection's pid. Only the kernel's pid is
+     * compared: over TCP, and on the local socket where the kernel reports
+     * none, the token alone is checked */
+    if (PMIX_PTL_LOCAL_MAJOR <= pnd->proc_type.major) {
+        rc = pmix_ptl_base_check_token_from(info->pname.nspace, info->pname.rank, pnd->token,
+                                            local_peer(pnd) ? pnd->pid : 0);
+        if (PMIX_SUCCESS != rc) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "refusing %s:%u - it did not present its rank's token, or "
+                                "presented it from another pid",
+                                info->pname.nspace, info->pname.rank);
+            refuse(pnd, rc);
+            return;
+        }
+        pnd->token_checked = true;
     }
 
     /* A rank has one connection at a time. A second one - from a process
@@ -1419,6 +1475,12 @@ static void client_answered(int sd, short args, void *cbdata)
     pnd->rinfo = NULL;
     adopt_modules(pnd, peer, nptr);
     info->pid = pnd->pid;
+    /* the first client connection accepted with the rank's token over the
+     * local socket binds the token to its pid - a tool's connection never
+     * does */
+    if (pnd->token_checked && local_peer(pnd)) {
+        pmix_ptl_base_bind_token(info->pname.nspace, info->pname.rank, pnd->token, pnd->pid);
+    }
     if (pnd->realuid_given) {
         info->realuid = pnd->realuid;
     }
@@ -1741,6 +1803,8 @@ static void tool_settled(pmix_pending_connection_t *pnd, pmix_status_t status)
      * its purpose */
     pnd->uid = vpeer->info->uid;
     pnd->gid = vpeer->info->gid;
+    pnd->kgroups = vpeer->kgroups;
+    memset(&vpeer->kgroups, 0, sizeof(vpeer->kgroups));
     PMIX_RELEASE(vpeer);
     pnd->peer = NULL;
 
@@ -2025,7 +2089,9 @@ static void ask_about_tool(pmix_pending_connection_t *pnd)
     }
     /* A tool of this release that names a rank its host prepared a process
      * for with PMIx_server_setup_fork - one started on a client's rank -
-     * presents that rank's token */
+     * presents that rank's token. A tool is checked for the token alone:
+     * the pid a client's connection bound the token to is not compared,
+     * and a tool's connection binds nothing */
     if (PMIX_PTL_LOCAL_MAJOR <= pnd->proc_type.major && !host_names_tool(pnd)) {
         rc = pmix_ptl_base_check_token(pnd->proc.nspace, pnd->proc.rank, pnd->token);
         if (PMIX_SUCCESS != rc) {
@@ -2483,6 +2549,8 @@ static void tool_answered(int sd, short args, void *cbdata)
     memcpy(&peer->proc_type, &pnd->proc_type, sizeof(pmix_proc_type_t));
     peer->protocol = pnd->protocol;
     peer->transport = pnd->transport;
+    peer->kgroups = pnd->kgroups;
+    memset(&pnd->kgroups, 0, sizeof(pnd->kgroups));
     peer->proc_cnt = 1;
     peer->dyn_tags_start = PMIX_PTL_TAG_DYNAMIC + (UINT32_MAX - PMIX_PTL_TAG_DYNAMIC) / 2 + 1;
     peer->dyn_tags_end = UINT32_MAX;

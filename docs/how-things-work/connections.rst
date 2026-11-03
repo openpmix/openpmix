@@ -644,7 +644,12 @@ Each ``psec`` component makes its own credential:
   where its kernel keeps no table of TCP connections and it takes legacy
   peers: see :doc:`authentication/native`.
 * **munge** sends a credential encoded by the MUNGE daemon. It carries
-  no payload: the server refuses a ``munge`` credential that does.
+  no payload: the server refuses a ``munge`` credential that does. On
+  the local socket, where the kernel names the server's uid, the
+  credential is restricted to that uid (``MUNGE_OPT_UID_RESTRICTION``),
+  so only a process running as the server's user can decode it. Over
+  TCP, or where the uid differs between this process's user namespace
+  and its parent's, it is unrestricted.
 
 The replies
 ^^^^^^^^^^^

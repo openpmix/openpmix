@@ -25,6 +25,12 @@
  * token it was handed; one this server made before the host registered it
  * - the singleton it was started for - is given none.
  *
+ * A token bound to a pid is taken from that pid, and from a connection
+ * with no pid known, and refused from any other; it stays bound to the
+ * first pid, and is not bound by another rank's token or with no pid.
+ * Registering the rank again keeps the token and unbinds it; preparing the
+ * rank again gives a new token, bound to no pid.
+ *
  * A process prepared with no rank of its own gets no token, and one it
  * would have inherited is taken out of its environment.
  *
@@ -271,6 +277,34 @@ int main(void)
     report("registering a rank already prepared keeps the token it was handed",
            registered(rc) && PMIX_SUCCESS == pmix_ptl_base_check_token(TK_NSPACE, 1, t1));
     adopt_case();
+
+    /* a token bound to the pid that first connected with it */
+    pmix_ptl_base_bind_token(TK_NSPACE, 1, t1, 4242);
+    report("a bound token is taken from its pid, and where no pid is known",
+           4242 == pmix_ptl_base_token_pid(TK_NSPACE, 1) &&
+           PMIX_SUCCESS == pmix_ptl_base_check_token_from(TK_NSPACE, 1, t1, 4242) &&
+           PMIX_SUCCESS == pmix_ptl_base_check_token_from(TK_NSPACE, 1, t1, 0) &&
+           PMIX_SUCCESS == pmix_ptl_base_check_token(TK_NSPACE, 1, t1));
+    report("...and refused from another pid",
+           PMIX_ERR_INVALID_CRED == pmix_ptl_base_check_token_from(TK_NSPACE, 1, t1, 4243));
+    pmix_ptl_base_bind_token(TK_NSPACE, 1, t1, 4243);
+    report("...and stays bound to the first pid",
+           4242 == pmix_ptl_base_token_pid(TK_NSPACE, 1));
+    pmix_ptl_base_bind_token(TK_NSPACE, 0, t1, 4242);
+    pmix_ptl_base_bind_token(TK_NSPACE, 0, t0b, 0);
+    report("a token is not bound by another rank's token, nor with no pid",
+           0 == pmix_ptl_base_token_pid(TK_NSPACE, 0));
+    PMIX_LOAD_PROCID(&proc, TK_NSPACE, 1);
+    rc = PMIx_server_register_client(&proc, getuid(), getgid(), NULL, NULL, NULL);
+    report("registering the rank again keeps its token, bound to no pid",
+           PMIX_UPDATED == rc && 0 == pmix_ptl_base_token_pid(TK_NSPACE, 1) &&
+           PMIX_SUCCESS == pmix_ptl_base_check_token_from(TK_NSPACE, 1, t1, 4243));
+    pmix_ptl_base_bind_token(TK_NSPACE, 2, t2, 4242);
+    free(t2);
+    t2 = prepare(2, NULL);
+    report("preparing the rank again gives a token bound to no pid",
+           NULL != t2 && 0 == pmix_ptl_base_token_pid(TK_NSPACE, 2) &&
+           PMIX_SUCCESS == pmix_ptl_base_check_token_from(TK_NSPACE, 2, t2, 4243));
 
     /* a process with no rank of its own, in an environment that has one */
     PMIx_Setenv(PMIX_PTL_TOKEN_ENV, t1, true, &env);

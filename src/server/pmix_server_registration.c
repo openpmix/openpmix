@@ -2009,6 +2009,10 @@ static void _register_client(int sd, short args, void *cbdata)
         goto cleanup;
     }
     if (NULL != adopted) {
+        /* the rank registered again is the host's new process for it: the
+         * token it keeps is taken from whichever pid connects with it
+         * first from here */
+        pmix_ptl_base_unbind_token(cd->proc.nspace, cd->proc.rank);
         info = adopted;
         info->uid = cd->uid;
         info->gid = cd->gid;

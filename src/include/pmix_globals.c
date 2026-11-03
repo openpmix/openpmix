@@ -437,6 +437,7 @@ static void pcon(pmix_peer_t *p)
     p->proc_type.flag = 0;
     p->protocol = PMIX_PROTOCOL_UNDEF;
     p->transport = NULL;
+    memset(&p->kgroups, 0, sizeof(p->kgroups));
     p->finalized = false;
     p->finalize_counted = false;
     p->stdin_producer = false;
@@ -496,6 +497,8 @@ static void pdes(pmix_peer_t *p)
     if (NULL != p->info) {
         PMIX_RELEASE(p->info);
     }
+    free(p->kgroups.gids);
+    p->kgroups.gids = NULL;
 
     PMIX_LIST_DESTRUCT(&p->send_queue);
     if (NULL != p->send_msg) {

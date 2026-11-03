@@ -418,8 +418,48 @@ bool pmix_server_access_permitted(uid_t uid, gid_t gid, const pmix_namespace_t *
     return ok;
 }
 
+void pmix_server_process_groups(const pmix_kernel_groups_t *kg, uid_t uid, const gid_t *egid,
+                                const gid_t **gids, size_t *ngids)
+{
+    pmix_user_t *user;
+
+    if (NULL != kg && NULL != kg->gids && 0 < kg->ngids) {
+        *gids = kg->gids;
+        *ngids = kg->ngids;
+        return;
+    }
+    user = pmix_server_user_find(uid);
+    if (NULL != user && NULL != user->gids && 0 < user->ngids) {
+        *gids = user->gids;
+        *ngids = user->ngids;
+        return;
+    }
+    *gids = egid;
+    *ngids = 1;
+}
+
+bool pmix_server_process_in_group(const pmix_kernel_groups_t *kg, uid_t uid, gid_t egid,
+                                  gid_t gid)
+{
+    const gid_t *gids;
+    size_t n, ngids;
+
+    pmix_server_process_groups(kg, uid, &egid, &gids, &ngids);
+    for (n = 0; n < ngids; n++) {
+        if (gids[n] == gid) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool pmix_server_peer_permitted(const pmix_peer_t *peer, const pmix_namespace_t *nptr)
 {
+    pmix_user_t proc;
+    const gid_t *gids;
+    size_t ngids;
+    bool ok;
+
     if (NULL == peer || NULL == peer->info) {
         return false;
     }
@@ -429,7 +469,28 @@ bool pmix_server_peer_permitted(const pmix_peer_t *peer, const pmix_namespace_t 
                          (NULL != pmix_globals.mypeer && pmix_globals.mypeer->nptr == nptr))) {
         return true;
     }
-    return pmix_server_access_permitted(peer->info->uid, peer->info->gid, nptr);
+    if (!peer->kgroups.read) {
+        return pmix_server_access_permitted(peer->info->uid, peer->info->gid, nptr);
+    }
+    /* on the local socket: the process's own groups */
+    if (0 == peer->info->uid || geteuid() == peer->info->uid) {
+        return true;
+    }
+    if (NULL == nptr) {
+        return false;
+    }
+    pmix_server_process_groups(&peer->kgroups, peer->info->uid, &peer->kgroups.gid, &gids,
+                               &ngids);
+    PMIX_CONSTRUCT(&proc, pmix_user_t);
+    proc.uid = peer->info->uid;
+    /* borrowed for the check */
+    proc.gids = (gid_t *) gids;
+    proc.ngids = (uint16_t) ((UINT16_MAX < ngids) ? UINT16_MAX : ngids);
+    ok = (PMIX_SUCCESS == pmix_server_access_check(&proc, &nptr->access));
+    proc.gids = NULL;
+    proc.ngids = 0;
+    PMIX_DESTRUCT(&proc);
+    return ok;
 }
 
 bool pmix_server_peer_may_access_nspace(const pmix_peer_t *peer, const char *nspace)

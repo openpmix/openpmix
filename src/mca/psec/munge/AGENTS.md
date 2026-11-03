@@ -90,6 +90,20 @@ costs nothing that matters.
   credential cannot be presented again. The credential bytes are the
   NUL-terminated MUNGE string (`strlen + 1`). It fills `*info` with a
   `PMIX_CRED_TYPE = "munge"` marker.
+- **A credential for a connection is restricted to the server's uid when
+  that uid is known.** `ptl`'s `construct_message` passes the
+  `PMIX_PSEC_SERVER_UID` directive (`psec.h`) when the kernel names the
+  owner of the server's end of the local socket, and the uid is the same
+  number in this process's user namespace and its parent's (or there are
+  no user namespaces). `create_cred` then encodes through a context with
+  `MUNGE_OPT_UID_RESTRICTION` set to it, so only a process of that uid can
+  decode it; any other gets `EMUNGE_CRED_UNAUTHORIZED`, which
+  `validate_cred` returns as `PMIX_ERR_INVALID_CRED` like every failed
+  decode. Over TCP no uid is passed and the credential is unrestricted.
+  A restricted request also drops the credential cached at init, so a
+  later unrestricted one is encoded when asked for.
+  `test/unit/psec_credentials.c` covers it (as root, in children of two
+  other uids).
 - **`validate_cred`** applies the same `PMIX_CRED_TYPE` filtering, then
   checks the credential is well-formed (see the gotcha below) before
   calling `munge_decode` to recover the sender's `uid`/`gid` from it (a

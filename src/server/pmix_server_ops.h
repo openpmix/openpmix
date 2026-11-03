@@ -514,8 +514,22 @@ PMIX_EXPORT bool pmix_server_access_permitted(uid_t uid, gid_t gid, const pmix_n
 
 /* the same for a connected peer, by the identity it connected with - and
  * a job's own processes, and anyone reading the server's own namespace,
- * are always allowed */
+ * are always allowed. A peer on the local socket is judged by its
+ * process's groups (pmix_server_process_groups) */
 PMIX_EXPORT bool pmix_server_peer_permitted(const pmix_peer_t *peer, const pmix_namespace_t *nptr);
+
+/* The groups of a process connected on the local socket, taken from, in
+ * order: the list the kernel reported for it when it connected
+ * (kg->gids); the groups the host registered for uid; egid, its
+ * effective gid as the kernel reported it, alone. *gids points into kg,
+ * the user's record, or egid - nothing is allocated */
+PMIX_EXPORT void pmix_server_process_groups(const pmix_kernel_groups_t *kg, uid_t uid,
+                                            const gid_t *egid, const gid_t **gids,
+                                            size_t *ngids);
+
+/* Whether gid is one of the groups pmix_server_process_groups gives */
+PMIX_EXPORT bool pmix_server_process_in_group(const pmix_kernel_groups_t *kg, uid_t uid,
+                                              gid_t egid, gid_t gid);
 
 /* For data this server answers itself: as pmix_server_peer_permitted, but a
  * namespace the host never registered with us (see pmix_access_t.registered)

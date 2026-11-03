@@ -48,7 +48,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#if defined(__FreeBSD__)
+#if defined(__FreeBSD__) || defined(__APPLE__)
 /* __FreeBSD_version, which the pid lookup below tests; then struct xucred,
  * for LOCAL_PEERCRED */
 #    include <sys/param.h>
@@ -253,6 +253,146 @@ pmix_status_t pmix_util_getpid(int sd, pid_t *pid)
     return PMIX_SUCCESS;
 #else
     PMIX_HIDE_UNUSED_PARAMS(sd, pid);
+    return PMIX_ERR_NOT_SUPPORTED;
+#endif
+}
+
+/* The peer's groups. Linux reports its supplementary groups through
+ * SO_PEERGROUPS (4.13 and later), which answers ERANGE, with the length it
+ * needs, for a buffer too small. macOS and FreeBSD report the groups in
+ * struct xucred, through LOCAL_PEERCRED: at most 16 of them, the
+ * effective gid first. */
+#if defined(SO_PEERGROUPS)
+#    define PMIX_HAVE_PEERGROUPS 1
+#elif (defined(__APPLE__) || defined(__FreeBSD__)) && defined(LOCAL_PEERCRED) && \
+    defined(SOL_LOCAL) && defined(XUCRED_VERSION)
+#    define PMIX_HAVE_XUCRED_GROUPS 1
+#endif
+#ifndef PMIX_HAVE_PEERGROUPS
+#    define PMIX_HAVE_PEERGROUPS 0
+#endif
+#ifndef PMIX_HAVE_XUCRED_GROUPS
+#    define PMIX_HAVE_XUCRED_GROUPS 0
+#endif
+
+/* the most groups taken from the kernel for one peer */
+#define PMIX_GETGROUPS_MAX 65536
+
+bool pmix_util_getgroups_test_unavailable = false;
+
+#if PMIX_HAVE_PEERGROUPS
+/* The gid the kernel reports for a group not mapped into this process's
+ * user namespace: /proc/sys/kernel/overflowgid, 65534 by default */
+static gid_t overflow_gid(void)
+{
+    static bool done = false;
+    static gid_t gid = 65534;
+    FILE *fp;
+    unsigned long v;
+
+    if (!done) {
+        done = true;
+        fp = fopen("/proc/sys/kernel/overflowgid", "re");
+        if (NULL != fp) {
+            if (1 == fscanf(fp, "%lu", &v)) {
+                gid = (gid_t) v;
+            }
+            fclose(fp);
+        }
+    }
+    return gid;
+}
+
+/* Leave out of a peer's group list the overflow gid where it stands for a
+ * group not mapped into this process's user namespace - the gid_map maps
+ * no group to it */
+static void drop_unmapped(gid_t *gids, size_t *ngids)
+{
+    gid_t ovf = overflow_gid();
+    uint32_t parent;
+    size_t n, m = 0;
+
+    for (n = 0; n < *ngids; n++) {
+        if (ovf == gids[n] &&
+            PMIX_ERR_NOT_FOUND == pmix_util_id_to_parent("/proc/self/gid_map",
+                                                         (uint32_t) gids[n], &parent)) {
+            continue;
+        }
+        gids[m++] = gids[n];
+    }
+    *ngids = m;
+}
+#endif
+
+pmix_status_t pmix_util_getgroups(int sd, gid_t **gids, size_t *ngids)
+{
+    *gids = NULL;
+    *ngids = 0;
+    if (pmix_util_getgroups_test_unavailable) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+#if PMIX_HAVE_PEERGROUPS
+    {
+        socklen_t len = 64 * sizeof(gid_t), got;
+        gid_t *buf = NULL, *tmp;
+        int tries;
+
+        for (tries = 0; tries < 4; tries++) {
+            tmp = (gid_t *) realloc(buf, len);
+            if (NULL == tmp) {
+                free(buf);
+                return PMIX_ERR_NOMEM;
+            }
+            buf = tmp;
+            got = len;
+            if (0 == getsockopt(sd, SOL_SOCKET, SO_PEERGROUPS, buf, &got)) {
+                if (got > len || 0 != got % sizeof(gid_t)) {
+                    break;
+                }
+                *gids = buf;
+                *ngids = got / sizeof(gid_t);
+                drop_unmapped(*gids, ngids);
+                return PMIX_SUCCESS;
+            }
+            /* a buffer too small is answered with the length needed */
+            if (ERANGE != pmix_socket_errno || got <= len ||
+                PMIX_GETGROUPS_MAX * sizeof(gid_t) < (size_t) got) {
+                pmix_output_verbose(2, pmix_globals.debug_output,
+                                    "getid: getsockopt SO_PEERGROUPS failed: %s",
+                                    strerror(pmix_socket_errno));
+                break;
+            }
+            len = got;
+        }
+        free(buf);
+        return PMIX_ERR_NOT_FOUND;
+    }
+#elif PMIX_HAVE_XUCRED_GROUPS
+    {
+        struct xucred xu;
+        socklen_t len = sizeof(xu);
+        gid_t *buf;
+        int n;
+
+        memset(&xu, 0, sizeof(xu));
+        if (getsockopt(sd, SOL_LOCAL, LOCAL_PEERCRED, &xu, &len) < 0 || len < sizeof(xu) ||
+            XUCRED_VERSION != xu.cr_version || 0 >= xu.cr_ngroups ||
+            sizeof(xu.cr_groups) / sizeof(xu.cr_groups[0]) < (size_t) xu.cr_ngroups) {
+            return PMIX_ERR_NOT_FOUND;
+        }
+        buf = (gid_t *) malloc((size_t) xu.cr_ngroups * sizeof(gid_t));
+        if (NULL == buf) {
+            return PMIX_ERR_NOMEM;
+        }
+        for (n = 0; n < xu.cr_ngroups; n++) {
+            buf[n] = xu.cr_groups[n];
+        }
+        *gids = buf;
+        *ngids = (size_t) xu.cr_ngroups;
+        return PMIX_SUCCESS;
+    }
+#else
+    PMIX_HIDE_UNUSED_PARAMS(sd);
     return PMIX_ERR_NOT_SUPPORTED;
 #endif
 }

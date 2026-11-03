@@ -77,7 +77,8 @@ Owner
 
 Requester
    The client or tool making a request, identified by the user ID and
-   group ID recorded when it connected.
+   group ID recorded when it connected and, on the server's local
+   socket, by the groups the kernel reported for its process then.
 
 Access list
    Additional users and groups the owner has allowed, given with
@@ -94,8 +95,8 @@ A requester may access a job if **any** of the following holds:
    process itself;
 #. the requester's user ID is the job owner's;
 #. the requester's user ID is in the job's access list;
-#. the requester belongs to a group in the job's access list - its
-   primary group or any supplementary group.
+#. the requester belongs to a group in the job's access list - one of
+   the groups described under **Group membership** below.
 
 Otherwise the request fails with ``PMIX_ERR_NO_PERMISSIONS``.
 
@@ -126,27 +127,48 @@ The host passes the list on when it registers the job, on every node
 that hosts a part of it. The same attributes already govern access to
 published data (``PMIx_Publish``), so users meet one vocabulary.
 
-**Group membership** is the groups a user belongs to - its primary group
-and its supplementary groups - **as the host says**. The library never
-looks a user's groups up: no directory lookup runs on its behalf, now or
-later. The host gives them with ``PMIX_USER_GRPIDS`` (a data array of
-group IDs, numbers or names):
+**Group membership** is the set of groups the requester's process
+belongs to - its effective group and its supplementary groups. The set
+belongs to the process, not to its user: two processes of one user may
+hold different groups. The library never looks a user's groups up: no
+directory lookup runs on its behalf, now or later. The set is taken from
+the first of these that gives one:
 
-* for a job's owner, in that job's ``PMIx_server_register_nspace``;
-* for any other user - a tool's user, say - in
-  ``PMIx_server_register_resources`` with ``PMIX_USERID``. A single
-  ``PMIX_GRPID`` there says the user belongs to that group alone.
+#. **The kernel**, for a client or tool connected to the server's local
+   socket: the groups of the connecting process, which the server reads
+   from the connection when it is made - on Linux with ``SO_PEERGROUPS``
+   (kernel 4.13 or later), and on macOS and FreeBSD with
+   ``LOCAL_PEERCRED``, which reports at most 16 groups. On Linux, a group
+   not mapped into the server's user namespace - which the kernel reports
+   as the overflow gid - is left out. The effective gid the kernel
+   reports for the process is always one of them. The set is
+   the one the process had when it connected, and is kept for as long as
+   the connection lasts.
+#. **The host**, for the requester's user: the groups it gives with
+   ``PMIX_USER_GRPIDS`` (a data array of group IDs, numbers or names):
 
-**Providing them is the host's responsibility.** The library uses exactly
-the groups it was given until the host gives them again; a host whose
-users' groups change registers them again (with the user's next job, for
-example). A user the host gave no groups for has no record, and is judged
-by the **one group its request is made under**: for a client or tool, the
-gid it connected with; for a request the host relays from another node,
-the ``PMIX_GRPID`` carried with it. A group check for such a user passes
-only if the job's access list names exactly that group. Root and the
-server's own user are never recorded - they need no groups. A record is
-dropped when the host deregisters that user
+   * for a job's owner, in that job's ``PMIx_server_register_nspace``;
+   * for any other user - a tool's user, say - in
+     ``PMIx_server_register_resources`` with ``PMIX_USERID``. A single
+     ``PMIX_GRPID`` there says the user belongs to that group alone.
+
+   These are used for a process on the local socket only where the kernel
+   reports no list - on a platform without either option, or when reading
+   it fails - and are what a requester connected over TCP, or a request
+   the host relays from another node, is judged by.
+#. **The one group the request is made under**, where the host gave no
+   groups for the user: for a client or tool on the local socket, the
+   effective gid the kernel reports for it; for one connected over TCP,
+   the gid it connected with; for a request the host relays from another
+   node, the ``PMIX_GRPID`` carried with it. A group check then passes
+   only if the job's access list names exactly that group.
+
+**Providing the host's groups is the host's responsibility.** The library
+uses exactly the groups it was given until the host gives them again; a
+host whose users' groups change registers them again (with the user's next
+job, for example). A user the host gave no groups for has no record. Root
+and the server's own user are never recorded - they need no groups. A
+record is dropped when the host deregisters that user
 (``PMIx_server_deregister_resources`` with ``PMIX_USERID``), and at
 finalize.
 

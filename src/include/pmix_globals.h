@@ -670,6 +670,9 @@ typedef struct pmix_peer_t {
     pmix_listener_protocol_t protocol;
     /* the ptl transport that carries this peer's connection */
     struct pmix_ptl_module_t *transport;
+    /* the groups the kernel reported for the process when it connected,
+     * on the local socket */
+    pmix_kernel_groups_t kgroups;
     int proc_cnt;
     int index; // index into the local clients array on the server
     int sd;

@@ -80,6 +80,29 @@
  *    least recently used pair is the one dropped; and that closing the
  *    framework empties it.
  *
+ * 8. A process's groups on the local socket, over a real AF_UNIX
+ *    connection read with pmix_ptl_base_read_groups(): the kernel's list
+ *    is this process's getgroups() and effective gid (on macOS and
+ *    FreeBSD, up to 16 of them). A local tool's claim of one of those
+ *    groups is used, and a claim of a gid the process does not hold - one
+ *    the user database lists for its user where there is one, which that
+ *    database would grant - is replaced by the effective gid. A job whose
+ *    access list names a supplementary group admits the process with no
+ *    groups from the host, and one naming a group it does not hold
+ *    refuses it. With no list from the kernel
+ *    (pmix_util_getgroups_test_unavailable), the host's groups for the
+ *    uid are used, and with none from the host, the effective gid alone.
+ *    A TCP connection records no groups: it is judged as before, by its
+ *    gid or the host's groups, and its claim by the group database.
+ *
+ * 9. munge's credential for one server (PMIX_PSEC_SERVER_UID, the
+ *    directive ptl gives create_cred when the kernel names the server's
+ *    uid): it is restricted to that uid, so a process of that uid accepts
+ *    it and one of any other uid answers PMIX_ERR_INVALID_CRED. Without
+ *    the directive the credential is unrestricted, as before. Run as
+ *    root, forked children of two other uids decode it. SKIPs where
+ *    munge is not active.
+ *
  * Like the pstat tests, this needs the MCA up but no server:
  * pmix_init_util() establishes the install dirs, the variable system and
  * the component repository, which is all that opening a framework
@@ -99,7 +122,9 @@
 #include "src/class/pmix_list.h"
 #include "src/mca/psec/base/base.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/mca/ptl/usock/ptl_usock.h"
 #include "src/runtime/pmix_init_util.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_getid.h"
 
 #include <errno.h>
@@ -111,6 +136,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -1019,6 +1045,166 @@ static void native_unverified(void)
 }
 
 /* ---------------------------------------------------------------- */
+/* munge: a credential restricted to the server's uid               */
+
+/* A munge credential from create_cred, with PMIX_PSEC_SERVER_UID set to
+ * `uid` when `restricted` */
+static pmix_status_t munge_create(pmix_psec_module_t *mod, bool restricted, uid_t uid,
+                                  pmix_byte_object_t *cred)
+{
+    pmix_peer_t *peer;
+    pmix_info_t dir;
+    uint32_t u32 = (uint32_t) uid;
+    pmix_status_t rc;
+
+    peer = PMIX_NEW(pmix_peer_t);
+    peer->protocol = PMIX_PROTOCOL_V2;
+    PMIX_INFO_LOAD(&dir, PMIX_PSEC_SERVER_UID, &u32, PMIX_UINT32);
+    rc = mod->create_cred((struct pmix_peer_t *) peer, restricted ? &dir : NULL,
+                          restricted ? 1 : 0, NULL, NULL, cred);
+    PMIX_INFO_DESTRUCT(&dir);
+    PMIX_RELEASE(peer);
+    return rc;
+}
+
+/* validate_cred on a credential with no connection behind it (the
+ * peer's socket is -1), so the answer is munge's decode alone */
+static pmix_status_t munge_decode_here(pmix_psec_module_t *mod, pmix_byte_object_t *cred)
+{
+    pmix_peer_t *peer;
+    pmix_info_t *results = NULL;
+    size_t nresults = 0;
+    pmix_status_t rc;
+
+    peer = PMIX_NEW(pmix_peer_t);
+    peer->protocol = PMIX_PROTOCOL_V2;
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, cred);
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+    }
+    PMIX_RELEASE(peer);
+    return rc;
+}
+
+/* Decode `cred` in a child running as `uid`. Exits 0 when the answer is
+ * `expect`, 1 when it is not, 77 when the child cannot take that uid */
+static int munge_decode_as(pmix_psec_module_t *mod, pmix_byte_object_t *cred, uid_t uid,
+                           pmix_status_t expect)
+{
+    pid_t pid;
+    int status;
+
+    fflush(stdout);
+    pid = fork();
+    if (0 > pid) {
+        return 1;
+    }
+    if (0 == pid) {
+        if (0 != setgid((gid_t) uid) || 0 != setuid(uid) || uid != geteuid()) {
+            _exit(77);
+        }
+        _exit((expect == munge_decode_here(mod, cred)) ? 0 : 1);
+    }
+    if (pid != waitpid(pid, &status, 0) || !WIFEXITED(status)) {
+        return 1;
+    }
+    return WEXITSTATUS(status);
+}
+
+static void munge_uid_restriction(void)
+{
+    pmix_psec_module_t *mod;
+    pmix_byte_object_t cred;
+    pmix_status_t rc;
+    uid_t me = geteuid();
+    uid_t other = me + 1;
+    uid_t first = 4201, second = 4202;
+    char label[256];
+    int n, res;
+
+    mod = pmix_psec_base_assign_module("munge");
+    if (NULL == mod) {
+        fprintf(stdout, "  SKIP: munge uid restriction - munge is not active\n");
+        return;
+    }
+
+    /* a credential for this process's own uid is accepted by it - twice,
+     * so a second encode for the same uid does too */
+    for (n = 1; n <= 2; n++) {
+        PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+        rc = munge_create(mod, true, me, &cred);
+        snprintf(label, sizeof(label), "munge: create_cred for the server's uid (%d)", n);
+        report(label, PMIX_SUCCESS == rc && NULL != cred.bytes && 0 < cred.size);
+        if (PMIX_SUCCESS == rc) {
+            snprintf(label, sizeof(label),
+                     "munge: a credential for this uid is accepted by this uid (%d)", n);
+            report(label, PMIX_SUCCESS == munge_decode_here(mod, &cred));
+        }
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    }
+
+    /* one for another uid is refused here, as an invalid credential */
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+    rc = munge_create(mod, true, other, &cred);
+    report("munge: create_cred for another uid", PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS == rc) {
+        report("munge: a credential for another uid is refused by this uid",
+               PMIX_ERR_INVALID_CRED == munge_decode_here(mod, &cred));
+    }
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    /* with no directive the credential is unrestricted - after a
+     * restricted one, and on the one encoded after that */
+    for (n = 1; n <= 2; n++) {
+        PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+        rc = munge_create(mod, false, 0, &cred);
+        snprintf(label, sizeof(label),
+                 "munge: a credential with no server uid is accepted (%d)", n);
+        report(label, PMIX_SUCCESS == rc && PMIX_SUCCESS == munge_decode_here(mod, &cred));
+        PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    }
+
+    if (0 != me) {
+        fprintf(stdout, "  SKIP: munge uid restriction in a process of another uid - "
+                        "needs root\n");
+        return;
+    }
+
+    /* As root: a credential for `first` is accepted by a process of that
+     * uid and refused by one of `second`; the unrestricted one is
+     * accepted by both */
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+    rc = munge_create(mod, true, first, &cred);
+    report("munge: create_cred for uid 4201", PMIX_SUCCESS == rc);
+    if (PMIX_SUCCESS == rc) {
+        res = munge_decode_as(mod, &cred, first, PMIX_SUCCESS);
+        if (77 == res) {
+            fprintf(stdout, "  SKIP: munge uid restriction in a child - cannot setuid\n");
+            PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+            return;
+        }
+        report("munge: a credential for uid 4201 is accepted by uid 4201", 0 == res);
+    }
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+    rc = munge_create(mod, true, first, &cred);
+    if (PMIX_SUCCESS == rc) {
+        report("munge: a credential for uid 4201 is refused by uid 4202",
+               0 == munge_decode_as(mod, &cred, second, PMIX_ERR_INVALID_CRED));
+    }
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+    rc = munge_create(mod, false, 0, &cred);
+    if (PMIX_SUCCESS == rc) {
+        report("munge: a credential with no server uid is accepted by uid 4202",
+               0 == munge_decode_as(mod, &cred, second, PMIX_SUCCESS));
+    }
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+}
+
+/* ---------------------------------------------------------------- */
 
 /* A module that cannot validate a credential is not a security
  * mechanism: a peer asking for one is refused */
@@ -1069,6 +1255,387 @@ static void available_modules(void)
     /* with no preference expressed, the highest-priority module wins */
     report("no preference still yields a module",
            NULL != pmix_psec_base_assign_module(NULL));
+}
+
+/* ---------------------------------------------------------------- */
+/* A process's groups on the local socket                            */
+/* ---------------------------------------------------------------- */
+
+/* A connected AF_UNIX pair, the local socket's kind of connection:
+ * *server is the accepted end */
+static bool local_pair(int *client, int *server)
+{
+    struct sockaddr_un sa;
+    int lsd;
+
+    *client = *server = -1;
+    memset(&sa, 0, sizeof(sa));
+    sa.sun_family = AF_UNIX;
+    snprintf(sa.sun_path, sizeof(sa.sun_path), "/tmp/pmix-psec-groups.%lu",
+             (unsigned long) getpid());
+    (void) unlink(sa.sun_path);
+    lsd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (0 > lsd) {
+        return false;
+    }
+    if (0 != bind(lsd, (struct sockaddr *) &sa, sizeof(sa)) || 0 != listen(lsd, 1)) {
+        close(lsd);
+        (void) unlink(sa.sun_path);
+        return false;
+    }
+    *client = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (0 > *client || 0 != connect(*client, (struct sockaddr *) &sa, sizeof(sa)) ||
+        0 > (*server = accept(lsd, NULL, NULL))) {
+        if (0 <= *client) {
+            close(*client);
+        }
+        close(lsd);
+        (void) unlink(sa.sun_path);
+        return false;
+    }
+    close(lsd);
+    (void) unlink(sa.sun_path);
+    return true;
+}
+
+static bool gid_in(const gid_t *gids, size_t n, gid_t gid)
+{
+    size_t m;
+
+    for (m = 0; NULL != gids && m < n; m++) {
+        if (gids[m] == gid) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* This process's groups: getgroups() and the effective gid. *gids is
+ * malloc'd */
+static size_t own_groups(gid_t **gids)
+{
+    int n = getgroups(0, NULL);
+    gid_t *g;
+
+    if (0 > n) {
+        n = 0;
+    }
+    g = (gid_t *) malloc(((size_t) n + 1) * sizeof(gid_t));
+    n = (0 < n) ? getgroups(n, g) : 0;
+    if (0 > n) {
+        n = 0;
+    }
+    if (!gid_in(g, (size_t) n, getegid())) {
+        g[n++] = getegid();
+    }
+    *gids = g;
+    return (size_t) n;
+}
+
+/* A gid with no group entry that this process does not hold */
+static gid_t unheld_gid(const gid_t *own, size_t nown)
+{
+    gid_t gid = (gid_t) 54321;
+
+#ifdef HAVE_GRP_H
+    while (NULL != getgrgid(gid) || gid_in(own, nown, gid)) {
+        gid++;
+    }
+#else
+    while (gid_in(own, nown, gid)) {
+        gid++;
+    }
+#endif
+    return gid;
+}
+
+/* A group the user database lists for this process's user that the
+ * process does not hold, if there is one */
+static bool listed_not_held(const gid_t *own, size_t nown, gid_t *out)
+{
+    struct passwd *pw = getpwuid(geteuid());
+    int n, ng = 1024;
+    bool found = false;
+#if defined(__APPLE__)
+    int *list;
+#else
+    gid_t *list;
+#endif
+
+    if (NULL == pw) {
+        return false;
+    }
+    list = malloc((size_t) ng * sizeof(*list));
+    if (NULL == list) {
+        return false;
+    }
+    if (0 <= getgrouplist(pw->pw_name, pw->pw_gid, list, &ng)) {
+        for (n = 0; n < ng; n++) {
+            if (!gid_in(own, nown, (gid_t) list[n])) {
+                *out = (gid_t) list[n];
+                found = true;
+                break;
+            }
+        }
+    }
+    free(list);
+    return found;
+}
+
+/* a job owned by someone else, whose access list names `gid` */
+static pmix_namespace_t *job_naming(uid_t owner, gid_t gid)
+{
+    pmix_namespace_t *ns = PMIX_NEW(pmix_namespace_t);
+
+    ns->nspace = strdup("psec.groups");
+    ns->access.registered = true;
+    ns->access.source = PMIX_OWNER_REGISTERED;
+    ns->access.uid = owner;
+    ns->access.gids = (uint32_t *) malloc(sizeof(uint32_t));
+    ns->access.gids[0] = (uint32_t) gid;
+    ns->access.ngids = 1;
+    return ns;
+}
+
+static bool permitted_naming(pmix_peer_t *peer, uid_t owner, gid_t gid)
+{
+    pmix_namespace_t *ns = job_naming(owner, gid);
+    bool ok = pmix_server_peer_permitted(peer, ns);
+
+    PMIX_RELEASE(ns);
+    return ok;
+}
+
+/* a tool on peer claims `gid`; the gid its identity was settled with */
+static gid_t tool_claims(pmix_psec_module_t *mod, pmix_peer_t *peer, gid_t gid)
+{
+    pmix_byte_object_t cred;
+    pmix_info_t *results = NULL;
+    size_t nresults = 0;
+    pmix_status_t rc;
+
+    peer->info->host_registered = false;
+    peer->info->uid = geteuid();
+    peer->info->gid = gid;
+    make_cred(&cred, geteuid(), gid);
+    rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
+    PMIX_BYTE_OBJECT_DESTRUCT(&cred);
+    if (NULL != results) {
+        PMIX_INFO_FREE(results, nresults);
+    }
+    return (PMIX_SUCCESS == rc) ? peer->info->gid : (gid_t) -1;
+}
+
+static void local_groups(void)
+{
+    pmix_psec_module_t *mod;
+    pmix_peer_t *peer, *tpeer;
+    gid_t *own = NULL, supp = (gid_t) -1, notheld, listed = (gid_t) -1, hostgid;
+    size_t nown, n;
+    uid_t other, owner;
+    bool have_supp = false, have_listed, equal;
+    int client = -1, tclient = -1;
+    pmix_status_t rc;
+
+    mod = pmix_psec_base_assign_module("native");
+    if (NULL == mod) {
+        report("native module is available for the group cases", 0);
+        return;
+    }
+    nown = own_groups(&own);
+    /* root may have no group beside its effective one: give it one */
+    if (0 == geteuid() && 1 == nown) {
+        gid_t two[2];
+
+        two[0] = getegid();
+        two[1] = unheld_gid(own, nown);
+        if (0 == setgroups(2, two)) {
+            free(own);
+            nown = own_groups(&own);
+        }
+    }
+    for (n = 0; n < nown; n++) {
+        if (own[n] != getegid()) {
+            supp = own[n];
+            have_supp = true;
+            break;
+        }
+    }
+    notheld = unheld_gid(own, nown);
+    hostgid = notheld + 1;
+    while (gid_in(own, nown, hostgid)) {
+        hostgid++;
+    }
+    /* A claim the group database would grant: root holds every group
+     * there, and any user the groups it lists but this process lacks */
+    have_listed = (0 != geteuid()) && listed_not_held(own, nown, &listed);
+    if (0 != geteuid() && !have_listed) {
+        fprintf(stdout, "  NOTE: this process holds every group the user database lists "
+                        "for its user - the unheld claim below is one no entry names\n");
+    }
+    other = (uid_t) 54000;
+    while (0 == other || geteuid() == other) {
+        other++;
+    }
+    owner = other + 1;
+
+    peer = PMIX_NEW(pmix_peer_t);
+    peer->protocol = PMIX_PROTOCOL_V2;
+    peer->info = PMIX_NEW(pmix_rank_info_t);
+    peer->transport = &pmix_ptl_usock_module;
+    if (!local_pair(&client, &peer->sd)) {
+        report("group cases: local connection", 0);
+        PMIX_RELEASE(peer);
+        free(own);
+        return;
+    }
+
+    /* (a) the kernel's list for the process at the far end */
+    rc = pmix_ptl_base_read_groups(peer);
+    report("groups: the kernel's effective gid for a local process is recorded",
+           PMIX_SUCCESS == rc && peer->kgroups.read && getegid() == peer->kgroups.gid);
+#if defined(SO_PEERGROUPS) || defined(__APPLE__) || defined(__FreeBSD__)
+    equal = (NULL != peer->kgroups.gids);
+    for (n = 0; equal && n < peer->kgroups.ngids; n++) {
+        equal = gid_in(own, nown, peer->kgroups.gids[n]);
+    }
+#    if defined(SO_PEERGROUPS)
+    for (n = 0; equal && n < nown; n++) {
+        equal = gid_in(peer->kgroups.gids, peer->kgroups.ngids, own[n]);
+    }
+#    else
+    /* the kernel reports at most 16 */
+    for (n = 0; equal && n < nown; n++) {
+        equal = gid_in(peer->kgroups.gids, peer->kgroups.ngids, own[n]) ||
+                16 == peer->kgroups.ngids;
+    }
+#    endif
+    report("groups: the kernel's list for a local process is its getgroups() and "
+           "effective gid", equal);
+    if (!equal) {
+        fprintf(stdout, "    recorded %lu groups:", (unsigned long) peer->kgroups.ngids);
+        for (n = 0; NULL != peer->kgroups.gids && n < peer->kgroups.ngids; n++) {
+            fprintf(stdout, " %lu", (unsigned long) peer->kgroups.gids[n]);
+        }
+        fprintf(stdout, "\n    the process holds %lu:", (unsigned long) nown);
+        for (n = 0; n < nown; n++) {
+            fprintf(stdout, " %lu", (unsigned long) own[n]);
+        }
+        fprintf(stdout, "\n");
+    }
+#else
+    fprintf(stdout, "  SKIP: groups - this platform reports no list for a local process\n");
+#endif
+
+    /* (b) the gid a local tool acts under */
+    if (have_supp) {
+        report("groups: a local tool's claim of one of its process's groups is used",
+               supp == tool_claims(mod, peer, supp));
+    } else {
+        fprintf(stdout, "  SKIP: groups - this process has no group beside its effective "
+                        "one\n");
+    }
+    report("groups: a local tool's claim of a gid its process does not hold is replaced "
+           "by its effective gid",
+           getegid() == tool_claims(mod, peer, have_listed ? listed : notheld));
+
+    /* (c) the access rule's group check, with no groups from the host. The
+     * uid is one that is neither root nor ours, nor the job's owner, so
+     * only the group check can admit it */
+    peer->info->uid = other;
+    peer->info->gid = getegid();
+    if (have_supp) {
+        report("groups: a job whose access list names a supplementary group of a local "
+               "process admits it, with no groups from the host",
+               permitted_naming(peer, owner, supp));
+    }
+    report("groups: a job whose access list names a group a local process does not hold "
+           "refuses it",
+           !permitted_naming(peer, owner, have_listed ? listed : notheld));
+    /* the kernel's list is used in place of the host's */
+    pmix_server_user_register(other, &hostgid, 1);
+    report("groups: with the kernel's list, a group the host gives but the process does "
+           "not hold does not admit it",
+           !permitted_naming(peer, owner, hostgid));
+    pmix_server_user_remove(other);
+
+    /* (d) the kernel gives no list */
+    pmix_util_getgroups_test_unavailable = true;
+    rc = pmix_ptl_base_read_groups(peer);
+    pmix_util_getgroups_test_unavailable = false;
+    report("groups: with no list from the kernel, only the effective gid is recorded",
+           PMIX_SUCCESS == rc && peer->kgroups.read && NULL == peer->kgroups.gids &&
+               getegid() == peer->kgroups.gid);
+    if (have_supp) {
+        report("groups: with no list from the kernel or the host, a local tool's claim of a "
+               "supplementary group is replaced by its effective gid",
+               getegid() == tool_claims(mod, peer, supp));
+    }
+    peer->info->uid = other;
+    peer->info->gid = getegid();
+    if (have_supp) {
+        report("groups: with no list from the kernel or the host, a job naming a "
+               "supplementary group refuses a local process",
+               !permitted_naming(peer, owner, supp));
+    }
+    report("groups: with no list from the kernel or the host, a job naming its effective "
+           "gid admits a local process",
+           permitted_naming(peer, owner, getegid()));
+    pmix_server_user_register(other, &hostgid, 1);
+    report("groups: with no list from the kernel, a job naming a group the host gives "
+           "admits a local process",
+           permitted_naming(peer, owner, hostgid));
+    report("groups: with no list from the kernel, the host's groups replace the effective "
+           "gid",
+           !permitted_naming(peer, owner, getegid()));
+    report("groups: with no list from the kernel, a claimed gid the host gives is one of "
+           "the process's groups",
+           pmix_server_process_in_group(&peer->kgroups, other, getegid(), hostgid) &&
+               !pmix_server_process_in_group(&peer->kgroups, other, getegid(), notheld));
+    pmix_server_user_remove(other);
+
+    close(client);
+    PMIX_RELEASE(peer); /* closes peer->sd, frees what was recorded */
+
+    /* (e) TCP: the kernel reports no groups, and nothing changes */
+    tpeer = PMIX_NEW(pmix_peer_t);
+    tpeer->protocol = PMIX_PROTOCOL_V2;
+    tpeer->info = PMIX_NEW(pmix_rank_info_t);
+    if (!loopback_pair(&tclient, &tpeer->sd)) {
+        report("group cases: loopback connection", 0);
+        PMIX_RELEASE(tpeer);
+        free(own);
+        return;
+    }
+    rc = pmix_ptl_base_read_groups(tpeer);
+    report("groups: a TCP connection records no groups",
+           PMIX_SUCCESS == rc && !tpeer->kgroups.read && NULL == tpeer->kgroups.gids);
+    tpeer->info->uid = other;
+    tpeer->info->gid = getegid();
+    if (have_supp) {
+        report("groups: over TCP, with no groups from the host, a job naming a "
+               "supplementary group refuses the peer",
+               !permitted_naming(tpeer, owner, supp));
+    }
+    report("groups: over TCP, a job naming the peer's gid admits it",
+           permitted_naming(tpeer, owner, getegid()));
+    pmix_server_user_register(other, &hostgid, 1);
+    report("groups: over TCP, a job naming a group the host gives admits the peer",
+           permitted_naming(tpeer, owner, hostgid));
+    pmix_server_user_remove(other);
+    if (have_tcp_table(tpeer->sd) && 0 != geteuid()) {
+        /* the claim is checked with the group database */
+        if (have_listed) {
+            report("groups: over TCP, a tool's claim of a group the user database lists "
+                   "for its user is used",
+                   listed == tool_claims(mod, tpeer, listed));
+        }
+        report("groups: over TCP, a tool's claim of a gid no entry names is refused",
+               (gid_t) -1 == tool_claims(mod, tpeer, notheld));
+    }
+    close(tclient);
+    PMIX_RELEASE(tpeer);
+    free(own);
 }
 
 /* ---------------------------------------------------------------- */
@@ -1351,6 +1918,8 @@ int main(int argc, char **argv)
     native_no_table();
     native_unverified();
     no_credential_module();
+    local_groups();
+    munge_uid_restriction();
     gid_cache();
 
     (void) pmix_mca_base_framework_close(&pmix_psec_base_framework);
