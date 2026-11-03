@@ -953,13 +953,24 @@ PMIX_EXPORT void pmix_server_set_collective_status(pmix_info_t *info, size_t nin
 
 PMIX_EXPORT pmix_status_t pmix_server_get_collective_status(pmix_info_t *info, size_t ninfo);
 
-/* the two lost-connection entry points, one per tracker family - both are
- * called from lost_connection() in the PTL base, and both account only for
- * an abnormal termination (a peer that called PMIx_Finalize remains an
- * expected participant and is ignored) */
+/* the two lost-connection entry points, one per tracker family - both
+ * account only for an abnormal termination (a peer that called
+ * PMIx_Finalize remains an expected participant and is ignored) */
 PMIX_EXPORT void pmix_server_trk_peer_lost(pmix_peer_t *peer);
 
 PMIX_EXPORT void pmix_server_grp_peer_lost(pmix_peer_t *peer);
+
+/* the same two, for a process the caller has already judged lost and may
+ * know only by name */
+PMIX_EXPORT void pmix_server_trk_proc_lost(const pmix_proc_t *proc);
+
+PMIX_EXPORT void pmix_server_grp_proc_lost(const pmix_proc_t *proc);
+
+/* A local rank will never contribute again - its connection dropped without
+ * a finalize, or the host deregistered it: take it out of its namespace's
+ * count of local procs and out of every collective in flight, once, however
+ * many of those we learn of. Callers decide; this does the accounting. */
+PMIX_EXPORT void pmix_server_rank_lost(pmix_namespace_t *nptr, pmix_rank_info_t *info);
 
 PMIX_EXPORT void pmix_server_grp_member_left(const char *grpid, const pmix_proc_t *proc);
 

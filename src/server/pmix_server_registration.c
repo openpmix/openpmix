@@ -924,6 +924,52 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc,
     }
 }
 
+/* A local rank will never contribute to a collective again: its process
+ * died, or the host has deregistered it, which it does once the process
+ * has terminated - finalized or not. Two things learn of that:
+ * lost_connection(), when the socket of a rank that had not finalized
+ * drops, and remove_client(), when the host deregisters the rank - which
+ * can come before this server has read the close. Whichever comes first
+ * does the accounting, and info->lost is how the second knows it has been
+ * done.
+ *
+ * Both halves matter for a collective that names the rank:
+ *
+ *  - one already in flight that the rank had not contributed to must
+ *    record it as departed, or it waits for a contribution that is never
+ *    coming;
+ *  - one started afterwards over the whole namespace (PMIX_RANK_WILDCARD,
+ *    which is what PMIx_Fence(NULL, 0) sends) waits for nlocalprocs
+ *    contributions, so the rank must no longer be counted there.
+ *
+ * remove_client() once did neither - it marked the peer finalized, which
+ * is the one thing that makes a later loss look like an orderly exit - so
+ * a process the host reaped first stayed an expected participant for the
+ * life of its job, and every survivor's next whole-job fence (the one in
+ * MPI_Finalize, for a ULFM application) hung.
+ *
+ * A rank that merely finalized is NOT lost: it may initialize again and
+ * contribute (issue #4113), which is why lost_connection() does not call
+ * this for one. Only the host's deregistration ends it.
+ *
+ * A count of SIZE_MAX means the host has not told us how many local procs
+ * the namespace has, and must stay that way. */
+void pmix_server_rank_lost(pmix_namespace_t *nptr, pmix_rank_info_t *info)
+{
+    pmix_proc_t proc;
+
+    if (NULL == info || info->lost) {
+        return;
+    }
+    info->lost = true;
+    PMIX_LOAD_PROCID(&proc, info->pname.nspace, info->pname.rank);
+    pmix_server_trk_proc_lost(&proc);
+    pmix_server_grp_proc_lost(&proc);
+    if (NULL != nptr && 0 < nptr->nlocalprocs && SIZE_MAX != nptr->nlocalprocs) {
+        --nptr->nlocalprocs;
+    }
+}
+
 void pmix_server_peer_finalized(pmix_peer_t *peer)
 {
     pmix_rank_info_t *info = peer->info;
@@ -1042,30 +1088,53 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
              * to restore any allocations that were given to it */
             peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid);
             if (NULL == peer) {
-                /* this peer never connected, and hence it won't finalize,
-                 * so account for it here */
-                nptr->nfinalized++;
+                /* This peer never connected, and hence it won't finalize.
+                 * A rank the host deregisters on its own is a process that
+                 * is gone - it died, or never started - so no collective
+                 * may wait for it. When the whole namespace is going,
+                 * nothing will start another collective over it, and it is
+                 * counted finalized as before. */
+                if (NULL != p) {
+                    pmix_server_rank_lost(nptr, info);
+                } else if (!info->lost) {
+                    nptr->nfinalized++;
+                }
                 /* even if they never connected, resources were allocated
                  * to them, so we need to ensure they are properly released */
                 pmix_pnet.child_finalized(&proc);
                 pmix_pgpu.child_finalized(&proc);
             } else {
-                if (!peer->finalized) {
-                    /* this peer connected to us, but is being deregistered
-                     * without having finalized. This usually means an
-                     * abnormal termination that was picked up by
-                     * our host prior to our seeing the connection drop.
-                     * It is also possible that we missed the dropped
-                     * connection, so mark the peer as finalized so
-                     * we don't duplicate account for it and take care
-                     * of it here */
+                if (NULL != p) {
+                    /* The host says this rank is gone for good, finalized
+                     * or not - it calls this once the process has
+                     * terminated - so no collective may wait for it. If it
+                     * had not finalized, either we already saw its
+                     * connection drop (info->lost is set, and the loss is
+                     * accounted for) or the host reaped it before we did,
+                     * and it is accounted for here: the socket is closed
+                     * below, so lost_connection will never see it. A
+                     * departed rank has left nlocalprocs, so it must leave
+                     * nfinalized too, or the two would never agree on when
+                     * every remaining process has finalized. */
+                    pmix_server_rank_lost(nptr, info);
+                    if (peer->finalize_counted && 0 < nptr->nfinalized) {
+                        --nptr->nfinalized;
+                    }
+                    peer->finalize_counted = false;
+                    /* mark it finalized so nothing else accounts for it */
                     peer->finalized = true;
-                    /* one whose finalize request is still with the host
+                } else if (!peer->finalized) {
+                    /* the whole namespace is going, so nothing will start
+                     * another collective over it. A peer that connected
+                     * and did not finalize is counted finalized here -
+                     * unless its loss already took it out of nlocalprocs -
+                     * and one whose finalize request is still with the host
                      * was counted when the request arrived */
-                    if (!peer->finalize_counted) {
+                    if (!peer->finalize_counted && !info->lost) {
                         nptr->nfinalized++;
                         peer->finalize_counted = true;
                     }
+                    peer->finalized = true;
                 }
                 /* resources may have been allocated to them, so
                  * ensure they get cleaned up - this isn't true

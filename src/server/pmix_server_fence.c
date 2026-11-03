@@ -2172,10 +2172,11 @@ pmix_status_t pmix_server_get_collective_status(pmix_info_t *info, size_t ninfo)
 /* Account for a lost peer across every in-flight fence/connect/disconnect
  * collective. This is the fence family's counterpart to the group family's
  * pmix_server_grp_peer_lost(), and both are called from the one place that
- * learns a client's socket has dropped - lost_connection() in the PTL base.
- * It lives here, beside the tracker engine it walks, so the two families'
- * loss accounting sits next to the state it touches and can be exercised
- * directly by a unit test (test/unit/trk_peer_lost.c).
+ * learns a client's socket has dropped - lost_connection() in the PTL base,
+ * through pmix_server_rank_lost(). It lives here, beside the tracker engine
+ * it walks, so the two families' loss accounting sits next to the state it
+ * touches and can be exercised directly by a unit test
+ * (test/unit/trk_peer_lost.c).
  *
  * "Lost" means abnormal termination. A peer that dropped its connection by
  * calling PMIx_Finalize has NOT left the accounting: nptr->nlocalprocs is
@@ -2184,11 +2185,28 @@ pmix_status_t pmix_server_get_collective_status(pmix_info_t *info, size_t ninfo)
  * PMIx_Init again and contribute - which is exactly what a client cycling
  * init/finalize (MPI Sessions) does. Recording such a rank as departed
  * would count it twice and let a collective complete without it. See
- * docs/how-things-work/collectives and issue #4113.
+ * docs/how-things-work/collectives and issue #4113. */
+void pmix_server_trk_peer_lost(pmix_peer_t *peer)
+{
+    pmix_proc_t proc;
+
+    if (peer->finalized) {
+        /* an orderly departure - not a loss */
+        return;
+    }
+    PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
+    pmix_server_trk_proc_lost(&proc);
+}
+
+/* The same accounting for a process known only by name. The host can tell us
+ * a process is gone before we see its socket drop - it deregisters the client
+ * when it reaps it - and then there may be no peer left to ask, or never was
+ * one: a process that died before it connected. The caller has decided this
+ * is a loss; nothing here asks again.
  *
  * The tracker may be released here (a loss can complete the collective), so
  * the walk uses FOREACH_SAFE. */
-void pmix_server_trk_peer_lost(pmix_peer_t *peer)
+void pmix_server_trk_proc_lost(const pmix_proc_t *proc)
 {
     pmix_server_trkr_t *trk, *tnxt;
     pmix_server_caddy_t *rinfo;
@@ -2200,16 +2218,11 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
     bool flag;
     size_t n;
 
-    if (peer->finalized) {
-        /* an orderly departure - not a loss */
-        return;
-    }
-
     PMIX_LIST_FOREACH_SAFE (trk, tnxt, &pmix_server_globals.collectives, pmix_server_trkr_t) {
-        /* check if this peer should be participating in this collective */
+        /* check if this process should be participating in this collective */
         flag = false;
         for (n = 0; n < trk->npcs; n++) {
-            if (PMIX_CHECK_NAMES(&trk->pcs[n], &peer->info->pname)) {
+            if (PMIX_CHECK_NAMES(&trk->pcs[n], proc)) {
                 flag = true;
                 break;
             }
@@ -2230,7 +2243,7 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
          * sent. */
         flag = false;
         PMIX_LIST_FOREACH (rinfo, &trk->local_cbs, pmix_server_caddy_t) {
-            if (PMIX_CHECK_NAMES(&rinfo->peer->info->pname, &peer->info->pname)) {
+            if (PMIX_CHECK_NAMES(&rinfo->peer->info->pname, proc)) {
                 flag = true;
                 break;
             }
@@ -2247,7 +2260,7 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
          * a second departed entry. */
         flag = false;
         PMIX_LIST_FOREACH (dp, &trk->departed, pmix_proclist_t) {
-            if (PMIX_CHECK_NAMES(&dp->proc, &peer->info->pname)) {
+            if (PMIX_CHECK_NAMES(&dp->proc, proc)) {
                 flag = true;
                 break;
             }
@@ -2262,8 +2275,7 @@ void pmix_server_trk_peer_lost(pmix_peer_t *peer)
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 continue;
             }
-            PMIX_LOAD_PROCID(&dp->proc, peer->info->pname.nspace,
-                             peer->info->pname.rank);
+            PMIX_LOAD_PROCID(&dp->proc, proc->nspace, proc->rank);
             pmix_list_append(&trk->departed, &dp->super);
         }
         /* report the collective's health to the surviving participants:
