@@ -1427,6 +1427,10 @@ static void client_answered(int sd, short args, void *cbdata)
     }
     info->proc_cnt++; /* increase number of processes on this rank */
     info->peerid = peer->index;
+    /* a rank whose connection was lost without a finalize - a process the
+     * host has started again on it - is back, and its job's collectives wait
+     * for it again */
+    pmix_server_rank_returned(nptr, info);
 
     activate(pnd, peer);
 }
@@ -2473,6 +2477,8 @@ static void tool_answered(int sd, short args, void *cbdata)
     /* a live process on the rank - the count every departure gives back,
      * and the one a reconnect's tombstone reclaim waits on */
     info->proc_cnt++;
+    /* and one that was lost without a finalize is counted back in */
+    pmix_server_rank_returned(nptr, info);
 
     memcpy(&peer->proc_type, &pnd->proc_type, sizeof(pmix_proc_type_t));
     peer->protocol = pnd->protocol;

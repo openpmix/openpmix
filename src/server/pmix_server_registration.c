@@ -970,6 +970,38 @@ void pmix_server_rank_lost(pmix_namespace_t *nptr, pmix_rank_info_t *info)
     }
 }
 
+/* The inverse: a rank counted out by pmix_server_rank_lost is back,
+ * because the host started its process again. The host may register the
+ * rank again first - after deregistering it (see _register_client, which
+ * recognizes the rank by the namespace's departed list) or without (an
+ * update of the entry it still has) - or may simply hand the new process
+ * the rank through PMIx_server_setup_fork, and then the process connecting
+ * on the old entry is the first we hear of it. Either way it is an expected
+ * participant again, so it rejoins nlocalprocs, and every collective
+ * counted from here on waits for it.
+ *
+ * (A process that execs is not one of these: it loses its connection, but
+ * the program it becomes finds no identity in its environment - the client
+ * takes it out as it initializes - and comes up as a singleton.)
+ *
+ * Collectives already in flight are not touched here: one that recorded the
+ * rank as departed, or left it out when it was counted, cannot assume the
+ * new process will join it - it may never make that call. If it does,
+ * pmix_server_trk_join counts it in at that point. info->returned is what
+ * tells that function the rank may also have an old contribution standing
+ * from the connection it lost. */
+void pmix_server_rank_returned(pmix_namespace_t *nptr, pmix_rank_info_t *info)
+{
+    if (NULL == info || !info->lost) {
+        return;
+    }
+    info->lost = false;
+    info->returned = true;
+    if (NULL != nptr && SIZE_MAX != nptr->nlocalprocs) {
+        ++nptr->nlocalprocs;
+    }
+}
+
 void pmix_server_peer_finalized(pmix_peer_t *peer)
 {
     pmix_rank_info_t *info = peer->info;
@@ -1983,6 +2015,9 @@ static void _register_client(int sd, short args, void *cbdata)
         info->server_object = cd->server_object;
         info->host_registered = true;
         info->registered_by_host = true;
+        /* a host registering a rank whose process it lost is restarting
+         * it - the rank is expected again */
+        pmix_server_rank_returned(nptr, info);
     } else {
         info = PMIX_NEW(pmix_rank_info_t);
         if (NULL == info) {
@@ -2002,6 +2037,18 @@ static void _register_client(int sd, short args, void *cbdata)
         info->host_registered = true;
         info->registered_by_host = true;
         pmix_list_append(&nptr->ranks, &info->super);
+        /* A rank the host deregistered and now registers again - a process
+         * it restarted. Deregistering it took it out of nlocalprocs and put
+         * it on the namespace's departed list, which answers a request for
+         * its data "not found" at once; neither is true of the process the
+         * host is about to start. Its old entry is gone, so the departed
+         * list is the record that it was counted out. */
+        if (pmix_server_proclist_remove(&nptr->departed, nptr->nspace, cd->proc.rank)) {
+            info->returned = true;
+            if (SIZE_MAX != nptr->nlocalprocs) {
+                ++nptr->nlocalprocs;
+            }
+        }
     }
     /* with no owner named by the host, the job belongs to the user its
      * clients run as - see pmix_access_t */

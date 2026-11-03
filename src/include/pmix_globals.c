@@ -382,6 +382,7 @@ static void info_con(pmix_rank_info_t *info)
     info->proc_cnt = 0;
     info->connecting = 0;
     info->lost = false;
+    info->returned = false;
     info->server_object = NULL;
     info->host_registered = false;
     info->registered_by_host = false;

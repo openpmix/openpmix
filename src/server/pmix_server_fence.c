@@ -719,6 +719,49 @@ pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *procs,
     return trk;
 }
 
+/* Is this rank on a list of pmix_proclist_t? Compared exactly - a
+ * wildcard rank on either side names one rank here, not every rank. */
+static pmix_proclist_t *proclist_find(pmix_list_t *list, const char *nspace, pmix_rank_t rank)
+{
+    pmix_proclist_t *p;
+
+    PMIX_LIST_FOREACH (p, list, pmix_proclist_t) {
+        if (p->proc.rank == rank && 0 == strncmp(p->proc.nspace, nspace, PMIX_MAX_NSLEN)) {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+bool pmix_server_proclist_add(pmix_list_t *list, const char *nspace, pmix_rank_t rank)
+{
+    pmix_proclist_t *p;
+
+    if (NULL != proclist_find(list, nspace, rank)) {
+        return true;
+    }
+    p = PMIX_NEW(pmix_proclist_t);
+    if (NULL == p) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return false;
+    }
+    PMIX_LOAD_PROCID(&p->proc, nspace, rank);
+    pmix_list_append(list, &p->super);
+    return true;
+}
+
+bool pmix_server_proclist_remove(pmix_list_t *list, const char *nspace, pmix_rank_t rank)
+{
+    pmix_proclist_t *p = proclist_find(list, nspace, rank);
+
+    if (NULL == p) {
+        return false;
+    }
+    pmix_list_remove_item(list, &p->super);
+    PMIX_RELEASE(p);
+    return true;
+}
+
 /* How many of a namespace's procs on this node are among a collective's
  * participants - which is how many contributions the collective's local
  * phase has to wait for from that namespace.
@@ -734,15 +777,23 @@ pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *procs,
  * as the remote one - and a client of any release may send such a list,
  * so the count has to be a count of procs, not of entries.
  *
+ * A rank that has been lost (pmix_server_rank_lost) is not counted,
+ * whether the list names it or a wildcard does: it will not contribute.
+ * The wildcard's count is nlocalprocs, which a loss already lowered; a
+ * named rank is skipped here. Either way the rank goes on excluded, when
+ * the caller passes one, so that if it comes back and does contribute the
+ * collective can count it in then rather than count it twice.
+ *
  * Returns false when the count cannot be settled yet: the namespace's
  * local proc count is not known, or the list names ranks individually and
  * not all of the namespace's local clients have registered. */
 bool pmix_server_count_local_participants(const pmix_proc_t *pcs, size_t npcs,
-                                          pmix_namespace_t *nptr, size_t *count)
+                                          pmix_namespace_t *nptr, size_t *count,
+                                          pmix_list_t *excluded)
 {
     pmix_rank_info_t *rinfo;
     size_t i;
-    bool any = false;
+    bool any = false, wildcard = false;
 
     *count = 0;
     for (i = 0; i < npcs; i++) {
@@ -751,13 +802,24 @@ bool pmix_server_count_local_participants(const pmix_proc_t *pcs, size_t npcs,
         }
         if (PMIX_RANK_WILDCARD == pcs[i].rank) {
             /* names every local proc, whatever else the list says */
-            if (SIZE_MAX == nptr->nlocalprocs) {
-                return false;
-            }
-            *count = nptr->nlocalprocs;
-            return true;
+            wildcard = true;
+            break;
         }
         any = true;
+    }
+    if (wildcard) {
+        if (SIZE_MAX == nptr->nlocalprocs) {
+            return false;
+        }
+        *count = nptr->nlocalprocs;
+        if (NULL != excluded) {
+            PMIX_LIST_FOREACH (rinfo, &nptr->ranks, pmix_rank_info_t) {
+                if (rinfo->lost) {
+                    pmix_server_proclist_add(excluded, nptr->nspace, rinfo->pname.rank);
+                }
+            }
+        }
+        return true;
     }
     if (!any) {
         return true;
@@ -771,7 +833,13 @@ bool pmix_server_count_local_participants(const pmix_proc_t *pcs, size_t npcs,
         for (i = 0; i < npcs; i++) {
             if (pcs[i].rank == rinfo->pname.rank &&
                 0 == strncmp(pcs[i].nspace, nptr->nspace, PMIX_MAX_NSLEN)) {
-                ++(*count);
+                if (rinfo->lost) {
+                    if (NULL != excluded) {
+                        pmix_server_proclist_add(excluded, nptr->nspace, rinfo->pname.rank);
+                    }
+                } else {
+                    ++(*count);
+                }
                 break;
             }
         }
@@ -842,7 +910,8 @@ bool pmix_server_trk_count_nspace(pmix_server_trkr_t *trk, pmix_namespace_t *npt
      * first sees it fully registered, and is then on the list forever -
      * so a partial count here would be a permanent undercount, and a
      * second caller adding the rest would double it. */
-    if (!pmix_server_count_local_participants(trk->pcs, trk->npcs, nptr, &addend)) {
+    if (!pmix_server_count_local_participants(trk->pcs, trk->npcs, nptr, &addend,
+                                              &trk->excluded)) {
         return false;
     }
 
@@ -889,12 +958,56 @@ bool pmix_server_trk_count_nspace(pmix_server_trkr_t *trk, pmix_namespace_t *npt
     return true;
 }
 
+/* A participant is about to contribute - its caddy goes on local_cbs as
+ * soon as this returns. Count its namespace in if nothing has yet, and then
+ * make sure the contribution is counted exactly once.
+ *
+ * Usually there is nothing more to it. A rank that was lost and has come
+ * back (pmix_server_rank_returned) is the exception, and there are three
+ * ways it can stand with this collective:
+ *
+ *  - lost while the collective was waiting for it: it is on departed, and
+ *    contributing now takes it off - the sum completion compares against
+ *    nlocal is unchanged, and the collective does not finish on a count
+ *    that includes it twice;
+ *  - lost before the collective was counted: it is on excluded, and nlocal
+ *    did not count it, so count it in now - otherwise its contribution
+ *    stands in for a participant that has not called yet, and the
+ *    collective completes without that one;
+ *  - already contributed through the connection it lost: its old caddy is
+ *    on local_cbs, so this one is the same process again and is not
+ *    counted a second time.
+ *
+ * Only a rank that has returned can be in the third state, so only its
+ * contributions pay for the walk of local_cbs. */
 void pmix_server_trk_join(pmix_server_trkr_t *trk, pmix_peer_t *peer)
 {
+    pmix_server_caddy_t *cd;
+
     if (NULL == peer) {
         return;
     }
     pmix_server_trk_count_nspace(trk, peer->nptr);
+    if (NULL == peer->info || NULL == peer->info->pname.nspace) {
+        return;
+    }
+    if (pmix_server_proclist_remove(&trk->departed, peer->info->pname.nspace,
+                                    peer->info->pname.rank)) {
+        return;
+    }
+    if (pmix_server_proclist_remove(&trk->excluded, peer->info->pname.nspace,
+                                    peer->info->pname.rank)) {
+        ++trk->nlocal;
+        return;
+    }
+    if (peer->info->returned) {
+        PMIX_LIST_FOREACH (cd, &trk->local_cbs, pmix_server_caddy_t) {
+            if (cd->peer->info == peer->info) {
+                ++trk->nduplicate;
+                return;
+            }
+        }
+    }
 }
 
 static void fence_timeout(int sd, short args, void *cbdata)
@@ -2118,8 +2231,17 @@ bool pmix_server_trk_complete(pmix_server_trkr_t *trk)
     if (!trk->def_complete) {
         return false;
     }
-    return (pmix_list_get_size(&trk->local_cbs) +
-            pmix_list_get_size(&trk->departed)) >= trk->nlocal;
+    return pmix_server_trk_accounted(trk) >= trk->nlocal;
+}
+
+/* How many of the expected local participants are accounted for: one per
+ * process that contributed, however many connections it contributed
+ * through (nduplicate - see pmix_server_trk_join), and one per participant
+ * that departed before it could. */
+size_t pmix_server_trk_accounted(pmix_server_trkr_t *trk)
+{
+    return pmix_list_get_size(&trk->local_cbs) - trk->nduplicate +
+           pmix_list_get_size(&trk->departed);
 }
 
 /* Record a collective's completion status in the tracker's info array. The
@@ -2252,6 +2374,19 @@ void pmix_server_trk_proc_lost(const pmix_proc_t *proc)
             /* already contributed - nothing to account for */
             continue;
         }
+        /* lost before this collective was counted, back since, and lost
+         * again before contributing: nlocal never counted it, so neither
+         * may its departure - see pmix_server_trk_join */
+        flag = false;
+        PMIX_LIST_FOREACH (dp, &trk->excluded, pmix_proclist_t) {
+            if (PMIX_CHECK_NAMES(&dp->proc, proc)) {
+                flag = true;
+                break;
+            }
+        }
+        if (flag) {
+            continue;
+        }
         /* This participant had not yet contributed and now never will.
          * Record its rank as departed (once) so the collective can
          * complete on the remaining live participants instead of
@@ -2281,8 +2416,7 @@ void pmix_server_trk_proc_lost(const pmix_proc_t *proc)
         /* report the collective's health to the surviving participants:
          * partial success if any expected participant is still awaited,
          * else lost-connection */
-        if ((pmix_list_get_size(&trk->local_cbs) +
-             pmix_list_get_size(&trk->departed)) < trk->nlocal) {
+        if (pmix_server_trk_accounted(trk) < trk->nlocal) {
             rc = PMIX_ERR_PARTIAL_SUCCESS;
         } else {
             rc = PMIX_ERR_LOST_CONNECTION;

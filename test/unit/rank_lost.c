@@ -37,6 +37,13 @@
  *                       the host saying it is gone for good, so the fence
  *                       records it as departed, and it leaves both counts
  *
+ *   return           -> a rank lost and then back - reconnected after an exec,
+ *                       or registered again by the host after a restart - is
+ *                       counted back in; a fence counted while it was gone
+ *                       counts its contribution in rather than in place of
+ *                       another's; and a second call from a rank whose old
+ *                       connection already contributed is counted once
+ *
  * A rank that finalized and whose connection then drops is NOT lost - it
  * may initialize again (issue #4113). That half is trk_peer_lost.c's.
  */
@@ -57,7 +64,11 @@
 #include <unistd.h>
 
 #define NS     "ranklost.ns"
+#define NS_RET "ranklost.ret"
 #define NPROCS 4
+
+/* the job the helpers below act on */
+static const char *cur_ns = NS;
 
 static int npass = 0;
 static int nfail = 0;
@@ -118,7 +129,7 @@ static pmix_namespace_t *find_ns(void)
     pmix_namespace_t *ns;
 
     PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(ns->nspace, NS)) {
+        if (0 == strcmp(ns->nspace, cur_ns)) {
             return ns;
         }
     }
@@ -215,7 +226,7 @@ static void deregister(pmix_rank_t rank)
 {
     pmix_proc_t p;
 
-    PMIX_LOAD_PROCID(&p, NS, rank);
+    PMIX_LOAD_PROCID(&p, cur_ns, rank);
     PMIx_server_deregister_client(&p, NULL, NULL);
     progress_barrier();
 }
@@ -252,7 +263,7 @@ static void new_fence(void *arg)
     pmix_status_t seed = PMIX_SUCCESS;
     pmix_rank_t r;
 
-    PMIX_LOAD_PROCID(&wild, NS, PMIX_RANK_WILDCARD);
+    PMIX_LOAD_PROCID(&wild, cur_ns, PMIX_RANK_WILDCARD);
     trk = pmix_server_new_tracker(NULL, &wild, 1, PMIX_FENCENB_CMD);
     f->trk = trk;
     if (NULL == trk) {
@@ -269,7 +280,7 @@ static void new_fence(void *arg)
         cd = PMIX_NEW(pmix_server_caddy_t);
         cd->peer = PMIX_NEW(pmix_peer_t);
         cd->peer->info = PMIX_NEW(pmix_rank_info_t);
-        cd->peer->info->pname.nspace = strdup(NS);
+        cd->peer->info->pname.nspace = strdup(cur_ns);
         cd->peer->info->pname.rank = r;
         pmix_list_append(&trk->local_cbs, &cd->super);
     }
@@ -301,6 +312,295 @@ static void reap(void *arg)
     reaped = pmix_ptl_base_reap_if_closed((pmix_peer_t *) arg);
 }
 
+/* --- a rank coming back -------------------------------------------- */
+
+static pmix_status_t register_job(void);
+
+/* lose a rank the way a dying process is lost: its socket closes, and the
+ * server reads the close */
+static pmix_peer_t *lose_rank(pmix_rank_t rank)
+{
+    pmix_peer_t *peer;
+    int sv[2];
+
+    if (0 != socketpair(AF_UNIX, SOCK_STREAM, 0, sv)) {
+        return NULL;
+    }
+    peer = connect_rank(rank, sv[0], false);
+    close(sv[1]);
+    if (NULL != peer) {
+        reaped = false;
+        on_progress(reap, peer);
+    }
+    return reaped ? peer : NULL;
+}
+
+/* what the connection handler does when the rank connects again: a new
+ * peer on the rank's entry, and the rank counted back in */
+typedef struct {
+    pmix_rank_t rank;
+    pmix_peer_t *peer;
+} back_t;
+
+static void do_reconnect(void *arg)
+{
+    back_t *b = (back_t *) arg;
+    connect_t c;
+    pmix_namespace_t *nptr = find_ns();
+
+    c.rank = b->rank;
+    c.sd = -1;
+    c.finalize_counted = false;
+    do_connect(&c);
+    b->peer = c.peer;
+    if (NULL != c.peer) {
+        pmix_server_rank_returned(nptr, c.peer->info);
+    }
+}
+
+static pmix_peer_t *reconnect(pmix_rank_t rank)
+{
+    back_t b;
+
+    b.rank = rank;
+    b.peer = NULL;
+    on_progress(do_reconnect, &b);
+    return b.peer;
+}
+
+/* a collective over the job, or over the ranks given */
+typedef struct {
+    const pmix_rank_t *ranks;   // NULL for the whole job
+    size_t nranks;
+    pmix_server_trkr_t *trk;
+} coll_t;
+
+static void do_new_coll(void *arg)
+{
+    coll_t *c = (coll_t *) arg;
+    pmix_proc_t *procs;
+    size_t n, np = (NULL == c->ranks) ? 1 : c->nranks;
+
+    PMIX_PROC_CREATE(procs, np);
+    for (n = 0; n < np; n++) {
+        PMIX_LOAD_PROCID(&procs[n], cur_ns,
+                         (NULL == c->ranks) ? PMIX_RANK_WILDCARD : c->ranks[n]);
+    }
+    c->trk = pmix_server_new_tracker(NULL, procs, np, PMIX_FENCENB_CMD);
+    PMIX_PROC_FREE(procs, np);
+    if (NULL != c->trk) {
+        c->trk->modexcbfunc = fake_modexcbfunc;
+        c->trk->collect_type = PMIX_COLLECT_NO;
+    }
+}
+
+static pmix_server_trkr_t *new_coll(const pmix_rank_t *ranks, size_t nranks)
+{
+    coll_t c;
+
+    c.ranks = ranks;
+    c.nranks = nranks;
+    c.trk = NULL;
+    on_progress(do_new_coll, &c);
+    return c.trk;
+}
+
+/* a contribution, joined the way pmix_server_fence joins one */
+typedef struct {
+    pmix_server_trkr_t *trk;
+    pmix_peer_t *peer;
+} join_t;
+
+static void do_join(void *arg)
+{
+    join_t *j = (join_t *) arg;
+    pmix_server_caddy_t *cd;
+
+    pmix_server_trk_join(j->trk, j->peer);
+    cd = PMIX_NEW(pmix_server_caddy_t);
+    PMIX_RETAIN(j->peer);
+    cd->peer = j->peer;
+    pmix_list_append(&j->trk->local_cbs, &cd->super);
+}
+
+static void join(pmix_server_trkr_t *trk, pmix_peer_t *peer)
+{
+    join_t j;
+
+    j.trk = trk;
+    j.peer = peer;
+    on_progress(do_join, &j);
+}
+
+typedef struct {
+    pmix_server_trkr_t *trk;
+    uint32_t nlocal;
+    size_t accounted;
+    bool complete;
+    size_t nexcluded;
+    size_t ndeparted;
+} trkstate_t;
+
+static void do_trk_state(void *arg)
+{
+    trkstate_t *t = (trkstate_t *) arg;
+
+    t->nlocal = t->trk->nlocal;
+    t->accounted = pmix_server_trk_accounted(t->trk);
+    t->complete = pmix_server_trk_complete(t->trk);
+    t->nexcluded = pmix_list_get_size(&t->trk->excluded);
+    t->ndeparted = pmix_list_get_size(&t->trk->departed);
+}
+
+static trkstate_t trk_state(pmix_server_trkr_t *trk)
+{
+    trkstate_t t;
+
+    t.trk = trk;
+    on_progress(do_trk_state, &t);
+    return t;
+}
+
+/* is the rank on the namespace's departed list - the one that answers a
+ * request for its data "not found" */
+typedef struct {
+    pmix_rank_t rank;
+    bool found;
+} nsdep_t;
+
+static void do_ns_departed(void *arg)
+{
+    nsdep_t *d = (nsdep_t *) arg;
+    pmix_namespace_t *nptr = find_ns();
+    pmix_proclist_t *dp;
+
+    d->found = false;
+    if (NULL == nptr) {
+        return;
+    }
+    PMIX_LIST_FOREACH (dp, &nptr->departed, pmix_proclist_t) {
+        if (dp->proc.rank == d->rank) {
+            d->found = true;
+        }
+    }
+}
+
+static bool ns_departed(pmix_rank_t rank)
+{
+    nsdep_t d;
+
+    d.rank = rank;
+    on_progress(do_ns_departed, &d);
+    return d.found;
+}
+
+static void register_rank(pmix_rank_t rank)
+{
+    pmix_proc_t p;
+
+    PMIX_LOAD_PROCID(&p, cur_ns, rank);
+    (void) PMIx_server_register_client(&p, geteuid(), getegid(), NULL, NULL, NULL);
+    progress_barrier();
+}
+
+/* A rank that was lost can come back: the host starts its process again.
+ * The new process may simply connect on the rank's entry - the host handed
+ * it the rank through PMIx_server_setup_fork - or the host may register the
+ * rank again first, with or without having deregistered it. Counting it out
+ * when it was lost and never back in left every whole-job fence after its
+ * return one short: the job's next fence completed on the others'
+ * contributions alone and released them while the returned rank was still
+ * on its way. */
+static void test_return(void)
+{
+    pmix_peer_t *p0, *p1, *p2, *p3, *old1;
+    pmix_server_trkr_t *early, *later, *named;
+    trkstate_t t;
+    counts_t c;
+    const pmix_rank_t named_ranks[2] = {0, 3};
+    int sv1[2];
+
+    cur_ns = NS_RET;
+    if (PMIX_SUCCESS != register_job()) {
+        report("return: the job registers", 0);
+        return;
+    }
+    p0 = connect_rank(0, -1, false);
+    if (0 != socketpair(AF_UNIX, SOCK_STREAM, 0, sv1)) {
+        report("return: socketpair", 0);
+        return;
+    }
+    old1 = connect_rank(1, sv1[0], false);
+    p2 = connect_rank(2, -1, false);
+
+    /* a fence counted while every rank was here, and rank 1 contributes
+     * through its first connection before that connection goes */
+    early = new_coll(NULL, 0);
+    join(early, old1);
+
+    /* rank 3 dies, and so does rank 1, which had already contributed */
+    p3 = lose_rank(3);
+    report("return: rank 3 is lost", NULL != p3);
+    close(sv1[1]);
+    reaped = false;
+    on_progress(reap, old1);
+    report("return: rank 1's first connection is lost", reaped);
+    c = counts();
+    report("return: the job counts two local procs", 2 == c.nlocalprocs);
+
+    /* fences counted now leave rank 3 out - over the whole job, and named */
+    later = new_coll(NULL, 0);
+    t = trk_state(later);
+    report("return: a whole-job fence counted after the losses waits for two",
+           2 == t.nlocal && 2 == t.nexcluded);
+    named = new_coll(named_ranks, 2);
+    t = trk_state(named);
+    report("return: a fence naming the lost rank does not wait for it",
+           1 == t.nlocal && 1 == t.nexcluded);
+
+    /* rank 3 comes back */
+    p3 = reconnect(3);
+    c = counts();
+    report("return: a reconnected rank is counted back in", 3 == c.nlocalprocs);
+
+    /* it contributes to the fence that left it out, alongside 0 and 1 -
+     * that must not complete a fence still waiting for rank 2 */
+    p1 = reconnect(1);
+    c = counts();
+    report("return: and so is the other", 4 == c.nlocalprocs);
+    join(later, p0);
+    join(later, p1);
+    join(later, p3);
+    t = trk_state(later);
+    report("return: their contributions are counted in, not in place of another's",
+           4 == t.nlocal && 3 == t.accounted && !t.complete);
+    join(later, p2);
+    t = trk_state(later);
+    report("return: the fence completes when the last one calls", t.complete);
+
+    /* rank 1 contributed to the early fence through the connection it lost,
+     * and calls it again from the new one: one process, counted once */
+    join(early, p1);
+    t = trk_state(early);
+    /* rank 1 once, and rank 3 as departed */
+    report("return: a second call from a returned rank is not counted twice",
+           2 == t.accounted && 1 == t.ndeparted && !t.complete);
+
+    /* a host that restarts a process it deregistered registers it again */
+    deregister(2);
+    c = counts();
+    report("return: deregistering takes the rank out", 3 == c.nlocalprocs && ns_departed(2));
+    register_rank(2);
+    c = counts();
+    report("return: registering it again counts it back in", 4 == c.nlocalprocs);
+    report("return: and its data is no longer 'not found'", !ns_departed(2));
+
+    on_progress(drop_fence, early);
+    on_progress(drop_fence, later);
+    on_progress(drop_fence, named);
+    cur_ns = NS;
+}
+
 static pmix_status_t register_job(void)
 {
     pmix_nspace_t ns;
@@ -316,7 +616,7 @@ static pmix_status_t register_job(void)
     PMIX_INFO_LOAD(&info[1], PMIX_PROC_MAP, ppnregex, PMIX_REGEX);
     free(noderegex);
     free(ppnregex);
-    PMIX_LOAD_NSPACE(ns, NS);
+    PMIX_LOAD_NSPACE(ns, cur_ns);
     rc = PMIx_server_register_nspace(ns, NPROCS, info, 2, NULL, NULL);
     PMIX_INFO_DESTRUCT(&info[0]);
     PMIX_INFO_DESTRUCT(&info[1]);
@@ -324,7 +624,7 @@ static pmix_status_t register_job(void)
         return rc;
     }
     for (r = 0; r < NPROCS; r++) {
-        PMIX_LOAD_PROCID(&p, NS, r);
+        PMIX_LOAD_PROCID(&p, cur_ns, r);
         rc = PMIx_server_register_client(&p, geteuid(), getegid(), NULL, NULL, NULL);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             return rc;
@@ -442,6 +742,8 @@ int main(int argc, char **argv)
     c = counts();
     report("finalized: no local procs remain", 0 == c.nlocalprocs);
     report("finalized: and none is counted finalized", 0 == c.nfinalized);
+
+    test_return();
 
 done:
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
