@@ -51,6 +51,7 @@
 #include "src/client/pmix_client_ops.h"
 
 static void undo_activations(pmix_status_t *codes, size_t nactive);
+static void remove_registration(uint64_t regid);
 
 static void _replay_cached_events(int sd, short args, void *cbdata)
 {
@@ -267,10 +268,12 @@ static void _check_cached_events(int sd, short args, void *cbdata)
  * registrant for one of them will be told it succeeded and then never
  * see the event. This mirrors what the server's registration of its
  * _own_ handlers does when the host refuses asynchronously (see
- * _reg_hdlr_complete in src/event/pmix_event_registration.c). The peer
- * entries the request added to the store are deliberately left alone: a
- * peer may hold several handlers for the same code, so there is no way
- * to tell from here which entry belongs to the failed request. */
+ * _reg_hdlr_complete in src/event/pmix_event_registration.c). Then
+ * remove the peer entries the request added to the store, and any
+ * code's record left with nobody on it, so the store is back to what
+ * it held before the request. The activations are undone first, so
+ * the prune does not ask the host to stop forwarding a code it never
+ * agreed to forward. */
 static void _failed_registration(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
@@ -278,6 +281,7 @@ static void _failed_registration(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     undo_activations(cd->codes, cd->nactive);
+    remove_registration(cd->regid);
 
     /* cleanup and execute the callback so we don't hang */
     if (NULL != cd->codes) {
@@ -458,6 +462,37 @@ static void undo_activations(pmix_status_t *codes, size_t nactive)
     }
 }
 
+/* Remove the store entries one registration message added, and the
+ * record of any code nobody is left registered for. A peer may hold
+ * several entries for the same code - one per registration message
+ * that named it - so the entries are matched on the identifier the
+ * message gave them, not on the peer. An entry the peer has already
+ * deregistered, or that went when it departed, is simply not found. */
+static void remove_registration(uint64_t regid)
+{
+    pmix_regevents_info_t *reginfo, *regnext;
+    pmix_peer_events_info_t *prev, *prevnext;
+    bool removed;
+
+    if (0 == regid) {
+        return;
+    }
+    PMIX_LIST_FOREACH_SAFE (reginfo, regnext, &pmix_server_globals.events,
+                            pmix_regevents_info_t) {
+        removed = false;
+        PMIX_LIST_FOREACH_SAFE (prev, prevnext, &reginfo->peers, pmix_peer_events_info_t) {
+            if (regid == prev->regid) {
+                pmix_list_remove_item(&reginfo->peers, &prev->super);
+                PMIX_RELEASE(prev);
+                removed = true;
+            }
+        }
+        if (removed) {
+            pmix_server_prune_reginfo(reginfo);
+        }
+    }
+}
+
 size_t pmix_server_activate_events(pmix_status_t *codes, size_t ncodes)
 {
     pmix_regevents_info_t *reginfo;
@@ -526,6 +561,15 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_proc_t *affected = NULL;
     size_t naffected = 0;
     size_t nactive = 0;
+    /* identifies the entries this message adds to the store. Only the
+     * progress thread touches the counter, and zero means "none" */
+    static uint64_t next_regid = 0;
+    uint64_t regid;
+
+    if (0 == ++next_regid) {
+        ++next_regid;
+    }
+    regid = next_regid;
 
     pmix_output_verbose(2, pmix_server_globals.event_output,
                         "recvd register events for peer %s:%d",
@@ -696,6 +740,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
         }
         PMIX_RETAIN(peer);
         prev->peer = peer;
+        prev->regid = regid;
         if (NULL != affected) {
             PMIX_PROC_CREATE(prev->affected, naffected);
             if (NULL == prev->affected) {
@@ -738,6 +783,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
             }
             PMIX_RETAIN(peer);
             prev->peer = peer;
+            prev->regid = regid;
             if (NULL != affected) {
                 PMIX_PROC_CREATE(prev->affected, naffected);
                 if (NULL == prev->affected) {
@@ -766,6 +812,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
             }
             PMIX_RETAIN(peer);
             prev->peer = peer;
+            prev->regid = regid;
             if (NULL != affected) {
                 PMIX_PROC_CREATE(prev->affected, naffected);
                 if (NULL == prev->affected) {
@@ -821,6 +868,7 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
         scd->codes = codes;
         scd->ncodes = ncodes;
         scd->nactive = nactive;
+        scd->regid = regid;
         scd->info = info;
         scd->ninfo = ninfo;
         scd->opcbfunc = cbfunc;
@@ -921,6 +969,10 @@ cleanup:
     pmix_output_verbose(2, pmix_server_globals.event_output,
                         "server register events: ninfo =%lu rc =%d",
                         (unsigned long) ninfo, rc);
+    /* the request failed, so whatever it added to the store goes too.
+     * Any activation it made was undone before we got here, so this
+     * does not ask the host to stop forwarding a code */
+    remove_registration(regid);
     if (NULL != info) {
         PMIX_INFO_FREE(info, ninfo);
     }

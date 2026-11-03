@@ -39,6 +39,13 @@
  *   process writes
  *   (PMIX_IOF_FILE_WRITER)          -> the server writes none
  *   ... naming the server itself    -> written as usual
+ *   an output file that cannot be
+ *   opened as the owner (a path
+ *   through a regular file)         -> nothing written, one notice per
+ *                                      job naming the file, and no
+ *                                      PMIX ERROR line on stderr
+ *   ... for a job that asked for a
+ *   copy of its output too          -> the copy is still written
  */
 
 #include "src/include/pmix_config.h"
@@ -484,6 +491,155 @@ static void test_writer(void)
            holds(file, "hello\n") && mode_is(file, 0600));
 }
 
+/* a line of output from rank 0 of the job on the given channel, and
+ * time for it to be written */
+static void deliver_on(const char *name, pmix_iof_channel_t channel, const char *text)
+{
+    pmix_byte_object_t bo;
+    pmix_proc_t src;
+
+    PMIX_LOAD_PROCID(&src, name, 0);
+    bo.bytes = (char *) text;
+    bo.size = strlen(text);
+    (void) PMIx_server_IOF_deliver(&src, channel, &bo, NULL, 0, NULL, NULL);
+    progress_barrier();
+    usleep(200000);
+    progress_barrier();
+}
+
+/* how many times "what" appears in "text" */
+static int occurrences(const char *text, const char *what)
+{
+    const char *p = text;
+    int n = 0;
+
+    while (NULL != (p = strstr(p, what))) {
+        ++n;
+        p += strlen(what);
+    }
+    return n;
+}
+
+/* An output file that cannot be opened as the job's owner: each job's
+ * output path runs through a regular file, so no directory can be made
+ * below it - as root too. Everything written to stderr while the jobs'
+ * output is delivered is captured and read back. */
+static void test_unopened(void)
+{
+    char block[1024], dir[1100], prefix[1100], capture[1100], want[2300];
+    char text[8192];
+    int fd, saved, pfd[2];
+    ssize_t n;
+    pmix_status_t rc;
+
+    snprintf(block, sizeof(block), "%s/notadir", base);
+    fd = open(block, O_CREAT | O_WRONLY | O_TRUNC, 0600);
+    if (0 > fd) {
+        report("unopened: fixture", 0);
+        return;
+    }
+    close(fd);
+    snprintf(dir, sizeof(dir), "%s/out", block);
+    snprintf(prefix, sizeof(prefix), "%s/file", block);
+    if (PMIX_SUCCESS != reg("perms-unopened-dir", PMIX_IOF_OUTPUT_TO_DIRECTORY, dir, geteuid(),
+                            getegid(), (gid_t) -1) ||
+        PMIX_SUCCESS != reg("perms-unopened-file", PMIX_IOF_OUTPUT_TO_FILE, prefix, geteuid(),
+                            getegid(), (gid_t) -1)) {
+        report("unopened: fixture", 0);
+        return;
+    }
+
+    snprintf(capture, sizeof(capture), "%s/stderr.txt", base);
+    fd = open(capture, O_CREAT | O_RDWR | O_TRUNC, 0600);
+    saved = dup(STDERR_FILENO);
+    if (0 > fd || 0 > saved) {
+        report("unopened: fixture", 0);
+        return;
+    }
+    fflush(stderr);
+    dup2(fd, STDERR_FILENO);
+    /* each job's stdout twice, and its stderr - three files that cannot
+     * be opened between the two jobs' four attempts */
+    deliver_on("perms-unopened-dir", PMIX_FWD_STDOUT_CHANNEL, "one\n");
+    deliver_on("perms-unopened-dir", PMIX_FWD_STDOUT_CHANNEL, "two\n");
+    deliver_on("perms-unopened-dir", PMIX_FWD_STDERR_CHANNEL, "three\n");
+    deliver_on("perms-unopened-file", PMIX_FWD_STDOUT_CHANNEL, "one\n");
+    deliver_on("perms-unopened-file", PMIX_FWD_STDOUT_CHANNEL, "two\n");
+    fflush(stderr);
+    dup2(saved, STDERR_FILENO);
+    close(saved);
+
+    memset(text, 0, sizeof(text));
+    n = pread(fd, text, sizeof(text) - 1, 0);
+    close(fd);
+    if (0 > n) {
+        report("unopened: reading stderr back", 0);
+        return;
+    }
+    if (0 < n) {
+        fprintf(stdout, "  (stderr while the output was delivered:)\n%s", text);
+    }
+
+    report("no PMIX ERROR line is written for it", 0 == occurrences(text, "PMIX ERROR"));
+    report("each job is told once that its output file was not written",
+           2 == occurrences(text, "An output file of a job was not written"));
+    snprintf(want, sizeof(want), "%s/perms-unopened-dir/rank.0/stdout", dir);
+    report("the notice for a directory names the file", 1 == occurrences(text, want));
+    snprintf(want, sizeof(want), "%s.perms-unopened-file.0.out", prefix);
+    report("the notice for a file names the file", 1 == occurrences(text, want));
+
+    /* a job that asked for a copy of its output beside its files: the
+     * copy goes to our stdout whether or not the file could be opened */
+    {
+        pmix_info_t info[5];
+        pmix_nspace_t ns;
+        uint32_t one = 1, uid = (uint32_t) geteuid(), gid = (uint32_t) getegid();
+        bool fileonly = false;
+        size_t k;
+
+        snprintf(dir, sizeof(dir), "%s/copy", block);
+        PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+        PMIX_INFO_LOAD(&info[1], PMIX_IOF_OUTPUT_TO_DIRECTORY, dir, PMIX_STRING);
+        PMIX_INFO_LOAD(&info[2], PMIX_USERID, &uid, PMIX_UINT32);
+        PMIX_INFO_LOAD(&info[3], PMIX_GRPID, &gid, PMIX_UINT32);
+        PMIX_INFO_LOAD(&info[4], PMIX_IOF_FILE_ONLY, &fileonly, PMIX_BOOL);
+        PMIX_LOAD_NSPACE(ns, "perms-unopened-copy");
+        rc = PMIx_server_register_nspace(ns, 1, info, 5, NULL, NULL);
+        progress_barrier();
+        for (k = 0; k < 5; k++) {
+            PMIX_INFO_DESTRUCT(&info[k]);
+        }
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            report("unopened copy: fixture", 0);
+            return;
+        }
+    }
+    /* a pipe, not a file: the library writes our stdout from an event
+     * on the descriptor, and epoll does not take a regular file */
+    saved = dup(STDOUT_FILENO);
+    if (0 > saved || 0 != pipe(pfd)) {
+        report("unopened copy: fixture", 0);
+        return;
+    }
+    fflush(stdout);
+    dup2(pfd[1], STDOUT_FILENO);
+    close(pfd[1]);
+    deliver_on("perms-unopened-copy", PMIX_FWD_STDOUT_CHANNEL, "copied line\n");
+    fflush(stdout);
+    dup2(saved, STDOUT_FILENO);
+    close(saved);
+    memset(text, 0, sizeof(text));
+    (void) fcntl(pfd[0], F_SETFL, O_NONBLOCK);
+    n = read(pfd[0], text, sizeof(text) - 1);
+    close(pfd[0]);
+    if (0 > n || 1 != occurrences(text, "copied line\n")) {
+        fprintf(stdout, "  (stdout while the output was delivered: %ld bytes)\n%s\n", (long) n,
+                (0 < n) ? text : "");
+    }
+    report("a job asking for a copy still has it written when its file is not",
+           0 < n && 1 == occurrences(text, "copied line\n"));
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -515,6 +671,7 @@ int main(int argc, char **argv)
     test_other_owner();
     test_files();
     test_writer();
+    test_unopened();
 
     PMIx_server_finalize();
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", base);

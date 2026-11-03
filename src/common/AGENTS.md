@@ -428,6 +428,24 @@ child of a threaded process: it logs nothing (`pmix_output` and
 step in it must be async-signal-safe in spirit. A new place that opens an
 output file goes through `output_as_owner()`.
 
+**An output file that cannot be opened as the owner is an expected
+outcome, not an error.** A path the owner cannot write is the usual
+case. `pmix_iof_setup()` hands every such failure to
+`output_not_opened()`, which notes it at verbose level and shows
+`iof-file-not-opened` (`help-pmix-server.txt`) once per job, naming the
+first file (`files_unopened` on the namespace). The notice is delivered
+with `pmix_show_help_norender()` under the job's namespace, so the
+duplicate suppression in `src/util/pmix_show_help.c` counts it per job.
+`pmix_iof_setup()` then reports the failure through its `unopened`
+argument, and `write_output()` writes only the copy to our own stdout
+the job asked for beside its files, as it does for files that are not
+ours, and returns success. Returning an error there made every caller
+that logs one (`release_pending()`, the fork/exec read handler) add a
+`PMIX ERROR` line of its own. Do not put a `PMIX_ERROR_LOG` back on this
+path. A failure of our own (no memory, a bad pattern) still returns
+`PMIX_ERR_IOF_FAILURE`. Covered by `test_unopened()` in
+[`test/unit/iof_file_perms.c`](../../test/unit/iof_file_perms.c).
+
 **Who writes a job's files: `PMIX_IOF_FILE_WRITER`.** A tool that spawns a
 job adds itself as the writer (`PMIx_Spawn_nb`, tool only, a caller's
 own value dropped) - for a job with no files too, so the jobs it spawns

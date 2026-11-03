@@ -220,6 +220,11 @@ struct pmix_ptl_base_t {
     bool legacy_peers;
     bool system_tool;
     bool allow_foreign_tools;
+    /* the user the host named to PMIx_server_init (PMIX_USERID), and
+     * whether it named one. A tool of that uid is not refused as another
+     * user's - see tool_settled */
+    bool host_uid_given;
+    uid_t host_uid;
     bool session_tool;
     /* the ID naming a session-level server's rendezvous file
      * (PMIX_SESSION_RNDZ_ID), and whether one was given */
@@ -803,6 +808,21 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_check_tmpdirs(void);
  * takes: owned by root, our own user, or a user ptl_base_server_access
  * names */
 PMIX_EXPORT bool pmix_ptl_base_system_owner_ok(const pmix_connection_t *cn);
+
+/* Whether a rendezvous file a search found is one whose server this
+ * process takes, by its owner - the uid pmix_ptl_base_check_server then
+ * requires the kernel to name for the server: the uid the server that
+ * started us named, when it named one; else root, our own user, or a user
+ * ptl_base_server_access names - or, for a server on the local socket,
+ * any owner while ptl_base_server_access names a group, which a file's
+ * owner does not say. A file whose owner is not known is kept */
+PMIX_EXPORT bool pmix_ptl_base_search_owner_ok(const pmix_connection_t *cn);
+
+/* The servers a search found: drop those whose files
+ * pmix_ptl_base_search_owner_ok refuses, then PMIX_ERR_NOT_FOUND if none
+ * is left, PMIX_ERR_UNREACH (too-many-conns) if those left name more than
+ * one server, else PMIX_SUCCESS */
+PMIX_EXPORT pmix_status_t pmix_ptl_base_check_found(pmix_list_t *connections);
 
 PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, bool exact,
                                                   pmix_info_t info[], size_t ninfo, bool optional,

@@ -60,6 +60,7 @@
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_fd.h"
+#include "src/util/pmix_idname.h"
 #include "src/util/pmix_net.h"
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_output.h"
@@ -1378,6 +1379,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     FILE *fptst;
     const char *legacy_from = "ptl_base_legacy_peers";
     pmix_info_t *sessinfo = NULL;
+    uint32_t idval;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base:setup_listener");
@@ -1406,6 +1408,15 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_ALLOW_FOREIGN_TOOLS)) {
             pmix_ptl_base.allow_foreign_tools = PMIX_INFO_TRUE(&info[n]);
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_USERID)) {
+            /* the user the host serves - the local socket's owner, which
+             * the local transport sets, and refuses a value naming no
+             * user for */
+            if (PMIX_SUCCESS == pmix_util_uid_from_value(&info[n].value, &idval)) {
+                pmix_ptl_base.host_uid = (uid_t) idval;
+                pmix_ptl_base.host_uid_given = true;
+            }
 
         } else if (0 == strcmp(info[n].key, PMIX_SERVER_TOOL_SUPPORT)) {
             pmix_ptl_base.tool_support = PMIX_INFO_TRUE(&info[n]);

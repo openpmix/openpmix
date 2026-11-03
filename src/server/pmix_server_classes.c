@@ -195,6 +195,7 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->codes = NULL;
     p->ncodes = 0;
     p->nactive = 0;
+    p->regid = 0;
     p->procs = NULL;
     p->nprocs = 0;
     p->apps = NULL;
@@ -353,6 +354,7 @@ static void prevcon(pmix_peer_events_info_t *p)
     p->enviro_events = false;
     p->affected = NULL;
     p->naffected = 0;
+    p->regid = 0;
 }
 static void prevdes(pmix_peer_events_info_t *p)
 {

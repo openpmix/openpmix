@@ -1776,7 +1776,15 @@ static pmix_status_t read_tool_info(pmix_pending_connection_t *pnd, void *ilist)
     return PMIX_SUCCESS;
 }
 
-/* The most tools of a uid other than the server's and root's that may
+/* Whether a tool's uid is the server's own, root's, or that of the user
+ * the host named to PMIx_server_init (PMIX_USERID) */
+static bool host_side_uid(uid_t uid)
+{
+    return 0 == uid || pmix_globals.uid == uid ||
+           (pmix_ptl_base.host_uid_given && uid == pmix_ptl_base.host_uid);
+}
+
+/* The most tools of a uid other than those host_side_uid names that may
  * wait on the host at once: a quarter of the cap on all waiting tools,
  * rounded down, but at least one. Only meaningful with a cap */
 static size_t tool_share(void)
@@ -1818,8 +1826,10 @@ static void tool_settled(pmix_pending_connection_t *pnd, pmix_status_t status)
     PMIX_RELEASE(vpeer);
     pnd->peer = NULL;
 
-    /* a tool of another user is refused unless allowed */
-    if (!pmix_ptl_base.allow_foreign_tools && pnd->uid != pmix_globals.uid) {
+    /* a tool of another user is refused unless allowed. Not another
+     * user's: one of the server's own uid, root's, or that of the user
+     * the host named to PMIx_server_init */
+    if (!pmix_ptl_base.allow_foreign_tools && !host_side_uid(pnd->uid)) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "refusing a tool of uid %lu - this server does not accept "
                             "tools of other users",
@@ -1840,10 +1850,10 @@ static void tool_settled(pmix_pending_connection_t *pnd, pmix_status_t status)
         refuse(pnd, PMIX_ERR_OUT_OF_RESOURCE);
         return;
     }
-    /* A uid other than the server's and root's may have at most a quarter
-     * of that cap waiting (at least one): a tool of a uid at its share is
-     * refused as one beyond the cap is */
-    if (0 < pmix_ptl_base.pending_cap && 0 != pnd->uid && pmix_globals.uid != pnd->uid &&
+    /* A uid other than the server's, root's and the host's PMIX_USERID may
+     * have at most a quarter of that cap waiting (at least one): a tool of
+     * a uid at its share is refused as one beyond the cap is */
+    if (0 < pmix_ptl_base.pending_cap && !host_side_uid(pnd->uid) &&
         tool_share() <= pmix_ptl_base_waiting_tools_of(pnd->uid)) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "refusing a tool of uid %lu - %lu tools of that uid are waiting "

@@ -106,6 +106,21 @@ PMIx library supports PMIX_IOF_FILE_WRITER does so for the jobs it
 starts. Updating the launcher, or running it against a server that runs
 as root or as the job's owner, writes the files.
 #
+[iof-file-not-opened]
+An output file of a job was not written:
+
+  Job:            %s
+  File:           %s
+  Owner's uid:    %lu
+
+A job's output files are created as its owner, with the owner's
+permissions, and this file - or a directory on the way to it - could
+not be created or opened as the owner. A directory the owner cannot
+write is the usual cause. The job's output is not written to this file.
+
+This is reported once per job; any other output file of the job that
+cannot be opened is not written either.
+#
 [group-id-in-use]
 The PMIx server %s:%u was told that a group formed under an ID one of
 its clients' groups still holds:

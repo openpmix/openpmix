@@ -2381,10 +2381,22 @@ carries `nactive` for exactly this. The undo runs on the progress thread
 progress-thread state — `regevopcbfunc` may be called on the host's own
 thread and does nothing but thread-shift.
 
-The peer entries a failed registration added are deliberately *not*
-removed. A peer may hold several handlers for one code and nothing in the
-request identifies which entry belongs to it; those entries go when the
-peer deregisters or departs. Note also that
+**A refused registration also takes back the store entries it added.**
+Each `PMIX_REGEVENTS_CMD` gives the `pmix_peer_events_info_t` entries it
+adds a `regid` unique to that message, and the caddy carries it to the
+host's callback. When the host refuses - synchronously, through the
+`cleanup` exit of `pmix_server_register_events`, or in its callback,
+through `_failed_registration` - `remove_registration()` removes exactly
+the entries carrying that `regid` and prunes any code's
+`pmix_regevents_info_t` with nobody left on it, so the store holds what
+it held before the request. Matching on the peer would not do: a peer
+may hold several entries for one code, one per registration message that
+named it, and only the refused message's entries are to go. The
+activations are undone first, so the prune does not ask the host to stop
+forwarding a code it never agreed to forward. Before this, the entries
+stayed until the peer deregistered or departed, and the server forwarded
+the code to a peer whose client had recorded no handler for it. Covered
+by `test/unit/server_events.c`. Note also that
 `pmix_peer_events_info_t::enviro_events` is written and never read
 anywhere in the tree — the same shape as `pmix_iof_req_t::flags`.
 
