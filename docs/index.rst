@@ -65,6 +65,7 @@ Table of contents
    :numbered:
 
    where-to-start
+   transition-v7/index
    quickstart
    getting-help
    release-notes/index

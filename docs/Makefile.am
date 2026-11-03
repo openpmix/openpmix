@@ -68,6 +68,7 @@ RST_SOURCE_FILES   = \
         $(srcdir)/hosts/*.rst \
         $(srcdir)/installing-pmix/*.rst \
         $(srcdir)/installing-pmix/configure-cli-options/*.rst \
+        $(srcdir)/transition-v7/*.rst \
         $(srcdir)/man/*.rst \
         $(srcdir)/man/man1/*.rst \
         $(srcdir)/man/man3/*.rst \
