@@ -555,6 +555,62 @@ static pmix_status_t read_available(int sd, char *buf, size_t size, size_t *recv
     return PMIX_SUCCESS;
 }
 
+/* The payload buffer of a connect-ack is first allocated this large, or
+ * as large as the header says the payload is if that is smaller */
+#define PMIX_PTL_ACK_FIRST_ALLOC 4096
+
+/* Make the payload buffer the next size up: the first allocation, or
+ * double the last, but no more than the header says the payload is.
+ * Each byte added is counted in pmix_ptl_base.pending_bytes, and a buffer
+ * that would take that past ptl_base_max_pending_bytes is not grown:
+ * PMIX_ERR_OUT_OF_RESOURCE. The new buffer is zeroed beyond what it
+ * copies, one byte longer than its size, so the string fields parsed out
+ * of it are always terminated - and the old one is wiped before it is
+ * freed, as every copy of a connect-ack is */
+static pmix_status_t grow_payload(pmix_pending_connection_t *pnd)
+{
+    size_t want, more;
+    char *msg;
+
+    if (0 == pnd->msg_size) {
+        want = PMIX_PTL_ACK_FIRST_ALLOC;
+    } else {
+        want = 2 * pnd->msg_size;
+    }
+    if (want > pnd->hdr.nbytes) {
+        want = pnd->hdr.nbytes;
+    }
+    if (NULL != pnd->msg && want <= pnd->msg_size) {
+        return PMIX_SUCCESS;
+    }
+    more = want - pnd->msg_size;
+    if (0 < pmix_ptl_base.max_pending_bytes &&
+        (pmix_ptl_base.max_pending_bytes < pmix_ptl_base.pending_bytes ||
+         pmix_ptl_base.max_pending_bytes - pmix_ptl_base.pending_bytes < more)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base:connection_handler: connections still sending their "
+                            "connect-ack hold %" PRIsize_t " bytes of it - dropping the one on "
+                            "socket %d, which needs %" PRIsize_t " more of the %" PRIsize_t
+                            " allowed",
+                            pmix_ptl_base.pending_bytes, pnd->sd, more,
+                            pmix_ptl_base.max_pending_bytes);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    msg = (char *) pmix_calloc(want + 1, sizeof(char));
+    if (NULL == msg) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (NULL != pnd->msg) {
+        memcpy(msg, pnd->msg, pnd->msg_recvd);
+        pmix_ptl_base_wipe(pnd->msg, pnd->msg_recvd);
+        free(pnd->msg);
+    }
+    pnd->msg = msg;
+    pnd->msg_size = want;
+    pmix_ptl_base.pending_bytes += more;
+    return PMIX_SUCCESS;
+}
+
 /* Read what has arrived of a connect-ack.
  *
  * This runs on the progress thread, for a socket that anything able to
@@ -568,9 +624,12 @@ static pmix_status_t read_available(int sd, char *buf, size_t size, size_t *recv
  * the timeout, as often as it cared to reconnect and do it again.
  *
  * The header is judged the moment it is complete, before any payload is
- * sized from the length it names. The payload is allocated one byte
- * longer than that and zeroed, so the string fields parsed out of it are
- * always terminated. */
+ * sized from the length it names. The payload buffer is not allocated at
+ * that length at once: it starts at PMIX_PTL_ACK_FIRST_ALLOC bytes and
+ * doubles each time it fills, up to that length, so a pending connection
+ * holds about as much as it has sent. Every buffer still held by a pending
+ * connection is counted in pmix_ptl_base.pending_bytes, which
+ * ptl_base_max_pending_bytes bounds (grow_payload). */
 static pmix_status_t read_connect_ack(pmix_pending_connection_t *pnd)
 {
     pmix_status_t rc;
@@ -582,7 +641,7 @@ static pmix_status_t read_connect_ack(pmix_pending_connection_t *pnd)
     /* get the id, authentication and version payload (and possibly
      * security credential) - no larger than PMIX_MAX_CRED_SIZE. The
      * length is judged on every pass, not only the one that allocates: it
-     * is the bound the read below runs to, and it comes off the wire */
+     * is the bound the reads below run to, and it comes off the wire */
     if (PMIX_MAX_CRED_SIZE < pnd->hdr.nbytes) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:base:connection_handler: connect-ack of %u bytes "
@@ -591,12 +650,22 @@ static pmix_status_t read_connect_ack(pmix_pending_connection_t *pnd)
         return PMIX_ERR_BAD_PARAM;
     }
     if (NULL == pnd->msg) {
-        pnd->msg = (char *) pmix_calloc(pnd->hdr.nbytes + 1, sizeof(char));
-        if (NULL == pnd->msg) {
-            return PMIX_ERR_NOMEM;
+        rc = grow_payload(pnd);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
         }
     }
-    return read_available(pnd->sd, pnd->msg, pnd->hdr.nbytes, &pnd->msg_recvd);
+    while (1) {
+        rc = read_available(pnd->sd, pnd->msg, pnd->msg_size, &pnd->msg_recvd);
+        if (PMIX_SUCCESS != rc || pnd->hdr.nbytes <= pnd->msg_recvd) {
+            return rc;
+        }
+        /* the buffer is full, and more of the payload is to come */
+        rc = grow_payload(pnd);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+    }
 }
 
 /* PMIX_PTL_LEGACY_PAD: a trailer too short to hold an info count is not an
@@ -642,6 +711,12 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         }
         return;
     }
+    if (PMIX_ERR_OUT_OF_RESOURCE == rc) {
+        /* its payload cannot grow within ptl_base_max_pending_bytes: it is
+         * dropped as a connection beyond the pending-connection cap is */
+        pmix_ptl_base_drop_pending_connection(pnd, PMIX_ERR_OUT_OF_RESOURCE);
+        return;
+    }
     /* complete or failed, it is no longer waiting on its socket */
     pmix_list_remove_item(&pmix_ptl_base.pending_connections, &pnd->super);
     if (pnd->timer_active) {
@@ -663,9 +738,11 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         }
         return;
     }
-    /* the payload is ours from here */
+    /* the payload is ours from here, and no longer a pending
+     * connection's */
     msg = pnd->msg;
     pnd->msg = NULL;
+    pmix_ptl_base_uncount_payload(pnd);
 
     /* The replies to this connect-ack are a few words written into a
      * socket nothing else has written to, so they are written as blocking
@@ -1623,6 +1700,26 @@ static pmix_status_t read_tool_info(pmix_pending_connection_t *pnd, void *ilist)
     return PMIX_SUCCESS;
 }
 
+/* The most tools of a uid other than the server's and root's that may
+ * wait on the host at once: a quarter of the cap on all waiting tools,
+ * rounded down, but at least one. Only meaningful with a cap */
+static size_t tool_share(void)
+{
+    size_t share = (size_t) pmix_ptl_base.pending_cap / 4;
+
+    return (0 == share) ? 1 : share;
+}
+
+/* Every removal from tool_queue is counted, so next_tool can tell whether
+ * asking about a tool took any other off the queue */
+static size_t tool_queue_removals = 0;
+
+static void dequeue_tool(pmix_pending_connection_t *pnd)
+{
+    pmix_list_remove_item(&pmix_ptl_base.tool_queue, &pnd->super);
+    ++tool_queue_removals;
+}
+
 /* The tool is who its credential says. Check that it may connect at all,
  * then put it in the queue for the host */
 static void tool_settled(pmix_pending_connection_t *pnd, pmix_status_t status)
@@ -1665,6 +1762,18 @@ static void tool_settled(pmix_pending_connection_t *pnd, pmix_status_t status)
         refuse(pnd, PMIX_ERR_OUT_OF_RESOURCE);
         return;
     }
+    /* A uid other than the server's and root's may have at most a quarter
+     * of that cap waiting (at least one): a tool of a uid at its share is
+     * refused as one beyond the cap is */
+    if (0 < pmix_ptl_base.pending_cap && 0 != pnd->uid && pmix_globals.uid != pnd->uid &&
+        tool_share() <= pmix_ptl_base_waiting_tools_of(pnd->uid)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "refusing a tool of uid %lu - %lu tools of that uid are waiting "
+                            "on the host",
+                            (unsigned long) pnd->uid, (unsigned long) tool_share());
+        refuse(pnd, PMIX_ERR_OUT_OF_RESOURCE);
+        return;
+    }
 
     /* The host is asked about one tool of a name at a time, so that it
      * never decides on two tools for one name at once; tools of other
@@ -1672,6 +1781,7 @@ static void tool_settled(pmix_pending_connection_t *pnd, pmix_status_t status)
      * the tool belongs is worked out when its turn comes - by then the
      * tool of its name ahead of it has been decided on */
     pmix_list_append(&pmix_ptl_base.tool_queue, &pnd->super);
+    pmix_ptl_base_count_tool(pnd);
     next_tool();
 }
 
@@ -1700,6 +1810,8 @@ static void tool_decided(pmix_pending_connection_t *pnd)
     }
     pmix_list_remove_item(&pmix_ptl_base.tool_asking, &pnd->super);
     pnd->asking = false;
+    /* it is waiting on the host no longer */
+    pmix_ptl_base_uncount_tool(pnd);
     kick_tool_queue();
 }
 
@@ -1746,37 +1858,50 @@ static void next_tool_cb(int sd, short args, void *cbdata)
  * it, in the order they arrived. A tool that is refused before the host
  * is asked makes way at once. One that has closed its connection while it
  * waited - its own connect timed out, say - is dropped: there is nobody to
- * accept */
+ * accept.
+ *
+ * The queue is passed over once. After a tool is asked about, the pass
+ * goes on from the tool after it: asking about a tool may add it to
+ * tool_asking, and takes no other tool off that list or tool_late, so a
+ * tool passed over before it - one with a tool of its name ahead - still
+ * has. Only if asking took some other tool off the queue - which the count
+ * of removals shows - may the next one be gone, and the pass starts again
+ * from the head */
 static void next_tool(void)
 {
     pmix_pending_connection_t *pnd, *pnext;
-    bool asked;
+    size_t removals;
 
-    do {
-        asked = false;
-        PMIX_LIST_FOREACH_SAFE (pnd, pnext, &pmix_ptl_base.tool_queue,
-                                pmix_pending_connection_t) {
-            if (pmix_ptl_base_sd_closed(pnd->sd)) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "ptl:base: the tool on socket %d went away while it "
-                                    "waited for the host - dropping it",
-                                    pnd->sd);
-                pmix_list_remove_item(&pmix_ptl_base.tool_queue, &pnd->super);
-                PMIX_RELEASE(pnd);
-                continue;
-            }
-            if (name_busy(pnd)) {
-                /* it waits on, behind the tool of its name */
-                continue;
-            }
-            pmix_list_remove_item(&pmix_ptl_base.tool_queue, &pnd->super);
-            ask_about_tool(pnd);
-            /* asking, or a refusal, may have changed the queue - start
-             * again from the head */
-            asked = true;
-            break;
+    pnd = (pmix_pending_connection_t *) pmix_list_get_first(&pmix_ptl_base.tool_queue);
+    while ((pmix_list_item_t *) pnd != pmix_list_get_end(&pmix_ptl_base.tool_queue)) {
+        pnext = (pmix_pending_connection_t *) pmix_list_get_next(&pnd->super);
+        ++pmix_ptl_base.tool_queue_visits;
+        if (pmix_ptl_base_sd_closed(pnd->sd)) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:base: the tool on socket %d went away while it "
+                                "waited for the host - dropping it",
+                                pnd->sd);
+            dequeue_tool(pnd);
+            PMIX_RELEASE(pnd);
+            pnd = pnext;
+            continue;
         }
-    } while (asked);
+        if (name_busy(pnd)) {
+            /* it waits on, behind the tool of its name */
+            pnd = pnext;
+            continue;
+        }
+        dequeue_tool(pnd);
+        removals = tool_queue_removals;
+        ask_about_tool(pnd);
+        if (removals != tool_queue_removals) {
+            /* asking, or a refusal, took other tools off the queue - the
+             * next one may be among them */
+            pnd = (pmix_pending_connection_t *) pmix_list_get_first(&pmix_ptl_base.tool_queue);
+        } else {
+            pnd = pnext;
+        }
+    }
 }
 
 /* Two tools that cannot both be accepted: the one the host has just
@@ -1796,14 +1921,14 @@ static void refuse_queued_conflicts(const pmix_proc_t *id, uid_t uid, gid_t gid)
                                 "refusing a queued tool connecting as %s:%u - the host has "
                                 "accepted a tool of that name",
                                 q->proc.nspace, q->proc.rank);
-            pmix_list_remove_item(&pmix_ptl_base.tool_queue, &q->super);
+            dequeue_tool(q);
             refuse(q, PMIX_ERR_EXISTS);
         } else if (q->uid != uid || q->gid != gid) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "refusing a queued tool of uid %lu joining %s - the host has "
                                 "accepted a tool of uid %lu into it",
                                 (unsigned long) q->uid, q->proc.nspace, (unsigned long) uid);
-            pmix_list_remove_item(&pmix_ptl_base.tool_queue, &q->super);
+            dequeue_tool(q);
             refuse(q, PMIX_ERR_NOT_SUPPORTED);
         }
     }

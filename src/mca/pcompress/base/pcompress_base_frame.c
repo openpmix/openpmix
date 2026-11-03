@@ -127,6 +127,7 @@ pmix_compress_base_module_t pmix_compress = PCOMPRESS_BASE_DEFAULT_MODULE;
 
 pmix_compress_base_t pmix_compress_base = {
     .compress_limit = 0,
+    .max_size = PMIX_COMPRESS_BASE_MAX_SIZE_DEFAULT,
     .selected = false,
     .silent = false
 };
@@ -150,6 +151,21 @@ static int pmix_compress_base_register(pmix_mca_base_register_flag_t flags)
                                       "Size in bytes below which data is left uncompressed",
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_compress_base.compress_limit);
+
+    /* Checked by pmix_compress_base_outbuf_start(), which every component's
+     * decompressor calls before allocating its output: a blob whose length
+     * prefix names more than this many bytes is refused without being
+     * decompressed. */
+    pmix_compress_base.max_size = PMIX_COMPRESS_BASE_MAX_SIZE_DEFAULT;
+    (void) pmix_mca_base_var_register("pmix", "pcompress", "base", "max_size",
+                                      "Largest decompressed size, in bytes, that is accepted. "
+                                      "Compressed data whose recorded uncompressed length is "
+                                      "larger than this is not decompressed, and the operation "
+                                      "fails. The default is 536870912 (512 MiB, 16 times the "
+                                      "32 MiB default of ptl_base_max_msg_size); it is a fixed "
+                                      "value and does not change with ptl_base_max_msg_size",
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+                                      &pmix_compress_base.max_size);
 
     pmix_compress_base.silent = false;
     (void) pmix_mca_base_var_register("pmix", "pcompress", "base", "silence_warning",

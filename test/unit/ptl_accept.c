@@ -48,6 +48,11 @@
  * connect-ack too large to accept, one that does not arrive in time, and
  * the oldest unfinished connection when the cap on them is reached, and
  * the oldest handshake when handshakes reach their share of that cap.
+ * The payload buffers of unfinished connections grow as their bytes
+ * arrive, and hold no more than ptl_base_max_pending_bytes between them:
+ * a connection whose buffer would take them past it is dropped with
+ * PMIX_ERR_OUT_OF_RESOURCE, the total returns to zero as they close, and
+ * a client still connects.
  *
  * What the host may change while it is asked is re-checked: a client
  * deregistered, or its job deregistered, during its handshake is refused
@@ -95,7 +100,10 @@
  * which it is then asked about; two tools of different names are put to
  * it one after the other; a waiting tool whose name the host gives
  * another tool is refused; and one that closes its connection while it
- * waits is never put to it.
+ * waits is never put to it. A uid other than the server's and root's may
+ * have a quarter of the waiting tools, and a further tool of it is
+ * refused with PMIX_ERR_OUT_OF_RESOURCE; root and the server's uid are
+ * held to the cap alone. Each run of the queue passes over it once.
  *
  * The host is asked to answer within ptl_base_handshake_wait_time
  * (PMIX_TIMEOUT), and the server waits a little longer. A client or tool
@@ -118,6 +126,7 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/pmix_getid.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -300,18 +309,20 @@ static void lost_handler(size_t evhdlr_registration_id, pmix_status_t status,
 #define HOST_GIVES_NO_ID        5
 #define HOST_DEFERS_TOOLS       6
 static int host_mode = HOST_KEEPS_CONTRACT;
+/* the most answers HOST_DEFERS and HOST_DEFERS_TOOLS can hold back */
+#define NDEFER 16
 /* answers HOST_DEFERS holds back */
-static pmix_op_cbfunc_t deferred_cb[4];
-static void *deferred_cbdata[4];
+static pmix_op_cbfunc_t deferred_cb[NDEFER];
+static void *deferred_cbdata[NDEFER];
 static int ndeferred = 0;
 /* how many answers HOST_DEFERS and HOST_DEFERS_TOOLS hold back: later ones
  * are given at once */
 static int max_deferred = 4;
 /* tool answers HOST_DEFERS_TOOLS holds back, with the identity each
  * would be given */
-static pmix_tool_connection_cbfunc_t deferred_tool_cb[4];
-static void *deferred_tool_cbdata[4];
-static pmix_proc_t deferred_tool_id[4];
+static pmix_tool_connection_cbfunc_t deferred_tool_cb[NDEFER];
+static void *deferred_tool_cbdata[NDEFER];
+static pmix_proc_t deferred_tool_id[NDEFER];
 static int ndeferred_tools = 0;
 /* run inside tool_connected2, before it answers */
 static void (*tool_hook)(void) = NULL;
@@ -583,8 +594,10 @@ static bool build_blob_dups(pmix_byte_object_t *out)
  * native's: the effective uid and gid - or, with ack_badcred, a credential
  * too short to hold them, which native refuses as malformed. With
  * `truncate`, the payload stops after the security module's name */
-/* a uid for native's credential to claim in place of our own */
-static uid_t ack_cred_uid = 0;
+/* a uid for native's credential - and a tool's connect-ack - to claim in
+ * place of our own */
+#define AC_OWN_UID ((uid_t) -1)
+static uid_t ack_cred_uid = AC_OWN_UID;
 
 static char *build_ack_as_given(uint8_t flag, const char *nspace, pmix_rank_t rank,
                                 const char *psec, const pmix_byte_object_t *blob, bool truncate,
@@ -594,7 +607,8 @@ static char *build_ack_as_given(uint8_t flag, const char *nspace, pmix_rank_t ra
     pmix_proc_t proc;
     char credbytes[sizeof(uid_t) + sizeof(gid_t)];
     size_t credlen = ack_badcred ? sizeof(uid_t) - 1 : sizeof(credbytes);
-    uid_t euid = (0 != ack_cred_uid) ? ack_cred_uid : geteuid();
+    uid_t euid = (AC_OWN_UID != ack_cred_uid) ? ack_cred_uid : geteuid();
+    uid_t ruid = (AC_OWN_UID != ack_cred_uid) ? ack_cred_uid : getuid();
     gid_t egid = getegid();
     char *msg;
     size_t csize, payload;
@@ -637,7 +651,7 @@ static char *build_ack_as_given(uint8_t flag, const char *nspace, pmix_rank_t ra
     PMIX_PTL_PUT_BLOB(credbytes, credlen);
     PMIX_PTL_PUT_U8(flag);
     if (PMIX_SIMPLE_CLIENT != flag) {
-        PMIX_PTL_PUT_U32(getuid());
+        PMIX_PTL_PUT_U32(ruid);
         PMIX_PTL_PUT_U32(getgid());
     }
     if (PMIX_TOOL_NEEDS_ID != flag) {
@@ -856,6 +870,8 @@ static pmix_namespace_t *find_ns(const char *name)
 
 /* start the server without tool support */
 static bool no_tool_support = false;
+/* start the server taking tools of other users */
+static bool allow_foreign = false;
 
 static pmix_status_t start_server(pmix_server_module_t *module, bool client, uid_t uid)
 {
@@ -867,12 +883,14 @@ static pmix_status_t start_server(pmix_server_module_t *module, bool client, uid
     {
         /* tools connect here, which a server takes only with tool support -
          * unless a case asks for a server without it */
-        pmix_info_t tsinfo;
+        pmix_info_t tsinfo[2];
         bool tsflag = !no_tool_support;
 
-        PMIX_INFO_LOAD(&tsinfo, PMIX_SERVER_TOOL_SUPPORT, &tsflag, PMIX_BOOL);
-        rc = PMIx_server_init(module, &tsinfo, 1);
-        PMIX_INFO_DESTRUCT(&tsinfo);
+        PMIX_INFO_LOAD(&tsinfo[0], PMIX_SERVER_TOOL_SUPPORT, &tsflag, PMIX_BOOL);
+        PMIX_INFO_LOAD(&tsinfo[1], PMIX_SERVER_ALLOW_FOREIGN_TOOLS, &allow_foreign, PMIX_BOOL);
+        rc = PMIx_server_init(module, tsinfo, 2);
+        PMIX_INFO_DESTRUCT(&tsinfo[0]);
+        PMIX_INFO_DESTRUCT(&tsinfo[1]);
     }
     if (PMIX_SUCCESS != rc || !client) {
         return rc;
@@ -2997,6 +3015,289 @@ static int case_tool_cap_listener(void)
     return CHILD_PASS;
 }
 
+/* Open a tool connection claiming `uid` - over TCP, with no TCP table to
+ * name the peer, the server takes the claim - and give the server time to
+ * queue it. With `want` other than PMIX_SUCCESS, the reply it is refused
+ * with instead */
+static bool tool_of(uid_t uid, pmix_rank_t rank, pmix_status_t want, int *sd)
+{
+    char *msg;
+    size_t sz;
+    bool ok;
+
+    ack_cred_uid = uid;
+    msg = build_ack(PMIX_TOOL_GIVEN_ID, AC_TOOLNS, rank, "native", NULL, false, &sz);
+    ack_cred_uid = AC_OWN_UID;
+    if (PMIX_SUCCESS == want) {
+        ok = open_ack(msg, sz, sd);
+        free(msg);
+        usleep(200000);
+        return ok && !closes_within(*sd, 100);
+    }
+    ok = (want == send_ack(msg, sz, sd));
+    free(msg);
+    return ok;
+}
+
+/* A uid other than the server's and root's may have at most a quarter of
+ * the waiting tools: at a cap of eight, two. A third tool of one such uid
+ * is refused with PMIX_ERR_OUT_OF_RESOURCE before the host is asked, while
+ * the first of another such uid is put to the host; root, and the server's
+ * own uid, are held to the cap alone, and fill it. Once the host answers
+ * one of the first uid's tools, that uid may have another waiting, and
+ * once it has answered all of them no uid has any */
+static int case_tool_uid_share(void)
+{
+    uid_t me = getuid(), ua = getuid() + 101, ub = getuid() + 102;
+    int sd[16], n, nsd = 0;
+    pmix_rank_t rank = 0;
+    pmix_status_t reply;
+
+    setenv("PMIX_MCA_ptl_base_max_pending_connections", "8", 1);
+    host_mode = HOST_DEFERS_TOOLS;
+    max_deferred = NDEFER;
+    allow_foreign = true;
+    pmix_util_getid_test_no_tcp_table = true;
+    if (0 == me) {
+        /* root is the server's own uid: there is no third to try */
+        fprintf(stdout, "    (running as root: root's tools are the server's own)\n");
+    }
+    if (PMIX_SUCCESS != start_server(&mymodule, false, getuid())) {
+        return CHILD_SETUP;
+    }
+    if (8 != pmix_ptl_base.pending_cap) {
+        return CHILD_SETUP;
+    }
+    /* two of one uid wait, and a third is refused */
+    for (n = 0; n < 2; n++) {
+        if (!tool_of(ua, rank++, PMIX_SUCCESS, &sd[nsd++])) {
+            fprintf(stdout, "    tool %d of uid %lu was not held for the host\n", n,
+                    (unsigned long) ua);
+            return CHILD_FAIL;
+        }
+    }
+    if (2 != ntool_connected || 2 != pmix_ptl_base_waiting_tools_of(ua)) {
+        fprintf(stdout, "    the host was asked about %d tools, %lu of uid %lu waiting\n",
+                ntool_connected, (unsigned long) pmix_ptl_base_waiting_tools_of(ua),
+                (unsigned long) ua);
+        return CHILD_FAIL;
+    }
+    if (!tool_of(ua, rank++, PMIX_ERR_OUT_OF_RESOURCE, &sd[nsd++]) || 2 != ntool_connected) {
+        fprintf(stdout, "    a third tool of uid %lu was not refused with "
+                        "PMIX_ERR_OUT_OF_RESOURCE before the host was asked\n",
+                (unsigned long) ua);
+        return CHILD_FAIL;
+    }
+    /* the first of another uid waits */
+    if (!tool_of(ub, rank++, PMIX_SUCCESS, &sd[nsd++]) || 3 != ntool_connected ||
+        1 != pmix_ptl_base_waiting_tools_of(ub)) {
+        fprintf(stdout, "    the first tool of uid %lu was not put to the host\n",
+                (unsigned long) ub);
+        return CHILD_FAIL;
+    }
+    /* root's tools wait beyond the share */
+    if (0 != me) {
+        for (n = 0; n < 3; n++) {
+            if (!tool_of(0, rank++, PMIX_SUCCESS, &sd[nsd++])) {
+                fprintf(stdout, "    root's tool %d was not held for the host\n", n);
+                return CHILD_FAIL;
+            }
+        }
+        if (6 != ntool_connected || 0 != pmix_ptl_base_waiting_tools_of(0)) {
+            fprintf(stdout, "    with root's tools, the host was asked about %d tools\n",
+                    ntool_connected);
+            return CHILD_FAIL;
+        }
+    }
+    /* and the server's own fill the cap */
+    while (8 > ntool_connected) {
+        if (!tool_of(me, rank++, PMIX_SUCCESS, &sd[nsd++])) {
+            fprintf(stdout, "    a tool of the server's uid was not held below the cap\n");
+            return CHILD_FAIL;
+        }
+    }
+    if (!tool_of(me, rank++, PMIX_ERR_OUT_OF_RESOURCE, &sd[nsd++]) || 8 != ntool_connected) {
+        fprintf(stdout, "    a tool of the server's uid beyond the cap was not refused\n");
+        return CHILD_FAIL;
+    }
+    /* the host answers the first uid's first tool: that uid has room for
+     * one more */
+    answer_tool(0, PMIX_ERR_NO_PERMISSIONS, NULL);
+    reply = tool_outcome(sd[0], false);
+    if (PMIX_ERR_NO_PERMISSIONS != reply) {
+        return expect_status("the answered tool", reply, PMIX_ERR_NO_PERMISSIONS);
+    }
+    usleep(200000);
+    if (1 != pmix_ptl_base_waiting_tools_of(ua)) {
+        fprintf(stdout, "    with one of its tools answered, uid %lu has %lu waiting\n",
+                (unsigned long) ua, (unsigned long) pmix_ptl_base_waiting_tools_of(ua));
+        return CHILD_FAIL;
+    }
+    if (!tool_of(ua, rank++, PMIX_SUCCESS, &sd[nsd++]) || 9 != ntool_connected) {
+        fprintf(stdout, "    uid %lu could not have a tool waiting in the room an answer "
+                        "made\n",
+                (unsigned long) ua);
+        return CHILD_FAIL;
+    }
+    /* the host answers the rest */
+    for (n = 1; n < ndeferred_tools; n++) {
+        answer_tool(n, PMIX_ERR_NO_PERMISSIONS, NULL);
+    }
+    usleep(300000);
+    if (0 != pmix_ptl_base_waiting_tools() || 0 != pmix_ptl_base_waiting_tools_of(ua) ||
+        0 != pmix_ptl_base_waiting_tools_of(ub)) {
+        fprintf(stdout, "    with every tool answered, %lu wait, %lu of uid %lu and %lu of "
+                        "uid %lu\n",
+                (unsigned long) pmix_ptl_base_waiting_tools(),
+                (unsigned long) pmix_ptl_base_waiting_tools_of(ua), (unsigned long) ua,
+                (unsigned long) pmix_ptl_base_waiting_tools_of(ub), (unsigned long) ub);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
+/* next_tool passes over the queue once each time it runs: with six tools
+ * of one name waiting behind a seventh the host is deciding on, a tool of
+ * another name that arrives is put to the host after the six are looked at
+ * once each, and not looked at again after it is asked about */
+static int case_tool_queue_scan(void)
+{
+    int sd[8], n;
+    size_t before, visits;
+
+    setenv("PMIX_MCA_ptl_base_max_pending_connections", "64", 1);
+    host_mode = HOST_DEFERS_TOOLS;
+    if (PMIX_SUCCESS != start_server(&mymodule, false, getuid())) {
+        return CHILD_SETUP;
+    }
+    for (n = 0; n < 7; n++) {
+        if (!tool_of(AC_OWN_UID, 0, PMIX_SUCCESS, &sd[n])) {
+            return CHILD_SETUP;
+        }
+    }
+    if (1 != ntool_connected || 7 != pmix_ptl_base_waiting_tools()) {
+        fprintf(stdout, "    with seven tools of one name, the host was asked %d times and "
+                        "%lu wait\n",
+                ntool_connected, (unsigned long) pmix_ptl_base_waiting_tools());
+        return CHILD_SETUP;
+    }
+    before = pmix_ptl_base.tool_queue_visits;
+    if (!tool_of(AC_OWN_UID, 1, PMIX_SUCCESS, &sd[7]) || 2 != ntool_connected) {
+        fprintf(stdout, "    the tool of another name was not put to the host\n");
+        return CHILD_FAIL;
+    }
+    visits = pmix_ptl_base.tool_queue_visits - before;
+    if (7 != visits) {
+        fprintf(stdout, "    asking about one tool behind six waiting looked at %lu queue "
+                        "entries, not 7\n",
+                (unsigned long) visits);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
+/* The payload of a connect-ack is allocated as it arrives, and the bytes
+ * allocated for all connections still sending theirs are bounded by
+ * ptl_base_max_pending_bytes - 32 KiB here. Twelve connections each name a
+ * payload of PMIX_MAX_CRED_SIZE and send ten bytes of it: each of the
+ * first eight is given 4 KiB, which fills the limit, and the other four
+ * are dropped with PMIX_ERR_OUT_OF_RESOURCE. One of the eight that sends
+ * enough to need more room is dropped too. A client still connects in the
+ * room that leaves, and gives it back; and once the others close, nothing
+ * is held */
+static int case_pending_bytes(void)
+{
+    pmix_ptl_hdr_t hdr;
+    char bytes[5000];
+    char *msg;
+    size_t sz;
+    int sd[12], csd = -1, n;
+    uint32_t st;
+    pmix_status_t reply;
+
+    setenv("PMIX_MCA_ptl_base_max_pending_bytes", "32768", 1);
+    setenv("PMIX_MCA_ptl_base_max_pending_connections", "64", 1);
+    setenv("PMIX_MCA_ptl_base_connect_ack_timeout", "0", 1);
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    if (32768 != pmix_ptl_base.max_pending_bytes) {
+        fprintf(stdout, "    ptl_base_max_pending_bytes is %lu\n",
+                (unsigned long) pmix_ptl_base.max_pending_bytes);
+        return CHILD_FAIL;
+    }
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.nbytes = PMIX_MAX_CRED_SIZE;
+    memset(bytes, 'x', sizeof(bytes));
+    for (n = 0; n < 12; n++) {
+        if (!connect_server(&sd[n]) ||
+            (ssize_t) sizeof(hdr) != write(sd[n], &hdr, sizeof(hdr)) ||
+            10 != write(sd[n], bytes, 10)) {
+            return CHILD_SETUP;
+        }
+        usleep(20000);
+    }
+    usleep(200000);
+    if (8 * 4096 != pmix_ptl_base.pending_bytes) {
+        fprintf(stdout, "    twelve connections hold %lu bytes, not %d within the limit\n",
+                (unsigned long) pmix_ptl_base.pending_bytes, 8 * 4096);
+        return CHILD_FAIL;
+    }
+    for (n = 0; n < 12; n++) {
+        if (8 > n && closes_within(sd[n], 50)) {
+            fprintf(stdout, "    connection %d, within the limit, was dropped\n", n);
+            return CHILD_FAIL;
+        }
+        if (8 <= n) {
+            if (!read_u32(sd[n], &st)) {
+                fprintf(stdout, "    connection %d, beyond the limit, was not dropped\n", n);
+                return CHILD_FAIL;
+            }
+            if (PMIX_ERR_OUT_OF_RESOURCE != (pmix_status_t) st) {
+                return expect_status("a connection beyond the limit", (pmix_status_t) st,
+                                     PMIX_ERR_OUT_OF_RESOURCE);
+            }
+        }
+    }
+    /* one of the eight needs more room than the limit leaves */
+    if ((ssize_t) sizeof(bytes) != write(sd[0], bytes, sizeof(bytes))) {
+        return CHILD_SETUP;
+    }
+    if (!read_u32(sd[0], &st) || PMIX_ERR_OUT_OF_RESOURCE != (pmix_status_t) st) {
+        fprintf(stdout, "    a connection whose payload outgrew the limit was not dropped\n");
+        return CHILD_FAIL;
+    }
+    usleep(100000);
+    if (7 * 4096 != pmix_ptl_base.pending_bytes) {
+        fprintf(stdout, "    after a drop, %lu bytes are held, not %d\n",
+                (unsigned long) pmix_ptl_base.pending_bytes, 7 * 4096);
+        return CHILD_FAIL;
+    }
+    /* an ordinary client still connects, and gives its room back */
+    msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native", NULL, false, &sz);
+    reply = send_ack(msg, sz, &csd);
+    free(msg);
+    if (PMIX_SUCCESS != reply || 1 != nclient_connected) {
+        return expect_status("a client beside the held connections", reply, PMIX_SUCCESS);
+    }
+    usleep(100000);
+    if (7 * 4096 != pmix_ptl_base.pending_bytes) {
+        fprintf(stdout, "    after the client connected, %lu bytes are held, not %d\n",
+                (unsigned long) pmix_ptl_base.pending_bytes, 7 * 4096);
+        return CHILD_FAIL;
+    }
+    for (n = 0; n < 12; n++) {
+        close(sd[n]);
+    }
+    usleep(300000);
+    if (0 != pmix_ptl_base.pending_bytes) {
+        fprintf(stdout, "    with every connection closed, %lu bytes are held\n",
+                (unsigned long) pmix_ptl_base.pending_bytes);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
 static int run_queue_same_name(void)
 {
     return case_tool_queue(0);
@@ -3862,6 +4163,13 @@ int main(int argc, char **argv)
              case_tool_cap);
     run_case("tools waiting on the host do not count toward the listener's cap",
              case_tool_cap_listener);
+    run_case("a uid other than the server's and root's may have a quarter of the waiting "
+             "tools, and a further one is refused",
+             case_tool_uid_share);
+    run_case("each time the tool queue is run, it is passed over once", case_tool_queue_scan);
+    run_case("connections still sending their connect-ack hold no more than "
+             "ptl_base_max_pending_bytes between them, and a client still connects",
+             case_pending_bytes);
     run_case("a tool the host names into another user's new namespace is refused",
              case_tool_joins_other_user);
     run_case("a self-named tool whose name the host registers meanwhile, with no ranks, is "

@@ -4,7 +4,7 @@
  *                         Corporation.  All rights reserved.
  *
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -37,8 +37,15 @@ extern "C" {
  * the far end and had lost its last call site - are gone with that
  * decision. */
 
+/* The default for pcompress_base_max_size: 512 MiB, which is 16 times the
+ * 32 MiB default of ptl_base_max_msg_size. It is a fixed value - pcompress
+ * registers its parameters before ptl does, so the ptl setting is not yet
+ * known here - and it does not follow a changed ptl_base_max_msg_size. */
+#define PMIX_COMPRESS_BASE_MAX_SIZE_DEFAULT ((size_t) 512 * 1024 * 1024)
+
 typedef struct {
     size_t compress_limit;
+    size_t max_size; // largest decompressed size accepted, in bytes
     bool selected;
     bool silent;
 } pmix_compress_base_t;
@@ -56,8 +63,15 @@ PMIX_EXPORT extern pmix_compress_base_t pmix_compress_base;
  * more than one byte beyond the claim - a decoder that reaches that
  * byte has produced more than was promised, and is refused.
  *
+ * A claim larger than pmix_compress_base.max_size (the
+ * pcompress_base_max_size parameter) is refused by start() before anything
+ * is allocated.
+ *
  * Use:
- *   start()  - allocate a first guess, sized from the compressed length
+ *   start()  - allocate a first guess, sized from the compressed length;
+ *              false means the claim is the UINT32_MAX sentinel, is larger
+ *              than pcompress_base_max_size, or the allocation failed -
+ *              in each case nothing is left allocated
  *   grow()   - when the decoder has filled the buffer; false means the
  *              output passed the claim, or the allocation failed
  *   finish() - hand back the buffer if exactly `claim` bytes were

@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/pcompress/base/base.h"
 #include "src/mca/pcompress/pcompress.h"
 
@@ -88,17 +89,22 @@ static void test_outbuf_policy(void)
 {
     pmix_compress_base_outbuf_t buf;
     uint8_t *out;
-    size_t prev;
+    size_t prev, saved_max;
     int ngrow;
 
-    /* a tiny blob claiming nearly 4 GiB must not get anything like it */
+    /* a tiny blob claiming nearly 4 GiB must not get anything like it,
+     * even with pcompress_base_max_size raised far enough to accept the
+     * claim (test_max_size covers the default, which refuses it) */
+    saved_max = pmix_compress_base.max_size;
+    pmix_compress_base.max_size = SIZE_MAX;
     CHECK(pmix_compress_base_outbuf_start(&buf, 64, UINT32_MAX - 1),
-          "outbuf_start refused a legal claim");
+          "outbuf_start refused a claim within pcompress_base_max_size");
     CHECK(buf.size <= 64 * 1024,
           "outbuf_start committed %zu bytes for a 64-byte blob", buf.size);
     CHECK(buf.ceiling == (size_t) UINT32_MAX,
           "ceiling is %zu, expected the claim plus one", buf.ceiling);
     pmix_compress_base_outbuf_release(&buf);
+    pmix_compress_base.max_size = saved_max;
 
     /* the error sentinel is not a claim */
     CHECK(!pmix_compress_base_outbuf_start(&buf, 64, UINT32_MAX),
@@ -276,6 +282,178 @@ static void test_claims(void)
     free(zip);
     free(raw);
 }
+
+/* pcompress_base_max_size: the largest decompressed size accepted. Checks
+ * the registered default, then lowers the cap to the true length of a real
+ * blob and checks the boundary from both sides - at the outbuf, in both
+ * decompress entry points, and through the PMIX_COMPRESSED_STRING arm of
+ * value unpack. */
+static void unpack_compressed_string(const uint8_t *zip, size_t ziplen, const char *expect,
+                                     pmix_status_t want, const char *what)
+{
+    pmix_data_buffer_t dbuf;
+    pmix_value_t vsrc, vdst;
+    int32_t cnt = 1;
+    pmix_status_t rc;
+
+    memset(&vsrc, 0, sizeof(vsrc));
+    vsrc.type = PMIX_COMPRESSED_STRING;
+    vsrc.data.bo.bytes = (char *) zip;
+    vsrc.data.bo.size = ziplen;
+
+    PMIX_DATA_BUFFER_CONSTRUCT(&dbuf);
+    rc = PMIx_Data_pack(NULL, &dbuf, &vsrc, 1, PMIX_VALUE);
+    CHECK(PMIX_SUCCESS == rc, "packing a compressed-string value %s failed: %s", what,
+          PMIx_Error_string(rc));
+    if (PMIX_SUCCESS == rc) {
+        memset(&vdst, 0, sizeof(vdst));
+        rc = PMIx_Data_unpack(NULL, &dbuf, &vdst, &cnt, PMIX_VALUE);
+        CHECK(want == rc, "unpacking a compressed-string value %s returned %s, expected %s",
+              what, PMIx_Error_string(rc), PMIx_Error_string(want));
+        if (PMIX_SUCCESS == rc) {
+            if (PMIX_SUCCESS == want) {
+                CHECK(PMIX_STRING == vdst.type && NULL != vdst.data.string &&
+                      0 == strcmp(vdst.data.string, expect),
+                      "the compressed-string value %s did not unpack to its string", what);
+            }
+            PMIX_VALUE_DESTRUCT(&vdst);
+        }
+    }
+    PMIX_DATA_BUFFER_DESTRUCT(&dbuf);
+}
+
+static void test_max_size(void)
+{
+    pmix_compress_base_outbuf_t buf;
+    pmix_mca_base_var_source_t source;
+    size_t len = 64 * 1024, n, ziplen = 0, strziplen = 0, backlen, saved_max;
+    size_t *storage = NULL;
+    uint8_t *raw, *zip = NULL, *strzip = NULL, *back;
+    char *strback;
+    uint32_t claim;
+    int idx;
+
+    /* --- the default: 512 MiB, set by the parameter's registration ----- */
+    CHECK((size_t) 536870912 == pmix_compress_base.max_size,
+          "pcompress_base_max_size is %zu, expected the documented default 536870912",
+          pmix_compress_base.max_size);
+    idx = pmix_mca_base_var_find("pmix", "pcompress", "base", "max_size");
+    CHECK(0 <= idx, "pcompress_base_max_size is not registered");
+    if (0 <= idx) {
+        CHECK(PMIX_SUCCESS == pmix_mca_base_var_get_value(idx, &storage, &source, NULL),
+              "could not read pcompress_base_max_size");
+        CHECK(&pmix_compress_base.max_size == storage,
+              "pcompress_base_max_size is not stored in pmix_compress_base.max_size");
+        CHECK(PMIX_MCA_BASE_VAR_SOURCE_DEFAULT == source,
+              "pcompress_base_max_size was set from source %d, expected its default",
+              (int) source);
+    }
+
+    /* at the default, a claim of nearly 4 GiB is refused with nothing
+     * allocated */
+    CHECK(!pmix_compress_base_outbuf_start(&buf, 64, UINT32_MAX - 1),
+          "outbuf_start accepted a claim of %u bytes at the default cap",
+          (unsigned) (UINT32_MAX - 1));
+    CHECK(NULL == buf.bytes && 0 == buf.size,
+          "a refused outbuf_start left %zu bytes allocated", buf.size);
+    pmix_compress_base_outbuf_release(&buf);
+
+    saved_max = pmix_compress_base.max_size;
+
+    /* --- the outbuf itself, with the cap lowered ----------------------- */
+    pmix_compress_base.max_size = 1000;
+    CHECK(!pmix_compress_base_outbuf_start(&buf, 16, 1001),
+          "outbuf_start accepted a claim one byte above pcompress_base_max_size");
+    CHECK(NULL == buf.bytes && 0 == buf.size,
+          "a claim one byte above pcompress_base_max_size left %zu bytes allocated",
+          buf.size);
+    pmix_compress_base_outbuf_release(&buf);
+    CHECK(pmix_compress_base_outbuf_start(&buf, 16, 1000),
+          "outbuf_start refused a claim equal to pcompress_base_max_size");
+    CHECK(NULL != buf.bytes && 1001 == buf.ceiling,
+          "a claim equal to pcompress_base_max_size got ceiling %zu, expected 1001",
+          buf.ceiling);
+    pmix_compress_base_outbuf_release(&buf);
+    pmix_compress_base.max_size = saved_max;
+
+    /* --- real blobs, with the cap at their true length and one below --- */
+    raw = (uint8_t *) malloc(len + 1);
+    if (NULL == raw) {
+        fprintf(stderr, "out of memory\n");
+        ++errors;
+        return;
+    }
+    for (n = 0; n < len; n++) {
+        raw[n] = (uint8_t) ('a' + (n % 19));
+    }
+    raw[len] = '\0';
+
+    if (!PMIx_Data_compress(raw, len, &zip, &ziplen)) {
+        CHECK(false, "declined a 64 KiB run of repeated text");
+        free(raw);
+        return;
+    }
+    memcpy(&claim, zip, sizeof(uint32_t));
+    CHECK(len == (size_t) claim, "blob claims %u bytes, expected %zu", claim, len);
+    if (NULL != pmix_compress.compress_string &&
+        !pmix_compress.compress_string((char *) raw, &strzip, &strziplen)) {
+        strzip = NULL;
+    }
+
+    /* the cap equal to the claim: inflates exactly */
+    pmix_compress_base.max_size = len;
+    back = NULL;
+    backlen = 0;
+    CHECK(PMIx_Data_decompress(zip, ziplen, &back, &backlen),
+          "decompress refused a blob whose claim equals pcompress_base_max_size");
+    if (NULL != back) {
+        CHECK(len == backlen && 0 == memcmp(back, raw, len),
+              "a blob at pcompress_base_max_size did not round-trip");
+        free(back);
+    }
+    if (NULL != strzip && NULL != pmix_compress.decompress_string) {
+        strback = NULL;
+        CHECK(pmix_compress.decompress_string(&strback, strzip, strziplen),
+              "decompress_string refused a blob whose claim equals pcompress_base_max_size");
+        if (NULL != strback) {
+            CHECK(0 == strcmp(strback, (char *) raw),
+                  "a string at pcompress_base_max_size did not round-trip");
+            free(strback);
+        }
+        unpack_compressed_string(strzip, strziplen, (char *) raw, PMIX_SUCCESS,
+                                 "at pcompress_base_max_size");
+    }
+
+    /* the claim one byte more than the cap: refused */
+    pmix_compress_base.max_size = len - 1;
+    back = (uint8_t *) 0x1;
+    backlen = 1;
+    if (PMIx_Data_decompress(zip, ziplen, &back, &backlen)) {
+        CHECK(false, "decompress accepted a blob claiming one byte more than "
+              "pcompress_base_max_size");
+        free(back);
+    } else {
+        CHECK(NULL == back && 0 == backlen,
+              "a refused decompress left output behind (%zu bytes)", backlen);
+    }
+    if (NULL != strzip && NULL != pmix_compress.decompress_string) {
+        strback = (char *) 0x1;
+        if (pmix_compress.decompress_string(&strback, strzip, strziplen)) {
+            CHECK(false, "decompress_string accepted a blob claiming one byte more than "
+                  "pcompress_base_max_size");
+            free(strback);
+        } else {
+            CHECK(NULL == strback, "a refused decompress_string left a string behind");
+        }
+        unpack_compressed_string(strzip, strziplen, NULL, PMIX_ERR_UNPACK_FAILURE,
+                                 "one byte above pcompress_base_max_size");
+    }
+
+    pmix_compress_base.max_size = saved_max;
+    free(strzip);
+    free(zip);
+    free(raw);
+}
 #endif
 
 int main(int argc, char **argv)
@@ -295,6 +473,11 @@ int main(int argc, char **argv)
     pmix_byte_object_t bo;
     char *str, *strback = NULL;
     size_t n;
+
+    /* test_max_size checks pcompress_base_max_size at its registered
+     * default, so neither the environment nor a parameter file may set it */
+    unsetenv("PMIX_MCA_pcompress_base_max_size");
+    setenv("PMIX_MCA_mca_base_param_files", "none", 1);
 
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, NULL, 0))) {
         fprintf(stderr, "Init failed with error %s\n", PMIx_Error_string(rc));
@@ -357,6 +540,7 @@ int main(int argc, char **argv)
     /* --- output that must grow, and prefixes that lie ------------------ */
     test_outbuf_policy();
     test_claims();
+    test_max_size();
 
     /* --- below the limit: must decline --------------------------------- */
     if (0 < pmix_compress_base.compress_limit) {

@@ -560,7 +560,8 @@ names are already those synonyms.
 | `connection_wait_time` / `max_retries` | how long/often to wait for a server's connection file to appear |
 | `handshake_wait_time` / `handshake_max_retries` | how long a client or tool waits on a server while connecting - each `connect()` attempt and each handshake reply, or the whole event-driven attach (default 60s, 0 = unbounded) - and how often it retries a handshake the server asks it to retry |
 | `connect_ack_timeout` | seconds a server gives an inbound connection to deliver its whole connect-ack, and to answer each step of the blocking handshake after it, before dropping it (default 5; 0 = no limit) |
-| `max_pending_connections` | most inbound connections held while their connect-ack is still arriving, and separately most tools held while the host decides; at the first limit the oldest still arriving is dropped, at the second a further tool is refused (default 0 = an eighth of the descriptor limit, for each; -1 = no limit) |
+| `max_pending_connections` | most inbound connections held while their connect-ack is still arriving, and separately most tools held while the host decides; at the first limit the oldest still arriving is dropped, at the second a further tool is refused - as is a tool of a uid other than the server's and root's that has a quarter of it waiting (default 0 = an eighth of the descriptor limit, for each; -1 = no limit) |
+| `max_pending_bytes` | most bytes allocated, between them, for the payloads of connect-acks still arriving; a payload buffer starts at 4 KB and doubles as it fills, and a connection whose buffer cannot grow within the limit is dropped (`size_t`, default 16777216; 0 = no limit) |
 | `report_uri` | where to print the listener URI |
 | `server_access` | servers a client or tool will talk to on the local socket besides its own user's and root's, when no server it was started by named itself: `users=<list>,groups=<list>`, names or numbers separated by `:` |
 

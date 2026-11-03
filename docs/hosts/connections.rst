@@ -92,6 +92,12 @@ ignored. The client's identity is the one the credential establishes.
   environment but no namespace and rank also arrives at
   ``tool_connected2`` with no ``PMIX_NSPACE``, and must be given an
   identity in the same way. The tool is not told the name it was given.
+* While tools wait for the host's decision, at most
+  ``ptl_base_max_pending_connections`` of them may wait at once, and a
+  tool of a uid other than the server's and root's may have at most a
+  quarter of that number waiting (at least one). A tool beyond either
+  limit is refused with ``PMIX_ERR_OUT_OF_RESOURCE``, and the host is not
+  asked about it.
 * **The host decides on one tool of a name at a time.** A tool that
   brings its own namespace and rank waits while the host decides on a
   tool of that name, so the host never decides on two tools for one
@@ -102,6 +108,21 @@ ignored. The client's identity is the one the credential establishes.
   that a tool has taken for itself meanwhile is refused with
   ``PMIX_ERR_EXISTS`` once the host accepts it - the host is then sent
   the notice described below.
+
+When a tool claims a gid other than the one the kernel reports for its
+connection - or connects over TCP, for which the kernel reports no gid,
+unless it is the server's own user claiming the server's own gid - the
+server checks whether the tool's user belongs to that group in the
+system's user and group database (``getpwuid_r`` and ``getgrgid_r``);
+root belongs to every group without a lookup. The check runs on
+the server's progress thread, before the host is asked about the tool,
+and waits for the database to answer - which, for a directory service,
+may mean a network round trip. Each answer, whether the user belongs to
+the group or not, is kept for 60 seconds for that (uid, gid) pair, for
+up to 256 pairs; when all 256 are in use, the least recently used is
+dropped. A lookup that fails, rather than answering, is not kept.
+Repeated connections for one pair therefore consult the database at
+most once a minute.
 
 A connection that fails any of these checks is sent a status saying
 why, and closed. The host is not told about it.
