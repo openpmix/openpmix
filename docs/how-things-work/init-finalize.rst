@@ -61,8 +61,8 @@ The Actors
 ``pmix_namespace_t`` (``nptr``)
     The job. Holds the ``ranks`` list, ``nlocalprocs`` (the number of
     local clients the namespace has - the host's count, less every rank
-    that has departed for good: lost without finalizing, or
-    deregistered), ``nfinalized`` (how many of those have finalized),
+    lost without finalizing or deregistered, and not since started again),
+    ``nfinalized`` (how many of those have finalized),
     the compatibility modules negotiated
     for the job, the namespace-level epilog, and the association to the
     GDS job data. Persists until the host calls
