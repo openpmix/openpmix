@@ -12,6 +12,8 @@ and start with the pages listed for it.
 
    * - If you are...
      - Start with
+   * - **Moving from PMIx v5** to v7, in any of the roles below
+     - :ref:`label-transition-v7`, then the page there for your role.
    * - **Installing PMIx**, or packaging it for a distribution
      - :ref:`label-quickstart`, then
        :ref:`building-and-installing-section-label`.
