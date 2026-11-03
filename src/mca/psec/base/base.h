@@ -33,6 +33,7 @@
 #ifdef HAVE_STRING_H
 #    include <string.h>
 #endif
+#include <time.h>
 
 #include "src/class/pmix_pointer_array.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
@@ -105,8 +106,34 @@ PMIX_EXPORT bool pmix_psec_base_check_directives(const char *name,
  * databases, so it can block on a directory service; call it only where
  * a peer's group has not been vouched for some other way. A uid with no
  * passwd entry holds no group.
+ *
+ * Each answer, held or not, is cached for PMIX_PSEC_BASE_GID_CACHE_TTL
+ * seconds by the monotonic clock, for up to PMIX_PSEC_BASE_GID_CACHE_SIZE
+ * (uid, gid) pairs; when the cache is full the least recently used pair
+ * is dropped. A call that reached no answer because a buffer could not
+ * be allocated is not cached. The cache is not locked: its one caller,
+ * native's validate_cred, reaches it only from the connection handler,
+ * which runs on the progress thread. Call it from there.
  */
 PMIX_EXPORT bool pmix_psec_base_gid_held(uid_t uid, gid_t gid);
+
+#define PMIX_PSEC_BASE_GID_CACHE_SIZE 256
+#define PMIX_PSEC_BASE_GID_CACHE_TTL  60
+
+/* Empty the cache. The framework's close calls it */
+PMIX_EXPORT void pmix_psec_base_gid_cache_flush(void);
+
+/* The lookups and the clock pmix_psec_base_gid_held() uses: the system's
+ * getpwuid_r and getgrgid_r, and the monotonic clock in seconds. The unit
+ * tests replace them to count lookups and to advance time */
+struct passwd;
+struct group;
+typedef struct {
+    int (*pwuid)(uid_t uid, struct passwd *pwd, char *buf, size_t len, struct passwd **result);
+    int (*grgid)(gid_t gid, struct group *grp, char *buf, size_t len, struct group **result);
+    time_t (*now)(void);
+} pmix_psec_base_gid_ops_t;
+PMIX_EXPORT extern pmix_psec_base_gid_ops_t pmix_psec_base_gid_ops;
 
 END_C_DECLS
 

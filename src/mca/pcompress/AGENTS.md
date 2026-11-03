@@ -174,16 +174,25 @@ instantiated as the exported global **`pmix_compress_base`**:
 | Field | Purpose |
 |-------|---------|
 | `compress_limit` | size threshold (bytes); inputs smaller than this are never compressed |
+| `max_size` | largest decompressed size (bytes) accepted; checked by `pmix_compress_base_outbuf_start()` |
 | `selected` | guards `pmix_compress_base_select` against running twice |
 | `silent` | suppresses the "no compression library" warning (also the MCA flag) |
 
-Two MCA parameters are registered in `pcompress_base_frame.c`
+Three MCA parameters are registered in `pcompress_base_frame.c`
 (`pmix_compress_base_register`):
 
 | Parameter | Type / default | Meaning |
 |-----------|----------------|---------|
 | `pcompress_base_limit` | size_t, **256** | value written into `compress_limit`; the byte threshold below which data is left uncompressed |
+| `pcompress_base_max_size` | size_t, **536870912** (512 MiB) | value written into `max_size`; a blob whose 4-byte length prefix names more bytes than this is refused by `pmix_compress_base_outbuf_start()` before anything is allocated, so `decompress`/`decompress_string` return `false` and the `PMIX_COMPRESSED_STRING` arm of value unpack returns `PMIX_ERR_UNPACK_FAILURE`. The refusal is logged at verbose level 2 on the framework output |
 | `pcompress_base_silence_warning` | bool, **false** | value written into `silent`; suppresses the base default's "unavailable" warning |
+
+The `pcompress_base_max_size` default is 16 times the 32 MiB default of
+`ptl_base_max_msg_size`, written as a fixed number
+(`PMIX_COMPRESS_BASE_MAX_SIZE_DEFAULT` in `base/base.h`). It cannot be
+derived from the ptl value at registration time: `pmix_init.c` opens -
+and so registers - `pcompress` before `ptl`. It therefore does not follow
+a changed `ptl_base_max_msg_size`.
 
 ### Choosing `compress_limit`
 

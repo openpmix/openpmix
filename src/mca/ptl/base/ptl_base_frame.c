@@ -138,6 +138,9 @@ pmix_ptl_base_t pmix_ptl_base = {
     .connect_ack_timeout = 5,
     .max_pending_connections = 0,
     .pending_cap = 0,
+    .max_pending_bytes = PMIX_PTL_MAX_PENDING_BYTES,
+    .pending_bytes = 0,
+    .tool_queue_visits = 0,
     .max_write = INT_MAX
 };
 int pmix_ptl_base_output = -1;
@@ -359,10 +362,22 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                       "it holds while the host decides on them; at the first "
                                       "limit, the oldest request still arriving is dropped to "
                                       "make room for a new one, and at the second a further tool "
-                                      "is refused (0 = an eighth of the descriptor limit the "
+                                      "is refused - as is a tool of a uid other than the "
+                                      "server's and root's that has a quarter of the second "
+                                      "limit waiting (0 = an eighth of the descriptor limit the "
                                       "server starts with, for each; -1 = no limit)",
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_ptl_base.max_pending_connections);
+
+    (void) pmix_mca_base_var_register("pmix", "ptl", "base", "max_pending_bytes",
+                                      "Most bytes a server allocates, between them, for the "
+                                      "connection requests still arriving. A request's buffer "
+                                      "starts at 4 KB and doubles as its bytes arrive, up to "
+                                      "the length the request names; a request whose buffer "
+                                      "cannot grow without passing this limit is dropped "
+                                      "(0 = no limit)",
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+                                      &pmix_ptl_base.max_pending_bytes);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "report_uri",
                                      "Output URI [- => stdout, + => stderr: the local socket's URI; "
@@ -475,6 +490,7 @@ static pmix_status_t pmix_ptl_close(void)
     const char *base;
     struct stat there;
     pmix_ptl_base_active_t *active;
+    pmix_pending_connection_t *pnd;
 
     if (!pmix_ptl_base.initialized) {
         return PMIX_SUCCESS;
@@ -507,6 +523,10 @@ static pmix_status_t pmix_ptl_close(void)
 
     /* ensure the listen thread has been shut down */
     pmix_ptl_base_stop_listening();
+    /* stop_listening released every connection still sending its
+     * connect-ack, and with it every payload buffer counted here */
+    pmix_ptl_base.pending_bytes = 0;
+    pmix_ptl_base.tool_queue_visits = 0;
 
     if (NULL != pmix_client_globals.myserver) {
         if (0 <= pmix_client_globals.myserver->sd) {
@@ -530,14 +550,22 @@ static pmix_status_t pmix_ptl_close(void)
      * that was still on it, and on the tool queue */
     PMIX_DESTRUCT(&pmix_ptl_base.pending_connections);
     PMIX_DESTRUCT(&pmix_ptl_base.tool_queue);
-    /* the tools the host is deciding on are the host's: it holds them */
-    while (NULL != pmix_list_remove_first(&pmix_ptl_base.tool_asking)) {
+    /* the tools the host is deciding on are the host's: it holds them.
+     * They are on no list now, and no longer counted for their uid, so
+     * releasing one later touches neither */
+    while (NULL != (pnd = (pmix_pending_connection_t *) pmix_list_remove_first(
+                        &pmix_ptl_base.tool_asking))) {
+        pnd->asking = false;
+        pnd->uid_counted = false;
     }
     PMIX_DESTRUCT(&pmix_ptl_base.tool_asking);
+    PMIX_DESTRUCT(&pmix_ptl_base.tool_uids);
     /* a tool still on this list is one the host has yet to answer for,
      * which the host holds, or one whose not-connected notice is still on
      * its way, which that notice holds: neither is ours to release */
-    while (NULL != pmix_list_remove_first(&pmix_ptl_base.tool_late)) {
+    while (NULL != (pnd = (pmix_pending_connection_t *) pmix_list_remove_first(
+                        &pmix_ptl_base.tool_late))) {
+        pnd->late_listed = false;
     }
     PMIX_DESTRUCT(&pmix_ptl_base.tool_late);
     /* a connect still under way will never finish now - the progress
@@ -671,6 +699,7 @@ static void open_cleanup(void)
     PMIX_DESTRUCT(&pmix_ptl_base.tool_queue);
     PMIX_DESTRUCT(&pmix_ptl_base.tool_asking);
     PMIX_DESTRUCT(&pmix_ptl_base.tool_late);
+    PMIX_DESTRUCT(&pmix_ptl_base.tool_uids);
     PMIX_DESTRUCT(&pmix_ptl_base.connecting);
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.tokens);
     pmix_ptl_base.initialized = false;
@@ -692,8 +721,13 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
     PMIX_CONSTRUCT(&pmix_ptl_base.tool_queue, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.tool_asking, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.tool_late, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_ptl_base.tool_uids, pmix_hash_table_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.connecting, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.tokens, pmix_list_t);
+    if (PMIX_SUCCESS != pmix_hash_table_init(&pmix_ptl_base.tool_uids, 16)) {
+        rc = PMIX_ERR_NOMEM;
+        goto error;
+    }
 
     /* check for environ-based directives on the tmpdirs to use. A server
      * or launcher has already resolved both in its init, and they can only
@@ -881,6 +915,7 @@ static void pccon(pmix_pending_connection_t *p)
     p->hdr_recvd = 0;
     p->msg = NULL;
     p->msg_recvd = 0;
+    p->msg_size = 0;
     p->status = PMIX_SUCCESS;
     p->flag = PMIX_SIMPLE_CLIENT;
     p->buffer_type = PMIX_BFROP_BUFFER_UNDEF;
@@ -925,6 +960,7 @@ static void pccon(pmix_pending_connection_t *p)
     p->abandoned = false;
     p->late_listed = false;
     p->asking = false;
+    p->uid_counted = false;
     p->token = NULL;
     pmix_ptl_base_monotime(&p->waiting);
     p->host_tmo = 0;
@@ -944,6 +980,7 @@ static void pcdes(pmix_pending_connection_t *p)
         pmix_list_remove_item(&pmix_ptl_base.tool_asking, &p->super);
         p->asking = false;
     }
+    pmix_ptl_base_uncount_tool(p);
     if (p->connecting && NULL != rinfo && 0 < rinfo->connecting) {
         --rinfo->connecting;
     }
@@ -972,6 +1009,7 @@ static void pcdes(pmix_pending_connection_t *p)
         /* as much of the connect-ack as arrived, token and all */
         pmix_ptl_base_wipe(p->msg, p->msg_recvd);
         free(p->msg);
+        pmix_ptl_base_uncount_payload(p);
     }
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);

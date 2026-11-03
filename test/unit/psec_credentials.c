@@ -71,6 +71,15 @@
  *    takes a peer on the identity it claims, as long as that matches the
  *    one recorded for it; one that does not, refuses it.
  *
+ * 7. The cache in pmix_psec_base_gid_held(). The test replaces the
+ *    lookups and the clock in pmix_psec_base_gid_ops with counting
+ *    versions over a made-up user and group, and checks that one
+ *    (uid, gid) pair is looked up once and then answered from the cache -
+ *    held or not - until its PMIX_PSEC_BASE_GID_CACHE_TTL seconds are up;
+ *    that a different pair is looked up; that with the cache full the
+ *    least recently used pair is the one dropped; and that closing the
+ *    framework empties it.
+ *
  * Like the pstat tests, this needs the MCA up but no server:
  * pmix_init_util() establishes the install dirs, the variable system and
  * the component repository, which is all that opening a framework
@@ -111,6 +120,7 @@
 #ifdef HAVE_GRP_H
 #    include <grp.h>
 #endif
+#include <pwd.h>
 
 static int npass = 0;
 static int nfail = 0;
@@ -1061,6 +1071,249 @@ static void available_modules(void)
            NULL != pmix_psec_base_assign_module(NULL));
 }
 
+/* ---------------------------------------------------------------- */
+
+#ifdef HAVE_GRP_H
+/* The made-up databases for the cache cases: user CACHE_UID, whose
+ * primary group is CACHE_PRIMARY, belongs to every even gid at or above
+ * CACHE_GID_BASE and to no odd one. CACHE_NOUSER has no passwd entry */
+#    define CACHE_UID      ((uid_t) 50000)
+#    define CACHE_NOUSER   ((uid_t) 50001)
+#    define CACHE_PRIMARY  ((gid_t) 40000)
+#    define CACHE_GID_BASE ((gid_t) 41000)
+
+static int npw = 0;
+static int ngr = 0;
+static time_t fake_time = 100000;
+static char cache_user[] = "pmixcacheuser";
+static char *cache_members[] = {cache_user, NULL};
+static char *no_members[] = {NULL};
+
+static int count_pwuid(uid_t uid, struct passwd *pwd, char *buf, size_t len,
+                       struct passwd **result)
+{
+    (void) buf;
+    (void) len;
+
+    ++npw;
+    *result = NULL;
+    if (CACHE_UID != uid) {
+        return 0;
+    }
+    memset(pwd, 0, sizeof(*pwd));
+    pwd->pw_name = cache_user;
+    pwd->pw_uid = uid;
+    pwd->pw_gid = CACHE_PRIMARY;
+    *result = pwd;
+    return 0;
+}
+
+static int count_grgid(gid_t gid, struct group *grp, char *buf, size_t len,
+                       struct group **result)
+{
+    (void) buf;
+    (void) len;
+
+    ++ngr;
+    memset(grp, 0, sizeof(*grp));
+    grp->gr_gid = gid;
+    if (CACHE_GID_BASE <= gid && 0 == (gid - CACHE_GID_BASE) % 2) {
+        grp->gr_mem = cache_members;
+    } else {
+        grp->gr_mem = no_members;
+    }
+    *result = grp;
+    return 0;
+}
+
+/* a database that fails to answer */
+static int fail_pwuid(uid_t uid, struct passwd *pwd, char *buf, size_t len,
+                      struct passwd **result)
+{
+    (void) uid;
+    (void) pwd;
+    (void) buf;
+    (void) len;
+
+    ++npw;
+    *result = NULL;
+    return EIO;
+}
+
+static int fail_grgid(gid_t gid, struct group *grp, char *buf, size_t len,
+                      struct group **result)
+{
+    (void) gid;
+    (void) grp;
+    (void) buf;
+    (void) len;
+
+    ++ngr;
+    *result = NULL;
+    return EIO;
+}
+
+static time_t fake_now(void)
+{
+    return fake_time;
+}
+
+/* Ask n times about (uid, gid); true if every answer was `expect` */
+static bool ask(uid_t uid, gid_t gid, int n, bool expect)
+{
+    bool ok = true;
+    int i;
+
+    for (i = 0; i < n; i++) {
+        if (expect != pmix_psec_base_gid_held(uid, gid)) {
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+static void gid_cache(void)
+{
+    pmix_psec_base_gid_ops_t saved = pmix_psec_base_gid_ops;
+    pmix_status_t rc;
+    bool ok;
+    gid_t g;
+
+    pmix_psec_base_gid_ops.pwuid = count_pwuid;
+    pmix_psec_base_gid_ops.grgid = count_grgid;
+    pmix_psec_base_gid_ops.now = fake_now;
+    pmix_psec_base_gid_cache_flush();
+
+    /* a group the user holds by membership: one lookup of each database,
+     * then the cache answers */
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_GID_BASE, 5, true);
+    report("gid cache: a held group is looked up once for repeated calls",
+           ok && 1 == npw && 1 == ngr);
+
+    /* a group the user does not hold is cached too */
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_GID_BASE + 1, 5, false);
+    report("gid cache: a group not held is looked up once for repeated calls",
+           ok && 1 == npw && 1 == ngr);
+
+    /* the primary group needs only the passwd entry, and is cached */
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_PRIMARY, 5, true);
+    report("gid cache: the primary group is looked up once for repeated calls",
+           ok && 1 == npw && 0 == ngr);
+
+    /* a uid with no passwd entry holds nothing, and that is cached */
+    npw = ngr = 0;
+    ok = ask(CACHE_NOUSER, CACHE_GID_BASE, 5, false);
+    report("gid cache: a uid with no passwd entry is looked up once for repeated calls",
+           ok && 1 == npw && 0 == ngr);
+
+    /* root holds every group without a lookup */
+    npw = ngr = 0;
+    ok = ask((uid_t) 0, CACHE_GID_BASE + 1, 3, true);
+    report("gid cache: root needs no lookup", ok && 0 == npw && 0 == ngr);
+
+    /* another pair - another gid for the same uid, or the same gid for
+     * another uid - is a lookup of its own */
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_GID_BASE + 2, 1, true);
+    report("gid cache: another gid for the same uid is looked up",
+           ok && 1 == npw && 1 == ngr);
+    npw = ngr = 0;
+    ok = ask(CACHE_NOUSER, CACHE_PRIMARY, 1, false);
+    report("gid cache: the same gid for another uid is looked up",
+           ok && 1 == npw && 0 == ngr);
+
+    /* an answer lasts PMIX_PSEC_BASE_GID_CACHE_TTL seconds from when it
+     * was looked up */
+    pmix_psec_base_gid_cache_flush();
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_GID_BASE, 1, true);
+    ok = ask(CACHE_UID, CACHE_GID_BASE + 1, 1, false) && ok;
+    fake_time += PMIX_PSEC_BASE_GID_CACHE_TTL - 1;
+    ok = ask(CACHE_UID, CACHE_GID_BASE, 3, true) && ok;
+    ok = ask(CACHE_UID, CACHE_GID_BASE + 1, 3, false) && ok;
+    report("gid cache: answers are kept until the TTL is up",
+           ok && 2 == npw && 2 == ngr);
+    fake_time += 1;
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_GID_BASE, 3, true);
+    ok = ask(CACHE_UID, CACHE_GID_BASE + 1, 3, false) && ok;
+    report("gid cache: held and not-held answers are looked up again once the TTL is up",
+           ok && 2 == npw && 2 == ngr);
+
+    /* fill the cache, use the first pair again, and add one more: the
+     * least recently used pair - the second - is the one dropped */
+    pmix_psec_base_gid_cache_flush();
+    npw = ngr = 0;
+    ok = true;
+    for (g = 0; g < PMIX_PSEC_BASE_GID_CACHE_SIZE; g++) {
+        ok = ask(CACHE_UID, CACHE_GID_BASE + g, 1, 0 == g % 2) && ok;
+    }
+    report("gid cache: filling it looks up every pair once",
+           ok && PMIX_PSEC_BASE_GID_CACHE_SIZE == npw && PMIX_PSEC_BASE_GID_CACHE_SIZE == ngr);
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_GID_BASE, 1, true);
+    report("gid cache: a pair in the full cache is answered without a lookup",
+           ok && 0 == npw && 0 == ngr);
+    ok = ask(CACHE_UID, CACHE_GID_BASE + PMIX_PSEC_BASE_GID_CACHE_SIZE, 1, true);
+    report("gid cache: a pair beyond a full cache is looked up",
+           ok && 1 == npw && 1 == ngr);
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_GID_BASE, 1, true);
+    for (g = 2; g <= PMIX_PSEC_BASE_GID_CACHE_SIZE; g++) {
+        ok = ask(CACHE_UID, CACHE_GID_BASE + g, 1, 0 == g % 2) && ok;
+    }
+    report("gid cache: every pair but the least recently used is still cached",
+           ok && 0 == npw && 0 == ngr);
+    ok = ask(CACHE_UID, CACHE_GID_BASE + 1, 1, false);
+    report("gid cache: the least recently used pair was dropped",
+           ok && 1 == npw && 1 == ngr);
+
+    /* a lookup that fails is answered "not held" and not kept: the next
+     * call looks up again */
+    pmix_psec_base_gid_cache_flush();
+    pmix_psec_base_gid_ops.pwuid = fail_pwuid;
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_GID_BASE, 3, false);
+    report("gid cache: a passwd lookup that fails is not kept", ok && 3 == npw && 0 == ngr);
+    pmix_psec_base_gid_ops.pwuid = count_pwuid;
+    pmix_psec_base_gid_ops.grgid = fail_grgid;
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_GID_BASE, 3, false);
+    report("gid cache: a group lookup that fails is not kept", ok && 3 == npw && 3 == ngr);
+    pmix_psec_base_gid_ops.grgid = count_grgid;
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_GID_BASE, 2, true);
+    report("gid cache: ...and the pair is answered once the database does",
+           ok && 1 == npw && 1 == ngr);
+
+    /* closing the framework empties the cache */
+    pmix_psec_base_gid_cache_flush();
+    (void) ask(CACHE_UID, CACHE_GID_BASE, 1, true);
+    (void) pmix_mca_base_framework_close(&pmix_psec_base_framework);
+    npw = ngr = 0;
+    ok = ask(CACHE_UID, CACHE_GID_BASE, 1, true);
+    report("gid cache: closing the framework empties it", ok && 1 == npw && 1 == ngr);
+    rc = pmix_mca_base_framework_open(&pmix_psec_base_framework, 0);
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_psec_base_select();
+    }
+    report("gid cache: the framework opens again", PMIX_SUCCESS == rc);
+
+    /* the rest of the run uses the system's databases and clock, with
+     * none of the made-up answers left behind */
+    pmix_psec_base_gid_ops = saved;
+    pmix_psec_base_gid_cache_flush();
+}
+#else
+static void gid_cache(void)
+{
+    fprintf(stdout, "  SKIP: gid cache - no group database\n");
+}
+#endif
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -1098,6 +1351,7 @@ int main(int argc, char **argv)
     native_no_table();
     native_unverified();
     no_credential_module();
+    gid_cache();
 
     (void) pmix_mca_base_framework_close(&pmix_psec_base_framework);
 

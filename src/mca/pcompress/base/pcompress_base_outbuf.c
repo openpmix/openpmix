@@ -40,6 +40,16 @@ bool pmix_compress_base_outbuf_start(pmix_compress_base_outbuf_t *buf, size_t in
         return false;
     }
 
+    /* A claim larger than pcompress_base_max_size is refused here, before
+     * anything is allocated. */
+    if ((size_t) claim > pmix_compress_base.max_size) {
+        pmix_output_verbose(2, pmix_pcompress_base_framework.framework_output,
+                            "DECOMPRESS: length prefix claims %u bytes, more than the %" PRIsize_t
+                            " bytes pcompress_base_max_size accepts",
+                            claim, pmix_compress_base.max_size);
+        return false;
+    }
+
     /* One byte beyond the claim. A decoder that fills it has produced more
      * than the blob promised, which is how an overrun is caught without
      * asking the decoder to run past the end of its buffer. The string path

@@ -1139,6 +1139,70 @@ size_t pmix_ptl_base_waiting_tools(void)
            pmix_list_get_size(&pmix_ptl_base.tool_asking);
 }
 
+size_t pmix_ptl_base_waiting_tools_of(uid_t uid)
+{
+    void *value;
+
+    if (PMIX_SUCCESS != pmix_hash_table_get_value_uint32(&pmix_ptl_base.tool_uids,
+                                                         (uint32_t) uid, &value)) {
+        return 0;
+    }
+    return (size_t) (uintptr_t) value;
+}
+
+/* Count a tool joining the tools waiting on the host among its uid's.
+ * Only a uid other than the server's and root's is counted: those two are
+ * bounded by the cap on all waiting tools alone */
+void pmix_ptl_base_count_tool(pmix_pending_connection_t *pnd)
+{
+    size_t n;
+
+    if (pnd->uid_counted || 0 == pnd->uid || pmix_globals.uid == pnd->uid) {
+        return;
+    }
+    n = pmix_ptl_base_waiting_tools_of(pnd->uid) + 1;
+    if (PMIX_SUCCESS != pmix_hash_table_set_value_uint32(&pmix_ptl_base.tool_uids,
+                                                         (uint32_t) pnd->uid,
+                                                         (void *) (uintptr_t) n)) {
+        /* not counted, so never uncounted */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return;
+    }
+    pnd->uid_counted = true;
+}
+
+/* The tool is no longer waiting on the host - on neither tool_queue nor
+ * tool_asking - or is being released */
+void pmix_ptl_base_uncount_tool(pmix_pending_connection_t *pnd)
+{
+    size_t n;
+
+    if (!pnd->uid_counted) {
+        return;
+    }
+    pnd->uid_counted = false;
+    n = pmix_ptl_base_waiting_tools_of(pnd->uid);
+    if (1 < n) {
+        (void) pmix_hash_table_set_value_uint32(&pmix_ptl_base.tool_uids, (uint32_t) pnd->uid,
+                                                (void *) (uintptr_t) (n - 1));
+    } else {
+        (void) pmix_hash_table_remove_value_uint32(&pmix_ptl_base.tool_uids,
+                                                   (uint32_t) pnd->uid);
+    }
+}
+
+void pmix_ptl_base_uncount_payload(pmix_pending_connection_t *pnd)
+{
+    if (pnd->msg_size <= pmix_ptl_base.pending_bytes) {
+        pmix_ptl_base.pending_bytes -= pnd->msg_size;
+    } else {
+        /* every buffer is counted as it grows, so this cannot happen */
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        pmix_ptl_base.pending_bytes = 0;
+    }
+    pnd->msg_size = 0;
+}
+
 pmix_status_t pmix_ptl_base_listen(pmix_info_t info[], size_t ninfo, pmix_listener_t *lt)
 {
     pmix_ptl_base_active_t *active;

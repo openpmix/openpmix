@@ -209,8 +209,9 @@ what it is given. Everything past the parse waits for validation,
 including the info blob (see "Validate first" in
 [`../AGENTS.md`](../AGENTS.md)). It checks:
 
-- The message size is bounded by `PMIX_MAX_CRED_SIZE` before it is
-  allocated.
+- The message size is bounded by `PMIX_MAX_CRED_SIZE` before anything
+  is allocated for it, and the payload buffer is then grown only as its
+  bytes arrive (`grow_payload`, below).
 - Every `GET_*` macro bounds itself against `cnt`, the bytes remaining.
   `GET_BLOB` in particular must check the caller's length against `cnt`:
   the credential length is a `uint32_t` off the wire, and a length
@@ -287,7 +288,12 @@ Four functions, in this order, all on the progress thread:
    its name on `pmix_ptl_base.tool_asking` (the tools the host is
    deciding on) or on `tool_late`; a tool that needs an identity is
    never busy - dropping one whose socket has closed
-   (`pmix_ptl_base_sd_closed`), and `ask_about_tool` runs the rest:
+   (`pmix_ptl_base_sd_closed`). It passes over the queue once, going on
+   from the tool after each one it asks about, and starts again from the
+   head only if asking took another tool off the queue: every removal
+   goes through `dequeue_tool`, which counts it
+   (`pmix_ptl_base.tool_queue_visits` counts the entries looked at, for
+   `test/unit/ptl_accept.c`). `ask_about_tool` runs the rest:
    `place_tool`, the remaining-wait check, the rank check, wire format,
    gds, the info list, the up-call. The connection joins `tool_asking`
    (`pnd->asking`) just before the up-call (or the no-host path) and
@@ -423,6 +429,23 @@ the connect-ack is never waited for:
   pass over a complete header - before any payload is allocated from the
   length it names, and again before each resumed read runs to it. Only once the whole connect-ack is in does the handler take the
   payload, put the socket into blocking mode and parse.
+- **The payload buffer grows as the payload arrives.** `grow_payload`
+  first allocates `PMIX_PTL_ACK_FIRST_ALLOC` (4 KB) - or the header's
+  length if that is smaller - and doubles the buffer each time it fills,
+  up to the header's length, so a pending connection holds about what it
+  has sent. The buffer is one byte longer than `pnd->msg_size` and zeroed,
+  so the strings parsed from it are terminated; the old buffer is wiped
+  before it is freed. Every buffer a pending connection holds is counted
+  in `pmix_ptl_base.pending_bytes`, bounded by `ptl_base_max_pending_bytes`
+  (`max_pending_bytes`, `size_t`, default 16 MiB, 0 for no limit): a
+  connection whose next step would take the total past it is dropped
+  with `PMIX_ERR_OUT_OF_RESOURCE` through
+  `pmix_ptl_base_drop_pending_connection`, as one beyond the
+  pending-connection cap is. The count is taken back by
+  `pmix_ptl_base_uncount_payload` when the handler takes the complete
+  payload to parse it, and by `pnd`'s destructor for a buffer still held -
+  which covers a refusal, a peer that closed, the timeout, the cap, the
+  byte limit and finalize alike. Do not free `pnd->msg` anywhere else.
 
 A blocking read bounded by a receive timeout is **not** a substitute:
 that was the intermediate version, and it still held the progress thread
@@ -461,6 +484,20 @@ things take it off:
    no per-source cap: the listener is loopback by default, so every local
    peer has the same address, and the uid is not known until the
    credential has been read.
+
+   A waiting tool's uid is known, and the waiting tools are counted per
+   uid: a uid other than the server's (`pmix_globals.uid`) and root's may
+   have at most a quarter of `pending_cap` waiting (`tool_share()`,
+   rounded down, at least 1), and a tool of a uid at its share is refused
+   with `PMIX_ERR_OUT_OF_RESOURCE` as it is queued, as one beyond the cap
+   is. The server's uid and root are held to the cap alone. The count is
+   `pmix_ptl_base.tool_uids` (`pmix_ptl_base_waiting_tools_of()`):
+   `pmix_ptl_base_count_tool` sets `pnd->uid_counted` as the tool joins
+   `tool_queue`, and `pmix_ptl_base_uncount_tool` takes it back, once -
+   in `tool_decided` (answered, a synchronous up-call failure,
+   `host_expired`) and in `pnd`'s destructor (any refusal, a tool dropped
+   from the queue, finalize). `pmix_ptl_close` clears the flag on the
+   tools the host still holds before it destructs the table.
 
 Every drop sends the peer a status first - `PMIX_ERR_TIMEOUT`,
 `PMIX_ERR_OUT_OF_RESOURCE`, `PMIX_ERR_UNREACH` at finalize - as every
@@ -1399,6 +1436,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_listener.c` | accept out of descriptors pauses the listener and it accepts again; finalize while paused; the retry policy for each kind of accept error; mistyped, out-of-range and empty directives; a directive-named report file is removed; the report file has no group or other write bit |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
 | `test/unit/ptl_search.c` | both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one; `test_vouched`: a named file vouches for its server whatever release it names and whether or not its lock is held; not group-writable, nor at a fixed name nobody named; as root, not another known user's, and yes for an owner from outside the user namespace (a fake map) |
+| `test/unit/ptl_accept.c` | (among its cases) connections still sending their connect-ack hold no more than `ptl_base_max_pending_bytes` between them, the ones beyond it are dropped with `PMIX_ERR_OUT_OF_RESOURCE`, the total returns to zero, and a client still connects; a uid other than the server's and root's has a quarter of the waiting-tool cap, root and the server's uid fill it; `next_tool` passes over a queue of tools of one name once per run |
 | `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them; at the pending-connection cap the oldest is dropped, and the default cap follows the descriptor limit |
 | `test/unit/ptl_nosigpipe.c` | a blocking send and a vector write to a peer that has reset return an error, with `SIGPIPE` at its default action |
 | `test/unit/ptl_recv_timeout.c` | `pmix_ptl_base_recv_blocking` ends a blocking socket's receive at its timeout, and still waits out `EAGAIN` on a non-blocking one |
