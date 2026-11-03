@@ -90,6 +90,8 @@ static void tcon(pmix_server_trkr_t *t)
     t->def_complete = false;
     PMIX_CONSTRUCT(&t->local_cbs, pmix_list_t);
     PMIX_CONSTRUCT(&t->departed, pmix_list_t);
+    PMIX_CONSTRUCT(&t->excluded, pmix_list_t);
+    t->nduplicate = 0;
     t->nlocal = 0;
     t->info = NULL;
     t->ninfo = 0;
@@ -129,6 +131,7 @@ static void tdes(pmix_server_trkr_t *t)
     }
     PMIX_LIST_DESTRUCT(&t->local_cbs);
     PMIX_LIST_DESTRUCT(&t->departed);
+    PMIX_LIST_DESTRUCT(&t->excluded);
     if (NULL != t->info) {
         PMIX_INFO_FREE(t->info, t->ninfo);
     }

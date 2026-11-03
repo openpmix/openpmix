@@ -536,6 +536,10 @@ typedef struct pmix_rank_info_t {
     int proc_cnt;        // live connections for this rank - one at most
     int connecting;      // connections for this rank waiting on the host's
                          // answer - while one waits, another is refused
+    bool returned;       // the rank was lost and has come back - reconnected, or
+                         // registered again by the host - so a collective may
+                         // hold a contribution from its old connection as well
+                         // as one from its new; see pmix_server_trk_join
     bool lost;           // the rank will never contribute again - it died, or
                          // the host deregistered it - and that has been
                          // accounted for: its namespace's nlocalprocs no
@@ -829,6 +833,12 @@ typedef struct {
                             //    contributed (appears on local_cbs) is never moved here, so its
                             //    loss cannot complete the collective early nor discard its data.
                             //    See docs/how-things-work/collectives for the specification.
+    pmix_list_t excluded;   // local participants left out of nlocal because they were lost
+                            //    when the tracker was counted. One that comes back and
+                            //    contributes is counted in then - see pmix_server_trk_join
+    uint32_t nduplicate;    // contributions on local_cbs from a rank that had already
+                            //    contributed through a connection it has since lost - one
+                            //    process, counted once
     uint32_t nlocal;        // number of local participants
     pmix_info_t *info;      // array of info structs
     size_t ninfo;           // number of info structs in array

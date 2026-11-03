@@ -919,8 +919,19 @@ PMIX_EXPORT bool pmix_server_trk_count_nspace(pmix_server_trkr_t *trk,
  * counted once however often it is named. Returns false when that
  * cannot be settled yet. Shared by the fence family and groups. */
 PMIX_EXPORT bool pmix_server_count_local_participants(const pmix_proc_t *pcs, size_t npcs,
-                                                      pmix_namespace_t *nptr,
-                                                      size_t *count);
+                                                      pmix_namespace_t *nptr, size_t *count,
+                                                      pmix_list_t *excluded);
+
+/* add a rank to, or take it off, a list of pmix_proclist_t - compared
+ * exactly, and added once. Remove reports whether it was there. */
+PMIX_EXPORT bool pmix_server_proclist_add(pmix_list_t *list, const char *nspace,
+                                          pmix_rank_t rank);
+PMIX_EXPORT bool pmix_server_proclist_remove(pmix_list_t *list, const char *nspace,
+                                             pmix_rank_t rank);
+
+/* the local participants a collective has accounted for - see
+ * pmix_server_trk_complete */
+PMIX_EXPORT size_t pmix_server_trk_accounted(pmix_server_trkr_t *trk);
 PMIX_EXPORT pmix_status_t pmix_server_build_proc_info(pmix_rank_info_t *info,
                                                       bool include_scope,
                                                       pmix_info_t *xfer,
@@ -971,6 +982,10 @@ PMIX_EXPORT void pmix_server_grp_proc_lost(const pmix_proc_t *proc);
  * count of local procs and out of every collective in flight, once, however
  * many of those we learn of. Callers decide; this does the accounting. */
 PMIX_EXPORT void pmix_server_rank_lost(pmix_namespace_t *nptr, pmix_rank_info_t *info);
+
+/* A rank counted out by pmix_server_rank_lost is back - it connected
+ * again, or the host registered it again: count it in again. */
+PMIX_EXPORT void pmix_server_rank_returned(pmix_namespace_t *nptr, pmix_rank_info_t *info);
 
 PMIX_EXPORT void pmix_server_grp_member_left(const char *grpid, const pmix_proc_t *proc);
 

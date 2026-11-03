@@ -1039,6 +1039,26 @@ has finalized". When `lost_connection` decremented `nlocalprocs` and the
 deregistration that followed counted the same rank finalized, that
 equality was reached a finalize early, or never.
 
+**A departed rank can come back, and must be counted back in.** A host
+restarts a process under its old rank - registering it again, after a
+deregistration or not, or just handing it the rank through
+`PMIx_server_setup_fork` and letting it connect on the old entry.
+`pmix_server_rank_returned()` puts it back into `nlocalprocs`, from
+`_register_client` and from both accept paths in
+`ptl_base_connection_hdlr.c`; a rank re-registered after a deregistration is
+recognized by the namespace's `departed` list, which it also leaves, so a
+request for its data stops being answered "not found". Collectives in
+flight are not changed, since the new process may never join them; if it
+does, `pmix_server_trk_join` (and `grp_member_joined`) count its
+contribution exactly once - off `departed`, in from the tracker's
+`excluded` list (ranks a count left out because they were lost), or as a
+duplicate (`nduplicate`) of a contribution its lost connection already
+made. A count leaves a lost rank out however the collective names it:
+`pmix_server_count_local_participants` used to count a lost, not yet
+deregistered rank that a collective named individually. A process that
+execs does not come back - the program it becomes finds no identity and is
+a singleton.
+
 **A finalize is not a departure.** The peer-keyed entry points,
 `pmix_server_trk_peer_lost` and `pmix_server_grp_peer_lost`, return
 immediately for a peer with `finalized` set, and `lost_connection` does
