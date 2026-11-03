@@ -55,24 +55,21 @@ system from within the directory at the top of the tree:
 .. note:: This version of PMIx requires the following 3rd-party
           packages to build and operate:
 
-          * either the `Libevent package
+          * the `Libevent package
             <https://libevent.org/>`_ (any version
-            of Libevent greater than or equal to 2.0.21 is acceptable) or
-            the `libev package <https://metacpan.org/dist/EV/view/libev/ev.pod>`_
-            (no minimum version has been identified).
+            of Libevent greater than or equal to |event_min_version|
+            is acceptable).
 
           * the `HWLOC package
             <https://www.open-mpi.org/projects/hwloc/>`_ for providing
             topology information to both the host environment (by
             collecting local inventory for rollup) and local client
-            processes. Any version of HWLOC greater than 1.10 is
-            supported, although versions in the 2.x series are
-            recommended.
+            processes. Any version of HWLOC greater than or equal to
+            |hwloc_min_version| is acceptable.
 
 Note that you must point ``configure`` at these packages if they are
 in a non-standard location - libevent using the ``--with-libevent=<dir>``
-option; libev using the ``-with-libev=<dir>`` option, and HWLOC package
-using the ``--with-hwloc=<dir>`` option. In all cases,
+option, and HWLOC using the ``--with-hwloc=<dir>`` option. In all cases,
 PMIx will automatically detect these packages in standard locations
 and use them unless otherwise specified using the
 respective configure option.

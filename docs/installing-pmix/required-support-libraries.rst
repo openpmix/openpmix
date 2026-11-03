@@ -17,10 +17,7 @@ PMIx requires the following support libraries with the minimum listed versions:
      - This library is required; PMIx will not build without it.
    * - `Libevent <https://libevent.org/>`_
      - |event_min_version|
-     - Either libevent or libev must be provided
-   * - `libev <https://metacpan.org/dist/EV/view/libev/ev.pod>`_
-     - no specified minimum
-     - Either libevent or libev must be provided
+     - This library is required; PMIx will not build without it.
 
 These support libraries are fundamental to PMIx's operation
 and pretty universally available in all environments. Worst case,
@@ -83,9 +80,7 @@ Overriding ``configure`` behavior
 ---------------------------------
 
 PMIx's ``configure`` will (minus any configure flags) attempt to
-find the HWLOC and libevent packages in standard locations. Note
-that PMIx by default will look for libevent (and not libev), though
-either can be used. If a required package is not found and no flags
+find the HWLOC and libevent packages in standard locations. If a required package is not found and no flags
 were given, the ``configure`` operation will exit with a suitable
 error message.
 

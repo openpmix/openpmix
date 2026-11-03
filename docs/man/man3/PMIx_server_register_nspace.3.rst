@@ -164,7 +164,10 @@ libraries for use with this API:
   only; do not copy any job data. Used to pre-register a namespace whose data
   will follow later.
 * ``PMIX_SESSION_INFO_ARRAY`` (pmix_data_array_t\*) |mdash| an array of
-  session-realm information for the session containing this job.
+  session-realm information for the session containing this job. A
+  session can also be registered on its own, before its first job and
+  beyond its last: see
+  :ref:`PMIx_server_register_session(3) <man3-PMIx_server_register_session>`.
 * ``PMIX_JOB_INFO_ARRAY`` (pmix_data_array_t\*) |mdash| an array of job-realm
   information for this namespace.
 * ``PMIX_APP_INFO_ARRAY`` (pmix_data_array_t\*) |mdash| an array of
@@ -322,6 +325,7 @@ See :doc:`/hosts/access-control` for how the library uses them.
    :ref:`PMIx_server_deregister_nspace(3) <man3-PMIx_server_deregister_nspace>`,
    :ref:`PMIx_server_register_client(3) <man3-PMIx_server_register_client>`,
    :ref:`PMIx_server_register_resources(3) <man3-PMIx_server_register_resources>`,
+   :ref:`PMIx_server_register_session(3) <man3-PMIx_server_register_session>`,
    :ref:`PMIx_generate_regex2(3) <man3-PMIx_generate_regex2>`,
    :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`,
    :ref:`pmix_info_t(5) <man5-pmix_info_t>`,

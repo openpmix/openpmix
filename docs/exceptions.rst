@@ -798,90 +798,6 @@ Proc Info Functions
 
      void PMIx_Proc_info_free(pmix_proc_info_t *p, size_t n);
 
-Proc Stats Functions
---------------------
-* Initialize a proc stats struct. Memory for the provided
-  object must have previously been allocated or statically declared:
-
-  .. code-block:: c
-
-     void PMIx_Proc_stats_construct(pmix_proc_stats_t *p);
-
-* Clear memory inside a proc stats struct:
-
-  .. code-block:: c
-
-     void PMIx_Proc_stats_destruct(pmix_proc_stats_t *p);
-
-* Create and initialize an array of proc stats structs:
-
-  .. code-block:: c
-
-     pmix_proc_stats_t* PMIx_Proc_stats_create(size_t n);
-
-* Free memory stored inside an array of proc stats structs (does
-  not free the struct memory itself):
-
-  .. code-block:: c
-
-     void PMIx_Proc_stats_free(pmix_proc_stats_t *p, size_t n);
-
-Disk Stats Functions
---------------------
-* Initialize a disk stats struct. Memory for the provided
-  object must have previously been allocated or statically declared:
-
-  .. code-block:: c
-
-     void PMIx_Disk_stats_construct(pmix_disk_stats_t *p);
-
-* Clear memory inside a disk stats struct:
-
-  .. code-block:: c
-
-     void PMIx_Disk_stats_destruct(pmix_disk_stats_t *p);
-
-* Create and initialize an array of disk stats structs:
-
-  .. code-block:: c
-
-     pmix_disk_stats_t* PMIx_Disk_stats_create(size_t n);
-
-* Free memory stored inside an array of disk stats structs (does
-  not free the struct memory itself):
-
-  .. code-block:: c
-
-     void PMIx_Disk_stats_free(pmix_disk_stats_t *p, size_t n);
-
-Net Stats Functions
--------------------
-* Initialize a net stats struct. Memory for the provided
-  object must have previously been allocated or statically declared:
-
-  .. code-block:: c
-
-     void PMIx_Net_stats_construct(pmix_net_stats_t *p);
-
-* Clear memory inside a net stats struct:
-
-  .. code-block:: c
-
-     void PMIx_Net_stats_destruct(pmix_net_stats_t *p);
-
-* Create and initialize an array of net stats structs:
-
-  .. code-block:: c
-
-     pmix_net_stats_t* PMIx_Net_stats_create(size_t n);
-
-* Free memory stored inside an array of net stats structs (does
-  not free the struct memory itself):
-
-  .. code-block:: c
-
-     void PMIx_Net_stats_free(pmix_net_stats_t *p, size_t n);
-
 Process Data Functions
 ----------------------
 * Initialize a pdata struct. Memory for the provided
@@ -1032,14 +948,6 @@ Constants
 
 * ``PMIX_DATA_BUFFER``: data type for packing/unpacking of
   ``pmix_data_buffer_t`` objects
-* ``PMIX_DISK_STATS``: data type for packing/unpacking of
-  ``pmix_disk_stats_t`` objects
-* ``PMIX_NET_STATS``: data type for packing/unpacking of
-  ``pmix_net_stats_t`` objects
-* ``PMIX_NODE_STATS``: data type for packing/unpacking of
-  ``pmix_node_stats_t`` objects
-* ``PMIX_PROC_STATS``: data type for packing/unpacking of
-  ``pmix_proc_stats_t`` objects
 * ``PMIX_ERR_JOB_EXE_NOT_FOUND``: specified executable not found
 * ``PMIX_ERR_JOB_INSUFFICIENT_RESOURCES``: insufficient resources to
   spawn job
@@ -1401,24 +1309,6 @@ Datatypes
   * ``PMIX_BOOL_FALSE``
   * ``PMIX_NON_BOOL``
 
-* ``pmix_disk_stats_t``: contains statistics on disk read/write operations
-* ``pmix_net_stats_t``: contains statistics on network activity
-* ``pmix_node_stats_t``: contains statistics on node resource usage
-* ``pmix_proc_stats_t``: contains statistics on process resource usage
-
-
-Datatype static initializers
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Static initializers were added for each complex data type (i.e., a data type
-defined as a struct). Most are contained in the Standard, but the following
-extensions have been provided:
-
-* ``PMIX_PROC_STATS_STATIC_INIT``
-* ``PMIX_DISK_STATS_STATIC_INIT``
-* ``PMIX_NET_STATS_STATIC_INIT``
-* ``PMIX_NODE_STATS_STATIC_INIT``
-
 
 Macros
 ------
@@ -1444,37 +1334,6 @@ the macros, and include:
 * ``PMIX_CHECK_BOOL``: check if a ``pmix_value_t`` is a boolean value (supports
   string as well as traditional boolean values)
 
-
-Macros supporting ``pmix_disk_stats_t`` objects:
-
-* ``PMIX_DISK_STATS_CONSTRUCT``
-* ``PMIX_DISK_STATS_CREATE``
-* ``PMIX_DISK_STATS_DESTRUCT``
-* ``PMIX_DISK_STATS_FREE``
-* ``PMIX_DISK_STATS_RELEASE``
-
-Macros supporting ``pmix_net_stats_t`` objects:
-
-* ``PMIX_NET_STATS_CONSTRUCT``
-* ``PMIX_NET_STATS_CREATE``
-* ``PMIX_NET_STATS_DESTRUCT``
-* ``PMIX_NET_STATS_FREE``
-* ``PMIX_NET_STATS_RELEASE``
-
-Macros supporting ``pmix_node_stats_t`` objects:
-
-* ``PMIX_NODE_STATS_CONSTRUCT``
-* ``PMIX_NODE_STATS_CREATE``
-* ``PMIX_NODE_STATS_DESTRUCT``
-* ``PMIX_NODE_STATS_RELEASE``
-
-Macros supporting ``pmix_proc_stats_t`` objects:
-
-* ``PMIX_PROC_STATS_CONSTRUCT``
-* ``PMIX_PROC_STATS_CREATE``
-* ``PMIX_PROC_STATS_DESTRUCT``
-* ``PMIX_PROC_STATS_FREE``
-* ``PMIX_PROC_STATS_RELEASE``
 
 
 Scheduler Integration

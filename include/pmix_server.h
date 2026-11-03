@@ -725,9 +725,10 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace,
  * so directly, and is required if the session is to outlive the jobs
  * in it.
  *
- * Registering a session that is already known updates nothing and
- * returns success - a session's description belongs to the session,
- * and the library has already given it to every client that asked.
+ * Registering a session that is already known updates it: the keys
+ * given replace the ones held, and clients already running are told of
+ * the change. A session's resources change while it runs, and this is
+ * how the host says so.
  *
  * Passing NULL as the cbfunc to this call indicates that it shall be
  * treated as a blocking operation, with the return status indicative
