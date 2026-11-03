@@ -92,6 +92,11 @@ PMIX_EXPORT pmix_status_t pmix_util_getid_tcp(int sd, uid_t *uid);
  * connections */
 PMIX_EXPORT extern bool pmix_util_getid_test_no_tcp_table;
 
+/* For the unit tests alone, as above: while this is above zero,
+ * pmix_util_getid_tcp() takes one from it and answers PMIX_ERR_NOT_FOUND,
+ * as for a connection the table does not list yet */
+PMIX_EXPORT extern int pmix_util_getid_test_unlisted;
+
 /* An id the kernel reported, in this process's user namespace, as the
  * parent of that namespace numbers it - where a server outside it runs.
  * The kernel reports a peer's ids translated into the reader's namespace,

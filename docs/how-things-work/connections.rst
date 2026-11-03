@@ -282,9 +282,9 @@ connection arrives:
    not pending connections and are never the ones closed. They have a
    limit of their own, the same number: once that many tools are
    waiting, a further tool is refused with ``PMIX_ERR_OUT_OF_RESOURCE``.
-   A user other than the server's and root may have at most a quarter
-   of that number waiting (at least one); a further tool of that user is
-   refused the same way.
+   A user other than the server's, root and the host's ``PMIX_USERID``
+   may have at most a quarter of that number waiting (at least one); a
+   further tool of that user is refused the same way.
 #. Allocate a connection's request buffer as its bytes arrive: 4 KB at
    first, doubling up to the length the request names. If the buffers of
    all pending connections would then pass ``ptl_base_max_pending_bytes``
@@ -761,7 +761,9 @@ Checks for a tool
    `Settling the identity`_). The settled uid and gid replace whatever
    the tool claimed.
 #. **A tool of another user is refused** unless the host started the
-   server with ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``.
+   server with ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``. A tool of the
+   server's own uid, of root's, or of the uid the host named to
+   ``PMIx_server_init`` as ``PMIX_USERID`` is not another user's.
 #. **A tool that names an identity must be entitled to it:**
 
    - a tool started by a server (kind 5 or 8) whose rank is already

@@ -39,6 +39,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_argv.h"
+#include "src/util/pmix_getid.h"
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
@@ -269,4 +270,23 @@ bool pmix_ptl_base_system_owner_ok(const pmix_connection_t *cn)
         }
     }
     return false;
+}
+
+bool pmix_ptl_base_search_owner_ok(const pmix_connection_t *cn)
+{
+    uint32_t parent;
+
+    if (!cn->owner_known) {
+        return true;
+    }
+    if (pmix_ptl_base.server_expect_given) {
+        return cn->owner == pmix_ptl_base.server_expect_uid ||
+               (PMIX_SUCCESS == pmix_util_id_to_parent("/proc/self/uid_map", (uint32_t) cn->owner,
+                                                       &parent) &&
+                parent == (uint32_t) pmix_ptl_base.server_expect_uid);
+    }
+    if (pmix_ptl_base_system_owner_ok(cn)) {
+        return true;
+    }
+    return NULL != cn->local_uri && 0 < pmix_ptl_base.naccess_gids;
 }

@@ -87,6 +87,16 @@
  *   one custom range per event
  *      An event naming more than one PMIX_EVENT_CUSTOM_RANGE is refused;
  *      one naming a single range is taken as before.
+ *
+ *   a registration the host refuses leaves the store as it was
+ *      The request names a code the peer already holds entries for and a
+ *      system code new to the store, and the host refuses it - once by
+ *      returning an error from register_events, once in the callback it
+ *      was handed. Either way the server must remove the entries the
+ *      request added under both codes, and the new code's record, while
+ *      the peer's earlier entries for the first code stay. A later
+ *      registration for the new code must still go to the host and be
+ *      recorded once.
  */
 
 #include "src/include/pmix_config.h"
@@ -161,6 +171,10 @@ static void *host_regcbdata = NULL;
  * sends as the server's own identity */
 static size_t host_nrequestor = 0;
 static bool host_requestor_ok = false;
+/* when set, the host returns an error from register_events instead of
+ * taking the request, and counts the requests it returned one for */
+static bool host_refuse = false;
+static size_t host_nrefused = 0;
 
 static pmix_status_t stub_register_events(pmix_status_t *codes, size_t ncodes,
                                           const pmix_info_t info[], size_t ninfo,
@@ -171,6 +185,10 @@ static pmix_status_t stub_register_events(pmix_status_t *codes, size_t ncodes,
     (void) codes;
     (void) ncodes;
 
+    if (host_refuse) {
+        ++host_nrefused;
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
     host_nrequestor = 0;
     host_requestor_ok = false;
     for (n = 0; n < ninfo; n++) {
@@ -907,6 +925,157 @@ static void test_custom_range_count(void)
     PMIX_RELEASE(raiser);
 }
 
+/* ------------------------------------------------------------------ */
+/* a registration the host refuses                                      */
+/* ------------------------------------------------------------------ */
+
+/* system codes no other case registers, so the store holds nothing for
+ * either of them until this case does */
+#define SEUT_REFCODE_SYNC  (PMIX_EVENT_SYS_BASE - 61)
+#define SEUT_REFCODE_ASYNC (PMIX_EVENT_SYS_BASE - 62)
+
+/* what the registration store holds, read on the progress thread */
+typedef struct {
+    pmix_lock_t lock;
+    pmix_status_t code;
+    pmix_peer_t *peer;
+    size_t ncodes;      // records in the store, one per code
+    size_t nentries;    // peer entries under all of them
+    bool have_code;     // the store has a record for "code"
+    bool active;        // and the host is forwarding it
+    size_t npeer;       // entries "peer" holds under "code"
+} store_view_t;
+
+static void read_store(int sd, short args, void *cbdata)
+{
+    store_view_t *v = (store_view_t *) cbdata;
+    pmix_regevents_info_t *reginfo;
+    pmix_peer_events_info_t *prev;
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_LIST_FOREACH (reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
+        ++v->ncodes;
+        v->nentries += pmix_list_get_size(&reginfo->peers);
+        if (v->code != reginfo->code) {
+            continue;
+        }
+        v->have_code = true;
+        v->active = reginfo->active;
+        PMIX_LIST_FOREACH (prev, &reginfo->peers, pmix_peer_events_info_t) {
+            if (v->peer == prev->peer) {
+                ++v->npeer;
+            }
+        }
+    }
+    PMIX_WAKEUP_THREAD(&v->lock);
+}
+
+static void view_store(pmix_status_t code, pmix_peer_t *peer, store_view_t *v)
+{
+    pmix_event_t ev;
+
+    memset(v, 0, sizeof(*v));
+    v->code = code;
+    v->peer = peer;
+    PMIX_CONSTRUCT_LOCK(&v->lock);
+    pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, read_store, v);
+    pmix_event_active(&ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&v->lock);
+    PMIX_DESTRUCT_LOCK(&v->lock);
+}
+
+/* the store holds what it held in "before" for both codes of a request */
+static bool store_unchanged(const store_view_t *before_old, const store_view_t *before_new,
+                            pmix_status_t newcode)
+{
+    store_view_t old_after, new_after;
+
+    view_store(before_old->code, before_old->peer, &old_after);
+    view_store(newcode, before_new->peer, &new_after);
+    if (old_after.ncodes != before_old->ncodes ||
+        old_after.nentries != before_old->nentries) {
+        fprintf(stdout, "    store: %lu codes and %lu entries, %lu and %lu before\n",
+                (unsigned long) old_after.ncodes, (unsigned long) old_after.nentries,
+                (unsigned long) before_old->ncodes, (unsigned long) before_old->nentries);
+        return false;
+    }
+    if (old_after.npeer != before_old->npeer) {
+        fprintf(stdout, "    the peer holds %lu entries for the first code, %lu before\n",
+                (unsigned long) old_after.npeer, (unsigned long) before_old->npeer);
+        return false;
+    }
+    if (new_after.have_code || 0 != new_after.npeer) {
+        fprintf(stdout, "    the store still has a record for the new code (%lu entries)\n",
+                (unsigned long) new_after.npeer);
+        return false;
+    }
+    return true;
+}
+
+static void test_refused_registration(void)
+{
+    store_view_t old_before, new_before, view;
+    pmix_status_t codes[2], rc;
+
+    /* SEUT_CODE: the stand-in already holds entries for it, from the
+     * replay cases above */
+    codes[0] = SEUT_CODE;
+
+    /* --- the host returns an error from register_events --- */
+    codes[1] = SEUT_REFCODE_SYNC;
+    view_store(SEUT_CODE, standin(), &old_before);
+    view_store(SEUT_REFCODE_SYNC, standin(), &new_before);
+    report("refusal setup: the peer already holds a code's entries",
+           0 < old_before.npeer);
+    report("refusal setup: no record yet for the new code",
+           !new_before.have_code);
+
+    host_refuse = true;
+    host_nrefused = 0;
+    rc = do_register(2, codes, 0, 0, NULL);
+    host_refuse = false;
+    report("a registration the host refuses at once is reported failed",
+           PMIX_ERR_NOT_SUPPORTED == rc && 1 == host_nrefused);
+    report("an immediate refusal leaves the store as it was",
+           store_unchanged(&old_before, &new_before, SEUT_REFCODE_SYNC));
+
+    /* --- the host takes the request and refuses it in the callback --- */
+    codes[1] = SEUT_REFCODE_ASYNC;
+    view_store(SEUT_CODE, standin(), &old_before);
+    view_store(SEUT_REFCODE_ASYNC, standin(), &new_before);
+    host_regcb = NULL;
+    rc = do_register(2, codes, 0, 0, NULL);
+    report("the host takes a registration to complete later",
+           PMIX_SUCCESS == rc && NULL != host_regcb);
+    view_store(SEUT_REFCODE_ASYNC, standin(), &view);
+    report("the request is recorded while the host holds it",
+           view.have_code && 1 == view.npeer && view.active);
+    if (NULL != host_regcb) {
+        host_regcb(PMIX_ERR_NOT_SUPPORTED, host_regcbdata);
+        host_regcb = NULL;
+    }
+    settle();
+    report("a refusal in the host callback leaves the store as it was",
+           store_unchanged(&old_before, &new_before, SEUT_REFCODE_ASYNC));
+
+    /* --- a later registration for the code goes to the host again --- */
+    codes[0] = SEUT_REFCODE_SYNC;
+    host_regcb = NULL;
+    rc = do_register(1, codes, 0, 0, NULL);
+    report("a later registration for the code goes to the host",
+           PMIX_SUCCESS == rc && NULL != host_regcb);
+    if (NULL != host_regcb) {
+        host_regcb(PMIX_SUCCESS, host_regcbdata);
+        host_regcb = NULL;
+    }
+    settle();
+    view_store(SEUT_REFCODE_SYNC, standin(), &view);
+    report("the accepted registration is recorded once",
+           view.have_code && 1 == view.npeer && view.active);
+    drain_queued();
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -1090,6 +1259,8 @@ int main(int argc, char **argv)
     test_namespace_range();
     drain_queued();
     test_custom_range_count();
+    drain_queued();
+    test_refused_registration();
     drain_queued();
     PMIX_INFO_DESTRUCT(&dir);
     release_standin();

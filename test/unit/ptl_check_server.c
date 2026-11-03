@@ -19,7 +19,15 @@
  * be ours every time.
  *
  * And the waiting is bounded: a connection whose server end is no longer
- * an established one - the server has closed it - is refused, and soon.
+ * an established one - the server has closed it - is refused, and soon,
+ * with PMIX_ERR_UNREACH: there is nobody left to talk to.
+ *
+ * While the table does not list the connection, the check asks again for
+ * as long as ptl_base_handshake_wait_time runs - a server listed after a
+ * second and a half is taken, one never listed is refused with
+ * PMIX_ERR_INVALID_CRED when the wait is over, and one that closes meanwhile
+ * is refused at once (pmix_util_getid_test_unlisted stands in for a
+ * server slow to accept).
  *
  * Where there is no table to ask (pmix_util_getid_test_no_tcp_table), a
  * server is refused unless its file vouches for it, and taken if it does.
@@ -46,6 +54,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <pthread.h>
@@ -169,6 +178,83 @@ static void test_no_table(const struct sockaddr_in *addr, int ls)
         close(as);
     }
     pmix_util_getid_test_no_tcp_table = false;
+}
+
+static double now(void);
+
+/* While the table does not list a connection - the server has yet to
+ * accept it (pmix_util_getid_test_unlisted) - the check asks again for as
+ * long as ptl_base_handshake_wait_time runs, as the event-driven connect
+ * does: a server listed only after about a second and a half is taken,
+ * where looking for a second alone refused it; one never listed is
+ * refused with PMIX_ERR_INVALID_CRED once the wait is over; and one whose end
+ * closes meanwhile is refused at once with PMIX_ERR_UNREACH. With no wait
+ * set (0, no deadline) it asks a fixed number of times and is refused,
+ * soon */
+static pmix_status_t check_unlisted(const struct sockaddr_in *addr, int ls, int wait, int looks,
+                                    bool close_it, double *took)
+{
+    pmix_status_t rc;
+    double start;
+    int sd, as, saved = pmix_ptl_base.handshake_wait_time;
+    struct pollfd pfd;
+
+    sd = connect_now(addr);
+    as = accept(ls, NULL, NULL);
+    if (0 > sd || 0 > as) {
+        if (0 <= sd) {
+            close(sd);
+        }
+        if (0 <= as) {
+            close(as);
+        }
+        return PMIX_ERROR;
+    }
+    if (close_it) {
+        close(as);
+        as = -1;
+        pfd.fd = sd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        (void) poll(&pfd, 1, 5000); /* the server's FIN */
+    }
+    pmix_ptl_base.handshake_wait_time = wait;
+    pmix_util_getid_test_unlisted = looks;
+    start = now();
+    rc = check_sd(sd);
+    *took = now() - start;
+    pmix_util_getid_test_unlisted = 0;
+    pmix_ptl_base.handshake_wait_time = saved;
+    if (0 <= as) {
+        close(as);
+    }
+    return rc;
+}
+
+static void test_unlisted(const struct sockaddr_in *addr, int ls)
+{
+    char detail[128];
+    pmix_status_t rc;
+    double took;
+
+    /* thirty looks are about a second and a half */
+    rc = check_unlisted(addr, ls, 60, 30, false, &took);
+    snprintf(detail, sizeof(detail), "%s after %.2fs", PMIx_Error_string(rc), took);
+    report("unlisted: a server the table lists only after a second and a half is taken",
+           PMIX_SUCCESS == rc, detail);
+    rc = check_unlisted(addr, ls, 2, INT_MAX, false, &took);
+    snprintf(detail, sizeof(detail), "%s after %.2fs", PMIx_Error_string(rc), took);
+    report("unlisted: a server never listed is refused with PMIX_ERR_INVALID_CRED once the "
+           "handshake wait is over",
+           PMIX_ERR_INVALID_CRED == rc && 1.9 < took && 6.0 > took, detail);
+    rc = check_unlisted(addr, ls, 60, INT_MAX, true, &took);
+    snprintf(detail, sizeof(detail), "%s after %.2fs", PMIx_Error_string(rc), took);
+    report("unlisted: a server that closes its end while unlisted is refused at once",
+           PMIX_ERR_UNREACH == rc && 2.0 > took, detail);
+    rc = check_unlisted(addr, ls, 0, INT_MAX, false, &took);
+    snprintf(detail, sizeof(detail), "%s after %.2fs", PMIx_Error_string(rc), took);
+    report("unlisted: with no handshake wait, a server never listed is refused, soon",
+           PMIX_ERR_INVALID_CRED == rc && 3.0 > took, detail);
 }
 
 /* Accept as a server does, from its own thread, while the main thread
@@ -351,6 +437,7 @@ int main(void)
 
     test_judge();
     test_no_table(&addr, ls);
+    test_unlisted(&addr, ls);
 
     /* is there a table to ask? Without one there is nothing more to check */
     sd = connect_now(&addr);
@@ -394,7 +481,8 @@ int main(void)
            detail);
 
     /* the server closes its end: ours is still connected, the server's is
-     * no longer an established connection */
+     * no longer an established connection - and the close is there to be
+     * read, so the check does not wait for the table to list it */
     sd = connect_now(&addr);
     as = accept(ls, NULL, NULL);
     if (0 > sd || 0 > as) {
@@ -410,7 +498,7 @@ int main(void)
         took = now() - start;
         snprintf(detail, sizeof(detail), "%s after %.2fs", PMIx_Error_string(rc), took);
         report("a server whose end has closed is refused, soon",
-               PMIX_ERR_INVALID_CRED == rc && 10.0 > took, detail);
+               PMIX_ERR_UNREACH == rc && 10.0 > took, detail);
     }
 
     close(ls);

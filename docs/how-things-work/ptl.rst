@@ -356,9 +356,13 @@ most specific to least:
   file by PID, on the local socket, is that process
   (``server-not-file-pid``). A system role's file is taken only from
   root, the tool's own user, or a user ``ptl_base_server_access`` names.
-  Such a file never vouches for a server the kernel cannot name. Every
-  file found must name the same server; files naming
-  different ones fail the search, saying so. A file whose server is gone
+  Such a file never vouches for a server the kernel cannot name. A file
+  whose owner is not a user whose server the tool takes - the user the
+  server that started it named, else root, the tool's own user, or a
+  user ``ptl_base_server_access`` names - is passed over before the files
+  found are counted, so another user's running server beside the tool's
+  own does not fail the search. Every file left must name the same
+  server; files naming different ones fail the search, saying so. A file whose server is gone
   is passed over, here and by a ``PMIX_QUERY_AVAIL_SERVERS`` query: it
   says its server holds the lock beside it, and the searching process
   can take that lock - whatever PID namespace, container or jail either
@@ -601,8 +605,9 @@ to deliver their connection request at once, and, separately, how many
 tools may wait for the host's decision; at the first limit the oldest
 connection still delivering its request is dropped, and at the second a
 further tool is refused; default an eighth of the descriptor limit for
-each, -1 for no limit; a user other than the server's and root may have
-at most a quarter of the waiting tools, at least one),
+each, -1 for no limit; a user other than the server's, root and the
+host's ``PMIX_USERID`` may have at most a quarter of the waiting tools,
+at least one),
 ``max_pending_bytes`` (the most bytes allocated, between them, for
 connection requests still arriving; each request's buffer starts at 4 KB
 and doubles as its bytes arrive, up to the length it names, and a request

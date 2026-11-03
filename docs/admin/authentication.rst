@@ -153,8 +153,9 @@ These MCA parameters adjust the checks PMIx makes on connections:
      - How many connections may still be sending their request, and,
        separately, how many tools may wait for the host's decision. 0
        means an eighth of the process's file-descriptor limit, for each;
-       -1 means no limit. A user other than the server's and root may
-       have at most a quarter of the waiting tools (at least one).
+       -1 means no limit. A user other than the server's, root and the
+       host's ``PMIX_USERID`` may have at most a quarter of the waiting
+       tools (at least one).
    * - ``ptl_base_max_pending_bytes``
      - 16777216
      - Most bytes the server allocates, between them, for connection
@@ -186,9 +187,10 @@ Some policies are set by the host environment rather than by MCA
 parameters, because they depend on how the host is deployed:
 
 * **Whether tools of other users may connect.** By default a server
-  refuses a tool whose user is not the server's own. A host can allow
-  them (``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``), and must then also widen
-  the server's local socket to them (``PMIX_SOCKET_MODE``, with
+  refuses a tool whose user is not the server's own, root, or the user
+  the host named as the owner of its local socket (``PMIX_USERID``). A
+  host can allow them (``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``), and must then
+  also widen the server's local socket to them (``PMIX_SOCKET_MODE``, with
   ``PMIX_GRPID`` for a group): by default only the server's user can
   connect to it.
 * **Processes on other nodes never connect.** A server takes no TCP

@@ -168,7 +168,9 @@ typedef uint32_t pmix_rank_t;
                                                                     //        every tool is refused. Rendezvous
                                                                     //        files will be readable only by the host's user ID,
                                                                     //        and tools running under other user IDs are refused,
-                                                                    //        unless PMIX_SERVER_ALLOW_FOREIGN_TOOLS is given
+                                                                    //        unless PMIX_SERVER_ALLOW_FOREIGN_TOOLS is given -
+                                                                    //        tools of root, and of the user named by
+                                                                    //        PMIX_USERID, are not refused this way
 #define PMIX_SERVER_ALLOW_FOREIGN_TOOLS     "pmix.srvr.ftools"      // (bool) Mark the rendezvous files as readable by all
                                                                     //        users and allow tools from user IDs other than
                                                                     //        that of the server to connect. Defaults to false.

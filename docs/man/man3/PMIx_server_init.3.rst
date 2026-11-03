@@ -157,7 +157,8 @@ Role and support attributes
   other user IDs are refused, unless ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` is
   also given; such tools also need the server's local socket widened to them
   (``PMIX_SOCKET_MODE``, ``PMIX_USERID``, ``PMIX_GRPID``), which a server
-  does not do by itself.
+  does not do by itself. Tools of root, and of the user named by
+  ``PMIX_USERID``, are not refused this way.
 * ``PMIX_SERVER_SYSTEM_SUPPORT`` (bool) |mdash| the server is the node's
   system server: tools asking for the system server find it through a
   system-level rendezvous file. Takes effect only together with
@@ -216,7 +217,8 @@ Connection attributes
   connect. See `The local socket`_.
 * ``PMIX_USERID`` (uint32_t, or a user name as char\*) |mdash| the owner
   of the server's local socket. Default: the server's user. Its directory
-  stays the server's.
+  stays the server's. Tools of this user are taken without
+  ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``, as the server's own user's are.
 * ``PMIX_GRPID`` (uint32_t, or a group name as char\*) |mdash| the group
   of the server's local socket and of its directory. Default: the
   server's effective group.

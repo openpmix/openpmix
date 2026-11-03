@@ -53,6 +53,9 @@ typedef struct {
      * newly active - the only ones an event registration may give back
      * if its host up-call is subsequently refused */
     size_t nactive;
+    /* the identifier an event registration gave the store entries it
+     * added, so a refusal can remove exactly those entries */
+    uint64_t regid;
     pmix_proc_t proc;
     pmix_proc_t *procs;
     size_t nprocs;
@@ -131,6 +134,10 @@ typedef struct {
     bool enviro_events;
     pmix_proc_t *affected;
     size_t naffected;
+    /* identifies the registration message that added this entry - a
+     * peer may hold several entries for one code, and a registration
+     * the host refuses removes only its own */
+    uint64_t regid;
 } pmix_peer_events_info_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_peer_events_info_t);
 

@@ -69,7 +69,7 @@ launch; the TSD finalize ordering; ``gds/shmem3`` on macOS; the
 client-side tombstone generation; and three ``src/hwloc`` findings.
 Each is listed in full under `Coverage gaps`_.
 
-**Connections with earlier releases — 4.**  Found in the review of
+**Connections with earlier releases — 2.**  Found in the review of
 connection behavior that preceded the removal of tools on other hosts.
 Each is listed in full under `Connections with earlier releases`_.
 
@@ -84,19 +84,6 @@ Found in a review of how servers, clients and tools of different releases
 connect (2026-10-24), and checked against the tree on 2026-10-25.  Every
 entry is a behavior a site running a mix of releases can meet.  Each says
 what happens, when, and what would close it.
-
-.. _todo-conn-retry-window:
-
-A busy server can outlast the tool's retry
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-*Deferred work.*  When the kernel does not list the connection yet, the
-tool retries the lookup for about one second and then gives up.  A server
-with a full accept queue - many tools starting at once - can take longer
-than that, and the tool fails although nothing is wrong.
-
-To close: tie the retry to the handshake's own deadline, or make it an
-MCA parameter.
 
 .. _todo-conn-bare-uri-wire:
 

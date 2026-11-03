@@ -94,7 +94,12 @@ ignored. The client's identity is the one the credential establishes.
   gid replaces it. Over TCP, a gid the tool claims stands only if its
   user belongs to that group (see below); otherwise the tool is refused.
 * A tool whose uid differs from the server's is refused unless the host
-  started the server with ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS``.
+  started the server with ``PMIX_SERVER_ALLOW_FOREIGN_TOOLS`` - except a
+  tool of root's, and a tool of the user the host named to
+  :ref:`PMIx_server_init(3) <man3-PMIx_server_init>` as ``PMIX_USERID``,
+  if it named one. A host that runs the server as root for one job's user,
+  and names that user as ``PMIX_USERID``, therefore takes that user's
+  tools without allowing tools of other users.
 * A tool that says it is a registered client, or that joins a namespace
   the server already knows, must have that process's uid and gid.
 * **A tool that names its own namespace never joins a job of the
@@ -127,8 +132,9 @@ ignored. The client's identity is the one the credential establishes.
   identity in the same way. The tool is not told the name it was given.
 * While tools wait for the host's decision, at most
   ``ptl_base_max_pending_connections`` of them may wait at once, and a
-  tool of a uid other than the server's and root's may have at most a
-  quarter of that number waiting (at least one). A tool beyond either
+  tool of a uid other than the server's, root's and the ``PMIX_USERID``
+  the host gave ``PMIx_server_init`` may have at most a quarter of that
+  number waiting (at least one). A tool beyond either
   limit is refused with ``PMIX_ERR_OUT_OF_RESOURCE``, and the host is not
   asked about it.
 * **The host decides on one tool of a name at a time.** A tool that

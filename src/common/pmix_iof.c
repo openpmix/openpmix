@@ -1342,16 +1342,50 @@ int pmix_iof_rank_digits(pmix_rank_t nprocs)
     return numdigs;
 }
 
+/* An output file could not be created or opened as the job's owner -
+ * a directory the owner cannot write, say. The output meant for it is
+ * not written there. Say so once per job, naming the first such file;
+ * every one is still noted at verbose level. The notice is delivered as
+ * one about that job, so a notice for another job is not counted as a
+ * duplicate of it. */
+static void output_not_opened(pmix_namespace_t *nptr, const char *path,
+                              const pmix_iof_perms_t *op)
+{
+    char *msg;
+
+    pmix_output_verbose(2, pmix_server_globals.iof_output,
+                        "IOF: output file %s of job %s could not be opened - not written",
+                        path, nptr->nspace);
+    if (nptr->files_unopened) {
+        return;
+    }
+    nptr->files_unopened = true;
+    msg = pmix_show_help_string("help-pmix-server.txt", "iof-file-not-opened", true,
+                                nptr->nspace, path, (unsigned long) op->owner);
+    if (NULL != msg) {
+        pmix_show_help_norender(nptr->nspace, "help-pmix-server.txt", "iof-file-not-opened",
+                                msg);
+        free(msg);
+    }
+}
+
+/* Open the output sink of one rank's stream. Returns NULL if there is
+ * none, and then sets *unopened when that is because the file could not
+ * be opened - which output_not_opened() has reported - rather than a
+ * failure of our own. */
 static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                                               pmix_rank_t rank,
-                                              pmix_iof_channel_t stream)
+                                              pmix_iof_channel_t stream,
+                                              bool *unopened)
 {
     int rc;
-    char *outdir, *outfile;
+    char *outdir, *outfile, *path;
     int numdigs, fdout;
     pmix_iof_sink_t *snk;
     pmix_proc_t src;
     pmix_iof_perms_t op;
+
+    *unopened = false;
 
     pmix_output_verbose(5, pmix_server_globals.iof_output,
                         "IOF SETUP %s %u",
@@ -1385,13 +1419,17 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 return NULL;
             }
             fdout = open_directory_output(nptr->iof_flags.directory, outdir, outfile, &op);
-            free(outfile);
             if (0 > fdout) {
-                /* couldn't be opened */
-                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                /* couldn't be opened as the owner */
+                pmix_asprintf(&path, "%s/%s", nptr->iof_flags.directory, outfile);
+                output_not_opened(nptr, (NULL == path) ? outfile : path, &op);
+                free(path);
+                free(outfile);
                 free(outdir);
+                *unopened = true;
                 return NULL;
             }
+            free(outfile);
             /* define a sink to that file descriptor */
             snk = PMIX_NEW(pmix_iof_sink_t);
             if (NULL == snk) {
@@ -1419,13 +1457,17 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 return NULL;
             }
             fdout = open_directory_output(nptr->iof_flags.directory, outdir, outfile, &op);
-            free(outfile);
             if (0 > fdout) {
-                /* couldn't be opened */
-                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                /* couldn't be opened as the owner */
+                pmix_asprintf(&path, "%s/%s", nptr->iof_flags.directory, outfile);
+                output_not_opened(nptr, (NULL == path) ? outfile : path, &op);
+                free(path);
+                free(outfile);
                 free(outdir);
+                *unopened = true;
                 return NULL;
             }
+            free(outfile);
             /* define a sink to that file descriptor. It is tagged with
              * stddiag as well as stderr because that is where stddiag is
              * written (see pmix_iof_write_output): a sink that claims only
@@ -1481,12 +1523,14 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
              * named. Those expanded levels are composed here rather than
              * given to us, so they are built a component at a time. */
             fdout = open_composed_output(nptr->iof_flags.file, outfile, &op);
-            free(outfile);
             if (0 > fdout) {
-                /* couldn't be opened */
-                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                /* couldn't be opened as the owner */
+                output_not_opened(nptr, outfile, &op);
+                free(outfile);
+                *unopened = true;
                 return NULL;
             }
+            free(outfile);
             /* define a sink to that file descriptor */
             snk = PMIX_NEW(pmix_iof_sink_t);
             if (NULL == snk) {
@@ -1523,12 +1567,14 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             }
             /* see the note on the stdout sink above */
             fdout = open_composed_output(nptr->iof_flags.file, outfile, &op);
-            free(outfile);
             if (0 > fdout) {
-                /* couldn't be opened */
-                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                /* couldn't be opened as the owner */
+                output_not_opened(nptr, outfile, &op);
+                free(outfile);
+                *unopened = true;
                 return NULL;
             }
+            free(outfile);
             /* see the note on the directory sink above for why stddiag is
              * tagged here too */
             snk = PMIX_NEW(pmix_iof_sink_t);
@@ -2782,6 +2828,7 @@ static pmix_status_t write_output(const pmix_proc_t *name,
     size_t inputsize;
     bool copied;
     bool skipfiles = false;
+    bool unopened = false;
 
     /* stdin doesn't come thru here*/
     if (PMIX_FWD_STDIN_CHANNEL & stream) {
@@ -2852,12 +2899,17 @@ static pmix_status_t write_output(const pmix_proc_t *name,
                 }
                 if (NULL == channel) {
                     /* need to set this one up */
-                    channel = pmix_iof_setup(nptr, name->rank, stream);
-                    if (NULL == channel) {
+                    channel = pmix_iof_setup(nptr, name->rank, stream, &unopened);
+                    if (NULL == channel && !unopened) {
                         return PMIX_ERR_IOF_FAILURE;
                     }
                 }
-                if (!nptr->iof_flags.nocopy && pmix_globals.iof_flags.local_output) {
+                if (NULL == channel) {
+                    /* the file could not be opened, and that has been
+                     * reported: as for files that are not ours, only
+                     * the copy to our own stdout is written */
+                    outputio = pmix_globals.iof_flags.local_output && !nptr->iof_flags.nocopy;
+                } else if (!nptr->iof_flags.nocopy && pmix_globals.iof_flags.local_output) {
                     if (PMIX_FWD_STDOUT_CHANNEL & stream) {
                         copystdout = true;
                     } else {
@@ -2876,12 +2928,17 @@ static pmix_status_t write_output(const pmix_proc_t *name,
                 }
                 if (NULL == channel) {
                     /* need to set this one up */
-                    channel = pmix_iof_setup(nptr, name->rank, stream);
-                    if (NULL == channel) {
+                    channel = pmix_iof_setup(nptr, name->rank, stream, &unopened);
+                    if (NULL == channel && !unopened) {
                         return PMIX_ERR_IOF_FAILURE;
                     }
                 }
-                if (!nptr->iof_flags.nocopy && pmix_globals.iof_flags.local_output) {
+                if (NULL == channel) {
+                    /* the file could not be opened, and that has been
+                     * reported: as for files that are not ours, only
+                     * the copy to our own stdout is written */
+                    outputio = pmix_globals.iof_flags.local_output && !nptr->iof_flags.nocopy;
+                } else if (!nptr->iof_flags.nocopy && pmix_globals.iof_flags.local_output) {
                     if (PMIX_FWD_STDOUT_CHANNEL & stream) {
                         copystdout = true;
                     } else {

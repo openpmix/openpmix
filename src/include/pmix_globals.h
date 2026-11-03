@@ -473,6 +473,9 @@ typedef struct {
     /* A server's: we may not write this job's output files - see
      * pmix_iof_setup() - and have said so */
     bool files_refused;
+    /* we could not open one of this job's output files as its owner,
+     * and have said so - see output_not_opened() in pmix_iof.c */
+    bool files_unopened;
     pmix_access_t access; // who may access this namespace - see pmix_access_t
     bool jobdata_hash_valid; // jobdata_hash describes the job-level data we hold
     uint64_t jobdata_hash;   // PMIX_JOB_DATA_HASH of that data, computed when needed

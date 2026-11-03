@@ -120,6 +120,8 @@ pmix_ptl_base_t pmix_ptl_base = {
     .legacy_peers = false,
     .system_tool = false,
     .allow_foreign_tools = false,
+    .host_uid_given = false,
+    .host_uid = (uid_t) -1,
     .session_tool = false,
     .session_rndz_id = UINT32_MAX,
     .session_rndz_id_given = false,
@@ -514,6 +516,8 @@ static pmix_status_t pmix_ptl_close(void)
     pmix_ptl_base.legacy_peers = false;
     pmix_ptl_base.system_tool = false;
     pmix_ptl_base.allow_foreign_tools = false;
+    pmix_ptl_base.host_uid_given = false;
+    pmix_ptl_base.host_uid = (uid_t) -1;
     pmix_ptl_base.session_tool = false;
     pmix_ptl_base.session_rndz_id = UINT32_MAX;
     pmix_ptl_base.session_rndz_id_given = false;
