@@ -82,6 +82,11 @@ typedef struct {
                             //    Counted alongside mbrs so the construct can
                             //    complete on the survivors rather than hang.
                             //    See docs/how-things-work/collectives.
+    pmix_list_t excluded;   // members left out of nlocal because they were lost
+                            //    when the block was counted - one that comes
+                            //    back and contributes is counted in then
+    uint32_t nduplicate;    // calls on mbrs from a member that had already called
+                            //    through a connection it has since lost
     bool host_called;       // the block has been forwarded to the host - the
                             //    local phase is frozen
     bool awaiting_host;     // the host accepted this block and still owes it
@@ -112,6 +117,8 @@ static void gbcon(grp_block_t *p)
     p->ninfo = 0;
     PMIX_CONSTRUCT(&p->mbrs, pmix_list_t);
     PMIX_CONSTRUCT(&p->departed, pmix_list_t);
+    PMIX_CONSTRUCT(&p->excluded, pmix_list_t);
+    p->nduplicate = 0;
     p->host_called = false;
     p->awaiting_host = false;
     p->answered = false;
@@ -142,6 +149,7 @@ static void gbdes(grp_block_t *p)
     }
     PMIX_LIST_DESTRUCT(&p->mbrs);
     PMIX_LIST_DESTRUCT(&p->departed);
+    PMIX_LIST_DESTRUCT(&p->excluded);
 }
 static PMIX_CLASS_INSTANCE(grp_block_t,
                            pmix_list_item_t,
@@ -242,6 +250,11 @@ static void check_definition_complete(grp_block_t *blk)
     if (blk->def_complete) {
         return;
     }
+    /* a pass that gives up below may already have listed some of the
+     * members it found lost, and by the pass that completes one of them may
+     * be back - so each pass lists them afresh */
+    PMIX_LIST_DESTRUCT(&blk->excluded);
+    PMIX_CONSTRUCT(&blk->excluded, pmix_list_t);
 
     /* Count the MEMBERSHIP, once - not once per participant that named it.
      * Every non-bootstrap participant hands us the same membership array,
@@ -296,7 +309,8 @@ static void check_definition_complete(grp_block_t *blk)
             /* the host has informed us that this nspace has no local procs */
             continue;
         }
-        if (!pmix_server_count_local_participants(trk->pcs, trk->npcs, nptr, &n)) {
+        if (!pmix_server_count_local_participants(trk->pcs, trk->npcs, nptr, &n,
+                                                  &blk->excluded)) {
             /* the membership lists ranks of this nspace individually,
              * and we don't know all of its local ranks yet - we'll
              * process it once all the procs are known */
@@ -323,8 +337,49 @@ static bool grp_blk_locally_complete(grp_block_t *blk)
     if (!blk->def_complete) {
         return false;
     }
-    return (pmix_list_get_size(&blk->mbrs) +
+    return (pmix_list_get_size(&blk->mbrs) - blk->nduplicate +
             pmix_list_get_size(&blk->departed)) >= blk->nlocal;
+}
+
+/* A member's call has just joined the block - the group counterpart of
+ * pmix_server_trk_join, and for the same three cases: a member lost while
+ * the block waited is taken off departed; one left out when the block was
+ * counted is counted in; and one that already called through a connection
+ * it lost is the same process calling again, and is not counted twice. */
+static void grp_member_joined(grp_block_t *blk, grp_trk_t *trk, pmix_peer_t *peer)
+{
+    grp_trk_t *t;
+    pmix_server_caddy_t *scd;
+
+    if (NULL == peer || NULL == peer->info || NULL == peer->info->pname.nspace ||
+        !blk->def_complete) {
+        /* nlocal is counted when the definition completes, from who is
+         * lost then - nothing to correct yet */
+        return;
+    }
+    if (pmix_server_proclist_remove(&blk->departed, peer->info->pname.nspace,
+                                    peer->info->pname.rank)) {
+        return;
+    }
+    if (pmix_server_proclist_remove(&blk->excluded, peer->info->pname.nspace,
+                                    peer->info->pname.rank)) {
+        ++blk->nlocal;
+        return;
+    }
+    if (!peer->info->returned) {
+        return;
+    }
+    PMIX_LIST_FOREACH (t, &blk->mbrs, grp_trk_t) {
+        if (t == trk) {
+            continue;
+        }
+        PMIX_LIST_FOREACH (scd, &t->local_cbs, pmix_server_caddy_t) {
+            if (scd->peer->info == peer->info) {
+                ++blk->nduplicate;
+                return;
+            }
+        }
+    }
 }
 
 /* A call joins the block of its ID that is still collecting, or makes
@@ -2767,6 +2822,10 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         return PMIX_SUCCESS;
     }
 
+    /* count this call once, whatever the member's history - see
+     * grp_member_joined */
+    grp_member_joined(blk, trk, peer);
+
     /* arm the local-phase timeout if one was requested and not already set. It
      * bounds how long we wait for all local participants to contribute; once the
      * local phase completes and we forward to the host, the timer is deleted and
@@ -2990,6 +3049,14 @@ static void account_departed(grp_block_t *blk, const pmix_proc_t *proc)
         /* not a participant, or Case A (already contributed - its
          * contribution and data stand, so ignore the departure) */
         return;
+    }
+    /* a member lost before the block was counted, back since, and lost
+     * again before calling: nlocal never counted it, so neither may its
+     * departure */
+    PMIX_LIST_FOREACH (dp, &blk->excluded, pmix_proclist_t) {
+        if (PMIX_CHECK_NAMES(&dp->proc, proc)) {
+            return;
+        }
     }
     /* Case B: the rank had not yet contributed and never will. Record it as
      * departed (once) so the block can complete on the survivors. */
