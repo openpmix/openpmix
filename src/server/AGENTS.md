@@ -1057,7 +1057,10 @@ made. A count leaves a lost rank out however the collective names it:
 `pmix_server_count_local_participants` used to count a lost, not yet
 deregistered rank that a collective named individually. A process that
 execs does not come back - the program it becomes finds no identity and is
-a singleton.
+a singleton. Covered by `test/unit/rank_lost.c` (the fence family) and the
+returning-member cases in `test/unit/server_group.c`; in each, the returned
+rank calls before a live one, which is when an unfixed library completes
+short.
 
 **A finalize is not a departure.** The peer-keyed entry points,
 `pmix_server_trk_peer_lost` and `pmix_server_grp_peer_lost`, return
