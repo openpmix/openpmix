@@ -374,8 +374,13 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
      * stdout and stderr are where the child's output belongs - so every
      * channel speaks. Reading the parser's empty channel set as silence
      * would mute every spawn a plain client issues, since the "forward
-     * everything" default the parser applies is a tool's alone. */
-    channels = fcd->inherit_iof ? PMIX_FWD_ALL_CHANNELS : fcd->channels;
+     * everything" default the parser applies is a tool's alone. A client
+     * that named channels inherits only those, and they are its channels */
+    if (fcd->inherit_iof && PMIX_FWD_NO_CHANNELS == (fcd->channels & PMIX_SERVER_IOF_OUTPUT_CHANNELS)) {
+        channels = PMIX_FWD_ALL_CHANNELS;
+    } else {
+        channels = fcd->channels;
+    }
 
     /* establish our baseline working directory - we will be potentially
      * bouncing around as we execute various apps, but we will always return

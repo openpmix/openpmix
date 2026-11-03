@@ -427,7 +427,8 @@ tool-initiated launches.
 
 The job-level information may also carry ``PMIX_IOF_INHERIT`` set to
 ``false`` when the spawned job is not to inherit its parent's output
-forwarding. The host includes it in the job-level information it registers
+forwarding, or ``PMIX_IOF_INHERIT_CHANNELS`` when it inherits only some
+channels. The host includes them in the job-level information it registers
 for the spawned namespace with
 :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`.
 

@@ -2612,7 +2612,7 @@ attribute is a boolean the host places in the *job-level information of
 the spawned namespace*; absent means "inherit", so a host sends it only
 to say no. Nothing about it is read by the spawned processes — it is
 server-side state that happens to be keyed by their namespace, read out
-of the local datastore by `iof_inherit_allowed()` exactly as
+of the local datastore by `iof_inherit_channels()` exactly as
 `PMIX_PARENT_ID` is. That channel is what makes it reach the server the
 output arrives at, which may have had nothing to do with the spawn; a
 directive carried with the spawn request, or a server-wide default at
@@ -2620,10 +2620,11 @@ directive carried with the spawn request, or a server-wide default at
 (and the latter cannot express a per-job answer at all, while PRRTE's
 `inherit` is per-job).
 
-**The spawn request's own decision travels as the same key.**
+**The spawn request's own decision travels as the same keys.**
 `pmix_server_spawn_prepare()` runs the parser and adds
-`PMIX_IOF_INHERIT=false` to the spawn directives when it decides against
-inheritance; every path that hands a spawn to the host or pfexec calls it. Do not re-derive the decision on other servers from the raw
+`PMIX_IOF_INHERIT=false` or `PMIX_IOF_INHERIT_CHANNELS` to the spawn
+directives; every path that hands a spawn to the host or pfexec calls it.
+Do not re-derive the decision on other servers from the raw
 `PMIX_FWD_*` attributes: the parser counts a channel as named whatever its
 value's type, and a tool's spawn names no channel.
 

@@ -734,7 +734,8 @@ void pmix_server_iof_job_gone(const char *nspace)
  * own job, which is the same thing seen from the other end: whoever is
  * receiving the parent job's output is who should receive the child's.
  * So each matching request is cloned onto the child's namespace with the
- * same requestor, channels and formatting.
+ * same requestor, channels and formatting, limited to the channels in
+ * "mask" - the ones the child inherits.
  *
  * The clone keeps the original's remote_id deliberately, so the child's
  * output arrives at the requestor under the same handler id the parent's
@@ -752,7 +753,7 @@ void pmix_server_iof_job_gone(const char *nspace)
  * the cache once it has made all of them - see drain_cache().
  */
 static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace,
-                             size_t *ncovered)
+                             pmix_iof_channel_t mask, size_t *ncovered)
 {
     pmix_iof_req_t *req, *nreq;
     pmix_iof_channel_t want;
@@ -787,7 +788,7 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace,
             PMIX_CHECK_NAMES(&req->requestor->info->pname, &pmix_globals.myid)) {
             continue;
         }
-        if (PMIX_FWD_NO_CHANNELS == req->channels) {
+        if (PMIX_FWD_NO_CHANNELS == (req->channels & mask)) {
             continue;
         }
         /* does it cover the job the spawning process belongs to? A
@@ -808,7 +809,7 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace,
         }
         /* both halves of inheritance clone through here, and either can
          * run first: the subscription may already follow into the child */
-        want = req->channels & ~channels_for(req->requestor, req->remote_id, nspace);
+        want = req->channels & mask & ~channels_for(req->requestor, req->remote_id, nspace);
         if (PMIX_FWD_NO_CHANNELS == want) {
             ++(*ncovered);
             continue;
@@ -862,50 +863,70 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace,
     return ninherited;
 }
 
-/* Does this job inherit its parent's output forwarding? PMIX_IOF_INHERIT
- * is job-level information the host supplies with the spawned namespace,
- * so it reaches every server the namespace is registered with - which
- * matters, because the two places that ask are on different daemons.
- * Absent means yes. The host sets it false when it refuses inheritance,
- * and so does the spawn server - see pmix_server_spawn_prepare().
- *
- * "Absent" and "we have never heard of this namespace" are the same
- * answer here, and deliberately so at the only site where they can
- * differ - see inherit_parent_iof() below.
- */
-static bool iof_inherit_allowed(const char *nspace)
+/* Fetch "key" for "proc" from our own datastore, or NULL */
+static pmix_kval_t *fetch_attr(const pmix_proc_t *proc, const char *key)
 {
     pmix_cb_t cb;
     pmix_info_t optional;
-    pmix_kval_t *kv;
-    pmix_proc_t wild;
+    pmix_kval_t *kv = NULL;
     pmix_status_t rc;
-    bool allowed = true;
 
     PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
-    PMIX_LOAD_PROCID(&wild, nspace, PMIX_RANK_WILDCARD);
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    cb.proc = &wild;
-    cb.key = PMIX_IOF_INHERIT;
+    cb.proc = (pmix_proc_t *) proc;
+    cb.key = (char *) key;
     cb.info = &optional;
     cb.ninfo = 1;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
         kv = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs);
-        /* the union must not be read until the type says which member is
-         * live - this is host-supplied data */
-        if (NULL != kv && NULL != kv->value && PMIX_BOOL == kv->value->type) {
-            allowed = kv->value->data.flag;
-        }
-        if (NULL != kv) {
-            PMIX_RELEASE(kv);
-        }
     }
     PMIX_DESTRUCT(&cb);
     PMIX_INFO_DESTRUCT(&optional);
+    return kv;
+}
 
-    return allowed;
+/* Which output channels does this job inherit from its parent?
+ * PMIX_IOF_INHERIT and PMIX_IOF_INHERIT_CHANNELS are job-level information
+ * the host supplies with the spawned namespace, so they reach every server
+ * the namespace is registered with. PMIX_IOF_INHERIT=false means none;
+ * otherwise PMIX_IOF_INHERIT_CHANNELS, when present, says which; absent
+ * means all. The host sets them, and so does the spawn server - see
+ * pmix_server_spawn_prepare().
+ *
+ * "Absent" and "we have never heard of this namespace" are the same
+ * answer here, and deliberately so at the only site where they can
+ * differ - see inherit_parent_iof() below.
+ */
+static pmix_iof_channel_t iof_inherit_channels(const char *nspace)
+{
+    pmix_kval_t *kv;
+    pmix_proc_t wild;
+    pmix_iof_channel_t mask = PMIX_SERVER_IOF_OUTPUT_CHANNELS;
+    uint16_t bits;
+
+    PMIX_LOAD_PROCID(&wild, nspace, PMIX_RANK_WILDCARD);
+    /* the union must not be read until the type says which member is
+     * live - this is host-supplied data */
+    kv = fetch_attr(&wild, PMIX_IOF_INHERIT);
+    if (NULL != kv) {
+        if (NULL != kv->value && PMIX_BOOL == kv->value->type && !kv->value->data.flag) {
+            mask = PMIX_FWD_NO_CHANNELS;
+        }
+        PMIX_RELEASE(kv);
+        if (PMIX_FWD_NO_CHANNELS == mask) {
+            return mask;
+        }
+    }
+    kv = fetch_attr(&wild, PMIX_IOF_INHERIT_CHANNELS);
+    if (NULL != kv) {
+        if (PMIX_SUCCESS == PMIx_Value_get_number(kv->value, &bits, PMIX_UINT16)) {
+            mask = bits & PMIX_SERVER_IOF_OUTPUT_CHANNELS;
+        }
+        PMIX_RELEASE(kv);
+    }
+    return mask;
 }
 
 /* Give the child job the output forwarding its parent has, at the moment
@@ -932,6 +953,7 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
     pmix_proc_t parent;
     size_t ninherited, ncovered;
     pmix_namespace_t *nptr;
+    pmix_iof_channel_t mask;
 
     if (NULL == cd->peer || NULL == cd->peer->info) {
         return 0;
@@ -944,7 +966,8 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
                             "leaving inheritance to its registration", nspace);
         return 0;
     }
-    if (!iof_inherit_allowed(nspace)) {
+    mask = iof_inherit_channels(nspace);
+    if (PMIX_FWD_NO_CHANNELS == mask) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
                             "PMIx:SERVER job %s does not inherit output forwarding",
                             nspace);
@@ -954,7 +977,7 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
     PMIX_LOAD_PROCID(&parent, cd->peer->info->pname.nspace,
                      cd->peer->info->pname.rank);
 
-    ninherited = clone_iof_reqs(&parent, nspace, &ncovered);
+    ninherited = clone_iof_reqs(&parent, nspace, mask, &ncovered);
     if (0 < ninherited) {
         drain_cache(nspace);
     }
@@ -978,55 +1001,45 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
  */
 static bool get_parent_id(const pmix_proc_t *proc, pmix_proc_t *parent)
 {
-    pmix_cb_t cb;
-    pmix_info_t optional;
     pmix_kval_t *kv;
     pmix_proc_t wild;
-    pmix_status_t rc;
     bool found = false;
     int pass;
 
-    PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
     PMIX_LOAD_PROCID(&wild, proc->nspace, PMIX_RANK_WILDCARD);
 
     for (pass = 0; pass < 2 && !found; pass++) {
         if (1 == pass && PMIX_RANK_WILDCARD == proc->rank) {
             break;      // the second fetch would repeat the first
         }
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = (0 == pass) ? (pmix_proc_t *) proc : &wild;
-        cb.key = PMIX_PARENT_ID;
-        cb.info = &optional;
-        cb.ninfo = 1;
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
-            kv = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs);
-            /* the union must not be read until the type says which member
-             * is live, and PMIX_PROC carries a pointer that a mistyped or
-             * truncated store can leave NULL */
-            if (NULL != kv && NULL != kv->value && PMIX_PROC == kv->value->type &&
-                NULL != kv->value->data.proc) {
-                PMIX_LOAD_PROCID(parent, kv->value->data.proc->nspace,
-                                 kv->value->data.proc->rank);
-                found = true;
-            }
-            if (NULL != kv) {
-                PMIX_RELEASE(kv);
-            }
+        kv = fetch_attr((0 == pass) ? proc : &wild, PMIX_PARENT_ID);
+        if (NULL == kv) {
+            continue;
         }
-        PMIX_DESTRUCT(&cb);
+        /* the union must not be read until the type says which member
+         * is live, and PMIX_PROC carries a pointer that a mistyped or
+         * truncated store can leave NULL */
+        if (NULL != kv->value && PMIX_PROC == kv->value->type &&
+            NULL != kv->value->data.proc) {
+            PMIX_LOAD_PROCID(parent, kv->value->data.proc->nspace,
+                             kv->value->data.proc->rank);
+            found = true;
+        }
+        PMIX_RELEASE(kv);
     }
-    PMIX_INFO_DESTRUCT(&optional);
 
     return found;
 }
 
-/* Append "procs" to job "ns"'s record of its ancestors, as many of them
- * as PMIX_IOF_MAX_ANCESTRY leaves room for. Returns false if it appended
+/* Append "procs", with the channels the generation below each inherits
+ * from it, to job "ns"'s record of its ancestors, as many of them as
+ * PMIX_IOF_MAX_ANCESTRY leaves room for. Returns false if it appended
  * none. */
-static bool append_ancestors(pmix_namespace_t *ns, const pmix_proc_t *procs, size_t count)
+static bool append_ancestors(pmix_namespace_t *ns, const pmix_proc_t *procs,
+                             const pmix_iof_channel_t *channels, size_t count)
 {
     pmix_proc_t *grown;
+    pmix_iof_channel_t *chgrown;
     size_t n = ns->niof_ancestors;
 
     if (PMIX_IOF_MAX_ANCESTRY - n < count) {
@@ -1040,6 +1053,11 @@ static bool append_ancestors(pmix_namespace_t *ns, const pmix_proc_t *procs, siz
     if (0 == count) {
         return false;
     }
+    chgrown = realloc(ns->iof_ancestor_channels, (n + count) * sizeof(pmix_iof_channel_t));
+    if (NULL == chgrown) {
+        return false;
+    }
+    ns->iof_ancestor_channels = chgrown;
     grown = PMIx_Proc_create(n + count);
     if (NULL == grown) {
         return false;
@@ -1048,6 +1066,7 @@ static bool append_ancestors(pmix_namespace_t *ns, const pmix_proc_t *procs, siz
         memcpy(grown, ns->iof_ancestors, n * sizeof(pmix_proc_t));
     }
     memcpy(&grown[n], procs, count * sizeof(pmix_proc_t));
+    memcpy(&chgrown[n], channels, count * sizeof(pmix_iof_channel_t));
     if (0 < n) {
         PMIx_Proc_free(ns->iof_ancestors, n);
     }
@@ -1069,6 +1088,7 @@ static void extend_ancestry(pmix_namespace_t *ns)
 {
     pmix_namespace_t *ans;
     pmix_proc_t anc, parent;
+    pmix_iof_channel_t below;   // the channels anc inherits, read once
     size_t n = ns->niof_ancestors;
 
     if (0 == n) {
@@ -1076,14 +1096,16 @@ static void extend_ancestry(pmix_namespace_t *ns)
         PMIX_LOAD_PROCID(&anc, ns->nspace, 0);
     } else {
         PMIX_XFER_PROCID(&anc, &ns->iof_ancestors[n - 1]);
-        if (!iof_inherit_allowed(anc.nspace)) {
-            return;
-        }
+    }
+    below = iof_inherit_channels(anc.nspace);
+    if (0 < n && PMIX_FWD_NO_CHANNELS == below) {
+        return;
     }
     while (ns->niof_ancestors < PMIX_IOF_MAX_ANCESTRY) {
         ans = find_nspace(anc.nspace);
         if (NULL != ans && ans != ns && 0 < ans->niof_ancestors) {
-            if (!append_ancestors(ns, ans->iof_ancestors, ans->niof_ancestors)) {
+            if (!append_ancestors(ns, ans->iof_ancestors, ans->iof_ancestor_channels,
+                                  ans->niof_ancestors)) {
                 break;
             }
         } else {
@@ -1093,12 +1115,13 @@ static void extend_ancestry(pmix_namespace_t *ns)
             if (PMIX_CHECK_NSPACE(parent.nspace, anc.nspace)) {
                 break;      // a job cannot have spawned itself
             }
-            if (!append_ancestors(ns, &parent, 1)) {
+            if (!append_ancestors(ns, &parent, &below, 1)) {
                 break;
             }
         }
         PMIX_XFER_PROCID(&anc, &ns->iof_ancestors[ns->niof_ancestors - 1]);
-        if (!iof_inherit_allowed(anc.nspace)) {
+        below = iof_inherit_channels(anc.nspace);
+        if (PMIX_FWD_NO_CHANNELS == below) {
             break;
         }
     }
@@ -1118,20 +1141,25 @@ static void extend_ancestry(pmix_namespace_t *ns)
 size_t pmix_server_iof_resolve_job(const char *nspace)
 {
     pmix_namespace_t *ns;
+    pmix_iof_channel_t mask;
     size_t n, ninherited = 0, nnew, ncovered;
 
     if (NULL == (ns = find_nspace(nspace))) {
         return 0;
     }
-    if (!iof_inherit_allowed(nspace)) {
+    mask = iof_inherit_channels(nspace);
+    if (PMIX_FWD_NO_CHANNELS == mask) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
                             "PMIx:SERVER job %s does not inherit output forwarding",
                             nspace);
         return 0;
     }
     extend_ancestry(ns);
-    for (n = 0; n < ns->niof_ancestors; n++) {
-        nnew = clone_iof_reqs(&ns->iof_ancestors[n], nspace, &ncovered);
+    /* each generation passes on only the channels it inherits itself, as
+     * recorded with the ancestry - a generation may have been released */
+    for (n = 0; n < ns->niof_ancestors && PMIX_FWD_NO_CHANNELS != mask; n++) {
+        mask &= ns->iof_ancestor_channels[n];
+        nnew = clone_iof_reqs(&ns->iof_ancestors[n], nspace, mask, &ncovered);
         if (0 < nnew) {
             pmix_output_verbose(2, pmix_server_globals.iof_output,
                                 "PMIx:SERVER job %s inherited %d subscription(s) "
@@ -1190,8 +1218,8 @@ pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
     pmix_iof_req_t *req;
     int idx;
 
-    /* Nothing in the spawn request said which channels to forward, so
-     * the child job takes its parent's - and if the parent has nobody
+    /* The child job takes its parent's forwarding, on the channels the
+     * request named (all, when it named none) - and if the parent has nobody
      * watching it, there is nowhere for the child's output to go
      * either. We deliberately do NOT fall back to forwarding it to the
      * spawner: output is never forwarded to an application process,

@@ -323,6 +323,8 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     char cwd[PMIX_PATH_MAX];
     char *tmp, *t2;
     bool proxy = false;
+    bool names_output = false;      // the caller named an output channel
+    bool to_watchers_given = false; // the caller set PMIX_IOF_TO_WATCHERS
     void *xlist;
     pmix_proc_t parent;
     pmix_data_array_t darray;
@@ -390,6 +392,12 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_IOF_FILE_WRITER)) {
                 /* ours to add, below - never the caller's */
                 continue;
+            } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_FWD_STDOUT) ||
+                       PMIX_CHECK_KEY(&job_info[n], PMIX_FWD_STDERR) ||
+                       PMIX_CHECK_KEY(&job_info[n], PMIX_FWD_STDDIAG)) {
+                names_output = true;
+            } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_IOF_TO_WATCHERS)) {
+                to_watchers_given = true;
             } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_PARENT_ID)) {
                 /* the directive comes straight from the caller, so verify it
                  * really carries a proc before dereferencing the union - a
@@ -419,6 +427,18 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
          * it does not hold */
         if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
             rc = PMIx_Info_list_add(xlist, PMIX_IOF_FILE_WRITER, &pmix_globals.myid, PMIX_PROC);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIx_Info_list_release(xlist);
+                PMIX_RELEASE(fcd);
+                return rc;
+            }
+        }
+        /* A client prints forwarded output only when it is its own output
+         * endpoint, as a singleton is; otherwise it drops it. So the
+         * channels it names go to whoever receives its job's output */
+        if (names_output && !to_watchers_given && PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
+            !PMIX_PEER_IS_TOOL(pmix_globals.mypeer) && !pmix_globals.iof_flags.local_output) {
+            rc = PMIx_Info_list_add(xlist, PMIX_IOF_TO_WATCHERS, NULL, PMIX_BOOL);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIx_Info_list_release(xlist);
                 PMIX_RELEASE(fcd);
@@ -803,7 +823,7 @@ envars_done:
 
     /* check for IOF flags */
     pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
-                             &fcd->inherit_iof,
+                             &fcd->inherit_iof, &fcd->inherit_mask,
                              fcd->info, fcd->ninfo);
     stash_spawn_iof_flags(&fcd->flags);
     /* Record the spawn as issued and unanswered before the request goes

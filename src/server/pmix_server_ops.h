@@ -76,10 +76,11 @@ typedef struct {
     size_t napps;
     pmix_iof_channel_t channels;
     pmix_iof_flags_t flags;
-    /* nothing in the spawn request decided which output channels the child
-     * job should have forwarded, so the child inherits its parent's - see
-     * pmix_server_spawn_parser() and pmix_server_process_iof() */
+    /* the child job inherits its parent's output forwarding, limited to
+     * inherit_mask - see pmix_server_spawn_parser() and
+     * pmix_server_process_iof() */
     bool inherit_iof;
+    pmix_iof_channel_t inherit_mask;
     bool xoff;      // IOF flow control: suspend (true) or resume (false)
     pmix_byte_object_t *bo;
     size_t nbo;
@@ -339,23 +340,30 @@ PMIX_EXPORT pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t
 
 PMIX_EXPORT pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_spawn_cbfunc_t cbfunc, void *cbdata);
+/* The output channels, as opposed to stdin */
+#define PMIX_SERVER_IOF_OUTPUT_CHANNELS \
+    (PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL)
+
 /* Parse a spawn request's output-forwarding directives. On return,
- * *inherit is true when nothing in the request decided which channels to
- * forward, which is the caller's signal to give the child job its
- * parent's settings instead - see pmix_server_process_iof(). */
+ * *inherit is true when the child job is to receive its parent's output
+ * forwarding, on the channels in *inherit_mask - see
+ * pmix_server_process_iof(). */
 PMIX_EXPORT void pmix_server_spawn_parser(pmix_peer_t *peer,
                                           pmix_iof_channel_t *channels,
                                           pmix_iof_flags_t *flags,
                                           bool *inherit,
+                                          pmix_iof_channel_t *inherit_mask,
                                           pmix_info_t *info,
                                           size_t ninfo);
-/* Parse cd's directives into cd's IOF fields, then add
- * PMIX_IOF_INHERIT=false to cd->info when the job is not to inherit,
- * dropping any value the requester supplied; cd->info may be replaced.
- * With "from_host" (the host spawning for itself) a job that inherits
- * keeps the host's own value. Every path that hands a spawn to the host
- * or pfexec calls this, not the parser. The client's send path calls the
- * parser alone: the server that receives the request prepares it. */
+/* Parse cd's directives into cd's IOF fields, then record in cd->info
+ * the channels the job inherits: PMIX_IOF_INHERIT=false for none,
+ * PMIX_IOF_INHERIT_CHANNELS for some, nothing for all. A requester's own
+ * value of either is replaced; with "from_host" (the host spawning for
+ * itself) the host's values also limit the result. cd->info may be
+ * replaced. Every path that hands a spawn to
+ * the host or pfexec calls this, not the parser. The client's send path
+ * calls the parser alone: the server that receives the request prepares
+ * it. */
 PMIX_EXPORT pmix_status_t pmix_server_spawn_prepare(pmix_peer_t *peer,
                                                     pmix_setup_caddy_t *cd,
                                                     bool from_host);

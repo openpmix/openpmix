@@ -174,6 +174,7 @@ static void nscon(pmix_namespace_t *p)
     p->jobdata_hash = 0;
     PMIX_CONSTRUCT(&p->ranks, pmix_list_t);
     p->iof_ancestors = NULL;
+    p->iof_ancestor_channels = NULL;
     p->niof_ancestors = 0;
     memset(&p->compat, 0, sizeof(p->compat));
     PMIX_CONSTRUCT(&p->epilog.cleanup_dirs, pmix_list_t);
@@ -213,6 +214,7 @@ static void nsdes(pmix_namespace_t *p)
     if (NULL != p->iof_ancestors) {
         PMIX_PROC_FREE(p->iof_ancestors, p->niof_ancestors);
     }
+    free(p->iof_ancestor_channels);
     PMIX_LIST_DESTRUCT(&p->departed);
     /* perform any epilog */
     pmix_execute_epilog(&p->epilog);

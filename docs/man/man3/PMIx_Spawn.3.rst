@@ -391,10 +391,14 @@ launched by an ordinary application process |mdash| an ``MPI_Comm_spawn``, for
 example |mdash| appear where its parent's output appears, without the parent
 having to describe a destination it has no way to know.
 
-Naming *any* one of them turns inheritance off and the request is taken exactly
-as written, including a channel explicitly set to ``false`` (which is how a
-spawn asks for silence from a job whose parent is being watched). Partial
-requests are not merged into the inherited set.
+Naming *any* one of them limits forwarding to the channels named ``true``;
+the others, named or not, are not forwarded, and naming every channel
+``false`` is how a spawn asks for silence. Partial requests are not merged
+into the inherited set. The channels named ``true`` go to this process, or,
+with ``PMIX_IOF_TO_WATCHERS``, to whoever receives the spawning job's output.
+A client process that does not print forwarded output itself |mdash| one
+started by a launcher, rather than as a singleton |mdash| has the library set
+``PMIX_IOF_TO_WATCHERS`` for it.
 
 A tool is not a member of a job and so has no parent to inherit from; a spawn
 issued by a tool that names no output attribute continues to default to
@@ -412,19 +416,21 @@ job to inherit |mdash| because the user asked its launcher not to, for example
 |mdash| sets ``PMIX_IOF_INHERIT`` to ``false`` in the job-level information it
 supplies for the spawned namespace, and no forwarding is inherited for that
 job. Absence of the attribute means inheritance is allowed, so a host that has
-no opinion sends nothing. This does not override a request that named a channel
-of its own; naming a channel has already settled the matter before the host's
-preference is consulted.
+no opinion sends nothing. It does not affect channels a request sends to the
+requesting process.
 
 * ``PMIX_FWD_STDIN`` (bool) |mdash| forward this process's ``stdin`` to the target
   processes. This is the opposite direction and has no bearing on the output
   inheritance described above.
 * ``PMIX_FWD_STDOUT`` (bool) |mdash| forward the spawned processes' ``stdout`` to
-  this process (typically used by a tool).
+  this process, or as described above.
 * ``PMIX_FWD_STDERR`` (bool) |mdash| forward the spawned processes' ``stderr`` to
-  this process (typically used by a tool).
+  this process, or as described above.
 * ``PMIX_FWD_STDDIAG`` (bool) |mdash| if a diagnostic channel exists, forward its
-  output from the spawned processes to this process (typically used by a tool).
+  output from the spawned processes to this process, or as described above.
+* ``PMIX_IOF_TO_WATCHERS`` (bool) |mdash| send the channels named ``true`` to
+  whoever receives this process's job's output instead of to this process.
+  Honored for a client.
 
 Formatting and destination of the forwarded output:
 

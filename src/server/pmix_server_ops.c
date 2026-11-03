@@ -435,20 +435,35 @@ pmix_status_t pmix_server_add_requester_type(pmix_peer_t *peer, pmix_info_t **in
     return PMIX_SUCCESS;
 }
 
-/* Add PMIX_IOF_INHERIT=false to spawn directives when "inherit" is false,
- * dropping any value the requester supplied. The attribute is the
- * host's, not a spawn directive: a requester that wants no inheritance
- * names the PMIX_FWD_* channels false */
-static pmix_status_t add_iof_inherit(bool inherit, pmix_info_t **info, size_t *ninfo)
+/* Record the channels a spawned job inherits in its spawn directives:
+ * PMIX_IOF_INHERIT=false for none, PMIX_IOF_INHERIT_CHANNELS for some,
+ * nothing for all. Any existing value of either is replaced. Both
+ * attributes are the host's, not spawn directives - a requester names the
+ * PMIX_FWD_* channels instead - so a requester's value is ignored, while
+ * with "from_host" the host's own values also limit the result */
+static pmix_status_t add_iof_inherit(pmix_iof_channel_t *maskp, bool from_host,
+                                     pmix_info_t **info, size_t *ninfo)
 {
     pmix_info_t *old = *info, *new;
+    pmix_iof_channel_t mask = *maskp;
+    uint16_t bits;
     size_t n, m;
     bool no = false;
 
-    /* drop a requester-supplied PMIX_IOF_INHERIT in place */
     m = 0;
     for (n = 0; n < *ninfo; n++) {
         if (PMIx_Check_key(old[n].key, PMIX_IOF_INHERIT)) {
+            if (from_host && PMIX_BOOL == old[n].value.type && !old[n].value.data.flag) {
+                mask = PMIX_FWD_NO_CHANNELS;
+            }
+            PMIx_Info_destruct(&old[n]);
+            continue;
+        }
+        if (PMIx_Check_key(old[n].key, PMIX_IOF_INHERIT_CHANNELS)) {
+            if (from_host && PMIX_SUCCESS == PMIx_Value_get_number(&old[n].value, &bits,
+                                                                    PMIX_UINT16)) {
+                mask = (pmix_iof_channel_t) (mask & bits);
+            }
             PMIx_Info_destruct(&old[n]);
             continue;
         }
@@ -463,7 +478,8 @@ static pmix_status_t add_iof_inherit(bool inherit, pmix_info_t **info, size_t *n
         old = NULL;
         *info = NULL;
     }
-    if (inherit) {
+    *maskp = mask;
+    if (PMIX_SERVER_IOF_OUTPUT_CHANNELS == mask) {
         return PMIX_SUCCESS;
     }
 
@@ -474,7 +490,11 @@ static pmix_status_t add_iof_inherit(bool inherit, pmix_info_t **info, size_t *n
     if (0 < m) {
         memcpy(new, old, m * sizeof(pmix_info_t));
     }
-    PMIx_Info_load(&new[m], PMIX_IOF_INHERIT, &no, PMIX_BOOL);
+    if (PMIX_FWD_NO_CHANNELS == mask) {
+        PMIx_Info_load(&new[m], PMIX_IOF_INHERIT, &no, PMIX_BOOL);
+    } else {
+        PMIx_Info_load(&new[m], PMIX_IOF_INHERIT_CHANNELS, &mask, PMIX_UINT16);
+    }
     /* only the block is left to release - see pmix_server_add_requester_id */
     free(old);
     *info = new;
@@ -485,13 +505,18 @@ static pmix_status_t add_iof_inherit(bool inherit, pmix_info_t **info, size_t *n
 pmix_status_t pmix_server_spawn_prepare(pmix_peer_t *peer, pmix_setup_caddy_t *cd,
                                         bool from_host)
 {
+    pmix_status_t rc;
+
     pmix_server_spawn_parser(peer, &cd->channels, &cd->flags,
-                             &cd->inherit_iof, cd->info, cd->ninfo);
-    /* the host's own PMIX_IOF_INHERIT is its refusal: keep it */
-    if (from_host && cd->inherit_iof) {
-        return PMIX_SUCCESS;
+                             &cd->inherit_iof, &cd->inherit_mask, cd->info, cd->ninfo);
+    rc = add_iof_inherit(&cd->inherit_mask, from_host, &cd->info, &cd->ninfo);
+    if (PMIX_FWD_NO_CHANNELS == cd->inherit_mask && cd->inherit_iof) {
+        cd->inherit_iof = false;
+        /* a client's named channels are never its own: the host's
+         * refusal silences them */
+        cd->channels = (pmix_iof_channel_t) (cd->channels & ~PMIX_SERVER_IOF_OUTPUT_CHANNELS);
     }
-    return add_iof_inherit(cd->inherit_iof, &cd->info, &cd->ninfo);
+    return rc;
 }
 
 /* nested info arrays are followed no deeper than this */
@@ -1208,8 +1233,10 @@ static pmix_status_t screen_file_writer(pmix_peer_t *peer, pmix_setup_caddy_t *c
         }
         return PMIX_SUCCESS;
     }
-    if (!files || !cd->inherit_iof || !PMIX_PEER_IS_CLIENT(peer) || NULL == peer->nptr ||
-        !peer->nptr->iof_flags.writer_given) {
+    /* the writer is sent only the channels the job inherits, so it can
+     * write the files only when that is all of them */
+    if (!files || !cd->inherit_iof || PMIX_SERVER_IOF_OUTPUT_CHANNELS != cd->inherit_mask ||
+        !PMIX_PEER_IS_CLIENT(peer) || NULL == peer->nptr || !peer->nptr->iof_flags.writer_given) {
         return PMIX_SUCCESS;
     }
     new = PMIx_Info_create(nold + 1);
@@ -1231,11 +1258,13 @@ void pmix_server_spawn_parser(pmix_peer_t *peer,
                               pmix_iof_channel_t *channels,
                               pmix_iof_flags_t *flags,
                               bool *inherit,
+                              pmix_iof_channel_t *inherit_mask,
                               pmix_info_t *info,
                               size_t ninfo)
 {
     size_t n;
     bool stdout_found = false, stderr_found = false, stddiag_found = false;
+    bool to_watchers = false;
 
     /* run a quick check of the directives to see if any IOF
      * requests were included so we can set that up now - helps
@@ -1262,6 +1291,8 @@ void pmix_server_spawn_parser(pmix_peer_t *peer,
             if (PMIX_INFO_TRUE(&info[n])) {
                 *channels |= PMIX_FWD_STDDIAG_CHANNEL;
             }
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_TO_WATCHERS)) {
+            to_watchers = PMIX_INFO_TRUE(&info[n]);
         } else {
             pmix_iof_check_flags(&info[n], flags);
         }
@@ -1273,8 +1304,19 @@ void pmix_server_spawn_parser(pmix_peer_t *peer,
      * request is taken verbatim, including a channel the requestor
      * explicitly turned off. Merging a partial request into an inherited
      * set would make "forward stdout" quietly mean something different
-     * depending on what the parent job happened to be doing. */
-    *inherit = !(stdout_found || stderr_found || stddiag_found);
+     * depending on what the parent job happened to be doing. The named
+     * channels go to the requester, or with PMIX_IOF_TO_WATCHERS from a
+     * client to whoever watches its job */
+    if (stdout_found || stderr_found || stddiag_found) {
+        if (to_watchers && PMIX_PEER_IS_CLIENT(peer) && !PMIX_PEER_IS_TOOL(peer)) {
+            *inherit_mask = *channels & PMIX_SERVER_IOF_OUTPUT_CHANNELS;
+        } else {
+            *inherit_mask = PMIX_FWD_NO_CHANNELS;
+        }
+    } else {
+        *inherit_mask = PMIX_SERVER_IOF_OUTPUT_CHANNELS;
+    }
+    *inherit = (PMIX_FWD_NO_CHANNELS != *inherit_mask);
 
     if (PMIX_PEER_IS_TOOL(peer)) {
         /* if the requestor is a tool, we default to forwarding all
@@ -1291,6 +1333,7 @@ void pmix_server_spawn_parser(pmix_peer_t *peer,
             *channels |= PMIX_FWD_STDDIAG_CHANNEL;
         }
         *inherit = false;
+        *inherit_mask = PMIX_FWD_NO_CHANNELS;
     }
 }
 

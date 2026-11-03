@@ -446,6 +446,9 @@ typedef struct {
     /* IOF inheritance: the ancestors whose watchers this job inherits,
      * nearest first, recorded when it is registered here */
     pmix_proc_t *iof_ancestors;
+    /* for each, the channels the generation below it inherits from it -
+     * read while that generation's data is here, so it outlives it */
+    pmix_iof_channel_t *iof_ancestor_channels;
     size_t niof_ancestors;
     /* Ranks whose entry above the host has taken back - the proc has
      * terminated. pmix_proclist_t, one per reaped LOCAL rank, kept until

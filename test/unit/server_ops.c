@@ -111,6 +111,9 @@ static size_t spawn_nident = 0;  /* PMIX_USERID and PMIX_GRPID entries */
 static size_t spawn_ntype = 0;   /* PMIX_REQUESTOR_IS_TOOL and _IS_CLIENT entries */
 static size_t spawn_ninherit = 0; /* PMIX_IOF_INHERIT entries */
 static bool spawn_noinherit = false;
+static size_t spawn_nchannels = 0; /* PMIX_IOF_INHERIT_CHANNELS entries */
+static size_t spawn_nwriter = 0;   /* PMIX_IOF_FILE_WRITER entries */
+static uint16_t spawn_channels = 0;
 static bool spawn_by_tool = false;
 static bool spawn_refuse = false;
 /* the uid a spawn's PMIX_ACCESS_PERMISSIONS reached the host with, and
@@ -246,6 +249,9 @@ static pmix_status_t stub_spawn(const pmix_proc_t *proc,
     spawn_ntype = 0;
     spawn_ninherit = 0;
     spawn_noinherit = false;
+    spawn_nchannels = 0;
+    spawn_channels = 0;
+    spawn_nwriter = 0;
     spawn_by_tool = false;
     spawn_access_numeric = false;
     for (n = 0; n < ninfo; n++) {
@@ -261,6 +267,13 @@ static pmix_status_t stub_spawn(const pmix_proc_t *proc,
             ++spawn_ninherit;
             spawn_noinherit = (PMIX_BOOL == job_info[n].value.type &&
                                !job_info[n].value.data.flag);
+        } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_IOF_FILE_WRITER)) {
+            ++spawn_nwriter;
+        } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_IOF_INHERIT_CHANNELS)) {
+            ++spawn_nchannels;
+            if (PMIX_UINT16 == job_info[n].value.type) {
+                spawn_channels = job_info[n].value.data.uint16;
+            }
         } else {
             ++spawn_ninfo;
         }
@@ -333,6 +346,10 @@ typedef struct {
     bool as_tool;       /* present the requestor as a tool */
     bool claim_uid;     /* publish: include a PMIX_USERID of our own */
     const char *access_user; /* spawn: a job directive allowing this user, by name */
+    bool fwd_stdout;    /* spawn: a job directive PMIX_FWD_STDOUT=true */
+    bool to_file;       /* spawn: a job directive PMIX_IOF_OUTPUT_TO_FILE */
+    bool to_watchers;   /* spawn, with fwd_stdout: PMIX_IOF_TO_WATCHERS */
+    bool as_client;     /* present the requestor as a client */
     pmix_status_t status;
 } opsut_req_t;
 
@@ -437,7 +454,27 @@ static pmix_status_t pack_spawn(pmix_buffer_t *buf, opsut_req_t *r)
     /* the job-level directives - zero of them is a legal request
      * (PMIx_Spawn(NULL, 0, ...)) */
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &r->ninfo, 1, PMIX_SIZE);
-    for (n = 0; PMIX_SUCCESS == rc && n < r->ninfo_real; n++) {
+    if (PMIX_SUCCESS == rc && r->fwd_stdout) {
+        /* the directives go as one array, as a client packs them */
+        pmix_info_t dir[3];
+        size_t k = 0;
+        bool yes = true;
+        PMIX_INFO_LOAD(&dir[k++], PMIX_FWD_STDOUT, &yes, PMIX_BOOL);
+        if (r->to_watchers) {
+            PMIX_INFO_LOAD(&dir[k++], PMIX_IOF_TO_WATCHERS, &yes, PMIX_BOOL);
+        }
+        if (r->to_file) {
+            PMIX_INFO_LOAD(&dir[k++], PMIX_IOF_OUTPUT_TO_FILE, "/tmp/server-ops-ut", PMIX_STRING);
+        }
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, dir, (int32_t) k, PMIX_INFO);
+        while (0 < k) {
+            PMIX_INFO_DESTRUCT(&dir[--k]);
+        }
+        n = r->ninfo_real;
+    } else {
+        n = 0;
+    }
+    for (; PMIX_SUCCESS == rc && n < r->ninfo_real; n++) {
         if (NULL != r->access_user && 0 == n) {
             /* PMIX_ACCESS_PERMISSIONS { PMIX_ACCESS_USERIDS: [ name ] } */
             pmix_data_array_t *names, perms;
@@ -451,6 +488,12 @@ static pmix_status_t pack_spawn(pmix_buffer_t *buf, opsut_req_t *r)
             perms.array = &entry;
             PMIX_INFO_LOAD(&info, PMIX_ACCESS_PERMISSIONS, &perms, PMIX_DATA_ARRAY);
             PMIX_INFO_DESTRUCT(&entry);
+            PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &info, 1, PMIX_INFO);
+            PMIX_INFO_DESTRUCT(&info);
+            continue;
+        }
+        if (r->to_file && 0 == n) {
+            PMIX_INFO_LOAD(&info, PMIX_IOF_OUTPUT_TO_FILE, "/tmp/server-ops-ut", PMIX_STRING);
             PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &info, 1, PMIX_INFO);
             PMIX_INFO_DESTRUCT(&info);
             continue;
@@ -532,6 +575,10 @@ static void do_cmd(int sd, short args, void *cbdata)
     if (r->as_tool) {
         pmix_globals.mypeer->proc_type.type |= PMIX_PROC_TOOL;
     }
+    /* a named channel is decided by role, and this one is a client's */
+    if (r->fwd_stdout || r->as_client) {
+        pmix_globals.mypeer->proc_type.type |= PMIX_PROC_CLIENT;
+    }
 
     switch (r->cmd) {
     case OPSUT_ABORT:
@@ -563,6 +610,10 @@ static void do_cmd(int sd, short args, void *cbdata)
 
 /* for the next spawn driven: a job directive allowing this user, by name */
 static const char *access_user_name = NULL;
+static bool spawn_fwd_stdout = false;
+static bool spawn_to_file = false;
+static bool spawn_to_watchers = false;
+static bool spawn_as_client = false;
 
 static pmix_status_t drive_claim(opsut_cmd_t cmd, size_t nprocs, size_t nprocs_real,
                                  size_t ninfo, size_t ninfo_real, bool as_tool,
@@ -574,6 +625,10 @@ static pmix_status_t drive_claim(opsut_cmd_t cmd, size_t nprocs, size_t nprocs_r
     memset(&req, 0, sizeof(req));
     req.claim_uid = claim_uid;
     req.access_user = access_user_name;
+    req.fwd_stdout = spawn_fwd_stdout;
+    req.to_file = spawn_to_file;
+    req.to_watchers = spawn_to_watchers;
+    req.as_client = spawn_as_client;
     PMIX_CONSTRUCT_LOCK(&req.lock);
     req.cmd = cmd;
     req.nprocs = nprocs;
@@ -769,6 +824,56 @@ int main(int argc, char **argv)
     report("a tool's child job has its stddiag forwarded",
            0 != (channels & PMIX_FWD_STDDIAG_CHANNEL));
 
+    /* a client's named channels are its own, and the child does not
+     * inherit... */
+    spawn_fwd_stdout = true;
+    spawn_fired = false;
+    rc = drive(OPSUT_SPAWN, 0, 0, 1, 1, false);
+    report("a client spawn naming PMIX_FWD_STDOUT=true is accepted", PMIX_SUCCESS == rc);
+    report("...and the host is told the child does not inherit",
+           spawn_fired && 1 == spawn_ninherit && spawn_noinherit && 0 == spawn_nchannels);
+    /* ...unless they go to its job's watchers: then the child inherits just
+     * those - see pmix_server_spawn_prepare() */
+    spawn_to_watchers = true;
+    spawn_fired = false;
+    rc = drive(OPSUT_SPAWN, 0, 0, 2, 2, false);
+    report("a client spawn with PMIX_IOF_TO_WATCHERS is accepted", PMIX_SUCCESS == rc);
+    report("...and the host is told the child inherits stdout only",
+           spawn_fired && 0 == spawn_ninherit && 1 == spawn_nchannels &&
+           PMIX_FWD_STDOUT_CHANNEL == spawn_channels);
+    spawn_fwd_stdout = false;
+    spawn_to_watchers = false;
+
+    /* --- a client whose job's files have a writer --- *
+     * the child's files go to that writer only when it is sent every
+     * channel, which a child that names some does not */
+    if (NULL != pmix_globals.mypeer->nptr) {
+        pmix_iof_flags_t saved = pmix_globals.mypeer->nptr->iof_flags;
+
+        pmix_globals.mypeer->nptr->iof_flags.writer_given = true;
+        PMIX_LOAD_PROCID(&pmix_globals.mypeer->nptr->iof_flags.writer, "server-ops-ut.tool", 0);
+        spawn_to_file = true;
+        spawn_as_client = true;
+        spawn_fired = false;
+        rc = drive(OPSUT_SPAWN, 0, 0, 1, 1, false);
+        report("a client spawn writing files names its job's writer",
+               PMIX_SUCCESS == rc && spawn_fired && 1 == spawn_nwriter);
+        spawn_fwd_stdout = true;
+        spawn_to_watchers = true;
+        spawn_fired = false;
+        rc = drive(OPSUT_SPAWN, 0, 0, 3, 3, false);
+        report("...but not when it inherits only stdout",
+               PMIX_SUCCESS == rc && spawn_fired && 0 == spawn_nwriter &&
+               PMIX_FWD_STDOUT_CHANNEL == spawn_channels);
+        spawn_fwd_stdout = false;
+        spawn_to_watchers = false;
+        spawn_to_file = false;
+        spawn_as_client = false;
+        pmix_globals.mypeer->nptr->iof_flags = saved;
+    } else {
+        report("this server has a namespace record", false);
+    }
+
     /* --- a spawn allowing another user by name --- *
      * the name is resolved where it enters, so the host is given the
      * number */
@@ -807,6 +912,48 @@ int main(int argc, char **argv)
         report("a host's own spawn is accepted", PMIX_SUCCESS == rc);
         report("...and its PMIX_IOF_INHERIT=false reaches the host",
                spawn_fired && 1 == spawn_ninherit && spawn_noinherit);
+        PMIX_INFO_DESTRUCT(&info);
+        PMIX_APP_DESTRUCT(&app);
+    }
+    {
+        pmix_app_t app;
+        pmix_info_t info[2];
+        pmix_nspace_t child;
+        bool yes = true, no = false;
+
+        /* the host's own value and the parser's decision become one key */
+        PMIX_APP_CONSTRUCT(&app);
+        app.cmd = strdup("/bin/true");
+        app.maxprocs = 1;
+        PMIX_INFO_LOAD(&info[0], PMIX_IOF_INHERIT, &yes, PMIX_BOOL);
+        PMIX_INFO_LOAD(&info[1], PMIX_FWD_STDOUT, &no, PMIX_BOOL);
+        spawn_fired = false;
+        rc = PMIx_Spawn(info, 2, &app, 1, child);
+        report("a host's own spawn naming PMIX_FWD_STDOUT=false is accepted",
+               PMIX_SUCCESS == rc);
+        report("...and the host gets one PMIX_IOF_INHERIT, false",
+               spawn_fired && 1 == spawn_ninherit && spawn_noinherit && 0 == spawn_nchannels);
+        PMIX_INFO_DESTRUCT(&info[0]);
+        PMIX_INFO_DESTRUCT(&info[1]);
+        PMIX_APP_DESTRUCT(&app);
+    }
+    {
+        pmix_app_t app;
+        pmix_info_t info;
+        pmix_nspace_t child;
+        uint32_t errch = PMIX_FWD_STDERR_CHANNEL;
+
+        /* the host's own channel set, as any integer type */
+        PMIX_APP_CONSTRUCT(&app);
+        app.cmd = strdup("/bin/true");
+        app.maxprocs = 1;
+        PMIX_INFO_LOAD(&info, PMIX_IOF_INHERIT_CHANNELS, &errch, PMIX_UINT32);
+        spawn_fired = false;
+        rc = PMIx_Spawn(&info, 1, &app, 1, child);
+        report("a host's own spawn with a uint32 channel set is accepted", PMIX_SUCCESS == rc);
+        report("...and the host gets that set back",
+               spawn_fired && 0 == spawn_ninherit && 1 == spawn_nchannels &&
+               PMIX_FWD_STDERR_CHANNEL == spawn_channels);
         PMIX_INFO_DESTRUCT(&info);
         PMIX_APP_DESTRUCT(&app);
     }

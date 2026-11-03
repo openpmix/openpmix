@@ -87,9 +87,7 @@ static pmix_peer_t *mkpeer(const char *nspace, pmix_rank_t rank, bool tool)
     p->info = PMIX_NEW(pmix_rank_info_t);
     p->info->pname.nspace = strdup(nspace);
     p->info->pname.rank = rank;
-    if (tool) {
-        p->proc_type.type |= PMIX_PROC_TOOL;
-    }
+    p->proc_type.type |= tool ? PMIX_PROC_TOOL : PMIX_PROC_CLIENT;
     return p;
 }
 
@@ -218,6 +216,7 @@ static pmix_status_t run_spawn_iof(pmix_peer_t *spawner, bool inherit,
     PMIX_RETAIN(spawner);
     cd->peer = spawner;
     cd->inherit_iof = inherit;
+    cd->inherit_mask = inherit ? PMIX_SERVER_IOF_OUTPUT_CHANNELS : PMIX_FWD_NO_CHANNELS;
     cd->channels = channels;
     rc = pmix_server_process_iof(cd, (char *) child);
     PMIX_RELEASE(cd);
@@ -320,6 +319,7 @@ static void test_spawn_parser(void)
     pmix_peer_t *client, *tool;
     pmix_iof_channel_t ch;
     pmix_iof_flags_t flags;
+    pmix_iof_channel_t mask;
     pmix_info_t info;
     bool inherit;
     bool flag = false;
@@ -330,18 +330,18 @@ static void test_spawn_parser(void)
     /* a client that says nothing wants to inherit */
     pmix_iof_init_flags(&flags);
     inherit = false;
-    pmix_server_spawn_parser(client, &ch, &flags, &inherit, NULL, 0);
-    report("spawn_parser: silent client inherits",
-           inherit && PMIX_FWD_NO_CHANNELS == ch);
+    pmix_server_spawn_parser(client, &ch, &flags, &inherit, &mask, NULL, 0);
+    report("spawn_parser: silent client inherits every output channel",
+           inherit && PMIX_FWD_NO_CHANNELS == ch && PMIX_SERVER_IOF_OUTPUT_CHANNELS == mask);
 
     /* a tool that says nothing keeps its own default - it is not a member
      * of a job, so it has no parent to inherit from, and prun relies on
      * this being all channels */
     pmix_iof_init_flags(&flags);
     inherit = true;
-    pmix_server_spawn_parser(tool, &ch, &flags, &inherit, NULL, 0);
+    pmix_server_spawn_parser(tool, &ch, &flags, &inherit, &mask, NULL, 0);
     report("spawn_parser: silent tool defaults to all, does not inherit",
-           !inherit
+           !inherit && PMIX_FWD_NO_CHANNELS == mask
            && (PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL
                | PMIX_FWD_STDDIAG_CHANNEL) == ch);
 
@@ -351,28 +351,64 @@ static void test_spawn_parser(void)
     PMIX_INFO_LOAD(&info, PMIX_FWD_STDOUT, &flag, PMIX_BOOL);
     pmix_iof_init_flags(&flags);
     inherit = true;
-    pmix_server_spawn_parser(client, &ch, &flags, &inherit, &info, 1);
+    pmix_server_spawn_parser(client, &ch, &flags, &inherit, &mask, &info, 1);
     report("spawn_parser: an explicit 'false' suppresses inheritance",
-           !inherit && PMIX_FWD_NO_CHANNELS == ch);
+           !inherit && PMIX_FWD_NO_CHANNELS == ch && PMIX_FWD_NO_CHANNELS == mask);
     PMIX_INFO_DESTRUCT(&info);
 
     flag = true;
     PMIX_INFO_LOAD(&info, PMIX_FWD_STDERR, &flag, PMIX_BOOL);
     pmix_iof_init_flags(&flags);
     inherit = true;
-    pmix_server_spawn_parser(client, &ch, &flags, &inherit, &info, 1);
-    report("spawn_parser: a named channel suppresses inheritance",
-           !inherit && PMIX_FWD_STDERR_CHANNEL == ch);
+    pmix_server_spawn_parser(client, &ch, &flags, &inherit, &mask, &info, 1);
+    report("spawn_parser: a client's named channel is its own",
+           !inherit && PMIX_FWD_NO_CHANNELS == mask && PMIX_FWD_STDERR_CHANNEL == ch);
     PMIX_INFO_DESTRUCT(&info);
+
+    /* with PMIX_IOF_TO_WATCHERS it goes to whoever watches the job */
+    {
+        pmix_info_t two[2];
+
+        PMIX_INFO_LOAD(&two[0], PMIX_FWD_STDERR, &flag, PMIX_BOOL);
+        PMIX_INFO_LOAD(&two[1], PMIX_IOF_TO_WATCHERS, NULL, PMIX_BOOL);
+        pmix_iof_init_flags(&flags);
+        inherit = false;
+        pmix_server_spawn_parser(client, &ch, &flags, &inherit, &mask, two, 2);
+        report("spawn_parser: PMIX_IOF_TO_WATCHERS sends a client's channel to its watchers",
+               inherit && PMIX_FWD_STDERR_CHANNEL == mask);
+        pmix_iof_init_flags(&flags);
+        inherit = false;
+        pmix_server_spawn_parser(tool, &ch, &flags, &inherit, &mask, two, 2);
+        report("spawn_parser: ...but not a tool's",
+               !inherit && PMIX_FWD_NO_CHANNELS == mask);
+        PMIX_INFO_DESTRUCT(&two[0]);
+        PMIX_INFO_DESTRUCT(&two[1]);
+    }
+
+    /* any other requester - the host spawning for itself - receives its
+     * named channels itself */
+    {
+        pmix_peer_t *server = mkpeer("serverns", 0, false);
+
+        server->proc_type.type = PMIX_PROC_SERVER;
+        PMIX_INFO_LOAD(&info, PMIX_FWD_STDERR, &flag, PMIX_BOOL);
+        pmix_iof_init_flags(&flags);
+        inherit = true;
+        pmix_server_spawn_parser(server, &ch, &flags, &inherit, &mask, &info, 1);
+        report("spawn_parser: a server's named channel is its own",
+               !inherit && PMIX_FWD_NO_CHANNELS == mask && PMIX_FWD_STDERR_CHANNEL == ch);
+        PMIX_INFO_DESTRUCT(&info);
+        PMIX_RELEASE(server);
+    }
 
     /* stdin is the other direction and says nothing about output */
     flag = true;
     PMIX_INFO_LOAD(&info, PMIX_FWD_STDIN, &flag, PMIX_BOOL);
     pmix_iof_init_flags(&flags);
     inherit = false;
-    pmix_server_spawn_parser(client, &ch, &flags, &inherit, &info, 1);
+    pmix_server_spawn_parser(client, &ch, &flags, &inherit, &mask, &info, 1);
     report("spawn_parser: FWD_STDIN alone still inherits output",
-           inherit && PMIX_FWD_STDIN_CHANNEL == ch);
+           inherit && PMIX_FWD_STDIN_CHANNEL == ch && PMIX_SERVER_IOF_OUTPUT_CHANNELS == mask);
     PMIX_INFO_DESTRUCT(&info);
 
     PMIX_RELEASE(client);
@@ -1120,6 +1156,40 @@ static void test_released_middle(void)
     PMIX_RELEASE(watcher);
 }
 
+/* A released middle generation keeps its channel limit.
+ *
+ * chB inherits stderr only from chA, whose watcher takes stdout and
+ * stderr; chC names nothing. Once chB is released, a new watcher of chA
+ * reaches chC - on stderr only, as chB's limit was recorded when chC was. */
+static void test_released_middle_channels(void)
+{
+    pmix_peer_t *watcher;
+    pmix_iof_req_t *req;
+    pmix_info_t only;
+    pmix_nspace_t ns;
+    uint16_t errch = PMIX_FWD_STDERR_CHANNEL;
+    int idx, count;
+
+    watcher = mkpeer("toolch", 0, true);
+    PMIX_INFO_LOAD(&only, PMIX_IOF_INHERIT_CHANNELS, &errch, PMIX_UINT16);
+    if (PMIX_SUCCESS != register_child_info("chB", "chA", 0, &only, 1) ||
+        PMIX_SUCCESS != register_child("chC", "chB", 0)) {
+        report("released channels: could not register the namespaces", false);
+    } else {
+        PMIX_LOAD_NSPACE(ns, "chB");
+        PMIx_server_deregister_nspace(ns, NULL, NULL);
+        idx = watch_job(watcher, "chA", PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL, 112);
+        pmix_server_iof_subscribed(pmix_pointer_array_get_item(&pmix_globals.iof_requests, idx));
+        req = find_watch("chC", &count);
+        report("released channels: the middle generation's limit still applies",
+               1 == count && PMIX_FWD_STDERR_CHANNEL == req->channels);
+    }
+    PMIX_INFO_DESTRUCT(&only);
+    drop_watches("chC");
+    drop_watches("chA");
+    PMIX_RELEASE(watcher);
+}
+
 /* The same when the middle generation is released before the job below
  * it is registered, as when each generation of a spawn chain exits after
  * spawning the next. rbC recorded rbB and rbA while rbB was still here;
@@ -1455,10 +1525,10 @@ typedef struct {
     const char *name;
     bool tool;          // requested by a tool
     size_t ninfo;
-    pmix_info_t info[2];
+    pmix_info_t info[3];
 } agree_row_t;
 
-#define AGREE_ROWS 13
+#define AGREE_ROWS 16
 
 static void build_rows(agree_row_t *rows)
 {
@@ -1476,6 +1546,19 @@ static void build_rows(agree_row_t *rows)
     rows[r].name = "PMIX_FWD_STDERR=true";
     PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDERR, &yes, PMIX_BOOL);
     rows[r++].ninfo = 1;
+    rows[r].name = "PMIX_FWD_STDERR=true, PMIX_IOF_TO_WATCHERS";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDERR, &yes, PMIX_BOOL);
+    PMIX_INFO_LOAD(&rows[r].info[1], PMIX_IOF_TO_WATCHERS, &yes, PMIX_BOOL);
+    rows[r++].ninfo = 2;
+    rows[r].name = "PMIX_FWD_STDOUT=false, PMIX_FWD_STDERR=true, PMIX_IOF_TO_WATCHERS";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDOUT, &no, PMIX_BOOL);
+    PMIX_INFO_LOAD(&rows[r].info[1], PMIX_FWD_STDERR, &yes, PMIX_BOOL);
+    PMIX_INFO_LOAD(&rows[r].info[2], PMIX_IOF_TO_WATCHERS, &yes, PMIX_BOOL);
+    rows[r++].ninfo = 3;
+    rows[r].name = "PMIX_FWD_STDERR=true, PMIX_FWD_STDDIAG=false";
+    PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDERR, &yes, PMIX_BOOL);
+    PMIX_INFO_LOAD(&rows[r].info[1], PMIX_FWD_STDDIAG, &no, PMIX_BOOL);
+    rows[r++].ninfo = 2;
     rows[r].name = "PMIX_FWD_STDDIAG=false";
     PMIX_INFO_LOAD(&rows[r].info[0], PMIX_FWD_STDDIAG, &no, PMIX_BOOL);
     rows[r++].ninfo = 1;
@@ -1518,8 +1601,9 @@ static void test_parser_agreement(void)
     pmix_peer_t *watcher, *client, *tool, *spawner;
     pmix_setup_caddy_t *cd;
     pmix_nspace_t child;
+    pmix_iof_req_t *req;
+    pmix_iof_channel_t expect;
     char what[160];
-    bool parser_inherits;
     size_t n;
     int r, count;
 
@@ -1527,7 +1611,7 @@ static void test_parser_agreement(void)
     client = mkpeer("agreejob", 0, false);
     tool = mkpeer("agreejob", 0, true);   // a tool carrying a job's name
     spawner = mkpeer("agreejob", 0, false);
-    watch_job(watcher, "agreejob", PMIX_FWD_STDERR_CHANNEL, 11);
+    watch_job(watcher, "agreejob", PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL, 11);
     build_rows(rows);
 
     for (r = 0; r < AGREE_ROWS; r++) {
@@ -1548,25 +1632,29 @@ static void test_parser_agreement(void)
             }
             continue;
         }
-        parser_inherits = cd->inherit_iof;
+        expect = cd->inherit_iof ? (cd->inherit_mask & (PMIX_FWD_STDERR_CHANNEL |
+                                                         PMIX_FWD_STDDIAG_CHANNEL))
+                                 : PMIX_FWD_NO_CHANNELS;
         snprintf(child, sizeof(child), "agreechild%d", r);
         if (PMIX_SUCCESS != register_child_info(child, "agreejob", 0, cd->info, cd->ninfo)) {
             snprintf(what, sizeof(what), "agree: %s: could not register", rows[r].name);
             report(what, false);
         } else {
-            find_watch(child, &count);
-            snprintf(what, sizeof(what), "agree: %s: registration %s like the parser",
-                     rows[r].name, parser_inherits ? "inherits" : "does not inherit");
-            report(what, parser_inherits == (0 < count));
+            req = find_watch(child, &count);
+            snprintf(what, sizeof(what), "agree: %s: registration clones channels 0x%x",
+                     rows[r].name, (unsigned) expect);
+            report(what, PMIX_FWD_NO_CHANNELS == expect ? 0 == count
+                                                        : (1 == count && expect == req->channels));
             drop_watches(child);
 
-            /* the spawn-time half reads the same key; driven as if its
+            /* the spawn-time half reads the same keys; driven as if its
              * parser had inherited, which is how a host's refusal meets it */
             run_spawn_iof(spawner, true, PMIX_FWD_NO_CHANNELS, child);
-            find_watch(child, &count);
-            snprintf(what, sizeof(what), "agree: %s: spawn-time half %s too",
-                     rows[r].name, parser_inherits ? "inherits" : "does not inherit");
-            report(what, parser_inherits == (0 < count));
+            req = find_watch(child, &count);
+            snprintf(what, sizeof(what), "agree: %s: spawn-time half clones 0x%x too",
+                     rows[r].name, (unsigned) expect);
+            report(what, PMIX_FWD_NO_CHANNELS == expect ? 0 == count
+                                                        : (1 == count && expect == req->channels));
             drop_watches(child);
         }
         PMIX_RELEASE(cd);
@@ -1708,6 +1796,116 @@ static void test_tool_connects(int uriw, int readyr, int gow, pid_t child)
     drop_watches("srvJ");
 }
 
+/* Each generation passes on only the channels it inherits itself.
+ *
+ * The parent inherits stderr only; its child names nothing. A watcher of
+ * the grandparent taking stdout, stderr and stddiag reaches the child on
+ * stderr alone. */
+static void test_walk_masks(void)
+{
+    pmix_peer_t *watcher;
+    pmix_iof_req_t *req;
+    pmix_info_t only;
+    uint16_t errch = PMIX_FWD_STDERR_CHANNEL;
+    int count;
+
+    watcher = mkpeer("toolns", 0, true);
+    watch_job(watcher, "maskjob", PMIX_SERVER_IOF_OUTPUT_CHANNELS, 13);
+    PMIX_INFO_LOAD(&only, PMIX_IOF_INHERIT_CHANNELS, &errch, PMIX_UINT16);
+
+    if (PMIX_SUCCESS != register_child_info("maskparent", "maskjob", 0, &only, 1) ||
+        PMIX_SUCCESS != register_child("maskchild", "maskparent", 0)) {
+        report("mask: could not register the namespaces", false);
+    } else {
+        req = find_watch("maskchild", &count);
+        report("mask: the child inherits only its parent's channels",
+               1 == count && PMIX_FWD_STDERR_CHANNEL == req->channels);
+    }
+
+    PMIX_INFO_DESTRUCT(&only);
+    drop_watches("maskchild");
+    drop_watches("maskparent");
+    drop_watches("maskjob");
+    PMIX_RELEASE(watcher);
+}
+
+/* The channel set is read as a number of any integer type */
+static void test_mask_uint32(void)
+{
+    pmix_peer_t *watcher;
+    pmix_iof_req_t *req;
+    pmix_info_t only;
+    uint32_t errch = PMIX_FWD_STDERR_CHANNEL;
+    int count;
+
+    watcher = mkpeer("toolns", 0, true);
+    watch_job(watcher, "u32job", PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL, 19);
+    PMIX_INFO_LOAD(&only, PMIX_IOF_INHERIT_CHANNELS, &errch, PMIX_UINT32);
+    if (PMIX_SUCCESS != register_child_info("u32child", "u32job", 0, &only, 1)) {
+        report("uint32: could not register the namespace", false);
+    } else {
+        req = find_watch("u32child", &count);
+        report("uint32: a uint32 channel set limits inheritance",
+               1 == count && PMIX_FWD_STDERR_CHANNEL == req->channels);
+    }
+    PMIX_INFO_DESTRUCT(&only);
+    drop_watches("u32child");
+    drop_watches("u32job");
+    PMIX_RELEASE(watcher);
+}
+
+/* The host's own refusal reaches the spawn server's decision too, not only
+ * the directives it hands the host. */
+static void test_host_refusal_prepare(void)
+{
+    pmix_peer_t *server;
+    pmix_setup_caddy_t *cd;
+    bool no = false;
+
+    server = mkpeer("hostns", 0, false);
+    server->proc_type.type = PMIX_PROC_SERVER;
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    cd->info = PMIx_Info_create(1);
+    cd->ninfo = 1;
+    cd->copied = true;
+    PMIx_Info_load(&cd->info[0], PMIX_IOF_INHERIT, &no, PMIX_BOOL);
+    if (PMIX_SUCCESS != pmix_server_spawn_prepare(server, cd, true)) {
+        report("host refusal: could not prepare the request", false);
+    } else {
+        report("host refusal: the spawn server does not inherit either",
+               !cd->inherit_iof && PMIX_FWD_NO_CHANNELS == cd->inherit_mask);
+    }
+    PMIX_RELEASE(cd);
+    PMIX_RELEASE(server);
+}
+
+/* The host's refusal on a client's behalf silences the client's named
+ * channels rather than sending them to the client. */
+static void test_host_refusal_client(void)
+{
+    pmix_peer_t *client;
+    pmix_setup_caddy_t *cd;
+    bool yes = true, no = false;
+
+    client = mkpeer("refusejob", 0, false);
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    cd->info = PMIx_Info_create(3);
+    cd->ninfo = 3;
+    cd->copied = true;
+    PMIx_Info_load(&cd->info[0], PMIX_FWD_STDOUT, &yes, PMIX_BOOL);
+    PMIx_Info_load(&cd->info[1], PMIX_IOF_TO_WATCHERS, &yes, PMIX_BOOL);
+    PMIx_Info_load(&cd->info[2], PMIX_IOF_INHERIT, &no, PMIX_BOOL);
+    if (PMIX_SUCCESS != pmix_server_spawn_prepare(client, cd, true)) {
+        report("client refusal: could not prepare the request", false);
+    } else {
+        report("client refusal: the client is not subscribed to its child",
+               !cd->inherit_iof &&
+               PMIX_FWD_NO_CHANNELS == (cd->channels & PMIX_SERVER_IOF_OUTPUT_CHANNELS));
+    }
+    PMIX_RELEASE(cd);
+    PMIX_RELEASE(client);
+}
+
 static pmix_server_module_t mymodule = {0};
 
 int main(int argc, char **argv)
@@ -1758,6 +1956,10 @@ int main(int argc, char **argv)
     test_delivery_ancestry();
     test_parser_agreement();
     test_walk_stops();
+    test_walk_masks();
+    test_mask_uint32();
+    test_host_refusal_prepare();
+    test_host_refusal_client();
     test_inherit_access();
     test_clone_lineage();
     test_job_gone();
@@ -1771,6 +1973,7 @@ int main(int argc, char **argv)
     test_data_by_update();
     test_one_copy_per_handler();
     test_released_middle();
+    test_released_middle_channels();
     test_released_before_registration();
     test_drain_all_ancestors();
     test_rank_pull_overlap();
