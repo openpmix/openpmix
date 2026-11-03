@@ -111,6 +111,8 @@ Instantiating a session (typically issued by a scheduler):
   information to be applied in conjunction with the specified
   ``PMIX_SESSION_APP`` definitions. It is an error to provide this without a
   ``PMIX_SESSION_APP`` description.
+* ``PMIX_SESSION_PROVISION`` (pmix_data_array_t*) |mdash| description of the
+  nodes to be provisioned with a specified image.
 * ``PMIX_SESSION_PROVISION_NODES`` (char*) |mdash| regular expression
   identifying nodes that are to be provisioned.
 * ``PMIX_SESSION_PROVISION_IMAGE`` (char*) |mdash| name of the image that is to
