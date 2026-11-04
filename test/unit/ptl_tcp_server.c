@@ -14,7 +14,9 @@
  * PMIX_ERR_INVALID_CRED before anything is sent to it.
  *
  * A tool connects here to a server's TCP listener - which a server opens
- * for clients and tools of earlier releases - by its URI.
+ * for clients and tools of earlier releases - by a file of its URI
+ * ("file:<path>"): a TCP URI passed alone is refused before any
+ * connection is made.
  *
  * A server at an address of this host whose end of the connection the
  * kernel's table does not show - one that defers its accept until data
@@ -131,14 +133,17 @@ static void run_server(int urifd, int gofd)
 }
 
 /* a tool, as uid `uid` (none if 0 and we are not root), connecting to the
- * URI; it exits with the status's negation */
+ * URI by a file of its own that names it; it exits with the status's
+ * negation */
 static int run_tool(const char *uri, uid_t uid, const char *access)
 {
     pmix_info_t info;
     pmix_proc_t me;
     pmix_status_t rc;
     pid_t pid;
-    int status;
+    int status, fd;
+    char path[] = "/tmp/pmix_tcp_server.XXXXXX", target[64];
+    FILE *fp;
 
     fflush(stdout);
     pid = fork();
@@ -149,8 +154,18 @@ static int run_tool(const char *uri, uid_t uid, const char *access)
         if (NULL != access) {
             setenv("PMIX_MCA_ptl_base_server_access", access, 1);
         }
-        PMIX_INFO_LOAD(&info, PMIX_SERVER_URI, uri, PMIX_STRING);
+        fd = mkstemp(path);
+        fp = (0 > fd) ? NULL : fdopen(fd, "w");
+        if (NULL == fp) {
+            _exit(254);
+        }
+        fprintf(fp, "%s\nv%d.%d.%d\n", uri, (int) PMIX_VERSION_MAJOR, (int) PMIX_VERSION_MINOR,
+                (int) PMIX_VERSION_RELEASE);
+        fclose(fp);
+        snprintf(target, sizeof(target), "file:%s", path);
+        PMIX_INFO_LOAD(&info, PMIX_SERVER_URI, target, PMIX_STRING);
         rc = PMIx_tool_init(&me, &info, 1);
+        unlink(path);
         if (PMIX_SUCCESS == rc) {
             PMIx_tool_finalize();
         }

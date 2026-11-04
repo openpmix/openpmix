@@ -109,7 +109,10 @@ Target server attributes
 * ``PMIX_SERVER_PIDINFO`` (pid_t) |mdash| connect to the server embedded in the
   process with the given PID.
 * ``PMIX_TCP_URI`` (char\*) |mdash| URI of the server to connect to, or a file
-  name containing it in the form ``file:<name of file>``.
+  name containing it in the form ``file:<name of file>``. For this and
+  ``PMIX_SERVER_URI``, a TCP URI is refused with ``PMIX_ERR_NOT_SUPPORTED``
+  and no connection is made: pass the server's local-socket (``usock://``)
+  URI, or, for a server of a release before v7.0, its file.
 * ``PMIX_TOOL_ATTACHMENT_FILE`` (char\*) |mdash| file containing the connection
   information to be used for attaching to the server.
 

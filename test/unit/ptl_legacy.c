@@ -16,10 +16,10 @@
  *
  * By default a server takes none, and has no TCP listener unless it takes
  * remote tools. Where it reports where it is - the PMIX_SERVER_URIxx
- * variables PMIx_server_setup_fork sets, and its rendezvous files - names
- * its local socket. With legacy peers, all of
- * them name its TCP listener, and the local socket's address is given
- * beside it.
+ * variables PMIx_server_setup_fork sets, its rendezvous files, and the
+ * PMIX_SERVER_URI it stores - names its local socket. With legacy peers,
+ * all of them name its TCP listener, and the local socket's address is
+ * given beside it. PMIX_MYSERVER_URI names the local socket either way.
  *
  * Each case runs in a child forked before any PMIx call.
  */
@@ -70,6 +70,26 @@ static int check(const char *what, bool ok)
 static bool names(const char *s, const pmix_listener_t *lt)
 {
     return NULL != s && NULL != lt->uri && 0 == strncmp(s, lt->uri, strlen(lt->uri));
+}
+
+/* whether the URI the server stored under key names the listener lt */
+static bool stored_names(const char *key, const pmix_listener_t *lt)
+{
+    pmix_value_t *val = NULL;
+    bool ok;
+
+    if (PMIX_SUCCESS != PMIx_Get(&pmix_globals.myid, key, NULL, 0, &val) || NULL == val ||
+        PMIX_STRING != val->type) {
+        fprintf(stdout, "    %s: (none)\n", key);
+        if (NULL != val) {
+            PMIX_VALUE_RELEASE(val);
+        }
+        return false;
+    }
+    fprintf(stdout, "    %s=%s\n", key, val->data.string);
+    ok = names(val->data.string, lt);
+    PMIX_VALUE_RELEASE(val);
+    return ok;
 }
 
 /* the first line of the file, without its newline */
@@ -127,6 +147,10 @@ static int check_server(int legacy, bool tcp_wanted)
     line = first_line(pmix_ptl_base.pid_filename);
     fprintf(stdout, "    rendezvous file's first line: %s\n", (NULL == line) ? "(none)" : line);
     rc |= check("the rendezvous file names it", names(line, want));
+
+    rc |= check("PMIX_SERVER_URI names it", stored_names(PMIX_SERVER_URI, want));
+    rc |= check("PMIX_MYSERVER_URI names the local socket",
+                stored_names(PMIX_MYSERVER_URI, &pmix_ptl_base.local_listener));
 
     PMIX_LOAD_PROCID(&proc, "legacy.client", 0);
     if (PMIX_SUCCESS != PMIx_server_setup_fork(&proc, &env)) {

@@ -1524,15 +1524,15 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     pmix_ptl_base.local_uid = geteuid();
     pmix_ptl_base.local_gid = getegid();
 
-    /* Where we are, as we report it: the TCP address when we listen on
-     * one - a reader of an earlier release can use nothing else, and one
-     * of this release finds the local socket beside it - and the local
-     * socket's when we do not */
+    /* Where we are, as we report it. PMIX_MYSERVER_URI is the URI a
+     * process of this release connects to - the local socket's - and is
+     * what a launcher or tool we start is handed to call back on.
+     * PMIX_SERVER_URI, the key earlier releases read, is the TCP address
+     * when we listen on one: a reader of an earlier release can use
+     * nothing else. Without a TCP listener both are the local socket's */
     uri = (NULL != lt->uri) ? lt->uri : llt->uri;
 
-    /* save the URI internally so we can report it - and a legacy copy
-     * for older tools */
-    rc = store_uri(PMIX_MYSERVER_URI, uri);
+    rc = store_uri(PMIX_MYSERVER_URI, llt->uri);
     if (PMIX_SUCCESS == rc) {
         rc = store_uri(PMIX_SERVER_URI, uri);
     }

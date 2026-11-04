@@ -873,7 +873,11 @@ server path; a client has its own, simpler one (`ptl_base_client.c`).
   - the server that started us named itself in our environment
     (`pmix_ptl_base_set_peer`), whatever its release;
   - a URI was passed directly (`PMIX_SERVER_URI`/`PMIX_TCP_URI`), which
-    is also how a launcher's `PMIX_LAUNCHER_RNDZ_URI` arrives;
+    is also how a launcher's `PMIX_LAUNCHER_RNDZ_URI` arrives. Only a
+    local-socket URI gets this far: `do_connect` refuses a TCP one before
+    any connection, `PMIX_ERR_NOT_SUPPORTED` with `tcp-uri-alone`, as a
+    server of this release takes us on its local socket only and one of
+    an earlier release needs the version its file gives;
   - the caller named the server's file (`parse_uri_file` - `file:<path>`
     or `PMIX_TOOL_ATTACHMENT_FILE` - not `parse_rndz_file`) and
     `pmix_ptl_base_named_file_vouches()` passes it:
