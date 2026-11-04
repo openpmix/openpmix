@@ -38,6 +38,9 @@
  *                   server by namespace instead: the second must look for
  *                   that namespace, not dial the first one's URI again.
  *
+ * Each fake server is named by a file of its URI ("file:<path>"), as a TCP
+ * URI passed alone is refused before any connection is made.
+ *
  * Attaching to a real server is covered by the existing tool tests
  * (tool_api, tool_rndz, run_toolswitch.pl), which go through the same
  * path.
@@ -126,6 +129,32 @@ static int make_listener(int *port)
     return sd;
 }
 
+/* The fake server's URI, as a file the tool is pointed at ("file:<path>"):
+ * a TCP URI passed alone is refused before any connection, and these cases
+ * are about what happens once one is made. The caller unlinks path */
+static int fake_uri(int port, char *target, size_t tlen, char *path, size_t plen)
+{
+    FILE *fp;
+    int fd;
+
+    snprintf(path, plen, "/tmp/pmix_attach_nb.XXXXXX");
+    fd = mkstemp(path);
+    if (0 > fd) {
+        return -1;
+    }
+    fp = fdopen(fd, "w");
+    if (NULL == fp) {
+        close(fd);
+        unlink(path);
+        return -1;
+    }
+    fprintf(fp, "fakeserver.0;tcp4://127.0.0.1:%d\nv%d.%d.%d\n", port, (int) PMIX_VERSION_MAJOR,
+            (int) PMIX_VERSION_MINOR, (int) PMIX_VERSION_RELEASE);
+    fclose(fp);
+    snprintf(target, tlen, "file:%s", path);
+    return 0;
+}
+
 typedef struct {
     int port;
     pmix_status_t rc;
@@ -139,14 +168,19 @@ static void *attach_thread(void *arg)
     pmix_info_t info[1];
     pmix_proc_t server;
     struct timeval start;
-    char uri[128];
+    char uri[1100], path[1024];
 
-    snprintf(uri, sizeof(uri), "fakeserver.0;tcp4://127.0.0.1:%d", at->port);
+    if (0 != fake_uri(at->port, uri, sizeof(uri), path, sizeof(path))) {
+        at->rc = PMIX_ERR_FILE_OPEN_FAILURE;
+        at->done = true;
+        return NULL;
+    }
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_URI, uri, PMIX_STRING);
     gettimeofday(&start, NULL);
     at->rc = PMIx_tool_attach_to_server(NULL, &server, info, 1);
     at->secs = since(&start);
     PMIX_INFO_DESTRUCT(&info[0]);
+    unlink(path);
     at->done = true;
     return NULL;
 }
@@ -334,20 +368,23 @@ static int handshake_init_child(int port)
     pmix_info_t info[1];
     struct timeval start;
     pmix_status_t rc;
-    char uri[128], val[16];
+    char uri[1100], path[1024], val[16];
     double secs;
 
     signal(SIGALRM, on_alarm);
     alarm(4 * ATTACH_WAIT);
     snprintf(val, sizeof(val), "%d", ATTACH_WAIT);
     setenv("PMIX_MCA_ptl_base_handshake_wait_time", val, 1);
-    snprintf(uri, sizeof(uri), "fakeserver.0;tcp4://127.0.0.1:%d", port);
+    if (0 != fake_uri(port, uri, sizeof(uri), path, sizeof(path))) {
+        return ATT_SETUP;
+    }
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_URI, uri, PMIX_STRING);
     gettimeofday(&start, NULL);
     rc = PMIx_tool_init(&myproc, info, 1);
     secs = since(&start);
     alarm(0);
     PMIX_INFO_DESTRUCT(&info[0]);
+    unlink(path);
     if (PMIX_SUCCESS == rc) {
         fprintf(stdout, "    PMIx_tool_init succeeded\n");
         PMIx_tool_finalize();

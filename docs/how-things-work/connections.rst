@@ -209,9 +209,13 @@ Each address is a URI:
 
 (``tcp6://`` for IPv6). The server's URI is its TCP one when it listens
 on TCP, and its local socket's when it does not. The server stores it
-under ``PMIX_MYSERVER_URI`` and ``PMIX_SERVER_URI``, reports it, and
-puts it first in its rendezvous files. A TCP URI reaches older peers,
-which cannot use the local socket. When the
+under ``PMIX_SERVER_URI``, reports it, and puts it first in its
+rendezvous files. A TCP URI reaches older peers, which cannot use the
+local socket. ``PMIX_MYSERVER_URI`` is always the local socket's URI:
+it is the one to hand a process of this release, such as a launcher
+that is to connect back (``PMIX_LAUNCHER_RNDZ_URI``). To give the
+server's address to a process of a release before v7.0, use
+``PMIX_SERVER_URI`` instead. When the
 server has one, the local socket's URI is given beside it where a
 process on the host reads it: the environment of the processes the
 server starts (see below) and the rendezvous files.
@@ -409,7 +413,13 @@ progress thread, without blocking it.
 A client takes the local socket's URI from its environment (or a URI
 from a ``PMIX_SERVER_URI`` directive to ``PMIx_Init``). A tool finds its
 server as described in :doc:`ptl`; a rendezvous file of this release
-gives it the local socket. From there the two do the same:
+gives it the local socket. A tool given a TCP URI directly
+(``PMIX_SERVER_URI`` or ``PMIX_TCP_URI``, or the launcher's
+``PMIX_LAUNCHER_RNDZ_URI``) does not connect, and fails with
+``PMIX_ERR_NOT_SUPPORTED`` (help topic ``tcp-uri-alone``): a server of
+this release takes it on its local socket, and one of an earlier
+release through its rendezvous file (``file:<path>``), which gives the
+server's version. From there the two do the same:
 
 #. **Open a connection** to the URI's address - only an address of this
    host. A TCP address that is not this host's - not a loopback address,

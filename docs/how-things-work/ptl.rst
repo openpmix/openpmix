@@ -129,8 +129,8 @@ socket - the first two steps below are the ``tcp`` transport's, in
 #. **Publish the URI.** Build a URI of the form
    ``nspace.rank;tcp4://host:port``. The base stores the server's URI -
    this one when there is a TCP listener, else the local socket's - in
-   ``gds`` under both ``PMIX_MYSERVER_URI`` and (for older tools)
-   ``PMIX_SERVER_URI``. If
+   ``gds`` under ``PMIX_SERVER_URI`` (for older tools), and the local
+   socket's under ``PMIX_MYSERVER_URI``. If
    ``report_uri`` is set, also emit it: the local socket's URI to stdout
    (``-``) or stderr (``+``); the TCP URI to stdout (``tcp-``) or stderr
    (``tcp+``), which fail the init with no TCP listener; to an integer
@@ -278,7 +278,7 @@ leaves them behind.
 
 The local socket's URI reaches a client in its environment, as
 ``PMIX_SERVER_LOCAL_URI``, and a tool on the rendezvous file's ``local:``
-line. ``PMIX_SERVER_URI``, ``PMIX_MYSERVER_URI``, the report and the
+line. ``PMIX_SERVER_URI``, the report and the
 first line of the rendezvous files are the TCP URI when the server
 listens on TCP - they reach older peers, which cannot use the local
 socket - and the local socket's otherwise.
@@ -326,7 +326,9 @@ Tools (and servers connecting upward) use
 which searches for the right server among many possibilities, roughly from
 most specific to least:
 
-* an explicit ``PMIX_SERVER_URI`` / ``PMIX_TCP_URI``;
+* an explicit ``PMIX_SERVER_URI`` / ``PMIX_TCP_URI`` - a local-socket
+  URI, or ``file:<path>``; a TCP URI is refused before connecting, with
+  ``PMIX_ERR_NOT_SUPPORTED`` (help topic ``tcp-uri-alone``);
 * a rendezvous / ``PMIX_TOOL_ATTACHMENT_FILE``;
 * a caller-specified **connection order** — ``PMIX_CONNECT_SYSTEM_FIRST``,
   ``PMIX_CONNECT_TO_SYSTEM``, ``PMIX_CONNECT_TO_SCHEDULER``,

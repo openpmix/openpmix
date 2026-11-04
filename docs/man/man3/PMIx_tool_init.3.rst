@@ -182,7 +182,10 @@ during initialization.
 * ``PMIX_SERVER_PIDINFO`` (pid_t) |mdash| connect to the server embedded in the
   process with the given PID.
 * ``PMIX_TCP_URI`` (char\*) |mdash| URI of the server to connect to, or a file
-  name containing it in the form ``file:<name of file>``.
+  name containing it in the form ``file:<name of file>``. For this and
+  ``PMIX_SERVER_URI``, a TCP URI is refused with ``PMIX_ERR_NOT_SUPPORTED``
+  and no connection is made: pass the server's local-socket (``usock://``)
+  URI, or, for a server of a release before v7.0, its file.
 * ``PMIX_TOOL_ATTACHMENT_FILE`` (char\*) |mdash| file containing the connection
   information to be used for attaching to a server.
 * ``PMIX_CONNECT_TO_SCHEDULER`` (bool) |mdash| connect to the system scheduler.
@@ -190,8 +193,11 @@ during initialization.
   controller.
 * ``PMIX_SERVER_HOSTNAME`` (char\*) |mdash| the node on which the target server is
   located.
-* ``PMIX_MYSERVER_URI`` (char\*) |mdash| the URI of this process's own listener
-  socket, used when the process itself accepts connections.
+* ``PMIX_MYSERVER_URI`` (char\*) |mdash| the URI of this process's own local
+  socket, used when the process itself accepts connections. It is the URI
+  to hand a process of this release that is to connect back, such as a
+  launcher (``PMIX_LAUNCHER_RNDZ_URI``). To give this process's address to
+  a process of a release before v7.0, use ``PMIX_SERVER_URI`` instead.
 * ``PMIX_CONNECTION_ORDER`` (char\*) |mdash| comma-delimited list of
   connection-target attributes (e.g., ``PMIX_CONNECT_TO_SCHEDULER``,
   ``PMIX_CONNECT_TO_SYS_CONTROLLER``, ``PMIX_CONNECT_TO_SYSTEM``) defining the

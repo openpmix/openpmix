@@ -16,7 +16,9 @@
  * the local socket: a server of this release takes a tool of this release
  * only there. So:
  *
- *   - its bare TCP URI, passed directly: past the tool's check
+ *   - its bare TCP URI, passed directly: refused by the tool before any
+ *     connection, PMIX_ERR_NOT_SUPPORTED - a TCP address alone names no
+ *     server a tool of this release can use
  *   - a file it was given by name: past it, whatever release it names and
  *     whether or not anything holds the lock beside it
  *   - a file its group may write: refused by the tool
@@ -24,8 +26,8 @@
  *     without following a link - so the tool reaches no server:
  *     PMIX_ERR_UNREACH, saying it is not a regular file
  *
- * and a server at an address that is not this host's is not dialled at
- * all: PMIX_ERR_UNREACH, saying so.
+ * and a server at an address that is not this host's, named by a file, is
+ * not dialled at all: PMIX_ERR_UNREACH, saying so.
  *
  * Each server and tool runs in a child of its own.
  */
@@ -259,7 +261,7 @@ static void one_case(const char *name, const case_t *c, bool attach, pmix_status
 {
     server_t srv;
     char errpath[1024], file[1024], link[1024], target[4096], body[4096], detail[512];
-    char *lname = NULL, *port;
+    char *lname = NULL, *port, addr[sizeof(srv.uri)];
     pmix_status_t rc;
     int lfd = -1;
     bool ok;
@@ -275,12 +277,15 @@ static void one_case(const char *name, const case_t *c, bool attach, pmix_status
     if (c->offhost) {
         /* the server's own port, at an address no host holds */
         port = strrchr(srv.uri, ':');
-        snprintf(target, sizeof(target), "unnamed.0;tcp4://192.0.2.1%s",
+        snprintf(addr, sizeof(addr), "unnamed.0;tcp4://192.0.2.1%.16s",
                  (NULL == port) ? ":1" : port);
-    } else if (NULL == c->version) {
-        snprintf(target, sizeof(target), "%s", srv.uri);
     } else {
-        snprintf(body, sizeof(body), "%s\n%s\n%s", srv.uri, c->version, c->tail);
+        snprintf(addr, sizeof(addr), "%s", srv.uri);
+    }
+    if (NULL == c->version) {
+        snprintf(target, sizeof(target), "%s", addr);
+    } else {
+        snprintf(body, sizeof(body), "%s\n%s\n%s", addr, c->version, c->tail);
         fp = fopen(file, "w");
         if (NULL == fp) {
             stop_server(&srv);
@@ -363,8 +368,8 @@ int main(void)
 
     memset(&c, 0, sizeof(c));
     c.mode = 0644;
-    both("a tool given a server's bare TCP URI goes on - it was passed directly", &c,
-         PMIX_ERR_LOCAL_URI_REQUIRED, "That is the server's TCP address", dir);
+    both("a tool given a server's bare TCP URI is refused before connecting", &c,
+         PMIX_ERR_NOT_SUPPORTED, "a TCP address alone", dir);
 
     c.version = cur;
     c.tail = PMIX_PTL_LOCK_TAG PMIX_PTL_LOCK_FLOCK "\n";
@@ -389,6 +394,9 @@ int main(void)
     c.linked = false;
 
     memset(&c, 0, sizeof(c));
+    c.mode = 0644;
+    c.version = cur;
+    c.tail = "";
     c.offhost = true;
     both("a server at an address that is not this host's is not dialled", &c, PMIX_ERR_UNREACH,
          "not this host's", dir);

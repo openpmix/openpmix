@@ -85,20 +85,6 @@ connect (2026-10-24), and checked against the tree on 2026-10-25.  Every
 entry is a behavior a site running a mix of releases can meet.  Each says
 what happens, when, and what would close it.
 
-.. _todo-conn-bare-uri-wire:
-
-A bare TCP URI speaks a wire format older servers lack
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-*Deferred work.*  A tool given only a TCP URI, with no file, knows
-nothing of its server's release.  ``pmix_ptl_base_select_compat`` then
-picks no wire format, and the tool uses its newest, ``v70``.  A server of
-v6.1 or earlier has no ``v70`` and refuses the connection.
-
-To close: with no version to go by, use the newest wire format every
-supported server has, so that a server of a later release still accepts
-it.
-
 .. _todo-conn-empty-nspace:
 
 A v5.0 scheduler with an empty namespace is untested
