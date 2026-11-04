@@ -220,7 +220,6 @@ pmix_bfrops_module_t *pmix_bfrops_base_assign_module(const char *version)
     pmix_bfrops_base_active_module_t *active;
     pmix_bfrops_module_t *mod;
     char **tmp = NULL;
-    int i;
     if (!pmix_bfrops_globals.initialized) {
         return NULL;
     }
@@ -235,12 +234,10 @@ pmix_bfrops_module_t *pmix_bfrops_base_assign_module(const char *version)
                 return mod;
             }
         } else {
-            for (i = 0; NULL != tmp[i]; i++) {
-                if (0 == strcmp(tmp[i], active->component->base.pmix_mca_component_name)) {
-                    if (NULL != (mod = active->component->assign_module())) {
-                        PMIx_Argv_free(tmp);
-                        return mod;
-                    }
+            if (0 <= PMIx_Argv_idx(tmp, active->component->base.pmix_mca_component_name)) {
+                if (NULL != (mod = active->component->assign_module())) {
+                    PMIx_Argv_free(tmp);
+                    return mod;
                 }
             }
         }
