@@ -64,21 +64,13 @@ pmix_status_t pmix_argv_append_unique_idx(int *idx, char ***argv, const char *ar
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* if the provided array is NULL, then the arg cannot be present,
-     * so just go ahead and append
-     */
-    if (NULL == *argv) {
-        goto add;
+    /* a NULL array holds nothing, so the arg is appended to it */
+    i = PMIx_Argv_idx(*argv, arg);
+    if (0 <= i) {
+        /* already exists */
+        *idx = i;
+        return PMIX_SUCCESS;
     }
-    /* see if this arg is already present in the array */
-    for (i = 0; NULL != (*argv)[i]; i++) {
-        if (0 == strcmp(arg, (*argv)[i])) {
-            /* already exists */
-            *idx = i;
-            return PMIX_SUCCESS;
-        }
-    }
-add:
     if (PMIX_SUCCESS != (rc = PMIx_Argv_append_nosize(argv, arg))) {
         return rc;
     }

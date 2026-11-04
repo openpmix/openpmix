@@ -156,6 +156,13 @@ Functions for handling of argv arrays (``NULL``-terminated array of strings)
 
     int PMIx_Argv_count(char **a);
 
+* Find a string in the array, returning its index - or -1 if it is not
+  there
+
+.. code-block:: c
+
+    int PMIx_Argv_idx(char **argv, const char *arg);
+
 * Append a string to the array
 
 .. code-block:: c
