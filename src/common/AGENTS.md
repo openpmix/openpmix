@@ -472,6 +472,26 @@ The host carries it into every daemon's registration, where
   not spawn. Keep those three in step: the spawn reply's `memcpy` would
   otherwise drop files the tool was already sent.
 
+**How a job a tool did not spawn is formatted: `PMIX_IOF_JOB_DIRECTIVES`.**
+A launcher is sent the output of jobs its job spawns (they inherit its
+subscription) without ever seeing their spawn requests. So
+`pmix_iof_process_iof()` appends, to the first chunk of a job's output for
+each request (`add_job_directives()`, recorded in `req->jobdirs_sent`
+only after the send succeeds), the formatting directives the host
+registered for the job - fetched from the GDS under the keys in
+`jobdir_keys[]`, deprecated names sent as current ones - and, for a clone
+(`req->inherited`), `PMIX_PARENT_ID` = `req->inherited_from`. The tool
+records it (`pmix_iof_record_job_directives()`, from `pmix_tool.c`,
+before the file directives) in `nptr->fwd_dirs`/`fwd_parent`, and
+`write_output()` resolves it, after the hold check, only for a job whose
+`iof_flags` are not set: stand-in flags, then `forwarded_format()` - the
+nearest known ancestor's formatting (`take_format()`), walked up to
+`PMIX_IOF_MAX_ANCESTRY`, then the job's own directives through
+`pmix_iof_check_flags()`, which sets only the keys it is given. Keep the
+two key lists (`jobdir_keys[]`, `take_format()`) the same set: what is
+sent is what is inherited. The host requirement this rests on is stated
+in `PMIx_server_register_nspace(3)`.
+
 **Sinks are closed at finalize before the residual list goes.** A sink
 flushes its partial line from `pmix_server_globals.iof_residuals` into its
 file when it is destructed, and the namespaces holding the sinks are

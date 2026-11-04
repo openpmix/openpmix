@@ -33,6 +33,7 @@
 
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/gds/gds.h"
 #include "src/common/pmix_pfexec.h"
 #include "src/mca/ptl/ptl.h"
 #include "src/mca/ptl/base/base.h"
@@ -1683,6 +1684,10 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
 static pmix_namespace_t *add_writer_directives(const pmix_proc_t *source, pmix_peer_t *peer,
                                                const pmix_info_t *info, size_t ninfo,
                                                pmix_info_t **xinfo, size_t *nxinfo);
+static bool add_job_directives(const pmix_proc_t *source, pmix_iof_req_t *req,
+                               const pmix_info_t *info, size_t ninfo,
+                               pmix_info_t **yinfo, size_t *nyinfo);
+static bool is_jobdir_key(const char *key);
 
 pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_t *source,
                                    const pmix_byte_object_t *bo, const pmix_info_t *info,
@@ -1693,8 +1698,9 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
     pmix_buffer_t *msg;
     pmix_status_t rc;
     pmix_namespace_t *told;
-    pmix_info_t *xinfo = NULL;
-    size_t nxinfo = 0;
+    pmix_info_t *xinfo = NULL, *yinfo = NULL;
+    size_t nxinfo = 0, nyinfo = 0;
+    bool jobdirs;
 
     /* if the channel wasn't included, then ignore it */
     if (!(channels & req->channels)) {
@@ -1765,30 +1771,29 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
         info = xinfo;
         ninfo = nxinfo;
     }
+    /* ...and the first of a job's output to go to each recipient brings
+     * the job's formatting directives - see PMIX_IOF_JOB_DIRECTIVES */
+    jobdirs = add_job_directives(source, req, info, ninfo, &yinfo, &nyinfo);
+    if (NULL != yinfo) {
+        info = yinfo;
+        ninfo = nyinfo;
+    }
     /* pack the number of info's provided */
     PMIX_BFROPS_PACK(rc, req->requestor, msg, &ninfo, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(msg);
-        if (NULL != xinfo) {
-            PMIx_Info_free(xinfo, nxinfo);
-        }
-        return rc;
-    }
     /* if some were provided, then pack them too */
-    if (0 < ninfo) {
+    if (PMIX_SUCCESS == rc && 0 < ninfo) {
         PMIX_BFROPS_PACK(rc, req->requestor, msg, info, ninfo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            if (NULL != xinfo) {
-                PMIx_Info_free(xinfo, nxinfo);
-            }
-            return rc;
-        }
     }
     if (NULL != xinfo) {
         PMIx_Info_free(xinfo, nxinfo);
+    }
+    if (NULL != yinfo) {
+        PMIx_Info_free(yinfo, nyinfo);
+    }
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return rc;
     }
 
     /* pack the data */
@@ -1815,6 +1820,12 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
     }
     if (NULL != told) {
         told->writer_told = true;
+    }
+    if (jobdirs) {
+        /* recorded whether or not the job had any directives to send:
+         * the answer does not change, and asking again costs a lookup
+         * per chunk */
+        PMIx_Argv_append_nosize(&req->jobdirs_sent, source->nspace);
     }
     return PMIX_OPERATION_SUCCEEDED;
 }
@@ -2751,6 +2762,163 @@ void pmix_iof_record_forwarded_files(const pmix_proc_t *source, const pmix_info_
     }
 }
 
+/* Record what a server sent about a job's formatting with the first of its
+ * output to reach us (PMIX_IOF_JOB_DIRECTIVES): the directives the job was
+ * registered with, and the job whose formatting it inherits. Called by a
+ * tool for every chunk it is forwarded; only the first that carries them
+ * counts.
+ *
+ * Nothing is resolved here. A reply to a spawn of ours may still be coming
+ * for this job, and is the better answer - it carries what we asked for,
+ * and whether we are to write the output at all - and the job it inherits
+ * from may not be formatted yet either. write_output() puts it together,
+ * and only where it would otherwise have fallen back to stand_in_flags(). */
+void pmix_iof_record_job_directives(const pmix_proc_t *source, const pmix_info_t *info,
+                                    size_t ninfo)
+{
+    pmix_namespace_t *nptr = NULL, *ns;
+    pmix_info_t *dirs = NULL, *keep = NULL;
+    pmix_proc_t parent;
+    bool parent_given = false;
+    size_t n, ndirs = 0, nkeep = 0;
+
+    if (NULL == info || 0 == ninfo) {
+        return;
+    }
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_JOB_DIRECTIVES) &&
+            PMIX_DATA_ARRAY == info[n].value.type &&
+            NULL != info[n].value.data.darray &&
+            PMIX_INFO == info[n].value.data.darray->type &&
+            NULL != info[n].value.data.darray->array) {
+            dirs = (pmix_info_t *) info[n].value.data.darray->array;
+            ndirs = info[n].value.data.darray->size;
+            break;
+        }
+    }
+    if (NULL == dirs) {
+        return;
+    }
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(ns->nspace, source->nspace)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL != nptr && nptr->fwd_told) {
+        return;
+    }
+    for (n = 0; n < ndirs; n++) {
+        if (PMIX_CHECK_KEY(&dirs[n], PMIX_PARENT_ID)) {
+            /* a job is not its own ancestor */
+            if (PMIX_PROC == dirs[n].value.type && NULL != dirs[n].value.data.proc &&
+                !PMIX_CHECK_NSPACE(dirs[n].value.data.proc->nspace, source->nspace)) {
+                PMIX_XFER_PROCID(&parent, dirs[n].value.data.proc);
+                parent_given = true;
+            }
+        } else if (is_jobdir_key(dirs[n].key)) {
+            /* only the formatting directives: the sender is our server,
+             * but a file name here is not one we were asked to write to */
+            ++nkeep;
+        }
+    }
+    if (0 == nkeep && !parent_given) {
+        return;
+    }
+    if (0 < nkeep) {
+        keep = PMIx_Info_create(nkeep);
+        if (NULL == keep) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            return;
+        }
+        nkeep = 0;
+        for (n = 0; n < ndirs; n++) {
+            if (is_jobdir_key(dirs[n].key)) {
+                PMIx_Info_xfer(&keep[nkeep++], &dirs[n]);
+            }
+        }
+    }
+    if (NULL == nptr) {
+        /* the usual case: a job we did not spawn, so nothing else has
+         * told us of it */
+        nptr = PMIX_NEW(pmix_namespace_t);
+        if (NULL == nptr) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            if (NULL != keep) {
+                PMIx_Info_free(keep, nkeep);
+            }
+            return;
+        }
+        nptr->nspace = strdup(source->nspace);
+        if (NULL == nptr->nspace) {
+            PMIX_RELEASE(nptr);
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            if (NULL != keep) {
+                PMIx_Info_free(keep, nkeep);
+            }
+            return;
+        }
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+    }
+    nptr->fwd_dirs = keep;
+    nptr->nfwd_dirs = nkeep;
+    if (parent_given) {
+        PMIX_XFER_PROCID(&nptr->fwd_parent, &parent);
+        nptr->fwd_parent_given = true;
+    }
+    nptr->fwd_told = true;
+    pmix_output_verbose(2, pmix_client_globals.iof_output,
+                        "%s iof: %s has %u formatting directives of its own%s%s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid), nptr->nspace, (unsigned) nkeep,
+                        parent_given ? " and inherits from " : "",
+                        parent_given ? parent.nspace : "");
+}
+
+/* The formatting half of a set of flags - what PMIX_IOF_JOB_DIRECTIVES
+ * carries, and what a spawned job inherits. Where its output goes is not
+ * part of it */
+static void take_format(pmix_iof_flags_t *to, const pmix_iof_flags_t *from)
+{
+    to->tag = from->tag;
+    to->tag_detailed = from->tag_detailed;
+    to->tag_fullname = from->tag_fullname;
+    to->rank = from->rank;
+    to->timestamp = from->timestamp;
+    to->xml = from->xml;
+    to->merge = from->merge;
+    to->raw = from->raw;
+    to->set = true;
+}
+
+/* Lay over "flags" the formatting of a job we were told about with its
+ * output: its nearest ancestor's that we know, then its own directives,
+ * one key at a time. A job we format already - one we spawned, or one
+ * resolved here before - answers for itself. */
+static void forwarded_format(pmix_namespace_t *nptr, pmix_iof_flags_t *flags, int depth)
+{
+    pmix_namespace_t *ns, *parent = NULL;
+    size_t n;
+
+    if (nptr->iof_flags.set) {
+        take_format(flags, &nptr->iof_flags);
+        return;
+    }
+    if (nptr->fwd_parent_given && depth < PMIX_IOF_MAX_ANCESTRY) {
+        PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (PMIX_CHECK_NSPACE(ns->nspace, nptr->fwd_parent.nspace)) {
+                parent = ns;
+                break;
+            }
+        }
+        if (NULL != parent && parent != nptr) {
+            forwarded_format(parent, flags, depth + 1);
+        }
+    }
+    for (n = 0; n < nptr->nfwd_dirs; n++) {
+        pmix_iof_check_flags(&nptr->fwd_dirs[n], flags);
+    }
+}
+
 /* The file directives for the job's file writer, appended to "info" when
  * this chunk is the first of the job's output to go to it. Returns the
  * job when they were, for the caller to mark them sent once they are */
@@ -2804,6 +2972,161 @@ static pmix_namespace_t *add_writer_directives(const pmix_proc_t *source, pmix_p
     *xinfo = out;
     *nxinfo = m;
     return nptr;
+}
+
+/* The output formatting directives that travel with a job's output as
+ * PMIX_IOF_JOB_DIRECTIVES: what is looked up in the job's registration,
+ * and the name it is sent under. A host may have used a deprecated name,
+ * which a recipient of another version need not know. File directives are
+ * not among them - they go only to the job's file writer, above, and say
+ * where the output goes rather than how it looks. */
+static const struct {
+    const char *key;
+    const char *sendas;
+} jobdir_keys[] = {
+    {PMIX_IOF_TAG_OUTPUT, PMIX_IOF_TAG_OUTPUT},
+    {PMIX_TAG_OUTPUT, PMIX_IOF_TAG_OUTPUT},
+    {PMIX_IOF_TAG_DETAILED_OUTPUT, PMIX_IOF_TAG_DETAILED_OUTPUT},
+    {PMIX_IOF_TAG_FULLNAME_OUTPUT, PMIX_IOF_TAG_FULLNAME_OUTPUT},
+    {PMIX_IOF_RANK_OUTPUT, PMIX_IOF_RANK_OUTPUT},
+    {PMIX_IOF_TIMESTAMP_OUTPUT, PMIX_IOF_TIMESTAMP_OUTPUT},
+    {PMIX_TIMESTAMP_OUTPUT, PMIX_IOF_TIMESTAMP_OUTPUT},
+    {PMIX_IOF_XML_OUTPUT, PMIX_IOF_XML_OUTPUT},
+    {PMIX_IOF_MERGE_STDERR_STDOUT, PMIX_IOF_MERGE_STDERR_STDOUT},
+    {PMIX_MERGE_STDERR_STDOUT, PMIX_IOF_MERGE_STDERR_STDOUT},
+    {PMIX_IOF_OUTPUT_RAW, PMIX_IOF_OUTPUT_RAW},
+    {NULL, NULL}
+};
+
+static bool is_jobdir_key(const char *key)
+{
+    size_t n;
+
+    for (n = 0; NULL != jobdir_keys[n].key; n++) {
+        if (PMIx_Check_key(key, jobdir_keys[n].sendas)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* What "source"'s job is to look like, appended to "info" as
+ * PMIX_IOF_JOB_DIRECTIVES when this chunk is the first of the job's output
+ * to go to this request's recipient: the formatting directives the job was
+ * registered with, and - when the recipient has it only because the job
+ * inherited a subscription of theirs - the process whose subscription it
+ * was, as PMIX_PARENT_ID.
+ *
+ * This is what gets a spawned job's formatting to the launcher of the job
+ * that spawned it. The spawn request went from the parent to its local
+ * server and on into the host; the launcher never saw it, and is handed
+ * the child's output only because it inherited the parent's subscription.
+ *
+ * The two halves come from different places, and that is deliberate. The
+ * job's own directives can only have come from the host: it is the one
+ * party that saw the spawn and registers the job here. Inheriting the
+ * parent's formatting needs nothing from the host at all - the recipient
+ * already formats the parent, whether it spawned it or was told about it
+ * this same way, so naming the parent is enough. That keeps the promise
+ * PMIx_Spawn makes ("the same formatting") ours to keep, rather than a
+ * policy every host would have to implement.
+ *
+ * Returns true when this is that first chunk, for the caller to record the
+ * recipient as told once the chunk has gone - whether or not there was
+ * anything to tell. *yinfo is set only when there was. */
+static bool add_job_directives(const pmix_proc_t *source, pmix_iof_req_t *req,
+                               const pmix_info_t *info, size_t ninfo,
+                               pmix_info_t **yinfo, size_t *nyinfo)
+{
+    pmix_cb_t cb;
+    pmix_info_t optional;
+    pmix_kval_t *kv;
+    pmix_proc_t wild;
+    pmix_status_t rc;
+    pmix_data_array_t darray;
+    pmix_info_t *out;
+    void *list;
+    size_t n, nfound = 0;
+
+    *yinfo = NULL;
+    *nyinfo = 0;
+    if (0 <= PMIx_Argv_idx(req->jobdirs_sent, source->nspace)) {
+        return false;
+    }
+
+    list = PMIx_Info_list_start();
+    if (NULL == list) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        /* not recorded as told, so the next chunk tries again */
+        return false;
+    }
+    PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
+    PMIX_LOAD_PROCID(&wild, source->nspace, PMIX_RANK_WILDCARD);
+    for (n = 0; NULL != jobdir_keys[n].key; n++) {
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &wild;
+        cb.key = (char *) jobdir_keys[n].key;
+        cb.info = &optional;
+        cb.ninfo = 1;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+            kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+            if (NULL != kv && kv != (pmix_kval_t *) pmix_list_get_end(&cb.kvs) &&
+                NULL != kv->value) {
+                /* passed on as the host gave it: the recipient reads it
+                 * with the same rules a registration is read with */
+                rc = PMIx_Info_list_add_value(list, jobdir_keys[n].sendas, kv->value);
+                if (PMIX_SUCCESS == rc) {
+                    ++nfound;
+                } else {
+                    PMIX_ERROR_LOG(rc);
+                }
+            }
+        }
+        PMIX_DESTRUCT(&cb);
+    }
+    PMIX_INFO_DESTRUCT(&optional);
+
+    if (req->inherited && 0 < req->nprocs &&
+        PMIX_CHECK_NSPACE(req->procs[0].nspace, source->nspace)) {
+        rc = PMIx_Info_list_add(list, PMIX_PARENT_ID, &req->inherited_from, PMIX_PROC);
+        if (PMIX_SUCCESS == rc) {
+            ++nfound;
+        } else {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+
+    if (0 == nfound) {
+        PMIx_Info_list_release(list);
+        return true;
+    }
+    PMIX_DATA_ARRAY_CONSTRUCT(&darray, 0, PMIX_INFO);
+    rc = PMIx_Info_list_convert(list, &darray);
+    PMIx_Info_list_release(list);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        return false;
+    }
+    out = PMIx_Info_create(ninfo + 1);
+    if (NULL == out) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        return false;
+    }
+    for (n = 0; n < ninfo; n++) {
+        PMIx_Info_xfer(&out[n], &info[n]);
+    }
+    PMIx_Info_load(&out[ninfo], PMIX_IOF_JOB_DIRECTIVES, &darray, PMIX_DATA_ARRAY);
+    PMIX_DATA_ARRAY_DESTRUCT(&darray);
+    pmix_output_verbose(2, pmix_server_globals.iof_output,
+                        "%s iof: sending the formatting directives of %s to %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid), source->nspace,
+                        PMIX_PNAME_PRINT(&req->requestor->info->pname));
+    *yinfo = out;
+    *nyinfo = ninfo + 1;
+    return true;
 }
 
 /* The body of pmix_iof_write_output(). "may_hold" is false only when the
@@ -2862,13 +3185,19 @@ static pmix_status_t write_output(const pmix_proc_t *name,
     }
 
     if (NULL != nptr) {
-        /* we were sent this job's files to write but nothing else about
-         * it - a job we did not spawn ourselves. Its output is formatted
-         * as any such job's is, and goes to the files too */
-        if (!nptr->iof_flags.set && nptr->fwd_files.set) {
-            nptr->iof_flags = stand_in_flags(&outputio);
-            nptr->iof_flags.file = NULL;
-            nptr->iof_flags.directory = NULL;
+        /* we were sent this job's directives - its formatting, its files
+         * to write, or both - but no spawn reply of ours describes it: a
+         * job we did not spawn ourselves. It is formatted as it asked, if
+         * its server told us how, else as any such job is; and goes to the
+         * files too */
+        if (!nptr->iof_flags.set && (nptr->fwd_told || nptr->fwd_files.set)) {
+            myflags = stand_in_flags(&outputio);
+            myflags.file = NULL;
+            myflags.directory = NULL;
+            if (nptr->fwd_told) {
+                forwarded_format(nptr, &myflags, 0);
+            }
+            nptr->iof_flags = myflags;
             pmix_iof_apply_forwarded_files(nptr);
         }
         if (nptr->iof_flags.set) {

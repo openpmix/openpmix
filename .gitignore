@@ -349,6 +349,8 @@ test/unit/iof_sink_arm
 test/unit/iof_sender
 test/unit/iof_pending
 test/unit/iof_inherit
+test/unit/iof_jobdirs
+test/unit/iof_jobdirs_tool
 test/unit/proc_array_id
 test/unit/attr_dictionary
 test/unit/get_api

@@ -221,6 +221,34 @@ session-, job-, application-, node-, and process-realm information as required
 by the job. See the "Reserved Keys" chapter of the PMIx Standard for the full
 list and for the rules governing how each key is retrieved.
 
+Spawned jobs and output forwarding
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The output of a job created by
+:ref:`PMIx_Spawn(3) <man3-PMIx_Spawn>` is forwarded to whoever receives its
+parent's output, formatted the way that receiver formats the parent's. The
+server that receives the job's output need not be the one that processed the
+spawn, and only sees what the host registers with it. For a spawned job, the
+host therefore registers the namespace with every server that may receive its
+output for a tool, and includes:
+
+* ``PMIX_PARENT_ID`` (pmix_proc_t\*) |mdash| the process that spawned the job,
+  in the job-level or per-process data. This is how the server finds the
+  subscriptions the job inherits.
+* the **output formatting directives** the spawn request carried |mdash|
+  ``PMIX_IOF_TAG_OUTPUT``, ``PMIX_IOF_TAG_DETAILED_OUTPUT``,
+  ``PMIX_IOF_TAG_FULLNAME_OUTPUT``, ``PMIX_IOF_RANK_OUTPUT``,
+  ``PMIX_IOF_TIMESTAMP_OUTPUT``, ``PMIX_IOF_XML_OUTPUT``,
+  ``PMIX_IOF_MERGE_STDERR_STDOUT`` and ``PMIX_IOF_OUTPUT_RAW`` |mdash| with
+  the value each was given, a ``false`` included. The server sends them to each
+  receiver with the first of the job's output (``PMIX_IOF_JOB_DIRECTIVES``).
+* optionally, ``PMIX_IOF_INHERIT`` (bool) set to ``false``, if the job is not to
+  inherit its parent's forwarding at all.
+
+The host does not need to copy the parent's formatting onto the child: PMIx
+supplies that itself. A host that omits the request's own directives loses
+only those, and the child is formatted exactly as its parent is.
+
 
 CALLBACK FUNCTION
 -----------------
