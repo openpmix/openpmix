@@ -368,6 +368,9 @@ typedef struct {
      * a terminator) - counted in pmix_ptl_base.pending_bytes while msg is
      * held here */
     size_t msg_size;
+    /* a local-socket connection whose offer has been answered: the
+     * message arriving now is its credential */
+    bool offered;
     bool need_id;
     /* the host names the tool, but the tool reads no name back */
     bool id_unsent;

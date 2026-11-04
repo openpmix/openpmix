@@ -135,6 +135,7 @@ static pmix_peer_t *standin(void)
         standin_peer = PMIX_NEW(pmix_peer_t);
         PMIX_RETAIN(pmix_globals.mypeer->nptr);
         standin_peer->nptr = pmix_globals.mypeer->nptr;
+        standin_peer->gds = pmix_globals.mypeer->gds;
         PMIX_RETAIN(pmix_globals.mypeer->info);
         standin_peer->info = pmix_globals.mypeer->info;
         memcpy(&standin_peer->proc_type, &pmix_globals.mypeer->proc_type,
@@ -557,6 +558,7 @@ static void join_late_tracker(int sd, short args, void *cbdata)
         l->latepeer = PMIX_NEW(pmix_peer_t);
         PMIX_RETAIN(nptr);
         l->latepeer->nptr = nptr;
+        l->latepeer->gds = nptr->compat.gds;
         pmix_server_trk_join(l->trk, l->latepeer);
         l->nlocal_after = l->trk->nlocal;
     }
@@ -916,6 +918,7 @@ static void check_deletion(int sd, short args, void *cbdata)
     peer = PMIX_NEW(pmix_peer_t);
     PMIX_RETAIN(nptr);
     peer->nptr = nptr;
+    peer->gds = nptr->compat.gds;
     PMIX_RETAIN(rinfo);
     peer->info = rinfo;
 
@@ -1086,6 +1089,7 @@ static pmix_peer_t *get_commit_peer(void)
             commit_peer = PMIX_NEW(pmix_peer_t);
             PMIX_RETAIN(ns);
             commit_peer->nptr = ns;
+            commit_peer->gds = ns->compat.gds;
             PMIX_RETAIN(rinfo);
             commit_peer->info = rinfo;
             memcpy(&commit_peer->proc_type, &pmix_globals.mypeer->proc_type,

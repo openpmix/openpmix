@@ -1364,6 +1364,7 @@ static pmix_peer_t *mkgdspeer(const char *nspace, pmix_rank_t nprocs,
     memcpy(&ns->compat, &pmix_globals.mypeer->nptr->compat, sizeof(ns->compat));
     ns->compat.gds = mod;
     p->nptr = ns;
+    p->gds = mod;
     p->info = PMIX_NEW(pmix_rank_info_t);
     p->info->pname.nspace = strdup(nspace);
     p->info->pname.rank = 0;

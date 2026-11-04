@@ -58,6 +58,23 @@ typedef uint8_t pmix_rnd_flag_t;
 #define PMIX_SINGLETON_CLIENT   9
 #define PMIX_SCHEDULER_WITH_ID 10
 
+/* The local socket's handshake. The client sends an offer: its
+ * version, its type, its identifier where the type has one, and the
+ * security, wire-format and datastore components it has. The server
+ * answers with a status and, on success, its choice of one of each and
+ * the buffer type. The client then sends its credential, made with the
+ * chosen security component, and its info, packed in the chosen wire
+ * format; the server answers that as it answers a connect-ack.
+ *
+ * Each list in the offer is a one-byte count followed by that many names,
+ * each ending in a NUL, of no more than PMIX_PTL_OFFER_MAX_NAMELEN bytes.
+ * The choice is a 32-bit length followed by the security, wire-format and
+ * datastore names, each ending in a NUL, with the buffer-type byte after
+ * the wire-format name. */
+#define PMIX_PTL_OFFER_MAX_NAMES   16
+#define PMIX_PTL_OFFER_MAX_NAMELEN 64
+#define PMIX_PTL_CHOICE_MAX        (3 * (PMIX_PTL_OFFER_MAX_NAMELEN + 1) + 1)
+
 /* The following macros are used in the ptl_base_connection_hdlr.c
  * file to parse the handshake message and extract its fields */
 

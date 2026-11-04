@@ -333,7 +333,8 @@ static int long_tmpdir_child(void)
 }
 
 /* setup_fork gives a child the URI and the identity the kernel will report
- * for us; a tool's rendezvous file gives it on a tagged line */
+ * for us; a tool's rendezvous file gives it - on a tagged line with legacy
+ * peers, and as its first line without them */
 static int advertise_child(void)
 {
     pmix_info_t info;
@@ -374,7 +375,8 @@ static int advertise_child(void)
         NULL == (fp = fopen(pmix_ptl_base.pid_filename, "r"))) {
         fprintf(stderr, "  no rendezvous file\n");
         ret = CHILD_FAIL;
-    } else {
+    } else if (pmix_ptl_base.legacy_peers) {
+        /* with a TCP listener, the local socket is on a tagged line */
         if (0 > asprintf(&line, "%s%s;%s\n", PMIX_PTL_LOCAL_URI_TAG, pmix_globals.hostname,
                          pmix_ptl_base.local_listener.uri)) {
             return CHILD_FAIL;
@@ -388,6 +390,29 @@ static int advertise_child(void)
         free(line);
         if (!found) {
             fprintf(stderr, "  the rendezvous file has no local line\n");
+            ret = CHILD_FAIL;
+        }
+    } else {
+        /* without one, the first line is the local socket, and there is no
+         * local, wire-format or security line */
+        if (0 > asprintf(&line, "%s\n", pmix_ptl_base.local_listener.uri)) {
+            return CHILD_FAIL;
+        }
+        for (n = 0; NULL != fgets(buf, sizeof(buf), fp); n++) {
+            if (0 == n && 0 == strcmp(buf, line)) {
+                found = true;
+            }
+            if (0 == strncmp(buf, PMIX_PTL_LOCAL_URI_TAG, strlen(PMIX_PTL_LOCAL_URI_TAG)) ||
+                0 == strncmp(buf, PMIX_PTL_BFROPS_TAG, strlen(PMIX_PTL_BFROPS_TAG)) ||
+                0 == strncmp(buf, PMIX_PTL_PSEC_TAG, strlen(PMIX_PTL_PSEC_TAG))) {
+                fprintf(stderr, "  the rendezvous file has a line it should not: %s", buf);
+                ret = CHILD_FAIL;
+            }
+        }
+        fclose(fp);
+        free(line);
+        if (!found) {
+            fprintf(stderr, "  the rendezvous file does not start with the local socket\n");
             ret = CHILD_FAIL;
         }
     }

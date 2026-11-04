@@ -84,8 +84,8 @@ The binding works like this:
    `src/tool/pmix_tool.c`, and
    `src/mca/ptl/base/ptl_base_connection_hdlr.c` for the call sites.)
 4. Thereafter, back-end code reaches "the right module for this peer"
-   through the `PMIX_GDS_*` macros, which read `peer->nptr->compat.gds`
-   (or the per-peer override `peer->gds`; see below).
+   through the `PMIX_GDS_*` macros, which read the peer's own module,
+   `peer->gds` (see below).
 
 So a module's `assign_module` return value — not the component's static
 priority — is what actually decides who serves a peer, and it can depend on
@@ -94,22 +94,27 @@ name a module, `shmem3` (priority 20) is assigned over `hash` (priority 10)
 wherever `shmem3` is available; when the caller passes
 `PMIX_GDS_MODULE="hash"`, `hash` bids 100 and wins.
 
-### The per-peer override and the fallback path
+### The per-peer module and the fallback path
 
-Normally a peer uses its namespace's module (`nptr->compat.gds`). But a
-client can end up on a *different* module than the rest of its nspace — this
-is what [`PMIX_GDS_PEER_MODULE(p)`](gds.h) exists for:
+Every peer has its own module, `peer->gds`, set wherever the peer is
+given one: the server's own peer and the client's and tool's peers for
+their servers at init, a server's peer for each client or tool when it is
+accepted (`adopt_modules`, from the module chosen in the handshake), and a
+tool's peer for each server it attaches to. The namespace's module
+(`nptr->compat.gds`) is a default for code that has a namespace but no
+peer. [`PMIX_GDS_PEER_MODULE(p)`](gds.h) is the peer's:
 
 ```c
-#define PMIX_GDS_PEER_MODULE(p) \
-    (NULL != (p)->gds ? (p)->gds : (p)->nptr->compat.gds)
+#define PMIX_GDS_PEER_MODULE(p) ((p)->gds)
 ```
 
-If `peer->gds` is set it wins; otherwise the nspace default is used. The
-one case that sets `peer->gds` today is the **GDS fallback**: if a client
-was assigned `shmem3` but cannot attach the shared segment at the required
-fixed address, `fallback_to_next_gds()` (in `src/client/pmix_client.c`)
-calls `pmix_gds_base_get_fallback_module()` — the highest-priority active
+A peer built anywhere else must set `peer->gds` itself - nothing falls
+back to the namespace's module. A peer can differ from the rest of its
+namespace: peers of one namespace may connect with different modules, and
+the **GDS fallback** moves one client: if a client was assigned `shmem3`
+but cannot attach the shared segment at the required fixed address,
+`fallback_to_next_gds()` (in `src/client/pmix_client.c`) calls
+`pmix_gds_base_get_fallback_module()` — the highest-priority active
 module *other than* the failing one — points `myserver->gds` (and, on the
 client, `nptr->compat.gds`) at it, and re-requests the job data from the
 server via `PMIX_GDS_FALLBACK_CMD`. This is why no operation should assume

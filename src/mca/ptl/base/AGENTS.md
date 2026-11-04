@@ -71,8 +71,46 @@ with every released version, and changing either breaks the
 interoperability guarantee. (The fields *inside* the payload are
 network-order — `PMIX_PTL_PUT_U32`/`GET_U32` do the conversion.)
 
-The payload layout, built by `construct_message` in `ptl_base_fns.c` and
-parsed by `pmix_ptl_base_connection_handler`:
+**On the local socket the connect-ack is three messages** — only peers
+of this release use that socket, so it has its own exchange:
+
+1. **The offer** (`build_offer` in `ptl_base_fns.c`, `answer_offer` in
+   `ptl_base_connection_hdlr.c`), after the header: version string,
+   connector flag, procid for the kinds that have one, then three lists -
+   psec names, bfrops names (preferred first), the buffer-type byte, gds
+   names (preferred first). A list is a `uint8_t` count and that many
+   NUL-terminated names: at most `PMIX_PTL_OFFER_MAX_NAMES` (16) names
+   of at most `PMIX_PTL_OFFER_MAX_NAMELEN` (64) bytes, or it is refused
+   `PMIX_ERR_BAD_PARAM`. No uid or gid: `answer_offer` takes them from
+   the kernel (`peer_identity`) into `pnd->uid`/`pnd->gid`.
+2. **The choice** (`choose` / `send_choice`; the client's `apply_choice`):
+   a `uint32_t` status, then on success a `uint32_t` length (at most
+   `PMIX_PTL_CHOICE_MAX`) and `psec\0bfrops\0<buffer type>gds\0`.
+   psec is the first of the server's active psec modules, in priority
+   order, that the peer offered, else `PMIX_ERR_NOT_SUPPORTED`. bfrops and buffer type are the namespace's
+   when it has a peer already (refused if not offered), else the peer's
+   first that the server has and its buffer type. gds is the peer's first
+   that the server has, per peer. The client aborts with
+   `PMIX_ERR_NOT_SUPPORTED` on a choice it did not offer, and otherwise
+   sets `peer->nptr->compat.{psec,bfrops,type,gds}` and `peer->gds`.
+3. **The credential** (`build_credential`; `read_credential`), after a
+   header: `uint32_t` length, the credential from the chosen psec (with
+   `PMIX_PSEC_SERVER_UID`), and the info blob packed in the chosen bfrops
+   and buffer type - the rest of the message.
+
+The server sets `pnd->offered` once it has sent its choice, puts the
+connection back on its read event under the same
+`ptl_base_connect_ack_timeout`, and reads the credential with the same
+`read_connect_ack`. `accept_client`, `accept_tool` and
+`ask_about_tool` skip their module assignment for an offered connection.
+The replies after that are unchanged. The blocking path is
+`local_handshake`; the event-driven one adds the `PMIX_CNCT_OFFERING`,
+`PMIX_CNCT_CHOICE_STATUS`, `PMIX_CNCT_CHOICE_LEN` and `PMIX_CNCT_CHOICE`
+states.
+
+Over TCP (peers of earlier releases only), the payload layout, built by
+`construct_message` in `ptl_base_fns.c` and parsed by
+`pmix_ptl_base_connection_handler`:
 
 | # | Field | Macro |
 |---|-------|-------|
@@ -299,7 +337,9 @@ Four functions, in this order, all on the progress thread:
    — runs each time the socket is readable until the whole connect-ack
    has arrived, then takes the `pnd` off the pending list, flips the
    socket to **blocking** for the few words of reply it will write,
-   parses the connect-ack with the `GET_*` macros, and splits: a **simple
+   parses the connect-ack with the `GET_*` macros - on the local socket,
+   first answering the offer and waiting for the credential (see *The
+   connect-ack*) - and splits: a **simple
    client or singleton** to `accept_client`, anything else (tool,
    launcher, scheduler) to `accept_tool`.
 3. **Settle the identity.** `validate` first refuses, with

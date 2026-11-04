@@ -163,9 +163,9 @@ int main(int argc, char **argv)
         PMIX_RELEASE(a_lo);
     }
 
-    /* PMIX_GDS_PEER_MODULE prefers the per-peer override over the
-     * nspace-level default. Build minimal stack objects and read only the
-     * fields the macro touches (peer->gds, peer->nptr->compat.gds). */
+    /* PMIX_GDS_PEER_MODULE is the peer's own module, whatever the
+     * nspace-level default is. Build minimal stack objects and read only
+     * the fields involved (peer->gds, peer->nptr->compat.gds). */
     {
         /* Designated initializers (not plain declarations) so the const
          * is_tsafe member is initialized; a bare declaration trips
@@ -180,12 +180,12 @@ int main(int argc, char **argv)
         ns.compat.gds = &moda;
         peer.nptr = &ns;
 
-        peer.gds = NULL;
-        check("PMIX_GDS_PEER_MODULE uses nspace default when peer->gds is NULL",
+        peer.gds = &moda;
+        check("PMIX_GDS_PEER_MODULE is the peer's module when it matches the nspace's",
               &moda == PMIX_GDS_PEER_MODULE(&peer));
 
         peer.gds = &modb;
-        check("PMIX_GDS_PEER_MODULE uses peer->gds override when set",
+        check("PMIX_GDS_PEER_MODULE is the peer's module when it differs from the nspace's",
               &modb == PMIX_GDS_PEER_MODULE(&peer));
     }
 

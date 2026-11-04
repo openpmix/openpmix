@@ -115,14 +115,13 @@ typedef void (*pmix_gds_base_module_fini_fn_t)(void);
 typedef pmix_status_t (*pmix_gds_base_assign_module_fn_t)(pmix_info_t *info, size_t ninfo,
                                                           int *priority);
 
-/* Resolve the GDS module to use for a given peer. A peer may carry its
- * own module (peer->gds) that overrides the nspace-level default in
- * nptr->compat.gds - this happens when a client falls back to a
- * different module than the rest of its nspace (e.g. shmem3 attach
- * failed and the client switched to hash). When peer->gds is NULL, the
- * nspace-level module is used. */
-#define PMIX_GDS_PEER_MODULE(p) \
-    (NULL != (p)->gds ? (p)->gds : (p)->nptr->compat.gds)
+/* The GDS module to use for a given peer: its own (peer->gds), set
+ * wherever the peer is given one. It can differ from the nspace-level
+ * default in nptr->compat.gds - when the peers of a namespace connected
+ * with different modules, or a client falls back to another module than
+ * the rest of its nspace (e.g. shmem3 attach failed and the client
+ * switched to hash) */
+#define PMIX_GDS_PEER_MODULE(p) ((p)->gds)
 
 #define PMIX_GDS_CHECK_COMPONENT(p, s) (0 == strcmp(PMIX_GDS_PEER_MODULE(p)->name, (s)))
 #define PMIX_GDS_CHECK_PEER_COMPONENT(p1, p2) \

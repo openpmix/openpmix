@@ -236,9 +236,9 @@ or the ``PMIX_TCP_REPORT_URI`` directive):
        ending in a NUL, in one write
      - ``<varnames>;<usock uri>`` and a NUL
    * - anything else (a file name)
-     - line 1 the TCP URI, line 2 the version, then the ``local:`` line
-     - line 1 the local socket's URI, line 2 the version, then the
-       ``local:`` line
+     - line 1 the TCP URI, line 2 the version, then the ``local:``,
+       ``bfrops:`` and ``psec:`` lines
+     - line 1 the local socket's URI, line 2 the version
 
 So ``-`` and ``+`` always print what a client or tool of this release
 uses, and ``tcp-``/``tcp+`` are for a person pointing a reader of an
@@ -422,7 +422,9 @@ gives it the local socket. From there the two do the same:
    A process given the local socket connects there and nowhere else: if
    it cannot reach the socket, it fails to initialize, and says why.
 #. **Check the server** (below).
-#. **Send the connection request.**
+#. **Send the connection request.** On the local socket that is an
+   offer, answered by the server's choice, and then the credential (see
+   `The connection request`_).
 #. **Read the replies**, each also bounded by
    ``ptl_base_handshake_wait_time``.
 #. **Arm the connection** for normal traffic.
@@ -538,9 +540,58 @@ for a platform with no table.
 The connection request
 ^^^^^^^^^^^^^^^^^^^^^^
 
-The request is a message header followed by these fields, in this
-order. **The order is a wire-format contract**: a server and its peers
-can be different PMIx releases, so fields are only ever appended.
+On the local socket, which only peers of this release use, the request
+is three messages:
+
+#. **The offer**, from the peer: a message header, then
+
+   * the peer's PMIx version;
+   * the kind of peer (one byte, as in the table below);
+   * its namespace and rank, for the kinds that send them;
+   * the names of its ``psec`` components;
+   * the names of its ``bfrops`` components, the one it prefers first;
+   * the buffer type it prefers (one byte);
+   * the names of its ``gds`` components, the one it prefers first.
+
+   Each list is a one-byte count followed by that many names, each ending
+   in a NUL. A list holds at most 16 names (``PMIX_PTL_OFFER_MAX_NAMES``)
+   and a name at most 64 bytes (``PMIX_PTL_OFFER_MAX_NAMELEN``); an offer
+   past either is refused with ``PMIX_ERR_BAD_PARAM``. The offer carries
+   no uid or gid: those are the kernel's.
+
+#. **The choice**, from the server: a status, and on success the length
+   of what follows and the chosen names - security mechanism, wire
+   format, buffer type (one byte), datastore. The server chooses:
+
+   * **security:** the first of the server's active mechanisms, in
+     priority order, that the peer offers - ``munge`` when both have it,
+     else ``native``. If the peer offers none of them it is refused with
+     ``PMIX_ERR_NOT_SUPPORTED``.
+   * **wire format and buffer type:** the namespace's, if a peer of the
+     namespace has already connected - a peer that does not offer it is
+     refused with ``PMIX_ERR_NOT_SUPPORTED``. For a new namespace, the
+     first wire format the peer offers that the server has, and the
+     peer's buffer type.
+   * **datastore:** the first the peer offers that the server has. It is
+     the peer's own; the first peer's also becomes its namespace's
+     default.
+
+   The peer refuses a choice it did not offer: its init fails with
+   ``PMIX_ERR_NOT_SUPPORTED``.
+
+#. **The credential**, from the peer: a message header, the credential's
+   length and the credential, made with the chosen security mechanism
+   (see below), and then the information field, packed in the chosen
+   wire format and buffer type.
+
+The server answers the credential with the replies below. The three
+messages share one deadline: the connection's
+``ptl_base_connect_ack_timeout``, from when it was accepted.
+
+Over TCP, which only peers of earlier releases use, the request is one
+message: a header followed by these fields, in this order. **The order
+is a wire-format contract**: a server and its peers can be different
+PMIx releases, so fields are only ever appended.
 
 .. list-table::
    :header-rows: 1
@@ -693,6 +744,13 @@ keeps its place. A request larger than ``PMIX_MAX_CRED_SIZE`` (128 KB)
 is refused. Once the whole request is in, the connection leaves the
 pending list and its timer stops.
 
+On the local socket the first message is the offer. The handler takes
+the peer's uid and gid from the kernel, reads the offer, checks the
+version and kind below, and answers with its choice (see
+`The connection request`_). The connection then goes back to waiting,
+on the same timer, for the credential, which it reads the same way.
+Over TCP the one message holds every field.
+
 The handler then reads the fields in order. Two checks apply to every
 peer:
 
@@ -724,9 +782,10 @@ Checks for a client
    within it, must have been registered by the host
    (``PMIx_server_register_client``). An unregistered client is
    refused.
-#. **Its components must be available.** The security, wire-format,
-   and datastore components it names must be ones this server has
-   loaded.
+#. **Its components must be available.** On the local socket the server
+   chose them from the peer's offer. Over TCP, the security,
+   wire-format, and datastore components it names must be ones this
+   server has loaded.
 #. **Its identity must be the registered one.** The security component
    settles the client's uid and gid (see `Settling the identity`_),
    and they must equal the uid and gid the host registered for that
@@ -756,7 +815,8 @@ the server uses.
 Checks for a tool
 ^^^^^^^^^^^^^^^^^
 
-#. **Its security component must be available.**
+#. **Its security component must be available** - over TCP. On the
+   local socket the server chose it.
 #. **Its identity is settled** by the security component (see
    `Settling the identity`_). The settled uid and gid replace whatever
    the tool claimed.
@@ -783,7 +843,8 @@ the host.
 Settling the identity
 ^^^^^^^^^^^^^^^^^^^^^
 
-The security component the peer named settles its uid and gid. How
+The security component - the one the server chose, on the local socket,
+or the one the peer named, over TCP - settles its uid and gid. How
 depends on the component:
 
 * **native**, on the local socket, takes the uid and gid the kernel
@@ -798,7 +859,8 @@ depends on the component:
   :doc:`authentication/native`.
 * **munge** decodes the credential through the MUNGE daemon. The
   decoded uid and gid must equal the peer's registered (client) or
-  claimed (tool) identity.
+  claimed (tool) identity. On the local socket a tool's identity is the
+  one the kernel reports.
 
 The result is one uid and one gid. They are what the host is given, and
 what every later access decision for this peer uses.

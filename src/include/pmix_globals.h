@@ -664,10 +664,10 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_proclist_t);
 typedef struct pmix_peer_t {
     pmix_object_t super;
     pmix_namespace_t *nptr; // point to the nspace object for this process
-    pmix_gds_base_module_t *gds; // per-peer GDS module override; when NULL, the
-                                 // nspace-level nptr->compat.gds is used. Lets a
-                                 // single client fall back to another module
-                                 // (e.g. hash) without affecting its peers.
+    pmix_gds_base_module_t *gds; // this peer's GDS module - set wherever the peer
+                                 // is given one. Lets a single client fall back to
+                                 // another module (e.g. hash) without affecting
+                                 // its peers.
     pmix_rank_info_t *info;
     pmix_proc_type_t proc_type;
     pmix_listener_protocol_t protocol;

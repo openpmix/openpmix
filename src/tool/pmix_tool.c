@@ -821,6 +821,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         return PMIX_ERR_INIT;
     }
     pmix_client_globals.myserver->nptr->compat.gds = pmix_globals.mypeer->nptr->compat.gds;
+    pmix_globals.mypeer->gds = pmix_globals.mypeer->nptr->compat.gds;
+    pmix_client_globals.myserver->gds = pmix_globals.mypeer->nptr->compat.gds;
 
     /* tools can, in some scenarios, act as servers,
      * so initialize the server globals too */
@@ -2125,6 +2127,7 @@ void pmix_tool_retry_attach(int sd, short args, void *cbdata)
     peer->nptr->compat.psec = pmix_globals.mypeer->nptr->compat.psec;
     peer->nptr->compat.type = pmix_globals.mypeer->nptr->compat.type;
     peer->nptr->compat.gds = pmix_globals.mypeer->nptr->compat.gds;
+    peer->gds = peer->nptr->compat.gds;
 
     if (NULL != pmix_ptl.connect_to_peer_nb) {
         rc = pmix_ptl.connect_to_peer_nb((struct pmix_peer_t *) peer, cb->info, cb->ninfo,
