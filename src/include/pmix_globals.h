@@ -468,6 +468,17 @@ typedef struct {
      * make us its file writer (PMIX_IOF_FILE_WRITER). Only file,
      * directory, pattern, nocopy and merge are used; "set" says they came */
     pmix_iof_flags_t fwd_files;
+    /* A tool's: what the server forwarding this job's output to us said
+     * about its formatting, with the first of it (PMIX_IOF_JOB_DIRECTIVES),
+     * for a job we did not spawn. "fwd_dirs" holds the formatting
+     * directives the job was registered with, "fwd_parent" the job whose
+     * output-forwarding it inherited, whose formatting it then inherits
+     * too. Either may be absent; "fwd_told" says the message came */
+    pmix_info_t *fwd_dirs;
+    size_t nfwd_dirs;
+    pmix_proc_t fwd_parent;
+    bool fwd_parent_given;
+    bool fwd_told;
     /* A server's: the file directives have gone to the job's file writer */
     bool writer_told;
     /* A server's: we may not write this job's output files - see
@@ -740,6 +751,16 @@ typedef struct {
     pmix_iof_cbfunc_t cbfunc;
     pmix_hdlr_reg_cbfunc_t regcbfunc;
     void *cbdata;
+    /* NULL-terminated list of the namespaces whose output formatting
+     * directives the requestor has been sent - see PMIX_IOF_JOB_DIRECTIVES.
+     * Kept here because it is per recipient: each tool given a job's
+     * output is told once, on the first of it to reach that tool */
+    char **jobdirs_sent;
+    /* A clone's: the process whose subscription this was cloned from when
+     * a spawned job inherited it - the watched ancestor. The requestor is
+     * told, so it can format the job the way it formats that ancestor */
+    pmix_proc_t inherited_from;
+    bool inherited;
 } pmix_iof_req_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_req_t);
 

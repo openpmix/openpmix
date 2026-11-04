@@ -416,6 +416,20 @@ no opinion sends nothing. This does not override a request that named a channel
 of its own; naming a channel has already settled the matter before the host's
 preference is consulted.
 
+Inheriting a parent's forwarding includes its formatting: whoever receives the
+parent's output writes the child's the same way. Any formatting directive the
+request names (``PMIX_IOF_TAG_OUTPUT``, ``PMIX_IOF_TIMESTAMP_OUTPUT`` and the
+others listed below) is applied over that, one directive at a time |mdash| a
+request naming ``PMIX_IOF_TIMESTAMP_OUTPUT`` adds timestamps to the tagging the
+parent's output has, and one setting ``PMIX_IOF_TAG_OUTPUT`` to ``false`` turns
+it off. Unlike the channel attributes above, naming a formatting directive does
+not turn inheritance off. The receiver of the output need not be the process
+the request came from, and learns the request's directives from the job-level
+information the host registers for the new job (see
+:ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`); a
+host that does not register them leaves the child formatted exactly as its
+parent is.
+
 * ``PMIX_FWD_STDIN`` (bool) |mdash| forward this process's ``stdin`` to the target
   processes. This is the opposite direction and has no bearing on the output
   inheritance described above.

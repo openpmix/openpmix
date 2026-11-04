@@ -247,8 +247,12 @@ sets up output forwarding and inheritance for the new job.
 
 **The host:** decides whether the requester may launch the job, then
 launches all of it or none of it. It records any
-``PMIX_ACCESS_PERMISSIONS`` given, to register with the job. The new
-job's namespace is returned through the callback;
+``PMIX_ACCESS_PERMISSIONS`` given, to register with the job. When it
+registers the job, it includes ``PMIX_PARENT_ID`` and the output
+formatting directives the request carried, so the job's output can be
+forwarded and formatted where its parent's is (see
+:ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`).
+The new job's namespace is returned through the callback;
 ``PMIX_OPERATION_SUCCEEDED`` is not allowed.
 
 **If NULL:** ``PMIX_ERR_NOT_SUPPORTED`` - except in a launcher that
