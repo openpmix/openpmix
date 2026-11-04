@@ -324,7 +324,6 @@ pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
 
 pmix_nodeinfo_t* pmix_gds_hash_check_nodename(pmix_list_t *nodes, char *hostname)
 {
-    int i;
     pmix_nodeinfo_t *nd;
     bool aliases_exist = false;
 
@@ -349,12 +348,8 @@ pmix_nodeinfo_t* pmix_gds_hash_check_nodename(pmix_list_t *nodes, char *hostname
 
     /* if a match wasn't found, then we have to try the aliases */
     PMIX_LIST_FOREACH (nd, nodes, pmix_nodeinfo_t) {
-        if (NULL != nd->aliases) {
-            for (i = 0; NULL != nd->aliases[i]; i++) {
-                if (0 == strcmp(nd->aliases[i], hostname)) {
-                    return nd;
-                }
-            }
+        if (0 <= PMIx_Argv_idx(nd->aliases, hostname)) {
+            return nd;
         }
     }
     /* no match was found */

@@ -1452,11 +1452,9 @@ static void _get_attrs(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
             }
         } else {
             trk = NULL;
-            for (m = 0; NULL != fns[m]; m++) {
-                if (0 == strcmp(fns[m], tptr->function) || 0 == strcmp(fns[m], "all")) {
-                    trk = tptr;
-                    break;
-                }
+            if (0 <= PMIx_Argv_idx(fns, tptr->function) ||
+                0 <= PMIx_Argv_idx(fns, "all")) {
+                trk = tptr;
             }
             if (NULL == trk || NULL == trk->attrs) {
                 /* function wasn't found - no attrs

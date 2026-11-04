@@ -166,17 +166,7 @@ static void test_help_topics(void)
 
 static bool has_alias(char **aliases, const char *want)
 {
-    int n;
-
-    if (NULL == aliases) {
-        return false;
-    }
-    for (n = 0; NULL != aliases[n]; n++) {
-        if (0 == strcmp(aliases[n], want)) {
-            return true;
-        }
-    }
-    return false;
+    return (0 <= PMIx_Argv_idx(aliases, want));
 }
 
 /* The library was initialized with PMIX_HOSTNAME set to an FQDN and the

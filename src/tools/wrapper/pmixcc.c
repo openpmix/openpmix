@@ -273,7 +273,7 @@ static void options_data_expand(const char *value)
 
 static int find_options_index(const char *arg)
 {
-    int i, j;
+    int i;
 #ifdef HAVE_REGEXEC
     int args_count;
     regex_t res;
@@ -299,10 +299,8 @@ static int find_options_index(const char *arg)
             regfree(&res);
         }
 #else
-        for (j = 0; j < PMIx_Argv_count(options_data[i].compiler_args); ++j) {
-            if (0 == strcmp(arg, options_data[i].compiler_args[j])) {
-                return i;
-            }
+        if (0 <= PMIx_Argv_idx(options_data[i].compiler_args, arg)) {
+            return i;
         }
 #endif
     }

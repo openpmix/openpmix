@@ -502,13 +502,8 @@ void pmix_info_do_path(bool wall, pmix_cli_result_t *cmd_line,
     if (NULL != opt && NULL == opt->values) {
         opt = NULL;
     }
-    if (NULL != opt) {
-        for (i = 0; NULL != opt->values[i]; ++i) {
-            if (0 == strcmp("all", opt->values[i])) {
-                want_all = true;
-                break;
-            }
-        }
+    if (NULL != opt && 0 <= PMIx_Argv_idx(opt->values, "all")) {
+        want_all = true;
     }
 
     if (want_all) {

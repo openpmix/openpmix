@@ -447,7 +447,6 @@ static void _cnct(int sd, short args, void *cbdata)
     int i;
     pmix_server_caddy_t *cd;
     char **nspaces = NULL;
-    bool found;
     pmix_proc_t proc;
     pmix_cb_t cb;
     pmix_kval_t *kptr;
@@ -484,22 +483,11 @@ static void _cnct(int sd, short args, void *cbdata)
      * failed, which answers every participant and tears the tracker down
      * below. */
     PMIX_LIST_FOREACH (cd, &tracker->local_cbs, pmix_server_caddy_t) {
-        found = false;
-        if (NULL != nspaces) {
-            for (i = 0; NULL != nspaces[i]; i++) {
-                if (0 == strcmp(nspaces[i], cd->peer->info->pname.nspace)) {
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if (!found) {
-            rc = PMIx_Argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                scd->status = rc;
-                break;
-            }
+        rc = PMIx_Argv_append_unique_nosize(&nspaces, cd->peer->info->pname.nspace);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            scd->status = rc;
+            break;
         }
     }
 

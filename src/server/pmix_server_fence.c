@@ -1051,7 +1051,6 @@ static void _collect_job_info(int sd, short args, void *cbdata)
     pmix_cb_t *cbin = (pmix_cb_t*)cbdata;
     char **nspaces = NULL;
     size_t n, m, nanswered = 0;
-    bool found;
     pmix_proc_t proc;
     pmix_cb_t cb;
     pmix_status_t ret = PMIX_SUCCESS;
@@ -1071,21 +1070,10 @@ static void _collect_job_info(int sd, short args, void *cbdata)
      * be left out of the collection, and the caller would be handed a
      * job-info blob short one namespace with nothing to say so. */
     for (m=0; m < cbin->nprocs; m++) {
-        found = false;
-        if (NULL != nspaces) {
-            for (n = 0; NULL != nspaces[n]; n++) {
-                if (0 == strcmp(nspaces[n], cbin->procs[m].nspace)) {
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if (!found) {
-            ret = PMIx_Argv_append_nosize(&nspaces, cbin->procs[m].nspace);
-            if (PMIX_SUCCESS != ret) {
-                PMIX_ERROR_LOG(ret);
-                goto done;
-            }
+        ret = PMIx_Argv_append_unique_nosize(&nspaces, cbin->procs[m].nspace);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            goto done;
         }
     }
 

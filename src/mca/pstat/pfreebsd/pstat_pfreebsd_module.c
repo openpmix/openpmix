@@ -364,7 +364,6 @@ static pmix_status_t disk_stat(void *answer,
     struct devstat ds;
     char diskname[DEVSTAT_NAME_LEN + 16];
     void *cache;
-    size_t n;
     bool takeit;
     uint64_t u64;
     pmix_data_array_t darray;
@@ -393,13 +392,7 @@ static pmix_status_t disk_stat(void *answer,
         if (NULL == disks) {
             takeit = true;
         } else {
-            takeit = false;
-            for (n = 0; NULL != disks[n]; n++) {
-                if (0 == strcmp(diskname, disks[n])) {
-                    takeit = true;
-                    break;
-                }
-            }
+            takeit = (0 <= PMIx_Argv_idx(disks, diskname));
         }
         if (!takeit) {
             continue;
@@ -520,7 +513,6 @@ static pmix_status_t net_stat(void *answer, char **nets,
     struct ifaddrs *ifs, *ifa;
     struct if_data *ifd;
     void *cache;
-    size_t n;
     bool takeit;
     uint64_t u64;
     pmix_data_array_t darray;
@@ -543,13 +535,7 @@ static pmix_status_t net_stat(void *answer, char **nets,
         if (NULL == nets) {
             takeit = true;
         } else {
-            takeit = false;
-            for (n = 0; NULL != nets[n]; n++) {
-                if (0 == strcmp(ifa->ifa_name, nets[n])) {
-                    takeit = true;
-                    break;
-                }
-            }
+            takeit = (0 <= PMIx_Argv_idx(nets, ifa->ifa_name));
         }
         if (!takeit) {
             continue;

@@ -2376,12 +2376,9 @@ assign_module(
                 break;
             }
             specified = true; // They specified who they want.
-            for (size_t m = 0; NULL != options[m]; m++) {
-                if (0 == strcmp(options[m], PMIX_GDS_SHMEM3_NAME)) {
-                    // They specifically asked for us.
-                    *priority = max_priority;
-                    break;
-                }
+            if (0 <= PMIx_Argv_idx(options, PMIX_GDS_SHMEM3_NAME)) {
+                // They specifically asked for us.
+                *priority = max_priority;
             }
             PMIx_Argv_free(options);
             break;

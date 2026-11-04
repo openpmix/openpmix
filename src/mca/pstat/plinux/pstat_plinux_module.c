@@ -557,7 +557,6 @@ static pmix_status_t disk_stat(void *answer,
     char *dptr;
     char **fields = NULL;
     void *cache;
-    size_t n;
     bool takeit;
     uint64_t u64;
     pmix_data_array_t darray;
@@ -593,13 +592,7 @@ static pmix_status_t disk_stat(void *answer,
              * like a physical disk (sd*, nvme*, vd*, ...) */
             takeit = is_disk_device(fields[2]);
         } else {
-            takeit = false;
-            for (n=0; NULL != disks[n]; n++) {
-                if (0 == strcmp(fields[2], disks[n])) {
-                    takeit = true;
-                    break;
-                }
-            }
+            takeit = (0 <= PMIx_Argv_idx(disks, fields[2]));
         }
         if (!takeit) {
             PMIx_Argv_free(fields);
@@ -770,7 +763,6 @@ static pmix_status_t net_stat(void *answer, char**nets,
     char *dptr, *ptr;
     char **fields;
     void *cache;
-    size_t n;
     bool takeit;
     uint64_t u64;
     pmix_data_array_t darray;
@@ -814,13 +806,7 @@ static pmix_status_t net_stat(void *answer, char**nets,
         if (NULL == nets) {
             takeit = true;
         } else {
-            takeit = false;
-            for (n=0; NULL != nets[n]; n++) {
-                if (0 == strcmp(dptr, nets[n])) {
-                    takeit = true;
-                    break;
-                }
-            }
+            takeit = (0 <= PMIx_Argv_idx(nets, dptr));
         }
         if (!takeit) {
             PMIx_Argv_free(fields);

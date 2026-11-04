@@ -492,13 +492,8 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
     }
 
     /* don't do OMPI again if already done */
-    if (NULL != *priors) {
-        char **t2 = *priors;
-        for (n = 0; NULL != t2[n]; n++) {
-            if (0 == strcmp(t2[n], "ompi")) {
-                return PMIX_ERR_TAKE_NEXT_OPTION;
-            }
-        }
+    if (0 <= PMIx_Argv_idx(*priors, "ompi")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     /* flag that we worked on this */
     PMIx_Argv_append_nosize(priors, "ompi");
@@ -1085,13 +1080,8 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
                         "pmdl:ompi: setup fork for %s", PMIX_NAME_PRINT(proc));
 
     /* don't do OMPI again if already done */
-    if (NULL != *priors) {
-        char **t2 = *priors;
-        for (n = 0; NULL != t2[n]; n++) {
-            if (0 == strcmp(t2[n], "ompi")) {
-                return PMIX_ERR_TAKE_NEXT_OPTION;
-            }
-        }
+    if (0 <= PMIx_Argv_idx(*priors, "ompi")) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     /* flag that we worked on this */
     PMIx_Argv_append_nosize(priors, "ompi");

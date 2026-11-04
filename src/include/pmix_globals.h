@@ -1485,8 +1485,6 @@ static inline bool pmix_check_special_key(const char *key)
 
 static inline bool pmix_check_local(const char *hostname)
 {
-    size_t n;
-
     /* the name being tested comes from wherever the caller got it -- a
      * host-supplied info key, an unpacked message -- and our own hostname is
      * not set until pmix_init has run. Neither is safe to hand to strcmp
@@ -1501,14 +1499,7 @@ static inline bool pmix_check_local(const char *hostname)
     }
 
     // now check aliases
-    if (NULL != pmix_globals.aliases) {
-        for (n=0; NULL != pmix_globals.aliases[n]; n++) {
-            if (0 == strcmp(pmix_globals.aliases[n], hostname)) {
-                return true;
-            }
-        }
-    }
-    return false;
+    return (0 <= PMIx_Argv_idx(pmix_globals.aliases, hostname));
 }
 
 #if PMIX_PICKY_COMPILERS
