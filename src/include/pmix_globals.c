@@ -441,6 +441,7 @@ static void pcon(pmix_peer_t *p)
     memset(&p->kgroups, 0, sizeof(p->kgroups));
     p->finalized = false;
     p->finalize_counted = false;
+    p->closed = false;
     p->stdin_producer = false;
     p->upstream = false;
     p->info = NULL;

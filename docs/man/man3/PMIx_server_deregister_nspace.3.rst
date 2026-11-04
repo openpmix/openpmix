@@ -52,6 +52,11 @@ intended to support persistent PMIx servers by giving the host resource manager
 an opportunity to tell the PMIx server library to release all memory associated
 with a completed job.
 
+Connections of the namespace's processes that are still open are closed. A
+collective in progress that names a process of the namespace, and has not
+received that process's contribution, records it as departed and completes on
+the participants that remain.
+
 Like :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`,
 this call thread-shifts the request onto the library's internal progress
 thread, where the purge is actually performed. It supports both a non-blocking
