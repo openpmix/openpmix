@@ -159,6 +159,20 @@ static void drain(int fd)
     }
 }
 
+/* Was "nspace" registered with its job-level info, as a host registers
+ * one? */
+static bool has_job_info(const pmix_nspace_t nspace)
+{
+    pmix_namespace_t *ns;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (PMIX_CHECK_NSPACE_STRICT(ns->nspace, nspace)) {
+            return ns->job_info_recvd;
+        }
+    }
+    return false;
+}
+
 /* Fork/exec a shell that writes one line to each of its streams. */
 static bool spawn_talker(pmix_info_t *jinfo, size_t njinfo, pmix_nspace_t nspace)
 {
@@ -480,6 +494,7 @@ int main(int argc, char **argv)
     }
     report("plain spawn: stdout appears",
            collect_until(rfd, buf, sizeof(buf), OUT_MARK));
+    report("plain spawn: the namespace holds its job info", has_job_info(nspace));
     report("plain spawn: stderr appears",
            collect_until(efd, buf, sizeof(buf), ERR_MARK));
     drain(rfd);

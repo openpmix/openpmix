@@ -1169,6 +1169,10 @@ static pmix_status_t register_nspace(char *nspace, pmix_setup_caddy_t *fcd)
          * are using */
         PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, ninfo);
     }
+    if (PMIX_SUCCESS == rc) {
+        /* as a host registration records it */
+        nptr->job_info_recvd = true;
+    }
 
     PMIX_DATA_ARRAY_DESTRUCT(&darray);
     return rc;
