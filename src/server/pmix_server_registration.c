@@ -44,6 +44,7 @@
 #include "src/mca/pgpu/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/psensor/base/base.h"
+#include "src/mca/pstat/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/util/pmix_error.h"
@@ -997,6 +998,9 @@ void pmix_server_rank_returned(pmix_namespace_t *nptr, pmix_rank_info_t *info)
     }
     info->lost = false;
     info->returned = true;
+    /* the new process has published nothing yet: a direct-modex request
+     * for it waits for its data, not the lost process's */
+    info->modex_recvd = false;
     if (NULL != nptr && SIZE_MAX != nptr->nlocalprocs) {
         ++nptr->nlocalprocs;
     }
@@ -1108,6 +1112,7 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
     pmix_rank_info_t *info, *inext;
     pmix_peer_t *peer;
     pmix_proc_t proc;
+    bool purge;
 
     PMIX_LIST_FOREACH_SAFE(info, inext, &nptr->ranks, pmix_rank_info_t) {
         if (NULL == p || info->pname.rank == p->rank) {
@@ -1119,6 +1124,15 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
             /* if this client failed to call finalize, we still need
              * to restore any allocations that were given to it */
             peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid);
+            /* The whole namespace is going: a collective in flight that
+             * names a rank of it, and that the rank has not contributed
+             * to, will not see it now - finalized or not. Recorded as a
+             * departure, as a lost rank is, so it completes on the
+             * participants that remain. A named rank is accounted below */
+            if (NULL == p && !info->lost) {
+                pmix_server_trk_proc_lost(&proc);
+                pmix_server_grp_proc_lost(&proc);
+            }
             if (NULL == peer) {
                 /* This peer never connected, and hence it won't finalize.
                  * A rank the host deregisters on its own is a process that
@@ -1128,6 +1142,8 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                  * counted finalized as before. */
                 if (NULL != p) {
                     pmix_server_rank_lost(nptr, info);
+                    /* and a request parked on its data is answered now */
+                    pmix_server_purge_events(NULL, &proc, PMIX_ERR_LOST_CONNECTION);
                 } else if (!info->lost) {
                     nptr->nfinalized++;
                 }
@@ -1136,6 +1152,12 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                 pmix_pnet.child_finalized(&proc);
                 pmix_pgpu.child_finalized(&proc);
             } else {
+                /* The connection is closed below, so lost_connection will
+                 * not see it go: what it does for a departing peer is done
+                 * here. A peer whose FINALIZE arrived had its events and
+                 * parked requests dealt with then, and one whose socket
+                 * already dropped had them dealt with by lost_connection */
+                purge = (0 <= peer->sd && !peer->finalize_counted);
                 if (NULL != p) {
                     /* The host says this rank is gone for good, finalized
                      * or not - it calls this once the process has
@@ -1176,8 +1198,20 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                     pmix_pgpu.child_finalized(&proc);
                     pmix_psensor.stop(peer, NULL);
                 }
-                /* honor any registered epilogs */
-                pmix_execute_epilog(&peer->epilog);
+                if (purge) {
+                    /* its event and IOF registrations, the requests parked
+                     * on its data, and the notifications cached for it -
+                     * and its epilog, which this runs */
+                    pmix_server_purge_events(peer, NULL, PMIX_ERR_LOST_CONNECTION);
+                } else {
+                    /* honor any registered epilogs */
+                    pmix_execute_epilog(&peer->epilog);
+                }
+                if (0 <= peer->sd) {
+                    /* end the resource monitors it asked for, and stop
+                     * sampling it in anyone else's */
+                    pmix_pstat_base_peer_lost((struct pmix_peer_t *) peer);
+                }
                 /* Push out anything still queued for this peer before its
                  * socket goes away.  We are retiring a peer the host has
                  * told us about, not reacting to one that vanished, so a
@@ -1229,6 +1263,7 @@ static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
                  * generate "connection lost" events should it be
                  * subsequently "killed" by the host */
                 CLOSE_THE_SOCKET(peer->sd);
+                peer->closed = true;
                 // remove it from our client array
                 pmix_pointer_array_set_item(&pmix_server_globals.clients, info->peerid, NULL);
                 PMIX_RELEASE(peer);

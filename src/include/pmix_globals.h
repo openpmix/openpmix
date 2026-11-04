@@ -683,6 +683,7 @@ typedef struct pmix_peer_t {
     bool finalize_counted;   // its finalize is counted in nptr->nfinalized -
                              // from the moment the request arrives, before
                              // the host has answered it and `finalized` is set
+    bool closed;             // its connection was open and has closed
     bool stdin_producer;     // peer has pushed stdin to us, and is therefore
                              // somebody IOF flow control has to reach when the
                              // host tells us to stop taking stdin

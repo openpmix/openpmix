@@ -256,7 +256,10 @@ Back-end code never calls `send()`/`recv()`. It uses these macros from
   is only ever called from there.)
 
 All three short-circuit to `PMIX_ERR_UNREACH` if the peer is already
-`finalized`. The buffer is consumed (freed) by the transport.
+`finalized`; `PMIX_SERVER_QUEUE_REPLY` also does for a peer whose
+connection has closed (`peer->closed`). A peer that never had a socket -
+a unit test's stand-in - is queued as before, and its reply stays on
+`send_msg`. The buffer is consumed (freed) by the transport.
 
 **Every one of them can also answer `PMIX_ERR_NOMEM`, and each of them
 allocates before it can.** `PMIX_SERVER_QUEUE_REPLY` allocates the
