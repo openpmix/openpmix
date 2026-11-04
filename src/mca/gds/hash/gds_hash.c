@@ -560,7 +560,7 @@ static void hash_finalize(void)
 
 static pmix_status_t hash_assign_module(pmix_info_t *info, size_t ninfo, int *priority)
 {
-    size_t n, m;
+    size_t n;
     char **options;
 
     *priority = 10;
@@ -579,12 +579,9 @@ static pmix_status_t hash_assign_module(pmix_info_t *info, size_t ninfo, int *pr
                 if (NULL == options) {
                     break;
                 }
-                for (m = 0; NULL != options[m]; m++) {
-                    if (0 == strcmp(options[m], "hash")) {
-                        /* they specifically asked for us */
-                        *priority = 100;
-                        break;
-                    }
+                if (0 <= PMIx_Argv_idx(options, "hash")) {
+                    /* they specifically asked for us */
+                    *priority = 100;
                 }
                 PMIx_Argv_free(options);
                 break;

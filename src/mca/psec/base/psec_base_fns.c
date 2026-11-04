@@ -65,7 +65,6 @@ pmix_psec_module_t *pmix_psec_base_assign_module(const char *options)
     pmix_psec_base_active_module_t *active;
     pmix_psec_module_t *mod;
     char **tmp = NULL;
-    int i;
 
     if (!pmix_psec_globals.initialized) {
         return NULL;
@@ -86,12 +85,10 @@ pmix_psec_module_t *pmix_psec_base_assign_module(const char *options)
                 return mod;
             }
         } else {
-            for (i = 0; NULL != tmp[i]; i++) {
-                if (0 == strcmp(tmp[i], active->component->base.pmix_mca_component_name)) {
-                    if (NULL != (mod = active->component->assign_module())) {
-                        PMIx_Argv_free(tmp);
-                        return mod;
-                    }
+            if (0 <= PMIx_Argv_idx(tmp, active->component->base.pmix_mca_component_name)) {
+                if (NULL != (mod = active->component->assign_module())) {
+                    PMIx_Argv_free(tmp);
+                    return mod;
                 }
             }
         }
@@ -107,7 +104,7 @@ pmix_psec_module_t *pmix_psec_base_assign_module(const char *options)
 bool pmix_psec_base_check_directives(const char *name, const pmix_info_t directives[], size_t ndirs)
 {
     char **types;
-    size_t n, m;
+    size_t n;
     bool takeus;
 
     if (NULL == directives || 0 == ndirs) {
@@ -130,14 +127,8 @@ bool pmix_psec_base_check_directives(const char *name, const pmix_info_t directi
             /* the string held nothing but separators, so it names nobody */
             return false;
         }
-        takeus = false;
-        for (m = 0; NULL != types[m]; m++) {
-            if (0 == strcmp(types[m], name)) {
-                /* it's us! */
-                takeus = true;
-                break;
-            }
-        }
+        /* is it us? */
+        takeus = (0 <= PMIx_Argv_idx(types, name));
         PMIx_Argv_free(types);
         if (!takeus) {
             return false;
@@ -235,7 +226,6 @@ static bool gid_lookup(uid_t uid, gid_t gid, bool *answered)
     int rc = 0;
 #ifdef HAVE_GRP_H
     struct group grp, *gr = NULL;
-    size_t n;
 #endif
 
     *answered = false;
@@ -284,13 +274,8 @@ static bool gid_lookup(uid_t uid, gid_t gid, bool *answered)
     if (NULL == gr && !lookup_answered(rc)) {
         goto done;
     }
-    if (NULL != gr && NULL != gr->gr_mem) {
-        for (n = 0; NULL != gr->gr_mem[n]; n++) {
-            if (0 == strcmp(gr->gr_mem[n], pw->pw_name)) {
-                held = true;
-                break;
-            }
-        }
+    if (NULL != gr && 0 <= PMIx_Argv_idx(gr->gr_mem, pw->pw_name)) {
+        held = true;
     }
 #else
     PMIX_HIDE_UNUSED_PARAMS(grlen);
