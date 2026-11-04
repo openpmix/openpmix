@@ -66,6 +66,11 @@
 # is the only case here that depends on the runtime recording an interest
 # after the fact rather than at launch.
 #
+# FORMATTING.  Case 6 repeats case 3's geometry under prun --output tag and
+# asks the second half of "treated the way its parent is treated": that the
+# child's output comes back tagged as the parent's does, although prun never
+# saw the child's spawn request.
+#
 # WHAT THIS DOES NOT COVER.  Output forwarding to a tool that is watching a
 # job through something other than PMIx_IOF_pull or a spawn it issued -- no
 # such path exists today -- and the stdin direction, which is not what any
@@ -394,6 +399,49 @@ test_linux() {
     fi
     RUN "pterm >/dev/null 2>&1; rm -f /tmp/iof-parent.log" >/dev/null 2>&1
     clear_markers
+    cleanup_swarm
+
+    # ------------------------------------------------------------------
+    # Case 6: the child's output is FORMATTED the way the parent's is.
+    #
+    # Inheriting the parent's forwarding is meant to include its
+    # formatting - PMIx_Spawn says "with the same formatting" - and getting
+    # the bytes there did not get that. prun never sees the child's spawn
+    # request, so it had nothing to format the child's output with and
+    # used its defaults: under --output tag the parent's lines came back
+    # tagged and the child's did not. The server forwarding the output now
+    # tells the tool, with the first of it, whose formatting the child
+    # inherits; see "Formatting" in docs/how-things-work/iof_inheritance.rst.
+    #
+    # Case 3's geometry, so the server that tells the tool is neither the
+    # spawner's nor the child's: what is asserted could only have come
+    # from the subscription cloned at the HNP. --output tag on prun is the
+    # parent's directive and the spawn names none, so PRRTE's own copying
+    # of directives (off by default) contributes nothing.
+    # ------------------------------------------------------------------
+    banner "case 6: the child's output is formatted as its parent's (--output tag)"
+    clear_markers
+    OUT="$(RUN "prte --daemonize --host $DVM_HOSTS >/tmp/iof-dvm.log 2>&1; sleep 5;
+                prun --host node2:1,node1:1 -np 2 --timeout 90 --output tag \
+                     $PROG --markers $MARKERS 2>&1;
+                echo '--- done ---';
+                pterm >/dev/null 2>&1")"
+    RAN="$(collect_markers)"
+    show_layout
+    if [ "$(echo "$RAN" | sed -n 's/.*host //p' | sort -u | wc -l)" -lt 3 ]; then
+        skp "formatting: the ranks did not land on three distinct nodes"
+    else
+        judge "formatting" "the child's output crossed two daemons to reach the tool"
+        if ! echo "$OUT" | grep -qE '\]<stdout>: SPAWN_IOF parent '; then
+            bad "formatting: the PARENT's output was not tagged -- the case cannot judge the child"
+        elif echo "$OUT" | grep -qE '\]<stdout>: SPAWN_IOF child ' &&
+             echo "$OUT" | grep -qE '\]<stderr>: SPAWN_IOF childerr '; then
+            ok "formatting: the child's output is tagged like its parent's"
+        else
+            bad "formatting: the parent's output is tagged and the child's is not"
+            echo "$OUT" | grep 'SPAWN_IOF child' | sed 's/^/     /' >&2
+        fi
+    fi
     cleanup_swarm
 }
 

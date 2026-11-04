@@ -1405,6 +1405,7 @@ a library that routes nothing at all still passes it.
 | 3 | persistent DVM, `prun --host node2:1,node1:1 -np 2` | node1 (HNP) | node2 | node3 | **The strong one.** Three different daemons, so nothing about the answer can be read out of local state. |
 | 4 | `prterun`, node1 left out of `--host` | node1 (`prterun` itself) | node2 | node3 | What a user sees under `prterun`. Weaker evidence — see below. |
 | 5 | persistent DVM; `iof_watcher` started on **node3** | node3 (**not** the HNP) | node2 | elsewhere | A tool that pulls a job **already running**, from a daemon that hosts none of it. |
+| 6 | as case 3, with `prun --output tag` | node1 (HNP) | node2 | node3 | **Formatting.** The child's lines must come back tagged like the parent's, though `prun` never saw the child's spawn request. |
 
 Case 3 is worth understanding before changing the geometry. Case 2 leaves
 the child's placement to the mapper, which fills from the first free slot
@@ -1426,6 +1427,14 @@ Case 4 is reported separately because `prterun` also writes output
 *locally*, which can carry a child's bytes to the terminal by a route
 that has nothing to do with the subscription being inherited. A pass
 there is not a substitute for a pass in cases 2 and 3.
+
+Case 6 asks the other half of "treated the way its parent is treated".
+The spawn names no formatting directive and PRRTE copies none by default,
+so the only way the child's lines can come back tagged is the server at
+the HNP telling `prun`, with the first of them, whose formatting the
+child inherits (`PMIX_IOF_JOB_DIRECTIVES`; see "Formatting" in the design
+document). Before that, case 6 passed its routing check and failed this
+one.
 
 ### Reading a failure
 
