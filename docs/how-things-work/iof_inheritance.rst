@@ -35,7 +35,7 @@ Two details of the current implementation are easy to miss and change the analys
 
 * **The HNP hands everything it receives to its own PMIx server**, not merely what it relays onward. So a tool attached to the HNP - the ordinary ``prun --dvm-uri`` case - is reachable for any job's output, whether or not the relay would have selected the HNP.
 
-* **PRRTE already inherits the parent's output** *formatting* **directives** onto a spawned child, gated on the same ``inherit`` flag as mapping, ranking and binding: tagging, timestamping and stderr/stdout merging are copied from parent to child. What is not inherited is anything about *who receives* the output.
+* **PRRTE also copies some of the parent's output** *formatting* **directives** onto a spawned child, gated on the same ``inherit`` flag as mapping, ranking and binding: tagging, timestamping and stderr/stdout merging. That flag defaults to off, so by default it copies nothing - and copying is not needed for the receiver's formatting, which PMIx now supplies itself (see "Formatting" below). What is not copied is anything about *who receives* the output.
 
 What is missing
 ---------------
@@ -89,6 +89,26 @@ The spawn-time inheritance is kept rather than replaced. It is what implements t
 
 **The PRRTE side.** Items 1-4 are the answer for a tool that is *not* attached to the HNP, and for a tool that attaches to a running DVM and pulls a job's output. Neither is reachable from the PMIx side: the first needs the output relayed to a daemon PRRTE does not otherwise send it to, and the second needs the request recorded against the job at all. All four are implemented in prrte#2658, along with PRRTE's half of item 6 - setting ``PMIX_IOF_INHERIT`` when its own ``inherit`` rule refuses. Note the default there is the opposite of this one: PRRTE does not inherit *launch directives* unless asked, so the gate on output forwarding has to be the explicit refusal rather than the resolved value.
 
+Formatting
+----------
+
+Delivering the child's output was half of "treated the way the parent is treated". The other half is the *formatting*, and it did not follow. The launcher receiving the child's output - prun, say - never saw the child's spawn request, which went from the spawning rank to its own server and on into the host. So the launcher had nothing to format the child's output with and fell back to its process-wide defaults: under ``prun --output tag`` the parent's lines were tagged and the child's were not, whatever either job asked for. Copying the parent's directives onto the child in the host (PRRTE's ``inherit``, above) did not help either, because the copy also stopped at the server.
+
+The server forwarding the output is the one that can close it, because it knows both things the receiver lacks:
+
+* **what the job asked for** - the host registered the job with it, and its job-level information holds the formatting directives the spawn request carried. Only the host can get them there, since only the host saw the request.
+* **whose formatting it inherits** - when the receiver is sent the output because the job inherited one of its subscriptions, the server made that clone and recorded the ancestor it came from (``pmix_iof_req_t::inherited_from``).
+
+So with the first of a job's output to each receiver, ``pmix_iof_process_iof()`` sends ``PMIX_IOF_JOB_DIRECTIVES``: the job's registered formatting directives, and ``PMIX_PARENT_ID`` naming that ancestor (``add_job_directives()``, once per job per subscription, tracked in ``pmix_iof_req_t::jobdirs_sent``). The receiving tool records it (``pmix_iof_record_job_directives()``) and, for a job it has no spawn reply of its own for, formats the output with, in order:
+
+1. its process-wide defaults;
+2. over them, the formatting it uses for the nearest ancestor it knows - which it has either from spawning that ancestor or from being told about it the same way, so a grandchild works through a child that has written nothing yet. The walk is bounded by ``PMIX_IOF_MAX_ANCESTRY``, like the server's;
+3. over that, the job's own directives, one key at a time - so a child can add timestamps to inherited tagging, or set tagging ``false`` to drop it.
+
+Inheriting the parent's formatting therefore needs nothing from the host: it is resolved from the receiver's own view of the parent, which is also what makes it per-receiver - two tools formatting the parent differently each format the child their own way. What the host must do is register the spawn's own formatting directives with the job, including an explicit ``false``; see :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`. A host that does not loses only the child's own overrides.
+
+A reply to the receiver's own spawn of the job takes precedence, and output held waiting for one (see ``hold_for_spawn_reply()``) is still held. Only formatting directives are taken from the message - a file name is ``PMIX_IOF_FILE_WRITER``'s to deliver, with its own ownership check.
+
 Answered
 --------
 
@@ -98,6 +118,8 @@ Answered
 
 * *Should the ancestry walk be transitive?* **Transitive**, bounded. See item 5.
 
+* *Who resolves the inherited formatting - the host or PMIx?* **PMIx.** The alternative was for every host to copy the parent's formatting directives into the child's registration, which is a policy each host would have to implement to keep a promise ``PMIx_Spawn`` makes. The receiver already knows how it formats the parent, so naming the parent is enough. See "Formatting".
+
 * *Should a match register a real subscription for the child, or be re-tested per delivery?* **Register.** Re-testing looked simpler until the cost was written down: it puts a datastore fetch in front of every line a watched job writes, where registering pays once per namespace. The lifetime question it seemed to add is not a new one - the clone is identical to the one the spawn-time path already creates, and is made by the same function.
 
 Sequencing and testing
@@ -105,7 +127,9 @@ Sequencing and testing
 
 The PMIx delivery-time fallback landed first, and it turned out to be sufficient on its own for a tool attached to the HNP - which is every tool PRRTE's own launchers produce. The remaining PRRTE work is what a tool attached elsewhere needs.
 
-None of this is reachable from ``make check``. The spawn-time inheritance is covered by ``test/unit/iof_inherit.c``, which drives the parser and the registration directly and reads the subscription list back - it establishes which subscriptions are created and for whom, which needs no spawn, and no spawn is available in any case because ``test/simple/simptest`` cannot host one. Everything described above as planned is about *which daemon* holds a subscription and *where* bytes are relayed, so it can only be demonstrated across several daemons. The ten-container swarm under ``contrib/dockerswarm`` is the vehicle for that, and the cases worth building there are:
+The formatting half is covered by ``make check``: ``test/unit/iof_jobdirs.c`` reads back what a server sends a stand-in tool on a socketpair, and ``test/unit/iof_jobdirs_tool.c`` checks how a tool formats from it.
+
+None of the routing is reachable from ``make check``. The spawn-time inheritance is covered by ``test/unit/iof_inherit.c``, which drives the parser and the registration directly and reads the subscription list back - it establishes which subscriptions are created and for whom, which needs no spawn, and no spawn is available in any case because ``test/simple/simptest`` cannot host one. Everything described above as planned is about *which daemon* holds a subscription and *where* bytes are relayed, so it can only be demonstrated across several daemons. The ten-container swarm under ``contrib/dockerswarm`` is the vehicle for that, and the cases worth building there are:
 
 * a client-issued spawn where the spawning rank is hosted by a daemon other than the one the launching tool attached to;
 * the same under ``prterun`` rather than a persistent DVM;

@@ -633,6 +633,10 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
         nreq->requestor = req->requestor;
         nreq->channels = req->channels;
         nreq->remote_id = req->remote_id;
+        /* who this was inherited from, for the requestor's formatting -
+         * see PMIX_IOF_JOB_DIRECTIVES */
+        PMIX_XFER_PROCID(&nreq->inherited_from, parent);
+        nreq->inherited = true;
         /* a shallow copy of the flags owns nothing - see the note in
          * pmix_server_process_iof below */
         nreq->flags = req->flags;
@@ -760,12 +764,8 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
     return clone_iof_reqs(&parent, nspace);
 }
 
-/* How far the ancestry walk below will climb. The chain is data - each
- * link is a PMIX_PARENT_ID the host stored - so a bound is what keeps a
- * malformed or circular one from spinning the progress thread. Nothing
- * legitimate is anywhere near this deep.
- */
-#define PMIX_IOF_MAX_ANCESTRY 16
+/* How far the ancestry walk below will climb: PMIX_IOF_MAX_ANCESTRY,
+ * in pmix_iof.h, which a tool's walk for formatting shares */
 
 /* Who spawned the job this process belongs to?
  *

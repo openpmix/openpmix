@@ -2581,10 +2581,16 @@ subscription is. Four things about it are load-bearing:
   registers the namespace. `pmix_pfexec` records it for the job as a
   whole instead, so `get_parent_id()` tries the specific rank and then
   the wildcard.
-- **The walk is transitive and bounded** (`PMIX_IOF_MAX_ANCESTRY`). A
+- **The walk is transitive and bounded** (`PMIX_IOF_MAX_ANCESTRY`, in
+  `src/common/pmix_iof.h`, shared with the tool's walk for formatting). A
   grandchild of a watched job is watched; the chain is host-supplied
   data, so the bound is what stops a malformed or circular one from
   spinning the progress thread.
+- **A clone remembers whose it was** (`inherited_from`, `inherited`), and
+  the first chunk sent through it names that ancestor to the requestor as
+  `PMIX_PARENT_ID` inside `PMIX_IOF_JOB_DIRECTIVES`, so the requestor can
+  format the job the way it formats the ancestor. See the
+  `PMIX_IOF_JOB_DIRECTIVES` entry in `src/common/AGENTS.md`.
 - **The two halves are independent.** Neither needs the other to have
   run, and where both apply the second finds the subscription the first
   created and does nothing.

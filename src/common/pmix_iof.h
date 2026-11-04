@@ -356,6 +356,19 @@ PMIX_EXPORT void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags
 PMIX_EXPORT void pmix_iof_record_forwarded_files(const pmix_proc_t *source,
                                                  const pmix_info_t *info, size_t ninfo);
 PMIX_EXPORT void pmix_iof_apply_forwarded_files(pmix_namespace_t *nptr);
+/* How far an ancestry walk will climb - the server's, deciding which
+ * subscriptions a spawned job inherits, and a tool's, deciding how to
+ * format it. The chain is data - each link is a PMIX_PARENT_ID a host
+ * stored or a server sent - so a bound is what keeps a malformed or
+ * circular one from spinning the progress thread. Nothing legitimate is
+ * anywhere near this deep. */
+#define PMIX_IOF_MAX_ANCESTRY 16
+
+/* A tool's side of PMIX_IOF_JOB_DIRECTIVES: record the formatting
+ * directives its server sent with a job's output, for a job it has no
+ * spawn reply to format by */
+PMIX_EXPORT void pmix_iof_record_job_directives(const pmix_proc_t *source,
+                                                const pmix_info_t *info, size_t ninfo);
 
 /* Holding output until a spawn reply says how to format it.
  *

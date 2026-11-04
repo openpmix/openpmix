@@ -180,6 +180,11 @@ static void nscon(pmix_namespace_t *p)
     pmix_iof_init_flags(&p->iof_flags);
     PMIX_CONSTRUCT(&p->sinks, pmix_list_t);
     memset(&p->fwd_files, 0, sizeof(p->fwd_files));
+    p->fwd_dirs = NULL;
+    p->nfwd_dirs = 0;
+    PMIX_LOAD_PROCID(&p->fwd_parent, NULL, PMIX_RANK_UNDEF);
+    p->fwd_parent_given = false;
+    p->fwd_told = false;
     p->writer_told = false;
     p->files_refused = false;
     p->files_unopened = false;
@@ -222,6 +227,9 @@ static void nsdes(pmix_namespace_t *p)
     }
     free(p->fwd_files.file);
     free(p->fwd_files.directory);
+    if (NULL != p->fwd_dirs) {
+        PMIx_Info_free(p->fwd_dirs, p->nfwd_dirs);
+    }
     PMIX_LIST_DESTRUCT(&p->sinks);
     if (NULL != p->access.uids) {
         free(p->access.uids);
@@ -536,10 +544,16 @@ static void iofreqcon(pmix_iof_req_t *p)
     p->cbfunc = NULL;
     p->regcbfunc = NULL;
     p->cbdata = NULL;
+    p->jobdirs_sent = NULL;
+    PMIX_LOAD_PROCID(&p->inherited_from, NULL, PMIX_RANK_UNDEF);
+    p->inherited = false;
 }
 static void iofreqdes(pmix_iof_req_t *p)
 {
     PMIX_DESTRUCT_LOCK(&p->lock);
+    if (NULL != p->jobdirs_sent) {
+        PMIx_Argv_free(p->jobdirs_sent);
+    }
     if (NULL != p->requestor) {
         PMIX_RELEASE(p->requestor);
     }

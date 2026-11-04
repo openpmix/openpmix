@@ -1473,6 +1473,18 @@ typedef uint32_t pmix_rank_t;
                                                                     //        inheritance off. Directives on the spawn request itself take
                                                                     //        precedence: naming any of PMIX_FWD_STDOUT/STDERR/STDDIAG
                                                                     //        settles the matter and this attribute is not consulted.
+#define PMIX_IOF_JOB_DIRECTIVES             "pmix.iof.jobdirs"      // (pmix_data_array_t*) array of pmix_info_t describing how the
+                                                                    //        source's job is to be formatted: the output formatting
+                                                                    //        directives (tagging, timestamping, merging, XML, raw) the job
+                                                                    //        was registered with and, when the recipient is sent the
+                                                                    //        output because the job inherited its subscription,
+                                                                    //        PMIX_PARENT_ID naming the watched ancestor. A server includes
+                                                                    //        it with the first of a job's output it forwards to each
+                                                                    //        recipient, so a tool that did not spawn the job - e.g., the
+                                                                    //        launcher of the job's parent - formats it as it formats that
+                                                                    //        ancestor, with the job's own directives applied over that. A
+                                                                    //        tool that has its own directives for the job from its spawn
+                                                                    //        of it uses those instead. Added by the PMIx library
 
 /* Attributes for controlling contents of application setup data */
 #define PMIX_SETUP_APP_ENVARS               "pmix.setup.env"        // (bool) harvest and include relevant envars

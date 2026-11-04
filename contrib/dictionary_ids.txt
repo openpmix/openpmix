@@ -711,3 +711,4 @@ pmix.ssn.rndz.id       682   PMIX_SESSION_RNDZ_ID
 pmix.monitor.bmiss     683   PMIX_MONITOR_HEARTBEAT_MISSED
 pmix.monitor.fmiss     684   PMIX_MONITOR_FILE_MISSED
 pmix.ssn.pvn           685   PMIX_SESSION_PROVISION
+pmix.iof.jobdirs       686   PMIX_IOF_JOB_DIRECTIVES
