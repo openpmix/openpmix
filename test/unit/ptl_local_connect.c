@@ -26,6 +26,10 @@
  * launcher whose PMIX_LAUNCHER_RENDEZVOUS_FILE name has a FIFO at it
  * finishes its init promptly.
  *
+ * A client that dies without finalizing, followed by another the host
+ * starts for the same rank, leaves one peer for the rank on the server's
+ * client list, not two.
+ *
  * Every connect-ack buffer a client releases - the packed info that holds
  * its connection token, and the message - is zero when it is released
  * (pmix_ptl_base_wiped_hook).
@@ -45,6 +49,7 @@
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/base/ptl_base_handshake.h"
 #include "src/mca/ptl/usock/ptl_usock.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_net.h"
 
@@ -290,6 +295,11 @@ static int run_kid(bool tool, int envfd, int resultfd, int gofd)
     }
     if (PMIX_SUCCESS != rc) {
         return put(resultfd, &rc, sizeof(rc)) ? KID_INIT_FAILED : KID_FAILED;
+    }
+    if (NULL != getenv("CL_DIE")) {
+        /* a process that dies without finalizing */
+        ret = put(resultfd, &rc, sizeof(rc)) ? KID_OK : KID_FAILED;
+        _exit(ret);
     }
     srv = pmix_client_globals.myserver;
     if (NULL == srv || &pmix_ptl_usock_module != srv->transport) {
@@ -795,6 +805,102 @@ static char *tcp_uri(void)
     return uri;
 }
 
+/* the rank's peers on the server's client list, and whether its entry
+ * says it is lost - read on the progress thread */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    int npeers;
+    bool lost;
+} rankpeers_t;
+
+static void count_rank_peers(int sd, short args, void *cbdata)
+{
+    rankpeers_t *r = (rankpeers_t *) cbdata;
+    pmix_peer_t *pr;
+    int i;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    r->npeers = 0;
+    r->lost = false;
+    for (i = 0; i < pmix_server_globals.clients.size; i++) {
+        pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, i);
+        if (NULL != pr && NULL != pr->info && 0 == pr->info->pname.rank &&
+            0 == strcmp(pr->info->pname.nspace, CL_NSPACE)) {
+            ++r->npeers;
+            r->lost = r->lost || pr->info->lost;
+        }
+    }
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+static rankpeers_t rank_peers(void)
+{
+    rankpeers_t r;
+
+    memset(&r, 0, sizeof(r));
+    PMIX_CONSTRUCT_LOCK(&r.lock);
+    PMIX_THREADSHIFT(&r, count_rank_peers);
+    PMIX_WAIT_THREAD(&r.lock);
+    PMIX_DESTRUCT_LOCK(&r.lock);
+    return r;
+}
+
+/* A client dies without finalizing, and the host starts another for the
+ * same rank without deregistering it. The dead one's peer is released
+ * when the new one connects, rather than left on the client list */
+static void dead_reclaim_case(kid_t *dp, kid_t *np, const char *name)
+{
+    kid_t dk = *dp, nk = *np;
+    pmix_proc_t proc;
+    char **env = NULL;
+    int status = 0, n;
+    pmix_status_t rc;
+    rankpeers_t r;
+    char detail[256];
+
+    PMIX_LOAD_PROCID(&proc, CL_NSPACE, 0);
+    if (PMIX_SUCCESS != PMIx_server_setup_fork(&proc, &env)) {
+        report(name, 0, "setup_fork failed");
+        return;
+    }
+    set_var(&env, "CL_DIE", "1");
+    send_env(&dk, env);
+    PMIx_Argv_free(env);
+    env = NULL;
+    rc = finish_kid(&dk, &status);
+    if (PMIX_SUCCESS != rc) {
+        snprintf(detail, sizeof(detail), "the first client's init returned %s",
+                 PMIx_Error_string(rc));
+        report(name, 0, detail);
+        return;
+    }
+    /* the server reads its close */
+    for (n = 0; n < 100; n++) {
+        r = rank_peers();
+        if (r.lost) {
+            break;
+        }
+        usleep(50000);
+    }
+    if (!r.lost) {
+        report(name, 0, "the server did not see the first client go");
+        return;
+    }
+    if (PMIX_SUCCESS != PMIx_server_setup_fork(&proc, &env)) {
+        report(name, 0, "second setup_fork failed");
+        return;
+    }
+    send_env(&nk, env);
+    PMIx_Argv_free(env);
+    rc = finish_kid(&nk, &status);
+    r = rank_peers();
+    snprintf(detail, sizeof(detail), "second init %s, exit %d, %d peers for the rank",
+             PMIx_Error_string(rc), WIFEXITED(status) ? WEXITSTATUS(status) : -1, r.npeers);
+    report(name, PMIX_SUCCESS == rc && WIFEXITED(status) && KID_OK == WEXITSTATUS(status) &&
+                     1 == r.npeers, detail);
+}
+
 static void access_cases(void)
 {
     struct {
@@ -832,7 +938,7 @@ int main(int argc, char **argv)
     char *fifo = NULL, *link = NULL, *lfifo = NULL;
     bool flag = true;
     pmix_status_t rc;
-    kid_t kids[20];
+    kid_t kids[22];
     pmix_nspace_t ns;
     int n;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -850,8 +956,8 @@ int main(int argc, char **argv)
     /* every child is forked before any PMIx call: a child of an
      * initialized server has a copy of its state but none of its threads.
      * Each later one lets go of the pipes of those before it */
-    /* 0-3, 5, 7, 11, 16, 18 and 19 are clients; the rest tools */
-    for (n = 0; n < 20; n++) {
+    /* 0-3, 5, 7, 11, 16 and 18-21 are clients; the rest tools */
+    for (n = 0; n < 22; n++) {
         if (!start_kid(&kids[n], 4 == n || 6 == n || (8 <= n && 10 >= n) ||
                                      (12 <= n && 15 >= n) || 17 == n)) {
             fprintf(stderr, "could not start the children\n");
@@ -1014,6 +1120,9 @@ int main(int argc, char **argv)
                 "fails init", "no-such-method\0" "v70\0" "\1" "hash", 25);
     choice_case(&kids[19], "a client whose server chooses a wire format it does not have "
                 "fails init", "native\0" "v99\0" "\1" "hash", 17);
+
+    dead_reclaim_case(&kids[20], &kids[21], "a client that died without finalizing is "
+                      "released when its rank connects again");
 
     access_cases();
 

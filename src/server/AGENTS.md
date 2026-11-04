@@ -137,7 +137,8 @@ Three things about the switchyard read as defects and are not. Check them
 against this list before "fixing" one:
 
 - **`PMIX_SERVER_QUEUE_REPLY` has two failure modes, and only one of them
-  means nobody is waiting.** `peer->finalized` is answered with
+  means nobody is waiting.** `peer->finalized`, or `peer->closed` (its
+  connection was open and has closed), is answered with
   `PMIX_ERR_UNREACH`, and there really is no client left to strand — the
   synthesized reply the message handler would send instead could not be
   queued either, so releasing the buffer and returning `PMIX_SUCCESS` is

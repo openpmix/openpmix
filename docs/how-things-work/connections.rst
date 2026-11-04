@@ -1221,9 +1221,6 @@ when the last process using it has gone, whether by finalize,
 disconnect or failure. A tool that connects again arrives as a new
 tool.
 
-.. DRAFT: not done today - a self-started tool's namespace is never
-   removed.
-
 When a connection is lost
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1240,11 +1237,24 @@ rank`_). The server:
    ``PMIX_ERR_LOST_CONNECTION`` if not;
 #. removes its event registrations and output requests, fails requests
    waiting on its data with ``PMIX_ERR_LOST_CONNECTION``, and stops any
-   monitoring of it;
+   monitoring of it. A request for its data made afterwards, while the
+   rank is lost, is answered ``PMIX_ERR_NOT_FOUND`` at once unless the
+   data had already arrived;
 #. raises ``PMIX_ERR_LOST_CONNECTION``, naming the process, with range
    ``PMIX_RANGE_PROC_LOCAL``. It goes to the event handlers the host
    registered in its own process with ``PMIx_Register_event_handler``,
-   and to no client or tool.
+   and to no client or tool. It is not cached: a handler registered
+   later does not receive it.
+
+A process whose ``PMIx_Finalize`` request reached the server has
+finalized, even if its connection closes before the host answers that
+request - the client gives up waiting after a while. It is not counted
+as lost, and no event is raised for it.
+
+If the rank connects again - the host started a new process for it -
+the server releases what it kept of the lost connection, and the new
+process starts with no data published: a request for its data waits
+for the new process's, not the lost one's.
 
 For a client this is a second notice: the client is the host's child,
 and the host sees it end. For a tool the host did not start, the event
@@ -1304,7 +1314,10 @@ exit has been collected and its output drained. Its
 What the server does:
 
 #. if the client is still connected, closes the connection and handles
-   it as a lost connection, without calling the host back. The host
+   it as a lost connection, without calling the host back or raising an
+   event: its event and output registrations end, and a request waiting
+   on its data is answered ``PMIX_ERR_LOST_CONNECTION``. So is one
+   waiting on a rank that never connected. The host
    deregisters a live client only when it is about to kill it or
    believes it already dead, so the connection may fail on its own while
    this runs; the departure is still handled once;
@@ -1332,7 +1345,10 @@ step, a job whose rank finalized and exited would hang.
 **Deregistering a job**
 (:ref:`PMIx_server_deregister_nspace(3) <man3-PMIx_server_deregister_nspace>`)
 deregisters every client in it, removes the job's data, events, and
-group memberships, and fails every collective that names it.
+group memberships, and accounts for the departure of each of its ranks
+in every active collective that names it and has not received the
+rank's contribution, so that collective completes on the participants
+that remain.
 
 **Finalizing the server**
 (:ref:`PMIx_server_finalize(3) <man3-PMIx_server_finalize>`) closes every

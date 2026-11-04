@@ -545,7 +545,8 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_post_loopback(struct pmix_peer_t *peer,
                             "[%s:%d] queue callback called: reply to %s:%d on tag %d size %d",  \
                             __FILE__, __LINE__, (p)->info->pname.nspace, (p)->info->pname.rank, \
                             (t), (int) (b)->bytes_used);                                        \
-        if ((p)->finalized) {                                                                   \
+        if ((p)->finalized || (p)->closed) {                                                    \
+            /* finalized, or its connection is gone: nothing would send it */                   \
             (r) = PMIX_ERR_UNREACH;                                                             \
         } else if (PMIX_PTL_MSG_TOO_BIG(b)) {                                                   \
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);                                                 \

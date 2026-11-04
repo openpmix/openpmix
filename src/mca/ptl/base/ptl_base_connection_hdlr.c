@@ -515,7 +515,9 @@ static void adopt_modules(pmix_pending_connection_t *pnd, pmix_peer_t *peer,
  * rank is reconnecting we are at a safe point (no collective from the
  * prior cycle can still be in flight), so reclaim that tombstone: null
  * its slot, drop the finalized count it was still contributing, and
- * release it. This is what keeps the clients array and nptr->nfinalized
+ * release it. A peer whose connection dropped without a finalize is
+ * reclaimed the same way: nothing else would release it once the rank's
+ * new connection takes over the rank's slot. This is what keeps the clients array and nptr->nfinalized
  * from drifting across repeated init/finalize cycles. Only when no live
  * process remains for the rank (proc_cnt == 0), so a live connection
  * for the rank is never disturbed. See
@@ -529,11 +531,12 @@ static void reclaim_tombstone(pmix_rank_info_t *info)
     }
     stale = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
                                                         info->peerid);
-    if (NULL != stale && stale->finalized) {
+    if (NULL != stale && (stale->finalized || stale->closed)) {
         pmix_pointer_array_set_item(&pmix_server_globals.clients, info->peerid, NULL);
         /* the count is on the tombstone's namespace - that is the one its
-         * finalize raised */
-        if (NULL != stale->nptr && 0 < stale->nptr->nfinalized) {
+         * finalize raised. A peer that died without one raised none */
+        if ((stale->finalized || stale->finalize_counted) && NULL != stale->nptr &&
+            0 < stale->nptr->nfinalized) {
             --stale->nptr->nfinalized;
         }
         PMIX_RELEASE(stale);

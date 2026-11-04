@@ -171,7 +171,13 @@ static void lost_connection(pmix_peer_t *peer)
     msg = peer->recv_msg;
     peer->recv_msg = NULL;
     CLOSE_THE_SOCKET(peer->sd);
+    peer->closed = true;
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+        /* A peer whose FINALIZE arrived has finalized, even if the host
+         * has not answered it yet: peer->finalized is set only by that
+         * answer, which may come after the peer gave up waiting and
+         * closed. It is neither lost nor reported */
+        bool fin = peer->finalized || peer->finalize_counted;
 
         if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
             /* If the peer simply died without finalizing, account for it:
@@ -184,7 +190,7 @@ static void lost_connection(pmix_peer_t *peer)
              * has not left the accounting - the rank remains expected, since
              * it may initialize again. See pmix_server_rank_lost() and issue
              * #4113. */
-            if (!peer->finalized) {
+            if (!fin) {
                 pmix_server_rank_lost(peer->nptr, peer->info);
             }
         }
@@ -225,7 +231,7 @@ static void lost_connection(pmix_peer_t *peer)
             pmix_pstat_base_peer_lost((struct pmix_peer_t *) peer);
         }
         complete_recvs(peer);
-        if (!pmix_globals.mypeer->finalized && !peer->finalized) {
+        if (!pmix_globals.mypeer->finalized && !fin) {
             /* if this peer already called finalize, then
              * we are just seeing their connection go away
              * when they terminate - so do not generate

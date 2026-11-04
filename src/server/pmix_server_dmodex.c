@@ -180,6 +180,17 @@ static void _dmodex_req(int sd, short args, void *cbdata)
         return;
     }
 
+    /* a rank whose process was lost publishes nothing more: answered as
+     * a departed rank is, rather than parked until the namespace goes */
+    if (info->lost && !info->modex_recvd) {
+        pmix_output_verbose(2, pmix_server_globals.get_output,
+                            "%s:%d DMODEX FOR LOST PROC %s",
+                            pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                            PMIX_NAME_PRINT(&cd->proc));
+        rc = PMIX_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+
     /* have we received the modex from this proc yet - if
      * not, then defer */
     if (!info->modex_recvd) {

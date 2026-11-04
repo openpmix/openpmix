@@ -459,8 +459,12 @@ PMIX_EXPORT void pmix_internal_dereg_event_hdlr(int sd, short args, void *cbdata
                 /* mark for non-default handlers only */                                       \
                 PMIX_INFO_LOAD(&ch->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);         \
             } else {                                                                           \
-                ch->nallocated = 2;                                                            \
+                /* a loss is news only when it happens: not kept for */                        \
+                /* handlers registered later */                                                \
+                ch->ninfo = 1;                                                                 \
+                ch->nallocated = 3;                                                            \
                 PMIX_INFO_CREATE(ch->info, ch->nallocated);                                    \
+                PMIX_INFO_LOAD(&ch->info[0], PMIX_EVENT_DO_NOT_CACHE, NULL, PMIX_BOOL);        \
             }                                                                                  \
             ch->final_cbfunc = (f);                                                            \
             ch->final_cbdata = ch;                                                             \
