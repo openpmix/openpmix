@@ -22,6 +22,35 @@ Entries that stood on :doc:`todo` and have since been answered.  Each is
 kept with the reasoning that closed it, because in most cases the way it
 closed contradicted what the entry predicted.
 
+A bare TCP URI speaks a wire format older servers lack
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found in a review of how servers, clients and tools of different releases
+connect (2026-10-24), closed 2026-11-04.  A tool given only a TCP URI,
+with no file, knew nothing of its server's release, used its newest wire
+format, ``v70``, and a server of v6.1 or earlier, which has no ``v70``,
+closed the connection.
+
+The entry proposed falling back to the newest wire format every supported
+server has (``v3``: releases v3.2 through v6.1 all have it).  That would
+reach an earlier release, but on that old format even where the server
+has a newer one, and it would reach no server of v7.0 or later: such a
+server takes a tool of this release on its local socket only, and refuses
+it on TCP whatever it offers.  The file gives the server's exact version,
+so a bare TCP URI is refused instead: a tool, an attach, or a launcher's
+``PMIX_LAUNCHER_RNDZ_URI`` given one fails before any connection is
+made, with ``PMIX_ERR_NOT_SUPPORTED`` and one message (``tcp-uri-alone``): for a
+server of v7.0 or later, use its local-socket URI or ``file:<path>``; for
+an earlier release, ``file:<path>``, whose version line gives the wire
+format.  A client is not affected - its server's version reaches it in
+its environment.
+
+The same review found the URI a server stores as ``PMIX_MYSERVER_URI``
+was its TCP one when it listened on TCP, so a launcher handed it to call
+back on was refused.  ``PMIX_MYSERVER_URI`` is now always the local
+socket's URI; ``PMIX_SERVER_URI`` stays the TCP one, for readers of
+earlier releases.
+
 The uncompressed-length prefix of a compressed blob is not bounded
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

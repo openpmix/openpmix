@@ -480,8 +480,9 @@ steps:
   with `SOMAXCONN`, and make the socket non-blocking.
 - **Publish.** Build the URI `nspace.rank;tcp4://host:port`. The base
   stores the server's URI - the TCP one when there is a TCP listener,
-  else the local socket's - in `gds` under both `PMIX_MYSERVER_URI` and
-  (for older tools) `PMIX_SERVER_URI`, optionally emits it via
+  else the local socket's - in `gds` under `PMIX_SERVER_URI` (for older
+  tools), and the local socket's under `PMIX_MYSERVER_URI` (what a
+  launcher is handed to connect back on), optionally emits it via
   `report_uri` (`-`=stdout, `+`=stderr, an integer pipe fd, or a file,
   created mode 0644), and puts it first in the rendezvous files.
 - **Rendezvous files.** Depending on role/flags, drop contact files a

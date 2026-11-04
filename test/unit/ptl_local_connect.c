@@ -451,9 +451,10 @@ static void tool_case(kid_t *kp, const char *name)
 }
 
 /* A tool given the server's URI, or a file holding it: over the local
- * socket - or, at a TCP address, refused by the server as `want` says,
- * since a server of this release takes a tool of this release only on its
- * local socket */
+ * socket - or, at a TCP address, refused as `want` says: by the tool
+ * itself, before connecting, when it was given the TCP URI alone, and by
+ * the server when a file gave it, since a server of this release takes a
+ * tool of this release only on its local socket */
 static void tool_uri_case(kid_t *kp, const char *name, const char *uri, bool want_local,
                           pmix_status_t want)
 {
@@ -942,8 +943,8 @@ int main(int argc, char **argv)
     if (NULL == value) {
         return 1;
     }
-    tool_uri_case(&kids[6], "a tool given the TCP URI is sent to the local socket", value, false,
-                  PMIX_ERR_LOCAL_URI_REQUIRED);
+    tool_uri_case(&kids[6], "a tool given the TCP URI alone is refused before connecting", value,
+                  false, PMIX_ERR_NOT_SUPPORTED);
     free(value);
 
     singleton_case(&kids[7], "a singleton reaches the server started for it over its local "

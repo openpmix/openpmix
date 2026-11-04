@@ -1327,6 +1327,15 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
             rc = PMIX_ERR_BAD_PARAM;
             goto cleanup;
         }
+        /* A TCP address alone names no server we can connect to: one of
+         * this release takes us on its local socket, and one of an
+         * earlier release needs the version its file gives. Refused
+         * before any connection is made */
+        if (0 == strncmp(suri, "tcp4://", 7) || 0 == strncmp(suri, "tcp6://", 7)) {
+            pmix_show_help("help-ptl-base.txt", "tcp-uri-alone", true, pmix_ptl_base.uri);
+            rc = PMIX_ERR_NOT_SUPPORTED;
+            goto cleanup;
+        }
         /* a URI passed directly - by the caller, or as the launcher's
          * PMIX_LAUNCHER_RNDZ_URI - is the caller's word for the server,
          * as a file it names is */

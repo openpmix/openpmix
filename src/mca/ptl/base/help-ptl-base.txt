@@ -360,6 +360,21 @@ of v7.0 or later connects on the server's local socket: pass the
 "usock://" URI the server reports, or name the server's report file
 ("file:<path>"), whose "local:" line gives that socket.
 #
+[tcp-uri-alone]
+This process was given a PMIx server's TCP address to connect to:
+
+  %s
+
+A client or tool of PMIx v7.0 or later does not connect to a server at
+a TCP address alone:
+
+  - a server of v7.0 or later takes it on its local socket: pass the
+    "usock://" URI the server reports, or name the server's report file
+    ("file:<path>"), whose "local:" line gives that socket;
+
+  - a server of an earlier release is reached only through its
+    rendezvous file: name it ("file:<path>").
+#
 [local-uri-required-file]
 The PMIx server would not take this process at the TCP address the file
 
