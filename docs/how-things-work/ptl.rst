@@ -142,7 +142,8 @@ socket - the first two steps below are the ``tcp`` transport's, in
    with a message naming its owner - and the file, reused or new, is
    given mode 0644 whatever the umask or an earlier run made it. A
    report file also carries the ``local:``, ``bfrops:``, ``psec:`` and
-   ``auth:`` lines described below, but no ``lock:`` line. See
+   ``auth:`` lines described below - the first three only when the
+   server takes legacy peers - but no ``lock:`` line. See
    :doc:`connections` for the table.
 #. **Drop rendezvous files.** Depending on the server's role and flags,
    write well-known contact files that a client or tool can later
@@ -198,7 +199,10 @@ socket - the first two steps below are the ``tcp`` transport's, in
    ``.<name>.lock``, mode 0600, which no search for ``pmix.*`` files
    matches; the kernel lets go of the lock however the server exits.
    Readers find every tagged line by its tag; older readers stop before
-   them. The ``pmix_ptl_base`` state struct
+   them. A server that takes no legacy peers has no TCP listener, so its
+   first line is already the local socket's URI: it writes no
+   ``local:``, ``bfrops:`` or ``psec:`` line, and the handshake settles
+   the wire format and security mechanism. The ``pmix_ptl_base`` state struct
    records (via its ``created_*`` flags and ``pmix_ptl_made_dir_t``
    records) exactly which files and directories this process created, so
    ``pmix_ptl_close`` can remove precisely those at shutdown and nothing
@@ -458,10 +462,15 @@ For a tool's first server the choice becomes the tool's own, as a client's
 does. A server it attaches to later gets its own choice, which leaves how
 the tool speaks to its other servers unchanged.
 
+On the local socket this choice is only the tool's preference: it is
+offered first, and the server decides (see :doc:`connections`). A server
+that takes no legacy peers writes no ``bfrops:`` or ``psec:`` lines.
+
 Both paths converge on ``pmix_ptl_base_make_connection``, which parses the
 URI into a socket address, refuses one that is not this host's, opens the
 connection (with retries), sends the
-connect-ack, runs the handshake, and — on success —
+connection request - on the local socket, the offer, the server's choice
+and the credential - runs the handshake, and — on success —
 ``pmix_ptl_base_complete_connection`` records the server and arms the
 steady-state send/receive events.
 

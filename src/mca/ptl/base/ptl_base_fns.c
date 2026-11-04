@@ -56,6 +56,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_idenv.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/gds/base/base.h"
 #include "src/mca/psec/base/base.h"
 #include "src/util/pmix_getid.h"
 #include "src/util/pmix_idname.h"
@@ -69,6 +70,7 @@
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_string_copy.h"
+#include "src/util/pmix_strnlen.h"
 
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/base/ptl_base_handshake.h"
@@ -85,6 +87,10 @@ static void wipe_cred(pmix_byte_object_t *cred)
 /****    SUPPORTING FUNCTIONS    ****/
 static void timeout(int sd, short args, void *cbdata);
 static void retry_wait(const struct timeval *tv);
+static pmix_status_t build_offer(pmix_peer_t *peer, char **msgout, size_t *sz);
+static pmix_status_t apply_choice(pmix_peer_t *peer, char *msg, size_t len);
+static pmix_status_t build_credential(pmix_peer_t *peer, pmix_info_t *iptr, size_t niptr,
+                                      char **msgout, size_t *sz);
 static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t *sz,
                                        pmix_info_t *iptr, size_t niptr);
 static pmix_status_t parse_conn_file(char *filename, bool optional, bool found_by_search,
@@ -1822,6 +1828,93 @@ static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
     return rc;
 }
 
+/* Whether the connection is on the local socket, whose far end the kernel
+ * identifies - and whose handshake is the offer, the server's choice, and
+ * the credential */
+static bool local_transport(pmix_peer_t *peer)
+{
+    return NULL != peer->transport && NULL != peer->transport->peer_identity;
+}
+
+/* The local socket's handshake up to the server's final answer: send the
+ * offer, read the server's choice and take it, then send the credential
+ * made with it. recv_connect_ack reads the answer to that */
+static pmix_status_t local_handshake(pmix_peer_t *peer, pmix_info_t iptr[], size_t niptr)
+{
+    char *msg = NULL;
+    char choice[PMIX_PTL_CHOICE_MAX + 1];
+    size_t sz = 0;
+    struct timeval save;
+    pmix_socklen_t tsz = sizeof(save);
+    bool sockopt = true;
+    uint32_t u32;
+    pmix_status_t rc;
+
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix:ptl SEND OFFER");
+    peer->proc_type.flag = pmix_ptl_base_set_flag(&sz);
+    rc = build_offer(peer, &msg, &sz);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    rc = pmix_ptl_base_send_blocking(peer->sd, msg, sz);
+    free(msg);
+    msg = NULL;
+    if (PMIX_SUCCESS != rc) {
+        return PMIX_ERR_UNREACH;
+    }
+
+    rc = pmix_ptl_base_set_timeout(peer, &save, &tsz, &sockopt);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    rc = pmix_ptl_base_recv_blocking(peer->sd, (char *) &u32, sizeof(uint32_t));
+    if (PMIX_SUCCESS == rc) {
+        rc = server_status(ntohl(u32));
+    }
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_ptl_base_recv_blocking(peer->sd, (char *) &u32, sizeof(uint32_t));
+    }
+    if (PMIX_SUCCESS == rc) {
+        u32 = ntohl(u32);
+        if (0 == u32 || PMIX_PTL_CHOICE_MAX < u32) {
+            rc = PMIX_ERR_BAD_PARAM;
+        }
+    }
+    if (PMIX_SUCCESS == rc) {
+        memset(choice, 0, sizeof(choice));
+        rc = pmix_ptl_base_recv_blocking(peer->sd, choice, u32);
+    }
+    if (sockopt) {
+        if (0 != setsockopt(peer->sd, SOL_SOCKET, SO_RCVTIMEO, &save, tsz)) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "pmix: could not reset setsockopt SO_RCVTIMEO");
+        }
+    }
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    rc = apply_choice(peer, choice, u32);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix:ptl SEND CREDENTIAL");
+    rc = build_credential(peer, iptr, niptr, &msg, &sz);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    /* the message carries our token, if we have one: it goes no further */
+    rc = pmix_ptl_base_send_blocking(peer->sd, msg, sz);
+    pmix_ptl_base_wipe_released(msg, sz);
+    free(msg);
+    if (PMIX_SUCCESS != rc) {
+        return PMIX_ERR_UNREACH;
+    }
+    return PMIX_SUCCESS;
+}
+
 /* The oldest server we will talk to is v3.2. Its version is known by
  * now on every path that can know it - the PMIX_SERVER_URI variable and
  * PMIX_VERSION for a client, or the version line of a rendezvous file,
@@ -2024,10 +2117,22 @@ connected:
     }
 
     /* send our identity and any authentication credentials to the server */
-    rc = send_connect_ack(peer, iptr, niptr);
+    if (local_transport(peer)) {
+        rc = local_handshake(peer, iptr, niptr);
+    } else {
+        rc = send_connect_ack(peer, iptr, niptr);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
     if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
         CLOSE_THE_SOCKET(peer->sd);
+        if (PMIX_ERR_TEMP_UNAVAILABLE == rc) {
+            ++retries;
+            if (retries < pmix_ptl_base.handshake_max_retries) {
+                goto retry;
+            }
+        }
         return renamed ? PMIX_ERR_EXISTS : rc;
     }
 
@@ -2156,6 +2261,10 @@ pmix_status_t pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
 
 typedef enum {
     PMIX_CNCT_CONNECTING,
+    PMIX_CNCT_OFFERING,
+    PMIX_CNCT_CHOICE_STATUS,
+    PMIX_CNCT_CHOICE_LEN,
+    PMIX_CNCT_CHOICE,
     PMIX_CNCT_SENDING,
     PMIX_CNCT_STATUS,
     PMIX_CNCT_MY_NSPACE,
@@ -2189,7 +2298,7 @@ typedef struct {
     char *msg;                  // the connect-ack being sent
     size_t msglen;
     size_t sent;
-    char field[PMIX_MAX_NSLEN + 1]; // the reply field being read
+    char field[PMIX_MAX_NSLEN + 1]; // the reply field being read - and the server's choice
     size_t fieldlen;
     size_t got;
     pmix_event_t ev;
@@ -2200,6 +2309,9 @@ typedef struct {
     pmix_ptl_connect_nb_cbfunc_t cbfunc;
     void *cbdata;
 } pmix_ptl_connect_op_t;
+
+/* the field buffer also holds the server's choice */
+typedef char pmix_ptl_choice_fits_t[(PMIX_PTL_CHOICE_MAX <= PMIX_MAX_NSLEN + 1) ? 1 : -1];
 
 static void cnopcon(pmix_ptl_connect_op_t *p)
 {
@@ -2455,7 +2567,14 @@ static void cnct_check(int sd, short args, void *cbdata)
         return;
     }
     op->peer->proc_type.flag = pmix_ptl_base_set_flag(&sdsize);
-    rc = construct_message(op->peer, &op->msg, &sdsize, op->iptr, op->niptr);
+    if (local_transport(op->peer)) {
+        /* the local socket starts with the offer */
+        rc = build_offer(op->peer, &op->msg, &sdsize);
+        op->state = PMIX_CNCT_OFFERING;
+    } else {
+        rc = construct_message(op->peer, &op->msg, &sdsize, op->iptr, op->niptr);
+        op->state = PMIX_CNCT_SENDING;
+    }
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         cnct_finish(op, rc);
@@ -2463,7 +2582,6 @@ static void cnct_check(int sd, short args, void *cbdata)
     }
     op->msglen = sdsize;
     op->sent = 0;
-    op->state = PMIX_CNCT_SENDING;
     cnct_send(op->sd, EV_WRITE, op);
 }
 
@@ -2503,8 +2621,11 @@ static void cnct_send(int sd, short args, void *cbdata)
     op->msg = NULL;
     op->msglen = 0;
 
-    /* every connector's answer starts with a status */
-    if (PMIX_SUCCESS != cnct_expect(op, PMIX_CNCT_STATUS, sizeof(uint32_t))) {
+    /* every connector's answer starts with a status - to the offer, the
+     * status that comes before the server's choice */
+    if (PMIX_SUCCESS != cnct_expect(op, (PMIX_CNCT_OFFERING == op->state)
+                                            ? PMIX_CNCT_CHOICE_STATUS : PMIX_CNCT_STATUS,
+                                    sizeof(uint32_t))) {
         cnct_finish(op, PMIX_ERROR);
     }
 }
@@ -2570,6 +2691,40 @@ static pmix_status_t cnct_field(pmix_ptl_connect_op_t *op)
              !PMIX_PEER_IS_TOOL(pmix_globals.mypeer);
 
     switch (op->state) {
+    case PMIX_CNCT_CHOICE_STATUS:
+        reply = server_status(u32);
+        if (PMIX_ERR_TEMP_UNAVAILABLE == reply &&
+            ++op->handshake_tries < pmix_ptl_base.handshake_max_retries) {
+            op->connect_tries = 0;
+            cnct_restart(op);
+            return PMIX_OPERATION_IN_PROGRESS;
+        }
+        if (PMIX_SUCCESS != reply) {
+            return reply;
+        }
+        return cnct_expect(op, PMIX_CNCT_CHOICE_LEN, sizeof(uint32_t));
+
+    case PMIX_CNCT_CHOICE_LEN:
+        if (0 == u32 || PMIX_PTL_CHOICE_MAX < u32) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+        return cnct_expect(op, PMIX_CNCT_CHOICE, u32);
+
+    case PMIX_CNCT_CHOICE:
+        rc = apply_choice(op->peer, op->field, op->fieldlen);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        rc = build_credential(op->peer, op->iptr, op->niptr, &op->msg, &op->msglen);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        op->sent = 0;
+        op->state = PMIX_CNCT_SENDING;
+        /* the send finishes the operation itself if it fails */
+        cnct_send(op->sd, EV_WRITE, op);
+        return PMIX_OPERATION_IN_PROGRESS;
+
     case PMIX_CNCT_STATUS:
         reply = server_status(u32);
         if (PMIX_ERR_TEMP_UNAVAILABLE == reply &&
@@ -2887,6 +3042,277 @@ static void release_packed(pmix_buffer_t *buf)
 {
     pmix_ptl_base_wipe_released(buf->base_ptr, buf->bytes_allocated);
     PMIX_DESTRUCT(buf);
+}
+
+/* Add a name to an offer's list, once, while the list has room */
+static pmix_status_t offer_add(char ***list, const char *name)
+{
+    int i, n = PMIx_Argv_count(*list);
+
+    if (NULL == name || '\0' == name[0] || PMIX_PTL_OFFER_MAX_NAMELEN < strlen(name) ||
+        PMIX_PTL_OFFER_MAX_NAMES <= n) {
+        return PMIX_SUCCESS;
+    }
+    for (i = 0; i < n; i++) {
+        if (0 == strcmp((*list)[i], name)) {
+            return PMIX_SUCCESS;
+        }
+    }
+    return PMIx_Argv_append_nosize(list, name);
+}
+
+/* A list for the offer: the preferred name first, then those in avail -
+ * a comma-separated list, in priority order, which is freed */
+static pmix_status_t offer_names(char ***list, const char *preferred, char *avail)
+{
+    char **names = NULL;
+    pmix_status_t rc = PMIX_SUCCESS;
+    int i;
+
+    if (NULL != preferred) {
+        rc = offer_add(list, preferred);
+    }
+    if (NULL != avail) {
+        names = PMIx_Argv_split(avail, ',');
+        free(avail);
+    }
+    for (i = 0; PMIX_SUCCESS == rc && NULL != names && NULL != names[i]; i++) {
+        rc = offer_add(list, names[i]);
+    }
+    PMIx_Argv_free(names);
+    return rc;
+}
+
+static size_t list_size(char **list)
+{
+    size_t sz = 1;
+    int i;
+
+    for (i = 0; NULL != list && NULL != list[i]; i++) {
+        sz += strlen(list[i]) + 1;
+    }
+    return sz;
+}
+
+#define PMIX_PTL_PUT_LIST(l)                                \
+    do {                                                    \
+        uint8_t _n = (uint8_t) PMIx_Argv_count((l));        \
+        int _i;                                             \
+        PMIX_PTL_PUT_U8(_n);                                \
+        for (_i = 0; _i < (int) _n; _i++) {                 \
+            PMIX_PTL_PUT_STRING((l)[_i]);                   \
+        }                                                   \
+    } while (0)
+
+/* The local socket's offer: our version, type and identifier, and the
+ * security, wire-format and datastore components we have, with the wire
+ * format and datastore chosen for this server first */
+static pmix_status_t build_offer(pmix_peer_t *peer, char **msgout, size_t *sz)
+{
+    char **psecs = NULL, **bfrops = NULL, **gdss = NULL;
+    pmix_bfrops_module_t *bfmod;
+    pmix_ptl_hdr_t hdr;
+    uint8_t bftype;
+    char *msg;
+    size_t sdsize, csize;
+    bool named;
+    pmix_status_t rc;
+
+    if (NULL == peer->nptr || NULL == peer->nptr->compat.gds) {
+        return PMIX_ERR_INIT;
+    }
+    bfmod = (NULL != peer->nptr->compat.bfrops)
+                ? peer->nptr->compat.bfrops : pmix_globals.mypeer->nptr->compat.bfrops;
+    bftype = pmix_globals.mypeer->nptr->compat.type;
+
+    rc = offer_names(&psecs, NULL, pmix_psec_base_get_available_modules());
+    if (PMIX_SUCCESS == rc) {
+        rc = offer_names(&bfrops, bfmod->version, pmix_bfrops_base_get_available_modules());
+    }
+    if (PMIX_SUCCESS == rc) {
+        rc = offer_names(&gdss, peer->nptr->compat.gds->name,
+                         pmix_gds_base_get_available_modules());
+    }
+    if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+
+    switch (peer->proc_type.flag) {
+    case PMIX_TOOL_NEEDS_ID:
+    case PMIX_LAUNCHER_NEEDS_ID:
+        named = false;
+        break;
+    case PMIX_SIMPLE_CLIENT:
+    case PMIX_TOOL_GIVEN_ID:
+    case PMIX_LAUNCHER_GIVEN_ID:
+    case PMIX_SCHEDULER_WITH_ID:
+    case PMIX_SINGLETON_CLIENT:
+    case PMIX_TOOL_CLIENT:
+    case PMIX_LAUNCHER_CLIENT:
+        named = true;
+        break;
+    default:
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto done;
+    }
+
+    sdsize = strlen(PMIX_VERSION) + 1 + 1;
+    if (named) {
+        sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
+    }
+    sdsize += list_size(psecs) + list_size(bfrops) + 1 + list_size(gdss);
+
+    memset(&hdr, 0, sizeof(pmix_ptl_hdr_t));
+    hdr.pindex = -1;
+    hdr.tag = UINT32_MAX;
+    hdr.nbytes = sdsize;
+    sdsize += sizeof(hdr);
+    msg = (char *) calloc(1, sdsize);
+    if (NULL == msg) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
+    memcpy(msg, &hdr, sizeof(hdr));
+    csize = sizeof(hdr);
+    PMIX_PTL_PUT_STRING(PMIX_VERSION);
+    PMIX_PTL_PUT_U8(peer->proc_type.flag);
+    if (named) {
+        PMIX_PTL_PUT_PROCID(pmix_globals.myid);
+    }
+    PMIX_PTL_PUT_LIST(psecs);
+    PMIX_PTL_PUT_LIST(bfrops);
+    PMIX_PTL_PUT_U8(bftype);
+    PMIX_PTL_PUT_LIST(gdss);
+    *msgout = msg;
+    *sz = sdsize;
+
+done:
+    PMIx_Argv_free(psecs);
+    PMIx_Argv_free(bfrops);
+    PMIx_Argv_free(gdss);
+    return rc;
+}
+
+/* Take the server's choice for this connection - each must be one we
+ * offered, which is one we have */
+static pmix_status_t apply_choice(pmix_peer_t *peer, char *msg, size_t len)
+{
+    char *mg = msg, *sec = NULL, *bfrops = NULL, *gds = NULL;
+    size_t cnt = len;
+    uint8_t bt = PMIX_BFROP_BUFFER_UNDEF;
+    pmix_psec_module_t *psec;
+    pmix_bfrops_module_t *bfmod;
+    pmix_gds_base_module_t *gmod;
+    pmix_info_t ginfo;
+    pmix_status_t rc = PMIX_ERR_BAD_PARAM;
+
+    PMIX_PTL_GET_STRING(sec);
+    PMIX_PTL_GET_STRING(bfrops);
+    PMIX_PTL_GET_U8(bt);
+    PMIX_PTL_GET_STRING(gds);
+    if (0 != cnt) {
+        goto error;
+    }
+
+    psec = pmix_psec_base_assign_module(sec);
+    bfmod = pmix_bfrops_base_assign_module(bfrops);
+    PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, gds, PMIX_STRING);
+    gmod = pmix_gds_base_assign_module(&ginfo, 1);
+    PMIX_INFO_DESTRUCT(&ginfo);
+    if (NULL == psec || 0 != strcmp(psec->name, sec) || NULL == bfmod || NULL == gmod ||
+        0 != strcmp(gmod->name, gds) ||
+        (PMIX_BFROP_BUFFER_NON_DESC != bt && PMIX_BFROP_BUFFER_FULLY_DESC != bt)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "pmix: the server chose %s/%s/%u/%s, which is not what we offered",
+                            sec, bfrops, (unsigned) bt, gds);
+        rc = PMIX_ERR_NOT_SUPPORTED;
+        goto error;
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix: the server chose security %s, wire format %s, datastore %s",
+                        sec, bfrops, gds);
+    peer->nptr->compat.psec = psec;
+    peer->nptr->compat.bfrops = bfmod;
+    peer->nptr->compat.type = bt;
+    peer->nptr->compat.gds = gmod;
+    peer->gds = gmod;
+    rc = PMIX_SUCCESS;
+
+error:
+    free(sec);
+    free(bfrops);
+    free(gds);
+    return rc;
+}
+
+/* The local socket's credential message: the credential, made with the
+ * chosen security component, and the info, packed in the chosen wire
+ * format */
+static pmix_status_t build_credential(pmix_peer_t *peer, pmix_info_t *iptr, size_t niptr,
+                                      char **msgout, size_t *sz)
+{
+    pmix_psec_module_t *psec = peer->nptr->compat.psec;
+    pmix_bfrops_module_t *bfmod = peer->nptr->compat.bfrops;
+    pmix_byte_object_t cred;
+    pmix_buffer_t buf;
+    pmix_ptl_hdr_t hdr;
+    pmix_info_t dir;
+    size_t ndirs = 0, sdsize, csize;
+    uint32_t suid;
+    char *msg;
+    pmix_status_t rc;
+
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+    if (server_uid(peer, &suid)) {
+        PMIX_INFO_LOAD(&dir, PMIX_PSEC_SERVER_UID, &suid, PMIX_UINT32);
+        ndirs = 1;
+    }
+    rc = psec->create_cred((struct pmix_peer_t *) pmix_globals.mypeer,
+                           (0 < ndirs) ? &dir : NULL, ndirs, NULL, NULL, &cred);
+    if (0 < ndirs) {
+        PMIX_INFO_DESTRUCT(&dir);
+    }
+    if (PMIX_SUCCESS != rc) {
+        wipe_cred(&cred);
+        return rc;
+    }
+
+    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+    if (NULL != iptr) {
+        buf.type = peer->nptr->compat.type;
+        rc = bfmod->pack(&buf, &niptr, 1, PMIX_SIZE);
+        if (PMIX_SUCCESS == rc) {
+            rc = bfmod->pack(&buf, iptr, niptr, PMIX_INFO);
+        }
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            wipe_cred(&cred);
+            release_packed(&buf);
+            return rc;
+        }
+    }
+
+    memset(&hdr, 0, sizeof(pmix_ptl_hdr_t));
+    hdr.pindex = -1;
+    hdr.tag = UINT32_MAX;
+    hdr.nbytes = sizeof(uint32_t) + cred.size + buf.bytes_used;
+    sdsize = sizeof(hdr) + hdr.nbytes;
+    msg = (char *) calloc(1, sdsize);
+    if (NULL == msg) {
+        wipe_cred(&cred);
+        release_packed(&buf);
+        return PMIX_ERR_NOMEM;
+    }
+    memcpy(msg, &hdr, sizeof(hdr));
+    csize = sizeof(hdr);
+    PMIX_PTL_PUT_U32(cred.size);
+    PMIX_PTL_PUT_BLOB(cred.bytes, cred.size);
+    wipe_cred(&cred);
+    PMIX_PTL_PUT_BLOB(buf.base_ptr, buf.bytes_used);
+    release_packed(&buf);
+    *msgout = msg;
+    *sz = sdsize;
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t *sz,

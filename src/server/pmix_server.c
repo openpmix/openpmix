@@ -1128,6 +1128,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         PMIX_INFO_DESTRUCT(&ginfo);
         goto errout;
     }
+    pmix_globals.mypeer->gds = pmix_globals.mypeer->nptr->compat.gds;
     PMIX_INFO_DESTRUCT(&ginfo);
 
     /* we are our own server until something else happens */

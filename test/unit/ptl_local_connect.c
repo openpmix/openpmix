@@ -43,11 +43,15 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/mca/ptl/base/ptl_base_handshake.h"
 #include "src/mca/ptl/usock/ptl_usock.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_net.h"
 
 #include <fcntl.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #if defined(__linux__)
 #    include <sched.h>
 #endif
@@ -632,6 +636,87 @@ static void userns_case(kid_t *kp, const char *name)
  * names itself "singleton.<host>.<pid>". The server was started for it,
  * as a singleton starts one: told its name with PMIX_SINGLETON, and then
  * registering it - but not preparing it, as nothing was started */
+/* A client whose server chooses a component it did not offer fails init.
+ * The "server" is a socket of ours, at a URI the client is given: it
+ * reads the offer and answers with `choice` (len bytes) */
+static void choice_case(kid_t *kp, const char *name, const char *choice, size_t len)
+{
+    kid_t k = *kp;
+    pmix_proc_t proc;
+    struct sockaddr_un sa;
+    struct pollfd pfd;
+    pmix_ptl_hdr_t hdr;
+    char **env = NULL, *value = NULL, *srvname, path[64], buf[4096];
+    int status = 0, before = nconnected, lsd, sd = -1;
+    uint32_t u32;
+    size_t got;
+    ssize_t rd;
+    pmix_status_t rc;
+    char detail[256];
+
+    snprintf(path, sizeof(path), "/tmp/pmix-choice.%lu", (unsigned long) getpid());
+    unlink(path);
+    memset(&sa, 0, sizeof(sa));
+    sa.sun_family = AF_UNIX;
+    snprintf(sa.sun_path, sizeof(sa.sun_path), "%s", path);
+    lsd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (0 > lsd || 0 != bind(lsd, (struct sockaddr *) &sa, sizeof(sa)) || 0 != listen(lsd, 1)) {
+        report(name, 0, "could not make the socket");
+        return;
+    }
+    /* the server's name, as its own URI gives it */
+    srvname = strdup(pmix_ptl_base.local_listener.uri);
+    *strchr(srvname, ';') = '\0';
+    if (0 > asprintf(&value, "%s;usock://%s;%lu:%lu", srvname, path, (unsigned long) geteuid(),
+                     (unsigned long) getegid())) {
+        return;
+    }
+    free(srvname);
+    PMIX_LOAD_PROCID(&proc, CL_NSPACE, 0);
+    if (PMIX_SUCCESS != PMIx_server_setup_fork(&proc, &env)) {
+        report(name, 0, "setup_fork failed");
+        return;
+    }
+    set_var(&env, PMIX_PTL_LOCAL_URI_ENV, value);
+    free(value);
+    send_env(&k, env);
+    PMIx_Argv_free(env);
+
+    pfd.fd = lsd;
+    pfd.events = POLLIN;
+    if (1 == poll(&pfd, 1, 20000)) {
+        sd = accept(lsd, NULL, NULL);
+    }
+    if (0 <= sd) {
+        /* the offer: its header, and as many bytes as that names */
+        for (got = 0, rd = 1; 0 < rd && got < sizeof(hdr); got += (size_t) rd) {
+            rd = read(sd, (char *) &hdr + got, sizeof(hdr) - got);
+        }
+        for (got = 0; 0 < rd && got < hdr.nbytes && hdr.nbytes <= sizeof(buf);
+             got += (size_t) rd) {
+            rd = read(sd, buf + got, hdr.nbytes - got);
+        }
+        u32 = htonl((uint32_t) PMIX_SUCCESS);
+        (void) !write(sd, &u32, sizeof(u32));
+        u32 = htonl((uint32_t) len);
+        (void) !write(sd, &u32, sizeof(u32));
+        (void) !write(sd, choice, len);
+        /* the client hangs up rather than send its credential */
+        pfd.fd = sd;
+        pfd.events = POLLIN;
+        while (1 == poll(&pfd, 1, 20000) && 0 < read(sd, buf, sizeof(buf))) {
+        }
+        close(sd);
+    }
+    close(lsd);
+    unlink(path);
+    rc = finish_kid(&k, &status);
+    snprintf(detail, sizeof(detail), "init %s, exit %d, host asked %d times",
+             PMIx_Error_string(rc), WIFEXITED(status) ? WEXITSTATUS(status) : -1,
+             nconnected - before);
+    report(name, PMIX_ERR_NOT_SUPPORTED == rc && before == nconnected, detail);
+}
+
 static void singleton_case(kid_t *kp, const char *name)
 {
     kid_t k = *kp;
@@ -746,7 +831,7 @@ int main(int argc, char **argv)
     char *fifo = NULL, *link = NULL, *lfifo = NULL;
     bool flag = true;
     pmix_status_t rc;
-    kid_t kids[18];
+    kid_t kids[20];
     pmix_nspace_t ns;
     int n;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -764,8 +849,8 @@ int main(int argc, char **argv)
     /* every child is forked before any PMIx call: a child of an
      * initialized server has a copy of its state but none of its threads.
      * Each later one lets go of the pipes of those before it */
-    /* 0-3, 5, 7, 11 and 16 are clients; the rest tools */
-    for (n = 0; n < 18; n++) {
+    /* 0-3, 5, 7, 11, 16, 18 and 19 are clients; the rest tools */
+    for (n = 0; n < 20; n++) {
         if (!start_kid(&kids[n], 4 == n || 6 == n || (8 <= n && 10 >= n) ||
                                      (12 <= n && 15 >= n) || 17 == n)) {
             fprintf(stderr, "could not start the children\n");
@@ -922,6 +1007,12 @@ int main(int argc, char **argv)
     free(value);
     unlink(lfifo);
     free(lfifo);
+
+    /* security\0wire format\0<buffer type>datastore\0 */
+    choice_case(&kids[18], "a client whose server chooses a security method it did not offer "
+                "fails init", "no-such-method\0" "v70\0" "\1" "hash", 25);
+    choice_case(&kids[19], "a client whose server chooses a wire format it does not have "
+                "fails init", "native\0" "v99\0" "\1" "hash", 17);
 
     access_cases();
 

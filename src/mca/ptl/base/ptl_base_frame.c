@@ -920,6 +920,7 @@ static void pccon(pmix_pending_connection_t *p)
     p->msg = NULL;
     p->msg_recvd = 0;
     p->msg_size = 0;
+    p->offered = false;
     p->status = PMIX_SUCCESS;
     p->flag = PMIX_SIMPLE_CLIENT;
     p->buffer_type = PMIX_BFROP_BUFFER_UNDEF;

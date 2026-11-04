@@ -1550,6 +1550,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         rc = PMIX_ERR_INIT;
         goto errout;
     }
+    pmix_client_globals.myserver->gds = pmix_client_globals.myserver->nptr->compat.gds;
     /* now select a GDS module for our own internal use - the user may
      * have passed down a directive for this purpose. If they did, then
      * use it. Otherwise, we want the "hash" module */
@@ -1573,6 +1574,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         rc = PMIX_ERR_INIT;
         goto errout;
     }
+    pmix_globals.mypeer->gds = pmix_globals.mypeer->nptr->compat.gds;
     PMIX_INFO_DESTRUCT(&ginfo);
 
     /* attempt to connect to a server */
