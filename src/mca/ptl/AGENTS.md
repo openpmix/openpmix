@@ -387,7 +387,9 @@ is not this host's is not dialled: `PMIX_ERR_UNREACH`) →
 `pmix_ptl_base_connect` (open the socket, retrying) →
 `pmix_ptl_base_check_server` (the far end must be a server we may talk
 to, by what the kernel says of it; with no TCP table, one something
-vouches for - see `base/AGENTS.md`) → `send_connect_ack` (`construct_message` builds the handshake blob) →
+vouches for - see `base/AGENTS.md`) → on the local socket `local_handshake`
+(offer, the server's choice, credential), over TCP `send_connect_ack`
+(`construct_message` builds the handshake blob) →
 `recv_connect_ack` (run the client or tool handshake) → assign the lower
 half of the dynamic-tag space. Then `pmix_ptl_base_complete_connection`
 sets the `connected` flag, records the server's nspace/rank, and arms the

@@ -38,6 +38,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
+#include "src/mca/psec/base/base.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
@@ -717,6 +718,344 @@ static pmix_status_t read_connect_ack(pmix_pending_connection_t *pnd)
     }
 }
 
+static pmix_status_t check_named(pmix_pending_connection_t *pnd)
+{
+    /* A process that names itself must name a process: a namespace, and a
+     * rank. An empty namespace would match every namespace wherever names
+     * are compared. A tool of an earlier release with its server's
+     * address in its environment but no namespace and rank says it is on
+     * a client's rank, and sends no name: it is given one by the host, as
+     * a tool that needs one is - but it reads none back, so none is sent,
+     * and it knows itself by no name. A tool of this release with no
+     * namespace and rank asks for an identity instead */
+    if (PMIX_SIMPLE_CLIENT != pnd->flag && !pnd->need_id && PMIX_LEGACY_TOOL != pnd->flag &&
+        PMIX_LEGACY_LAUNCHER != pnd->flag &&
+        ('\0' == pnd->proc.nspace[0] || !PMIX_RANK_IS_VALID(pnd->proc.rank))) {
+        if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
+            pnd->flag = (PMIX_TOOL_CLIENT == pnd->flag) ? PMIX_TOOL_NEEDS_ID
+                                                        : PMIX_LAUNCHER_NEEDS_ID;
+            pnd->need_id = true;
+            pnd->id_unsent = true;
+            PMIX_LOAD_PROCID(&pnd->proc, NULL, PMIX_RANK_UNDEF);
+        } else {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:base:connection_handler: connect-ack names no process "
+                                "(\"%s\":%u)",
+                                pnd->proc.nspace, pnd->proc.rank);
+            return PMIX_ERR_BAD_PARAM;
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
+/* A local-socket peer's type, from the flag it sent: false for a flag no
+ * peer of this release sends. *named says whether an identifier follows */
+static bool offer_type(pmix_pending_connection_t *pnd, bool *named)
+{
+    *named = true;
+    switch (pnd->flag) {
+    case PMIX_SIMPLE_CLIENT:
+    case PMIX_SINGLETON_CLIENT:
+        PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_CLIENT);
+        return true;
+    case PMIX_TOOL_NEEDS_ID:
+        PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
+        pnd->need_id = true;
+        *named = false;
+        return true;
+    case PMIX_LAUNCHER_NEEDS_ID:
+        PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
+        pnd->need_id = true;
+        *named = false;
+        return true;
+    case PMIX_TOOL_GIVEN_ID:
+    case PMIX_TOOL_CLIENT:
+        PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
+        return true;
+    case PMIX_LAUNCHER_GIVEN_ID:
+    case PMIX_LAUNCHER_CLIENT:
+        PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
+        return true;
+    case PMIX_SCHEDULER_WITH_ID:
+        PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_SCHEDULER);
+        return true;
+    default:
+        return false;
+    }
+}
+
+/* Read one of the offer's lists into *names */
+static pmix_status_t offer_list(char **mgp, size_t *cntp, char ***names)
+{
+    char *mg = *mgp, *name = NULL;
+    size_t cnt = *cntp;
+    uint8_t n, i;
+
+    PMIX_PTL_GET_U8(n);
+    if (PMIX_PTL_OFFER_MAX_NAMES < n) {
+        goto error;
+    }
+    for (i = 0; i < n; i++) {
+        PMIX_PTL_GET_STRING(name);
+        if (PMIX_PTL_OFFER_MAX_NAMELEN < strlen(name) || '\0' == name[0]) {
+            free(name);
+            goto error;
+        }
+        if (PMIX_SUCCESS != PMIx_Argv_append_nosize(names, name)) {
+            free(name);
+            return PMIX_ERR_NOMEM;
+        }
+        free(name);
+    }
+    *mgp = mg;
+    *cntp = cnt;
+    return PMIX_SUCCESS;
+
+error:
+    return PMIX_ERR_BAD_PARAM;
+}
+
+static bool offered(char **names, const char *name)
+{
+    int i;
+
+    for (i = 0; NULL != names && NULL != names[i]; i++) {
+        if (0 == strcmp(names[i], name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The active datastore module of this name, if there is one */
+static pmix_gds_base_module_t *gds_named(const char *name)
+{
+    pmix_info_t ginfo;
+    pmix_gds_base_module_t *mod;
+
+    PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, name, PMIX_STRING);
+    mod = pmix_gds_base_assign_module(&ginfo, 1);
+    PMIX_INFO_DESTRUCT(&ginfo);
+    if (NULL != mod && 0 != strcmp(mod->name, name)) {
+        mod = NULL;
+    }
+    return mod;
+}
+
+/* The server's choice for a local-socket peer, from what it offered:
+ * - security: the first of the server's active methods, in priority
+ *   order, that the peer offered;
+ * - wire format: the namespace's if it has one, which the peer must have
+ *   offered, else the first the peer offered that the server has. The
+ *   buffer type goes with it: the namespace's, or the peer's;
+ * - datastore: the first the peer offered that the server has */
+static pmix_status_t choose(pmix_pending_connection_t *pnd, char **psecs, char **bfrops,
+                            char **gdss)
+{
+    pmix_psec_base_active_module_t *active;
+    pmix_bfrops_module_t *bfmod;
+    pmix_gds_base_module_t *gds;
+    pmix_namespace_t *nptr = NULL;
+    int i;
+
+    PMIX_LIST_FOREACH (active, &pmix_psec_globals.actives, pmix_psec_base_active_module_t) {
+        if (offered(psecs, active->module->name)) {
+            pnd->psecmod = active->module;
+            break;
+        }
+    }
+    if (NULL == pnd->psecmod) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: the peer on socket %d offers no security method "
+                            "this server uses", pnd->sd);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    if ('\0' != pnd->proc.nspace[0]) {
+        nptr = find_nspace(pnd->proc.nspace);
+    }
+    if (NULL != nptr && NULL != nptr->compat.bfrops) {
+        if (!offered(bfrops, nptr->compat.bfrops->version)) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:base: %s:%u does not offer its namespace's wire "
+                                "format %s", pnd->proc.nspace, pnd->proc.rank,
+                                nptr->compat.bfrops->version);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        pnd->bfropsmod = nptr->compat.bfrops;
+        pnd->buffer_type = nptr->compat.type;
+    } else {
+        for (i = 0; NULL != bfrops && NULL != bfrops[i]; i++) {
+            bfmod = pmix_bfrops_base_assign_module(bfrops[i]);
+            if (NULL != bfmod) {
+                pnd->bfropsmod = bfmod;
+                break;
+            }
+        }
+        if (NULL == pnd->bfropsmod) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:base: the peer on socket %d offers no wire format "
+                                "this server has", pnd->sd);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        if (PMIX_BFROP_BUFFER_NON_DESC != pnd->buffer_type &&
+            PMIX_BFROP_BUFFER_FULLY_DESC != pnd->buffer_type) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+    }
+
+    for (i = 0; NULL != gdss && NULL != gdss[i]; i++) {
+        gds = gds_named(gdss[i]);
+        if (NULL != gds) {
+            pnd->gdsmod = gds;
+            break;
+        }
+    }
+    if (NULL == pnd->gdsmod) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: the peer on socket %d offers no datastore this "
+                            "server has", pnd->sd);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* the names, as the rest of the handler and its messages use them */
+    pnd->psec = strdup(((pmix_psec_module_t *) pnd->psecmod)->name);
+    pnd->bfrops = strdup(((pmix_bfrops_module_t *) pnd->bfropsmod)->version);
+    pnd->gds = strdup(((pmix_gds_base_module_t *) pnd->gdsmod)->name);
+    if (NULL == pnd->psec || NULL == pnd->bfrops || NULL == pnd->gds) {
+        return PMIX_ERR_NOMEM;
+    }
+    return PMIX_SUCCESS;
+}
+
+/* Send the choice: a status of success, then its length and the names */
+static pmix_status_t send_choice(pmix_pending_connection_t *pnd)
+{
+    char msg[2 * sizeof(uint32_t) + PMIX_PTL_CHOICE_MAX];
+    size_t csize = 2 * sizeof(uint32_t), len;
+    uint32_t u32;
+    uint8_t bt = pnd->buffer_type;
+
+    len = strlen(pnd->psec) + 1 + strlen(pnd->bfrops) + 1 + 1 + strlen(pnd->gds) + 1;
+    if (PMIX_PTL_CHOICE_MAX < len) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    memset(msg, 0, sizeof(msg));
+    u32 = htonl((uint32_t) PMIX_SUCCESS);
+    memcpy(msg, &u32, sizeof(uint32_t));
+    u32 = htonl((uint32_t) len);
+    memcpy(msg + sizeof(uint32_t), &u32, sizeof(uint32_t));
+    PMIX_PTL_PUT_STRING(pnd->psec);
+    PMIX_PTL_PUT_STRING(pnd->bfrops);
+    PMIX_PTL_PUT_U8(bt);
+    PMIX_PTL_PUT_STRING(pnd->gds);
+    return pmix_ptl_base_send_blocking(pnd->sd, msg, csize);
+}
+
+/* A local-socket peer's offer: who it is, and the components it has. The
+ * kernel's uid and gid for it are its identity from here on */
+static pmix_status_t answer_offer(pmix_pending_connection_t *pnd, char *msg, size_t len)
+{
+    char *mg = msg;
+    size_t cnt = len;
+    char **psecs = NULL, **bfrops = NULL, **gdss = NULL;
+    uint8_t major, minor, release, bt;
+    uid_t kuid;
+    gid_t kgid;
+    pid_t kpid;
+    bool named;
+    pmix_status_t rc;
+
+    if (PMIX_SUCCESS != pnd->transport->peer_identity(pnd->sd, &kuid, &kgid, &kpid)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: the kernel does not identify the peer on socket %d",
+                            pnd->sd);
+        return PMIX_ERR_INVALID_CRED;
+    }
+    pnd->uid = kuid;
+    pnd->gid = kgid;
+
+    PMIX_PTL_GET_STRING(pnd->version);
+    rc = pmix_ptl_base_parse_version(pnd->version, &major, &minor, &release);
+    if (PMIX_SUCCESS != rc || PMIX_PTL_LOCAL_MAJOR > major) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: refusing a peer of release \"%s\" on the local socket",
+                            pnd->version);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    PMIX_SET_PROC_MAJOR(&pnd->proc_type, major);
+    PMIX_SET_PROC_MINOR(&pnd->proc_type, minor);
+    PMIX_SET_PROC_RELEASE(&pnd->proc_type, release);
+
+    PMIX_PTL_GET_U8(pnd->flag);
+    if (!offer_type(pnd, &named)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    if (named) {
+        PMIX_PTL_GET_PROCID(pnd->proc);
+    }
+    rc = check_named(pnd);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+
+    rc = offer_list(&mg, &cnt, &psecs);
+    if (PMIX_SUCCESS == rc) {
+        rc = offer_list(&mg, &cnt, &bfrops);
+    }
+    if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+    rc = PMIX_ERR_BAD_PARAM;
+    PMIX_PTL_GET_U8(bt);
+    pnd->buffer_type = bt;
+    rc = offer_list(&mg, &cnt, &gdss);
+    if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+    if (0 != cnt) {
+        rc = PMIX_ERR_BAD_PARAM;
+        goto done;
+    }
+
+    rc = choose(pnd, psecs, bfrops, gdss);
+    if (PMIX_SUCCESS == rc) {
+        rc = send_choice(pnd);
+    }
+    goto done;
+
+error:
+    rc = PMIX_ERR_BAD_PARAM;
+done:
+    PMIx_Argv_free(psecs);
+    PMIx_Argv_free(bfrops);
+    PMIx_Argv_free(gdss);
+    return rc;
+}
+
+/* A local-socket peer's second message: the credential, and the info,
+ * packed in the chosen wire format */
+static pmix_status_t read_credential(pmix_pending_connection_t *pnd, char *msg, size_t len)
+{
+    char *mg = msg;
+    size_t cnt = len;
+
+    PMIX_PTL_GET_U32(pnd->len);
+    if (PMIX_TAINT_UINT_LIMIT < pnd->len) {
+        goto error;
+    }
+    PMIX_PTL_GET_BLOB(pnd->cred, pnd->len);
+    if (0 < cnt) {
+        pnd->bloblen = cnt;
+        PMIX_PTL_GET_BLOB(pnd->blob, pnd->bloblen);
+    }
+    return PMIX_SUCCESS;
+
+error:
+    return PMIX_ERR_BAD_PARAM;
+}
+
 /* PMIX_PTL_LEGACY_PAD: a trailer too short to hold an info count is not an
  * info blob.
  *
@@ -766,6 +1105,32 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         pmix_ptl_base_drop_pending_connection(pnd, PMIX_ERR_OUT_OF_RESOURCE);
         return;
     }
+    if (PMIX_SUCCESS == rc && local_peer(pnd) && !pnd->offered) {
+        /* a local-socket peer's offer: answer it with the server's choice,
+         * and wait - under the same deadline - for its credential */
+        msg = pnd->msg;
+        pnd->msg = NULL;
+        cnt = pnd->hdr.nbytes;
+        pmix_ptl_base_uncount_payload(pnd);
+        pnd->msg_recvd = 0;
+        pnd->hdr_recvd = 0;
+        memset(&pnd->hdr, 0, sizeof(pnd->hdr));
+        rc = answer_offer(pnd, msg, cnt);
+        pmix_ptl_base_wipe(msg, cnt);
+        free(msg);
+        msg = NULL;
+        if (PMIX_SUCCESS != rc) {
+            pmix_ptl_base_drop_pending_connection(pnd, rc);
+            return;
+        }
+        pnd->offered = true;
+        PMIX_POST_OBJECT(pnd);
+        if (0 != pmix_event_add(&pnd->ev, NULL)) {
+            PMIX_ERROR_LOG(PMIX_ERROR);
+            pmix_ptl_base_drop_pending_connection(pnd, PMIX_ERROR);
+        }
+        return;
+    }
     /* complete or failed, it is no longer waiting on its socket */
     pmix_list_remove_item(&pmix_ptl_base.pending_connections, &pnd->super);
     if (pnd->timer_active) {
@@ -800,6 +1165,19 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     cnt = pnd->hdr.nbytes;
     mg = msg;
+
+    if (local_peer(pnd)) {
+        /* the credential that follows a local-socket peer's offer */
+        rc = read_credential(pnd, msg, cnt);
+        pmix_ptl_base_wipe(msg, pnd->hdr.nbytes);
+        free(msg);
+        msg = NULL;
+        if (PMIX_SUCCESS != rc) {
+            goto error;
+        }
+        goto dispatch;
+    }
+
     /* a field that is missing or malformed is refused as such */
     rc = PMIX_ERR_BAD_PARAM;
     /* extract the name of the sec module they used */
@@ -967,32 +1345,11 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         goto error;
     }
 
-    /* A process that names itself must name a process: a namespace, and a
-     * rank. An empty namespace would match every namespace wherever names
-     * are compared. A tool of an earlier release with its server's
-     * address in its environment but no namespace and rank says it is on
-     * a client's rank, and sends no name: it is given one by the host, as
-     * a tool that needs one is - but it reads none back, so none is sent,
-     * and it knows itself by no name. A tool of this release with no
-     * namespace and rank asks for an identity instead */
-    if (PMIX_SIMPLE_CLIENT != pnd->flag && !pnd->need_id && PMIX_LEGACY_TOOL != pnd->flag &&
-        PMIX_LEGACY_LAUNCHER != pnd->flag &&
-        ('\0' == pnd->proc.nspace[0] || !PMIX_RANK_IS_VALID(pnd->proc.rank))) {
-        if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
-            pnd->flag = (PMIX_TOOL_CLIENT == pnd->flag) ? PMIX_TOOL_NEEDS_ID
-                                                        : PMIX_LAUNCHER_NEEDS_ID;
-            pnd->need_id = true;
-            pnd->id_unsent = true;
-            PMIX_LOAD_PROCID(&pnd->proc, NULL, PMIX_RANK_UNDEF);
-        } else {
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:base:connection_handler: connect-ack names no process "
-                                "(\"%s\":%u)",
-                                pnd->proc.nspace, pnd->proc.rank);
-            rc = PMIX_ERR_BAD_PARAM;
-            goto error;
-        }
+    rc = check_named(pnd);
+    if (PMIX_SUCCESS != rc) {
+        goto error;
     }
+    rc = PMIX_ERR_BAD_PARAM;
 
     /* extract the name of the bfrops module they used */
     PMIX_PTL_GET_STRING(pnd->bfrops);
@@ -1014,6 +1371,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     free(msg);
     msg = NULL;
 
+dispatch:
     if (PMIX_SIMPLE_CLIENT == pnd->flag || PMIX_SINGLETON_CLIENT == pnd->flag) {
         accept_client(pnd);
     } else {
@@ -1134,15 +1492,18 @@ static void accept_client(pmix_pending_connection_t *pnd)
     PMIX_RETAIN(info);
     pnd->rinfo = info;
 
-    /* the modules it asked for */
-    pnd->psecmod = pmix_psec_base_assign_module(pnd->psec);
-    pnd->bfropsmod = pmix_bfrops_base_assign_module(pnd->bfrops);
-    if (NULL != pnd->gds) {
-        PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);
-        pnd->gdsmod = pmix_gds_base_assign_module(&ginfo, 1);
-        PMIX_INFO_DESTRUCT(&ginfo);
-    } else {
-        pnd->gdsmod = pmix_gds_base_assign_module(NULL, 0);
+    /* the modules it asked for - a local-socket peer has them from the
+     * server's choice */
+    if (!pnd->offered) {
+        pnd->psecmod = pmix_psec_base_assign_module(pnd->psec);
+        pnd->bfropsmod = pmix_bfrops_base_assign_module(pnd->bfrops);
+        if (NULL != pnd->gds) {
+            PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);
+            pnd->gdsmod = pmix_gds_base_assign_module(&ginfo, 1);
+            PMIX_INFO_DESTRUCT(&ginfo);
+        } else {
+            pnd->gdsmod = pmix_gds_base_assign_module(NULL, 0);
+        }
     }
     if (NULL == pnd->psecmod || NULL == pnd->bfropsmod || NULL == pnd->gdsmod) {
         refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
@@ -1526,6 +1887,10 @@ static void accept_tool(pmix_pending_connection_t *pnd)
         return;
     }
 
+    if (pnd->offered) {
+        /* a local-socket peer has its modules from the server's choice */
+        goto chosen;
+    }
     psec = pmix_psec_base_assign_module(pnd->psec);
     if (NULL == psec) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -1543,6 +1908,7 @@ static void accept_tool(pmix_pending_connection_t *pnd)
         refuse(pnd, PMIX_ERR_NOT_AVAILABLE);
         return;
     }
+chosen:
     pnd->peer = scratch_peer(pnd, pnd->proc.nspace, pnd->proc.rank, pnd->uid, pnd->gid, false);
     if (NULL == pnd->peer) {
         refuse(pnd, PMIX_ERR_NOMEM);
@@ -2088,7 +2454,7 @@ static void ask_about_tool(pmix_pending_connection_t *pnd)
         return;
     }
     pnd->host_tmo = tmo;
-    {
+    if (NULL == pnd->gdsmod) {
         pmix_info_t ginfo;
 
         PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);

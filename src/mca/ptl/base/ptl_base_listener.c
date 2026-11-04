@@ -696,6 +696,11 @@ static char *compat_lines(void)
 {
     char *bfrops, *psec, *lines = NULL;
 
+    /* a server that takes only peers of this release settles these in the
+     * handshake */
+    if (!pmix_ptl_base.legacy_peers) {
+        return NULL;
+    }
     bfrops = pmix_bfrops_base_get_available_modules();
     psec = pmix_psec_base_get_available_modules();
     if (0 > pmix_asprintf(&lines, "%s%s%s%s%s%s",
@@ -927,7 +932,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
 {
     int fd, dirfd;
     char *dirname, *tmp, *compat;
-    const char *base;
+    const char *base, *local;
     time_t mytime;
     bool locked;
     int rc, lockfd = -1;
@@ -1046,17 +1051,18 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
      * mechanisms follow them, tagged, where no older reader looks. */
     compat = compat_lines();
     locked = (0 <= lockfd);
+    /* with no TCP listener the first line is the local socket already */
+    local = pmix_ptl_base.legacy_peers ? pmix_ptl_base.local_listener.uri : NULL;
     if (0 > pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n%s%s%s%s%s%s%s%s%s",
                           uri, PMIX_VERSION, (unsigned long)pmix_globals.pid,
                           (unsigned long)pmix_globals.uid,
                           (unsigned long)pmix_globals.gid,
                           ctime(&mytime),
-                          (NULL == pmix_ptl_base.local_listener.uri) ? "" : PMIX_PTL_LOCAL_URI_TAG,
-                          (NULL == pmix_ptl_base.local_listener.uri) ? "" : pmix_globals.hostname,
-                          (NULL == pmix_ptl_base.local_listener.uri) ? "" : ";",
-                          (NULL == pmix_ptl_base.local_listener.uri) ? ""
-                                                                     : pmix_ptl_base.local_listener.uri,
-                          (NULL == pmix_ptl_base.local_listener.uri) ? "" : "\n",
+                          (NULL == local) ? "" : PMIX_PTL_LOCAL_URI_TAG,
+                          (NULL == local) ? "" : pmix_globals.hostname,
+                          (NULL == local) ? "" : ";",
+                          (NULL == local) ? "" : local,
+                          (NULL == local) ? "" : "\n",
                           (NULL == compat) ? "" : compat,
                           locked ? PMIX_PTL_LOCK_TAG : "", locked ? PMIX_PTL_LOCK_FLOCK : "",
                           locked ? "\n" : "")) {
@@ -1663,7 +1669,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                 /* and, after everything an older reader looks at, the
                  * local socket, for a tool on this host - a report file
                  * may be read on another */
-                if (NULL != pmix_ptl_base.local_listener.uri) {
+                if (pmix_ptl_base.legacy_peers && NULL != pmix_ptl_base.local_listener.uri) {
                     fprintf(fp, "%s%s;%s\n", PMIX_PTL_LOCAL_URI_TAG, pmix_globals.hostname,
                             pmix_ptl_base.local_listener.uri);
                 }

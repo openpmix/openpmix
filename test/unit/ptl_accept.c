@@ -157,6 +157,7 @@
 #include <poll.h>
 #include <ftw.h>
 #include <grp.h>
+#include <errno.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -628,6 +629,70 @@ static uid_t ack_cred_uid = AC_OWN_UID;
 #define AC_OWN_GID ((gid_t) -1)
 static gid_t ack_cred_gid = AC_OWN_GID;
 
+/* On the local socket a connect is an offer, the server's choice, and then
+ * the credential and info: build_ack_as_given returns the offer and keeps
+ * the credential message here, which open_ack sends once the server has
+ * chosen */
+static char *local_cred = NULL;
+static size_t local_cred_sz = 0;
+
+static char *build_local(uint8_t flag, const char *nspace, pmix_rank_t rank, const char *psec,
+                         const char *credbytes, size_t credlen,
+                         const pmix_byte_object_t *blob, size_t *sz)
+{
+    pmix_ptl_hdr_t hdr;
+    pmix_proc_t proc;
+    char *msg;
+    size_t csize, payload;
+    uint8_t bftype = PMIX_BFROP_BUFFER_NON_DESC, one = 1;
+    bool named = (PMIX_TOOL_NEEDS_ID != flag && PMIX_LAUNCHER_NEEDS_ID != flag);
+
+    PMIX_LOAD_PROCID(&proc, nspace, rank);
+    payload = strlen(eff_version()) + 1 + 1;
+    if (named) {
+        payload += strlen(proc.nspace) + 1 + sizeof(uint32_t);
+    }
+    payload += 1 + strlen(psec) + 1 + 1 + strlen(eff_bfrops()) + 1 + 1 + 1 + strlen(AC_GDS) + 1;
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.pindex = -1;
+    hdr.tag = UINT32_MAX;
+    hdr.nbytes = (uint32_t) payload;
+    *sz = sizeof(hdr) + payload;
+    msg = (char *) calloc(1, *sz);
+    memcpy(msg, &hdr, sizeof(hdr));
+    csize = sizeof(hdr);
+    PMIX_PTL_PUT_STRING(eff_version());
+    PMIX_PTL_PUT_U8(flag);
+    if (named) {
+        PMIX_PTL_PUT_PROCID(proc);
+    }
+    PMIX_PTL_PUT_U8(one);
+    PMIX_PTL_PUT_STRING(psec);
+    PMIX_PTL_PUT_U8(one);
+    PMIX_PTL_PUT_STRING(eff_bfrops());
+    PMIX_PTL_PUT_U8(bftype);
+    PMIX_PTL_PUT_U8(one);
+    PMIX_PTL_PUT_STRING(AC_GDS);
+
+    {
+        char *offer = msg;
+
+        payload = sizeof(uint32_t) + credlen + ((NULL == blob) ? 0 : blob->size);
+        hdr.nbytes = (uint32_t) payload;
+        free(local_cred);
+        local_cred_sz = sizeof(hdr) + payload;
+        local_cred = msg = (char *) calloc(1, local_cred_sz);
+        memcpy(msg, &hdr, sizeof(hdr));
+        csize = sizeof(hdr);
+        PMIX_PTL_PUT_U32(credlen);
+        PMIX_PTL_PUT_BLOB(credbytes, credlen);
+        if (NULL != blob) {
+            PMIX_PTL_PUT_BLOB(blob->bytes, blob->size);
+        }
+        return offer;
+    }
+}
+
 static char *build_ack_as_given(uint8_t flag, const char *nspace, pmix_rank_t rank,
                                 const char *psec, const pmix_byte_object_t *blob, bool truncate,
                                 size_t *sz)
@@ -646,6 +711,12 @@ static char *build_ack_as_given(uint8_t flag, const char *nspace, pmix_rank_t ra
 
     memcpy(credbytes, &euid, sizeof(uid_t));
     memcpy(credbytes + sizeof(uid_t), &egid, sizeof(gid_t));
+
+    if (ack_local && !truncate) {
+        (void) ruid;
+        (void) rgid;
+        return build_local(flag, nspace, rank, psec, credbytes, credlen, blob, sz);
+    }
 
     PMIX_LOAD_PROCID(&proc, nspace, rank);
     payload = strlen(psec) + 1;
@@ -783,10 +854,43 @@ static bool connect_server(int *sdp)
     return true;
 }
 
-/* connect and send the ack, leaving the socket in *sdp */
+/* connect and send the ack, leaving the socket in *sdp. On the local
+ * socket that is the offer: a refusal of it is left for the caller to
+ * read, and the server's choice is read here and answered with the
+ * credential message */
 static bool open_ack(char *msg, size_t sz, int *sdp)
 {
-    return connect_server(sdp) && (ssize_t) sz == write(*sdp, msg, sz);
+    uint32_t u32;
+    char choice[512];
+    ssize_t rd;
+    size_t got = 0;
+    bool ok;
+
+    if (!connect_server(sdp) || (ssize_t) sz != write(*sdp, msg, sz)) {
+        return false;
+    }
+    if (!ack_local || NULL == local_cred) {
+        return true;
+    }
+    ok = true;
+    do {
+        rd = recv(*sdp, &u32, sizeof(u32), MSG_PEEK | MSG_WAITALL);
+    } while (0 > rd && EINTR == errno);
+    if ((ssize_t) sizeof(u32) == rd && PMIX_SUCCESS == (pmix_status_t) ntohl(u32)) {
+        ok = read_u32(*sdp, &u32) && read_u32(*sdp, &u32) && u32 <= sizeof(choice);
+        while (ok && got < u32) {
+            rd = read(*sdp, choice + got, u32 - got);
+            ok = (0 < rd);
+            if (ok) {
+                got += (size_t) rd;
+            }
+        }
+        ok = ok && (ssize_t) local_cred_sz == write(*sdp, local_cred, local_cred_sz);
+    }
+    free(local_cred);
+    local_cred = NULL;
+    local_cred_sz = 0;
+    return ok;
 }
 
 /* connect, send the ack, and return the first reply: PMIX_ERR_UNREACH if
@@ -1363,6 +1467,281 @@ static int run_local_identity_tool(void)
     return case_local_identity(true);
 }
 
+/* ---- the local socket's offer and the server's choice ---- */
+
+/* An offer of the given lists for nspace:rank (a client), sent on the
+ * local socket. Returns the first status; on success the choice's names -
+ * security, wire format, datastore - and buffer type are put in the
+ * caller's buffers */
+/* copy one name of a choice into a 65-byte buffer, returning how far
+ * along the choice the next one starts */
+static size_t choice_name(char *dst, const char *src)
+{
+    size_t l = strlen(src);
+
+    memcpy(dst, src, (64 < l) ? 64 : l);
+    dst[(64 < l) ? 64 : l] = '\0';
+    return l + 1;
+}
+
+static pmix_status_t offer_raw(const char *version, const char *const psecs[], int npsec,
+                               const char *const bfrops[], int nbf, uint8_t bt,
+                               const char *const gdss[], int ngds, char *cpsec, char *cbf,
+                               uint8_t *cbt, char *cgds)
+{
+    pmix_ptl_hdr_t hdr;
+    pmix_proc_t proc;
+    char *msg, body[512];
+    size_t csize, sz;
+    uint8_t flag = PMIX_SIMPLE_CLIENT, n;
+    uint32_t u32;
+    int sd = -1, i;
+    ssize_t rd;
+    size_t got = 0;
+
+    PMIX_LOAD_PROCID(&proc, AC_NSPACE, 0);
+    msg = (char *) calloc(1, 8192);
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.pindex = -1;
+    hdr.tag = UINT32_MAX;
+    csize = sizeof(hdr);
+    PMIX_PTL_PUT_STRING(version);
+    PMIX_PTL_PUT_U8(flag);
+    PMIX_PTL_PUT_PROCID(proc);
+    n = (uint8_t) npsec;
+    PMIX_PTL_PUT_U8(n);
+    for (i = 0; i < npsec; i++) {
+        PMIX_PTL_PUT_STRING(psecs[i]);
+    }
+    n = (uint8_t) nbf;
+    PMIX_PTL_PUT_U8(n);
+    for (i = 0; i < nbf; i++) {
+        PMIX_PTL_PUT_STRING(bfrops[i]);
+    }
+    PMIX_PTL_PUT_U8(bt);
+    n = (uint8_t) ngds;
+    PMIX_PTL_PUT_U8(n);
+    for (i = 0; i < ngds; i++) {
+        PMIX_PTL_PUT_STRING(gdss[i]);
+    }
+    hdr.nbytes = (uint32_t) (csize - sizeof(hdr));
+    memcpy(msg, &hdr, sizeof(hdr));
+    sz = csize;
+    if (!connect_local(&sd) || (ssize_t) sz != write(sd, msg, sz)) {
+        free(msg);
+        return PMIX_ERROR;
+    }
+    free(msg);
+    if (!read_u32(sd, &u32)) {
+        close(sd);
+        return PMIX_ERR_UNREACH;
+    }
+    if (PMIX_SUCCESS != (pmix_status_t) u32) {
+        close(sd);
+        return (pmix_status_t) u32;
+    }
+    if (!read_u32(sd, &u32) || sizeof(body) < u32) {
+        close(sd);
+        return PMIX_ERR_UNREACH;
+    }
+    while (got < u32) {
+        rd = read(sd, body + got, u32 - got);
+        if (0 >= rd) {
+            close(sd);
+            return PMIX_ERR_UNREACH;
+        }
+        got += (size_t) rd;
+    }
+    close(sd);
+    /* security\0wire format\0<buffer type>datastore\0 */
+    body[sizeof(body) - 1] = '\0';
+    csize = choice_name(cpsec, body);
+    csize += choice_name(cbf, body + csize);
+    *cbt = (uint8_t) body[csize];
+    ++csize;
+    (void) choice_name(cgds, body + csize);
+    return PMIX_SUCCESS;
+}
+
+static const char *const ac_psec_native[] = {"native"};
+static const char *const ac_bf_v70[] = {AC_BFROPS};
+static const char *const ac_gds_hash[] = {AC_GDS};
+
+/* A peer that offers no security method the server uses is refused */
+static int case_offer_no_method(void)
+{
+    static const char *const psecs[] = {"no-such-method"};
+    char cpsec[65], cbf[65], cgds[65];
+    uint8_t cbt;
+    pmix_status_t reply;
+
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    reply = offer_raw(AC_VERSION, psecs, 1, ac_bf_v70, 1, PMIX_BFROP_BUFFER_NON_DESC,
+                      ac_gds_hash, 1, cpsec, cbf, &cbt, cgds);
+    return expect_status("an offer with no security method the server uses", reply,
+                         PMIX_ERR_NOT_SUPPORTED);
+}
+
+/* The server's highest-priority method the peer offers is chosen, in
+ * whatever order the peer lists them: munge when the server has it, else
+ * native. munge offered alone is chosen when the server has it, and
+ * refused otherwise */
+static int case_offer_security(void)
+{
+    static const char *const both[] = {"munge", "native"};
+    static const char *const reversed[] = {"native", "munge"};
+    static const char *const munge[] = {"munge"};
+    char cpsec[65], cbf[65], cgds[65];
+    uint8_t cbt;
+    pmix_status_t reply;
+    pmix_psec_module_t *mod;
+    bool have_munge;
+    const char *want;
+
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    mod = pmix_psec_base_assign_module("munge");
+    have_munge = (NULL != mod && 0 == strcmp(mod->name, "munge"));
+    want = have_munge ? "munge" : "native";
+    reply = offer_raw(AC_VERSION, both, 2, ac_bf_v70, 1, PMIX_BFROP_BUFFER_NON_DESC,
+                      ac_gds_hash, 1, cpsec, cbf, &cbt, cgds);
+    if (PMIX_SUCCESS != reply || 0 != strcmp(cpsec, want)) {
+        fprintf(stdout, "    offering munge and native: %s, chose \"%s\", expected \"%s\"\n",
+                PMIx_Error_string(reply), (PMIX_SUCCESS == reply) ? cpsec : "", want);
+        return CHILD_FAIL;
+    }
+    reply = offer_raw(AC_VERSION, reversed, 2, ac_bf_v70, 1, PMIX_BFROP_BUFFER_NON_DESC,
+                      ac_gds_hash, 1, cpsec, cbf, &cbt, cgds);
+    if (PMIX_SUCCESS != reply || 0 != strcmp(cpsec, want)) {
+        fprintf(stdout, "    offering native and munge: %s, chose \"%s\", expected \"%s\"\n",
+                PMIx_Error_string(reply), (PMIX_SUCCESS == reply) ? cpsec : "", want);
+        return CHILD_FAIL;
+    }
+    reply = offer_raw(AC_VERSION, munge, 1, ac_bf_v70, 1, PMIX_BFROP_BUFFER_NON_DESC,
+                      ac_gds_hash, 1, cpsec, cbf, &cbt, cgds);
+    if (have_munge) {
+        if (PMIX_SUCCESS != reply || 0 != strcmp(cpsec, "munge")) {
+            fprintf(stdout, "    offering munge alone: %s, chose \"%s\"\n",
+                    PMIx_Error_string(reply), (PMIX_SUCCESS == reply) ? cpsec : "");
+            return CHILD_FAIL;
+        }
+        return CHILD_PASS;
+    }
+    return expect_status("an offer of munge alone to a server without it", reply,
+                         PMIX_ERR_NOT_SUPPORTED);
+}
+
+/* For a namespace no peer has joined, the wire format and datastore are
+ * the first of the peer's the server has, and the buffer type the peer's */
+static int case_offer_first_preference(void)
+{
+    static const char *const bfrops[] = {"v99", AC_BFROPS, "v61"};
+    static const char *const gdss[] = {"no-such-gds", AC_GDS};
+    char cpsec[65], cbf[65], cgds[65];
+    uint8_t cbt = 0;
+    pmix_status_t reply;
+
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    reply = offer_raw(AC_VERSION, ac_psec_native, 1, bfrops, 3, PMIX_BFROP_BUFFER_FULLY_DESC,
+                      gdss, 2, cpsec, cbf, &cbt, cgds);
+    if (PMIX_SUCCESS != reply || 0 != strcmp(cbf, AC_BFROPS) || 0 != strcmp(cgds, AC_GDS) ||
+        PMIX_BFROP_BUFFER_FULLY_DESC != cbt) {
+        fprintf(stdout, "    %s: chose \"%s\", buffer type %u, \"%s\"\n",
+                PMIx_Error_string(reply), cbf, (unsigned) cbt, cgds);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
+/* A later peer of a namespace gets the wire format and buffer type its
+ * first peer has, or is refused if it does not offer that wire format */
+static int case_offer_namespace_wire(void)
+{
+    static const char *const older[] = {"v61"};
+    static const char *const both[] = {"v61", AC_BFROPS};
+    char cpsec[65], cbf[65], cgds[65], *msg;
+    uint8_t cbt = 0;
+    uint32_t index;
+    size_t sz;
+    int sd = -1;
+    pmix_status_t reply;
+
+    ack_local = true;
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native", NULL, false, &sz);
+    reply = send_ack(msg, sz, &sd);
+    free(msg);
+    if (PMIX_SUCCESS != reply || !read_u32(sd, &index)) {
+        fprintf(stdout, "    the namespace's first client was refused: %s\n",
+                PMIx_Error_string(reply));
+        return CHILD_FAIL;
+    }
+    reply = offer_raw(AC_VERSION, ac_psec_native, 1, older, 1, PMIX_BFROP_BUFFER_NON_DESC,
+                      ac_gds_hash, 1, cpsec, cbf, &cbt, cgds);
+    if (PMIX_ERR_NOT_SUPPORTED != reply) {
+        fprintf(stdout, "    offering only another wire format: %s, expected %s\n",
+                PMIx_Error_string(reply), PMIx_Error_string(PMIX_ERR_NOT_SUPPORTED));
+        return CHILD_FAIL;
+    }
+    reply = offer_raw(AC_VERSION, ac_psec_native, 1, both, 2, PMIX_BFROP_BUFFER_FULLY_DESC,
+                      ac_gds_hash, 1, cpsec, cbf, &cbt, cgds);
+    if (PMIX_SUCCESS != reply || 0 != strcmp(cbf, AC_BFROPS) ||
+        PMIX_BFROP_BUFFER_NON_DESC != cbt) {
+        fprintf(stdout, "    offering it second: %s, chose \"%s\", buffer type %u\n",
+                PMIx_Error_string(reply), cbf, (unsigned) cbt);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
+/* A list of more than PMIX_PTL_OFFER_MAX_NAMES names, or a name longer
+ * than PMIX_PTL_OFFER_MAX_NAMELEN, is refused */
+static int case_offer_oversized(void)
+{
+    const char *many[PMIX_PTL_OFFER_MAX_NAMES + 1];
+    const char *one[1];
+    char longname[PMIX_PTL_OFFER_MAX_NAMELEN + 2];
+    char cpsec[65], cbf[65], cgds[65];
+    uint8_t cbt;
+    pmix_status_t reply;
+    int i;
+
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    for (i = 0; i <= PMIX_PTL_OFFER_MAX_NAMES; i++) {
+        many[i] = "native";
+    }
+    reply = offer_raw(AC_VERSION, many, PMIX_PTL_OFFER_MAX_NAMES + 1, ac_bf_v70, 1,
+                      PMIX_BFROP_BUFFER_NON_DESC, ac_gds_hash, 1, cpsec, cbf, &cbt, cgds);
+    if (PMIX_ERR_BAD_PARAM != reply) {
+        fprintf(stdout, "    %d names: %s, expected %s\n", PMIX_PTL_OFFER_MAX_NAMES + 1,
+                PMIx_Error_string(reply), PMIx_Error_string(PMIX_ERR_BAD_PARAM));
+        return CHILD_FAIL;
+    }
+    /* the most it takes is taken */
+    reply = offer_raw(AC_VERSION, many, PMIX_PTL_OFFER_MAX_NAMES, ac_bf_v70, 1,
+                      PMIX_BFROP_BUFFER_NON_DESC, ac_gds_hash, 1, cpsec, cbf, &cbt, cgds);
+    if (PMIX_SUCCESS != reply) {
+        fprintf(stdout, "    %d names: %s\n", PMIX_PTL_OFFER_MAX_NAMES,
+                PMIx_Error_string(reply));
+        return CHILD_FAIL;
+    }
+    memset(longname, 'g', sizeof(longname) - 1);
+    longname[sizeof(longname) - 1] = '\0';
+    one[0] = longname;
+    reply = offer_raw(AC_VERSION, ac_psec_native, 1, ac_bf_v70, 1, PMIX_BFROP_BUFFER_NON_DESC,
+                      one, 1, cpsec, cbf, &cbt, cgds);
+    return expect_status("a name longer than the limit", reply, PMIX_ERR_BAD_PARAM);
+}
+
 /* ---- a process's groups on the local transport ---- */
 
 static bool gid_listed(const gid_t *gids, size_t n, gid_t gid)
@@ -1478,8 +1857,9 @@ static bool records_groups(const pmix_peer_t *pr, const gid_t *own, size_t nown)
 }
 
 /* A process on the local transport has the groups the kernel reports for
- * it recorded on its peer, and a tool acts under the gid it claims only if
- * that is one of them. `how`:
+ * it recorded on its peer, and acts under the effective gid the kernel
+ * reports - the offer carries no gid of its own, so a claim in the
+ * credential changes nothing. `how`:
  *   0 - a client, which claims its own gid;
  *   1 - a tool claiming one of its supplementary groups;
  *   2 - a tool claiming a gid it does not hold */
@@ -1508,7 +1888,7 @@ static int case_local_groups(int how)
     } else if (2 == how) {
         claim = gid_not_held(own, nown);
     }
-    want = (2 == how) ? getegid() : claim;
+    want = getegid();
     ack_local = true;
     ack_cred_gid = claim;
     if (PMIX_SUCCESS != start_server(&mymodule, !tool, getuid()) || !build_blob(&blob)) {
@@ -2139,11 +2519,40 @@ static pmix_status_t pid_connect_child(const char *token, bool tool, pid_t *cpid
                     break;
                 }
             }
+            /* the server's choice: its length and names, then the
+             * credential message, and the status that answers it */
+            if (NULL != local_cred && PMIX_SUCCESS == (pmix_status_t) ntohl(u32)) {
+                char choice[512];
+                uint32_t len = 0;
+
+                u32 = htonl((uint32_t) PMIX_ERR_UNREACH);
+                for (got = 0, rd = 1; 0 < rd && got < sizeof(len); got += (size_t) rd) {
+                    rd = read(sd, (char *) &len + got, sizeof(len) - got);
+                }
+                len = ntohl(len);
+                for (got = 0, rd = 1; 0 < rd && got < len && len <= sizeof(choice);
+                     got += (size_t) rd) {
+                    rd = read(sd, choice + got, len - got);
+                }
+                if (0 < rd && got == len &&
+                    (ssize_t) local_cred_sz == write(sd, local_cred, local_cred_sz)) {
+                    for (got = 0; got < sizeof(u32); got += (size_t) rd) {
+                        rd = read(sd, (char *) &u32 + got, sizeof(u32) - got);
+                        if (0 >= rd) {
+                            u32 = htonl((uint32_t) PMIX_ERR_UNREACH);
+                            break;
+                        }
+                    }
+                }
+            }
         }
         (void) !write(fds[1], &u32, sizeof(u32));
         _exit(0);
     }
     free(msg);
+    free(local_cred);
+    local_cred = NULL;
+    local_cred_sz = 0;
     close(fds[1]);
     if (0 < pid && (ssize_t) sizeof(u32) == read(fds[0], &u32, sizeof(u32))) {
         reply = (pmix_status_t) ntohl(u32);
@@ -4834,11 +5243,21 @@ int main(int argc, char **argv)
     run_case("a client on the local transport has its process's groups recorded",
              run_local_groups_client);
     run_case("a tool on the local transport claiming one of its process's groups acts "
-             "under it",
+             "under its effective gid",
              run_local_groups_tool_held);
     run_case("a tool on the local transport claiming a gid its process does not hold acts "
              "under its effective gid",
              run_local_groups_tool_not_held);
+    run_case("a peer offering no security method the server uses is refused",
+             case_offer_no_method);
+    run_case("the server's highest-priority security method the peer offers is chosen",
+             case_offer_security);
+    run_case("a new namespace's wire format and datastore are the peer's first the server "
+             "has, with its buffer type", case_offer_first_preference);
+    run_case("a later peer of a namespace gets its wire format and buffer type, or is refused",
+             case_offer_namespace_wire);
+    run_case("an offer with too many names, or too long a name, is refused",
+             case_offer_oversized);
     run_case("a client whose connection closes while its process runs on is lost at once",
              case_closed_is_lost);
     run_case("a live client on the local socket is not taken over by a pid sent over TCP",

@@ -77,9 +77,12 @@ But how that list is used differs by role:
   module to its `myserver` peer, because both ends of that socket must
   speak the same protocol.
 - A **server** keeps the whole `actives` list and picks a module
-  **per accepted peer**, by name, from the handshake (see "Negotiation"
-  below). Different clients on the same server may therefore be
-  authenticated with different modules.
+  **per accepted peer** (see "Negotiation" below). On the local socket it
+  chooses from the peer's offer - the first of its `actives`, in priority
+  order, that the peer offered - and the client takes that module for
+  its server. Over
+  TCP it takes the one the peer names. Different clients on the same
+  server may therefore be authenticated with different modules.
 
 The selected module for a given peer is reached through
 `peer->nptr->compat.psec` — a `pmix_psec_module_t *` cached on the peer's
@@ -257,18 +260,24 @@ The module name is the contract that lets differently-configured peers
 interoperate — the same idea as `preg`'s self-identifying tag, but
 carried in the `ptl` handshake rather than in the payload:
 
-1. A client selects its one module at init and, in
-   `pmix_ptl_base_construct_message`
-   ([`ptl_base_fns.c`](../ptl/base/ptl_base_fns.c)), writes
-   `psec->name` into the handshake blob alongside the credential produced
-   by `PMIX_PSEC_CREATE_CRED`.
-2. On accept, the server parses that name out of the handshake
-   (`pnd->psec`) and calls `pmix_psec_base_assign_module(pnd->psec)` in
-   [`ptl_base_connection_hdlr.c`](../ptl/base/ptl_base_connection_hdlr.c),
-   holding the module locally: nothing is attached to the peer's
-   namespace until the peer has been validated (the namespace's
-   `compat.psec` is then set by the first peer to connect). If the server
-   has no matching active module, the connection is refused.
+1. On the local socket the client offers the names of all its active
+   modules (`build_offer` in
+   [`ptl_base_fns.c`](../ptl/base/ptl_base_fns.c)); the server chooses one
+   (`choose` in
+   [`ptl_base_connection_hdlr.c`](../ptl/base/ptl_base_connection_hdlr.c)):
+   the first of the server's `actives`, in priority order, that the peer
+   offered (`munge` when both have it, else `native`), else the
+   connection is refused with `PMIX_ERR_NOT_SUPPORTED`. The client takes the choice
+   (`apply_choice`) and sends the credential `PMIX_PSEC_CREATE_CRED`
+   makes with it. Over TCP, the client selects its one module at init and
+   `construct_message` writes `psec->name` into the handshake blob
+   alongside the credential.
+2. The server holds the module locally - the one it chose, or over TCP
+   `pmix_psec_base_assign_module(pnd->psec)` for the name the peer sent:
+   nothing is attached to the peer's namespace until the peer has been
+   validated (the namespace's `compat.psec` is then set by the first peer
+   to connect). If the server has no matching active module, the
+   connection is refused.
 3. The server then validates via the
    **`PMIX_PSEC_VALIDATE_CONNECTION_WITH`** macro ([`psec.h`](psec.h)),
    which names that module rather than taking it from the namespace, on a
