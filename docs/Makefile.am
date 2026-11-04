@@ -333,6 +333,7 @@ PMIX_MAN3 = \
 	PMIx_Argv_append_unique_nosize.3 \
 	PMIx_Argv_copy.3 \
 	PMIx_Argv_count.3 \
+	PMIx_Argv_idx.3 \
 	PMIx_Argv_join.3 \
 	PMIx_Argv_prepend_nosize.3 \
 	PMIx_Argv_split.3 \

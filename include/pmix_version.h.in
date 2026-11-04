@@ -79,6 +79,8 @@
  * close. Without this, a host that deregisters a client it has just
  * reaped can leave the rank an expected participant for good. */
 #define PMIX_CAP_DEREG_DEPARTS   29
+/* PMIx_Argv_idx: the index of a string in an argv-style array */
+#define PMIX_CAP_ARGV_IDX        30
 
 
 /*****    DEPRECATED    *****/

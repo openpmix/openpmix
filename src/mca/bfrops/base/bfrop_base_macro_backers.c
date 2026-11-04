@@ -97,6 +97,11 @@ int PMIx_Argv_count(char **argv)
     return pmix_bfrops_base_tma_argv_count(argv, NULL);
 }
 
+int PMIx_Argv_idx(char **argv, const char *arg)
+{
+    return pmix_bfrops_base_tma_argv_idx(argv, arg, NULL);
+}
+
 pmix_status_t PMIx_Argv_append_nosize(char ***argv, const char *arg)
 {
     return pmix_bfrops_base_tma_argv_append_nosize(argv, arg, NULL);

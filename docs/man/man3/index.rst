@@ -233,6 +233,7 @@ APIs (section 3)
    PMIx_Argv_append_unique_nosize.3.rst
    PMIx_Argv_copy.3.rst
    PMIx_Argv_count.3.rst
+   PMIx_Argv_idx.3.rst
    PMIx_Argv_join.3.rst
    PMIx_Argv_prepend_nosize.3.rst
    PMIx_Argv_split.3.rst
