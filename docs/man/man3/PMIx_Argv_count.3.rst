@@ -65,6 +65,7 @@ EXAMPLES
 
 
 .. seealso::
+   :ref:`PMIx_Argv_idx(3) <man3-PMIx_Argv_idx>`,
    :ref:`PMIx_Argv_append_nosize(3) <man3-PMIx_Argv_append_nosize>`,
    :ref:`PMIx_Argv_prepend_nosize(3) <man3-PMIx_Argv_prepend_nosize>`,
    :ref:`PMIx_Argv_append_unique_nosize(3) <man3-PMIx_Argv_append_unique_nosize>`,

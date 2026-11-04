@@ -23,7 +23,7 @@
  * helper picks is not the subject; the subject is that the answer is
  * not a signal.
  *
- * Three cases here do assert behaviour, because a caller can tell the
+ * Four cases here do assert behaviour, because a caller can tell the
  * difference and does depend on it:
  *   - PMIx_Info_list_release(NULL) must be a no-op, like every other
  *     release in that file. A caller whose PMIx_Info_list_start()
@@ -36,6 +36,9 @@
  *     a list silently short of an entry. The accumulated status is what
  *     lets it test once, so both halves are asserted here - the add's own
  *     return, and the conversion at the end reporting the same failure.
+ *   - PMIx_Argv_idx answers -1 for a NULL array and a NULL string rather
+ *     than refusing them: "not there" is the answer a caller searching a
+ *     list it builds on demand needs, before the first entry is added.
  */
 
 #include "src/include/pmix_config.h"
@@ -74,6 +77,7 @@ static void test_argv_degenerate(void)
     char *s;
 
     (void) PMIx_Argv_count(NULL);
+    (void) PMIx_Argv_idx(NULL, NULL);
     PMIx_Argv_free(NULL);
 
     s = PMIx_Argv_join(NULL, ',');
@@ -123,6 +127,40 @@ static void test_argv_still_works(void)
     PMIx_Argv_free(a);
 
     report("the argv helpers still do their job", ok);
+}
+
+/* The lookup is the one argv helper whose answer to a NULL input is
+ * asserted rather than merely survived - see the header comment */
+static void test_argv_idx(void)
+{
+    char **a = NULL;
+    int ok = 1;
+
+    ok = ok && (-1 == PMIx_Argv_idx(NULL, "x"));
+    ok = ok && (-1 == PMIx_Argv_idx(NULL, NULL));
+
+    (void) PMIx_Argv_append_nosize(&a, "zero");
+    (void) PMIx_Argv_append_nosize(&a, "one");
+    (void) PMIx_Argv_append_nosize(&a, "");
+    (void) PMIx_Argv_append_nosize(&a, "one");
+    ok = ok && (-1 == PMIx_Argv_idx(a, NULL));
+    ok = ok && (0 == PMIx_Argv_idx(a, "zero"));
+    /* the first of two equal entries */
+    ok = ok && (1 == PMIx_Argv_idx(a, "one"));
+    /* an empty string is a string, and can be found */
+    ok = ok && (2 == PMIx_Argv_idx(a, ""));
+    /* whole-string equality, not a prefix match either way */
+    ok = ok && (-1 == PMIx_Argv_idx(a, "on"));
+    ok = ok && (-1 == PMIx_Argv_idx(a, "ones"));
+    ok = ok && (-1 == PMIx_Argv_idx(a, "two"));
+    /* the unique append is built on it, and must still decline a repeat */
+    (void) PMIx_Argv_append_unique_nosize(&a, "zero");
+    (void) PMIx_Argv_append_unique_nosize(&a, "two");
+    ok = ok && (5 == PMIx_Argv_count(a));
+    ok = ok && (4 == PMIx_Argv_idx(a, "two"));
+    PMIx_Argv_free(a);
+
+    report("PMIx_Argv_idx finds the first equal entry, and only that", ok);
 }
 
 /* ------------------------------------------------------------------ */
@@ -535,6 +573,7 @@ int main(int argc, char **argv)
 
     test_argv_degenerate();
     test_argv_still_works();
+    test_argv_idx();
     test_procid_degenerate();
     test_nspace_comparison();
     test_procid_comparison();

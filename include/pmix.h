@@ -1716,6 +1716,11 @@ PMIX_EXPORT bool PMIx_Procid_invalid(const pmix_proc_t *p);
 /* count number of entries in an argv-style array */
 PMIX_EXPORT int PMIx_Argv_count(char **a);
 
+/* return the index of the first entry in an argv-style array that is
+ * equal to the given string, or -1 if there is none. A NULL array is
+ * treated as an empty one, and a NULL string matches nothing */
+PMIX_EXPORT int PMIx_Argv_idx(char **argv, const char *arg);
+
 /* append a string to an argv-style array, without returning the count */
 PMIX_EXPORT pmix_status_t PMIx_Argv_append_nosize(char ***argv, const char *arg);
 

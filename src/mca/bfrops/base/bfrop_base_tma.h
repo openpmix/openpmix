@@ -1831,6 +1831,28 @@ int pmix_bfrops_base_tma_argv_count(char **argv,
     return i;
 }
 
+/* the index of the first entry equal to "arg", or -1. A NULL array is
+ * an empty one, and a NULL string is in none */
+static inline
+int pmix_bfrops_base_tma_argv_idx(char **argv,
+                                  const char *arg,
+                                  pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    int i;
+
+    if (NULL == argv || NULL == arg) {
+        return -1;
+    }
+    for (i = 0; NULL != argv[i]; i++) {
+        if (0 == strcmp(arg, argv[i])) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static inline
 pmix_status_t pmix_bfrops_base_tma_argv_append_nosize(char ***argv,
                                                       const char *arg,
@@ -1928,25 +1950,14 @@ pmix_status_t pmix_bfrops_base_tma_argv_append_unique_nosize(char ***argv,
                                                              const char *arg,
                                                              pmix_tma_t *tma)
 {
-    int i;
-
     if (NULL == argv || NULL == arg) {
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* if the provided array is NULL, then the arg cannot be present,
-     * so just go ahead and append
-     */
-    if (NULL == *argv) {
-        return pmix_bfrops_base_tma_argv_append_nosize(argv, arg, tma);
-    }
-
-    /* see if this arg is already present in the array */
-    for (i = 0; NULL != (*argv)[i]; i++) {
-        if (0 == strcmp(arg, (*argv)[i])) {
-            /* already exists */
-            return PMIX_SUCCESS;
-        }
+    /* a NULL array holds nothing, so the arg is appended to it */
+    if (0 <= pmix_bfrops_base_tma_argv_idx(*argv, arg, tma)) {
+        /* already exists */
+        return PMIX_SUCCESS;
     }
 
     /* we get here if the arg is not in the array - so add it */
