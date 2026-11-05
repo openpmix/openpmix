@@ -27,6 +27,8 @@
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
 
+#include <ctype.h>
+#include <string.h>
 #ifdef HAVE_FCNTL_H
 #    include <fcntl.h>
 #endif
@@ -50,6 +52,7 @@
 #endif
 
 #include "src/client/pmix_client_ops.h"
+#include "src/common/pmix_idenv.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/gds.h"
@@ -61,6 +64,23 @@
 #include "src/util/pmix_show_help.h"
 
 #include "src/mca/ptl/base/base.h"
+
+/* a singleton the system server refuses is told so once */
+static bool singleton_refusal_shown = false;
+
+/* Whether a PMIX_SERVER_URI directive's text after its first ';' starts
+ * with a URI - "<scheme>://" - so that what precedes it is the server's
+ * "nspace.rank", as PMIX_SERVER_URI is stored and given to a tool, rather
+ * than the URI variables naming the server's release */
+static bool starts_with_uri(const char *str)
+{
+    const char *p = str;
+
+    while (isalnum((unsigned char) *p) || '+' == *p || '-' == *p || '.' == *p) {
+        ++p;
+    }
+    return p != str && 0 == strncmp(p, "://", 3);
+}
 
 /* A client connects to the server named in its environment, or in a
  * PMIX_SERVER_URI directive - or, with neither, looks for a system
@@ -88,6 +108,11 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
      * directive or by the launcher's environment - as opposed to going
      * looking for one on our own. See the end of this function. */
     bool given = false;
+    /* a directive naming the server and its URI alone */
+    bool named = false;
+    struct sockaddr_storage addr;
+    size_t addrlen;
+    pmix_ptl_module_t *transport = NULL;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
@@ -119,6 +144,19 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
             if (NULL == suri) {
                 rc = PMIX_ERR_BAD_PARAM;
                 goto error;
+            }
+            if (starts_with_uri(suri + 1)) {
+                /* "nspace.rank;uri": the server's local socket, whose
+                 * handshake settles the wire format and security */
+                suri = NULL;
+                named = true;
+                PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+                pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
+                peer->protocol = PMIX_PROTOCOL_V2;
+                peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
+                pmix_ptl_base.server_release_vouched = true;
+                evar = urispec;
+                break;
             }
             *suri = '\0';
             ++suri;
@@ -182,6 +220,12 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
             } else if (PMIX_ERR_NOT_FOUND != rc) {
                 goto error;
             }
+        } else if (NULL != pmix_idenv_get("PMIX_NAMESPACE")) {
+            /* a process its server named has to be told how to reach it */
+            pmix_show_help("help-ptl-base.txt", "client-namespace-no-uri", true,
+                           pmix_globals.hostname, pmix_idenv_get("PMIX_NAMESPACE"));
+            rc = PMIX_ERR_COMM_FAILURE;
+            goto error;
         } else {
             /* we must be a singleton */
             PMIX_SET_PEER_TYPE(pmix_globals.mypeer, PMIX_PROC_SINGLETON);
@@ -240,10 +284,19 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
                 }
                 if (PMIX_SUCCESS == rc) {
                     /* its local socket, when the file names one */
+                    pmix_ptl_base.server_refusal = PMIX_SUCCESS;
                     rc = pmix_ptl_base_make_connection(peer,
                                                        (NULL != cn->local_uri) ? cn->local_uri
                                                                                : cn->uri,
                                                        iptr, niptr);
+                    if (PMIX_SUCCESS != rc && PMIX_SUCCESS != pmix_ptl_base.server_refusal &&
+                        !singleton_refusal_shown) {
+                        /* the server answered, and did not take us */
+                        singleton_refusal_shown = true;
+                        pmix_show_help("help-ptl-base.txt", "singleton-refused", true,
+                                       pmix_globals.hostname, cn->nspace,
+                                       PMIx_Error_string(pmix_ptl_base.server_refusal));
+                    }
                 }
                 if (PMIX_SUCCESS == rc) {
                     /* don't free nspace/uri - we will use them below */
@@ -274,6 +327,15 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
     rc = pmix_ptl_base_parse_uri(evar, &nspace, &rank, &suri);
     if (PMIX_SUCCESS != rc) {
         goto error;
+    }
+    if (named) {
+        /* only a local socket's handshake says what the server speaks */
+        rc = pmix_ptl_base_uri_to_addr(suri, &addr, &addrlen, &transport);
+        if (PMIX_SUCCESS != rc || NULL == transport->peer_identity) {
+            pmix_show_help("help-ptl-base.txt", "client-uri-not-local", true, evar);
+            rc = PMIX_ERR_NOT_SUPPORTED;
+            goto error;
+        }
     }
     /* the token our rank was given, if it is this server's */
     rc = pmix_ptl_base_add_token(&iptr, &niptr, nspace, rank);

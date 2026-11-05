@@ -2655,6 +2655,9 @@ static pmix_status_t server_status(uint32_t u32)
 {
     pmix_status_t reply = (pmix_status_t) u32;
 
+    if (PMIX_SUCCESS != reply) {
+        pmix_ptl_base.server_refusal = reply;
+    }
     if (PMIX_ERR_LOCAL_URI_REQUIRED == reply) {
         /* say where the address came from, and what to use instead. A
          * file that gave us only TCP is a hand-made one, or one read on
