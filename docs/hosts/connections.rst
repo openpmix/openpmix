@@ -55,9 +55,16 @@ on it.
   keeps its token but ends the binding, so the next client process to
   connect with it binds it. Where the kernel reports no pid for a connection on
   the local socket, that connection is checked for its token alone and
-  binds nothing. The binding applies to client connections only: a tool
-  that names a client's rank is checked for the rank's token alone,
-  whatever pid it comes from, and its connection binds nothing.
+  binds nothing. A tool that names a client's rank presents the rank's
+  token too. Once the token is bound, a tool on the local socket is
+  taken on it only from the pid it is bound to: a tool from any other
+  pid is refused with ``PMIX_ERR_EXISTS``, before the host is asked, as
+  it is while the rank has a connection, and one that took the rank from
+  its environment then connects with an identity the host gives it (see
+  :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`). A token not yet bound
+  is checked alone, from any pid. A tool's connection never binds the
+  token, so the tools a job script starts, one after another, each take
+  the script's rank while no client process has connected with it.
 * A rank takes one connection at a time. A second connection for a
   rank that already has one - live, or waiting on the host's answer -
   is refused with ``PMIX_ERR_EXISTS``, and the host is not asked about

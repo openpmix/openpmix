@@ -30,6 +30,12 @@
  * namespace the host gives it; a tool the host will not give one is told
  * its rank is taken.
  *
+ * A job script that runs a client, which initializes and finalizes, and
+ * then a tool, both with the script's environment: the tool is another
+ * process than the one the rank's token is bound to, and comes up under
+ * the namespace the host gives it. A job script that runs no client and
+ * two tools, one after the other: each takes the script's rank.
+ *
  * Each case runs in a server of its own, which execs this program as its
  * clients. They signal the server over pipes whose descriptors are in
  * their environment.
@@ -284,6 +290,74 @@ static int run_refused_tool(void)
             PMIx_tool_finalize();
         }
         return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
+/* initialize and finalize */
+static int run_quick(void)
+{
+    pmix_proc_t me;
+    pmix_status_t rc;
+
+    rc = PMIx_Init(&me, NULL, 0);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "    PMIx_Init failed: %s\n", PMIx_Error_string(rc));
+        return CHILD_SETUP;
+    }
+    PMIx_Finalize(NULL, 0);
+    return CHILD_PASS;
+}
+
+/* a tool with the environment of a rank no process holds: it takes the
+ * rank */
+static int run_rank_tool(void)
+{
+    pmix_proc_t me;
+    pmix_status_t rc;
+
+    rc = PMIx_tool_init(&me, NULL, 0);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "    the tool's PMIx_tool_init returned %s\n", PMIx_Error_string(rc));
+        return CHILD_FAIL;
+    }
+    if (!PMIx_Check_nspace(me.nspace, RI_NSPACE) || 0 != me.rank) {
+        fprintf(stdout, "    the tool came up as %s:%u\n", me.nspace, me.rank);
+        PMIx_tool_finalize();
+        return CHILD_FAIL;
+    }
+    PMIx_tool_finalize();
+    return CHILD_PASS;
+}
+
+/* a job script: no PMIx of its own, it runs each of `roles` in turn, with
+ * its environment, and stops at the first that does not pass */
+static int run_script(char *self, const char *const *roles)
+{
+    char *args[3];
+    pid_t child;
+    int n, status;
+
+    for (n = 0; NULL != roles[n]; n++) {
+        child = fork();
+        if (0 > child) {
+            return CHILD_SETUP;
+        }
+        if (0 == child) {
+            args[0] = self;
+            args[1] = (char *) roles[n];
+            args[2] = NULL;
+            execve(self, args, environ);
+            _exit(CHILD_SETUP);
+        }
+        status = 0;
+        if (child != waitpid(child, &status, 0) || !WIFEXITED(status)) {
+            return CHILD_SETUP;
+        }
+        if (CHILD_PASS != WEXITSTATUS(status)) {
+            fprintf(stdout, "    the script's %s did not pass\n", roles[n]);
+            return WEXITSTATUS(status);
+        }
     }
     return CHILD_PASS;
 }
@@ -660,6 +734,46 @@ static int run_refused_script_tool(char *self)
     return case_script_tool(self, true);
 }
 
+/* a job script runs a client, which initializes and finalizes, then a
+ * tool, both with the script's environment */
+static int run_script_client_tool(char *self)
+{
+    client_t cl;
+    int rc;
+
+    if (PMIX_SUCCESS != start_server(1) || !start_client(self, 0, "clientthentool", &cl)) {
+        return CHILD_SETUP;
+    }
+    if (CHILD_PASS != (rc = finish(&cl))) {
+        return rc;
+    }
+    if (1 != ntools) {
+        fprintf(stdout, "    the host was asked about %d tools\n", ntools);
+        return CHILD_FAIL;
+    }
+    return expect(1, 2, 1);
+}
+
+/* a job script runs two tools, one after the other, and no client */
+static int run_script_two_tools(char *self)
+{
+    client_t cl;
+    int rc;
+
+    if (PMIX_SUCCESS != start_server(1) || !start_client(self, 0, "twotools", &cl)) {
+        return CHILD_SETUP;
+    }
+    if (CHILD_PASS != (rc = finish(&cl))) {
+        return rc;
+    }
+    if (2 != ntools + nconnected) {
+        fprintf(stdout, "    the host was asked about %d tools and %d clients\n", ntools,
+                nconnected);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
 /* a client execs a program that initializes: the client is lost, and the
  * program comes up as a singleton */
 static int run_exec_singleton(char *self)
@@ -812,6 +926,20 @@ int main(int argc, char **argv)
         if (0 == strcmp(argv[1], "refusedtool")) {
             return run_refused_tool();
         }
+        if (0 == strcmp(argv[1], "quick")) {
+            return run_quick();
+        }
+        if (0 == strcmp(argv[1], "ranktool")) {
+            return run_rank_tool();
+        }
+        if (0 == strcmp(argv[1], "clientthentool")) {
+            static const char *const roles[] = {"quick", "tool", NULL};
+            return run_script(argv[0], roles);
+        }
+        if (0 == strcmp(argv[1], "twotools")) {
+            static const char *const roles[] = {"ranktool", "ranktool", NULL};
+            return run_script(argv[0], roles);
+        }
         return CHILD_SETUP;
     }
 
@@ -829,6 +957,10 @@ int main(int argc, char **argv)
              run_script_tool, argv[0]);
     run_case("a tool with a connected rank's identity the host gives none is told it is taken",
              run_refused_script_tool, argv[0]);
+    run_case("a tool a job script runs after its client finalized is given an identity",
+             run_script_client_tool, argv[0]);
+    run_case("two tools a job script runs in turn, and no client, each take its rank",
+             run_script_two_tools, argv[0]);
     run_case("a client that dies without finalizing is lost at once", run_died, argv[0]);
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);

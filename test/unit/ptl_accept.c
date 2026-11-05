@@ -102,11 +102,13 @@
  * on the local socket. That process connects again after it disconnects
  * or finalizes; a client in another process - a forked child - presenting
  * the token is refused with PMIX_ERR_INVALID_CRED before the host is
- * asked, and the disconnect has not unbound it. A tool on the rank is
- * checked for the token alone: from another process it is taken once the
- * rank has no live connection, it is refused with PMIX_ERR_EXISTS while a
- * client of the rank is live, and its connection binds nothing, so a
- * client in another process connecting after it binds the token. Once the
+ * asked, and the disconnect has not unbound it. A tool on the rank, once
+ * the rank has no live connection, is taken from the bound process and
+ * refused with PMIX_ERR_EXISTS from another, the host not asked; it is
+ * refused with PMIX_ERR_EXISTS while a client of the rank is live; a tool
+ * on a rank whose token is not bound is checked for the token alone; and
+ * a tool's connection binds nothing, so a client in another process
+ * connecting after it binds the token. Once the
  * host prepares the rank again, another process connects with the new
  * token and the old one is refused; the same after the host deregisters,
  * registers and prepares it. Registering the rank again keeps its token,
@@ -2612,8 +2614,9 @@ static char *prepare_again(void)
  *   2 - the same after the first process finalized: a disconnect does not
  *       unbind the token;
  *   3 - a tool on the rank from another process, once the rank has no
- *       live connection, is taken on its token alone, and the token stays
- *       bound to the first process;
+ *       live connection, is refused with PMIX_ERR_EXISTS, the host not
+ *       asked; a tool from the first process is taken; the token stays
+ *       bound to the first process, which then connects as a client;
  *   4 - once the host prepares the rank again, another process connects
  *       with the new token; the old token is refused, and the new one is
  *       then bound to the other process;
@@ -2659,6 +2662,16 @@ static int case_token_pid(int how)
     case 3:
         reply = pid_connect_child(ac_token, true, NULL);
         rc = expect_status("a tool in another process presenting the rank's token", reply,
+                           PMIX_ERR_EXISTS);
+        if (CHILD_PASS != rc) {
+            return rc;
+        }
+        if (asked != nclient_connected + ntool_connected) {
+            fprintf(stdout, "    the host was asked about the tool in another process\n");
+            return CHILD_FAIL;
+        }
+        reply = pid_connect_tool(ac_token, &sd);
+        rc = expect_status("a tool in the first process presenting the rank's token", reply,
                            PMIX_SUCCESS);
         if (CHILD_PASS != rc) {
             return rc;
@@ -2668,6 +2681,8 @@ static int case_token_pid(int how)
                     nclient_connected + ntool_connected - asked);
             return CHILD_FAIL;
         }
+        close(sd);
+        usleep(300000);
         if (getpid() != pmix_ptl_base_token_pid(AC_NSPACE, 0)) {
             fprintf(stdout, "    after the tool the token is bound to pid %ld, not %ld\n",
                     (long) pmix_ptl_base_token_pid(AC_NSPACE, 0), (long) getpid());
@@ -5349,7 +5364,7 @@ int main(int argc, char **argv)
              run_token_pid_other);
     run_case("...after the first process finalized too: a disconnect leaves the binding",
              run_token_pid_finalized);
-    run_case("a tool on the rank in another pid is taken on its token, and binds nothing",
+    run_case("a tool on a bound rank is taken from the bound pid, and refused from another",
              run_token_pid_tool);
     run_case("a tool on the rank while a client of it is live is refused as a second "
              "connection",
