@@ -32,6 +32,9 @@ the page for your role:
    * - write a resource manager, launcher, or other host environment
        that embeds the PMIx server library
      - :doc:`hosts`
+   * - write a system scheduler (workload manager) that runtime
+       environments attach to
+     - :doc:`schedulers`, after :doc:`hosts`
    * - write an application, library, or programming model (an MPI
        implementation, say) that calls ``PMIx_Init``
      - :doc:`libraries`
@@ -224,4 +227,5 @@ Testing
    admins
    tools
    hosts
+   schedulers
    libraries

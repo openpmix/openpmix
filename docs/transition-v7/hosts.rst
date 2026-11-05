@@ -7,7 +7,8 @@ everything listed here, and serves as an example; the contract applies
 to any host.
 
 This page summarizes. The detail is in :ref:`label-host-env`, which
-each section links to.
+each section links to. A system scheduler should also read
+:doc:`schedulers`.
 
 
 The shape of the change
