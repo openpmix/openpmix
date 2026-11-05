@@ -59,6 +59,7 @@ char *pmix_progress_thread_cpus = NULL;
 bool pmix_bind_progress_thread_reqd = false;
 int pmix_maxfd = 1024;
 int pmix_server_client_fintime;
+int pmix_tool_fintime;
 bool pmix_keep_fqdn_hostnames = false;
 bool pmix_log_host_only = false;
 
@@ -423,6 +424,13 @@ pmix_status_t pmix_register_params(void)
                                       "Time in seconds to wait for server to ack client finalize request",
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_server_client_fintime);
+
+    pmix_tool_fintime = 5;
+    (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "tool_finalize_timeout",
+                                      "Time in seconds a tool waits for its server to ack its "
+                                      "finalize request",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_tool_fintime);
 
     pmix_keep_fqdn_hostnames = false;
     (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "keep_fqdn_hostnames",

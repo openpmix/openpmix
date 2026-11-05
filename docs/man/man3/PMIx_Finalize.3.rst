@@ -74,7 +74,8 @@ and depends on how the PMIx implementation was built.
   the caller's namespace as part of the finalize operation. ``PMIx_Finalize``
   performs no internal barrier by default; setting this attribute to ``true``
   directs it to run the equivalent of a :ref:`PMIx_Fence(3) <man3-PMIx_Fence>`
-  over the caller's namespace before disconnecting from the local server.
+  over the caller's namespace before disconnecting from the local server. A
+  failure of that fence is logged and does not stop the finalize.
 
 
 RETURN VALUE
@@ -92,11 +93,19 @@ PMIx error constant is returned, including:
   mid-callback. Nothing was finalized, and the call may be repeated from another
   thread.
 
+* ``PMIX_ERR_TIMEOUT`` |mdash| the local server did not answer the termination
+  handshake within the ``pmix_finalize_timeout`` parameter's time (10 seconds
+  by default).
+
 Any other negative value reports a failure to complete the termination handshake
-with the local server |mdash| the caller's departure may not have been recorded
-there. The local teardown is carried out regardless: the library is finalized
-and must not be used again without a fresh ``PMIx_Init``. PMIx error constants
-are defined in ``pmix_common.h``.
+with the local server |mdash| the host's answer to it, or a failure to send it
+|mdash| and the caller's departure may not have been recorded there. A host that
+does not implement the ``client_finalized`` up-call is not a failure, nor is a
+server that closes the connection in answer instead of replying, as some servers
+of earlier releases do. The local
+teardown is carried out regardless: the library is finalized and must not be
+used again without a fresh ``PMIx_Init``. PMIx error constants are defined in
+``pmix_common.h``.
 
 
 NOTES

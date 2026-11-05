@@ -41,8 +41,9 @@ some reason, the connection cannot be cleanly closed.
 
 If the tool is currently connected to a server, ``PMIx_tool_finalize`` sends a
 finalize synchronization to that server and waits for the acknowledgment. This
-wait is protected by an internal timeout so the call cannot block indefinitely
-should the server become unresponsive. Any output still buffered for the tool's
+wait is bounded by the ``pmix_tool_finalize_timeout`` parameter (5 seconds by
+default), so the call cannot block indefinitely should the server become
+unresponsive. Any output still buffered for the tool's
 local ``stdout``/``stderr`` sinks is flushed before those sinks are torn down.
 
 If the tool was acting as a launcher or server, any children it started are
@@ -71,9 +72,20 @@ a PMIx error constant is returned, including:
 
 * ``PMIX_ERR_INIT`` |mdash| the PMIx tool library was not initialized, so there is
   nothing to finalize.
+* ``PMIX_ERR_WOULD_BLOCK`` |mdash| ``PMIx_tool_finalize`` was called from within a
+  PMIx event handler or callback. The teardown waits on the PMIx progress thread
+  and then stops it, which from that thread would be the thread waiting on
+  itself. Nothing was finalized, and the call may be repeated from another
+  thread.
+* ``PMIX_ERR_TIMEOUT`` |mdash| the server did not answer the finalize handshake
+  in time.
 
 Other negative values indicate a failure to cleanly complete the finalize
-handshake with the server. PMIx error constants are defined in ``pmix_common.h``.
+handshake with the server: the host's answer to it, or a failure to send it. A
+host that does not implement the ``client_finalized`` up-call is not a failure,
+nor is a server that closes the connection in answer instead of replying.
+In every case but ``PMIX_ERR_INIT`` and ``PMIX_ERR_WOULD_BLOCK`` the library is
+finalized. PMIx error constants are defined in ``pmix_common.h``.
 
 
 NOTES

@@ -692,6 +692,10 @@ PMIX_EXPORT bool pmix_ptl_base_reap_if_closed(pmix_peer_t *peer);
  * socket still open. A blocking socket is not looked at where the look
  * could wait: false */
 PMIX_EXPORT bool pmix_ptl_base_sd_closed(int sd);
+
+/* Complete the requests waiting on a reply from peer - none is coming -
+ * with an empty buffer, which their callbacks read as no reply */
+PMIX_EXPORT void pmix_ptl_base_complete_recvs(pmix_peer_t *peer);
 /* The time now, on a clock that only goes forward where there is one */
 PMIX_EXPORT void pmix_ptl_base_monotime(struct timeval *tv);
 /* Tell the host that `proc`, which it accepted, is not connected: the

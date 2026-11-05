@@ -112,7 +112,7 @@ static void deliver_empty(pmix_peer_t *peer, pmix_ptl_tag_t tag,
  * to unpack a message that was never sent. The recvs are moved to a list
  * of our own before any callback runs, so a callback cannot disturb the
  * walk. */
-static void complete_recvs(pmix_peer_t *peer)
+void pmix_ptl_base_complete_recvs(pmix_peer_t *peer)
 {
     pmix_ptl_posted_recv_t *rcv, *rnext;
     pmix_list_t done;
@@ -179,8 +179,11 @@ static void lost_connection(pmix_peer_t *peer)
          * closed. It is neither lost nor reported */
         bool fin = peer->finalized || peer->finalize_counted;
 
-        if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-            /* If the peer simply died without finalizing, account for it:
+        if (peer != pmix_client_globals.myserver && !peer->upstream) {
+            /* A process of our own - not a server of ours, which a
+             * launcher, a tool and a server at once, also has.
+             *
+             * If the peer simply died without finalizing, account for it:
              * its job has one local process fewer, and every collective it
              * was to take part in records it as departed. The host may have
              * told us first - by deregistering it - and the same routine
@@ -230,7 +233,7 @@ static void lost_connection(pmix_peer_t *peer)
         if (peer != pmix_client_globals.myserver) {
             pmix_pstat_base_peer_lost((struct pmix_peer_t *) peer);
         }
-        complete_recvs(peer);
+        pmix_ptl_base_complete_recvs(peer);
         if (!pmix_globals.mypeer->finalized && !fin) {
             /* if this peer already called finalize, then
              * we are just seeing their connection go away
@@ -294,7 +297,7 @@ static void lost_connection(pmix_peer_t *peer)
          * tool attached to several servers loses one that is not its
          * primary through here too, and used to leave every request
          * outstanding on it waiting forever */
-        complete_recvs(peer);
+        pmix_ptl_base_complete_recvs(peer);
         /* if I called finalize, then don't generate an event.
          *
          * No aggregation window here: this report names my one and only
