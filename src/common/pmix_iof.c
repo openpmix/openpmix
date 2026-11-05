@@ -43,6 +43,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_fd.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_os_dirpath.h"
@@ -3148,6 +3149,19 @@ void pmix_iof_close_sinks(void)
     }
 }
 
+/* A write to a sink. One of our own making - a child's stdin pipe, a
+ * file - whose reader has gone fails with EPIPE rather than raise
+ * SIGPIPE. Our stdout and stderr are the process's, and what a write to
+ * them does when their reader goes - "prun | head" - is the process's to
+ * decide, so those are written as the process writes them */
+static int iof_write(int fd, const char *data, int numbytes)
+{
+    if (2 < fd) {
+        return (int) pmix_fd_write_once_nosigpipe(fd, data, (size_t) numbytes);
+    }
+    return (int) write(fd, data, numbytes);
+}
+
 void pmix_iof_static_dump_output(pmix_iof_sink_t *sink)
 {
     bool dump;
@@ -3160,7 +3174,7 @@ void pmix_iof_static_dump_output(pmix_iof_sink_t *sink)
         /* make one last attempt to write this out */
         while (NULL != (output = (pmix_iof_write_output_t *) pmix_list_remove_first(&wev->outputs))) {
             if (!dump && 0 < output->numbytes) {
-                num_written = write(wev->fd, output->data, output->numbytes);
+                num_written = iof_write(wev->fd, output->data, output->numbytes);
                 if (output->numbytes > num_written) {
                     /* don't retry - just cleanout the list and dump it */
                     dump = true;
@@ -3209,7 +3223,7 @@ void pmix_iof_write_handler(int sd, short args, void *cbdata)
              * sit in this list unwritten until finalize */
             continue;
         }
-        num_written = write(wev->fd, output->data, output->numbytes);
+        num_written = iof_write(wev->fd, output->data, output->numbytes);
         if (0 > num_written) {
             if (EAGAIN == errno || EINTR == errno) {
                 /* push this item back on the front of the list */

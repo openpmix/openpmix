@@ -878,6 +878,16 @@ what every later access decision for this peer uses.
 Settling the identity is a single step: no component runs an exchange
 with the peer.
 
+It can wait on a service, though, and does so on the progress thread,
+where the server serves no other connection or event meanwhile. munge's
+decode asks the MUNGE daemon, for every connection. And where the kernel
+does not give the peer's groups - a TCP peer, or a platform with no such
+list - its group is checked against the passwd and group databases,
+which may ask a directory service through NSS; those answers are cached,
+so a later connection by the same user does not ask again while they
+last. A host whose MUNGE daemon or name service can be slow to answer
+should expect each delay to be the server's too.
+
 Calling the host
 ^^^^^^^^^^^^^^^^
 
@@ -1384,6 +1394,9 @@ Host obligations, in one place
 A peer that vanishes while the server writes to it costs the server an
 error on that connection, never a ``SIGPIPE``: no write PMIx makes to a
 connection's socket can raise it, nor the write of its URI to a pipe the
-host names (``PMIX_SERVER_REPORT_URI``). A host need not change its own
-handling of that signal for connections. (Output forwarding writes pipes
-of its own, and is described with it.)
+host names (``PMIX_SERVER_REPORT_URI``). Nor can a write forwarding output or
+input to a pipe or file of the library's own, such as a child's stdin. A
+host need not change its own handling of that signal for any of these.
+Output written to the process's own stdout and stderr is written as the
+process writes it: if their reader goes, that write raises ``SIGPIPE``
+as any other write the process makes there would.
