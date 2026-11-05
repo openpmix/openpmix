@@ -391,6 +391,7 @@ test/unit/nspace_membership
 test/unit/tool_rndz
 test/unit/tool_api
 test/unit/tool_attach_nb
+test/unit/connect_inputs
 test/unit/tool_evcache
 test/unit/event_forward
 test/unit/session_update

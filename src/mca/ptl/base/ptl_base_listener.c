@@ -930,6 +930,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
                                      pmix_ptl_made_dir_t *made, bool *file_created,
                                      int *dirfd_out, int given_dirfd)
 {
+    char tbuf[64];
     int fd, dirfd;
     char *dirname, *tmp, *compat;
     const char *base, *local;
@@ -1044,8 +1045,12 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
         return PMIX_ERR_FILE_OPEN_FAILURE;
     }
 
-    /* output the information */
+    /* output the information - the time as ctime() writes it, newline and
+     * all, which leaves the empty line older readers find there */
     mytime = time(NULL);
+    if (NULL == ctime_r(&mytime, tbuf)) {
+        snprintf(tbuf, sizeof(tbuf), "\n");
+    }
     /* The five lines every release reads by position come first and are
      * unchanged; our local transport's address, wire formats and security
      * mechanisms follow them, tagged, where no older reader looks. */
@@ -1057,7 +1062,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
                           uri, PMIX_VERSION, (unsigned long)pmix_globals.pid,
                           (unsigned long)pmix_globals.uid,
                           (unsigned long)pmix_globals.gid,
-                          ctime(&mytime),
+                          tbuf,
                           (NULL == local) ? "" : PMIX_PTL_LOCAL_URI_TAG,
                           (NULL == local) ? "" : pmix_globals.hostname,
                           (NULL == local) ? "" : ";",

@@ -47,6 +47,15 @@
  *     answers with a request for a
  *     security handshake and then
  *     waits                            -> a failure at once, not initialized
+ *   - a PMIX_SERVER_URI directive that
+ *     is not a string, or names no URI
+ *     variable before the URI          -> PMIX_ERR_BAD_PARAM, not initialized
+ *   - a PMIX_SERVER_URI41 directive in
+ *     a process whose environment says
+ *     its launcher is v3.1             -> the directive's server is taken
+ *                                         for a v4.1 one: PMIX_ERR_COMM_FAILURE
+ *                                         at the dead port, not
+ *                                         PMIX_ERR_OUTDATED
  */
 
 #include "src/include/pmix_config.h"
@@ -356,6 +365,51 @@ static void test_directive_dead_port(void)
            PMIX_ERR_COMM_FAILURE, 0);
 }
 
+/* A PMIX_SERVER_URI directive the client cannot use as one: a bool, a
+ * NULL string, or a string with nothing before its first ';' */
+static void directive_case(const char *name, int kind)
+{
+    int fds[2], port;
+    pid_t child;
+    result_t res;
+    bool got, flag = true;
+    char uri[160];
+    pmix_info_t info;
+
+    port = dead_port();
+    if (0 > port || 0 != pipe(fds)) {
+        report(name, 0, "setup failed");
+        return;
+    }
+    child = fork();
+    if (0 == child) {
+        close(fds[0]);
+        clear_server_env();
+        if (0 == kind) {
+            PMIX_INFO_LOAD(&info, PMIX_SERVER_URI, &flag, PMIX_BOOL);
+        } else if (1 == kind) {
+            PMIX_INFO_CONSTRUCT(&info);
+            PMIX_LOAD_KEY(info.key, PMIX_SERVER_URI);
+            info.value.type = PMIX_STRING;
+            info.value.data.string = NULL;
+        } else if (2 == kind) {
+            snprintf(uri, sizeof(uri), ";" SERVER_ID ";tcp4://127.0.0.1:%d", port);
+            PMIX_INFO_LOAD(&info, PMIX_SERVER_URI, uri, PMIX_STRING);
+        } else {
+            /* the launcher's release, in the environment, is not the
+             * directive's server's */
+            setenv("PMIX_VERSION", "3.1.0", 1);
+            snprintf(uri, sizeof(uri), "PMIX_SERVER_URI41;" SERVER_ID ";tcp4://127.0.0.1:%d",
+                     port);
+            PMIX_INFO_LOAD(&info, PMIX_SERVER_URI, uri, PMIX_STRING);
+        }
+        child_init(fds[1], &info, 1);
+    }
+    close(fds[1]);
+    got = collect(child, fds[0], &res);
+    expect(name, got, &res, (3 == kind) ? PMIX_ERR_COMM_FAILURE : PMIX_ERR_BAD_PARAM, 0);
+}
+
 /* A server that answers the connect-ack with a request for a security
  * handshake, and then holds the connection open, waiting for the
  * handshake. The client runs none: it must fail at once, rather than wait
@@ -439,6 +493,11 @@ int main(void)
     test_env_dropped_connection();
     test_directive_dead_port();
     test_env_handshake_request();
+    directive_case("a PMIX_SERVER_URI directive that is not a string is refused", 0);
+    directive_case("...nor one whose string is NULL", 1);
+    directive_case("...nor one naming no URI variable before the URI", 2);
+    directive_case("a directive's server is of the release its variable names, not the "
+                   "launcher's", 3);
 
     fprintf(stdout, "client_connect_fail: %d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;

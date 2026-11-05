@@ -29,7 +29,9 @@
 #ifdef HAVE_STRING_H
 #    include <string.h>
 #endif
+#include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
@@ -77,7 +79,6 @@
 
 #include "src/tool/pmix_tool_ops.h"
 
-#define PMIX_MAX_RETRIES 10
 
 static pmix_event_t parentdied;
 static pmix_proc_t myparent;
@@ -578,7 +579,13 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                 nspace = strdup(info[n].value.data.string);
                 nspace_given = true;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_RANK)) {
-                rank = info[n].value.data.rank;
+                /* a rank, of whatever integer type it was given as - read
+                 * out of the union as a rank, any other type is garbage */
+                if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &rank, PMIX_PROC_RANK)) {
+                    PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                    free(nspace);
+                    return PMIX_ERR_BAD_PARAM;
+                }
                 rank_given = true;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_FWD_STDIN)) {
                 /* they want us to forward our stdin to someone */
@@ -664,7 +671,20 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
      * multi-process tool */
     if (!rank_given) {
         if (NULL != (evar = pmix_idenv_get("PMIX_RANK"))) {
-            rank = strtol(evar, NULL, 10);
+            char *endp;
+            unsigned long rk;
+
+            /* all of it a rank, as the client reads it: strtol answered 0
+             * for a string it could not read at all */
+            errno = 0;
+            rk = strtoul(evar, &endp, 10);
+            if ('\0' == evar[0] || '\0' != *endp || '-' == evar[0] || 0 != errno ||
+                !PMIX_RANK_IS_VALID(rk)) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                free(nspace);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            rank = (pmix_rank_t) rk;
             if (!nspace_in_enviro) {
                 /* this is an error - we can't have one and not
                  * the other */
@@ -701,12 +721,26 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     /* if we were given a keepalive pipe, register an
      * event to capture the event */
     if (NULL != (evar = getenv("PMIX_KEEPALIVE_PIPE"))) {
-        keepalive_fd = strtol(evar, NULL, 10);
-        pmix_event_set(pmix_globals.evbase, &parentdied, keepalive_fd, PMIX_EV_READ,
-                       pdiedfn, NULL);
-        pmix_event_add(&parentdied, NULL);
+        char *endp;
+        long kfd;
+
+        /* all of it a descriptor number, and one that is open: strtol
+         * answered 0 - our stdin - for a string it could not read */
+        errno = 0;
+        kfd = strtol(evar, &endp, 10);
+        if ('\0' == evar[0] || '\0' != *endp || 0 != errno || 0 > kfd || INT_MAX < kfd ||
+            -1 == fcntl((int) kfd, F_GETFD)) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "pmix:tool PMIX_KEEPALIVE_PIPE \"%s\" names no open descriptor "
+                                "- not watched", evar);
+        } else {
+            keepalive_fd = (int) kfd;
+            pmix_event_set(pmix_globals.evbase, &parentdied, keepalive_fd, PMIX_EV_READ,
+                           pdiedfn, NULL);
+            pmix_event_add(&parentdied, NULL);
+            pmix_fd_set_cloexec(keepalive_fd); // don't let children inherit this
+        }
         pmix_unsetenv("PMIX_KEEPALIVE_PIPE", &environ);
-        pmix_fd_set_cloexec(keepalive_fd); // don't let children inherit this
     }
 
     /* if we were given a name, then set it now */
@@ -2145,10 +2179,28 @@ void pmix_tool_retry_attach(int sd, short args, void *cbdata)
     peer->gds = peer->nptr->compat.gds;
 
     if (NULL != pmix_ptl.connect_to_peer_nb) {
+        /* A server's file that is not there yet is looked for again from
+         * a timer, not waited for on this thread - every other connection
+         * and event of ours is served by it. The delay and the number of
+         * looks are the connect's own (PMIX_CONNECT_RETRY_DELAY,
+         * PMIX_CONNECT_MAX_RETRIES), which the first look has read */
+        pmix_ptl_base.file_wait = (0 < cb->tries && cb->tries >= pmix_ptl_base.max_retries)
+                                      ? PMIX_PTL_FILE_LAST_LOOK
+                                      : PMIX_PTL_FILE_DEFER;
         rc = pmix_ptl.connect_to_peer_nb((struct pmix_peer_t *) peer, cb->info, cb->ninfo,
                                          attach_complete, cb);
+        pmix_ptl_base.file_wait = PMIX_PTL_FILE_WAIT;
         if (PMIX_SUCCESS == rc) {
             /* under way - attach_complete will be called */
+            return;
+        }
+        if (PMIX_ERR_TEMP_UNAVAILABLE == rc) {
+            PMIX_RELEASE(peer);
+            ++cb->tries;
+            PMIX_THREADSHIFT_DELAY(cb, pmix_tool_retry_attach,
+                                   (0 < pmix_ptl_base.wait_to_connect)
+                                       ? (float) pmix_ptl_base.wait_to_connect
+                                       : 0.01);
             return;
         }
         /* nothing was started, and nothing will call back */

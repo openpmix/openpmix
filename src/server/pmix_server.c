@@ -129,7 +129,6 @@ static pmix_event_t parentdied;
  * bookkeeping in PMIx_tool_init/PMIx_tool_finalize. */
 static int keepalive_fd = -1;
 static char *security_mode = NULL;
-static char *bfrops_mode = NULL;
 static char *gds_mode = NULL;
 static pid_t mypid;
 static pmix_proc_t myparent;
@@ -437,18 +436,15 @@ pmix_status_t pmix_server_initialize(void)
     /* get our available security modules */
     security_mode = pmix_psec_base_get_available_modules();
 
-    /* get our available bfrop modules */
-    bfrops_mode = pmix_bfrops_base_get_available_modules();
-
     /* get available gds modules */
     gds_mode = pmix_gds_base_get_available_modules();
 
-    /* All three are passed down to every child we fork, and PMIx_Setenv
+    /* Both are passed down to every child we fork, and PMIx_Setenv
      * turns a NULL value into an empty assignment rather than refusing -
      * so a failure here would not be reported anywhere, it would launch
-     * clients whose security, buffer and datastore modes are blank.
+     * clients whose security and datastore modes are blank.
      * Fail the init instead. */
-    if (NULL == security_mode || NULL == bfrops_mode || NULL == gds_mode) {
+    if (NULL == security_mode || NULL == gds_mode) {
         return PMIX_ERR_NOMEM;
     }
 
@@ -665,10 +661,6 @@ static void server_teardown(void)
         security_mode = NULL;
     }
 
-    if (NULL != bfrops_mode) {
-        free(bfrops_mode);
-        bfrops_mode = NULL;
-    }
 
     if (NULL != gds_mode) {
         free(gds_mode);
