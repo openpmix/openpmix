@@ -28,6 +28,7 @@ BEGIN_C_DECLS
 #endif
 #include <fcntl.h>
 #include <stdio.h>
+#include <sys/types.h>
 
 /* Where the platform has it, a file is opened close-on-exec - pass this in
  * open()'s flags - so no fork and exec on another thread can come between
@@ -97,6 +98,13 @@ PMIX_EXPORT pmix_status_t pmix_fd_write(int fd, int len, const void *buffer);
  * use between fork and exec.
  */
 PMIX_EXPORT pmix_status_t pmix_fd_write_nosigpipe(int fd, int len, const void *buffer);
+
+/**
+ * One write(), as pmix_fd_write_nosigpipe() makes it: what write()
+ * returns, with -1 and errno EPIPE where it would have raised SIGPIPE.
+ * For a non-blocking descriptor whose caller handles a partial write.
+ */
+PMIX_EXPORT ssize_t pmix_fd_write_once_nosigpipe(int fd, const void *buffer, size_t len);
 
 /**
  * Convenience function to set a file descriptor to be close-on-exec.
