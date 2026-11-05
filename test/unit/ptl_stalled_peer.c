@@ -427,10 +427,10 @@ static void run_case(const char *name, int which, const char *timeout)
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
-#if PMIX_ENABLE_LEGACY_PEERS
+#if PMIX_ENABLE_LEGACY_CLIENTS
     /* these cases are about the TCP listener, which a server opens for
      * clients and tools of earlier releases */
-    setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
+    setenv("PMIX_MCA_ptl_base_legacy_clients", "1", 1);
 #else
     fprintf(stdout, "this PMIx takes no clients or tools of earlier releases, so a "
                     "server has no TCP listener for these cases\n");

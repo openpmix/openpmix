@@ -1037,7 +1037,7 @@ int main(int argc, char **argv)
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     fprintf(stdout, "\n=== clients and tools on the local socket ===\n\n");
-#if !PMIX_ENABLE_LEGACY_PEERS
+#if !PMIX_ENABLE_LEGACY_CLIENTS
     /* several cases use the server's TCP listener, which it opens for
      * clients and tools of earlier releases */
     fprintf(stdout, "this PMIx takes no clients or tools of earlier releases, so the "
@@ -1133,10 +1133,17 @@ int main(int argc, char **argv)
 
     tool_case(&kids[4], "a tool finding the server by its file connects over the local socket");
 
-    client_case(&kids[5], "a client given another server's local URI ignores it, and is sent "
-                "back to the local socket from TCP",
+    /* both dial the server's TCP address: a server of this release sends
+     * them back to its local socket, and a PMIx built without legacy
+     * server support dials no TCP address at all */
+    client_case(&kids[5], PMIX_ENABLE_LEGACY_SERVERS
+                ? "a client given another server's local URI ignores it, and is sent "
+                  "back to the local socket from TCP"
+                : "a client given another server's local URI ignores it, and refuses "
+                  "the TCP address",
                 "other.server.7;usock:///tmp/pmix-no-such-dir/pmix-1;0:0",
-                PMIX_ERR_LOCAL_URI_REQUIRED, false);
+                PMIX_ENABLE_LEGACY_SERVERS ? PMIX_ERR_LOCAL_URI_REQUIRED : PMIX_ERR_NOT_SUPPORTED,
+                false);
 
     value = tcp_uri();
     if (NULL == value) {
@@ -1159,9 +1166,14 @@ int main(int argc, char **argv)
     if (NULL == copy || 0 > asprintf(&value, "file:%s", copy)) {
         return 1;
     }
-    tool_uri_case(&kids[9], "a tool reading a file whose local socket is another host's is "
-                  "sent to the local socket from TCP",
-                  value, false, PMIX_ERR_LOCAL_URI_REQUIRED);
+    tool_uri_case(&kids[9], PMIX_ENABLE_LEGACY_SERVERS
+                  ? "a tool reading a file whose local socket is another host's is "
+                    "sent to the local socket from TCP"
+                  : "a tool reading a file whose local socket is another host's refuses "
+                    "the TCP address",
+                  value, false,
+                  PMIX_ENABLE_LEGACY_SERVERS ? PMIX_ERR_LOCAL_URI_REQUIRED
+                                             : PMIX_ERR_NOT_SUPPORTED);
     free(value);
     unlink(copy);
     free(copy);

@@ -187,12 +187,12 @@ Role and support attributes
   system controller.
 * ``PMIX_SERVER_LEGACY_PEERS`` (bool) |mdash| take (or refuse) connections
   from clients and tools of PMIx releases before v7.0, which connect over
-  TCP. Overrides the ``ptl_base_legacy_peers`` MCA parameter, which
-  defaults to ``false``. With it, the server listens on a loopback
+  TCP. Overrides the ``ptl_base_legacy_clients`` MCA parameter (and
+  ``ptl_base_legacy_peers``, which sets it), which defaults to ``false``. With it, the server listens on a loopback
   interface for them and gives its clients the TCP address in the
   variables those releases read; without it the server has no TCP
   listener, and a client or tool of an earlier release cannot connect. Only a PMIx
-  configured ``--enable-legacy-peers`` can take them (the default is
+  configured ``--enable-legacy-clients`` can take them (the default is
   not to): in one without it, asking fails the init.
 * ``PMIX_SERVER_REMOTE_CONNECTIONS`` (bool) |mdash| **deprecated**. A server
   takes connections from its own host only: ``true`` fails the init, and
@@ -238,10 +238,10 @@ Connection attributes
 * ``PMIX_TCP_REPORT_URI`` (char\*) |mdash| report the server's URI: ``-``
   writes the local socket's URI to stdout and ``+`` to stderr; ``tcp-`` and
   ``tcp+`` write the TCP URI instead, for a reader of a release before v7.0,
-  and fail the init when the server takes no legacy peers and so has no TCP
+  and fail the init when the server takes no legacy clients and so has no TCP
   listener. An integer writes to that open file descriptor, which is then
   closed: the TCP URI's string and then the local socket's, each ending in a
-  NUL, when the server takes legacy peers, else the local socket's alone.
+  NUL, when the server takes legacy clients, else the local socket's alone.
   Anything else is taken as the name of a file to write it to.
 * ``PMIX_TCP_IF_INCLUDE`` (char\*) |mdash| comma-delimited list of devices
   and/or CIDR notation to listen on. Cannot be combined with

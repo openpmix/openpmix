@@ -284,7 +284,7 @@ static int run_remote_off(void)
  * instead */
 static int run_no_loopback(void)
 {
-#if PMIX_ENABLE_LEGACY_PEERS
+#if PMIX_ENABLE_LEGACY_CLIENTS
     char addr[INET_ADDRSTRLEN], name[IF_NAMESIZE + 1], path[1024];
     pmix_info_t info[2];
     pmix_status_t prc;

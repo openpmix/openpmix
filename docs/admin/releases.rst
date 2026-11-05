@@ -46,7 +46,10 @@ Clients and servers of different PMIx releases work together:
 
 * a server accepts clients and tools from PMIx v2.1 on, **when it is
   set up to take them** (below);
-* a client or tool connects to servers from PMIx v3.2 on.
+* a client or tool connects to servers from PMIx v3.2 on - unless PMIx
+  was configured ``--disable-legacy-servers``, when it connects only to
+  servers of v7.0 or later, and refuses an earlier one with a message
+  naming its release.
 
 This matters most for containers, which carry their own copy of the
 PMIx client library.
@@ -54,9 +57,9 @@ PMIx client library.
 **A server takes clients and tools of releases before v7.0 only when
 both of these hold:**
 
-* PMIx was configured with ``--enable-legacy-peers``. It is off by
+* PMIx was configured with ``--enable-legacy-clients``. It is off by
   default.
-* The server is told to take them: the ``ptl_base_legacy_peers`` MCA
+* The server is told to take them: the ``ptl_base_legacy_clients`` MCA
   parameter set to ``true`` where the host environment's servers read
   it (a parameter file, or their environment), or the host's
   ``PMIX_SERVER_LEGACY_PEERS`` attribute.
@@ -67,6 +70,12 @@ after printing one error line. An application in a container built
 with an older PMIx release behaves this way under a default v7
 server. Either set the server up to take earlier releases, or update
 the PMIx library in the container.
+
+Leave legacy server support in (the default) wherever applications
+may carry a PMIx v7 client library to a system whose resource manager
+runs an earlier release - in a container image, for example. Configure
+``--disable-legacy-peers`` only where every client, tool and server on
+the system is of v7.0 or later.
 
 See :ref:`label-version-numbers` and
 :ref:`label-sysadmin-authentication`.

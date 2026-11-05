@@ -33,10 +33,10 @@ handshake. The user-facing description is
 ## MCA parameters
 
 None. Whether a TCP peer the kernel cannot name is taken on its claim is
-`pmix_ptl_base.legacy_peers` (`ptl_base_legacy_peers` or
-`PMIX_SERVER_LEGACY_PEERS`): a server opens a TCP listener only to take
-legacy peers, and a claim is all a peer of an earlier release has to
-give.
+`pmix_ptl_base.legacy_clients` (`ptl_base_legacy_clients`,
+`ptl_base_legacy_peers` or `PMIX_SERVER_LEGACY_PEERS`): a server opens a
+TCP listener only to take legacy clients, and a claim is all a peer of an
+earlier release has to give.
 
 ## The credential
 
@@ -67,7 +67,7 @@ After the `PMIX_CRED_TYPE` screen and the protocol checks (a
    (`peer_on_host`) that the table does not show (`PMIX_ERR_NOT_FOUND`) is
    refused (`unowned-peer`): its end is in the table once it has sent. A
    platform with no table (`PMIX_ERR_NOT_SUPPORTED`, and only that) -
-   accepted on its claim when the server takes legacy peers, whatever
+   accepted on its claim when the server takes legacy clients, whatever
    release the peer is of, the claim still matching the recorded uid/gid;
    else refused (verbose output only - there is no
    TCP listener to reach it then). Any other failed lookup -

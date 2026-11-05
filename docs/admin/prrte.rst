@@ -79,8 +79,8 @@ Applications are not affected:
 * An application in a container that carries its own PMIx v5 client
   library runs under a PMIx v7 server - for example, one launched by
   PRRTE v5 - **only if that server takes clients of earlier
-  releases.** That needs a PMIx configured ``--enable-legacy-peers``
-  (off by default), and the ``ptl_base_legacy_peers`` MCA parameter
+  releases.** That needs a PMIx configured ``--enable-legacy-clients``
+  (off by default), and the ``ptl_base_legacy_clients`` MCA parameter
   set to ``true`` where PRRTE's daemons read it. Otherwise each
   process of the application runs as a singleton. See
   :ref:`label-sysadmin-releases`.

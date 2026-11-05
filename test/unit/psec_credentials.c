@@ -67,7 +67,7 @@
  *    table of TCP connections to ask.
  *
  * 6. Where the platform has no table of TCP connections
- *    (pmix_util_getid_test_no_tcp_table), a server that takes legacy peers
+ *    (pmix_util_getid_test_no_tcp_table), a server that takes legacy clients
  *    takes a peer on the identity it claims, as long as that matches the
  *    one recorded for it; one that does not, refuses it.
  *
@@ -913,7 +913,7 @@ static void native_unconfirmed(void)
     /* a peer the kernel cannot vouch for, which has no other way to say who
      * it is */
     make_cred(&cred, geteuid(), getegid());
-    pmix_ptl_base.legacy_peers = false;
+    pmix_ptl_base.legacy_clients = false;
     rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
     report("a peer on this host the kernel cannot confirm is refused", PMIX_ERR_INVALID_CRED == rc);
     if (NULL != results) {
@@ -921,16 +921,16 @@ static void native_unconfirmed(void)
         results = NULL;
         nresults = 0;
     }
-    pmix_ptl_base.legacy_peers = true;
+    pmix_ptl_base.legacy_clients = true;
     rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
-    report("...even by a server that takes legacy peers",
+    report("...even by a server that takes legacy clients",
            PMIX_ERR_INVALID_CRED == rc);
     if (NULL != results) {
         PMIX_INFO_FREE(results, nresults);
         results = NULL;
         nresults = 0;
     }
-    pmix_ptl_base.legacy_peers = false;
+    pmix_ptl_base.legacy_clients = false;
     PMIX_BYTE_OBJECT_DESTRUCT(&cred);
 
     PMIX_RELEASE(peer->info);
@@ -970,18 +970,18 @@ static void native_no_table(void)
     pmix_util_getid_test_no_tcp_table = true;
 
     make_cred(&cred, geteuid(), getegid());
-    pmix_ptl_base.legacy_peers = false;
+    pmix_ptl_base.legacy_clients = false;
     rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
-    report("no table: a server that takes no legacy peers refuses a TCP peer",
+    report("no table: a server that takes no legacy clients refuses a TCP peer",
            PMIX_ERR_INVALID_CRED == rc);
     if (NULL != results) {
         PMIX_INFO_FREE(results, nresults);
         results = NULL;
         nresults = 0;
     }
-    pmix_ptl_base.legacy_peers = true;
+    pmix_ptl_base.legacy_clients = true;
     rc = mod->validate_cred((struct pmix_peer_t *) peer, NULL, 0, &results, &nresults, &cred);
-    report("no table: a server that takes legacy peers takes one on its claim",
+    report("no table: a server that takes legacy clients takes one on its claim",
            PMIX_SUCCESS == rc);
     if (NULL != results) {
         PMIX_INFO_FREE(results, nresults);
@@ -1001,7 +1001,7 @@ static void native_no_table(void)
     report("no table: ...nor of another gid", PMIX_ERR_INVALID_CRED == rc);
     PMIX_BYTE_OBJECT_DESTRUCT(&cred);
 
-    pmix_ptl_base.legacy_peers = false;
+    pmix_ptl_base.legacy_clients = false;
     pmix_util_getid_test_no_tcp_table = false;
     close(client);
     PMIX_RELEASE(peer->info);

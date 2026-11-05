@@ -237,7 +237,7 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
             pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
             pmix_client_globals.myserver->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
             /* the system server's file, in the directories a system
-             * server writes it in - and, only with legacy peers on, at the
+             * server writes it in - and, only with legacy servers on, at the
              * system tmpdir, where one of an earlier release does */
             dirs = pmix_ptl_base_rndz_dirs(true);
             if (pmix_ptl_base_legacy_walk() && !pmix_ptl_base.system_tmpdir_given) {

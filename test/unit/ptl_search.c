@@ -966,9 +966,20 @@ static void test_compat(void)
     RESET();
     PMIX_SET_PEER_VERSION(peer, "5.0.9", 2, 0);
     rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);
+#if PMIX_ENABLE_LEGACY_SERVERS
     report("compat: an older server that lists none is matched by its version",
            PMIX_SUCCESS == rc && 0 == strcmp(peer->nptr->compat.bfrops->version, "v41"),
            PMIx_Error_string(rc));
+#else
+    report("compat: a server of an earlier release is refused - legacy servers not built",
+           PMIX_ERR_NOT_SUPPORTED == rc, PMIx_Error_string(rc));
+    RESET();
+    PMIX_SET_PEER_VERSION(peer, "6.1.2", 2, 0);
+    scratch.bfrops = strdup("v61,v51");
+    rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);
+    report("compat: ...whatever wire formats its file lists",
+           PMIX_ERR_NOT_SUPPORTED == rc, PMIx_Error_string(rc));
+#endif
 
     RESET();
     rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);

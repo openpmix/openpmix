@@ -18,7 +18,7 @@
  *     in the system tmpdir when the host names one
  *   - a tool finds a server by its pid in the server's user's directory;
  *     a file elsewhere below the system tmpdir, where a server of an
- *     earlier release writes, is found only with legacy peers on
+ *     earlier release writes, is found only with legacy servers on (ptl_base_legacy_servers)
  *   - a file a tool finds is believed only of its writer: one renamed for
  *     another pid leads to a server the kernel says is not that process,
  *     which is refused; one others may write is passed over; and, as
@@ -237,7 +237,7 @@ static pmix_status_t tool_by_pid(const char *sys, pid_t spid, bool legacy)
 
         close(fds[0]);
         setenv("TMPDIR", sys, 1);
-        setenv("PMIX_MCA_ptl_base_legacy_peers", legacy ? "1" : "0", 1);
+        setenv("PMIX_MCA_ptl_base_legacy_servers", legacy ? "1" : "0", 1);
         PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &spid, PMIX_PID);
         PMIX_INFO_LOAD(&info[1], PMIX_TOOL_CONNECT_OPTIONAL, NULL, PMIX_BOOL);
         rc = PMIx_tool_init(&me, info, 1);
@@ -280,7 +280,7 @@ static pmix_status_t tool_to_session(const char *sys, long sessid, pid_t *spid)
 
         close(fds[0]);
         setenv("TMPDIR", sys, 1);
-        setenv("PMIX_MCA_ptl_base_legacy_peers", "0", 1);
+        setenv("PMIX_MCA_ptl_base_legacy_servers", "0", 1);
         if (0 <= sessid) {
             PMIX_INFO_LOAD(&info[0], PMIX_SESSION_RNDZ_ID, &id, PMIX_UINT32);
         }
@@ -628,13 +628,13 @@ static void test_legacy_walk(void)
         stop_server(spid, ready, go);
         return;
     }
-    report("a server's file outside the pmix-user directories is not found without legacy peers",
+    report("a server's file outside the pmix-user directories is not found without legacy servers",
            PMIX_SUCCESS != tool_by_pid(sys, spid, false), "found");
-#if PMIX_ENABLE_LEGACY_PEERS
+#if PMIX_ENABLE_LEGACY_SERVERS
     report("...and is found with them", PMIX_SUCCESS == tool_by_pid(sys, spid, true),
            "not found");
 #else
-    fprintf(stdout, "  SKIP: ...and is found with them - no legacy peer support built\n");
+    fprintf(stdout, "  SKIP: ...and is found with them - no legacy server support built\n");
 #endif
     /* back, so the server removes it */
     (void) rename(to, from);

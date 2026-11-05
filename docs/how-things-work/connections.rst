@@ -136,8 +136,9 @@ accepting.
 A server listens on its **local socket**, where every client and tool of
 this release on its host connects. It listens on **TCP** only for those
 who use it: clients and tools of earlier releases, when it takes them
-(``ptl_base_legacy_peers``, or the host's ``PMIX_SERVER_LEGACY_PEERS``;
-off by default). A server takes connections from its own host only: a
+(``ptl_base_legacy_clients``, or the host's ``PMIX_SERVER_LEGACY_PEERS``;
+off by default, and only in a PMIx configured
+``--enable-legacy-clients``). A server takes connections from its own host only: a
 host that asks for connections from other hosts
 (``PMIX_SERVER_REMOTE_CONNECTIONS`` set to true) fails
 ``PMIx_server_init``. A server that cannot open a socket it needs fails
@@ -145,7 +146,7 @@ host that asks for connections from other hosts
 
 .. _label-conn-earlier-clients:
 
-.. important:: A server that does not take legacy peers cannot run clients
+.. important:: A server that does not take legacy clients cannot run clients
    of earlier releases. Such a client - an Open MPI 5 process, say, with
    its bundled PMIx v5.0 - is given only the local socket's URI, which it
    cannot use. Its connection fails, it logs one ``PMIX ERROR: BAD-PARAM``
@@ -153,9 +154,21 @@ host that asks for connections from other hosts
    separate one-process jobs. Nothing the server could set instead makes
    every earlier release stop rather than run alone - to such a client, no
    server and an unusable one both mean "singleton". The remedy is the
-   site's: build with ``--enable-legacy-peers`` and turn legacy peers on
-   (``ptl_base_legacy_peers``, or the host's ``PMIX_SERVER_LEGACY_PEERS``),
-   or update the clients along with their servers.
+   site's: build with ``--enable-legacy-clients`` and turn legacy clients
+   on (``ptl_base_legacy_clients``, or the host's
+   ``PMIX_SERVER_LEGACY_PEERS``), or update the clients along with their
+   servers.
+
+The other direction needs no setting. A client or tool of this release
+started by a server of an earlier release (v3.2 on) - a container's
+application under an older resource manager - connects to it over TCP,
+at the address and in the wire format the server's environment or
+rendezvous file gives it. Only a PMIx configured
+``--disable-legacy-servers`` refuses such a server: before it connects,
+naming the server's release, and with ``PMIX_ERR_NOT_SUPPORTED``, which
+fails a client's ``PMIx_Init`` rather than making it a singleton. It
+refuses any server address over TCP the same way, since only a server of
+an earlier release is reached at one.
 
 The local socket
 ^^^^^^^^^^^^^^^^
@@ -227,8 +240,8 @@ or the ``PMIX_TCP_REPORT_URI`` directive):
    :header-rows: 1
 
    * - Value
-     - Legacy peers on
-     - Legacy peers off
+     - Legacy clients on
+     - Legacy clients off
    * - ``-`` (stdout), ``+`` (stderr)
      - the local socket's URI
      - the local socket's URI
@@ -262,7 +275,7 @@ tools find it, in a directory only its user can write:
 system controller writes its file in ``/run/pmix``. A tool looks there,
 and in the directories of the other users whose servers it may talk to;
 it walks the whole system tmpdir, as an earlier release did, only with
-legacy peers on. The details are in :doc:`ptl`. Each file holds the URI, the
+legacy servers on (``ptl_base_legacy_servers``). The details are in :doc:`ptl`. Each file holds the URI, the
 server's version, pid, uid and gid, the local socket's URI, the wire
 formats and security mechanisms it accepts, and the lock that shows it
 is running (see `A server the kernel cannot name`_). The server removes
@@ -768,7 +781,7 @@ peer:
 * **Version.** A peer from PMIx v1 or v2.0 is refused with
   ``PMIX_ERR_OUTDATED``. See :ref:`label-version-numbers` for the
   supported floors. A peer of any release before v7.0 is refused with
-  ``PMIX_ERR_NOT_SUPPORTED`` unless the server takes legacy peers, and on
+  ``PMIX_ERR_NOT_SUPPORTED`` unless the server takes legacy clients, and on
   the local socket whether it does or not: no earlier release has that
   transport. A peer of v7.0 or later is refused on TCP with
   ``PMIX_ERR_LOCAL_URI_REQUIRED``: it uses the local socket, where the
@@ -812,7 +825,7 @@ Checks for a client
    registered nor prepared has none, and nothing is asked of it; nor is
    anything asked of the singleton a server was started for
    (``PMIX_SINGLETON``), which no host prepared. A client of an earlier
-   release presents none, and is not asked for one: with legacy peers, a
+   release presents none, and is not asked for one: with legacy clients, a
    connection over TCP that declares an earlier release is taken without
    a token.
 #. **Its wire format must match its job's.** All clients of one job use
@@ -866,7 +879,7 @@ depends on the component:
   the table does not show is refused. A peer at an address that is not
   this host's never reaches it (see above). On a platform with no table
   to ask, a TCP peer is accepted on its claim: the server has a TCP
-  listener only when it takes legacy peers. A table the server could
+  listener only when it takes legacy clients. A table the server could
   not read - it is out of descriptors or memory, say -
   is no answer, and the peer is refused. See
   :doc:`authentication/native`.

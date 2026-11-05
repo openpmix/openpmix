@@ -61,11 +61,24 @@
  *     PMIx does not have               -> PMIX_ERR_COMM_FAILURE, not initialized
  *                                         - the client freed a pointer into the
  *                                         directive's copy, and aborted
+ *
+ * In a PMIx built without legacy server support, every server here that
+ * is reached over TCP is of an earlier release (v4.1, by the variable it is
+ * named in), and is refused before any connection: PMIX_ERR_NOT_SUPPORTED,
+ * not initialized. The handshake case needs a connection, and is skipped.
  */
 
 #include "src/include/pmix_config.h"
 
 #include "include/pmix.h"
+
+/* what a case over TCP expects: `rc` from a server of v4.1, which a PMIx
+ * without legacy server support refuses before connecting */
+#if PMIX_ENABLE_LEGACY_SERVERS
+#define OVER_TCP(rc) (rc)
+#else
+#define OVER_TCP(rc) PMIX_ERR_NOT_SUPPORTED
+#endif
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -294,7 +307,7 @@ static void test_env_dead_port(void)
     close(fds[1]);
     got = collect(child, fds[0], &res);
     expect("environment names a port with nothing listening", got, &res,
-           PMIX_ERR_COMM_FAILURE, 0);
+           OVER_TCP(PMIX_ERR_COMM_FAILURE), 0);
 }
 
 static void test_env_dropped_connection(void)
@@ -339,7 +352,7 @@ static void test_env_dropped_connection(void)
     close(lsd);
     got = collect(child, fds[0], &res);
     expect("server accepts and closes without a reply", got, &res,
-           PMIX_ERR_COMM_FAILURE, 0);
+           OVER_TCP(PMIX_ERR_COMM_FAILURE), 0);
 }
 
 static void test_directive_dead_port(void)
@@ -367,7 +380,7 @@ static void test_directive_dead_port(void)
     close(fds[1]);
     got = collect(child, fds[0], &res);
     expect("PMIX_SERVER_URI directive names a port with nothing listening", got, &res,
-           PMIX_ERR_COMM_FAILURE, 0);
+           OVER_TCP(PMIX_ERR_COMM_FAILURE), 0);
 }
 
 /* A PMIX_SERVER_URI directive the client cannot use as one: a bool, a
@@ -417,9 +430,13 @@ static void directive_case(const char *name, int kind)
     }
     close(fds[1]);
     got = collect(child, fds[0], &res);
-    expect(name, got, &res, (2 < kind) ? PMIX_ERR_COMM_FAILURE : PMIX_ERR_BAD_PARAM, 0);
+    expect(name, got, &res,
+           (3 == kind) ? OVER_TCP(PMIX_ERR_COMM_FAILURE)
+                       : ((4 == kind) ? PMIX_ERR_COMM_FAILURE : PMIX_ERR_BAD_PARAM),
+           0);
 }
 
+#if PMIX_ENABLE_LEGACY_SERVERS
 /* A server that answers the connect-ack with a request for a security
  * handshake, and then holds the connection open, waiting for the
  * handshake. The client runs none: it must fail at once, rather than wait
@@ -491,6 +508,7 @@ static void test_env_handshake_request(void)
     report("server asks for a handshake: the client fails at once", got,
            "the child hung or died without reporting");
 }
+#endif
 
 int main(void)
 {
@@ -502,7 +520,12 @@ int main(void)
     test_env_dead_port();
     test_env_dropped_connection();
     test_directive_dead_port();
+#if PMIX_ENABLE_LEGACY_SERVERS
     test_env_handshake_request();
+#else
+    fprintf(stdout, "  SKIP: server asks for a handshake - no TCP connection is made to a "
+                    "server of an earlier release\n");
+#endif
     directive_case("a PMIX_SERVER_URI directive that is not a string is refused", 0);
     directive_case("...nor one whose string is NULL", 1);
     directive_case("...nor one naming no URI variable before the URI", 2);

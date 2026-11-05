@@ -836,7 +836,7 @@ Five rules, each of which a plausible "simplification" breaks:
   tries on macOS and FreeBSD - the
   answer is `PMIX_ERR_OUT_OF_RESOURCE`, never `PMIX_ERR_NOT_SUPPORTED`,
   and the `/proc` fallback does not paper over it. Callers depend on the
-  difference: `psec/native`, in a server that takes legacy peers, takes a
+  difference: `psec/native`, in a server that takes legacy clients, takes a
   peer on its claim only on `NOT_SUPPORTED`, and refuses on anything else; a
   tool's `pmix_ptl_base_check_server` refuses the server
   (`server-unidentified`). Read as "no table", a process that ran out of

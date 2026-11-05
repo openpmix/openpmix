@@ -91,8 +91,9 @@ that can run is active, and each opens its own listening socket:
      - Peers of earlier releases on the server's host. Its URI is
        ``<nspace>.<rank>;tcp4://<host>:<port>`` (``tcp6://`` for IPv6).
        A server listens on it, on a loopback interface, only when it
-       takes legacy peers (``ptl_base_legacy_peers``,
-       ``PMIX_SERVER_LEGACY_PEERS``).
+       takes legacy clients (``ptl_base_legacy_clients``,
+       ``PMIX_SERVER_LEGACY_PEERS``), and a client or tool dials it
+       only to reach a server of an earlier release.
 
 Both are always built: ``configure`` stops with an error if either is
 excluded. Which transport a URI belongs to is the transport that
@@ -143,7 +144,7 @@ socket - the first two steps below are the ``tcp`` transport's, in
    given mode 0644 whatever the umask or an earlier run made it. A
    report file also carries the ``local:``, ``bfrops:``, ``psec:`` and
    ``auth:`` lines described below - the first three only when the
-   server takes legacy peers - but no ``lock:`` line. See
+   server takes legacy clients - but no ``lock:`` line. See
    :doc:`connections` for the table.
 #. **Drop rendezvous files.** Depending on the server's role and flags,
    write well-known contact files that a client or tool can later
@@ -199,7 +200,7 @@ socket - the first two steps below are the ``tcp`` transport's, in
    ``.<name>.lock``, mode 0600, which no search for ``pmix.*`` files
    matches; the kernel lets go of the lock however the server exits.
    Readers find every tagged line by its tag; older readers stop before
-   them. A server that takes no legacy peers has no TCP listener, so its
+   them. A server that takes no legacy clients has no TCP listener, so its
    first line is already the local socket's URI: it writes no
    ``local:``, ``bfrops:`` or ``psec:`` line, and the handshake settles
    the wire format and security mechanism. The ``pmix_ptl_base`` state struct
@@ -283,7 +284,7 @@ first line of the rendezvous files are the TCP URI when the server
 listens on TCP - they reach older peers, which cannot use the local
 socket - and the local socket's otherwise.
 The ``PMIX_SERVER_URIxx`` variables are the TCP URI only when the server
-takes legacy peers, which are the processes that read them alone.
+takes legacy clients, which are the processes that read them alone.
 
 ``pmix_ptl_base_start_listening`` then registers the listen sockets'
 accept events on the progress thread.
@@ -350,7 +351,8 @@ most specific to least:
   already runs on the node. A system role's file is looked for in the system tmpdir the
   host named, else ``/run/pmix`` and ``/var/run/pmix``, then root's and
   the tool's own ``pmix-user`` directories and those of the listed
-  users. Only with legacy peers on (``ptl_base_legacy_peers``) does a
+  users. Only with legacy servers on (``ptl_base_legacy_servers``, in a
+  PMIx not configured ``--disable-legacy-servers``) does a
   tool also walk the whole system tmpdir, ``ptl_base_search_depth``
   levels deep, and look at the system tmpdir itself for a system role -
   where a server of an earlier release writes its files. The same goes
@@ -466,7 +468,7 @@ the tool speaks to its other servers unchanged.
 
 On the local socket this choice is only the tool's preference: it is
 offered first, and the server decides (see :doc:`connections`). A server
-that takes no legacy peers writes no ``bfrops:`` or ``psec:`` lines.
+that takes no legacy clients writes no ``bfrops:`` or ``psec:`` lines.
 
 Both paths then connect the same way: ``pmix_ptl_base_make_connection``
 for a blocking connect, and ``pmix_ptl_base_start_connection`` for an

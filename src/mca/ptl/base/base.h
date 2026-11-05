@@ -232,11 +232,17 @@ struct pmix_ptl_base_t {
     dev_t rndz_dev[PMIX_PTL_NLOCKS];
     ino_t rndz_ino[PMIX_PTL_NLOCKS];
     size_t nrndz_lockfd;
-    /* whether clients and tools of earlier releases may connect: the
-     * ptl_base_legacy_peers parameter's value, and what this server
-     * settled on, which PMIX_SERVER_LEGACY_PEERS can change */
+    /* support for peers of earlier releases, as the parameters ask:
+     * ptl_base_legacy_clients - a server takes clients and tools of them;
+     * ptl_base_legacy_servers - a client or tool looks for servers of them
+     * where they write their files; ptl_base_legacy_peers - both. And
+     * whether this server takes clients and tools of earlier releases, as
+     * it settled it at setup_listener, where PMIX_SERVER_LEGACY_PEERS can
+     * change it */
+    bool legacy_clients_param;
+    bool legacy_servers_param;
     bool legacy_peers_param;
-    bool legacy_peers;
+    bool legacy_clients;
     bool system_tool;
     bool allow_foreign_tools;
     /* the user the host named to PMIx_server_init (PMIX_USERID), and
@@ -311,7 +317,7 @@ typedef struct pmix_ptl_base_t pmix_ptl_base_t;
 
 /* The first major release whose clients and tools reach a server on their
  * own host over the local transport. A peer of an earlier one connects
- * over TCP, and is taken only when the server takes legacy peers */
+ * over TCP, and is taken only when the server takes legacy clients */
 #define PMIX_PTL_LOCAL_MAJOR 7
 
 PMIX_EXPORT extern pmix_ptl_base_t pmix_ptl_base;
@@ -797,8 +803,12 @@ PMIX_EXPORT int pmix_ptl_base_open_system_dir(char **path);
  * users ptl_base_server_access names. An argv the caller frees */
 PMIX_EXPORT char **pmix_ptl_base_rndz_dirs(bool system_role);
 
+/* Whether a URI is a TCP one - by its scheme alone, so that a PMIx built
+ * without the tcp transport can still recognize one */
+PMIX_EXPORT bool pmix_ptl_base_is_tcp_uri(const char *uri);
+
 /* Whether a reader also walks the whole system tmpdir, as a reader of an
- * earlier release did - only with legacy peers on */
+ * earlier release did - only with legacy servers on */
 PMIX_EXPORT bool pmix_ptl_base_legacy_walk(void);
 
 /* pmix_ptl_base_df_search, entering at most `depth` levels below dirname */

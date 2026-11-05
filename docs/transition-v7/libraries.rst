@@ -94,15 +94,17 @@ Running under a server of a different release
 ---------------------------------------------
 
 * **A v7 library connects to servers from v3.2 on.** A newer container
-  on an older system works.
+  on an older system works - unless the PMIx in the container was
+  configured ``--disable-legacy-servers``, which refuses an earlier
+  server and fails ``PMIx_Init``.
 * **A library older than the server** - an application in a container
-  built with PMIx v5, say - needs a server that takes legacy peers.
+  built with PMIx v5, say - needs a server that takes legacy clients.
   Otherwise every process starts as a singleton: ``PMIx_Init`` reports
   one error, and the process runs alone. Sites choose whether to take
   them; see :doc:`admins`.
 * **Open MPI singletons that spawn.** A singleton that calls
   ``MPI_Comm_spawn`` starts a ``prte`` and reads its address from a
-  pipe. A v7 ``prte`` that takes legacy peers writes two addresses
+  pipe. A v7 ``prte`` that takes legacy clients writes two addresses
   there, TCP first, and Open MPI built against PMIx v7 must take the
   second. That needs an Open MPI release with the change.
 
