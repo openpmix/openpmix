@@ -2438,7 +2438,7 @@ static void ask_about_tool(pmix_pending_connection_t *pnd)
     pmix_rank_info_t *info;
     void *ilist;
     pmix_data_array_t darray;
-    pid_t kpid;
+    pid_t kpid, bpid;
     size_t n;
     int tmo;
     pmix_status_t rc;
@@ -2478,9 +2478,13 @@ static void ask_about_tool(pmix_pending_connection_t *pnd)
     }
     /* A tool of this release that names a rank its host prepared a process
      * for with PMIx_server_setup_fork - one started on a client's rank -
-     * presents that rank's token. A tool is checked for the token alone:
-     * the pid a client's connection bound the token to is not compared,
-     * and a tool's connection binds nothing */
+     * presents that rank's token. Once a client's connection has bound the
+     * token to its pid, a tool on the local socket is taken on it only
+     * from that pid; a tool in another process is refused with
+     * PMIX_ERR_EXISTS, as it is while the rank is connected, so one that
+     * took the rank from its environment connects again with an identity
+     * of its own. A token bound to no pid is checked alone, and a tool's
+     * connection binds nothing */
     if (PMIX_PTL_LOCAL_MAJOR <= pnd->proc_type.major && !host_names_tool(pnd)) {
         rc = pmix_ptl_base_check_token(pnd->proc.nspace, pnd->proc.rank, pnd->token);
         if (PMIX_SUCCESS != rc) {
@@ -2489,6 +2493,17 @@ static void ask_about_tool(pmix_pending_connection_t *pnd)
                                 pnd->proc.nspace, pnd->proc.rank);
             PMIx_Info_list_release(ilist);
             refuse(pnd, rc);
+            return;
+        }
+        bpid = pmix_ptl_base_token_pid(pnd->proc.nspace, pnd->proc.rank);
+        kpid = local_peer(pnd) ? kernel_pid(pnd) : 0;
+        if (0 < bpid && 0 < kpid && bpid != kpid) {
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "refusing a tool as %s:%u - the rank's token is bound to pid "
+                                "%ld, not pid %ld",
+                                pnd->proc.nspace, pnd->proc.rank, (long) bpid, (long) kpid);
+            PMIx_Info_list_release(ilist);
+            refuse(pnd, PMIX_ERR_EXISTS);
             return;
         }
     }

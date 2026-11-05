@@ -27,8 +27,10 @@
  * client connection accepted with it over the local socket, and from then
  * on a client presenting it is taken only from that pid - so the process
  * connects again after a finalize, and the program it execs connects, but
- * no other client process. A tool presenting the token is checked for the
- * token alone, and its connection binds nothing. The binding outlasts the
+ * no other client process. A tool presenting a bound token is taken only
+ * from that pid too (the connection handler refuses one from another pid
+ * with PMIX_ERR_EXISTS); an unbound one is checked alone, and a tool's
+ * connection binds nothing. The binding outlasts the
  * connection. It goes when the host replaces the
  * rank: preparing it again makes a new token, which is not bound;
  * deregistering the rank or its namespace forgets the token; registering
