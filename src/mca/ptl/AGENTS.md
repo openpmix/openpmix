@@ -200,7 +200,8 @@ A subtle but load-bearing detail: the dynamic-tag space for a peer is
 on a tag. The side that *accepted* the connection uses the upper half
 (`base/ptl_base_connection_hdlr.c` sets `dyn_tags_start` to the midpoint);
 the side that *initiated* it uses the lower half
-(`pmix_ptl_base_make_connection` sets it to `PMIX_PTL_TAG_DYNAMIC`).
+(`pmix_ptl_base_make_connection`, or the event-driven connect's
+completion, sets it to `PMIX_PTL_TAG_DYNAMIC`).
 `UINT_MAX` is reserved as a wildcard/"any tag" recv.
 
 ### Transport objects
@@ -383,7 +384,9 @@ init. Two implementations:
   nspace, or a directory search of the session tmpdir — collecting our
   pid/uid/gid/cmd-line into an info array to hand the server along the way.
 
-Both converge on **`pmix_ptl_base_make_connection`**:
+Both connect through **`pmix_ptl_base_make_connection`** when blocking,
+and **`pmix_ptl_base_start_connection`** (`ptl_base_fns.c`, the `cnct_*`
+state machine) when event-driven; the blocking steps are:
 `setup_connection` (parse the `tcp4://host:port` URI into a
 `sockaddr_storage`) → `pmix_ptl_base_server_on_host` (a TCP address that
 is not this host's is not dialled: `PMIX_ERR_UNREACH`) →
@@ -665,5 +668,7 @@ top-level guide for a tarball).
   tmpdir the listener creates must be recorded so `pmix_ptl_close` removes
   exactly what we made and nothing a peer owns.
 - **Watch byte order.** Header integers and the handshake's `PUT_U32`/
-  `GET_U32` fields are network-order on the wire; the payload buffer is
-  handled by `bfrops`, not here.
+  `GET_U32` fields are network-order on the wire, except the header of the
+  connection request a client or tool sends first, which is host-order
+  (the server is on the same host); the payload buffer is handled by
+  `bfrops`, not here.

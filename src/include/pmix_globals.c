@@ -665,6 +665,7 @@ static void cbcon(pmix_cb_t *p)
     p->status = PMIX_SUCCESS;
     p->pstatus = PMIX_SUCCESS;
     p->checked = false;
+    p->tries = 0;
     PMIX_CONSTRUCT(&p->data, pmix_buffer_t);
     p->cbfunc.ptlfn = NULL;
     p->errhandler_ref = SIZE_MAX; // no handler

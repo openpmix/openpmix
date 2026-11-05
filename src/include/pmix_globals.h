@@ -1001,6 +1001,7 @@ typedef struct {
     pmix_event_t ev;
     pmix_lock_t lock;
     bool checked;
+    int tries; // attempts made by a call that is retried from a timer
     int status;
     pmix_status_t pstatus;
     pmix_scope_t scope;

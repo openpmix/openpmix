@@ -123,7 +123,9 @@ Connection-control attributes
   the tool's primary server. When set, the tool's active server is switched to
   the new connection and the tool is marked as connected.
 * ``PMIX_TIMEOUT`` (int) |mdash| time, in seconds, to wait for the connection to
-  be established before returning an error (0 implies no timeout).
+  be established before returning an error. 0, or no ``PMIX_TIMEOUT``, waits as
+  long as the ``ptl_base_handshake_wait_time`` parameter says (60 seconds by
+  default, and no bound if it is 0).
 
 
 RETURN VALUE
