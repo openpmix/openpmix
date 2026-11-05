@@ -122,8 +122,8 @@ such connection.
 
 **Earlier-release clients and tools need a server set up to take
 them.** Releases before v7 connect over TCP. A v7 server takes them
-only when PMIx was configured with ``--enable-legacy-peers`` *and* the
-site or host turns the support on (``ptl_base_legacy_peers``, or the
+only when PMIx was configured with ``--enable-legacy-clients`` *and* the
+site or host turns the support on (``ptl_base_legacy_clients``, or the
 host's ``PMIX_SERVER_LEGACY_PEERS``). Even then it listens on loopback
 only. Without both, those clients and tools are refused. An older
 client then runs as a singleton: alone, and unaware of its job.

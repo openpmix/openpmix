@@ -177,7 +177,9 @@ static int run_tool(const char *uri, uid_t uid, const char *access)
     return WEXITSTATUS(status);
 }
 
-#if defined(TCP_DEFER_ACCEPT)
+/* the tool dials TCP, which a PMIx without legacy server support refuses
+ * to before connecting, whatever is listening */
+#if defined(TCP_DEFER_ACCEPT) && PMIX_ENABLE_LEGACY_SERVERS
 /* a listener on loopback that the kernel shows no connection of until data
  * arrives; a tool is pointed at it */
 static void case_deferred(void)
@@ -222,10 +224,10 @@ int main(void)
     size_t got = 0;
 
     fprintf(stdout, "\n=== a server on this host, over TCP ===\n\n");
-#if defined(TCP_DEFER_ACCEPT)
+#if defined(TCP_DEFER_ACCEPT) && PMIX_ENABLE_LEGACY_SERVERS
     case_deferred();
 #endif
-#if !PMIX_ENABLE_LEGACY_PEERS
+#if !PMIX_ENABLE_LEGACY_CLIENTS || !PMIX_ENABLE_LEGACY_SERVERS
     /* the server's TCP listener is the one it opens for clients and tools
      * of earlier releases */
     fprintf(stdout, "this PMIx takes no clients or tools of earlier releases, so the "

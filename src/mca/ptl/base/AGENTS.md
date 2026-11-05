@@ -159,13 +159,32 @@ TCP peer at one.
   `PMIX_*_WILDCARD` value that matches every release - is never one a
   peer can declare.
 - **A peer of a release before `PMIX_PTL_LOCAL_MAJOR` (7) is a legacy
-  peer**, taken only when `pmix_ptl_base.legacy_peers`: otherwise the
-  handler refuses it with `PMIX_ERR_NOT_SUPPORTED`, on whichever transport
-  it came. `legacy_peers` is settled at `setup_listener` from the
-  `ptl_base_legacy_peers` parameter (`legacy_peers_param`, default false)
-  and then `PMIX_SERVER_LEGACY_PEERS`; asking for it in a build without
-  `PMIX_ENABLE_LEGACY_PEERS` (`--enable-legacy-peers`, off by default) fails the init
-  (`legacy-peers-not-built`).
+  peer.** Legacy support has two directions, each its own configure
+  option and macro:
+  - **Legacy clients** - a server taking clients and tools of earlier
+    releases. Taken only when `pmix_ptl_base.legacy_clients`: otherwise
+    the handler refuses one with `PMIX_ERR_NOT_SUPPORTED`, on whichever
+    transport it came. `legacy_clients` is settled at `setup_listener`
+    from the `ptl_base_legacy_clients` parameter (`legacy_clients_param`)
+    or `ptl_base_legacy_peers` (`legacy_peers_param`, which sets both
+    directions), both default false, and then `PMIX_SERVER_LEGACY_PEERS`;
+    asking for it in a build without `PMIX_ENABLE_LEGACY_CLIENTS`
+    (`--enable-legacy-clients`, off by default) fails the init
+    (`legacy-clients-not-built`).
+  - **Legacy servers** - a client or tool connecting to a server of an
+    earlier release (v3.2 on). Built unless `--disable-legacy-servers`
+    (`PMIX_ENABLE_LEGACY_SERVERS`), and then needs no run-time setting:
+    a server of an earlier release the process is told of is connected
+    to. `ptl_base_legacy_servers` (`legacy_servers_param`, or
+    `ptl_base_legacy_peers`) only turns on the legacy walk - see
+    `pmix_ptl_base_legacy_walk()`, which a server's own `legacy_clients`
+    does not affect. In a build without it, `refuse_outdated()`
+    refuses a server known to be of an earlier release
+    (`legacy-servers-not-built`) and any TCP address
+    (`legacy-servers-tcp`) - only such a server is reached at one -
+    with `PMIX_ERR_NOT_SUPPORTED`, before any socket is opened.
+    `pmix_ptl_base_select_compat()` asks first, so a file naming an
+    earlier release is refused for that before a wire format is chosen.
 - **A peer of this release is taken only on the local socket.** On TCP
   the handler refuses it with `PMIX_ERR_LOCAL_URI_REQUIRED` (-77), beside
   the gate that keeps earlier releases off the local socket. The TCP
@@ -769,7 +788,7 @@ server path; a client has its own, simpler one (`ptl_base_client.c`).
   URI, then `;<uid>:<gid>`. It connects there instead of to the
   `PMIX_SERVER_URIxx` address - which `pmix_ptl_base_set_peer` still
   reads, for the server's wire format. `setup_fork` sets those to the TCP
-  URI only when the server takes legacy peers, and to the local socket's
+  URI only when the server takes legacy clients, and to the local socket's
   URI otherwise. It expects the server to be that
   uid and gid (`pmix_ptl_base.server_expect_*`, for this connect only).
   A socket it cannot reach fails init with `PMIX_ERR_COMM_FAILURE` and the
@@ -934,7 +953,7 @@ Things to keep straight:
   nothing, `trysessions` looks in its own `pmix-user` directory only, by
   the prefix `pmix.<host>.session.`: one server is taken
   (`take_connection`, shared with `trysearch`), several are refused with
-  their namespaces listed (`too-many-sessions`), and with legacy peers on
+  their namespaces listed (`too-many-sessions`), and with legacy servers on
   and none found it falls back to the old `pmix.<host>.tool` search. A
   tool told nothing therefore no longer finds a server that is not a
   session server through its pid or namespace file - which the old
@@ -956,7 +975,7 @@ Things to keep straight:
   own `pmix-user` directory and the listed users', first success wins.
   The old places - the whole system tmpdir walked `search_depth` deep,
   and the system tmpdir itself for a system role - are looked in only
-  when `pmix_ptl_base_legacy_walk()`: legacy peers on. A
+  when `pmix_ptl_base_legacy_walk()`: legacy servers on. A
   `PMIX_QUERY_AVAIL_SERVERS` query (`pmix_ptl_base_query_servers`) uses
   the same directories, walking the system tmpdir only then, and not
   looking in a `pmix-user` directory below it twice.
@@ -1333,7 +1352,7 @@ rendezvous files. The tcp transport (`../tcp/ptl_tcp.c`) picks the
 interface (a loopback one, or none), binds, and makes the URI.
 
 - **The TCP listener is on a loopback interface, or nowhere.** It is
-  opened only for legacy peers. A loopback candidate must carry a
+  opened only for legacy clients. A loopback candidate must carry a
   loopback address (`pmix_net_islocalhost`): any other address on a
   loopback device counts as public, and tcp never takes a public one -
   directives that leave no loopback interface fail the init
@@ -1471,7 +1490,7 @@ three rules apply:
 
 - **`pmix_ptl_close` puts every global back to its initializer value.**
   That covers more than the allocated strings. The listener's role flags
-  (`legacy_peers`, `tool_support`, `system_tool`, `session_tool`,
+  (`legacy_clients`, `tool_support`, `system_tool`, `session_tool`,
   `allow_foreign_tools`, `host_uid_given`) are set only from the
   directives the caller passes, never cleared by the listener itself. A
   flag left over from the last cycle once made a second server listen on
@@ -1574,12 +1593,12 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_recv_timeout.c` | `pmix_ptl_base_recv_blocking` ends a blocking socket's receive at its timeout, and still waits out `EAGAIN` on a non-blocking one |
 | `test/unit/tool_nspace.c` | a real tool connection leaves exactly one namespace object, and the peer resolves through the one on the list |
 | `test/unit/ptl_transport.c` | the listener, the server's peer for a tool, and the tool's peer for its server - by a blocking connect and by an event-driven attach - each record the transport that carries them |
-| `test/unit/ptl_legacy.c` | by default a server has no TCP listener and reports its local socket in the rendezvous file and `PMIX_SERVER_URIxx`; legacy peers on (attribute or parameter) make the TCP listener and report it, with the local socket beside it; the attribute overrides the parameter; asking in a build without legacy peers fails the init |
+| `test/unit/ptl_legacy.c` | by default a server has no TCP listener and reports its local socket in the rendezvous file and `PMIX_SERVER_URIxx`; legacy clients on (the attribute, `ptl_base_legacy_clients` or `ptl_base_legacy_peers`) make the TCP listener and report it, with the local socket beside it; `ptl_base_legacy_servers` alone does not; the attribute overrides the parameters; asking in a build without legacy clients fails the init |
 | `test/unit/ptl_tcp_server.c` | over TCP a tool checks a server on its host by the kernel's TCP table: a server on loopback the table does not show (Linux `TCP_DEFER_ACCEPT`) is refused before anything is sent; as root, a server of another user is refused before anything is sent, and one `ptl_base_server_access` names gets past it; a server of the tool's own user is taken |
 | `test/unit/ptl_pfexec_token.c` | a process a launcher starts itself (pfexec) gets no token, not even one in the launcher's environment, and connects back without one |
 | `test/unit/ptl_token.c` | setup_fork's token: hex after the making server's name in the environment, added to a connect-ack only for a server of that name, different per rank, replaced when the rank is prepared again; only the kept token is taken (another, none, short, long, non-hex, one digit off refused); a rank never prepared takes anything; a bound token is taken from its pid or with no pid, refused from another, not rebound, unbound by registering the rank again and by preparing it again; a rankless process gets none and loses an inherited one; deregistering the rank, then the job, forgets them |
 | `test/unit/ptl_remote.c` | which peer addresses are this host's; a server at an address not this host's is not dialled (`pmix_ptl_base_server_on_host`, `PMIX_ERR_UNREACH`, saying why) and one on loopback is; `PMIX_SERVER_REMOTE_CONNECTIONS` true fails the init, false does not; directives leaving no loopback interface fail the init rather than take a public one |
-| `test/unit/ptl_unnamed.c` | end to end with no TCP table on either side (`pmix_util_getid_test_no_tcp_table`): a real server with legacy peers, which takes the tool on its claim, real tools by `PMIx_tool_init` and by an event-driven attach - a bare TCP URI passed directly taken; a named file taken whatever release it names, with or without its lock held or a lock line; a group-writable file refused, and a symbolic link to the file not read (`PMIX_ERR_UNREACH`, not a regular file); an off-host address `PMIX_ERR_UNREACH`, saying it is not this host's |
+| `test/unit/ptl_unnamed.c` | end to end with no TCP table on either side (`pmix_util_getid_test_no_tcp_table`): a real server with legacy clients, which takes the tool on its claim, real tools by `PMIx_tool_init` and by an event-driven attach - a bare TCP URI passed directly taken; a named file taken whatever release it names, with or without its lock held or a lock line; a group-writable file refused, and a symbolic link to the file not read (`PMIX_ERR_UNREACH`, not a regular file); an off-host address `PMIX_ERR_UNREACH`, saying it is not this host's |
 | `test/unit/tool_attach_nb.c` | (among its cases) an attach does not dial the URI an earlier attach was given |
 | `test/unit/ptl_check_server.c` | while the table does not list the connection (`pmix_util_getid_test_unlisted`) the check asks again until `handshake_wait_time` runs out and then refuses the server (`PMIX_ERR_INVALID_CRED`), a server listed after 1.5 s is taken, one that closes meanwhile is `PMIX_ERR_UNREACH`, and with no wait it is refused soon; a server of our own is ours the moment we are connected (the `NOT_FOUND` retry, with the listener accepting from a thread of its own, as a server does: Linux lists a connection not yet accepted with inode 0, which is not found yet), one whose end has closed is refused soon; with no table (`pmix_util_getid_test_no_tcp_table`) a server nothing vouches for is refused and one its file vouches for is taken; `test_judge`: `pmix_ptl_base_judge_server` with fake map files - mapped and unmapped uid and gid, identity given and not, vouched and not; the overflow ids, where a subordinate-id map gives them an entry, match no identity - by number or mapped - and are taken only vouched, while with the identity map they are ids like any other |
 | `test/unit/ptl_local_connect.c` | (among its cases) a tool given a FIFO by `file:<path>` or `PMIX_TOOL_ATTACHMENT_FILE`, or a symbolic link to the report file, fails init at once, and the report file named either way connects; a launcher whose rendezvous file name has a FIFO at it finishes init promptly; every connect-ack buffer a client releases is zero (`pmix_ptl_base_wiped_hook`) |

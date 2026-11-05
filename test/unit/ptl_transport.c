@@ -245,10 +245,10 @@ int main(int argc, char **argv)
     bool flag = true;
     tool_t tools[2];
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
-#if PMIX_ENABLE_LEGACY_PEERS
+#if PMIX_ENABLE_LEGACY_CLIENTS
     /* the TCP listener too, which a server opens for clients and tools of
      * earlier releases */
-    setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
+    setenv("PMIX_MCA_ptl_base_legacy_clients", "1", 1);
 #endif
 
     fprintf(stdout, "\n=== ptl transport recorded per connection ===\n\n");
@@ -270,7 +270,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-#if PMIX_ENABLE_LEGACY_PEERS
+#if PMIX_ENABLE_LEGACY_CLIENTS
     report("the TCP listener records the transport that opened it",
            &pmix_ptl_tcp_module == pmix_ptl_base.listener.transport, "not tcp");
 #endif

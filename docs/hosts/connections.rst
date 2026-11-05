@@ -342,8 +342,8 @@ connections.
 
 From v7.0, ``native`` takes the peer's uid from the kernel rather than
 from the peer - except over TCP on a platform whose kernel keeps no table
-of TCP connections, where a server that takes legacy peers takes the uid
-and gid the peer claims. While a server takes legacy peers, a connection
+of TCP connections, where a server that takes legacy clients takes the uid
+and gid the peer claims. While a server takes legacy clients, a connection
 over TCP that declares a release earlier than v7.0 is not checked for a
 connection token, so a process of a user can connect over TCP as any
 rank registered for that user without its token. For how it works, and what a container needs

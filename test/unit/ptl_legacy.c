@@ -6,20 +6,23 @@
  *
  * $HEADER$
  *
- * Clients and tools of earlier releases - legacy peers.
+ * Clients and tools of earlier releases - legacy clients.
  *
  * They connect over TCP, which a process of this release on the server's
- * host never uses. A server takes them only when ptl_base_legacy_peers or
- * the PMIX_SERVER_LEGACY_PEERS attribute, which overrides it, says so -
- * and only in a build configured with legacy peer support, the default.
- * In a build without it, asking for them fails the init.
+ * host never uses. A server takes them only when ptl_base_legacy_clients
+ * (or ptl_base_legacy_peers, which sets it and ptl_base_legacy_servers),
+ * or the PMIX_SERVER_LEGACY_PEERS attribute, which overrides both, says so
+ * - and only in a build configured --enable-legacy-clients. In a build
+ * without it, asking for them fails the init. ptl_base_legacy_servers
+ * alone is a client's or tool's question, and opens no listener.
  *
- * By default a server takes none, and has no TCP listener unless it takes
- * remote tools. Where it reports where it is - the PMIX_SERVER_URIxx
- * variables PMIx_server_setup_fork sets, its rendezvous files, and the
- * PMIX_SERVER_URI it stores - names its local socket. With legacy peers,
- * all of them name its TCP listener, and the local socket's address is
- * given beside it. PMIX_MYSERVER_URI names the local socket either way.
+ * By default a server takes none, and has no TCP listener. Where it
+ * reports where it is - the PMIX_SERVER_URIxx variables
+ * PMIx_server_setup_fork sets, its rendezvous files, and the
+ * PMIX_SERVER_URI it stores - names its local socket. With legacy
+ * clients, all of them name its TCP listener, and the local socket's
+ * address is given beside it. PMIX_MYSERVER_URI names the local socket
+ * either way.
  *
  * Each case runs in a child forked before any PMIx call.
  */
@@ -112,7 +115,7 @@ static char *first_line(const char *path)
 }
 
 /* Start a server with tool support - so it writes a rendezvous file - and
- * legacy peers as `legacy` says: -1 not given, 0 false, 1 true. Check
+ * legacy clients as `legacy` says: -1 not given, 0 false, 1 true. Check
  * that everything it reports names `want` */
 static int check_server(int legacy, bool tcp_wanted)
 {
@@ -136,7 +139,7 @@ static int check_server(int legacy, bool tcp_wanted)
         fprintf(stdout, "    PMIx_server_init failed\n");
         return CHILD_FAIL;
     }
-    rc |= check("the server takes legacy peers as asked", tcp_wanted == pmix_ptl_base.legacy_peers);
+    rc |= check("the server takes legacy clients as asked", tcp_wanted == pmix_ptl_base.legacy_clients);
     rc |= check(tcp_wanted ? "it has a TCP listener" : "it has no TCP listener",
                 tcp_wanted == (0 <= pmix_ptl_base.listener.socket &&
                                NULL != pmix_ptl_base.listener.uri));
@@ -176,7 +179,7 @@ static int run_default(void)
 
 static int run_attr_on(void)
 {
-#if PMIX_ENABLE_LEGACY_PEERS
+#if PMIX_ENABLE_LEGACY_CLIENTS
     return check_server(1, true);
 #else
     pmix_info_t info;
@@ -186,7 +189,8 @@ static int run_attr_on(void)
     PMIX_INFO_LOAD(&info, PMIX_SERVER_LEGACY_PEERS, &flag, PMIX_BOOL);
     prc = PMIx_server_init(&mymodule, &info, 1);
     PMIX_INFO_DESTRUCT(&info);
-    fprintf(stdout, "    PMIx_server_init asking for legacy peers: %s\n", PMIx_Error_string(prc));
+    fprintf(stdout, "    PMIx_server_init asking for legacy clients: %s\n",
+            PMIx_Error_string(prc));
     if (PMIX_SUCCESS == prc) {
         PMIx_server_finalize();
         return CHILD_FAIL;
@@ -195,12 +199,17 @@ static int run_attr_on(void)
 #endif
 }
 
-static int run_param_on(void)
+/* a server whose parameter `param` is set: as the attribute does, when
+ * `opens` - else as by default */
+static int param_on(const char *param, bool opens)
 {
-    setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
-#if PMIX_ENABLE_LEGACY_PEERS
-    return check_server(-1, true);
+    setenv(param, "1", 1);
+#if PMIX_ENABLE_LEGACY_CLIENTS
+    return check_server(-1, opens);
 #else
+    if (!opens) {
+        return check_server(-1, false);
+    }
     if (PMIX_SUCCESS == PMIx_server_init(&mymodule, NULL, 0)) {
         PMIx_server_finalize();
         return CHILD_FAIL;
@@ -209,8 +218,24 @@ static int run_param_on(void)
 #endif
 }
 
+static int run_clients_param_on(void)
+{
+    return param_on("PMIX_MCA_ptl_base_legacy_clients", true);
+}
+
+static int run_peers_param_on(void)
+{
+    return param_on("PMIX_MCA_ptl_base_legacy_peers", true);
+}
+
+static int run_servers_param_on(void)
+{
+    return param_on("PMIX_MCA_ptl_base_legacy_servers", false);
+}
+
 static int run_attr_overrides(void)
 {
+    setenv("PMIX_MCA_ptl_base_legacy_clients", "1", 1);
     setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
     return check_server(0, false);
 }
@@ -247,20 +272,25 @@ int main(void)
         fprintf(stderr, "could not make a scratch directory\n");
         return 1;
     }
+    unsetenv("PMIX_MCA_ptl_base_legacy_clients");
+    unsetenv("PMIX_MCA_ptl_base_legacy_servers");
     unsetenv("PMIX_MCA_ptl_base_legacy_peers");
-    fprintf(stdout, "Legacy peers (this build %s them):\n",
-            PMIX_ENABLE_LEGACY_PEERS ? "supports" : "does not support");
-    run_case("by default a server takes no legacy peers and reports its local socket",
+    fprintf(stdout, "Legacy clients (this build %s them):\n",
+            PMIX_ENABLE_LEGACY_CLIENTS ? "supports" : "does not support");
+    run_case("by default a server takes no legacy clients and reports its local socket",
              run_default);
-#if PMIX_ENABLE_LEGACY_PEERS
+#if PMIX_ENABLE_LEGACY_CLIENTS
     run_case("PMIX_SERVER_LEGACY_PEERS opens a TCP listener, which the server reports",
              run_attr_on);
-    run_case("ptl_base_legacy_peers does the same", run_param_on);
+    run_case("ptl_base_legacy_clients does the same", run_clients_param_on);
+    run_case("ptl_base_legacy_peers does the same", run_peers_param_on);
 #else
     run_case("asking with PMIX_SERVER_LEGACY_PEERS fails the init", run_attr_on);
-    run_case("asking with ptl_base_legacy_peers fails the init", run_param_on);
+    run_case("asking with ptl_base_legacy_clients fails the init", run_clients_param_on);
+    run_case("asking with ptl_base_legacy_peers fails the init", run_peers_param_on);
 #endif
-    run_case("PMIX_SERVER_LEGACY_PEERS false overrides the parameter", run_attr_overrides);
+    run_case("ptl_base_legacy_servers alone opens no TCP listener", run_servers_param_on);
+    run_case("PMIX_SERVER_LEGACY_PEERS false overrides the parameters", run_attr_overrides);
     rmdir(tmpdir);
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n", npass, nfail);

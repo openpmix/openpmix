@@ -1507,30 +1507,66 @@ AC_DEFINE_UNQUOTED([PMIX_ENABLE_IPV6], [$pmix_want_ipv6],
 PMIX_SUMMARY_ADD([Miscellaneous], [IPv6 Support], [], [$pmix_ipv6_enabled])
 
 #
-# Do we want to build support for clients and tools of earlier releases?
-# They connect over TCP, which a process of this release on the server's
-# host never uses to reach a server of this release. Without it a server
-# takes no such connection, whatever its host or the ptl_base_legacy_peers
-# parameter asks. Off unless asked for: clients are to be updated with
-# their servers.
+# Do we want to build support for peers of earlier releases? Processes of
+# releases before v7.0 reach a server over TCP, which a process of this
+# release on the server's host never uses to reach a server of this
+# release. There are two directions, each with its own option:
 #
-AC_MSG_CHECKING([if want support for clients and tools of earlier PMIx releases])
+#  --enable-legacy-clients: a server of this release may take clients and
+#      tools of earlier releases. Without it a server takes no such
+#      connection, whatever its host or the ptl_base_legacy_clients
+#      parameter asks. Off unless asked for: clients are to be updated
+#      with their servers.
+#  --enable-legacy-servers: a client or tool of this release may connect
+#      to a server of an earlier release (v3.2 on). On unless disabled: a
+#      client in a container image must run under whatever release the
+#      host's resource manager runs. Without it such a server is refused.
+#
+# --enable-legacy-peers sets both, and --disable-legacy-peers clears
+# both; either of the others given as well overrides it for its own
+# direction.
+#
 AC_ARG_ENABLE([legacy-peers],
     [AS_HELP_STRING([--enable-legacy-peers],
-        [Build with support for clients and tools of PMIx releases before v7.0, which connect to a server over TCP. With it, the ptl_base_legacy_peers parameter or the PMIX_SERVER_LEGACY_PEERS attribute turns it on (default: disabled)])])
-if test "$enable_legacy_peers" = "yes"; then
+        [Shorthand for --enable-legacy-clients --enable-legacy-servers; --disable-legacy-peers disables both, leaving out all support for PMIx releases before v7.0])])
+AC_ARG_ENABLE([legacy-clients],
+    [AS_HELP_STRING([--enable-legacy-clients],
+        [Build with support for a server taking clients and tools of PMIx releases before v7.0, which connect to it over TCP. With it, the ptl_base_legacy_clients parameter or the PMIX_SERVER_LEGACY_PEERS attribute turns it on (default: disabled)])])
+AC_ARG_ENABLE([legacy-servers],
+    [AS_HELP_STRING([--enable-legacy-servers],
+        [Build with support for clients and tools connecting to servers of PMIx releases v3.2 through v6.x, over TCP. --disable-legacy-servers refuses such a server (default: enabled)])])
+
+AS_IF([test -z "$enable_legacy_clients"],
+      [AS_IF([test "$enable_legacy_peers" = "yes"], [enable_legacy_clients=yes],
+             [enable_legacy_clients=no])])
+AS_IF([test -z "$enable_legacy_servers"],
+      [AS_IF([test "$enable_legacy_peers" = "no"], [enable_legacy_servers=no],
+             [enable_legacy_servers=yes])])
+
+AC_MSG_CHECKING([if want support for clients and tools of earlier PMIx releases])
+if test "$enable_legacy_clients" = "yes"; then
     AC_MSG_RESULT([yes])
-    pmix_legacy_peers=1
-    pmix_legacy_peers_msg=yes
+    pmix_legacy_clients=1
 else
     AC_MSG_RESULT([no])
-    pmix_legacy_peers=0
-    pmix_legacy_peers_msg=no
+    pmix_legacy_clients=0
 fi
-AC_DEFINE_UNQUOTED([PMIX_ENABLE_LEGACY_PEERS], [$pmix_legacy_peers],
+AC_DEFINE_UNQUOTED([PMIX_ENABLE_LEGACY_CLIENTS], [$pmix_legacy_clients],
                    [Whether a server can take connections from clients and tools of earlier releases])
 
-PMIX_SUMMARY_ADD([Miscellaneous], [Earlier-release clients and tools], [], [$pmix_legacy_peers_msg])
+AC_MSG_CHECKING([if want support for servers of earlier PMIx releases])
+if test "$enable_legacy_servers" = "yes"; then
+    AC_MSG_RESULT([yes])
+    pmix_legacy_servers=1
+else
+    AC_MSG_RESULT([no])
+    pmix_legacy_servers=0
+fi
+AC_DEFINE_UNQUOTED([PMIX_ENABLE_LEGACY_SERVERS], [$pmix_legacy_servers],
+                   [Whether a client or tool can connect to a server of an earlier release])
+
+PMIX_SUMMARY_ADD([Miscellaneous], [Earlier-release clients and tools], [], [$enable_legacy_clients])
+PMIX_SUMMARY_ADD([Miscellaneous], [Earlier-release servers], [], [$enable_legacy_servers])
 
 ])dnl
 

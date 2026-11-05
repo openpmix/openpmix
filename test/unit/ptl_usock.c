@@ -375,7 +375,7 @@ static int advertise_child(void)
         NULL == (fp = fopen(pmix_ptl_base.pid_filename, "r"))) {
         fprintf(stderr, "  no rendezvous file\n");
         ret = CHILD_FAIL;
-    } else if (pmix_ptl_base.legacy_peers) {
+    } else if (pmix_ptl_base.legacy_clients) {
         /* with a TCP listener, the local socket is on a tagged line */
         if (0 > asprintf(&line, "%s%s;%s\n", PMIX_PTL_LOCAL_URI_TAG, pmix_globals.hostname,
                          pmix_ptl_base.local_listener.uri)) {

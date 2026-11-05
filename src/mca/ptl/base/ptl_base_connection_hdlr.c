@@ -1317,7 +1317,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     /* A client or tool of an earlier release is taken only when this
      * server takes them */
-    if (PMIX_PTL_LOCAL_MAJOR > major && !pmix_ptl_base.legacy_peers) {
+    if (PMIX_PTL_LOCAL_MAJOR > major && !pmix_ptl_base.legacy_clients) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "ptl:base:connection_handler: refusing a peer of release %s - "
                             "this server takes no clients or tools of earlier releases",

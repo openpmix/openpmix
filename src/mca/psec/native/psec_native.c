@@ -311,11 +311,11 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
                             pmix_fd_get_peer_name(pr->sd), PMIx_Error_string(rc));
         return PMIX_ERR_INVALID_CRED;
 
-    } else if (pmix_ptl_base.legacy_peers) {
+    } else if (pmix_ptl_base.legacy_clients) {
         /* nothing the kernel can tell us - take the peer at its word, as
          * every earlier release did; a peer of an earlier release has no
          * other way to say who it is. A server takes a TCP connection only
-         * when it takes legacy peers */
+         * when it takes legacy clients */
         if (euid != pr->info->uid) {
             pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
                                 "psec: socket cred contains invalid uid %u - required uid %u",
@@ -335,7 +335,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     } else {
         pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
                             "psec: native refusing a TCP peer at %s - this server "
-                            "takes no legacy peers", pmix_fd_get_peer_name(pr->sd));
+                            "takes no legacy clients", pmix_fd_get_peer_name(pr->sd));
         return PMIX_ERR_INVALID_CRED;
     }
 
