@@ -23,7 +23,13 @@
  *     has it - tested by writing it with a plain send();
  *   - pmix_fd_write_nosigpipe(), which writes the pipe a host may hand a
  *     server for its URI, writes a broken pipe and leaves the thread's
- *     signal mask as it was.
+ *     signal mask as it was, as does pmix_fd_write_once_nosigpipe();
+ *   - output forwarding to a pipe of the library's own - a child's stdin -
+ *     whose reader has gone, in the write handler and in the last flush.
+ *
+ * And one that must raise it: output forwarded to the process's own
+ * stdout is written as the process writes it, so a reader of that which
+ * goes ends the process as any other write there would.
  */
 
 #include "src/include/pmix_config.h"
@@ -31,6 +37,7 @@
 #include "include/pmix.h"
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
+#include "src/common/pmix_iof.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_fd.h"
 
@@ -201,6 +208,109 @@ static int pipe_from_this_thread(int unused)
     return (sigismember(&before, SIGPIPE) == sigismember(&after, SIGPIPE)) ? 0 : 4;
 }
 
+static int pipe_once_from_this_thread(int unused)
+{
+    sigset_t before, after;
+    int fd;
+    PMIX_HIDE_UNUSED_PARAMS(unused);
+
+    if (!broken_pipe(&fd)) {
+        return 3;
+    }
+    pthread_sigmask(SIG_SETMASK, NULL, &before);
+    if (-1 != pmix_fd_write_once_nosigpipe(fd, "x", 1) || EPIPE != errno) {
+        return 2;
+    }
+    pthread_sigmask(SIG_SETMASK, NULL, &after);
+    return (sigismember(&before, SIGPIPE) == sigismember(&after, SIGPIPE)) ? 0 : 4;
+}
+
+/* a sink writing `fd`, with one line queued */
+static void sink_on(pmix_iof_sink_t *snk, int fd)
+{
+    pmix_iof_write_output_t *output;
+
+    PMIX_CONSTRUCT(snk, pmix_iof_sink_t);
+    snk->wev.fd = fd;
+    output = PMIX_NEW(pmix_iof_write_output_t);
+    output->data = strdup("forwarded\n");
+    output->numbytes = (int) strlen(output->data);
+    pmix_list_append(&snk->wev.outputs, &output->super);
+}
+
+/* the write handler, and then the last flush, on a pipe of our own */
+static int iof_own_pipe(int unused)
+{
+    pmix_iof_sink_t snk;
+    int fd;
+    PMIX_HIDE_UNUSED_PARAMS(unused);
+
+    if (!broken_pipe(&fd)) {
+        return 3;
+    }
+    if (2 >= fd) {
+        return 3;
+    }
+    sink_on(&snk, fd);
+    snk.wev.pending = true;
+    pmix_iof_write_handler(fd, 0, &snk);
+    if (snk.wev.pending) {
+        /* the write was not taken as failed */
+        return 2;
+    }
+    sink_on(&snk, fd);
+    pmix_iof_static_dump_output(&snk);
+    return 0;
+}
+
+/* the write handler on our stdout, whose reader has gone */
+static int iof_own_stdout(int unused)
+{
+    pmix_iof_sink_t snk;
+    int fd;
+    PMIX_HIDE_UNUSED_PARAMS(unused);
+
+    if (!broken_pipe(&fd) || 0 > dup2(fd, 1)) {
+        return 3;
+    }
+    sink_on(&snk, 1);
+    snk.wev.pending = true;
+    pmix_iof_write_handler(1, 0, &snk);
+    /* still here: it did not raise SIGPIPE */
+    return 2;
+}
+
+/* a case that must end on SIGPIPE */
+static void run_dies_case(const char *name, int (*fn)(int))
+{
+    pid_t child;
+    int status = 0;
+    char detail[128];
+
+    child = fork();
+    if (0 > child) {
+        report(name, 0, strerror(errno));
+        return;
+    }
+    if (0 == child) {
+        signal(SIGPIPE, SIG_DFL);
+        alarm(30);
+        _exit(fn(-1));
+    }
+    if (child != waitpid(child, &status, 0)) {
+        report(name, 0, "waitpid failed");
+        return;
+    }
+    if (WIFSIGNALED(status)) {
+        snprintf(detail, sizeof(detail), "the process died on signal %d", WTERMSIG(status));
+        report(name, SIGPIPE == WTERMSIG(status), detail);
+        return;
+    }
+    snprintf(detail, sizeof(detail), "the process exited %d",
+             WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    report(name, 0, detail);
+}
+
 static void run_case(const char *name, int (*fn)(int), int kind)
 {
     pid_t child;
@@ -267,6 +377,12 @@ int main(int argc, char **argv)
 #endif
     run_case("pmix_fd_write_nosigpipe writes a broken pipe and leaves the mask as it was",
              pipe_from_this_thread, 0);
+    run_case("pmix_fd_write_once_nosigpipe writes a broken pipe and leaves the mask as it was",
+             pipe_once_from_this_thread, 0);
+    run_case("output forwarded to a pipe of ours whose reader has gone returns an error",
+             iof_own_pipe, 0);
+    run_dies_case("output forwarded to our own stdout whose reader has gone raises SIGPIPE",
+                  iof_own_stdout);
 
     PMIx_server_finalize();
 
