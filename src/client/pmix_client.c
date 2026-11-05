@@ -1304,6 +1304,13 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Init"))) {
             return PMIX_ERR_WOULD_BLOCK;
         }
+        /* A process whose server was lost is not given another: the
+         * job data, the server's keys and the send queue all belong to
+         * the connection it lost */
+        if (PMIX_UNLIKELY(!pmix_client_globals.singleton &&
+                          !pmix_atomic_check_bool(&pmix_globals.connected))) {
+            return PMIX_ERR_LOST_CONNECTION;
+        }
         /* Track the ref count - and only now, once the call is going to
          * succeed. Counting it up front left a caller that got an error
          * back owing a PMIx_Finalize it has no reason to make, and the
@@ -1320,8 +1327,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         if (NULL != info) {
             _check_for_notify(info, ninfo);
         }
-        /* if we were given connection info, then we should try
-         * to connect if are currently unconnected */
+        /* a singleton given connection info tries to connect */
         if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
             rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver, info,
                                           ninfo, &suri);

@@ -156,6 +156,8 @@ struct pmix_ptl_base_t {
     size_t naccess_gids;
     /* why the last blocking connect failed, for saying so */
     int last_connect_errno;
+    /* the last error status a server answered a connect with */
+    pmix_status_t server_refusal;
     pmix_list_t pending_connections; // pmix_pending_connection_t still reading their connect-ack
     /* The host decides on one tool of a name at a time: a tool whose
      * identity is settled waits here (pmix_pending_connection_t), in the

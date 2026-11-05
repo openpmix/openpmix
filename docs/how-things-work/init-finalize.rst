@@ -468,6 +468,22 @@ The reference-count guard
     final finalize. A nested (non-final) finalize must leave the library
     running and untouched.
 
+A repeated init
+    A nested ``PMIx_Init`` connects nothing new for a process whose
+    server connection was lost: it is refused with ``PMIX_ERR_LOST_CONNECTION``
+    and not counted, since the job data, the server's keys and the queued
+    sends all belonged to that connection. A singleton given connection
+    information tries to connect to the server it names.
+
+A failed init
+    A ``PMIx_Init`` that fails tears down whatever it set up and clears
+    the one-time latch, so the process may call it again. A process given
+    a namespace by the server that started it (``PMIX_NAMESPACE``) but no
+    variable saying how to reach that server fails its init rather than
+    run as a singleton under that namespace. A singleton that finds a
+    system server which does not accept it says so, once, and runs as a
+    singleton.
+
 Three requirements make the symmetry real, and an implementation **must**
 uphold all three:
 
@@ -540,6 +556,14 @@ The reference-count guard and the one-time latch
     ``PMIx_tool_init`` sees the latch still set, concludes the library is
     already initialized, and returns ``PMIX_ERR_INIT`` — the tool never
     comes back up.
+
+A failed init
+    A ``PMIx_tool_init`` refused for its input - a malformed directive,
+    a namespace without a rank - before the runtime is set up leaves
+    nothing behind and clears the latch, so the tool may call it again.
+    A failure after that point - setting up the runtime, a connection
+    that was not optional, the listener - is terminal for the process:
+    later calls return ``PMIX_ERR_INIT``.
 
 The tool constructs server state every init
     Because a tool may itself act as a server (a launcher connects *up* to
