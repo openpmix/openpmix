@@ -25,7 +25,8 @@ entirely on the base driver.
 
 ## When it is selected
 
-Always available. Chosen for a peer advertising `"v41"`. Its priority
+Built only with legacy support (see "Building" in
+[`../AGENTS.md`](../AGENTS.md)). Chosen for a peer advertising `"v41"`. Its priority
 (58) sits just below `v51` (60) and above `v4` (50), so `assign_module`
 prefers it over `v4` when a peer supports both.
 

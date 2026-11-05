@@ -26,7 +26,8 @@ serialization is done by the base, and the version is defined by its
 
 ## When it is selected
 
-Always available (no `configure.m4`, no runtime gate). Chosen for a peer
+Built only with legacy support (its `configure.m4` - see "Building" in
+[`../AGENTS.md`](../AGENTS.md)); no runtime gate. Chosen for a peer
 that advertises `"v51"`, and it is the highest-priority module below
 `v61`.
 

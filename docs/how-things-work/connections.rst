@@ -168,7 +168,8 @@ rendezvous file gives it. Only a PMIx configured
 naming the server's release, and with ``PMIX_ERR_NOT_SUPPORTED``, which
 fails a client's ``PMIx_Init`` rather than making it a singleton. It
 refuses any server address over TCP the same way, since only a server of
-an earlier release is reached at one.
+an earlier release is reached at one. With neither direction built
+(``--disable-legacy-peers``), the library has no TCP transport at all.
 
 The local socket
 ^^^^^^^^^^^^^^^^

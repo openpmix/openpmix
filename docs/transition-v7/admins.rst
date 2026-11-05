@@ -83,7 +83,8 @@ servers from PMIx v3.2 on - unless PMIx was configured
 ``--disable-legacy-servers``, which refuses a server of an earlier
 release. Configure that only where no server of an earlier release can
 run a v7 application. ``--disable-legacy-peers`` disables both
-directions.
+directions, and leaves the TCP transport and the earlier releases' wire
+formats out of the library.
 
 See :ref:`label-sysadmin-releases` and :ref:`clients of earlier releases <label-conn-earlier-clients>`.
 

@@ -887,9 +887,13 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_MCA
 
     # Every process of this release on a host connects to its server over
-    # the usock transport, and the server listens on tcp too - for older
-    # peers. Neither can be left out.
-    for pmix_ptl_required in usock tcp ; do
+    # the usock transport, and tcp carries every connection with a peer of
+    # an earlier release - so tcp is needed whenever either direction of
+    # legacy support is built. Neither can then be left out.
+    pmix_ptl_required_list=usock
+    AS_IF([test "$pmix_legacy_support" = "1"],
+          [pmix_ptl_required_list="$pmix_ptl_required_list tcp"])
+    for pmix_ptl_required in $pmix_ptl_required_list ; do
         AS_CASE([" $MCA_pmix_ptl_STATIC_COMPONENTS $MCA_pmix_ptl_DSO_COMPONENTS "],
                 [*" $pmix_ptl_required "*], [],
                 [AC_MSG_WARN([The ptl/$pmix_ptl_required component is not being built.])
@@ -1524,7 +1528,9 @@ PMIX_SUMMARY_ADD([Miscellaneous], [IPv6 Support], [], [$pmix_ipv6_enabled])
 #
 # --enable-legacy-peers sets both, and --disable-legacy-peers clears
 # both; either of the others given as well overrides it for its own
-# direction.
+# direction. With neither direction, nothing in the library speaks an
+# earlier release's wire format or transport, so the tcp transport and
+# the bfrops components before v70 are not built.
 #
 AC_ARG_ENABLE([legacy-peers],
     [AS_HELP_STRING([--enable-legacy-peers],
@@ -1564,6 +1570,16 @@ else
 fi
 AC_DEFINE_UNQUOTED([PMIX_ENABLE_LEGACY_SERVERS], [$pmix_legacy_servers],
                    [Whether a client or tool can connect to a server of an earlier release])
+
+# the tcp transport and the bfrops components before v70 are built only
+# for one direction or the other - see their configure.m4 files
+if test "$pmix_legacy_clients" = "1" || test "$pmix_legacy_servers" = "1"; then
+    pmix_legacy_support=1
+else
+    pmix_legacy_support=0
+fi
+AC_DEFINE_UNQUOTED([PMIX_ENABLE_LEGACY_SUPPORT], [$pmix_legacy_support],
+                   [Whether the tcp transport and the wire formats of earlier releases are built])
 
 PMIX_SUMMARY_ADD([Miscellaneous], [Earlier-release clients and tools], [], [$enable_legacy_clients])
 PMIX_SUMMARY_ADD([Miscellaneous], [Earlier-release servers], [], [$enable_legacy_servers])

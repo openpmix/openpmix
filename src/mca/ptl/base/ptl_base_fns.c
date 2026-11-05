@@ -692,8 +692,9 @@ pmix_status_t pmix_ptl_base_select_compat(struct pmix_peer_t *pr, pmix_connectio
     }
     primary = (peer == pmix_client_globals.myserver);
 
-    /* a server this PMIx will not talk to has nothing to choose - and is
-     * refused here for its release, before any choice is made */
+    /* a server this PMIx will not talk to has nothing to choose - and
+     * saying so here names the reason, rather than the wire formats a
+     * build without those of earlier releases has none of in common */
     if (PMIX_SUCCESS != (rc = refuse_outdated(peer, NULL))) {
         return rc;
     }

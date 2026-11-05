@@ -50,21 +50,26 @@ static void report(const char *name, int passed, const char *detail)
     }
 }
 
-/* tcp and usock are in use, and PMIX_MCA_ptl is gone from the
- * environment */
+/* usock is in use - and tcp, when it is built - and PMIX_MCA_ptl is gone
+ * from the environment */
 static int check_state(void)
 {
     pmix_ptl_base_active_t *active;
     bool tcp = false, usock = false;
 
     PMIX_LIST_FOREACH (active, &pmix_ptl_base.actives, pmix_ptl_base_active_t) {
+#if PMIX_ENABLE_LEGACY_SUPPORT
         if (&pmix_ptl_tcp_module == active->module) {
             tcp = true;
-        } else if (&pmix_ptl_usock_module == active->module) {
+            continue;
+        }
+#endif
+        if (&pmix_ptl_usock_module == active->module) {
             usock = true;
         }
     }
-    if (!tcp || !usock) {
+    /* tcp is built only to carry peers of earlier releases */
+    if (PMIX_ENABLE_LEGACY_SUPPORT != tcp || !usock) {
         fprintf(stderr, "  in use: tcp %s, usock %s\n", tcp ? "yes" : "no",
                 usock ? "yes" : "no");
         return CHILD_FAIL;
