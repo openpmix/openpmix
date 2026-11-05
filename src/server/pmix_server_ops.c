@@ -1210,9 +1210,10 @@ void pmix_server_spawn_parser(pmix_peer_t *peer,
 
     /* Naming ANY output channel decides the matter for all of them: the
      * request is taken verbatim, including a channel the requestor
-     * explicitly turned off. Merging a partial request into an inherited
-     * set would make "forward stdout" quietly mean something different
-     * depending on what the parent job happened to be doing. */
+     * explicitly turned off, and a channel it did not name is not
+     * forwarded. For a process of a job, the channels named true are the
+     * ones that follow its own job's output - see
+     * pmix_server_process_iof(). */
     *inherit = !(stdout_found || stderr_found || stddiag_found);
 
     if (PMIX_PEER_IS_TOOL(peer)) {
@@ -1231,6 +1232,66 @@ void pmix_server_spawn_parser(pmix_peer_t *peer,
         }
         *inherit = false;
     }
+}
+
+static const struct {
+    const char *key;
+    pmix_iof_channel_t channel;
+} output_channels[] = {
+    {PMIX_FWD_STDOUT, PMIX_FWD_STDOUT_CHANNEL},
+    {PMIX_FWD_STDERR, PMIX_FWD_STDERR_CHANNEL},
+    {PMIX_FWD_STDDIAG, PMIX_FWD_STDDIAG_CHANNEL},
+};
+#define PMIX_NUM_OUTPUT_CHANNELS (sizeof(output_channels) / sizeof(output_channels[0]))
+
+static bool is_output_channel(const char *key)
+{
+    size_t k;
+
+    for (k = 0; k < PMIX_NUM_OUTPUT_CHANNELS; k++) {
+        if (PMIx_Check_key(key, output_channels[k].key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+pmix_status_t pmix_server_state_channels(pmix_iof_channel_t channels,
+                                         pmix_info_t **info, size_t *ninfo)
+{
+    pmix_info_t *old = *info, *new;
+    size_t n, m, k, nold = *ninfo;
+    bool named = false, flag;
+
+    for (n = 0; n < nold && !named; n++) {
+        named = is_output_channel(old[n].key);
+    }
+    if (!named) {
+        return PMIX_SUCCESS;
+    }
+    new = PMIx_Info_create(nold + PMIX_NUM_OUTPUT_CHANNELS);
+    if (NULL == new) {
+        return PMIX_ERR_NOMEM;
+    }
+    /* moved, not copied - see stamp_requester */
+    m = 0;
+    for (n = 0; n < nold; n++) {
+        if (is_output_channel(old[n].key)) {
+            PMIx_Info_destruct(&old[n]);
+            continue;
+        }
+        memcpy(&new[m], &old[n], sizeof(pmix_info_t));
+        ++m;
+    }
+    for (k = 0; k < PMIX_NUM_OUTPUT_CHANNELS; k++) {
+        flag = (0 != (channels & output_channels[k].channel));
+        PMIx_Info_load(&new[m], output_channels[k].key, &flag, PMIX_BOOL);
+        ++m;
+    }
+    free(old);
+    *info = new;
+    *ninfo = m;
+    return PMIX_SUCCESS;
 }
 
 /* Completion callback for a spawn we fork/exec'd ourselves. pfexec calls
@@ -1364,7 +1425,13 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
      * PMIx_Spawn_nb parse unconditionally for the same reason. */
     pmix_server_spawn_parser(peer, &cd->channels, &cd->flags,
                              &cd->inherit_iof, cd->info, cd->ninfo);
+    cd->iof_to_requester = PMIX_PEER_IS_TOOL(peer);
     rc = screen_file_writer(peer, cd);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    rc = pmix_server_state_channels(cd->channels, &cd->info, &cd->ninfo);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;

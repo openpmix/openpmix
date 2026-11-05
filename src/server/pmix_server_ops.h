@@ -78,6 +78,10 @@ typedef struct {
      * job should have forwarded, so the child inherits its parent's - see
      * pmix_server_spawn_parser() and pmix_server_process_iof() */
     bool inherit_iof;
+    /* the requester is a tool, so the channels a spawn request named are
+     * forwarded to it rather than inherited - see pmix_server_process_iof().
+     * Taken when the request is parsed */
+    bool iof_to_requester;
     bool xoff;      // IOF flow control: suspend (true) or resume (false)
     pmix_byte_object_t *bo;
     size_t nbo;
@@ -340,13 +344,21 @@ PMIX_EXPORT pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *bu
 /* Parse a spawn request's output-forwarding directives. On return,
  * *inherit is true when nothing in the request decided which channels to
  * forward, which is the caller's signal to give the child job its
- * parent's settings instead - see pmix_server_process_iof(). */
+ * parent's settings on every channel; otherwise *channels holds those the
+ * request named true - see pmix_server_process_iof(). */
 PMIX_EXPORT void pmix_server_spawn_parser(pmix_peer_t *peer,
                                           pmix_iof_channel_t *channels,
                                           pmix_iof_flags_t *flags,
                                           bool *inherit,
                                           pmix_info_t *info,
                                           size_t ninfo);
+/* A spawn request that named any output channel is taken exactly as
+ * written - see pmix_server_spawn_parser(). Replace what it named with all
+ * three output channels as the parser resolved them ("channels"), so the
+ * host can register them with the job for every server its output
+ * reaches. A request that named none is left as it is */
+PMIX_EXPORT pmix_status_t pmix_server_state_channels(pmix_iof_channel_t channels,
+                                                     pmix_info_t **info, size_t *ninfo);
 PMIX_EXPORT pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
                                                   char nspace[]);
 

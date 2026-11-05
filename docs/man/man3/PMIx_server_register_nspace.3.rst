@@ -242,6 +242,13 @@ output for a tool, and includes:
   ``PMIX_IOF_MERGE_STDERR_STDOUT`` and ``PMIX_IOF_OUTPUT_RAW`` |mdash| with
   the value each was given, a ``false`` included. The server sends them to each
   receiver with the first of the job's output (``PMIX_IOF_JOB_DIRECTIVES``).
+* the **output channels** the spawn request named, if it named any |mdash|
+  ``PMIX_FWD_STDOUT``, ``PMIX_FWD_STDERR`` and ``PMIX_FWD_STDDIAG``, as the
+  server passed them to the host's ``spawn`` function: all three, each with the
+  value the server resolved it to. A job registered with them inherits its
+  parent's forwarding on the channels set ``true`` and no others, and a server
+  that writes the job's output to its own ``stdout`` and ``stderr`` writes only
+  those channels there. The job's output files are written as always.
 * optionally, ``PMIX_IOF_INHERIT`` (bool) set to ``false``, if the job is not to
   inherit its parent's forwarding at all.
 

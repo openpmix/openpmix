@@ -423,7 +423,11 @@ completed before the callback returned. See the return-value contract above. The
 include ``PMIX_REQUESTOR_IS_TOOL`` or ``PMIX_REQUESTOR_IS_CLIENT`` (bool),
 indicating whether the process that issued the spawn request is a tool or a
 client, respectively; a host may use this to apply different policies to
-tool-initiated launches.
+tool-initiated launches. When the request named any of ``PMIX_FWD_STDOUT``,
+``PMIX_FWD_STDERR`` or ``PMIX_FWD_STDDIAG``, the job-level information names
+all three, each with the value the server resolved it to; the host registers
+them with the spawned job (see
+:ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>`).
 
 .. _man5-pmix_server_module_t-connect:
 
