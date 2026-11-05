@@ -172,6 +172,8 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
             }
             PMIx_Argv_free(tmp);
             if (PMIX_SUCCESS != rc) {
+                /* suri points into urispec, which is freed on the way out */
+                suri = NULL;
                 goto error;
             }
             /* setup to process the URI */

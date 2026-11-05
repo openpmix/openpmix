@@ -56,6 +56,11 @@
  *                                         for a v4.1 one: PMIX_ERR_COMM_FAILURE
  *                                         at the dead port, not
  *                                         PMIX_ERR_OUTDATED
+ *   - a PMIX_SERVER_URI directive whose
+ *     variable names a wire format this
+ *     PMIx does not have               -> PMIX_ERR_COMM_FAILURE, not initialized
+ *                                         - the client freed a pointer into the
+ *                                         directive's copy, and aborted
  */
 
 #include "src/include/pmix_config.h"
@@ -395,6 +400,11 @@ static void directive_case(const char *name, int kind)
         } else if (2 == kind) {
             snprintf(uri, sizeof(uri), ";" SERVER_ID ";tcp4://127.0.0.1:%d", port);
             PMIX_INFO_LOAD(&info, PMIX_SERVER_URI, uri, PMIX_STRING);
+        } else if (4 == kind) {
+            /* a wire format no PMIx has */
+            snprintf(uri, sizeof(uri), "PMIX_SERVER_URI99;" SERVER_ID ";tcp4://127.0.0.1:%d",
+                     port);
+            PMIX_INFO_LOAD(&info, PMIX_SERVER_URI, uri, PMIX_STRING);
         } else {
             /* the launcher's release, in the environment, is not the
              * directive's server's */
@@ -407,7 +417,7 @@ static void directive_case(const char *name, int kind)
     }
     close(fds[1]);
     got = collect(child, fds[0], &res);
-    expect(name, got, &res, (3 == kind) ? PMIX_ERR_COMM_FAILURE : PMIX_ERR_BAD_PARAM, 0);
+    expect(name, got, &res, (2 < kind) ? PMIX_ERR_COMM_FAILURE : PMIX_ERR_BAD_PARAM, 0);
 }
 
 /* A server that answers the connect-ack with a request for a security
@@ -498,6 +508,8 @@ int main(void)
     directive_case("...nor one naming no URI variable before the URI", 2);
     directive_case("a directive's server is of the release its variable names, not the "
                    "launcher's", 3);
+    directive_case("a directive naming a wire format this PMIx lacks fails, and does not "
+                   "abort", 4);
 
     fprintf(stdout, "client_connect_fail: %d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;
