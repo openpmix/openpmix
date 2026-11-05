@@ -277,11 +277,13 @@ be used with ``configure``:
             you do not have support for OmniPath and will
             automatically skip the ``opa`` PNET component.
 
-  .. note:: The ``usock`` and ``tcp`` PTL components are always built,
-            and ``configure`` stops with an error if either is
-            excluded: a process of this release reaches a server on its
-            host over ``usock``, and a server of an earlier release
-            over ``tcp``.
+  .. note:: The ``usock`` PTL component is always built, and
+            ``configure`` stops with an error if it is excluded: a
+            process of this release reaches a server on its host over
+            ``usock``. The ``tcp`` component carries every connection
+            with a peer of an earlier release, so it is built - and
+            cannot be excluded - whenever either of the two options
+            below is enabled, and is left out when neither is.
 
 PMIx releases before v7.0 reach a server over TCP, and speak wire
 formats of their own. Support for them comes in two directions, each
@@ -314,7 +316,10 @@ with its own option:
 
 * ``--enable-legacy-peers``: Both of the above. ``--disable-legacy-peers``
   disables both; either option given beside it decides its own
-  direction.
+  direction. With neither direction built, nothing in the library speaks
+  an earlier release's wire format or transport, and the ``tcp`` PTL
+  component and every ``bfrops`` component but ``v70`` are left out of
+  the library.
 
 * ``--disable-show-load-errors-by-default``:
   Set the default value of the ``mca_base_component_show_load_errors``

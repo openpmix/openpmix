@@ -26,7 +26,8 @@ framework's history.
 
 ## When it is selected
 
-Always available. Chosen for a peer advertising `"v4"`; it is the
+Built only with legacy support (see "Building" in
+[`../AGENTS.md`](../AGENTS.md)). Chosen for a peer advertising `"v4"`; it is the
 fallback modern format when a peer is too old for `v41`/`v51`/`v61`/`v70` but
 new enough to speak the flexible encoding.
 

@@ -85,8 +85,14 @@ tables of base functions.
 
 `ptl` is a **multi-select** framework, and its components are
 transports. `pmix_ptl_base_select` keeps every one whose query succeeds on
-`pmix_ptl_base.actives`, highest priority first. Today there is one,
-[`tcp/`](tcp/AGENTS.md).
+`pmix_ptl_base.actives`, highest priority first. There are two:
+[`usock/`](usock/AGENTS.md), the local socket every process of this
+release uses, always built; and [`tcp/`](tcp/AGENTS.md), which carries
+every connection with a peer of an earlier release and is built only
+when either direction of legacy support is (`--enable-legacy-clients`,
+or legacy servers, on unless `--disable-legacy-servers`;
+`PMIX_ENABLE_LEGACY_SUPPORT`). Nothing outside `tcp/` may name a tcp
+symbol unless it is under that macro.
 
 A transport (`pmix_ptl_module_t` in [`ptl.h`](ptl.h)) does only what
 depends on the kind of socket:

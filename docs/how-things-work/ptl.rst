@@ -95,8 +95,11 @@ that can run is active, and each opens its own listening socket:
        ``PMIX_SERVER_LEGACY_PEERS``), and a client or tool dials it
        only to reach a server of an earlier release.
 
-Both are always built: ``configure`` stops with an error if either is
-excluded. Which transport a URI belongs to is the transport that
+``usock`` is always built, and ``tcp`` whenever either direction of
+legacy support is (``--enable-legacy-clients``, or legacy servers, on
+unless ``--disable-legacy-servers``): ``configure`` stops with an error if
+one it needs is excluded. With neither direction, ``tcp`` is not built -
+and neither is any ``bfrops`` wire format but ``v70``. Which transport a URI belongs to is the transport that
 recognizes its scheme. ``PMIX_MCA_ptl`` selects nothing - it is removed
 from the environment at init, and a ``ptl`` selection given any other way
 is ignored. Both transports speak the same messages, on the wire as

@@ -75,7 +75,8 @@ Leave legacy server support in (the default) wherever applications
 may carry a PMIx v7 client library to a system whose resource manager
 runs an earlier release - in a container image, for example. Configure
 ``--disable-legacy-peers`` only where every client, tool and server on
-the system is of v7.0 or later.
+the system is of v7.0 or later: the library then leaves out the TCP
+transport and the wire formats of earlier releases altogether.
 
 See :ref:`label-version-numbers` and
 :ref:`label-sysadmin-authentication`.

@@ -397,8 +397,12 @@ int main(int argc, char **argv)
                    PMIX_SERVER_PIDINFO, NULL, 0);
     check_optional("optional init refuses a URI that does not parse",
                    PMIX_SERVER_URI, "not-a-uri", 0);
+#if PMIX_ENABLE_LEGACY_SUPPORT
     check_optional("optional init refuses a URI whose address does not parse",
                    PMIX_SERVER_URI, "probe.0;tcp4://not.an.address:1", 0);
+#endif
+    check_optional("optional init refuses a local URI whose path is not absolute",
+                   PMIX_SERVER_URI, "probe.0;usock://not/absolute", 0);
     check_optional("optional init refuses an unknown PMIX_CONNECTION_ORDER entry",
                    PMIX_CONNECTION_ORDER, "PMIX_NOT_AN_ATTRIBUTE", 0);
     check_optional("optional init refuses an order entry that is not a target",

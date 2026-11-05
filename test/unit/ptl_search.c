@@ -949,6 +949,7 @@ static void test_compat(void)
     } while (0)
 
     RESET();
+#if PMIX_ENABLE_LEGACY_SUPPORT
     scratch.bfrops = strdup("v99,v41,v21");
     rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);
     report("compat: the highest wire format both have is taken",
@@ -956,6 +957,13 @@ static void test_compat(void)
            PMIx_Error_string(rc));
     report("compat: a server that is not the primary leaves our own format alone",
            pmix_globals.mypeer->nptr->compat.bfrops != peer->nptr->compat.bfrops, "changed");
+#else
+    /* a build with no earlier release's wire format has only v70 */
+    scratch.bfrops = strdup("v99,v41,v21");
+    rc = pmix_ptl_base_select_compat((struct pmix_peer_t *) peer, &scratch);
+    report("compat: only earlier releases' wire formats listed - none in common",
+           PMIX_ERR_NOT_SUPPORTED == rc, PMIx_Error_string(rc));
+#endif
 
     RESET();
     scratch.bfrops = strdup("v98,v99");
