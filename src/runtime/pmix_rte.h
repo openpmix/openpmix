@@ -51,6 +51,7 @@ PMIX_EXPORT extern char *pmix_progress_thread_cpus;
 PMIX_EXPORT extern bool pmix_bind_progress_thread_reqd;
 PMIX_EXPORT extern int pmix_maxfd;
 PMIX_EXPORT extern int pmix_server_client_fintime;
+PMIX_EXPORT extern int pmix_tool_fintime;
 PMIX_EXPORT extern bool pmix_keep_fqdn_hostnames;
 PMIX_EXPORT extern bool pmix_log_host_only;
 

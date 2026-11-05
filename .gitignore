@@ -300,6 +300,7 @@ test/unit/tracker_match
 test/unit/trk_peer_lost
 test/unit/rank_lost
 test/unit/rank_departure
+test/unit/finalize_paths
 test/unit/client_cycle
 test/unit/tool_cycle
 test/unit/event_chain

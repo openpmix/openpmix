@@ -122,6 +122,11 @@ PMIX_EXPORT void pmix_parse_localquery(int sd, short args, void *cbdata);
  * repointing pmix_client_globals.myserver is the case that matters. */
 PMIX_EXPORT void pmix_client_commit_resync(void);
 
+/* the status a server's reply to a finalize request carries - what a
+ * client's or tool's finalize returns */
+PMIX_EXPORT pmix_status_t pmix_client_finalize_reply(struct pmix_peer_t *pr,
+                                                     pmix_buffer_t *buf);
+
 /* Does our server hold the membership of our groups (v7.0 on)? Then we
  * keep none: a group named by its ID goes to the server as written, the
  * server expands it and checks we are among the participants, and a

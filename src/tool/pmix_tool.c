@@ -1661,6 +1661,7 @@ typedef struct {
     pmix_lock_t lock;
     pmix_event_t ev;
     bool active;
+    pmix_status_t status; // what became of the finalize request
 } pmix_tool_timeout_t;
 
 /* timer callback */
@@ -1673,6 +1674,7 @@ static void fin_timeout(int sd, short args, void *cbdata)
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:tool finwait timeout fired");
     if (tev->active) {
         tev->active = false;
+        tev->status = PMIX_ERR_TIMEOUT;
         PMIX_WAKEUP_THREAD(&tev->lock);
     }
 }
@@ -1682,7 +1684,7 @@ static void finwait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
 {
     pmix_tool_timeout_t *tev;
     tev = (pmix_tool_timeout_t *) cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(pr, hdr, buf);
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:tool finwait_cbfunc received");
     /* The wakeup belongs INSIDE the active test, which is the whole point
@@ -1695,6 +1697,7 @@ static void finwait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
      * identically-shaped finwait_cbfunc guards it. */
     if (tev->active) {
         tev->active = false;
+        tev->status = pmix_client_finalize_reply(pr, buf);
         pmix_event_del(&tev->ev); // stop the timer
         PMIX_WAKEUP_THREAD(&tev->lock);
     }
@@ -1706,7 +1709,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     pmix_cmd_t cmd = PMIX_FINALIZE_CMD;
     pmix_status_t rc, ret = PMIX_SUCCESS;
     pmix_tool_timeout_t tev;
-    struct timeval tv = {5, 0};
+    struct timeval tv = {0, 0};
     int n, i;
     pmix_peer_t *peer;
     pmix_pfexec_child_t *child;
@@ -1723,6 +1726,13 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     i = pmix_atomic_fetch_add(&tool_init_cntr, -1);
     if (1 < i) {
         return PMIX_SUCCESS;
+    }
+    /* the teardown below waits on the progress thread and then stops it,
+     * so from the thread itself it would wait on itself */
+    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_tool_finalize"))) {
+        /* put the reference back - we did not finalize */
+        pmix_atomic_fetch_add(&tool_init_cntr, 1);
+        return PMIX_ERR_WOULD_BLOCK;
     }
     pmix_atomic_unset_bool(&pmix_globals.initialized);
     /* reset the one-time-init latch so a subsequent PMIx_tool_init in this
@@ -1761,7 +1771,9 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
             PMIX_CONSTRUCT_LOCK(&tev.lock);
             pmix_event_assign(&tev.ev, pmix_globals.evbase, -1, 0, fin_timeout, &tev);
             tev.active = true;
+            tev.status = PMIX_SUCCESS;
             PMIX_POST_OBJECT(&tev);
+            tv.tv_sec = pmix_tool_fintime;
             pmix_event_add(&tev.ev, &tv);
             PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, finwait_cbfunc,
                                (void *) &tev);
@@ -1784,8 +1796,11 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
                 if (tev.active) {
                     pmix_event_del(&tev.ev);
                 }
+                /* the host's answer, or that none came */
+                ret = tev.status;
                 pmix_output_verbose(2, pmix_globals.debug_output,
-                                    "pmix:tool finalize sync received");
+                                    "pmix:tool finalize sync received: %s",
+                                    PMIx_Error_string(ret));
             }
         }
     }
@@ -2265,6 +2280,9 @@ static void disc(int sd, short args, void *cbdata)
         PMIX_RELEASE(departing);
     }
 
+    /* nothing it owed us is coming now */
+    pmix_ptl_base_complete_recvs(peer);
+
     /* now drop the connection - release the clients-array reference */
     PMIX_RELEASE(peer);
 
@@ -2338,7 +2356,8 @@ static void getsrvrs(int sd, short args, void *cbdata)
 
     for (n = 0; n < pmix_server_globals.clients.size; n++) {
         pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
-        if (NULL == pr) {
+        /* one whose connection is gone is no server of ours */
+        if (NULL == pr || pr->closed) {
             continue;
         }
         /* if it is our current primary server, ignore it */
@@ -2454,10 +2473,11 @@ void pmix_tool_retry_set(int sd, short args, void *cbdata)
         goto done;
     }
 
-    /* see if we have this server */
+    /* see if we have this server - one whose connection is gone cannot
+     * be made ours */
     for (n = 0; n < pmix_server_globals.clients.size; n++) {
         pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
-        if (NULL == pr) {
+        if (NULL == pr || pr->closed) {
             continue;
         }
         if (PMIX_CHECK_NSPACE(cb->proc->nspace, pr->info->pname.nspace)
