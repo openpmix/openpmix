@@ -341,9 +341,9 @@ test_linux() {
     cleanup_swarm
 
     ####################################################################
-    banner "a server taking legacy peers names a TCP tool by the kernel"
+    banner "a server taking legacy clients names a TCP tool by the kernel"
     ####################################################################
-    # A server run by an ordinary user that takes legacy peers listens on
+    # A server run by an ordinary user that takes legacy clients listens on
     # TCP on loopback, and asks the kernel who owns the far end of each
     # connection: a tool connecting to it over TCP is taken as its own
     # user. prterun, not a persistent DVM, so the server's own output is
@@ -351,7 +351,7 @@ test_linux() {
     cleanup_swarm
     ON 1 "rm -f /tmp/ptl-legacy.uri /tmp/ptl-legacy.log" >/dev/null 2>&1
     docker exec -u ubuntu "${NODE}1" bash -lc ". /opt/prte/env.sh; cd /tmp; \
-        PMIX_MCA_ptl_base_legacy_peers=1 nohup prterun --report-uri /tmp/ptl-legacy.uri \
+        PMIX_MCA_ptl_base_legacy_clients=1 nohup prterun --report-uri /tmp/ptl-legacy.uri \
         -n 1 sleep 120 >/tmp/ptl-legacy.log 2>&1 &" >/dev/null 2>&1
     for _ in 1 2 3 4 5 6 7 8 9 10; do
         ON 1 "test -s /tmp/ptl-legacy.uri" && break
@@ -362,7 +362,7 @@ test_linux() {
         *";tcp4://"*)
             nsp="${uri%%;*}"; nsp="${nsp%.*}"
             port="${uri##*:}"
-            ok "a server run by ubuntu with legacy peers listens on TCP ($port)"
+            ok "a server run by ubuntu with legacy clients listens on TCP ($port)"
             OUT="$(docker exec -u ubuntu "${NODE}1" bash -lc ". /opt/prte/env.sh; \
                 timeout 60 $TESTDIR/tool -u '$nsp.0;tcp4://127.0.0.1:$port' 2>&1")"
             RC=$?
@@ -373,7 +373,7 @@ test_linux() {
             fi
             ;;
         *)
-            bad "a server run by ubuntu with legacy peers reported no TCP URI ($uri)"
+            bad "a server run by ubuntu with legacy clients reported no TCP URI ($uri)"
             ;;
     esac
     ON 1 'pkill -9 -u ubuntu prterun 2>/dev/null; true' >/dev/null 2>&1

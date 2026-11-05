@@ -229,12 +229,33 @@ The host asked the PMIx server on %s to take connections from tools on
 other hosts (PMIX_SERVER_REMOTE_CONNECTIONS). A PMIx server takes
 connections from its own host only: do not ask for remote connections.
 #
-[legacy-peers-not-built]
+[legacy-clients-not-built]
 The PMIx server on %s was asked, by %s, to take
 connections from clients and tools of PMIx releases before v7.0, but
 this PMIx was built without support for them.
 
-Rebuild PMIx configured --enable-legacy-peers, or do not ask for them.
+Rebuild PMIx configured --enable-legacy-clients, or do not ask for them.
+#
+[legacy-servers-not-built]
+A process on %s was to connect to a PMIx server of release
+%d.%d, but this PMIx was built without support for servers of releases
+before v7.0 (configured --disable-legacy-servers, or
+--disable-legacy-peers). The connection has been refused.
+
+Run the process under a server of PMIx v7.0 or later, or rebuild PMIx
+with legacy server support, which is the default.
+#
+[legacy-servers-tcp]
+A process on %s was given a PMIx server's TCP address to
+connect to:
+
+  %s
+
+Only a server of a PMIx release before v7.0 is reached over TCP, and
+this PMIx was built without support for those (configured
+--disable-legacy-servers, or --disable-legacy-peers). A server of v7.0
+or later is reached on its local socket, which its report or rendezvous
+file names on its "local:" line.
 #
 [rndz-name-held]
 A PMIx server was unable to take the name of the rendezvous file by
@@ -393,10 +414,10 @@ The PMIx server was asked to report its TCP URI:
   %s
 
 but it has no TCP listener: it opens one only to take clients and tools
-of releases before v7.0, when legacy peers are on (the
-ptl_base_legacy_peers parameter, or PMIX_SERVER_LEGACY_PEERS, in a PMIx
-built with --enable-legacy-peers). A reader of an earlier release could
-not connect to this server in any case.
+of releases before v7.0, when legacy clients are on (the
+ptl_base_legacy_clients parameter, or PMIX_SERVER_LEGACY_PEERS, in a
+PMIx built with --enable-legacy-clients). A reader of an earlier release
+could not connect to this server in any case.
 
 To report the URI a client or tool of v7.0 or later uses, give "-"
 (stdout) or "+" (stderr).

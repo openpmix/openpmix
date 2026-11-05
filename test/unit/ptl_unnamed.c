@@ -84,7 +84,7 @@ static pmix_server_module_t mymodule = {
     .tool_connected = tool_connected
 };
 
-/* ---- the server: a TCP listener for legacy peers, taking peers the
+/* ---- the server: a TCP listener for legacy clients, taking peers the
  * kernel cannot name on their claim ---- */
 
 typedef struct {
@@ -349,7 +349,7 @@ int main(void)
     case_t c;
 
     fprintf(stdout, "\n=== a tool and a TCP server the kernel cannot name ===\n\n");
-#if !PMIX_ENABLE_LEGACY_PEERS
+#if !PMIX_ENABLE_LEGACY_CLIENTS || !PMIX_ENABLE_LEGACY_SERVERS
     fprintf(stdout, "this PMIx takes no clients or tools of earlier releases, so a "
                     "server has no TCP listener\n");
     return SKIP;

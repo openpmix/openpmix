@@ -22,7 +22,7 @@
  * users ptl_base_server_access names - the users whose servers it may talk
  * to - and, for the system roles, the system directory first. The walk of the
  * whole system tmpdir that finds a server of an earlier release is made
- * only with legacy peers on.
+ * only with legacy servers on (ptl_base_legacy_servers).
  */
 
 #include "src/include/pmix_config.h"
@@ -245,10 +245,15 @@ char **pmix_ptl_base_rndz_dirs(bool system_role)
     return dirs;
 }
 
+/* Whether to look for servers of earlier releases where they write their
+ * files: a client's or tool's question, asked by ptl_base_legacy_servers
+ * (or ptl_base_legacy_peers), and only in a PMIx that can connect to such
+ * a server. Whether a server takes clients of earlier releases has no
+ * bearing on it */
 bool pmix_ptl_base_legacy_walk(void)
 {
-#if PMIX_ENABLE_LEGACY_PEERS
-    return pmix_ptl_base.legacy_peers || pmix_ptl_base.legacy_peers_param;
+#if PMIX_ENABLE_LEGACY_SERVERS
+    return pmix_ptl_base.legacy_servers_param || pmix_ptl_base.legacy_peers_param;
 #else
     return false;
 #endif

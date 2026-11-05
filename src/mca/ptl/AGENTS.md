@@ -470,9 +470,9 @@ number of bytes actually received, and a new field must do the same.
 be reached. It takes the directives that are not a transport's, has the
 transport open the socket (`pmix_ptl_base_listen`), and publishes what
 the transport made. The local transport's listener is always made; the
-tcp transport's only when the server takes legacy peers
-(`pmix_ptl_base.legacy_peers`, from `ptl_base_legacy_peers` or
-`PMIX_SERVER_LEGACY_PEERS`). The tcp transport's part is the first two
+tcp transport's only when the server takes legacy clients
+(`pmix_ptl_base.legacy_clients`, from `ptl_base_legacy_clients` or
+`ptl_base_legacy_peers`, then `PMIX_SERVER_LEGACY_PEERS`). The tcp transport's part is the first two
 steps:
 
 - **Interface selection.** Enumerate interfaces, filter through

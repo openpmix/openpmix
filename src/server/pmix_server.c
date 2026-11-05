@@ -1705,7 +1705,7 @@ static pmix_status_t setup_fork_body(const pmix_proc_t *proc, char ***env)
      * release can use - a client of this release finds its server through
      * these variables either way */
     lt = &pmix_ptl_base.listener;
-    uri = pmix_ptl_base.legacy_peers ? lt->uri : pmix_ptl_base.local_listener.uri;
+    uri = pmix_ptl_base.legacy_clients ? lt->uri : pmix_ptl_base.local_listener.uri;
     if (NULL != uri && NULL != lt->varname) {
         /* PMIx_Argv_split answers NULL - not an empty array - for a string
          * with no tokens, and the listener's varname is built by joining a

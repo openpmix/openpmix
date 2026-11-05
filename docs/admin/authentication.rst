@@ -130,16 +130,17 @@ These MCA parameters adjust the checks PMIx makes on connections:
    * - Parameter
      - Default
      - Effect
-   * - ``ptl_base_legacy_peers``
+   * - ``ptl_base_legacy_clients``
      - ``false``
      - When ``true``, a server takes clients and tools of PMIx releases
        before v7.0, which connect over TCP; a host's
-       ``PMIX_SERVER_LEGACY_PEERS`` overrides it. Older clients need it.
+       ``PMIX_SERVER_LEGACY_PEERS`` overrides it, and
+       ``ptl_base_legacy_peers`` sets it too. Older clients need it.
        On a platform whose kernel has no table of TCP connections to
        confirm a peer with (any but Linux, macOS and FreeBSD 12 or
        later), ``native`` then takes such a peer on the identity it
        gives, as every earlier release did. Only a PMIx configured
-       ``--enable-legacy-peers`` takes them; any other refuses the
+       ``--enable-legacy-clients`` takes them; any other refuses the
        setting and fails its init.
    * - ``ptl_base_if_include`` / ``ptl_base_if_exclude``
      - none

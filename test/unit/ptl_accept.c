@@ -2854,7 +2854,7 @@ static int run_token_tool_first(void)
     return case_token_tool(1);
 }
 
-/* A server that takes no legacy peers refuses a client or tool of an
+/* A server that takes no legacy clients refuses a client or tool of an
  * earlier release, with PMIX_ERR_NOT_SUPPORTED, and the host is not asked.
  * It has no TCP listener, so the connect-ack comes on the local socket -
  * as no process of an earlier release could send it, but the refusal
@@ -2866,7 +2866,7 @@ static int case_legacy_refused(bool tool)
     int sd = -1;
     pmix_status_t reply;
 
-    setenv("PMIX_MCA_ptl_base_legacy_peers", "0", 1);
+    setenv("PMIX_MCA_ptl_base_legacy_clients", "0", 1);
     ack_local = true;
     ack_version = "5.0.11";
     ack_bfrops = "v41";
@@ -5209,10 +5209,10 @@ static bool scratch_start(void)
 int main(int argc, char **argv)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
-#if PMIX_ENABLE_LEGACY_PEERS
+#if PMIX_ENABLE_LEGACY_CLIENTS
     /* these cases are about the TCP listener, which a server opens for
      * clients and tools of earlier releases */
-    setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
+    setenv("PMIX_MCA_ptl_base_legacy_clients", "1", 1);
 #else
     fprintf(stdout, "this PMIx takes no clients or tools of earlier releases, so a "
                     "server has no TCP listener for these cases\n");
@@ -5378,8 +5378,8 @@ int main(int argc, char **argv)
              run_token_pid_replaced);
     run_case("the rank registered again: another pid connects with the token it kept",
              run_token_pid_registered);
-    run_case("a server taking no legacy peers refuses a v5.0 client", run_legacy_refused_client);
-    run_case("a server taking no legacy peers refuses a v5.0 tool", run_legacy_refused_tool);
+    run_case("a server taking no legacy clients refuses a v5.0 client", run_legacy_refused_client);
+    run_case("a server taking no legacy clients refuses a v5.0 tool", run_legacy_refused_tool);
     run_case("a nameless v5.0 launcher on a client's rank is named by the host",
              run_nameless_launcher);
     run_case("a tool on a client's rank that finalizes leaves the rank to the next",

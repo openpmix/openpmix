@@ -648,6 +648,8 @@ static bool search_candidate(const char *path, bool *isdir)
     return S_ISREG(st.st_mode);
 }
 
+static pmix_status_t refuse_outdated(pmix_peer_t *peer, const char *uri);
+
 /* Our highest wire format named for a release no later than major.minor -
  * the guess for a server whose file does not say which it accepts. A
  * component is named for the release that introduced it ("v41"), so this
@@ -682,12 +684,19 @@ pmix_status_t pmix_ptl_base_select_compat(struct pmix_peer_t *pr, pmix_connectio
     char *ours, **list;
     bool primary;
     uint8_t major, minor;
+    pmix_status_t rc;
     int n;
 
     if (NULL == peer || NULL == peer->nptr || NULL == cn) {
         return PMIX_ERR_BAD_PARAM;
     }
     primary = (peer == pmix_client_globals.myserver);
+
+    /* a server this PMIx will not talk to has nothing to choose - and is
+     * refused here for its release, before any choice is made */
+    if (PMIX_SUCCESS != (rc = refuse_outdated(peer, NULL))) {
+        return rc;
+    }
 
     /* the wire format: the highest of ours the server lists */
     if (NULL != cn->bfrops) {
@@ -1166,6 +1175,11 @@ pmix_status_t pmix_ptl_base_df_search_depth(char *dirname, char *prefix, bool ex
                                             pmix_list_t *connections, int depth)
 {
     return df_search(dirname, prefix, exact, info, ninfo, optional, connections, depth);
+}
+
+bool pmix_ptl_base_is_tcp_uri(const char *uri)
+{
+    return (NULL != uri && (0 == strncmp(uri, "tcp4://", 7) || 0 == strncmp(uri, "tcp6://", 7)));
 }
 
 /* The address a URI names, from the transport whose URI it is - and
@@ -1926,14 +1940,16 @@ static pmix_status_t local_handshake(pmix_peer_t *peer, pmix_info_t iptr[], size
     return PMIX_SUCCESS;
 }
 
-/* The oldest server we will talk to is v3.2. Its version is known by
+/* The oldest server we will talk to is v3.2 - or, in a PMIx built
+ * without legacy server support, v7.0. Its version is known by
  * now on every path that can know it - the PMIX_SERVER_URI variable and
  * PMIX_VERSION for a client, or the version line of a rendezvous file,
  * whose absence marks a v2.0 server. A server reached through a URI handed
- * to us directly has none recorded, and is not refused. Refuse before
+ * to us directly has none recorded, and is not refused - unless, in a
+ * PMIx without legacy server support, the URI is a TCP one. Refuse before
  * connecting: an older server accepts the connection and then leaves us
  * waiting on answers it never sends. */
-static pmix_status_t refuse_outdated(pmix_peer_t *peer)
+static pmix_status_t refuse_outdated(pmix_peer_t *peer, const char *uri)
 {
     uint8_t major = PMIX_PEER_MAJOR_VERSION(peer);
     uint8_t minor = PMIX_PEER_MINOR_VERSION(peer);
@@ -1944,6 +1960,24 @@ static pmix_status_t refuse_outdated(pmix_peer_t *peer)
                        (int) major, (int) minor);
         return PMIX_ERR_OUTDATED;
     }
+#if !PMIX_ENABLE_LEGACY_SERVERS
+    /* A PMIx built without support for servers of earlier releases
+     * refuses one known to be of one - and any address over TCP, which
+     * only such a server is reached at. Refused as not supported, which
+     * no client takes for "no server" and becomes a singleton over */
+    if (0 != major && PMIX_MAJOR_WILDCARD != major && PMIX_PTL_LOCAL_MAJOR > major) {
+        pmix_show_help("help-ptl-base.txt", "legacy-servers-not-built", true,
+                       pmix_globals.hostname, (int) major, (int) minor);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    if (pmix_ptl_base_is_tcp_uri(uri)) {
+        pmix_show_help("help-ptl-base.txt", "legacy-servers-tcp", true,
+                       pmix_globals.hostname, uri);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+#else
+    PMIX_HIDE_UNUSED_PARAMS(uri);
+#endif
     return PMIX_SUCCESS;
 }
 
@@ -2085,7 +2119,7 @@ pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
     size_t len;
     bool renamed = false;
 
-    rc = refuse_outdated(peer);
+    rc = refuse_outdated(peer, suri);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
@@ -2871,7 +2905,7 @@ pmix_status_t pmix_ptl_base_start_connection(pmix_peer_t *peer, char *nspace,
     pmix_status_t rc;
     struct timeval tv = {0, 0};
 
-    rc = refuse_outdated(peer);
+    rc = refuse_outdated(peer, suri);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
@@ -3947,7 +3981,7 @@ void pmix_ptl_base_query_servers(int sd, short args, void *cbdata)
     PMIX_CONSTRUCT(&servers, pmix_list_t);
 
     /* the directories servers of this release write their files in -
-     * each looked in, not below - and, only with legacy peers on, the
+     * each looked in, not below - and, only with legacy servers on, the
      * whole system tmpdir, where servers of earlier releases write theirs
      * (it holds the pmix-user directories too, so they are not looked in
      * twice) */

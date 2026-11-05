@@ -58,9 +58,10 @@ jobs:
             visibility=--disable-visibility
         fi
 
-        # the vpath builds take clients and tools of earlier releases,
-        # so make check runs the TCP path; the others build without it,
-        # the default
+        # the vpath builds support peers of earlier releases in both
+        # directions, so make check runs the TCP path; the others take
+        # the default - servers of earlier releases, but not their
+        # clients and tools
         c=./configure
         if test "${{ matrix.path }}" = vpath; then
             mkdir build
@@ -129,9 +130,10 @@ jobs:
             visibility=--disable-visibility
         fi
 
-        # the vpath builds take clients and tools of earlier releases,
-        # so make check runs the TCP path; the others build without it,
-        # the default
+        # the vpath builds support peers of earlier releases in both
+        # directions, so make check runs the TCP path; the others take
+        # the default - servers of earlier releases, but not their
+        # clients and tools
         c=./configure
         if test "${{ matrix.path }}" = vpath; then
             mkdir build

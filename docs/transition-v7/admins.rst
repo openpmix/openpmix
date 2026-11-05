@@ -58,10 +58,10 @@ Containers and applications of earlier releases
 Releases before v7 connect over TCP, and a v7 server takes them only
 when both of these hold:
 
-* PMIx was configured with ``--enable-legacy-peers``. It is off by
+* PMIx was configured with ``--enable-legacy-clients``. It is off by
   default.
 * The support is turned on at run time: the MCA parameter
-  ``ptl_base_legacy_peers=true``, or the host's
+  ``ptl_base_legacy_clients=true``, or the host's
   ``PMIX_SERVER_LEGACY_PEERS`` attribute. PRRTE does not pass the
   attribute, so for PRRTE set the parameter where its daemons read it
   (a parameter file, say).
@@ -75,11 +75,15 @@ just does not work as a job.
 
 **What to do.** Decide whether your systems run containers or
 applications with an older PMIx inside. If they do, build PMIx with
-``--enable-legacy-peers`` and turn it on. If they do not, leave it off,
+``--enable-legacy-clients`` and turn it on. If they do not, leave it off,
 and tell users to update the PMIx in their images.
 
 **The other direction needs nothing.** A v7 application runs under
-servers from PMIx v3.2 on.
+servers from PMIx v3.2 on - unless PMIx was configured
+``--disable-legacy-servers``, which refuses a server of an earlier
+release. Configure that only where no server of an earlier release can
+run a v7 application. ``--disable-legacy-peers`` disables both
+directions.
 
 See :ref:`label-sysadmin-releases` and :ref:`clients of earlier releases <label-conn-earlier-clients>`.
 
@@ -169,7 +173,7 @@ Scripts that read a server's address
 * ``--report-uri -`` and ``+`` (``PMIX_TCP_REPORT_URI``) now print the
   local socket's address, which v7 tools use.
 * ``tcp-`` and ``tcp+`` print the TCP address instead, for a tool of
-  an earlier release. They need legacy peers on.
+  an earlier release. They need legacy clients on.
 * A v7 tool given a TCP address for a v7 server is refused with
   ``PMIX_ERR_LOCAL_URI_REQUIRED``, and told to use the local address.
 
@@ -224,10 +228,18 @@ New and changed parameters
    * - Parameter
      - Default
      - What it does
-   * - ``ptl_base_legacy_peers``
+   * - ``ptl_base_legacy_clients``
      - ``false``
      - Take clients and tools of releases before v7 (needs
-       ``--enable-legacy-peers``).
+       ``--enable-legacy-clients``).
+   * - ``ptl_base_legacy_servers``
+     - ``false``
+     - With no server named, also look for servers of releases before
+       v7 where they write their files (needs legacy servers, built
+       unless ``--disable-legacy-servers``).
+   * - ``ptl_base_legacy_peers``
+     - ``false``
+     - Both of the above.
    * - ``ptl_base_server_access``
      - none
      - Servers besides one's own user's and root's that a client or

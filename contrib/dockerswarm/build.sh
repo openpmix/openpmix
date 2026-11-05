@@ -184,7 +184,8 @@ build_linux() {
         "$IMAGE" bash -euo pipefail -c '
             jobs=$(nproc)
 
-            # legacy peers: the ptl suite runs a server that takes them
+            # legacy peers in both directions: the ptl suite runs a server
+            # that takes them
             opts="--enable-legacy-peers"
             [ "$PYTHON_BINDINGS" = yes ] && opts="$opts --enable-python-bindings"
 

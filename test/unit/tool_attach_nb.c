@@ -44,7 +44,10 @@
  *                   that namespace, not dial the first one's URI again.
  *
  * Each fake server is named by a file of its URI ("file:<path>"), as a TCP
- * URI passed alone is refused before any connection is made.
+ * URI passed alone is refused before any connection is made. It listens on
+ * TCP - or, in a PMIx built without legacy server support, which dials no
+ * TCP address at all, on a local socket: the event-driven connect is the
+ * same either way.
  *
  * Attaching to a real server is covered by the existing tool tests
  * (tool_api, tool_rndz, run_toolswitch.pl), which go through the same
@@ -67,8 +70,14 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#if !PMIX_ENABLE_LEGACY_SERVERS
+/* the fake server's local socket */
+static char sockpath[sizeof(((struct sockaddr_un *) 0)->sun_path)];
+#endif
 
 /* the handshake wait the children run with, in seconds */
 #define ATTACH_WAIT 4
@@ -108,6 +117,7 @@ static double since(const struct timeval *start)
            + ((double) (now.tv_usec - start->tv_usec) / 1000000.0);
 }
 
+#if PMIX_ENABLE_LEGACY_SERVERS
 /* a listening socket on the loopback interface, on a port of the
  * kernel's choosing */
 static int make_listener(int *port)
@@ -133,6 +143,31 @@ static int make_listener(int *port)
     *port = ntohs(addr.sin_port);
     return sd;
 }
+#else
+/* a listening local socket at sockpath; *port is not used */
+static int make_listener(int *port)
+{
+    struct sockaddr_un addr;
+    int sd;
+
+    *port = 0;
+    snprintf(sockpath, sizeof(sockpath), "/tmp/pmix_anb.%lu", (unsigned long) getpid());
+    unlink(sockpath);
+    sd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (0 > sd) {
+        return -1;
+    }
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", sockpath);
+    if (0 != bind(sd, (struct sockaddr *) &addr, sizeof(addr)) || 0 != listen(sd, 8)) {
+        close(sd);
+        unlink(sockpath);
+        return -1;
+    }
+    return sd;
+}
+#endif
 
 /* The fake server's URI, as a file the tool is pointed at ("file:<path>"):
  * a TCP URI passed alone is refused before any connection, and these cases
@@ -153,8 +188,14 @@ static int fake_uri(int port, char *target, size_t tlen, char *path, size_t plen
         unlink(path);
         return -1;
     }
+#if PMIX_ENABLE_LEGACY_SERVERS
     fprintf(fp, "fakeserver.0;tcp4://127.0.0.1:%d\nv%d.%d.%d\n", port, (int) PMIX_VERSION_MAJOR,
             (int) PMIX_VERSION_MINOR, (int) PMIX_VERSION_RELEASE);
+#else
+    (void) port;
+    fprintf(fp, "fakeserver.0;usock://%s\nv%d.%d.%d\n", sockpath, (int) PMIX_VERSION_MAJOR,
+            (int) PMIX_VERSION_MINOR, (int) PMIX_VERSION_RELEASE);
+#endif
     fclose(fp);
     snprintf(target, tlen, "file:%s", path);
     return 0;
@@ -592,6 +633,9 @@ static void run_case(const char *name, int (*fn)(int), int closer)
     }
     waitpid(child, &status, 0);
     close(lsd);
+#if !PMIX_ENABLE_LEGACY_SERVERS
+    unlink(sockpath);
+#endif
     if (0 < acceptor) {
         kill(acceptor, SIGTERM);
         waitpid(acceptor, NULL, 0);
