@@ -21,9 +21,9 @@ and turns its URIs into addresses.
 | File | Contents |
 |------|----------|
 | `ptl_tcp.h` | The component struct (with the primary listener's address) and `pmix_ptl_tcp_split_and_resolve`. |
-| `ptl_tcp_component.c` | Component struct + `component_query` (always available, priority 30). |
+| `ptl_tcp_component.c` | Component struct + `component_query` (always available when built, priority 30). |
 | `ptl_tcp.c` | The module: `tcp_setup_listener`, `uri_to_addr`, and the interface helpers. |
-| `configure.m4` | Makes the component static - always part of the library, never a plugin. |
+| `configure.m4` | Builds the component only when either direction of legacy support is (`$pmix_legacy_support`; `PMIX_ENABLE_LEGACY_SUPPORT`), and then makes it static - part of the library, never a plugin. |
 
 ## What it does
 

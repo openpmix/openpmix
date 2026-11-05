@@ -114,6 +114,7 @@ static void test_parse_uri(void)
     report("parse_uri: empty string rejected", PMIX_SUCCESS != rc, "accepted");
 }
 
+#if PMIX_ENABLE_LEGACY_SUPPORT
 /* ---- pmix_ptl_base_setup_connection ------------------------------ */
 
 static void test_setup_connection(void)
@@ -321,6 +322,23 @@ static void test_split_and_resolve(void)
     PMIx_Argv_free(ifs);
 }
 
+#else
+/* ---- no tcp transport -------------------------------------------- */
+
+/* A PMIx built without support for earlier releases has no transport for
+ * a TCP URI: none takes it */
+static void test_no_tcp(void)
+{
+    struct sockaddr_storage ss;
+    size_t len;
+    pmix_status_t rc;
+
+    rc = pmix_ptl_base_setup_connection("tcp4://127.0.0.1:1234", &ss, &len);
+    report("setup_connection: no transport takes a TCP URI", PMIX_ERR_NOT_SUPPORTED == rc,
+           PMIx_Error_string(rc));
+}
+#endif
+
 /* ---- pmix_ptl_base_parse_version --------------------------------- */
 
 static void check_version(const char *name, const char *vers, pmix_status_t erc, uint8_t emaj,
@@ -476,9 +494,15 @@ int main(int argc, char **argv)
     fprintf(stdout, "\n=== ptl address and version parser unit tests ===\n\n");
 
     test_parse_uri();
+#if PMIX_ENABLE_LEGACY_SUPPORT
+    /* the tcp transport's parsers - built only to carry peers of earlier
+     * releases */
     test_setup_connection();
     test_setup_connection_ipv6();
     test_split_and_resolve();
+#else
+    test_no_tcp();
+#endif
     test_parse_version();
     test_peer_is_earlier();
 

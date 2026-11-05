@@ -50,6 +50,7 @@ static void report(const char *name, bool passed)
     }
 }
 
+#if PMIX_ENABLE_LEGACY_SUPPORT
 static bool registers(pmix_bfrops_module_t *mod, pmix_data_type_t type)
 {
     return NULL != mod->data_type_string(type);
@@ -132,6 +133,8 @@ static void test_v61_refuses_newer_types(void)
     PMIX_DESTRUCT(&buf);
 }
 
+#endif
+
 static void test_native_is_v70(void)
 {
     pmix_bfrops_module_t *mod;
@@ -149,15 +152,37 @@ static void test_native_is_v70(void)
     if (NULL != list) {
         fprintf(stdout, "    offered: %s\n", list);
     }
+#if PMIX_ENABLE_LEGACY_SUPPORT
     report("a server offers v70 ahead of v61", NULL != v70 && NULL != v61 && v70 < v61);
+#else
+    report("a server offers v70 alone", NULL != v70 && NULL == v61);
+#endif
     free(list);
 }
+
+#if !PMIX_ENABLE_LEGACY_SUPPORT
+/* With no support for peers of earlier releases, none of their wire
+ * formats is built */
+static void test_no_legacy_formats(void)
+{
+    static const char *const older[] = {"v21", "v3", "v4", "v41", "v51", "v61"};
+    char label[64];
+    size_t n;
+
+    for (n = 0; n < sizeof(older) / sizeof(older[0]); n++) {
+        snprintf(label, sizeof(label), "%s is not built", older[n]);
+        report(label, NULL == pmix_bfrops_base_assign_module(older[n]));
+    }
+}
+#endif
 
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
+#if PMIX_ENABLE_LEGACY_SUPPORT
     const pmix_data_type_t v61_added[] = {PMIX_NODE_PID};
     const pmix_data_type_t v70_added[] = {PMIX_REGEX2, PMIX_ALLOC_INHERIT};
+#endif
 
     (void) argc;
     (void) argv;
@@ -170,9 +195,13 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "\n=== bfrops component type sets ===\n\n");
 
+#if PMIX_ENABLE_LEGACY_SUPPORT
     test_superset("v51", "v61", v61_added, sizeof(v61_added) / sizeof(v61_added[0]));
     test_superset("v61", "v70", v70_added, sizeof(v70_added) / sizeof(v70_added[0]));
     test_v61_refuses_newer_types();
+#else
+    test_no_legacy_formats();
+#endif
     test_native_is_v70();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);

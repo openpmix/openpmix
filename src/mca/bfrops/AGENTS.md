@@ -411,10 +411,17 @@ src/mca/bfrops/
 
 ## Building
 
-All six components are statically built into `libpmix` and wired
-through the generated `base/static-components.h`; **none ships a
-`configure.m4`**, so none is conditionally compiled out — every version
-is always present in every build. `bfrops` ships **no `show_help` text of
+The components are statically built into `libpmix` and wired through
+the generated `base/static-components.h`. **`v70` is always built.
+`v21` through `v61` are built only when this PMIx supports peers of
+earlier releases in either direction** (`--enable-legacy-clients`, or
+legacy servers - on unless `--disable-legacy-servers`): each ships a
+`configure.m4` that tests `$pmix_legacy_support`, and the build
+defines `PMIX_ENABLE_LEGACY_SUPPORT` to match. Every peer of this release
+speaks `v70`, so a build with neither direction needs no other wire
+format. Code outside a component - a unit test, in particular - that
+asks for one of them by name (`pmix_bfrops_base_assign_module("v41")`)
+must be under that macro, or expect `NULL`. `bfrops` ships **no `show_help` text of
 its own** (the only topic it uses, `no-plugins`, lives in
 `help-pmix-runtime.txt`), so the regenerate-the-help-content golden rule
 does not bite here. Editing a `Makefile.am` only needs a plain `make`;

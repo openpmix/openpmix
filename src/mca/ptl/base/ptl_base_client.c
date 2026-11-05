@@ -82,6 +82,66 @@ static bool starts_with_uri(const char *str)
     return p != str && 0 == strncmp(p, "://", 3);
 }
 
+#if !PMIX_ENABLE_LEGACY_SERVERS
+/* Whether `name` is the PMIX_SERVER_URIxx variable of a wire format of a
+ * release before PMIX_PTL_LOCAL_MAJOR - and which */
+static bool legacy_var(const char *name, uint8_t *major, uint8_t *minor)
+{
+    const char *d = name + strlen("PMIX_SERVER_URI");
+
+    if (0 != strncmp(name, "PMIX_SERVER_URI", strlen("PMIX_SERVER_URI")) ||
+        !isdigit((unsigned char) d[0]) ||
+        ('\0' != d[1] && (!isdigit((unsigned char) d[1]) || '\0' != d[2]))) {
+        return false;
+    }
+    *major = (uint8_t) (d[0] - '0');
+    *minor = ('\0' == d[1]) ? 0 : (uint8_t) (d[1] - '0');
+    return PMIX_PTL_LOCAL_MAJOR > *major;
+}
+
+/* Whether a PMIX_SERVER_URI directive's list of variables, ':'-separated,
+ * names only earlier releases' wire formats - by the first */
+static bool legacy_server_named(const char *list, uint8_t *major, uint8_t *minor)
+{
+    char **names = PMIx_Argv_split(list, ':');
+    bool legacy = (NULL != names && NULL != names[0] &&
+                   legacy_var(names[0], major, minor));
+
+    PMIx_Argv_free(names);
+    return legacy;
+}
+
+/* Whether the server that started us is of an earlier release, by the
+ * variables it set: its PMIX_VERSION, else one of the PMIX_SERVER_URIxx
+ * names of the wire formats before v70, which pmix_ptl_base_set_peer
+ * reads only for a format this PMIx has */
+static bool legacy_server_env(uint8_t *major, uint8_t *minor)
+{
+    static const char *const older[] = {"PMIX_SERVER_URI61", "PMIX_SERVER_URI51",
+                                        "PMIX_SERVER_URI41", "PMIX_SERVER_URI4",
+                                        "PMIX_SERVER_URI3",  "PMIX_SERVER_URI21",
+                                        "PMIX_SERVER_URI2"};
+    const char *vrs;
+    uint8_t release;
+    size_t n;
+
+    vrs = pmix_idenv_get("PMIX_VERSION");
+    if (NULL != vrs) {
+        if ('v' == vrs[0]) {
+            ++vrs;
+        }
+        return (PMIX_SUCCESS == pmix_ptl_base_parse_version(vrs, major, minor, &release) &&
+                0 != *major && PMIX_PTL_LOCAL_MAJOR > *major);
+    }
+    for (n = 0; n < sizeof(older) / sizeof(older[0]); n++) {
+        if (NULL != pmix_idenv_get(older[n])) {
+            return legacy_var(older[n], major, minor);
+        }
+    }
+    return false;
+}
+#endif
+
 /* A client connects to the server named in its environment, or in a
  * PMIX_SERVER_URI directive - or, with neither, looks for a system
  * server and is a singleton if it finds none */
@@ -110,6 +170,10 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
     bool given = false;
     /* a directive naming the server and its URI alone */
     bool named = false;
+#if !PMIX_ENABLE_LEGACY_SERVERS
+    /* the release of a server this PMIx cannot talk to */
+    uint8_t major, minor;
+#endif
     struct sockaddr_storage addr;
     size_t addrlen;
     pmix_ptl_module_t *transport = NULL;
@@ -174,6 +238,15 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
             if (PMIX_SUCCESS != rc) {
                 /* suri points into urispec, which is freed on the way out */
                 suri = NULL;
+#if !PMIX_ENABLE_LEGACY_SERVERS
+                /* a variable of an earlier release's wire format, which
+                 * this PMIx does not have - say why */
+                if (legacy_server_named(evar, &major, &minor)) {
+                    pmix_show_help("help-ptl-base.txt", "legacy-servers-not-built", true,
+                                   pmix_globals.hostname, (int) major, (int) minor);
+                    rc = PMIX_ERR_NOT_SUPPORTED;
+                }
+#endif
                 goto error;
             }
             /* setup to process the URI */
@@ -223,6 +296,18 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
                 goto error;
             }
         } else if (NULL != pmix_idenv_get("PMIX_NAMESPACE")) {
+#if !PMIX_ENABLE_LEGACY_SERVERS
+            /* a server of an earlier release named itself in variables
+             * only its wire formats are named for, and this PMIx has none
+             * of those to recognize them by - say why, not that there are
+             * none */
+            if (legacy_server_env(&major, &minor)) {
+                pmix_show_help("help-ptl-base.txt", "legacy-servers-not-built", true,
+                               pmix_globals.hostname, (int) major, (int) minor);
+                rc = PMIX_ERR_NOT_SUPPORTED;
+                goto error;
+            }
+#endif
             /* a process its server named has to be told how to reach it */
             pmix_show_help("help-ptl-base.txt", "client-namespace-no-uri", true,
                            pmix_globals.hostname, pmix_idenv_get("PMIX_NAMESPACE"));

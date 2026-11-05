@@ -991,6 +991,18 @@ pmix_status_t pmix_ptl_base_check_connect_directives(const pmix_info_t info[], s
                 /* parse_uri's own copies failed */
                 return (PMIX_ERR_NOMEM == rc) ? rc : PMIX_ERR_BAD_PARAM;
             }
+#if !PMIX_ENABLE_LEGACY_SUPPORT
+            /* no transport here reads a TCP address, so none can say it is
+             * malformed: the connect refuses a TCP URI given alone, as
+             * every build does, and honors "optional" for it */
+            if (pmix_ptl_base_is_tcp_uri(suri)) {
+                free(uri_nspace);
+                uri_nspace = NULL;
+                free(suri);
+                suri = NULL;
+                continue;
+            }
+#endif
             rc = pmix_ptl_base_setup_connection(suri, &addr, &len);
             free(uri_nspace);
             uri_nspace = NULL;

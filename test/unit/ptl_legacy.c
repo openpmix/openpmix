@@ -114,6 +114,12 @@ static char *first_line(const char *path)
     return line;
 }
 
+#if PMIX_ENABLE_LEGACY_SUPPORT
+#define SERVER_URI_VAR "PMIX_SERVER_URI41"
+#else
+#define SERVER_URI_VAR "PMIX_SERVER_URI70"
+#endif
+
 /* Start a server with tool support - so it writes a rendezvous file - and
  * legacy clients as `legacy` says: -1 not given, 0 false, 1 true. Check
  * that everything it reports names `want` */
@@ -160,9 +166,11 @@ static int check_server(int legacy, bool tcp_wanted)
         fprintf(stdout, "    PMIx_server_setup_fork failed\n");
         rc = CHILD_FAIL;
     } else {
-        var = pmix_getenv("PMIX_SERVER_URI41", env);
-        fprintf(stdout, "    PMIX_SERVER_URI41=%s\n", (NULL == var) ? "(none)" : var);
-        rc |= check("PMIX_SERVER_URI41 names it", names(var, want));
+        /* one variable for each wire format the server has - for v4.1
+         * readers too, when it has theirs */
+        var = pmix_getenv(SERVER_URI_VAR, env);
+        fprintf(stdout, "    " SERVER_URI_VAR "=%s\n", (NULL == var) ? "(none)" : var);
+        rc |= check(SERVER_URI_VAR " names it", names(var, want));
         var = pmix_getenv(PMIX_PTL_LOCAL_URI_ENV, env);
         rc |= check("the local socket is given beside it",
                     names(var, &pmix_ptl_base.local_listener));
