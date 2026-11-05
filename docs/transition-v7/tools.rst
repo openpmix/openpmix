@@ -54,8 +54,8 @@ How a tool finds a server
   its own user's directory, the directories of the users that
   ``ptl_base_server_access`` names, and the system directory for the
   system roles. It no longer walks the whole temporary directory. The
-  walk happens only when legacy peers are on, to find servers of
-  earlier releases.
+  walk happens only when legacy servers are on
+  (``ptl_base_legacy_servers``), to find servers of earlier releases.
 * **A tool believes a rendezvous file only if** it was written by the
   user the server runs as, and the kernel confirms that the server
   behind the socket is that user's.
@@ -173,9 +173,11 @@ Return codes a tool may now see
 Earlier releases
 ----------------
 
-* **A v7 tool connects to servers from PMIx v3.2 on.**
+* **A v7 tool connects to servers from PMIx v3.2 on**, unless PMIx was
+  configured ``--disable-legacy-servers``: it then refuses a server of
+  an earlier release, naming its release.
 * **A tool of an earlier release connects to a v7 server only when the
-  server takes legacy peers**, over loopback TCP. When it does, a v5.0
+  server takes legacy clients**, over loopback TCP. When it does, a v5.0
   tool finds the server's rendezvous file in ``pmix-user.<uid>/`` as
   long as it runs as the server's user: its search walks down into
   that directory. It does not find a v7 system server in

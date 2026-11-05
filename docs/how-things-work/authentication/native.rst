@@ -38,7 +38,7 @@ the first that decides the matter.
    does not show is refused. On a platform with no table to ask, a TCP
    peer is accepted on the uid and gid it claims, as every earlier
    release accepted it. A server opens its TCP listener only to take peers of earlier
-   releases (``ptl_base_legacy_peers``), which have no other way to say
+   releases (``ptl_base_legacy_clients``), which have no other way to say
    who they are; a peer of this release that connects over TCP all the
    same is taken the same way. A table there is but that could not be
    read - the server is out of descriptors or memory - is no answer, and
@@ -108,7 +108,7 @@ Limits
 * On a platform whose kernel keeps no table of TCP connections - any
   but Linux, macOS and FreeBSD 12 or later, and a Linux host where
   neither ``sock_diag`` nor ``/proc/net/tcp`` can be read - step 2 is
-  not available, so a server that takes legacy peers takes a peer
+  not available, so a server that takes legacy clients takes a peer
   connecting over TCP on the identity it claims. On FreeBSD, a server that does
   not run as root confirms another user's peer only while
   ``security.bsd.see_other_uids`` is left at its default of ``1``.

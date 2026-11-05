@@ -11,9 +11,11 @@ jobs:
     env:
       # A server takes clients and tools of earlier releases only when
       # asked (see "Version floors" in src/mca/ptl/base/AGENTS.md), and
-      # every server here is asked. Both builds below configure
-      # --enable-legacy-peers, without which the parameter fails the init;
-      # releases without that option ignore both.
+      # every server here is asked: ptl_base_legacy_peers sets both
+      # ptl_base_legacy_clients and ptl_base_legacy_servers. Both builds below configure --enable-legacy-peers - legacy clients,
+      # without which the parameter fails the init, and legacy servers,
+      # which the PR's client needs to reach an earlier release's server.
+      # Releases without that option ignore both.
       PMIX_MCA_ptl_base_legacy_peers: 1
     strategy:
       matrix:

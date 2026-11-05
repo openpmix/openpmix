@@ -620,7 +620,7 @@ static char *reported(const char *where, int fd, bool init_fails)
 }
 
 /* "-" and "+" print the local socket's URI, "tcp-" and "tcp+" the TCP
- * one - legacy peers on, as main sets them */
+ * one - legacy clients on, as main sets them */
 static void report_std_child(const char *where, int fd, const char *want, const char *not)
 {
     char *got = reported(where, fd, false), *nl;
@@ -657,7 +657,7 @@ static void report_tcp_stderr_child(void)
 /* with no TCP listener, "tcp-" is refused at init */
 static void report_tcp_nolegacy_child(void)
 {
-    setenv("PMIX_MCA_ptl_base_legacy_peers", "0", 1);
+    setenv("PMIX_MCA_ptl_base_legacy_clients", "0", 1);
     _exit(NULL == reported("tcp-", 1, true) ? CHILD_FAIL : CHILD_PASS);
 }
 
@@ -672,7 +672,7 @@ static void report_pipe_child(bool legacy)
     ssize_t n, got = 0;
 
     if (!legacy) {
-        setenv("PMIX_MCA_ptl_base_legacy_peers", "0", 1);
+        setenv("PMIX_MCA_ptl_base_legacy_clients", "0", 1);
     }
     if (0 != pipe(fds)) {
         _exit(CHILD_FAIL);
@@ -891,10 +891,10 @@ int main(int argc, char **argv)
 {
     const char *base;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
-#if PMIX_ENABLE_LEGACY_PEERS
+#if PMIX_ENABLE_LEGACY_CLIENTS
     /* these cases are about the TCP listener, which a server opens for
      * clients and tools of earlier releases */
-    setenv("PMIX_MCA_ptl_base_legacy_peers", "1", 1);
+    setenv("PMIX_MCA_ptl_base_legacy_clients", "1", 1);
 #else
     fprintf(stdout, "this PMIx takes no clients or tools of earlier releases, so a "
                     "server has no TCP listener for these cases\n");

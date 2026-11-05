@@ -283,16 +283,38 @@ be used with ``configure``:
             host over ``usock``, and a server of an earlier release
             over ``tcp``.
 
-* ``--enable-legacy-peers``: Build with support for clients and tools
-  of PMIx releases before v7.0, which connect to a server over TCP. With
-  it, a server takes them only when the ``ptl_base_legacy_peers`` MCA
-  parameter, or its host's ``PMIX_SERVER_LEGACY_PEERS`` attribute, says
-  so; the parameter defaults to ``false``. Without it - the default - a
-  server never takes them, and asking for them fails its init: clients
-  and tools are to be updated along with their servers. A client of an
-  earlier release - an Open MPI 5 process, say - run by a server that does
-  not take legacy peers does not fail: it comes up as a singleton (see
+PMIx releases before v7.0 reach a server over TCP, and speak wire
+formats of their own. Support for them comes in two directions, each
+with its own option:
+
+* ``--enable-legacy-clients``: Build with support for a server taking
+  clients and tools of PMIx releases before v7.0, which connect to it
+  over TCP. With it, a server takes them only when the
+  ``ptl_base_legacy_clients`` MCA parameter, or its host's
+  ``PMIX_SERVER_LEGACY_PEERS`` attribute, says so; the parameter
+  defaults to ``false``. Without it - the default - a server never takes
+  them, and asking for them fails its init: clients and tools are to be
+  updated along with their servers. A client of an earlier release - an
+  Open MPI 5 process, say - run by a server that does not take legacy
+  clients does not fail: it comes up as a singleton (see
   :ref:`clients of earlier releases <label-conn-earlier-clients>`).
+
+* ``--disable-legacy-servers``: Build without support for a client or
+  tool connecting to a server of PMIx v3.2 through v6.x. By default it
+  is built, and such a server is connected to whenever a process is
+  started by one or told of one: a client in a container image has to
+  run under whatever release its host's resource manager runs. Without
+  it, a process refuses such a server - and any server address over
+  TCP, at which only such a server is reached - and says so; a client
+  fails its init rather than coming up as a singleton. The
+  ``ptl_base_legacy_servers`` MCA parameter, off by default, has a
+  process that was told of no server look for one of an earlier release
+  where those write their rendezvous files, anywhere below the system
+  temporary directory.
+
+* ``--enable-legacy-peers``: Both of the above. ``--disable-legacy-peers``
+  disables both; either option given beside it decides its own
+  direction.
 
 * ``--disable-show-load-errors-by-default``:
   Set the default value of the ``mca_base_component_show_load_errors``

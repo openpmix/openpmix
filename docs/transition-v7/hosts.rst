@@ -54,7 +54,7 @@ Starting the server
   to connect. Without it, none can.
 * **Decide on clients and tools of earlier releases.**
   ``PMIX_SERVER_LEGACY_PEERS`` takes them, if PMIx was built
-  ``--enable-legacy-peers``; the site's ``ptl_base_legacy_peers`` does
+  ``--enable-legacy-clients``; the site's ``ptl_base_legacy_clients`` does
   the same when the host does not say. Without either, they are
   refused, and an older client runs as a singleton.
 * **Remote connections are gone.** ``PMIX_SERVER_REMOTE_CONNECTIONS``

@@ -698,7 +698,7 @@ static char *compat_lines(void)
 
     /* a server that takes only peers of this release settles these in the
      * handshake */
-    if (!pmix_ptl_base.legacy_peers) {
+    if (!pmix_ptl_base.legacy_clients) {
         return NULL;
     }
     bfrops = pmix_bfrops_base_get_available_modules();
@@ -1057,7 +1057,7 @@ static pmix_status_t write_rndz_file(char *filename, char *uri, const char *role
     compat = compat_lines();
     locked = (0 <= lockfd);
     /* with no TCP listener the first line is the local socket already */
-    local = pmix_ptl_base.legacy_peers ? pmix_ptl_base.local_listener.uri : NULL;
+    local = pmix_ptl_base.legacy_clients ? pmix_ptl_base.local_listener.uri : NULL;
     if (0 > pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n%s%s%s%s%s%s%s%s%s",
                           uri, PMIX_VERSION, (unsigned long)pmix_globals.pid,
                           (unsigned long)pmix_globals.uid,
@@ -1387,14 +1387,16 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     int outpipe, rdfd;
     char *leftover, *uri, *rdir = NULL;
     size_t n;
-    const char *legacy_from = "ptl_base_legacy_peers";
+    const char *legacy_from = pmix_ptl_base.legacy_clients_param ? "ptl_base_legacy_clients"
+                                                                 : "ptl_base_legacy_peers";
     pmix_info_t *sessinfo = NULL;
     uint32_t idval;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base:setup_listener");
 
-    pmix_ptl_base.legacy_peers = pmix_ptl_base.legacy_peers_param;
+    pmix_ptl_base.legacy_clients = pmix_ptl_base.legacy_clients_param ||
+                                   pmix_ptl_base.legacy_peers_param;
     for (n = 0; n < ninfo; n++) {
         if (0 == strcmp(info[n].key, PMIX_SERVER_SESSION_SUPPORT)) {
             pmix_ptl_base.session_tool = PMIX_INFO_TRUE(&info[n]);
@@ -1440,7 +1442,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
             }
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_LEGACY_PEERS)) {
-            pmix_ptl_base.legacy_peers = PMIX_INFO_TRUE(&info[n]);
+            pmix_ptl_base.legacy_clients = PMIX_INFO_TRUE(&info[n]);
             legacy_from = PMIX_SERVER_LEGACY_PEERS;
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_REPORT_URI)) {
@@ -1467,9 +1469,9 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         }
     }
 
-#if !PMIX_ENABLE_LEGACY_PEERS
-    if (pmix_ptl_base.legacy_peers) {
-        pmix_show_help("help-ptl-base.txt", "legacy-peers-not-built", true,
+#if !PMIX_ENABLE_LEGACY_CLIENTS
+    if (pmix_ptl_base.legacy_clients) {
+        pmix_show_help("help-ptl-base.txt", "legacy-clients-not-built", true,
                        pmix_globals.hostname, legacy_from);
         return PMIX_ERR_SILENT;
     }
@@ -1514,7 +1516,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     /* The TCP transport opens its socket and says where it is - only for
      * those who use it: peers of earlier releases. A process of this
      * release uses the local one */
-    if (pmix_ptl_base.legacy_peers) {
+    if (pmix_ptl_base.legacy_clients) {
         rc = pmix_ptl_base_listen(info, ninfo, lt);
         if (PMIX_SUCCESS != rc) {
             goto sockerror;
@@ -1679,7 +1681,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                 /* and, after everything an older reader looks at, the
                  * local socket, for a tool on this host - a report file
                  * may be read on another */
-                if (pmix_ptl_base.legacy_peers && NULL != pmix_ptl_base.local_listener.uri) {
+                if (pmix_ptl_base.legacy_clients && NULL != pmix_ptl_base.local_listener.uri) {
                     fprintf(fp, "%s%s;%s\n", PMIX_PTL_LOCAL_URI_TAG, pmix_globals.hostname,
                             pmix_ptl_base.local_listener.uri);
                 }

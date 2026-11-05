@@ -69,7 +69,7 @@ Being found
 order, the system temporary directory it was given, ``/run/pmix``,
 ``/var/run/pmix``, root's and its own user's directories, and the
 directories of the users its ``ptl_base_server_access`` parameter
-names. With legacy peers on, it also looks in the system temporary
+names. With legacy servers on (``ptl_base_legacy_servers``), it also looks in the system temporary
 directory, where a scheduler of an earlier release writes its file.
 
 **What a runtime believes.** It uses a file only if it was written by
@@ -130,9 +130,9 @@ sessions and requests it held.
 
 **Runtimes of earlier releases.** A runtime linked to a PMIx release
 before v7 connects over TCP, on loopback only, and only to a server set
-up to take legacy peers: PMIx configured with
-``--enable-legacy-peers``, and either the host's
-``PMIX_SERVER_LEGACY_PEERS`` or the site's ``ptl_base_legacy_peers``.
+up to take legacy clients: PMIx configured with
+``--enable-legacy-clients``, and either the host's
+``PMIX_SERVER_LEGACY_PEERS`` or the site's ``ptl_base_legacy_clients``.
 Without both, it is refused.
 
 

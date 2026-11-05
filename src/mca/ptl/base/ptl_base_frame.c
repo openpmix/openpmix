@@ -116,8 +116,10 @@ pmix_ptl_base_t pmix_ptl_base = {
     .pid_dirfd = -1,
     .urifile_dirfd = -1,
     .urifile_fd = -1,
+    .legacy_clients_param = false,
+    .legacy_servers_param = false,
     .legacy_peers_param = false,
-    .legacy_peers = false,
+    .legacy_clients = false,
     .system_tool = false,
     .allow_foreign_tools = false,
     .host_uid_given = false,
@@ -342,11 +344,27 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                       PMIX_MCA_BASE_VAR_TYPE_STRING,
                                       &pmix_ptl_base.server_access);
 
-    (void) pmix_mca_base_var_register("pmix", "ptl", "base", "legacy_peers",
+    (void) pmix_mca_base_var_register("pmix", "ptl", "base", "legacy_clients",
                                       "Whether a server takes connections from clients and tools "
                                       "of PMIx releases before v7.0, which connect over TCP. Only "
-                                      "a PMIx built with legacy peer support can; the "
+                                      "a PMIx built with --enable-legacy-clients can; the "
                                       "PMIX_SERVER_LEGACY_PEERS attribute overrides it",
+                                      PMIX_MCA_BASE_VAR_TYPE_BOOL,
+                                      &pmix_ptl_base.legacy_clients_param);
+
+    (void) pmix_mca_base_var_register("pmix", "ptl", "base", "legacy_servers",
+                                      "Whether a client or tool told no server to connect to also "
+                                      "looks for servers of PMIx releases before v7.0 where they "
+                                      "write their rendezvous files - anywhere below the system "
+                                      "tmpdir. A server of an earlier release it is told of is "
+                                      "connected to whatever this says, in a PMIx built with "
+                                      "legacy server support (the default), and refused in one "
+                                      "built without",
+                                      PMIX_MCA_BASE_VAR_TYPE_BOOL,
+                                      &pmix_ptl_base.legacy_servers_param);
+
+    (void) pmix_mca_base_var_register("pmix", "ptl", "base", "legacy_peers",
+                                      "Both ptl_base_legacy_clients and ptl_base_legacy_servers",
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                       &pmix_ptl_base.legacy_peers_param);
 
@@ -388,7 +406,7 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "report_uri",
                                      "Output URI [- => stdout, + => stderr: the local socket's URI; "
                                      "tcp- => stdout, tcp+ => stderr: the TCP URI, for a reader of "
-                                     "a release before v7.0 (needs legacy peers); a number => that "
+                                     "a release before v7.0 (needs legacy clients); a number => that "
                                      "pipe; else a filename]",
                                      PMIX_MCA_BASE_VAR_TYPE_STRING,
                                      &pmix_ptl_base.report_uri);
@@ -514,10 +532,10 @@ static pmix_status_t pmix_ptl_close(void)
 
     /* The same goes for the role flags pmix_ptl_base_setup_listener reads
      * out of its caller's directives: it only ever sets the ones it is
-     * given, so a flag left over from the previous cycle - legacy peers,
+     * given, so a flag left over from the previous cycle - legacy clients,
      * tool support - would silently apply to a server that never asked
      * for it. Put back the defaults from the initializer. */
-    pmix_ptl_base.legacy_peers = false;
+    pmix_ptl_base.legacy_clients = false;
     pmix_ptl_base.system_tool = false;
     pmix_ptl_base.allow_foreign_tools = false;
     pmix_ptl_base.host_uid_given = false;

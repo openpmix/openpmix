@@ -698,7 +698,7 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
 
     PMIX_CONSTRUCT(&connections, pmix_list_t);
     /* in the pmix-user directories of the users whose servers we may talk
-     * to - each looked in, not below - and, only with legacy peers on and
+     * to - each looked in, not below - and, only with legacy servers on and
      * no server of a user we take found there, anywhere below the system
      * tmpdir, where a server of an earlier release writes. A server whose
      * file says it is another user's is passed over before the servers
@@ -804,7 +804,7 @@ static pmix_status_t trysessions(pmix_peer_t *peer, char **nspace, pmix_rank_t *
 }
 
 /* A system role's file, `name`: in the system directories a server may
- * write it in (pmix_ptl_base_rndz_dirs) and, only with legacy peers on,
+ * write it in (pmix_ptl_base_rndz_dirs) and, only with legacy servers on,
  * at the system tmpdir, where a server of an earlier release writes it.
  * The first that connects wins. One that is not optional, and found
  * nowhere, is reported */
@@ -1382,7 +1382,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
          * this release takes us on its local socket, and one of an
          * earlier release needs the version its file gives. Refused
          * before any connection is made */
-        if (0 == strncmp(suri, "tcp4://", 7) || 0 == strncmp(suri, "tcp6://", 7)) {
+        if (pmix_ptl_base_is_tcp_uri(suri)) {
             pmix_show_help("help-ptl-base.txt", "tcp-uri-alone", true, pmix_ptl_base.uri);
             rc = PMIX_ERR_NOT_SUPPORTED;
             goto cleanup;
