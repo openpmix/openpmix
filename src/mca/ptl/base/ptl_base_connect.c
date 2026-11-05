@@ -49,6 +49,10 @@
 #    include <sys/sysctl.h>
 #endif
 
+#include <poll.h>
+#include <sys/time.h>
+#include <time.h>
+
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
 #include "src/include/pmix_globals.h"
@@ -254,43 +258,46 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
     return PMIX_SUCCESS;
 }
 
-/* connect() bounded by ptl_base_handshake_wait_time.
+int pmix_ptl_base_connect_wait(void)
+{
+    return (0 < pmix_ptl_base.connect_wait) ? pmix_ptl_base.connect_wait
+                                            : pmix_ptl_base.handshake_wait_time;
+}
+
+/* connect() bounded by pmix_ptl_base_connect_wait(): the caller's
+ * PMIX_TIMEOUT, else ptl_base_handshake_wait_time.
  *
  * A blocking connect() to a host that silently drops the attempt waits out
  * the kernel's own connect timeout - often more than a minute - and the
  * loop below makes up to eleven attempts. Every caller of this function
  * blocks its thread for the duration (a tool attaching from its progress
  * thread uses the event-driven path instead - see ptl_base_fns.c), so give
- * each attempt the same bound the handshake replies get. Returns 0 on
- * success, or -1 with errno set - ETIMEDOUT when the bound expired. With
- * the bound disabled, or no select() to wait with, it is a plain
- * connect(). */
+ * each attempt the same bound the handshake replies get. poll() waits on
+ * a descriptor of any number. Returns 0 on success, or -1 with errno set -
+ * ETIMEDOUT when the bound expired. With the bound disabled, it is a
+ * plain connect(). */
 static int bounded_connect(int sd, struct sockaddr *addr, pmix_socklen_t addrlen)
 {
-#ifdef HAVE_SYS_SELECT_H
-    int flags, rc, err, n;
-    fd_set wfds;
-    struct timeval tv;
+    int flags, rc, err, n, wait = pmix_ptl_base_connect_wait();
+    struct pollfd pfd;
     pmix_socklen_t errlen = sizeof(err);
 
-    /* FD_SET cannot name a descriptor at or beyond FD_SETSIZE */
-    if (0 < pmix_ptl_base.handshake_wait_time && FD_SETSIZE > sd) {
+    if (0 < wait) {
         flags = fcntl(sd, F_GETFL, 0);
         if (0 <= flags && 0 == fcntl(sd, F_SETFL, flags | O_NONBLOCK)) {
             rc = connect(sd, addr, addrlen);
             if (0 > rc && EINPROGRESS == pmix_socket_errno) {
-                tv.tv_sec = pmix_ptl_base.handshake_wait_time;
-                tv.tv_usec = 0;
                 do {
-                    FD_ZERO(&wfds);
-                    FD_SET(sd, &wfds);
-                    n = select(sd + 1, NULL, &wfds, NULL, &tv);
+                    pfd.fd = sd;
+                    pfd.events = POLLOUT;
+                    pfd.revents = 0;
+                    n = poll(&pfd, 1, wait * 1000);
                 } while (0 > n && EINTR == pmix_socket_errno);
                 if (0 == n) {
                     errno = ETIMEDOUT;
                     rc = -1;
                 } else if (0 < n) {
-                    /* writable: the attempt finished - find out how */
+                    /* the attempt finished - find out how */
                     if (0 != getsockopt(sd, SOL_SOCKET, SO_ERROR, (char *) &err, &errlen)) {
                         rc = -1;
                     } else if (0 != err) {
@@ -308,21 +315,24 @@ static int bounded_connect(int sd, struct sockaddr *addr, pmix_socklen_t addrlen
             return rc;
         }
     }
-#endif
     return connect(sd, addr, addrlen);
 }
 
 pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
                                     pmix_socklen_t addrlen, int *fd)
 {
-    int sd = -1, sd2;
+    int sd = -1, sd2, err, wait = pmix_ptl_base_connect_wait();
     int retries = -1;
     bool connected = false;
+    struct timeval start, now, tv;
+    struct timespec ts;
+    long elapsed_ms;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl_base_connect: attempting to connect to server");
     /* the reason a failure here gives - none yet */
     pmix_ptl_base.last_connect_errno = 0;
+    gettimeofday(&start, NULL);
 
     /* Create the new socket */
     sd = socket(addr->ss_family, SOCK_STREAM | PMIX_SOCK_CLOEXEC, 0);
@@ -350,10 +360,27 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "Connect failed: %s (%d)", strerror(pmix_socket_errno),
                                 pmix_socket_errno);
-            if (ETIMEDOUT == pmix_socket_errno) {
+            err = pmix_socket_errno;
+            if (ETIMEDOUT == err) {
                 /* nothing answered for the whole bound - a host that did
                  * not answer this attempt will not answer the next ten */
                 break;
+            }
+            if (PMIX_PTL_CONNECT_BUSY(err) && retries < PMIX_MAX_RETRIES) {
+                /* the server is there but busy: give it a moment - within
+                 * the connect's bound */
+                pmix_ptl_base_connect_backoff(retries + 1, &tv);
+                gettimeofday(&now, NULL);
+                elapsed_ms = (now.tv_sec - start.tv_sec) * 1000L +
+                             (now.tv_usec - start.tv_usec) / 1000L;
+                if (0 < wait &&
+                    elapsed_ms + tv.tv_sec * 1000L + tv.tv_usec / 1000L >= wait * 1000L) {
+                    break;
+                }
+                ts.tv_sec = tv.tv_sec;
+                ts.tv_nsec = tv.tv_usec * 1000L;
+                while (0 != nanosleep(&ts, &ts) && EINTR == errno) {
+                }
             }
             /* get a different socket, but do that BEFORE we release the current
              * one so we don't just get the same socket handed back to us */
@@ -462,23 +489,48 @@ char *pmix_ptl_base_get_cmd_line(void)
     PMIx_Argv_free(stack);
     free(procargs);
 #else
-    char tmp[512];
-    FILE *fp;
-    pid_t mypid;
+    /* the whole of /proc/self/cmdline, its arguments separated by NULs,
+     * joined with spaces - up to a bound: it is information for the host,
+     * and a message carries it */
+    const size_t cap = 65536;
+    size_t len = 0, i;
+    ssize_t got;
+    int fd;
 
-    /* open the pid's info file */
-    mypid = getpid();
-    pmix_snprintf(tmp, 512, "/proc/%lu/cmdline", (unsigned long) mypid);
-    fp = pmix_fd_fopen_cloexec(tmp, "r");
-    if (NULL != fp) {
-        /* read the cmd line */
-        if (NULL == fgets(tmp, 512, fp)) {
-            fclose(fp);
-            return NULL;
-        }
-        fclose(fp);
-        p = strdup(tmp);
+    fd = open("/proc/self/cmdline", O_RDONLY | O_CLOEXEC);
+    if (0 > fd) {
+        return NULL;
     }
+    p = (char *) malloc(cap + 1);
+    if (NULL == p) {
+        close(fd);
+        return NULL;
+    }
+    while (len < cap) {
+        got = read(fd, p + len, cap - len);
+        if (0 > got && EINTR == errno) {
+            continue;
+        }
+        if (0 >= got) {
+            break;
+        }
+        len += (size_t) got;
+    }
+    close(fd);
+    /* the last argument's NUL ends the line */
+    while (0 < len && '\0' == p[len - 1]) {
+        --len;
+    }
+    if (0 == len) {
+        free(p);
+        return NULL;
+    }
+    for (i = 0; i < len; i++) {
+        if ('\0' == p[i]) {
+            p[i] = ' ';
+        }
+    }
+    p[len] = '\0';
 #endif
     return p;
 }
@@ -979,7 +1031,7 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
     bool sessid_given = false;
     pmix_list_t ilist;
     pmix_info_caddy_t *kv;
-    pmix_info_t *iptr = NULL, mypidinfo, mycmdlineinfo, launcher;
+    pmix_info_t *iptr = NULL, mypidinfo, mycmdlineinfo, launcher, sysctrlr, scheduler;
     pmix_info_t realuid, effectiveuid, realgid, effectivegid;
     size_t niptr = 0;
     pmix_peer_t *peer = (pmix_peer_t *) pr;
@@ -1187,6 +1239,16 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                     goto badinput;
                 }
 
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
+                /* the bound on this connect: a positive count of seconds.
+                 * Zero leaves ptl_base_handshake_wait_time in force */
+                rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.connect_wait, PMIX_INT);
+                if (PMIX_SUCCESS != rc || 0 > pmix_ptl_base.connect_wait) {
+                    pmix_ptl_base.connect_wait = 0;
+                    rc = PMIX_ERR_BAD_PARAM;
+                    goto badinput;
+                }
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_RETRY_DELAY)) {
                 rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.wait_to_connect, PMIX_INT);
                 if (PMIX_SUCCESS != rc) {
@@ -1253,8 +1315,8 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
 
     /* if I am a system controller, tell them so */
     if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
-        PMIX_INFO_LOAD(&launcher, PMIX_SERVER_SYS_CONTROLLER, NULL, PMIX_BOOL);
-        rc = add_info(&ilist, &launcher);
+        PMIX_INFO_LOAD(&sysctrlr, PMIX_SERVER_SYS_CONTROLLER, NULL, PMIX_BOOL);
+        rc = add_info(&ilist, &sysctrlr);
         if (PMIX_SUCCESS != rc) {
             goto badinput;
         }
@@ -1262,8 +1324,8 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
 
     /* if I am a scheduler, tell them so */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
-        PMIX_INFO_LOAD(&launcher, PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
-        rc = add_info(&ilist, &launcher);
+        PMIX_INFO_LOAD(&scheduler, PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
+        rc = add_info(&ilist, &scheduler);
         if (PMIX_SUCCESS != rc) {
             goto badinput;
         }
@@ -1537,6 +1599,7 @@ complete:
         goto cleanup;
     }
 
+    pmix_ptl_base.server_named = false;
     rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
     if (PMIX_SUCCESS != rc) {
         goto cleanup;
@@ -1545,11 +1608,22 @@ complete:
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "tool_peer_try_connect: Connection across to server succeeded");
 
-    rc = pmix_ptl_base_complete_connection(peer, nspace, rank);
+    /* the server's name is the one it sent, where it sent one - not the
+     * one in the URI or file that led us to it, as the event-driven
+     * connect records too */
+    if (pmix_ptl_base.server_named && NULL != peer->info && NULL != peer->info->pname.nspace) {
+        rc = pmix_ptl_base_complete_connection(peer, peer->info->pname.nspace,
+                                               peer->info->pname.rank);
+    } else {
+        rc = pmix_ptl_base_complete_connection(peer, nspace, rank);
+    }
 
 cleanup:
-    /* an identity we were told to expect was for this connect alone */
+    /* an identity we were told to expect was for this connect alone, as
+     * was its bound */
     pmix_ptl_base.server_expect_given = false;
+    pmix_ptl_base.connect_wait = 0;
+    pmix_ptl_base.server_named = false;
     pmix_ptl_base.server_release_vouched = false;
     pmix_ptl_base.rndz_owner_given = false;
     pmix_ptl_base.rndz_pid = 0;
@@ -1579,6 +1653,7 @@ cleanup:
 badinput:
     /* a directive we could not use, or could not keep, before anything had
      * been built from the array - only the loop's own state to give back */
+    pmix_ptl_base.connect_wait = 0;
     if (NULL != server_nspace) {
         free(server_nspace);
     }

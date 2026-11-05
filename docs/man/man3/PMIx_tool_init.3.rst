@@ -211,6 +211,10 @@ during initialization.
   attempt connecting to the server.
 * ``PMIX_CONNECT_RETRY_DELAY`` (uint32_t) |mdash| time, in seconds, between
   connection attempts.
+* ``PMIX_TIMEOUT`` (int) |mdash| time, in seconds, to wait for the connection to
+  be established. 0, or no ``PMIX_TIMEOUT``, waits as long as the
+  ``ptl_base_handshake_wait_time`` parameter says (60 seconds by default, and no
+  bound if it is 0).
 * ``PMIX_PRIMARY_SERVER`` (bool) |mdash| designate the server being connected to as
   the tool's primary server once the connection is established.
 

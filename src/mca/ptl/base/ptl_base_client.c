@@ -99,6 +99,14 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
             given = true;
+            /* a string, and one naming at least one URI variable before
+             * the URI itself */
+            if (PMIX_STRING != info[n].value.type || NULL == info[n].value.data.string ||
+                ';' == info[n].value.data.string[0]) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                rc = PMIX_ERR_BAD_PARAM;
+                goto error;
+            }
             /* separate out the server URI version(s). Work on a copy -
              * the info array belongs to our caller and must come back
              * unmodified */
@@ -118,7 +126,7 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
             /* set the peer's module and type */
             tmp = PMIx_Argv_split(evar, ':');
             rc = PMIX_ERR_BAD_PARAM;
-            for (m = 0; NULL != tmp[m]; m++) {
+            for (m = 0; NULL != tmp && NULL != tmp[m]; m++) {
                 rc = pmix_ptl_base_set_peer(peer, &tmp[m]);
                 if (PMIX_SUCCESS == rc) {
                     break;

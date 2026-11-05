@@ -106,11 +106,10 @@ pmix_psec_module_t pmix_munge_module = {.name = "munge",
 
 static char *mycred = NULL;
 static bool initialized = false;
-static bool refresh = false;
 /* PMIx_Get_credential does not thread-shift - it calls create_cred
  * inline on whichever thread invoked it - so two application threads can
  * be inside create_cred at the same time, both refreshing the cached
- * credential. Serialize every access to mycred/refresh. This is not a
+ * credential. Serialize every access to mycred. This is not a
  * hot path: it runs only when a credential is requested. */
 static pmix_mutex_t credlock = PMIX_MUTEX_STATIC_INIT;
 
@@ -153,7 +152,6 @@ static void munge_finalize(void)
      * starts from a clean slate rather than from a cached credential
      * that no longer exists */
     initialized = false;
-    refresh = false;
     pmix_mutex_unlock(&credlock);
 }
 
@@ -227,15 +225,12 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
     }
 
     if (restrict_uid) {
-        /* a credential of its own, made for this server alone. The one
-         * cached at init serves only the first request, and this is that
-         * request or a later one: from here every credential is encoded
-         * when it is asked for */
+        /* a credential of its own, made for this server alone, encoded
+         * when it is asked for as every credential is */
         if (NULL != mycred) {
             free(mycred);
             mycred = NULL;
         }
-        refresh = true;
         pmix_mutex_unlock(&credlock);
         prc = encode_for_uid(server, &cred->bytes);
         if (PMIX_SUCCESS != prc) {
@@ -245,24 +240,21 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
         goto mark;
     }
 
-    if (!refresh) {
-        refresh = true;
-    } else {
-        /* munge does not allow reuse of a credential, so we have to
-         * refresh it for every use. Drop our reference before asking
-         * for a new one so a failed encode cannot leave us holding a
-         * pointer to freed memory */
-        if (NULL != mycred) {
-            free(mycred);
-            mycred = NULL;
-        }
-        if (EMUNGE_SUCCESS != (rc = munge_encode(&mycred, NULL, NULL, 0))) {
-            pmix_output_verbose(2, pmix_globals.debug_output,
-                                "psec: munge failed to create credential: %s",
-                                munge_strerror(rc));
-            pmix_mutex_unlock(&credlock);
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
+    /* munge does not allow reuse of a credential, and one lives only for
+     * its time-to-live: encode one for every use, the first included - the
+     * one made at init only showed that munged answers. Drop our reference
+     * before asking for a new one so a failed encode cannot leave us
+     * holding a pointer to freed memory */
+    if (NULL != mycred) {
+        free(mycred);
+        mycred = NULL;
+    }
+    if (EMUNGE_SUCCESS != (rc = munge_encode(&mycred, NULL, NULL, 0))) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "psec: munge failed to create credential: %s",
+                            munge_strerror(rc));
+        pmix_mutex_unlock(&credlock);
+        return PMIX_ERR_NOT_SUPPORTED;
     }
     if (NULL == mycred) {
         pmix_mutex_unlock(&credlock);

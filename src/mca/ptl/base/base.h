@@ -69,6 +69,23 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_select(void);
  * the first attempt */
 #define PMIX_MAX_RETRIES 10
 
+/* What a connect does when the connection file it was named is not there
+ * yet: wait for it, as it always has; return PMIX_ERR_TEMP_UNAVAILABLE at
+ * once, for a caller on the progress thread that looks again from a timer;
+ * or, that caller's last look, report the file missing without waiting */
+#define PMIX_PTL_FILE_WAIT      0
+#define PMIX_PTL_FILE_DEFER     1
+#define PMIX_PTL_FILE_LAST_LOOK 2
+
+/* Whether a failed connect() is one a moment's wait may cure - the
+ * listener's backlog is full, or the call was interrupted - and the delay
+ * before attempt `tries` (counted from 1) after one: 10 ms, doubling, at
+ * most 1 s. Any other failure is tried again at once, as a server that is
+ * not there is not going to be there in 10 ms either */
+#define PMIX_PTL_CONNECT_BUSY(e) \
+    (EAGAIN == (e) || EWOULDBLOCK == (e) || ENOBUFS == (e) || EINTR == (e))
+PMIX_EXPORT void pmix_ptl_base_connect_backoff(int tries, struct timeval *tv);
+
 /* A directory this process made, held so that finalize removes it from
  * wherever it has come to be: a descriptor on the directory holding it,
  * its name there, one on the directory itself, and what that is. parentfd
@@ -240,6 +257,9 @@ struct pmix_ptl_base_t {
     int max_retries;
     int wait_to_connect;
     int handshake_wait_time;
+    int connect_wait; // this connect's bound in seconds, from PMIX_TIMEOUT - 0 if none
+    int file_wait;    // a connection file not there yet: PMIX_PTL_FILE_WAIT_*
+    bool server_named; // the server sent its name in this connect's handshake
     int handshake_max_retries;
     /* how many directories below the system tmpdir a search for a
      * server's rendezvous file descends - see pmix_ptl_base_df_search */
@@ -696,6 +716,10 @@ PMIX_EXPORT bool pmix_ptl_base_sd_closed(int sd);
 /* Complete the requests waiting on a reply from peer - none is coming -
  * with an empty buffer, which their callbacks read as no reply */
 PMIX_EXPORT void pmix_ptl_base_complete_recvs(pmix_peer_t *peer);
+
+/* The bound, in seconds, on the connect being made: the caller's
+ * PMIX_TIMEOUT, else ptl_base_handshake_wait_time. 0 is no bound */
+PMIX_EXPORT int pmix_ptl_base_connect_wait(void);
 /* The time now, on a clock that only goes forward where there is one */
 PMIX_EXPORT void pmix_ptl_base_monotime(struct timeval *tv);
 /* Tell the host that `proc`, which it accepted, is not connected: the
@@ -729,8 +753,6 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr, p
                                                 int *fd);
 PMIX_EXPORT void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo);
-PMIX_EXPORT pmix_status_t pmix_ptl_base_send_connect_ack(int sd);
-PMIX_EXPORT pmix_status_t pmix_ptl_base_recv_connect_ack(int sd);
 PMIX_EXPORT bool pmix_ptl_base_peer_is_earlier(pmix_peer_t *peer, uint8_t major, uint8_t minor,
                                                uint8_t release);
 PMIX_EXPORT void pmix_ptl_base_query_servers(int sd, short args, void *cbdata);

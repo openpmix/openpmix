@@ -468,13 +468,17 @@ On the local socket this choice is only the tool's preference: it is
 offered first, and the server decides (see :doc:`connections`). A server
 that takes no legacy peers writes no ``bfrops:`` or ``psec:`` lines.
 
-Both paths converge on ``pmix_ptl_base_make_connection``, which parses the
-URI into a socket address, refuses one that is not this host's, opens the
-connection (with retries), sends the
-connection request - on the local socket, the offer, the server's choice
-and the credential - runs the handshake, and — on success —
-``pmix_ptl_base_complete_connection`` records the server and arms the
-steady-state send/receive events.
+Both paths then connect the same way: ``pmix_ptl_base_make_connection``
+for a blocking connect, and ``pmix_ptl_base_start_connection`` for an
+event-driven one - a tool attaching from its progress thread. Each parses
+the URI into a socket address, refuses one that is not this host's, opens
+the connection (with retries, and a growing pause between them while the
+server is busy), sends the connection request - on the local socket, the
+offer, the server's choice and the credential - runs the handshake, and —
+on success — ``pmix_ptl_base_complete_connection`` records the server, by
+the name it sent, and arms the steady-state send/receive events. The
+connect is bounded by its ``PMIX_TIMEOUT``, else by
+``ptl_base_handshake_wait_time``.
 
 
 The Handshake
@@ -502,9 +506,10 @@ Every message is a fixed header followed by its payload::
         uint32_t nbytes;   /* payload length after the header    */
     };
 
-Header integers travel in network byte order — this is the one place
-``ptl`` must be endian-correct on the wire; the payload itself is handled
-by ``bfrops``.
+Header integers travel in network byte order, as do the status and index
+words of the handshake replies; the payload itself is handled by
+``bfrops``. The header of the connection request a client or tool sends
+first is in host order: the server is on the same host.
 
 Tags route a message to the right handler. Low reserved values name
 persistent channels (``PMIX_PTL_TAG_NOTIFY`` = 0,
@@ -598,11 +603,11 @@ deprecated ``pmix_ptl_tcp_`` synonyms): ``max_msg_size``,
 ``if_include`` / ``if_exclude``, ``ipv4_ports`` / ``ipv6_ports``,
 ``disable_ipv4_family`` / ``disable_ipv6_family``,
 ``connection_wait_time`` / ``max_retries`` (how long and how often to wait
-for a server's rendezvous file to appear), ``handshake_wait_time`` /
-``handshake_max_retries`` (how long a client or tool waits on a server
-while connecting to it, and how often it retries a handshake the server
-asks it to retry; the wait defaults to 60 seconds, and 0 removes the
-bound),
+for a server's rendezvous file to appear), ``handshake_wait_time`` (how
+long a client or tool waits on a server while connecting to it, unless
+the connect's ``PMIX_TIMEOUT`` says otherwise; the wait defaults to 60
+seconds, and 0 removes the bound; ``handshake_max_retries`` is accepted
+and no longer used),
 ``server_access`` (servers a client or tool will
 talk to over the local socket besides one of its own user or root, as
 ``users=<list>,groups=<list>``, each list user or group names or numbers

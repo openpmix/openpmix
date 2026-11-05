@@ -120,6 +120,10 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char **evar)
         // they are passing in the bfrops module to use
         eval = *evar;
         evalgiven = true;
+        /* from a directive, not the environment: the PMIX_VERSION there
+         * is the release of the server that started us, which need not be
+         * this one. The variable's name gives this one's */
+        vrs = NULL;
     }
 
     PMIX_LIST_FOREACH(mod, &pmix_bfrops_globals.actives, pmix_bfrops_base_active_module_t) {
@@ -857,7 +861,14 @@ static pmix_status_t parse_conn_file(char *filename, bool optional, bool found_b
      * not exist yet! Check for existence */
     /* coverity[TOCTOU] */
     if (0 != access(filename, R_OK)) {
-        if (ENOENT == errno && !optional && !found_by_search) {
+        if (ENOENT == errno && !optional && !found_by_search &&
+            PMIX_PTL_FILE_DEFER == pmix_ptl_base.file_wait) {
+            /* the caller looks again from a timer, rather than this
+             * thread - the progress thread - waiting here */
+            return PMIX_ERR_TEMP_UNAVAILABLE;
+        }
+        if (ENOENT == errno && !optional && !found_by_search &&
+            PMIX_PTL_FILE_WAIT == pmix_ptl_base.file_wait) {
             /* the file does not exist, so give it
              * a little time to see if the server
              * is still starting up. Not for a file a directory walk
@@ -1434,7 +1445,7 @@ static pmix_status_t wait_listed(int sd, uid_t *kuid, const struct timeval *dead
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "ptl:base:connect: the server's kernel did not list the "
                                     "connection within %d seconds",
-                                    pmix_ptl_base.handshake_wait_time);
+                                    pmix_ptl_base_connect_wait());
                 return PMIX_ERR_NOT_FOUND;
             }
             if (left < tv.tv_usec) {
@@ -1523,8 +1534,8 @@ static pmix_status_t check_peer(pmix_peer_t *peer, bool given, uid_t uid, gid_t 
             if (PMIX_ERR_NOT_FOUND == rc && CHECK_WAIT == wait) {
                 struct timeval deadline;
 
-                if (0 < pmix_ptl_base.handshake_wait_time) {
-                    deadline_in(pmix_ptl_base.handshake_wait_time, &deadline);
+                if (0 < pmix_ptl_base_connect_wait()) {
+                    deadline_in(pmix_ptl_base_connect_wait(), &deadline);
                 }
                 rc = wait_listed(peer->sd, &kuid,
                                  (0 < pmix_ptl_base.handshake_wait_time) ? &deadline : NULL);
@@ -2072,7 +2083,6 @@ pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
     pmix_ptl_module_t *transport = NULL;
     pmix_status_t rc;
     size_t len;
-    int retries = 0;
     bool renamed = false;
 
     rc = refuse_outdated(peer);
@@ -2127,24 +2137,12 @@ connected:
     }
     if (PMIX_SUCCESS != rc) {
         CLOSE_THE_SOCKET(peer->sd);
-        if (PMIX_ERR_TEMP_UNAVAILABLE == rc) {
-            ++retries;
-            if (retries < pmix_ptl_base.handshake_max_retries) {
-                goto retry;
-            }
-        }
         return renamed ? PMIX_ERR_EXISTS : rc;
     }
 
     /* do whatever handshake is required */
     if (PMIX_SUCCESS != (rc = recv_connect_ack(peer))) {
         CLOSE_THE_SOCKET(peer->sd);
-        if (PMIX_ERR_TEMP_UNAVAILABLE == rc) {
-            ++retries;
-            if (retries < pmix_ptl_base.handshake_max_retries) {
-                goto retry;
-            }
-        }
         if (PMIX_ERR_EXISTS == rc && !renamed && take_new_identity()) {
             renamed = true;
             goto retry;
@@ -2293,7 +2291,6 @@ typedef struct {
     gid_t expect_gid;
     int sd;
     int connect_tries;
-    int handshake_tries;
     pmix_cnct_state_t state;
     char *msg;                  // the connect-ack being sent
     size_t msglen;
@@ -2306,6 +2303,7 @@ typedef struct {
     pmix_event_t timer;
     bool timer_active;
     int check_tries;              // looks again at a server the table does not list yet
+    int wait;                     // the connect's bound in seconds, 0 for none
     pmix_ptl_connect_nb_cbfunc_t cbfunc;
     void *cbdata;
 } pmix_ptl_connect_op_t;
@@ -2331,7 +2329,6 @@ static void cnopcon(pmix_ptl_connect_op_t *p)
     p->expect_gid = (gid_t) -1;
     p->sd = -1;
     p->connect_tries = 0;
-    p->handshake_tries = 0;
     p->state = PMIX_CNCT_CONNECTING;
     p->msg = NULL;
     p->msglen = 0;
@@ -2344,6 +2341,7 @@ static void cnopcon(pmix_ptl_connect_op_t *p)
     memset(&p->timer, 0, sizeof(p->timer));
     p->timer_active = false;
     p->check_tries = 0;
+    p->wait = 0;
     p->cbfunc = NULL;
     p->cbdata = NULL;
 }
@@ -2372,6 +2370,7 @@ static PMIX_CLASS_INSTANCE(pmix_ptl_connect_op_t,
                            cnopcon, cnopdes);
 
 static void cnct_begin(int sd, short args, void *cbdata);
+static void cnct_finish(pmix_ptl_connect_op_t *op, pmix_status_t rc);
 static void cnct_connected(int sd, short args, void *cbdata);
 static void cnct_check(int sd, short args, void *cbdata);
 static void cnct_send(int sd, short args, void *cbdata);
@@ -2414,8 +2413,7 @@ static void cnct_expired(int sd, short args, void *cbdata)
     op->timer_active = false;
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base:connect: no answer from %s within %d seconds",
-                        (NULL == op->suri) ? "server" : op->suri,
-                        pmix_ptl_base.handshake_wait_time);
+                        (NULL == op->suri) ? "server" : op->suri, op->wait);
     cnct_finish(op, PMIX_ERR_TIMEOUT);
 }
 
@@ -2443,56 +2441,74 @@ static pmix_status_t cnct_expect(pmix_ptl_connect_op_t *op, pmix_cnct_state_t st
     return cnct_wait(op, EV_READ, cnct_recv);
 }
 
-/* Start over with a fresh socket - a failed attempt to connect, or a
- * server that asked us to retry the handshake */
-static void cnct_restart(pmix_ptl_connect_op_t *op)
+void pmix_ptl_base_connect_backoff(int tries, struct timeval *tv)
 {
-    if (0 <= op->sd) {
-        CLOSE_THE_SOCKET(op->sd);
-        op->sd = -1;
+    long ms = 10;
+
+    while (1 < tries-- && 1000 > ms) {
+        ms *= 2;
     }
-    op->peer->sd = -1;
-    pmix_ptl_base_wipe_released(op->msg, op->msglen);
-    free(op->msg);
-    op->msg = NULL;
-    op->msglen = 0;
-    cnct_begin(-1, 0, op);
+    if (1000 < ms) {
+        ms = 1000;
+    }
+    tv->tv_sec = ms / 1000;
+    tv->tv_usec = (ms % 1000) * 1000;
+}
+
+/* another attempt, after a delay when the last one found the server busy -
+ * or the end of them */
+static void cnct_retry(pmix_ptl_connect_op_t *op, int err)
+{
+    struct timeval tv = {0, 0};
+
+    if (PMIX_MAX_RETRIES < op->connect_tries) {
+        cnct_finish(op, PMIX_ERR_UNREACH);
+        return;
+    }
+    if (PMIX_PTL_CONNECT_BUSY(err)) {
+        pmix_ptl_base_connect_backoff(op->connect_tries, &tv);
+    }
+    pmix_event_evtimer_set(pmix_globals.evbase, &op->ev, cnct_begin, op);
+    op->ev_active = true;
+    PMIX_POST_OBJECT(op);
+    pmix_event_evtimer_add(&op->ev, &tv);
 }
 
 static void cnct_begin(int sd, short args, void *cbdata)
 {
     pmix_ptl_connect_op_t *op = (pmix_ptl_connect_op_t *) cbdata;
+    int err;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(op);
     op->ev_active = false;
 
-    /* the same attempts pmix_ptl_base_connect makes, without waiting */
-    while (PMIX_MAX_RETRIES >= op->connect_tries++) {
-        op->sd = socket(op->addr.ss_family, SOCK_STREAM | PMIX_SOCK_CLOEXEC, 0);
-        if (0 > op->sd) {
-            continue;
-        }
-        pmix_ptl_base_own_socket(op->sd);
-        pmix_ptl_base_set_nonblocking(op->sd);
-        if (0 == connect(op->sd, (struct sockaddr *) &op->addr, op->addrlen)) {
-            cnct_connected(op->sd, EV_WRITE, op);
-            return;
-        }
-        if (EINPROGRESS == pmix_socket_errno) {
-            if (PMIX_SUCCESS == cnct_wait(op, EV_WRITE, cnct_connected)) {
-                return;
-            }
-            cnct_finish(op, PMIX_ERROR);
-            return;
-        }
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:base:connect: connect failed: %s (%d)",
-                            strerror(pmix_socket_errno), pmix_socket_errno);
-        CLOSE_THE_SOCKET(op->sd);
-        op->sd = -1;
+    /* one of the attempts pmix_ptl_base_connect makes, without waiting */
+    op->connect_tries++;
+    op->sd = socket(op->addr.ss_family, SOCK_STREAM | PMIX_SOCK_CLOEXEC, 0);
+    if (0 > op->sd) {
+        cnct_retry(op, pmix_socket_errno);
+        return;
     }
-    cnct_finish(op, PMIX_ERR_UNREACH);
+    pmix_ptl_base_own_socket(op->sd);
+    pmix_ptl_base_set_nonblocking(op->sd);
+    if (0 == connect(op->sd, (struct sockaddr *) &op->addr, op->addrlen)) {
+        cnct_connected(op->sd, EV_WRITE, op);
+        return;
+    }
+    err = pmix_socket_errno;
+    if (EINPROGRESS == err) {
+        if (PMIX_SUCCESS == cnct_wait(op, EV_WRITE, cnct_connected)) {
+            return;
+        }
+        cnct_finish(op, PMIX_ERROR);
+        return;
+    }
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:base:connect: connect failed: %s (%d)", strerror(err), err);
+    CLOSE_THE_SOCKET(op->sd);
+    op->sd = -1;
+    cnct_retry(op, err);
 }
 
 static void cnct_connected(int sd, short args, void *cbdata)
@@ -2506,13 +2522,14 @@ static void cnct_connected(int sd, short args, void *cbdata)
     op->ev_active = false;
 
     if (0 != getsockopt(op->sd, SOL_SOCKET, SO_ERROR, (char *) &err, &errlen) || 0 != err) {
+        if (0 == err) {
+            err = pmix_socket_errno;
+        }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:base:connect: connect failed: %s (%d)",
-                            strerror(0 != err ? err : pmix_socket_errno),
-                            0 != err ? err : pmix_socket_errno);
+                            "ptl:base:connect: connect failed: %s (%d)", strerror(err), err);
         CLOSE_THE_SOCKET(op->sd);
         op->sd = -1;
-        cnct_begin(-1, 0, op);
+        cnct_retry(op, err);
         return;
     }
 
@@ -2693,12 +2710,6 @@ static pmix_status_t cnct_field(pmix_ptl_connect_op_t *op)
     switch (op->state) {
     case PMIX_CNCT_CHOICE_STATUS:
         reply = server_status(u32);
-        if (PMIX_ERR_TEMP_UNAVAILABLE == reply &&
-            ++op->handshake_tries < pmix_ptl_base.handshake_max_retries) {
-            op->connect_tries = 0;
-            cnct_restart(op);
-            return PMIX_OPERATION_IN_PROGRESS;
-        }
         if (PMIX_SUCCESS != reply) {
             return reply;
         }
@@ -2727,14 +2738,6 @@ static pmix_status_t cnct_field(pmix_ptl_connect_op_t *op)
 
     case PMIX_CNCT_STATUS:
         reply = server_status(u32);
-        if (PMIX_ERR_TEMP_UNAVAILABLE == reply &&
-            ++op->handshake_tries < pmix_ptl_base.handshake_max_retries) {
-            /* the server asked us to try again - make_connection does so
-             * from the connect on, and so do we */
-            op->connect_tries = 0;
-            cnct_restart(op);
-            return PMIX_OPERATION_IN_PROGRESS;
-        }
         if (PMIX_SUCCESS != reply) {
             return reply;
         }
@@ -2896,8 +2899,9 @@ pmix_status_t pmix_ptl_base_start_connection(pmix_peer_t *peer, char *nspace,
     op->cbdata = cbdata;
     pmix_list_append(&pmix_ptl_base.connecting, &op->super);
 
-    if (0 < pmix_ptl_base.handshake_wait_time) {
-        tv.tv_sec = pmix_ptl_base.handshake_wait_time;
+    op->wait = pmix_ptl_base_connect_wait();
+    if (0 < op->wait) {
+        tv.tv_sec = op->wait;
         pmix_event_evtimer_set(pmix_globals.evbase, &op->timer, cnct_expired, op);
         if (0 == pmix_event_evtimer_add(&op->timer, &tv)) {
             op->timer_active = true;
@@ -3542,11 +3546,17 @@ pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save,
         *sockopt = false;
     } else {
         /* set a timeout on the blocking recv so we don't hang */
-        tv.tv_sec = pmix_ptl_base.handshake_wait_time;
+        tv.tv_sec = pmix_ptl_base_connect_wait();
         tv.tv_usec = 0;
         if (0 != setsockopt(peer->sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
             *sockopt = false;
         }
+    }
+    if (!*sockopt) {
+        /* the replies are then read with no bound - say so */
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: could not bound the receives on socket %d: %s",
+                            peer->sd, strerror(errno));
     }
 
     return PMIX_SUCCESS;
@@ -3592,6 +3602,7 @@ pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp)
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
+    pmix_ptl_base.server_named = true;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix: RECV CONNECT CONFIRMATION FOR TOOL %s:%d FROM SERVER %s:%d",

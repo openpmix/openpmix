@@ -86,7 +86,6 @@ static const char pmix_version_string[] = "OpenPMIx " PMIX_VERSION
 #include "pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
 
-#define PMIX_MAX_RETRIES 10
 
 static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                                     pmix_buffer_t *buf, void *cbdata)

@@ -27,6 +27,11 @@
  *                   the progress thread - must come back promptly; and the
  *                   attach must then fail with PMIX_ERR_TIMEOUT once the
  *                   handshake wait expires, not before and not never.
+ *   PMIX_TIMEOUT    an attach to the silent server given PMIX_TIMEOUT 1
+ *                   fails in about a second, not the handshake wait.
+ *   missing file    an attach naming a server's file that is not there
+ *                   yet looks for it again from a timer; meanwhile a call
+ *                   that only the progress thread can complete does.
  *   closed server   a listener that accepts and closes at once. The attach
  *                   must fail promptly, not wait out the timer.
  *   handshake       a server that answers with a request for a security
@@ -157,6 +162,8 @@ static int fake_uri(int port, char *target, size_t tlen, char *path, size_t plen
 
 typedef struct {
     int port;
+    int timeout;          // PMIX_TIMEOUT for the attach, 0 for none
+    const char *missing;  // a file to name that does not exist, instead
     pmix_status_t rc;
     double secs;
     volatile bool done;
@@ -165,22 +172,39 @@ typedef struct {
 static void *attach_thread(void *arg)
 {
     attach_t *at = (attach_t *) arg;
-    pmix_info_t info[1];
+    pmix_info_t info[3];
     pmix_proc_t server;
     struct timeval start;
     char uri[1100], path[1024];
+    size_t ninfo = 1, n;
+    uint32_t delay = 1, tries = 3;
 
-    if (0 != fake_uri(at->port, uri, sizeof(uri), path, sizeof(path))) {
+    path[0] = '\0';
+    if (NULL != at->missing) {
+        snprintf(uri, sizeof(uri), "file:%s", at->missing);
+        /* look for it three times, a second apart */
+        PMIX_INFO_LOAD(&info[ninfo], PMIX_CONNECT_RETRY_DELAY, &delay, PMIX_UINT32);
+        ++ninfo;
+        PMIX_INFO_LOAD(&info[ninfo], PMIX_CONNECT_MAX_RETRIES, &tries, PMIX_UINT32);
+        ++ninfo;
+    } else if (0 != fake_uri(at->port, uri, sizeof(uri), path, sizeof(path))) {
         at->rc = PMIX_ERR_FILE_OPEN_FAILURE;
         at->done = true;
         return NULL;
+    } else if (0 < at->timeout) {
+        PMIX_INFO_LOAD(&info[ninfo], PMIX_TIMEOUT, &at->timeout, PMIX_INT);
+        ++ninfo;
     }
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_URI, uri, PMIX_STRING);
     gettimeofday(&start, NULL);
-    at->rc = PMIx_tool_attach_to_server(NULL, &server, info, 1);
+    at->rc = PMIx_tool_attach_to_server(NULL, &server, info, ninfo);
     at->secs = since(&start);
-    PMIX_INFO_DESTRUCT(&info[0]);
-    unlink(path);
+    for (n = 0; n < ninfo; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    if ('\0' != path[0]) {
+        unlink(path);
+    }
     at->done = true;
     return NULL;
 }
@@ -276,6 +300,75 @@ static int silent_child(int port)
     if ((double) ATTACH_WAIT - 0.5 > at.secs || (double) (3 * ATTACH_WAIT) < at.secs) {
         fprintf(stdout, "    the attach timed out after %.1fs with a %ds wait\n",
                 at.secs, ATTACH_WAIT);
+        return ATT_FAILED;
+    }
+    PMIx_tool_finalize();
+    return ATT_OK;
+}
+
+/* An attach given PMIX_TIMEOUT is bounded by it, not by the handshake
+ * wait: against the silent server, it fails in about a second */
+static int timeout_child(int port)
+{
+    attach_t at;
+
+    signal(SIGALRM, on_alarm);
+    alarm(4 * ATTACH_WAIT);
+    if (0 != tool_up()) {
+        return ATT_SETUP;
+    }
+    memset(&at, 0, sizeof(at));
+    at.port = port;
+    at.timeout = 1;
+    (void) attach_thread(&at);
+    alarm(0);
+    fprintf(stdout, "    the attach: %s after %.1fs\n", PMIx_Error_string(at.rc), at.secs);
+    if (PMIX_SUCCESS == at.rc || (double) ATTACH_WAIT - 1.0 < at.secs) {
+        return ATT_FAILED;
+    }
+    PMIx_tool_finalize();
+    return ATT_OK;
+}
+
+/* An attach naming a server's file that is not there yet looks for it
+ * again from a timer: while it does, the progress thread serves a call
+ * that can only complete on it */
+static int missing_file_child(int port)
+{
+    attach_t at;
+    pthread_t tid;
+    struct timeval start;
+    pmix_status_t code = PMIX_EVENT_JOB_END;
+    pmix_status_t rc;
+    double probe;
+    bool pending;
+    char missing[64];
+    (void) port;
+
+    signal(SIGALRM, on_alarm);
+    alarm(4 * ATTACH_WAIT);
+    if (0 != tool_up()) {
+        return ATT_SETUP;
+    }
+    snprintf(missing, sizeof(missing), "/tmp/pmix_attach_nb.none.%lu", (unsigned long) getpid());
+    memset(&at, 0, sizeof(at));
+    at.missing = missing;
+    if (0 != pthread_create(&tid, NULL, attach_thread, &at)) {
+        return ATT_SETUP;
+    }
+    usleep(500000);
+    gettimeofday(&start, NULL);
+    rc = PMIx_Register_event_handler(&code, 1, NULL, 0, noop_handler, NULL, NULL);
+    probe = since(&start);
+    pending = !at.done;
+    if (0 <= rc) {
+        (void) PMIx_Deregister_event_handler((size_t) rc, NULL, NULL);
+    }
+    pthread_join(tid, NULL);
+    alarm(0);
+    fprintf(stdout, "    event registration took %.1fs; the attach: %s after %.1fs\n", probe,
+            PMIx_Error_string(at.rc), at.secs);
+    if (0 > rc || !pending || 0.5 < probe || PMIX_SUCCESS == at.rc) {
         return ATT_FAILED;
     }
     PMIx_tool_finalize();
@@ -526,6 +619,9 @@ int main(int argc, char **argv)
     fprintf(stdout, "\n=== tool attach, event-driven ===\n\n");
     run_case("progress thread runs while an attach waits on a silent server", silent_child,
              ACCEPT_NONE);
+    run_case("an attach is bounded by its PMIX_TIMEOUT", timeout_child, ACCEPT_NONE);
+    run_case("the progress thread runs while an attach waits for a server's file",
+             missing_file_child, ACCEPT_NONE);
     run_case("attach to a server that closes the connection fails promptly", closed_child,
              ACCEPT_CLOSE);
     run_case("attach to a server that replies with an internal code fails", sentinel_child,

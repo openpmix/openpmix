@@ -892,7 +892,10 @@ server path; a client has its own, simpler one (`ptl_base_client.c`).
   (`select_compat`), and a v3.2 to v6.1 server has no v70 to be spoken
   to with.
 
-Both converge on `pmix_ptl_base_make_connection` (`ptl_base_fns.c`):
+Both connect through `pmix_ptl_base_make_connection` (`ptl_base_fns.c`)
+when blocking - its steps are below - and `pmix_ptl_base_start_connection`
+(the `cnct_*` state machine, the same steps on the progress thread) when
+event-driven:
 
 ```
 uri_to_addr()               the transport whose scheme the URI has parses it
@@ -1234,7 +1237,7 @@ that bite:
 - **Tag space is split in half per connection** so the two ends of a
   bidirectional socket never collide. The side that *accepted* takes the
   upper half (set in the connection handler), the side that *initiated*
-  takes the lower half (set in `make_connection`). `UINT_MAX` is the
+  takes the lower half (set by either connect path on completion). `UINT_MAX` is the
   wildcard the server posts to catch every client command.
 - **A dynamic-tag recv is one-shot**; `process_msg` removes it after
   firing. The reserved tags below `PMIX_PTL_TAG_DYNAMIC` are persistent

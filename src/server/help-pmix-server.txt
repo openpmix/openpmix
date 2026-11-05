@@ -11,7 +11,7 @@
 #
 #
 [listener-thread-start]
-The PMIx server's listener thread failed to start. We cannot
+The PMIx server's listener failed to start. We cannot
 continue.
 #
 [collection-mismatch]

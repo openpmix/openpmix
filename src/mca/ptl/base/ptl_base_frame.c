@@ -135,6 +135,9 @@ pmix_ptl_base_t pmix_ptl_base = {
     .max_retries = 0,
     .wait_to_connect = 0,
     .handshake_wait_time = 60,
+    .connect_wait = 0,
+    .file_wait = PMIX_PTL_FILE_WAIT,
+    .server_named = false,
     .handshake_max_retries = 0,
     .search_depth = 8,
     .connect_ack_timeout = 5,
@@ -308,7 +311,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "handshake_max_retries",
-                                     "Number of times to retry the handshake request before giving up",
+                                     "No longer used: no server asks a client or tool to retry "
+                                     "its handshake",
                                      PMIX_MCA_BASE_VAR_TYPE_INT,
                                      &pmix_ptl_base.handshake_max_retries);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_max_retries",
