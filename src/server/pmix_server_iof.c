@@ -53,6 +53,27 @@
  * of - _iofdeliver reaches for it on its miss path */
 static size_t inherit_from_ancestry(const pmix_proc_t *source);
 
+/* the channels a job's output arrives on - inheritance is about these */
+#define PMIX_OUTPUT_CHANNELS \
+    (PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL)
+
+/* The output channels the spawn that created this job named, if it named
+ * any: PMIX_FWD_STDOUT, PMIX_FWD_STDERR and PMIX_FWD_STDDIAG in the job's
+ * own information, which the host registers with every server the job's
+ * output may reach - see PMIx_server_register_nspace(3). NULL when the
+ * job's spawn named none, or we have no record of the job */
+static const pmix_iof_flags_t *named_channels(const char *nspace)
+{
+    pmix_namespace_t *ns;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (PMIX_CHECK_NSPACE(ns->nspace, nspace)) {
+            return ns->iof_flags.fwd_given ? &ns->iof_flags : NULL;
+        }
+    }
+    return NULL;
+}
+
 void pmix_server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                             pmix_buffer_t *buf, void *cbdata)
 {
@@ -157,6 +178,7 @@ static void _iofdeliver(int sd, short args, void *cbdata)
     bool found = false;
     bool outputlocal;
     pmix_iof_cache_t *iof;
+    const pmix_iof_flags_t *named;
     int i;
     size_t n;
     /* the local write used to be unconditional and was what first set this;
@@ -195,9 +217,16 @@ static void _iofdeliver(int sd, short args, void *cbdata)
         }
     }
 
-    /* output it locally if requested */
+    /* output it locally if requested. A job whose spawn named its output
+     * channels has on our own stdout and stderr only the channels it
+     * named true; its output files are written as always */
     if (outputlocal) {
-        rc = pmix_iof_write_output(cd->procs, cd->channels, cd->bo);
+        named = named_channels(cd->procs->nspace);
+        if (NULL != named && 0 == (cd->channels & named->fwd)) {
+            rc = pmix_iof_write_output_files(cd->procs, cd->channels, cd->bo);
+        } else {
+            rc = pmix_iof_write_output(cd->procs, cd->channels, cd->bo);
+        }
         if (0 > rc) {
             ret = rc;
             goto done;
@@ -557,12 +586,35 @@ static void drain_cache(const char *nspace)
  * Returns the number of subscriptions cloned - zero means nobody is
  * watching that parent here.
  */
-static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
+/* Is "req" already cloned onto "nspace"? Output on a channel the clone
+ * does not carry matches nothing here, and asks for the clone again */
+static bool already_cloned(const pmix_iof_req_t *req, const char *nspace)
+{
+    pmix_iof_req_t *r;
+    int i;
+
+    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+        r = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL != r && r->inherited && r->requestor == req->requestor &&
+            r->remote_id == req->remote_id && 1 == r->nprocs &&
+            PMIX_CHECK_NSPACE(r->procs[0].nspace, nspace)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Clone the subscriptions covering "parent" onto the job "nspace", on the
+ * channels in "mask" only. Returns how many of them now cover the job,
+ * counting any cloned already */
+static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace,
+                             pmix_iof_channel_t mask)
 {
     pmix_iof_req_t *req, *nreq;
-    size_t m, ninherited = 0;
+    size_t m, ninherited = 0, ncovered = 0;
     int i, limit, idx;
     pmix_namespace_t *ns, *child = NULL;
+    pmix_iof_channel_t channels;
 
     /* the child job - its permissions decide who may follow into it. A
      * job the host never registered with us has no owner here, so only
@@ -612,6 +664,15 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
         if (!pmix_server_peer_permitted(req->requestor, child)) {
             continue;
         }
+        /* only the channels the job is to have */
+        channels = req->channels & mask;
+        if (PMIX_FWD_NO_CHANNELS == channels) {
+            continue;
+        }
+        if (already_cloned(req, nspace)) {
+            ++ncovered;
+            continue;
+        }
 
         nreq = PMIX_NEW(pmix_iof_req_t);
         if (NULL == nreq) {
@@ -631,7 +692,7 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
         PMIX_LOAD_PROCID(&nreq->procs[0], nspace, PMIX_RANK_WILDCARD);
         PMIX_RETAIN(req->requestor);
         nreq->requestor = req->requestor;
-        nreq->channels = req->channels;
+        nreq->channels = channels;
         nreq->remote_id = req->remote_id;
         /* who this was inherited from, for the requestor's formatting -
          * see PMIX_IOF_JOB_DIRECTIVES */
@@ -665,7 +726,7 @@ static size_t clone_iof_reqs(const pmix_proc_t *parent, const char *nspace)
     if (0 < ninherited) {
         drain_cache(nspace);
     }
-    return ninherited;
+    return ninherited + ncovered;
 }
 
 /* Does the host allow this job to inherit? PMIX_IOF_INHERIT is job-level
@@ -713,6 +774,24 @@ static bool iof_inherit_allowed(const char *nspace)
     return allowed;
 }
 
+/* Which of its parent's output channels does this job inherit?
+ *
+ * A job whose spawn named its output channels inherits exactly those set
+ * true - the spawn decided, and the host's PMIX_IOF_INHERIT is not
+ * consulted. The server that took the request knows them from the request
+ * itself; every other server knows them from the job-level information
+ * the host registered (see named_channels()). A job whose spawn named
+ * none inherits every channel, unless the host says no. */
+static pmix_iof_channel_t inherit_mask(const char *nspace)
+{
+    const pmix_iof_flags_t *named = named_channels(nspace);
+
+    if (NULL != named) {
+        return named->fwd & PMIX_OUTPUT_CHANNELS;
+    }
+    return iof_inherit_allowed(nspace) ? PMIX_OUTPUT_CHANNELS : PMIX_FWD_NO_CHANNELS;
+}
+
 /* Give the child job the output forwarding its parent has, at the moment
  * the spawn completes. The spawning process is the parent, and it is a
  * local client of ours - so this only ever finds anything on the server
@@ -734,6 +813,7 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
 {
     pmix_proc_t parent;
     pmix_namespace_t *ns, *nptr = NULL;
+    pmix_iof_channel_t mask;
 
     if (NULL == cd->peer || NULL == cd->peer->info) {
         return 0;
@@ -751,9 +831,16 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
                             "leaving inheritance to delivery", nspace);
         return 0;
     }
-    if (!iof_inherit_allowed(nspace)) {
+    /* the request on hand says which channels, if it named any - a host
+     * need not have registered them with the job */
+    if (cd->inherit_iof) {
+        mask = iof_inherit_allowed(nspace) ? PMIX_OUTPUT_CHANNELS : PMIX_FWD_NO_CHANNELS;
+    } else {
+        mask = cd->channels & PMIX_OUTPUT_CHANNELS;
+    }
+    if (PMIX_FWD_NO_CHANNELS == mask) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
-                            "PMIx:SERVER job %s: host declined output inheritance",
+                            "PMIx:SERVER job %s does not inherit output forwarding",
                             nspace);
         return 0;
     }
@@ -761,7 +848,7 @@ static size_t inherit_parent_iof(pmix_setup_caddy_t *cd, char nspace[])
     PMIX_LOAD_PROCID(&parent, cd->peer->info->pname.nspace,
                      cd->peer->info->pname.rank);
 
-    return clone_iof_reqs(&parent, nspace);
+    return clone_iof_reqs(&parent, nspace, mask);
 }
 
 /* How far the ancestry walk below will climb: PMIX_IOF_MAX_ANCESTRY,
@@ -847,15 +934,17 @@ static bool get_parent_id(const pmix_proc_t *proc, pmix_proc_t *parent)
 static size_t inherit_from_ancestry(const pmix_proc_t *source)
 {
     pmix_proc_t anc, parent;
+    pmix_iof_channel_t mask;
     size_t ninherited;
     int depth;
 
-    /* The host's decision, read where it is reliable: output cannot
-     * arrive for a namespace this server has not been told about, so
-     * unlike the spawn-time site there is no "cannot ask yet" here. */
-    if (!iof_inherit_allowed(source->nspace)) {
+    /* The job's and the host's decision, read where it is reliable: output
+     * cannot arrive for a namespace this server has not been told about,
+     * so unlike the spawn-time site there is no "cannot ask yet" here. */
+    mask = inherit_mask(source->nspace);
+    if (PMIX_FWD_NO_CHANNELS == mask) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
-                            "PMIx:SERVER job %s: host declined output inheritance",
+                            "PMIx:SERVER job %s does not inherit output forwarding",
                             source->nspace);
         return 0;
     }
@@ -869,7 +958,7 @@ static size_t inherit_from_ancestry(const pmix_proc_t *source)
         if (PMIX_CHECK_NSPACE(parent.nspace, anc.nspace)) {
             return 0;       // a job cannot have spawned itself
         }
-        ninherited = clone_iof_reqs(&parent, source->nspace);
+        ninherited = clone_iof_reqs(&parent, source->nspace, mask);
         if (0 < ninherited) {
             pmix_output_verbose(2, pmix_server_globals.iof_output,
                                 "PMIx:SERVER job %s inherited %d subscription(s) "
@@ -890,14 +979,15 @@ pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
     pmix_iof_req_t *req;
     int idx;
 
-    /* Nothing in the spawn request said which channels to forward, so
-     * the child job takes its parent's - and if the parent has nobody
-     * watching it, there is nowhere for the child's output to go
-     * either. We deliberately do NOT fall back to forwarding it to the
-     * spawner: output is never forwarded to an application process,
-     * which would only emit it on its own stdout for the runtime to
-     * pick up and forward again. */
-    if (cd->inherit_iof) {
+    /* A spawn from a process of a job takes its parent's forwarding: on
+     * every channel when the request named none, and on those it named
+     * true when it named any. If the parent has nobody watching it, there
+     * is nowhere for the child's output to go either. We deliberately do
+     * NOT forward it to the spawner: output is never forwarded to an
+     * application process, which would only emit it on its own stdout
+     * for the runtime to pick up and forward again. A tool is not a
+     * member of a job, so what it asks for is forwarded to it */
+    if (cd->inherit_iof || !cd->iof_to_requester) {
         if (0 == inherit_parent_iof(cd, nspace)) {
             pmix_output_verbose(2, pmix_server_globals.iof_output,
                                 "PMIx:SERVER job %s has nothing to inherit - "

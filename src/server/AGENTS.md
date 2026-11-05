@@ -2506,8 +2506,11 @@ clones each such request onto the child's namespace, keeping the
 requestor, channels, formatting *and `remote_id`*, so the child's output
 lands at the requestor under the handler id the parent's already uses.
 
-The ordering is: a channel named on the spawn wins, else the parent's
-subscriptions. **There is deliberately no third level.** If nothing is
+The ordering is: the channels named on the spawn decide, else the parent's
+subscriptions on every channel. For a process of a job, the channels it
+names true are themselves inherited — cloned from the parent's
+subscriptions on those channels only — and are never forwarded to the
+process. **There is deliberately no third level.** If nothing is
 watching the parent there is nowhere for the child's output to go, and
 falling back to forwarding it to the spawner would be a loopback rather
 than a fallback — output is never forwarded to an application process,
@@ -2518,9 +2521,9 @@ PRRTE's existing `prte_rmaps_default_inherit` is the place to control
 inheritance from, and layering a second one would only confuse users.)
 `pmix_server_spawn_parser` reports the first of those through its
 `inherit` out-parameter — **naming any one
-output channel turns inheritance off for all of them**, including naming
-one `false`, which is how a spawn asks for silence from a job whose
-parent is being watched. A tool is not a member of a job, so it has no
+output channel settles all of them**: what is not named true is not
+forwarded, and naming one `false` is how a spawn asks for silence from a
+job whose parent is being watched. A tool is not a member of a job, so it has no
 parent and keeps its own "forward everything to me" default; `prun`
 depends on that.
 
@@ -2609,6 +2612,24 @@ directive carried with the spawn request, or a server-wide default at
 (and the latter cannot express a per-job answer at all, while PRRTE's
 `inherit` is per-job).
 
+**A spawn that named its output channels reaches the other servers the
+same way.** `pmix_server_state_channels()` replaces whatever the request
+named with all three of `PMIX_FWD_STDOUT`/`STDERR`/`STDDIAG`, as the parser
+resolved them, before the directives go to the host or to pfexec; the host
+registers them with the job (PRRTE does with any directive it does not act
+on). `pmix_iof_check_flags()` puts them on the namespace as
+`iof_flags.fwd`/`fwd_given`, and two things read them: `inherit_mask()`
+limits the delivery-time clones to the channels named true (the host's
+`PMIX_IOF_INHERIT` is not consulted for such a job), and `_iofdeliver()`
+writes a channel the job did not name true to its output files only
+(`pmix_iof_write_output_files()`), never to our own stdout/stderr. Without
+this, `prterun` printed a job's output whatever its spawn said, and the
+delivery-time half cloned the parent's subscriptions onto a job that had
+turned them off ([openpmix#4407][i4407]). Because a clone can now carry
+fewer channels than the output arriving for the job, `clone_iof_reqs()`
+skips a subscription it has already cloned onto the job and counts it as
+covering it, so the walk stops there as before.
+
 **At the spawn-time site, "the host said nothing" and "we cannot ask yet"
 must not be conflated** — it is the one place they are distinguishable.
 That site runs from the spawn *completion*, and whether the child's
@@ -2644,6 +2665,7 @@ different daemons — the geometry in which nothing about the answer can
 be local.
 
 [i4120]: https://github.com/openpmix/openpmix/issues/4120
+[i4407]: https://github.com/openpmix/openpmix/issues/4407
 
 **The three client-driven commands own the arrays they unpack, and the
 `pmix_setup_caddy_t` will not believe it without being told.** They are

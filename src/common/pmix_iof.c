@@ -60,7 +60,7 @@
 static pmix_status_t write_output(const pmix_proc_t *name,
                                   pmix_iof_channel_t stream,
                                   const pmix_byte_object_t *bo,
-                                  bool may_hold);
+                                  bool may_hold, bool terminal);
 static void release_pending(const char *nspace);
 
 static void myregcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
@@ -1678,6 +1678,27 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_PATTERN)) {
         flags->pattern = PMIX_INFO_TRUE(info);
         /* don't mark as set here as this is just a qualifier */
+    } else if (PMIX_CHECK_KEY(info, PMIX_FWD_STDOUT) ||
+               PMIX_CHECK_KEY(info, PMIX_FWD_STDERR) ||
+               PMIX_CHECK_KEY(info, PMIX_FWD_STDDIAG)) {
+        /* which channels a job's spawn named - not formatting, so not
+         * "set". A spawn request's own are read by
+         * pmix_server_spawn_parser(), and do not come here */
+        pmix_iof_channel_t ch;
+
+        if (PMIX_CHECK_KEY(info, PMIX_FWD_STDOUT)) {
+            ch = PMIX_FWD_STDOUT_CHANNEL;
+        } else if (PMIX_CHECK_KEY(info, PMIX_FWD_STDERR)) {
+            ch = PMIX_FWD_STDERR_CHANNEL;
+        } else {
+            ch = PMIX_FWD_STDDIAG_CHANNEL;
+        }
+        if (PMIX_INFO_TRUE(info)) {
+            flags->fwd |= ch;
+        } else {
+            flags->fwd &= ~ch;
+        }
+        flags->fwd_given = true;
     }
 }
 
@@ -2545,7 +2566,7 @@ static void release_pending(const char *nspace)
         }
         pmix_list_remove_item(&pmix_globals.iof_pending, &pend->super);
         pmix_globals.iof_pending_bytes -= pend->bo.size;
-        rc = write_output(&pend->name, pend->stream, &pend->bo, false);
+        rc = write_output(&pend->name, pend->stream, &pend->bo, false, true);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
@@ -3131,11 +3152,13 @@ static bool add_job_directives(const pmix_proc_t *source, pmix_iof_req_t *req,
 
 /* The body of pmix_iof_write_output(). "may_hold" is false only when the
  * caller is the pending cache draining itself, which must not be handed its
- * own output back - see release_pending(). */
+ * own output back - see release_pending(). "terminal" is false when only the
+ * job's output files are to be written, not our own stdout and stderr - see
+ * pmix_iof_write_output_files(). */
 static pmix_status_t write_output(const pmix_proc_t *name,
                                   pmix_iof_channel_t stream,
                                   const pmix_byte_object_t *bo,
-                                  bool may_hold)
+                                  bool may_hold, bool terminal)
 {
     pmix_status_t rc;
     size_t n, start;
@@ -3239,7 +3262,8 @@ static pmix_status_t write_output(const pmix_proc_t *name,
                      * reported: as for files that are not ours, only
                      * the copy to our own stdout is written */
                     outputio = pmix_globals.iof_flags.local_output && !nptr->iof_flags.nocopy;
-                } else if (!nptr->iof_flags.nocopy && pmix_globals.iof_flags.local_output) {
+                } else if (terminal && !nptr->iof_flags.nocopy &&
+                           pmix_globals.iof_flags.local_output) {
                     if (PMIX_FWD_STDOUT_CHANNEL & stream) {
                         copystdout = true;
                     } else {
@@ -3268,7 +3292,8 @@ static pmix_status_t write_output(const pmix_proc_t *name,
                      * reported: as for files that are not ours, only
                      * the copy to our own stdout is written */
                     outputio = pmix_globals.iof_flags.local_output && !nptr->iof_flags.nocopy;
-                } else if (!nptr->iof_flags.nocopy && pmix_globals.iof_flags.local_output) {
+                } else if (terminal && !nptr->iof_flags.nocopy &&
+                           pmix_globals.iof_flags.local_output) {
                     if (PMIX_FWD_STDOUT_CHANNEL & stream) {
                         copystdout = true;
                     } else {
@@ -3289,6 +3314,10 @@ static pmix_status_t write_output(const pmix_proc_t *name,
     }
 
     if (NULL == channel) {
+        /* what is left is our own stdout or stderr */
+        if (!terminal) {
+            return PMIX_SUCCESS;
+        }
         if (PMIX_FWD_STDOUT_CHANNEL & stream) {
             channel = &pmix_client_globals.iof_stdout.wev;
         } else {
@@ -3422,7 +3451,14 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
                                     pmix_iof_channel_t stream,
                                     const pmix_byte_object_t *bo)
 {
-    return write_output(name, stream, bo, true);
+    return write_output(name, stream, bo, true, true);
+}
+
+pmix_status_t pmix_iof_write_output_files(const pmix_proc_t *name,
+                                          pmix_iof_channel_t stream,
+                                          const pmix_byte_object_t *bo)
+{
+    return write_output(name, stream, bo, true, false);
 }
 
 void pmix_iof_flush_residuals(void)

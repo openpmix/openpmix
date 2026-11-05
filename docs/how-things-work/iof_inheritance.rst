@@ -8,7 +8,7 @@ The behavior we want
 
 A job spawned through ``PMIx_Spawn`` should have its output forwarded according to the following precedence, highest first:
 
-1. **The output attributes the spawn request carried.** If the request named any of ``PMIX_FWD_STDOUT``, ``PMIX_FWD_STDERR`` or ``PMIX_FWD_STDDIAG``, that request is honored exactly as written - including a channel explicitly set to ``false``, which is how a spawn asks for silence from a job whose parent is being watched. A partial request is not merged into anything else; naming one channel settles the matter for all of them.
+1. **The output attributes the spawn request carried.** If the request named any of ``PMIX_FWD_STDOUT``, ``PMIX_FWD_STDERR`` or ``PMIX_FWD_STDDIAG``, that request is honored exactly as written - including a channel explicitly set to ``false``, which is how a spawn asks for silence from a job whose parent is being watched. A partial request is not merged into anything else; naming one channel settles the matter for all of them. A channel set ``true`` by a process of a job goes where that job's output goes - to its launcher - and is inherited on that channel alone; one set ``true`` by a tool goes to the tool.
 
 2. **Otherwise, the child inherits its parent's output forwarding** - unless the PRRTE ``inherit`` MCA parameter was explicitly *set* to false. "Inherits" means the child is treated the way the parent is being treated: whoever is receiving the parent job's output also receives the child's, on the same channels and with the same formatting.
 
@@ -88,6 +88,22 @@ The division follows the architectural split: PRRTE learns to route a job's outp
 The spawn-time inheritance is kept rather than replaced. It is what implements the precedence rule itself - the spawn request's own attributes against the parent's settings - and it answers the co-located case without waiting for output to arrive. The two are independent: neither needs the other to have happened, and where both apply the second finds the subscription the first created and does nothing.
 
 **The PRRTE side.** Items 1-4 are the answer for a tool that is *not* attached to the HNP, and for a tool that attaches to a running DVM and pulls a job's output. Neither is reachable from the PMIx side: the first needs the output relayed to a daemon PRRTE does not otherwise send it to, and the second needs the request recorded against the job at all. All four are implemented in prrte#2658, along with PRRTE's half of item 6 - setting ``PMIX_IOF_INHERIT`` when its own ``inherit`` rule refuses. Note the default there is the opposite of this one: PRRTE does not inherit *launch directives* unless asked, so the gate on output forwarding has to be the explicit refusal rather than the resolved value.
+
+Requests that name their channels
+---------------------------------
+
+Rule 1 above is applied by the parser on the server that takes the spawn request, and for a long time it was applied *only* there - and there it registered a channel a process of a job set ``true`` as forwarding to that process, which has nowhere to put it. Two other places decide what happens to a spawned job's output, and neither could see the request:
+
+* the delivery-time fallback (item 5), on the server the output reaches, which cloned the parent's subscriptions onto a job whose request had turned them off;
+* the local write in ``_iofdeliver()``, by which a launcher such as ``prterun`` writes every job's output to its own terminal whatever the job's request said.
+
+So a request is now carried with the job, the same way ``PMIX_IOF_INHERIT`` is. The server that takes it replaces the channels the request named with all three, as the parser resolved them - a tool's unnamed channels are on, a client's are off - in the directives it passes to the host (``pmix_server_state_channels()``). The host registers them with the job's information, as it does any spawn directive it does not act on itself; PRRTE already did. Every server then has them on the namespace, as ``pmix_iof_flags_t::fwd`` and ``fwd_given``:
+
+* ``inherit_mask()`` limits what the delivery-time fallback clones to the channels set ``true`` - none, for a request for silence - and the spawn-time site does the same from the request itself (``pmix_server_process_iof()``). The host's ``PMIX_IOF_INHERIT`` is not consulted for such a job;
+* a clone already made is not made again (``already_cloned()``): output on a channel the clone does not carry matches nothing and asks for it again;
+* ``_iofdeliver()`` writes a channel the job did not name ``true`` to the job's output files only, through ``pmix_iof_write_output_files()``, and not to its own ``stdout`` or ``stderr``.
+
+They are read only there. A tool also learns a job's information, but it writes what it is sent, and what it pulled for itself is not the spawn's to refuse.
 
 Formatting
 ----------

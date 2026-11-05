@@ -361,6 +361,13 @@ typedef struct {
     /* PMIX_IOF_FILE_WRITER: the process that writes the output files */
     pmix_proc_t writer;
     bool writer_given;
+    /* PMIX_FWD_STDOUT, PMIX_FWD_STDERR and PMIX_FWD_STDDIAG in a job's
+     * own information: the output channels its spawn request named, as
+     * the server that took the request resolved them. "fwd_given" says
+     * any was named, and "fwd" holds those that are true. A server reads
+     * them - see pmix_server_iof.c */
+    pmix_iof_channel_t fwd;
+    bool fwd_given;
 } pmix_iof_flags_t;
 
 #define PMIX_IOF_FLAGS_STATIC_INIT  \
@@ -379,7 +386,9 @@ typedef struct {
     .local_output = false,          \
     .local_output_given = false,    \
     .pattern = false,               \
-    .raw = false                    \
+    .raw = false,                   \
+    .fwd = PMIX_FWD_NO_CHANNELS,    \
+    .fwd_given = false              \
 }
 
 /* Who may access a namespace's data and act on it - see
