@@ -839,7 +839,10 @@ Checks for a tool
    - a tool started by a server (kind 5 or 8) whose rank is already
      known must have that rank's uid and gid;
    - a tool of this release that names a rank with a token must present
-     it, as a client must;
+     it, as a client must. Once a client connection has bound the token
+     to its pid, a tool on the local socket from another pid is refused
+     with ``PMIX_ERR_EXISTS``, as for a rank that is connected; a tool's
+     connection binds nothing;
    - a tool joining a namespace the server already knows must have
      that namespace's uid and gid, and the namespace must belong to a
      tool, or to a process this server started.

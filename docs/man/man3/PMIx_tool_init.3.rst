@@ -128,9 +128,11 @@ Tool identity attributes
 
   * a tool that takes its namespace and rank from its environment can find
     them in use - by the script that started it, or by another tool it
-    started. The server refuses the connection with ``PMIX_ERR_EXISTS``,
-    and the tool connects again without an identity, to be given one by the
-    host: it comes up under a namespace of its own. If the host does not give
+    started - or held for the first client process that connected as that
+    rank, even after that process finalized or exited, when the tool is
+    another process. The server refuses the connection with
+    ``PMIX_ERR_EXISTS``, and the tool connects again without an identity, to
+    be given one by the host: it comes up under a namespace of its own. If the host does not give
     it one, ``PMIx_tool_init`` returns ``PMIX_ERR_EXISTS``. Tools of releases before
     this one do not connect again, and ``PMIx_tool_init`` returns
     ``PMIX_ERR_EXISTS``;
