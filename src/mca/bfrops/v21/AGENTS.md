@@ -27,7 +27,8 @@ self-contained `v12`/`v20` encoders that preceded it are gone.
 
 ## When it is selected
 
-Always available. Chosen for a peer advertising `"v21"`.
+Built only with legacy support (see "Building" in
+[`../AGENTS.md`](../AGENTS.md)). Chosen for a peer advertising `"v21"`.
 
 ## The 2.0 type set, on the shared driver
 

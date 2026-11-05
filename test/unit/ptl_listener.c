@@ -197,6 +197,7 @@ static void print_state(const char *when, const lstate_t *ls)
 
 static int dial_listener(void)
 {
+#if PMIX_ENABLE_LEGACY_CLIENTS
     struct sockaddr_storage addr;
     int c;
 
@@ -212,6 +213,11 @@ static int dial_listener(void)
         return -1;
     }
     return c;
+#else
+    /* no TCP listener to dial: the tcp transport is not built, and main
+     * skips every case */
+    return -1;
+#endif
 }
 
 /* Connect while the server has no descriptor to accept with, and leave
@@ -219,6 +225,7 @@ static int dial_listener(void)
  * client's socket, with the limit restored */
 static int connect_out_of_descriptors(void)
 {
+#if PMIX_ENABLE_LEGACY_CLIENTS
     struct rlimit rl, saved;
     struct sockaddr_storage addr;
     int c, probe;
@@ -242,6 +249,10 @@ static int connect_out_of_descriptors(void)
     pause_ms(300);
     setrlimit(RLIMIT_NOFILE, &saved);
     return c;
+#else
+    /* see dial_listener */
+    return -1;
+#endif
 }
 
 /* true if the far end of c has closed it within msec */

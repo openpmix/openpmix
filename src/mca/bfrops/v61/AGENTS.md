@@ -26,8 +26,9 @@ does. It is not this build's native format; `v70` is.
 
 ## When it is selected
 
-`v61` is always available (no `configure.m4`, no runtime gate;
-`component_query` unconditionally returns the module at priority 65).
+`v61` is built only with legacy support (its `configure.m4` - see
+"Building" in [`../AGENTS.md`](../AGENTS.md)), with no runtime gate:
+`component_query` unconditionally returns the module at priority 65.
 It is the module chosen for any peer that advertises `"v61"`, and the one
 a tool picks for a v6.1 server whose file names only its version.
 

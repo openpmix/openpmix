@@ -160,7 +160,9 @@ TCP peer at one.
   peer can declare.
 - **A peer of a release before `PMIX_PTL_LOCAL_MAJOR` (7) is a legacy
   peer.** Legacy support has two directions, each its own configure
-  option and macro:
+  option and macro, and `PMIX_ENABLE_LEGACY_SUPPORT` is set when either
+  is - only then are `ptl/tcp` and `bfrops` `v21` through `v61` built
+  (their `configure.m4`s test `$pmix_legacy_support`):
   - **Legacy clients** - a server taking clients and tools of earlier
     releases. Taken only when `pmix_ptl_base.legacy_clients`: otherwise
     the handler refuses one with `PMIX_ERR_NOT_SUPPORTED`, on whichever
@@ -184,7 +186,8 @@ TCP peer at one.
     (`legacy-servers-tcp`) - only such a server is reached at one -
     with `PMIX_ERR_NOT_SUPPORTED`, before any socket is opened.
     `pmix_ptl_base_select_compat()` asks first, so a file naming an
-    earlier release is refused for that before a wire format is chosen.
+    earlier release is refused for that, not for having no wire format
+    in common with a build that has only `v70`.
 - **A peer of this release is taken only on the local socket.** On TCP
   the handler refuses it with `PMIX_ERR_LOCAL_URI_REQUIRED` (-77), beside
   the gate that keeps earlier releases off the local socket. The TCP

@@ -161,6 +161,47 @@ jobs:
         # fail this step too, so gh run view --log-failed shows it
         exit 1
 
+  no-legacy:
+    # No support for peers of earlier releases in either direction
+    # (--disable-legacy-peers): the library leaves out the tcp transport
+    # and every bfrops component but v70, which no default build does.
+    # Everything that names one of them has to build and pass without it.
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends software-properties-common libhwloc-dev libevent-dev
+    - name: Git clone OpenPMIx
+      uses: actions/checkout@v6
+      with:
+            submodules: recursive
+    - name: Build OpenPMIx without legacy support
+      run: |
+        ./autogen.pl
+        ./configure --prefix=${PWD}/install --enable-devel-check --disable-legacy-peers
+        make -j
+
+        # confirm the components really were left out: a build that
+        # kept them would pass the suite below without testing any of it
+        ! grep -q "pmix_mca_ptl_tcp_component" src/mca/ptl/base/static-components.h
+        for c in v21 v3 v4 v41 v51 v61; do
+            ! grep -q "pmix_mca_bfrops_${c}_component" src/mca/bfrops/base/static-components.h
+        done
+        grep -q "pmix_mca_bfrops_v70_component" src/mca/bfrops/base/static-components.h
+
+        cd test
+        make check
+    - name: Show the logs of the tests that failed
+      if: failure()
+      run: |
+        find . -name test-suite.log -exec grep -l -E '^# (FAIL|ERROR): +[1-9]' {} + |
+            while read -r log; do
+                echo "==================== $log"
+                cat "$log"
+            done
+        exit 1
+
   mca-dso:
     # Every component built as a run-time-loadable plugin, rather than
     # statically linked into libpmix.

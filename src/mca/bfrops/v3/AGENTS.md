@@ -27,7 +27,8 @@ its **own fixed-width integer packers** and the deprecated
 
 ## When it is selected
 
-Always available. Chosen for a peer advertising `"v3"`.
+Built only with legacy support (see "Building" in
+[`../AGENTS.md`](../AGENTS.md)). Chosen for a peer advertising `"v3"`.
 
 ## The module — base framing, local integers
 
