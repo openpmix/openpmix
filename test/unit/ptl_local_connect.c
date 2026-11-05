@@ -26,6 +26,9 @@
  * launcher whose PMIX_LAUNCHER_RENDEZVOUS_FILE name has a FIFO at it
  * finishes its init promptly.
  *
+ * A tool that disconnects from its server while a request to it is
+ * unanswered sees the request complete with an error.
+ *
  * A client that dies without finalizing, followed by another the host
  * starts for the same rank, leaves one peer for the rank on the server's
  * client list, not two.
@@ -124,11 +127,74 @@ static void tool_connected(pmix_info_t *info, size_t ninfo,
     cbfunc(PMIX_SUCCESS, &proc, cbdata);
 }
 
+/* a query the host holds, and never answers */
+static pmix_status_t query_held(pmix_proc_t *proct, pmix_query_t *queries, size_t nqueries,
+                                pmix_info_cbfunc_t cbfunc, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(proct, queries, nqueries, cbfunc, cbdata);
+    return PMIX_SUCCESS;
+}
+
 static pmix_server_module_t mymodule = {
     .client_connected2 = client_connected2,
     .client_finalized = client_finalized,
-    .tool_connected = tool_connected
+    .tool_connected = tool_connected,
+    .query = query_held
 };
+
+/* what became of a query a disconnect cut short */
+static volatile bool held_done = false;
+static volatile pmix_status_t held_status = PMIX_SUCCESS;
+
+static void held_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                        pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo, cbdata);
+    held_status = status;
+    held_done = true;
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+}
+
+/* A tool asks its server something the host never answers, then
+ * disconnects from the server: the request completes with an error, as
+ * it would had the connection been lost */
+static int disconnect_pending(void)
+{
+    pmix_query_t q;
+    pmix_proc_t server;
+    pmix_status_t rc;
+    int n;
+
+    PMIX_LOAD_PROCID(&server, pmix_client_globals.myserver->info->pname.nspace,
+                     pmix_client_globals.myserver->info->pname.rank);
+    PMIX_QUERY_CONSTRUCT(&q);
+    PMIx_Argv_append_nosize(&q.keys, "local.connect.held");
+    rc = PMIx_Query_info_nb(&q, 1, held_cbfunc, NULL);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "    the query was refused: %s\n", PMIx_Error_string(rc));
+        fflush(stdout);
+        PMIX_QUERY_DESTRUCT(&q);
+        return KID_FAILED;
+    }
+    usleep(200000);
+    if (held_done || PMIX_SUCCESS != PMIx_tool_disconnect(&server)) {
+        fprintf(stdout, "    the query %s before the disconnect\n",
+                held_done ? "was answered" : "could not be cut short");
+        fflush(stdout);
+        return KID_FAILED;
+    }
+    for (n = 0; n < 100 && !held_done; n++) {
+        usleep(50000);
+    }
+    fprintf(stdout, "    after the disconnect the query %s%s\n",
+            held_done ? "completed with " : "still waits",
+            held_done ? PMIx_Error_string(held_status) : "");
+    fflush(stdout);
+    PMIX_QUERY_DESTRUCT(&q);
+    return (held_done && PMIX_SUCCESS != held_status) ? KID_OK : KID_FAILED;
+}
 
 /* ---- the child: a client or a tool ---- */
 
@@ -304,6 +370,11 @@ static int run_kid(bool tool, int envfd, int resultfd, int gofd)
     srv = pmix_client_globals.myserver;
     if (NULL == srv || &pmix_ptl_usock_module != srv->transport) {
         ret = KID_NOT_LOCAL;
+    } else if (tool && NULL != getenv("CL_DISC_PENDING")) {
+        ret = disconnect_pending();
+        /* the server's peer is released by the disconnect - nothing below
+         * may look at it */
+        srv = NULL;
     }
     /* the connection is close-on-exec, whatever its transport and kind */
     if (NULL != srv && 0 <= srv->sd && 0 == (fcntl(srv->sd, F_GETFD) & FD_CLOEXEC)) {
@@ -901,6 +972,28 @@ static void dead_reclaim_case(kid_t *dp, kid_t *np, const char *name)
                      1 == r.npeers, detail);
 }
 
+static void tool_disc_case(kid_t *kp, const char *name)
+{
+    kid_t k = *kp;
+    char *env[3] = {NULL, NULL, NULL};
+    int status = 0;
+    pmix_status_t rc;
+    char detail[256];
+
+    if (0 > asprintf(&env[0], "CL_SERVER_PID=%lu", (unsigned long) getpid()) ||
+        0 > asprintf(&env[1], "CL_DISC_PENDING=1")) {
+        return;
+    }
+    send_env(&k, env);
+    free(env[0]);
+    free(env[1]);
+    rc = finish_kid(&k, &status);
+    snprintf(detail, sizeof(detail), "init %s, exit %d", PMIx_Error_string(rc),
+             WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    report(name, PMIX_SUCCESS == rc && WIFEXITED(status) && KID_OK == WEXITSTATUS(status),
+           detail);
+}
+
 static void access_cases(void)
 {
     struct {
@@ -938,7 +1031,7 @@ int main(int argc, char **argv)
     char *fifo = NULL, *link = NULL, *lfifo = NULL;
     bool flag = true;
     pmix_status_t rc;
-    kid_t kids[22];
+    kid_t kids[23];
     pmix_nspace_t ns;
     int n;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -957,9 +1050,9 @@ int main(int argc, char **argv)
      * initialized server has a copy of its state but none of its threads.
      * Each later one lets go of the pipes of those before it */
     /* 0-3, 5, 7, 11, 16 and 18-21 are clients; the rest tools */
-    for (n = 0; n < 22; n++) {
+    for (n = 0; n < 23; n++) {
         if (!start_kid(&kids[n], 4 == n || 6 == n || (8 <= n && 10 >= n) ||
-                                     (12 <= n && 15 >= n) || 17 == n)) {
+                                     (12 <= n && 15 >= n) || 17 == n || 22 == n)) {
             fprintf(stderr, "could not start the children\n");
             return 1;
         }
@@ -1123,6 +1216,9 @@ int main(int argc, char **argv)
 
     dead_reclaim_case(&kids[20], &kids[21], "a client that died without finalizing is "
                       "released when its rank connects again");
+
+    tool_disc_case(&kids[22], "a request a tool's server has not answered completes "
+                   "with an error when the tool disconnects from it");
 
     access_cases();
 

@@ -1939,7 +1939,33 @@ typedef struct {
     pmix_lock_t lock;
     pmix_event_t ev;
     bool active;
+    pmix_status_t status; // what became of the finalize request
 } pmix_client_timeout_t;
+
+/* The status the server's finalize reply carries: the host's answer.
+ * An empty buffer is a reply that never came because the connection
+ * closed first - which a server of an earlier release does to a client
+ * that finalizes, and a host may do by deregistering it as it answers:
+ * the server has taken our departure. A host that does not implement
+ * client_finalized answers PMIX_ERR_NOT_SUPPORTED, which is no failure of
+ * ours either */
+pmix_status_t pmix_client_finalize_reply(struct pmix_peer_t *pr, pmix_buffer_t *buf)
+{
+    pmix_status_t rc, status;
+    int32_t cnt = 1;
+
+    if (NULL == buf || 0 == buf->bytes_used) {
+        return PMIX_SUCCESS;
+    }
+    PMIX_BFROPS_UNPACK(rc, (pmix_peer_t *) pr, buf, &status, &cnt, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    if (PMIX_ERR_NOT_SUPPORTED == status) {
+        status = PMIX_SUCCESS;
+    }
+    return status;
+}
 
 /* timer callback */
 static void fin_timeout(int sd, short args, void *cbdata)
@@ -1953,6 +1979,7 @@ static void fin_timeout(int sd, short args, void *cbdata)
 
     if (tev->active) {
         tev->active = false;
+        tev->status = PMIX_ERR_TIMEOUT;
         PMIX_WAKEUP_THREAD(&tev->lock);
     }
 }
@@ -1965,10 +1992,11 @@ static void finwait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buf
 
     pmix_output_verbose(2, pmix_client_globals.base_output, "pmix:client finwait_cbfunc received");
 
-    PMIX_HIDE_UNUSED_PARAMS(pr, hdr, buf);
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     if (tev->active) {
         tev->active = false;
+        tev->status = pmix_client_finalize_reply(pr, buf);
         PMIX_WAKEUP_THREAD(&tev->lock);
     }
 }
@@ -2000,6 +2028,22 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         return PMIX_ERR_WOULD_BLOCK;
     }
 
+    /* a blocking fence before finalizing, if asked for - while we are
+     * still initialized, which the fence requires */
+    if (0 <= pmix_client_globals.myserver->sd && NULL != info && 0 < ninfo) {
+        for (n = 0; n < ninfo; n++) {
+            if (0 == strcmp(PMIX_EMBED_BARRIER, info[n].key)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    rc = PMIx_Fence(NULL, 0, NULL, 0);
+                    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                        PMIX_ERROR_LOG(rc);
+                    }
+                }
+                break;
+            }
+        }
+    }
+
     // mark we are no longer initialized
     pmix_atomic_unset_bool(&pmix_globals.initialized);
     pmix_atomic_clear(&pmix_globals.init_called);
@@ -2012,22 +2056,6 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     pmix_globals.mypeer->finalized = true;
 
     if (0 <= pmix_client_globals.myserver->sd) {
-        /* check to see if we are supposed to execute a
-         * blocking fence prior to actually finalizing */
-        if (NULL != info && 0 < ninfo) {
-            for (n = 0; n < ninfo; n++) {
-                if (0 == strcmp(PMIX_EMBED_BARRIER, info[n].key)) {
-                    if (PMIX_INFO_TRUE(&info[n])) {
-                        rc = PMIx_Fence(NULL, 0, NULL, 0);
-                        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                            PMIX_ERROR_LOG(rc);
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-
         /* setup a cmd message to notify the PMIx
          * server that we are normally terminating */
         msg = PMIX_NEW(pmix_buffer_t);
@@ -2054,6 +2082,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         PMIX_CONSTRUCT_LOCK(&tev.lock);
         pmix_event_assign(&tev.ev, pmix_globals.evbase, -1, 0, fin_timeout, &tev);
         tev.active = true;
+        tev.status = PMIX_SUCCESS;
         PMIX_POST_OBJECT(&tev);
         tv.tv_sec = pmix_server_client_fintime;
         tv.tv_usec = 0;
@@ -2079,10 +2108,13 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
          * instead, deleting an inactive event is a harmless no-op */
         pmix_event_del(&tev.ev);
         PMIX_DESTRUCT_LOCK(&tev.lock);
+        /* the host's answer, or that none came */
+        rc = tev.status;
 
         pmix_output_verbose(2, pmix_client_globals.base_output,
-                            "%s:%d pmix:client finalize sync received", pmix_globals.myid.nspace,
-                            pmix_globals.myid.rank);
+                            "%s:%d pmix:client finalize sync received: %s",
+                            pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                            PMIx_Error_string(rc));
     }
 
 teardown:

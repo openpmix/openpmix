@@ -55,6 +55,14 @@ initialized without connecting to a server |mdash| and
 :ref:`PMIx_tool_is_connected(3) <man3-PMIx_tool_is_connected>` will subsequently
 report ``false``. Connections to any other servers are unaffected.
 
+Requests still waiting on a reply from that server complete with an error, as
+they would if the connection were lost. The server is not told: it sees the
+connection close, as it would if the tool had exited.
+
+A ``NULL`` ``server`` marks the tool as not connected, so
+:ref:`PMIx_tool_is_connected(3) <man3-PMIx_tool_is_connected>` reports
+``false``, but closes no connection and leaves the active server in place.
+
 This is a **blocking** call: internally the request is thread-shifted onto the
 progress thread, which locates the matching server, drops the connection, and
 wakes the caller.
