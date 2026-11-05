@@ -225,7 +225,10 @@ These attributes apply to a tool that declares itself a launcher via
 ``PMIX_LAUNCHER``.
 
 * ``PMIX_LAUNCHER_RENDEZVOUS_FILE`` (char\*) |mdash| pathname of the file in which
-  the launcher's connection information is to be stored.
+  the launcher's connection information is to be stored. The launcher writes it
+  whether or not it connects to a server (``PMIX_TOOL_DO_NOT_CONNECT``). A file
+  already at the name is replaced if the process that wrote it no longer runs;
+  one that a running process holds fails the init, with a message.
 * ``PMIX_LAUNCHER_DAEMON`` (char\*) |mdash| path to an executable to use as the
   launcher's backend daemon, replacing the launcher's own. The user is responsible
   for ensuring compatibility with the host launcher.
@@ -298,6 +301,12 @@ a PMIx error constant is returned, including:
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.
+
+A ``PMIx_tool_init`` refused for its input before the library is set up
+|mdash| the ``PMIX_ERR_BAD_PARAM`` cases above, other than a malformed
+connection directive |mdash| leaves the library as it found it, and the tool may
+call ``PMIx_tool_init`` again. After any other failure the library cannot be
+initialized again in this process: later calls return ``PMIX_ERR_INIT``.
 
 
 NOTES

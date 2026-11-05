@@ -64,7 +64,7 @@
 
 /* Run one PMIx_Init in a child with PMIX_RANK set to "rank", and report
  * whether it answered the way "expect_bad" asks for. There is no server,
- * so a rank the library accepts comes back as PMIX_ERR_UNREACH - the
+ * so a rank the library accepts comes back as PMIX_ERR_COMM_FAILURE - the
  * point of each case is only whether the rank itself was refused. */
 static int rank_case(const char *rank, bool expect_bad, const char *what)
 {
@@ -130,17 +130,13 @@ static int retry_after_failure(void)
         if (PMIX_ERR_BAD_PARAM != PMIx_Init(&p, NULL, 0)) {
             _exit(1);
         }
-        /* now fix what was wrong and ask again */
+        /* fix the rank and ask again: the call is made - not answered
+         * PMIX_ERR_INIT - and refused for the server the process is
+         * given no way to reach */
         setenv("PMIX_RANK", "5", 1);
         memset(&p, 0, sizeof(p));
         crc = PMIx_Init(&p, NULL, 0);
-        if (PMIX_ERR_INIT == crc || PMIX_ERR_BAD_PARAM == crc) {
-            _exit(1);
-        }
-        if (!PMIx_Initialized() || 5 != p.rank) {
-            _exit(1);
-        }
-        if (PMIX_SUCCESS != PMIx_Finalize(NULL, 0)) {
+        if (PMIX_ERR_COMM_FAILURE != crc || PMIx_Initialized()) {
             _exit(1);
         }
         _exit(0);

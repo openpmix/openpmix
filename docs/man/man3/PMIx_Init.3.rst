@@ -92,6 +92,11 @@ Multiple calls to ``PMIx_Init`` must not include conflicting directives; an erro
 is returned when directives that conflict with those of a prior call are
 encountered.
 
+A later call made after the connection to the server was lost returns
+``PMIX_ERR_LOST_CONNECTION`` and is not counted: it needs no matching
+``PMIx_Finalize``. A later call in a singleton that carries a
+``PMIX_SERVER_URI`` directive tries to connect to the server it names.
+
 The identity variables
 ^^^^^^^^^^^^^^^^^^^^^^
 
@@ -175,6 +180,14 @@ retrievable via :ref:`PMIx_Get(3) <man3-PMIx_Get>`.
 
 A client given ``PMIX_SERVER_LOCAL_URI`` by its server connects to the
 server's local socket.
+
+A ``PMIX_SERVER_URI`` (char\*) directive names the server to connect to in
+place of the environment, in either of two forms:
+``<variable>[:<variable>...];<namespace>.<rank>;<uri>``, whose variables
+(``PMIX_SERVER_URI41`` and so on) say which releases' wire formats the server
+speaks; or ``<namespace>.<rank>;<uri>``, as ``PMIX_SERVER_URI`` is stored and
+retrieved, which is taken only for the server's local socket (``usock://``)
+and is otherwise refused with ``PMIX_ERR_NOT_SUPPORTED``.
 ``PMIX_SOCKET_MODE`` sets the mode of a server's local socket and has no
 effect here (see :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`); the
 deprecated ``PMIX_USOCK_DISABLE`` and ``PMIX_SINGLE_LISTENER`` have no effect.
@@ -259,7 +272,8 @@ a PMIx error constant is returned, including:
   concurrent ``PMIx_Init`` calls left the library in an unusable state).
 * ``PMIX_ERR_UNREACH`` |mdash| no PMIx server was described to this process
   (neither by its environment nor by a ``PMIX_SERVER_URI`` directive) and no
-  system server was found. Note that this is **not** a failure: the library is
+  system server was found that accepts it; a system server that does not is
+  named in a message. Note that this is **not** a failure: the library is
   fully initialized and running as a singleton, the caller's identity has been
   assigned, and :ref:`PMIx_Finalize(3) <man3-PMIx_Finalize>` must still be
   called. Operations that require a server return ``PMIX_ERR_UNREACH`` in their
@@ -269,7 +283,9 @@ a PMIx error constant is returned, including:
   started it, or by a ``PMIX_SERVER_URI`` directive |mdash| but a connection to
   it could not be established. This process was set up to run under that
   server, so it does not fall back to running as a singleton. Unlike
-  ``PMIX_ERR_UNREACH`` above, the library is **not** initialized.
+  ``PMIX_ERR_UNREACH`` above, the library is **not** initialized. The same is
+  returned, with a message, to a process given ``PMIX_NAMESPACE`` but no
+  ``PMIX_SERVER_URI`` variable.
 * ``PMIX_ERR_OUTDATED`` |mdash| a PMIx server was found, but it uses a version
   of the PMIx library older than this one can connect to (v3.2). A message
   naming the server's version is printed. The library is **not** initialized.
@@ -279,7 +295,10 @@ a PMIx error constant is returned, including:
   reports, or its report file. The library is **not** initialized.
 * ``PMIX_ERR_LOST_CONNECTION`` |mdash| a server was reached, but the connection
   failed before it delivered the caller's job information. Unlike
-  ``PMIX_ERR_UNREACH`` above, the library is **not** initialized.
+  ``PMIX_ERR_UNREACH`` above, the library is **not** initialized. Returned to a
+  later call as well, when the connection an earlier call made has since been
+  lost (see `Reference counting`_); the library stays as the earlier call left
+  it.
 * ``PMIX_ERR_EXISTS`` |mdash| the server already has a connection for this
   process's namespace and rank, from another process. A server accepts one
   connection per rank, and the first process to connect holds it: a process
@@ -301,7 +320,8 @@ a PMIx error constant is returned, including:
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.
 
-A ``PMIx_Init`` that returns an error other than ``PMIX_ERR_UNREACH`` leaves the
+A first ``PMIx_Init`` |mdash| one made while the library is not initialized
+|mdash| that returns an error other than ``PMIX_ERR_UNREACH`` leaves the
 library uninitialized and gives back everything it had allocated, so the caller
 may correct whatever was wrong |mdash| a directive, an environment variable, the
 server it was pointed at |mdash| and call ``PMIx_Init`` again. It must **not**

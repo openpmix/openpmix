@@ -1387,7 +1387,6 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     int outpipe, rdfd;
     char *leftover, *uri, *rdir = NULL;
     size_t n;
-    FILE *fptst;
     const char *legacy_from = "ptl_base_legacy_peers";
     pmix_info_t *sessinfo = NULL;
     uint32_t idval;
@@ -1457,6 +1456,12 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
             pmix_ptl_base.system_tmpdir_given = true;
             if (!pmix_ptl_base_replace_string(&info[n], &pmix_ptl_base.system_tmpdir, &rc)) {
+                return rc;
+            }
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
+            if (!pmix_ptl_base_replace_string(&info[n], &pmix_ptl_base.rendezvous_filename,
+                                              &rc)) {
                 return rc;
             }
         }
@@ -1706,20 +1711,9 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         }
     }
 
-    /* if we were given a rendezvous file, then drop it */
+    /* if we were given a rendezvous file, then write it - a file
+     * already at the name is handled as any role's is */
     if (NULL != pmix_ptl_base.rendezvous_filename) {
-        /* if we are a tool and the file already exists, then we
-         * just use it as providing the rendezvous info for our
-         * server. Only a regular file at the name is one: the check
-         * neither follows a symbolic link nor waits on a FIFO there, and
-         * anything else is handled as any role's existing file is */
-        if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-            fptst = pmix_ptl_base_open_regular(pmix_ptl_base.rendezvous_filename, 0);
-            if (NULL != fptst) {
-                fclose(fptst);
-                goto nextstep;
-            }
-        }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "WRITING RENDEZVOUS FILE %s", pmix_ptl_base.rendezvous_filename);
         rc = write_rndz_file(pmix_ptl_base.rendezvous_filename, uri,
@@ -1732,7 +1726,6 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         }
     }
 
-nextstep:
     /* The files tools find us by. A system role's go in the system
      * directory - the system tmpdir the host named, else /run/pmix for
      * root, else our own pmix-user directory - and the others in our own

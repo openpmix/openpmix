@@ -815,7 +815,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     bool nspace_given = false, rank_given = false;
     bool share_topo = false;
     pmix_info_t ginfo, *iptr, evinfo[3];
-    char *evar, *nspace = NULL, *suri = NULL;
+    char *evar, *nspace = NULL;
     pmix_rank_t rank = PMIX_RANK_INVALID;
     pmix_rank_info_t *rinfo;
     pmix_proc_type_t ptype = PMIX_PROC_TYPE_STATIC_INIT;
@@ -977,38 +977,19 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
                 connect_optional = PMIX_INFO_TRUE(&info[n]);
 
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYSTEM)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYSTEM) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_SYSTEM_FIRST) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SCHEDULER) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYS_CONTROLLER)) {
                 if (PMIX_INFO_TRUE(&info[n])) {
                     connect_directed = true;
                 }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_SYSTEM_FIRST)) {
-                if (PMIX_INFO_TRUE(&info[n])) {
-                    connect_directed = true;
-                }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SCHEDULER)) {
-                if (PMIX_INFO_TRUE(&info[n])) {
-                    connect_directed = true;
-                }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYS_CONTROLLER)) {
-                if (PMIX_INFO_TRUE(&info[n])) {
-                    connect_directed = true;
-                }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECTION_ORDER)) {
-                if (PMIX_INFO_TRUE(&info[n])) {
-                    connect_directed = true;
-                }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_PIDINFO)) {
-                if (PMIX_INFO_TRUE(&info[n])) {
-                    connect_directed = true;
-                }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_ATTACHMENT_FILE)) {
-                if (PMIX_INFO_TRUE(&info[n])) {
-                    connect_directed = true;
-                }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
-                if (PMIX_INFO_TRUE(&info[n])) {
-                    connect_directed = true;
-                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECTION_ORDER) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_SERVER_PIDINFO) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_TOOL_ATTACHMENT_FILE)) {
+                /* these name a server by their value, which is checked
+                 * with the other connect directives before the connect */
+                connect_directed = true;
             }
         }
     }
@@ -1549,42 +1530,41 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         PMIX_DESTRUCT_LOCK(&releaselock);
 
     } else if (connect_directed) {
-        /* connect to another server, if the info's direct us to */
-        rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver,
-                                      info, ninfo, &suri);
+        /* a malformed directive is an error in this call, whether or not
+         * the connection is optional */
+        rc = pmix_ptl_base_check_connect_directives(info, ninfo);
         if (PMIX_SUCCESS != rc) {
-            if (!connect_optional) {
-                goto errout;
-            }
-            /* the connection was optional and did not happen, so there is
-             * no URI to record. Falling through used to compose one anyway
-             * out of a suri the failed call left NULL - undefined behavior
-             * in the "%s" conversion, and on the platforms that survive it
-             * a stored PMIX_SERVER_URI of "<nspace>.<rank>;(null)" that
-             * every later lookup would hand back */
-            free(suri);
-            suri = NULL;
-        } else {
-            /* store the URI for subsequent lookups */
-            PMIX_KVAL_NEW(kptr, PMIX_SERVER_URI);
-            if (NULL == kptr) {
-                free(suri);
-                rc = PMIX_ERR_NOMEM;
-                goto errout;
-            }
-            kptr->value->type = PMIX_STRING;
-            pmix_asprintf(&kptr->value->data.string, "%s.%u;%s",
-                          pmix_client_globals.myserver->info->pname.nspace,
-                          pmix_client_globals.myserver->info->pname.rank, suri);
-            free(suri);
-            suri = NULL;
-            rc = store_internal(kptr);
-            PMIX_RELEASE(kptr); // maintain accounting
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                goto errout;
-            }
+            goto errout;
         }
+        /* connect to the server the directives name, on a peer of its
+         * own, and make it our server - as for a launcher's rendezvous
+         * URI above */
+        PMIX_INFO_CREATE(iptr, ninfo + 1);
+        if (NULL == iptr) {
+            rc = PMIX_ERR_NOMEM;
+            goto errout;
+        }
+        PMIX_INFO_LOAD(&iptr[0], PMIX_PRIMARY_SERVER, NULL, PMIX_BOOL);
+        for (n = 0; n < ninfo; n++) {
+            PMIX_INFO_XFER(&iptr[n + 1], &info[n]);
+        }
+        cbptr = PMIX_NEW(pmix_cb_t);
+        if (NULL == cbptr) {
+            PMIX_INFO_FREE(iptr, ninfo + 1);
+            rc = PMIX_ERR_NOMEM;
+            goto errout;
+        }
+        cbptr->info = iptr;
+        cbptr->ninfo = ninfo + 1;
+        cbptr->infocopy = true;
+        PMIX_THREADSHIFT(cbptr, pmix_tool_retry_attach);
+        PMIX_WAIT_THREAD(&cbptr->lock);
+        rc = cbptr->status;
+        PMIX_RELEASE(cbptr);
+        if (PMIX_SUCCESS != rc && !connect_optional) {
+            goto errout;
+        }
+        rc = PMIX_SUCCESS;
     }
 
     /* Everything this thread was going to do to shared state is done, so

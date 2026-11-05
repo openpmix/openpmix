@@ -494,6 +494,19 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
 
 static int tool_init_cntr = 0;
 
+/* PMIx_tool_init refusing its input, before the runtime is set up: this
+ * call leaves nothing behind, so a later one may try again */
+static pmix_status_t tool_init_refused(pmix_status_t rc)
+{
+    free(pmix_server_globals.tmpdir);
+    pmix_server_globals.tmpdir = NULL;
+    free(pmix_server_globals.system_tmpdir);
+    pmix_server_globals.system_tmpdir = NULL;
+    pmix_atomic_fetch_add(&tool_init_cntr, -1);
+    pmix_atomic_clear(&pmix_globals.init_called);
+    return rc;
+}
+
 PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t ninfo)
 {
     pmix_status_t rc;
@@ -540,6 +553,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     } else {
         // require a location to return the proc name
         if (NULL == proc) {
+            pmix_atomic_clear(&pmix_globals.init_called);
             return PMIX_ERR_BAD_PARAM;
         }
         pmix_atomic_fetch_add(&tool_init_cntr, 1);
@@ -567,14 +581,14 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                 if (NULL != nspace) {
                     /* cannot define it twice */
                     free(nspace);
-                    return PMIX_ERR_BAD_PARAM;
+                    return tool_init_refused(PMIX_ERR_BAD_PARAM);
                 }
                 /* screen the value before strdup'ing it: a directive that
                  * names a string and carries none is an application error,
                  * and must be reported as one rather than dereferenced */
                 if (PMIX_STRING != info[n].value.type || NULL == info[n].value.data.string) {
                     PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-                    return PMIX_ERR_BAD_PARAM;
+                    return tool_init_refused(PMIX_ERR_BAD_PARAM);
                 }
                 nspace = strdup(info[n].value.data.string);
                 nspace_given = true;
@@ -584,7 +598,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                 if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &rank, PMIX_PROC_RANK)) {
                     PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                     free(nspace);
-                    return PMIX_ERR_BAD_PARAM;
+                    return tool_init_refused(PMIX_ERR_BAD_PARAM);
                 }
                 rank_given = true;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_FWD_STDIN)) {
@@ -607,7 +621,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                     if (NULL != nspace) {
                         free(nspace);
                     }
-                    return PMIX_ERR_BAD_PARAM;
+                    return tool_init_refused(PMIX_ERR_BAD_PARAM);
                 }
                 if (NULL != pmix_server_globals.tmpdir) {
                     free(pmix_server_globals.tmpdir);
@@ -619,7 +633,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                     if (NULL != nspace) {
                         free(nspace);
                     }
-                    return PMIX_ERR_BAD_PARAM;
+                    return tool_init_refused(PMIX_ERR_BAD_PARAM);
                 }
                 if (NULL != pmix_server_globals.system_tmpdir) {
                     free(pmix_server_globals.system_tmpdir);
@@ -653,7 +667,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         if (NULL != nspace) {
             free(nspace);
         }
-        return PMIX_ERR_BAD_PARAM;
+        return tool_init_refused(PMIX_ERR_BAD_PARAM);
     }
 
     /* if we were not passed an nspace in the info keys,
@@ -682,14 +696,14 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                 !PMIX_RANK_IS_VALID(rk)) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 free(nspace);
-                return PMIX_ERR_BAD_PARAM;
+                return tool_init_refused(PMIX_ERR_BAD_PARAM);
             }
             rank = (pmix_rank_t) rk;
             if (!nspace_in_enviro) {
                 /* this is an error - we can't have one and not
                  * the other */
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-                return PMIX_ERR_BAD_PARAM;
+                return tool_init_refused(PMIX_ERR_BAD_PARAM);
             }
             /* flag that this tool is also a client */
             if (PMIX_PROC_IS_LAUNCHER(&ptype)) {
@@ -704,7 +718,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             if (NULL != nspace) {
                 free(nspace);
             }
-            return PMIX_ERR_BAD_PARAM;
+            return tool_init_refused(PMIX_ERR_BAD_PARAM);
         }
     }
 

@@ -534,3 +534,33 @@ one session-level server of yours runs on this node:
 Name the one you want: by its rendezvous ID (PMIX_SESSION_RNDZ_ID), its
 namespace (PMIX_SERVER_NSPACE) or its pid (PMIX_SERVER_PIDINFO) - for
 PRRTE's tools, --namespace or --pid - or by its URI or rendezvous file.
+#
+[client-uri-not-local]
+This process was given a PMIx server to connect to by its name and
+address alone:
+
+  %s
+
+A client connects to a server given that way only on the server's
+local socket ("usock://"), whose handshake says what the server speaks.
+For any other address, put the server's URI variables first:
+"<variable>[:<variable>...];<namespace>.<rank>;<address>".
+#
+[client-namespace-no-uri]
+This process on %s was given a namespace by the PMIx server that
+started it:
+
+  PMIX_NAMESPACE=%s
+
+but no variable saying how to reach that server. It cannot run as a
+member of that namespace without its server, and will not start.
+#
+[singleton-refused]
+This process on %s started without a PMIx server and found the
+system server on this host, %s, which did not accept it:
+
+  %s
+
+A system server accepts a process it was not told of only if that
+process's namespace has been registered with it. The process runs as
+a singleton, without a server.

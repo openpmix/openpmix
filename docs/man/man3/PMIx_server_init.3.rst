@@ -226,6 +226,15 @@ Connection attributes
   additional rendezvous file in which the server is to write its contact
   information |mdash| for example, so that a debugger can find a launcher.
   Missing directories on the path are created.
+* ``PMIX_CONNECT_TO_SYSTEM``, ``PMIX_CONNECT_SYSTEM_FIRST``,
+  ``PMIX_CONNECT_TO_SCHEDULER``, ``PMIX_CONNECT_TO_SYS_CONTROLLER`` (bool),
+  ``PMIX_CONNECTION_ORDER`` (char\*), ``PMIX_SERVER_PIDINFO`` (pid_t),
+  ``PMIX_TOOL_ATTACHMENT_FILE`` (char\*) |mdash| connect the server to the
+  server these name, as for :ref:`PMIx_tool_init(3) <man3-PMIx_tool_init>`,
+  and make it this server's own server |mdash| the one, for example, an
+  allocation request is sent to. A malformed value fails the init. With
+  ``PMIX_TOOL_CONNECT_OPTIONAL`` a server that cannot be reached is not an
+  error.
 * ``PMIX_TCP_REPORT_URI`` (char\*) |mdash| report the server's URI: ``-``
   writes the local socket's URI to stdout and ``+`` to stderr; ``tcp-`` and
   ``tcp+`` write the TCP URI instead, for a reader of a release before v7.0,

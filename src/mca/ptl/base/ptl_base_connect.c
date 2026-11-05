@@ -1185,17 +1185,6 @@ static pmix_status_t do_connect(struct pmix_peer_t *pr,
                     goto badinput;
                 }
 
-            } else if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)
-                       && PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
-                if (NULL != pmix_ptl_base.rendezvous_filename) {
-                    free(pmix_ptl_base.rendezvous_filename);
-                }
-                pmix_ptl_base.rendezvous_filename = strdup(info[n].value.data.string);
-                if (NULL == pmix_ptl_base.rendezvous_filename) {
-                    rc = PMIX_ERR_NOMEM;
-                    goto badinput;
-                }
-
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
                 optional = PMIX_INFO_TRUE(&info[n]);
 
