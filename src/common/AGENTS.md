@@ -263,7 +263,10 @@ that arrangement are load-bearing:
   namespace record still saying nothing, hand the chunk straight back to
   `hold_for_spawn_reply()`, and spin. That is the whole reason
   `pmix_iof_write_output()` is a wrapper around a static `write_output()`
-  carrying the flag.
+  carrying the flag. The same static also carries `terminal`, false only
+  through `pmix_iof_write_output_files()`: the job's files are written and
+  our own stdout/stderr is not, for a channel a job's spawn did not ask for
+  (see `_iofdeliver()` in `src/server/pmix_server_iof.c`).
 - **A zero-size chunk is held too.** It is the end-of-stream marker, and
   letting it past would put it ahead of the output it ends.
 - **`pmix_iof_spawn_end()` drops the count and, at zero, flushes

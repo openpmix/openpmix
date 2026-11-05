@@ -158,6 +158,7 @@ static pmix_status_t run_spawn_iof(pmix_peer_t *spawner, bool inherit,
     PMIX_RETAIN(spawner);
     cd->peer = spawner;
     cd->inherit_iof = inherit;
+    cd->iof_to_requester = PMIX_PEER_IS_TOOL(spawner);
     cd->channels = channels;
     rc = pmix_server_process_iof(cd, (char *) child);
     PMIX_RELEASE(cd);
@@ -221,6 +222,137 @@ static pmix_status_t register_child_noinherit(const char *nspace,
     PMIX_INFO_DESTRUCT(&info[1]);
     PMIX_INFO_DESTRUCT(&info[2]);
     return rc;
+}
+
+/* The same, as a host registers a job whose spawn request named its
+ * output channels: all three stated, as the server resolved them */
+static pmix_status_t register_child_named(const char *nspace, const char *parent_ns,
+                                          bool out, bool err, bool diag)
+{
+    pmix_info_t info[5];
+    pmix_proc_t parent;
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t one = 1;
+    size_t n;
+
+    /* see register_child() above for why this is not the caller's string */
+    PMIX_LOAD_NSPACE(ns, nspace);
+    PMIX_LOAD_PROCID(&parent, parent_ns, 0);
+    PMIX_INFO_LOAD(&info[0], PMIX_PARENT_ID, &parent, PMIX_PROC);
+    PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[2], PMIX_FWD_STDOUT, &out, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[3], PMIX_FWD_STDERR, &err, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[4], PMIX_FWD_STDDIAG, &diag, PMIX_BOOL);
+
+    rc = PMIx_server_register_nspace(ns, 0, info, 5, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    for (n = 0; n < 5; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    return rc;
+}
+
+/* Does "info" hold "key" exactly once, as a bool of value "want"? */
+static bool states(const pmix_info_t *info, size_t ninfo, const char *key, bool want)
+{
+    size_t n, seen = 0;
+    bool ok = false;
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], key)) {
+            ++seen;
+            ok = (PMIX_BOOL == info[n].value.type && want == info[n].value.data.flag);
+        }
+    }
+    return 1 == seen && ok;
+}
+
+/* Parse a request of "nkeys" bools (plus one unrelated directive) for
+ * "peer", state its channels, and hand back what the host would see */
+static pmix_info_t *stated(pmix_peer_t *peer, const char **keys, const bool *vals,
+                           size_t nkeys, size_t *ninfo)
+{
+    pmix_info_t *info;
+    pmix_iof_channel_t ch;
+    pmix_iof_flags_t flags;
+    bool inherit, tag = true;
+    size_t n;
+
+    *ninfo = nkeys + 1;
+    info = PMIx_Info_create(*ninfo);
+    for (n = 0; n < nkeys; n++) {
+        PMIx_Info_load(&info[n], keys[n], &vals[n], PMIX_BOOL);
+    }
+    PMIx_Info_load(&info[nkeys], PMIX_IOF_TAG_OUTPUT, &tag, PMIX_BOOL);
+    pmix_iof_init_flags(&flags);
+    pmix_server_spawn_parser(peer, &ch, &flags, &inherit, info, *ninfo);
+    if (PMIX_SUCCESS != pmix_server_state_channels(ch, &info, ninfo)) {
+        PMIx_Info_free(info, *ninfo);
+        *ninfo = 0;
+        return NULL;
+    }
+    return info;
+}
+
+/* What a spawn request that named its output channels tells the host */
+static void test_state_channels(void)
+{
+    pmix_peer_t *client, *tool;
+    pmix_info_t *info;
+    size_t ninfo;
+    const char *out[] = {PMIX_FWD_STDOUT};
+    const char *two[] = {PMIX_FWD_STDOUT, PMIX_FWD_STDOUT};
+    bool f[] = {false}, t[] = {true}, ft[] = {false, true};
+
+    client = mkpeer("parentjob", 0, false);
+    tool = mkpeer("toolns", 0, true);
+
+    /* a client's "no stdout" is silence on every channel */
+    info = stated(client, out, f, 1, &ninfo);
+    report("state: a client's false states all three channels off",
+           NULL != info && 4 == ninfo
+           && states(info, ninfo, PMIX_FWD_STDOUT, false)
+           && states(info, ninfo, PMIX_FWD_STDERR, false)
+           && states(info, ninfo, PMIX_FWD_STDDIAG, false));
+    report("state: and keeps the request's other directives",
+           NULL != info && states(info, ninfo, PMIX_IOF_TAG_OUTPUT, true));
+    PMIx_Info_free(info, ninfo);
+
+    /* a client naming one channel on gets only that one */
+    info = stated(client, out, t, 1, &ninfo);
+    report("state: a client's stdout alone states only stdout on",
+           NULL != info && 4 == ninfo
+           && states(info, ninfo, PMIX_FWD_STDOUT, true)
+           && states(info, ninfo, PMIX_FWD_STDERR, false)
+           && states(info, ninfo, PMIX_FWD_STDDIAG, false));
+    PMIx_Info_free(info, ninfo);
+
+    /* a tool keeps its default for the channels it did not name */
+    info = stated(tool, out, f, 1, &ninfo);
+    report("state: a tool's false states only that channel off",
+           NULL != info && 4 == ninfo
+           && states(info, ninfo, PMIX_FWD_STDOUT, false)
+           && states(info, ninfo, PMIX_FWD_STDERR, true)
+           && states(info, ninfo, PMIX_FWD_STDDIAG, true));
+    PMIx_Info_free(info, ninfo);
+
+    /* a channel named twice is stated once, as the parser read it */
+    info = stated(client, two, ft, 2, &ninfo);
+    report("state: a channel named twice is stated once",
+           NULL != info && 4 == ninfo && states(info, ninfo, PMIX_FWD_STDOUT, true));
+    PMIx_Info_free(info, ninfo);
+
+    /* a request naming none is left as it was */
+    info = stated(client, NULL, NULL, 0, &ninfo);
+    report("state: a request naming no channel is unchanged",
+           NULL != info && 1 == ninfo && states(info, ninfo, PMIX_IOF_TAG_OUTPUT, true));
+    PMIx_Info_free(info, ninfo);
+
+    PMIX_RELEASE(client);
+    PMIX_RELEASE(tool);
 }
 
 static void test_spawn_parser(void)
@@ -407,17 +539,41 @@ static void test_inheritance(void)
     }
     drop_watches("childjob");
 
-    /* ---- an explicit request is not overridden ---- */
-    run_spawn_iof(client, false, PMIX_FWD_STDDIAG_CHANNEL, "childjob");
+    /* ---- a process naming channels takes only those from its parent ----
+     *
+     * Its output goes where its own job's output goes - never to the
+     * process itself - on the channels it named true, and on no others */
+    run_spawn_iof(client, false, PMIX_FWD_STDERR_CHANNEL, "childjob");
     req = find_watch("childjob", &count);
-    report("explicit: exactly one subscription", NULL != req && 1 == count);
+    report("named: exactly one subscription", NULL != req && 1 == count);
     if (NULL != req) {
-        report("explicit: it goes to the spawner that asked",
-               req->requestor == client);
-        report("explicit: it carries only what was asked for",
-               PMIX_FWD_STDDIAG_CHANNEL == req->channels);
+        report("named: it goes to the parent's watcher, not the spawner",
+               req->requestor == watcher);
+        report("named: it carries only the channel named true",
+               PMIX_FWD_STDERR_CHANNEL == req->channels);
     }
     drop_watches("childjob");
+
+    run_spawn_iof(client, false, PMIX_FWD_NO_CHANNELS, "childjob");
+    find_watch("childjob", &count);
+    report("named: a request turning every channel off inherits nothing", 0 == count);
+    drop_watches("childjob");
+
+    /* ---- a tool's request is forwarded to the tool ---- */
+    {
+        pmix_peer_t *spawntool = mkpeer("spawntoolns", 0, true);
+
+        run_spawn_iof(spawntool, false, PMIX_FWD_STDDIAG_CHANNEL, "childjob");
+        req = find_watch("childjob", &count);
+        report("tool: exactly one subscription", NULL != req && 1 == count);
+        if (NULL != req) {
+            report("tool: it goes to the tool that asked", req->requestor == spawntool);
+            report("tool: it carries only what was asked for",
+                   PMIX_FWD_STDDIAG_CHANNEL == req->channels);
+        }
+        drop_watches("childjob");
+        PMIX_RELEASE(spawntool);
+    }
 
     /* ---- nothing to inherit: nobody watches, and nobody may ----
      *
@@ -584,7 +740,41 @@ static void test_delivery_ancestry(void)
     find_watch("quietjob", &count);
     report("ancestry: PMIX_IOF_INHERIT=false suppresses inheritance", 0 == count);
 
+    /* ---- a job whose spawn named its channels takes only those ----
+     *
+     * The server that took the request need not be this one: the job's
+     * own information is what says so here. The watcher has stderr only,
+     * so a job that named stdout alone has nothing of it */
+    if (PMIX_SUCCESS != register_child_named("silentjob", "parentjob", false, false, false) ||
+        PMIX_SUCCESS != register_child_named("outjob", "parentjob", true, false, false) ||
+        PMIX_SUCCESS != register_child_named("errjob", "parentjob", false, true, false)) {
+        report("ancestry: could not register the named namespaces", false);
+        goto cleanup;
+    }
+    deliver_from("silentjob", 0);
+    find_watch("silentjob", &count);
+    report("ancestry: a spawn that turned its output off inherits nothing", 0 == count);
+    deliver_from("outjob", 0);
+    find_watch("outjob", &count);
+    report("ancestry: a channel the spawn did not name is not inherited", 0 == count);
+    deliver_from("errjob", 0);
+    req = find_watch("errjob", &count);
+    report("ancestry: one the spawn named true is",
+           NULL != req && 1 == count && PMIX_FWD_STDERR_CHANNEL == req->channels &&
+               req->requestor == watcher);
+
+    /* ---- a clone is made once ----
+     *
+     * Output on a channel the clone does not carry matches nothing, and
+     * asks again - it must find the clone already there */
+    deliver_from("errjob", 0);
+    find_watch("errjob", &count);
+    report("ancestry: later output does not clone the subscription again", 1 == count);
+
 cleanup:
+    drop_watches("silentjob");
+    drop_watches("outjob");
+    drop_watches("errjob");
     drop_watches("quietjob");
     drop_watches("childjob");
     drop_watches("grandchild");
@@ -607,6 +797,7 @@ int main(int argc, char **argv)
     }
 
     test_spawn_parser();
+    test_state_channels();
     test_inheritance();
     test_delivery_ancestry();
     test_inherit_access();

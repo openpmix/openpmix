@@ -391,14 +391,22 @@ launched by an ordinary application process |mdash| an ``MPI_Comm_spawn``, for
 example |mdash| appear where its parent's output appears, without the parent
 having to describe a destination it has no way to know.
 
-Naming *any* one of them turns inheritance off and the request is taken exactly
-as written, including a channel explicitly set to ``false`` (which is how a
-spawn asks for silence from a job whose parent is being watched). Partial
-requests are not merged into the inherited set.
+Naming *any* one of them settles the matter for all three: the request is taken
+exactly as written. A channel set ``true`` is forwarded where the spawning job's
+own output goes |mdash| to the launcher of that job, on that channel |mdash| and
+a channel set ``false`` or not named is not forwarded at all, which is how a
+spawn asks for silence from a job whose parent is being watched. Partial
+requests are not merged into the inherited set. This holds on every server the
+job's output reaches, not only the one that took the request: that server
+passes all three channels to the host as it resolved them, and the host
+registers them with the job. A server that writes output to its own terminal
+|mdash| a launcher such as ``prterun`` |mdash| writes only the channels set
+``true``; output files the request names are written as always.
 
-A tool is not a member of a job and so has no parent to inherit from; a spawn
-issued by a tool that names no output attribute continues to default to
-forwarding all three output channels to that tool.
+A tool is not a member of a job and so has no parent to inherit from: the
+channels a tool's spawn names are forwarded to that tool, and a channel it does
+not name defaults to being forwarded, so a tool that names none receives all
+three.
 
 When there is nothing to inherit |mdash| the request named no channel *and*
 nobody is watching the spawning job's output |mdash| no forwarding is set up.
@@ -412,9 +420,9 @@ job to inherit |mdash| because the user asked its launcher not to, for example
 |mdash| sets ``PMIX_IOF_INHERIT`` to ``false`` in the job-level information it
 supplies for the spawned namespace, and no forwarding is inherited for that
 job. Absence of the attribute means inheritance is allowed, so a host that has
-no opinion sends nothing. This does not override a request that named a channel
-of its own; naming a channel has already settled the matter before the host's
-preference is consulted.
+no opinion sends nothing. This does not override a request that named a channel;
+naming a channel has already settled the matter before the host's preference is
+consulted.
 
 Inheriting a parent's forwarding includes its formatting: whoever receives the
 parent's output writes the child's the same way. Any formatting directive the
@@ -433,12 +441,13 @@ parent is.
 * ``PMIX_FWD_STDIN`` (bool) |mdash| forward this process's ``stdin`` to the target
   processes. This is the opposite direction and has no bearing on the output
   inheritance described above.
-* ``PMIX_FWD_STDOUT`` (bool) |mdash| forward the spawned processes' ``stdout`` to
-  this process (typically used by a tool).
-* ``PMIX_FWD_STDERR`` (bool) |mdash| forward the spawned processes' ``stderr`` to
-  this process (typically used by a tool).
+* ``PMIX_FWD_STDOUT`` (bool) |mdash| forward the spawned processes' ``stdout``:
+  to this process if it is a tool, and otherwise to wherever this process's own
+  job's output is forwarded.
+* ``PMIX_FWD_STDERR`` (bool) |mdash| forward the spawned processes' ``stderr``,
+  to the same place.
 * ``PMIX_FWD_STDDIAG`` (bool) |mdash| if a diagnostic channel exists, forward its
-  output from the spawned processes to this process (typically used by a tool).
+  output from the spawned processes, to the same place.
 
 Formatting and destination of the forwarded output:
 

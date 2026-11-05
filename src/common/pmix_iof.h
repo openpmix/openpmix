@@ -329,6 +329,12 @@ PMIX_EXPORT void pmix_iof_finalize(void);
  * Progress-thread only. */
 PMIX_EXPORT pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t stream,
                                                 const pmix_byte_object_t *bo);
+/* The same, but writing only to the output files the source's job names -
+ * nothing goes to our own stdout or stderr. For a job whose spawn did not
+ * ask for this channel - see _iofdeliver() in pmix_server_iof.c */
+PMIX_EXPORT pmix_status_t pmix_iof_write_output_files(const pmix_proc_t *name,
+                                                      pmix_iof_channel_t stream,
+                                                      const pmix_byte_object_t *bo);
 /* Last-chance synchronous drain of whatever is still queued on a sink,
  * for use once the event base can no longer be relied on to write it.
  * Writes with write(2) and gives up on the first short write - anything

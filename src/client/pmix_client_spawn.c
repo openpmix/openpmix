@@ -265,6 +265,13 @@ static void _spawn_for_host(int sd, short args, void *cbdata)
     pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
                              &fcd->inherit_iof,
                              fcd->info, fcd->ninfo);
+    fcd->iof_to_requester = PMIX_PEER_IS_TOOL(fcd->peer);
+    rc = pmix_server_state_channels(fcd->channels, &fcd->info, &fcd->ninfo);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        fcd->status = rc;
+        _lclcbfunc(0, 0, fcd);
+        return;
+    }
     /* a no-op on this branch - the stash is for tools, and the entry
      * point has already excluded them. Kept so the two dispatch paths
      * read the same way, and so relaxing that condition does not
@@ -737,6 +744,11 @@ envars_done:
         pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
                                  &fcd->inherit_iof,
                                  fcd->info, fcd->ninfo);
+        rc = pmix_server_state_channels(fcd->channels, &fcd->info, &fcd->ninfo);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_RELEASE(fcd);
+            return rc;
+        }
         rc = pmix_pfexec_base_spawn_job(fcd);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_RELEASE(fcd);

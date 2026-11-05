@@ -628,10 +628,15 @@ typedef uint32_t pmix_rank_t;
                                                                         //        be immediately restarted
 #define PMIX_MAX_RESTARTS                   "pmix.maxrestarts"      // (uint32_t) max number of times to restart a job
 #define PMIX_FWD_STDIN                      "pmix.fwd.stdin"        // (bool) forward the stdin from this process to the target processes
-#define PMIX_FWD_STDOUT                     "pmix.fwd.stdout"       // (bool) forward stdout from the spawned processes to this process (typically used by a tool)
-#define PMIX_FWD_STDERR                     "pmix.fwd.stderr"       // (bool) forward stderr from the spawned processes to this process (typically used by a tool)
+#define PMIX_FWD_STDOUT                     "pmix.fwd.stdout"       // (bool) forward stdout from the spawned processes - to this process if
+                                                                    //        it is a tool, else to wherever the output of this process's job
+                                                                    //        is forwarded
+#define PMIX_FWD_STDERR                     "pmix.fwd.stderr"       // (bool) forward stderr from the spawned processes - to this process if
+                                                                    //        it is a tool, else to wherever the output of this process's job
+                                                                    //        is forwarded
 #define PMIX_FWD_STDDIAG                    "pmix.fwd.stddiag"      // (bool) if a diagnostic channel exists, forward any output on it
-                                                                    //        from the spawned processes to this process (typically used by a tool)
+                                                                    //        from the spawned processes - to this process if it is a tool,
+                                                                    //        else to wherever the output of this process's job is forwarded
 #define PMIX_SPAWN_TOOL                     "pmix.spwn.tool"        // (bool) job being spawned is a tool
 #define PMIX_CMD_LINE                       "pmix.cmd.line"         // (char*) command line executing in the specified nspace
 #define PMIX_FORKEXEC_AGENT                 "pmix.fe.agnt"          // (char*) command line of fork/exec agent to be used for starting

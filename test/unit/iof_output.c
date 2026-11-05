@@ -306,6 +306,66 @@ static bool cached_from(const char *nspace)
     return false;
 }
 
+/* Register a one-process job as a host does for a spawned one whose
+ * request named its output channels: all three are stated, as the server
+ * that took the request resolved them - see pmix_server_state_channels().
+ * "file", when not NULL, is the job's output file prefix */
+static bool register_named(const char *name, bool stdout_on, bool stderr_on, const char *file)
+{
+    pmix_info_t info[7];
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t one = 1, uid = (uint32_t) geteuid(), gid = (uint32_t) getegid();
+    bool diag = false;
+    size_t n, ninfo = 4;
+
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_FWD_STDOUT, &stdout_on, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_FWD_STDERR, &stderr_on, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[3], PMIX_FWD_STDDIAG, &diag, PMIX_BOOL);
+    if (NULL != file) {
+        PMIX_INFO_LOAD(&info[4], PMIX_IOF_OUTPUT_TO_FILE, file, PMIX_STRING);
+        PMIX_INFO_LOAD(&info[5], PMIX_USERID, &uid, PMIX_UINT32);
+        PMIX_INFO_LOAD(&info[6], PMIX_GRPID, &gid, PMIX_UINT32);
+        ninfo = 7;
+    }
+    PMIX_LOAD_NSPACE(ns, name);
+    rc = PMIx_server_register_nspace(ns, 1, info, ninfo, NULL, NULL);
+    for (n = 0; n < ninfo; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        fprintf(out, "PMIx_server_register_nspace failed: %s\n", PMIx_Error_string(rc));
+        fflush(out);
+        return false;
+    }
+    return true;
+}
+
+/* Wait for "path" to hold "want", and say whether it did */
+static bool file_holds(const char *path, const char *want)
+{
+    char buf[BUFSIZE];
+    ssize_t n;
+    int fd, i;
+
+    for (i = 0; i < WAIT_TRIES; i++) {
+        fd = open(path, O_RDONLY);
+        if (0 <= fd) {
+            n = read(fd, buf, sizeof(buf) - 1);
+            close(fd);
+            if (0 < n) {
+                buf[n] = '\0';
+                if (0 == strcmp(buf, want)) {
+                    return true;
+                }
+            }
+        }
+        usleep(WAIT_USEC);
+    }
+    return false;
+}
+
 /* Replace "fd" with the write end of a fresh pipe, handing back a
  * non-blocking read end.
  *
@@ -470,6 +530,59 @@ int main(int argc, char **argv)
     got = collect(efd, buf, 6);
     report("stderr still flows after a source closed",
            6 == got && 0 == strcmp(buf, "delta\n"));
+
+    /* ---- a job whose spawn named its output channels ----
+     * Only the channels it named true reach our own stdout and stderr:
+     * naming any of them is taken exactly as written, a "false" included */
+    if (!register_named("fwdnamed", false, true, NULL)) {
+        PMIx_server_finalize();
+        return 1;
+    }
+    PMIX_LOAD_PROCID(&src, "fwdnamed", 0);
+    if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, "hidden\n", 7)) {
+        PMIx_server_finalize();
+        return 1;
+    }
+    got = settle(rfd, buf);
+    report("a channel the job's spawn turned off is not written", 0 == got);
+    if (!deliver(&src, PMIX_FWD_STDERR_CHANNEL, "shown\n", 6)) {
+        PMIx_server_finalize();
+        return 1;
+    }
+    got = collect(efd, buf, 6);
+    report("one it turned on is", 6 == got && 0 == strcmp(buf, "shown\n"));
+
+    /* ...and its output files are written as always: only the copy on
+     * our own stdout is left off */
+    {
+        const char *tmp = getenv("TMPDIR");
+        char dir[1024], prefix[1100], file[1200], cmd[1100];
+
+        snprintf(dir, sizeof(dir), "%s/iofout.XXXXXX", (NULL == tmp) ? "/tmp" : tmp);
+        if (NULL == mkdtemp(dir)) {
+            fprintf(out, "mkdtemp failed: %s\n", strerror(errno));
+            PMIx_server_finalize();
+            return 1;
+        }
+        snprintf(prefix, sizeof(prefix), "%s/out", dir);
+        snprintf(file, sizeof(file), "%s.fwdfile.0.out", prefix);
+        if (!register_named("fwdfile", false, false, prefix)) {
+            PMIx_server_finalize();
+            return 1;
+        }
+        PMIX_LOAD_PROCID(&src, "fwdfile", 0);
+        if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, "filed\n", 6)) {
+            PMIx_server_finalize();
+            return 1;
+        }
+        report("its output file is still written", file_holds(file, "filed\n"));
+        got = settle(rfd, buf);
+        report("but not the copy on our own stdout", 0 == got);
+        snprintf(cmd, sizeof(cmd), "rm -rf '%s'", dir);
+        if (0 != system(cmd)) {
+            fprintf(out, "could not remove %s\n", dir);
+        }
+    }
 
     /* ---- the blocking form, attempted from the progress thread ---- */
     {
