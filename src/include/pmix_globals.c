@@ -188,6 +188,7 @@ static void nscon(pmix_namespace_t *p)
     p->writer_told = false;
     p->files_refused = false;
     p->files_unopened = false;
+    p->files_stalled = false;
     /* no owner until the host names one or registers a client; until
      * then the server's own identity stands in (see pmix_access_t) */
     p->access.registered = false;

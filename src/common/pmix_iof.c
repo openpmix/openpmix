@@ -23,6 +23,7 @@
 #    endif
 #endif
 #include <ctype.h>
+#include <errno.h>
 
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_stdint.h"
@@ -1113,9 +1114,10 @@ typedef struct {
     gid_t group;     /* a group the access list names, else the owner's */
     bool listed;     /* the group is one the access list names */
     mode_t dmode;    /* for the directories the owner creates */
+    bool *stalled;   /* the job's files_stalled */
 } pmix_iof_perms_t;
 
-static void output_perms(const pmix_namespace_t *nptr, pmix_iof_perms_t *op)
+static void output_perms(pmix_namespace_t *nptr, pmix_iof_perms_t *op)
 {
     bool known = (PMIX_OWNER_UNKNOWN != nptr->access.source);
 
@@ -1130,6 +1132,7 @@ static void output_perms(const pmix_namespace_t *nptr, pmix_iof_perms_t *op)
     /* the owner creates the directories, so they can be the owner's alone
      * - entered by a group the owner allowed, too */
     op->dmode = op->listed ? (S_IRWXU | S_IRGRP | S_IXGRP) : S_IRWXU;
+    op->stalled = &nptr->files_stalled;
 }
 
 /* Where an output file goes. Everything about it is done as the job's
@@ -1213,15 +1216,32 @@ static int output_as_owner(pmix_iof_output_t *out)
     const pmix_iof_perms_t *op = out->op;
     gid_t *gids = NULL;
     size_t ngids = 0;
-    int fd;
+    int fd, err;
 
+    if (*op->stalled) {
+        /* an earlier file of this job timed out; the rest are not
+         * tried */
+        return -1;
+    }
     if (geteuid() != op->owner || getegid() != op->owner_gid) {
         if (PMIX_SUCCESS != pmix_server_user_groups(op->owner, op->owner_gid, &gids, &ngids)) {
             return -1;
         }
     }
     fd = pmix_util_run_as(op->owner, op->owner_gid, gids, ngids, true, open_output, out);
+    err = errno;
     free(gids);
+    if (0 > fd && ETIMEDOUT == err) {
+        /* The owner's helper did not answer in time. The job's other
+         * files are on the same paths, so do not wait on them again */
+        *op->stalled = true;
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "IOF: opening output file %s/%s as uid %lu took longer than "
+                            "%d seconds - not written, and no other file of this job "
+                            "will be tried", out->root, out->file,
+                            (unsigned long) op->owner, pmix_util_runas_timeout);
+        return -1;
+    }
     if (0 > fd) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
                             "IOF: output file %s/%s could not be opened as uid %lu - "

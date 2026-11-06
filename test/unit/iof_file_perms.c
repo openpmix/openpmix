@@ -46,6 +46,10 @@
  *                                      PMIX ERROR line on stderr
  *   ... for a job that asked for a
  *   copy of its output too          -> the copy is still written
+ *   as root only: opening a file as
+ *   the owner never finishes        -> abandoned at pmix_runas_timeout,
+ *                                      and the job's other file is not
+ *                                      tried at all
  */
 
 #include "src/include/pmix_config.h"
@@ -54,6 +58,7 @@
 #include "include/pmix_server.h"
 
 #include "src/include/pmix_globals.h"
+#include "src/util/pmix_runas.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -61,6 +66,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 /* ids no real account should have */
@@ -640,6 +646,67 @@ static void test_unopened(void)
            0 < n && 1 == occurrences(text, "copied line\n"));
 }
 
+static double now_s(void)
+{
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+    return (double) tv.tv_sec + (double) tv.tv_usec / 1e6;
+}
+
+/* A root server opens another user's output files in a child that has
+ * become that user, and waits for that child for at most
+ * pmix_runas_timeout.
+ *
+ * pmix_util_runas_test_stall makes every such child wait for ever once it
+ * has become the user. The first of the job's files then has to be given
+ * up at the timeout; the second - stderr, a separate file under
+ * PMIX_IOF_OUTPUT_TO_DIRECTORY - must not cost the timeout again, or one
+ * job holds the thread for as many timeouts as it has files. */
+static void test_stalled(void)
+{
+    char dir[1024], file[1100];
+    double t0, first, second;
+    int saved = pmix_util_runas_timeout;
+
+    if (0 != geteuid()) {
+        fprintf(stdout, "  SKIP: a stalled helper - not running as root, so there is none\n");
+        return;
+    }
+    snprintf(dir, sizeof(dir), "%s/stall", base);
+    if (0 != mkdir(dir, 0755) || 0 != chown(dir, OTHER_UID, getegid())) {
+        report("stall: fixture", 0);
+        return;
+    }
+    if (PMIX_SUCCESS != reg("perms-stall", PMIX_IOF_OUTPUT_TO_DIRECTORY, dir, OTHER_UID,
+                            getegid(), (gid_t) -1)) {
+        report("stall: fixture", 0);
+        return;
+    }
+    pmix_util_runas_timeout = 1;
+    pmix_util_runas_test_stall = true;
+
+    t0 = now_s();
+    deliver_on("perms-stall", PMIX_FWD_STDOUT_CHANNEL, "out\n");
+    first = now_s() - t0;
+    t0 = now_s();
+    deliver_on("perms-stall", PMIX_FWD_STDERR_CHANNEL, "err\n");
+    second = now_s() - t0;
+
+    pmix_util_runas_test_stall = false;
+    pmix_util_runas_timeout = saved;
+
+    snprintf(file, sizeof(file), "%s/perms-stall/rank.0/stdout", dir);
+    report("a stalled open of a job's file is abandoned at the timeout",
+           1.0 <= first && first < 4.0 && !exists(file));
+    snprintf(file, sizeof(file), "%s/perms-stall/rank.0/stderr", dir);
+    report("...and the job's next file is not waited on again",
+           second < 0.9 && !exists(file));
+    if (!(second < 0.9)) {
+        fprintf(stdout, "        (first %.2fs, second %.2fs)\n", first, second);
+    }
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -672,6 +739,7 @@ int main(int argc, char **argv)
     test_files();
     test_writer();
     test_unopened();
+    test_stalled();
 
     PMIx_server_finalize();
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", base);

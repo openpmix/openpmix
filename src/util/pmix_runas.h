@@ -42,10 +42,33 @@ BEGIN_C_DECLS
  * fn runs in a forked child of a threaded process: it may only make
  * system calls and touch memory it was given - no locks, no allocation
  * the parent's threads may hold the lock of, no NSS lookups. Look up
- * whatever it needs (the groups, among them) before calling. The parent
- * waits for the child, so this blocks the caller until fn is done */
+ * whatever it needs (the groups, among them) before calling.
+ *
+ * The caller is blocked until the child answers, but never for longer
+ * than pmix_util_runas_timeout seconds. The child works on a path the
+ * user chose, which may be on a filesystem that does not respond, and
+ * the caller is usually the progress thread. A child that has not answered by then is
+ * killed, and the result is -1 with errno ETIMEDOUT. A caller that may
+ * be asked again for the same user's work should take that as an answer
+ * for all of it, or each request costs the full timeout. The child is
+ * reaped without waiting; one that has not gone yet is reaped later */
 PMIX_EXPORT int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids,
                                  bool want_fd, int (*fn)(void *arg), void *arg);
+
+/* Seconds pmix_util_run_as() waits for a child - MCA pmix_runas_timeout.
+ * 0 waits without a bound */
+PMIX_EXPORT extern int pmix_util_runas_timeout;
+
+/* Reap the children pmix_util_run_as() stopped waiting for. Called from
+ * pmix_rte_finalize() */
+PMIX_EXPORT void pmix_util_runas_finalize(void);
+
+/* TESTING ONLY. Set, a child pmix_util_run_as() forks never gets as far
+ * as fn: once it has become the user it waits for a signal, for ever -
+ * which is what a child working on a path that does not answer looks
+ * like. test/unit/iof_file_perms.c sets it to reach the timeout through
+ * the code that opens a job's output files. Nothing else may */
+PMIX_EXPORT extern volatile bool pmix_util_runas_test_stall;
 
 /* True in the child pmix_util_run_as() forks. pmix_output() and
  * pmix_show_help() do nothing there: a lock another of the parent's

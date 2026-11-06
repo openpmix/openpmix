@@ -425,7 +425,18 @@ file with one link **owned by the owner**, and only then empties it and
 sets its group and mode. The parent checks the descriptor again and
 changes nothing on it. So under a root server the kernel judges every
 path the user named as that user; there is no fallback that loosens a
-mode when the file cannot be given away. `open_output()` runs in a forked
+mode when the file cannot be given away. The child may not finish - a
+path on a filesystem that does not respond, say - so
+`pmix_util_run_as()` waits for it only `pmix_runas_timeout` seconds,
+kills it, and answers `-1` with `ETIMEDOUT`. `output_as_owner()` then sets
+the job's `files_stalled` and declines every later file of the job
+without forking: `pmix_iof_setup()` is asked again on each chunk for a
+file that did not open, so without the latch one job would hold the
+progress thread one timeout per chunk. `test_stalled()` in
+`test/unit/iof_file_perms.c` covers it through
+`pmix_util_runas_test_stall`.
+
+`open_output()` runs in a forked
 child of a threaded process: it logs nothing (`pmix_output` and
 `pmix_show_help` are no-ops there - `pmix_util_runas_child`), and any new
 step in it must be async-signal-safe in spirit. A new place that opens an
