@@ -101,6 +101,8 @@ typedef struct {
     size_t nlisted;         //    listed, when it listed them all - see get_tracker
     bool solo;              // made for one follower or bootstrap call and handed
                             //    to the host with it - never joined by another
+    bool addmembers;        // made by a PMIX_GROUP_ADD_MEMBERS call - joined
+                            //    only by another such call
 } grp_block_t;
 static void gbcon(grp_block_t *p)
 {
@@ -128,6 +130,7 @@ static void gbcon(grp_block_t *p)
     p->nlocal = 0;
     p->listed = NULL;
     p->nlisted = 0;
+    p->addmembers = false;
     p->solo = false;
 }
 static void gbdes(grp_block_t *p)
@@ -403,12 +406,144 @@ static void grp_member_joined(grp_block_t *blk, grp_trk_t *trk, pmix_peer_t *pee
     }
 }
 
+/* Order procs by namespace, then rank. Every special rank sorts above
+ * every valid one */
+static int grp_proc_order(const void *a, const void *b)
+{
+    const pmix_proc_t *pa = (const pmix_proc_t *) a;
+    const pmix_proc_t *pb = (const pmix_proc_t *) b;
+    int c;
+
+    c = strncmp(pa->nspace, pb->nspace, PMIX_MAX_NSLEN);
+    if (0 != c) {
+        return c;
+    }
+    if (pa->rank < pb->rank) {
+        return -1;
+    }
+    if (pa->rank > pb->rank) {
+        return 1;
+    }
+    return 0;
+}
+
+/* A sorted copy of a membership with each proc in it once - the form
+ * grp_lists_match compares */
+static pmix_status_t grp_sorted_set(const pmix_proc_t *procs, size_t nprocs,
+                                    pmix_proc_t **out, size_t *nout)
+{
+    pmix_proc_t *s;
+    size_t n, m;
+
+    *out = NULL;
+    *nout = 0;
+    if (NULL == procs || 0 == nprocs) {
+        return PMIX_SUCCESS;
+    }
+    PMIX_PROC_CREATE(s, nprocs);
+    if (NULL == s) {
+        return PMIX_ERR_NOMEM;
+    }
+    memcpy(s, procs, nprocs * sizeof(pmix_proc_t));
+    qsort(s, nprocs, sizeof(pmix_proc_t), grp_proc_order);
+    for (n = 1, m = 1; n < nprocs; n++) {
+        if (0 != grp_proc_order(&s[m - 1], &s[n])) {
+            if (m != n) {
+                memcpy(&s[m], &s[n], sizeof(pmix_proc_t));
+            }
+            ++m;
+        }
+    }
+    *out = s;
+    *nout = m;
+    return PMIX_SUCCESS;
+}
+
+/* Whether the sorted ranks of one namespace, none of them a wildcard, are
+ * every rank of that job - the procs its wildcard stands for. A job must
+ * be registered with its size for its ranks to be taken as the whole job */
+static bool grp_names_whole_job(const pmix_proc_t *seg, size_t n)
+{
+    pmix_namespace_t *ns, *nptr = NULL;
+    size_t i;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (NULL != ns->nspace && 0 == strncmp(ns->nspace, seg[0].nspace, PMIX_MAX_NSLEN)) {
+            nptr = ns;
+            break;
+        }
+    }
+    if (NULL == nptr || 0 == nptr->nprocs || n != nptr->nprocs) {
+        return false;
+    }
+    for (i = 0; i < n; i++) {
+        if (seg[i].rank != (pmix_rank_t) i) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Whether two memberships, each sorted and without repeats
+ * (grp_sorted_set), name the same procs. A namespace's wildcard is all of
+ * that job's procs, so it matches a list of every one of them - and,
+ * covering every other rank of its namespace, any list that carries the
+ * wildcard too */
+static bool grp_lists_match(const pmix_proc_t *a, size_t na, const pmix_proc_t *b, size_t nb)
+{
+    size_t i = 0, j = 0, ie, je, k;
+    bool awild, bwild;
+
+    while (i < na && j < nb) {
+        if (0 != strncmp(a[i].nspace, b[j].nspace, PMIX_MAX_NSLEN)) {
+            return false;
+        }
+        awild = false;
+        for (ie = i; ie < na && 0 == strncmp(a[ie].nspace, a[i].nspace, PMIX_MAX_NSLEN); ie++) {
+            if (PMIX_RANK_WILDCARD == a[ie].rank) {
+                awild = true;
+            }
+        }
+        bwild = false;
+        for (je = j; je < nb && 0 == strncmp(b[je].nspace, b[j].nspace, PMIX_MAX_NSLEN); je++) {
+            if (PMIX_RANK_WILDCARD == b[je].rank) {
+                bwild = true;
+            }
+        }
+        if (awild && !bwild) {
+            if (!grp_names_whole_job(&b[j], je - j)) {
+                return false;
+            }
+        } else if (bwild && !awild) {
+            if (!grp_names_whole_job(&a[i], ie - i)) {
+                return false;
+            }
+        } else if (!awild) {
+            if ((ie - i) != (je - j)) {
+                return false;
+            }
+            for (k = 0; k < ie - i; k++) {
+                if (a[i + k].rank != b[j + k].rank) {
+                    return false;
+                }
+            }
+        }
+        i = ie;
+        j = je;
+    }
+    return (i == na && j == nb);
+}
+
 /* A call joins the block of its ID that is still collecting, or makes
- * one. It joins only an operation of its own kind, and - when the call
- * that made the block listed all its participants - only as one of them.
- * A recorded group's ID is checked by the caller; this covers one still
- * being constructed. An "add members" or bootstrap call lists only some
- * of its participants, so a block one of them made is joined as before */
+ * one. It joins only an operation of its own kind made by the same
+ * method - one ID is not shared between methods - and, when the call
+ * that made the block listed all its participants, only as one of them
+ * (PMIX_ERR_NOT_A_MEMBER otherwise) naming the same participants
+ * (PMIX_ERR_BAD_PARAM otherwise). A recorded group's ID is checked by
+ * the caller; this covers one still being constructed. An "add members"
+ * call lists only some of its participants, so a block one of them made
+ * is joined by another such call without comparing lists, and a
+ * follower's or bootstrap call's block is never joined */
 static pmix_status_t get_tracker(char *grpid, int op, bool bootstrap, bool follower,
                                  bool addmembers, const pmix_peer_t *peer,
                                  pmix_proc_t *procs, size_t nprocs,
@@ -417,6 +552,10 @@ static pmix_status_t get_tracker(char *grpid, int op, bool bootstrap, bool follo
 {
     grp_block_t *blk;
     grp_trk_t *trk;
+    pmix_proc_t *mine = NULL;
+    size_t nmine = 0;
+    pmix_status_t rc;
+    bool same;
 
 
     if (follower || bootstrap) {
@@ -438,9 +577,25 @@ static pmix_status_t get_tracker(char *grpid, int op, bool bootstrap, bool follo
             if (PMIX_GROUP_NONE != blk->grpop && op != blk->grpop) {
                 return PMIX_ERR_BAD_PARAM;
             }
+            if (addmembers != blk->addmembers) {
+                return PMIX_ERR_BAD_PARAM;
+            }
             if (NULL != blk->listed &&
                 !pmix_server_grp_is_participant(peer, blk->listed, blk->nlisted)) {
                 return PMIX_ERR_NOT_A_MEMBER;
+            }
+            if (NULL != blk->listed) {
+                rc = grp_sorted_set(procs, nprocs, &mine, &nmine);
+                if (PMIX_SUCCESS != rc) {
+                    return rc;
+                }
+                same = grp_lists_match(blk->listed, blk->nlisted, mine, nmine);
+                if (NULL != mine) {
+                    PMIX_PROC_FREE(mine, nmine);
+                }
+                if (!same) {
+                    return PMIX_ERR_BAD_PARAM;
+                }
             }
             // new signature, so create a tracker for it
             trk = PMIX_NEW(grp_trk_t);
@@ -480,14 +635,13 @@ newblock:
         return PMIX_ERR_NOMEM;
     }
     blk->grpop = op;
+    blk->addmembers = addmembers;
     if (!follower && !bootstrap && !addmembers && NULL != procs && 0 < nprocs) {
-        PMIX_PROC_CREATE(blk->listed, nprocs);
-        if (NULL == blk->listed) {
+        rc = grp_sorted_set(procs, nprocs, &blk->listed, &blk->nlisted);
+        if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(blk);
-            return PMIX_ERR_NOMEM;
+            return rc;
         }
-        blk->nlisted = nprocs;
-        memcpy(blk->listed, procs, nprocs * sizeof(pmix_proc_t));
     }
     // setup a tracker for it
     trk = PMIX_NEW(grp_trk_t);
