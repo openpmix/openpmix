@@ -127,6 +127,17 @@ The host passes the list on when it registers the job, on every node
 that hosts a part of it. The same attributes already govern access to
 published data (``PMIx_Publish``), so users meet one vocabulary.
 
+The list widens access and names nobody's ownership. Only the two
+attributes above are read inside it: a ``PMIX_USERID`` or ``PMIX_GRPID``
+there is not the job's owner, and an access list nested inside another
+is not read. ``PMIx_Spawn`` is refused with ``PMIX_ERR_BAD_PARAM`` when
+its access list - or a ``PMIX_JOB_INFO_ARRAY`` among its job-level
+directives - carries an identity attribute (``PMIX_USERID``,
+``PMIX_GRPID``, ``PMIX_REQUESTOR_PID``, ``PMIX_REQUESTED_GRPID`` or one
+of the ``PMIX_ORIGIN_*`` attributes), or when one access list is nested
+inside another. The owner is the host's to name, at the top level of its
+registration.
+
 **Group membership** is the set of groups the requester's process
 belongs to - its effective group and its supplementary groups. The set
 belongs to the process, not to its user: two processes of one user may

@@ -889,16 +889,22 @@ static void replace_ids(uint32_t **dst, size_t *ndst, uint32_t *ids, size_t nids
     *ndst = nids;
 }
 
-static pmix_status_t set_from(pmix_access_t *acc, const pmix_info_t *info, size_t ninfo, int depth,
-                              bool *uids_given, bool *gids_given)
+/* Read a job's owner and access lists. The owner is read at the top
+ * level and inside the host's own job-info array, never inside
+ * PMIX_ACCESS_PERMISSIONS: inside that array only the two access-list
+ * keys are read, and an array nested in it is not followed */
+static pmix_status_t set_from(pmix_access_t *acc, const pmix_info_t *info, size_t ninfo,
+                              bool in_jobinfo, bool in_perms, bool *uids_given,
+                              bool *gids_given)
 {
     pmix_data_array_t *da;
     pmix_status_t rc;
     uint32_t id, *ids;
     size_t n, nids;
+    bool perms, jobinfo;
 
     for (n = 0; n < ninfo; n++) {
-        if (PMIx_Check_key(info[n].key, PMIX_USERID)) {
+        if (!in_perms && PMIx_Check_key(info[n].key, PMIX_USERID)) {
             /* a host has always been able to register an owner of
              * another type and have it ignored - keep that, and let the
              * fallback owner stand. The access lists are strict */
@@ -906,7 +912,7 @@ static pmix_status_t set_from(pmix_access_t *acc, const pmix_info_t *info, size_
                 acc->uid = (uid_t) id;
                 acc->source = PMIX_OWNER_REGISTERED;
             }
-        } else if (PMIx_Check_key(info[n].key, PMIX_GRPID)) {
+        } else if (!in_perms && PMIx_Check_key(info[n].key, PMIX_GRPID)) {
             if (PMIX_SUCCESS == get_one_id(&info[n].value, &id)) {
                 acc->gid = (gid_t) id;
             }
@@ -924,21 +930,28 @@ static pmix_status_t set_from(pmix_access_t *acc, const pmix_info_t *info, size_
             }
             replace_ids(&acc->gids, &acc->ngids, ids, nids);
             *gids_given = true;
-        } else if ((2 > depth && PMIx_Check_key(info[n].key, PMIX_ACCESS_PERMISSIONS)) ||
-                   (0 == depth && PMIx_Check_key(info[n].key, PMIX_JOB_INFO_ARRAY))) {
+        } else if (in_perms) {
+            /* nothing else in an access list says anything about access */
+            continue;
+        } else {
             /* the permissions arrive as an array of pmix_info_t, and a
              * host may send the job's info - permissions included -
              * inside a job-info array */
+            perms = PMIx_Check_key(info[n].key, PMIX_ACCESS_PERMISSIONS);
+            jobinfo = !in_jobinfo && PMIx_Check_key(info[n].key, PMIX_JOB_INFO_ARRAY);
+            if (!perms && !jobinfo) {
+                continue;
+            }
             if (PMIX_DATA_ARRAY != info[n].value.type ||
                 NULL == (da = info[n].value.data.darray) || PMIX_INFO != da->type ||
                 (0 < da->size && NULL == da->array)) {
-                if (PMIx_Check_key(info[n].key, PMIX_ACCESS_PERMISSIONS)) {
+                if (perms) {
                     return PMIX_ERR_BAD_PARAM;
                 }
                 continue;
             }
-            rc = set_from(acc, (pmix_info_t *) da->array, da->size, depth + 1, uids_given,
-                          gids_given);
+            rc = set_from(acc, (pmix_info_t *) da->array, da->size, in_jobinfo || jobinfo,
+                          perms, uids_given, gids_given);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
@@ -995,7 +1008,7 @@ pmix_status_t pmix_server_access_load(pmix_access_t *acc, const pmix_info_t *inf
     tmp.nuids = 0;
     tmp.gids = NULL;
     tmp.ngids = 0;
-    rc = set_from(&tmp, info, ninfo, 0, &uids_given, &gids_given);
+    rc = set_from(&tmp, info, ninfo, false, false, &uids_given, &gids_given);
     if (NULL != resolved) {
         PMIx_Info_free(resolved, nresolved);
     }

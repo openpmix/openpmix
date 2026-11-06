@@ -3391,6 +3391,17 @@ misbehave by design).
     `PMIX_ACCESS_GRPIDS`, top level or in a `PMIX_JOB_INFO_ARRAY`). A
     malformed entry fails the registration; a registration that does
     not name a list keeps the one already held.
+  - **The owner is never read inside `PMIX_ACCESS_PERMISSIONS`.** That
+    array is the access list a spawn asked for, and a host registers it
+    with the job as given - PRRTE does, after its own owner keys. Inside
+    it `set_from` reads only the two list keys, and does not follow an
+    array nested in it. The spawn handler also refuses
+    (`screen_nested_identity`) an identity key inside an access list or
+    a job-info array, and an access list nested in another, before the
+    host sees the request. `stamp_requester` replaces identity keys at
+    the top level only, so code that reads a nested array of a
+    requester's directives checks it itself. Covered by
+    `test/unit/server_access.c` and `test/unit/server_ops.c`.
   - With no owner registered, `_register_client` makes the client's user
     the owner, and a tool's namespace belongs to the user it connected as
     (`pmix_server_access_set_owner()`; a weaker source never replaces a
