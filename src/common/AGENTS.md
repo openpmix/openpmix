@@ -436,6 +436,15 @@ progress thread one timeout per chunk. `test_stalled()` in
 `test/unit/iof_file_perms.c` covers it through
 `pmix_util_runas_test_stall`.
 
+**A stream whose file did not open is not opened again.**
+`pmix_iof_setup()` is asked for a sink on every chunk that finds none,
+and on a privileged server each attempt is a fork. `note_unopened()`
+leaves a placeholder sink - `unopened`, no descriptor, never armed - so
+the next chunk for that rank and stream finds it and writes only the
+copy to our own stdout. It is per stream, not per job: one rank's file
+failing (another user's file in the way, say) says nothing of the
+rest. `test_unopened_once()` covers it.
+
 `open_output()` runs in a forked
 child of a threaded process: it logs nothing (`pmix_output` and
 `pmix_show_help` are no-ops there - `pmix_util_runas_child`), and any new
