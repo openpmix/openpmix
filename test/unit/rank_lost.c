@@ -43,6 +43,10 @@
  *                       counts its contribution in rather than in place of
  *                       another's; and a second call from a rank whose old
  *                       connection already contributed is counted once
+ *   lost before count -> a rank that contributes while a fence's count is
+ *                       still open, and is lost before it closes, is
+ *                       counted when it does: its contribution stays, so
+ *                       it does not stand in for a rank yet to call
  *
  * A rank that finalized and whose connection then drops is NOT lost - it
  * may initialize again (issue #4113). That half is trk_peer_lost.c's.
@@ -65,6 +69,7 @@
 
 #define NS     "ranklost.ns"
 #define NS_RET "ranklost.ret"
+#define NS_LATE "ranklost.late"
 #define NPROCS 4
 
 /* the job the helpers below act on */
@@ -601,7 +606,81 @@ static void test_return(void)
     cur_ns = NS;
 }
 
+static pmix_status_t register_job_n(int nclients);
+
+/* A rank that contributed and was then lost is still counted when the
+ * collective's count is settled afterwards. A collective naming ranks
+ * individually cannot be counted until each is registered, and a count
+ * leaves a lost rank out (it goes on excluded). So a rank that called in
+ * while the count was open, and was lost before it closed, was left out
+ * of nlocal while its contribution stayed on local_cbs - where it stood
+ * in for a rank that had not called. */
+static void test_lost_before_count(void)
+{
+    const pmix_rank_t ranks[2] = {0, 1};
+    pmix_server_trkr_t *trk;
+    pmix_peer_t *p0, *p1;
+    trkstate_t t;
+    int sv[2];
+
+    cur_ns = NS_LATE;
+    if (PMIX_SUCCESS != register_job_n(1)) {
+        report("lost before count: the job registers", 0);
+        cur_ns = NS;
+        return;
+    }
+    if (0 != socketpair(AF_UNIX, SOCK_STREAM, 0, sv)) {
+        report("lost before count: socketpair", 0);
+        cur_ns = NS;
+        return;
+    }
+    p0 = connect_rank(0, sv[0], false);
+    trk = new_coll(ranks, 2);
+    t = trk_state(trk);
+    report("lost before count: a fence naming an unregistered rank is not yet counted",
+           NULL != trk && !trk->def_complete);
+    if (NULL == trk || NULL == p0) {
+        cur_ns = NS;
+        return;
+    }
+    completions = 0;
+    join(trk, p0);
+    close(sv[1]);
+    reaped = false;
+    on_progress(reap, p0);
+    report("lost before count: rank 0 contributes and is lost", reaped);
+
+    /* the rest of the job registers, which settles the count */
+    register_rank(1);
+    register_rank(2);
+    register_rank(3);
+    t = trk_state(trk);
+    report("lost before count: the lost rank's contribution is counted, not in place "
+           "of rank 1's",
+           2 == t.nlocal && 1 == t.accounted && !t.complete && 0 == completions);
+    if (0 != completions || 2 != t.nlocal) {
+        fprintf(stdout, "        (nlocal %u, accounted %lu, %d completions)\n", t.nlocal,
+                (unsigned long) t.accounted, completions);
+    }
+    p1 = connect_rank(1, -1, false);
+    if (NULL != p1) {
+        join(trk, p1);
+        t = trk_state(trk);
+        report("lost before count: rank 1's call completes it", t.complete);
+    }
+    if (0 == completions) {
+        on_progress(drop_fence, trk);
+    }
+    cur_ns = NS;
+}
+
 static pmix_status_t register_job(void)
+{
+    return register_job_n(NPROCS);
+}
+
+/* the job, with only its first nclients ranks registered as clients */
+static pmix_status_t register_job_n(int nclients)
 {
     pmix_nspace_t ns;
     pmix_proc_t p;
@@ -623,7 +702,7 @@ static pmix_status_t register_job(void)
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         return rc;
     }
-    for (r = 0; r < NPROCS; r++) {
+    for (r = 0; r < (pmix_rank_t) nclients; r++) {
         PMIX_LOAD_PROCID(&p, cur_ns, r);
         rc = PMIx_server_register_client(&p, geteuid(), getegid(), NULL, NULL, NULL);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
@@ -744,6 +823,7 @@ int main(int argc, char **argv)
     report("finalized: and none is counted finalized", 0 == c.nfinalized);
 
     test_return();
+    test_lost_before_count();
 
 done:
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
