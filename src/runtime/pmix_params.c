@@ -43,6 +43,7 @@
 #include "src/util/pmix_hash.h"
 #include "src/util/pmix_net.h"
 #include "src/util/pmix_printf.h"
+#include "src/util/pmix_runas.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_timings.h"
 #include "src/threads/pmix_threads.h"
@@ -284,6 +285,18 @@ pmix_status_t pmix_register_params(void)
                                       "Maximum backlog of output messages [default: unlimited]",
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_globals.output_limit);
+
+    /* How long work done as another user may take - see pmix_util_run_as().
+     * A privileged server opens a job's output files and runs its cleanup
+     * as the job's owner, in a child; this is how long the server waits
+     * for that child before it kills it and gives up. */
+    pmix_util_runas_timeout = 10;
+    (void) pmix_mca_base_var_register("pmix", "runas", NULL, "timeout",
+                                      "Seconds to wait for work done as a job's owner - opening "
+                                      "its output files, its cleanup - before abandoning it. "
+                                      "0 waits indefinitely [default: 10]",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_util_runas_timeout);
 
     /* Bound on the output a tool will hold while waiting for a spawn reply
      * to say how that output should be formatted (see the pending-cache

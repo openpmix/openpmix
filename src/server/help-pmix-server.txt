@@ -118,6 +118,12 @@ permissions, and this file - or a directory on the way to it - could
 not be created or opened as the owner. A directory the owner cannot
 write is the usual cause. The job's output is not written to this file.
 
+A server running as root does this work in a helper process running as
+the owner, and abandons it if it takes longer than the pmix_runas_timeout
+MCA parameter allows (10 seconds by default) - a filesystem that does not
+respond, say. When that happens, none of the job's other output files is
+tried either.
+
 This is reported once per job; any other output file of the job that
 cannot be opened is not written either.
 #
