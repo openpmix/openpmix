@@ -562,10 +562,13 @@ static void test_job_keys_released(void)
     pmix_value_t val;
     pmix_lock_t lock;
     pmix_status_t rc;
-    uint32_t u = 5;
+    pmix_info_t jsinfo;
+    uint32_t u = 5, jsize = 1;
 
     PMIX_LOAD_NSPACE(ns, "unit-kr-job");
-    rc = PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+    PMIX_INFO_LOAD(&jsinfo, PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
+    rc = PMIx_server_register_nspace(ns, 1, &jsinfo, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&jsinfo);
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         report("job_keys: register", 0);
         return;

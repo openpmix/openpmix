@@ -119,6 +119,22 @@
 #include <string.h>
 #include <unistd.h>
 
+/* PMIX_JOB_SIZE = n, for a registration. Each size is kept in static
+ * storage, loaded once, so it outlives a non-blocking call; a uint32 value
+ * holds no allocation, so nothing needs to be destructed */
+static pmix_info_t *js_info(int n)
+{
+    static pmix_info_t cache[8];
+    static bool loaded[8] = {false};
+    uint32_t sz = (uint32_t) n;
+
+    if (!loaded[n]) {
+        PMIX_INFO_LOAD(&cache[n], PMIX_JOB_SIZE, &sz, PMIX_UINT32);
+        loaded[n] = true;
+    }
+    return &cache[n];
+}
+
 /* A stand-in for a connected client that has no socket. The server's
  * handlers are driven with it as the requesting peer, so a reply queued to
  * it comes to rest on its send_msg, where the cases read it back. It
@@ -1346,7 +1362,7 @@ int main(int argc, char **argv)
         PMIX_LOAD_PROCID(&pr, "regnsA", 1);
         PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
         PMIX_LOAD_NSPACE(ns, "regnsA");
-        PMIx_server_register_nspace(ns, 2, NULL, 0, NULL, NULL);
+        PMIx_server_register_nspace(ns, 2, js_info(2), 1, NULL, NULL);
 
         PMIX_LOAD_PROCID(&pr, "regnsB", 0);
         PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
@@ -1368,7 +1384,7 @@ int main(int argc, char **argv)
                    2 == r.acc->nlocal);
 
             PMIX_LOAD_NSPACE(ns, "regnsB");
-            PMIx_server_register_nspace(ns, 2, NULL, 0, NULL, NULL);
+            PMIx_server_register_nspace(ns, 2, js_info(2), 1, NULL, NULL);
             progress_barrier();
 
             report("registering the second namespace adds to the count",
@@ -1431,7 +1447,7 @@ int main(int argc, char **argv)
         PMIX_LOAD_PROCID(&pr, DELNS, 0);
         PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
         PMIX_LOAD_NSPACE(ns, DELNS);
-        PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
         progress_barrier();
 
         memset(&d, 0, sizeof(d));
@@ -1506,7 +1522,7 @@ int main(int argc, char **argv)
         PMIX_LOAD_PROCID(&pr, "lateA", 0);
         PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
         PMIX_LOAD_NSPACE(ns, "lateA");
-        PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
         progress_barrier();
 
         memset(&l, 0, sizeof(l));
@@ -1528,7 +1544,7 @@ int main(int argc, char **argv)
         PMIX_LOAD_PROCID(&pr, "lateB", 0);
         PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
         PMIX_LOAD_NSPACE(ns, "lateB");
-        PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
         progress_barrier();
 
         PMIX_CONSTRUCT_LOCK(&l.lock);
@@ -1602,7 +1618,7 @@ int main(int argc, char **argv)
         PMIX_LOAD_PROCID(&pr, CMTNS, 0);
         PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
         PMIX_LOAD_NSPACE(ns, CMTNS);
-        PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
         progress_barrier();
 
         commit_run(&c, NULL, NULL);

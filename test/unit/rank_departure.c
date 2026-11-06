@@ -425,20 +425,23 @@ static pmix_status_t register_job(const char *name, pmix_rank_t nprocs)
     pmix_proc_t p;
     pmix_status_t rc;
     pmix_rank_t r;
-    pmix_info_t info[2];
+    pmix_info_t info[3];
     char *noderegex = NULL, *ppnregex = NULL, ppn[64];
+    uint32_t jsize = (uint32_t) nprocs;
 
     snprintf(ppn, sizeof(ppn), "%s", (2 == nprocs) ? "0,1" : "0,1,2,3");
     PMIx_generate_regex(pmix_globals.hostname, &noderegex);
     PMIx_generate_ppn(ppn, &ppnregex);
     PMIX_INFO_LOAD(&info[0], PMIX_NODE_MAP, noderegex, PMIX_REGEX);
     PMIX_INFO_LOAD(&info[1], PMIX_PROC_MAP, ppnregex, PMIX_REGEX);
+    PMIX_INFO_LOAD(&info[2], PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
     free(noderegex);
     free(ppnregex);
     PMIX_LOAD_NSPACE(ns, name);
-    rc = PMIx_server_register_nspace(ns, nprocs, info, 2, NULL, NULL);
+    rc = PMIx_server_register_nspace(ns, nprocs, info, 3, NULL, NULL);
     PMIX_INFO_DESTRUCT(&info[0]);
     PMIX_INFO_DESTRUCT(&info[1]);
+    PMIX_INFO_DESTRUCT(&info[2]);
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         return rc;
     }

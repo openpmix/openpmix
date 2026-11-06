@@ -480,6 +480,8 @@ static pmix_status_t start_server(pmix_rank_t nprocs)
     pmix_proc_t proc;
     pmix_nspace_t ns;
     pmix_rank_t r;
+    pmix_info_t jsinfo;
+    uint32_t jsize = (uint32_t) nprocs;
 
     {
         /* tools connect here, which a server takes only with tool support -
@@ -502,7 +504,9 @@ static pmix_status_t start_server(pmix_rank_t nprocs)
     }
     PMIx_Register_event_handler(&code, 1, NULL, 0, lost_handler, NULL, NULL);
     PMIX_LOAD_NSPACE(ns, RI_NSPACE);
-    rc = PMIx_server_register_nspace(ns, (int) nprocs, NULL, 0, NULL, NULL);
+    PMIX_INFO_LOAD(&jsinfo, PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
+    rc = PMIx_server_register_nspace(ns, (int) nprocs, &jsinfo, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&jsinfo);
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         return rc;
     }

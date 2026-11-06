@@ -72,12 +72,13 @@ static void regcbfunc(pmix_status_t status, void *cbdata)
 /* a job of one process whose data names "file" as the topology segment */
 static pmix_status_t register_job(const char *nspace, const char *file)
 {
-    pmix_info_t info[5];
+    pmix_info_t info[6];
     pmix_nspace_t ns;
     pmix_proc_t p0;
     pmix_status_t rc;
     char *noderegex = NULL, *ppnregex = NULL;
     size_t addr = 0x10000000, size = 1 << 20;
+    uint32_t jsize = 1;
     int n;
 
     PMIx_generate_regex(pmix_globals.hostname, &noderegex);
@@ -88,13 +89,14 @@ static pmix_status_t register_job(const char *nspace, const char *file)
     PMIX_INFO_LOAD(&info[2], PMIX_HWLOC_SHMEM_FILE, file, PMIX_STRING);
     PMIX_INFO_LOAD(&info[3], PMIX_HWLOC_SHMEM_ADDR, &addr, PMIX_SIZE);
     PMIX_INFO_LOAD(&info[4], PMIX_HWLOC_SHMEM_SIZE, &size, PMIX_SIZE);
+    PMIX_INFO_LOAD(&info[5], PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
 
     PMIX_LOAD_NSPACE(ns, nspace);
-    rc = PMIx_server_register_nspace(ns, 1, info, 5, NULL, NULL);
+    rc = PMIx_server_register_nspace(ns, 1, info, 6, NULL, NULL);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         rc = PMIX_SUCCESS;
     }
-    for (n = 0; n < 5; n++) {
+    for (n = 0; n < 6; n++) {
         PMIX_INFO_DESTRUCT(&info[n]);
     }
     free(noderegex);

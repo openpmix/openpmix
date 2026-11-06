@@ -268,6 +268,7 @@ typedef struct {
     pmix_status_t status;
     pmix_spawn_cbfunc_t cbfunc;
     void *cbdata;
+    pmix_info_t info;
 } release_cbdata;
 
 static void *_release_cb(void *arg)
@@ -276,6 +277,7 @@ static void *_release_cb(void *arg)
     if (NULL != cb->cbfunc) {
         cb->cbfunc(cb->status, "foobar", cb->cbdata);
     }
+    PMIX_INFO_DESTRUCT(&cb->info);
     free(cb);
     spawn_wait = false;
     pthread_exit(NULL);
@@ -284,9 +286,9 @@ static void *_release_cb(void *arg)
 static void release_cb(pmix_status_t status, void *cbdata)
 {
     pthread_t thread;
+    release_cbdata *cb = (release_cbdata *) cbdata;
 
-    PMIX_HIDE_UNUSED_PARAMS(status);
-
+    cb->status = status;
     if (0 > pthread_create(&thread, NULL, _release_cb, cbdata)) {
         spawn_wait = false;
         return;
@@ -302,6 +304,7 @@ pmix_status_t spawn_fn(const pmix_proc_t *proc, const pmix_info_t job_info[], si
 
     release_cbdata *cb = malloc(sizeof(release_cbdata));
     pmix_nspace_t foobar;
+    uint32_t jsize = (uint32_t) napps;
 
     cb->status = PMIX_SUCCESS;
     cb->cbfunc = cbfunc;
@@ -309,7 +312,8 @@ pmix_status_t spawn_fn(const pmix_proc_t *proc, const pmix_info_t job_info[], si
 
     spawn_wait = true;
     PMIX_LOAD_NSPACE(foobar, "foobar");
-    PMIx_server_register_nspace(foobar, napps, NULL, 0, release_cb, (void *) cb);
+    PMIX_INFO_LOAD(&cb->info, PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
+    PMIx_server_register_nspace(foobar, napps, &cb->info, 1, release_cb, (void *) cb);
     return PMIX_SUCCESS;
 }
 static int numconnect = 0;
