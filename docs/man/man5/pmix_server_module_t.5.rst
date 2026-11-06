@@ -667,6 +667,16 @@ through a ``pmix_info_cbfunc_t``. As with ``fence_nb``, the ``info`` array may
 carry ``PMIX_LOCAL_COLLECTIVE_STATUS``, ``PMIX_LOCAL_PARTICIPANTS``, and
 ``PMIX_SORTED_PROC_ARRAY`` describing the local portion of the collective.
 
+The server may make more than one ``group`` call for the same group ID and
+``op``: bootstrap leaders and added members each arrive on a call of their own.
+When the host completes any one of these calls, the server delivers that result
+to every call with the same group ID and ``op`` that it is still waiting on,
+because a host that combines them answers only once. The host must therefore
+keep a group ID to one operation of each kind at a time, across all servers.
+A request that names an ID already in use, from processes that are not part of
+the operation under way, must be refused, not run alongside it. See
+:ref:`label-host-env-operations`.
+
 .. _man5-pmix_server_module_t-fabric:
 
 fabric
