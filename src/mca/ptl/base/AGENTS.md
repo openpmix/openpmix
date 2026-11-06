@@ -721,7 +721,11 @@ A namespace holds one of two kinds of process, never both:
 The connection handler enforces the split:
 
 - A **client** attaches only to a rank with `host_registered` set, in a
-  namespace that is not a self-started tool's (`accept_client`). One
+  namespace that is not a self-started tool's (`accept_client`), and only
+  once the host has registered the namespace: one whose `nlocalprocs` is
+  still `SIZE_MAX` - a placeholder `register_client` made - takes no
+  client, since a host registers a job before it starts the job's
+  processes. One
   naming any other - no such namespace, no such rank, or a self-started
   tool's - is refused before its credential and token are checked, with
   `PMIX_ERR_INVALID_CRED`: the status a registered rank with a credential
