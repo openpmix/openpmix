@@ -355,7 +355,12 @@ owner could not.
   waits for it no longer than the ``pmix_runas_timeout`` MCA parameter (10 seconds by
   default), then kills it and does not write that file. None of the
   job's other output files is tried after that, since each would cost
-  the same wait. The same deadline bounds the cleanup a job registers
+  the same wait. The files themselves are then written by a thread of
+  their own rather than by the one that serves every job on the node,
+  so a file that stops answering later holds only that thread. What is
+  held for such a file meanwhile is limited by the
+  ``pmix_iof_writer_backlog`` MCA parameter, and output beyond it is not
+  written to the file. The same deadline bounds the cleanup a job registers
   (``PMIX_REGISTER_CLEANUP``, ``PMIX_REGISTER_CLEANUP_DIR``), which is
   done as the requester in the same way. Setting the parameter to 0 waits
   indefinitely.

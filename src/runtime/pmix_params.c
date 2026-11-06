@@ -43,6 +43,7 @@
 #include "src/util/pmix_hash.h"
 #include "src/util/pmix_net.h"
 #include "src/util/pmix_printf.h"
+#include "src/common/pmix_iof_writer.h"
 #include "src/util/pmix_runas.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_timings.h"
@@ -285,6 +286,18 @@ pmix_status_t pmix_register_params(void)
                                       "Maximum backlog of output messages [default: unlimited]",
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_globals.output_limit);
+
+    /* What may queue for an output file the writer thread writes - one a
+     * privileged server opened for another user (pmix_iof_writer.h). A
+     * file that does not answer would otherwise have it grow for as long
+     * as the job writes; past this, the file's output is dropped. */
+    pmix_iof_writer_backlog = 16384;
+    (void) pmix_mca_base_var_register("pmix", "iof", NULL, "writer_backlog",
+                                      "Chunks of output to hold for an output file a server "
+                                      "running as root writes for another user, beyond which "
+                                      "more is dropped [default: 16384]",
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+                                      &pmix_iof_writer_backlog);
 
     /* How long work done as another user may take - see pmix_util_run_as().
      * A privileged server opens a job's output files and runs its cleanup
