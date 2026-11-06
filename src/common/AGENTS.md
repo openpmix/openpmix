@@ -436,6 +436,25 @@ progress thread one timeout per chunk. `test_stalled()` in
 `test/unit/iof_file_perms.c` covers it through
 `pmix_util_runas_test_stall`.
 
+**A file opened for another user is never touched from the progress
+thread.** A regular file ignores `O_NONBLOCK`, so once the server holds
+a descriptor on the owner's filesystem, even the `fstat()` that
+re-checks it can block. When `relayed()` says the server is not the
+owner, `output_as_owner()` hands the descriptor to
+`pmix_iof_writer_relay()` ([`pmix_iof_writer.c`](pmix_iof_writer.c))
+and the sink writes to the non-blocking end of a pipe instead; one writer
+thread, started by the first such file and by nothing else, makes the
+check and copies the pipe to the file. The sink's `wev.relayed` caps what
+`write_output_line()` queues behind a full pipe at
+`pmix_iof_writer_backlog` chunks; past it the chunk is dropped and
+`iof-file-backlog` is shown once per sink, while the end-of-stream marker
+always goes through. `pmix_iof_finalize()` lets the thread drain and
+stop, waiting `pmix_runas_timeout` for it; one held by a file that never
+answers is left running and reused by a later init. A server that is the
+owner writes its files from the progress thread as before. `test_writer_stall()` in
+`test/unit/iof_file_perms.c` holds the thread with
+`pmix_iof_writer_test_stall`.
+
 **A stream whose file did not open is not opened again.**
 `pmix_iof_setup()` is asked for a sink on every chunk that finds none,
 and on a privileged server each attempt is a fork. `note_unopened()`
