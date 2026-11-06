@@ -1074,6 +1074,17 @@ returning-member cases in `test/unit/server_group.c`; in each, the returned
 rank calls before a live one, which is when an unfixed library completes
 short.
 
+**A rank that contributed and was then lost is counted when the count is
+settled.** The count leaves a lost rank out (onto `excluded`), and a loss
+never removes a contribution, so a rank that called while the count could
+not be settled yet - a rank it names not registered, a namespace not yet
+known - and was lost before it was, had its contribution on `local_cbs`
+and no place in `nlocal`. It filled the slot of a rank that had not
+called. `pmix_server_trk_count_nspace` and `check_definition_complete`
+now take such a rank back off `excluded` and count it. Covered by the
+"lost before count" cases in `test/unit/rank_lost.c` and
+`test/unit/server_group.c`.
+
 **A finalize is not a departure.** The peer-keyed entry points,
 `pmix_server_trk_peer_lost` and `pmix_server_grp_peer_lost`, return
 immediately for a peer with `finalized` set, and `lost_connection` does
