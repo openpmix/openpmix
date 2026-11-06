@@ -38,6 +38,11 @@
  *                               tool's child job is forwarded to it, and
  *                               the host is given only the requester's
  *                               uid and gid
+ *   spawn naming an owner
+ *      below the top level   -> PMIX_ERR_BAD_PARAM, and the host is never
+ *                               asked: a PMIX_USERID/PMIX_GRPID inside
+ *                               PMIX_ACCESS_PERMISSIONS, inside one nested
+ *                               in it, or inside a PMIX_JOB_INFO_ARRAY
  *   spawn the host declines  -> the host's status comes back, and the
  *                               request's directives and apps are
  *                               released once
@@ -323,6 +328,7 @@ typedef struct {
     bool as_tool;       /* present the requestor as a tool */
     bool claim_uid;     /* publish: include a PMIX_USERID of our own */
     const char *access_user; /* spawn: a job directive allowing this user, by name */
+    int nested_id;      /* spawn: an identity key below the top level - see pack_nested_id */
     pmix_status_t status;
 } opsut_req_t;
 
@@ -417,6 +423,61 @@ static pmix_status_t pack_lookup(pmix_buffer_t *buf, opsut_req_t *r)
     return rc;
 }
 
+/* Identity keys placed below the top level of a spawn's job-level
+ * directives, where stamp_requester does not replace them */
+enum {
+    OPSUT_NESTED_NONE = 0,
+    OPSUT_NESTED_PERMS_UID,    /* PMIX_ACCESS_PERMISSIONS { PMIX_USERID: 0 } */
+    OPSUT_NESTED_PERMS_GID,    /* PMIX_ACCESS_PERMISSIONS { PMIX_GRPID: 0 } */
+    OPSUT_NESTED_PERMS_NESTED, /* ... { PMIX_ACCESS_PERMISSIONS { PMIX_USERID: 0 } } */
+    OPSUT_NESTED_JOBINFO_UID   /* PMIX_JOB_INFO_ARRAY { PMIX_USERID: 0 } */
+};
+
+static void load_info_array(pmix_info_t *info, const char *key, pmix_info_t *entries, size_t n)
+{
+    pmix_data_array_t da;
+
+    da.type = PMIX_INFO;
+    da.size = n;
+    da.array = entries;
+    PMIX_INFO_LOAD(info, key, &da, PMIX_DATA_ARRAY);
+}
+
+static pmix_status_t pack_nested_id(pmix_buffer_t *buf, int nested_id)
+{
+    pmix_info_t info, entry[2], inner;
+    uint32_t root = 0;
+    pmix_status_t rc;
+
+    switch (nested_id) {
+    case OPSUT_NESTED_PERMS_UID:
+        PMIX_INFO_LOAD(&entry[0], PMIX_USERID, &root, PMIX_UINT32);
+        load_info_array(&info, PMIX_ACCESS_PERMISSIONS, entry, 1);
+        PMIX_INFO_DESTRUCT(&entry[0]);
+        break;
+    case OPSUT_NESTED_PERMS_GID:
+        PMIX_INFO_LOAD(&entry[0], PMIX_GRPID, &root, PMIX_UINT32);
+        load_info_array(&info, PMIX_ACCESS_PERMISSIONS, entry, 1);
+        PMIX_INFO_DESTRUCT(&entry[0]);
+        break;
+    case OPSUT_NESTED_PERMS_NESTED:
+        PMIX_INFO_LOAD(&inner, PMIX_USERID, &root, PMIX_UINT32);
+        load_info_array(&entry[0], PMIX_ACCESS_PERMISSIONS, &inner, 1);
+        PMIX_INFO_DESTRUCT(&inner);
+        load_info_array(&info, PMIX_ACCESS_PERMISSIONS, entry, 1);
+        PMIX_INFO_DESTRUCT(&entry[0]);
+        break;
+    default:
+        PMIX_INFO_LOAD(&entry[0], PMIX_USERID, &root, PMIX_UINT32);
+        load_info_array(&info, PMIX_JOB_INFO_ARRAY, entry, 1);
+        PMIX_INFO_DESTRUCT(&entry[0]);
+        break;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &info, 1, PMIX_INFO);
+    PMIX_INFO_DESTRUCT(&info);
+    return rc;
+}
+
 static pmix_status_t pack_spawn(pmix_buffer_t *buf, opsut_req_t *r)
 {
     pmix_status_t rc;
@@ -428,6 +489,10 @@ static pmix_status_t pack_spawn(pmix_buffer_t *buf, opsut_req_t *r)
      * (PMIx_Spawn(NULL, 0, ...)) */
     PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &r->ninfo, 1, PMIX_SIZE);
     for (n = 0; PMIX_SUCCESS == rc && n < r->ninfo_real; n++) {
+        if (OPSUT_NESTED_NONE != r->nested_id && 0 == n) {
+            rc = pack_nested_id(buf, r->nested_id);
+            continue;
+        }
         if (NULL != r->access_user && 0 == n) {
             /* PMIX_ACCESS_PERMISSIONS { PMIX_ACCESS_USERIDS: [ name ] } */
             pmix_data_array_t *names, perms;
@@ -553,6 +618,8 @@ static void do_cmd(int sd, short args, void *cbdata)
 
 /* for the next spawn driven: a job directive allowing this user, by name */
 static const char *access_user_name = NULL;
+/* for the next spawn driven: an identity key below the top level */
+static int nested_kind = OPSUT_NESTED_NONE;
 
 static pmix_status_t drive_claim(opsut_cmd_t cmd, size_t nprocs, size_t nprocs_real,
                                  size_t ninfo, size_t ninfo_real, bool as_tool,
@@ -564,6 +631,7 @@ static pmix_status_t drive_claim(opsut_cmd_t cmd, size_t nprocs, size_t nprocs_r
     memset(&req, 0, sizeof(req));
     req.claim_uid = claim_uid;
     req.access_user = access_user_name;
+    req.nested_id = nested_kind;
     PMIX_CONSTRUCT_LOCK(&req.lock);
     req.cmd = cmd;
     req.nprocs = nprocs;
@@ -772,6 +840,37 @@ int main(int argc, char **argv)
                    (uint32_t) geteuid() == spawn_access_uid);
         } else {
             fprintf(stdout, "  SKIP: this process's user has no name\n");
+        }
+    }
+
+    /* --- a spawn naming an owner below the top level --- *
+     * The requester's own PMIX_USERID and PMIX_GRPID are replaced by the
+     * connection's at the top level only. A spawn carrying an identity
+     * key inside PMIX_ACCESS_PERMISSIONS or a PMIX_JOB_INFO_ARRAY, or an
+     * access list nested in another, is refused before the host is
+     * asked. Without the change every one of these reaches the host. */
+    {
+        static const struct {
+            int kind;
+            const char *what;
+        } nested[] = {
+            {OPSUT_NESTED_PERMS_UID, "a PMIX_USERID inside PMIX_ACCESS_PERMISSIONS"},
+            {OPSUT_NESTED_PERMS_GID, "a PMIX_GRPID inside PMIX_ACCESS_PERMISSIONS"},
+            {OPSUT_NESTED_PERMS_NESTED, "a PMIX_ACCESS_PERMISSIONS nested in another"},
+            {OPSUT_NESTED_JOBINFO_UID, "a PMIX_USERID inside a PMIX_JOB_INFO_ARRAY"},
+        };
+        char name[160];
+        size_t k;
+
+        for (k = 0; k < sizeof(nested) / sizeof(nested[0]); k++) {
+            spawn_fired = false;
+            nested_kind = nested[k].kind;
+            rc = drive(OPSUT_SPAWN, 0, 0, 1, 1, false);
+            nested_kind = OPSUT_NESTED_NONE;
+            snprintf(name, sizeof(name), "a spawn carrying %s is refused", nested[k].what);
+            report(name, PMIX_ERR_BAD_PARAM == rc);
+            snprintf(name, sizeof(name), "...and never reaches the host (%s)", nested[k].what);
+            report(name, !spawn_fired);
         }
     }
 
