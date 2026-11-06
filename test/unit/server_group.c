@@ -41,6 +41,17 @@
  *   two bootstrap blocks,
  *      host accepts both     -> each block survives until its own completion
  *                               arrives (kills an unfixed library)
+ *   a construct after
+ *      another caller's
+ *      follower of its ID    -> goes to the host on a block of its own,
+ *                               rather than joining the follower's
+ *   a follower's completion
+ *      while a block of its
+ *      ID is collecting      -> the collecting block is left alone
+ *   a PMIX_TIMEOUT on a call
+ *      joining a block the
+ *      host holds            -> arms no timer: the host is not sent a
+ *                               cancel and the block stays the host's
  *   a held group's ID        -> the record keeps one group per ID: the same
  *                               membership again changes nothing, another
  *                               is PMIX_ERR_EXISTS; a construct of a held
@@ -226,6 +237,8 @@ typedef struct {
      * server's own unless set */
     pmix_group_operation_t op;
     pmix_peer_t *peer;
+    /* when set, the last info is a PMIX_TIMEOUT of this many seconds */
+    uint32_t tmo;
     pmix_status_t status;
 } grp_req_t;
 
@@ -318,6 +331,8 @@ static void do_group(int sd, short args, void *cbdata)
 
                 PMIX_INFO_LOAD(&dirs[n], (1 == n) ? PMIX_USERID : PMIX_GRPID, &id,
                                PMIX_UINT32);
+            } else if (0 < r->tmo && n == r->ninf_real - 1) {
+                PMIX_INFO_LOAD(&dirs[n], PMIX_TIMEOUT, &r->tmo, PMIX_UINT32);
             } else if (r->bootstrap) {
                 PMIX_INFO_LOAD(&dirs[n], PMIX_GROUP_BOOTSTRAP, &nboot, PMIX_SIZE);
             } else {
@@ -425,6 +440,31 @@ static pmix_status_t drive_group_procs(const char *grpid,
     req.ninf_real = 1;
     req.bootstrap = bootstrap;
     group_fired = false;
+    PMIX_THREADSHIFT(&req, do_group);
+    PMIX_WAIT_THREAD(&req.lock);
+    rc = req.status;
+    PMIX_DESTRUCT_LOCK(&req.lock);
+    return rc;
+}
+
+/* Drive one participant naming these procs, with a PMIX_TIMEOUT */
+static pmix_status_t drive_group_tmo(const char *grpid, const pmix_proc_t *procs, size_t nprocs,
+                                     uint32_t tmo)
+{
+    grp_req_t req;
+    pmix_status_t rc;
+
+    memset(&req, 0, sizeof(req));
+    PMIX_CONSTRUCT_LOCK(&req.lock);
+    req.grpid = grpid;
+    req.plist = procs;
+    req.nprocs = nprocs;
+    req.nprocs_real = nprocs;
+    req.ninf = 2;
+    req.ninf_real = 2;
+    req.tmo = tmo;
+    group_fired = false;
+    group_op = PMIX_GROUP_NONE;
     PMIX_THREADSHIFT(&req, do_group);
     PMIX_WAIT_THREAD(&req.lock);
     rc = req.status;
@@ -1248,6 +1288,123 @@ int main(int argc, char **argv)
                baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
     }
     group_accept = false;
+
+    /* --- a follower's block is its own --- *
+     * A follower names no procs and a bootstrap participant names only
+     * itself, so each gets a block of its own, handed to the host at once
+     * with no participant check: the host matches them up. A construct
+     * that lists its participants used to find such a block by ID, join it
+     * with no check at all - the block lists nobody - and stop there, since
+     * the block was already with the host. The construct then never reached
+     * the host, and its participants were answered with the follower's
+     * result. Without the change the construct below never reaches the
+     * host. */
+    group_accept = true;
+    nheld = 0;
+    progress_barrier();
+    baseline = pmix_list_get_size(&pmix_server_globals.grp_collectives);
+    {
+        pmix_peer_t *other = other_peer(GRPUT_NSPACE, 9);
+        pmix_proc_t mine[1];
+
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.solo", NULL, 0, other);
+        report("another caller's follower construct goes to the host",
+               PMIX_SUCCESS == rc && group_fired && 1 == nheld);
+        PMIX_LOAD_PROCID(&mine[0], GRPUT_NSPACE, 0);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.solo", mine, 1, NULL);
+        report("a construct of the same ID does not join the follower's block",
+               PMIX_SUCCESS == rc && group_fired && 2 == nheld);
+        report("...and both blocks are with the host",
+               baseline + 2 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+        if (2 == nheld) {
+            held_cbfunc[0](PMIX_SUCCESS, NULL, 0, held_cbdata[0], NULL, NULL);
+            progress_barrier();
+            held_cbfunc[1](PMIX_SUCCESS, NULL, 0, held_cbdata[1], NULL, NULL);
+            progress_barrier();
+        } else if (1 == nheld) {
+            held_cbfunc[0](PMIX_SUCCESS, NULL, 0, held_cbdata[0], NULL, NULL);
+            progress_barrier();
+        }
+        report("their completions leave nothing parked",
+               baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+        PMIX_RELEASE(other);
+    }
+
+    /* --- a follower's completion answers only blocks the host holds --- *
+     * The completion sweep answers every block sharing the ID, so that a
+     * host answering several up-calls with one completion still reaches
+     * every participant. It also reached a block still collecting its
+     * local participants - one the host had never seen - and answered and
+     * freed it with the follower's result. Against an unfixed library the
+     * collecting block is gone after the follower's completion. */
+    nheld = 0;
+    progress_barrier();
+    baseline = pmix_list_get_size(&pmix_server_globals.grp_collectives);
+    {
+        pmix_peer_t *other = other_peer(GRPUT_NSPACE, 9);
+        pmix_proc_t two[1];
+
+        PMIX_LOAD_PROCID(&two[0], GRPUT_TWO, PMIX_RANK_WILDCARD);
+        rc = drive_group_procs("grput.sweep", two, 1, false);
+        report("the first of two local participants waits for the second",
+               PMIX_SUCCESS == rc && !group_fired &&
+                   baseline + 1 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.sweep", NULL, 0, other);
+        report("a follower of the same ID goes to the host",
+               PMIX_SUCCESS == rc && group_fired && 1 == nheld);
+        if (1 == nheld) {
+            held_cbfunc[0](PMIX_SUCCESS, NULL, 0, held_cbdata[0], NULL, NULL);
+            progress_barrier();
+        }
+        report("the follower's completion leaves the collecting block alone",
+               baseline + 1 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+        rc = drive_group_procs("grput.sweep", two, 1, false);
+        report("the second local participant sends the block to the host",
+               PMIX_SUCCESS == rc && group_fired && 2 == nheld);
+        if (2 == nheld) {
+            held_cbfunc[1](PMIX_SUCCESS, NULL, 0, held_cbdata[1], NULL, NULL);
+            progress_barrier();
+        }
+        report("and its completion leaves nothing parked",
+               baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+        PMIX_RELEASE(other);
+    }
+
+    /* --- no local timer on a block the host holds --- *
+     * PMIX_TIMEOUT bounds the wait for the local participants, so its timer
+     * belongs to a block still collecting them. A call joining a block
+     * already with the host armed one anyway, and when it fired it sent the
+     * host a cancel for the ID and completed the block itself - freeing it
+     * while the host still held it. Without the change the timer below
+     * cancels the construct with the host. */
+    nheld = 0;
+    progress_barrier();
+    baseline = pmix_list_get_size(&pmix_server_globals.grp_collectives);
+    {
+        pmix_proc_t mine[1];
+
+        PMIX_LOAD_PROCID(&mine[0], GRPUT_NSPACE, 0);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.tmo", mine, 1, NULL);
+        report("a construct goes to the host", PMIX_SUCCESS == rc && 1 == nheld);
+        rc = drive_group_tmo("grput.tmo", mine, 1, 1);
+        report("a later call with a timeout joins the block the host holds",
+               PMIX_SUCCESS == rc && !group_fired);
+        sleep(2);
+        progress_barrier();
+        report("its timeout does not cancel the construct with the host",
+               PMIX_GROUP_CANCEL != group_op && 1 == nheld);
+        report("...nor take the block from the host",
+               baseline + 1 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+        if (baseline + 1 == pmix_list_get_size(&pmix_server_globals.grp_collectives) &&
+            1 <= nheld) {
+            held_cbfunc[0](PMIX_SUCCESS, NULL, 0, held_cbdata[0], NULL, NULL);
+            progress_barrier();
+        }
+        report("the host's completion answers it and leaves nothing parked",
+               baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+    }
+    group_accept = false;
+    nheld = 0;
 
     test_returning_member();
 
