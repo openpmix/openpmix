@@ -2101,6 +2101,36 @@ answered is the part that cannot be given up. **This is the one early
 return `_grpcbfunc` is allowed** (see the rule below); every other one
 hangs the block's participants.
 
+**The sweep answers only siblings the host holds, and a solo block is
+never joined.** Three things went wrong once several blocks could share
+an id:
+
+- `get_tracker` found a block by id alone, so an ordinary construct
+  joined a follower's or bootstrap participant's block - which lists
+  nobody, so there was no participant check, and which was already with
+  the host, so the construct stopped there and never went up. Its
+  participants were answered with whatever the host made of the other
+  call. `grp_block_t::solo` marks
+  such a block, and the join loop passes over it.
+- The sweep answered every block with the id, including one still
+  collecting its local participants - a block the host had never seen -
+  and released it with another call's result. It now takes a sibling
+  only when it is `awaiting_host` and of the same operation. That also
+  keeps it off a block this library completed itself (an
+  `OPERATION_SUCCEEDED` or error drive), whose own `_grpcbfunc` is still
+  queued and would run on the block the sweep released.
+- A call joining a block already `host_called` armed its `PMIX_TIMEOUT`
+  timer, and when it fired `abort_construct` sent the host a cancel and
+  completed the block - freeing it while the host still held it.
+  `PMIX_TIMEOUT` bounds the local phase, so it is armed only before the
+  block goes up, and `group_timeout` ignores a block the host holds.
+
+What is still the host's is two blocks of one id and operation that it
+holds at once: the sweep answers both on the first completion, because a
+coalescing host answers only one. Keeping concurrent constructs of one id
+apart is the host's, as is uniqueness of ids across servers. Covered by
+`test/unit/server_group.c`.
+
 **`check_definition_complete` counts the membership, and the membership
 is the first tracker's array.** The walk used to be over all of
 `blk->mbrs`, and every non-bootstrap participant hands us the same

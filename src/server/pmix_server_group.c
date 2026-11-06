@@ -99,6 +99,8 @@ typedef struct {
     uint32_t nlocal;        // number of local participants
     pmix_proc_t *listed;    // the participants the call that made the block
     size_t nlisted;         //    listed, when it listed them all - see get_tracker
+    bool solo;              // made for one follower or bootstrap call and handed
+                            //    to the host with it - never joined by another
 } grp_block_t;
 static void gbcon(grp_block_t *p)
 {
@@ -126,6 +128,7 @@ static void gbcon(grp_block_t *p)
     p->nlocal = 0;
     p->listed = NULL;
     p->nlisted = 0;
+    p->solo = false;
 }
 static void gbdes(grp_block_t *p)
 {
@@ -405,9 +408,14 @@ static pmix_status_t get_tracker(char *grpid, int op, bool bootstrap, bool follo
         goto newblock;
     }
 
-    // see if we already have a block for this ID
+    /* see if we already have a block for this ID. A follower's or a
+     * bootstrap participant's block is never joined: it is that one call's,
+     * already with the host, and lists nobody - so a construct that found
+     * one by ID joined it with no participant check and never reached the
+     * host, and was answered with whatever the host made of the other
+     * call */
     PMIX_LIST_FOREACH(blk, &pmix_server_globals.grp_collectives, grp_block_t) {
-        if (0 == strcmp(grpid, blk->id)) {
+        if (!blk->solo && 0 == strcmp(grpid, blk->id)) {
             // we do - may this call join it?
             if (PMIX_GROUP_NONE != blk->grpop && op != blk->grpop) {
                 return PMIX_ERR_BAD_PARAM;
@@ -487,6 +495,7 @@ newblock:
     trk->ninfo = ninfo;
     pmix_list_append(&blk->mbrs, &trk->super);
     if (follower || bootstrap) {
+        blk->solo = true;
         blk->def_complete = true;
     } else {
         check_definition_complete(blk);
@@ -784,8 +793,20 @@ reply:
     // the participants on the rest are waiting on a reply nothing else will
     // send. Use the SAFE variant: matching blocks are removed (and usually
     // released) below, so we must cache the next pointer first.
+    //
+    // Only a sibling the host holds is answered, and only one of the same
+    // operation: a block still collecting its local participants has
+    // never been seen by the host, and one completed by this library
+    // rather than the host has a completion of its own queued - answering
+    // it here released it under that completion. The host's completion
+    // for this ID says nothing about either. This loop releases blk when
+    // it reaches it, so the siblings after it are compared with the
+    // operation taken from blk above rather than with blk itself
     PMIX_LIST_FOREACH_SAFE(bk, nxt_bk, &pmix_server_globals.grp_collectives, grp_block_t) {
         if (0 != strcmp(id, bk->id)) {
+            continue;
+        }
+        if (bk != blk && (!bk->awaiting_host || bk->grpop != (int) op)) {
             continue;
         }
         PMIX_LIST_FOREACH(trk, &bk->mbrs, grp_trk_t) {
@@ -1093,6 +1114,11 @@ static void group_timeout(int sd, short args, void *cbdata)
     pmix_output_verbose(2, pmix_server_globals.group_output,
                         "group construct timed out for %s", blk->id);
     blk->event_active = false;
+    /* a block the host holds is the host's to time out - see the arming
+     * site in pmix_server_group */
+    if (blk->host_called) {
+        return;
+    }
     abort_construct(blk, PMIX_ERR_TIMEOUT);
 }
 
@@ -2830,7 +2856,10 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
      * bounds how long we wait for all local participants to contribute; once the
      * local phase completes and we forward to the host, the timer is deleted and
      * the host owns any further timeout (mirroring the fence family). */
-    if (0 < tmo && !blk->event_active) {
+    /* Not on a block the host already holds: a call can join one, and the
+     * timer cancelled the host's operation and completed the block itself,
+     * freeing it while the host still held it */
+    if (0 < tmo && !blk->event_active && !blk->host_called) {
         PMIX_THREADSHIFT_DELAY(blk, group_timeout, tmo);
         blk->event_active = true;
     }
