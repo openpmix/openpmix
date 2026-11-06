@@ -495,6 +495,8 @@ static char *ac_token = NULL;
 
 /* whether start_server leaves its registered rank unprepared */
 static bool ac_unprepared = false;
+/* start_server registers the client's rank but not its namespace */
+static bool ac_no_nspace = false;
 
 static bool names_ac_rank(const char *nspace, pmix_rank_t rank)
 {
@@ -1058,9 +1060,11 @@ static pmix_status_t start_server(pmix_server_module_t *module, bool client, uid
         return rc;
     }
     PMIX_LOAD_NSPACE(ns, AC_NSPACE);
-    rc = PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
-    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-        return rc;
+    if (!ac_no_nspace) {
+        rc = PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            return rc;
+        }
     }
     PMIX_LOAD_PROCID(&proc, AC_NSPACE, 0);
     rc = PMIx_server_register_client(&proc, uid, getgid(), NULL, NULL, NULL);
@@ -1126,6 +1130,25 @@ static int case_unknown_rank(void)
     reply = send_ack(msg, sz, &sd);
     free(msg);
     return expect_status("unregistered rank", reply, PMIX_ERR_INVALID_CRED);
+}
+
+/* the rank is registered and prepared, so the client presents a valid
+ * token - but the host never registered the rank's namespace */
+static int case_nspace_not_registered(void)
+{
+    char *msg;
+    size_t sz;
+    int sd = -1;
+    pmix_status_t reply;
+
+    ac_no_nspace = true;
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native", NULL, false, &sz);
+    reply = send_ack(msg, sz, &sd);
+    free(msg);
+    return expect_status("namespace not registered", reply, PMIX_ERR_INVALID_CRED);
 }
 
 static int case_unknown_psec(bool tool)
@@ -5249,6 +5272,8 @@ int main(int argc, char **argv)
              "one with a wrong token is", case_unknown_nspace);
     run_case("a client naming an unregistered rank is refused PMIX_ERR_INVALID_CRED, as one "
              "with a wrong token is", case_unknown_rank);
+    run_case("a client of a registered rank whose namespace the host has not registered is "
+             "refused PMIX_ERR_INVALID_CRED", case_nspace_not_registered);
     run_case("a client asking for a missing security module is told so", run_bool_false_psec);
     run_case("a tool asking for a missing security module is told so", run_bool_true_psec);
     run_case("a connect-ack cut short is refused with a status", case_truncated);

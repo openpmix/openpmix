@@ -82,6 +82,13 @@ at some point perform a collective operation involving one or more processes
 from that namespace. This is required so the collective can determine when it
 is locally complete.
 
+The host **must** register a namespace before it starts any of that
+namespace's local processes. A client that connects to this server before its
+namespace is registered is refused (``PMIX_ERR_INVALID_CRED``), and the host
+is not asked about it |mdash| even when its rank was registered with
+:ref:`PMIx_server_register_client(3) <man3-PMIx_server_register_client>` and
+prepared with ``PMIx_server_setup_fork``.
+
 The host **must** include ``PMIX_JOB_SIZE`` whenever it registers a
 namespace's job data, either at the top level of ``info`` or inside its
 ``PMIX_JOB_INFO_ARRAY``. A registration (``nlocalprocs`` zero or more) without
@@ -328,7 +335,9 @@ registered; if
 called for an as-yet-unregistered namespace, the library creates a placeholder
 namespace in anticipation of the eventual ``PMIx_server_register_nspace`` call.
 However, collective operations cannot complete locally until the namespace has
-been registered with its ``nlocalprocs`` count.
+been registered with its ``nlocalprocs`` count, and the namespace must be
+registered before any of its clients is started: a client that connects while
+its namespace is only a placeholder is refused.
 
 Large ``PMIX_NODE_MAP`` and ``PMIX_PROC_MAP`` values are commonly generated in
 compressed form using ``PMIx_generate_regex2`` prior to registration.
