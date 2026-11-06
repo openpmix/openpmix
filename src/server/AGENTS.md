@@ -3711,6 +3711,17 @@ misbehave by design).
   host that registered its clients first and then pre-registered the
   namespace set `all_registered` and told nobody: every tracker naming it
   stayed incomplete for the life of the server.
+- **A registration that carries a job's data must give its size.**
+  `_register_nspace` refuses one without `PMIX_JOB_SIZE` (top level or
+  inside `PMIX_JOB_INFO_ARRAY`, `carries_job_size()`) with
+  `PMIX_ERR_BAD_PARAM` and the `register-nspace-no-job-size` topic, before
+  anything is changed - ahead of the take-back of a self-started tool's
+  name, so a refused registration leaves that tool alone. A
+  `PMIX_REGISTER_NODATA` registration is exempt; the update that brings
+  such a namespace its first `PMIX_JOB_INFO_ARRAY` (`!job_info_recvd`) is
+  held to the same rule. The library relies on the size (a group's wildcard
+  is matched against a rank list by it), so it is required rather than
+  assumed. Every unit-test registration gives it.
 - **A registration the host is told failed must not leave the library
   behaving as though it succeeded.** `nlocalprocs` is the one thing
   `_register_nspace` publishes before any of the work below it can fail,

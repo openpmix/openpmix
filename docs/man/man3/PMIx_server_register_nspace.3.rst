@@ -82,6 +82,16 @@ at some point perform a collective operation involving one or more processes
 from that namespace. This is required so the collective can determine when it
 is locally complete.
 
+The host **must** include ``PMIX_JOB_SIZE`` whenever it registers a
+namespace's job data, either at the top level of ``info`` or inside its
+``PMIX_JOB_INFO_ARRAY``. A registration (``nlocalprocs`` zero or more) without
+it is refused with ``PMIX_ERR_BAD_PARAM`` and changes nothing the library
+holds for ``nspace``. A registration carrying ``PMIX_REGISTER_NODATA``
+registers no job data and need not include it; the update (negative
+``nlocalprocs``) that later delivers that namespace's
+``PMIX_JOB_INFO_ARRAY`` must. An update of a namespace whose job data is
+already registered need not repeat the size.
+
 Blocking and non-blocking forms
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -195,6 +205,7 @@ Job-realm information
 * ``PMIX_JOBID`` (char\*) |mdash| job identifier assigned by the resource
   manager.
 * ``PMIX_JOB_SIZE`` (uint32_t) |mdash| total number of processes in the job.
+  **Required** whenever the job's data is registered; see `DESCRIPTION`_.
 * ``PMIX_NODE_MAP`` (char\*) |mdash| regular-expression representation of the
   nodes hosting the job (see ``PMIx_generate_regex2``).
 * ``PMIX_PROC_MAP`` (char\*) |mdash| regular-expression representation of the
@@ -288,7 +299,8 @@ result directly:
 * ``PMIX_ERR_INIT`` |mdash| the PMIx server library has not been initialized.
 * ``PMIX_ERR_NOT_AVAILABLE`` |mdash| the operation cannot be serviced because
   the library's progress engine has been stopped.
-* ``PMIX_ERR_BAD_PARAM`` |mdash| ``nspace`` is ``NULL`` or empty.
+* ``PMIX_ERR_BAD_PARAM`` |mdash| ``nspace`` is ``NULL`` or empty, or the
+  registration carries the job's data without ``PMIX_JOB_SIZE``.
 * ``PMIX_ERR_NOT_FOUND`` |mdash| a ``PMIX_USERID`` or ``PMIX_GRPID`` was given
   as a name that does not resolve to a user or group.
 * ``PMIX_ERR_WOULD_BLOCK`` |mdash| the blocking form was called from the
@@ -297,9 +309,11 @@ result directly:
   waiting for the request would be waiting for the caller. Use the
   non-blocking form from that context.
 
-Both forms return ``PMIX_ERR_INIT``, ``PMIX_ERR_NOT_AVAILABLE`` and
-``PMIX_ERR_BAD_PARAM`` directly, since they are detected before the request is
-accepted.
+Both forms return ``PMIX_ERR_INIT``, ``PMIX_ERR_NOT_AVAILABLE`` and, for a
+``NULL`` or empty ``nspace``, ``PMIX_ERR_BAD_PARAM`` directly, since they are
+detected before the request is accepted. A missing ``PMIX_JOB_SIZE`` is
+detected once the request is processed, so the non-blocking form reports it
+to ``cbfunc``.
 
 Any other negative value indicates an appropriate error condition. PMIx error
 constants are defined in ``pmix_common.h``.

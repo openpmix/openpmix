@@ -49,6 +49,13 @@
  *      are resolved when the namespace is registered, so what is stored -
  *      and what a process later reads back - is the number. A name that
  *      does not resolve fails the registration.
+ *
+ *   7. A registration that carries a job's data gives the job's size
+ *      (PMIX_JOB_SIZE), at the top level or inside PMIX_JOB_INFO_ARRAY.
+ *      One that does not is refused with PMIX_ERR_BAD_PARAM and changes
+ *      nothing the server held. A PMIX_REGISTER_NODATA registration
+ *      carries no data and need not give it; the update that later
+ *      brings that job's data must.
  */
 
 #include "src/include/pmix_config.h"
@@ -69,6 +76,22 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+/* PMIX_JOB_SIZE = n, for a registration. Each size is kept in static
+ * storage, loaded once, so it outlives a non-blocking call; a uint32 value
+ * holds no allocation, so nothing needs to be destructed */
+static pmix_info_t *js_info(int n)
+{
+    static pmix_info_t cache[8];
+    static bool loaded[8] = {false};
+    uint32_t sz = (uint32_t) n;
+
+    if (!loaded[n]) {
+        PMIX_INFO_LOAD(&cache[n], PMIX_JOB_SIZE, &sz, PMIX_UINT32);
+        loaded[n] = true;
+    }
+    return &cache[n];
+}
 
 static int npass = 0;
 static int nfail = 0;
@@ -196,6 +219,14 @@ static void fetch_hostname(int sd, short args, void *cbdata)
  * ------------------------------------------------------------------ */
 
 #define IDNS "regut-idname"
+
+/* the job-size cases */
+#define JSNS_NONE   "regut-js-none"
+#define JSNS_DATA   "regut-js-data"
+#define JSNS_ARRAY  "regut-js-array"
+#define JSNS_HELD   "regut-js-held"
+#define JSNS_NODATA "regut-js-nodata"
+#define JSKEY       "regut.js.key"
 
 typedef struct {
     pmix_event_t ev;
@@ -333,7 +364,7 @@ static int tool_child(int which)
     PMIX_LOAD_PROCID(&target, "regut-child", 0);
 
     if (0 == which) {
-        rc = PMIx_server_register_nspace(ns, 1, NULL, 0, tolerant_op, NULL);
+        rc = PMIx_server_register_nspace(ns, 1, js_info(1), 1, tolerant_op, NULL);
     } else {
         rc = PMIx_server_register_client(&target, geteuid(), getegid(), NULL,
                                          tolerant_op, NULL);
@@ -396,7 +427,7 @@ int main(int argc, char **argv)
 
     /* --- argument screens ------------------------------------------- */
     PMIX_LOAD_NSPACE(ns, "");
-    rc = PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+    rc = PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
     report("register_nspace refuses an empty namespace", PMIX_ERR_BAD_PARAM == rc);
 
     rc = PMIx_server_register_client(NULL, geteuid(), getegid(), NULL, NULL, NULL);
@@ -412,7 +443,7 @@ int main(int argc, char **argv)
     PMIX_LOAD_PROCID(&pr, "regut-bystander", 0);
     PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
     PMIX_LOAD_NSPACE(ns, "regut-bystander");
-    PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+    PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
     progress_barrier();
 
     nsbefore = pmix_list_get_size(&pmix_globals.nspaces);
@@ -487,7 +518,7 @@ int main(int argc, char **argv)
         PMIX_LOAD_PROCID(&pr, UPDNS, 0);
         PMIx_server_register_client(&pr, geteuid(), getegid(), NULL, NULL, NULL);
         PMIX_LOAD_NSPACE(ns, UPDNS);
-        PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
         progress_barrier();
 
         /* the identifier is a PMIX_PROCID and it is NOT in slot 0 - both
@@ -542,21 +573,23 @@ int main(int argc, char **argv)
     {
         struct passwd *pw = getpwuid(geteuid());
         struct group *gr = getgrgid(getegid());
-        pmix_info_t idinfo[2];
-        uint32_t id = 0;
+        pmix_info_t idinfo[3];
+        uint32_t id = 0, jsize = 1;
         bool isnum = false;
 
         if (NULL != pw && NULL != pw->pw_name && NULL != gr && NULL != gr->gr_name) {
             PMIX_INFO_LOAD(&idinfo[0], PMIX_USERID, pw->pw_name, PMIX_STRING);
             PMIX_INFO_LOAD(&idinfo[1], PMIX_GRPID, gr->gr_name, PMIX_STRING);
+            PMIX_INFO_LOAD(&idinfo[2], PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
             PMIX_LOAD_NSPACE(ns, IDNS);
-            rc = PMIx_server_register_nspace(ns, 1, idinfo, 2, NULL, NULL);
+            rc = PMIx_server_register_nspace(ns, 1, idinfo, 3, NULL, NULL);
             report("a job whose user and group are given by name registers",
                    PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
             report("the host's array is left as it was",
                    PMIX_STRING == idinfo[0].value.type && PMIX_STRING == idinfo[1].value.type);
             PMIX_INFO_DESTRUCT(&idinfo[0]);
             PMIX_INFO_DESTRUCT(&idinfo[1]);
+            PMIX_INFO_DESTRUCT(&idinfo[2]);
             progress_barrier();
 
             check_stored_id(PMIX_USERID, &id, &isnum);
@@ -568,10 +601,107 @@ int main(int argc, char **argv)
         }
 
         PMIX_INFO_LOAD(&idinfo[0], PMIX_GRPID, "regut-no-such-group", PMIX_STRING);
+        PMIX_INFO_LOAD(&idinfo[1], PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
         PMIX_LOAD_NSPACE(ns, "regut-idname-bad");
-        rc = PMIx_server_register_nspace(ns, 1, idinfo, 1, NULL, NULL);
+        rc = PMIx_server_register_nspace(ns, 1, idinfo, 2, NULL, NULL);
         report("a job whose group name does not resolve is refused", PMIX_ERR_NOT_FOUND == rc);
         PMIX_INFO_DESTRUCT(&idinfo[0]);
+        PMIX_INFO_DESTRUCT(&idinfo[1]);
+        progress_barrier();
+    }
+
+    /* --- a registration carrying job data must give the job's size --- */
+    {
+        pmix_info_t jinfo[2], upd;
+        pmix_data_array_t *da;
+        pmix_info_t *iptr;
+        uint32_t jsize = 4, val = 7;
+
+        /* no size, no data */
+        PMIX_LOAD_NSPACE(ns, JSNS_NONE);
+        rc = PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        report("a registration with no job size is refused", PMIX_ERR_BAD_PARAM == rc);
+        progress_barrier();
+        PMIX_INFO_LOAD(&upd, JSKEY, &val, PMIX_UINT32);
+        rc = PMIx_server_register_nspace(ns, -1, &upd, 1, NULL, NULL);
+        report("...and leaves no namespace behind", PMIX_ERR_NOT_FOUND == rc);
+        PMIX_INFO_DESTRUCT(&upd);
+        progress_barrier();
+
+        /* other job data, no size */
+        PMIX_LOAD_NSPACE(ns, JSNS_DATA);
+        PMIX_INFO_LOAD(&jinfo[0], JSKEY, &val, PMIX_UINT32);
+        rc = PMIx_server_register_nspace(ns, 1, jinfo, 1, NULL, NULL);
+        report("a registration with job data but no job size is refused",
+               PMIX_ERR_BAD_PARAM == rc);
+        PMIX_INFO_DESTRUCT(&jinfo[0]);
+        progress_barrier();
+
+        /* the size inside a PMIX_JOB_INFO_ARRAY */
+        da = PMIx_Data_array_create(1, PMIX_INFO);
+        iptr = (pmix_info_t *) da->array;
+        PMIX_INFO_LOAD(&iptr[0], PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
+        PMIX_INFO_CONSTRUCT(&jinfo[0]);
+        PMIX_LOAD_KEY(jinfo[0].key, PMIX_JOB_INFO_ARRAY);
+        jinfo[0].value.type = PMIX_DATA_ARRAY;
+        jinfo[0].value.data.darray = da;
+        PMIX_LOAD_NSPACE(ns, JSNS_ARRAY);
+        rc = PMIx_server_register_nspace(ns, 1, jinfo, 1, NULL, NULL);
+        report("a job size given inside PMIX_JOB_INFO_ARRAY is accepted",
+               PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+        PMIX_INFO_DESTRUCT(&jinfo[0]);
+        progress_barrier();
+
+        /* a refused registration of a namespace already held leaves it */
+        PMIX_LOAD_NSPACE(ns, JSNS_HELD);
+        rc = PMIx_server_register_nspace(ns, 1, js_info(4), 1, NULL, NULL);
+        report("a registration giving the job size is accepted",
+               PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+        progress_barrier();
+        rc = PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        report("registering it again with no job size is refused", PMIX_ERR_BAD_PARAM == rc);
+        progress_barrier();
+        PMIX_INFO_LOAD(&upd, JSKEY, &val, PMIX_UINT32);
+        rc = PMIx_server_register_nspace(ns, -1, &upd, 1, NULL, NULL);
+        report("...and the namespace is still registered, taking an update with no size",
+               PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+        PMIX_INFO_DESTRUCT(&upd);
+        progress_barrier();
+
+        /* PMIX_REGISTER_NODATA, then the job data in an update */
+        PMIX_INFO_LOAD(&jinfo[0], PMIX_REGISTER_NODATA, NULL, PMIX_BOOL);
+        PMIX_LOAD_NSPACE(ns, JSNS_NODATA);
+        rc = PMIx_server_register_nspace(ns, 1, jinfo, 1, NULL, NULL);
+        report("a NODATA registration need not give the job size",
+               PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+        PMIX_INFO_DESTRUCT(&jinfo[0]);
+        progress_barrier();
+
+        da = PMIx_Data_array_create(1, PMIX_INFO);
+        iptr = (pmix_info_t *) da->array;
+        PMIX_INFO_LOAD(&iptr[0], JSKEY, &val, PMIX_UINT32);
+        PMIX_INFO_CONSTRUCT(&upd);
+        PMIX_LOAD_KEY(upd.key, PMIX_JOB_INFO_ARRAY);
+        upd.value.type = PMIX_DATA_ARRAY;
+        upd.value.data.darray = da;
+        rc = PMIx_server_register_nspace(ns, -1, &upd, 1, NULL, NULL);
+        report("the update bringing its job data without the size is refused",
+               PMIX_ERR_BAD_PARAM == rc);
+        PMIX_INFO_DESTRUCT(&upd);
+        progress_barrier();
+
+        da = PMIx_Data_array_create(2, PMIX_INFO);
+        iptr = (pmix_info_t *) da->array;
+        PMIX_INFO_LOAD(&iptr[0], JSKEY, &val, PMIX_UINT32);
+        PMIX_INFO_LOAD(&iptr[1], PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
+        PMIX_INFO_CONSTRUCT(&upd);
+        PMIX_LOAD_KEY(upd.key, PMIX_JOB_INFO_ARRAY);
+        upd.value.type = PMIX_DATA_ARRAY;
+        upd.value.data.darray = da;
+        rc = PMIx_server_register_nspace(ns, -1, &upd, 1, NULL, NULL);
+        report("...and one giving the size is accepted",
+               PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+        PMIX_INFO_DESTRUCT(&upd);
         progress_barrier();
     }
 
