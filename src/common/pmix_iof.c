@@ -40,6 +40,7 @@
 #include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/threads/pmix_threads.h"
+#include "src/common/pmix_iof_writer.h"
 #include "src/util/pmix_runas.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_argv.h"
@@ -561,6 +562,9 @@ static void stdin_resume_cancel(void);
 void pmix_iof_finalize(void)
 {
     stdin_resume_cancel();
+    /* the writer thread, if a file for another user ever needed one. The
+     * sinks feeding it were closed already, so this lets it finish */
+    pmix_iof_writer_finalize();
     if (NULL != stdinev_global) {
         PMIX_RELEASE(stdinev_global);
         stdinev_global = NULL;
@@ -1208,6 +1212,17 @@ static int open_output(void *arg)
     return fd;
 }
 
+/* Is a file opened for this job one this server writes from the writer
+ * thread (pmix_iof_writer.h) rather than its progress thread? That is
+ * any file opened for an owner other than the server's own user - one a
+ * server running as root opens in a child that has become the owner. A
+ * server that is the owner writes its own user's files as it always
+ * has. */
+static bool relayed(const pmix_iof_perms_t *op)
+{
+    return geteuid() != op->owner || getegid() != op->owner_gid;
+}
+
 /* Open an output file as the job's owner, with the groups the host gave
  * for it. The descriptor that comes back is checked again here before it
  * is used, and nothing on it is changed. Returns it, or -1 */
@@ -1247,6 +1262,15 @@ static int output_as_owner(pmix_iof_output_t *out)
                             "IOF: output file %s/%s could not be opened as uid %lu - "
                             "not written", out->root, out->file, (unsigned long) op->owner);
         return -1;
+    }
+    if (relayed(op)) {
+        /* Even the check below is an fstat() of a file on the owner's
+         * filesystem, so it is the writer thread's to make, before it
+         * writes anything. We write only to the pipe it gives back */
+        char what[PMIX_PATH_MAX];
+
+        snprintf(what, sizeof(what), "%s/%s", out->root, out->file);
+        return pmix_iof_writer_relay(fd, op->owner, what);
     }
     if (!output_file_ok(fd, op->owner)) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
@@ -1492,6 +1516,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                      PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
             }
+            snk->wev.relayed = relayed(&op);
             pmix_list_append(&nptr->sinks, &snk->super);
             free(outdir);
             return &snk->wev;
@@ -1533,6 +1558,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                  PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL,
                                  pmix_iof_write_handler);
+            snk->wev.relayed = relayed(&op);
             pmix_list_append(&nptr->sinks, &snk->super);
             free(outdir);
             return &snk->wev;
@@ -1596,6 +1622,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                      PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
             }
+            snk->wev.relayed = relayed(&op);
             pmix_list_append(&nptr->sinks, &snk->super);
             return &snk->wev;
         } else {
@@ -1639,6 +1666,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                  PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL,
                                  pmix_iof_write_handler);
+            snk->wev.relayed = relayed(&op);
             pmix_list_append(&nptr->sinks, &snk->super);
             return &snk->wev;
         }
@@ -2366,7 +2394,7 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     pmix_byte_object_t *wbo;
     pmix_iof_write_output_t *copy;
     pmix_iof_write_output_t *output;
-
+    bool keep = true;
 
     /* write output data to the corresponding tag */
     if (PMIX_FWD_STDIN_CHANNEL & stream) {
@@ -2412,8 +2440,24 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     PMIx_Byte_object_free(wbo, 1);
 
 process:
-    /* add this data to the write list for this fd */
-    pmix_list_append(&channel->outputs, &output->super);
+    /* A file opened for another user is written by the writer thread
+     * through a pipe, and a file that does not answer leaves the pipe
+     * full and this list growing for as long as the job writes. Past the
+     * cap the output is dropped instead - said once, here - while the
+     * end-of-stream marker always goes through */
+    if (channel->relayed && 0 < output->numbytes &&
+        pmix_iof_writer_backlog <= pmix_list_get_size(&channel->outputs)) {
+        keep = false;
+        if (!channel->dropped) {
+            channel->dropped = true;
+            pmix_show_help("help-pmix-server.txt", "iof-file-backlog", true,
+                           name->nspace, (unsigned long) name->rank,
+                           (unsigned long) pmix_iof_writer_backlog);
+        }
+    } else {
+        /* add this data to the write list for this fd */
+        pmix_list_append(&channel->outputs, &output->super);
+    }
 
     /* The copies are a convenience - the caller asked to see the output on
      * its own terminal as well as in the file. The primary write is already
@@ -2452,6 +2496,12 @@ process:
                 }
             }
         }
+    }
+
+    if (!keep) {
+        /* only the copies were wanted of it */
+        PMIX_RELEASE(output);
+        return PMIX_SUCCESS;
     }
 
     /* is the write event issued? */
@@ -4543,6 +4593,8 @@ static void iof_write_event_construct(pmix_iof_write_event_t *wev)
     PMIX_CONSTRUCT(&wev->outputs, pmix_list_t);
     wev->tv.tv_sec = 0;
     wev->tv.tv_usec = 0;
+    wev->relayed = false;
+    wev->dropped = false;
 }
 static void iof_write_event_destruct(pmix_iof_write_event_t *wev)
 {

@@ -50,6 +50,11 @@
  *   opened, after the obstacle is
  *   gone                            -> not tried again for that stream;
  *                                      the job's other stream still is
+ *   as root only: writing another
+ *   user's file never finishes      -> the server keeps answering, output
+ *                                      past pmix_iof_writer_backlog is
+ *                                      dropped, and what was held is
+ *                                      written once the file answers
  *   as root only: opening a file as
  *   the owner never finishes        -> abandoned at pmix_runas_timeout,
  *                                      and the job's other file is not
@@ -62,6 +67,7 @@
 #include "include/pmix_server.h"
 
 #include "src/include/pmix_globals.h"
+#include "src/common/pmix_iof_writer.h"
 #include "src/util/pmix_runas.h"
 
 #include <errno.h>
@@ -297,6 +303,8 @@ static void test_other_owner(void)
                mode_is(file, 0600) && owned_by(file, OTHER_UID, (gid_t) -1));
         report("another user's job: as root, its directories are the owner's alone",
                mode_is(rankdir, 0700) && owned_by(rankdir, OTHER_UID, (gid_t) -1));
+        /* written by the writer thread, not the progress thread */
+        report("another user's job: as root, its output reaches the file", holds(file, "hello\n"));
     } else {
         report("another user's job: a server that cannot become the owner writes nothing",
                !exists(dir));
@@ -762,6 +770,72 @@ static void test_stalled(void)
     }
 }
 
+/* A root server writes another user's output files from the writer
+ * thread, through a pipe, rather than from the progress thread.
+ * pmix_iof_writer_test_stall
+ * holds the writer thread as such a file would. The output delivered
+ * meanwhile is far more than the pipe and the backlog together hold, so
+ * if any of it were written from the progress thread - or queued without
+ * bound - this either hangs or holds all of it. */
+static void test_writer_stall(void)
+{
+    char dir[1024], file[1100], chunk[4097];
+    pmix_byte_object_t bo;
+    pmix_proc_t src;
+    struct stat buf;
+    size_t saved = pmix_iof_writer_backlog, total = 0;
+    double t0, took;
+    int n;
+
+    if (0 != geteuid()) {
+        fprintf(stdout, "  SKIP: a stalled writer - not running as root, so there is none\n");
+        return;
+    }
+    snprintf(dir, sizeof(dir), "%s/wstall", base);
+    if (0 != mkdir(dir, 0755) || 0 != chown(dir, OTHER_UID, getegid())) {
+        report("writer stall: fixture", 0);
+        return;
+    }
+    if (PMIX_SUCCESS != reg("perms-wstall", PMIX_IOF_OUTPUT_TO_DIRECTORY, dir, OTHER_UID,
+                            getegid(), (gid_t) -1)) {
+        report("writer stall: fixture", 0);
+        return;
+    }
+    /* the file is opened, and the writer thread started, by this */
+    deliver_on("perms-wstall", PMIX_FWD_STDOUT_CHANNEL, "first\n");
+    snprintf(file, sizeof(file), "%s/perms-wstall/rank.0/stdout", dir);
+
+    pmix_iof_writer_backlog = 8;
+    pmix_iof_writer_test_stall = true;
+    memset(chunk, 'x', sizeof(chunk) - 2);
+    chunk[sizeof(chunk) - 2] = '\n';
+    chunk[sizeof(chunk) - 1] = '\0';
+    PMIX_LOAD_PROCID(&src, "perms-wstall", 0);
+    bo.bytes = chunk;
+    bo.size = sizeof(chunk) - 1;
+    t0 = now_s();
+    for (n = 0; n < 64; n++) {
+        (void) PMIx_server_IOF_deliver(&src, PMIX_FWD_STDOUT_CHANNEL, &bo, NULL, 0, NULL, NULL);
+        total += bo.size;
+    }
+    progress_barrier();
+    took = now_s() - t0;
+    report("a writer that does not finish leaves the server answering", took < 5.0);
+
+    pmix_iof_writer_test_stall = false;
+    /* let the writer thread and the queued writes catch up */
+    for (n = 0; n < 20; n++) {
+        progress_barrier();
+        usleep(100000);
+    }
+    pmix_iof_writer_backlog = saved;
+
+    report("...output past the backlog is dropped, not held",
+           0 == stat(file, &buf) && (size_t) buf.st_size < total);
+    report("...and what was held is written once the file answers",
+           0 == stat(file, &buf) && (size_t) buf.st_size > 8 * bo.size);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -796,6 +870,7 @@ int main(int argc, char **argv)
     test_unopened();
     test_unopened_once();
     test_stalled();
+    test_writer_stall();
 
     PMIx_server_finalize();
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", base);
