@@ -1124,15 +1124,15 @@ Recorded so the next review does not re-derive them.
   because `PMIx_Argv_split()` returns `NULL` — not an empty array — for
   `""` or `",,,"`, and the `NULL == options` arm breaks out before
   `specified` is set. Covered by `test/unit/gds_datastore`.
-- **Nothing in `gds` checks `darray->type` before casting an array to
-  `pmix_info_t *`.** Neither component does, for any of the `*_INFO_ARRAY`
-  keys: the key is taken to imply the element type. That is a project-wide
-  convention, not an oversight here. `get_local_job_data_info()` is a
-  genuinely different case and is guarded: it probes element zero of
-  **every** data array, whatever its key, looking for a session id, so it
-  first checks that the array's type is `PMIX_INFO` before reading an
-  element as a `pmix_info_t`. `test/unit/gds_datastore` covers an array
-  of another type whose leading bytes spell `pmix.session.id`.
+- **`get_local_job_data_info()` checks `darray->type` itself rather
+  than through `pmix_gds_base_info_array()`.** Every store-side
+  `*_INFO_ARRAY` site goes through the shared check (see "Check the
+  shape" in [`../AGENTS.md`](../AGENTS.md)); this one is different
+  because it probes element zero of **every** data array, whatever its
+  key, looking for a session id, and only counts the others. It reads
+  an element only once the type is `PMIX_INFO`. `test/unit/gds_datastore`
+  covers an array of another type whose leading bytes spell
+  `pmix.session.id`.
 
 ## Testing
 

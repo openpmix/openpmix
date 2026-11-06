@@ -364,11 +364,10 @@ static void _register_nspace(int sd, short args, void *cbdata)
                      * to overlay - a char* for a string - which is then
                      * dereferenced. Both gds/hash readers of this key check
                      * it, and one of them says in so many words that every
-                     * path taking the key owes the same check */
-                    if (PMIX_DATA_ARRAY != cd->info[i].value.type ||
-                        NULL == cd->info[i].value.data.darray ||
-                        NULL == cd->info[i].value.data.darray->array ||
-                        0 == cd->info[i].value.data.darray->size) {
+                     * path taking the key owes the same check. So is the
+                     * element type: an array of anything else is walked
+                     * as pmix_info_t records it does not hold */
+                    if (!pmix_server_valid_darray(&cd->info[i], PMIX_INFO, 1)) {
                         /* nothing to describe a rank with */
                         rc = PMIX_ERR_BAD_PARAM;
                         goto release;
@@ -453,9 +452,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
                          * unable to update job data at all - the very
                          * thing the negative nlocalprocs form exists
                          * for. */
-                        if (PMIX_DATA_ARRAY == cd->info[i].value.type &&
-                            NULL != cd->info[i].value.data.darray &&
-                            NULL != cd->info[i].value.data.darray->array) {
+                        if (pmix_server_valid_darray(&cd->info[i], PMIX_INFO, 0)) {
                             iptr = (pmix_info_t *) cd->info[i].value.data.darray->array;
                             ninfo = cd->info[i].value.data.darray->size;
                             for (m = 0; m < ninfo; m++) {

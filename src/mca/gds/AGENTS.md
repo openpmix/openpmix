@@ -413,6 +413,22 @@ golden rule does not usually bite here.
   must be a string, an empty `PMIX_QUALIFIED_VALUE` is rejected before
   `size - 1` is computed, and a key-index table is indexed only within
   its announced length. Check the shape before indexing it.
+
+  **An `*_INFO_ARRAY` key does not make its value an array of
+  `pmix_info_t`.** The element type travels with the array, and the
+  unpacker allocates the block at that type's width, so an array is
+  walked as `pmix_info_t` only once its element type says so. Every site in `hash` and `shmem3` that takes
+  such a value - session, job, app, node and proc arrays, the qualified
+  value, the job update - goes through `pmix_gds_base_info_array()` in
+  [`base/base.h`](base/base.h), which checks the shape the array
+  declares and hands back the array and its size. It cannot check what
+  the memory holds, and needs to only off the wire: there the unpacker
+  built the block from the declared type, so the declaration is the
+  contents. An array a host built in-process is its word on both. Use it rather than writing the test out again:
+  of the fourteen open-coded versions it replaced, thirteen checked
+  everything but the element type. `test/unit/gds_datastore`'s
+  `test_mislabeled_info_arrays()` covers each key, in-process and off the
+  wire.
 - **A module's `store_modex` callback must report `PMIX_SUCCESS` for a
   blob it consumed.** See [`base/AGENTS.md`](base/AGENTS.md) — returning
   the unpack end-of-buffer code instead silently drops every proc after

@@ -216,11 +216,9 @@ store_node_array(
 
     // We expect an array of node-level info for a specific
     // node. Make sure we were given the correct type.
-    // A value can name PMIX_DATA_ARRAY and carry no array, so check for
-    // the object rather than only for the type.
-    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != val->type ||
-                      NULL == val->data.darray ||
-                      NULL == val->data.darray->array)) {
+    pmix_info_t *info;
+    size_t ninfo;
+    if (PMIX_UNLIKELY(!pmix_gds_base_info_array(val, &info, &ninfo))) {
         rc = PMIX_ERR_TYPE_MISMATCH;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -236,10 +234,7 @@ store_node_array(
     }
 
     pmix_gds_shmem3_nodeinfo_t *nodeinfo;
-    rc = cache_node_info(
-        (pmix_info_t *)val->data.darray->array,
-        val->data.darray->size, cache, &nodeinfo
-    );
+    rc = cache_node_info(info, ninfo, cache, &nodeinfo);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         goto out;
     }
@@ -268,11 +263,11 @@ store_app_array(
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
-    // We expect an array of node-level info for a specific
-    // node. Make sure we were given the correct type.
-    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != val->type ||
-                      NULL == val->data.darray ||
-                      NULL == val->data.darray->array)) {
+    // We expect an array of app-level info. Make sure we were given
+    // the correct type.
+    pmix_info_t *info;
+    size_t size;
+    if (PMIX_UNLIKELY(!pmix_gds_base_info_array(val, &info, &size))) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
@@ -294,8 +289,6 @@ store_app_array(
         return rc;
     }
 
-    const size_t size = val->data.darray->size;
-    pmix_info_t *info = (pmix_info_t *)val->data.darray->array;
     for (size_t j = 0; j < size; j++) {
         PMIX_GDS_SHMEM3_VVOUT(
             "%s:%s for key=%s", __func__,
@@ -406,15 +399,12 @@ store_proc_data(
         return PMIX_ERR_BAD_PARAM;
     }
     // We are expecting an array of data pertaining to a specific proc.
-    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != kval->value->type ||
-                      NULL == kval->value->data.darray ||
-                      NULL == kval->value->data.darray->array)) {
+    pmix_info_t *info;
+    size_t size;
+    if (PMIX_UNLIKELY(!pmix_gds_base_info_array(kval->value, &info, &size))) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
-
-    pmix_info_t *const info = (pmix_info_t *)kval->value->data.darray->array;
-    const size_t size = kval->value->data.darray->size;
     // The array has to say which proc it describes - the host may do
     // that with a rank or a procid, in any position.
     pmix_rank_t rank;
@@ -462,20 +452,19 @@ pmix_gds_shmem3_store_session_array(
     pmix_status_t rc = PMIX_SUCCESS;
 
     // We expect an array of session-level info.
-    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != val->type)) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+    pmix_info_t *info;
+    size_t ninfo;
+    if (PMIX_UNLIKELY(!pmix_gds_base_info_array(val, &info, &ninfo))) {
+        PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
 
     // The first value is required to be the session ID, so there has to be
     // a first value to look at.
-    if (PMIX_UNLIKELY(NULL == val->data.darray ||
-                      NULL == val->data.darray->array ||
-                      0 == val->data.darray->size)) {
+    if (PMIX_UNLIKELY(0 == ninfo)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
-    pmix_info_t *const info = (pmix_info_t *)val->data.darray->array;
     if (PMIX_UNLIKELY(!PMIX_CHECK_KEY(&info[0], PMIX_SESSION_ID))) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
@@ -509,11 +498,7 @@ pmix_gds_shmem3_store_session_array(
      * session already says publishes nothing. */
     if (sesh->described ||
         NULL != pmix_gds_shmem3_chain_head(&sesh->segments)) {
-        return pmix_gds_shmem3_session_describe(
-            sesh, job,
-            (pmix_info_t *) val->data.darray->array,
-            val->data.darray->size
-        );
+        return pmix_gds_shmem3_session_describe(sesh, job, info, ninfo);
     }
 
     return pmix_gds_shmem3_store_session_info(job, sesh, val);
@@ -598,15 +583,13 @@ pmix_gds_shmem3_store_qualified(
     // key-value being stored, followed by one or more qualifiers. These data
     // can arrive from a peer, so check the shape before indexing it: an empty
     // array would read info[0] out of bounds and ask for SIZE_MAX qualifiers.
-    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != value->type ||
-                      NULL == value->data.darray ||
-                      NULL == value->data.darray->array ||
-                      0 == value->data.darray->size)) {
+    pmix_info_t *info;
+    size_t ninfo;
+    if (PMIX_UNLIKELY(!pmix_gds_base_info_array(value, &info, &ninfo) ||
+                      0 == ninfo)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
-    pmix_info_t *const info = (pmix_info_t *)value->data.darray->array;
-    const size_t ninfo = value->data.darray->size;
     // This does not need to use the TMA since its contents are later copied in
     // hash_store() using a TMA. This is just temporary storage.
     const size_t nquals = ninfo - 1;

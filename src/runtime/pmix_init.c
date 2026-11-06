@@ -293,9 +293,11 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO_ARRAY)) {
                 /* contains info about our node. Check the type before
                  * reading darray - the union member we would otherwise
-                 * follow is whatever the real type left there */
+                 * follow is whatever the real type left there - and the
+                 * element type before walking it as pmix_info_t */
                 if (PMIX_DATA_ARRAY != info[n].value.type ||
                     NULL == info[n].value.data.darray ||
+                    PMIX_INFO != info[n].value.data.darray->type ||
                     NULL == info[n].value.data.darray->array) {
                     continue;
                 }

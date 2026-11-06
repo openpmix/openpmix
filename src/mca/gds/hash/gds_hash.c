@@ -292,14 +292,10 @@ static pmix_status_t hash_accept_update(pmix_buffer_t *buff)
             pmix_info_t *uptr;
             size_t nu, u;
 
-            if (PMIX_DATA_ARRAY != kv.value->type ||
-                NULL == kv.value->data.darray ||
-                NULL == kv.value->data.darray->array) {
+            if (!pmix_gds_base_info_array(kv.value, &uptr, &nu)) {
                 PMIX_DESTRUCT(&kv);
                 return PMIX_ERR_TYPE_MISMATCH;
             }
-            uptr = (pmix_info_t *) kv.value->data.darray->array;
-            nu = kv.value->data.darray->size;
             for (u = 0; u < nu; u++) {
                 pmix_kval_t ukv;
 
@@ -695,15 +691,11 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_PROC_INFO_ARRAY)) {
             found = false;
             /* an array of data pertaining to a specific proc */
-            if (PMIX_DATA_ARRAY != info[n].value.type ||
-                NULL == info[n].value.data.darray ||
-                NULL == info[n].value.data.darray->array) {
-                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            if (!pmix_gds_base_info_array(&info[n].value, &iptr, &size)) {
+                PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
                 rc = PMIX_ERR_TYPE_MISMATCH;
                 goto release;
             }
-            size = info[n].value.data.darray->size;
-            iptr = (pmix_info_t *) info[n].value.data.darray->array;
             /* the array has to say which proc it describes - the host
              * may do that with a rank or a procid, in any position */
             rc = pmix_gds_base_proc_array_id(iptr, size, &rank, &idpos);
@@ -1564,15 +1556,11 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
         } else if (PMIX_CHECK_KEY(&kptr, PMIX_PROC_INFO_ARRAY)) {
             /* the caching path checks this; so must the path that takes
              * the same key from a server's reply */
-            if (PMIX_DATA_ARRAY != kptr.value->type ||
-                NULL == kptr.value->data.darray ||
-                NULL == kptr.value->data.darray->array) {
+            if (!pmix_gds_base_info_array(kptr.value, &iptr, &sz)) {
                 PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
                 PMIX_DESTRUCT(&kptr);
                 return PMIX_ERR_TYPE_MISMATCH;
             }
-            iptr = (pmix_info_t*)kptr.value->data.darray->array;
-            sz = kptr.value->data.darray->size;
             /* the array has to say which proc it describes - the host
              * may do that with a rank or a procid, in any position */
             rc = pmix_gds_base_proc_array_id(iptr, sz, &rank, &idpos);
@@ -1753,14 +1741,10 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
          * store the values on that rank */
         if (PMIX_CHECK_KEY(kv, PMIX_PROC_INFO_ARRAY)) {
             /* an array of data pertaining to a specific proc */
-            if (PMIX_DATA_ARRAY != kv->value->type ||
-                NULL == kv->value->data.darray ||
-                NULL == kv->value->data.darray->array) {
+            if (!pmix_gds_base_info_array(kv->value, &iptr, &size)) {
                 PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
                 return PMIX_ERR_TYPE_MISMATCH;
             }
-            size = kv->value->data.darray->size;
-            iptr = (pmix_info_t *) kv->value->data.darray->array;
             /* the array has to say which proc it describes - the host
              * may do that with a rank or a procid, in any position */
             rc = pmix_gds_base_proc_array_id(iptr, size, &rank, &idpos);

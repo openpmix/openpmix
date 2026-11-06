@@ -57,6 +57,7 @@
 #include "src/mca/gds/gds.h"
 #include "src/server/pmix_server_ops.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1137,6 +1138,261 @@ static void test_malformed_job_info(void)
     report("the datastore still answers after the rejected input",
            PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&kvs));
     PMIX_LIST_DESTRUCT(&kvs);
+}
+
+/* ------------------------------------------------------------------ */
+/* *_INFO_ARRAY values whose elements are not pmix_info_t               */
+/* ------------------------------------------------------------------ */
+
+/* Every *_INFO_ARRAY key is documented as a PMIX_DATA_ARRAY of
+ * PMIX_INFO, but nothing makes it one: the element type travels with the
+ * array, and an array of anything else is allocated at that type's width.
+ * The datastore checked that a value WAS a data array and then walked it
+ * as pmix_info_t whatever it held.
+ *
+ * The in-process cases below label a block that really does hold one
+ * well-formed pmix_info_t as an array of one PMIX_UINT8. That keeps the
+ * unfixed read in bounds - it finds a perfectly good info and stores it -
+ * so a library that does not check the element type registers the job,
+ * which is the assertion, rather than reading outside the block.
+ * The wire cases cannot borrow a block - the unpacker allocates what the
+ * label says - so they use an element type wider than pmix_info_t; see
+ * pack_pdata_as_info(). */
+static pmix_status_t register_mislabeled(const char *nsname, const char *key,
+                                         pmix_info_t *real)
+{
+    pmix_info_t info[2];
+    pmix_data_array_t mislabeled;
+    pmix_nspace_t ns;
+    uint32_t nprocs = 1;
+    pmix_status_t rc;
+
+    mislabeled.type = PMIX_UINT8;
+    mislabeled.size = 1;
+    mislabeled.array = real;
+    PMIX_INFO_CONSTRUCT(&info[0]);
+    PMIX_LOAD_KEY(info[0].key, key);
+    info[0].value.type = PMIX_DATA_ARRAY;
+    info[0].value.data.darray = &mislabeled;
+    PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_LOAD_NSPACE(ns, nsname);
+    rc = PMIx_server_register_nspace(ns, 1, info, 2, NULL, NULL);
+    /* info[0] borrows the stack descriptor and the caller's info, so
+     * neither is released here */
+    return rc;
+}
+
+/* Pack one kval whose value is an array of ONE pmix_pdata_t built so that
+ * its bytes, read as a pmix_info_t, are a well-formed info {ikey, itype,
+ * zero}. A pmix_pdata_t is wider than a pmix_info_t, so an unfixed reader
+ * stays inside the block the unpacker allocated and takes a perfectly good
+ * info out of it - which it stores, and that is what the case asserts
+ * against. (A byte array cannot do that: it holds fewer bytes than a whole
+ * info, and what the reader then does could not be told apart from the
+ * fixed library's refusal.)
+ *
+ *   info.key    lies over pdata.proc.nspace - ikey goes there
+ *   info.value  lies inside pdata.key - so the key is filled up to that
+ *               offset and ends with itype's low byte, its NUL being the
+ *               high byte and the zeroed tail of the unpacked key the data
+ *
+ * The offsets are computed rather than assumed; a layout this does
+ * not fit reports PMIX_ERR_NOT_SUPPORTED and the case is skipped. */
+static pmix_status_t pack_pdata_as_info(pmix_buffer_t *buf, const char *key,
+                                         const char *ikey, pmix_data_type_t itype)
+{
+    const size_t koff = offsetof(pmix_pdata_t, key);
+    const size_t voff = offsetof(pmix_info_t, value) + offsetof(pmix_value_t, type);
+    pmix_data_type_t t = itype;
+    const unsigned char *tb = (const unsigned char *) &t;
+    pmix_kval_t kv;
+    pmix_value_t val;
+    pmix_data_array_t darray;
+    pmix_pdata_t pd;
+    bool flag = true;
+    pmix_status_t rc;
+
+    if (sizeof(pmix_pdata_t) < sizeof(pmix_info_t) ||
+        0 != offsetof(pmix_info_t, key) || 0 != offsetof(pmix_pdata_t, proc) ||
+        strlen(ikey) >= PMIX_MAX_NSLEN || voff <= koff ||
+        voff - koff + 2 > PMIX_MAX_KEYLEN ||
+        sizeof(t) != 2 || 0 == tb[0] || 0 != tb[1]) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    PMIX_PDATA_CONSTRUCT(&pd);
+    PMIX_LOAD_PROCID(&pd.proc, ikey, 0);
+    memset(pd.key, 'x', voff - koff);
+    pd.key[voff - koff] = (char) tb[0];
+    pd.key[voff - koff + 1] = '\0';
+    PMIX_VALUE_LOAD(&pd.value, &flag, PMIX_BOOL);
+
+    darray.type = PMIX_PDATA;
+    darray.size = 1;
+    darray.array = &pd;
+    val.type = PMIX_DATA_ARRAY;
+    val.data.darray = &darray;
+    kv.key = (char *) key;
+    kv.value = &val;
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &kv, 1, PMIX_KVAL);
+    PMIX_PDATA_DESTRUCT(&pd);
+    return rc;
+}
+
+static void test_mislabeled_info_arrays(void)
+{
+    pmix_info_t real, outer;
+    pmix_data_array_t mislabeled, wrapper;
+    pmix_status_t rc;
+    pmix_nspace_t ns;
+    uint32_t u32 = 0, sid = 77, nprocs = 1;
+    pmix_rank_t rank = 0;
+    char *hostname = "gds-test-host";
+
+    fprintf(stdout, "\n-- *_INFO_ARRAY of another element type --\n");
+
+    PMIX_INFO_LOAD(&real, PMIX_HOSTNAME, hostname, PMIX_STRING);
+    rc = register_mislabeled("gds-mislabeled-node", PMIX_NODE_INFO_ARRAY, &real);
+    report("a PMIX_NODE_INFO_ARRAY that is not of PMIX_INFO is rejected",
+           !registered(rc));
+    PMIX_INFO_DESTRUCT(&real);
+
+    PMIX_INFO_LOAD(&real, PMIX_APPNUM, &u32, PMIX_UINT32);
+    rc = register_mislabeled("gds-mislabeled-app", PMIX_APP_INFO_ARRAY, &real);
+    report("a PMIX_APP_INFO_ARRAY that is not of PMIX_INFO is rejected",
+           !registered(rc));
+
+    PMIX_INFO_LOAD(&real, PMIX_SESSION_ID, &sid, PMIX_UINT32);
+    rc = register_mislabeled("gds-mislabeled-session", PMIX_SESSION_INFO_ARRAY, &real);
+    report("a PMIX_SESSION_INFO_ARRAY that is not of PMIX_INFO is rejected",
+           !registered(rc));
+
+    PMIX_INFO_LOAD(&real, PMIX_RANK, &rank, PMIX_PROC_RANK);
+    rc = register_mislabeled("gds-mislabeled-proc", PMIX_PROC_INFO_ARRAY, &real);
+    report("a PMIX_PROC_INFO_ARRAY that is not of PMIX_INFO is rejected",
+           !registered(rc));
+
+    PMIX_INFO_LOAD(&real, "gds.test.mislabeled", &u32, PMIX_UINT32);
+    rc = register_mislabeled("gds-mislabeled-job", PMIX_JOB_INFO_ARRAY, &real);
+    report("a PMIX_JOB_INFO_ARRAY that is not of PMIX_INFO is rejected",
+           !registered(rc));
+
+    /* the same, one level down: a well-formed job array carrying a
+     * mislabeled node array */
+    PMIX_INFO_LOAD(&real, PMIX_HOSTNAME, hostname, PMIX_STRING);
+    mislabeled.type = PMIX_UINT8;
+    mislabeled.size = 1;
+    mislabeled.array = &real;
+    PMIX_INFO_CONSTRUCT(&outer);
+    PMIX_LOAD_KEY(outer.key, PMIX_NODE_INFO_ARRAY);
+    outer.value.type = PMIX_DATA_ARRAY;
+    outer.value.data.darray = &mislabeled;
+    wrapper.type = PMIX_INFO;
+    wrapper.size = 1;
+    wrapper.array = &outer;
+    {
+        pmix_info_t info[2];
+
+        PMIX_INFO_CONSTRUCT(&info[0]);
+        PMIX_LOAD_KEY(info[0].key, PMIX_JOB_INFO_ARRAY);
+        info[0].value.type = PMIX_DATA_ARRAY;
+        info[0].value.data.darray = &wrapper;
+        PMIX_INFO_LOAD(&info[1], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+        PMIX_LOAD_NSPACE(ns, "gds-mislabeled-nested");
+        rc = PMIx_server_register_nspace(ns, 1, info, 2, NULL, NULL);
+    }
+    report("a mislabeled node array inside a job array is rejected",
+           !registered(rc));
+    PMIX_INFO_DESTRUCT(&real);
+
+    /* PMIx_Put's store path expands a proc array too */
+    {
+        pmix_kval_t kv;
+        pmix_value_t val;
+        pmix_proc_t proc;
+
+        PMIX_INFO_LOAD(&real, PMIX_RANK, &rank, PMIX_PROC_RANK);
+        mislabeled.type = PMIX_UINT8;
+        mislabeled.size = 1;
+        mislabeled.array = &real;
+        val.type = PMIX_DATA_ARRAY;
+        val.data.darray = &mislabeled;
+        kv.key = PMIX_PROC_INFO_ARRAY;
+        kv.value = &val;
+        PMIX_LOAD_PROCID(&proc, "gds-nodeid-only", 0);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_INTERNAL, &kv);
+        report("storing a PMIX_PROC_INFO_ARRAY that is not of PMIX_INFO is rejected",
+               PMIX_SUCCESS != rc);
+    }
+
+    /* An update to a registered job (nlocalprocs < 0) takes its proc and
+     * job arrays apart in the server before the datastore sees them. A
+     * proc array that is not of infos is refused; a job array that is not
+     * is skipped, as one carrying no array at all already was - either
+     * way nothing in it may be stored. */
+    {
+        pmix_info_t upd;
+        pmix_list_t kvs;
+
+        mislabeled.type = PMIX_UINT8;
+        mislabeled.size = 1;
+        mislabeled.array = &real;
+        PMIX_INFO_CONSTRUCT(&upd);
+        PMIX_LOAD_KEY(upd.key, PMIX_PROC_INFO_ARRAY);
+        upd.value.type = PMIX_DATA_ARRAY;
+        upd.value.data.darray = &mislabeled;
+        PMIX_LOAD_NSPACE(ns, "gds-nodeid-only");
+        rc = PMIx_server_register_nspace(ns, -1, &upd, 1, NULL, NULL);
+        report("an update whose PMIX_PROC_INFO_ARRAY is not of PMIX_INFO is rejected",
+               !registered(rc));
+        PMIX_INFO_DESTRUCT(&real);
+
+        PMIX_INFO_LOAD(&real, "gds.test.upd-mislabeled", &u32, PMIX_UINT32);
+        PMIX_LOAD_KEY(upd.key, PMIX_JOB_INFO_ARRAY);
+        rc = PMIx_server_register_nspace(ns, -1, &upd, 1, NULL, NULL);
+        PMIX_CONSTRUCT(&kvs, pmix_list_t);
+        rc = fetch_key("gds-nodeid-only", PMIX_RANK_WILDCARD,
+                       "gds.test.upd-mislabeled", &kvs);
+        report("an update whose PMIX_JOB_INFO_ARRAY is not of PMIX_INFO stores nothing",
+               PMIX_SUCCESS != rc || 0 == pmix_list_get_size(&kvs));
+        PMIX_LIST_DESTRUCT(&kvs);
+        PMIX_INFO_DESTRUCT(&real);
+        PMIX_INFO_LOAD(&real, PMIX_RANK, &rank, PMIX_PROC_RANK);
+    }
+
+    /* What a client takes off the wire. A server here is its own
+     * "server" (pmix_client_globals.myserver is mypeer), so the client
+     * halves can be driven directly. */
+    PMIX_INFO_DESTRUCT(&real);
+    {
+        pmix_buffer_t *buf;
+
+        buf = PMIX_NEW(pmix_buffer_t);
+        rc = pack_pdata_as_info(buf, PMIX_PROC_INFO_ARRAY, PMIX_RANK, PMIX_PROC_RANK);
+        if (PMIX_ERR_NOT_SUPPORTED == rc) {
+            fprintf(stdout, "    SKIP  the pdata layout does not admit the wire cases\n");
+            PMIX_RELEASE(buf);
+            return;
+        }
+        if (PMIX_SUCCESS == rc) {
+            PMIX_GDS_STORE_JOB_INFO(rc, pmix_globals.mypeer, "gds-nodeid-only", buf);
+        }
+        report("job info carrying a pdata array as PMIX_PROC_INFO_ARRAY is rejected",
+               PMIX_SUCCESS != rc);
+        PMIX_RELEASE(buf);
+    }
+    {
+        pmix_buffer_t *buf;
+
+        buf = PMIX_NEW(pmix_buffer_t);
+        rc = pack_pdata_as_info(buf, PMIX_JOB_INFO_ARRAY, "gds.test.wire-mislabeled",
+                                 PMIX_UINT32);
+        if (PMIX_SUCCESS == rc) {
+            PMIX_GDS_ACCEPT_UPDATE(rc, pmix_globals.mypeer, buf);
+        }
+        report("an update carrying a pdata array as PMIX_JOB_INFO_ARRAY is rejected",
+               PMIX_SUCCESS != rc);
+        PMIX_RELEASE(buf);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -2985,6 +3241,7 @@ int main(int argc, char **argv)
     test_map_forms();
     test_derived_proc_info();
     test_malformed_job_info();
+    test_mislabeled_info_arrays();
     test_scope_routing();
     test_realm_classifiers();
     test_shmem3_job_segment();
