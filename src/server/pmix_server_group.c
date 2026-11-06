@@ -345,32 +345,32 @@ static bool grp_blk_locally_complete(grp_block_t *blk)
 }
 
 /* A member's call has just joined the block - the group counterpart of
- * pmix_server_trk_join, and for the same three cases: a member lost while
- * the block waited is taken off departed; one left out when the block was
- * counted is counted in; and one that already called through a connection
- * it lost is the same process calling again, and is not counted twice. */
+ * pmix_server_trk_join, and for the same three cases: one that already
+ * called - on this connection, or on one it lost - is the same process
+ * calling again, and is not counted twice; a member lost while the block
+ * waited is taken off departed; and one left out when the block was
+ * counted is counted in. The first holds whether or not the definition is
+ * complete yet, since what it discounts is a call already on mbrs; the
+ * other two correct nlocal, which is counted only when the definition
+ * completes. */
 static void grp_member_joined(grp_block_t *blk, grp_trk_t *trk, pmix_peer_t *peer)
 {
     grp_trk_t *t;
     pmix_server_caddy_t *scd;
 
-    if (NULL == peer || NULL == peer->info || NULL == peer->info->pname.nspace ||
-        !blk->def_complete) {
-        /* nlocal is counted when the definition completes, from who is
-         * lost then - nothing to correct yet */
+    if (NULL == peer || NULL == peer->info || NULL == peer->info->pname.nspace) {
         return;
     }
-    if (pmix_server_proclist_remove(&blk->departed, peer->info->pname.nspace,
-                                    peer->info->pname.rank)) {
-        return;
-    }
-    if (pmix_server_proclist_remove(&blk->excluded, peer->info->pname.nspace,
-                                    peer->info->pname.rank)) {
-        ++blk->nlocal;
-        return;
-    }
-    if (!peer->info->returned) {
-        return;
+    if (blk->def_complete) {
+        if (pmix_server_proclist_remove(&blk->departed, peer->info->pname.nspace,
+                                        peer->info->pname.rank)) {
+            return;
+        }
+        if (pmix_server_proclist_remove(&blk->excluded, peer->info->pname.nspace,
+                                        peer->info->pname.rank)) {
+            ++blk->nlocal;
+            return;
+        }
     }
     PMIX_LIST_FOREACH (t, &blk->mbrs, grp_trk_t) {
         if (t == trk) {

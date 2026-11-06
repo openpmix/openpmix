@@ -877,9 +877,9 @@ typedef struct {
     pmix_list_t excluded;   // local participants left out of nlocal because they were lost
                             //    when the tracker was counted. One that comes back and
                             //    contributes is counted in then - see pmix_server_trk_join
-    uint32_t nduplicate;    // contributions on local_cbs from a rank that had already
-                            //    contributed through a connection it has since lost - one
-                            //    process, counted once
+    uint32_t nduplicate;    // contributions on local_cbs from a rank that already had one
+                            //    there - a repeat call, on the same connection or on one
+                            //    made after reconnecting. One process, counted once
     uint32_t nlocal;        // number of local participants
     pmix_info_t *info;      // array of info structs
     size_t ninfo;           // number of info structs in array

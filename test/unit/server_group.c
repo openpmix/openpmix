@@ -64,6 +64,10 @@
  *   a construct the host
  *      completes over an ID
  *      recorded meanwhile    -> the record is kept, not replaced
+ *   a member calling twice
+ *      before the other      -> one participant: the block waits for the
+ *                               other, whether the definition was complete
+ *                               at the repeat call or completed after it
  *   a member lost and back   -> counted once by the block, whether it was
  *                               gone when the block was counted, lost
  *                               while the block waited, or had already
@@ -102,6 +106,7 @@
 #define GRPUT_LATE   "server-group-ut-late"
 #define GRPUT_TWO    "server-group-ut-two"
 #define GRPUT_LATE2  "server-group-ut-late2"
+#define GRPUT_LATE3  "server-group-ut-late3"
 
 static int npass = 0;
 static int nfail = 0;
@@ -423,15 +428,19 @@ static pmix_status_t drive_group_contrib(const char *grpid, const pmix_proc_t *c
 }
 
 /* Drive one participant whose membership is given explicitly. */
-static pmix_status_t drive_group_procs(const char *grpid,
-                                       const pmix_proc_t *procs, size_t nprocs,
-                                       bool bootstrap)
+/* The same, from the given peer - NULL for the server's own. Two calls are
+ * two participants only when they come from two processes: the server
+ * counts a process once, however many calls it makes */
+static pmix_status_t drive_group_procs_as(const char *grpid,
+                                          const pmix_proc_t *procs, size_t nprocs,
+                                          bool bootstrap, pmix_peer_t *peer)
 {
     grp_req_t req;
     pmix_status_t rc;
 
     memset(&req, 0, sizeof(req));
     PMIX_CONSTRUCT_LOCK(&req.lock);
+    req.peer = peer;
     req.grpid = grpid;
     req.plist = procs;
     req.nprocs = nprocs;
@@ -445,6 +454,13 @@ static pmix_status_t drive_group_procs(const char *grpid,
     rc = req.status;
     PMIX_DESTRUCT_LOCK(&req.lock);
     return rc;
+}
+
+static pmix_status_t drive_group_procs(const char *grpid,
+                                       const pmix_proc_t *procs, size_t nprocs,
+                                       bool bootstrap)
+{
+    return drive_group_procs_as(grpid, procs, nprocs, bootstrap, NULL);
 }
 
 /* Drive one participant naming these procs, with a PMIX_TIMEOUT */
@@ -886,6 +902,7 @@ int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
     pmix_proc_t twoprocs[2], bootproc;
+    pmix_peer_t *two0 = NULL, *two1 = NULL;   /* GRPUT_TWO's two local procs */
     size_t baseline;
     pmix_status_t rc;
 
@@ -1066,12 +1083,15 @@ int main(int argc, char **argv)
         PMIx_server_finalize();
         return 1;
     }
+    /* each participant is a process of its own */
+    two0 = other_peer(GRPUT_TWO, 0);
+    two1 = other_peer(GRPUT_TWO, 1);
     PMIX_LOAD_PROCID(&twoprocs[0], GRPUT_TWO, PMIX_RANK_WILDCARD);
     PMIX_LOAD_PROCID(&twoprocs[1], GRPUT_LATE2, PMIX_RANK_WILDCARD);
 
-    rc = drive_group_procs("grput.two", twoprocs, 2, false);
+    rc = drive_group_procs_as("grput.two", twoprocs, 2, false, two0);
     report("first of two participants is accepted", PMIX_SUCCESS == rc);
-    rc = drive_group_procs("grput.two", twoprocs, 2, false);
+    rc = drive_group_procs_as("grput.two", twoprocs, 2, false, two1);
     report("second of two participants is accepted", PMIX_SUCCESS == rc);
     report("both park while a participant namespace is unknown",
            !group_fired && !nothing_parked());
@@ -1096,13 +1116,50 @@ int main(int argc, char **argv)
      * library it expected one per entry, four, and never fired. */
     PMIX_LOAD_PROCID(&twoprocs[0], GRPUT_TWO, PMIX_RANK_WILDCARD);
     PMIX_LOAD_PROCID(&twoprocs[1], GRPUT_TWO, PMIX_RANK_WILDCARD);
-    rc = drive_group_procs("grput.dup", twoprocs, 2, false);
+    rc = drive_group_procs_as("grput.dup", twoprocs, 2, false, two0);
     report("first participant of a repeated membership is accepted", PMIX_SUCCESS == rc);
-    rc = drive_group_procs("grput.dup", twoprocs, 2, false);
+    rc = drive_group_procs_as("grput.dup", twoprocs, 2, false, two1);
     report("second participant of a repeated membership is accepted", PMIX_SUCCESS == rc);
     progress_barrier();
     report("a repeated membership is counted once per proc", group_fired);
     report("and its block does not park forever", nothing_parked());
+
+    /* --- one member calling twice --- *
+     * A block is locally complete when its expected local members are
+     * accounted for, and that count used to be the number of calls on the
+     * block. A repeat call was discounted only for a member that had lost
+     * its connection and come back, so a member that simply called twice
+     * stood in for one that had not called. Against an unfixed library
+     * both blocks below go to the host on two0's second call. */
+    PMIX_LOAD_PROCID(&twoprocs[0], GRPUT_TWO, PMIX_RANK_WILDCARD);
+    rc = drive_group_procs_as("grput.repeat", twoprocs, 1, false, two0);
+    report("a member's call is accepted", PMIX_SUCCESS == rc && !group_fired);
+    rc = drive_group_procs_as("grput.repeat", twoprocs, 1, false, two0);
+    report("the same member's second call does not stand in for the other",
+           PMIX_SUCCESS == rc && !group_fired);
+    rc = drive_group_procs_as("grput.repeat", twoprocs, 1, false, two1);
+    report("...which completes it", PMIX_SUCCESS == rc && group_fired);
+    report("...and parks nothing", nothing_parked());
+
+    /* the same, with both calls made before the definition can be settled:
+     * the repeat is discounted then too, not only once nlocal is known */
+    PMIX_LOAD_PROCID(&twoprocs[1], GRPUT_LATE3, PMIX_RANK_WILDCARD);
+    rc = drive_group_procs_as("grput.repeat2", twoprocs, 2, false, two0);
+    report("a member's call naming an unknown job is accepted",
+           PMIX_SUCCESS == rc && !group_fired);
+    rc = drive_group_procs_as("grput.repeat2", twoprocs, 2, false, two0);
+    report("...and so is its second", PMIX_SUCCESS == rc && !group_fired);
+    rc = register_nspace(GRPUT_LATE3);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "late register_nspace failed: %s\n", PMIx_Error_string(rc));
+        PMIx_server_finalize();
+        return 1;
+    }
+    progress_barrier();
+    report("settling the definition does not count the repeat call", !group_fired);
+    rc = drive_group_procs_as("grput.repeat2", twoprocs, 2, false, two1);
+    report("...and the other member completes it", PMIX_SUCCESS == rc && group_fired);
+    report("...and parks nothing", nothing_parked());
 
     /* --- one group per ID --- *
      * A group's ID is its own until it is destructed. The same membership
@@ -1345,7 +1402,7 @@ int main(int argc, char **argv)
         pmix_proc_t two[1];
 
         PMIX_LOAD_PROCID(&two[0], GRPUT_TWO, PMIX_RANK_WILDCARD);
-        rc = drive_group_procs("grput.sweep", two, 1, false);
+        rc = drive_group_procs_as("grput.sweep", two, 1, false, two0);
         report("the first of two local participants waits for the second",
                PMIX_SUCCESS == rc && !group_fired &&
                    baseline + 1 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
@@ -1358,7 +1415,7 @@ int main(int argc, char **argv)
         }
         report("the follower's completion leaves the collecting block alone",
                baseline + 1 == pmix_list_get_size(&pmix_server_globals.grp_collectives));
-        rc = drive_group_procs("grput.sweep", two, 1, false);
+        rc = drive_group_procs_as("grput.sweep", two, 1, false, two1);
         report("the second local participant sends the block to the host",
                PMIX_SUCCESS == rc && group_fired && 2 == nheld);
         if (2 == nheld) {
@@ -1408,6 +1465,12 @@ int main(int argc, char **argv)
 
     test_returning_member();
 
+    if (NULL != two0) {
+        PMIX_RELEASE(two0);
+    }
+    if (NULL != two1) {
+        PMIX_RELEASE(two1);
+    }
     if (NULL != group_id) {
         free(group_id);
         group_id = NULL;
