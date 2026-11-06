@@ -38,6 +38,13 @@
  *      namespace late        -> the expected-local count is the membership,
  *                               not the membership times the number of
  *                               participants that named it
+ *   a construct or destruct
+ *      joining a block of
+ *      its ID                -> PMIX_ERR_BAD_PARAM unless it names the same
+ *                               participants, in any order; a job's
+ *                               wildcard matches a list of all of its procs
+ *   a construct of another
+ *      method under that ID  -> PMIX_ERR_BAD_PARAM
  *   two bootstrap blocks,
  *      host accepts both     -> each block survives until its own completion
  *                               arrives (kills an unfixed library)
@@ -112,6 +119,7 @@
 #define GRPUT_TWO    "server-group-ut-two"
 #define GRPUT_LATE2  "server-group-ut-late2"
 #define GRPUT_LATE3  "server-group-ut-late3"
+#define GRPUT_MATCH  "server-group-ut-match"
 
 static int npass = 0;
 static int nfail = 0;
@@ -249,6 +257,9 @@ typedef struct {
     pmix_peer_t *peer;
     /* when set, the last info is a PMIX_TIMEOUT of this many seconds */
     uint32_t tmo;
+    /* when set, the infos are a PMIX_GROUP_ADD_MEMBERS naming these */
+    const pmix_proc_t *addmbrs;
+    size_t naddmbrs;
     pmix_status_t status;
 } grp_req_t;
 
@@ -343,6 +354,13 @@ static void do_group(int sd, short args, void *cbdata)
                                PMIX_UINT32);
             } else if (0 < r->tmo && n == r->ninf_real - 1) {
                 PMIX_INFO_LOAD(&dirs[n], PMIX_TIMEOUT, &r->tmo, PMIX_UINT32);
+            } else if (NULL != r->addmbrs) {
+                pmix_data_array_t *am;
+
+                PMIX_DATA_ARRAY_CREATE(am, r->naddmbrs, PMIX_PROC);
+                memcpy(am->array, r->addmbrs, r->naddmbrs * sizeof(pmix_proc_t));
+                PMIX_INFO_LOAD(&dirs[n], PMIX_GROUP_ADD_MEMBERS, am, PMIX_DATA_ARRAY);
+                PMIX_DATA_ARRAY_FREE(am);
             } else if (r->bootstrap) {
                 PMIX_INFO_LOAD(&dirs[n], PMIX_GROUP_BOOTSTRAP, &nboot, PMIX_SIZE);
             } else {
@@ -519,6 +537,36 @@ static pmix_status_t drive_op(pmix_group_operation_t op, const char *grpid,
     return rc;
 }
 
+/* Drive an "add members" construct by `peer`: these leaders, adding these */
+static pmix_status_t drive_addmembers(const char *grpid, const pmix_proc_t *procs,
+                                      size_t nprocs, const pmix_proc_t *add, size_t nadd,
+                                      pmix_peer_t *peer)
+{
+    grp_req_t req;
+    pmix_status_t rc;
+
+    memset(&req, 0, sizeof(req));
+    PMIX_CONSTRUCT_LOCK(&req.lock);
+    req.op = PMIX_GROUP_CONSTRUCT;
+    req.grpid = grpid;
+    req.plist = procs;
+    req.nprocs = nprocs;
+    req.nprocs_real = nprocs;
+    req.ninf = 1;
+    req.ninf_real = 1;
+    req.addmbrs = add;
+    req.naddmbrs = nadd;
+    req.peer = peer;
+    group_fired = false;
+    group_op = PMIX_GROUP_NONE;
+    group_nprocs = 0;
+    PMIX_THREADSHIFT(&req, do_group);
+    PMIX_WAIT_THREAD(&req.lock);
+    rc = req.status;
+    PMIX_DESTRUCT_LOCK(&req.lock);
+    return rc;
+}
+
 /* A peer for another process: a client of this server's namespace object,
  * so what it sends unpacks as the server's own does, but not the server -
  * which counts as a participant in anything it asks */
@@ -668,6 +716,24 @@ static pmix_status_t register_nspace_n(const char *ns, int nlocal)
 static pmix_status_t register_nspace(const char *ns)
 {
     return register_nspace_n(ns, 0);
+}
+
+/* The same, with the job's size given, so that a wildcard for it stands
+ * for a known set of procs */
+static pmix_status_t register_nspace_sized(const char *ns, int nlocal, uint32_t size)
+{
+    pmix_nspace_t nspace;
+    pmix_info_t info;
+    pmix_status_t rc;
+
+    PMIX_LOAD_NSPACE(nspace, ns);
+    PMIX_INFO_LOAD(&info, PMIX_JOB_SIZE, &size, PMIX_UINT32);
+    rc = PMIx_server_register_nspace(nspace, nlocal, &info, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&info);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    return rc;
 }
 
 /* grpcbfunc thread-shifts, so let anything queued behind us run before we
@@ -1198,6 +1264,124 @@ int main(int argc, char **argv)
     rc = drive_group_procs_as("grput.repeat2", twoprocs, 2, false, two1);
     report("...and the other member completes it", PMIX_SUCCESS == rc && group_fired);
     report("...and parks nothing", nothing_parked());
+
+    /* --- the participants a block was made with --- *
+     * A call joins a block of its ID only when it names the same
+     * participants as the call that made it - in any order, a proc named
+     * twice counting once, and a job's wildcard standing for all of its
+     * procs. Another list is refused with PMIX_ERR_BAD_PARAM and the block
+     * keeps collecting. Against an unfixed library a call naming another
+     * list joined the block, which went to the host with the first
+     * caller's list. A job of two procs, both of them here, so a block of
+     * it goes to the host once both have called. */
+    {
+        pmix_proc_t both[3], rboth[2], one[1], wild[1], extra[3];
+        pmix_peer_t *m0, *m1;
+
+        rc = register_nspace_sized(GRPUT_MATCH, 2, 2);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "register_nspace_sized failed: %s\n", PMIx_Error_string(rc));
+            PMIx_server_finalize();
+            return 1;
+        }
+        /* a list of ranks is counted once its ranks are known */
+        PMIX_LOAD_PROCID(&both[0], GRPUT_MATCH, 0);
+        (void) PMIx_server_register_client(&both[0], geteuid(), getegid(), NULL, NULL, NULL);
+        PMIX_LOAD_PROCID(&both[0], GRPUT_MATCH, 1);
+        (void) PMIx_server_register_client(&both[0], geteuid(), getegid(), NULL, NULL, NULL);
+        progress_barrier();
+        m0 = other_peer(GRPUT_MATCH, 0);
+        m1 = other_peer(GRPUT_MATCH, 1);
+        PMIX_LOAD_PROCID(&both[0], GRPUT_MATCH, 0);
+        PMIX_LOAD_PROCID(&both[1], GRPUT_MATCH, 1);
+        PMIX_LOAD_PROCID(&both[2], GRPUT_MATCH, 0);
+        PMIX_LOAD_PROCID(&rboth[0], GRPUT_MATCH, 1);
+        PMIX_LOAD_PROCID(&rboth[1], GRPUT_MATCH, 0);
+        PMIX_LOAD_PROCID(&one[0], GRPUT_MATCH, 1);
+        PMIX_LOAD_PROCID(&wild[0], GRPUT_MATCH, PMIX_RANK_WILDCARD);
+        PMIX_LOAD_PROCID(&extra[0], GRPUT_MATCH, 0);
+        PMIX_LOAD_PROCID(&extra[1], GRPUT_MATCH, 1);
+        PMIX_LOAD_PROCID(&extra[2], GRPUT_NSPACE, 0);
+
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.list", both, 2, m0);
+        report("a construct naming its participants starts a block",
+               PMIX_SUCCESS == rc && !group_fired);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.list", one, 1, m1);
+        report("a construct of that ID naming fewer participants is refused",
+               PMIX_ERR_BAD_PARAM == rc && !group_fired);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.list", extra, 3, m1);
+        report("...as is one naming more",
+               PMIX_ERR_BAD_PARAM == rc && !group_fired);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.list", rboth, 2, m1);
+        report("...and the same participants in another order complete it",
+               PMIX_SUCCESS == rc && group_fired && 2 == group_nprocs);
+        report("...and park nothing", nothing_parked());
+
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.wild", wild, 1, m0);
+        report("a construct naming a job's wildcard starts a block",
+               PMIX_SUCCESS == rc && !group_fired);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.wild", one, 1, m1);
+        report("a list of only some of that job's procs does not match it",
+               PMIX_ERR_BAD_PARAM == rc && !group_fired);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.wild", both, 3, m1);
+        report("a list of all of them, one named twice, matches it",
+               PMIX_SUCCESS == rc && group_fired);
+        report("...and parks nothing", nothing_parked());
+
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.wild2", rboth, 2, m0);
+        report("a list of all of a job's procs starts a block",
+               PMIX_SUCCESS == rc && !group_fired);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.wild2", wild, 1, m1);
+        report("...and that job's wildcard matches it",
+               PMIX_SUCCESS == rc && group_fired && nothing_parked());
+
+        /* a destruct of a group this server does not hold runs over the
+         * procs it names, so it is held to the same rule */
+        rc = drive_op(PMIX_GROUP_DESTRUCT, "grput.dlist", both, 2, m0);
+        report("a destruct naming its participants starts a block",
+               PMIX_SUCCESS == rc && !group_fired);
+        rc = drive_op(PMIX_GROUP_DESTRUCT, "grput.dlist", one, 1, m1);
+        report("a destruct of that ID naming other participants is refused",
+               PMIX_ERR_BAD_PARAM == rc && !group_fired);
+        rc = drive_op(PMIX_GROUP_DESTRUCT, "grput.dlist", wild, 1, m1);
+        report("...and one naming the job's wildcard completes it",
+               PMIX_SUCCESS == rc && group_fired && PMIX_GROUP_DESTRUCT == group_op);
+        report("...and parks nothing", nothing_parked());
+
+        /* one ID is not shared between methods: an "add members" call does
+         * not join a block a plain construct made, though it names the
+         * same leaders, nor a plain construct one an "add members" call
+         * made. Against an unfixed library the first of these joined the
+         * block, and the second joined it with no check at all, since such
+         * a block records no list */
+        {
+            pmix_proc_t added[1];
+
+            PMIX_LOAD_PROCID(&added[0], GRPUT_NSPACE, 5);
+            rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.method", both, 2, m0);
+            report("a plain construct starts a block",
+                   PMIX_SUCCESS == rc && !group_fired);
+            rc = drive_addmembers("grput.method", both, 2, added, 1, m1);
+            report("an add-members construct of that ID is refused",
+                   PMIX_ERR_BAD_PARAM == rc && !group_fired);
+            rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.method", both, 2, m1);
+            report("...and a plain one completes it",
+                   PMIX_SUCCESS == rc && group_fired && nothing_parked());
+
+            rc = drive_addmembers("grput.method2", both, 2, added, 1, m0);
+            report("an add-members construct starts a block",
+                   PMIX_SUCCESS == rc && !group_fired);
+            rc = drive_op(PMIX_GROUP_CONSTRUCT, "grput.method2", both, 2, m1);
+            report("a plain construct of that ID is refused",
+                   PMIX_ERR_BAD_PARAM == rc && !group_fired);
+            rc = drive_addmembers("grput.method2", rboth, 2, added, 1, m1);
+            report("...and an add-members one completes it",
+                   PMIX_SUCCESS == rc && group_fired && nothing_parked());
+        }
+
+        PMIX_RELEASE(m0);
+        PMIX_RELEASE(m1);
+    }
 
     /* --- one group per ID --- *
      * A group's ID is its own until it is destructed. The same membership
