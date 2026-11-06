@@ -57,6 +57,7 @@
 
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
+#include "src/util/pmix_runas.h"
 
 extern int pmix_initialized;
 extern bool pmix_init_called;
@@ -313,4 +314,7 @@ void pmix_rte_finalize(void)
     pmix_iof_init_flags(&pmix_globals.iof_flags);
     pmix_iof_init_flags(&pmix_globals.spawn_iof_flags);
     PMIX_LOAD_PROCID(&pmix_globals.myid, NULL, PMIX_RANK_INVALID);
+    /* children that did work as another user and had not gone when we
+     * stopped waiting for them */
+    pmix_util_runas_finalize();
 }
