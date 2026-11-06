@@ -161,7 +161,20 @@ related operations.
     contributions PMIx attached to the request - delivered with
     ``PMIx_server_register_resources`` as ``PMIX_GROUP_ENDPT_DATA``;
 
-* stops the operation when PMIx sends ``PMIX_GROUP_CANCEL``.
+* stops the operation when PMIx sends ``PMIX_GROUP_CANCEL``;
+* keeps operations that share a group ID apart. A group ID names at
+  most one operation of each kind (construct, destruct) at a time,
+  across every server. PMIx may pass up more than one request for the
+  same ID and operation: bootstrap leaders and added members each reach
+  the host on their own call. When the host answers any one of those
+  requests, PMIx gives that answer to every request with the same ID
+  and operation that the host still holds. It does this because a host
+  that combines the requests answers only once (PRRTE combines them by
+  group ID and operation). So when a request arrives for an ID that is
+  already in use, and its processes are not part of the operation under
+  way, the host must refuse it rather than run it alongside. Run
+  separately, whichever operation completed first would be delivered to
+  the participants of both.
 
 Each participant then has the job-level information of every
 participating job, and every participant's posted data.
