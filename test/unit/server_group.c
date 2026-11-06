@@ -72,6 +72,11 @@
  *                               gone when the block was counted, lost
  *                               while the block waited, or had already
  *                               called through the connection it lost
+ *   a member that called and
+ *      was lost before the
+ *      definition settled    -> counted when it does: its call stays on
+ *                               the block, so it does not stand in for a
+ *                               member yet to call
  *
  * Every case asserts that grp_collectives is empty afterwards, because a
  * block left parked there with participants on it hangs those clients for
@@ -691,6 +696,7 @@ static bool nothing_parked(void)
  * connection handler does when the host's restarted process connects)
  * act on the state the block is counted from. */
 #define GRPRET_NSPACE "grpret.ns"
+#define GRPRET_LATE   "grpret.late"
 
 typedef struct {
     pmix_event_t ev;
@@ -896,6 +902,38 @@ static void test_returning_member(void)
     progress_barrier();
     report("twice: nothing is parked",
            baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+
+    /* lost before the count: rank 0 calls while the definition cannot be
+     * settled - the membership names a job not registered yet - and is
+     * lost before it is. The count then leaves rank 0 out, but its call is
+     * still on the block, so it is counted in: left out, it stood in for a
+     * member that had not called, and the block went to the host on
+     * rank 1's call without rank 2's */
+    {
+        pmix_proc_t mbrs[4];
+
+        for (r = 0; r < 3; r++) {
+            PMIX_LOAD_PROCID(&mbrs[r], GRPRET_NSPACE, r);
+        }
+        PMIX_LOAD_PROCID(&mbrs[3], GRPRET_LATE, PMIX_RANK_WILDCARD);
+        r0 = member(0, &far, false);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grpret.lostfirst", mbrs, 4, r0);
+        report("lost before count: the first call parks", PMIX_SUCCESS == rc && !group_fired);
+        report("lost before count: the caller's connection is lost", lose(r0, far));
+        rc = register_nspace(GRPRET_LATE);
+        progress_barrier();
+        report("lost before count: settling the definition does not complete it",
+               PMIX_SUCCESS == rc && !group_fired);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grpret.lostfirst", mbrs, 4, r1);
+        report("lost before count: the lost member's call does not stand in for another's",
+               PMIX_SUCCESS == rc && !group_fired);
+        rc = drive_op(PMIX_GROUP_CONSTRUCT, "grpret.lostfirst", mbrs, 4, r2);
+        report("lost before count: the block goes to the host once every member has called",
+               PMIX_SUCCESS == rc && group_fired);
+        progress_barrier();
+        report("lost before count: nothing is parked",
+               baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+    }
 }
 
 int main(int argc, char **argv)

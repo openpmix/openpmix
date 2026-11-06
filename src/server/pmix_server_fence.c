@@ -880,6 +880,7 @@ bool pmix_server_count_local_participants(const pmix_proc_t *pcs, size_t npcs,
  * paths, which now no longer skip it, and the next contribution retries. */
 bool pmix_server_trk_count_nspace(pmix_server_trkr_t *trk, pmix_namespace_t *nptr)
 {
+    pmix_server_caddy_t *cd;
     pmix_nspace_caddy_t *nm;
     pmix_rank_info_t *rinfo;
     size_t i, addend = 0;
@@ -946,6 +947,23 @@ bool pmix_server_trk_count_nspace(pmix_server_trkr_t *trk, pmix_namespace_t *npt
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return false;
     }
+
+    /* The count leaves out a rank that has been lost (it is on excluded).
+     * One that contributed before it was lost is still here, on local_cbs
+     * - a loss never removes a contribution - so it is counted in: left
+     * out, its contribution would stand in for a participant that has not
+     * called. That happens when the count could not be settled at the
+     * rank's call, and it was lost before it was. */
+    PMIX_LIST_FOREACH (cd, &trk->local_cbs, pmix_server_caddy_t) {
+        if (NULL != cd->peer && NULL != cd->peer->info &&
+            NULL != cd->peer->info->pname.nspace &&
+            0 == strcmp(cd->peer->info->pname.nspace, nptr->nspace) &&
+            pmix_server_proclist_remove(&trk->excluded, cd->peer->info->pname.nspace,
+                                        cd->peer->info->pname.rank)) {
+            ++addend;
+        }
+    }
+
     PMIX_RETAIN(nptr);
     nm->ns = nptr;
     pmix_list_append(&trk->nslist, &nm->super);

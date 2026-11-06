@@ -246,6 +246,7 @@ static void forward_to_host(grp_block_t *blk);
 static void check_definition_complete(grp_block_t *blk)
 {
     pmix_namespace_t *ns, *nptr;
+    pmix_server_caddy_t *scd;
     size_t i, n;
     uint32_t nlocal = 0;
     grp_trk_t *trk;
@@ -323,6 +324,23 @@ static void check_definition_complete(grp_block_t *blk)
             return;
         }
         nlocal += (uint32_t) n;
+    }
+
+    /* The count leaves out a member that has been lost (it is on
+     * excluded). One that called before it was lost still has its call on
+     * mbrs - a loss never removes a contribution - so it is counted in:
+     * left out, its call would stand in for a member that has not called.
+     * That happens when the definition could not be settled at the
+     * member's call, and it was lost before it was. */
+    PMIX_LIST_FOREACH (trk, &blk->mbrs, grp_trk_t) {
+        PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
+            if (NULL != scd->peer && NULL != scd->peer->info &&
+                NULL != scd->peer->info->pname.nspace &&
+                pmix_server_proclist_remove(&blk->excluded, scd->peer->info->pname.nspace,
+                                            scd->peer->info->pname.rank)) {
+                ++nlocal;
+            }
+        }
     }
 
     // if we get here, then we have completed definition of the block
