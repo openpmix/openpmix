@@ -95,6 +95,12 @@ through the macros.
   module it was told is failing" property.
 - **`setup_fork`** is a fan-out across every active module, tolerating
   `PMIX_ERR_NOT_AVAILABLE` from a module that has nothing to contribute.
+- **`pmix_gds_base_info_array()`** (a `static inline` in `base.h`, so it
+  needs no export) is the one test that a value carries an array of
+  `pmix_info_t`: `PMIX_DATA_ARRAY`, a descriptor, `PMIX_INFO` elements,
+  and a block. It hands back the array and its size, and leaves an empty
+  array to callers that need a first element. See "Check the shape" in
+  [`../AGENTS.md`](../AGENTS.md).
 - **`proc_array_id`** finds the identifier a `PMIX_PROC_INFO_ARRAY` uses.
   The Standard lets a host identify the process with `PMIX_RANK` or
   `PMIX_PROCID`, in any position; this scans for whichever was used,

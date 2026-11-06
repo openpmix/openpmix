@@ -666,15 +666,10 @@ pmix_status_t pmix_gds_hash_store_qualified(pmix_hash_table_t *ht,
     /* the value contains a pmix_data_array_t of pmix_info_t whose
      * first position contains the key-value being stored, followed by
      * one or more qualifiers - verify its datatype and size */
-    if (PMIX_DATA_ARRAY != value->type ||
-        NULL == value->data.darray ||
-        PMIX_INFO != value->data.darray->type ||
-        NULL == value->data.darray->array ||
-        0 == value->data.darray->size) {
+    if (!pmix_gds_base_info_array(value, &iptr, &sz) ||
+        0 == sz) {
         return PMIX_ERR_BAD_PARAM;
     }
-    iptr = (pmix_info_t*)value->data.darray->array;
-    sz = value->data.darray->size;
 
     /* extract the primary value */
     PMIX_CONSTRUCT(&kv, pmix_kval_t);
