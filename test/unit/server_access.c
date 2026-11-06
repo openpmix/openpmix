@@ -18,6 +18,11 @@
  *
  *   registration naming an owner and an access list -> recorded
  *   the same inside a PMIX_JOB_INFO_ARRAY              -> recorded
+ *   a PMIX_USERID/PMIX_GRPID inside
+ *   PMIX_ACCESS_PERMISSIONS - after the host's owner,
+ *   alone, nested, or inside a job-info array          -> not the owner;
+ *                                                         the list is still
+ *                                                         recorded
  *   an access list given by name                       -> resolved to
  *                                                         numbers; the
  *                                                         host's array is
@@ -257,6 +262,93 @@ static void test_job_info_array(void)
     report("the owner and list inside a job-info array are recorded",
            NULL != ns && ACC_OWNER + 3 == ns->access.uid && 1 == ns->access.ngids &&
            ACC_GROUP + 3 == ns->access.gids[0]);
+}
+
+/* An identity inside PMIX_ACCESS_PERMISSIONS is not read as the owner.
+ * A host registers that array with the job as the spawn gave it - PRRTE
+ * does, after its own owner keys - and only the two access-list keys are
+ * read there. Without the change, each registration below took its
+ * owner from inside the access list. */
+static void test_perms_owner(void)
+{
+    pmix_info_t info[3], perms[3], inner, job;
+    pmix_data_array_t da;
+    uint32_t uid = ACC_OWNER, gid = ACC_OGROUP, user = ACC_USER;
+    uint32_t stranger = ACC_STRANGER;
+    pmix_access_t acc;
+    pmix_namespace_t *ns;
+    pmix_status_t rc;
+
+    /* the host's owner first, then the requester's array - the order a
+     * host that registers a spawn's access list uses */
+    PMIX_INFO_LOAD(&info[0], PMIX_USERID, &uid, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &gid, PMIX_UINT32);
+    PMIX_INFO_LOAD(&perms[0], PMIX_USERID, &stranger, PMIX_UINT32);
+    PMIX_INFO_LOAD(&perms[1], PMIX_GRPID, &stranger, PMIX_UINT32);
+    load_ids(&perms[2], PMIX_ACCESS_USERIDS, &user, 1);
+    load_perms(&info[2], perms, 3);
+    rc = reg("acc-perms-owner", 1, info, 3);
+    report("a job whose access list carries an owner registers", registered(rc));
+    ns = find_ns("acc-perms-owner");
+    report("the host's owner stands, not the one inside the access list",
+           NULL != ns && PMIX_OWNER_REGISTERED == ns->access.source &&
+           ACC_OWNER == ns->access.uid && ACC_OGROUP == ns->access.gid);
+    report("the access list itself is still recorded",
+           NULL != ns && 1 == ns->access.nuids && ACC_USER == ns->access.uids[0]);
+    report("and the uid inside the access list is not granted access",
+           NULL != ns && !pmix_server_access_permitted(ACC_STRANGER, (gid_t) -1, ns));
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&info[1]);
+    PMIX_INFO_DESTRUCT(&info[2]);
+
+    /* with no owner of the host's, the array still does not supply one */
+    load_perms(&info[0], perms, 1);
+    rc = reg("acc-perms-owner2", 1, info, 1);
+    ns = find_ns("acc-perms-owner2");
+    report("an owner inside the access list is not registered as the owner",
+           registered(rc) && NULL != ns && PMIX_OWNER_REGISTERED != ns->access.source &&
+           ACC_STRANGER != ns->access.uid);
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    /* nor does an array nested inside it */
+    load_perms(&inner, perms, 1);
+    load_perms(&info[0], &inner, 1);
+    rc = reg("acc-perms-owner3", 1, info, 1);
+    ns = find_ns("acc-perms-owner3");
+    report("an access list nested in another names no owner",
+           registered(rc) && NULL != ns && PMIX_OWNER_REGISTERED != ns->access.source &&
+           ACC_STRANGER != ns->access.uid);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_DESTRUCT(&inner);
+
+    /* nor one inside a job-info array, where the host's own owner is read */
+    load_perms(&info[0], perms, 1);
+    da.type = PMIX_INFO;
+    da.size = 1;
+    da.array = info;
+    PMIX_INFO_LOAD(&job, PMIX_JOB_INFO_ARRAY, &da, PMIX_DATA_ARRAY);
+    rc = reg("acc-perms-owner4", 1, &job, 1);
+    ns = find_ns("acc-perms-owner4");
+    report("an access list inside a job-info array names no owner",
+           registered(rc) && NULL != ns && PMIX_OWNER_REGISTERED != ns->access.source &&
+           ACC_STRANGER != ns->access.uid);
+    PMIX_INFO_DESTRUCT(&job);
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    /* and the same for a host keeping the rule itself */
+    pmix_server_access_construct(&acc);
+    load_perms(&info[0], perms, 3);
+    rc = pmix_server_access_load(&acc, info, 1);
+    report("a host loading such an access list gets the list and no owner",
+           PMIX_SUCCESS == rc && PMIX_OWNER_REGISTERED != acc.source &&
+           ACC_STRANGER != acc.uid && ACC_STRANGER != acc.gid && 1 == acc.nuids &&
+           ACC_USER == acc.uids[0]);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    pmix_server_access_destruct(&acc);
+
+    PMIX_INFO_DESTRUCT(&perms[0]);
+    PMIX_INFO_DESTRUCT(&perms[1]);
+    PMIX_INFO_DESTRUCT(&perms[2]);
 }
 
 static void test_names(void)
@@ -639,6 +731,7 @@ int main(int argc, char **argv)
 
     test_registered_policy();
     test_job_info_array();
+    test_perms_owner();
     test_names();
     test_malformed();
     test_owner_fallback();
