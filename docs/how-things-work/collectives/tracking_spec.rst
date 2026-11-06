@@ -291,6 +291,12 @@ once, by ``pmix_server_trk_join()`` (and ``grp_member_joined()`` for groups):
 * already contributed through the connection it lost - the same process
   calling again, counted once (``nduplicate``).
 
+The last applies to every rank, returned or not: a contribution from a
+rank already on ``local_cbs`` - a second call on the same connection, or
+one made after it reconnected - is counted in ``nduplicate``, so the
+contributed set gains nothing from it. Its caddy is answered with the
+others.
+
 A lost rank is left out of a collective's count however the collective names
 it. A whole-namespace count comes from ``nlocalprocs``, which the loss
 lowered; a collective naming ranks individually used to count a lost rank
