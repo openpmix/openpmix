@@ -71,20 +71,12 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "PROCESSING NODE ARRAY");
 
-    /* array of node-level info for a specific node. A value can name
-     * PMIX_DATA_ARRAY and carry no array - it takes nothing more than
-     * setting .type before the data - so check for the object, not just
-     * for the type. */
-    if (PMIX_DATA_ARRAY != val->type ||
-        NULL == val->data.darray ||
-        NULL == val->data.darray->array) {
+    /* array of node-level info for a specific node */
+    if (!pmix_gds_base_info_array(val, &iptr, &size)) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
 
-    /* setup arrays */
-    size = val->data.darray->size;
-    iptr = (pmix_info_t *) val->data.darray->array;
     PMIX_CONSTRUCT(&cache, pmix_list_t);
 
     /* cache the values while searching for the nodeid
@@ -276,18 +268,14 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk
     }
 
     /* array of app-level info */
-    if (PMIX_DATA_ARRAY != val->type ||
-        NULL == val->data.darray ||
-        NULL == val->data.darray->array) {
+    if (!pmix_gds_base_info_array(val, &iptr, &size)) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
 
-    /* setup arrays and lists */
+    /* setup lists */
     PMIX_CONSTRUCT(&cache, pmix_list_t);
     PMIX_CONSTRUCT(&ncache, pmix_list_t);
-    size = val->data.darray->size;
-    iptr = (pmix_info_t *) val->data.darray->array;
 
     for (j = 0; j < size; j++) {
         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
@@ -423,14 +411,10 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
                         "PROCESSING JOB ARRAY");
 
     /* array of job-level info */
-    if (PMIX_DATA_ARRAY != info->value.type ||
-        NULL == info->value.data.darray ||
-        NULL == info->value.data.darray->array) {
+    if (!pmix_gds_base_info_array(&info->value, &iptr, &size)) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
-    size = info->value.data.darray->size;
-    iptr = (pmix_info_t *) info->value.data.darray->array;
     for (j = 0; j < size; j++) {
         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
                             "%s gds:hash:job_array for key %s",
@@ -533,14 +517,10 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
     uint32_t sid = UINT32_MAX;
 
     /* array of session-level info */
-    if (PMIX_DATA_ARRAY != val->type ||
-        NULL == val->data.darray ||
-        NULL == val->data.darray->array) {
+    if (!pmix_gds_base_info_array(val, &iptr, &size)) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
-    size = val->data.darray->size;
-    iptr = (pmix_info_t *) val->data.darray->array;
 
     PMIX_CONSTRUCT(&ncache, pmix_list_t);
     PMIX_CONSTRUCT(&scache, pmix_list_t);
