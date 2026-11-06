@@ -173,6 +173,22 @@
 #include <unistd.h>
 #include <sys/un.h>
 
+/* PMIX_JOB_SIZE = n, for a registration. Each size is kept in static
+ * storage, loaded once, so it outlives a non-blocking call; a uint32 value
+ * holds no allocation, so nothing needs to be destructed */
+static pmix_info_t *js_info(int n)
+{
+    static pmix_info_t cache[8];
+    static bool loaded[8] = {false};
+    uint32_t sz = (uint32_t) n;
+
+    if (!loaded[n]) {
+        PMIX_INFO_LOAD(&cache[n], PMIX_JOB_SIZE, &sz, PMIX_UINT32);
+        loaded[n] = true;
+    }
+    return &cache[n];
+}
+
 #define AC_NSPACE  "accept.ns"
 #define AC_TOOLNS  "accept.tool"
 #define AC_OTHERNS "accept.other"
@@ -1042,7 +1058,7 @@ static pmix_status_t start_server(pmix_server_module_t *module, bool client, uid
         return rc;
     }
     PMIX_LOAD_NSPACE(ns, AC_NSPACE);
-    rc = PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+    rc = PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         return rc;
     }
@@ -3019,7 +3035,7 @@ static int case_tool_rank_dereg(void)
         return CHILD_SETUP;
     }
     PMIX_LOAD_NSPACE(ns, AC_TCNS);
-    reply = PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+    reply = PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
     PMIX_LOAD_PROCID(&proc, AC_TCNS, 0);
     reply = PMIx_server_register_client(&proc, getuid(), getgid(), NULL, NULL, NULL);
     if (PMIX_SUCCESS != reply && PMIX_OPERATION_SUCCEEDED != reply) {
@@ -3066,7 +3082,7 @@ static void register_other_users(void)
     pmix_nspace_t ns;
 
     PMIX_LOAD_NSPACE(ns, AC_OTHERNS);
-    PMIx_server_register_nspace(ns, 1, NULL, 0, noop_cb, NULL);
+    PMIx_server_register_nspace(ns, 1, js_info(1), 1, noop_cb, NULL);
     PMIX_LOAD_PROCID(&proc, AC_OTHERNS, 0);
     PMIx_server_register_client(&proc, getuid() + 1, getgid(), NULL, noop_cb, NULL);
 }
@@ -3108,7 +3124,7 @@ static void register_job_ns(void)
     pmix_nspace_t ns;
 
     PMIX_LOAD_NSPACE(ns, AC_JOBNS);
-    PMIx_server_register_nspace(ns, 2, NULL, 0, noop_cb, NULL);
+    PMIx_server_register_nspace(ns, 2, js_info(2), 1, noop_cb, NULL);
     if (reg_other_rank) {
         PMIX_LOAD_PROCID(&proc, AC_JOBNS, 0);
         PMIx_server_register_client(&proc, getuid() + 1, getgid(), NULL, noop_cb, NULL);

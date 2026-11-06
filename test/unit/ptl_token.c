@@ -197,6 +197,8 @@ int main(void)
     char *t0, *t1, *t0b, *t2 = NULL, bad[2 * PMIX_PTL_TOKEN_LEN + PMIX_MAX_NSLEN + 32], **env = NULL;
     char value[2 * PMIX_PTL_TOKEN_LEN + PMIX_MAX_NSLEN + 32];
     pmix_status_t rc;
+    pmix_info_t jsinfo;
+    uint32_t jsize = 3;
 
     fprintf(stdout, "\n=== the connection token setup_fork gives a rank ===\n\n");
     if (PMIX_SUCCESS != PMIx_server_init(&mymodule, NULL, 0)) {
@@ -204,7 +206,9 @@ int main(void)
         return 1;
     }
     PMIX_LOAD_NSPACE(ns, TK_NSPACE);
-    rc = PMIx_server_register_nspace(ns, 3, NULL, 0, NULL, NULL);
+    PMIX_INFO_LOAD(&jsinfo, PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
+    rc = PMIx_server_register_nspace(ns, 3, &jsinfo, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&jsinfo);
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         fprintf(stderr, "register_nspace failed\n");
         return 1;
