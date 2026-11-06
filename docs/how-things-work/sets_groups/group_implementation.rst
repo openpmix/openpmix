@@ -507,6 +507,10 @@ Key attributes / status codes:
   health slot the fault machinery updates by key.
 * ``PMIX_ERR_NOT_A_MEMBER`` — returned when the caller is not among the
   expanded construct participants.
+* ``PMIX_ERR_BAD_PARAM`` — also returned by the server when a construct or
+  destruct names different participants than the call that started the
+  operation of that ID on this server, or uses another construct method
+  (see ``get_tracker`` in ``src/server/pmix_server_group.c``).
 * ``PMIX_ERR_TIMEOUT`` — local-phase timeout expiry.
 * ``PMIX_ERR_LOST_CONNECTION`` / ``PMIX_ERR_PARTIAL_SUCCESS`` — degraded
   local-collective status recorded for the host.
