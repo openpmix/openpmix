@@ -185,6 +185,49 @@ static pmix_status_t register_owner_groups(uid_t owner, const pmix_info_t *info,
 
 static pmix_status_t release_nspace(pmix_proc_t *proc);
 
+/* Whether a namespace's job data includes PMIX_JOB_SIZE, given at the
+ * top level of the array or inside a PMIX_JOB_INFO_ARRAY */
+static bool carries_job_size(const pmix_info_t *info, size_t ninfo)
+{
+    const pmix_info_t *iptr;
+    size_t n, m, nj;
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_JOB_SIZE)) {
+            return true;
+        }
+        if (PMIX_CHECK_KEY(&info[n], PMIX_JOB_INFO_ARRAY) &&
+            pmix_server_valid_darray(&info[n], PMIX_INFO, 0)) {
+            iptr = (const pmix_info_t *) info[n].value.data.darray->array;
+            nj = info[n].value.data.darray->size;
+            for (m = 0; m < nj; m++) {
+                if (PMIX_CHECK_KEY(&iptr[m], PMIX_JOB_SIZE)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/* Whether an update carries a PMIX_JOB_INFO_ARRAY */
+static bool carries_job_array(const pmix_info_t *info, size_t ninfo)
+{
+    size_t n;
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_JOB_INFO_ARRAY)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void no_job_size(const char *nspace)
+{
+    pmix_show_help("help-pmix-server.txt", "register-nspace-no-job-size", true, nspace);
+}
+
 static void _register_nspace(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
@@ -230,6 +273,23 @@ static void _register_nspace(int sd, short args, void *cbdata)
     if (NULL != resolved) {
         cd->info = resolved;
         cd->ninfo = nresolved;
+    }
+
+    nodata = false;
+    for (i = 0; i < cd->ninfo; i++) {
+        if (PMIX_CHECK_KEY(&cd->info[i], PMIX_REGISTER_NODATA)) {
+            nodata = true;
+            break;
+        }
+    }
+
+    /* A registration that carries the job's data must include the job's
+     * size. Checked before anything is changed, so a refused registration
+     * leaves whatever the server held for the name as it was */
+    if (0 <= cd->nlocalprocs && !nodata && !carries_job_size(cd->info, cd->ninfo)) {
+        no_job_size(cd->proc.nspace);
+        rc = PMIX_ERR_BAD_PARAM;
+        goto release;
     }
 
     /* see if we already have this nspace */
@@ -325,6 +385,15 @@ static void _register_nspace(int sd, short args, void *cbdata)
             pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
             PMIX_RELEASE(nptr);
             rc = PMIX_ERR_NOT_FOUND;
+            goto release;
+        }
+        /* An update that brings the job data of a namespace registered
+         * without it (PMIX_REGISTER_NODATA) must include the job's size,
+         * as a full registration must */
+        if (!nptr->job_info_recvd && carries_job_array(cd->info, cd->ninfo) &&
+            !carries_job_size(cd->info, cd->ninfo)) {
+            no_job_size(cd->proc.nspace);
+            rc = PMIX_ERR_BAD_PARAM;
             goto release;
         }
         /* this is just an update, so we store it
@@ -525,15 +594,6 @@ static void _register_nspace(int sd, short args, void *cbdata)
     /* see if we already have everyone */
     if (nptr->nlocalprocs == pmix_list_get_size(&nptr->ranks)) {
         nptr->all_registered = true;
-    }
-
-    /* check info directives to see if we want to store this info */
-    nodata = false;
-    for (i = 0; i < cd->ninfo; i++) {
-        if (PMIX_CHECK_KEY(&cd->info[i], PMIX_REGISTER_NODATA)) {
-            nodata = true;
-            break;
-        }
     }
 
     /* PMIX_REGISTER_NODATA suppresses the *data* half of this call and
