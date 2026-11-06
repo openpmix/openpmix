@@ -154,8 +154,11 @@ If the namespace named in ``proc`` has not yet been registered, the library
 creates a placeholder namespace and appends this client to it, in anticipation
 of an eventual
 :ref:`PMIx_server_register_nspace(3) <man3-PMIx_server_register_nspace>` call.
-After registering the client, the host must call ``PMIx_server_setup_fork`` to
-inject the environment the client needs to connect back to this server.
+The namespace must be registered before the client is started, though: a client
+that connects while its namespace is only a placeholder is refused
+(``PMIX_ERR_INVALID_CRED``). After registering the client, the host must call
+``PMIx_server_setup_fork`` to inject the environment the client needs to
+connect back to this server.
 
 From registration on, a process of this release that connects as the rank
 must present the token ``PMIx_server_setup_fork`` hands out for it, and
