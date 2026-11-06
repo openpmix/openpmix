@@ -73,6 +73,22 @@
 #include <time.h>
 #include <unistd.h>
 
+/* PMIX_JOB_SIZE = n, for a registration. Each size is kept in static
+ * storage, loaded once, so it outlives a non-blocking call; a uint32 value
+ * holds no allocation, so nothing needs to be destructed */
+static pmix_info_t *js_info(int n)
+{
+    static pmix_info_t cache[8];
+    static bool loaded[8] = {false};
+    uint32_t sz = (uint32_t) n;
+
+    if (!loaded[n]) {
+        PMIX_INFO_LOAD(&cache[n], PMIX_JOB_SIZE, &sz, PMIX_UINT32);
+        loaded[n] = true;
+    }
+    return &cache[n];
+}
+
 #define CL_NSPACE "local.connect"
 
 /* a child's exit status */
@@ -812,7 +828,7 @@ static void singleton_case(kid_t *kp, const char *name)
              (unsigned long) k.pid);
     PMIX_LOAD_NSPACE(ns, detail);
     PMIX_LOAD_PROCID(&proc, detail, 0);
-    rc = PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+    rc = PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
     if ((PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) ||
         (PMIX_SUCCESS != (rc = PMIx_server_register_client(&proc, geteuid(), getegid(), NULL,
                                                            NULL, NULL)) &&
@@ -1089,7 +1105,7 @@ int main(int argc, char **argv)
         return 1;
     }
     PMIX_LOAD_NSPACE(ns, CL_NSPACE);
-    rc = PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+    rc = PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         fprintf(stderr, "register_nspace failed: %s\n", PMIx_Error_string(rc));
         return 1;

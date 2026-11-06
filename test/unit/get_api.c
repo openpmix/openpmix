@@ -101,7 +101,7 @@ static void regcbfunc(pmix_status_t status, void *cbdata)
 
 static pmix_status_t register_job(void)
 {
-    pmix_info_t info[4];
+    pmix_info_t info[5];
     pmix_info_t *ja;
     pmix_data_array_t da;
     pmix_nspace_t ns;
@@ -110,6 +110,7 @@ static pmix_status_t register_job(void)
     char *noderegex = NULL, *ppnregex = NULL;
     uint32_t topval = GET_UT_TOPVAL;
     uint32_t arrval = GET_UT_ARRVAL;
+    uint32_t jsize = 2;
     int n;
 
     PMIx_generate_regex(pmix_globals.hostname, &noderegex);
@@ -128,9 +129,10 @@ static pmix_status_t register_job(void)
     PMIX_INFO_LOAD(&info[1], PMIX_PROC_MAP, ppnregex, PMIX_REGEX);
     PMIX_INFO_LOAD(&info[2], GET_UT_TOPLEVEL, &topval, PMIX_UINT32);
     PMIX_INFO_LOAD(&info[3], PMIX_JOB_INFO_ARRAY, &da, PMIX_DATA_ARRAY);
+    PMIX_INFO_LOAD(&info[4], PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
 
     PMIX_LOAD_NSPACE(ns, GET_UT_NSPACE);
-    rc = PMIx_server_register_nspace(ns, 2, info, 4, NULL, NULL);
+    rc = PMIx_server_register_nspace(ns, 2, info, 5, NULL, NULL);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
         rc = PMIX_SUCCESS;
     }
@@ -140,6 +142,7 @@ static pmix_status_t register_job(void)
     PMIX_INFO_DESTRUCT(&info[1]);
     PMIX_INFO_DESTRUCT(&info[2]);
     PMIX_INFO_DESTRUCT(&info[3]);
+    PMIX_INFO_DESTRUCT(&info[4]);
     free(noderegex);
     free(ppnregex);
     if (PMIX_SUCCESS != rc) {

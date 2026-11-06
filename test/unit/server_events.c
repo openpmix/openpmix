@@ -572,21 +572,23 @@ static pmix_status_t do_notify_as(pmix_peer_t *peer, pmix_status_t status,
 /* register a two-rank job owned by uid/gid, both ranks local */
 static pmix_status_t reg_job(const char *name, uid_t uid, gid_t gid)
 {
-    pmix_info_t info[2];
+    pmix_info_t info[3];
     pmix_nspace_t ns;
     pmix_proc_t proc;
     pmix_status_t rc;
-    uint32_t u32;
+    uint32_t u32, jsize = 2;
     pmix_rank_t r;
 
     u32 = (uint32_t) uid;
     PMIX_INFO_LOAD(&info[0], PMIX_USERID, &u32, PMIX_UINT32);
     u32 = (uint32_t) gid;
     PMIX_INFO_LOAD(&info[1], PMIX_GRPID, &u32, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[2], PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
     PMIX_LOAD_NSPACE(ns, name);
-    rc = PMIx_server_register_nspace(ns, 2, info, 2, NULL, NULL);
+    rc = PMIx_server_register_nspace(ns, 2, info, 3, NULL, NULL);
     PMIX_INFO_DESTRUCT(&info[0]);
     PMIX_INFO_DESTRUCT(&info[1]);
+    PMIX_INFO_DESTRUCT(&info[2]);
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         return rc;
     }

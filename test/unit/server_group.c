@@ -696,30 +696,8 @@ static size_t held_members(const char *grpid)
     return held_with(grpid, NULL, NULL);
 }
 
-/* Register a namespace that places no procs on this node. That is enough
- * for check_definition_complete: it needs the namespace to be known and
- * its local count to be settled, and a count of zero settles it with
- * nothing to wait for. */
-static pmix_status_t register_nspace_n(const char *ns, int nlocal)
-{
-    pmix_nspace_t nspace;
-    pmix_status_t rc;
-
-    PMIX_LOAD_NSPACE(nspace, ns);
-    rc = PMIx_server_register_nspace(nspace, nlocal, NULL, 0, NULL, NULL);
-    if (PMIX_OPERATION_SUCCEEDED == rc) {
-        rc = PMIX_SUCCESS;
-    }
-    return rc;
-}
-
-static pmix_status_t register_nspace(const char *ns)
-{
-    return register_nspace_n(ns, 0);
-}
-
-/* The same, with the job's size given, so that a wildcard for it stands
- * for a known set of procs */
+/* Register a namespace with nlocal procs on this node, giving the job's
+ * size as a host must */
 static pmix_status_t register_nspace_sized(const char *ns, int nlocal, uint32_t size)
 {
     pmix_nspace_t nspace;
@@ -734,6 +712,22 @@ static pmix_status_t register_nspace_sized(const char *ns, int nlocal, uint32_t 
         rc = PMIX_SUCCESS;
     }
     return rc;
+}
+
+/* A job of nlocal procs, all of them on this node - or, for nlocal 0, a
+ * job of one proc placed elsewhere */
+static pmix_status_t register_nspace_n(const char *ns, int nlocal)
+{
+    return register_nspace_sized(ns, nlocal, (0 < nlocal) ? (uint32_t) nlocal : 1);
+}
+
+/* Register a namespace that places no procs on this node. That is enough
+ * for check_definition_complete: it needs the namespace to be known and
+ * its local count to be settled, and a count of zero settles it with
+ * nothing to wait for. */
+static pmix_status_t register_nspace(const char *ns)
+{
+    return register_nspace_n(ns, 0);
 }
 
 /* grpcbfunc thread-shifts, so let anything queued behind us run before we

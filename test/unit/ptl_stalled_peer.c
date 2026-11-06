@@ -160,9 +160,13 @@ static bool server_answers(void)
 {
     char ns[PMIX_MAX_NSLEN + 1];
     pmix_status_t rc;
+    pmix_info_t jsinfo;
+    uint32_t jsize = 1;
 
     snprintf(ns, sizeof(ns), "ptl-stalled-probe-%d", probes++);
-    rc = PMIx_server_register_nspace(ns, 0, NULL, 0, NULL, NULL);
+    PMIX_INFO_LOAD(&jsinfo, PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
+    rc = PMIx_server_register_nspace(ns, 0, &jsinfo, 1, NULL, NULL);
+    PMIX_INFO_DESTRUCT(&jsinfo);
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         return false;
     }

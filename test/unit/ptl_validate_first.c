@@ -260,7 +260,14 @@ static pmix_status_t start_server(bool client)
         return rc;
     }
     PMIX_LOAD_NSPACE(ns, VF_NSPACE);
-    rc = PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+    {
+        pmix_info_t jsinfo;
+        uint32_t jsize = 1;
+
+        PMIX_INFO_LOAD(&jsinfo, PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
+        rc = PMIx_server_register_nspace(ns, 1, &jsinfo, 1, NULL, NULL);
+        PMIX_INFO_DESTRUCT(&jsinfo);
+    }
     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         return rc;
     }
