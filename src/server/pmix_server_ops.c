@@ -1166,6 +1166,45 @@ static pmix_status_t screen_file_writer(pmix_peer_t *peer, pmix_setup_caddy_t *c
     return PMIX_SUCCESS;
 }
 
+/* Refuse a spawn whose job-level directives carry an identity key below
+ * the top level - inside an access list or a job-info array - or an
+ * access list nested inside another. stamp_requester replaces the
+ * requester's PMIX_USERID and PMIX_GRPID at the top level only, and a
+ * host may read these arrays itself, so they are checked here, where
+ * the requester can be told why */
+static pmix_status_t screen_nested_identity(const pmix_info_t *info, size_t ninfo, bool nested,
+                                            bool in_perms)
+{
+    pmix_data_array_t *da;
+    pmix_status_t rc;
+    bool perms;
+    size_t n;
+
+    for (n = 0; n < ninfo; n++) {
+        if (nested && pmix_server_is_identity_key(info[n].key)) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+        perms = PMIx_Check_key(info[n].key, PMIX_ACCESS_PERMISSIONS);
+        if (!perms && (nested || !PMIx_Check_key(info[n].key, PMIX_JOB_INFO_ARRAY))) {
+            continue;
+        }
+        if (in_perms) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+        /* a malformed array is the registration's to refuse */
+        if (PMIX_DATA_ARRAY != info[n].value.type ||
+            NULL == (da = info[n].value.data.darray) || PMIX_INFO != da->type ||
+            NULL == da->array) {
+            continue;
+        }
+        rc = screen_nested_identity((const pmix_info_t *) da->array, da->size, true, perms);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 void pmix_server_spawn_parser(pmix_peer_t *peer,
                               pmix_iof_channel_t *channels,
                               pmix_iof_flags_t *flags,
@@ -1387,6 +1426,12 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+        rc = screen_nested_identity(cd->info, cd->ninfo, false, false);
+        if (PMIX_SUCCESS != rc) {
+            pmix_output_verbose(2, pmix_server_globals.spawn_output,
+                                "refusing SPAWN: an identity below the top level");
             goto cleanup;
         }
         /* a user or group given by name - an owner, or an entry of the
