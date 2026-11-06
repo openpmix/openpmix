@@ -127,6 +127,22 @@ tried either.
 This is reported once per job; any other output file of the job that
 cannot be opened is not written either.
 #
+[iof-file-backlog]
+Output for a job's output file is being dropped:
+
+  Job:            %s
+  Rank:           %lu
+  Held:           %lu chunks
+
+The PMIx server is running as root, so it writes this job's output
+files from a thread of their own rather than from the thread that
+serves every job on the node. That thread has fallen this far behind
+the job's output - a filesystem that is slow, or that does not respond -
+and output beyond it is not written to the file. Output already held is
+still written if the filesystem recovers.
+
+The amount held is set by the pmix_iof_writer_backlog MCA parameter.
+#
 [group-id-in-use]
 The PMIx server %s:%u was told that a group formed under an ID one of
 its clients' groups still holds:

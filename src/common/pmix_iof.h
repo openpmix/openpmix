@@ -85,6 +85,11 @@ typedef struct {
     struct timeval tv;
     int fd;
     pmix_list_t outputs;
+    /* fd is a pipe the writer thread copies to a file opened for another
+     * user - see pmix_iof_writer.h. What queues here is then capped */
+    bool relayed;
+    /* ...and output has been dropped at the cap, which has been said */
+    bool dropped;
 } pmix_iof_write_event_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_write_event_t);
 /* "ev" is deliberately absent: a designated initializer zeroes what it
@@ -99,7 +104,9 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_write_event_t);
     .evset = false,                         \
     .tv = {0, 0},                           \
     .fd = 0,                                \
-    .outputs = PMIX_LIST_STATIC_INIT((w).outputs) \
+    .outputs = PMIX_LIST_STATIC_INIT((w).outputs), \
+    .relayed = false,                       \
+    .dropped = false                        \
 }
 
 typedef struct {
