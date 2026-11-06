@@ -164,8 +164,13 @@ static int legacy_child(bool tool)
         return CHILD_SETUP;
     }
     if (!tool) {
+        pmix_info_t jsinfo;
+        uint32_t jsize = 1;
+
+        PMIX_INFO_LOAD(&jsinfo, PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
         PMIX_LOAD_NSPACE(ns, LEGACY_NSPACE);
-        rc = PMIx_server_register_nspace(ns, 1, NULL, 0, NULL, NULL);
+        rc = PMIx_server_register_nspace(ns, 1, &jsinfo, 1, NULL, NULL);
+        PMIX_INFO_DESTRUCT(&jsinfo);
         PMIX_LOAD_PROCID(&proc, LEGACY_NSPACE, 0);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             fprintf(stderr, "register_nspace: %s\n", PMIx_Error_string(rc));

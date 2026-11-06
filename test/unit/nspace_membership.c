@@ -53,6 +53,22 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+/* PMIX_JOB_SIZE = n, for a registration. Each size is kept in static
+ * storage, loaded once, so it outlives a non-blocking call; a uint32 value
+ * holds no allocation, so nothing needs to be destructed */
+static pmix_info_t *js_info(int n)
+{
+    static pmix_info_t cache[8];
+    static bool loaded[8] = {false};
+    uint32_t sz = (uint32_t) n;
+
+    if (!loaded[n]) {
+        PMIX_INFO_LOAD(&cache[n], PMIX_JOB_SIZE, &sz, PMIX_UINT32);
+        loaded[n] = true;
+    }
+    return &cache[n];
+}
+
 extern char **environ;
 
 #define NSM_JOB   "nsm.job"    // a job the host registered
@@ -228,7 +244,7 @@ static void tool_connected_fn(pmix_info_t *info, size_t ninfo,
     up->cbfunc = cbfunc;
     up->cbdata = cbdata;
     PMIX_LOAD_NSPACE(fresh, NSM_FRESH);
-    rc = PMIx_server_register_nspace(fresh, 1, NULL, 0, fresh_registered, up);
+    rc = PMIx_server_register_nspace(fresh, 1, js_info(1), 1, fresh_registered, up);
     if (PMIX_SUCCESS != rc) {
         free(up);
         cbfunc(rc, NULL, cbdata);
@@ -754,7 +770,7 @@ static void takeback_cases(void)
 
     st = PMIX_ERR_NOT_AVAILABLE + 1000;
     ok = PMIX_SUCCESS ==
-         await(PMIx_server_register_nspace(job, 1, NULL, 0, opcb, (void *) &st), &st);
+         await(PMIx_server_register_nspace(job, 1, js_info(1), 1, opcb, (void *) &st), &st);
     probe(NSM_TAKEN, 0, &p);
     report("the host's full registration takes the name back",
            ok && p.listed && !p.self_started && 0 == p.nranks);
@@ -782,7 +798,7 @@ static void dereg_cases(void)
 
     st = PMIX_ERR_NOT_AVAILABLE + 1000;
     PMIX_LOAD_NSPACE(job, NSM_DEREG);
-    ok = PMIX_SUCCESS == await(PMIx_server_register_nspace(job, 1, NULL, 0, opcb, (void *) &st), &st) &&
+    ok = PMIX_SUCCESS == await(PMIx_server_register_nspace(job, 1, js_info(1), 1, opcb, (void *) &st), &st) &&
          PMIX_SUCCESS == register_client(NSM_DEREG, 0, getuid(), getgid());
     ok = ok && hold_as(NSM_DEREG, "0", true, &h1);
     report("a tool-client connects as its registered rank", ok && 1 == connected_as(NSM_DEREG));
@@ -862,7 +878,7 @@ int main(int argc, char **argv)
     /* the host's job: rank 0 is us, rank 2 another user, rank 1 nobody */
     st = PMIX_ERR_NOT_AVAILABLE + 1000;
     PMIX_LOAD_NSPACE(job, NSM_JOB);
-    rc = PMIx_server_register_nspace(job, 3, NULL, 0, opcb, (void *) &st);
+    rc = PMIx_server_register_nspace(job, 3, js_info(3), 1, opcb, (void *) &st);
     for (n = 0; PMIX_SUCCESS == rc && n < 1000 && PMIX_ERR_NOT_AVAILABLE + 1000 == st; n++) {
         usleep(10000);
     }

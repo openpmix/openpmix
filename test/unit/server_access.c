@@ -133,14 +133,39 @@ static bool registered(pmix_status_t rc)
     return PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc;
 }
 
+/* A registration (nlocal zero or more) also carries the job's size,
+ * PMIX_JOB_SIZE = nlocal. The caller's entries are passed as they are,
+ * in a view one entry longer, and the view's entries are copied back
+ * afterwards - so a case that checks the library left the caller's
+ * array as it was still sees anything the library changed in it */
 static pmix_status_t reg(const char *name, int nlocal, pmix_info_t *info, size_t ninfo)
 {
     pmix_nspace_t ns;
     pmix_status_t rc;
+    pmix_info_t *view;
+    uint32_t jsize = (uint32_t) nlocal;
 
     PMIX_LOAD_NSPACE(ns, name);
-    rc = PMIx_server_register_nspace(ns, nlocal, info, ninfo, NULL, NULL);
+    if (0 > nlocal) {
+        rc = PMIx_server_register_nspace(ns, nlocal, info, ninfo, NULL, NULL);
+        progress_barrier();
+        return rc;
+    }
+    view = (pmix_info_t *) calloc(ninfo + 1, sizeof(pmix_info_t));
+    if (NULL == view) {
+        return PMIX_ERR_NOMEM;
+    }
+    if (0 < ninfo) {
+        memcpy(view, info, ninfo * sizeof(pmix_info_t));
+    }
+    PMIX_INFO_LOAD(&view[ninfo], PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
+    rc = PMIx_server_register_nspace(ns, nlocal, view, ninfo + 1, NULL, NULL);
     progress_barrier();
+    if (0 < ninfo) {
+        memcpy(info, view, ninfo * sizeof(pmix_info_t));
+    }
+    PMIX_INFO_DESTRUCT(&view[ninfo]);
+    free(view);
     return rc;
 }
 
