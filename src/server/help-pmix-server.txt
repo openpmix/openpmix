@@ -155,3 +155,12 @@ A group ID belongs to one group until that group is destructed, so the
 host should have refused the new one. This server keeps the group it
 holds; its clients in the new group are told the construct failed
 (PMIX_ERR_EXISTS) where it reports to them.
+#
+[register-nspace-no-job-size]
+The host asked this PMIx server to register namespace %s without
+giving the job's size (PMIX_JOB_SIZE). The size is required whenever a
+namespace's job data is registered - at the top level of the info array
+or inside its PMIX_JOB_INFO_ARRAY - and the registration was refused
+(PMIX_ERR_BAD_PARAM). A registration with PMIX_REGISTER_NODATA carries
+no job data and is not affected; the update that later delivers that
+namespace's job data must include the size.
