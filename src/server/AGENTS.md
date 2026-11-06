@@ -1003,12 +1003,23 @@ switchyard's reference). Completion is the single predicate
 `pmix_server_trk_complete` (`pmix_server_fence.c:1189`):
 
 ```
-def_complete && (len(local_cbs) + len(departed)) >= nlocal
+def_complete && (len(local_cbs) - nduplicate + len(departed)) >= nlocal
 ```
 
 `departed` holds local participants whose connection dropped **before**
-contributing; the `>=` is deliberately tolerant of over-count from a
-rank that contributed twice. Participation is tracked **by identity**: a peer that
+contributing. **A rank is counted once, however many calls it makes.**
+`pmix_server_trk_join` compares each contribution's `pmix_rank_info_t` -
+shared by every connection of a rank - with the caddies already on
+`local_cbs`, and counts a match in `nduplicate`. The repeat caddy stays on
+`local_cbs` and is answered with the rest. This used to be done only for
+a rank that had lost its connection and come back, so an ordinary second
+`PMIx_Fence_nb` or `PMIx_Connect_nb` from one rank stood in for a rank
+that had not called: a fence went up without it, and a connect naming
+another job went to the host before that job had called.
+`grp_member_joined` does the same for the group engine, whether or not
+the block's definition is complete yet. `test/unit/collective_repeat.c`
+and the repeat cases in `test/unit/server_group.c` cover them.
+Participation is tracked **by identity**: a peer that
 already contributed (is on `local_cbs`) is never moved to `departed`, so
 its loss can neither complete the collective early nor discard its data.
 
@@ -1380,7 +1391,8 @@ length of a global barrier - during which the tracker is on the list,
 routine event: a rank that already called in calling again after it
 reconnected, or a second `PMIx_Fence_nb` over the same set issued before
 the first resolved. `pmix_server_trk_complete()` then answers "yes" again
-(the `>=` is deliberately tolerant of an over-count), and the handler
+(the repeat call is not counted, but the count it compares already
+sufficed), and the handler
 handed the host *the same tracker pointer* a second time. The host then
 has two operations outstanding against one `cbdata` and completes both:
 the first reply run unlinks and releases the tracker, and the second runs

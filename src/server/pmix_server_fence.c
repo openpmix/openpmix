@@ -962,9 +962,14 @@ bool pmix_server_trk_count_nspace(pmix_server_trkr_t *trk, pmix_namespace_t *npt
  * soon as this returns. Count its namespace in if nothing has yet, and then
  * make sure the contribution is counted exactly once.
  *
- * Usually there is nothing more to it. A rank that was lost and has come
- * back (pmix_server_rank_returned) is the exception, and there are three
- * ways it can stand with this collective:
+ * A rank whose earlier call is already on local_cbs is the same process
+ * again - a second call on the same connection, or one made after it
+ * reconnected, since every connection of a rank shares its
+ * pmix_rank_info_t - and is not counted a second time (nduplicate). The
+ * caddy still goes on local_cbs, and is answered with the others.
+ *
+ * A rank that was lost and has come back (pmix_server_rank_returned) can
+ * also stand with this collective in one of two other ways:
  *
  *  - lost while the collective was waiting for it: it is on departed, and
  *    contributing now takes it off - the sum completion compares against
@@ -973,13 +978,10 @@ bool pmix_server_trk_count_nspace(pmix_server_trkr_t *trk, pmix_namespace_t *npt
  *  - lost before the collective was counted: it is on excluded, and nlocal
  *    did not count it, so count it in now - otherwise its contribution
  *    stands in for a participant that has not called yet, and the
- *    collective completes without that one;
- *  - already contributed through the connection it lost: its old caddy is
- *    on local_cbs, so this one is the same process again and is not
- *    counted a second time.
+ *    collective completes without that one.
  *
- * Only a rank that has returned can be in the third state, so only its
- * contributions pay for the walk of local_cbs. */
+ * The walk of local_cbs is linear in the contributions so far, so a
+ * collective over N local ranks costs N*(N-1)/2 pointer comparisons. */
 void pmix_server_trk_join(pmix_server_trkr_t *trk, pmix_peer_t *peer)
 {
     pmix_server_caddy_t *cd;
@@ -1000,12 +1002,10 @@ void pmix_server_trk_join(pmix_server_trkr_t *trk, pmix_peer_t *peer)
         ++trk->nlocal;
         return;
     }
-    if (peer->info->returned) {
-        PMIX_LIST_FOREACH (cd, &trk->local_cbs, pmix_server_caddy_t) {
-            if (cd->peer->info == peer->info) {
-                ++trk->nduplicate;
-                return;
-            }
+    PMIX_LIST_FOREACH (cd, &trk->local_cbs, pmix_server_caddy_t) {
+        if (cd->peer->info == peer->info) {
+            ++trk->nduplicate;
+            return;
         }
     }
 }
@@ -2083,8 +2083,8 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
      * that already contributed calling again after it reconnected, or a
      * second PMIx_Fence_nb over the same set issued before the first
      * resolved.
-     * pmix_server_trk_complete then answers "yes" again (it is a '>='
-     * comparison, deliberately tolerant of an over-count), and without
+     * pmix_server_trk_complete then answers "yes" again (the repeat call
+     * is not counted, but the count it compares already sufficed), and without
      * this test the host was handed the *same tracker pointer* a second
      * time. It then had two operations outstanding against one cbdata and
      * completed both: the first completion replies to every participant,
@@ -2211,9 +2211,8 @@ cleanup:
  * entry on local_cbs) or by having departed before contributing (an entry
  * on departed). A live participant that has not yet been heard from is on
  * neither list, so the sum stays below nlocal until it either contributes
- * or departs. The '>=' comparison is deliberate: it tolerates any
- * over-count from a rank that contributed twice without falsely reporting
- * the collective as incomplete. See docs/how-things-work/collectives. */
+ * or departs. A rank that calls more than once is counted once - see
+ * pmix_server_trk_join. See docs/how-things-work/collectives. */
 bool pmix_server_trk_complete(pmix_server_trkr_t *trk)
 {
     if (!trk->def_complete) {
