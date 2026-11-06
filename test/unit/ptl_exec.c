@@ -36,6 +36,10 @@
  * the namespace the host gives it. A job script that runs no client and
  * two tools, one after the other: each takes the script's rank.
  *
+ * A client the host registered and prepared but started before it
+ * registered the client's namespace is refused, and the host is not asked
+ * about it.
+ *
  * Each case runs in a server of its own, which execs this program as its
  * clients. They signal the server over pipes whose descriptors are in
  * their environment.
@@ -309,6 +313,21 @@ static int run_quick(void)
     return CHILD_PASS;
 }
 
+/* a client whose namespace the host never registered: its init fails */
+static int run_unregistered(void)
+{
+    pmix_proc_t me;
+    pmix_status_t rc;
+
+    rc = PMIx_Init(&me, NULL, 0);
+    if (PMIX_SUCCESS == rc) {
+        fprintf(stdout, "    PMIx_Init succeeded\n");
+        PMIx_Finalize(NULL, 0);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
 /* a tool with the environment of a rank no process holds: it takes the
  * rank */
 static int run_rank_tool(void)
@@ -474,6 +493,9 @@ static pmix_server_module_t mymodule = {
     .tool_connected2 = tool_connected2
 };
 
+/* start_server registers the job's clients but not the job itself */
+static bool ri_no_nspace = false;
+
 static pmix_status_t start_server(pmix_rank_t nprocs)
 {
     pmix_status_t rc, code = PMIX_ERR_LOST_CONNECTION;
@@ -504,11 +526,13 @@ static pmix_status_t start_server(pmix_rank_t nprocs)
     }
     PMIx_Register_event_handler(&code, 1, NULL, 0, lost_handler, NULL, NULL);
     PMIX_LOAD_NSPACE(ns, RI_NSPACE);
-    PMIX_INFO_LOAD(&jsinfo, PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
-    rc = PMIx_server_register_nspace(ns, (int) nprocs, &jsinfo, 1, NULL, NULL);
-    PMIX_INFO_DESTRUCT(&jsinfo);
-    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-        return rc;
+    if (!ri_no_nspace) {
+        PMIX_INFO_LOAD(&jsinfo, PMIX_JOB_SIZE, &jsize, PMIX_UINT32);
+        rc = PMIx_server_register_nspace(ns, (int) nprocs, &jsinfo, 1, NULL, NULL);
+        PMIX_INFO_DESTRUCT(&jsinfo);
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            return rc;
+        }
     }
     for (r = 0; r < nprocs; r++) {
         PMIX_LOAD_PROCID(&proc, RI_NSPACE, r);
@@ -835,6 +859,28 @@ static int run_exec_lost(char *self)
 
 
 /* a client dies without finalizing: it is lost at once */
+/* the host registered the client and prepared it, and started it before
+ * registering its namespace */
+static int run_nspace_unregistered(char *self)
+{
+    client_t cl;
+    int rc;
+
+    ri_no_nspace = true;
+    if (PMIX_SUCCESS != start_server(1) || !start_client(self, 0, "unregistered", &cl)) {
+        return CHILD_SETUP;
+    }
+    rc = finish(&cl);
+    if (CHILD_PASS != rc) {
+        return CHILD_FAIL;
+    }
+    if (0 != nconnected) {
+        fprintf(stdout, "    the host was told of %d connections\n", nconnected);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
 static int run_died(char *self)
 {
     client_t cl;
@@ -933,6 +979,9 @@ int main(int argc, char **argv)
         if (0 == strcmp(argv[1], "quick")) {
             return run_quick();
         }
+        if (0 == strcmp(argv[1], "unregistered")) {
+            return run_unregistered();
+        }
         if (0 == strcmp(argv[1], "ranktool")) {
             return run_rank_tool();
         }
@@ -966,6 +1015,8 @@ int main(int argc, char **argv)
     run_case("two tools a job script runs in turn, and no client, each take its rank",
              run_script_two_tools, argv[0]);
     run_case("a client that dies without finalizing is lost at once", run_died, argv[0]);
+    run_case("a client whose namespace the host has not registered is refused, and the host "
+             "is not asked about it", run_nspace_unregistered, argv[0]);
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;

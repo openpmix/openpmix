@@ -1478,6 +1478,15 @@ static void accept_client(pmix_pending_connection_t *pnd)
         refuse(pnd, PMIX_ERR_INVALID_CRED);
         return;
     }
+    /* a namespace whose clients alone were registered (the host has not
+     * yet called PMIx_server_register_nspace for it) takes no client */
+    if (SIZE_MAX == nptr->nlocalprocs && !nptr->self_started) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "refusing client %s:%u - its namespace is not registered",
+                            pnd->proc.nspace, pnd->proc.rank);
+        refuse(pnd, PMIX_ERR_INVALID_CRED);
+        return;
+    }
     info = find_rank(nptr, pnd->proc.rank);
     /* only a rank registered before its process started takes a client -
      * never one a self-started tool's connection made, nor any rank of a
