@@ -77,6 +77,27 @@ provided by the added members can be included in the returned
     non-bootstrap "add member" may even pass ``NULL``), so membership cannot
     be validated.
 
+.. note::
+
+    **Every caller names the same participants.** A construct or destruct
+    that names its participants explicitly joins one already collecting on
+    its server under the same ID only when it names the same participants
+    as the call that started it. The order does not matter, a process named
+    twice counts once, and a job's wildcard rank stands for every process
+    of that job, so ``A:*`` matches a list of all of ``A``'s processes. A
+    process that is not among that call's participants receives
+    ``PMIX_ERR_NOT_A_MEMBER``; one that is, but names any other list,
+    receives ``PMIX_ERR_BAD_PARAM``. Either way the operation already
+    collecting carries on without it. Matching a wildcard against a list of
+    processes uses the job size the host registered with the namespace
+    (``PMIX_JOB_SIZE``). A destruct of a group the server holds
+    always runs over the group's recorded membership, so it is matched
+    against that. The add-members, bootstrap and invite methods name only
+    some of their participants and are not compared this way. One ID is
+    not shared between methods either: a construct by one method that
+    finds an operation of another already collecting under its ID
+    receives ``PMIX_ERR_BAD_PARAM``.
+
 
 Finally, the *invite* method represents the most dynamic form
 of group construction as it is executed in an ad hoc manner that
