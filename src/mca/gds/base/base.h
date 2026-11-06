@@ -165,6 +165,47 @@ PMIX_EXPORT pmix_status_t pmix_gds_base_proc_array_id(const pmix_info_t *array, 
                                                       pmix_rank_t *rank, size_t *idpos);
 
 /**
+ * Take the pmix_info_t array out of a value that is meant to carry one.
+ *
+ * Every *_INFO_ARRAY key - session, job, app, node, proc, the
+ * qualified-value wrapper and the job update - is a PMIX_DATA_ARRAY of
+ * PMIX_INFO, but nothing makes it one. The value may name
+ * PMIX_DATA_ARRAY and carry no array at all, and the element type
+ * comes off the wire with the array, which is allocated at that type's
+ * width. So check the shape here, once, rather than at each site.
+ *
+ * What this checks is what the array DECLARES, not what its memory
+ * holds. Off the wire the two agree by construction - the unpacker
+ * decoded elements of the declared type into a block it sized for them -
+ * so this is the whole check. An array a host built in-process is the
+ * host's word on both counts: one that says PMIX_INFO over memory that
+ * is not, or names more elements than it allocated, is not detectable
+ * here or anywhere else.
+ *
+ * @param val    the value to examine
+ * @param array  OUT - the info array, set only on success
+ * @param size   OUT - its number of elements, set only on success
+ *
+ * @return true if val is a PMIX_DATA_ARRAY of PMIX_INFO with an array
+ *         present. An empty array is not refused here; a caller that
+ *         needs a first element checks size itself.
+ */
+static inline bool pmix_gds_base_info_array(const pmix_value_t *val,
+                                            pmix_info_t **array, size_t *size)
+{
+    if (NULL == val ||
+        PMIX_DATA_ARRAY != val->type ||
+        NULL == val->data.darray ||
+        PMIX_INFO != val->data.darray->type ||
+        NULL == val->data.darray->array) {
+        return false;
+    }
+    *array = (pmix_info_t *) val->data.darray->array;
+    *size = val->data.darray->size;
+    return true;
+}
+
+/**
  * Fetch from a peer's datastore from a thread that may not be the
  * progress thread.
  *

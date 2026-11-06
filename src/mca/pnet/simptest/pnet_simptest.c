@@ -603,6 +603,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr, pmix_inf
                          * the value as one */
                         if (PMIX_DATA_ARRAY != kv->value->type
                             || NULL == kv->value->data.darray
+                            || PMIX_INFO != kv->value->data.darray->type
                             || NULL == kv->value->data.darray->array) {
                             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                             PMIX_RELEASE(kv);
@@ -625,6 +626,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr, pmix_inf
                     } else if (PMIX_CHECK_KEY(kv, PMIX_NODE_INFO_ARRAY)) {
                         if (PMIX_DATA_ARRAY != kv->value->type
                             || NULL == kv->value->data.darray
+                            || PMIX_INFO != kv->value->data.darray->type
                             || NULL == kv->value->data.darray->array) {
                             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                             PMIX_RELEASE(kv);
