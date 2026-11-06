@@ -496,6 +496,10 @@ typedef struct {
     /* we could not open one of this job's output files as its owner,
      * and have said so - see output_not_opened() in pmix_iof.c */
     bool files_unopened;
+    /* opening one of this job's output files as its owner took longer
+     * than pmix_runas_timeout, so none of the rest is tried - each would
+     * hold the progress thread that long again. See output_as_owner() */
+    bool files_stalled;
     pmix_access_t access; // who may access this namespace - see pmix_access_t
     bool jobdata_hash_valid; // jobdata_hash describes the job-level data we hold
     uint64_t jobdata_hash;   // PMIX_JOB_DATA_HASH of that data, computed when needed
