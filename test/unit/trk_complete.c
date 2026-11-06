@@ -15,10 +15,13 @@
  * accounted for, either by contributing (an entry on local_cbs) or by departing
  * before contributing (an entry on departed):
  *
- *     def_complete && (len(local_cbs) + len(departed)) >= nlocal
+ *     def_complete && (len(local_cbs) - nduplicate + len(departed)) >= nlocal
  *
- * The '>=' is deliberate: it tolerates any over-count from fork/exec'd clones
- * without ever falsely reporting the collective incomplete. These tests pin
+ * A rank's repeat calls - a clone's included, since it shares the rank's
+ * pmix_rank_info_t - are discounted when they join (nduplicate, see
+ * pmix_server_trk_join and test/unit/collective_repeat.c), not here. The '>='
+ * never reports a collective incomplete once enough are accounted for. These
+ * tests pin
  * both the def_complete gate and the counting/tolerance behavior, since the
  * fence, connect, disconnect, and group teardown paths all rest on it.
  */
@@ -113,9 +116,9 @@ int main(int argc, char **argv)
     /* all expected participants departed before contributing */
     check("all departed is complete", true, 2, 0, 2, true);
 
-    /* clone over-count: more contributors than nlocal must still be complete
+    /* over-count: more accounted for than nlocal must still be complete
      * (the '>=' tolerance), never falsely incomplete */
-    check("clone over-count stays complete", true, 2, 3, 0, true);
+    check("an over-count stays complete", true, 2, 3, 0, true);
 
     /* degenerate all-remote collective: nlocal 0, nothing local */
     check("nlocal zero is complete", true, 0, 0, 0, true);

@@ -124,9 +124,10 @@ One function, called from every site that currently hand-rolls the test:
 Because a rank is counted in exactly one of the two lists and neither is
 ever decremented behind the predicate's back, this cannot complete early:
 a not-yet-heard-from live participant is in neither list, so the sum stays
-below ``nlocal`` until it either contributes or departs. (``>=`` rather
-than ``==`` is deliberate defensive hygiene against a rank that
-contributes twice.)
+below ``nlocal`` until it either contributes or departs. (As built, a
+rank that contributes twice is counted once - ``nduplicate``, subtracted
+from the size of ``local_cbs``. ``>=`` rather than ``==`` is defensive
+hygiene.)
 
 As built
 ~~~~~~~~
@@ -328,8 +329,8 @@ Risks and constraints
 * **Interoperability:** unchanged — this is server-local logic; a peer of
   any version sees identical behavior on the wire.
 * **One connection per rank:** a server refuses a second connection for
-  a rank that has one, so ``nlocal`` counting ranks is exact; the ``>=``
-  predicate tolerates a rank that contributes twice.
+  a rank that has one, so ``nlocal`` counting ranks is exact; a rank
+  that contributes twice is counted once (``nduplicate``).
 
 Open decisions to resolve before coding
 ----------------------------------------
