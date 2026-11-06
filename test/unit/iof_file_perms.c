@@ -46,6 +46,10 @@
  *                                      PMIX ERROR line on stderr
  *   ... for a job that asked for a
  *   copy of its output too          -> the copy is still written
+ *   a stream whose file could not be
+ *   opened, after the obstacle is
+ *   gone                            -> not tried again for that stream;
+ *                                      the job's other stream still is
  *   as root only: opening a file as
  *   the owner never finishes        -> abandoned at pmix_runas_timeout,
  *                                      and the job's other file is not
@@ -646,6 +650,57 @@ static void test_unopened(void)
            0 < n && 1 == occurrences(text, "copied line\n"));
 }
 
+/* A file that cannot be opened is not opened again for the next chunk.
+ *
+ * write_output() asks for a stream's sink on every chunk, and used to
+ * find nothing for a stream whose file had failed - so it opened the file
+ * again, which on a privileged server is a fork as the owner, once per
+ * chunk for the life of the job. The failure is now remembered for the
+ * stream. The test makes the path openable between two chunks: a library
+ * that tries again creates the file on the second, and one that
+ * remembers does not. It is per stream, not per job: one rank's file
+ * failing says nothing of another's, so the job's stderr, not tried
+ * before, is opened once the path allows it. */
+static void test_unopened_once(void)
+{
+    char gate[1024], dir[1100], file[2300];
+    int fd;
+
+    snprintf(gate, sizeof(gate), "%s/gate", base);
+    fd = open(gate, O_CREAT | O_WRONLY | O_TRUNC, 0600);
+    if (0 > fd) {
+        report("unopened once: fixture", 0);
+        return;
+    }
+    close(fd);
+    if (0 == geteuid() && 0 != chown(gate, OTHER_UID, getegid())) {
+        report("unopened once: fixture", 0);
+        return;
+    }
+    snprintf(dir, sizeof(dir), "%s/out", gate);
+    if (PMIX_SUCCESS != reg("perms-unopened-once", PMIX_IOF_OUTPUT_TO_DIRECTORY, dir,
+                            (0 == geteuid()) ? OTHER_UID : geteuid(), getegid(), (gid_t) -1)) {
+        report("unopened once: fixture", 0);
+        return;
+    }
+    /* the gate is a regular file, so nothing can be made under it */
+    deliver_on("perms-unopened-once", PMIX_FWD_STDOUT_CHANNEL, "one\n");
+    /* and now it is a directory the owner may write */
+    if (0 != unlink(gate) || 0 != mkdir(gate, 0755) ||
+        (0 == geteuid() && 0 != chown(gate, OTHER_UID, getegid()))) {
+        report("unopened once: fixture", 0);
+        return;
+    }
+    deliver_on("perms-unopened-once", PMIX_FWD_STDOUT_CHANNEL, "two\n");
+    snprintf(file, sizeof(file), "%s/perms-unopened-once/rank.0/stdout", dir);
+    report("a stream whose file did not open is not tried again on the next chunk",
+           !exists(file));
+    deliver_on("perms-unopened-once", PMIX_FWD_STDERR_CHANNEL, "three\n");
+    snprintf(file, sizeof(file), "%s/perms-unopened-once/rank.0/stderr", dir);
+    report("...and the job's other stream is still opened when it can be",
+           holds(file, "three\n"));
+}
+
 static double now_s(void)
 {
     struct timeval tv;
@@ -739,6 +794,7 @@ int main(int argc, char **argv)
     test_files();
     test_writer();
     test_unopened();
+    test_unopened_once();
     test_stalled();
 
     PMIx_server_finalize();

@@ -1391,6 +1391,29 @@ static void output_not_opened(pmix_namespace_t *nptr, const char *path,
     }
 }
 
+/* This rank's stream has no file: it could not be opened as the job's
+ * owner. Leave a placeholder where its sink would be, so that the next
+ * chunk for the stream finds that rather than nothing - which would have
+ * it open the file again. On a privileged server every attempt is a fork,
+ * and write_output() is asked once per chunk, so a job whose files cannot
+ * be opened cost a fork per chunk of its output, for its whole life.
+ * Without the placeholder, failing to allocate one only means the next
+ * chunk tries again. */
+static void note_unopened(pmix_namespace_t *nptr, const pmix_proc_t *src,
+                          pmix_iof_channel_t tag)
+{
+    pmix_iof_sink_t *snk;
+
+    snk = PMIX_NEW(pmix_iof_sink_t);
+    if (NULL == snk) {
+        return;
+    }
+    PMIX_LOAD_PROCID(&snk->name, src->nspace, src->rank);
+    snk->tag = tag;
+    snk->unopened = true;
+    pmix_list_append(&nptr->sinks, &snk->super);
+}
+
 /* Open the output sink of one rank's stream. Returns NULL if there is
  * none, and then sets *unopened when that is because the file could not
  * be opened - which output_not_opened() has reported - rather than a
@@ -1448,6 +1471,8 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 free(path);
                 free(outfile);
                 free(outdir);
+                note_unopened(nptr, &src,
+                              nptr->iof_flags.merge ? PMIX_FWD_ALL_CHANNELS : PMIX_FWD_STDOUT_CHANNEL);
                 *unopened = true;
                 return NULL;
             }
@@ -1486,6 +1511,8 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 free(path);
                 free(outfile);
                 free(outdir);
+                note_unopened(nptr, &src,
+                              PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL);
                 *unopened = true;
                 return NULL;
             }
@@ -1549,6 +1576,8 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 /* couldn't be opened as the owner */
                 output_not_opened(nptr, outfile, &op);
                 free(outfile);
+                note_unopened(nptr, &src,
+                              nptr->iof_flags.merge ? PMIX_FWD_ALL_CHANNELS : PMIX_FWD_STDOUT_CHANNEL);
                 *unopened = true;
                 return NULL;
             }
@@ -1593,6 +1622,8 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                 /* couldn't be opened as the owner */
                 output_not_opened(nptr, outfile, &op);
                 free(outfile);
+                note_unopened(nptr, &src,
+                              PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL);
                 *unopened = true;
                 return NULL;
             }
@@ -3266,11 +3297,16 @@ static pmix_status_t write_output(const pmix_proc_t *name,
                 PMIX_LIST_FOREACH(sink, &nptr->sinks, pmix_iof_sink_t) {
                     if (sink->name.rank == name->rank &&
                         ((stream & sink->tag) || nptr->iof_flags.merge)) {
-                        channel = &sink->wev;
+                        if (sink->unopened) {
+                            /* tried already - see note_unopened() */
+                            unopened = true;
+                        } else {
+                            channel = &sink->wev;
+                        }
                         break;
                     }
                 }
-                if (NULL == channel) {
+                if (NULL == channel && !unopened) {
                     /* need to set this one up */
                     channel = pmix_iof_setup(nptr, name->rank, stream, &unopened);
                     if (NULL == channel && !unopened) {
@@ -3296,11 +3332,16 @@ static pmix_status_t write_output(const pmix_proc_t *name,
                 PMIX_LIST_FOREACH(sink, &nptr->sinks, pmix_iof_sink_t) {
                     if (sink->name.rank == name->rank &&
                         ((stream & sink->tag) || nptr->iof_flags.merge)) {
-                        channel = &sink->wev;
+                        if (sink->unopened) {
+                            /* tried already - see note_unopened() */
+                            unopened = true;
+                        } else {
+                            channel = &sink->wev;
+                        }
                         break;
                     }
                 }
-                if (NULL == channel) {
+                if (NULL == channel && !unopened) {
                     /* need to set this one up */
                     channel = pmix_iof_setup(nptr, name->rank, stream, &unopened);
                     if (NULL == channel && !unopened) {
@@ -4418,6 +4459,7 @@ static void iof_sink_construct(pmix_iof_sink_t *ptr)
     ptr->xoff = false;
     ptr->exclusive = false;
     ptr->closed = false;
+    ptr->unopened = false;
 }
 static void iof_sink_destruct(pmix_iof_sink_t *ptr)
 {

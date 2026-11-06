@@ -110,6 +110,11 @@ typedef struct {
     bool xoff;
     bool exclusive;
     bool closed;
+    /* A placeholder: this rank's stream was to go to a file that could
+     * not be opened as the job's owner. It has no descriptor and is never
+     * armed; it exists so the next chunk for the stream finds it and
+     * does not try to open the file again - see note_unopened() */
+    bool unopened;
 } pmix_iof_sink_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_sink_t);
 #define PMIX_IOF_SINK_STATIC_INIT(s)            \
@@ -120,7 +125,8 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_sink_t);
     .wev = PMIX_IOF_WRITE_EVENT_STATIC_INIT((s).wev), \
     .xoff = false,                              \
     .exclusive = false,                         \
-    .closed = false                             \
+    .closed = false,                            \
+    .unopened = false                           \
 }
 
 typedef struct {
