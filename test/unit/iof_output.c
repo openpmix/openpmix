@@ -28,6 +28,9 @@
  *    server flushed it at finalize (late, and out of order) and a client
  *    or tool never flushed it at all.
  *
+ * A file that one sink writes for stdout and stderr together, with
+ * PMIX_IOF_MERGE_STDERR_STDOUT, is closed only once both channels have
+ * ended, and output for a sink that has been closed is not queued.
  * A partial line is held only up to iof_max_partial_line bytes: a source
  * that never writes a newline must not be held without end, so a longer
  * one is written out as it stands.
@@ -50,6 +53,7 @@
 #include "include/pmix_server.h"
 #include "include/pmix_tool.h"
 
+#include "src/common/pmix_iof.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/server/pmix_server_ops.h"
@@ -342,6 +346,88 @@ static bool register_named(const char *name, bool stdout_on, bool stderr_on, con
     return true;
 }
 
+/* register a one-process job whose stdout and stderr go together to
+ * the output file with prefix "file" */
+static bool register_merged(const char *name, const char *file)
+{
+    pmix_info_t info[6];
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    uint32_t one = 1, uid = (uint32_t) geteuid(), gid = (uint32_t) getegid();
+    bool yes = true;
+    size_t n;
+
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_SIZE, &one, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[1], PMIX_IOF_MERGE_STDERR_STDOUT, &yes, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_IOF_OUTPUT_TO_FILE, file, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[3], PMIX_IOF_FILE_ONLY, &yes, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[4], PMIX_USERID, &uid, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[5], PMIX_GRPID, &gid, PMIX_UINT32);
+    PMIX_LOAD_NSPACE(ns, name);
+    rc = PMIx_server_register_nspace(ns, 1, info, 6, NULL, NULL);
+    for (n = 0; n < 6; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        fprintf(out, "PMIx_server_register_nspace failed: %s\n", PMIx_Error_string(rc));
+        fflush(out);
+        return false;
+    }
+    return true;
+}
+
+/* how many chunks are queued on the sinks of a namespace, and how many
+ * of those sinks are still open - read on the progress thread */
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    const char *nspace;
+    size_t queued;
+    size_t open;
+    size_t nsinks;
+} sink_view_t;
+static PMIX_CLASS_INSTANCE(sink_view_t, pmix_object_t, NULL, NULL);
+
+static void read_sinks(int sd, short args, void *cbdata)
+{
+    sink_view_t *v = (sink_view_t *) cbdata;
+    pmix_namespace_t *ns;
+    pmix_iof_sink_t *sink;
+    (void) sd;
+    (void) args;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (NULL == ns->nspace || 0 != strcmp(ns->nspace, v->nspace)) {
+            continue;
+        }
+        PMIX_LIST_FOREACH (sink, &ns->sinks, pmix_iof_sink_t) {
+            ++v->nsinks;
+            v->queued += pmix_list_get_size(&sink->wev.outputs);
+            if (0 <= sink->wev.fd) {
+                ++v->open;
+            }
+        }
+    }
+    PMIX_WAKEUP_THREAD(&v->lock);
+}
+
+static void view_sinks(const char *nspace, size_t *nsinks, size_t *open, size_t *queued)
+{
+    sink_view_t *v = PMIX_NEW(sink_view_t);
+
+    PMIX_CONSTRUCT_LOCK(&v->lock);
+    v->nspace = nspace;
+    pmix_event_assign(&v->ev, pmix_globals.evbase, -1, EV_WRITE, read_sinks, v);
+    pmix_event_active(&v->ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&v->lock);
+    PMIX_DESTRUCT_LOCK(&v->lock);
+    *nsinks = v->nsinks;
+    *open = v->open;
+    *queued = v->queued;
+    PMIX_RELEASE(v);
+}
+
 /* Wait for "path" to hold "want", and say whether it did */
 static bool file_holds(const char *path, const char *want)
 {
@@ -578,6 +664,69 @@ int main(int argc, char **argv)
         report("its output file is still written", file_holds(file, "filed\n"));
         got = settle(rfd, buf);
         report("but not the copy on our own stdout", 0 == got);
+        snprintf(cmd, sizeof(cmd), "rm -rf '%s'", dir);
+        if (0 != system(cmd)) {
+            fprintf(out, "could not remove %s\n", dir);
+        }
+    }
+
+    /* ---- stdout and stderr merged into one output file ----
+     * The file is written by one sink for both channels. Ending stdout
+     * leaves it open for stderr, ending stderr as well closes it, and
+     * output arriving after that is not queued */
+    {
+        const char *tmp = getenv("TMPDIR");
+        char dir[1024], prefix[1100], file[1200], cmd[1100];
+        size_t nsinks, open, queued;
+        int i;
+
+        snprintf(dir, sizeof(dir), "%s/iofmrg.XXXXXX", (NULL == tmp) ? "/tmp" : tmp);
+        if (NULL == mkdtemp(dir)) {
+            fprintf(out, "mkdtemp failed: %s\n", strerror(errno));
+            PMIx_server_finalize();
+            return 1;
+        }
+        snprintf(prefix, sizeof(prefix), "%s/out", dir);
+        snprintf(file, sizeof(file), "%s.mrgfile.0.out", prefix);
+        if (!register_merged("mrgfile", prefix)) {
+            PMIx_server_finalize();
+            return 1;
+        }
+        PMIX_LOAD_PROCID(&src, "mrgfile", 0);
+        if (!deliver(&src, PMIX_FWD_STDOUT_CHANNEL, "first\n", 6) ||
+            !deliver(&src, PMIX_FWD_STDOUT_CHANNEL, NULL, 0) ||
+            !deliver(&src, PMIX_FWD_STDERR_CHANNEL, "second\n", 7)) {
+            PMIx_server_finalize();
+            return 1;
+        }
+        report("merged file: stderr is written after stdout has ended",
+               file_holds(file, "first\nsecond\n"));
+        view_sinks("mrgfile", &nsinks, &open, &queued);
+        report("merged file: one sink, still open, nothing queued",
+               1 == nsinks && 1 == open && 0 == queued);
+        if (!deliver(&src, PMIX_FWD_STDERR_CHANNEL, NULL, 0)) {
+            PMIx_server_finalize();
+            return 1;
+        }
+        open = 1;
+        for (i = 0; i < WAIT_TRIES && 0 != open; i++) {
+            view_sinks("mrgfile", &nsinks, &open, &queued);
+            if (0 != open) {
+                usleep(WAIT_USEC);
+            }
+        }
+        report("merged file: the sink closes once stderr has ended too", 0 == open);
+        if (!deliver(&src, PMIX_FWD_STDERR_CHANNEL, "late\n", 5) ||
+            !deliver(&src, PMIX_FWD_STDOUT_CHANNEL, "late\n", 5)) {
+            PMIx_server_finalize();
+            return 1;
+        }
+        view_sinks("mrgfile", &nsinks, &open, &queued);
+        report("merged file: output after the close is not queued", 0 == queued);
+        report("merged file: and the file is as it was",
+               file_holds(file, "first\nsecond\n"));
+        got = settle(rfd, buf);
+        report("merged file: nothing is copied to our own stdout", 0 == got);
         snprintf(cmd, sizeof(cmd), "rm -rf '%s'", dir);
         if (0 != system(cmd)) {
             fprintf(out, "could not remove %s\n", dir);
