@@ -1016,7 +1016,6 @@ tellserver:
     } else {
         rc = _add_hdlr(cd, &xfer);
     }
-    PMIX_LIST_DESTRUCT(&xfer);
     if (PMIX_SUCCESS != rc && PMIX_ERR_WOULD_BLOCK != rc) {
         /* unable to register */
         --pmix_globals.events.nhdlrs;
@@ -1035,13 +1034,21 @@ tellserver:
     }
     if (PMIX_ERR_WOULD_BLOCK == rc) {
         /* the callback will provide our response */
+        PMIX_LIST_DESTRUCT(&xfer);
         PMIX_RELEASE(cd);
         return;
     }
 
 ack:
-    /* check if any matching notifications have been locally cached */
-    check_cached_events(cd);
+    PMIX_LIST_DESTRUCT(&xfer);
+    if (PMIX_SUCCESS == rc) {
+        /* check if any matching notifications have been locally cached */
+        check_cached_events(cd);
+    } else {
+        /* the handler, if one was made, has been released */
+        index = SIZE_MAX;
+        cd->hdlr = NULL;
+    }
     if (NULL != cd->codes) {
         free(cd->codes);
         cd->codes = NULL;

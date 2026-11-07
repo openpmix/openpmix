@@ -94,6 +94,12 @@
  *      is replayed the same info a handler registered beforehand was
  *      given live - the event's own handler name and return object are
  *      dropped and each handler finds only its own.
+ *
+ *  refused registration: a registration refused before it is complete -
+ *      a placement before a handler that does not exist, an affected proc
+ *      of the wrong type, the first-overall slot already taken - reports
+ *      no handler reference, gives no handler the cached event, and leaves
+ *      the event in the cache.
  */
 
 #include "src/include/pmix_config.h"
@@ -136,6 +142,8 @@
 #define EVUT_CODE_PACKFAIL1 -9020
 #define EVUT_CODE_PACKFAIL2 -9021
 #define EVUT_CODE_PACKFAIL3 -9022
+#define EVUT_CODE_REFUSED   -9023
+#define EVUT_CODE_REFUSED2  -9024
 
 static int npass = 0;
 static int nfail = 0;
@@ -2310,6 +2318,116 @@ static void test_dereg_packfail(void)
     dereg_packfail("unpackable dereg, default handler", NULL, 0);
 }
 
+/* ------------------------------------------------------------------ */
+/* A refused registration leaves the cache alone                      */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_status_t code;
+    size_t n;
+} evut_cachecount_t;
+
+static void do_cache_count(int sd, short args, void *cbdata)
+{
+    evut_cachecount_t *r = (evut_cachecount_t *) cbdata;
+    pmix_notify_caddy_t *ncd;
+    int j;
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    r->n = 0;
+    for (j = 0; j < pmix_globals.max_events; j++) {
+        pmix_hotel_knock(&pmix_globals.notifications, j, (void **) &ncd);
+        if (NULL != ncd && r->code == ncd->status) {
+            ++r->n;
+        }
+    }
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+/* how many events with this code the notification cache holds - read
+ * on the progress thread, which owns the cache */
+static size_t cached_count(pmix_status_t code)
+{
+    evut_cachecount_t r;
+
+    memset(&r, 0, sizeof(r));
+    PMIX_CONSTRUCT_LOCK(&r.lock);
+    r.code = code;
+    PMIX_THREADSHIFT(&r, do_cache_count);
+    PMIX_WAIT_THREAD(&r.lock);
+    PMIX_DESTRUCT_LOCK(&r.lock);
+    return r.n;
+}
+
+static void refused_reg(const char *label, pmix_status_t code, pmix_info_t *info)
+{
+    char msg[256];
+    pmix_status_t rc;
+
+    reg_acks = 0;
+    reg_ack_status = PMIX_SUCCESS;
+    reg_ack_ref = 0;
+    rc = PMIx_Register_event_handler(&code, 1, info, 1, count_hdlr, regev_cbfunc, NULL);
+    if (PMIX_SUCCESS == rc) {
+        wait_for_count(&reg_acks, 1);
+    }
+    grace();
+    snprintf(msg, sizeof(msg), "%s: refused with no handler reference", label);
+    report(msg, PMIX_SUCCESS == rc && 1 == reg_acks && PMIX_SUCCESS != reg_ack_status &&
+                SIZE_MAX == reg_ack_ref);
+    snprintf(msg, sizeof(msg), "%s: no handler is given the cached event", label);
+    report(msg, 1 == counted);
+    snprintf(msg, sizeof(msg), "%s: the event stays cached", label);
+    report(msg, 1 == cached_count(code));
+}
+
+static void test_refused_registration(void)
+{
+    pmix_status_t code = EVUT_CODE_REFUSED;
+    pmix_status_t other = EVUT_CODE_REFUSED2;
+    pmix_info_t info[1];
+    pmix_proc_t src;
+    size_t idx, firstidx;
+    pmix_status_t rc;
+
+    counted = 0;
+    idx = reghdlr(&code, 1, NULL, 0, count_hdlr);
+    report("refused registration: handler registered", SIZE_MAX != idx);
+    PMIX_LOAD_PROCID(&src, "refused-src", 3);
+    rc = PMIx_Notify_event(code, &src, PMIX_RANGE_UNDEF, NULL, 0, NULL, NULL);
+    wait_for_count(&counted, 1);
+    grace();
+    report("refused registration: the event is delivered and cached",
+           PMIX_SUCCESS == rc && 1 == counted && 1 == cached_count(code));
+
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_HDLR_BEFORE, "evut-no-such-handler", PMIX_STRING);
+    refused_reg("refused registration, before a missing handler", code, info);
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_AFFECTED_PROC, "evut-not-a-proc", PMIX_STRING);
+    refused_reg("refused registration, affected proc of the wrong type", code, info);
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    /* take the first-overall slot, for another code - if it is taken
+     * already, that registration is refused and the slot is still taken */
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_HDLR_FIRST, NULL, PMIX_BOOL);
+    firstidx = reghdlr(&other, 1, info, 1, count_hdlr);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_HDLR_FIRST, NULL, PMIX_BOOL);
+    refused_reg("refused registration, first-overall slot taken", code, info);
+    PMIX_INFO_DESTRUCT(&info[0]);
+
+    if (SIZE_MAX != firstidx) {
+        PMIx_Deregister_event_handler(firstidx, NULL, NULL);
+    }
+    if (SIZE_MAX != idx) {
+        PMIx_Deregister_event_handler(idx, NULL, NULL);
+    }
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -2369,6 +2487,9 @@ int main(int argc, char **argv)
 
     /* deregistration whose server message cannot be packed */
     test_dereg_packfail();
+
+    /* a registration refused before it is complete */
+    test_refused_registration();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
