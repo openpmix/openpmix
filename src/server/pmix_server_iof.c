@@ -1041,6 +1041,22 @@ pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
     return PMIX_SUCCESS;
 }
 
+/* the number of IOF pull requests this peer holds */
+static size_t peer_iof_requests(pmix_peer_t *peer)
+{
+    pmix_iof_req_t *req;
+    size_t held = 0;
+    int i;
+
+    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL != req && req->requestor == peer) {
+            ++held;
+        }
+    }
+    return held;
+}
+
 pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
                                  pmix_op_cbfunc_t cbfunc,
                                  void *cbdata)
@@ -1141,6 +1157,16 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
     PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+
+    /* refuse a request that takes the peer past its limit */
+    if (0 < pmix_server_globals.max_iof_reqs_per_peer &&
+        peer_iof_requests(peer) >= pmix_server_globals.max_iof_reqs_per_peer) {
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "IOF pull request from %s:%d refused: at its limit",
+                            peer->info->pname.nspace, peer->info->pname.rank);
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
         goto exit;
     }
 

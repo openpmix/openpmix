@@ -396,6 +396,17 @@ comparison is safe. A source must also name a valid namespace - an empty
 one names no job for the host to approve, and `PMIX_CHECK_NSPACE` would
 match it against every source.
 
+**A peer's registrations are limited.** `pmix_server_register_events`
+refuses a request that would take one peer past
+`pmix_server_max_event_regs_per_peer` entries in the event registration
+store (one per code, or one for a default handler), and
+`pmix_server_iofreg` refuses a pull from a peer already holding
+`pmix_server_max_iof_reqs_per_peer` requests. Both answer
+`PMIX_ERR_OUT_OF_RESOURCE` before anything is added or the host is asked,
+both count by walking the store, and both default to 1024, with 0 meaning
+no limit. Covered by `test/unit/server_events.c` and
+`test/unit/iof_pull_approval.c`.
+
 **Taking a refused registration back out must not depend on the reply.**
 `_iofreg` is the arm that undoes a registration when the host refuses
 asynchronously. That removal sat

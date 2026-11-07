@@ -545,6 +545,23 @@ void pmix_server_deactivate_events(pmix_status_t *codes, size_t ncodes)
     }
 }
 
+/* the number of registration entries this peer holds in the store */
+static size_t peer_registrations(pmix_peer_t *peer)
+{
+    pmix_regevents_info_t *reginfo;
+    pmix_peer_events_info_t *prev;
+    size_t held = 0;
+
+    PMIX_LIST_FOREACH (reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
+        PMIX_LIST_FOREACH (prev, &reginfo->peers, pmix_peer_events_info_t) {
+            if (prev->peer == peer) {
+                ++held;
+            }
+        }
+    }
+    return held;
+}
+
 pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
                                           pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -681,6 +698,23 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
                 goto cleanup;
             }
             memcpy(affected, info[n].value.data.darray->array, naffected * sizeof(pmix_proc_t));
+        }
+    }
+
+    /* this request adds one entry per code, or one for a default
+     * handler - refuse it if that takes the peer past its limit */
+    if (0 < pmix_server_globals.max_event_regs_per_peer) {
+        size_t adding = (0 == ncodes) ? 1 : ncodes;
+        size_t held = peer_registrations(peer);
+
+        if (adding > pmix_server_globals.max_event_regs_per_peer ||
+            held > pmix_server_globals.max_event_regs_per_peer - adding) {
+            pmix_output_verbose(2, pmix_server_globals.event_output,
+                                "register events for peer %s:%d refused: %lu held, %lu more",
+                                peer->info->pname.nspace, peer->info->pname.rank,
+                                (unsigned long) held, (unsigned long) adding);
+            rc = PMIX_ERR_OUT_OF_RESOURCE;
+            goto cleanup;
         }
     }
 
