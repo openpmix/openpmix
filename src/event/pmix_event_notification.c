@@ -1401,7 +1401,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     pmix_peer_events_info_t *pr;
     pmix_event_chain_t *chain;
     size_t n, nleft;
-    bool matched, holdcd, cached;
+    bool matched, holdcd, cached, targeted;
     pmix_buffer_t *bfr;
     pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
     pmix_status_t rc;
@@ -1494,21 +1494,6 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         holdcd = false;
         goto local;
     }
-    /* if we are a tool, we send it to our clients regardless
-     * of the range - we assume that if we are in range, then
-     * so are any clients attached to us
-     *
-     * if we are a server but not a tool, then check the range
-     * before sending it to our client */
-    if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-        /* remove the target designations */
-        if (NULL != chain->targets) {
-            free(chain->targets);
-            chain->targets = NULL;
-            chain->ntargets = 0;
-        }
-    }
-
     /* copy setup to the cd object */
     cd->nondefault = chain->nondefault;
     if (NULL != chain->targets) {
@@ -1541,6 +1526,15 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         }
         cd->nleft = nleft;
     }
+    /* A tool sends the event to every tool attached to it, whatever the
+     * targets, and runs its own handlers on it, so its own chain carries
+     * no targets. The targets stay on cd, where they select which of its
+     * other peers are sent the event. */
+    if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer) && NULL != chain->targets) {
+        free(chain->targets);
+        chain->targets = NULL;
+        chain->ntargets = 0;
+    }
     if (NULL != chain->affected) {
         cd->naffected = chain->naffected;
         PMIX_PROC_CREATE(cd->affected, cd->naffected);
@@ -1559,8 +1553,10 @@ static void _notify_client_event(int sd, short args, void *cbdata)
 
     /* if they provided a PMIX_EVENT_CUSTOM_RANGE info object but
      * specified a range other than PMIX_RANGE_CUSTOM, then this
-     * is an error */
-    if (PMIX_RANGE_CUSTOM != cd->range && NULL != cd->targets) {
+     * is an error. A tool takes the targets of an event it is given
+     * whatever range the event arrived with. */
+    if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer) &&
+        PMIX_RANGE_CUSTOM != cd->range && NULL != cd->targets) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         /* notify the caller */
         if (NULL != cd->cbfunc) {
@@ -1631,13 +1627,19 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                      * pmix_peer_events_info_t still records what the message
                      * said - it is what _check_cached_events replays
                      * against - it just does not gate delivery. */
-                    if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer) && NULL != cd->targets) {
+                    /* An event with targets goes to the peers it names. A
+                     * tool also sends it to the tools attached to it. */
+                    targeted = false;
+                    if (NULL != cd->targets) {
                         rngtrk.procs = cd->targets;
                         rngtrk.nprocs = cd->ntargets;
-                        rngtrk.range = cd->range;
+                        rngtrk.range = PMIX_RANGE_CUSTOM;
                         PMIX_LOAD_PROCID(&proc, pr->peer->info->pname.nspace,
                                          pr->peer->info->pname.rank);
-                        if (!pmix_notify_check_range(&rngtrk, &proc)) {
+                        targeted = pmix_notify_check_range(&rngtrk, &proc);
+                        if (!targeted &&
+                            !(PMIX_PEER_IS_TOOL(pmix_globals.mypeer) &&
+                              PMIX_PEER_IS_TOOL(pr->peer))) {
                             continue;
                         }
                     } else if (NULL == cd->targets && PMIX_RANGE_NAMESPACE == cd->range &&
@@ -1722,7 +1724,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                     PMIX_LOAD_PROCID(&proc, pr->peer->info->pname.nspace,
                                      pr->peer->info->pname.rank);
                     (void) pmix_notify_mark_notified(cd, &proc);
-                    if (NULL != cd->targets && 0 < cd->nleft) {
+                    if (targeted && 0 < cd->nleft) {
                         /* track the number of targets we have left to notify */
                         --cd->nleft;
                         /* if the event was cached and this is the last one,
@@ -1737,7 +1739,10 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                                 PMIX_RELEASE(cd);
                                 cached = false;
                             }
-                            break;
+                            /* a tool goes on to the tools attached to it */
+                            if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+                                break;
+                            }
                         }
                     }
                 }
