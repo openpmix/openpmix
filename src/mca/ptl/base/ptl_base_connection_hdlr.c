@@ -2083,8 +2083,17 @@ static bool server_sets(const char *key)
            PMIx_Check_key(key, PMIX_TIMEOUT);
 }
 
+/* The keys that say who is asking, or for whom - PMIX_REQUESTOR_PID,
+ * PMIX_REQUESTED_GRPID, PMIX_ORIGIN_* and PMIX_REQUESTOR - which a
+ * connecting tool does not pass to the host: its connection is the only
+ * identity the host is given for it */
+static bool tool_drops(const char *key)
+{
+    return pmix_server_is_identity_key(key) || PMIx_Check_key(key, PMIX_REQUESTOR);
+}
+
 /* What a tool's connect-ack info says, for the host - less what the
- * server sets itself */
+ * server sets itself, and what tool_drops names */
 static pmix_status_t read_tool_info(pmix_pending_connection_t *pnd, void *ilist)
 {
     pmix_bfrops_module_t *bfrops = (pmix_bfrops_module_t *) pnd->bfropsmod;
@@ -2129,7 +2138,7 @@ static pmix_status_t read_tool_info(pmix_pending_connection_t *pnd, void *ilist)
         return rc;
     }
     for (n = 0; n < sz; n++) {
-        if (server_sets(iptr[n].key)) {
+        if (server_sets(iptr[n].key) || tool_drops(iptr[n].key)) {
             continue;
         }
         /* the token is checked here, and goes no further */
@@ -2518,14 +2527,16 @@ static void ask_about_tool(pmix_pending_connection_t *pnd)
     }
     /* provide the version, and the identity validation settled - and
      * the pid, where the kernel reports one for this socket, in place of
-     * the one the tool sent. Any other the tool put in its own info was
-     * dropped as it was read */
+     * the one the tool sent, as PMIX_REQUESTOR_PID too, as every up-call
+     * made for a requester carries it. Any other the tool put in its own
+     * info was dropped as it was read */
     PMIx_Info_list_add_unique(ilist, PMIX_VERSION_INFO, pnd->version, PMIX_STRING, true);
     PMIx_Info_list_add_unique(ilist, PMIX_USERID, &pnd->uid, PMIX_UINT32, true);
     if (local_peer(pnd)) {
         kpid = kernel_pid(pnd);
         if (0 < kpid) {
             PMIx_Info_list_add_unique(ilist, PMIX_PROC_PID, &kpid, PMIX_PID, true);
+            PMIx_Info_list_add_unique(ilist, PMIX_REQUESTOR_PID, &kpid, PMIX_PID, true);
         }
     } else if (PMIX_SUCCESS == pmix_util_getpid(pnd->sd, &kpid)) {
         PMIx_Info_list_add_unique(ilist, PMIX_PROC_PID, &kpid, PMIX_PID, true);
