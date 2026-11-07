@@ -804,6 +804,10 @@ one line, `0 0 4294967295`, or no map file at all), that number may stand
 for anyone from outside, even when a subordinate-id range gives it a map
 entry and `pmix_util_id_to_parent()` translates it.
 `pmix_ptl_base_judge_server` therefore matches no identity to it there.
+`pmix_util_id_from_outside()` answers the narrower question a server
+asks of a peer: the overflow id with no line in the map file, which can
+only be an id from outside. Where the map covers the overflow id it
+answers false, since a process of the namespace may run as it.
 
 ### `pmix_util_getid_tcp` — who owns the far end of a local TCP connection
 

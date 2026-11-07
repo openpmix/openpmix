@@ -123,6 +123,13 @@ PMIX_EXPORT bool pmix_util_id_map_is_identity(const char *mapfile);
 PMIX_EXPORT uint32_t pmix_util_overflow_uid(void);
 PMIX_EXPORT uint32_t pmix_util_overflow_gid(void);
 
+/* Whether `id`, as the kernel reported it for a peer, is the `overflow`
+ * id and `mapfile` (as for pmix_util_id_to_parent) has no line for it -
+ * so that it names no id of this process's user namespace. False where
+ * the map has a line for the overflow id (a subordinate-id range that
+ * covers it), and where there is no map file */
+PMIX_EXPORT bool pmix_util_id_from_outside(const char *mapfile, uint32_t id, uint32_t overflow);
+
 END_C_DECLS
 
 #endif /* PMIX_GETID_H */

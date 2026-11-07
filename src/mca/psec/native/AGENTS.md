@@ -60,7 +60,10 @@ After the `PMIX_CRED_TYPE` screen and the protocol checks (a
    attested.
 3. **Over TCP, the kernel names the owner** — `pmix_util_getid_tcp()`
    ([`src/util/pmix_getid.c`](../../../util/pmix_getid.c)) finds the
-   peer's socket in this host's TCP table. That uid is the peer's uid.
+   peer's socket in this host's TCP table. That uid is the peer's uid -
+   unless it is the overflow uid and `/proc/self/uid_map` has no line
+   for it (`pmix_util_id_from_outside`), which is refused
+   (`PMIX_ERR_INVALID_CRED`): it names no user of this namespace.
    The group is the claimed one (the kernel records none for a TCP
    socket). Then `settle_identity()`, with the gid not attested.
 4. **Over TCP, the kernel cannot.** A peer at an address of this host
