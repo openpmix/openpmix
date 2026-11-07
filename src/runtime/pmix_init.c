@@ -109,6 +109,7 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .cached_events = PMIX_LIST_STATIC_INIT(pmix_globals.cached_events),
     .iof_requests = PMIX_POINTER_ARRAY_STATIC_INIT,
     .max_events = INT_MAX,
+    .max_events_per_source = 0,
     .event_eviction_time = 0,
     .notifications = PMIX_HOTEL_STATIC_INIT,
     .pushstdin = false,

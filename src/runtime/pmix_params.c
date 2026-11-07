@@ -414,6 +414,16 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_globals.max_events);
 
+    /* how many cached notifications one source namespace may hold */
+    pmix_globals.max_events_per_source = 0;
+    (void) pmix_mca_base_var_register("pmix", "pmix", "max", "events_per_source",
+                                      "Maximum number of cached event notifications whose "
+                                      "source is in any one namespace other than this "
+                                      "server's own; a source at its limit replaces its "
+                                      "own oldest entry [0 = a quarter of pmix_max_events]",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_globals.max_events_per_source);
+
     /* how long to cache an event */
     pmix_globals.event_eviction_time = 120;
     (void) pmix_mca_base_var_register("pmix", "pmix", "event", "eviction_time",
