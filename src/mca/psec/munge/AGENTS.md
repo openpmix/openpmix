@@ -109,10 +109,13 @@ costs nothing that matters.
   calling `munge_decode` to recover the sender's `uid`/`gid` from it (a
   failed decode → `PMIX_ERR_INVALID_CRED`). For a credential that came
   with a connection (`pr->sd` valid) it compares them against
-  `pr->info->uid` / `pr->info->gid` and rejects a mismatch. A credential
-  handed to `PMIx_Validate_credential` has no connection (its peer is
-  `pmix_globals.mypeer`, whose `sd` is -1), so there is nothing to compare
-  with - the validator's own identity is not the credential holder's.
+  `pr->info->uid` / `pr->info->gid` and rejects a mismatch. For a client
+  that is its registration; on the local socket ptl has already required
+  the kernel's uid and gid for the client to equal the registration
+  (`accept_client`). A credential handed to `PMIx_Validate_credential`
+  has no connection (its peer is `pmix_globals.mypeer`, whose `sd` is
+  -1), so there is nothing to compare with - the validator's own
+  identity is not the credential holder's.
   On success it returns `*info` with `PMIX_CRED_TYPE = "munge"`, the
   `PMIX_USERID`, and `PMIX_GRPID` the credential carried.
 
