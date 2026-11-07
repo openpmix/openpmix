@@ -813,7 +813,10 @@ Checks for a client
 #. **Its identity must be the registered one.** The security component
    settles the client's uid and gid (see `Settling the identity`_),
    and they must equal the uid and gid the host registered for that
-   rank.
+   rank. On the local socket the uid and gid the kernel reports for the
+   client must equal them too, whichever security component is chosen;
+   a client that differs is refused with ``PMIX_ERR_INVALID_CRED``
+   before its credential is validated.
 #. **It must present its rank's token.** A rank the host registers
    with ``PMIx_server_register_client`` gets a token nobody is handed;
    preparing a process for it with ``PMIx_server_setup_fork`` replaces it
@@ -887,7 +890,8 @@ depends on the component:
 * **munge** decodes the credential through the MUNGE daemon. The
   decoded uid and gid must equal the peer's registered (client) or
   claimed (tool) identity. On the local socket a tool's identity is the
-  one the kernel reports.
+  one the kernel reports, and a client's kernel uid and gid have already
+  been compared with its registration (see `Checks for a client`_).
 
 The result is one uid and one gid. They are what the host is given, and
 what every later access decision for this peer uses.

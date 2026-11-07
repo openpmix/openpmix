@@ -1499,6 +1499,18 @@ static void accept_client(pmix_pending_connection_t *pnd)
         refuse(pnd, PMIX_ERR_INVALID_CRED);
         return;
     }
+    /* on the local socket the kernel's uid and gid for the peer must be
+     * the rank's, whichever security module then validates it */
+    if (local_peer(pnd) && (pnd->uid != info->uid || pnd->gid != info->gid)) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "refusing client %s:%u - it is uid %lu gid %lu, the rank is "
+                            "registered as uid %lu gid %lu",
+                            pnd->proc.nspace, pnd->proc.rank, (unsigned long) pnd->uid,
+                            (unsigned long) pnd->gid, (unsigned long) info->uid,
+                            (unsigned long) info->gid);
+        refuse(pnd, PMIX_ERR_INVALID_CRED);
+        return;
+    }
     PMIX_RETAIN(nptr);
     pnd->nptr = nptr;
     PMIX_RETAIN(info);
