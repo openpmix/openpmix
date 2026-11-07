@@ -90,6 +90,11 @@ typedef struct {
     bool relayed;
     /* ...and output has been dropped at the cap, which has been said */
     bool dropped;
+    /* the channels that write to fd, and those of them whose end has
+     * been delivered. fd is closed once every one of stdout and stderr
+     * that it carries has ended */
+    pmix_iof_channel_t carries;
+    pmix_iof_channel_t ended;
 } pmix_iof_write_event_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_write_event_t);
 /* "ev" is deliberately absent: a designated initializer zeroes what it
@@ -106,7 +111,9 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_write_event_t);
     .fd = 0,                                \
     .outputs = PMIX_LIST_STATIC_INIT((w).outputs), \
     .relayed = false,                       \
-    .dropped = false                        \
+    .dropped = false,                       \
+    .carries = PMIX_FWD_NO_CHANNELS,        \
+    .ended = PMIX_FWD_NO_CHANNELS           \
 }
 
 typedef struct {
@@ -234,6 +241,7 @@ static inline bool pmix_iof_fd_always_ready(int fd)
         pmix_strncpy((snk)->name.nspace, (nm)->nspace, PMIX_MAX_NSLEN);                            \
         (snk)->name.rank = (nm)->rank;                                                             \
         (snk)->tag = (tg);                                                                         \
+        (snk)->wev.carries = (tg);                                                                 \
         if (0 <= (fid)) {                                                                          \
             (snk)->wev.fd = (fid);                                                                 \
             (snk)->wev.always_writable = pmix_iof_fd_always_ready(fid);                            \

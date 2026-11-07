@@ -193,15 +193,22 @@ lose the user's output *silently*.
 
 - **A zero-byte delivery is an end-of-stream marker, and what it means
   depends on the sink.** A sink this library opened for one source
-  (`pmix_iof_setup`, fd > 2) is finished: close it and stop, leaving
-  `wev.pending` set so nothing re-arms the event on a descriptor that is
-  gone. The **shared** `pmix_client_globals.iof_stdout` / `iof_stderr`
-  sinks (fd 1 and 2) are fed by *every* source, so one source closing
-  must not stop them — skip the marker and keep draining. Getting this
-  wrong is invisible in testing and total in effect: `wev.pending` stays
-  set with the event un-armed, `write_output_line` only arms the event
-  when `pending` is clear, and every later chunk from every other source
-  sits in the queue until finalize.
+  (`pmix_iof_setup`, fd > 2) records the channel that ended. Once every
+  one of stdout and stderr that the sink carries has ended - both, for a
+  sink that `PMIX_IOF_MERGE_STDERR_STDOUT` makes for the two together -
+  `write_output_line` passes the marker on, and the write handler closes
+  the descriptor and stops, leaving `wev.pending` set so nothing re-arms
+  the event on a descriptor that is gone. A marker for one channel of a
+  merged sink goes no further, and output for a sink whose descriptor is
+  closed (or was never opened) is not queued: nothing would write it.
+  `test/unit/iof_output.c` covers the merged file. The **shared**
+  `pmix_client_globals.iof_stdout` / `iof_stderr` sinks (fd 1 and 2) are
+  fed by *every* source, so one source closing must not stop them — skip
+  the marker and keep draining. Getting this wrong is invisible in
+  testing and total in effect: `wev.pending` stays set with the event
+  un-armed, `write_output_line` only arms the event when `pending` is
+  clear, and every later chunk from every other source sits in the queue
+  until finalize.
 - **`pending` is the arm/disarm interlock, not a status bit.** Any path
   that returns from `pmix_iof_write_handler` without clearing it is
   asserting "this channel is done forever".
