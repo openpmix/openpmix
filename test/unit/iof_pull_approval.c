@@ -40,6 +40,10 @@
  *                                    alone
  *   the directives                -> carry the requester's uid and gid,
  *                                    and name it with PMIX_REQUESTOR
+ *   a peer at its request limit   -> refused with PMIX_ERR_OUT_OF_RESOURCE,
+ *                                    the host is not asked and nothing is
+ *                                    registered; another peer's request
+ *                                    is taken
  */
 
 #include "src/include/pmix_config.h"
@@ -416,6 +420,59 @@ static void test_slot_reused(void)
     PMIX_RELEASE(p2);
 }
 
+/* how many registrations a peer holds */
+static size_t count_reqs(pmix_peer_t *p)
+{
+    pmix_iof_req_t *req;
+    size_t n = 0;
+    int i;
+
+    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL != req && req->requestor == p) {
+            ++n;
+        }
+    }
+    return n;
+}
+
+static void test_request_cap(void)
+{
+    pmix_peer_t *p = make_peer(IPA_REQ_NSPACE);
+    pmix_peer_t *p2 = make_peer(IPA_REQ2_NSPACE);
+    size_t saved = pmix_server_globals.max_iof_reqs_per_peer;
+    pmix_status_t rc1, rc2, rc3, rc4;
+
+    pmix_server_globals.max_iof_reqs_per_peer = 2;
+
+    reset_pull();
+    rc1 = do_pull(p, IPA_SRC_NSPACE);
+    host_answers(PMIX_SUCCESS);
+    reset_pull();
+    rc2 = do_pull(p, IPA_SRC_NSPACE);
+    host_answers(PMIX_SUCCESS);
+    report("request cap: requests within the limit are taken",
+           PMIX_SUCCESS == rc1 && PMIX_SUCCESS == rc2 && 2 == count_reqs(p));
+
+    reset_pull();
+    rc3 = do_pull(p, IPA_SRC_NSPACE);
+    report("request cap: a request past the limit is refused",
+           PMIX_ERR_OUT_OF_RESOURCE == rc3);
+    report("request cap: and the host was not asked", !pull_called);
+    report("request cap: and nothing was registered", 2 == count_reqs(p));
+
+    reset_pull();
+    rc4 = do_pull(p2, IPA_SRC_NSPACE);
+    host_answers(PMIX_SUCCESS);
+    report("request cap: the limit is per peer", PMIX_SUCCESS == rc4 && 1 == count_reqs(p2));
+
+    pmix_server_globals.max_iof_reqs_per_peer = saved;
+    drop_peer_requests(p);
+    drop_peer_requests(p2);
+    PMIX_RELEASE(p);
+    PMIX_RELEASE(p2);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -437,6 +494,7 @@ int main(int argc, char **argv)
     test_approved();
     test_refused();
     test_slot_reused();
+    test_request_cap();
 
     PMIx_server_finalize();
 
