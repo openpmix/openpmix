@@ -404,6 +404,23 @@ static void test_judge(void)
     j = pmix_ptl_base_judge_server(all, all, true, ovu, true, ovg, true, ovu, ovg, false);
     report("judge: with the identity map, those numbers are ids like any other",
            PMIX_PTL_SERVER_OK == j, "not taken");
+
+    /* what a server makes of a peer the kernel reports as the overflow id:
+     * from outside only where the map has no line for that id */
+    if (ovu != (uint32_t) me) {
+        report("outside: the overflow uid a map does not cover names no process of ours",
+               pmix_util_id_from_outside(some, ovu, ovu), "taken as ours");
+    }
+    report("outside: ...nor the overflow gid", pmix_util_id_from_outside(shifted, ovg, ovg),
+           "taken as ours");
+    report("outside: an id a subordinate-id range maps, the overflow id included, is ours",
+           !pmix_util_id_from_outside(subids, ovu, ovu), "taken as from outside");
+    report("outside: with the identity map, the overflow id is ours",
+           !pmix_util_id_from_outside(all, ovu, ovu), "taken as from outside");
+    report("outside: where there is no map, the overflow id is ours",
+           !pmix_util_id_from_outside(none, ovu, ovu), "taken as from outside");
+    report("outside: an id other than the overflow id is never from outside",
+           !pmix_util_id_from_outside(shifted, 4242, ovu), "taken as from outside");
     unlink(all);
     unlink(some);
     unlink(shifted);

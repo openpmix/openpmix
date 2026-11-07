@@ -33,6 +33,12 @@ the first that decides the matter.
    socket, so the group is the one the peer claims, and a claim that does
    not hold up (see below) is refused.
 
+   In a user namespace whose map has no entry for the overflow id, an
+   owner the kernel reports as that id is from outside the namespace, and
+   the peer is refused; so, on the local socket, is a peer the kernel
+   reports with the overflow uid or gid. See "A peer from outside the
+   server's user namespace" in :doc:`../connections`.
+
 #. **Otherwise, refuse it - or, where there is no table, take the
    peer's claim.** A TCP peer at an address of this host that the table
    does not show is refused. On a platform with no table to ask, a TCP
