@@ -195,12 +195,11 @@ pmix_shmem_segment_unlink(
  * Change ownership of the segment's backing file.
  *
  * Acts only on the file this handle created. Refusing a symlink at the
- * name - which lchown(2) did, and all it did - protects the last
+ * name - which lchown(2) did, and all it did - checks the last
  * component of the path and nothing else: every directory above it is
- * resolved normally, and the path sits under a predictable name, so a
- * directory swapped in along the way, or a hard link, pointed the change
- * at a file of someone else's choosing. For a server running as root,
- * that is any file on the system.
+ * resolved normally, so if a directory along the way was replaced, or a
+ * hard link to another file was put at the name, the change was applied
+ * to whatever file the path then led to.
  *
  * So the file is opened, and changed through that descriptor only if it
  * is the regular file pmix_shmem_segment_create() made - same device and

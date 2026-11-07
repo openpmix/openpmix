@@ -79,8 +79,8 @@ Writing the length check that goes with it found a second defect:
 refuse a payload that inflates to anything but its claim, in either
 direction.
 
-``test/unit/compress_block`` forges the prefix of a real blob six ways
-and cuts a payload short.  Run against the old ``zlib`` and ``zlibng``
+``test/unit/compress_block`` rewrites the length prefix of a real blob six
+ways and cuts a payload short.  Run against the old ``zlib`` and ``zlibng``
 code, it fails on seven counts.
 
 A blocking ``PMIx_IOF_pull`` hands back no handle

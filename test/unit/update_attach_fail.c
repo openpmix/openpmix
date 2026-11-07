@@ -26,7 +26,7 @@
  *
  * It did not. The cleanup keyed off the SEGMENT ID rather than off how
  * the segment arrived, so only the modex was spared; a session update
- * that failed to map took the whole job tracker down with it - and that
+ * that failed to map dropped the whole job tracker - and that
  * tracker owns the job and session segments the client had been reading
  * happily since PMIx_Init. Every job-level lookup for the client's OWN
  * namespace then failed. That is openpmix#4156, which was found and
