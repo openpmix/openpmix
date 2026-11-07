@@ -175,6 +175,66 @@ static void notify_event_cbfunc(struct pmix_peer_t *pr,
     PMIX_RELEASE(cb);
 }
 
+/* In a server, an event from any source other than this server itself
+ * counts against its source namespace's share of the cache. One with no
+ * source ("UNDEF") or with our own namespace is the host's or ours. */
+static bool counts_against_share(const pmix_notify_caddy_t *cd)
+{
+    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+        return false;
+    }
+    if (PMIx_Nspace_invalid(cd->source.nspace) ||
+        0 == strncmp(cd->source.nspace, "UNDEF", PMIX_MAX_NSLEN) ||
+        0 == strncmp(cd->source.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN)) {
+        return false;
+    }
+    return true;
+}
+
+/* how many cached entries one source namespace may hold */
+static int source_share(void)
+{
+    int share = pmix_globals.max_events_per_source;
+
+    if (0 >= share) {
+        share = pmix_globals.max_events / 4;
+    }
+    if (1 > share) {
+        share = 1;
+    }
+    return share;
+}
+
+/* If the source of this event already holds its share of the cache, take
+ * that source's oldest entry out to make room for this one */
+static void enforce_source_share(pmix_notify_caddy_t *cd)
+{
+    pmix_notify_caddy_t *pk;
+    int j, held = 0, idx = -1;
+    time_t etime = 0;
+
+    if (!counts_against_share(cd)) {
+        return;
+    }
+    for (j = 0; j < pmix_globals.max_events; j++) {
+        pmix_hotel_knock(&pmix_globals.notifications, j, (void **) &pk);
+        if (NULL == pk ||
+            0 != strncmp(pk->source.nspace, cd->source.nspace, PMIX_MAX_NSLEN)) {
+            continue;
+        }
+        ++held;
+        if (0 > idx || difftime(pk->ts, etime) < 0) {
+            etime = pk->ts;
+            idx = j;
+        }
+    }
+    if (held >= source_share() && 0 <= idx) {
+        pmix_hotel_checkout_and_return_occupant(&pmix_globals.notifications, idx,
+                                                (void **) &pk);
+        PMIX_RELEASE(pk);
+    }
+}
+
 pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd)
 {
     pmix_status_t rc;
@@ -182,6 +242,8 @@ pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd)
     pmix_notify_caddy_t *pk;
     int idx;
     time_t etime;
+
+    enforce_source_share(cd);
 
     /* add to our cache */
     rc = pmix_hotel_checkin(&pmix_globals.notifications, cd, &cd->room);
