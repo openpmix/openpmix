@@ -319,6 +319,13 @@ void pmix_event_strip_handler_items(pmix_event_chain_t *chain);
  * affected, plus any additional info provided by the server */
 PMIX_EXPORT void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain);
 
+/* Give the event on a chain to the one handler or observer named, and to
+ * no other: the chain is run as a single shot (endchain), and no group
+ * bookkeeping or observer sweep is done. The caller has already checked
+ * that the handler matches the event. Used to replay a cached event to a
+ * new registration. */
+void pmix_invoke_one_event_hdlr(pmix_event_chain_t *chain, pmix_event_hdlr_t *hdlr);
+
 /* The completion of a chain built from an event our server forwarded to
  * us: park the event if nothing accepted it, then release the chain.
  * pmix_client_notify_recv hangs it on chain->final_cbfunc with the chain
