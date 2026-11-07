@@ -853,6 +853,21 @@ honor:
   since nobody reviewing a PMIx contribution can open it. The
   attribution that matters is the sign-off, which names the human
   certifying the work.
+- **A fix for a security-sensitive defect reads as an ordinary fix.**
+  Such defects are often fixed in public before a release carrying the
+  fix is widely deployed, so everything published about one — the commit
+  message, code comments, AGENTS.md and `docs/` text, the PR title and
+  description, review replies — says what the defect is, mechanically,
+  and what the fix checks or changes: "the value's type was not checked
+  before it was read", "a NULL result was indexed". It does **not**
+  describe how the defect could be used against a deployment: no
+  attacker, exploit, malicious or forged input, no "untrusted caller", no
+  victim, no blast radius ("crashes every server", "writes into another
+  namespace's data"), no reproduction recipe and no reference to a
+  private report — the detailed impact stays with that report until a
+  fixed release is out. Get it right before the first push: a
+  force-pushed commit stays reachable on GitHub by its hash, and a PR
+  description keeps its edit history.
 - **Keep incidental fixes as their own commits.** Small "drive-by" bug
   fixes you notice while working on something else are welcome, but it is
   usually best to land them as standalone commits, separate from your
