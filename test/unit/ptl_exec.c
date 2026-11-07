@@ -40,6 +40,11 @@
  * registered the client's namespace is refused, and the host is not asked
  * about it.
  *
+ * What the host is given for a tool: the uid, gid and pid its connection
+ * established, once each, whatever the tool's own info says - and none of
+ * the requester pid, requester, requested groups or origin uids the tool
+ * named. The tool still connects.
+ *
  * Each case runs in a server of its own, which execs this program as its
  * clients. They signal the server over pipes whose descriptors are in
  * their environment.
@@ -421,6 +426,41 @@ static int run_holder(void)
     return CHILD_PASS;
 }
 
+/* a group name no system has */
+#define RI_NO_GROUP "ptl-exec-no-such-group"
+
+/* a tool whose own info names a requester pid, a requester, two groups to
+ * be charged to (one no system has) and two origin uids: it connects, and
+ * none of them reaches the host */
+static int run_id_tool(void)
+{
+    pmix_info_t info[6];
+    pmix_proc_t me, other;
+    pid_t toolpid = 1;
+    uint32_t origin = 4242, gid = (uint32_t) getegid();
+    pmix_status_t rc;
+    size_t n;
+
+    PMIX_LOAD_PROCID(&other, "other.job", 3);
+    PMIX_INFO_LOAD(&info[0], PMIX_REQUESTOR_PID, &toolpid, PMIX_PID);
+    PMIX_INFO_LOAD(&info[1], PMIX_REQUESTOR, &other, PMIX_PROC);
+    PMIX_INFO_LOAD(&info[2], PMIX_REQUESTED_GRPID, &gid, PMIX_UINT32);
+    PMIX_INFO_LOAD(&info[3], PMIX_REQUESTED_GRPID, RI_NO_GROUP, PMIX_STRING);
+    PMIX_INFO_LOAD(&info[4], PMIX_ORIGIN_USERID, &origin, PMIX_UINT32);
+    ++origin;
+    PMIX_INFO_LOAD(&info[5], PMIX_ORIGIN_USERID, &origin, PMIX_UINT32);
+    rc = PMIx_tool_init(&me, info, 6);
+    for (n = 0; n < 6; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stdout, "    the tool's PMIx_tool_init returned %s\n", PMIx_Error_string(rc));
+        return CHILD_FAIL;
+    }
+    PMIx_tool_finalize();
+    return CHILD_PASS;
+}
+
 /* ---- the server ---- */
 
 static volatile int nconnected = 0;
@@ -463,6 +503,35 @@ static void lost_handler(size_t evhdlr_registration_id, pmix_status_t status,
 /* a tool that brings no identity is given RI_TOOLNS - unless the host is
  * to refuse such tools */
 static bool refuse_new_tools = false;
+
+/* what the host was given for the last tool: how many of each identity key,
+ * and the value of the last uid, gid and requester pid */
+static struct {
+    int nuid, ngid, npid, nrequestor, nreqgrp, norigin;
+    uint32_t uid, gid;
+    pid_t pid;
+} toolid;
+
+static void record_tool_id(const pmix_info_t *info)
+{
+    if (PMIx_Check_key(info->key, PMIX_USERID)) {
+        ++toolid.nuid;
+        toolid.uid = info->value.data.uint32;
+    } else if (PMIx_Check_key(info->key, PMIX_GRPID)) {
+        ++toolid.ngid;
+        toolid.gid = info->value.data.uint32;
+    } else if (PMIx_Check_key(info->key, PMIX_REQUESTOR_PID)) {
+        ++toolid.npid;
+        toolid.pid = info->value.data.pid;
+    } else if (PMIx_Check_key(info->key, PMIX_REQUESTOR)) {
+        ++toolid.nrequestor;
+    } else if (PMIx_Check_key(info->key, PMIX_REQUESTED_GRPID)) {
+        ++toolid.nreqgrp;
+    } else if (PMIx_Check_key(info->key, PMIX_ORIGIN_USERID)) {
+        ++toolid.norigin;
+    }
+}
+
 static pmix_status_t tool_connected2(pmix_info_t *info, size_t ninfo,
                                      pmix_tool_connection_cbfunc_t cbfunc, void *cbdata)
 {
@@ -471,8 +540,10 @@ static pmix_status_t tool_connected2(pmix_info_t *info, size_t ninfo,
     size_t n;
 
     ++ntools;
+    memset(&toolid, 0, sizeof(toolid));
     PMIX_LOAD_PROCID(&proc, RI_TOOLNS, 0);
     for (n = 0; n < ninfo; n++) {
+        record_tool_id(&info[n]);
         if (PMIx_Check_key(info[n].key, PMIX_NSPACE)) {
             PMIX_LOAD_NSPACE(proc.nspace, info[n].value.data.string);
             named = true;
@@ -903,6 +974,37 @@ static int run_died(char *self)
     return CHILD_PASS;
 }
 
+/* a tool naming its own requester pid, requester, requested groups and
+ * origin uids: the host is given the uid, gid and pid of its connection
+ * once each, and none of what the tool named */
+static int run_tool_identity(char *self)
+{
+    client_t cl;
+    int rc;
+
+    if (PMIX_SUCCESS != start_server(1) || !start_client(self, 0, "idtool", &cl)) {
+        return CHILD_SETUP;
+    }
+    if (CHILD_PASS != (rc = finish(&cl))) {
+        return rc;
+    }
+    if (1 != ntools) {
+        fprintf(stdout, "    the host was asked about %d tools\n", ntools);
+        return CHILD_FAIL;
+    }
+    if (1 != toolid.nuid || (uint32_t) geteuid() != toolid.uid || 1 != toolid.ngid ||
+        (uint32_t) getegid() != toolid.gid || 1 != toolid.npid || cl.pid != toolid.pid ||
+        0 != toolid.nrequestor || 0 != toolid.nreqgrp || 0 != toolid.norigin) {
+        fprintf(stdout,
+                "    the host was given %d uid (%u), %d gid (%u), %d requester pid (%ld, the "
+                "tool is %ld), %d requester, %d requested group, %d origin uid\n",
+                toolid.nuid, toolid.uid, toolid.ngid, toolid.gid, toolid.npid, (long) toolid.pid,
+                (long) cl.pid, toolid.nrequestor, toolid.nreqgrp, toolid.norigin);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
 typedef int (*case_fn_t)(char *self);
 
 static void run_case(const char *name, case_fn_t fn, char *self)
@@ -985,6 +1087,9 @@ int main(int argc, char **argv)
         if (0 == strcmp(argv[1], "ranktool")) {
             return run_rank_tool();
         }
+        if (0 == strcmp(argv[1], "idtool")) {
+            return run_id_tool();
+        }
         if (0 == strcmp(argv[1], "clientthentool")) {
             static const char *const roles[] = {"quick", "tool", NULL};
             return run_script(argv[0], roles);
@@ -1017,6 +1122,8 @@ int main(int argc, char **argv)
     run_case("a client that dies without finalizing is lost at once", run_died, argv[0]);
     run_case("a client whose namespace the host has not registered is refused, and the host "
              "is not asked about it", run_nspace_unregistered, argv[0]);
+    run_case("the host is given a tool's identity as its connection established it, and "
+             "none the tool named", run_tool_identity, argv[0]);
 
     fprintf(stdout, "\n%d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;
