@@ -901,6 +901,21 @@ depends on the component:
 The result is one uid and one gid. They are what the host is given, and
 what every later access decision for this peer uses.
 
+**A peer from outside the server's user namespace.** A server in a user
+namespace of its own - in a container, say - is shown each peer's ids as
+its namespace numbers them, and an id the namespace does not map as the
+overflow id (65534). On Linux, a peer the kernel reports with the
+overflow uid or gid, when the server's ``/proc/self/uid_map`` (or
+``gid_map``) has no entry for that id, is refused with
+``PMIX_ERR_INVALID_CRED`` - on the local socket at its first message,
+and over TCP when the owner the kernel reports is that uid. Where the
+map does have an entry for the overflow id - a subordinate-id range
+that covers it, as for a container whose processes run as ``nobody`` -
+that number is the id of a user of the namespace, and a peer reported
+with it is taken as that user, as is any other. The kernel shows a peer
+from outside the namespace with the same number, and nothing in the
+connection tells the two apart.
+
 Settling the identity is a single step: no component runs an exchange
 with the peer.
 

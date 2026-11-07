@@ -1019,6 +1019,13 @@ pmix_status_t pmix_util_id_to_parent(const char *mapfile, uint32_t id, uint32_t 
     return rc;
 }
 
+bool pmix_util_id_from_outside(const char *mapfile, uint32_t id, uint32_t overflow)
+{
+    uint32_t parent;
+
+    return overflow == id && PMIX_ERR_NOT_FOUND == pmix_util_id_to_parent(mapfile, id, &parent);
+}
+
 bool pmix_util_id_map_is_identity(const char *mapfile)
 {
     unsigned long inside, outside, count;

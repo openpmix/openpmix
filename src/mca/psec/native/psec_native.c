@@ -277,6 +277,17 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
 
     /* ask the kernel who owns the peer's end of the connection */
     rc = pmix_util_getid_tcp(pr->sd, &owner);
+    if (PMIX_SUCCESS == rc &&
+        pmix_util_id_from_outside("/proc/self/uid_map", (uint32_t) owner,
+                                  pmix_util_overflow_uid())) {
+        /* the overflow uid, which this user namespace does not map, names
+         * no process of it */
+        pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
+                            "psec: native: the peer at %s is uid %lu, which this user "
+                            "namespace does not map",
+                            pmix_fd_get_peer_name(pr->sd), (unsigned long) owner);
+        return PMIX_ERR_INVALID_CRED;
+    }
     if (PMIX_SUCCESS == rc) {
         /* the kernel records no group for a TCP socket, so the group is
          * the one the peer claims. Inside a user namespace the claim is

@@ -994,6 +994,18 @@ static pmix_status_t answer_offer(pmix_pending_connection_t *pnd, char *msg, siz
                             pnd->sd);
         return PMIX_ERR_INVALID_CRED;
     }
+    /* an id the kernel can only report as the overflow id, which this
+     * user namespace does not map, names no process of it */
+    if (pmix_util_id_from_outside("/proc/self/uid_map", (uint32_t) kuid,
+                                  pmix_util_overflow_uid()) ||
+        pmix_util_id_from_outside("/proc/self/gid_map", (uint32_t) kgid,
+                                  pmix_util_overflow_gid())) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: the peer on socket %d is uid %lu gid %lu, which this "
+                            "user namespace does not map",
+                            pnd->sd, (unsigned long) kuid, (unsigned long) kgid);
+        return PMIX_ERR_INVALID_CRED;
+    }
     pnd->uid = kuid;
     pnd->gid = kgid;
 
