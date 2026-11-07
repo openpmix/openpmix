@@ -20,8 +20,8 @@
  * The test process is the server. It registers a job, forks a real client
  * into it, and the client joins a group led by a process named in the test.
  * The server then raises outcomes itself - a server may raise an event
- * under any source, which is exactly what a relayed forgery would look like
- * to the client:
+ * under any source, so to the client these look exactly like events relayed
+ * from a process other than the one they name:
  *
  *   first, a completion and an abort from a process that is not the leader,
  *   and a completion from the leader that names no group - none of which

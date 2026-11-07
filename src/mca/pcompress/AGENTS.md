@@ -427,10 +427,10 @@ output. Growing the buffer needs no ratio at all.
 
 `test/unit/compress_block` checks the policy directly
 (`test_outbuf_policy`), round-trips an 8 MB payload that compresses
-100–10000× so the buffer grows many times, and forges the prefix of a
-real blob in every direction — one more, one less, half, double, nearly
-4 GiB, zero — plus a payload cut short. All must be refused at both
-entry points.
+100–10000× so the buffer grows many times, and rewrites the length
+prefix of a real blob in every direction — one more, one less, half,
+double, nearly 4 GiB, zero — plus a payload cut short. All must be
+refused at both entry points.
 
 ## Selection and lifecycle
 

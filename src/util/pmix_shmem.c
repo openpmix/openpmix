@@ -405,10 +405,9 @@ pmix_shmem_segment_detach(
  *
  * lchown(2) - and O_NOFOLLOW - decline a symlink at the last component of
  * the path and nothing else. The directories above it are resolved
- * normally, the name under them is predictable, and a hard link needs no
- * symlink at all; any of those makes the path lead to a file of someone
- * else's choosing, and a server running as root would re-own or
- * re-permission whatever that was. So the path only finds a candidate.
+ * normally, and a hard link is not a symlink at all; either way the path
+ * can lead to a file other than the one created, and a change made by
+ * name would land on that file. So the path only finds a candidate.
  * What decides is the descriptor: it is bound to its inode at open time,
  * so the file inspected here is the file the caller then changes, and it
  * has to be the regular file pmix_shmem_segment_create() made, under no
