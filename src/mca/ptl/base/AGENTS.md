@@ -82,14 +82,24 @@ of this release use that socket, so it has its own exchange:
    NUL-terminated names: at most `PMIX_PTL_OFFER_MAX_NAMES` (16) names
    of at most `PMIX_PTL_OFFER_MAX_NAMELEN` (64) bytes, or it is refused
    `PMIX_ERR_BAD_PARAM`. No uid or gid: `answer_offer` takes them from
-   the kernel (`peer_identity`) into `pnd->uid`/`pnd->gid`.
+   the kernel (`peer_identity`) into `pnd->uid`/`pnd->gid`, and refuses
+   with `PMIX_ERR_INVALID_CRED` a peer whose uid or gid is the overflow
+   id where `/proc/self/uid_map` (`gid_map`) has no line for it
+   (`pmix_util_id_from_outside`). A map that covers the overflow id
+   leaves it an id like any other. `test/unit/ptl_userns_peer.c` runs a
+   server in a user namespace with peers outside it, both ways.
 2. **The choice** (`choose` / `send_choice`; the client's `apply_choice`):
    a `uint32_t` status, then on success a `uint32_t` length (at most
    `PMIX_PTL_CHOICE_MAX`) and `psec\0bfrops\0<buffer type>gds\0`.
    psec is the first of the server's active psec modules, in priority
-   order, that the peer offered, else `PMIX_ERR_NOT_SUPPORTED`. bfrops and buffer type are the namespace's
-   when it has a peer already (refused if not offered), else the peer's
-   first that the server has and its buffer type. gds is the peer's first
+   order, that the peer offered, else `PMIX_ERR_NOT_SUPPORTED`. bfrops
+   and buffer type are the namespace's when it has a peer already and
+   `of_namespace` holds - the kernel's uid and gid for the peer
+   (`pnd->uid`/`pnd->gid`) are the named rank's, or for a rank not
+   listed the namespace's owner's and every rank's (`nspace_is_tools`) -
+   refused if not offered; else the peer's first that the server has and
+   its buffer type. `ptl_accept.c`'s `case_offer_other_rank` compares a
+   rank of another uid with an unregistered rank and namespace. gds is the peer's first
    that the server has, per peer. The client aborts with
    `PMIX_ERR_NOT_SUPPORTED` on a choice it did not offer, and otherwise
    sets `peer->nptr->compat.{psec,bfrops,type,gds}` and `peer->gds`.
@@ -374,15 +384,32 @@ Four functions, in this order, all on the progress thread:
    *scratch* peer (`scratch_peer`), so a module that settles an identity
    rewrites nothing shared. A client is validated as its rank entry's
    registration - whoever made it - and must be that identity; a tool's
-   claim is replaced by what the module establishes. Validation is a
-   single synchronous call, and the next step is `client_settled` /
-   `tool_settled`.
+   claim is replaced by what the module establishes. On the local socket
+   `accept_client` first compares the kernel's uid and gid for the client
+   (`pnd->uid`/`pnd->gid`, from `answer_offer`) with the rank's, and
+   refuses a mismatch with `PMIX_ERR_INVALID_CRED` before any module
+   runs; `ptl_accept.c`'s munge case covers it, as root with a live
+   `munged`. Validation is a single synchronous call, and the next step
+   is `client_settled` / `tool_settled`.
 4. **Check, then ask the host.** Everything that can refuse runs before
    the up-call: registration, modules, wire format, foreign tools,
-   membership of a known namespace. Then `client_connected2` (or the
+   membership of a known namespace. For a client, `accept_client` checks
+   the modules it named before it looks up the namespace, and
+   `client_settled` compares the namespace's wire format
+   (`wire_format_fits`) after validation and the token check;
+   `case_tcp_other_rank` covers both over TCP. Then `client_connected2` (or the
    deprecated form) for a client, `tool_connected2`/`tool_connected` for
    a tool. Their callbacks (`client_host_cbfunc`, `cnct_cbfunc`)
    thread-shift to `client_answered` / `tool_answered`.
+
+   **A tool's info carries only the identity its connection
+   established.** `read_tool_info` drops what `server_sets` names and
+   what `tool_drops` names - every `pmix_server_is_identity_key` key
+   (`PMIX_REQUESTOR_PID`, `PMIX_REQUESTED_GRPID`, `PMIX_ORIGIN_*`) and
+   `PMIX_REQUESTOR` - and `ask_about_tool` adds `PMIX_USERID`,
+   `PMIX_GRPID` and, where the kernel reports a pid, `PMIX_REQUESTOR_PID`
+   beside `PMIX_PROC_PID`. `pmix_server_add_requester_id` is not used on
+   this path. `test/unit/ptl_exec.c` covers it with a real tool.
 
    **Tools of one name go to the host one at a time.** `tool_settled`
    checks only the credential and the foreign-user rule (a tool of a uid
@@ -1608,6 +1635,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_unnamed.c` | end to end with no TCP table on either side (`pmix_util_getid_test_no_tcp_table`): a real server with legacy clients, which takes the tool on its claim, real tools by `PMIx_tool_init` and by an event-driven attach - a bare TCP URI passed directly taken; a named file taken whatever release it names, with or without its lock held or a lock line; a group-writable file refused, and a symbolic link to the file not read (`PMIX_ERR_UNREACH`, not a regular file); an off-host address `PMIX_ERR_UNREACH`, saying it is not this host's |
 | `test/unit/tool_attach_nb.c` | (among its cases) an attach does not dial the URI an earlier attach was given |
 | `test/unit/ptl_check_server.c` | while the table does not list the connection (`pmix_util_getid_test_unlisted`) the check asks again until `handshake_wait_time` runs out and then refuses the server (`PMIX_ERR_INVALID_CRED`), a server listed after 1.5 s is taken, one that closes meanwhile is `PMIX_ERR_UNREACH`, and with no wait it is refused soon; a server of our own is ours the moment we are connected (the `NOT_FOUND` retry, with the listener accepting from a thread of its own, as a server does: Linux lists a connection not yet accepted with inode 0, which is not found yet), one whose end has closed is refused soon; with no table (`pmix_util_getid_test_no_tcp_table`) a server nothing vouches for is refused and one its file vouches for is taken; `test_judge`: `pmix_ptl_base_judge_server` with fake map files - mapped and unmapped uid and gid, identity given and not, vouched and not; the overflow ids, where a subordinate-id map gives them an entry, match no identity - by number or mapped - and are taken only vouched, while with the identity map they are ids like any other |
+| `test/unit/ptl_userns_peer.c` | (Linux, as root) a server in a user namespace mapping only its own user and group refuses a peer outside it - root, or its own user with an unmapped group - on the local socket, and over TCP one whose owner the kernel reports as the overflow uid; a server running as the overflow id, which its namespace maps, takes a peer of that user both ways |
 | `test/unit/ptl_local_connect.c` | (among its cases) a tool given a FIFO by `file:<path>` or `PMIX_TOOL_ATTACHMENT_FILE`, or a symbolic link to the report file, fails init at once, and the report file named either way connects; a launcher whose rendezvous file name has a FIFO at it finishes init promptly; every connect-ack buffer a client releases is zero (`pmix_ptl_base_wiped_hook`) |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |
 | `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: a tool refusing to dial a server on another node, discovery by pid/nspace; and a tool through a relay root runs refused |

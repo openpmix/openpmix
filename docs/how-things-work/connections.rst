@@ -592,10 +592,13 @@ is three messages:
      else ``native``. If the peer offers none of them it is refused with
      ``PMIX_ERR_NOT_SUPPORTED``.
    * **wire format and buffer type:** the namespace's, if a peer of the
-     namespace has already connected - a peer that does not offer it is
-     refused with ``PMIX_ERR_NOT_SUPPORTED``. For a new namespace, the
-     first wire format the peer offers that the server has, and the
-     peer's buffer type.
+     namespace has already connected and the kernel's uid and gid for
+     the peer are those of the rank it names (or, for a rank not yet in
+     the namespace, of the namespace's owner and every process in it) -
+     a peer that does not offer it is refused with
+     ``PMIX_ERR_NOT_SUPPORTED``. Otherwise - a new namespace, or a peer
+     of another uid or gid - the first wire format the peer offers that
+     the server has, and the peer's buffer type.
    * **datastore:** the first the peer offers that the server has. It is
      the peer's own; the first peer's also becomes its namespace's
      default.
@@ -802,18 +805,21 @@ tool (all the others).
 Checks for a client
 ^^^^^^^^^^^^^^^^^^^
 
-#. **The client must be registered.** Its namespace, and its rank
-   within it, must have been registered by the host
-   (``PMIx_server_register_client``). An unregistered client is
-   refused.
 #. **Its components must be available.** On the local socket the server
    chose them from the peer's offer. Over TCP, the security,
    wire-format, and datastore components it names must be ones this
-   server has loaded.
+   server has loaded, or it is refused with ``PMIX_ERR_NOT_SUPPORTED``.
+#. **The client must be registered.** Its namespace, and its rank
+   within it, must have been registered by the host
+   (``PMIx_server_register_client``). An unregistered client is
+   refused with ``PMIX_ERR_INVALID_CRED``.
 #. **Its identity must be the registered one.** The security component
    settles the client's uid and gid (see `Settling the identity`_),
    and they must equal the uid and gid the host registered for that
-   rank.
+   rank. On the local socket the uid and gid the kernel reports for the
+   client must equal them too, whichever security component is chosen;
+   a client that differs is refused with ``PMIX_ERR_INVALID_CRED``
+   before its credential is validated.
 #. **It must present its rank's token.** A rank the host registers
    with ``PMIx_server_register_client`` gets a token nobody is handed;
    preparing a process for it with ``PMIx_server_setup_fork`` replaces it
@@ -830,7 +836,9 @@ Checks for a client
    connection over TCP that declares an earlier release is taken without
    a token.
 #. **Its wire format must match its job's.** All clients of one job use
-   one wire format, set by the first to connect.
+   one wire format, set by the first to connect. This is checked once
+   the client's identity and token have been, and a client that differs
+   is refused with ``PMIX_ERR_NOT_SUPPORTED``.
 
 A ``PMIX_USERID`` or ``PMIX_GRPID`` in a client's information field is
 ignored. The identity the security component settles is the only one
@@ -887,10 +895,26 @@ depends on the component:
 * **munge** decodes the credential through the MUNGE daemon. The
   decoded uid and gid must equal the peer's registered (client) or
   claimed (tool) identity. On the local socket a tool's identity is the
-  one the kernel reports.
+  one the kernel reports, and a client's kernel uid and gid have already
+  been compared with its registration (see `Checks for a client`_).
 
 The result is one uid and one gid. They are what the host is given, and
 what every later access decision for this peer uses.
+
+**A peer from outside the server's user namespace.** A server in a user
+namespace of its own - in a container, say - is shown each peer's ids as
+its namespace numbers them, and an id the namespace does not map as the
+overflow id (65534). On Linux, a peer the kernel reports with the
+overflow uid or gid, when the server's ``/proc/self/uid_map`` (or
+``gid_map``) has no entry for that id, is refused with
+``PMIX_ERR_INVALID_CRED`` - on the local socket at its first message,
+and over TCP when the owner the kernel reports is that uid. Where the
+map does have an entry for the overflow id - a subordinate-id range
+that covers it, as for a container whose processes run as ``nobody`` -
+that number is the id of a user of the namespace, and a peer reported
+with it is taken as that user, as is any other. The kernel shows a peer
+from outside the namespace with the same number, and nothing in the
+connection tells the two apart.
 
 Settling the identity is a single step: no component runs an exchange
 with the peer.

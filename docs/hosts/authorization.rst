@@ -50,6 +50,12 @@ Each appears at most once. A few up-calls differ:
   is the data being published, so nothing more is added that a host might
   store as a published key. Skip those, and any ``PMIX_ORIGIN_*``, when you
   store the data.
+* ``tool_connected2`` carries only what the tool's connection established:
+  ``PMIX_USERID``, ``PMIX_GRPID`` and, where there is one,
+  ``PMIX_REQUESTOR_PID``. Any requester pid, requested group,
+  ``PMIX_ORIGIN_*`` or ``PMIX_REQUESTOR`` the tool sent is removed. A tool
+  that asked for an identity of its own is named by ``PMIX_NSPACE`` and
+  ``PMIX_RANK``.
 * ``direct_modex`` carries ``PMIX_REQUESTOR``, ``PMIX_USERID``,
   ``PMIX_GRPID`` and, where there is one, ``PMIX_REQUESTOR_PID`` for
   the requesters it stands for. It carries no requested group.
