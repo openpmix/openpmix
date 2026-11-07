@@ -415,7 +415,12 @@ Do not confuse them:
   generated* events so a proc that registers *afterwards* still
   receives them (`check_cached_events` replays matches to each new
   registration, with `endchain` set). `pmix_notify_event_cache` evicts
-  the oldest occupant when full. Entries are checked out (and
+  the oldest occupant when full. In a server, each source namespace
+  other than the server's own (and other than a source of `UNDEF`)
+  may hold at most `pmix_max_events_per_source` entries - a quarter of
+  `pmix_max_events` by default - and an event from a source at that
+  limit replaces the source's own oldest entry, whether or not the
+  cache is full. Entries are checked out (and
   released) when all custom targets have been notified, on eviction,
   and - outside a server only - when replayed to a new local
   registration. A server keeps a replayed entry: its cache also holds
