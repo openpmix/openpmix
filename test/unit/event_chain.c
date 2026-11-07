@@ -100,6 +100,12 @@
  *      of the wrong type, the first-overall slot already taken - reports
  *      no handler reference, gives no handler the cached event, and leaves
  *      the event in the cache.
+ *
+ *  replay to the registrant: in a server, a cached event is replayed to
+ *      the handler or observer a registration made and to no other - not
+ *      to a handler ahead of it that already had the event, nor to a
+ *      registrant whose range does not admit the event's source - and
+ *      it stays in the cache for the registrations that follow.
  */
 
 #include "src/include/pmix_config.h"
@@ -144,6 +150,8 @@
 #define EVUT_CODE_PACKFAIL3 -9022
 #define EVUT_CODE_REFUSED   -9023
 #define EVUT_CODE_REFUSED2  -9024
+#define EVUT_CODE_REPLAYONE  -9025
+#define EVUT_CODE_REPLAYONE2 -9026
 
 static int npass = 0;
 static int nfail = 0;
@@ -2428,6 +2436,93 @@ static void test_refused_registration(void)
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* A server replays a cached event to the new registrant only         */
+/* ------------------------------------------------------------------ */
+
+static void test_replay_to_registrant(void)
+{
+    pmix_status_t code = EVUT_CODE_REPLAYONE;
+    pmix_status_t codes[2] = {EVUT_CODE_REPLAYONE, EVUT_CODE_REPLAYONE2};
+    pmix_data_range_t range = PMIX_RANGE_PROC_LOCAL;
+    pmix_info_t info[1];
+    pmix_proc_t src;
+    size_t a, b, d, e, obs;
+    pmix_status_t rc;
+
+    norder = 0;
+    counted = 0;
+    observed = 0;
+    memset(order, 0, sizeof(order));
+
+    /* a single-code handler, which every later registration for the code
+     * finds ahead of it in the walk, is given the event live */
+    a = reghdlr(&code, 1, NULL, 0, chain_hdlr);
+    PMIX_LOAD_PROCID(&src, "replay-src", 5);
+    rc = PMIx_Notify_event(code, &src, PMIX_RANGE_UNDEF, NULL, 0, NULL, NULL);
+    wait_for_count(&norder, 1);
+    grace();
+    report("replay to registrant: the event is delivered and cached",
+           SIZE_MAX != a && PMIX_SUCCESS == rc && 1 == norder && a == order[0] &&
+           1 == cached_count(code));
+
+    /* a multi-code handler registers: it alone is given the event */
+    b = reghdlr(codes, 2, NULL, 0, chain_hdlr);
+    wait_for_count(&norder, 2);
+    grace();
+    report("replay to registrant: a new handler is given the cached event",
+           SIZE_MAX != b && 2 <= norder && b == order[1]);
+    report("replay to registrant: the handler ahead of it is not given it again",
+           2 == norder);
+    report("replay to registrant: the event stays cached", 1 == cached_count(code));
+
+    /* an observer registers: it alone is given the event */
+    obs = regobs("evut-replay-obs", &code, 1, count_obs, NULL, NULL);
+    wait_for_count(&observed, 1);
+    grace();
+    report("replay to registrant: a new observer is given the cached event",
+           SIZE_MAX != obs && 1 == observed);
+    report("replay to registrant: no handler is given it again for an observer",
+           2 == norder);
+    report("replay to registrant: the event stays cached after an observer",
+           1 == cached_count(code));
+
+    /* a handler whose range does not admit the source is given nothing,
+     * and nobody else is given it either */
+    PMIX_INFO_LOAD(&info[0], PMIX_RANGE, &range, PMIX_DATA_RANGE);
+    d = reghdlr(&code, 1, info, 1, count_hdlr);
+    PMIX_INFO_DESTRUCT(&info[0]);
+    grace();
+    report("replay to registrant: a handler outside the range is not given it",
+           SIZE_MAX != d && 0 == counted && 2 == norder && 1 == observed);
+    report("replay to registrant: the event stays cached after that",
+           1 == cached_count(code));
+
+    /* and a later registrant is still given it */
+    e = reghdlr(&code, 1, NULL, 0, chain_hdlr);
+    wait_for_count(&norder, 3);
+    grace();
+    report("replay to registrant: a later handler is given it too",
+           SIZE_MAX != e && 3 == norder && e == order[2] && 0 == counted &&
+           1 == observed);
+
+    if (SIZE_MAX != obs) {
+        pmix_event_deregister_observer(obs, NULL, NULL);
+    }
+    if (SIZE_MAX != e) {
+        PMIx_Deregister_event_handler(e, NULL, NULL);
+    }
+    if (SIZE_MAX != d) {
+        PMIx_Deregister_event_handler(d, NULL, NULL);
+    }
+    if (SIZE_MAX != b) {
+        PMIx_Deregister_event_handler(b, NULL, NULL);
+    }
+    if (SIZE_MAX != a) {
+        PMIx_Deregister_event_handler(a, NULL, NULL);
+    }
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -2490,6 +2585,9 @@ int main(int argc, char **argv)
 
     /* a registration refused before it is complete */
     test_refused_registration();
+
+    /* a server's replay of a cached event to a new registration */
+    test_replay_to_registrant();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
