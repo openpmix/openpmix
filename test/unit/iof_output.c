@@ -28,6 +28,9 @@
  *    server flushed it at finalize (late, and out of order) and a client
  *    or tool never flushed it at all.
  *
+ * Deregistering an IOF pull also removes the copies of it that jobs
+ * spawned under it inherited, and the host is told to stop for their
+ * jobs as well as the request's own.
  * A file that one sink writes for stdout and stderr together, with
  * PMIX_IOF_MERGE_STDERR_STDOUT, is closed only once both channels have
  * ended, and output for a sink that has been closed is not queued.
@@ -814,6 +817,65 @@ int main(int argc, char **argv)
                    && PMIX_RANK_WILDCARD == stop_procs[0].rank);
         report("and the local registration is gone",
                NULL == pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid));
+    }
+
+    /* ---- the copies a spawned job inherited go with the request -------
+     * A request, two copies of it that jobs spawned under it inherited
+     * (a child and a grandchild), and a copy of another request of the
+     * same requestor. Deregistering the request removes it and its two
+     * copies, and the host is told to stop for all three jobs; the other
+     * copy stays. */
+    {
+        const char *nsp[4] = {"iof-inh-parent", "iof-inh-child", "iof-inh-grand",
+                              "iof-inh-other"};
+        size_t rid[4] = {7, 7, 7, 8};
+        pmix_iof_req_t *reqs[4];
+        int ids[4], k;
+        pmix_status_t drc;
+        bool child = false, grand = false, other = false;
+        size_t n;
+
+        for (k = 0; k < 4; k++) {
+            reqs[k] = PMIX_NEW(pmix_iof_req_t);
+            PMIX_RETAIN(pmix_globals.mypeer);
+            reqs[k]->requestor = pmix_globals.mypeer;
+            reqs[k]->nprocs = 1;
+            PMIX_PROC_CREATE(reqs[k]->procs, 1);
+            PMIX_LOAD_PROCID(&reqs[k]->procs[0], nsp[k], PMIX_RANK_WILDCARD);
+            reqs[k]->channels = (2 == k) ? PMIX_FWD_STDERR_CHANNEL : PMIX_FWD_STDOUT_CHANNEL;
+            reqs[k]->remote_id = rid[k];
+            reqs[k]->inherited = (0 != k);
+            ids[k] = pmix_pointer_array_add(&pmix_globals.iof_requests, reqs[k]);
+            reqs[k]->local_id = ids[k];
+        }
+
+        stop_nprocs = SIZE_MAX;
+        stop_channels = PMIX_FWD_NO_CHANNELS;
+        drc = do_iofdereg_refid(0, ids[0]);
+        report("inherited: the deregistration reached the host", PMIX_ERR_NOT_SUPPORTED == drc);
+        for (n = 0; n < stop_nprocs && n < 8; n++) {
+            if (0 == strcmp(stop_procs[n].nspace, nsp[1])) {
+                child = true;
+            } else if (0 == strcmp(stop_procs[n].nspace, nsp[2])) {
+                grand = true;
+            } else if (0 == strcmp(stop_procs[n].nspace, nsp[3])) {
+                other = true;
+            }
+        }
+        report("inherited: the stop names the request's job and both copies' jobs",
+               3 == stop_nprocs && 0 == strcmp(stop_procs[0].nspace, nsp[0]) &&
+                   child && grand);
+        report("inherited: the stop does not name another request's copy", !other);
+        report("inherited: the stop names every channel of the request and its copies",
+               (PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL) == stop_channels);
+        report("inherited: the request and both copies are gone",
+               NULL == pmix_pointer_array_get_item(&pmix_globals.iof_requests, ids[0]) &&
+                   NULL == pmix_pointer_array_get_item(&pmix_globals.iof_requests, ids[1]) &&
+                   NULL == pmix_pointer_array_get_item(&pmix_globals.iof_requests, ids[2]));
+        report("inherited: another request's copy stays",
+               reqs[3] == pmix_pointer_array_get_item(&pmix_globals.iof_requests, ids[3]));
+        pmix_pointer_array_set_item(&pmix_globals.iof_requests, ids[3], NULL);
+        PMIX_RELEASE(reqs[3]);
     }
 
     /* ---- only the peer that registered a request may remove it --------
