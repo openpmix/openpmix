@@ -374,9 +374,13 @@ Four functions, in this order, all on the progress thread:
    *scratch* peer (`scratch_peer`), so a module that settles an identity
    rewrites nothing shared. A client is validated as its rank entry's
    registration - whoever made it - and must be that identity; a tool's
-   claim is replaced by what the module establishes. Validation is a
-   single synchronous call, and the next step is `client_settled` /
-   `tool_settled`.
+   claim is replaced by what the module establishes. On the local socket
+   `accept_client` first compares the kernel's uid and gid for the client
+   (`pnd->uid`/`pnd->gid`, from `answer_offer`) with the rank's, and
+   refuses a mismatch with `PMIX_ERR_INVALID_CRED` before any module
+   runs; `ptl_accept.c`'s munge case covers it, as root with a live
+   `munged`. Validation is a single synchronous call, and the next step
+   is `client_settled` / `tool_settled`.
 4. **Check, then ask the host.** Everything that can refuse runs before
    the up-call: registration, modules, wire format, foreign tools,
    membership of a known namespace. Then `client_connected2` (or the
