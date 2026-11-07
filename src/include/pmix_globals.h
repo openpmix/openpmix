@@ -1287,6 +1287,7 @@ typedef struct {
     pmix_list_t cached_events;         // events waiting in the window prior to processing
     pmix_pointer_array_t iof_requests; // array of pmix_iof_req_t IOF requests
     int max_events;                    // size of the notifications hotel
+    int max_events_per_source;         // cached notifications one source nspace may hold
     int event_eviction_time;           // max time to cache notifications
     pmix_hotel_t notifications;        // hotel of pending notifications
     /* IOF controls */

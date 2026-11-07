@@ -106,6 +106,11 @@
  *      to a handler ahead of it that already had the event, nor to a
  *      registrant whose range does not admit the event's source - and
  *      it stays in the cache for the registrations that follow.
+ *
+ *  per-source share of the cache: in a server, events from one source
+ *      namespace beyond its share of the cache replace that source's own
+ *      oldest entries, so another source's entry stays cached; events
+ *      sourced by this server are not limited.
  */
 
 #include "src/include/pmix_config.h"
@@ -152,6 +157,7 @@
 #define EVUT_CODE_REFUSED2  -9024
 #define EVUT_CODE_REPLAYONE  -9025
 #define EVUT_CODE_REPLAYONE2 -9026
+#define EVUT_CODE_SHARE      -9027
 
 static int npass = 0;
 static int nfail = 0;
@@ -2523,6 +2529,127 @@ static void test_replay_to_registrant(void)
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Each source namespace holds at most its share of the cache         */
+/* ------------------------------------------------------------------ */
+
+#define EVUT_SHARE_OWN  200
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_status_t rc;
+    int share;
+    int nloud;
+    int quiet;
+    int loud;
+    int loud_oldest;
+    int own;
+} evut_share_t;
+
+static pmix_status_t share_add(const char *nspace, time_t ts)
+{
+    pmix_notify_caddy_t *cd;
+    pmix_status_t rc;
+
+    cd = PMIX_NEW(pmix_notify_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->status = EVUT_CODE_SHARE;
+    PMIX_LOAD_PROCID(&cd->source, nspace, 0);
+    cd->range = PMIX_RANGE_LOCAL;
+    cd->ts = ts;
+    rc = pmix_notify_event_cache(cd);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cd);
+    }
+    return rc;
+}
+
+static void do_share(int sd, short args, void *cbdata)
+{
+    evut_share_t *r = (evut_share_t *) cbdata;
+    pmix_notify_caddy_t *ncd;
+    time_t base = 1000;
+    int j, n;
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    r->rc = PMIX_SUCCESS;
+    r->share = pmix_globals.max_events / 4;
+    /* enough to cycle the whole cache twice over */
+    r->nloud = 2 * pmix_globals.max_events;
+    r->loud_oldest = -1;
+
+    /* one entry from a quiet source, older than everything after it */
+    if (PMIX_SUCCESS != (r->rc = share_add("evut-quiet", base))) {
+        goto done;
+    }
+    /* a stream from one other source, each newer than the last */
+    for (n = 1; n <= r->nloud; n++) {
+        if (PMIX_SUCCESS != (r->rc = share_add("evut-loud", base + n))) {
+            goto done;
+        }
+    }
+    /* entries sourced by this server */
+    for (n = 1; n <= EVUT_SHARE_OWN; n++) {
+        if (PMIX_SUCCESS != (r->rc = share_add(pmix_globals.myid.nspace, base + n))) {
+            goto done;
+        }
+    }
+
+    for (j = 0; j < pmix_globals.max_events; j++) {
+        pmix_hotel_knock(&pmix_globals.notifications, j, (void **) &ncd);
+        if (NULL == ncd || EVUT_CODE_SHARE != ncd->status) {
+            continue;
+        }
+        if (0 == strcmp(ncd->source.nspace, "evut-quiet")) {
+            ++r->quiet;
+        } else if (0 == strcmp(ncd->source.nspace, "evut-loud")) {
+            ++r->loud;
+            n = (int) (ncd->ts - base);
+            if (0 > r->loud_oldest || n < r->loud_oldest) {
+                r->loud_oldest = n;
+            }
+        } else {
+            ++r->own;
+        }
+    }
+
+done:
+    /* take every entry this test made back out */
+    for (j = 0; j < pmix_globals.max_events; j++) {
+        pmix_hotel_knock(&pmix_globals.notifications, j, (void **) &ncd);
+        if (NULL != ncd && EVUT_CODE_SHARE == ncd->status) {
+            pmix_hotel_checkout_and_return_occupant(&pmix_globals.notifications, j,
+                                                    (void **) &ncd);
+            PMIX_RELEASE(ncd);
+        }
+    }
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+static void test_source_share(void)
+{
+    evut_share_t r;
+
+    memset(&r, 0, sizeof(r));
+    PMIX_CONSTRUCT_LOCK(&r.lock);
+    PMIX_THREADSHIFT(&r, do_share);
+    PMIX_WAIT_THREAD(&r.lock);
+    PMIX_DESTRUCT_LOCK(&r.lock);
+
+    report("source share: every entry is cached", PMIX_SUCCESS == r.rc);
+    report("source share: one source holds no more than its share",
+           r.share == r.loud);
+    report("source share: it keeps its newest entries",
+           r.nloud - r.share + 1 == r.loud_oldest);
+    report("source share: another source's older entry stays cached", 1 == r.quiet);
+    report("source share: entries this server sourced are not limited",
+           EVUT_SHARE_OWN == r.own);
+}
+
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
@@ -2588,6 +2715,9 @@ int main(int argc, char **argv)
 
     /* a server's replay of a cached event to a new registration */
     test_replay_to_registrant();
+
+    /* each source namespace holds at most its share of the cache */
+    test_source_share();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 
