@@ -378,10 +378,13 @@ call because it may be cached) and thread-shifts to
    walks `pmix_server_globals.events` and sends a `PMIX_NOTIFY_CMD`
    message to every peer registered for the **code** — deduplicated via
    a `pmix_namelist_t` tracker, never echoing to the event's source or
-   to itself, and (for a server that is not itself a tool) still subject
-   to the event's own custom-target range. With custom targets it counts
-   down `nleft` and evicts the cached entry once every target has been
-   notified;
+   to itself, and still subject to the event's own custom-target range.
+   A server that is also a tool (a launcher, say) applies that range to
+   its clients as any server does, and also sends the event to every tool
+   attached to it, named or not; its own handlers see the event without
+   the targets. With custom targets it counts down `nleft` for each
+   target it notifies and evicts the cached entry once every target has
+   been notified;
 4. if this server is itself the event's source (and the event is not
    `PMIX_RANGE_LOCAL` / `PMIX_EVENT_STAYS_LOCAL`), up-calls
    `pmix_host_server.notify_event` so the host can broadcast beyond
