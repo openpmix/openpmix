@@ -2440,12 +2440,29 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     PMIx_Byte_object_free(wbo, 1);
 
 process:
+    /* Nothing writes to a channel whose descriptor has been closed, or
+     * was never opened, so output for one is not queued; any copies to
+     * our own stdout and stderr below are still made */
+    if (0 > channel->fd) {
+        keep = false;
+    } else if (0 == output->numbytes && 2 < channel->fd) {
+        /* The end of one channel. A descriptor that carries stdout and
+         * stderr together is closed when both have ended, so the marker
+         * is passed on to the write handler only then */
+        channel->ended |= stream & (PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL);
+        if (0 != (channel->carries & ~channel->ended &
+                  (PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL))) {
+            keep = false;
+        }
+    }
     /* A file opened for another user is written by the writer thread
      * through a pipe, and a file that does not answer leaves the pipe
      * full and this list growing for as long as the job writes. Past the
      * cap the output is dropped instead - said once, here - while the
      * end-of-stream marker always goes through */
-    if (channel->relayed && 0 < output->numbytes &&
+    if (!keep) {
+        /* not queued - see above */
+    } else if (channel->relayed && 0 < output->numbytes &&
         pmix_iof_writer_backlog <= pmix_list_get_size(&channel->outputs)) {
         keep = false;
         if (!channel->dropped) {
@@ -3683,7 +3700,8 @@ void pmix_iof_write_handler(int sd, short args, void *cbdata)
             PMIX_RELEASE(output);
             if (2 < wev->fd) {
                 /* a sink of our own making, fed by exactly that one
-                 * source: close the channel and stop. "pending" is
+                 * source, every channel of which has now ended - see
+                 * write_output_line: close the channel and stop. "pending" is
                  * deliberately left set so nothing re-arms the event on a
                  * descriptor that is gone */
                 close(wev->fd);
@@ -4595,6 +4613,8 @@ static void iof_write_event_construct(pmix_iof_write_event_t *wev)
     wev->tv.tv_usec = 0;
     wev->relayed = false;
     wev->dropped = false;
+    wev->carries = PMIX_FWD_NO_CHANNELS;
+    wev->ended = PMIX_FWD_NO_CHANNELS;
 }
 static void iof_write_event_destruct(pmix_iof_write_event_t *wev)
 {
