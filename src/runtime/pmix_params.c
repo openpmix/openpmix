@@ -439,6 +439,24 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_server_globals.max_iof_cache);
 
+    /* how many event registration entries one peer may hold */
+    pmix_server_globals.max_event_regs_per_peer = 1024;
+    (void) pmix_mca_base_var_register("pmix", "pmix", "server", "max_event_regs_per_peer",
+                                      "Maximum number of event registration entries (one per "
+                                      "status code registered, or one for a default handler) "
+                                      "a server holds for any one client or tool connection "
+                                      "[0 = no limit]",
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+                                      &pmix_server_globals.max_event_regs_per_peer);
+
+    /* how many IOF pull requests one peer may hold */
+    pmix_server_globals.max_iof_reqs_per_peer = 1024;
+    (void) pmix_mca_base_var_register("pmix", "pmix", "server", "max_iof_reqs_per_peer",
+                                      "Maximum number of IOF pull requests a server holds for "
+                                      "any one client or tool connection [0 = no limit]",
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+                                      &pmix_server_globals.max_iof_reqs_per_peer);
+
     (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "progress_thread_cpus",
                                       "Comma-delimited list of ranges of CPUs to which"
                                       "the internal PMIx progress thread is to be bound",

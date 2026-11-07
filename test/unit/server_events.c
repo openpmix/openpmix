@@ -97,6 +97,13 @@
  *      the peer's earlier entries for the first code stay. A later
  *      registration for the new code must still go to the host and be
  *      recorded once.
+ *
+ *   a peer's registrations are limited
+ *      With pmix_server_max_event_regs_per_peer set, a request that would
+ *      take one peer past the limit - by its codes, or by a default
+ *      handler's single entry - is refused with PMIX_ERR_OUT_OF_RESOURCE
+ *      and adds nothing to the store, a request that fits is taken, and
+ *      the limit is per peer: another peer's request is taken.
  */
 
 #include "src/include/pmix_config.h"
@@ -1078,6 +1085,171 @@ static void test_refused_registration(void)
     drain_queued();
 }
 
+/* ------------------------------------------------------------------ */
+/* a peer's registrations are limited                                  */
+/* ------------------------------------------------------------------ */
+
+#define SEUT_CAPCODE(n) (PMIX_EXTERNAL_ERR_BASE - 80 - (n))
+#define SEUT_CAP 4
+
+/* another socketless peer, sharing the server's namespace and rank
+ * objects as the stand-in does but distinct from it */
+static pmix_peer_t *other_peer(void)
+{
+    pmix_peer_t *peer = PMIX_NEW(pmix_peer_t);
+
+    PMIX_RETAIN(pmix_globals.mypeer->nptr);
+    peer->nptr = pmix_globals.mypeer->nptr;
+    PMIX_RETAIN(pmix_globals.mypeer->info);
+    peer->info = pmix_globals.mypeer->info;
+    memcpy(&peer->proc_type, &pmix_globals.mypeer->proc_type, sizeof(pmix_proc_type_t));
+    return peer;
+}
+
+static pmix_status_t do_register_as(pmix_peer_t *peer, size_t ncodes, pmix_status_t *codes)
+{
+    pmix_buffer_t *buf;
+    pmix_status_t rc;
+    size_t ninfo = 0;
+
+    buf = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ncodes, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS == rc && 0 < ncodes) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, codes, ncodes, PMIX_STATUS);
+    }
+    if (PMIX_SUCCESS == rc) {
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, buf, &ninfo, 1, PMIX_SIZE);
+    }
+    if (PMIX_SUCCESS == rc) {
+        rc = pmix_server_register_events(peer, buf, NULL, NULL);
+    }
+    PMIX_RELEASE(buf);
+    return rc;
+}
+
+typedef struct {
+    pmix_lock_t lock;
+    pmix_peer_t *peer;
+    size_t n;
+} peer_count_t;
+
+static void count_peer_entries(int sd, short args, void *cbdata)
+{
+    peer_count_t *c = (peer_count_t *) cbdata;
+    pmix_regevents_info_t *reginfo;
+    pmix_peer_events_info_t *prev;
+
+    (void) sd;
+    (void) args;
+    c->n = 0;
+    PMIX_LIST_FOREACH (reginfo, &pmix_server_globals.events, pmix_regevents_info_t) {
+        PMIX_LIST_FOREACH (prev, &reginfo->peers, pmix_peer_events_info_t) {
+            if (prev->peer == c->peer) {
+                ++c->n;
+            }
+        }
+    }
+    PMIX_WAKEUP_THREAD(&c->lock);
+}
+
+/* how many entries the store holds for this peer, read on the progress
+ * thread */
+static size_t peer_entries(pmix_peer_t *peer)
+{
+    peer_count_t c;
+    pmix_event_t ev;
+
+    memset(&c, 0, sizeof(c));
+    c.peer = peer;
+    PMIX_CONSTRUCT_LOCK(&c.lock);
+    pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, count_peer_entries, &c);
+    pmix_event_active(&ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&c.lock);
+    PMIX_DESTRUCT_LOCK(&c.lock);
+    return c.n;
+}
+
+static void purge_peer_entries(int sd, short args, void *cbdata)
+{
+    peer_count_t *c = (peer_count_t *) cbdata;
+
+    (void) sd;
+    (void) args;
+    pmix_server_purge_events(c->peer, NULL, PMIX_SUCCESS);
+    PMIX_WAKEUP_THREAD(&c->lock);
+}
+
+/* take the peer's entries out of the store, on the progress thread */
+static void purge_peer(pmix_peer_t *peer)
+{
+    peer_count_t c;
+    pmix_event_t ev;
+
+    memset(&c, 0, sizeof(c));
+    c.peer = peer;
+    PMIX_CONSTRUCT_LOCK(&c.lock);
+    pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, purge_peer_entries, &c);
+    pmix_event_active(&ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&c.lock);
+    PMIX_DESTRUCT_LOCK(&c.lock);
+}
+
+static bool accepted(pmix_status_t rc)
+{
+    return PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc;
+}
+
+static void test_registration_cap(void)
+{
+    pmix_status_t codes[SEUT_CAP + 1];
+    pmix_peer_t *p1, *p2;
+    size_t saved = pmix_server_globals.max_event_regs_per_peer;
+    pmix_status_t rc;
+    int n;
+
+    for (n = 0; n <= SEUT_CAP; n++) {
+        codes[n] = SEUT_CAPCODE(n);
+    }
+    p1 = other_peer();
+    p2 = other_peer();
+    pmix_server_globals.max_event_regs_per_peer = SEUT_CAP;
+
+    rc = do_register_as(p1, 3, codes);
+    settle();
+    report("registration cap: a request within the limit is taken",
+           accepted(rc) && 3 == peer_entries(p1));
+
+    rc = do_register_as(p1, 2, &codes[3]);
+    settle();
+    report("registration cap: a request past the limit is refused",
+           PMIX_ERR_OUT_OF_RESOURCE == rc);
+    report("registration cap: the refused request adds nothing", 3 == peer_entries(p1));
+
+    rc = do_register_as(p1, 1, &codes[3]);
+    settle();
+    report("registration cap: a request reaching the limit is taken",
+           accepted(rc) && SEUT_CAP == peer_entries(p1));
+
+    rc = do_register_as(p1, 0, NULL);
+    settle();
+    report("registration cap: a default handler past the limit is refused",
+           PMIX_ERR_OUT_OF_RESOURCE == rc && SEUT_CAP == peer_entries(p1));
+
+    rc = do_register_as(p2, 2, codes);
+    settle();
+    report("registration cap: the limit is per peer", accepted(rc) && 2 == peer_entries(p2));
+
+    pmix_server_globals.max_event_regs_per_peer = saved;
+    purge_peer(p1);
+    purge_peer(p2);
+    settle();
+    report("registration cap: the peers' entries are purged",
+           0 == peer_entries(p1) && 0 == peer_entries(p2));
+    drain_queued();
+    PMIX_RELEASE(p1);
+    PMIX_RELEASE(p2);
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -1263,6 +1435,8 @@ int main(int argc, char **argv)
     test_custom_range_count();
     drain_queued();
     test_refused_registration();
+    drain_queued();
+    test_registration_cap();
     drain_queued();
     PMIX_INFO_DESTRUCT(&dir);
     release_standin();
