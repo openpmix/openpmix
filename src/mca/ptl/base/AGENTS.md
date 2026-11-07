@@ -384,6 +384,15 @@ Four functions, in this order, all on the progress thread:
    a tool. Their callbacks (`client_host_cbfunc`, `cnct_cbfunc`)
    thread-shift to `client_answered` / `tool_answered`.
 
+   **A tool's info carries only the identity its connection
+   established.** `read_tool_info` drops what `server_sets` names and
+   what `tool_drops` names - every `pmix_server_is_identity_key` key
+   (`PMIX_REQUESTOR_PID`, `PMIX_REQUESTED_GRPID`, `PMIX_ORIGIN_*`) and
+   `PMIX_REQUESTOR` - and `ask_about_tool` adds `PMIX_USERID`,
+   `PMIX_GRPID` and, where the kernel reports a pid, `PMIX_REQUESTOR_PID`
+   beside `PMIX_PROC_PID`. `pmix_server_add_requester_id` is not used on
+   this path. `test/unit/ptl_exec.c` covers it with a real tool.
+
    **Tools of one name go to the host one at a time.** `tool_settled`
    checks only the credential and the foreign-user rule (a tool of a uid
    other than `pmix_globals.uid`, root's, and the `PMIX_USERID` the host

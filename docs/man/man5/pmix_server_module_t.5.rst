@@ -196,12 +196,20 @@ This applies to ``publish``, ``lookup``, ``unpublish``, ``spawn``,
 ``register_events``, ``notify_event`` for an event a client raised,
 ``query`` (including the queries behind
 :ref:`PMIx_Resolve_peers(3) <man3-PMIx_Resolve_peers>` and
-:ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>`), ``tool_connected`` and
-``tool_connected2``, ``log`` and ``log2``, ``allocate``, ``job_control``,
+:ref:`PMIx_Resolve_nodes(3) <man3-PMIx_Resolve_nodes>`), ``log`` and
+``log2``, ``allocate``, ``job_control``,
 ``monitor``, ``get_credential``, ``validate_credential``, ``iof_pull``,
 ``push_stdin``, ``session_control``, ``resource_block``, ``fabric`` and
 ``abort2``. The deprecated ``abort`` has no info array, so it carries no
 requester identity beyond its process argument.
+
+``tool_connected`` and ``tool_connected2`` carry only the identity the tool's
+connection established: exactly one ``PMIX_USERID`` and one ``PMIX_GRPID``,
+and ``PMIX_REQUESTOR_PID`` where the kernel reports a pid. Any
+``PMIX_REQUESTOR_PID``, ``PMIX_REQUESTED_GRPID``, ``PMIX_ORIGIN_*`` or
+``PMIX_REQUESTOR`` the tool put in its own info is removed before the
+up-call. There is no process argument: a tool that asked
+for an identity of its own is named by ``PMIX_NSPACE`` and ``PMIX_RANK``.
 
 ``fence_nb``, ``connect``, ``disconnect`` and ``group`` are made for all of
 their participants rather than for one requester, so they carry no
@@ -763,7 +771,10 @@ The info array is what the tool sent, with ``PMIX_USERID``, ``PMIX_GRPID``,
 ``PMIX_CRED_TYPE`` and - where the kernel reports one - ``PMIX_PROC_PID``
 replaced by the values the server established for the connection, as for
 ``client_connected2``, and ``PMIX_TIMEOUT`` set as for ``client_connected2``.
-The rest
+``PMIX_REQUESTOR_PID`` is the same kernel pid, present only where the kernel
+reports one; any ``PMIX_REQUESTOR_PID``, ``PMIX_REQUESTED_GRPID``,
+``PMIX_ORIGIN_*`` or ``PMIX_REQUESTOR`` the tool sent is removed (see *The
+requester's identity* above). The rest
 is passed on as the tool sent it: ``PMIX_REALUID`` and ``PMIX_REALGID``, which the
 tool's PMIx library obtains from the operating system, its command line, and the
 roles it asked for.
