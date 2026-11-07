@@ -592,10 +592,13 @@ is three messages:
      else ``native``. If the peer offers none of them it is refused with
      ``PMIX_ERR_NOT_SUPPORTED``.
    * **wire format and buffer type:** the namespace's, if a peer of the
-     namespace has already connected - a peer that does not offer it is
-     refused with ``PMIX_ERR_NOT_SUPPORTED``. For a new namespace, the
-     first wire format the peer offers that the server has, and the
-     peer's buffer type.
+     namespace has already connected and the kernel's uid and gid for
+     the peer are those of the rank it names (or, for a rank not yet in
+     the namespace, of the namespace's owner and every process in it) -
+     a peer that does not offer it is refused with
+     ``PMIX_ERR_NOT_SUPPORTED``. Otherwise - a new namespace, or a peer
+     of another uid or gid - the first wire format the peer offers that
+     the server has, and the peer's buffer type.
    * **datastore:** the first the peer offers that the server has. It is
      the peer's own; the first peer's also becomes its namespace's
      default.
@@ -802,14 +805,14 @@ tool (all the others).
 Checks for a client
 ^^^^^^^^^^^^^^^^^^^
 
-#. **The client must be registered.** Its namespace, and its rank
-   within it, must have been registered by the host
-   (``PMIx_server_register_client``). An unregistered client is
-   refused.
 #. **Its components must be available.** On the local socket the server
    chose them from the peer's offer. Over TCP, the security,
    wire-format, and datastore components it names must be ones this
-   server has loaded.
+   server has loaded, or it is refused with ``PMIX_ERR_NOT_SUPPORTED``.
+#. **The client must be registered.** Its namespace, and its rank
+   within it, must have been registered by the host
+   (``PMIx_server_register_client``). An unregistered client is
+   refused with ``PMIX_ERR_INVALID_CRED``.
 #. **Its identity must be the registered one.** The security component
    settles the client's uid and gid (see `Settling the identity`_),
    and they must equal the uid and gid the host registered for that
@@ -833,7 +836,9 @@ Checks for a client
    connection over TCP that declares an earlier release is taken without
    a token.
 #. **Its wire format must match its job's.** All clients of one job use
-   one wire format, set by the first to connect.
+   one wire format, set by the first to connect. This is checked once
+   the client's identity and token have been, and a client that differs
+   is refused with ``PMIX_ERR_NOT_SUPPORTED``.
 
 A ``PMIX_USERID`` or ``PMIX_GRPID`` in a client's information field is
 ignored. The identity the security component settles is the only one

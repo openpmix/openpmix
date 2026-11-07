@@ -26,6 +26,14 @@
  * token and a credential a process of the rank's uid encoded is refused
  * the same: the kernel names another uid for it.
  *
+ * A peer naming a rank registered as another uid is answered as one
+ * naming a rank not registered. On the local socket - as for a namespace
+ * not registered - the server's choice of wire format and buffer type is
+ * the peer's, not the namespace's, and the client is refused
+ * PMIX_ERR_INVALID_CRED; over TCP an unavailable security module is
+ * PMIX_ERR_NOT_SUPPORTED for both, and a wire format other than the
+ * namespace's PMIX_ERR_INVALID_CRED for both.
+ *
  * A handshake does not hold the server. A peer that starts one and goes
  * quiet - with the handshake deadline disabled - leaves the server
  * answering a blocking call of its own.
@@ -500,6 +508,8 @@ static char *ac_token = NULL;
 static bool ac_unprepared = false;
 /* start_server registers the client's rank but not its namespace */
 static bool ac_no_nspace = false;
+/* the processes in the namespace start_server registers */
+static int ac_nprocs = 1;
 
 static bool names_ac_rank(const char *nspace, pmix_rank_t rank)
 {
@@ -1064,7 +1074,7 @@ static pmix_status_t start_server(pmix_server_module_t *module, bool client, uid
     }
     PMIX_LOAD_NSPACE(ns, AC_NSPACE);
     if (!ac_no_nspace) {
-        rc = PMIx_server_register_nspace(ns, 1, js_info(1), 1, NULL, NULL);
+        rc = PMIx_server_register_nspace(ns, ac_nprocs, js_info(ac_nprocs), 1, NULL, NULL);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             return rc;
         }
@@ -1608,6 +1618,10 @@ static size_t choice_name(char *dst, const char *src)
     return l + 1;
 }
 
+/* the process an offer names */
+static const char *offer_nspace = AC_NSPACE;
+static pmix_rank_t offer_rank = 0;
+
 static pmix_status_t offer_raw(const char *version, const char *const psecs[], int npsec,
                                const char *const bfrops[], int nbf, uint8_t bt,
                                const char *const gdss[], int ngds, char *cpsec, char *cbf,
@@ -1623,7 +1637,7 @@ static pmix_status_t offer_raw(const char *version, const char *const psecs[], i
     ssize_t rd;
     size_t got = 0;
 
-    PMIX_LOAD_PROCID(&proc, AC_NSPACE, 0);
+    PMIX_LOAD_PROCID(&proc, offer_nspace, offer_rank);
     msg = (char *) calloc(1, 8192);
     memset(&hdr, 0, sizeof(hdr));
     hdr.pindex = -1;
@@ -1820,6 +1834,155 @@ static int case_offer_namespace_wire(void)
         PMIX_BFROP_BUFFER_NON_DESC != cbt) {
         fprintf(stdout, "    offering it second: %s, chose \"%s\", buffer type %u\n",
                 PMIx_Error_string(reply), cbf, (unsigned) cbt);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+
+/* A namespace whose first client - rank 0, this process's uid - has
+ * connected, and whose rank 1 is registered as another uid. Returns the
+ * first client's socket, or -1 */
+#define AC_OTHER_UID ((uid_t) (getuid() + 4242))
+static int named_rank_server(void)
+{
+    pmix_proc_t proc;
+    char *msg;
+    size_t sz;
+    int sd = -1;
+    uint32_t index;
+    pmix_status_t reply;
+
+    ac_nprocs = 2;
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return -1;
+    }
+    PMIX_LOAD_PROCID(&proc, AC_NSPACE, 1);
+    reply = PMIx_server_register_client(&proc, AC_OTHER_UID, getgid(), NULL, NULL, NULL);
+    if (PMIX_SUCCESS != reply && PMIX_OPERATION_SUCCEEDED != reply) {
+        return -1;
+    }
+    msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native", NULL, false, &sz);
+    reply = send_ack(msg, sz, &sd);
+    free(msg);
+    if (PMIX_SUCCESS != reply || !read_u32(sd, &index)) {
+        fprintf(stdout, "    the namespace's first client was refused: %s\n",
+                PMIx_Error_string(reply));
+        return -1;
+    }
+    return sd;
+}
+
+/* The same offer naming rank 1, registered as another uid; rank 7, which
+ * is not registered; and a namespace that is not registered: the three
+ * answers must be the same */
+static int offer_all(const char *what, const char *const bfrops[], int nbf, uint8_t bt)
+{
+    static const char *const nss[3] = {AC_NSPACE, AC_NSPACE, AC_OTHERNS};
+    static const pmix_rank_t rks[3] = {1, 7, 0};
+    char p[3][65], b[3][65], g[3][65];
+    uint8_t t[3] = {0, 0, 0};
+    pmix_status_t r[3];
+    int n;
+
+    for (n = 0; n < 3; n++) {
+        offer_nspace = nss[n];
+        offer_rank = rks[n];
+        r[n] = offer_raw(AC_VERSION, ac_psec_native, 1, bfrops, nbf, bt, ac_gds_hash, 1, p[n],
+                         b[n], &t[n], g[n]);
+    }
+    offer_nspace = AC_NSPACE;
+    offer_rank = 0;
+    for (n = 1; n < 3; n++) {
+        if (r[0] != r[n] ||
+            (PMIX_SUCCESS == r[0] && (0 != strcmp(b[0], b[n]) || t[0] != t[n] ||
+                                      0 != strcmp(p[0], p[n]) || 0 != strcmp(g[0], g[n])))) {
+            fprintf(stdout, "    %s: %s:%u %s \"%s\" %u, %s:%u %s \"%s\" %u\n", what, nss[0],
+                    rks[0], PMIx_Error_string(r[0]), (PMIX_SUCCESS == r[0]) ? b[0] : "",
+                    (unsigned) t[0], nss[n], rks[n], PMIx_Error_string(r[n]),
+                    (PMIX_SUCCESS == r[n]) ? b[n] : "", (unsigned) t[n]);
+            return CHILD_FAIL;
+        }
+    }
+    return CHILD_PASS;
+}
+
+/* On the local socket, a peer naming a rank registered as another uid
+ * is answered as one naming a rank, or a namespace, not registered: the
+ * server's choice is made from what the peer offered, not from the
+ * namespace's wire format - and the client is then refused
+ * PMIX_ERR_INVALID_CRED */
+static int case_offer_other_rank(void)
+{
+    static const char *const older[] = {AC_TCP_BFROPS};
+    static const char *const both[] = {AC_TCP_BFROPS, AC_BFROPS};
+    char *msg;
+    size_t sz;
+    int sd = -1, fsd;
+    pmix_status_t reply;
+
+    ack_local = true;
+    if (0 > (fsd = named_rank_server())) {
+        return CHILD_SETUP;
+    }
+    if (CHILD_PASS != offer_all("offering only another wire format", older, 1,
+                                PMIX_BFROP_BUFFER_NON_DESC) ||
+        CHILD_PASS != offer_all("offering it first, with another buffer type", both, 2,
+                                PMIX_BFROP_BUFFER_FULLY_DESC)) {
+        return CHILD_FAIL;
+    }
+    msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 1, "native", NULL, false, &sz);
+    reply = send_ack(msg, sz, &sd);
+    free(msg);
+    if (1 != nclient_connected) {
+        fprintf(stdout, "    the host was asked about %d clients\n", nclient_connected);
+        return CHILD_FAIL;
+    }
+    close(fsd);
+    return expect_status("a client of another uid on a registered rank", reply,
+                         PMIX_ERR_INVALID_CRED);
+}
+
+/* Over TCP, a client naming a rank registered as another uid is answered
+ * as one naming a rank not registered: for a security module the server
+ * does not have, PMIX_ERR_NOT_SUPPORTED; for a wire format other than its
+ * namespace's, PMIX_ERR_INVALID_CRED - the wire format is compared once
+ * the client has been validated. The host is not asked about either */
+static int case_tcp_other_rank(void)
+{
+    static const char *const what[2] = {"an unavailable security module",
+                                        "a wire format other than its namespace's"};
+    static const pmix_status_t want[2] = {PMIX_ERR_NOT_SUPPORTED, PMIX_ERR_INVALID_CRED};
+    pmix_rank_t ranks[2] = {1, 7};
+    pmix_status_t reply;
+    char *msg;
+    size_t sz;
+    int sd, fsd, n, r;
+
+    if (0 > (fsd = named_rank_server())) {
+        return CHILD_SETUP;
+    }
+    for (n = 0; n < 2; n++) {
+        ack_bfrops = (0 == n) ? AC_BFROPS : "v41";
+        for (r = 0; r < 2; r++) {
+            sd = -1;
+            msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, ranks[r],
+                            (0 == n) ? "nosuchsec" : "native", NULL, false, &sz);
+            reply = send_ack(msg, sz, &sd);
+            free(msg);
+            if (0 <= sd) {
+                close(sd);
+            }
+            if (reply != want[n]) {
+                fprintf(stdout, "    rank %u with %s: read %s, expected %s\n", ranks[r],
+                        what[n], PMIx_Error_string(reply), PMIx_Error_string(want[n]));
+                return CHILD_FAIL;
+            }
+        }
+    }
+    ack_bfrops = AC_BFROPS;
+    close(fsd);
+    if (1 != nclient_connected) {
+        fprintf(stdout, "    the host was asked about %d clients\n", nclient_connected);
         return CHILD_FAIL;
     }
     return CHILD_PASS;
@@ -5397,6 +5560,11 @@ int main(int argc, char **argv)
              "has, with its buffer type", case_offer_first_preference);
     run_case("a later peer of a namespace gets its wire format and buffer type, or is refused",
              case_offer_namespace_wire);
+    run_case("a peer on the local transport naming a rank registered as another uid is "
+             "answered as one naming a rank or namespace not registered",
+             case_offer_other_rank);
+    run_case("a client over TCP naming a rank registered as another uid is answered as one "
+             "naming a rank not registered", case_tcp_other_rank);
     run_case("an offer with too many names, or too long a name, is refused",
              case_offer_oversized);
     run_case("a client whose connection closes while its process runs on is lost at once",
