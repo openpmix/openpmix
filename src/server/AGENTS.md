@@ -1593,6 +1593,21 @@ therefore routed **by key rather than by position** - it used to read
 endpoint-then-job-level positionally, which breaks the moment a client
 sends one and not the other.
 
+**The endpoint keys are filled by the server, not by the caller's
+directives.** The host is handed the tracker's info as one array - the
+first contributor's directives, then every endpoint entry - and it
+registers whatever it finds under `PMIX_PROC_INFO_ARRAY` or
+`PMIX_JOB_INFO_ARRAY` against the namespace the entry's first element
+names, on every node hosting a participant. A directive under either key
+was indistinguishable from an endpoint entry, and was neither built nor
+shape-checked here. `pmix_server_connect()` therefore strips both keys from
+the directives, next to the requester-id strip, and accepts a job-level
+entry from the tail only when it has the shape the client library builds -
+a data array of info whose first element is `PMIX_NSPACE` - naming the
+**sender's own** namespace. A tail entry that does not fails the connect,
+rather than being dropped like an unknown key: no client built from this
+library sends one.
+
 **The async group paths run here too.** `PMIx_Group_invite` and
 `PMIx_Group_join` send `PMIX_GROUP_INVITE_CMD` / `PMIX_GROUP_JOIN_CMD`,
 and this server runs the invitation and builds every contribution from
