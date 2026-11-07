@@ -82,7 +82,12 @@ of this release use that socket, so it has its own exchange:
    NUL-terminated names: at most `PMIX_PTL_OFFER_MAX_NAMES` (16) names
    of at most `PMIX_PTL_OFFER_MAX_NAMELEN` (64) bytes, or it is refused
    `PMIX_ERR_BAD_PARAM`. No uid or gid: `answer_offer` takes them from
-   the kernel (`peer_identity`) into `pnd->uid`/`pnd->gid`.
+   the kernel (`peer_identity`) into `pnd->uid`/`pnd->gid`, and refuses
+   with `PMIX_ERR_INVALID_CRED` a peer whose uid or gid is the overflow
+   id where `/proc/self/uid_map` (`gid_map`) has no line for it
+   (`pmix_util_id_from_outside`). A map that covers the overflow id
+   leaves it an id like any other. `test/unit/ptl_userns_peer.c` runs a
+   server in a user namespace with peers outside it, both ways.
 2. **The choice** (`choose` / `send_choice`; the client's `apply_choice`):
    a `uint32_t` status, then on success a `uint32_t` length (at most
    `PMIX_PTL_CHOICE_MAX`) and `psec\0bfrops\0<buffer type>gds\0`.
@@ -1630,6 +1635,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_unnamed.c` | end to end with no TCP table on either side (`pmix_util_getid_test_no_tcp_table`): a real server with legacy clients, which takes the tool on its claim, real tools by `PMIx_tool_init` and by an event-driven attach - a bare TCP URI passed directly taken; a named file taken whatever release it names, with or without its lock held or a lock line; a group-writable file refused, and a symbolic link to the file not read (`PMIX_ERR_UNREACH`, not a regular file); an off-host address `PMIX_ERR_UNREACH`, saying it is not this host's |
 | `test/unit/tool_attach_nb.c` | (among its cases) an attach does not dial the URI an earlier attach was given |
 | `test/unit/ptl_check_server.c` | while the table does not list the connection (`pmix_util_getid_test_unlisted`) the check asks again until `handshake_wait_time` runs out and then refuses the server (`PMIX_ERR_INVALID_CRED`), a server listed after 1.5 s is taken, one that closes meanwhile is `PMIX_ERR_UNREACH`, and with no wait it is refused soon; a server of our own is ours the moment we are connected (the `NOT_FOUND` retry, with the listener accepting from a thread of its own, as a server does: Linux lists a connection not yet accepted with inode 0, which is not found yet), one whose end has closed is refused soon; with no table (`pmix_util_getid_test_no_tcp_table`) a server nothing vouches for is refused and one its file vouches for is taken; `test_judge`: `pmix_ptl_base_judge_server` with fake map files - mapped and unmapped uid and gid, identity given and not, vouched and not; the overflow ids, where a subordinate-id map gives them an entry, match no identity - by number or mapped - and are taken only vouched, while with the identity map they are ids like any other |
+| `test/unit/ptl_userns_peer.c` | (Linux, as root) a server in a user namespace mapping only its own user and group refuses a peer outside it - root, or its own user with an unmapped group - on the local socket, and over TCP one whose owner the kernel reports as the overflow uid; a server running as the overflow id, which its namespace maps, takes a peer of that user both ways |
 | `test/unit/ptl_local_connect.c` | (among its cases) a tool given a FIFO by `file:<path>` or `PMIX_TOOL_ATTACHMENT_FILE`, or a symbolic link to the report file, fails init at once, and the report file named either way connects; a launcher whose rendezvous file name has a FIFO at it finishes init promptly; every connect-ack buffer a client releases is zero (`pmix_ptl_base_wiped_hook`) |
 | `test/unit/tool_cycle.c`, `client_cycle.c` | repeated connect/finalize cycles through this code |
 | `contrib/dockerswarm/run-ptl-tests.sh` | the paths a single node cannot reach: a tool refusing to dial a server on another node, discovery by pid/nspace; and a tool through a relay root runs refused |
