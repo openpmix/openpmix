@@ -397,6 +397,74 @@ cleanup:
     return rc;
 }
 
+/* The endpoint keys are filled by this server, not by the caller's
+ * directives.
+ *
+ * PMIX_PROC_INFO_ARRAY and PMIX_JOB_INFO_ARRAY are how the exchange carries
+ * one participant's data to the others: the host registers each entry it
+ * finds under them, as an update to the namespace the entry's first element
+ * names, on every node that hosts a participant. This server builds the
+ * process entries itself from what each rank committed, and takes the
+ * job-level one from the optional tail below - but the host receives them
+ * in the SAME array as the caller's directives, so a directive under either
+ * key was indistinguishable from an endpoint entry, though nothing here
+ * built or checked it. Remove them, in the place and the
+ * manner pmix_server_strip_requester_id() removes the identity keys: only
+ * the first "nfrom" entries are the caller's, and the survivors are moved
+ * down. Returns the number removed. */
+static size_t strip_endpoint_directives(pmix_info_t *info, size_t nfrom, size_t ninfo)
+{
+    size_t n, m = 0;
+
+    for (n = 0; n < ninfo; n++) {
+        if (n < nfrom &&
+            (PMIx_Check_key(info[n].key, PMIX_PROC_INFO_ARRAY) ||
+             PMIx_Check_key(info[n].key, PMIX_JOB_INFO_ARRAY))) {
+            PMIx_Info_destruct(&info[n]);
+            continue;
+        }
+        if (m != n) {
+            memcpy(&info[m], &info[n], sizeof(pmix_info_t));
+        }
+        ++m;
+    }
+    for (n = m; n < ninfo; n++) {
+        PMIx_Info_construct(&info[n]);
+    }
+    return ninfo - m;
+}
+
+/* Does a job-level entry from the optional tail describe the sender's own
+ * namespace? The client library builds it as a data array of info whose
+ * first element is PMIX_NSPACE, holding the sender's namespace (see
+ * pmix_client_connect.c), and the host registers the entry against
+ * whatever the first element says - so an entry naming any other namespace
+ * is refused, along with one that is not that shape at all. */
+static bool job_info_is_senders(const pmix_info_t *endpt, const pmix_peer_t *peer)
+{
+    const pmix_data_array_t *darray;
+    const pmix_info_t *first;
+
+    if (PMIX_DATA_ARRAY != endpt->value.type) {
+        return false;
+    }
+    darray = endpt->value.data.darray;
+    if (NULL == darray || PMIX_INFO != darray->type ||
+        0 == darray->size || NULL == darray->array) {
+        return false;
+    }
+    first = (const pmix_info_t *) darray->array;
+    if (!PMIx_Check_key(first->key, PMIX_NSPACE) ||
+        PMIX_PROC_NSPACE != first->value.type ||
+        NULL == first->value.data.nspace) {
+        return false;
+    }
+    if (NULL == peer->info || NULL == peer->info->pname.nspace) {
+        return false;
+    }
+    return PMIx_Check_nspace_strict(*first->value.data.nspace, peer->info->pname.nspace);
+}
+
 /* Append one info to a tracker's array. The array is rebuilt rather than
  * grown in place because it is handed to the host as a unit.
  *
@@ -568,6 +636,10 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
         nstrip = pmix_server_strip_requester_id(info, ninf, ninfo);
         ninf -= nstrip;
         ninfo -= nstrip;
+        /* ...nor any endpoint data of the caller's own making */
+        nstrip = strip_endpoint_directives(info, ninf, ninfo);
+        ninf -= nstrip;
+        ninfo -= nstrip;
         /* check for a timeout */
         rc = check_timeout(info, ninf, &tv);
         if (PMIX_SUCCESS != rc) {
@@ -658,6 +730,18 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
                  * the exchange. Discard theirs rather than contribute both. */
                 PMIX_INFO_DESTRUCT(&endpt);
                 continue;
+            }
+            if (PMIX_CHECK_KEY(&endpt, PMIX_JOB_INFO_ARRAY) &&
+                !job_info_is_senders(&endpt, cd->peer)) {
+                /* not dropped like an unknown key: the key is known and the
+                 * entry is not what the client library builds, which no
+                 * client built from this library sends */
+                pmix_output_verbose(2, pmix_server_globals.connect_output,
+                                    "connect: refusing job-level data that is "
+                                    "not for the sender's own namespace");
+                PMIX_INFO_DESTRUCT(&endpt);
+                rc = PMIX_ERR_BAD_PARAM;
+                goto trkerr;
             }
             rc = add_trk_info(trk, &endpt);
             PMIX_INFO_DESTRUCT(&endpt);
