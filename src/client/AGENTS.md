@@ -1768,10 +1768,10 @@ the progress thread's, and what is still being written to it afterwards.**
 invitation can resolve inside that call.** `pmix_event_register_observer`
 runs `check_cached_events()` (see
 [`pmix_event_registration.c`](../event/pmix_event_registration.c)) before
-it acknowledges the registration, and that replays every matching cached
-notification through `pmix_invoke_local_event_hdlr` →
-`sweep_observers()` — synchronously, on the progress thread, with the
-brand-new observer already on the list. So a leader inviting procs that
+it acknowledges the registration, and that hands every matching cached
+notification to the brand-new observer (`pmix_invoke_one_event_hdlr`) —
+synchronously, on the progress thread, with the observer already on the
+list. So a leader inviting procs that
 have *already* terminated, whose `PMIX_PROC_TERMINATED` events were cached
 because nothing was watching for them, has `invite_observer()` count every
 answer and call `invite_wake()` from inside the registration call itself.
