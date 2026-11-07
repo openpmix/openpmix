@@ -428,13 +428,14 @@ static void test_attach_on_attached_handle_is_refused(void)
     unlink(seg);
 }
 
-/* The complaint lchown() did not answer: it declines a symlink at the
- * last component of the path, and resolves every directory above it
- * normally. So a directory on the way to the segment, swapped for a link
- * to one of someone else's choosing, sends the chown - and the chmod -
- * to whatever file of theirs carries the segment's name. The segment is
+/* The case lchown() did not cover: it declines a symlink at the last
+ * component of the path, and resolves every directory above it
+ * normally. So when a directory on the way to the segment is replaced by
+ * a link to another directory, a chown - and a chmod - made by name
+ * lands on whatever file there carries the segment's name. The segment is
  * created, and only then is its directory replaced, which is the window
- * gds/shmem3 leaves between the create and shmem3_segment_fix_perms(). */
+ * gds/shmem3 leaves between the create and shmem3_segment_fix_perms().
+ * Both changes must reach the segment and leave the other file alone. */
 static void test_perms_refuse_a_swapped_directory(void)
 {
     char dir[512], moved[512], elsewhere[512], seg[600], target[600];

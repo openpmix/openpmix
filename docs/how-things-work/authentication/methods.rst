@@ -236,9 +236,10 @@ Methods Too Weak to Rely On Alone
 
 * **A uid and gid the client reports about itself in the handshake.**
   This is NFS ``AUTH_SYS`` (ONC RPC ``AUTH_UNIX``), the classic
-  counter-example and the reason NFS moved to Kerberos. Anyone can forge
-  it. In a user namespace, it also reports the uid *inside* the
-  container rather than the host uid.
+  counter-example and the reason NFS moved to Kerberos. The client sends
+  whatever uid and gid it likes, and the server takes them as given. In a
+  user namespace, it also reports the uid *inside* the container rather
+  than the host uid.
 * **Mapping the source IP address to a container and then to a uid.**
   This is only as strong as the guarantee that a container cannot change
   its address. A container with ``CAP_NET_ADMIN``, or one sharing a

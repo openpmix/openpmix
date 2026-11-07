@@ -502,9 +502,9 @@ and the failure path keys off that:
   miss goes up to the server like any other.
 
 That test used to be on the *segment id* — sparing the modex and nothing
-else — so a session update that failed to map took the whole job tracker
-down with it, and with it the job and session segments the client had
-been reading since ``PMIx_Init``. That is openpmix#4156 reached by a
+else — so a session update that failed to map dropped the whole job
+tracker, and with it the job and session segments the client had been
+reading since ``PMIx_Init``. That is openpmix#4156 reached by a
 different delivery.
 
 ``test/unit/update_attach_fail`` holds it, and has to ask with

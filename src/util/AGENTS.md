@@ -1300,8 +1300,7 @@ Four contracts the callers depend on:
   or a user's link to a scratch filesystem. Refusing every link failed
   `PMIx_server_init` for every such `TMPDIR`, since `write_rndz_file()`
   hands the tmpdir itself to `pmix_os_dirpath_create()`. What is still
-  refused is a link of another user's, which is what a link planted at
-  a predictable name under `/tmp` would be; `dir-symlink-owner` says so.
+  refused is a link owned by another user; `dir-symlink-owner` says so.
   The link is recognized with `lstat()`, never by errno: an
   `O_DIRECTORY | O_NOFOLLOW` open of one fails with `ENOTDIR` on Linux
   and macOS and `EMLINK` on FreeBSD, so the user was told "Not a
