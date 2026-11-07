@@ -266,9 +266,9 @@ static void test_destroy_recursive(void)
 /* and pmix_os_dirpath_destroy() must never follow                     */
 /* a symlink -- either as its base path or as an entry it finds while  */
 /* walking the tree.  The session and rendezvous directories have      */
-/* fully predictable names under a world-writable root, so a link      */
-/* planted at one of those names would otherwise redirect a chmod, or  */
-/* an entire recursive removal, at a tree of the planter's choosing.   */
+/* fully predictable names under a world-writable root, so a chmod, or */
+/* a recursive removal, must act on the directory at the name and not  */
+/* on wherever a link at the name leads.                               */
 /* ------------------------------------------------------------------ */
 
 static int file_exists(const char *path)
@@ -332,8 +332,8 @@ static void test_create_on_symlink(void)
     report("create_on_symlink: target mode untouched",
            0 == stat(target, &st) && 0 == (st.st_mode & S_IRWXG));
 
-    /* another user's link could have been planted by anyone able to
-     * write beside it. Only root can make one to test with */
+    /* a link owned by another user is refused as well. Only root can
+     * make one to test with */
     if (0 == geteuid() && 0 == lchown(link, 65534, 65534)) {
         rc = pmix_os_dirpath_create(link, S_IRWXU | S_IRWXG);
         report("create_on_symlink: another user's link refused", PMIX_ERR_SILENT == rc);

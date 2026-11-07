@@ -133,7 +133,8 @@ module should still implement both. See the framework doc.
   back as success, zero-padded — and on the string path an under-claim by
   one byte came back with its last character overwritten by the NUL. The
   exact-length check in `pmix_compress_base_outbuf_finish` is what stops
-  both; `test/unit/compress_block` forges the prefix in both directions.
+  both; `test/unit/compress_block` rewrites the length prefix in both
+  directions.
 - **A foreign blob is refused, but by accident rather than by a magic
   check.** Unlike `zstd` and `lz4`, this component does not sniff a frame
   header — it does not need to, because the DEFLATE header's own checksum
