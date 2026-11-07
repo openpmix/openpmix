@@ -87,6 +87,12 @@
  *   one custom range per event
  *      An event naming more than one PMIX_EVENT_CUSTOM_RANGE is refused;
  *      one naming a single range is taken as before.
+ *   a tool that is also a server sends an event to the clients it names
+ *      With the tool bit set on the server's own peer, as it is for a
+ *      launcher, an event with a custom range is sent to the clients the
+ *      range names and to no other client, and to every tool attached to
+ *      the server; an event naming the server itself reaches no client.
+ *      With the bit clear, the event reaches only the peers it names.
  *
  *   a registration the host refuses leaves the store as it was
  *      The request names a code the peer already holds entries for and a
@@ -935,6 +941,159 @@ static void test_custom_range_count(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* the targets of an event at a tool that is also a server              */
+/* ------------------------------------------------------------------ */
+
+/* a code no earlier case raised or cached */
+#define SEUT_TSRVCODE (PMIX_EXTERNAL_ERR_BASE - 75)
+
+/* set or clear the tool bit on our own peer, on the progress thread */
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    bool tool;
+} tool_bit_t;
+static PMIX_CLASS_INSTANCE(tool_bit_t, pmix_object_t, NULL, NULL);
+
+static void do_tool_bit(int sd, short args, void *cbdata)
+{
+    tool_bit_t *tb = (tool_bit_t *) cbdata;
+    (void) sd;
+    (void) args;
+
+    if (tb->tool) {
+        pmix_globals.mypeer->proc_type.type |= PMIX_PROC_TOOL;
+    } else {
+        pmix_globals.mypeer->proc_type.type &= ~PMIX_PROC_TOOL;
+    }
+    PMIX_WAKEUP_THREAD(&tb->lock);
+}
+
+static void set_tool_bit(bool tool)
+{
+    tool_bit_t *tb = PMIX_NEW(tool_bit_t);
+
+    PMIX_CONSTRUCT_LOCK(&tb->lock);
+    tb->tool = tool;
+    pmix_event_assign(&tb->ev, pmix_globals.evbase, -1, EV_WRITE, do_tool_bit, tb);
+    pmix_event_active(&tb->ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&tb->lock);
+    PMIX_DESTRUCT_LOCK(&tb->lock);
+    PMIX_RELEASE(tb);
+}
+
+/* raise SEUT_TSRVCODE from "peer" with a custom range of one process */
+static pmix_status_t notify_target(pmix_peer_t *peer, const char *nspace, pmix_rank_t rank)
+{
+    pmix_info_t info;
+    pmix_proc_t target;
+    pmix_status_t rc;
+
+    PMIX_LOAD_PROCID(&target, nspace, rank);
+    PMIX_INFO_LOAD(&info, PMIX_EVENT_CUSTOM_RANGE, &target, PMIX_PROC);
+    rc = do_notify_as(peer, SEUT_TSRVCODE, PMIX_RANGE_CUSTOM, 1, &info);
+    PMIX_INFO_DESTRUCT(&info);
+    settle();
+    return rc;
+}
+
+/* A server that is also a tool, as a launcher is, sends an event with a
+ * custom range to the clients the range names and to no other client.
+ * Every tool attached to it is sent the event as well. A server that is
+ * not a tool sends it only to the peers it names, tools included. */
+static void test_tool_server_targets(void)
+{
+    pmix_peer_t *a0 = NULL, *a1 = NULL, *b0 = NULL, *t0 = NULL;
+    pmix_status_t rc;
+    bool toa1, tob0, tot0;
+
+    if (PMIX_SUCCESS != reg_job("seut-tsrv-a", geteuid(), getegid()) ||
+        PMIX_SUCCESS != reg_job("seut-tsrv-b", geteuid(), getegid()) ||
+        PMIX_SUCCESS != reg_job("seut-tsrv-t", geteuid(), getegid()) ||
+        NULL == (a0 = job_peer("seut-tsrv-a", 0, geteuid(), getegid())) ||
+        NULL == (a1 = job_peer("seut-tsrv-a", 1, geteuid(), getegid())) ||
+        NULL == (b0 = job_peer("seut-tsrv-b", 0, geteuid(), getegid())) ||
+        NULL == (t0 = job_peer("seut-tsrv-t", 0, geteuid(), getegid()))) {
+        report("tool server targets: setup", 0);
+        goto cleanup;
+    }
+    /* job peers copy our own type; the clients must not be tools, and
+     * the attached tool must be one */
+    a0->proc_type.type &= ~PMIX_PROC_TOOL;
+    a1->proc_type.type &= ~PMIX_PROC_TOOL;
+    b0->proc_type.type &= ~PMIX_PROC_TOOL;
+    t0->proc_type.type = PMIX_PROC_TOOL;
+    if (PMIX_SUCCESS != register_as(a1, SEUT_TSRVCODE) ||
+        PMIX_SUCCESS != register_as(b0, SEUT_TSRVCODE) ||
+        PMIX_SUCCESS != register_as(t0, SEUT_TSRVCODE)) {
+        report("tool server targets: registration", 0);
+        goto cleanup;
+    }
+    settle();
+    peer_drain(a1);
+    peer_drain(b0);
+    peer_drain(t0);
+
+    set_tool_bit(true);
+
+    rc = notify_target(a0, "seut-tsrv-b", 0);
+    report("tool server: a custom-range event is taken",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    toa1 = peer_was_sent(a1, SEUT_TSRVCODE);
+    tob0 = peer_was_sent(b0, SEUT_TSRVCODE);
+    tot0 = peer_was_sent(t0, SEUT_TSRVCODE);
+    report("tool server: the event reaches the client it names", tob0);
+    report("tool server: the event does not reach a client it does not name", !toa1);
+    report("tool server: the event reaches an attached tool", tot0);
+
+    /* an event naming the server itself still goes to no client */
+    rc = notify_target(a0, pmix_globals.myid.nspace, pmix_globals.myid.rank);
+    report("tool server: an event naming the server is taken",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    toa1 = peer_was_sent(a1, SEUT_TSRVCODE);
+    tob0 = peer_was_sent(b0, SEUT_TSRVCODE);
+    tot0 = peer_was_sent(t0, SEUT_TSRVCODE);
+    report("tool server: an event naming the server reaches no client", !toa1 && !tob0);
+    report("tool server: an event naming the server reaches an attached tool", tot0);
+
+    set_tool_bit(false);
+
+    rc = notify_target(a0, "seut-tsrv-b", 0);
+    report("server: a custom-range event is taken",
+           PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc);
+    toa1 = peer_was_sent(a1, SEUT_TSRVCODE);
+    tob0 = peer_was_sent(b0, SEUT_TSRVCODE);
+    tot0 = peer_was_sent(t0, SEUT_TSRVCODE);
+    report("server: the event reaches the client it names", tob0);
+    report("server: the event reaches no peer it does not name", !toa1 && !tot0);
+
+cleanup:
+    set_tool_bit(false);
+    if (NULL != a1) {
+        peer_drain(a1);
+    }
+    if (NULL != b0) {
+        peer_drain(b0);
+    }
+    if (NULL != t0) {
+        peer_drain(t0);
+    }
+    if (NULL != a0) {
+        PMIX_RELEASE(a0);
+    }
+    if (NULL != a1) {
+        PMIX_RELEASE(a1);
+    }
+    if (NULL != b0) {
+        PMIX_RELEASE(b0);
+    }
+    if (NULL != t0) {
+        PMIX_RELEASE(t0);
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* a registration the host refuses                                      */
 /* ------------------------------------------------------------------ */
 
@@ -1433,6 +1592,8 @@ int main(int argc, char **argv)
     test_namespace_range();
     drain_queued();
     test_custom_range_count();
+    drain_queued();
+    test_tool_server_targets();
     drain_queued();
     test_refused_registration();
     drain_queued();
