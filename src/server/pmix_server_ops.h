@@ -197,6 +197,8 @@ typedef struct {
     pmix_list_t iof_residuals;  // leftover bytes waiting for newline
     pmix_list_t psets;  // list of known psets and memberships
     size_t max_iof_cache; // max number of IOF messages to cache
+    size_t max_event_regs_per_peer; // event registration entries one peer may hold [0 = no limit]
+    size_t max_iof_reqs_per_peer;   // IOF pull requests one peer may hold [0 = no limit]
     bool tool_connections_allowed;
     char *tmpdir;             // temporary directory for this server
     char *system_tmpdir;      // system tmpdir
