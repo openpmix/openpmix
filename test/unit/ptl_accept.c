@@ -21,7 +21,10 @@
  *
  * The identity is settled before the host is asked: a client registered
  * as another user is refused, and the host is never asked; one registered
- * as itself connects, and the host is asked once.
+ * as itself connects, and the host is asked once. On the local socket,
+ * with munge (as root, with a live munged), a client presenting its rank's
+ * token and a credential a process of the rank's uid encoded is refused
+ * the same: the kernel names another uid for it.
  *
  * A handshake does not hold the server. A peer that starts one and goes
  * quiet - with the handshake deadline disabled - leaves the server
@@ -1496,6 +1499,86 @@ static int case_local_claim(void)
         return CHILD_FAIL;
     }
     return expect_status("a local client claiming another user's uid", reply,
+                         PMIX_ERR_INVALID_CRED);
+}
+
+/* A client on the local transport, with munge, whose rank was registered
+ * as uid AC_MUNGE_UID, presenting the rank's token and a munge credential
+ * a process of that uid encoded - the kernel names this process's uid for
+ * the connection - is refused PMIX_ERR_INVALID_CRED before the host is
+ * asked. Runs as root, with a live munged */
+#define AC_MUNGE_UID ((uid_t) 4242)
+static int case_local_munge_other(void)
+{
+    pmix_psec_module_t *mod;
+    pmix_byte_object_t cred, tblob = {NULL, 0};
+    pmix_peer_t *peer;
+    pmix_info_t dir;
+    uint32_t server_uid = 0;
+    char buf[4096], *msg;
+    size_t got = 0, sz;
+    ssize_t rd;
+    int pfd[2], status, sd = -1;
+    pid_t pid;
+    pmix_status_t reply;
+
+    if (0 != geteuid()) {
+        fprintf(stdout, "    SKIP: needs root\n");
+        return CHILD_PASS;
+    }
+    setenv("PMIX_MCA_psec", "munge,native", 1);
+    ack_local = true;
+    if (PMIX_SUCCESS != start_server(&mymodule, true, AC_MUNGE_UID)) {
+        return CHILD_SETUP;
+    }
+    mod = pmix_psec_base_assign_module("munge");
+    if (NULL == mod || 0 != strcmp(mod->name, "munge")) {
+        fprintf(stdout, "    SKIP: munge is not active\n");
+        return CHILD_PASS;
+    }
+    /* the credential, from a process of the rank's uid */
+    if (0 != pipe(pfd)) {
+        return CHILD_SETUP;
+    }
+    fflush(stdout);
+    pid = fork();
+    if (0 > pid) {
+        return CHILD_SETUP;
+    }
+    if (0 == pid) {
+        close(pfd[0]);
+        if (0 != setuid(AC_MUNGE_UID)) {
+            _exit(CHILD_SETUP);
+        }
+        PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
+        peer = PMIX_NEW(pmix_peer_t);
+        peer->protocol = PMIX_PROTOCOL_V2;
+        PMIX_INFO_LOAD(&dir, PMIX_PSEC_SERVER_UID, &server_uid, PMIX_UINT32);
+        if (PMIX_SUCCESS != mod->create_cred((struct pmix_peer_t *) peer, &dir, 1, NULL, NULL,
+                                             &cred) ||
+            (ssize_t) cred.size != write(pfd[1], cred.bytes, cred.size)) {
+            _exit(CHILD_SETUP);
+        }
+        _exit(CHILD_PASS);
+    }
+    close(pfd[1]);
+    while (got < sizeof(buf) && 0 < (rd = read(pfd[0], buf + got, sizeof(buf) - got))) {
+        got += (size_t) rd;
+    }
+    close(pfd[0]);
+    if (pid != waitpid(pid, &status, 0) || !WIFEXITED(status) ||
+        CHILD_PASS != WEXITSTATUS(status) || 0 == got || !build_blob_token(&tblob, ac_token)) {
+        return CHILD_SETUP;
+    }
+    msg = build_local(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "munge", buf, got, &tblob, &sz);
+    free(tblob.bytes);
+    reply = send_ack(msg, sz, &sd);
+    free(msg);
+    if (0 != nclient_connected) {
+        fprintf(stdout, "    the host was asked about the client\n");
+        return CHILD_FAIL;
+    }
+    return expect_status("a local client with another uid's munge credential", reply,
                          PMIX_ERR_INVALID_CRED);
 }
 
@@ -5296,6 +5379,8 @@ int main(int argc, char **argv)
              run_local_identity_tool);
     run_case("a client on the local transport claiming another user's uid is refused",
              case_local_claim);
+    run_case("a client on the local transport with another uid's munge credential and its "
+             "rank's token is refused before the host is asked", case_local_munge_other);
     run_case("a client on the local transport has its process's groups recorded",
              run_local_groups_client);
     run_case("a tool on the local transport claiming one of its process's groups acts "
