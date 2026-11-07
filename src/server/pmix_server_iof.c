@@ -1240,6 +1240,13 @@ exit:
     return rc;
 }
 
+/* Is "r" a copy of "req" that a spawned job inherited? */
+static bool is_inherited_copy(const pmix_iof_req_t *r, const pmix_iof_req_t *req)
+{
+    return (NULL != r && r != req && r->inherited &&
+            r->requestor == req->requestor && r->remote_id == req->remote_id);
+}
+
 pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
                                    pmix_op_cbfunc_t cbfunc,
                                    void *cbdata)
@@ -1247,8 +1254,9 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
     int32_t cnt;
     pmix_status_t rc;
     pmix_setup_caddy_t *cd;
-    pmix_iof_req_t *req;
-    size_t ninfo, refid;
+    pmix_iof_req_t *req, *r;
+    size_t ninfo, refid, nprocs, m;
+    int i;
 
     pmix_output_verbose(2, pmix_server_globals.iof_output,
                         "recvd IOF DEREGISTER from client");
@@ -1350,15 +1358,40 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
      * Copy rather than borrow: req is released on the next line, and
      * scaddes frees cd->procs unconditionally. */
     cd->channels = req->channels;
-    if (0 < req->nprocs && NULL != req->procs) {
-        PMIX_PROC_CREATE(cd->procs, req->nprocs);
+    /* The copies of the request that the jobs spawned under it inherited
+     * (see clone_iof_reqs) carry the same requestor and remote_id. They
+     * go with it, and the host is told to stop for their jobs too. */
+    nprocs = (NULL == req->procs) ? 0 : req->nprocs;
+    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+        r = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (is_inherited_copy(r, req)) {
+            nprocs += (NULL == r->procs) ? 0 : r->nprocs;
+        }
+    }
+    if (0 < nprocs) {
+        PMIX_PROC_CREATE(cd->procs, nprocs);
         if (NULL == cd->procs) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
-        cd->nprocs = req->nprocs;
+    }
+    if (0 < req->nprocs && NULL != req->procs) {
         memcpy(cd->procs, req->procs, req->nprocs * sizeof(pmix_proc_t));
+        cd->nprocs = req->nprocs;
+    }
+    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+        r = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (!is_inherited_copy(r, req)) {
+            continue;
+        }
+        for (m = 0; NULL != r->procs && m < r->nprocs; m++) {
+            memcpy(&cd->procs[cd->nprocs], &r->procs[m], sizeof(pmix_proc_t));
+            cd->nprocs++;
+        }
+        cd->channels |= r->channels;
+        pmix_pointer_array_set_item(&pmix_globals.iof_requests, i, NULL);
+        PMIX_RELEASE(r);
     }
 
     pmix_pointer_array_set_item(&pmix_globals.iof_requests, refid, NULL);

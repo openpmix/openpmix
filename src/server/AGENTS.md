@@ -2638,7 +2638,7 @@ the first ancestor anybody here is watching. That decision is taken on
 the server the output *reaches*, which for every PRRTE launcher is the
 HNP: every prted forwards to the HNP, and the HNP hands everything it
 receives to its own PMIx server, where a `prun`/`prterun` tool's
-subscription is. Four things about it are load-bearing:
+subscription is. Six things about it are load-bearing:
 
 - **It clones rather than delivering the one chunk.** Every later chunk
   from that namespace then takes the ordinary walk above, so the
@@ -2662,6 +2662,12 @@ subscription is. Four things about it are load-bearing:
   `PMIX_PARENT_ID` inside `PMIX_IOF_JOB_DIRECTIVES`, so the requestor can
   format the job the way it formats the ancestor. See the
   `PMIX_IOF_JOB_DIRECTIVES` entry in `src/common/AGENTS.md`.
+- **A clone goes when its original does.** It keeps the original's
+  requestor and `remote_id`, and so does a clone of a clone.
+  `pmix_server_iofdereg()` removes every inherited request carrying both
+  along with the one it was asked to remove, and the host's stop request
+  names their jobs and channels as well as the original's.
+  `test/unit/iof_output.c` covers a child and a grandchild.
 - **The two halves are independent.** Neither needs the other to have
   run, and where both apply the second finds the subscription the first
   created and does nothing.
