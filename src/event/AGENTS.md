@@ -321,7 +321,13 @@ generic `pmix_shift_caddy_t` for other paths) to
 Failure handling is "undo": if the server/host rejects the
 registration, the callback path removes the handler from its list (or
 clears `events.first`/`events.last`) and reports
-`PMIX_ERR_SERVER_FAILED_REQUEST` with index `SIZE_MAX`. When you touch
+`PMIX_ERR_SERVER_FAILED_REQUEST` with index `SIZE_MAX`. A registration
+refused in `pmix_internal_reg_event_hdlr` itself (a mistyped directive,
+a taken first/last slot, `BEFORE`/`AFTER` a handler that does not exist)
+is acked at `ack:` with index `SIZE_MAX` too, and replays nothing: its
+handler, if one was made, is already released, and `cd->hdlr` is
+cleared. `xfer` is destructed at `ack:` and on the deferred return, so
+every exit gives it back. When you touch
 these paths, walk both the immediate-failure and deferred-failure
 branches — the caddy juggling (`rb` wraps `cd`, `rb->cd` retains it,
 the `rsdes` destructor releases it) is the most error-prone spot in the
