@@ -445,15 +445,26 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
     return PMIX_SUCCESS;
 }
 
+/* Replay each matching cached event to the handler or observer this
+ * registration made, and to it alone. Outside a server the event is
+ * checked out of the cache once it is replayed. A server's cache also
+ * holds the events it keeps for its local clients, so there the event
+ * stays where it is. */
 static void check_cached_events(pmix_rshift_caddy_t *cd)
 {
     size_t n;
     pmix_notify_caddy_t *ncd;
     bool found, matched;
     pmix_event_chain_t *chain;
+    pmix_event_hdlr_t *hdlr = cd->hdlr;
     int j;
 
-    for (j = 0; j < pmix_globals.max_events; j++) {
+    if (NULL == hdlr) {
+        return;
+    }
+    /* a oneshot handler is deregistered when it is given an event */
+    PMIX_RETAIN(hdlr);
+    for (j = 0; j < pmix_globals.max_events && !hdlr->removed; j++) {
         pmix_hotel_knock(&pmix_globals.notifications, j, (void **) &ncd);
         if (NULL == ncd) {
             continue;
@@ -489,8 +500,10 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
                 continue;
             }
         }
-        /* if they specified affected proc(s) they wanted to know about, check */
-        if (!pmix_notify_check_affected(cd->affected, cd->naffected, ncd->affected,
+        /* the handler's range must admit the event's source, and the
+         * affected proc(s) it asked about must overlap the event's */
+        if (!pmix_notify_check_range(&hdlr->rng, &ncd->source) ||
+            !pmix_notify_check_affected(hdlr->affected, hdlr->naffected, ncd->affected,
                                         ncd->naffected)) {
             continue;
         }
@@ -562,18 +575,17 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
              * pmix_prep_event_chain - the handler is given its own */
             pmix_event_strip_handler_items(chain);
         }
-        /* check this event out of the cache since we
-         * are processing it */
-        pmix_hotel_checkout(&pmix_globals.notifications, ncd->room);
-        /* release the storage */
-        PMIX_RELEASE(ncd);
+        if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+            /* check this event out of the cache since we
+             * are processing it */
+            pmix_hotel_checkout(&pmix_globals.notifications, ncd->room);
+            /* release the storage */
+            PMIX_RELEASE(ncd);
+        }
 
-        /* we don't want this chain to propagate, so indicate it
-         * should only be run as a single-shot */
-        chain->endchain = true;
-        /* now notify any matching registered callbacks we have */
-        pmix_invoke_local_event_hdlr(chain);
+        pmix_invoke_one_event_hdlr(chain, hdlr);
     }
+    PMIX_RELEASE(hdlr);
 }
 
 void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)

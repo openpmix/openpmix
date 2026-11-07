@@ -553,6 +553,8 @@ cleanup:
  * way it runs exactly once whether or not further handlers follow it, and
  * no second event can reach it in the meantime. The chain's reference
  * keeps it valid until its callback completes. */
+static void invoke_chain_hdlr(pmix_event_chain_t *chain);
+
 static void chain_take_hdlr(pmix_event_chain_t *chain, pmix_event_hdlr_t *hdlr)
 {
     PMIX_RETAIN(hdlr);
@@ -1256,6 +1258,43 @@ complete:
 invk:
     pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
                         PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
+    invoke_chain_hdlr(chain);
+}
+
+void pmix_invoke_one_event_hdlr(pmix_event_chain_t *chain, pmix_event_hdlr_t *hdlr)
+{
+    if (NULL == chain->info) {
+        /* no reserved slots - see pmix_invoke_local_event_hdlr */
+        if (NULL != chain->final_cbfunc) {
+            chain->final_cbfunc(PMIX_ERR_BAD_PARAM, chain->final_cbdata);
+        } else {
+            PMIX_RELEASE(chain);
+        }
+        return;
+    }
+    if (NULL != hdlr->obsfn) {
+        pmix_output_verbose(2, pmix_client_globals.event_output,
+                            "%s INVOKING OBSERVER %s",
+                            PMIX_NAME_PRINT(&pmix_globals.myid),
+                            (NULL == hdlr->name) ? "NULL" : hdlr->name);
+        hdlr->obsfn(chain->status, &chain->source, chain->info, chain->ninfo,
+                    chain->affected, chain->naffected, hdlr->cbobject);
+        if (NULL != chain->final_cbfunc) {
+            chain->final_cbfunc(PMIX_SUCCESS, chain->final_cbdata);
+        } else {
+            PMIX_RELEASE(chain);
+        }
+        return;
+    }
+    chain->endchain = true;
+    chain_take_hdlr(chain, hdlr);
+    invoke_chain_hdlr(chain);
+}
+
+/* invoke chain->evhdlr with the chain's info and that handler's name and
+ * return object in the two reserved slots */
+static void invoke_chain_hdlr(pmix_event_chain_t *chain)
+{
     /* start with the chain holding only the given info */
     chain->ninfo = chain->nallocated - 2;
 

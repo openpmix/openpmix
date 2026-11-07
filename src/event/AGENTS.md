@@ -238,9 +238,10 @@ thread ahead of the chain, and they are repeated on the typedef in
    public APIs are not.
 2. **Never synchronously drive another chain** — that re-enters the
    sweep.
-3. **Be idempotent.** `check_cached_events()` replays a cached
-   notification through the whole delivery path, so an observer can
-   legitimately see the same event twice.
+3. **Be idempotent.** `check_cached_events()` hands a new observer
+   every matching cached notification as it registers, including one
+   the process has already acted on, so an observer can legitimately
+   see an event it has seen before.
 4. **Self-deregistration is legal.** `pmix_event_deregister_observer`
    threadshifts, so the removal lands after the sweep is done with the
    list; the sweep also walks SAFE so that is not load-bearing.
@@ -314,7 +315,11 @@ generic `pmix_shift_caddy_t` for other paths) to
    (`regevents_cbfunc`), or host response (`_regcbfunc`) — matching
    cached notifications are replayed (`check_cached_events`) *before*
    the registration callback fires, so late registrants still see
-   recently generated events.
+   recently generated events. The replay goes to the handler or
+   observer this registration made and to no other
+   (`pmix_invoke_one_event_hdlr`, single-shot, no observer sweep or
+   group bookkeeping), and only where that handler's range admits the
+   event's source and its affected procs overlap the event's.
 
 `PMIX_RANGE_PROC_LOCAL` registrations never leave the process at all.
 
@@ -408,11 +413,14 @@ Do not confuse them:
   `pmix_hotel_t` of `pmix_notify_caddy_t`, capacity `max_events`,
   eviction after `event_eviction_time`). Purpose: hold *delivered or
   generated* events so a proc that registers *afterwards* still
-  receives them (`check_cached_events` replays matches on every new
+  receives them (`check_cached_events` replays matches to each new
   registration, with `endchain` set). `pmix_notify_event_cache` evicts
   the oldest occupant when full. Entries are checked out (and
-  released) when replayed, when all custom targets have been notified,
-  or on eviction.
+  released) when all custom targets have been notified, on eviction,
+  and - outside a server only - when replayed to a new local
+  registration. A server keeps a replayed entry: its cache also holds
+  the events it keeps for its local clients, and a handler the server
+  registers for itself must not take an event from them.
 
   Three places check an event in, and knowing which is which saves
   re-deriving it: `_notify_client_event` parks **every** event a server
@@ -542,7 +550,7 @@ against the unfixed library.
     checkin. It comes back from exactly one of three places: the
     eviction callback (`_notification_eviction_cbfunc`,
     `src/runtime/pmix_init.c`), the replay checkout in
-    `check_cached_events`, or the "last custom target notified" checkout
+    `check_cached_events` (outside a server), or the "last custom target notified" checkout
     in this routine. `cached` — not `holdcd` — is what says the hotel
     holds it; the checkout arm here tested `holdcd` and was therefore
     provably dead.
