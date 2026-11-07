@@ -87,9 +87,14 @@ of this release use that socket, so it has its own exchange:
    a `uint32_t` status, then on success a `uint32_t` length (at most
    `PMIX_PTL_CHOICE_MAX`) and `psec\0bfrops\0<buffer type>gds\0`.
    psec is the first of the server's active psec modules, in priority
-   order, that the peer offered, else `PMIX_ERR_NOT_SUPPORTED`. bfrops and buffer type are the namespace's
-   when it has a peer already (refused if not offered), else the peer's
-   first that the server has and its buffer type. gds is the peer's first
+   order, that the peer offered, else `PMIX_ERR_NOT_SUPPORTED`. bfrops
+   and buffer type are the namespace's when it has a peer already and
+   `of_namespace` holds - the kernel's uid and gid for the peer
+   (`pnd->uid`/`pnd->gid`) are the named rank's, or for a rank not
+   listed the namespace's owner's and every rank's (`nspace_is_tools`) -
+   refused if not offered; else the peer's first that the server has and
+   its buffer type. `ptl_accept.c`'s `case_offer_other_rank` compares a
+   rank of another uid with an unregistered rank and namespace. gds is the peer's first
    that the server has, per peer. The client aborts with
    `PMIX_ERR_NOT_SUPPORTED` on a choice it did not offer, and otherwise
    sets `peer->nptr->compat.{psec,bfrops,type,gds}` and `peer->gds`.
@@ -383,7 +388,11 @@ Four functions, in this order, all on the progress thread:
    is `client_settled` / `tool_settled`.
 4. **Check, then ask the host.** Everything that can refuse runs before
    the up-call: registration, modules, wire format, foreign tools,
-   membership of a known namespace. Then `client_connected2` (or the
+   membership of a known namespace. For a client, `accept_client` checks
+   the modules it named before it looks up the namespace, and
+   `client_settled` compares the namespace's wire format
+   (`wire_format_fits`) after validation and the token check;
+   `case_tcp_other_rank` covers both over TCP. Then `client_connected2` (or the
    deprecated form) for a client, `tool_connected2`/`tool_connected` for
    a tool. Their callbacks (`client_host_cbfunc`, `cnct_cbfunc`)
    thread-shift to `client_answered` / `tool_answered`.

@@ -83,6 +83,7 @@ static void accept_client(pmix_pending_connection_t *pnd);
 static void accept_tool(pmix_pending_connection_t *pnd);
 static void kick_tool_queue(void);
 static bool local_peer(pmix_pending_connection_t *pnd);
+static bool nspace_is_tools(pmix_namespace_t *nptr, uid_t uid, gid_t gid);
 
 /* Turn a connection away: tell the peer why, in the status it reads next,
  * and release it. */
@@ -846,12 +847,26 @@ static pmix_gds_base_module_t *gds_named(const char *name)
     return mod;
 }
 
+/* Whether the kernel's uid and gid for a local-socket peer are those the
+ * namespace it names has for it: the rank's, when the rank is listed, or
+ * else those of the namespace's owner and of every process in it */
+static bool of_namespace(pmix_pending_connection_t *pnd, pmix_namespace_t *nptr)
+{
+    pmix_rank_info_t *info = find_rank(nptr, pnd->proc.rank);
+
+    if (NULL != info) {
+        return info->uid == pnd->uid && info->gid == pnd->gid;
+    }
+    return nspace_is_tools(nptr, pnd->uid, pnd->gid);
+}
+
 /* The server's choice for a local-socket peer, from what it offered:
  * - security: the first of the server's active methods, in priority
  *   order, that the peer offered;
- * - wire format: the namespace's if it has one, which the peer must have
- *   offered, else the first the peer offered that the server has. The
- *   buffer type goes with it: the namespace's, or the peer's;
+ * - wire format: the namespace's if it has one and the peer is of that
+ *   namespace (of_namespace), which the peer must then have offered, else
+ *   the first the peer offered that the server has. The buffer type goes
+ *   with it: the namespace's, or the peer's;
  * - datastore: the first the peer offered that the server has */
 static pmix_status_t choose(pmix_pending_connection_t *pnd, char **psecs, char **bfrops,
                             char **gdss)
@@ -877,6 +892,9 @@ static pmix_status_t choose(pmix_pending_connection_t *pnd, char **psecs, char *
 
     if ('\0' != pnd->proc.nspace[0]) {
         nptr = find_nspace(pnd->proc.nspace);
+    }
+    if (NULL != nptr && !of_namespace(pnd, nptr)) {
+        nptr = NULL;
     }
     if (NULL != nptr && NULL != nptr->compat.bfrops) {
         if (!offered(bfrops, nptr->compat.bfrops->version)) {
@@ -1463,12 +1481,31 @@ static pmix_status_t read_client_info(pmix_pending_connection_t *pnd)
  * here, before its credential and token are checked - there is no
  * registration to check them against. It is answered
  * PMIX_ERR_INVALID_CRED, as a registered rank with a credential or token
- * that does not match it is */
+ * that does not match it is. The modules it names are checked first, and
+ * the namespace's wire format once the client has been validated */
 static void accept_client(pmix_pending_connection_t *pnd)
 {
     pmix_namespace_t *nptr;
     pmix_rank_info_t *info;
     pmix_info_t ginfo;
+
+    /* the modules it asked for - a local-socket peer has them from the
+     * server's choice */
+    if (!pnd->offered) {
+        pnd->psecmod = pmix_psec_base_assign_module(pnd->psec);
+        pnd->bfropsmod = pmix_bfrops_base_assign_module(pnd->bfrops);
+        if (NULL != pnd->gds) {
+            PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);
+            pnd->gdsmod = pmix_gds_base_assign_module(&ginfo, 1);
+            PMIX_INFO_DESTRUCT(&ginfo);
+        } else {
+            pnd->gdsmod = pmix_gds_base_assign_module(NULL, 0);
+        }
+    }
+    if (NULL == pnd->psecmod || NULL == pnd->bfropsmod || NULL == pnd->gdsmod) {
+        refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
+        return;
+    }
 
     nptr = find_nspace(pnd->proc.nspace);
     if (NULL == nptr) {
@@ -1515,28 +1552,6 @@ static void accept_client(pmix_pending_connection_t *pnd)
     pnd->nptr = nptr;
     PMIX_RETAIN(info);
     pnd->rinfo = info;
-
-    /* the modules it asked for - a local-socket peer has them from the
-     * server's choice */
-    if (!pnd->offered) {
-        pnd->psecmod = pmix_psec_base_assign_module(pnd->psec);
-        pnd->bfropsmod = pmix_bfrops_base_assign_module(pnd->bfrops);
-        if (NULL != pnd->gds) {
-            PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, pnd->gds, PMIX_STRING);
-            pnd->gdsmod = pmix_gds_base_assign_module(&ginfo, 1);
-            PMIX_INFO_DESTRUCT(&ginfo);
-        } else {
-            pnd->gdsmod = pmix_gds_base_assign_module(NULL, 0);
-        }
-    }
-    if (NULL == pnd->psecmod || NULL == pnd->bfropsmod || NULL == pnd->gdsmod) {
-        refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
-        return;
-    }
-    if (!wire_format_fits(pnd, nptr)) {
-        refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
-        return;
-    }
 
     /* The rank's entry is the identity the client must have, whoever made
      * it - the host, or this server for a singleton that started it - so
@@ -1689,6 +1704,12 @@ static void client_settled(pmix_pending_connection_t *pnd, pmix_status_t status)
             return;
         }
         pnd->token_checked = true;
+    }
+
+    /* its namespace's wire format, if a peer of it has set one */
+    if (!wire_format_fits(pnd, (pmix_namespace_t *) pnd->nptr)) {
+        refuse(pnd, PMIX_ERR_NOT_SUPPORTED);
+        return;
     }
 
     /* A rank has one connection at a time. A second one - from a process
