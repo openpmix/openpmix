@@ -349,7 +349,9 @@ members: the group identifier as the namespace, with
 counting across the membership in order. The server expands such a
 reference in ``PMIx_Fence``, ``PMIx_Connect``, ``PMIx_Disconnect``,
 ``PMIx_Group_construct`` and ``PMIx_Group_destruct``, and resolves a group
-rank named in ``PMIx_Get``. A v7.0 client connected to a v7.0 or later
+rank named in ``PMIx_Get`` for a member of the group; a ``PMIx_Get`` by group
+rank from any other process is answered ``PMIX_ERR_NOT_A_MEMBER``, whatever
+the rank. A v7.0 client connected to a v7.0 or later
 server keeps no membership of its own; one connected to an older server
 records its groups and expands references itself, as before. A client
 before v7.0 always expands its own references - the server expands any a

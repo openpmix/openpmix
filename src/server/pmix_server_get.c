@@ -246,6 +246,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     pmix_info_t *info;
     pmix_scope_t scope = PMIX_SCOPE_UNDEF;
     pmix_rank_info_t *iptr;
+    pmix_group_t *grp;
 
     pmix_output_verbose(2, pmix_server_globals.get_output,
                         "%s recvd GET",
@@ -283,12 +284,22 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         return rc;
     }
     /* A proc named by its group ID and group rank - see
-     * pmix_server_grpmbr.c. A get is for one proc, so the whole group
-     * cannot be asked for */
-    if (NULL != pmix_server_grp_find(nspace)) {
+     * pmix_server_grpmbr.c. Only a member may name one that way: the
+     * requester is checked before the rank is looked at, so the answer
+     * says nothing about the group to anyone else. A get is for one proc,
+     * so the whole group cannot be asked for */
+    grp = pmix_server_grp_find(nspace);
+    if (NULL != grp) {
         pmix_proc_t gproc, *mbr = NULL;
         size_t nmbr = 0;
 
+        if (!pmix_server_grp_is_participant(cd->peer, grp->members, grp->nmbrs)) {
+            pmix_output_verbose(2, pmix_server_globals.get_output,
+                                "%s GET by rank of group %s refused: requester %s is not "
+                                "a member", PMIX_NAME_PRINT(&pmix_globals.myid), nspace,
+                                PMIX_PNAME_PRINT(&cd->peer->info->pname));
+            return PMIX_ERR_NOT_A_MEMBER;
+        }
         if (PMIX_RANK_WILDCARD == rank) {
             return PMIX_ERR_BAD_PARAM;
         }
