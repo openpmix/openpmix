@@ -5145,6 +5145,7 @@ static int case_contract(int mode)
 typedef struct {
     pmix_event_t ev;
     pmix_lock_t lock;
+    const char *nspace;
 } hold_t;
 
 static void hold_fn(int sd, short args, void *cbdata)
@@ -5157,7 +5158,7 @@ static void hold_fn(int sd, short args, void *cbdata)
     for (n = 0; n < pmix_server_globals.clients.size; n++) {
         pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
         if (NULL != pr && NULL != pr->info && pr->recv_ev_active &&
-            PMIx_Check_nspace(pr->info->pname.nspace, AC_NSPACE)) {
+            PMIx_Check_nspace(pr->info->pname.nspace, h->nspace)) {
             pmix_event_del(&pr->recv_event);
             pr->recv_ev_active = false;
         }
@@ -5165,14 +5166,73 @@ static void hold_fn(int sd, short args, void *cbdata)
     PMIX_WAKEUP_THREAD(&h->lock);
 }
 
-static void hold_reads(void)
+static void hold_reads_of(const char *nspace)
 {
     hold_t h;
 
+    h.nspace = nspace;
     PMIX_CONSTRUCT_LOCK(&h.lock);
     PMIX_THREADSHIFT(&h, hold_fn);
     PMIX_WAIT_THREAD(&h.lock);
     PMIX_DESTRUCT_LOCK(&h.lock);
+}
+
+static void hold_reads(void)
+{
+    hold_reads_of(AC_NSPACE);
+}
+
+/* A self-started tool connects again after its connection closed, before
+ * the server has read the close. The rank check handles the old
+ * connection as lost, and with it the tool's namespace, which held no
+ * other process: the tool is accepted into a namespace of its own under
+ * its name, with one entry for its rank */
+static int case_tool_back_unread(void)
+{
+    pmix_namespace_t *ns;
+    pmix_rank_info_t *info;
+    char *msg;
+    size_t sz;
+    int sd1 = -1, sd2 = -1, n0 = 0;
+    pmix_status_t reply;
+
+    if (PMIX_SUCCESS != start_server(&mymodule, false, getuid())) {
+        return CHILD_SETUP;
+    }
+    msg = build_ack(PMIX_TOOL_GIVEN_ID, AC_TOOLNS, 0, "native", NULL, false, &sz);
+    reply = send_ack(msg, sz, &sd1);
+    if (PMIX_SUCCESS != reply || PMIX_SUCCESS != (reply = tool_replies(sd1))) {
+        free(msg);
+        fprintf(stdout, "    the first connection was refused: %s\n", PMIx_Error_string(reply));
+        return CHILD_FAIL;
+    }
+    hold_reads_of(AC_TOOLNS);
+    close(sd1);
+    usleep(300000);
+    reply = send_ack(msg, sz, &sd2);
+    free(msg);
+    if (PMIX_SUCCESS != reply || PMIX_SUCCESS != (reply = tool_replies(sd2))) {
+        fprintf(stdout, "    the tool connecting again was refused: %s\n",
+                PMIx_Error_string(reply));
+        return CHILD_FAIL;
+    }
+    usleep(200000);
+    ns = find_ns(AC_TOOLNS);
+    if (NULL == ns) {
+        fprintf(stdout, "    the tool's namespace is not listed\n");
+        return CHILD_FAIL;
+    }
+    PMIX_LIST_FOREACH (info, &ns->ranks, pmix_rank_info_t) {
+        if (0 == info->pname.rank) {
+            ++n0;
+        }
+    }
+    if (1 != n0) {
+        fprintf(stdout, "    its namespace lists rank 0 %d times\n", n0);
+        return CHILD_FAIL;
+    }
+    close(sd2);
+    return CHILD_PASS;
 }
 
 /* A second connection for a rank. `how`: 0, while the first is live -
@@ -5832,6 +5892,9 @@ int main(int argc, char **argv)
              "oldest", case_offer_not_oldest);
     run_case("over TCP, a connect-ack naming a buffer type the server does not use is refused",
              case_tcp_buffer_type);
+    run_case("a self-started tool connecting again before the server read its close is "
+             "accepted, in a namespace of its own",
+             case_tool_back_unread);
     run_case("a tool the host names into another user's new namespace is refused",
              case_tool_joins_other_user);
     run_case("a self-named tool whose name the host registers meanwhile, with no ranks, is "
