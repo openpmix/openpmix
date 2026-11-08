@@ -327,6 +327,8 @@ including the info blob (see "Validate first" in
   peer is refused with `PMIX_ERR_BAD_PARAM`: the first peer of a
   namespace sets the namespace's (`case_tcp_buffer_type` in
   `ptl_accept.c`).
+- `GET_STRING` refuses a string it cannot copy, as well as one with no
+  terminator in the bytes remaining.
 - Every `GET_*` macro bounds itself against `cnt`, the bytes remaining.
   `GET_BLOB` in particular must check the caller's length against `cnt`:
   the credential length is a `uint32_t` off the wire, and a length
