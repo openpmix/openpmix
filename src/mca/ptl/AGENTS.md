@@ -601,6 +601,9 @@ to break this framework:
 1. **Init-time connection is synchronous and blocking.** `connect_to_peer`
    runs in the caller's thread during `PMIx_Init`/`PMIx_tool_init`, does
    *blocking* socket I/O, and returns only once the handshake completes.
+   The exception is a singleton's later `PMIx_Init` given connection
+   info: the library is running by then, so that connect is made on the
+   progress thread (see `src/client/AGENTS.md`).
    Do not borrow the same excuse for the listener's side. "It is only
    startup" is true of the *connecting* peer and false of the server: the
    inbound handshake runs on the server's progress thread, at any moment,
