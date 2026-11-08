@@ -401,11 +401,22 @@ refuses a request that would take one peer past
 `pmix_server_max_event_regs_per_peer` entries in the event registration
 store (one per code, or one for a default handler), and
 `pmix_server_iofreg` refuses a pull from a peer already holding
-`pmix_server_max_iof_reqs_per_peer` requests. Both answer
+`pmix_server_max_iof_reqs_per_peer` requests, and
+`pmix_server_group_invite` an invitation from a peer already leading
+`pmix_server_max_invites_per_peer` unresolved ones (counted by the
+leader's peer, `leader_peer`). All three answer
 `PMIX_ERR_OUT_OF_RESOURCE` before anything is added or the host is asked,
-both count by walking the store, and both default to 1024, with 0 meaning
-no limit. Covered by `test/unit/server_events.c` and
-`test/unit/iof_pull_approval.c`.
+all count by walking the store, and all default to 1024, with 0 meaning
+no limit. Covered by `test/unit/server_events.c`,
+`test/unit/iof_pull_approval.c` and `test/unit/server_invite.c`.
+
+**An invitation goes with its leader.** `pmix_server_purge_events` -
+a peer that finalizes or loses its connection, or a proc the host
+deregisters - calls `pmix_server_grp_leader_departed`, which aborts every
+unresolved invitation that peer (by pointer) or proc (exactly, wildcard
+rank allowed) leads: `PMIX_GROUP_CONSTRUCT_ABORT` to the members, then
+`invite_done`, which frees the ID. An invitation already waiting on the
+host for a context ID (`completed`) is left to finish.
 
 **Taking a refused registration back out must not depend on the reply.**
 `_iofreg` is the arm that undoes a registration when the host refuses

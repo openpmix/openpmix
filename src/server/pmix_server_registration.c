@@ -903,6 +903,9 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc,
         }
     }
 
+    /* and abort any group invitation it leads */
+    pmix_server_grp_leader_departed(peer, proc);
+
     /* see if this proc is involved in any direct modex requests */
     PMIX_LIST_FOREACH_SAFE (dlcd, dnxt, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
         if ((NULL != peer && NULL != peer->info
