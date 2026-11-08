@@ -28,6 +28,14 @@
 #    include <unistd.h>
 #endif
 
+#if defined(__linux__) && defined(HAVE_LINUX_CAPABILITY_H) && defined(HAVE_SYS_SYSCALL_H)
+#    include <linux/capability.h>
+#    include <sys/syscall.h>
+#    define PMIX_RUNAS_CAPS 1
+#else
+#    define PMIX_RUNAS_CAPS 0
+#endif
+
 #include "src/util/pmix_runas.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_fd.h"
@@ -84,6 +92,55 @@ static size_t groups_max(void)
 static pthread_mutex_t unreaped_lock = PTHREAD_MUTEX_INITIALIZER;
 static pid_t *unreaped = NULL;
 static size_t nunreaped = 0, unreaped_size = 0;
+
+#    if PMIX_RUNAS_CAPS
+/* Does this process hold any capability, effective or permitted? A
+ * failed query counts as holding one */
+static bool caps_held(void)
+{
+    struct __user_cap_header_struct hdr;
+    struct __user_cap_data_struct data[_LINUX_CAPABILITY_U32S_3];
+    size_t n;
+
+    memset(&hdr, 0, sizeof(hdr));
+    memset(data, 0, sizeof(data));
+    hdr.version = _LINUX_CAPABILITY_VERSION_3;
+    hdr.pid = 0;
+    if (0 != syscall(SYS_capget, &hdr, data)) {
+        return true;
+    }
+    for (n = 0; n < _LINUX_CAPABILITY_U32S_3; n++) {
+        if (0 != data[n].effective || 0 != data[n].permitted) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Clear every capability set of this process, and check none is left.
+ * setuid() clears them only when the uid it leaves was 0: a process
+ * given CAP_SETUID and CAP_SETGID as file capabilities, or one with
+ * SECBIT_NO_SETUID_FIXUP set, keeps the rest of its capabilities -
+ * CAP_DAC_OVERRIDE, say - after it has become the user. 0 if none are
+ * held now, -1 if some still are */
+static int drop_caps(void)
+{
+    struct __user_cap_header_struct hdr;
+    struct __user_cap_data_struct data[_LINUX_CAPABILITY_U32S_3];
+
+    if (!caps_held()) {
+        return 0;
+    }
+    memset(&hdr, 0, sizeof(hdr));
+    memset(data, 0, sizeof(data));
+    hdr.version = _LINUX_CAPABILITY_VERSION_3;
+    hdr.pid = 0;
+    if (0 != syscall(SYS_capset, &hdr, data)) {
+        return -1;
+    }
+    return caps_held() ? -1 : 0;
+}
+#    endif
 
 /* reap what has finished; keep what has not */
 static void sweep_unreaped(void)
@@ -380,6 +437,13 @@ int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool
         if (geteuid() != uid || getuid() != uid || getegid() != gid || getgid() != gid) {
             _exit(1);
         }
+#    if PMIX_RUNAS_CAPS
+        /* nor may the child keep a capability that lets it past the
+         * user's permissions */
+        if (0 != drop_caps()) {
+            _exit(1);
+        }
+#    endif
         while (pmix_util_runas_test_stall) {
             /* testing only - a helper that never finishes, as one does
              * on a filesystem that never answers */
