@@ -883,8 +883,9 @@ static pmix_status_t add_info(pmix_list_t *list, pmix_info_t *info)
  *
  * Covers every value connect_to_peer would otherwise have to refuse: the
  * type of each directive, a connection order entry that is not one of the
- * connection targets, two different servers named by nspace, and a URI
- * that does not parse - including its address, which is checked the way
+ * connection targets, a PMIX_TIMEOUT that is not a count of seconds, two
+ * different servers named by nspace, and a URI that does not parse -
+ * including its address, which is checked the way
  * pmix_ptl_base_setup_connection will read it. No name resolution
  * happens there, so this never blocks. A "file:" URI is not opened: what
  * the file says is the server's word, not the caller's. */
@@ -948,6 +949,14 @@ pmix_status_t pmix_ptl_base_check_connect_directives(const pmix_info_t info[], s
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_MAX_RETRIES) ||
                    PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_RETRY_DELAY)) {
             if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &ival, PMIX_INT)) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                return PMIX_ERR_BAD_PARAM;
+            }
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
+            /* a count of seconds, read as connect_to_peer reads it */
+            if (PMIX_SUCCESS != PMIx_Value_get_number(&info[n].value, &ival, PMIX_INT) ||
+                0 > ival) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 return PMIX_ERR_BAD_PARAM;
             }

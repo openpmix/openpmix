@@ -1065,10 +1065,11 @@ Things to keep straight:
   `PMIX_CONNECTION_ORDER` was a SIGSEGV. The check covers each
   directive's type, a URI that does not parse (address included — no
   name resolution, so it cannot block), two different servers named by
-  nspace, and a connection order entry that is not a connection target.
-  It acts on nothing, so a bad value is refused before any
-  `pmix_ptl_base` global is overwritten. Add a new directive to it, not
-  to the loop.
+  nspace, a connection order entry that is not a connection target, and
+  a `PMIX_TIMEOUT` that is not a count of seconds (a negative one, or one
+  that is not a number). It acts on nothing, so a bad value is refused
+  before any `pmix_ptl_base` global is overwritten. Add a new directive
+  to it, not to the loop.
 
   **It is exported because "no connection was attempted" has to be
   decidable.** A malformed directive is `PMIX_ERR_BAD_PARAM` even when the
