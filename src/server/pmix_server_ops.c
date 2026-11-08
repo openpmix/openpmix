@@ -273,6 +273,11 @@ bool pmix_server_is_identity_key(const char *key)
     return is_stamped_key(key) || is_origin_key(key);
 }
 
+bool pmix_server_is_stamped_key(const char *key)
+{
+    return is_stamped_key(key);
+}
+
 /* The pid the kernel reported for the peer's connection. Only the local
  * transport has one to report: over TCP the pid on record is whatever the
  * peer's library sent, and a host must not mistake it for a fact */

@@ -394,6 +394,11 @@ PMIX_EXPORT bool pmix_server_verified_pid(const pmix_peer_t *peer, pid_t *pid);
  * relaying host's PMIX_ORIGIN_* claims */
 PMIX_EXPORT bool pmix_server_is_identity_key(const char *key);
 
+/* True for the four keys pmix_server_add_requester_id stamps: PMIX_USERID,
+ * PMIX_GRPID, PMIX_REQUESTOR_PID and PMIX_REQUESTED_GRPID. Once it has
+ * run, every entry carrying one of them is one it added */
+PMIX_EXPORT bool pmix_server_is_stamped_key(const char *key);
+
 /* Mark an array about to be passed up to the host with the identity of
  * the peer the request came from, as its connection established it. The
  * host authorizes on these; see docs/hosts/authorization.rst.
