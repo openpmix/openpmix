@@ -3290,8 +3290,8 @@ static pmix_status_t apply_choice(pmix_peer_t *peer, char *msg, size_t len)
     PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, gds, PMIX_STRING);
     gmod = pmix_gds_base_assign_module(&ginfo, 1);
     PMIX_INFO_DESTRUCT(&ginfo);
-    if (NULL == psec || 0 != strcmp(psec->name, sec) || NULL == bfmod || NULL == gmod ||
-        0 != strcmp(gmod->name, gds) ||
+    if (NULL == psec || 0 != strcmp(psec->name, sec) || NULL == bfmod ||
+        0 != strcmp(bfmod->version, bfrops) || NULL == gmod || 0 != strcmp(gmod->name, gds) ||
         (PMIX_BFROP_BUFFER_NON_DESC != bt && PMIX_BFROP_BUFFER_FULLY_DESC != bt)) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "pmix: the server chose %s/%s/%u/%s, which is not what we offered",
