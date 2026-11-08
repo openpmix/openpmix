@@ -28,6 +28,9 @@
  *     root, one owned by another user leads to a server the kernel says
  *     is not that user, refused, and a system server's file owned by a
  *     user the tool does not list is not taken
+ *   - as root, a singleton looking for the system server passes over a
+ *     file at the system tmpdir owned by a user it does not take, and
+ *     reaches the server whose file is in root's pmix-user directory
  *   - as root, a file of another user's at a server's name is left alone:
  *     the server starts, writes no file there, and does not touch it
  *   - a session-level server needs a rendezvous ID, or else the session's
@@ -599,6 +602,135 @@ static void test_elsewhere(void)
     elsewhere_case("open", 0777, false);
 }
 
+/* a singleton in a child, the system tmpdir named, its messages kept in
+ * errfile - returns its init status, and in *said whether it says the
+ * server did not accept it, which it can say only of a server it reached */
+static pmix_status_t singleton_to_system(const char *sys, const char *errfile, bool *said)
+{
+    int fds[2], status;
+    pmix_status_t rc = PMIX_ERROR;
+    char line[512];
+    FILE *fp;
+    pid_t pid;
+
+    *said = false;
+    if (0 != pipe(fds)) {
+        return rc;
+    }
+    pid = fork();
+    if (0 == pid) {
+        pmix_proc_t me;
+
+        close(fds[0]);
+        setenv("TMPDIR", sys, 1);
+        setenv("PMIX_SYSTEM_TMPDIR", sys, 1);
+        if (NULL == freopen(errfile, "w", stderr)) {
+            _exit(1);
+        }
+        rc = PMIx_Init(&me, NULL, 0);
+        fflush(stderr);
+        if ((ssize_t) sizeof(rc) != write(fds[1], &rc, sizeof(rc))) {
+            _exit(1);
+        }
+        if (PMIX_SUCCESS == rc || PMIX_ERR_UNREACH == rc) {
+            PMIx_Finalize(NULL, 0);
+        }
+        _exit(0);
+    }
+    close(fds[1]);
+    if ((ssize_t) sizeof(rc) != read(fds[0], &rc, sizeof(rc))) {
+        rc = PMIX_ERROR;
+    }
+    close(fds[0]);
+    waitpid(pid, &status, 0);
+    fp = fopen(errfile, "r");
+    while (NULL != fp && NULL != fgets(line, sizeof(line), fp)) {
+        if (NULL != strstr(line, "did not accept it")) {
+            *said = true;
+        }
+    }
+    if (NULL != fp) {
+        fclose(fp);
+    }
+    return rc;
+}
+
+/* a copy of `from`, at `to`, owned by `owner` */
+static bool copy_owned(const char *from, const char *to, uid_t owner)
+{
+    char buf[4096];
+    ssize_t n;
+    int in, out;
+    bool ok;
+
+    in = open(from, O_RDONLY);
+    out = open(to, O_WRONLY | O_CREAT | O_EXCL, 0644);
+    ok = (0 <= in && 0 <= out);
+    while (ok && 0 < (n = read(in, buf, sizeof(buf)))) {
+        ok = (n == write(out, buf, (size_t) n));
+    }
+    ok = ok && 0 == fchmod(out, 0644) && 0 == fchown(out, owner, (gid_t) -1);
+    if (0 <= in) {
+        close(in);
+    }
+    if (0 <= out) {
+        close(out);
+    }
+    return ok;
+}
+
+static void test_singleton_system(void)
+{
+    char top[700], sess[700], sdir[800], path[1024], copy[1600], errfile[800], detail[160];
+    const char *slash;
+    pmix_status_t rc;
+    pid_t spid;
+    int ready, go;
+    bool said;
+
+    if (0 != geteuid()) {
+        fprintf(stdout, "  SKIP: a singleton passing over a system file of another user - not "
+                        "running as root\n");
+        return;
+    }
+    scratch(top, sizeof(top), "sys10");
+    scratch(sess, sizeof(sess), "sess10");
+    /* the server's file in root's pmix-user directory, which a singleton
+     * looks in after the system tmpdir */
+    snprintf(sdir, sizeof(sdir), "%s/pmix-user.0", top);
+    if (0 != mkdir(sdir, 0700)) {
+        report("singleton system: fixture", 0, strerror(errno));
+        return;
+    }
+    spid = start_server(sdir, true, sess, true, &ready, &go);
+    if (0 > spid || !server_up(ready)) {
+        report("singleton system: the server starts", 0, "init failed");
+        return;
+    }
+    if (!find_file(sdir, "pmix.sys.", "", path, sizeof(path)) ||
+        NULL == (slash = strrchr(path, '/'))) {
+        report("singleton system: fixture", 0, "no system file");
+        stop_server(spid, ready, go);
+        return;
+    }
+    /* and a file at the system tmpdir, ahead of it, owned by a user the
+     * singleton does not take */
+    snprintf(copy, sizeof(copy), "%s%s", top, slash);
+    snprintf(errfile, sizeof(errfile), "%s/singleton.err", top);
+    if (!copy_owned(path, copy, 4242)) {
+        report("singleton system: fixture", 0, strerror(errno));
+    } else {
+        rc = singleton_to_system(top, errfile, &said);
+        snprintf(detail, sizeof(detail), "init %s, %s", PMIx_Error_string(rc),
+                 said ? "the server was reached" : "the server was not reached");
+        report("a singleton passes over a system file owned by a user it does not take, and "
+               "reaches the server whose file is in a later directory",
+               PMIX_ERR_UNREACH == rc && said, detail);
+    }
+    unlink(copy);
+    stop_server(spid, ready, go);
+}
+
 static void test_system_files(void)
 {
     char sys[700], sess[700], path[1024], dir[800];
@@ -875,6 +1007,7 @@ int main(void)
     test_system_files();
     test_legacy_walk();
     test_claims();
+    test_singleton_system();
     test_foreign();
 
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", base);
