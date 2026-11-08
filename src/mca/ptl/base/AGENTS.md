@@ -794,7 +794,14 @@ The connection handler enforces the split:
   refuses.
 - A self-started tool whose namespace went while the host decided (the
   host deregistered it, or its last process left) gets a fresh one under
-  the same name, as though it had found none.
+  the same name, as though it had found none. So does one whose
+  namespace went at the rank check: `rank_connected` handles as lost a
+  connection of the rank that has closed but not been read, and if that
+  was the namespace's last process the namespace and the rank entry go
+  with it (`pmix_server_tool_departed`). `ask_about_tool` then drops the
+  entry it found and gives the tool a namespace of its own
+  (`new_tool_nspace`) before the host is asked (`case_tool_back_unread`
+  in `ptl_accept.c`).
 
 The identity match is exact: the same uid and gid.
 

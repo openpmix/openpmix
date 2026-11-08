@@ -2007,6 +2007,28 @@ static bool nspace_is_tools(pmix_namespace_t *nptr, uid_t uid, gid_t gid)
 /* Where a tool belongs: the namespace and rank entry it will join, when
  * either already exists, or ones built for it - which are not listed
  * until the connection is accepted. Returns the reason for a refusal */
+/* A namespace of a self-started tool's own, named `name` (NULL until the
+ * host names the tool): it belongs to the user the tool connected as, and
+ * holds self-started tools only */
+static pmix_namespace_t *new_tool_nspace(pmix_pending_connection_t *pnd, const char *name)
+{
+    pmix_namespace_t *nptr = PMIX_NEW(pmix_namespace_t);
+
+    if (NULL == nptr) {
+        return NULL;
+    }
+    if (NULL != name && NULL == (nptr->nspace = strdup(name))) {
+        PMIX_RELEASE(nptr);
+        return NULL;
+    }
+    pmix_server_access_set_owner(nptr, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
+    nptr->self_started = true;
+    nptr->version.major = pnd->proc_type.major;
+    nptr->version.minor = pnd->proc_type.minor;
+    nptr->version.release = pnd->proc_type.release;
+    return nptr;
+}
+
 static pmix_status_t place_tool(pmix_pending_connection_t *pnd)
 {
     pmix_namespace_t *nptr = NULL;
@@ -2106,20 +2128,10 @@ static pmix_status_t place_tool(pmix_pending_connection_t *pnd)
 
     /* a namespace of its own - named now if the tool named it, else once
      * the host has given it an identity */
-    nptr = PMIX_NEW(pmix_namespace_t);
+    nptr = new_tool_nspace(pnd, host_names_tool(pnd) ? NULL : pnd->proc.nspace);
     if (NULL == nptr) {
         return PMIX_ERR_NOMEM;
     }
-    if (!host_names_tool(pnd)) {
-        nptr->nspace = strdup(pnd->proc.nspace);
-    }
-    /* the tool's job belongs to the user it connected as, and holds
-     * self-started tools only */
-    pmix_server_access_set_owner(nptr, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
-    nptr->self_started = true;
-    nptr->version.major = pnd->proc_type.major;
-    nptr->version.minor = pnd->proc_type.minor;
-    nptr->version.release = pnd->proc_type.release;
     pnd->nspace_created = true;
     pnd->nptr = nptr;
     return PMIX_SUCCESS;
@@ -2649,6 +2661,28 @@ static void ask_about_tool(pmix_pending_connection_t *pnd)
         refuse(pnd, PMIX_ERR_EXISTS);
         return;
     }
+    /* That check handles as lost a connection of the rank's that has
+     * closed but not yet been read. If it was the last process of a
+     * self-started tool's namespace, the namespace and the rank entry went
+     * with it: the tool then has a namespace of its own, under the name it
+     * chose, as though it had found none */
+    if (!pnd->nspace_created && nptr->self_started && !nspace_listed(nptr)) {
+        pmix_namespace_t *fresh = new_tool_nspace(pnd, pnd->proc.nspace);
+
+        if (NULL == fresh) {
+            refuse(pnd, PMIX_ERR_NOMEM);
+            return;
+        }
+        /* the entry it found was that namespace's, and is gone with it -
+         * its own is built once its identity is final */
+        if (NULL != info) {
+            PMIX_RELEASE(info);
+            pnd->rinfo = NULL;
+        }
+        PMIX_RELEASE(nptr);
+        pnd->nptr = nptr = fresh;
+        pnd->nspace_created = true;
+    }
     /* Its wire format must be its namespace's - checked after the rank, so
      * that a tool whose rank is taken is told that, and not that its
      * format does not fit: a tool started on a client's rank falls back
@@ -2865,20 +2899,12 @@ static void tool_answered(int sd, short args, void *cbdata)
      * own, under the name it chose */
     if (!pnd->nspace_created && !nspace_listed(nptr) && NULL == pnd->rinfo &&
         PMIX_TOOL_CLIENT != pnd->flag && PMIX_LAUNCHER_CLIENT != pnd->flag) {
-        pmix_namespace_t *fresh = PMIX_NEW(pmix_namespace_t);
+        pmix_namespace_t *fresh = new_tool_nspace(pnd, id.nspace);
 
-        if (NULL == fresh || NULL == (fresh->nspace = strdup(id.nspace))) {
-            if (NULL != fresh) {
-                PMIX_RELEASE(fresh);
-            }
+        if (NULL == fresh) {
             refuse_accepted(pnd, &id, PMIX_ERR_NOMEM);
             return;
         }
-        pmix_server_access_set_owner(fresh, pnd->uid, pnd->gid, PMIX_OWNER_REGISTERED);
-        fresh->self_started = true;
-        fresh->version.major = pnd->proc_type.major;
-        fresh->version.minor = pnd->proc_type.minor;
-        fresh->version.release = pnd->proc_type.release;
         PMIX_RELEASE(nptr);
         pnd->nptr = nptr = fresh;
         pnd->nspace_created = true;
