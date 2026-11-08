@@ -101,7 +101,10 @@ of this release use that socket, so it has its own exchange:
    its buffer type. `ptl_accept.c`'s `case_offer_other_rank` compares a
    rank of another uid with an unregistered rank and namespace. gds is the peer's first
    that the server has, per peer. The client aborts with
-   `PMIX_ERR_NOT_SUPPORTED` on a choice it did not offer, and otherwise
+   `PMIX_ERR_NOT_SUPPORTED` on a choice it did not offer - each of the
+   three names must be exactly the module it is given for it, since a
+   name with a comma in it would select one from a list
+   (`test/unit/ptl_choice.c`) - and otherwise
    sets `peer->nptr->compat.{psec,bfrops,type,gds}` and `peer->gds`.
 3. **The credential** (`build_credential`; `read_credential`), after a
    header: `uint32_t` length, the credential from the chosen psec (with
@@ -1655,6 +1658,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_accept.c` | (among its cases) a rank's token bound to the first client pid on the local socket: that pid connects again, a client in a forked child is refused before the host is asked (after a lost connection or a finalize), and preparing, re-registering, or deregistering and preparing the rank again lets another pid connect; a tool on the rank is taken from the bound pid once the rank has no live connection and gets `PMIX_ERR_EXISTS` from another pid, gets `PMIX_ERR_EXISTS` while a client of it is live, and binds nothing, so a client in another pid connecting after it binds the token; connections still sending their connect-ack hold no more than `ptl_base_max_pending_bytes` between them, the ones beyond it are dropped with `PMIX_ERR_OUT_OF_RESOURCE`, the total returns to zero, and a client still connects; a uid other than the server's and root's has a quarter of the waiting-tool cap, root and the server's uid fill it, and the host's `PMIX_USERID` waits beyond the share; without `PMIX_SERVER_ALLOW_FOREIGN_TOOLS` a tool of the host's `PMIX_USERID`, or root's, is put to the host and one of another uid refused; `next_tool` passes over a queue of tools of one name once per run; a client naming an unregistered namespace or rank is answered `PMIX_ERR_INVALID_CRED`; a connect-ack naming 263.0.0, 6.1.256 or 255.255.255 is `PMIX_ERR_BAD_PARAM` |
 | `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them; at the pending-connection cap the oldest is dropped, and the default cap follows the descriptor limit |
 | `test/unit/ptl_nosigpipe.c` | a blocking send and a vector write to a peer that has reset return an error, with `SIGPIPE` at its default action |
+| `test/unit/ptl_choice.c` | a tool given a choice naming no wire format it offered (a list, `v41,v70`) closes without sending its credential, and init fails with `PMIX_ERR_NOT_SUPPORTED`; one it offered is taken |
 | `test/unit/ptl_recv_timeout.c` | `pmix_ptl_base_recv_blocking` ends a blocking socket's receive at its timeout, and still waits out `EAGAIN` on a non-blocking one |
 | `test/unit/ptl_send_timeout.c` | `pmix_ptl_base_send_blocking` ends a blocking socket's send at its timeout and still completes a late-read one with none; a tool connecting to a server that answers its offer and then stops reading fails its init with `PMIX_ERR_TIMEOUT` |
 | `test/unit/tool_nspace.c` | a real tool connection leaves exactly one namespace object, and the peer resolves through the one on the list |
