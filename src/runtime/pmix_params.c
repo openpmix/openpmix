@@ -457,6 +457,15 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_server_globals.max_iof_reqs_per_peer);
 
+    /* how many unresolved group invitations one peer may lead */
+    pmix_server_globals.max_invites_per_peer = 1024;
+    (void) pmix_mca_base_var_register("pmix", "pmix", "server", "max_invites_per_peer",
+                                      "Maximum number of unresolved group invitations "
+                                      "(PMIx_Group_invite) any one client or tool connection "
+                                      "may lead at once [0 = no limit]",
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
+                                      &pmix_server_globals.max_invites_per_peer);
+
     (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "progress_thread_cpus",
                                       "Comma-delimited list of ranges of CPUs to which"
                                       "the internal PMIx progress thread is to be bound",
