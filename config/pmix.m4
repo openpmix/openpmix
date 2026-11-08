@@ -524,6 +524,10 @@ AC_DEFUN([PMIX_SETUP_CORE],[
                       #include <sys/socket.h>
                       ])
 
+    # The capability sets of a process, which pmix_util_run_as() clears
+    # in the child it forks on Linux
+    AC_CHECK_HEADERS([linux/capability.h sys/syscall.h])
+
     # Needed to work around Darwin requiring sys/socket.h for
     # net/if.h
     AC_CHECK_HEADERS([net/if.h], [], [],

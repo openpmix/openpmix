@@ -35,6 +35,11 @@
  *   setgroups() takes                  -> the helper runs, with the gid
  *                                         and as many groups as fit. It
  *                                         used to fail the drop
+ *   on Linux, a server whose
+ *   capabilities survive setuid()      -> the helper has none, and is
+ *                                         refused a file only root may
+ *                                         read. It used to keep
+ *                                         CAP_DAC_OVERRIDE and read it
  *
  *   a helper that never finishes       -> -1, ETIMEDOUT, at the timeout;
  *                                         with and without a descriptor
@@ -60,9 +65,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#if defined(__linux__) && defined(HAVE_LINUX_CAPABILITY_H)
+#    include <linux/securebits.h>
+#    include <sys/prctl.h>
+#    define TEST_CAPS 1
+#else
+#    define TEST_CAPS 0
+#endif
 
 /* ids no real account should have */
 #define OTHER_UID 4242
@@ -98,7 +111,10 @@ typedef struct {
     int what;
 } helper_t;
 
-enum { H_HANG, H_STOP, H_FAIL, H_OK, H_OPEN, H_GROUPS };
+enum { H_HANG, H_STOP, H_FAIL, H_OK, H_OPEN, H_GROUPS, H_ROOTFILE };
+
+/* for H_ROOTFILE: a file only root may read */
+static char rootfile[64];
 
 /* for H_GROUPS: how many groups the helper should find, and room to
  * read them */
@@ -148,6 +164,16 @@ static int helper(void *arg)
         return 0;
     case H_GROUPS:
         return has_groups();
+    case H_ROOTFILE: {
+        /* success is being refused it */
+        int fd = open(rootfile, O_RDONLY);
+
+        if (0 <= fd) {
+            close(fd);
+            return -1;
+        }
+        return (EACCES == errno) ? 0 : -1;
+    }
     default:
         return open("/dev/null", O_RDONLY);
     }
@@ -342,6 +368,40 @@ static int many_groups(void)
     return 0;
 }
 
+#if TEST_CAPS
+/* A process whose capabilities survive setuid() - one given CAP_SETUID
+ * by file capabilities is in the same state - must not pass them to the
+ * helper */
+static int caps_kept(void)
+{
+    helper_t h;
+    int fd, rc;
+
+    if (0 != prctl(PR_SET_SECUREBITS, SECBIT_NO_SETUID_FIXUP, 0, 0, 0)) {
+        fprintf(stdout, "        (cannot keep capabilities across setuid here: %s)\n",
+                strerror(errno));
+        return 0;
+    }
+    snprintf(rootfile, sizeof(rootfile), "/tmp/runas_caps_XXXXXX");
+    fd = mkstemp(rootfile);
+    if (0 > fd) {
+        return 1;
+    }
+    close(fd);
+    (void) chmod(rootfile, S_IRUSR | S_IWUSR);
+    h.pidfd = -1;
+    h.what = H_ROOTFILE;
+    pmix_util_runas_timeout = 4 * TIMEOUT;
+    rc = pmix_util_run_as(OTHER_UID, OTHER_GID, NULL, 0, 0, helper, &h);
+    (void) unlink(rootfile);
+    if (0 != rc) {
+        fprintf(stdout, "        (the helper read a file only root may, or did not run)\n");
+        return 1;
+    }
+    return 0;
+}
+#endif
+
 /* the list the helper's groups are made from */
 static void test_group_list(void)
 {
@@ -384,6 +444,9 @@ int main(int argc, char **argv)
     run_case("a helper that succeeds is a success when SIGCHLD is ignored", ok_ignored);
     run_case("a helper's descriptor comes back", opens);
     run_case("a user with more groups than setgroups() takes is still served", many_groups);
+#if TEST_CAPS
+    run_case("a helper keeps no capability its server held across setuid()", caps_kept);
+#endif
 
     fprintf(stdout, "runas_bound: %d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;
