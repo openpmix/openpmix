@@ -906,7 +906,9 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
              * the rank_info object we already allocated above rather than
              * allocating a second one - a fresh PMIX_NEW here would orphan
              * the first (the peer destructor only releases the pointer it
-             * finds, so the original object would leak) */
+             * finds, so the original object would leak). A handshake may
+             * have named the server already */
+            free(pmix_client_globals.myserver->nptr->nspace);
             pmix_client_globals.myserver->nptr->nspace = strdup(pmix_globals.myid.nspace);
             if (NULL != pmix_client_globals.myserver->info->pname.nspace) {
                 free(pmix_client_globals.myserver->info->pname.nspace);
@@ -972,7 +974,9 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
              * the rank_info object we already allocated above rather than
              * allocating a second one - a fresh PMIX_NEW here would orphan
              * the first (the peer destructor only releases the pointer it
-             * finds, so the original object would leak) */
+             * finds, so the original object would leak). A handshake may
+             * have named the server already */
+            free(pmix_client_globals.myserver->nptr->nspace);
             pmix_client_globals.myserver->nptr->nspace = strdup(pmix_globals.myid.nspace);
             if (NULL != pmix_client_globals.myserver->info->pname.nspace) {
                 free(pmix_client_globals.myserver->info->pname.nspace);
