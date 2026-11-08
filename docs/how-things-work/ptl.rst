@@ -277,7 +277,13 @@ Beside the TCP listener, every server opens its **local socket** - the
    then is the directory opened to whom the mode lets connect: group or
    others get search permission, never read. The directory itself stays
    the server's. It is held open from the moment it is made, and every
-   change in it is made through that descriptor.
+   change in it is made through that descriptor. ``bind`` takes a path,
+   so where ``/proc/self/fd/<n>`` leads to the directory held, the socket
+   is bound through it - in that directory, whatever has come to be at
+   its name; elsewhere (macOS, the BSDs) by its path, and the socket must
+   then be found through the descriptor. Either way the directory must
+   still be at its name once the socket is bound, since the URI names
+   the path.
 #. **Listen**, non-blocking and close-on-exec.
 
 A server that cannot open its local socket fails ``PMIx_server_init``.
