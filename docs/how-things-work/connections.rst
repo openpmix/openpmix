@@ -448,7 +448,9 @@ server's version. From there the two do the same:
 #. **Check the server** (below).
 #. **Send the connection request.** On the local socket that is an
    offer, answered by the server's choice, and then the credential (see
-   `The connection request`_).
+   `The connection request`_). Each send is bounded by
+   ``ptl_base_handshake_wait_time`` too, so a server that stops reading
+   ends the connection with ``PMIX_ERR_TIMEOUT``.
 #. **Read the replies**, each also bounded by
    ``ptl_base_handshake_wait_time``.
 #. **Arm the connection** for normal traffic.

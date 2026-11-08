@@ -570,7 +570,7 @@ The regimes that coexist:
 * **Init-time connection is synchronous.** ``connect_to_peer`` runs in the
   caller's thread during ``PMIx_Init`` / ``PMIx_tool_init``, performs
   *blocking* socket I/O, and returns only when the handshake is complete.
-  Each ``connect()`` attempt and each reply is bounded by
+  Each ``connect()`` attempt, each send and each reply is bounded by
   ``ptl_base_handshake_wait_time``.
 * **Connecting from the progress thread is event-driven.**
   ``PMIx_tool_attach_to_server`` - and a tool or server attaching to

@@ -306,7 +306,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "handshake_wait_time",
                                      "Seconds a client or tool waits on a server while connecting to it - for the connect "
-                                     "itself and for each reply to the handshake request (0 = wait indefinitely)",
+                                     "itself, for each send of the handshake request, and for each reply to it "
+                                     "(0 = wait indefinitely)",
                                      PMIX_MCA_BASE_VAR_TYPE_INT,
                                      &pmix_ptl_base.handshake_wait_time);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_wait_time",
