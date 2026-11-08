@@ -186,7 +186,9 @@ The ``directives`` array qualifies how the request is handled. Commonly used dir
 * ``PMIX_LOG_XML_OUTPUT`` (bool) |mdash| emit the output in XML format.
 * ``PMIX_LOG_SYSLOG_PRI`` (int) |mdash| set the syslog priority level for syslog channels.
 * ``PMIX_LOG_SOURCE`` (pmix_proc_t\*) |mdash| identify the process that is the source of the log
-  request.
+  request. A server sets this itself for a request a client or tool sends it, naming that
+  process, and drops any the request carried; it does the same with ``PMIX_LOG_TIMESTAMP``,
+  using the timestamp sent with the request, if any.
 * ``PMIX_LOG_AGG`` (bool) |mdash| aggregate log messages and suppress duplicates based on their
   key/value pairs (see ``PMIX_LOG_KEY`` / ``PMIX_LOG_VAL``). Aggregation is on by default for a
   request that carries both ``PMIX_LOG_KEY`` and ``PMIX_LOG_VAL``; set this to ``false`` to log
