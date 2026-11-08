@@ -144,15 +144,21 @@ pmix_status_t pmix_ptl_base_set_blocking(int sd)
 
 /*
  * A blocking send. Used to send the small amount of connection
- * information that identifies the peers endpoint. Every caller hands this
- * a socket in blocking mode, and none sets SO_SNDTIMEO, so EAGAIN cannot
- * occur on it - the cycle below is only for a socket that is genuinely
- * non-blocking.
+ * information that identifies the peers endpoint.
+ *
+ * Every caller hands this a socket in blocking mode. On such a socket
+ * EAGAIN/EWOULDBLOCK is how send() reports that an SO_SNDTIMEO expired -
+ * the connecting side sets one for its handshake (bound_sends in
+ * ptl_base_fns.c) - so it comes back as PMIX_ERR_TIMEOUT, as in
+ * pmix_ptl_base_recv_blocking. A server's replies are sent with no
+ * SO_SNDTIMEO and never see it. A socket that is genuinely non-blocking
+ * still cycles.
  */
 pmix_status_t pmix_ptl_base_send_blocking(int sd, char *ptr, size_t size)
 {
     size_t cnt = 0;
     ssize_t retval;
+    int flags;
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                         "send blocking of %" PRIsize_t " bytes to socket %d", size, sd);
@@ -160,6 +166,13 @@ pmix_status_t pmix_ptl_base_send_blocking(int sd, char *ptr, size_t size)
         retval = send(sd, (char *) ptr + cnt, size - cnt, PMIX_PTL_NOSIGNAL);
         if (0 > retval) {
             if (EAGAIN == pmix_socket_errno || EWOULDBLOCK == pmix_socket_errno) {
+                flags = fcntl(sd, F_GETFL, 0);
+                if (0 <= flags && 0 == (flags & O_NONBLOCK)) {
+                    pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
+                                        "blocking_send timed out after %" PRIsize_t
+                                        " of %" PRIsize_t " bytes", cnt, size);
+                    return PMIX_ERR_TIMEOUT;
+                }
                 /* just cycle and let it try again */
                 pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                                     "blocking_send received error %d:%s from remote - cycling",
