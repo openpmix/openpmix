@@ -50,6 +50,11 @@
  *      taken as a wildcard, so a membership naming {"", rank} passed the
  *      check that the leader is a member without naming it.
  *
+ *   a proc named twice is one member
+ *      Each answer is counted against the first entry naming its sender,
+ *      so a second entry for the same proc was never answered and the
+ *      invitation never resolved.
+ *
  * Separately, a client may not raise the group events only servers raise:
  * that is covered in test/unit/server_events.c.
  */
@@ -446,6 +451,27 @@ int main(int argc, char **argv)
         PMIX_LOAD_PROCID(&bad[1], INVNS, PMIX_RANK_UNDEF);
         rc = invite("srvinv-f3", bad, 2);
         report("...PMIX_RANK_UNDEF too", PMIX_ERR_BAD_PARAM == rc);
+    }
+
+    /* --- a proc named twice is one member --- */
+    {
+        pmix_proc_t twice[3];
+
+        reset_host();
+        memcpy(&twice[0], &procs[0], sizeof(pmix_proc_t));
+        memcpy(&twice[1], &p1, sizeof(pmix_proc_t));
+        memcpy(&twice[2], &p1, sizeof(pmix_proc_t));
+        rc = invite("srvinv-d1", twice, 3);
+        report("an invitation naming a member twice starts", PMIX_SUCCESS == rc);
+        answer(PMIX_GROUP_INVITE_ACCEPTED, &p1, "srvinv-d1", NULL);
+        report("...and that member's one acceptance completes it",
+               saw_complete("srvinv-d1", 40));
+
+        reset_host();
+        memcpy(&twice[1], &procs[0], sizeof(pmix_proc_t));
+        rc = invite("srvinv-d2", twice, 2);
+        report("an invitation naming only the leader, twice, is resolved at once",
+               PMIX_SUCCESS == rc && saw_complete("srvinv-d2", 40));
     }
 
     /* --- an answer counts only for the group it names --- */
