@@ -2249,7 +2249,12 @@ pmix_status_t pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
         return rc;
     }
 
-    pmix_atomic_set_bool(&pmix_globals.connected);
+    /* only a connection to our primary server makes us connected: an
+     * attach to another server is marked so by attach_complete if it is
+     * made our primary there */
+    if (peer == pmix_client_globals.myserver) {
+        pmix_atomic_set_bool(&pmix_globals.connected);
+    }
     peer->upstream = true;
 
     pmix_ptl_base_set_nonblocking(peer->sd);
