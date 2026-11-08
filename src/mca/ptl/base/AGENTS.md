@@ -319,6 +319,11 @@ including the info blob (see "Validate first" in
 - The message size is bounded by `PMIX_MAX_CRED_SIZE` before anything
   is allocated for it, and the payload buffer is then grown only as its
   bytes arrive (`grow_payload`, below).
+- The buffer type is `PMIX_BFROP_BUFFER_NON_DESC` or
+  `PMIX_BFROP_BUFFER_FULLY_DESC`, over TCP as on the local socket, or the
+  peer is refused with `PMIX_ERR_BAD_PARAM`: the first peer of a
+  namespace sets the namespace's (`case_tcp_buffer_type` in
+  `ptl_accept.c`).
 - Every `GET_*` macro bounds itself against `cnt`, the bytes remaining.
   `GET_BLOB` in particular must check the caller's length against `cnt`:
   the credential length is a `uint32_t` off the wire, and a length

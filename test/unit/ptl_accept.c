@@ -225,6 +225,8 @@ static bool ack_tcp_current = false;
 static bool ack_local = false;
 /* the wire format a connect-ack names */
 static const char *ack_bfrops = AC_BFROPS;
+/* the buffer type a TCP connect-ack names */
+static uint8_t ack_bftype = PMIX_BFROP_BUFFER_NON_DESC;
 
 /* A server of this release takes a peer of this release only on its local
  * socket, so over TCP a connect-ack - and the info blob it carries - claims
@@ -740,7 +742,7 @@ static char *build_ack_as_given(uint8_t flag, const char *nspace, pmix_rank_t ra
     gid_t rgid = (AC_OWN_GID != ack_cred_gid) ? ack_cred_gid : getgid();
     char *msg;
     size_t csize, payload;
-    uint8_t bftype = PMIX_BFROP_BUFFER_NON_DESC;
+    uint8_t bftype = ack_bftype;
 
     memcpy(credbytes, &euid, sizeof(uid_t));
     memcpy(credbytes + sizeof(uid_t), &egid, sizeof(gid_t));
@@ -1940,6 +1942,43 @@ static int case_offer_other_rank(void)
     close(fsd);
     return expect_status("a client of another uid on a registered rank", reply,
                          PMIX_ERR_INVALID_CRED);
+}
+
+/* Over TCP a connect-ack names a buffer type the server does not use: it
+ * is refused with PMIX_ERR_BAD_PARAM before the host is asked, as on the
+ * local socket, and does not become the namespace's. A client of the rank
+ * naming a buffer type there is, then connects */
+static int case_tcp_buffer_type(void)
+{
+    pmix_status_t reply;
+    char *msg;
+    size_t sz;
+    int sd = -1;
+
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    ack_bftype = 7;
+    msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native", NULL, false, &sz);
+    reply = send_ack(msg, sz, &sd);
+    free(msg);
+    ack_bftype = PMIX_BFROP_BUFFER_NON_DESC;
+    if (0 <= sd) {
+        close(sd);
+        sd = -1;
+    }
+    if (PMIX_ERR_BAD_PARAM != reply || 0 != nclient_connected) {
+        fprintf(stdout, "    a buffer type of 7: %s, the host asked about %d clients\n",
+                PMIx_Error_string(reply), nclient_connected);
+        return CHILD_FAIL;
+    }
+    msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native", NULL, false, &sz);
+    reply = send_ack(msg, sz, &sd);
+    free(msg);
+    if (PMIX_SUCCESS != reply || 1 != nclient_connected) {
+        return expect_status("a client naming a buffer type there is", reply, PMIX_SUCCESS);
+    }
+    return CHILD_PASS;
 }
 
 /* Over TCP, a client naming a rank registered as another uid is answered
@@ -5791,6 +5830,8 @@ int main(int argc, char **argv)
              case_pending_bytes);
     run_case("at the pending-connection cap, a client whose offer was answered is not the "
              "oldest", case_offer_not_oldest);
+    run_case("over TCP, a connect-ack naming a buffer type the server does not use is refused",
+             case_tcp_buffer_type);
     run_case("a tool the host names into another user's new namespace is refused",
              case_tool_joins_other_user);
     run_case("a self-named tool whose name the host registers meanwhile, with no ranks, is "
