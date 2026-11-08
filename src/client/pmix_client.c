@@ -1329,12 +1329,14 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         }
         /* a singleton given connection info tries to connect */
         if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
+            suri = NULL;
             rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver, info,
                                           ninfo, &suri);
             if (PMIX_SUCCESS == rc) {
                 pmix_client_globals.singleton = false;
-                free(suri);
             }
+            /* handed back on every path */
+            free(suri);
         }
         return PMIX_SUCCESS;
 
