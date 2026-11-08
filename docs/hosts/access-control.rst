@@ -355,7 +355,8 @@ owner could not.
   runs.
 * Otherwise a server that can neither run as the owner nor become it -
   one running as a service account other than root - writes no output
-  files for that owner's jobs, and says so once per job.
+  files for that owner's jobs, and says so once per job, when the job is
+  registered - before any of its processes run.
 * **The owner's child is given a deadline.** It works on paths the owner
   chose, which may be on a filesystem that does not respond. A server
   waits for it no longer than the ``pmix_runas_timeout`` MCA parameter (10 seconds by
