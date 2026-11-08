@@ -1084,7 +1084,9 @@ PMIX_EXPORT pmix_status_t pmix_server_grp_expand_procs(pmix_proc_t **procs, size
  * request for its host, always is */
 PMIX_EXPORT bool pmix_server_grp_is_participant(const pmix_peer_t *peer,
                                                 const pmix_proc_t *procs, size_t nprocs);
-/* the members of a group other than self, for a leave's range */
+/* the members of a group other than self, for a leave's range -
+ * PMIX_ERR_NOT_FOUND for a group not held here, PMIX_ERR_NOT_A_MEMBER
+ * when self is not one of its members */
 PMIX_EXPORT pmix_status_t pmix_server_grp_others(const char *grpid, const pmix_proc_t *self,
                                                  pmix_proc_t **out, size_t *nout);
 /* a group event delivered by the host */
