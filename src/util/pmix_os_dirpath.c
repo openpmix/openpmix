@@ -50,6 +50,7 @@
 #include "src/util/pmix_os_path.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
+#include "src/util/pmix_runas.h"
 #include "src/util/pmix_show_help.h"
 
 static const char path_sep[] = PMIX_PATH_SEP;
@@ -306,7 +307,7 @@ int pmix_os_dirpath_create_under(const char *root, const char *tail,
     fd = open_trusted_root(root);
     if (0 > fd) {
         pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
-                       root, strerror(errno));
+                       root, PMIX_RUNAS_STRERROR(errno));
         return PMIX_ERR_SILENT;
     }
     /* the final component is opened O_RDONLY because its mode may have
@@ -316,7 +317,7 @@ int pmix_os_dirpath_create_under(const char *root, const char *tail,
     if (0 > fd) {
         if (!reported) {
             pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
-                           tail, strerror(errno));
+                           tail, PMIX_RUNAS_STRERROR(errno));
         }
         return PMIX_ERR_SILENT;
     }
@@ -333,7 +334,7 @@ int pmix_os_dirpath_create_under(const char *root, const char *tail,
         if (0 != fchmod(fd, buf.st_mode | mode)) {
             pmix_output_verbose(2, pmix_globals.debug_output,
                                 "PATH %s/%s ALREADY EXISTS AND CHMOD FAILED: %s",
-                                root, tail, strerror(errno));
+                                root, tail, PMIX_RUNAS_STRERROR(errno));
         }
     }
     rc = last_existed ? PMIX_ERR_EXISTS : PMIX_SUCCESS;
@@ -385,7 +386,7 @@ int pmix_os_dirpath_chgrp_under(const char *root, const char *tail, gid_t gid)
             if (0 != fchown(fd, (uid_t) -1, gid)) {
                 pmix_output_verbose(2, pmix_globals.debug_output,
                                     "PATH %s/%s: SETTING GROUP FAILED: %s",
-                                    root, parts[i], strerror(errno));
+                                    root, parts[i], PMIX_RUNAS_STRERROR(errno));
             }
         }
     }
@@ -704,7 +705,7 @@ static int dirpath_check_existing(const char *path, const mode_t mode)
          * directory: something other than a directory is occupying the
          * name we were asked to create */
         pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
-                       path, strerror(errno));
+                       path, PMIX_RUNAS_STRERROR(errno));
         return PMIX_ERR_SILENT;
     }
 
@@ -749,7 +750,7 @@ static int dirpath_create(const char *path, const mode_t mode)
     if (ENOENT != ret) {
         // cannot create it
         pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
-                       path, strerror(ret));
+                       path, PMIX_RUNAS_STRERROR(ret));
         return PMIX_ERR_SILENT;
     }
 
@@ -817,7 +818,7 @@ static int dirpath_create(const char *path, const mode_t mode)
         if (EEXIST != errno) {
             // true error
             pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
-                           tmp, strerror(errno));
+                           tmp, PMIX_RUNAS_STRERROR(errno));
             PMIx_Argv_free(parts);
             free(tmp);
             return PMIX_ERR_SILENT;
@@ -833,7 +834,7 @@ static int dirpath_create(const char *path, const mode_t mode)
             if (PMIX_SUCCESS != ret) {
                 if (PMIX_ERR_NOT_FOUND == ret) {
                     pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
-                                   tmp, strerror(ENOENT));
+                                   tmp, PMIX_RUNAS_STRERROR(ENOENT));
                     ret = PMIX_ERR_SILENT;
                 }
                 PMIx_Argv_free(parts);
@@ -996,7 +997,7 @@ static int dirpath_destroy_at(int fd, const char *path, bool recursive,
                 // uncorrectable error
                 filenm = pmix_os_path(false, path, ep->d_name, NULL);
                 pmix_show_help("help-pmix-util.txt", "unlink-error", true,
-                               (NULL == filenm) ? ep->d_name : filenm, strerror(rc));
+                               (NULL == filenm) ? ep->d_name : filenm, PMIX_RUNAS_STRERROR(rc));
                 free(filenm);
                 exit_status = PMIX_ERROR;
                 break;
