@@ -321,7 +321,10 @@ the directories are created, and the files opened, checked, emptied and
 given their mode, by the owner - in place when the server runs as the
 owner, and otherwise in a short-lived child of the server that has
 dropped to the owner's uid, gid and the groups the host registered for it
-(``PMIX_USER_GRPIDS``; with none, the owner's gid alone). So the kernel
+(``PMIX_USER_GRPIDS``; with none, the owner's gid alone). A system takes
+only so many groups for a process (``sysconf(_SC_NGROUPS_MAX)``: 16 on
+macOS); the child has the owner's gid and as many of the others, in the
+order the host gave them, as fit. So the kernel
 applies the owner's own permissions to every path the job named: a
 privileged server creates nothing, and writes over nothing, that the
 owner could not.
