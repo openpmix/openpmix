@@ -28,6 +28,7 @@
  *                                         others in order, the gid not
  *                                         twice
  *   ... more than fit                  -> as many as fit, the gid first
+ *   PMIX_RUNAS_STRERROR() in the child -> "", and the message outside it
  *
  * and as root:
  *
@@ -422,6 +423,19 @@ static void test_group_list(void)
            1 == n && OTHER_GID == out[0]);
 }
 
+/* no strerror() in the helper */
+static void test_strerror(void)
+{
+    const char *in, *out;
+
+    pmix_util_runas_child = true;
+    in = PMIX_RUNAS_STRERROR(ENOENT);
+    pmix_util_runas_child = false;
+    out = PMIX_RUNAS_STRERROR(ENOENT);
+    report("PMIX_RUNAS_STRERROR() is empty in the helper and the message outside it",
+           NULL != in && '\0' == in[0] && NULL != out && 0 == strcmp(out, strerror(ENOENT)));
+}
+
 int main(int argc, char **argv)
 {
     (void) argc;
@@ -430,6 +444,7 @@ int main(int argc, char **argv)
     setvbuf(stdout, NULL, _IONBF, 0);
     fprintf(stdout, "runas_bound: work done as another user is bounded by a timeout\n");
     test_group_list();
+    test_strerror();
     if (0 != geteuid()) {
         fprintf(stdout, "  SKIP: not running as root, so this process cannot become another user\n");
         fprintf(stdout, "runas_bound: %d passed, %d failed\n", npass, nfail);

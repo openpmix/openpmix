@@ -15,6 +15,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 #include <sys/types.h>
 
 BEGIN_C_DECLS
@@ -41,10 +42,17 @@ BEGIN_C_DECLS
  * is 0 if fn succeeded and -1 if not. A child that cannot become the user
  * is -1 too.
  *
- * fn runs in a forked child of a threaded process: it may only make
- * system calls and touch memory it was given - no locks, no allocation
- * the parent's threads may hold the lock of, no NSS lookups. Look up
- * whatever it needs (the groups, among them) before calling.
+ * fn runs in a forked child of a threaded process, so it may take no
+ * lock that another of the parent's threads may have held at the fork
+ * and that nothing releases in the child: none of the library's own
+ * (pmix_output() and pmix_show_help() do nothing there - see
+ * pmix_util_runas_child), no stdio, and no NSS lookup. Look up whatever
+ * it needs (the groups, among them) before calling, and use
+ * PMIX_RUNAS_STRERROR() in place of strerror(). It may allocate, and use
+ * the directory calls that do (fdopendir(), readdir()): glibc, musl,
+ * macOS and FreeBSD each hold their allocator's locks across fork() so
+ * that a child can. A child that blocks all the same is ended by the
+ * timeout below.
  *
  * The caller is blocked until the child answers, but never for longer
  * than pmix_util_runas_timeout seconds. The child works on a path the
@@ -89,6 +97,11 @@ PMIX_EXPORT extern volatile bool pmix_util_runas_test_stall;
  * threads held at the fork stays held in the child, and the parent waits
  * for it. The parent says what went wrong instead */
 PMIX_EXPORT extern volatile bool pmix_util_runas_child;
+
+/* strerror(err), or "" in the child pmix_util_run_as() forks. A message
+ * is not shown there, and strerror() may look its text up under a lock
+ * of the C library's that the child does not get back */
+#define PMIX_RUNAS_STRERROR(err) (pmix_util_runas_child ? "" : strerror(err))
 
 END_C_DECLS
 
