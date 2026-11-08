@@ -143,7 +143,7 @@ static void check_bad_directive(const char *key)
 #define OPT_OTHER     42
 #define OPT_SETUP     43
 
-static int optional_child(const char *key, const char *strval)
+static int optional_child(const char *key, const char *strval, const int *ival)
 {
     pmix_proc_t myproc;
     pmix_info_t info[4];
@@ -156,7 +156,9 @@ static int optional_child(const char *key, const char *strval)
     if (NULL == dir) {
         return OPT_SETUP;
     }
-    if (NULL == strval) {
+    if (NULL != ival) {
+        PMIX_INFO_LOAD(&info[0], key, ival, PMIX_INT);
+    } else if (NULL == strval) {
         /* the key names a string or a number; hand it a bool */
         PMIX_INFO_LOAD(&info[0], key, &flag, PMIX_BOOL);
     } else {
@@ -174,8 +176,8 @@ static int optional_child(const char *key, const char *strval)
     return (PMIX_ERR_BAD_PARAM == rc) ? OPT_BAD_PARAM : OPT_OTHER;
 }
 
-static void check_optional(const char *name, const char *key, const char *strval,
-                           int expect)
+static void run_optional(const char *name, const char *key, const char *strval,
+                         const int *ival, int expect)
 {
     static const char *outcome[] = {"PMIX_ERR_BAD_PARAM", "PMIX_SUCCESS",
                                     "some other error", "the child could not set up"};
@@ -189,7 +191,7 @@ static void check_optional(const char *name, const char *key, const char *strval
         return;
     }
     if (0 == child) {
-        _exit(optional_child(key, strval));
+        _exit(optional_child(key, strval, ival));
     }
     waitpid(child, &status, 0);
     if (!WIFEXITED(status)) {
@@ -206,6 +208,17 @@ static void check_optional(const char *name, const char *key, const char *strval
     } else {
         report(name, 1, NULL);
     }
+}
+
+static void check_optional(const char *name, const char *key, const char *strval,
+                           int expect)
+{
+    run_optional(name, key, strval, NULL, expect);
+}
+
+static void check_optional_int(const char *name, const char *key, int ival, int expect)
+{
+    run_optional(name, key, NULL, &ival, expect);
 }
 
 /* An empty PMIX_CONNECTION_ORDER names no preference - it must not take
@@ -395,6 +408,10 @@ int main(int argc, char **argv)
                    PMIX_CONNECTION_ORDER, NULL, 0);
     check_optional("optional init refuses a malformed PMIX_SERVER_PIDINFO",
                    PMIX_SERVER_PIDINFO, NULL, 0);
+    check_optional("optional init refuses a PMIX_TIMEOUT that is not a number",
+                   PMIX_TIMEOUT, "ten", 0);
+    check_optional_int("optional init refuses a negative PMIX_TIMEOUT", PMIX_TIMEOUT, -1, 0);
+    check_optional_int("optional init takes a PMIX_TIMEOUT of one second", PMIX_TIMEOUT, 1, 1);
     check_optional("optional init refuses a URI that does not parse",
                    PMIX_SERVER_URI, "not-a-uri", 0);
 #if PMIX_ENABLE_LEGACY_SUPPORT
