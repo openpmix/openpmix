@@ -4777,6 +4777,87 @@ static int case_pending_bytes(void)
     return CHILD_PASS;
 }
 
+/* At ptl_base_max_pending_connections - two here - the oldest connection
+ * still sending its connect-ack is dropped. On the local socket a client
+ * that has had its offer answered is still on that list while it builds
+ * its credential, so it counts as arriving when the server answers it:
+ * A connects first and B after it, A's offer is answered, and C arriving
+ * at the cap drops B, not A. A then finishes connecting */
+static int case_offer_not_oldest(void)
+{
+    pmix_ptl_hdr_t hdr;
+    char *msg, choice[512];
+    size_t sz, got = 0;
+    ssize_t rd;
+    int sda = -1, sdb = -1, sdc = -1;
+    uint32_t u32;
+
+    ack_local = true;
+    setenv("PMIX_MCA_ptl_base_max_pending_connections", "2", 1);
+    setenv("PMIX_MCA_ptl_base_connect_ack_timeout", "0", 1);
+    if (PMIX_SUCCESS != start_server(&mymodule, true, getuid())) {
+        return CHILD_SETUP;
+    }
+    msg = build_ack(PMIX_SIMPLE_CLIENT, AC_NSPACE, 0, "native", NULL, false, &sz);
+    if (NULL == msg || NULL == local_cred || !connect_local(&sda)) {
+        free(msg);
+        return CHILD_SETUP;
+    }
+    usleep(100000);
+    /* B: half a header */
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.nbytes = 64;
+    if (!connect_local(&sdb) ||
+        (ssize_t) (sizeof(hdr) / 2) != write(sdb, &hdr, sizeof(hdr) / 2)) {
+        free(msg);
+        return CHILD_SETUP;
+    }
+    usleep(100000);
+    /* A's offer, and the server's choice */
+    if ((ssize_t) sz != write(sda, msg, sz) || !read_u32(sda, &u32)) {
+        free(msg);
+        return CHILD_SETUP;
+    }
+    free(msg);
+    if (PMIX_SUCCESS != (pmix_status_t) u32) {
+        return expect_status("the offer", (pmix_status_t) u32, PMIX_SUCCESS);
+    }
+    if (!read_u32(sda, &u32) || sizeof(choice) < u32) {
+        return CHILD_SETUP;
+    }
+    while (got < u32) {
+        rd = read(sda, choice + got, u32 - got);
+        if (0 >= rd) {
+            return CHILD_SETUP;
+        }
+        got += (size_t) rd;
+    }
+    usleep(100000);
+    /* C, at the cap */
+    if (!connect_local(&sdc)) {
+        return CHILD_SETUP;
+    }
+    if (!read_u32(sdb, &u32) || PMIX_ERR_OUT_OF_RESOURCE != (pmix_status_t) u32) {
+        fprintf(stdout, "    the connection that had sent half a header was not dropped\n");
+        return CHILD_FAIL;
+    }
+    /* A finishes */
+    if ((ssize_t) local_cred_sz != write(sda, local_cred, local_cred_sz) ||
+        !read_u32(sda, &u32)) {
+        fprintf(stdout, "    the client whose offer was answered was dropped\n");
+        return CHILD_FAIL;
+    }
+    free(local_cred);
+    local_cred = NULL;
+    local_cred_sz = 0;
+    if (PMIX_SUCCESS != (pmix_status_t) u32 || 1 != nclient_connected) {
+        return expect_status("the client whose offer was answered", (pmix_status_t) u32,
+                             PMIX_SUCCESS);
+    }
+    close(sdc);
+    return CHILD_PASS;
+}
+
 static int run_queue_same_name(void)
 {
     return case_tool_queue(0);
@@ -5708,6 +5789,8 @@ int main(int argc, char **argv)
     run_case("connections still sending their connect-ack hold no more than "
              "ptl_base_max_pending_bytes between them, and a client still connects",
              case_pending_bytes);
+    run_case("at the pending-connection cap, a client whose offer was answered is not the "
+             "oldest", case_offer_not_oldest);
     run_case("a tool the host names into another user's new namespace is refused",
              case_tool_joins_other_user);
     run_case("a self-named tool whose name the host registers meanwhile, with no ranks, is "
