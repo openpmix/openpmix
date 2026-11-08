@@ -37,6 +37,12 @@
  *      PMIX_LOG_TIMESTAMP appended as well when the sender supplied a
  *      non-zero timestamp.
  *
+ *   log: one source and one timestamp, both the server's
+ *      A PMIX_LOG_SOURCE or PMIX_LOG_TIMESTAMP among the requester's own
+ *      directives is dropped, so the host is handed exactly one of each:
+ *      the source naming the connection's process, and the timestamp
+ *      packed with the request (none when that is zero).
+ *
  *   get_credential: a host that refuses must still be answered
  *      pmix_credential_cbfunc_t's contract is an error status and no
  *      credential. The copy the server used to make of that credential
@@ -289,6 +295,10 @@ static size_t log_ndata = 0;
 static size_t log_ndirs = 0;
 static bool log_saw_source = false;
 static bool log_saw_timestamp = false;
+static size_t log_nsource = 0;
+static size_t log_ntimestamp = 0;
+static pmix_proc_t log_source;
+static time_t log_timestamp = 0;
 
 static pmix_status_t stub_log2(const pmix_proc_t *client,
                                const pmix_info_t data[], size_t ndata,
@@ -304,11 +314,22 @@ static pmix_status_t stub_log2(const pmix_proc_t *client,
     log_ndirs = count_ident(directives, ndirs, &log_ident);
     log_saw_source = false;
     log_saw_timestamp = false;
+    log_nsource = 0;
+    log_ntimestamp = 0;
     for (n = 0; n < ndirs; n++) {
         if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_SOURCE)) {
             log_saw_source = true;
+            ++log_nsource;
+            if (PMIX_PROC == directives[n].value.type &&
+                NULL != directives[n].value.data.proc) {
+                memcpy(&log_source, directives[n].value.data.proc, sizeof(pmix_proc_t));
+            }
         } else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_TIMESTAMP)) {
             log_saw_timestamp = true;
+            ++log_ntimestamp;
+            if (PMIX_TIME == directives[n].value.type) {
+                log_timestamp = directives[n].value.data.time;
+            }
         }
     }
     /* complete synchronously - the arrays above belong to the caddy the
@@ -1396,6 +1417,39 @@ int main(int argc, char **argv)
     rc = do_log(0, 0, NULL, 0, 0, NULL, 0);
     report("empty log accepted", PMIX_SUCCESS == rc);
     report("empty log still carries the source", 1 == log_ndirs && log_saw_source);
+
+    /* --- a record naming a source and a timestamp of its own ------------ *
+     * both are dropped: the host sees the server's source alone, and the
+     * timestamp packed with the request, or none */
+    {
+        pmix_info_t own[3];
+        pmix_proc_t other;
+        time_t claimed = 42;
+        bool named = false;
+
+        PMIX_LOAD_PROCID(&other, "ctlut-other-nspace", 3);
+        PMIX_INFO_LOAD(&own[0], PMIX_LOG_SOURCE, &other, PMIX_PROC);
+        PMIX_INFO_LOAD(&own[1], PMIX_LOG_TIMESTAMP, &claimed, PMIX_TIME);
+        PMIX_INFO_LOAD(&own[2], PMIX_LOG_GENERATE_TIMESTAMP, &flag, PMIX_BOOL);
+
+        memset(&log_source, 0, sizeof(log_source));
+        rc = do_log(0, 1, &data, 1, 3, own, 3);
+        named = 0 == strcmp(log_source.nspace, standin()->info->pname.nspace) &&
+                log_source.rank == standin()->info->pname.rank;
+        report("log naming its own source accepted", PMIX_SUCCESS == rc);
+        report("the host was given one source, the requester's", 1 == log_nsource && named);
+        report("the requester's timestamp was dropped", 0 == log_ntimestamp);
+        report("the requester's other directives were kept", 2 == log_ndirs);
+
+        rc = do_log(1234567, 1, &data, 1, 3, own, 3);
+        report("timestamped log naming its own timestamp accepted", PMIX_SUCCESS == rc);
+        report("the host was given one timestamp, the one sent with the request",
+               1 == log_nsource && 1 == log_ntimestamp && 1234567 == log_timestamp);
+
+        PMIX_INFO_DESTRUCT(&own[0]);
+        PMIX_INFO_DESTRUCT(&own[1]);
+        PMIX_INFO_DESTRUCT(&own[2]);
+    }
 
     /* --- counts that do not survive the trip through int32_t ---------- */
     rc = do_log(0, (size_t) 0x80000000UL, &data, 1, 1, dirs, 1);
