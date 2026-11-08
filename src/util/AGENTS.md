@@ -756,13 +756,14 @@ caller is close — the only one in the tree uses `PMIX_PATH_MAX` — but
 do not widen the documented range on the strength of the bozo check
 alone.
 
-### `pmix_getid` — installed API with no caller
+### `pmix_getid` — the local socket's peer identity
 
-`pmix_util_getid()` is called from nowhere in PMIx and nowhere in PRRTE,
-but `pmix_getid.h` is in the installed `headers` list and the symbol is
-`PMIX_EXPORT`ed, so it is API — the same situation as the three unused
-`pmix_fd` entry points above, and it takes the same treatment: judge it
-as API, do not retire it on your own authority.
+`pmix_util_getid()` is what the `usock` transport's `peer_identity`
+answers with (`src/mca/ptl/usock/ptl_usock.c`): the uid and gid of the
+process at the far end of a local connection, which the connection
+handler and `psec/native` take in place of what the peer claims. PRRTE
+does not call it. `pmix_getid.h` is in the installed `headers` list and
+the symbol is `PMIX_EXPORT`ed, so it is API as well.
 
 **Every route through it is conditionally compiled, and this platform
 selects exactly one.** There are four: `getsockopt(SO_PEERCRED)` filling
@@ -1876,7 +1877,8 @@ stubs with `void *` in place of the termios types.
 
 Five wrappers over `tcgetattr`/`tcsetattr` and the winsize ioctls.
 `pmix_tty.h` is installed, and nothing in PMIx or PRRTE calls any of
-them, so — like [`pmix_getid`](#pmix_getid--installed-api-with-no-caller)
+them, so — like the three uncalled entry points in
+[`pmix_fd`](#pmix_fd--descriptor-helpers-three-of-them-with-no-caller)
 — judge them as API rather than as code with a known caller.
 
 They hold no state, allocate nothing and take no locks, which makes them
