@@ -1157,6 +1157,12 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
             return;
         }
         pnd->offered = true;
+        /* the list is in order of arrival, and the oldest entry is the
+         * one dropped at the pending-connection cap: a peer whose offer
+         * was just answered arrives again now, as it builds its
+         * credential */
+        pmix_list_remove_item(&pmix_ptl_base.pending_connections, &pnd->super);
+        pmix_list_append(&pmix_ptl_base.pending_connections, &pnd->super);
         PMIX_POST_OBJECT(pnd);
         if (0 != pmix_event_add(&pnd->ev, NULL)) {
             PMIX_ERROR_LOG(PMIX_ERROR);
