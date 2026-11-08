@@ -1266,6 +1266,29 @@ static void client_teardown(void)
 
 static int client_init_cntr = 0;
 
+/* a singleton's later init was given connection info: connect, here on
+ * the progress thread */
+static void reinit_connect(int sd, short args, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    char *suri = NULL;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(cb);
+    cb->status = PMIX_SUCCESS;
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
+        cb->status = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver,
+                                              cb->info, cb->ninfo, &suri);
+        if (PMIX_SUCCESS == cb->status) {
+            pmix_client_globals.singleton = false;
+        }
+        /* handed back on every path */
+        free(suri);
+    }
+    PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
 pmix_status_t PMIx_Init(pmix_proc_t *proc,
                         pmix_info_t info[], size_t ninfo)
 {
@@ -1327,16 +1350,16 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         if (NULL != info) {
             _check_for_notify(info, ninfo);
         }
-        /* a singleton given connection info tries to connect */
+        /* a singleton given connection info tries to connect, on the
+         * progress thread: the connect rewrites myserver and the ptl
+         * globals, and arms the connection's events */
         if (PMIX_UNLIKELY(!pmix_atomic_check_bool(&pmix_globals.connected))) {
-            suri = NULL;
-            rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver, info,
-                                          ninfo, &suri);
-            if (PMIX_SUCCESS == rc) {
-                pmix_client_globals.singleton = false;
-            }
-            /* handed back on every path */
-            free(suri);
+            PMIX_CONSTRUCT(&cb, pmix_cb_t);
+            cb.info = info;
+            cb.ninfo = ninfo;
+            PMIX_THREADSHIFT(&cb, reinit_connect);
+            PMIX_WAIT_THREAD(&cb.lock);
+            PMIX_DESTRUCT(&cb);
         }
         return PMIX_SUCCESS;
 

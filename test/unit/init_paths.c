@@ -30,6 +30,9 @@
  *                       server's local socket connects
  *   singleton        -> a singleton the system server does not accept
  *                       says so, and runs as a singleton
+ *   singleton later  -> a singleton's later PMIx_Init given the server's
+ *                       URI makes its connection attempt on the
+ *                       progress thread, not on the caller's
  *   server attach    -> a server told to connect to another, by file or
  *                       by role, does so on a peer of its own and makes
  *                       it its server; its own name is unchanged
@@ -48,6 +51,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/runtime/pmix_progress_threads.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -60,7 +64,7 @@
 
 #define IP_NSPACE  "init.paths"
 #define IP_SERVER  "init.paths.server"
-#define NKIDS      11
+#define NKIDS      12
 #define NOUT       4
 
 static int npass = 0;
@@ -295,6 +299,50 @@ static void singleton(pmix_status_t *out)
     fflush(stderr);
 }
 
+/* a singleton, then a later init given the server's URI. The wipe hook
+ * runs where the connect runs - it is handed each connect-ack buffer as
+ * it is given back - so it says which thread made the attempt. The
+ * server does not know a singleton's namespace and refuses it; the
+ * buffers are given back before that answer arrives. */
+static volatile int nwipes = 0;
+static volatile int nwipes_off = 0;
+
+static void count_wipe(const void *p, size_t len)
+{
+    PMIX_HIDE_UNUSED_PARAMS(p, len);
+    ++nwipes;
+    if (!pmix_progress_thread_is_current()) {
+        ++nwipes_off;
+    }
+}
+
+static void singleton_later(pmix_status_t *out)
+{
+    pmix_proc_t me;
+    pmix_info_t info;
+    const char *uri = getenv("IP_URI");
+    const char *errfile = getenv("IP_ERRFILE");
+
+    if (NULL == uri || NULL == errfile || NULL == freopen(errfile, "w", stderr)) {
+        return;
+    }
+    out[0] = PMIx_Init(&me, NULL, 0);
+    if (PMIX_ERR_UNREACH != out[0]) {
+        return;
+    }
+    pmix_ptl_base_wiped_hook = count_wipe;
+    PMIX_INFO_LOAD(&info, PMIX_SERVER_URI, uri, PMIX_STRING);
+    out[1] = PMIx_Init(&me, &info, 1);
+    PMIX_INFO_DESTRUCT(&info);
+    pmix_ptl_base_wiped_hook = NULL;
+    out[2] = ok_if(0 < nwipes && 0 == nwipes_off);
+    if (PMIX_SUCCESS == out[1]) {
+        (void) PMIx_Finalize(NULL, 0);
+    }
+    out[3] = PMIx_Finalize(NULL, 0);
+    fflush(stderr);
+}
+
 /* a server told to connect to another */
 static void server_attach(pmix_status_t *out)
 {
@@ -369,6 +417,8 @@ static int kid_main(int envfd, int resultfd)
         return put(resultfd, &out[1], sizeof(out[1]) * (NOUT - 1)) ? 0 : 1;
     } else if (0 == strcmp(which, "singleton")) {
         singleton(out);
+    } else if (0 == strcmp(which, "singleton-later")) {
+        singleton_later(out);
     } else if (0 == strcmp(which, "server-attach")) {
         server_attach(out);
     }
@@ -653,6 +703,24 @@ int main(int argc, char **argv)
              said ? "said so" : "said nothing");
     report("a singleton the system server does not accept says so, and runs alone",
            PMIX_ERR_UNREACH == out[0] && said, detail);
+
+    /* a singleton that is later given the server */
+    env = NULL;
+    add_env(&env, "PMIX_SYSTEM_TMPDIR", topdir);
+    snprintf(path, sizeof(path), "%s/singleton-later.err", topdir);
+    add_env(&env, "IP_ERRFILE", path);
+    uri = pmix_ptl_base.local_listener.uri;
+    add_env(&env, "IP_URI", (NULL == uri) ? "" : uri);
+    run_kid(&kids[11], "singleton-later", env, out);
+    snprintf(detail, sizeof(detail),
+             "first init %s, later init %s, attempt %s, finalize %s", PMIx_Error_string(out[0]),
+             PMIx_Error_string(out[1]),
+             (PMIX_SUCCESS == out[2]) ? "on the progress thread" : "not on the progress thread",
+             PMIx_Error_string(out[3]));
+    report("a singleton's later init given a server URI connects on the progress thread",
+           PMIX_ERR_UNREACH == out[0] && PMIX_SUCCESS == out[1] && PMIX_SUCCESS == out[2] &&
+               PMIX_SUCCESS == out[3],
+           detail);
 
     /* servers connecting to this one */
     snprintf(path, sizeof(path), "%s/pmix.sys.%s", topdir, pmix_globals.hostname);
