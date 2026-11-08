@@ -2330,12 +2330,7 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         }
     }
     PMIX_PROC_CREATE(inv->members, inv->nmembers);
-    inv->responded = (bool *) pmix_calloc(inv->nmembers, sizeof(bool));
-    inv->answered = (bool *) pmix_calloc(inv->nmembers, sizeof(bool));
-    /* every member may contribute, and the leader need not be among them */
-    PMIX_INFO_CREATE(inv->endpts, inv->nmembers + 1);
-    if (NULL == inv->members || NULL == inv->responded ||
-        NULL == inv->answered || NULL == inv->endpts) {
+    if (NULL == inv->members) {
         rc = PMIX_ERR_NOMEM;
         goto done;
     }
@@ -2361,6 +2356,30 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
             memcpy(&inv->members[i], &procs[n], sizeof(pmix_proc_t));
             ++i;
         }
+    }
+    /* A proc named twice - by rank and by its job's wildcard, or by the
+     * same rank twice - is one member. Each answer is counted against the
+     * first entry that names its sender, so a second entry would never be
+     * answered and the invitation would never resolve. The group is
+     * recorded sorted (invite_broadcast), so sorting here changes nothing
+     * a member sees */
+    qsort(inv->members, inv->nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
+    for (n = 1, i = 1; n < inv->nmembers; n++) {
+        if (!same_proc(&inv->members[n], &inv->members[i - 1])) {
+            if (i != n) {
+                memcpy(&inv->members[i], &inv->members[n], sizeof(pmix_proc_t));
+            }
+            ++i;
+        }
+    }
+    inv->nmembers = i;
+    inv->responded = (bool *) pmix_calloc(inv->nmembers, sizeof(bool));
+    inv->answered = (bool *) pmix_calloc(inv->nmembers, sizeof(bool));
+    /* every member may contribute, and the leader need not be among them */
+    PMIX_INFO_CREATE(inv->endpts, inv->nmembers + 1);
+    if (NULL == inv->responded || NULL == inv->answered || NULL == inv->endpts) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
     }
 
     /* The leader answers for itself and contributes its own committed data.
