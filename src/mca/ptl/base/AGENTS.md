@@ -1098,7 +1098,10 @@ Things to keep straight:
   first.** It copies the server's identity into the peer before it sets
   `pmix_globals.connected` or arms an event, and on failure closes the
   socket the handshake just finished on, since nothing will ever service
-  it. Keep anything fallible above the `connected` flag.
+  it. Keep anything fallible above the `connected` flag. It sets the
+  flag only for a peer that is `pmix_client_globals.myserver`: a tool
+  attached to a server it did not make its primary is not connected
+  (`test/unit/tool_servers`).
 
 ### Searching a directory for a server
 

@@ -404,8 +404,11 @@ vouches for - see `base/AGENTS.md`) → on the local socket `local_handshake`
 (`construct_message` builds the handshake blob) →
 `recv_connect_ack` (run the client or tool handshake) → assign the lower
 half of the dynamic-tag space. Then `pmix_ptl_base_complete_connection`
-sets the `connected` flag, records the server's nspace/rank, and arms the
-recv/send events for steady-state traffic.
+records the server's nspace/rank, sets the `connected` flag if the peer
+is our primary server (`pmix_client_globals.myserver`), and arms the
+recv/send events for steady-state traffic. An attach to another server
+is marked connected by `attach_complete` in `src/tool` only if it is made
+the primary there.
 
 ### Inbound (a server accepting a client or tool)
 
