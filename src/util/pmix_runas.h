@@ -28,7 +28,8 @@ BEGIN_C_DECLS
  *     per-user server is, and pays nothing;
  *   - otherwise in a forked child that drops to them - setgroups(), then
  *     setgid(), then setuid(), and checks the drop took - and runs fn
- *     there. Only a privileged server can drop to another user; an
+ *     there. The child's groups are those pmix_util_runas_groups()
+ *     makes of gid and gids. Only a privileged server can drop to another user; an
  *     unprivileged one fails the drop, and fn never runs. Credentials are
  *     per process, so dropping in place would run the whole server as the
  *     user meanwhile.
@@ -54,6 +55,18 @@ BEGIN_C_DECLS
  * reaped without waiting; one that has not gone yet is reaped later */
 PMIX_EXPORT int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids,
                                  bool want_fd, int (*fn)(void *arg), void *arg);
+
+/* The supplementary groups pmix_util_run_as() gives its child, written
+ * to out, which has room for max: gid first, then each of gids that is
+ * not gid, in order, until out is full. Returns how many were written.
+ *
+ * gid leads because on BSD and macOS the first entry of the list given
+ * to setgroups() is the effective gid, which the setgid() after it then
+ * replaces; a group put there is lost. max is the most setgroups()
+ * takes (sysconf(_SC_NGROUPS_MAX)): the call fails outright on a longer
+ * list, so the groups past it are left out */
+PMIX_EXPORT size_t pmix_util_runas_groups(gid_t gid, const gid_t *gids, size_t ngids,
+                                          gid_t *out, size_t max);
 
 /* Seconds pmix_util_run_as() waits for a child - MCA pmix_runas_timeout.
  * 0 waits without a bound */

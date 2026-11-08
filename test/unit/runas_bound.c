@@ -16,13 +16,25 @@
  * that is stopped, which the parent used to wait for in waitpid() with
  * no bound.
  *
- * Only a privileged process can become another user, so every case here
- * needs root, and the program reports SKIP without it. Each case runs in
- * a forked child under alarm(): against an unbounded library a stalled
- * helper is a hang, and it is reported as one instead of taking
- * make check down with it.
+ * Only a privileged process can become another user, so every case
+ * that runs a helper needs root, and those are reported as SKIP without
+ * it. Each runs in a forked child under alarm(): against an unbounded
+ * library a stalled helper is a hang, and it is reported as one instead
+ * of taking make check down with it.
  *
- * Test cases:
+ * Test cases, without root:
+ *
+ *   the helper's groups                -> the gid first, then the
+ *                                         others in order, the gid not
+ *                                         twice
+ *   ... more than fit                  -> as many as fit, the gid first
+ *
+ * and as root:
+ *
+ *   a user with more groups than
+ *   setgroups() takes                  -> the helper runs, with the gid
+ *                                         and as many groups as fit. It
+ *                                         used to fail the drop
  *
  *   a helper that never finishes       -> -1, ETIMEDOUT, at the timeout;
  *                                         with and without a descriptor
@@ -43,6 +55,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,7 +98,30 @@ typedef struct {
     int what;
 } helper_t;
 
-enum { H_HANG, H_STOP, H_FAIL, H_OK, H_OPEN };
+enum { H_HANG, H_STOP, H_FAIL, H_OK, H_OPEN, H_GROUPS };
+
+/* for H_GROUPS: how many groups the helper should find, and room to
+ * read them */
+static gid_t *groups_buf = NULL;
+static size_t groups_want = 0;
+
+/* does the helper have exactly groups_want groups, OTHER_GID among
+ * them? */
+static int has_groups(void)
+{
+    int n, i;
+
+    n = getgroups((int) groups_want, groups_buf);
+    if (0 > n || (size_t) n != groups_want) {
+        return -1;
+    }
+    for (i = 0; i < n; i++) {
+        if (OTHER_GID == groups_buf[i]) {
+            return 0;
+        }
+    }
+    return -1;
+}
 
 static int helper(void *arg)
 {
@@ -110,6 +146,8 @@ static int helper(void *arg)
         return -1;
     case H_OK:
         return 0;
+    case H_GROUPS:
+        return has_groups();
     default:
         return open("/dev/null", O_RDONLY);
     }
@@ -268,6 +306,62 @@ static int opens(void)
     return 0;
 }
 
+/* a user the host gave more groups than setgroups() takes */
+static int many_groups(void)
+{
+    helper_t h;
+    gid_t *gids;
+    long max = sysconf(_SC_NGROUPS_MAX);
+    size_t n, ngids;
+    int rc;
+
+    if (0 >= max) {
+        fprintf(stdout, "        (no group limit to exceed)\n");
+        return 0;
+    }
+    ngids = (size_t) max + 5;
+    gids = (gid_t *) malloc(ngids * sizeof(gid_t));
+    groups_buf = (gid_t *) malloc(((size_t) max + 1) * sizeof(gid_t));
+    if (NULL == gids || NULL == groups_buf) {
+        return 1;
+    }
+    for (n = 0; n < ngids; n++) {
+        gids[n] = (gid_t) (20000 + n);
+    }
+    groups_want = (size_t) max;
+    h.pidfd = -1;
+    h.what = H_GROUPS;
+    pmix_util_runas_timeout = 4 * TIMEOUT;
+    rc = pmix_util_run_as(OTHER_UID, OTHER_GID, gids, ngids, 0, helper, &h);
+    free(gids);
+    if (0 != rc) {
+        fprintf(stdout, "        (returned %d, errno %d, %lu groups given, %ld taken)\n", rc,
+                errno, (unsigned long) ngids, max);
+        return 1;
+    }
+    return 0;
+}
+
+/* the list the helper's groups are made from */
+static void test_group_list(void)
+{
+    const gid_t gids[] = {7, OTHER_GID, 8, 9};
+    gid_t out[8];
+    size_t n;
+
+    n = pmix_util_runas_groups(OTHER_GID, gids, 4, out, 8);
+    report("the helper's groups are the gid, then the others in order, the gid once",
+           4 == n && OTHER_GID == out[0] && 7 == out[1] && 8 == out[2] && 9 == out[3]);
+
+    n = pmix_util_runas_groups(OTHER_GID, gids, 4, out, 2);
+    report("...as many as fit, the gid first",
+           2 == n && OTHER_GID == out[0] && 7 == out[1]);
+
+    n = pmix_util_runas_groups(OTHER_GID, NULL, 0, out, 8);
+    report("...and the gid alone when the user has no others",
+           1 == n && OTHER_GID == out[0]);
+}
+
 int main(int argc, char **argv)
 {
     (void) argc;
@@ -275,9 +369,11 @@ int main(int argc, char **argv)
 
     setvbuf(stdout, NULL, _IONBF, 0);
     fprintf(stdout, "runas_bound: work done as another user is bounded by a timeout\n");
+    test_group_list();
     if (0 != geteuid()) {
         fprintf(stdout, "  SKIP: not running as root, so this process cannot become another user\n");
-        return 0;
+        fprintf(stdout, "runas_bound: %d passed, %d failed\n", npass, nfail);
+        return (0 == nfail) ? 0 : 1;
     }
 
     run_case("a helper that never finishes is abandoned at the timeout", hang_nofd);
@@ -287,6 +383,7 @@ int main(int argc, char **argv)
     run_case("a helper that fails is a failure when SIGCHLD is ignored", fail_ignored);
     run_case("a helper that succeeds is a success when SIGCHLD is ignored", ok_ignored);
     run_case("a helper's descriptor comes back", opens);
+    run_case("a user with more groups than setgroups() takes is still served", many_groups);
 
     fprintf(stdout, "runas_bound: %d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;
