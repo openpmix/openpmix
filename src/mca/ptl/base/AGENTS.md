@@ -1532,7 +1532,10 @@ interface (a loopback one, or none), binds, and makes the URI.
   and closed. A file already at the name is reused only if `geteuid()`
   owns it (`report-file-not-ours` otherwise, fatal: the caller is
   waiting for it), and is `fchmod`ed to 0644 before it is truncated, so
-  neither the umask nor an earlier run sets its mode.
+  neither the umask nor an earlier run sets its mode. It is opened with
+  `O_NONBLOCK`, cleared once it has passed the type check: a blocking
+  open for writing of a FIFO at the name waits for a reader, and held the
+  init there (`report_uri_fifo_child` in `ptl_listener.c`).
 - **The tmpdirs' paths are checked before anything is made in them**
   (`pmix_ptl_base_check_tmpdirs()`, `ptl_base_tmpdir.c`, called from
   `setup_listener` once the directives are read). The rule is in the

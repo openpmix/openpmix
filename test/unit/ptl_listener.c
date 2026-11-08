@@ -43,6 +43,8 @@
  *  - a PMIX_TCP_REPORT_URI is written only as a regular file with a single
  *    name: a symlink at the name is not followed and a second hard link is
  *    not written through, while an existing regular file is replaced.
+ *    A FIFO at the name fails the init at once rather than holding it
+ *    until something opens the FIFO for reading.
  *
  * Each case runs in a forked child: PMIx_server_init can only be called
  * once in a process, and against the unfixed library several of these die
@@ -780,6 +782,29 @@ static void report_uri_symlink_child(void)
     _exit(ok ? CHILD_PASS : CHILD_FAIL);
 }
 
+static void report_uri_fifo_child(void)
+{
+    pmix_info_t info;
+    char path[PMIX_PATH_MAX + 16];
+    pmix_status_t rc;
+
+    snprintf(path, sizeof(path), "%s/fifo.txt", tmpdir);
+    unlink(path);
+    if (0 != mkfifo(path, S_IRUSR | S_IWUSR)) {
+        _exit(CHILD_FAIL);
+    }
+    /* a FIFO nobody reads: a blocking open for writing waits here */
+    alarm(10);
+    PMIX_INFO_LOAD(&info, PMIX_TCP_REPORT_URI, path, PMIX_STRING);
+    rc = PMIx_server_init(&mymodule, &info, 1);
+    unlink(path);
+    if (PMIX_SUCCESS == rc) {
+        fprintf(stderr, "the init succeeded with a FIFO at the report file's name\n");
+        _exit(CHILD_FAIL);
+    }
+    _exit(CHILD_PASS);
+}
+
 static void report_uri_hardlink_child(void)
 {
     pmix_info_t info;
@@ -949,6 +974,7 @@ int main(int argc, char **argv)
     run_case("a report file is not written through a symlink", report_uri_symlink_child);
     run_case("a report file is not written through a second hard link",
              report_uri_hardlink_child);
+    run_case("a FIFO at the report file's name fails the init at once", report_uri_fifo_child);
     run_case("an existing report file is replaced", report_uri_replace_child);
     run_case("the report file lists the wire formats and security mechanisms this server runs",
              compat_lines_child);
