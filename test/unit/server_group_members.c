@@ -44,7 +44,9 @@
  *                       to the host with the group's members; one naming
  *                       a group the caller is not in, or a fence, connect
  *                       or disconnect doing so, is PMIX_ERR_NOT_A_MEMBER
- *   get              -> the whole group, or a group rank past it, refused
+ *   get              -> from a member, the whole group, or a group rank
+ *                       past it, refused; from a process not in the
+ *                       group, any group rank is PMIX_ERR_NOT_A_MEMBER
  *   join             -> a construct still collecting here is joined by a
  *                       listed participant, by rank or by job; a process
  *                       outside the listed membership naming the ID with
@@ -164,6 +166,9 @@ static pmix_peer_t *make_client(const char *nsname, pmix_rank_t rank)
     p = PMIX_NEW(pmix_peer_t);
     PMIX_RETAIN(nptr);
     p->nptr = nptr;
+    /* a connected peer is given its module when it is accepted, and a get
+     * fetches through it */
+    p->gds = pmix_globals.mypeer->gds;
     memcpy(&p->proc_type, &pmix_globals.mypeer->proc_type, sizeof(pmix_proc_type_t));
     p->info = PMIX_NEW(pmix_rank_info_t);
     p->info->pname.nspace = strdup(nsname);
@@ -655,10 +660,20 @@ static void test_collectives(pmix_peer_t *a1)
     rc = do_connect(a1, false, &proc, 1);
     report("so is a disconnect", PMIX_ERR_NOT_A_MEMBER == rc);
 
-    rc = do_get(a1, "coll-other", PMIX_RANK_WILDCARD);
+    /* a member of "coll" */
+    rc = do_get(a1, "coll", PMIX_RANK_WILDCARD);
     report("a get of a whole group is refused", PMIX_ERR_BAD_PARAM == rc);
-    rc = do_get(a1, "coll-other", 2);
+    rc = do_get(a1, "coll", 2);
     report("a get past the group is not found", PMIX_ERR_NOT_FOUND == rc);
+    /* not a member of "coll-other": every rank is answered the same, in
+     * the group or past it */
+    rc = do_get(a1, "coll-other", 0);
+    report("a get by group rank from a process not in the group is refused",
+           PMIX_ERR_NOT_A_MEMBER == rc);
+    rc = do_get(a1, "coll-other", 2);
+    report("...a rank past the group the same way", PMIX_ERR_NOT_A_MEMBER == rc);
+    rc = do_get(a1, "coll-other", PMIX_RANK_WILDCARD);
+    report("...and the whole group the same way", PMIX_ERR_NOT_A_MEMBER == rc);
     pmix_server_grp_drop("coll-other");
     pmix_server_grp_drop("coll");
 }
