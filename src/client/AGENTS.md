@@ -1747,6 +1747,15 @@ without new evidence.
   rather than changed: the multi-init refcount path exists precisely for
   those second callers, so altering what it returns is a contract change
   affecting all of them.
+- **A singleton's re-entrant `PMIx_Init` connects on the progress
+  thread.** Given connection info, it hands the connect to
+  `reinit_connect` and waits for it. The connect rewrites
+  `myserver`'s namespace and compat modules and the `pmix_ptl_base`
+  globals, and arms the connection's events, all while the progress
+  thread is running; it used to do that from the caller's thread. The
+  `pmix_progress_thread_check_blocking` screen above it is what keeps
+  the wait safe. `test/unit/init_paths.c` (`singleton-later`) checks
+  which thread the attempt runs on.
 - **`PMIx_Abort`'s server-role branch used to call
   `pmix_host_server.abort()` with `NULL` for both `cbfunc` and `cbdata`
   and return the host's status verbatim.** Fixed in the fifteenth sweep
