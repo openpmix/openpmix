@@ -44,6 +44,12 @@
  *      invitation pending and with one pending, which reach the two
  *      separately. Against an unfixed library either case segfaults.
  *
+ *   a member names one process, or one job's every process
+ *      A member with an empty namespace, or a special rank other than
+ *      PMIX_RANK_WILDCARD, is refused. An empty namespace used to be
+ *      taken as a wildcard, so a membership naming {"", rank} passed the
+ *      check that the leader is a member without naming it.
+ *
  * Separately, a client may not raise the group events only servers raise:
  * that is covered in test/unit/server_events.c.
  */
@@ -420,6 +426,27 @@ int main(int argc, char **argv)
      * reaches the server, where the id unpacks as NULL */
     rc = invite(NULL, procs, 2);
     report("an empty group id is refused", PMIX_ERR_BAD_PARAM == rc);
+
+    /* --- a member names one process, or one job's every process --- */
+    {
+        pmix_proc_t bad[2];
+
+        reset_host();
+        PMIX_LOAD_PROCID(&bad[0], NULL, pmix_globals.myid.rank);
+        memcpy(&bad[1], &p1, sizeof(pmix_proc_t));
+        rc = invite("srvinv-f1", bad, 2);
+        report("a member with an empty namespace is refused", PMIX_ERR_BAD_PARAM == rc);
+        report("...and invites nobody", !saw_outcome("srvinv-f1", 6));
+
+        memcpy(&bad[0], &procs[0], sizeof(pmix_proc_t));
+        PMIX_LOAD_PROCID(&bad[1], INVNS, PMIX_RANK_LOCAL_PEERS);
+        rc = invite("srvinv-f2", bad, 2);
+        report("a member with a special rank other than the wildcard is refused",
+               PMIX_ERR_BAD_PARAM == rc);
+        PMIX_LOAD_PROCID(&bad[1], INVNS, PMIX_RANK_UNDEF);
+        rc = invite("srvinv-f3", bad, 2);
+        report("...PMIX_RANK_UNDEF too", PMIX_ERR_BAD_PARAM == rc);
+    }
 
     /* --- an answer counts only for the group it names --- */
     reset_host();
