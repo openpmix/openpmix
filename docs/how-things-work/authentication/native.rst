@@ -66,7 +66,9 @@ reports, not the ones the peer claims:
 
 * **A client the host registered** must be the user and group the host
   registered it as. If the kernel reports a different uid, or a gid that
-  differs from the registration, the connection is refused.
+  differs from the registration, the connection is refused. Over TCP,
+  which reports no group, the group compared with the registration is
+  the one the client claimed.
 
 * **A tool**, which names its own identity, is given the uid the kernel
   reports in place of the one it claimed. On the local socket, the group

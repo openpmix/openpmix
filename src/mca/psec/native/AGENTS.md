@@ -88,7 +88,9 @@ After the `PMIX_CRED_TYPE` screen and the protocol checks (a
 - **Registered** (a client the host registered): the established uid and
   group must equal the registration. The credential's own claim is not
   compared: inside a user namespace it is the uid *there*, which is not
-  the uid the host knows.
+  the uid the host knows. On the local transport the group compared is
+  the kernel's; over TCP it is the group the peer claimed (step 3), so
+  there only the uid is the kernel's.
 - **Claimed** (a tool, or a proc that connected before the host
   registered it): the established uid **replaces** `pr->info->uid`. On
   the local transport the claimed group stands if it is one of the
