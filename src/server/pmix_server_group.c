@@ -2245,6 +2245,18 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         PMIX_ERROR_LOG(rc);
         goto done;
     }
+    /* each member names a job, and a rank in it or PMIX_RANK_WILDCARD. An
+     * empty namespace, or any other special rank, is refused: the
+     * membership is counted proc by proc, and every event the invitation
+     * raises is aimed at it */
+    for (n = 0; n < nprocs; n++) {
+        if (PMIx_Nspace_invalid(procs[n].nspace) ||
+            (PMIX_RANK_WILDCARD != procs[n].rank && !PMIX_RANK_IS_VALID(procs[n].rank))) {
+            rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
+            goto done;
+        }
+    }
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &timeout, &cnt, PMIX_UINT32);
     if (PMIX_SUCCESS != rc) {
@@ -2301,7 +2313,7 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
              * body is dereferenced on the way to the following entry */
             nptr = NULL;
             PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-                if (PMIX_CHECK_NSPACE(ns->nspace, procs[n].nspace)) {
+                if (PMIX_CHECK_NSPACE_STRICT(ns->nspace, procs[n].nspace)) {
                     nptr = ns;
                     break;
                 }
@@ -2332,7 +2344,7 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         if (PMIX_RANK_WILDCARD == procs[n].rank) {
             nptr = NULL;
             PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-                if (PMIX_CHECK_NSPACE(ns->nspace, procs[n].nspace)) {
+                if (PMIX_CHECK_NSPACE_STRICT(ns->nspace, procs[n].nspace)) {
                     nptr = ns;
                     break;
                 }
@@ -2361,7 +2373,7 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
      * is not in, with nothing reported. Refusing the request names the
      * mistake at the point it is made. */
     for (i = 0; i < inv->nmembers; i++) {
-        if (PMIX_CHECK_PROCID(&inv->leader, &inv->members[i])) {
+        if (same_proc(&inv->leader, &inv->members[i])) {
             break;
         }
     }

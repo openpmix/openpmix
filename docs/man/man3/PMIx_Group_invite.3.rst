@@ -215,7 +215,8 @@ was successfully accepted for processing; the final status is delivered to
 * ``PMIX_GROUP_CONSTRUCT_ABORT`` |mdash| a participant aborted the construction
   procedure.
 * ``PMIX_ERR_BAD_PARAM`` |mdash| a required argument was invalid (e.g., a ``NULL``
-  or over-length group identifier).
+  or over-length group identifier), or a member of ``procs`` names no job (an
+  empty namespace) or carries a special rank other than ``PMIX_RANK_WILDCARD``.
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the host environment does not support group
   operations.
 * ``PMIX_ERR_INIT`` |mdash| the PMIx library has not been initialized.
