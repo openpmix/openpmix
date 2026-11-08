@@ -295,7 +295,10 @@ These are posted during init and fire on the progress thread:
   local and the event didn't originate from our own server — relays it
   onward via `pmix_notify_server_of_event`, then hands it to
   `pmix_server_notify_client_of_event`. A zero-byte buffer means the
-  connection dropped; return immediately.
+  connection dropped; return immediately. It unpacks with the `peer` the
+  message came from: each server the tool is attached to has its own
+  wire format (bfrops module and buffer type), which need not be the
+  primary's (`test/unit/tool_servers`).
 - **`tool_iof_handler`** (`PMIX_PTL_TAG_IOF`): unpacks forwarded stdout/
   stderr, dispatches to the registered `pmix_iof_req_t` cbfunc (looked up
   by refid in `pmix_globals.iof_requests`) or writes it to the local
@@ -582,6 +585,7 @@ named are the ones that fail against the unfixed library.
 | `tool_evcache` | affected-process restriction on events delivered to a tool, end to end with two handlers. Its header records that it does **not** reach the caching branch, and why |
 | `tool_relay` | a downstream tool's spawn arriving at a launcher tool with no server of its own: the launcher fork/execs it |
 | `tool_nspace` | a connecting tool leaves exactly one namespace object on the server's list |
+| `tool_servers` | an event from a server whose wire format is not the primary's reaches the tool's handlers |
 | `test/simple/tool_server_switch` (via `run_toolswitch.pl`) | the multi-server switch loop against two servers |
 
 The multi-node half is
