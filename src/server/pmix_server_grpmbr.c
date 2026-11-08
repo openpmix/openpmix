@@ -482,12 +482,23 @@ pmix_status_t pmix_server_grp_others(const char *grpid, const pmix_proc_t *self,
     pmix_group_t *grp;
     pmix_proc_t *procs = NULL;
     size_t m, n = 0;
+    bool member = false;
 
     *out = NULL;
     *nout = 0;
     grp = pmix_server_grp_find(grpid);
     if (NULL == grp) {
         return PMIX_ERR_NOT_FOUND;
+    }
+    /* only a member has a rest of the group */
+    for (m = 0; m < grp->nmbrs; m++) {
+        if (same_proc(&grp->members[m], self)) {
+            member = true;
+            break;
+        }
+    }
+    if (!member) {
+        return PMIX_ERR_NOT_A_MEMBER;
     }
     if (0 < grp->nmbrs) {
         PMIX_PROC_CREATE(procs, grp->nmbrs);

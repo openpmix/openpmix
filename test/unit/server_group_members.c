@@ -28,7 +28,8 @@
  *                       PMIX_ERR_NOT_FOUND; a name that is not a group,
  *                       and an empty one, pass through
  *   leaving          -> a member that leaves is removed, and the others
- *                       are the rest of the group; the group is dropped
+ *                       are the rest of the group - a process not in it
+ *                       is PMIX_ERR_NOT_A_MEMBER; the group is dropped
  *                       once no member is a client here
  *   sweep            -> a group whose clients are gone is dropped
  *   host events      -> an announced group is recorded only if a member
@@ -294,6 +295,14 @@ static void test_leave_sweep(pmix_peer_t *a0, pmix_peer_t *a1)
     PMIX_PROC_FREE(others, nothers);
     report("a group we do not hold has no others",
            PMIX_ERR_NOT_FOUND == pmix_server_grp_others("nope", &mbrs[0], &others, &nothers));
+    {
+        pmix_proc_t outsider;
+
+        PMIX_LOAD_PROCID(&outsider, NS_B, 3);
+        rc = pmix_server_grp_others("lv", &outsider, &others, &nothers);
+        report("a process not in the group has no others, and is told so",
+               PMIX_ERR_NOT_A_MEMBER == rc && NULL == others && 0 == nothers);
+    }
 
     pmix_server_grp_remove_member("lv", &mbrs[0]);
     grp = pmix_server_grp_find("lv");
