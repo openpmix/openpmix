@@ -125,7 +125,7 @@ def parse_help_files(file_paths, data, citations, verbose=False):
                 if stripped.startswith("#include"):
                     # if we aren't in a section, then this is an error
                     if current_section is None:
-                        sys.stderr.write("ERROR: INCLUDE is specified in ", file_path, " outside of a section")
+                        sys.stderr.write("ERROR: INCLUDE is specified in " + file_path + " outside of a section\n")
                         continue
                     # include the line in the section
                     sections[current_section].append(stripped)
