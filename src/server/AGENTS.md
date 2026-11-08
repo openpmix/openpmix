@@ -3080,7 +3080,8 @@ Two suites cover the halves:
   `pmix_server_log` and `pmix_server_job_ctrl` from hand-packed wire
   buffers — the malformed-count screens, the appended `PMIX_LOG_SOURCE` /
   `PMIX_LOG_TIMESTAMP` directives (and the requester's own copies of
-  them dropped), and the RFC precedence rule that a
+  them dropped), a cleanup-only request answered here whatever the
+  requester's stamp holds, and the RFC precedence rule that a
   repeated cleanup directory upgrades the entry already on the epilog.
   The bad-directive-count case aborts rather than fails if the screen is
   removed, the same bargain `test/unit/iof_output.c` makes. It
@@ -3641,8 +3642,10 @@ misbehave by design).
 
   Two placement rules. Add the pair *before* anything that must not fail
   afterwards - job_control adds it before staging cleanup directives, and
-  counts the two entries when it decides whether a request carried
-  nothing but cleanup (`cnt + 2 == cd->ninfo`). And a query is answered for
+  counts what it added when it decides whether a request carried nothing
+  but cleanup: every entry under a `pmix_server_is_stamped_key()` key is
+  the stamp's once it has run, two to four of them depending on the
+  transport and on a requested group. And a query is answered for
   the requester: `pmix_server_query` records it in the query caddy's
   `requestor`, `request_help` passes it as `proct`, and
   `pmix_parse_localquery` defaults a query that names no namespace to the
