@@ -383,6 +383,9 @@ PMIX_EXPORT void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags
 PMIX_EXPORT void pmix_iof_record_forwarded_files(const pmix_proc_t *source,
                                                  const pmix_info_t *info, size_t ninfo);
 PMIX_EXPORT void pmix_iof_apply_forwarded_files(pmix_namespace_t *nptr);
+/* At a job's registration: if it names output files that this server
+ * cannot create as the job's owner, report that now (once per job) */
+PMIX_EXPORT void pmix_iof_check_job_files(pmix_namespace_t *nptr);
 /* How far an ancestry walk will climb - the server's, deciding which
  * subscriptions a spawned job inherits, and a tool's, deciding how to
  * format it. The chain is data - each link is a PMIX_PARENT_ID a host

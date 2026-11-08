@@ -57,6 +57,13 @@
  *                                      counted against the server's own
  *                                      namespace, so only the first job
  *                                      on a server was ever told
+ *   ... told when the job is
+ *   registered                      -> before any output, and not again
+ *                                      when output arrives. It used to be
+ *                                      said only on the first output,
+ *                                      which can reach the launcher that
+ *                                      started the job after the job's
+ *                                      end, when it has gone
  *   as root only: writing another
  *   user's file never finishes      -> the server keeps answering, output
  *                                      past pmix_iof_writer_backlog is
@@ -746,6 +753,13 @@ static void test_refused_each_job(void)
         seen += occurrences(text, REFUSED_NOTICE);
     }
     report("each of two jobs whose files cannot be written as their owner is told so", 2 == seen);
+
+    /* when: at registration, ahead of any output */
+    n = stderr_during(reg_refused, "perms-refused-c", text, sizeof(text));
+    report("...told when the job is registered, before any output",
+           0 <= n && 1 == occurrences(text, REFUSED_NOTICE));
+    n = stderr_during(deliver, "perms-refused-c", text, sizeof(text));
+    report("...and not again when its output arrives", 0 <= n && 0 == occurrences(text, REFUSED_NOTICE));
 }
 
 static void test_unopened_once(void)

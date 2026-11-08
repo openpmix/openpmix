@@ -2797,6 +2797,21 @@ static bool files_are_ours(pmix_namespace_t *nptr)
     return true;
 }
 
+/* A server told a job's output-file directives at registration says
+ * then whether it can write them, rather than when the job's first
+ * output arrives: the notice goes out before the job runs, so it reaches
+ * whoever started the job ahead of the job's end. files_are_ours()
+ * reports once per job, so the check on the output path adds nothing */
+void pmix_iof_check_job_files(pmix_namespace_t *nptr)
+{
+    if (NULL == nptr || !nptr->iof_flags.set) {
+        return;
+    }
+    if (NULL != nptr->iof_flags.directory || NULL != nptr->iof_flags.file) {
+        (void) files_are_ours(nptr);
+    }
+}
+
 /* Give a job we were sent file directives for the files, on top of its
  * other flags. We write them as ourselves - see PMIX_IOF_FILE_WRITER */
 void pmix_iof_apply_forwarded_files(pmix_namespace_t *nptr)
