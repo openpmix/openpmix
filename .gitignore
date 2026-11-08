@@ -386,6 +386,7 @@ test/unit/ptl_userns_peer
 test/unit/rndz_dirs
 test/unit/ptl_select
 test/unit/ptl_usock
+test/unit/ptl_usock_bind
 test/unit/ptl_local_connect
 test/unit/ptl_accept
 test/unit/ptl_exec
