@@ -328,7 +328,9 @@ so the logic is short:
 #. if neither exists, the process was not launched under a server: mark it
    a **singleton** and probe for a system server via ``pmix.sys.<host>`` -
    reaching it on its local socket - falling back to standalone operation
-   if none is found.
+   if none is found. The file is looked for in the directories a system
+   role's file is (below), and one whose owner is not root, the
+   singleton's user or a listed user is passed over for the next.
 
 Tools and servers: the discovery matrix
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
