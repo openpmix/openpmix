@@ -272,8 +272,11 @@ Rendezvous files
 
 A server that supports tools writes rendezvous files, through which
 tools find it, in a directory only its user can write:
-``<system tmpdir>/pmix-user.<uid>``. A root system server, scheduler or
-system controller writes its file in ``/run/pmix``. A tool looks there,
+``<system tmpdir>/pmix-user.<uid>`` - or, when something other than its
+own directory is at that name, ``$XDG_RUNTIME_DIR/pmix``, where that is a
+directory of its user's that no other user can write. A root system
+server, scheduler or system controller writes its file in ``/run/pmix``.
+A tool looks there,
 and in the directories of the other users whose servers it may talk to;
 it walks the whole system tmpdir, as an earlier release did, only with
 legacy servers on (``ptl_base_legacy_servers``). The details are in :doc:`ptl`. Each file holds the URI, the
