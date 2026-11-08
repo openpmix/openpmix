@@ -84,8 +84,12 @@ typedef uint8_t pmix_rnd_flag_t;
         PMIX_STRNLEN(_l, mg, cnt);              \
         if (_l < cnt) {                         \
             (n) = strdup(mg);                   \
-            mg += strlen((n)) + 1;              \
-            cnt -= strlen((n)) + 1;             \
+            if (NULL == (n)) {                  \
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM); \
+                goto error;                     \
+            }                                   \
+            mg += _l + 1;                       \
+            cnt -= _l + 1;                      \
         } else {                                \
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM); \
             goto error;                         \
