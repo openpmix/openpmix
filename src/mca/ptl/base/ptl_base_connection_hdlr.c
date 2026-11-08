@@ -1393,8 +1393,13 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     /* extract the name of the bfrops module they used */
     PMIX_PTL_GET_STRING(pnd->bfrops);
 
-    /* extract the type of buffer they used */
+    /* extract the type of buffer they used - one of the two, as on the
+     * local socket: the first peer of a namespace sets the namespace's */
     PMIX_PTL_GET_U8(pnd->buffer_type);
+    if (PMIX_BFROP_BUFFER_NON_DESC != pnd->buffer_type &&
+        PMIX_BFROP_BUFFER_FULLY_DESC != pnd->buffer_type) {
+        goto error;
+    }
 
     /* extract the name of the gds module they used */
     PMIX_PTL_GET_STRING(pnd->gds);
