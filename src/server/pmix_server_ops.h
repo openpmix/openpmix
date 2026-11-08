@@ -199,6 +199,7 @@ typedef struct {
     size_t max_iof_cache; // max number of IOF messages to cache
     size_t max_event_regs_per_peer; // event registration entries one peer may hold [0 = no limit]
     size_t max_iof_reqs_per_peer;   // IOF pull requests one peer may hold [0 = no limit]
+    size_t max_invites_per_peer;    // unresolved invitations one peer may lead [0 = no limit]
     bool tool_connections_allowed;
     char *tmpdir;             // temporary directory for this server
     char *system_tmpdir;      // system tmpdir
@@ -738,8 +739,9 @@ PMIX_EXPORT void pmix_server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t 
                                          pmix_buffer_t *buf, void *cbdata);
 
 /* Discard what a departed peer (or namespace) left behind: its event and
- * IOF registrations, cached notifications naming it, and the direct-modex
- * trackers waiting on data it will now never publish.
+ * IOF registrations, cached notifications naming it, the group
+ * invitations it leads, and the direct-modex trackers waiting on data it
+ * will now never publish.
  *
  * "status" is what those waiters are told, and it is the caller's to say
  * because only the caller knows what happened.  A peer that FINALIZED took
@@ -1033,6 +1035,12 @@ PMIX_EXPORT void pmix_server_grp_member_left(const char *grpid, const pmix_proc_
  * namespace that has just been registered - the group-family counterpart
  * of pmix_pending_nspace_requests, called from the same two sites. */
 PMIX_EXPORT void pmix_server_grp_check_pending(void);
+
+/* The leader of invitations has gone: its connection (peer), or the proc
+ * the host deregistered (proc, whose rank may be PMIX_RANK_WILDCARD).
+ * Every invitation it leads that has not resolved is aborted */
+PMIX_EXPORT void pmix_server_grp_leader_departed(const pmix_peer_t *peer,
+                                                 const pmix_proc_t *proc);
 
 /* Drop any group invitation still in flight. The invitation list is
  * private to pmix_server_group.c and is not one of the pmix_server_globals

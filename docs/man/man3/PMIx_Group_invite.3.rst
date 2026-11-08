@@ -141,6 +141,14 @@ accept, and then either ``PMIX_GROUP_CONSTRUCT_COMPLETE`` to the members that di
 or, on the default all-or-nothing path, ``PMIX_GROUP_CONSTRUCT_ABORT`` to every
 invited participant.
 
+An invitation is run by the leader's server, and lasts no longer than the
+leader's connection to it: if the leader finalizes, loses its connection, or is
+deregistered by the host before the invitation resolves, every invited
+participant is sent ``PMIX_GROUP_CONSTRUCT_ABORT`` and the group identifier is
+free for use again. A server limits how many unresolved invitations one
+connection may lead at once (the ``pmix_server_max_invites_per_peer`` MCA
+parameter, 1024 by default, 0 for no limit).
+
 .. note::
 
    Releases prior to the ``PMIX_CAP_GROUP_JOIN_COMPLETES`` capability flag issued
@@ -217,6 +225,8 @@ was successfully accepted for processing; the final status is delivered to
 * ``PMIX_ERR_BAD_PARAM`` |mdash| a required argument was invalid (e.g., a ``NULL``
   or over-length group identifier), or a member of ``procs`` names no job (an
   empty namespace) or carries a special rank other than ``PMIX_RANK_WILDCARD``.
+* ``PMIX_ERR_OUT_OF_RESOURCE`` |mdash| the caller already leads as many unresolved
+  invitations as its server allows.
 * ``PMIX_ERR_NOT_SUPPORTED`` |mdash| the host environment does not support group
   operations.
 * ``PMIX_ERR_INIT`` |mdash| the PMIx library has not been initialized.

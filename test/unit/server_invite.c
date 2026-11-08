@@ -55,6 +55,18 @@
  *      so a second entry for the same proc was never answered and the
  *      invitation never resolved.
  *
+ *   an invitation goes with its leader
+ *      A leader that finalizes or loses its connection with invitations
+ *      unresolved has them aborted - its members told
+ *      PMIX_GROUP_CONSTRUCT_ABORT - and their IDs are free again. They
+ *      used to stay until every member answered, which with no timeout
+ *      was never, and to keep the ID for the life of the server.
+ *
+ *   a connection leads only so many invitations at once
+ *      pmix_server_max_invites_per_peer: past it, an invitation is
+ *      refused with PMIX_ERR_OUT_OF_RESOURCE. The limit is per
+ *      connection.
+ *
  * Separately, a client may not raise the group events only servers raise:
  * that is covered in test/unit/server_events.c.
  */
@@ -222,6 +234,7 @@ typedef struct {
     const char *grp;
     pmix_proc_t *procs;
     size_t nprocs;
+    pmix_peer_t *peer;
     pmix_status_t status;
 } invreq_t;
 
@@ -273,8 +286,8 @@ static void do_invite(int sd, short args, void *cbdata)
         return;
     }
     cd = PMIX_NEW(pmix_server_caddy_t);
-    PMIX_RETAIN(pmix_globals.mypeer);
-    cd->peer = pmix_globals.mypeer;
+    cd->peer = (NULL != r->peer) ? r->peer : pmix_globals.mypeer;
+    PMIX_RETAIN(cd->peer);
     invite_status = PMIX_ERROR;
     pmix_server_group_invite(cd, &buf, invite_done_cb);
     r->status = invite_status;
@@ -282,7 +295,8 @@ static void do_invite(int sd, short args, void *cbdata)
     PMIX_WAKEUP_THREAD(&r->lock);
 }
 
-static pmix_status_t invite(const char *grp, pmix_proc_t *procs, size_t nprocs)
+static pmix_status_t invite_as(pmix_peer_t *peer, const char *grp, pmix_proc_t *procs,
+                               size_t nprocs)
 {
     invreq_t r;
 
@@ -291,11 +305,66 @@ static pmix_status_t invite(const char *grp, pmix_proc_t *procs, size_t nprocs)
     r.grp = grp;
     r.procs = procs;
     r.nprocs = nprocs;
+    r.peer = peer;
     r.status = PMIX_ERROR;
     PMIX_THREADSHIFT(&r, do_invite);
     PMIX_WAIT_THREAD(&r.lock);
     PMIX_DESTRUCT_LOCK(&r.lock);
     return r.status;
+}
+
+static pmix_status_t invite(const char *grp, pmix_proc_t *procs, size_t nprocs)
+{
+    return invite_as(NULL, grp, procs, nprocs);
+}
+
+/* ---- a leader other than the server's own peer ---- */
+
+/* A connection of the server's own name, as a second connection of a
+ * rank is: it shares the rank's namespace and rank objects */
+static pmix_peer_t *standin_peer = NULL;
+
+static pmix_peer_t *standin(void)
+{
+    if (NULL == standin_peer) {
+        standin_peer = PMIX_NEW(pmix_peer_t);
+        PMIX_RETAIN(pmix_globals.mypeer->nptr);
+        standin_peer->nptr = pmix_globals.mypeer->nptr;
+        PMIX_RETAIN(pmix_globals.mypeer->info);
+        standin_peer->info = pmix_globals.mypeer->info;
+        memcpy(&standin_peer->proc_type, &pmix_globals.mypeer->proc_type,
+               sizeof(pmix_proc_type_t));
+    }
+    return standin_peer;
+}
+
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_peer_t *peer;
+} purgereq_t;
+
+static void do_purge(int sd, short args, void *cbdata)
+{
+    purgereq_t *r = (purgereq_t *) cbdata;
+
+    (void) sd;
+    (void) args;
+    pmix_server_purge_events(r->peer, NULL, PMIX_ERR_LOST_CONNECTION);
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+/* what the server does when a connection drops */
+static void departed(pmix_peer_t *peer)
+{
+    purgereq_t r;
+
+    memset(&r, 0, sizeof(r));
+    PMIX_CONSTRUCT_LOCK(&r.lock);
+    r.peer = peer;
+    PMIX_THREADSHIFT(&r, do_purge);
+    PMIX_WAIT_THREAD(&r.lock);
+    PMIX_DESTRUCT_LOCK(&r.lock);
 }
 
 /* ---- the group records, on the progress thread ---- */
@@ -474,6 +543,42 @@ int main(int argc, char **argv)
                PMIX_SUCCESS == rc && saw_complete("srvinv-d2", 40));
     }
 
+    /* --- an invitation goes with its leader --- */
+    reset_host();
+    rc = invite_as(standin(), "srvinv-l1", procs, 2);
+    report("an invitation led by another connection starts", PMIX_SUCCESS == rc);
+    report("...and is pending", !saw_outcome("srvinv-l1", 6));
+    departed(standin());
+    report("when its leader's connection goes, the invitation is aborted",
+           saw_outcome("srvinv-l1", 40) && !saw_complete("srvinv-l1", 2));
+    reset_host();
+    rc = invite_as(standin(), "srvinv-l1", procs, 2);
+    report("...and its ID is free again", PMIX_SUCCESS == rc);
+
+    /* --- a connection leads only so many invitations at once --- */
+    {
+        size_t keep = pmix_server_globals.max_invites_per_peer;
+
+        pmix_server_globals.max_invites_per_peer = 2;
+        rc = invite_as(standin(), "srvinv-l2", procs, 2);
+        report("a connection's second invitation starts", PMIX_SUCCESS == rc);
+        rc = invite_as(standin(), "srvinv-l3", procs, 2);
+        report("its third, past the limit of two, is refused",
+               PMIX_ERR_OUT_OF_RESOURCE == rc);
+        rc = invite("srvinv-l3", procs, 2);
+        report("...while another connection's invitation still starts", PMIX_SUCCESS == rc);
+        answer(PMIX_GROUP_INVITE_ACCEPTED, &p1, "srvinv-l3", NULL);
+        report("...and completes", saw_complete("srvinv-l3", 40));
+        reset_host();
+        departed(standin());
+        report("the departed leader's two invitations are aborted",
+               saw_outcome("srvinv-l2", 40) || saw_outcome("srvinv-l1", 2));
+        rc = invite_as(standin(), "srvinv-l2", procs, 2);
+        report("...and the connection may lead again", PMIX_SUCCESS == rc);
+        departed(standin());
+        pmix_server_globals.max_invites_per_peer = keep;
+    }
+
     /* --- an answer counts only for the group it names --- */
     reset_host();
     rc = invite("srvinv-g1", procs, 2);
@@ -553,6 +658,9 @@ int main(int argc, char **argv)
     terminated(&p1, &p1);
     report("a loss raised for the lost process is counted", saw_outcome("srvinv-g4", 40));
 
+    if (NULL != standin_peer) {
+        PMIX_RELEASE(standin_peer);
+    }
     PMIx_server_finalize();
     fprintf(stdout, "\nserver_invite: %d passed, %d failed\n", npass, nfail);
     return (0 == nfail) ? 0 : 1;
