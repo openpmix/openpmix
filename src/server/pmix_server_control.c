@@ -622,7 +622,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_namespace_t *nptr, *tmp;
     pmix_peer_t *pr;
     pmix_proc_t proc;
-    size_t n;
+    size_t n, nid = 0;
     bool recurse = false, empty = false, leave_topdir = false;
     pmix_list_t cachedirs, cachefiles, ignorefiles, epicache, upgrades;
     pmix_srvr_epi_caddy_t *epicd = NULL;
@@ -801,7 +801,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
     }
     /* pass the requester's identity to the host. Added before the
      * cleanup directives are staged, since nothing may fail once they
-     * are committed - and so the two entries are counted below */
+     * are committed - and so the entries it adds are counted below */
     rc = pmix_server_add_requester_id(peer, &cd->info, &cd->ninfo);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
@@ -862,6 +862,11 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_CLEANUP_LEAVE_TOPDIR)) {
             leave_topdir = PMIX_INFO_TRUE(&cd->info[n]);
             ++cnt;
+        } else if (pmix_server_is_stamped_key(cd->info[n].key)) {
+            /* the requester's identity, as stamped above - two to four
+             * entries, depending on the transport and on whether a
+             * group was requested */
+            ++nid;
         }
     }
     if (0 < cnt) {
@@ -1060,7 +1065,7 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                            pmix_list_get_end(&epicd->epi->cleanup_files),
                            &epicd->newfiles);
         }
-        if ((size_t) cnt + 2 == cd->ninfo) {
+        if ((size_t) cnt + nid == cd->ninfo) {
             /* nothing but cleanup directives and the requester's
              * identity - nothing more to do */
             rc = PMIX_OPERATION_SUCCEEDED;

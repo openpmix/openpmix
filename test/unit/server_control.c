@@ -145,6 +145,12 @@
  *      registered so that it reports as a failure instead of taking the
  *      epilog below it down.
  *
+ *   job control: a cleanup-only request is answered here
+ *      whatever identity is stamped on it. The stamp is two entries for
+ *      a peer with no transport, three when the transport reports the
+ *      peer's pid, and one more when a group is requested; a request
+ *      holding only cleanup directives must stay local in each case.
+ *
  *   job control: the two cleanup modes, and the epilog's identity
  *      PMIX_CLEANUP_RECURSIVE and PMIX_CLEANUP_EMPTY are mutually
  *      exclusive - the first removes every file and then the
@@ -175,6 +181,7 @@
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/ptl/ptl.h"
 #include "src/mca/ptl/ptl_types.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
@@ -381,6 +388,25 @@ static pmix_status_t stub_job_control(const pmix_proc_t *requestor,
     (void) count_ident(directives, ndirs, &jobctrl_ident);
     return PMIX_ERR_NOT_SUPPORTED;
 }
+
+/* A transport whose sockets report the far end's pid, as the local one
+ * does. Given to the standin, it makes the requester's stamp carry
+ * PMIX_REQUESTOR_PID. Nothing calls it: the pid on record is the one
+ * the server took when the peer connected */
+static pmix_status_t stub_peer_identity(int sd, uid_t *uid, gid_t *gid, pid_t *pid)
+{
+    (void) sd;
+    (void) uid;
+    (void) gid;
+    (void) pid;
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+static pmix_ptl_module_t pid_transport = {
+    .name = "ctlut",
+    .local = true,
+    .peer_identity = stub_peer_identity,
+};
 
 static void op_stub(pmix_status_t status, void *cbdata)
 {
@@ -1635,6 +1661,41 @@ int main(int argc, char **argv)
     report("epilog holds exactly one directory", 1 == ndirs && NULL != cd);
     report("registered directory is not recursive",
            NULL != cd && !cd->recurse && !cd->leave_topdir);
+
+    /* --- the same request with a larger stamp ----------------------------- *
+     * a requested group adds PMIX_REQUESTED_GRPID, and a transport that
+     * reports the pid adds PMIX_REQUESTOR_PID. Neither makes the request
+     * anything but cleanup */
+    {
+        pmix_info_t grp[2];
+        uint32_t mygid = (uint32_t) standin()->info->gid;
+        struct pmix_ptl_module_t *saved = standin()->transport;
+        pid_t savedpid = standin()->info->pid;
+
+        PMIX_INFO_LOAD(&grp[0], PMIX_REGISTER_CLEANUP_DIR, CTLUT_DIR, PMIX_STRING);
+        PMIX_INFO_LOAD(&grp[1], PMIX_GRPID, &mygid, PMIX_UINT32);
+        rc = do_job_ctrl(grp, 2);
+        report("cleanup naming a group is answered here",
+               PMIX_OPERATION_SUCCEEDED == rc && !jobctrl_fired);
+
+        standin()->transport = &pid_transport;
+        if (0 >= standin()->info->pid) {
+            standin()->info->pid = getpid();
+        }
+        rc = do_job_ctrl(jc, 1);
+        report("cleanup over a transport that reports the pid is answered here",
+               PMIX_OPERATION_SUCCEEDED == rc && !jobctrl_fired);
+        rc = do_job_ctrl(grp, 2);
+        report("...and with a group named as well",
+               PMIX_OPERATION_SUCCEEDED == rc && !jobctrl_fired);
+        standin()->transport = saved;
+        standin()->info->pid = savedpid;
+
+        cd = only_epilog_dir(&ndirs);
+        report("the epilog still holds the one directory", 1 == ndirs && NULL != cd);
+        PMIX_INFO_DESTRUCT(&grp[0]);
+        PMIX_INFO_DESTRUCT(&grp[1]);
+    }
 
     /* --- the same directory again, now asking for recursion ----------- */
     PMIX_INFO_LOAD(&jc[1], PMIX_CLEANUP_RECURSIVE, &flag, PMIX_BOOL);
