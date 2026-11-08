@@ -435,6 +435,35 @@ The directory must be a directory of this server's user, not a link,
 that no other user can write. Another user made it first, or it was left
 with the wrong owner or mode. Removing it - its owner or an
 administrator can - lets the server make it again.
+
+The server writes them in $XDG_RUNTIME_DIR/pmix instead when
+XDG_RUNTIME_DIR names a directory of this user's that no other user can
+write; it did not here. Or name a system tmpdir of this user's own, by
+the PMIX_SYSTEM_TMPDIR environment variable or the host's
+PMIX_SYSTEM_TMPDIR attribute: the directory is then made below it. Its
+tools must be given the same PMIX_SYSTEM_TMPDIR to find the server.
+#
+[rndz-dir-elsewhere]
+This PMIx server writes the files tools find it by in a directory that
+only its own user can write:
+
+  %s
+
+but %s. So it writes those files in
+
+  %s
+
+instead. Tools of this user look there too; tools of other users this
+server takes cannot reach that directory, and cannot find this server by
+its files.
+
+The directory must be a directory of this server's user, not a link,
+that no other user can write. Another user made it first, or it was left
+with the wrong owner or mode. Removing it - its owner or an
+administrator can - lets the server make it again. Or name a system
+tmpdir of this user's own, by the PMIX_SYSTEM_TMPDIR environment
+variable or the host's PMIX_SYSTEM_TMPDIR attribute: the directory is
+then made below it.
 #
 [server-not-file-owner]
 This process on %s will not talk to the PMIx server it reached: the

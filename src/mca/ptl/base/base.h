@@ -784,12 +784,18 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_version(const char *vers, uint8_t 
 /* "<system tmpdir>/pmix-user.<uid>" - NULL if out of memory */
 PMIX_EXPORT char *pmix_ptl_base_user_dir(uid_t uid);
 
+/* "$XDG_RUNTIME_DIR/pmix" - NULL when XDG_RUNTIME_DIR is not set or not
+ * an absolute path, or out of memory */
+PMIX_EXPORT char *pmix_ptl_base_runtime_dir(void);
+
 /* Open this process's own pmix-user directory to write rendezvous files in,
  * making it if it is not there: a directory, not a link, of our euid, that
  * nobody else can write, mode 0700 (0711 when tools of other users are
- * taken). A descriptor, with *path its name - or -1 when what is there is
- * not ours, which is reported once: the server then writes none of the
- * files that go there, and runs on */
+ * taken). A descriptor, with *path its name. When what is there is not
+ * ours, $XDG_RUNTIME_DIR/pmix in its place, made mode 0700 if it is not
+ * there, where XDG_RUNTIME_DIR is a directory of our euid nobody else can
+ * write - else -1. Either is reported once; with -1 the server writes none
+ * of the files that go there, and runs on */
 PMIX_EXPORT int pmix_ptl_base_open_user_dir(char **path);
 
 /* The directory a system role's rendezvous file goes in: the system tmpdir
@@ -799,8 +805,10 @@ PMIX_EXPORT int pmix_ptl_base_open_system_dir(char **path);
 
 /* The directories a reader looks in for a rendezvous file, in order: for a
  * system role, the system tmpdir if it was named, /run/pmix and
- * /var/run/pmix, root's pmix-user directory and our own user's; for the others, our own user's and root's; and then those of the
- * users ptl_base_server_access names. An argv the caller frees */
+ * /var/run/pmix, root's pmix-user directory, our own user's and our
+ * $XDG_RUNTIME_DIR/pmix; for the others, our own user's, our
+ * $XDG_RUNTIME_DIR/pmix and root's; and then the pmix-user directories of
+ * the users ptl_base_server_access names. An argv the caller frees */
 PMIX_EXPORT char **pmix_ptl_base_rndz_dirs(bool system_role);
 
 /* Whether a URI is a TCP one - by its scheme alone, so that a PMIx built
