@@ -491,9 +491,12 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
         (size_t) pmix_ptl_base.pending_cap <=
             pmix_list_get_size(&pmix_ptl_base.pending_connections)) {
         /* Full. Make room by dropping the connection that has waited
-         * longest to send its connect-ack - the list is in accept order.
-         * A process that means to connect sends its connect-ack at once,
-         * so it is not the one still waiting; refusing the new connection
+         * longest to send its connect-ack - the list is in accept order,
+         * except that a local-socket peer whose offer has been answered
+         * is moved to the end while it builds its credential. A process
+         * that means to connect sends its connect-ack (or its offer, and
+         * then its credential) at once, so it is not the one still
+         * waiting; refusing the new connection
          * instead would let whoever holds the cap keep everyone else out.
          * Tools waiting on the host are not on this list and are never
          * dropped for it: they have a cap of their own, the same size, at
