@@ -3079,7 +3079,8 @@ Two suites cover the halves:
 - [`test/unit/server_control.c`](../../test/unit/server_control.c) drives
   `pmix_server_log` and `pmix_server_job_ctrl` from hand-packed wire
   buffers — the malformed-count screens, the appended `PMIX_LOG_SOURCE` /
-  `PMIX_LOG_TIMESTAMP` directives, and the RFC precedence rule that a
+  `PMIX_LOG_TIMESTAMP` directives (and the requester's own copies of
+  them dropped), and the RFC precedence rule that a
   repeated cleanup directory upgrades the entry already on the epilog.
   The bad-directive-count case aborts rather than fails if the screen is
   removed, the same bargain `test/unit/iof_output.c` makes. It
@@ -3312,10 +3313,12 @@ misbehave by design).
 - **The `int32_t` half of that check matters on its own wherever a count
   is used before, or without, the unpack.** A `size_t` count consumed
   through the `int32_t` unpack count can truncate to zero or to a
-  negative number. Two handlers here are not the plain shape. `pmix_server_log` indexes the
-  directive array to append `PMIX_LOG_SOURCE` *before* anything is
-  unpacked into it and hands `(info, ninfo)` to `plog` even when the
-  unpack was skipped; `pmix_server_register_events` walks its code array
+  negative number. Two handlers here are not the plain shape. `pmix_server_log` sizes the
+  directive array to hold its own `PMIX_LOG_SOURCE` and
+  `PMIX_LOG_TIMESTAMP` behind what it unpacks, and hands `(info, ninfo)`
+  to `plog` even when the unpack was skipped; it drops any source or
+  timestamp among the requester's directives and closes up the array
+  before appending its own; `pmix_server_register_events` walks its code array
   `ncodes` times while only `cnt` entries were unpacked into it, and that
   array comes from a bare `malloc`, so the tail is uninitialized rather
   than constructed (an info array needs no such care precisely because

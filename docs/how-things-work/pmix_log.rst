@@ -96,6 +96,8 @@ The diagram below traces the full path for a log request.
                │           │  Server receives PMIX_LOG_CMD
                │           │  pmix_server_log()  [src/server/pmix_server_control.c]
                │           │      Unpack timestamp, data[], directives[]
+               │           │      Drop any PMIX_LOG_SOURCE and
+               │           │        PMIX_LOG_TIMESTAMP in directives[]
                │           │      Append PMIX_LOG_SOURCE (requester's proc)
                │           │      Optionally append PMIX_LOG_TIMESTAMP
                │           │      ──────────────────────────────────────
