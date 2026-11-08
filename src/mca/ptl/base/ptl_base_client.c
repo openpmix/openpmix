@@ -339,19 +339,22 @@ pmix_status_t pmix_ptl_base_client_connect_to_peer(struct pmix_peer_t *pr,
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "ptl:client looking for system server at %s", rendfile);
                 rc = pmix_ptl_base_parse_rndz_file(rendfile, true, &connections);
+                if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&connections) &&
+                    !pmix_ptl_base_system_owner_ok(
+                        (pmix_connection_t *) pmix_list_get_first(&connections))) {
+                    /* not a system server we take - nor its owner's to
+                     * name: look in the next directory */
+                    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                        "ptl:client: %s is not root's, our user's, or a "
+                                        "listed user's", rendfile);
+                    PMIX_LIST_DESTRUCT(&connections);
+                    PMIX_CONSTRUCT(&connections, pmix_list_t);
+                    rc = PMIX_ERR_NOT_FOUND;
+                }
                 free(rendfile);
                 rendfile = NULL;
             }
             PMIx_Argv_free(dirs);
-            if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&connections) &&
-                !pmix_ptl_base_system_owner_ok(
-                    (pmix_connection_t *) pmix_list_get_first(&connections))) {
-                /* not a system server we take - nor its owner's to name */
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "ptl:client: the system server's file is not root's, our "
-                                    "user's, or a listed user's");
-                rc = PMIX_ERR_NOT_FOUND;
-            }
             if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&connections)) {
                 cn = (pmix_connection_t *) pmix_list_get_first(&connections);
                 /* its server must be the file's owner */
