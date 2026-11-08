@@ -32,7 +32,7 @@ nothing more.
 | [`ptl_base_client.c`](ptl_base_client.c) | a client's own `connect_to_peer` |
 | [`ptl_base_tool.c`](ptl_base_tool.c) | a tool's `setup_listener` wrapper |
 | [`ptl_base_listener.c`](ptl_base_listener.c) | having a transport open the listener, URI publication, rendezvous files, the accept handler |
-| [`ptl_base_rndz.c`](ptl_base_rndz.c) | where rendezvous files go and are looked for: the `pmix-user.<uid>` directory, `/run/pmix`, the readers' directory list, and whether the legacy walk runs |
+| [`ptl_base_rndz.c`](ptl_base_rndz.c) | where rendezvous files go and are looked for: the `pmix-user.<uid>` directory, `$XDG_RUNTIME_DIR/pmix` in its place, `/run/pmix`, the readers' directory list, and whether the legacy walk runs |
 | [`ptl_base_connection_hdlr.c`](ptl_base_connection_hdlr.c) | the **inbound** half: parse a connect-ack, build a peer, tell the host |
 | [`ptl_base_connect.c`](ptl_base_connect.c) | the **outbound** half: blocking socket helpers, `connect()`, the tool discovery matrix |
 | [`ptl_base_fns.c`](ptl_base_fns.c) | string/URI parsing, connect-ack construction, the client and tool handshakes, server discovery |
@@ -1025,7 +1025,8 @@ Things to keep straight:
 
 - **Where files are looked for is `pmix_ptl_base_rndz_dirs()`'s.** A
   search (`trysearch`) looks in each `pmix-user.<uid>` directory - our
-  own, root's, then each `ptl_base_server_access` user's - with
+  own, then our `$XDG_RUNTIME_DIR/pmix` (`pmix_ptl_base_runtime_dir()`),
+  root's, then each `ptl_base_server_access` user's - with
   `pmix_ptl_base_df_search_depth(..., 0)`, not below, collecting every
   match; a file `pmix_ptl_base_search_owner_ok()` refuses - owned by a
   user whose server `check_peer` would not take - is dropped
@@ -1034,7 +1035,8 @@ Things to keep straight:
   `too-many-conns` (`pmix_ptl_base_check_found`, `ptl_search.c`); a system role (`trysystem`, and the
   singleton's lookup in `ptl_base_client.c`) tries the system tmpdir the
   host named, else `/run/pmix` and `/var/run/pmix`, then root's and our
-  own `pmix-user` directory and the listed users', first success wins.
+  own `pmix-user` directory, our `$XDG_RUNTIME_DIR/pmix` and the listed
+  users', first success wins.
   The old places - the whole system tmpdir walked `search_depth` deep,
   and the system tmpdir itself for a system role - are looked in only
   when `pmix_ptl_base_legacy_walk()`: legacy servers on. A
@@ -1056,11 +1058,20 @@ Things to keep straight:
 - **The server's side is `write_tool_files`/`write_system_files` in the
   listener.** The tool files go through a descriptor from
   `pmix_ptl_base_open_user_dir()` (`write_rndz_file`'s `given_dirfd`),
-  so they are made in the directory that was checked; a directory that
-  is not ours is reported once (`rndz-dir-not-ours`) and its files are
-  skipped, not fatal. A host-named system tmpdir still goes through
-  `open_dir` - made if missing, and held in `system_dir` for removal -
-  as before; `/run/pmix` and `pmix-user` directories are never removed.
+  so they are made in the directory that was checked. When what is at
+  the `pmix-user` name is not ours, they go in `$XDG_RUNTIME_DIR/pmix`
+  instead - `open_runtime_dir()`: `XDG_RUNTIME_DIR` absolute, a
+  directory of our euid nobody else can write, and `pmix` in it made or
+  checked by `own_dir()`, mode 0700 - reported once
+  (`rndz-dir-elsewhere`). Readers of our user look there after our
+  `pmix-user` directory; tools of other users cannot reach it. With no
+  such directory the one at the name is reported once
+  (`rndz-dir-not-ours`) and its files are skipped, not fatal. A non-root
+  system server's file takes the same path, through
+  `pmix_ptl_base_open_system_dir()`. A host-named system tmpdir still
+  goes through `open_dir` - made if missing, and held in `system_dir`
+  for removal - as before; `/run/pmix`, `pmix-user` directories and
+  `$XDG_RUNTIME_DIR/pmix` are never removed.
 
 - **Every branch must produce a URI before jumping to `complete:`.**
   Falling through with a NULL `suri` reaches `setup_connection`, which
@@ -1655,6 +1666,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_legacy_ack.c` | a v4.1-shaped connect-ack, pad byte and all, still connects as a client and as a tool |
 | `test/unit/ptl_loopback.c` | a server's request to itself reaches its switchyard and is answered once; a loopback reply nobody waits for is not read as a command |
 | `test/unit/ptl_listener.c` | accept out of descriptors pauses the listener and it accepts again; finalize while paused; the retry policy for each kind of accept error; mistyped, out-of-range and empty directives; a directive-named report file is removed; the report file has no group or other write bit |
+| `test/unit/rndz_dirs.c` | (among its cases) a `pmix-user` directory others can write: the tool files go in `$XDG_RUNTIME_DIR/pmix` and a tool finds the server there, and an `XDG_RUNTIME_DIR` others can write is not used |
 | `test/unit/rndz_stale.c` | reclaiming (or refusing to reclaim) a rendezvous file, including one whose pid does not fit a `pid_t` |
 | `test/unit/ptl_search.c` | `test_search_owner`: two running servers' files of our own are `too-many-conns`, and with one another user's it is passed over and ours taken; both tmpdir walks survive a FIFO, symlink loops and unreadable contact files, and still find the valid one; `test_vouched`: a named file vouches for its server whatever release it names and whether or not its lock is held; not group-writable, nor at a fixed name nobody named; as root, not another known user's, and yes for an owner from outside the user namespace (a fake map); `test_named_file`: a FIFO or a symbolic link given as a named file is refused at once, the file itself read; `test_cloexec`: a contact file, `pmix_fd_fopen_cloexec` (read and append) and `pmix_os_dirpath_open_file` give descriptors an exec'd child does not have |
 | `test/unit/ptl_accept.c` | (among its cases) a rank's token bound to the first client pid on the local socket: that pid connects again, a client in a forked child is refused before the host is asked (after a lost connection or a finalize), and preparing, re-registering, or deregistering and preparing the rank again lets another pid connect; a tool on the rank is taken from the bound pid once the rank has no live connection and gets `PMIX_ERR_EXISTS` from another pid, gets `PMIX_ERR_EXISTS` while a client of it is live, and binds nothing, so a client in another pid connecting after it binds the token; connections still sending their connect-ack hold no more than `ptl_base_max_pending_bytes` between them, the ones beyond it are dropped with `PMIX_ERR_OUT_OF_RESOURCE`, the total returns to zero, and a client still connects; a uid other than the server's and root's has a quarter of the waiting-tool cap, root and the server's uid fill it, and the host's `PMIX_USERID` waits beyond the share; without `PMIX_SERVER_ALLOW_FOREIGN_TOOLS` a tool of the host's `PMIX_USERID`, or root's, is put to the host and one of another uid refused; `next_tool` passes over a queue of tools of one name once per run; a client naming an unregistered namespace or rank is answered `PMIX_ERR_INVALID_CRED`; a connect-ack naming 263.0.0, 6.1.256 or 255.255.255 is `PMIX_ERR_BAD_PARAM` |

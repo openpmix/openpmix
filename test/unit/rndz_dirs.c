@@ -14,6 +14,9 @@
  *   - a pmix-user directory that is not the server's - a link, or one
  *     others can write - is reported; the server starts, and writes no
  *     tool files there
+ *   - in its place the server writes them in $XDG_RUNTIME_DIR/pmix, where
+ *     that is a directory of its user's nobody else can write, and a tool
+ *     finds it there; not in one others can write
  *   - a non-root system server's file goes in its pmix-user directory, or
  *     in the system tmpdir when the host names one
  *   - a tool finds a server by its pid in the server's user's directory;
@@ -546,6 +549,56 @@ static void test_not_ours(void)
     rmdir(udir);
 }
 
+/* a pmix-user directory others can write, and XDG_RUNTIME_DIR naming
+ * `run`, made with `mode` */
+static void elsewhere_case(const char *tag, mode_t mode, bool taken)
+{
+    char sys[700], sess[700], run[700], udir[800], rdir[800], pidfile[1024], suffix[64];
+    char name[128];
+    pid_t spid;
+    int ready, go;
+    bool up, found;
+
+    snprintf(name, sizeof(name), "sys-%s", tag);
+    scratch(sys, sizeof(sys), name);
+    snprintf(name, sizeof(name), "sess-%s", tag);
+    scratch(sess, sizeof(sess), name);
+    snprintf(name, sizeof(name), "run-%s", tag);
+    scratch(run, sizeof(run), name);
+    snprintf(udir, sizeof(udir), "%s/pmix-user.%lu", sys, (unsigned long) geteuid());
+    snprintf(rdir, sizeof(rdir), "%s/pmix", run);
+    if (0 != chmod(run, mode) || 0 != mkdir(udir, 0700) || 0 != chmod(udir, 0777)) {
+        report("elsewhere: fixture", 0, strerror(errno));
+        return;
+    }
+    setenv("XDG_RUNTIME_DIR", run, 1);
+    spid = start_server(sys, false, sess, false, &ready, &go);
+    up = (0 < spid && server_up(ready));
+    snprintf(suffix, sizeof(suffix), ".tool.%lu", (unsigned long) spid);
+    found = find_file(rdir, "pmix.", suffix, pidfile, sizeof(pidfile));
+    if (taken) {
+        report("a pmix-user directory not the server's: its tool files go in "
+               "$XDG_RUNTIME_DIR/pmix",
+               up && found && !find_file(udir, "pmix.", suffix, pidfile, sizeof(pidfile)),
+               !up ? "init failed" : found ? "a file was written in the pmix-user directory"
+                                           : "no file in $XDG_RUNTIME_DIR/pmix");
+        report("...where a tool of the user finds the server by its pid",
+               up && PMIX_SUCCESS == tool_by_pid(sys, spid, false), "not found");
+    } else {
+        report("an $XDG_RUNTIME_DIR others can write is not used: the server starts, writing "
+               "no tool files there",
+               up && !found, up ? "a file was written there" : "init failed");
+    }
+    stop_server(spid, ready, go);
+    unsetenv("XDG_RUNTIME_DIR");
+}
+
+static void test_elsewhere(void)
+{
+    elsewhere_case("ours", 0700, true);
+    elsewhere_case("open", 0777, false);
+}
+
 static void test_system_files(void)
 {
     char sys[700], sess[700], path[1024], dir[800];
@@ -810,12 +863,15 @@ int main(void)
         return SKIP;
     }
     setenv("PMIX_MCA_mca_base_param_files", "none", 1);
+    /* the cases that use it name their own */
+    unsetenv("XDG_RUNTIME_DIR");
     signal(SIGPIPE, SIG_IGN);
     alarm(300);
 
     test_tool_files();
     test_sessions();
     test_not_ours();
+    test_elsewhere();
     test_system_files();
     test_legacy_walk();
     test_claims();

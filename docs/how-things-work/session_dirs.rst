@@ -73,7 +73,9 @@ The following rendezvous files are provided:
 
 * if the server declares that it will support tool connections (i.e., the ``PMIX_SERVER_TOOL_SUPPORT``
   attribute was provided to ``PMIx_server_init``), then the following rendezvous files will be created
-  in ``<PMIX_SYSTEM_TMPDIR>/pmix-user.<uid>``, a directory of the server's user's own:
+  in ``<PMIX_SYSTEM_TMPDIR>/pmix-user.<uid>``, a directory of the server's user's own (or, when
+  something else is at that name, in ``$XDG_RUNTIME_DIR/pmix`` where that is a directory of the
+  user's that no other user can write):
 
     * a PID file: "pmix.<hostname>.tool.<pid>"
 

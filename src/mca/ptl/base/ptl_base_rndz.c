@@ -17,8 +17,12 @@
  * /run/pmix (/var/run/pmix where there is no /run), which only root can
  * write; a non-root one in its own pmix-user directory. A host that names
  * the system tmpdir gets the system files there instead, as it always did.
+ * Where the pmix-user directory is not the user's - another user made it
+ * first - the files go in $XDG_RUNTIME_DIR/pmix instead, when that is a
+ * directory of the user's that nobody else can write.
  *
- * A reader looks in its own user's directory, root's, and those of the
+ * A reader looks in its own user's directory and its $XDG_RUNTIME_DIR/pmix,
+ * root's, and those of the
  * users ptl_base_server_access names - the users whose servers it may talk
  * to - and, for the system roles, the system directory first. The walk of the
  * whole system tmpdir that finds a server of an earlier release is made
@@ -57,6 +61,17 @@ char *pmix_ptl_base_user_dir(uid_t uid)
     return path;
 }
 
+char *pmix_ptl_base_runtime_dir(void)
+{
+    const char *xdg = getenv("XDG_RUNTIME_DIR");
+    char *path = NULL;
+
+    if (NULL == xdg || '/' != xdg[0] || 0 > pmix_asprintf(&path, "%s/pmix", xdg)) {
+        return NULL;
+    }
+    return path;
+}
+
 /* The directory a server of ours may write in: `name` under `parentfd`,
  * made with `mode` if it is not there. One that is there is used only if
  * it is a directory - not a link to one - that `owner` owns and that
@@ -88,28 +103,88 @@ static int own_dir(int parentfd, const char *name, uid_t owner, mode_t mode, str
     return fd;
 }
 
-/* say once that a directory we write rendezvous files in is not ours */
+/* what was found where our directory should be */
+static void describe(const struct stat *found, char *detail, size_t len)
+{
+    if (0 == found->st_mode) {
+        snprintf(detail, len, "it could not be made or opened: %s", strerror(errno));
+    } else if (S_ISLNK(found->st_mode)) {
+        snprintf(detail, len, "it is a link, owned by uid %lu", (unsigned long) found->st_uid);
+    } else {
+        snprintf(detail, len, "it is %s owned by uid %lu, mode %04o",
+                 S_ISDIR(found->st_mode) ? "a directory" : "not a directory",
+                 (unsigned long) found->st_uid, (unsigned) (found->st_mode & 07777));
+    }
+}
+
+/* said once, whichever is said */
+static bool said = false;
+
+/* say that a directory we write rendezvous files in is not ours */
 static void not_ours(const char *path, const struct stat *found, const char *what)
 {
-    static bool said = false;
     char detail[128];
 
     if (said) {
         return;
     }
     said = true;
-    if (0 == found->st_mode) {
-        snprintf(detail, sizeof(detail), "it could not be made or opened: %s",
-                 strerror(errno));
-    } else if (S_ISLNK(found->st_mode)) {
-        snprintf(detail, sizeof(detail), "it is a link, owned by uid %lu",
-                 (unsigned long) found->st_uid);
-    } else {
-        snprintf(detail, sizeof(detail), "it is %s owned by uid %lu, mode %04o",
-                 S_ISDIR(found->st_mode) ? "a directory" : "not a directory",
-                 (unsigned long) found->st_uid, (unsigned) (found->st_mode & 07777));
-    }
+    describe(found, detail, sizeof(detail));
     pmix_show_help("help-ptl-base.txt", "rndz-dir-not-ours", true, path, detail, what);
+}
+
+/* $XDG_RUNTIME_DIR/pmix, made if it is not there: where XDG_RUNTIME_DIR
+ * names a directory of our euid that nobody else can write */
+static int open_runtime_dir(char **path)
+{
+    const char *xdg = getenv("XDG_RUNTIME_DIR");
+    struct stat st, found;
+    int pfd, fd;
+
+    *path = NULL;
+    if (NULL == xdg || '/' != xdg[0]) {
+        return -1;
+    }
+    pfd = open(xdg, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (0 > pfd) {
+        return -1;
+    }
+    if (0 != fstat(pfd, &st) || geteuid() != st.st_uid ||
+        0 != (st.st_mode & (S_IWGRP | S_IWOTH))) {
+        close(pfd);
+        return -1;
+    }
+    fd = own_dir(pfd, "pmix", geteuid(), S_IRWXU, &found);
+    close(pfd);
+    if (0 <= fd && NULL == (*path = pmix_ptl_base_runtime_dir())) {
+        close(fd);
+        fd = -1;
+    }
+    return fd;
+}
+
+/* our pmix-user directory at *path is not ours: the runtime directory in
+ * its place, said once - or -1, and that said once */
+static int instead(char **path, const struct stat *found)
+{
+    char detail[128], *rpath;
+    int fd, err = errno;
+
+    fd = open_runtime_dir(&rpath);
+    /* what went wrong with our pmix-user directory, not with this one */
+    errno = err;
+    if (0 > fd) {
+        not_ours(*path, found, "tools of this user cannot find this server by its files");
+        return -1;
+    }
+    if (!said) {
+        said = true;
+        describe(found, detail, sizeof(detail));
+        pmix_show_help("help-ptl-base.txt", "rndz-dir-elsewhere", true, *path, detail, rpath);
+    }
+    free(*path);
+    *path = rpath;
+    return fd;
 }
 
 int pmix_ptl_base_open_user_dir(char **path)
@@ -130,16 +205,15 @@ int pmix_ptl_base_open_user_dir(char **path)
         mode |= S_IXGRP | S_IXOTH;
     }
     snprintf(name, sizeof(name), "%s%lu", PMIX_PTL_USER_DIR_PREFIX, (unsigned long) geteuid());
+    memset(&found, 0, sizeof(found));
     pfd = pmix_os_dirpath_open_dir(pmix_ptl_base.system_tmpdir);
     if (0 > pfd) {
-        memset(&found, 0, sizeof(found));
-        not_ours(*path, &found, "tools of this user cannot find this server by its files");
-        return -1;
+        return instead(path, &found);
     }
     fd = own_dir(pfd, name, geteuid(), mode, &found);
     close(pfd);
     if (0 > fd) {
-        not_ours(*path, &found, "tools of this user cannot find this server by its files");
+        return instead(path, &found);
     }
     return fd;
 }
@@ -232,11 +306,13 @@ char **pmix_ptl_base_rndz_dirs(bool system_role)
         add_dir(&dirs, strdup("/run/pmix"));
         add_dir(&dirs, strdup("/var/run/pmix"));
         /* root's own, where /run could not be used - and our own user's,
-         * for a system server our user runs */
+         * and its runtime directory, for a system server our user runs */
         add_dir(&dirs, pmix_ptl_base_user_dir(0));
         add_dir(&dirs, pmix_ptl_base_user_dir(geteuid()));
+        add_dir(&dirs, pmix_ptl_base_runtime_dir());
     } else {
         add_dir(&dirs, pmix_ptl_base_user_dir(geteuid()));
+        add_dir(&dirs, pmix_ptl_base_runtime_dir());
         add_dir(&dirs, pmix_ptl_base_user_dir(0));
     }
     for (n = 0; n < pmix_ptl_base.naccess_uids; n++) {
