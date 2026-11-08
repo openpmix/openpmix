@@ -474,7 +474,10 @@ rest. `test_unopened_once()` covers it.
 `open_output()` runs in a forked
 child of a threaded process: it logs nothing (`pmix_output` and
 `pmix_show_help` are no-ops there - `pmix_util_runas_child`), and any new
-step in it must be async-signal-safe in spirit. A new place that opens an
+step in it must keep to the rules for that child in
+`src/util/pmix_runas.h`: no lock the child cannot get back (the
+library's own, stdio, NSS), `PMIX_RUNAS_STRERROR()` rather than
+`strerror()`. Allocating is allowed. A new place that opens an
 output file goes through `output_as_owner()`.
 
 **An output file that cannot be opened as the owner is an expected
