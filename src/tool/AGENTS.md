@@ -585,7 +585,7 @@ named are the ones that fail against the unfixed library.
 | `tool_evcache` | affected-process restriction on events delivered to a tool, end to end with two handlers. Its header records that it does **not** reach the caching branch, and why |
 | `tool_relay` | a downstream tool's spawn arriving at a launcher tool with no server of its own: the launcher fork/execs it |
 | `tool_nspace` | a connecting tool leaves exactly one namespace object on the server's list |
-| `tool_servers` | an event from a server whose wire format is not the primary's reaches the tool's handlers |
+| `tool_servers` | an event from a server whose wire format is not the primary's reaches the tool's handlers; a tool attached to a server that is not its primary reports itself not connected until it makes that server its primary |
 | `test/simple/tool_server_switch` (via `run_toolswitch.pl`) | the multi-server switch loop against two servers |
 
 The multi-node half is

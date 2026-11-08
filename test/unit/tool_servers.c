@@ -21,11 +21,20 @@
  * format is the primary's, then from one whose buffer type differs (and
  * whose bfrops module does too, where an earlier one is built). The
  * tool's handler must see both, with the info the event carried.
+ *
+ * Attaching: the same tool then attaches to a real server (the parent
+ * process) without asking for it as its primary. It must still report
+ * itself not connected, since its primary is still itself; once it makes
+ * that server its primary with PMIx_tool_set_server, it is connected.
+ *
+ * The tool runs in a forked child, which reports its own cases and exits
+ * with the number that failed.
  */
 
 #include "src/include/pmix_config.h"
 
 #include "include/pmix.h"
+#include "include/pmix_server.h"
 #include "include/pmix_tool.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
@@ -35,9 +44,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
+#define SERVER_NSPACE "tool-servers-server"
 #define OTHER_NSPACE "tool-servers-other"
 #define EV_KEY       "tool.servers.key"
 #define CODE_SAME    (PMIX_EXTERNAL_ERR_BASE - 31)
@@ -222,7 +234,7 @@ static void check_event_formats(void)
     pmix_peer_t *same, *other;
     pmix_buffer_t *msg;
     pmix_status_t rc;
-    char detail[160];
+    char detail[320];
 
     rc = PMIx_Register_event_handler(codes, 2, NULL, 0, count_events, NULL, NULL);
     if (0 > rc) {
@@ -268,30 +280,138 @@ static void check_event_formats(void)
     PMIX_RELEASE(other);
 }
 
-int main(int argc, char **argv)
+static void check_attach(int urifd)
+{
+    pmix_proc_t myproc, server;
+    pmix_info_t info;
+    pmix_status_t rc;
+    char uri[2048];
+    char detail[320];
+    ssize_t n;
+
+    n = read(urifd, uri, sizeof(uri) - 1);
+    if (0 >= n) {
+        report("read the server's URI", 0, "nothing arrived");
+        return;
+    }
+    uri[n] = '\0';
+
+    PMIX_INFO_LOAD(&info, PMIX_SERVER_URI, uri, PMIX_STRING);
+    rc = PMIx_tool_attach_to_server(&myproc, &server, &info, 1);
+    PMIX_INFO_DESTRUCT(&info);
+    if (PMIX_SUCCESS != rc) {
+        report("attach to a server that is not our primary", 0, PMIx_Error_string(rc));
+        return;
+    }
+    snprintf(detail, sizeof(detail), "attached to %s:%u", server.nspace, server.rank);
+    report("attach to a server that is not our primary",
+           0 == strcmp(server.nspace, SERVER_NSPACE), detail);
+
+    report("not connected after attaching to a server that is not our primary",
+           !PMIx_tool_is_connected(), "PMIx_tool_is_connected answered true");
+
+    rc = PMIx_tool_set_server(&server, NULL, 0);
+    report("make the attached server our primary", PMIX_SUCCESS == rc, PMIx_Error_string(rc));
+    report("connected once the attached server is our primary", PMIx_tool_is_connected(),
+           "PMIx_tool_is_connected answered false");
+}
+
+static int run_tool(int urifd)
 {
     pmix_proc_t myproc;
     pmix_info_t tinfo;
     pmix_status_t rc;
-    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
-
-    fprintf(stdout, "tool_servers:\n");
 
     PMIX_INFO_LOAD(&tinfo, PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
     rc = PMIx_tool_init(&myproc, &tinfo, 1);
     PMIX_INFO_DESTRUCT(&tinfo);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stdout, "  FAIL: tool init (%s)\n", PMIx_Error_string(rc));
-        return 1;
+        report("tool init", 0, PMIx_Error_string(rc));
+        return nfail;
     }
 
     check_event_formats();
+    check_attach(urifd);
 
     rc = PMIx_tool_finalize();
     if (PMIX_SUCCESS != rc) {
         report("tool finalize", 0, PMIx_Error_string(rc));
     }
+    return nfail;
+}
 
-    fprintf(stdout, "tool_servers: %d passed, %d failed\n", npass, nfail);
+/* ---------- the server ---------- */
+
+static void tool_connected_fn(pmix_info_t *info, size_t ninfo,
+                              pmix_tool_connection_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_proc_t proc;
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
+
+    PMIX_LOAD_PROCID(&proc, "tool-servers-tool", 0);
+    cbfunc(PMIX_SUCCESS, &proc, cbdata);
+}
+
+static pmix_server_module_t mymodule = {
+    .tool_connected = tool_connected_fn
+};
+
+int main(int argc, char **argv)
+{
+    pmix_info_t sinfo[2];
+    pmix_status_t rc;
+    int uripipe[2];
+    pid_t child;
+    int status = 0;
+    bool flag = true;
+    char *uri;
+    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+
+    setvbuf(stdout, NULL, _IONBF, 0);
+    fprintf(stdout, "tool_servers:\n");
+
+    if (0 != pipe(uripipe)) {
+        fprintf(stdout, "  FAIL: pipe\n");
+        return 1;
+    }
+    child = fork();
+    if (0 > child) {
+        fprintf(stdout, "  FAIL: fork\n");
+        return 1;
+    }
+    if (0 == child) {
+        close(uripipe[1]);
+        _exit(run_tool(uripipe[0]));
+    }
+    close(uripipe[0]);
+
+    PMIX_INFO_LOAD(&sinfo[0], PMIX_SERVER_TOOL_SUPPORT, &flag, PMIX_BOOL);
+    PMIX_INFO_LOAD(&sinfo[1], PMIX_SERVER_NSPACE, SERVER_NSPACE, PMIX_STRING);
+    rc = PMIx_server_init(&mymodule, sinfo, 2);
+    PMIX_INFO_DESTRUCT(&sinfo[0]);
+    PMIX_INFO_DESTRUCT(&sinfo[1]);
+    if (PMIX_SUCCESS != rc) {
+        report("server init", 0, PMIx_Error_string(rc));
+        close(uripipe[1]);
+        waitpid(child, &status, 0);
+        goto done;
+    }
+    uri = (NULL != pmix_ptl_base.listener.uri) ? pmix_ptl_base.listener.uri
+                                               : pmix_ptl_base.local_listener.uri;
+    if (NULL == uri || (ssize_t) strlen(uri) != write(uripipe[1], uri, strlen(uri))) {
+        report("hand the tool the server's URI", 0, "no URI, or a short write");
+    }
+    close(uripipe[1]);
+
+    waitpid(child, &status, 0);
+    PMIx_server_finalize();
+
+done:
+    if (!WIFEXITED(status)) {
+        report("the tool ran to completion", 0, "it died on a signal");
+    } else {
+        nfail += WEXITSTATUS(status);
+    }
+    fprintf(stdout, "tool_servers: %d failed\n", nfail);
     return (0 == nfail) ? 0 : 1;
 }
