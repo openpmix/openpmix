@@ -53,6 +53,7 @@
 
 #include "pmix_server_ops.h"
 #include "src/client/pmix_client_ops.h"
+#include "src/common/pmix_iof.h"
 
 /* Collect one job-level entry an update carried, for the single
  * PMIX_GDS_ADD_JOB_DATA fan-out below.
@@ -623,6 +624,10 @@ static void _register_nspace(int sd, short args, void *cbdata)
         }
         // record that we recvd the job-level info for this namespace
         nptr->job_info_recvd = true;
+
+        /* output files this server cannot write for the job are reported
+         * now, before any of its processes run */
+        pmix_iof_check_job_files(nptr);
 
         /* give the programming models a chance to add anything they need */
         rc = pmix_pmdl.register_nspace(nptr);

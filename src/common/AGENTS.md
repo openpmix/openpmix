@@ -516,7 +516,12 @@ The host carries it into every daemon's registration, where
   notice goes through `pmix_show_help_norender()` under the job's
   namespace, as `iof-file-not-opened` does, so duplicate suppression
   counts it per job: under the server's own namespace only the first
-  job a server refused was told.
+  job a server refused was told. `_register_nspace` asks the same
+  question as soon as it has a job's directives
+  (`pmix_iof_check_job_files()`), so the notice goes out before the job
+  runs. Raised only on the first output, it travelled through the host
+  and back while the job's end reached the launcher by a shorter path,
+  and a launcher that left on the job's end never saw it.
 - `pmix_iof_process_iof()` appends the job's file directives to the first
   chunk it sends to the writer (`add_writer_directives()`, then
   `writer_told`), after checking the writer's uid is the job's owner.
