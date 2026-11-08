@@ -27,12 +27,13 @@ BEGIN_C_DECLS
  *   - in place, when this process already is that uid and gid. A
  *     per-user server is, and pays nothing;
  *   - otherwise in a forked child that drops to them - setgroups(), then
- *     setgid(), then setuid(), and checks the drop took - and runs fn
- *     there. The child's groups are those pmix_util_runas_groups()
- *     makes of gid and gids. Only a privileged server can drop to another user; an
- *     unprivileged one fails the drop, and fn never runs. Credentials are
- *     per process, so dropping in place would run the whole server as the
- *     user meanwhile.
+ *     setgid(), then setuid(), and checks the drop took; on Linux it
+ *     then clears any capability it still holds, and gives up if one
+ *     remains - and runs fn there. The child's groups are those
+ *     pmix_util_runas_groups() makes of gid and gids. Only a privileged
+ *     server can drop to another user; an unprivileged one fails the
+ *     drop, and fn never runs. Credentials are per process, so dropping
+ *     in place would run the whole server as the user meanwhile.
  *
  * fn returns a descriptor it opened (>= 0), or -1. With want_fd, that
  * descriptor is the result: from a child it is passed back over a

@@ -3926,7 +3926,9 @@ misbehave by design).
     in `src/util/pmix_runas.h` - then `setgid`, then `setuid` — group before
     user, because changing the uid first gives up the ability to change
     the gid, and `setuid()` does not touch the supplementary groups on
-    its own). Only a server permitted to change its identity can switch
+    its own; on Linux the child then clears any capability it still
+    holds, which `setuid()` leaves in place when the uid it leaves is
+    not 0). Only a server permitted to change its identity can switch
     to somebody else, which is exactly the server this is for; any other
     fails the switch and the child exits having done nothing, which is
     right, because the kernel would have refused those unlinks anyway.

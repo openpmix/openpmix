@@ -324,7 +324,10 @@ dropped to the owner's uid, gid and the groups the host registered for it
 (``PMIX_USER_GRPIDS``; with none, the owner's gid alone). A system takes
 only so many groups for a process (``sysconf(_SC_NGROUPS_MAX)``: 16 on
 macOS); the child has the owner's gid and as many of the others, in the
-order the host gave them, as fit. So the kernel
+order the host gave them, as fit. On Linux the child also gives up any
+capability it still holds once it is the owner - a server given
+``CAP_SETUID`` as a file capability keeps the rest of its capabilities
+across the change of user - and does nothing if one remains. So the kernel
 applies the owner's own permissions to every path the job named: a
 privileged server creates nothing, and writes over nothing, that the
 owner could not.
