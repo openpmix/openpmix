@@ -50,6 +50,13 @@
  *   opened, after the obstacle is
  *   gone                            -> not tried again for that stream;
  *                                      the job's other stream still is
+ *   two jobs owned by a different
+ *   uid, on a server that cannot act
+ *   as their owner                  -> each told once that its files are
+ *                                      not written. The notice was
+ *                                      counted against the server's own
+ *                                      namespace, so only the first job
+ *                                      on a server was ever told
  *   as root only: writing another
  *   user's file never finishes      -> the server keeps answering, output
  *                                      past pmix_iof_writer_backlog is
@@ -669,6 +676,78 @@ static void test_unopened(void)
  * remembers does not. It is per stream, not per job: one rank's file
  * failing says nothing of another's, so the job's stderr, not tried
  * before, is opened once the path allows it. */
+/* what lands on stderr while fn runs, given a moment to arrive: help
+ * text reaches it through the log path, a hop or two behind the call */
+static ssize_t stderr_during(void (*fn)(const char *), const char *arg, char *text,
+                             size_t len)
+{
+    char capture[1100];
+    int fd, saved, tries;
+    ssize_t n = 0;
+
+    snprintf(capture, sizeof(capture), "%s/stderr-%s.txt", base, arg);
+    fd = open(capture, O_CREAT | O_RDWR | O_TRUNC, 0600);
+    saved = dup(STDERR_FILENO);
+    if (0 > fd || 0 > saved) {
+        return -1;
+    }
+    fflush(stderr);
+    dup2(fd, STDERR_FILENO);
+    fn(arg);
+    for (tries = 0; tries < 10; tries++) {
+        progress_barrier();
+        usleep(50000);
+    }
+    fflush(stderr);
+    dup2(saved, STDERR_FILENO);
+    close(saved);
+    memset(text, 0, len);
+    n = pread(fd, text, len - 1, 0);
+    close(fd);
+    return n;
+}
+
+/* register a job owned by OTHER_UID that asks for an output directory */
+static void reg_refused(const char *name)
+{
+    char dir[1024];
+
+    snprintf(dir, sizeof(dir), "%s/refused-%s", base, name);
+    (void) reg(name, PMIX_IOF_OUTPUT_TO_DIRECTORY, dir, OTHER_UID, getegid(), (gid_t) -1);
+}
+
+/* ...and give it output */
+static void reg_refused_and_deliver(const char *name)
+{
+    reg_refused(name);
+    deliver(name);
+}
+
+#define REFUSED_NOTICE "output files of a job were not written"
+
+/* Each job a server cannot write the files of as their owner is told
+ * so - not only the first. A non-root server only: root can act as the
+ * owner, and writes them */
+static void test_refused_each_job(void)
+{
+    char text[8192];
+    ssize_t n;
+    int seen = 0;
+
+    if (0 == geteuid()) {
+        return;
+    }
+    n = stderr_during(reg_refused_and_deliver, "perms-refused-a", text, sizeof(text));
+    if (0 <= n) {
+        seen += occurrences(text, REFUSED_NOTICE);
+    }
+    n = stderr_during(reg_refused_and_deliver, "perms-refused-b", text, sizeof(text));
+    if (0 <= n) {
+        seen += occurrences(text, REFUSED_NOTICE);
+    }
+    report("each of two jobs whose files cannot be written as their owner is told so", 2 == seen);
+}
+
 static void test_unopened_once(void)
 {
     char gate[1024], dir[1100], file[2300];
@@ -869,6 +948,7 @@ int main(int argc, char **argv)
     test_writer();
     test_unopened();
     test_unopened_once();
+    test_refused_each_job();
     test_stalled();
     test_writer_stall();
 

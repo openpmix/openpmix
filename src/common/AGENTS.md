@@ -512,7 +512,11 @@ The host carries it into every daemon's registration, where
   not the writer, so none opens a sink; only the copy to our own stdout
   the job would have had beside its files is written. The same helper
   refuses (once per job, `files_refused`, `iof-files-not-owner`) when a
-  non-root server is not the owner - the case the writer exists for.
+  non-root server is not the owner - the case the writer exists for. The
+  notice goes through `pmix_show_help_norender()` under the job's
+  namespace, as `iof-file-not-opened` does, so duplicate suppression
+  counts it per job: under the server's own namespace only the first
+  job a server refused was told.
 - `pmix_iof_process_iof()` appends the job's file directives to the first
   chunk it sends to the writer (`add_writer_directives()`, then
   `writer_told`), after checking the writer's uid is the job's owner.

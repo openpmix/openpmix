@@ -2778,9 +2778,20 @@ static bool files_are_ours(pmix_namespace_t *nptr)
     }
     output_perms(nptr, &op);
     if (0 != geteuid() && geteuid() != op.owner) {
+        char *msg;
+
         nptr->files_refused = true;
-        pmix_show_help("help-pmix-server.txt", "iof-files-not-owner", true,
-                       nptr->nspace, (unsigned long) op.owner, (unsigned long) geteuid());
+        /* under the job's namespace, as output_not_opened() does: the
+         * duplicate suppression counts per namespace, and under our own
+         * every job after the first would be folded into one summary */
+        msg = pmix_show_help_string("help-pmix-server.txt", "iof-files-not-owner", true,
+                                    nptr->nspace, (unsigned long) op.owner,
+                                    (unsigned long) geteuid());
+        if (NULL != msg) {
+            pmix_show_help_norender(nptr->nspace, "help-pmix-server.txt",
+                                    "iof-files-not-owner", msg);
+            free(msg);
+        }
         return false;
     }
     return true;
