@@ -50,8 +50,15 @@ first; the base owns everything done on a socket once it exists.
 - **Every change in the directory goes through `dfd`**, opened
   `O_DIRECTORY|O_NOFOLLOW` through `pdfd` right after it is made, and
   checked (ours, 0700).
-  `bind` is the one call that takes a path, so the socket is then looked
-  up through `dfd` and must be there. `close` unlinks through `dfd` too.
+  `bind` is the one call that takes a path. Where
+  `/proc/self/fd/<dfd>` leads to the directory held - the same device and
+  inode as `dfd`'s (`path_through_fd`) - the socket is bound through
+  that path, so it is made in the directory held even if its name has
+  been given to another directory since `mkdirat`. Elsewhere (macOS and
+  the BSDs have no such path, and no `bindat` in common) it is bound by
+  its path. Either way the socket is then looked up through `dfd` and
+  must be there, and `dir` - the path the URI names - must still lead to
+  the directory held. `close` unlinks through `dfd` too.
 - The URI is `<nspace>.<rank>;usock://<path>`. A path too long for
   `sun_path`, or one holding a `;`, fails init with the `usock-listener`
   help topic.
@@ -81,3 +88,7 @@ first; the base owns everything done on a socket once it exists.
   Its host must pass the mode, owner or group that lets them in.
 - `test/unit/ptl_usock.c` covers the listener; `test/unit/ptl_accept.c`
   covers the kernel's identity for a local client and tool.
+  `test/unit/ptl_usock_bind.c` supplies its own `bind()`, which renames
+  the directory and puts an empty one at its name: no socket may be made
+  there, and init fails. It skips where the library's `bind()` does not
+  reach it (macOS's two-level names).

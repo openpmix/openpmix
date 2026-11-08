@@ -187,7 +187,8 @@ whatever that process claims.
   while the directory is still closed; the directory, which stays the
   server's, is then opened to whom the mode lets in - search permission,
   never read. The server holds the directory open from the moment it
-  makes it, and makes every change in it through that descriptor.
+  makes it, and makes every change in it through that descriptor - the
+  ``bind`` too, where ``/proc/self/fd`` reaches the directory by it.
 * The path must fit an ``AF_UNIX`` address, about 100 characters. A
   temporary directory too long for it fails init; there is no fallback.
   The default ``$TMPDIR`` on macOS is too long - pass a shorter
