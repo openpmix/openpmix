@@ -1057,6 +1057,8 @@ static void pcdes(pmix_pending_connection_t *p)
         free(p->gds);
     }
     if (NULL != p->cred) {
+        /* a credential, like every other copy of the connect-ack */
+        pmix_ptl_base_wipe(p->cred, p->len);
         free(p->cred);
     }
     free(p->kgroups.gids);
