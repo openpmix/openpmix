@@ -1536,6 +1536,8 @@ typedef struct {
     pmix_list_item_t super;
     char *grpid;
     pmix_proc_t leader;
+    /* the leader's connection - its invitations go when it does */
+    pmix_peer_t *leader_peer;
     /* proposed membership, wildcards already expanded */
     pmix_proc_t *members;
     size_t nmembers;
@@ -1570,6 +1572,7 @@ static void invcon(pmix_server_invite_t *p)
 {
     p->grpid = NULL;
     PMIX_LOAD_PROCID(&p->leader, NULL, PMIX_RANK_UNDEF);
+    p->leader_peer = NULL;
     p->members = NULL;
     p->nmembers = 0;
     p->responded = NULL;
@@ -1596,6 +1599,9 @@ static void invdes(pmix_server_invite_t *p)
     }
     if (NULL != p->grpid) {
         free(p->grpid);
+    }
+    if (NULL != p->leader_peer) {
+        PMIX_RELEASE(p->leader_peer);
     }
     if (NULL != p->members) {
         PMIX_PROC_FREE(p->members, p->nmembers);
@@ -1918,6 +1924,73 @@ static void invite_ctxid_cb(pmix_status_t status, pmix_info_t *info, size_t ninf
 
 /* Phase one: report the invitees that did not join, then either abort the
  * whole construct or go on to announce it. */
+/* Tell every member the invitation is off, and retire it */
+static void invite_abort(pmix_server_invite_t *inv)
+{
+    pmix_info_t *info = NULL;
+    pmix_status_t rc;
+
+    inv->completed = true;
+    if (inv->timer_active) {
+        pmix_event_del(&inv->ev);
+        inv->timer_active = false;
+    }
+    PMIX_INFO_CREATE(info, 2);
+    if (NULL == info) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        invite_done(inv);
+        return;
+    }
+    rc = invite_range(&info[0], inv->members, inv->nmembers);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_INFO_FREE(info, 2);
+        invite_done(inv);
+        return;
+    }
+    PMIX_INFO_LOAD(&info[1], PMIX_GROUP_ID, inv->grpid, PMIX_STRING);
+    invite_raise(inv, PMIX_GROUP_CONSTRUCT_ABORT, info, 2);
+    PMIX_INFO_FREE(info, 2);
+    invite_done(inv);
+}
+
+/* An invitation's leader has gone - finalized, lost its connection, or
+ * was deregistered by the host. Nothing is left to receive the outcome,
+ * so each invitation it leads that has not resolved is aborted: the
+ * members stop waiting and the ID is free again */
+void pmix_server_grp_leader_departed(const pmix_peer_t *peer, const pmix_proc_t *proc)
+{
+    pmix_server_invite_t *inv, *next;
+
+    if (!invites_initialized) {
+        return;
+    }
+    PMIX_LIST_FOREACH_SAFE (inv, next, &pmix_server_invites, pmix_server_invite_t) {
+        if (inv->completed || inv->defunct) {
+            continue;
+        }
+        if ((NULL != peer && inv->leader_peer == peer) ||
+            (NULL != proc && PMIX_CHECK_NSPACE_STRICT(proc->nspace, inv->leader.nspace) &&
+             (PMIX_RANK_WILDCARD == proc->rank || proc->rank == inv->leader.rank))) {
+            invite_abort(inv);
+        }
+    }
+}
+
+/* how many unresolved invitations a connection leads */
+static size_t peer_invites(const pmix_peer_t *peer)
+{
+    pmix_server_invite_t *inv;
+    size_t n = 0;
+
+    PMIX_LIST_FOREACH (inv, &pmix_server_invites, pmix_server_invite_t) {
+        if (inv->leader_peer == peer) {
+            ++n;
+        }
+    }
+    return n;
+}
+
 static void invite_complete(pmix_server_invite_t *inv)
 {
     pmix_info_t *info = NULL;
@@ -1942,23 +2015,7 @@ static void invite_complete(pmix_server_invite_t *inv)
     if (0 < nfailed && !inv->optional) {
         /* all-or-nothing, and somebody did not join: abort for everybody
          * that was invited, so those that accepted stop waiting */
-        PMIX_INFO_CREATE(info, 2);
-        if (NULL == info) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-            invite_done(inv);
-            return;
-        }
-        rc = invite_range(&info[0], inv->members, inv->nmembers);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_INFO_FREE(info, 2);
-            invite_done(inv);
-            return;
-        }
-        PMIX_INFO_LOAD(&info[1], PMIX_GROUP_ID, inv->grpid, PMIX_STRING);
-        invite_raise(inv, PMIX_GROUP_CONSTRUCT_ABORT, info, 2);
-        PMIX_INFO_FREE(info, 2);
-        invite_done(inv);
+        invite_abort(inv);
         return;
     }
 
@@ -2276,6 +2333,13 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         goto done;
     }
 
+    /* a connection may lead only so many invitations at once */
+    if (0 < pmix_server_globals.max_invites_per_peer &&
+        peer_invites(cd->peer) >= pmix_server_globals.max_invites_per_peer) {
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
+        goto done;
+    }
+
     /* an invitation already out under this ID, or a group this server
      * holds under it - which keeps its ID until it is destructed - is
      * refused before anyone is invited, as is an ID that names a job this
@@ -2299,6 +2363,8 @@ pmix_status_t pmix_server_group_invite(pmix_server_caddy_t *cd,
         goto done;
     }
     PMIX_LOAD_PROCID(&inv->leader, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+    PMIX_RETAIN(cd->peer);
+    inv->leader_peer = cd->peer;
     inv->optional = optional;
     inv->assignid = assignid;
 

@@ -97,6 +97,7 @@ pmix_server_globals_t pmix_server_globals = {
     .max_iof_cache = 0,
     .max_event_regs_per_peer = 0,
     .max_iof_reqs_per_peer = 0,
+    .max_invites_per_peer = 0,
     .tool_connections_allowed = false,
     .tmpdir = NULL,
     .system_tmpdir = NULL,
