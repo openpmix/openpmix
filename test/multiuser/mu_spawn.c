@@ -17,9 +17,13 @@
  * spawns the job itself; with --nofwd as well, it asks that none of the
  * job's output be forwarded to it, so it is not the job's file writer.
  *
- * Exits 0 when the spawn succeeded and the job's end was seen.
+ * Exits 0 when the spawn succeeded and the job's end was seen. The end
+ * waited for is the spawned job's own: a server's PMIX_EVENT_JOB_END
+ * reaches every process of its allocation, and an earlier job's end -
+ * replayed to a handler that registers after it - is not this one's.
  */
 
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,23 +33,63 @@
 #include <pmix.h>
 #include <pmix_tool.h>
 
-static volatile bool job_ended = false;
 static volatile bool registered = false;
+
+/* the jobs whose end has been seen - the spawned job's may arrive before
+ * PMIx_Spawn has said which job that is */
+#define MAX_ENDED 64
+static pthread_mutex_t endlock = PTHREAD_MUTEX_INITIALIZER;
+static pmix_nspace_t ended[MAX_ENDED];
+static size_t nended = 0;
+
+static void note_ended(const char *nspace)
+{
+    if (NULL == nspace || '\0' == nspace[0]) {
+        return;
+    }
+    pthread_mutex_lock(&endlock);
+    if (nended < MAX_ENDED) {
+        PMIX_LOAD_NSPACE(ended[nended], nspace);
+        ++nended;
+    }
+    pthread_mutex_unlock(&endlock);
+}
+
+static bool has_ended(const char *nspace)
+{
+    bool seen = false;
+    size_t n;
+
+    pthread_mutex_lock(&endlock);
+    for (n = 0; n < nended && !seen; n++) {
+        seen = (0 == strncmp(ended[n], nspace, PMIX_MAX_NSLEN));
+    }
+    pthread_mutex_unlock(&endlock);
+    return seen;
+}
 
 static void endfn(size_t evhdlr_registration_id, pmix_status_t status,
                   const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                   pmix_info_t results[], size_t nresults,
                   pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    size_t n;
+
     (void) evhdlr_registration_id;
     (void) status;
-    (void) source;
-    (void) info;
-    (void) ninfo;
     (void) results;
     (void) nresults;
 
-    job_ended = true;
+    /* the job that ended is the event's source, or the proc it affects */
+    if (NULL != source) {
+        note_ended(source->nspace);
+    }
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC) &&
+            PMIX_PROC == info[n].value.type && NULL != info[n].value.data.proc) {
+            note_ended(info[n].value.data.proc->nspace);
+        }
+    }
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
     }
@@ -174,10 +218,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "mu_spawn: spawn failed: %s\n", PMIx_Error_string(rc));
         goto done;
     }
-    for (n = 0; n < 3000 && !job_ended; n++) {
+    for (n = 0; n < 3000 && !has_ended(child); n++) {
         usleep(10000);
     }
-    if (!job_ended) {
+    if (!has_ended(child)) {
         fprintf(stderr, "mu_spawn: job %s did not end within 30s\n", child);
         goto done;
     }
