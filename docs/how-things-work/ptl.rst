@@ -181,15 +181,23 @@ socket - the first two steps below are the ``tcp`` transport's, in
    but not list them. One that is there is used only if it is a
    directory, not a link, of the server's user, that no other user can
    write; it is opened with ``O_DIRECTORY | O_NOFOLLOW`` and checked by
-   ``fstat``. Anything else at the name is reported
-   (``rndz-dir-not-ours``) and the files are not written: the server
-   runs on, and its clients reach it by the URI they are given. The
+   ``fstat``. When anything else is at the name, the server writes the
+   files in ``$XDG_RUNTIME_DIR/pmix`` instead (``rndz-dir-elsewhere``),
+   made mode 0700, where ``XDG_RUNTIME_DIR`` names a directory of its
+   user's that no other user can write - the ``/run/user/<uid>`` a login
+   session is given. Its user's tools look there too; tools of other
+   users cannot reach it. With no such directory the thing at the name
+   is reported (``rndz-dir-not-ours``) and the files are not written:
+   the server runs on, and its clients reach it by the URI they are
+   given. A system tmpdir of the user's own, named by
+   ``PMIX_SYSTEM_TMPDIR`` for the server and its tools, puts the
+   ``pmix-user`` directory below it. The
    system roles' files - ``pmix.sys``, ``pmix.sched``, ``pmix.sysctrlr`` -
    go in the system tmpdir when the host named one, as before; otherwise
    a root server puts them in ``/run/pmix`` (``/var/run/pmix`` where there
    is no ``/run``; it must be root's, and only root may write it), and a
    non-root one, or root where neither can be used, in its own
-   ``pmix-user`` directory.
+   ``pmix-user`` directory (or, as above, ``$XDG_RUNTIME_DIR/pmix``).
 
    Each file contains the URI, the server's version, its PID, its
    ``uid:gid``, and a timestamp. A line tagged ``local:`` carries the
@@ -342,7 +350,8 @@ most specific to least:
   (``PMIX_SESSION_RNDZ_ID``), whose
   file is looked for in the ``pmix-user`` directories of the users whose
   servers the tool may talk to - its own, root's, and those
-  ``ptl_base_server_access`` names - each looked in, not below; or
+  ``ptl_base_server_access`` names - and its own
+  ``$XDG_RUNTIME_DIR/pmix``, each looked in, not below; or
 * told none of those, the session-level servers of the tool's own user on
   the node - ``pmix.<host>.session.*`` in its own ``pmix-user``
   directory, a file whose server is gone passed over. The only one is
@@ -353,8 +362,8 @@ most specific to least:
   ``PMIX_SESSION_ID`` is used) and fails to start without one, or where a server of its session
   already runs on the node. A system role's file is looked for in the system tmpdir the
   host named, else ``/run/pmix`` and ``/var/run/pmix``, then root's and
-  the tool's own ``pmix-user`` directories and those of the listed
-  users. Only with legacy servers on (``ptl_base_legacy_servers``, in a
+  the tool's own ``pmix-user`` directories, its ``$XDG_RUNTIME_DIR/pmix``,
+  and the ``pmix-user`` directories of the listed users. Only with legacy servers on (``ptl_base_legacy_servers``, in a
   PMIx not configured ``--disable-legacy-servers``) does a
   tool also walk the whole system tmpdir, ``ptl_base_search_depth``
   levels deep, and look at the system tmpdir itself for a system role -
