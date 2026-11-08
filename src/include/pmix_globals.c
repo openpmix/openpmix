@@ -951,9 +951,10 @@ static bool epilog_ignored(pmix_epilog_t *epi, const char *path)
 /* The removals one identity asked for. Runs either directly or inside a
  * forked child that has dropped to that identity - see
  * pmix_execute_epilog below - so it must touch nothing but the
- * filesystem: no event base, no allocation the parent would have to see,
- * and no change to the lists, which the caller drains once every
- * identity's walk is over so that a second call finds nothing to do. */
+ * filesystem: no event base, nothing the parent would have to see, and
+ * no change to the lists, which the caller drains once every identity's
+ * walk is over so that a second call finds nothing to do. In the child
+ * it keeps to the rules in src/util/pmix_runas.h. */
 static void epilog_walk(pmix_epilog_t *epi, uid_t uid, gid_t gid)
 {
     pmix_cleanup_file_t *cf;
@@ -978,7 +979,7 @@ static void epilog_walk(pmix_epilog_t *epi, uid_t uid, gid_t gid)
             rc = unlink(cf->path);
             if (0 > rc) {
                 pmix_output_verbose(10, pmix_globals.debug_output, "File %s failed to unlink: %s",
-                                    cf->path, strerror(errno));
+                                    cf->path, PMIX_RUNAS_STRERROR(errno));
             }
         }
     }
