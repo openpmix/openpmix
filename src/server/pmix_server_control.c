@@ -157,7 +157,7 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_shift_caddy_t *cd;
     pmix_proc_t proc;
     time_t timestamp;
-    size_t n;
+    size_t n, m;
 
     pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
                         "pmix:server recvd log from client");
@@ -241,13 +241,8 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
         goto exit;
     }
     /* the caddy owns this array and must release it when done - set
-     * before the loads below so an early return cannot strand it */
+     * before the unpack below so an early return cannot strand it */
     cd->dircopy = true;
-    PMIX_INFO_LOAD(&cd->directives[(size_t) cnt], PMIX_LOG_SOURCE, &proc, PMIX_PROC);
-    if (0 < timestamp) {
-        PMIX_INFO_LOAD(&cd->directives[(size_t) cnt + 1], PMIX_LOG_TIMESTAMP,
-                       &timestamp, PMIX_TIME);
-    }
 
     /* unpack the directives */
     if (0 < cnt) {
@@ -257,11 +252,32 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
             goto exit;
         }
     }
+    /* the source and timestamp are ours to give: drop any the requester
+     * included, and close up the array behind them */
+    m = 0;
+    for (n = 0; n < (size_t) cnt; n++) {
+        if (PMIX_CHECK_KEY(&cd->directives[n], PMIX_LOG_SOURCE) ||
+            PMIX_CHECK_KEY(&cd->directives[n], PMIX_LOG_TIMESTAMP)) {
+            PMIX_INFO_DESTRUCT(&cd->directives[n]);
+            continue;
+        }
+        if (m != n) {
+            memcpy(&cd->directives[m], &cd->directives[n], sizeof(pmix_info_t));
+            PMIX_INFO_CONSTRUCT(&cd->directives[n]);
+        }
+        ++m;
+    }
+    PMIX_INFO_LOAD(&cd->directives[m], PMIX_LOG_SOURCE, &proc, PMIX_PROC);
+    cd->ndirs = m + 1;
+    if (0 < timestamp) {
+        PMIX_INFO_LOAD(&cd->directives[m + 1], PMIX_LOG_TIMESTAMP, &timestamp, PMIX_TIME);
+        cd->ndirs = m + 2;
+    }
     /* PMIX_NSPACE in a log request names the job whose duplicate
      * suppression the message falls under. A request from a client or
      * tool falls under that requester's own namespace, so set it to that
      * here - before plog or the host sees the request */
-    for (n = 0; n < (size_t) cnt; n++) {
+    for (n = 0; n < m; n++) {
         if (PMIX_CHECK_KEY(&cd->directives[n], PMIX_NSPACE)) {
             PMIX_VALUE_DESTRUCT(&cd->directives[n].value);
             PMIX_VALUE_LOAD(&cd->directives[n].value, proc.nspace, PMIX_STRING);
