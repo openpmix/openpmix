@@ -611,8 +611,12 @@ things take it off:
    have a cap of their own, the same `pending_cap`: a tool that would
    make that many waiting is refused with `PMIX_ERR_OUT_OF_RESOURCE` as
    it is queued. A process that means to connect sends its connect-ack at
-   once, so it is never the oldest; refusing the newcomer instead would
-   let whoever fills the list keep everyone out for
+   once, so it is never the oldest. On the local socket that holds only
+   because the handler moves a connection to the end of the list when it
+   answers the offer: the peer then builds and sends its credential, and
+   until then it was still at the place it was accepted in
+   (`case_offer_not_oldest` in `ptl_accept.c`). Refusing the newcomer
+   instead would let whoever fills the list keep everyone out for
    `connect_ack_timeout`, or for good with the timeout disabled. There is
    no per-source cap: the listener is loopback by default, so every local
    peer has the same address, and the uid is not known until the
