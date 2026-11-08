@@ -16,6 +16,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <string.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
@@ -61,6 +62,26 @@ static const char *socket_name(const char *path)
     const char *slash = strrchr(path, '/');
 
     return (NULL == slash) ? path : slash + 1;
+}
+
+/* "/proc/self/fd/<dfd>/<name>" in buf, where that path leads into the
+ * directory dfd is open on - held is its fstat - and fits in len. A path
+ * through the descriptor names the directory held wherever it now is, as
+ * the path to it by name need not */
+static bool path_through_fd(int dfd, const struct stat *held, const char *name, char *buf,
+                            size_t len)
+{
+    char dpath[64];
+    struct stat st;
+    int n;
+
+    n = snprintf(dpath, sizeof(dpath), "/proc/self/fd/%d", dfd);
+    if (0 > n || sizeof(dpath) <= (size_t) n || 0 != stat(dpath, &st) ||
+        st.st_dev != held->st_dev || st.st_ino != held->st_ino) {
+        return false;
+    }
+    n = snprintf(buf, len, "%s/%s", dpath, name);
+    return 0 < n && (size_t) n < len;
 }
 
 /* The name a directory of our own takes in the session tmpdir */
@@ -181,9 +202,9 @@ static bool id_directive(const pmix_info_t *info, bool user, uint32_t *val, pmix
 static pmix_status_t usock_setup_listener(pmix_info_t info[], size_t ninfo,
                                           pmix_listener_t *lt)
 {
-    struct sockaddr_un *addr;
-    struct sockaddr_storage ss;
-    struct stat st;
+    struct sockaddr_un *addr, *baddr;
+    struct sockaddr_storage ss, bss;
+    struct stat st, held;
     uid_t owner = (uid_t) -1;
     gid_t group = (gid_t) -1;
     mode_t mode = S_IRUSR | S_IWUSR, dmode = S_IRWXU;
@@ -267,6 +288,7 @@ static pmix_status_t usock_setup_listener(pmix_info_t info[], size_t ninfo,
         why = "the directory made for it was not the one found at its name";
         goto fail;
     }
+    held = st;
     if (0 > pmix_asprintf(&path, "%s/pmix-%lu", dir, (unsigned long) pmix_globals.pid)) {
         rc = PMIX_ERR_NOMEM;
         goto cleanup;
@@ -284,6 +306,16 @@ static pmix_status_t usock_setup_listener(pmix_info_t info[], size_t ninfo,
     }
     addr->sun_family = AF_UNIX;
     memcpy(addr->sun_path, path, strlen(path) + 1);
+    /* bind takes a path. Where /proc/self/fd leads to the directory held,
+     * bind through it, so the socket is made in that directory even if
+     * the name has come to lead elsewhere; else by the path itself */
+    memset(&bss, 0, sizeof(bss));
+    baddr = (struct sockaddr_un *) &bss;
+    baddr->sun_family = AF_UNIX;
+    if (!path_through_fd(dfd, &held, socket_name(path), baddr->sun_path,
+                         sizeof(baddr->sun_path))) {
+        memcpy(baddr->sun_path, path, strlen(path) + 1);
+    }
 
     sd = socket(AF_UNIX, SOCK_STREAM | PMIX_SOCK_CLOEXEC, 0);
     if (0 > sd) {
@@ -294,15 +326,20 @@ static pmix_status_t usock_setup_listener(pmix_info_t info[], size_t ninfo,
         why = "it could not be made close-on-exec";
         goto fail;
     }
-    if (0 != bind(sd, (struct sockaddr *) addr, sizeof(*addr))) {
+    if (0 != bind(sd, (struct sockaddr *) baddr, sizeof(*baddr))) {
         why = strerror(pmix_socket_errno);
         goto fail;
     }
-    /* bind takes a path: the socket must be in the directory held, which
-     * only this process's user can write */
+    /* the socket must be in the directory held, which only this process's
+     * user can write */
     if (0 != fstatat(dfd, socket_name(path), &st, AT_SYMLINK_NOFOLLOW) ||
         !S_ISSOCK(st.st_mode)) {
         why = "the socket was not made in the directory made for it";
+        goto fail;
+    }
+    /* and the path the URI gives must lead to that directory */
+    if (0 != stat(dir, &st) || st.st_dev != held.st_dev || st.st_ino != held.st_ino) {
+        why = "the directory made for it is no longer at its name";
         goto fail;
     }
     /* the directory is still ours alone, so nothing reaches the socket
