@@ -1767,10 +1767,11 @@ static pmix_status_t send_connect_ack(pmix_peer_t *peer, pmix_info_t iptr[], siz
 
     /* send the entire message across */
     /* the message carries our token, if we have one: it goes no further */
-    if (PMIX_SUCCESS != pmix_ptl_base_send_blocking(peer->sd, msg, sdsize)) {
+    rc = pmix_ptl_base_send_blocking(peer->sd, msg, sdsize);
+    if (PMIX_SUCCESS != rc) {
         pmix_ptl_base_wipe_released(msg, sdsize);
         free(msg);
-        return PMIX_ERR_UNREACH;
+        return (PMIX_ERR_TIMEOUT == rc) ? rc : PMIX_ERR_UNREACH;
     }
     pmix_ptl_base_wipe_released(msg, sdsize);
     free(msg);
@@ -1799,6 +1800,27 @@ static void hint_closed_no_reply(pmix_peer_t *peer, const char *uri)
  * consisting of nothing more than a status report. If success,
  * then we initiate authentication method */
 static pmix_status_t server_status(uint32_t u32);
+
+/* Bound, or stop bounding, the blocking sends of a connect by
+ * ptl_base_handshake_wait_time (or the connect's PMIX_TIMEOUT), as the
+ * receives are. A send to a server that is not reading waits once our
+ * message is larger than the socket can buffer, and with a bound it then
+ * ends in PMIX_ERR_TIMEOUT */
+static void bound_sends(int sd, bool bound)
+{
+    struct timeval tv;
+
+    tv.tv_sec = bound ? pmix_ptl_base_connect_wait() : 0;
+    tv.tv_usec = 0;
+    if (bound && 0 >= tv.tv_sec) {
+        return;
+    }
+    if (0 != setsockopt(sd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv))) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:base: could not %s the sends on socket %d: %s",
+                            bound ? "bound" : "unbound", sd, strerror(errno));
+    }
+}
 
 static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
 {
@@ -1887,7 +1909,7 @@ static pmix_status_t local_handshake(pmix_peer_t *peer, pmix_info_t iptr[], size
     free(msg);
     msg = NULL;
     if (PMIX_SUCCESS != rc) {
-        return PMIX_ERR_UNREACH;
+        return (PMIX_ERR_TIMEOUT == rc) ? rc : PMIX_ERR_UNREACH;
     }
 
     rc = pmix_ptl_base_set_timeout(peer, &save, &tsz, &sockopt);
@@ -1936,7 +1958,7 @@ static pmix_status_t local_handshake(pmix_peer_t *peer, pmix_info_t iptr[], size
     pmix_ptl_base_wipe_released(msg, sz);
     free(msg);
     if (PMIX_SUCCESS != rc) {
-        return PMIX_ERR_UNREACH;
+        return (PMIX_ERR_TIMEOUT == rc) ? rc : PMIX_ERR_UNREACH;
     }
     return PMIX_SUCCESS;
 }
@@ -2160,6 +2182,7 @@ connected:
         CLOSE_THE_SOCKET(peer->sd);
         return rc;
     }
+    bound_sends(peer->sd, true);
 
     /* send our identity and any authentication credentials to the server */
     if (local_transport(peer)) {
@@ -2187,6 +2210,7 @@ connected:
          * taken */
         return renamed ? PMIX_ERR_EXISTS : rc;
     }
+    bound_sends(peer->sd, false);
     /* Assign the lower half of the tag space for sendrecvs */
     peer->dyn_tags_start    = PMIX_PTL_TAG_DYNAMIC;
     peer->dyn_tags_current  = PMIX_PTL_TAG_DYNAMIC;

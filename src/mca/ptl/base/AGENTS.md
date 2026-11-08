@@ -656,6 +656,13 @@ exchange (see "No handshake" in [`psec/AGENTS.md`](../../psec/AGENTS.md)).
 `EAGAIN`/`EWOULDBLOCK` is how `recv()` says the timeout expired, not "no
 data yet". The *outbound* side depends on that: `handshake_wait_time`
 bounds a client's or tool's wait for its server's replies.
+`pmix_ptl_base_send_blocking` reads `EAGAIN` on a blocking socket the same
+way, as an `SO_SNDTIMEO` expiry: `make_connection` bounds its sends with
+one (`bound_sends`) for the length of the handshake, so a server that
+stops reading a message larger than the socket can buffer ends the
+connect with `PMIX_ERR_TIMEOUT`. The server's replies are sent with no
+`SO_SNDTIMEO`, so nothing changes for them. `test/unit/ptl_send_timeout.c`
+covers both readings and a tool's connect to a server that stops reading.
 
 `test/unit/ptl_stalled_peer.c` runs every stall case with the timeout
 **disabled**, so only the non-blocking read can pass them, and gives the
@@ -1558,8 +1565,9 @@ Two regimes, described in the framework doc. What matters *here*:
   **outbound** side that is acceptable only on the caller's own thread -
   `PMIx_Init`, `PMIx_tool_init`, a server connecting upstream.
   `pmix_ptl_base_set_timeout` applies `handshake_wait_time` to each
-  reply there, and `bounded_connect()` in `ptl_base_connect.c` applies
-  it to each `connect()` attempt; it defaults to 60 seconds (0 means no
+  reply there, `bound_sends()` in `ptl_base_fns.c` to each send, and
+  `bounded_connect()` in `ptl_base_connect.c` to each `connect()`
+  attempt; it defaults to 60 seconds (0 means no
   bound). On the **inbound** side it is the server's progress thread:
   the connect-ack itself is read without blocking, within
   `connect_ack_timeout`, and the replies written after it are blocking
@@ -1629,6 +1637,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_stalled_peer.c` | with no timeout, a server keeps servicing requests past an idle, one-byte or partial connection; a connect-ack in pieces is waited for and parsed, an oversized one refused on its header; finalize closes the unfinished ones; the timeout drops them; at the pending-connection cap the oldest is dropped, and the default cap follows the descriptor limit |
 | `test/unit/ptl_nosigpipe.c` | a blocking send and a vector write to a peer that has reset return an error, with `SIGPIPE` at its default action |
 | `test/unit/ptl_recv_timeout.c` | `pmix_ptl_base_recv_blocking` ends a blocking socket's receive at its timeout, and still waits out `EAGAIN` on a non-blocking one |
+| `test/unit/ptl_send_timeout.c` | `pmix_ptl_base_send_blocking` ends a blocking socket's send at its timeout and still completes a late-read one with none; a tool connecting to a server that answers its offer and then stops reading fails its init with `PMIX_ERR_TIMEOUT` |
 | `test/unit/tool_nspace.c` | a real tool connection leaves exactly one namespace object, and the peer resolves through the one on the list |
 | `test/unit/ptl_transport.c` | the listener, the server's peer for a tool, and the tool's peer for its server - by a blocking connect and by an event-driven attach - each record the transport that carries them |
 | `test/unit/ptl_legacy.c` | by default a server has no TCP listener and reports its local socket in the rendezvous file and `PMIX_SERVER_URIxx`; legacy clients on (the attribute, `ptl_base_legacy_clients` or `ptl_base_legacy_peers`) make the TCP listener and report it, with the local socket beside it; `ptl_base_legacy_servers` alone does not; the attribute overrides the parameters; asking in a build without legacy clients fails the init |
