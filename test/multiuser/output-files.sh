@@ -7,13 +7,15 @@
 #
 # $HEADER$
 #
-# A DVM running as one non-root user, and prun started by another, with
-# output files. Output files are created as the job's owner: a launcher
-# whose PMIx supports PMIX_IOF_FILE_WRITER writes them itself, as the
-# user it runs as, and a server that cannot act as the owner writes none.
-# This runs that across two accounts:
+# A DVM and a prun started by another user, with output files. A job's
+# processes run as the user it belongs to, and so are its output files
+# created: a launcher whose PMIx supports PMIX_IOF_FILE_WRITER writes them
+# itself, as the user it runs as, and otherwise the DVM writes them as the
+# job's owner. Only a DVM running as root can act as a different user; a
+# DVM running as any other user refuses a job owned by someone else. This
+# runs that across two accounts:
 #
-#   dvmsvc   runs the DVM
+#   dvmsvc   runs a DVM that is not root's
 #   jobuser  runs prun, writing to a directory of its own (0700)
 #
 # Neither is in the other's groups. Two settings let them meet: the DVM
@@ -21,7 +23,11 @@
 # and jobuser's prun talks to a server of another user only when
 # PMIX_MCA_ptl_base_server_access names it.
 #
-# Cases:
+# Cases, with a DVM of dvmsvc:
+#   0. a job of jobuser is refused (PMIX_ERR_NO_PERMISSIONS), and one
+#      asking for output files writes none; the DVM logs no PMIx error
+#
+# and with a DVM of root:
 #   1. --output dir=   files and directories are jobuser's, 0600 and
 #                      0700, each line once; the DVM reports nothing
 #   2. --output file=  the same for <file>.<nspace>.<rank>.out
@@ -29,12 +35,11 @@
 #   4. a child job     a client's PMIx_Spawn with its own output directory:
 #                      the child's files are jobuser's too
 #   5. no writer       a tool that forwards none of the output to itself:
-#                      the DVM is left to write, cannot act as jobuser,
-#                      says so once, and writes nothing
+#                      the DVM writes the files, as jobuser, and reports
+#                      nothing
 #   6. a launcher of an earlier release - not run here
 #   7. a path jobuser cannot write: nothing is written there
 #   and through 1-7 the DVM logs no PMIx error
-#   8. the DVM as root: cases 1 and 2 again, the files still jobuser's
 #
 # Run as root, with the PMIx and PRRTE to test first on PATH and
 # LD_LIBRARY_PATH (or PMIX_PREFIX / PRTE_PREFIX set), both readable by
@@ -196,7 +201,7 @@ files_cases() {
 }
 
 echo
-echo "=== a DVM of $DVMUSER, prun of $JOBUSER, output files ==="
+echo "=== a DVM of $DVMUSER, prun of $JOBUSER ==="
 echo
 
 if ! start_dvm $DVMUSER dvm; then
@@ -205,21 +210,38 @@ if ! start_dvm $DVMUSER dvm; then
     exit 1
 fi
 pass "the DVM of $DVMUSER starts"
-run_job dvm -n 1 /bin/true > $W/connect.log 2>&1
-if [ 0 -ne $? ]; then
-    fail "prun of $JOBUSER connects to it"
-    cat $W/connect.log
+
+# 0. a job owned by jobuser is refused: this DVM cannot run its processes
+# as jobuser, and does not run them as itself
+run_job dvm -n 1 /bin/true > $W/refused.log 2>&1
+rc=$?
+check "0: a job of $JOBUSER is refused" [ 0 -ne $rc ]
+check "0: ...with PMIX_ERR_NO_PERMISSIONS" grep -q PMIX_ERR_NO_PERMISSIONS $W/refused.log
+out=$W/out0
+jobdir $out
+run_job dvm --output dir=$out -n 1 $PRINT > $W/refused-out.log 2>&1
+check "0: one asking for output files writes none" [ -z "$(find $out -mindepth 1)" ]
+stop_dvm $DVMUSER dvm
+check "0: the DVM of $DVMUSER logs no PMIx error" eval '! grep -q "PMIX ERROR" $W/dvm/log'
+
+echo
+echo "=== a DVM of root, prun of $JOBUSER, output files ==="
+echo
+
+if ! start_dvm root rootdvm --allow-run-as-root; then
+    fail "a DVM of root starts"
+    cat $W/rootdvm/log
     exit 1
 fi
-pass "prun of $JOBUSER connects to it"
+pass "a DVM of root starts"
 
 # 1, 2
-files_cases dvm "1-2:"
+files_cases rootdvm "1-2:"
 
 # 3. copy and tag
 out=$W/out3
 jobdir $out
-run_job dvm --output tag,dir=$out:copy -n 2 $PRINT > $W/prun3.log 2>&1
+run_job rootdvm --output tag,dir=$out:copy -n 2 $PRINT > $W/prun3.log 2>&1
 check "3: --output dir=:copy succeeds" [ 0 -eq $? ]
 check "3: the copy reaches prun's terminal" eval 'grep -q out-0 $W/prun3.log && grep -q out-1 $W/prun3.log'
 check "3: the files are still $JOBUSER's" owned_right $out
@@ -229,31 +251,26 @@ check "3: tag puts the tags in the files" \
 # 4. a child job with files of its own
 out=$W/out4
 jobdir $out
-run_job dvm -n 1 $W/cc/mu_spawn --dir $out -- $PRINT > $W/prun4.log 2>&1
+run_job rootdvm -n 1 $W/cc/mu_spawn --dir $out -- $PRINT > $W/prun4.log 2>&1
 check "4: a client's child job with an output directory runs" [ 0 -eq $? ]
 check "4: the child's files are $JOBUSER's" owned_right $out
 check "4: ...one per stream" [ 2 -eq "$(find $out -type f | wc -l)" ]
 out=$W/out4b
 jobdir $out
 jobdir $W/out4p
-run_job dvm --output dir=$W/out4p -n 1 $W/cc/mu_spawn --dir $out -- $PRINT > $W/prun4b.log 2>&1
+run_job rootdvm --output dir=$W/out4p -n 1 $W/cc/mu_spawn --dir $out -- $PRINT > $W/prun4b.log 2>&1
 check "4: ...and with --output for the parent too" owned_right $out
-check "1-4: the DVM never says it could not write a job's files" not_reported dvm
 
-# 5. no writer: the DVM is asked to write, and cannot as jobuser. The
-# directory is one the DVM could write, so writing as itself would show
+# 5. no writer: the DVM is left to write the files, and does, as jobuser.
+# The directory is one anybody may write, so writing as root would show
 mkdir $W/shared
 chmod 1777 $W/shared
 timeout $TMO runuser -u $JOBUSER -- env PATH="$PATH" LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
-    PMIX_MCA_ptl_base_server_access=users=$DVMUSER $W/cc/mu_spawn --tool $W/dvm/uri --nofwd --dir $W/shared -- $PRINT > $W/tool5.log 2>&1
+    $W/cc/mu_spawn --tool $W/rootdvm/uri --nofwd --dir $W/shared -- $PRINT > $W/tool5.log 2>&1
 check "5: a tool's job forwarding no output to it runs" [ 0 -eq $? ]
-sleep 1
-# the DVM reports it to the tool that started the job
-check "5: the DVM says it could not write the job's files" \
-    grep -q 'output files of a job were not written' $W/tool5.log
-check "5: ...once" \
-    [ 1 -eq "$(cat $W/tool5.log $W/dvm/log | grep -c 'output files of a job were not written')" ]
-check "5: nothing is written" [ -z "$(find $W/shared -mindepth 1)" ]
+check "5: the DVM writes its files, as $JOBUSER" owned_right $W/shared
+check "5: ...and reports nothing" eval '! grep -q "output files of a job were not written" $W/tool5.log'
+check "1-5: the DVM never says it could not write a job's files" not_reported rootdvm
 
 # 6.
 info "6: a launcher of an earlier release is not run here"
@@ -261,28 +278,15 @@ info "6: a launcher of an earlier release is not run here"
 # 7. a path jobuser cannot write
 nowrite=$(eval echo ~$DVMUSER)/out7
 chmod 700 $(eval echo ~$DVMUSER)
-run_job dvm --output dir=$nowrite -n 1 $PRINT > $W/prun7.log 2>&1
+run_job rootdvm --output dir=$nowrite -n 1 $PRINT > $W/prun7.log 2>&1
 rc=$?
 check "7: nothing is written below a directory $JOBUSER cannot write" [ ! -e $nowrite ]
 info "7: prun exited $rc and printed $(grep -c . $W/prun7.log) lines; first: $(grep -m1 . $W/prun7.log)"
 
-stop_dvm $DVMUSER dvm
-# what the DVM could not do for another user's jobs it falls back from
-# quietly: its log holds no error
-check "1-7: the DVM of $DVMUSER logs no PMIx error" eval '! grep -q "PMIX ERROR" $W/dvm/log'
-
-# 8. control: the DVM as root
-echo
-echo "=== the same DVM run as root ==="
-echo
-if start_dvm root rootdvm --allow-run-as-root; then
-    pass "8: a DVM of root starts"
-    files_cases rootdvm "8:"
-    stop_dvm root rootdvm
-else
-    fail "8: a DVM of root starts"
-    cat $W/rootdvm/log
-fi
+stop_dvm root rootdvm
+# what the DVM could not do for a job it falls back from quietly: its
+# log holds no error
+check "1-7: the DVM of root logs no PMIx error" eval '! grep -q "PMIX ERROR" $W/rootdvm/log'
 
 echo
 echo "$npass passed, $nfail failed"
