@@ -11,9 +11,11 @@
 
 #include <errno.h>
 #include <grp.h>
+#include <limits.h>
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -27,11 +29,48 @@
 #endif
 
 #include "src/util/pmix_runas.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/pmix_fd.h"
+#include "src/util/pmix_output.h"
 
 volatile bool pmix_util_runas_child = false;
 int pmix_util_runas_timeout = 10;
 volatile bool pmix_util_runas_test_stall = false;
+
+size_t pmix_util_runas_groups(gid_t gid, const gid_t *gids, size_t ngids, gid_t *out,
+                              size_t max)
+{
+    size_t n, nout = 0;
+
+    if (NULL == out || 0 == max) {
+        return 0;
+    }
+    out[nout++] = gid;
+    for (n = 0; NULL != gids && n < ngids && nout < max; n++) {
+        if (gids[n] != gid) {
+            out[nout++] = gids[n];
+        }
+    }
+    return nout;
+}
+
+#if defined(HAVE_FORK) && defined(HAVE_WAITPID)
+/* the most groups setgroups() takes */
+static size_t groups_max(void)
+{
+    long max = sysconf(_SC_NGROUPS_MAX);
+
+    if (0 < max) {
+        return (size_t) max;
+    }
+#    ifdef NGROUPS_MAX
+    return NGROUPS_MAX;
+#    else
+    /* no limit we can learn - the list goes as it is */
+    return SIZE_MAX;
+#    endif
+}
+#endif
 
 #if defined(HAVE_FORK) && defined(HAVE_WAITPID)
 
@@ -249,6 +288,8 @@ int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool
     bool answered = false, timedout = false;
     char byte;
     ssize_t nb;
+    gid_t *glist;
+    size_t gmax, nglist;
 #endif
     int rc;
 
@@ -270,10 +311,36 @@ int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool
 
 #if defined(HAVE_FORK) && defined(HAVE_WAITPID)
     sweep_unreaped();
+    /* the child's groups, made here: it may not allocate */
+    gmax = groups_max();
+    if (ngids < gmax) {
+        gmax = ngids + 1;
+    }
+    glist = (gid_t *) malloc(gmax * sizeof(gid_t));
+    if (NULL == glist) {
+        return -1;
+    }
+    nglist = pmix_util_runas_groups(gid, gids, ngids, glist, gmax);
+    if (nglist == gmax) {
+        size_t want = 1;
+
+        for (size_t n = 0; NULL != gids && n < ngids; n++) {
+            if (gids[n] != gid) {
+                ++want;
+            }
+        }
+        if (want > nglist) {
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "run_as: uid %lu has %lu groups and setgroups() takes %lu - "
+                                "the rest are left out", (unsigned long) uid,
+                                (unsigned long) want, (unsigned long) nglist);
+        }
+    }
     /* The child always answers over the socket - the descriptor, or a
      * byte saying fn succeeded - so the answer never depends on reaping
      * it, which a host may do before we can */
     if (0 != socketpair(AF_UNIX, SOCK_STREAM | PMIX_SOCK_CLOEXEC, 0, sv)) {
+        free(glist);
         return -1;
     }
     if (0 == PMIX_SOCK_CLOEXEC) {
@@ -284,6 +351,7 @@ int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool
     if (0 > pid) {
         close(sv[0]);
         close(sv[1]);
+        free(glist);
         return -1;
     }
     if (0 == pid) {
@@ -298,12 +366,9 @@ int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool
          * this the child keeps *our* memberships and reaches what the user
          * cannot. The user's own set was looked up by the caller - NSS is
          * not safe to call here */
-        if (0 != setgroups(ngids, (0 < ngids) ? gids : NULL)) {
+        if (0 != setgroups(nglist, glist)) {
             _exit(1);
         }
-#    else
-        (void) gids;
-        (void) ngids;
 #    endif
         /* group first: once the uid is gone so is the privilege needed
          * to change the gid */
@@ -342,6 +407,7 @@ int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool
 
     /* Parent. Nothing here waits without a deadline - see
      * sweep_unreaped(). The caller is usually the progress thread */
+    free(glist);
     close(sv[1]);
     if (0 < pmix_util_runas_timeout) {
         (void) clock_gettime(CLOCK_MONOTONIC, &deadline);

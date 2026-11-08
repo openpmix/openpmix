@@ -3922,7 +3922,8 @@ misbehave by design).
     walk: only another thread calling `seteuid()` could invalidate it and
     nothing here does.
   - **We are not**, so `fork()` and switch identity in the child
-    (`setgroups(0, NULL)`, then `setgid`, then `setuid` — group before
+    (`setgroups()` with the user's groups - see `pmix_util_runas_groups()`
+    in `src/util/pmix_runas.h` - then `setgid`, then `setuid` — group before
     user, because changing the uid first gives up the ability to change
     the gid, and `setuid()` does not touch the supplementary groups on
     its own). Only a server permitted to change its identity can switch
