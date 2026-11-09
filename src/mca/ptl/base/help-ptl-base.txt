@@ -558,6 +558,15 @@ will not start.
 Name a file in a directory of your own, or have the file's owner remove
 it.
 #
+[role-needs-tool-support]
+The PMIx server on %s was asked to be
+%s, and also told not to support tools
+(PMIX_SERVER_TOOL_SUPPORT set false).
+
+Everything that connects to that role connects as a tool, so a server
+that refuses tools can serve nothing. The server will not start: leave
+PMIX_SERVER_TOOL_SUPPORT out, set it true, or do not ask for the role.
+#
 [session-server-no-id]
 The PMIx server on %s was asked to be a session-level server
 (PMIX_SERVER_SESSION_SUPPORT) but was not given the ID that names its
