@@ -1084,6 +1084,14 @@ int main(int argc, char **argv)
         return fdcheck(argv[2]);
     }
 
+    /* The contact files here stand for the ones a server writes, which
+     * only their owner can write. write_file() takes its mode from the
+     * umask, and one that leaves group write - 002, the default for a
+     * user with a private group on many Linux systems - makes every one
+     * of them a file a search rightly passes over. The cases that want
+     * another mode set it with chmod */
+    (void) umask(022);
+
     tdir = getenv("TMPDIR");
     if (NULL == tdir) {
         tdir = "/tmp";
