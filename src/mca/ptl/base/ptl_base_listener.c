@@ -1394,6 +1394,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                                                                  : "ptl_base_legacy_peers";
     pmix_info_t *sessinfo = NULL;
     uint32_t idval;
+    bool tool_support_given = false;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base:setup_listener");
@@ -1435,6 +1436,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
 
         } else if (0 == strcmp(info[n].key, PMIX_SERVER_TOOL_SUPPORT)) {
             pmix_ptl_base.tool_support = PMIX_INFO_TRUE(&info[n]);
+            tool_support_given = true;
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_REMOTE_CONNECTIONS)) {
             /* a server takes connections from its own host only */
@@ -1470,6 +1472,23 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
                 return rc;
             }
         }
+    }
+
+    /* A scheduler and a system controller are reached only by tools - a
+     * runtime asking for an allocation, a tool of the system - so each
+     * serves tools without being told to. A host that says it must not
+     * has asked for a server nothing can use, and is told so */
+    if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+        if (tool_support_given && !pmix_ptl_base.tool_support) {
+            pmix_show_help("help-ptl-base.txt", "role-needs-tool-support", true,
+                           pmix_globals.hostname,
+                           PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)
+                               ? "the system scheduler (PMIX_SERVER_SCHEDULER)"
+                               : "the system controller (PMIX_SERVER_SYS_CONTROLLER)");
+            return PMIX_ERR_SILENT;
+        }
+        pmix_ptl_base.tool_support = true;
     }
 
 #if !PMIX_ENABLE_LEGACY_CLIENTS

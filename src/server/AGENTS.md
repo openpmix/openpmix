@@ -794,7 +794,10 @@ is shifted.
 **`pmix_server_globals.tool_connections_allowed` is declared,
 initialized to false, and never read or written.** The knob that actually
 decides whether we answer a tool is `pmix_ptl_base.tool_support`, set from
-`PMIX_SERVER_TOOL_SUPPORT` in `ptl_base_listener.c`.
+`PMIX_SERVER_TOOL_SUPPORT` in `ptl_base_listener.c`. A scheduler or a
+system controller, which only tools reach, has it set when the host passes
+no such attribute, and fails init (`role-needs-tool-support`) when the host
+passes it false.
 
 There is no server-wide "pass these envars to every client" hook. A
 `genvars` array that `setup_fork_body` replayed into each child used to

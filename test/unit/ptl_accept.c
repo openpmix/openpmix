@@ -1043,6 +1043,15 @@ static bool no_tool_support = false;
 static bool allow_foreign = false;
 /* start the server naming this user to it as PMIX_USERID */
 static uid_t host_userid = (uid_t) -1;
+/* start the server in a system role - PMIX_SERVER_SCHEDULER or
+ * PMIX_SERVER_SYS_CONTROLLER - its file in the scratch tmpdir */
+static const char *system_role = NULL;
+/* pass no PMIX_SERVER_TOOL_SUPPORT at all */
+static bool omit_tool_support = false;
+/* The servers here exit without finalizing, which leaves their socket
+ * directories and rendezvous files behind: give them a directory of their
+ * own, removed when the test ends */
+static char scratch[256];
 
 static pmix_status_t start_server(pmix_server_module_t *module, bool client, uid_t uid)
 {
@@ -1054,15 +1063,28 @@ static pmix_status_t start_server(pmix_server_module_t *module, bool client, uid
     {
         /* tools connect here, which a server takes only with tool support -
          * unless a case asks for a server without it */
-        pmix_info_t tsinfo[3];
+        pmix_info_t tsinfo[5];
         bool tsflag = !no_tool_support;
         uint32_t u32 = (uint32_t) host_userid;
-        size_t ntsinfo = 2;
+        size_t ntsinfo = 0;
 
-        PMIX_INFO_LOAD(&tsinfo[0], PMIX_SERVER_TOOL_SUPPORT, &tsflag, PMIX_BOOL);
-        PMIX_INFO_LOAD(&tsinfo[1], PMIX_SERVER_ALLOW_FOREIGN_TOOLS, &allow_foreign, PMIX_BOOL);
+        if (!omit_tool_support) {
+            PMIX_INFO_LOAD(&tsinfo[ntsinfo], PMIX_SERVER_TOOL_SUPPORT, &tsflag, PMIX_BOOL);
+            ++ntsinfo;
+        }
+        PMIX_INFO_LOAD(&tsinfo[ntsinfo], PMIX_SERVER_ALLOW_FOREIGN_TOOLS, &allow_foreign,
+                       PMIX_BOOL);
+        ++ntsinfo;
         if ((uid_t) -1 != host_userid) {
             PMIX_INFO_LOAD(&tsinfo[ntsinfo], PMIX_USERID, &u32, PMIX_UINT32);
+            ++ntsinfo;
+        }
+        if (NULL != system_role) {
+            /* the system tmpdir named, so a server run as root does not
+             * write in /run/pmix */
+            PMIX_INFO_LOAD(&tsinfo[ntsinfo], system_role, NULL, PMIX_BOOL);
+            ++ntsinfo;
+            PMIX_INFO_LOAD(&tsinfo[ntsinfo], PMIX_SYSTEM_TMPDIR, scratch, PMIX_STRING);
             ++ntsinfo;
         }
         rc = PMIx_server_init(module, tsinfo, ntsinfo);
@@ -2282,6 +2304,64 @@ static int case_no_tool_support(void)
     }
     return expect_status("a tool on a server without tool support", reply,
                          PMIX_ERR_NOT_SUPPORTED);
+}
+
+/* A scheduler or a system controller is reached only by tools - a
+ * runtime asking for an allocation, a tool of the system - so one whose
+ * host passes no PMIX_SERVER_TOOL_SUPPORT takes them */
+static int case_system_role_takes_tools(const char *role)
+{
+    char *msg;
+    size_t sz;
+    int sd = -1;
+    pmix_status_t reply;
+
+    omit_tool_support = true;
+    system_role = role;
+    if (PMIX_SUCCESS != start_server(&mymodule, false, getuid())) {
+        return CHILD_SETUP;
+    }
+    msg = build_ack(PMIX_TOOL_GIVEN_ID, AC_TOOLNS, 0, "native", NULL, false, &sz);
+    reply = send_ack(msg, sz, &sd);
+    free(msg);
+    if (PMIX_SUCCESS != reply || PMIX_SUCCESS != (reply = tool_replies(sd))) {
+        fprintf(stdout, "    the server refused the tool: %s\n", PMIx_Error_string(reply));
+        return CHILD_FAIL;
+    }
+    if (1 != ntool_connected) {
+        fprintf(stdout, "    the host was asked about %d tools, not 1\n", ntool_connected);
+        return CHILD_FAIL;
+    }
+    return CHILD_PASS;
+}
+static int run_scheduler_takes_tools(void)
+{
+    return case_system_role_takes_tools(PMIX_SERVER_SCHEDULER);
+}
+static int run_sysctrlr_takes_tools(void)
+{
+    return case_system_role_takes_tools(PMIX_SERVER_SYS_CONTROLLER);
+}
+
+/* ... and one whose host says PMIX_SERVER_TOOL_SUPPORT false has asked for
+ * a server nothing can use: the init fails */
+static int case_system_role_no_tools(const char *role)
+{
+    pmix_status_t rc;
+
+    no_tool_support = true;
+    system_role = role;
+    rc = start_server(&mymodule, false, getuid());
+    fprintf(stdout, "    PMIx_server_init: %s\n", PMIx_Error_string(rc));
+    return (PMIX_SUCCESS == rc) ? CHILD_FAIL : CHILD_PASS;
+}
+static int run_scheduler_no_tools(void)
+{
+    return case_system_role_no_tools(PMIX_SERVER_SCHEDULER);
+}
+static int run_sysctrlr_no_tools(void)
+{
+    return case_system_role_no_tools(PMIX_SERVER_SYS_CONTROLLER);
 }
 
 static void dereg_client_rank(void);
@@ -5639,10 +5719,6 @@ static int case_finalizing_holds(void)
     return CHILD_PASS;
 }
 
-/* The servers here exit without finalizing, which leaves their socket
- * directories and rendezvous files behind: give them a directory of their
- * own, removed when the test ends */
-static char scratch[256];
 
 static int scratch_rm(const char *path, const struct stat *st, int flag, struct FTW *ftw)
 {
@@ -5716,6 +5792,14 @@ int main(int argc, char **argv)
     run_case("a tool is given to the host with its credential type", run_host_info_tool);
     run_case("a server without tool support refuses a tool before the host is asked",
              case_no_tool_support);
+    run_case("a scheduler whose host passes no PMIX_SERVER_TOOL_SUPPORT takes tools",
+             run_scheduler_takes_tools);
+    run_case("a system controller whose host passes no PMIX_SERVER_TOOL_SUPPORT takes tools",
+             run_sysctrlr_takes_tools);
+    run_case("a scheduler told PMIX_SERVER_TOOL_SUPPORT false fails to initialize",
+             run_scheduler_no_tools);
+    run_case("a system controller told PMIX_SERVER_TOOL_SUPPORT false fails to initialize",
+             run_sysctrlr_no_tools);
     run_case("a client on the local transport is the kernel's uid, gid and pid",
              run_local_identity_client);
     run_case("a tool on the local transport is the kernel's uid, gid and pid",
