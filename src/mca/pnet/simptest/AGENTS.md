@@ -132,14 +132,15 @@ is a recognizable placeholder.
 - **The node map and the proc map must be the same length, and nothing
   upstream guarantees it.** `allocate` walks them in lockstep - it reads
   `procs[n]` for every `nodes[n]` - but they are two separate strings
-  parsed by two separate `pmix_preg` calls, and `parse_procs` splits with
-  the *empty-collapsing* `PMIx_Argv_split`, so a proc map naming a node
-  that hosts nothing comes back shorter than the node map it belongs to.
-  Every later node then gets another node's ranks, and once `n` passes
-  the proc array's terminator the read is off the end of the allocation
-  entirely. Compare the two counts first and refuse the pair when they
-  disagree; `gds/hash`'s `store_map` has always made exactly this check
-  on exactly this pair.
+  parsed by two separate `pmix_preg` calls, so a host that sends maps of
+  different lengths would give every later node another node's ranks, and
+  once `n` passed the proc array's terminator the read would be off the
+  end of the allocation entirely. Compare the two counts first and refuse
+  the pair when they disagree; `gds/hash`'s `store_map` has always made
+  exactly this check on exactly this pair. (`parse_procs` used to produce
+  such a pair itself, from a proc map naming a node that hosts nothing:
+  it split with the empty-collapsing `PMIx_Argv_split`. It now keeps the
+  empty field, which `allocate` already skips as a node with no procs.)
 
 - **Either map can arrive in three shapes.** `PMIX_STRING`, the
   deprecated encoded `PMIX_REGEX` (payload in `value.data.bo.bytes`), or
