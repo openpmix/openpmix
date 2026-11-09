@@ -90,7 +90,7 @@ transports. `pmix_ptl_base_select` keeps every one whose query succeeds on
 release uses, always built; and [`tcp/`](tcp/AGENTS.md), which carries
 every connection with a peer of an earlier release and is built only
 when either direction of legacy support is (`--enable-legacy-clients`,
-or legacy servers, on unless `--disable-legacy-servers`;
+or `--enable-legacy-servers`, both off by default;
 `PMIX_ENABLE_LEGACY_SUPPORT`). Nothing outside `tcp/` may name a tcp
 symbol unless it is under that macro.
 

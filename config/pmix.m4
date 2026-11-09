@@ -1526,9 +1526,8 @@ PMIX_SUMMARY_ADD([Miscellaneous], [IPv6 Support], [], [$pmix_ipv6_enabled])
 #      parameter asks. Off unless asked for: clients are to be updated
 #      with their servers.
 #  --enable-legacy-servers: a client or tool of this release may connect
-#      to a server of an earlier release (v3.2 on). On unless disabled: a
-#      client in a container image must run under whatever release the
-#      host's resource manager runs. Without it such a server is refused.
+#      to a server of an earlier release (v3.2 on). Off unless asked for,
+#      like legacy clients. Without it such a server is refused.
 #
 # --enable-legacy-peers sets both, and --disable-legacy-peers clears
 # both; either of the others given as well overrides it for its own
@@ -1544,14 +1543,14 @@ AC_ARG_ENABLE([legacy-clients],
         [Build with support for a server taking clients and tools of PMIx releases before v7.0, which connect to it over TCP. With it, the ptl_base_legacy_clients parameter or the PMIX_SERVER_LEGACY_PEERS attribute turns it on (default: disabled)])])
 AC_ARG_ENABLE([legacy-servers],
     [AS_HELP_STRING([--enable-legacy-servers],
-        [Build with support for clients and tools connecting to servers of PMIx releases v3.2 through v6.x, over TCP. --disable-legacy-servers refuses such a server (default: enabled)])])
+        [Build with support for clients and tools connecting to servers of PMIx releases v3.2 through v6.x, over TCP. Without it such a server is refused (default: disabled)])])
 
 AS_IF([test -z "$enable_legacy_clients"],
       [AS_IF([test "$enable_legacy_peers" = "yes"], [enable_legacy_clients=yes],
              [enable_legacy_clients=no])])
 AS_IF([test -z "$enable_legacy_servers"],
-      [AS_IF([test "$enable_legacy_peers" = "no"], [enable_legacy_servers=no],
-             [enable_legacy_servers=yes])])
+      [AS_IF([test "$enable_legacy_peers" = "yes"], [enable_legacy_servers=yes],
+             [enable_legacy_servers=no])])
 
 AC_MSG_CHECKING([if want support for clients and tools of earlier PMIx releases])
 if test "$enable_legacy_clients" = "yes"; then
