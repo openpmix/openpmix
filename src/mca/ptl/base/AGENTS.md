@@ -1432,6 +1432,13 @@ socket (`pmix_ptl_base_listen`), publishes the URI into `gds`, and drops
 rendezvous files. The tcp transport (`../tcp/ptl_tcp.c`) picks the
 interface (a loopback one, or none), binds, and makes the URI.
 
+- **A scheduler or a system controller serves tools without being told
+  to.** Only tools reach those roles, so `setup_listener` sets
+  `tool_support` for them when the host passes no
+  `PMIX_SERVER_TOOL_SUPPORT`, and fails the init
+  (`role-needs-tool-support`) when the host passes it false - a host's
+  explicit answer is not overridden. `ptl_accept.c` covers both, for
+  each role.
 - **The TCP listener is on a loopback interface, or nowhere.** It is
   opened only for legacy clients. A loopback candidate must carry a
   loopback address (`pmix_net_islocalhost`): any other address on a
