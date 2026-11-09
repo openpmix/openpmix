@@ -414,8 +414,8 @@ src/mca/bfrops/
 The components are statically built into `libpmix` and wired through
 the generated `base/static-components.h`. **`v70` is always built.
 `v21` through `v61` are built only when this PMIx supports peers of
-earlier releases in either direction** (`--enable-legacy-clients`, or
-legacy servers - on unless `--disable-legacy-servers`): each ships a
+earlier releases in either direction** (`--enable-legacy-clients` or
+`--enable-legacy-servers`, both off by default): each ships a
 `configure.m4` that tests `$pmix_legacy_support`, and the build
 defines `PMIX_ENABLE_LEGACY_SUPPORT` to match. Every peer of this release
 speaks `v70`, so a build with neither direction needs no other wire

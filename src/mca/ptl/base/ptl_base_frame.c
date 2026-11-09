@@ -359,8 +359,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                       "write their rendezvous files - anywhere below the system "
                                       "tmpdir. A server of an earlier release it is told of is "
                                       "connected to whatever this says, in a PMIx built with "
-                                      "legacy server support (the default), and refused in one "
-                                      "built without",
+                                      "--enable-legacy-servers, and refused in one built "
+                                      "without",
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                       &pmix_ptl_base.legacy_servers_param);
 

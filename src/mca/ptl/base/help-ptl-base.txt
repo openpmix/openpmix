@@ -239,11 +239,10 @@ Rebuild PMIx configured --enable-legacy-clients, or do not ask for them.
 [legacy-servers-not-built]
 A process on %s was to connect to a PMIx server of release
 %d.%d, but this PMIx was built without support for servers of releases
-before v7.0 (configured --disable-legacy-servers, or
---disable-legacy-peers). The connection has been refused.
+before v7.0. The connection has been refused.
 
 Run the process under a server of PMIx v7.0 or later, or rebuild PMIx
-with legacy server support, which is the default.
+configured --enable-legacy-servers.
 #
 [legacy-servers-tcp]
 A process on %s was given a PMIx server's TCP address to
@@ -252,8 +251,8 @@ connect to:
   %s
 
 Only a server of a PMIx release before v7.0 is reached over TCP, and
-this PMIx was built without support for those (configured
---disable-legacy-servers, or --disable-legacy-peers). A server of v7.0
+this PMIx was built without support for those (it was not configured
+--enable-legacy-servers). A server of v7.0
 or later is reached on its local socket, which its report or rendezvous
 file names on its "local:" line.
 #
