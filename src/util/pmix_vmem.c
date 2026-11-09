@@ -96,10 +96,9 @@ parse_map_line(
             } else if (!strncmp(next, "[stack]", 7)) {
                 *kindp = VMEM_MAP_STACK;
             } else {
-                char *end;
-                if ((end = strchr(next, '\n')) != NULL) {
-                    *end = '\0';
-                }
+                /* Do not truncate the line here: it is the caller's,
+                 * handed to us const, and nothing reads the tag that
+                 * terminating it would have isolated. */
                 *kindp = VMEM_MAP_OTHER;
             }
         } else {
