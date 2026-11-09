@@ -391,6 +391,7 @@ test/unit/ptl_local_connect
 test/unit/ptl_accept
 test/unit/ptl_exec
 test/unit/idenv
+test/unit/init_paths
 test/unit/client_connect_fail
 test/unit/tool_delete
 test/unit/tool_replies
