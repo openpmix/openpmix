@@ -121,6 +121,11 @@ attribute is optional and depends on how the PMIx implementation was built and
 on the capabilities of the host environment. All are passed in the ``info``
 array.
 
+Several behaviors need more than one attribute, or a build option or site
+setting as well: serving tools, being found as a scheduler, taking clients of
+earlier releases. :ref:`label-settings-matrix` sets out each combination and
+what it does, and :ref:`label-host-env-starting` what to pass for each goal.
+
 Server identity and directories
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -132,16 +137,19 @@ Server identity and directories
   If not given, the ``PMIX_SERVER_RANK`` environment variable is used, and
   otherwise the server's pid.
 * ``PMIX_SERVER_TMPDIR`` (char\*) |mdash| temporary directory in which the
-  server is to place its session-level files, including the rendezvous files
-  tools use to find it by PID or namespace. If not given, the
+  server is to place its session-level files. The rendezvous files tools use
+  to find it go under ``PMIX_SYSTEM_TMPDIR`` instead (see `Rendezvous
+  files`_). If not given, the
   ``PMIX_SERVER_TMPDIR`` environment variable is used, then ``TMPDIR``,
   ``TEMP`` and ``TMP``, and finally ``/tmp``. The server's local socket is
   made here too, and its path must fit a socket address (see `The local
   socket`_). The directory must already exist. Its path is checked at init,
   with the system tmpdir's: see `The tmpdirs`_.
-* ``PMIX_SYSTEM_TMPDIR`` (char\*) |mdash| temporary directory in which the
-  server is to place its system-level rendezvous files (system server,
-  scheduler, system controller). If not given, the ``PMIX_SYSTEM_TMPDIR``
+* ``PMIX_SYSTEM_TMPDIR`` (char\*) |mdash| temporary directory beneath which
+  the server places its rendezvous files: those tools find it by, in
+  ``pmix-user.<uid>``, and its system-level file (system server, scheduler,
+  system controller), which a root server given no system tmpdir puts in
+  ``/run/pmix`` instead. If not given, the ``PMIX_SYSTEM_TMPDIR``
   environment variable is used, then the same fallbacks as for
   ``PMIX_SERVER_TMPDIR``.
 
@@ -182,18 +190,25 @@ Role and support attributes
   can relay operations (e.g., logging) requiring routing to other nodes.
 * ``PMIX_SERVER_SCHEDULER`` (bool) |mdash| the server is hosting the system
   scheduler (workload manager) and expects to receive scheduler-related
-  requests.
+  requests. The runtimes that find it connect as tools, so it implies
+  ``PMIX_SERVER_TOOL_SUPPORT``; passing that attribute false as well
+  fails the init.
 * ``PMIX_SERVER_SYS_CONTROLLER`` (bool) |mdash| the server is hosting the
-  system controller.
+  system controller. As for ``PMIX_SERVER_SCHEDULER``, the processes that
+  find it are tools: it implies ``PMIX_SERVER_TOOL_SUPPORT``, and passing
+  that attribute false as well fails the init.
 * ``PMIX_SERVER_LEGACY_PEERS`` (bool) |mdash| take (or refuse) connections
   from clients and tools of PMIx releases before v7.0, which connect over
   TCP. Overrides the ``ptl_base_legacy_clients`` MCA parameter (and
-  ``ptl_base_legacy_peers``, which sets it), which defaults to ``false``. With it, the server listens on a loopback
+  ``ptl_base_legacy_peers``, which sets it in a build with legacy clients), which defaults to ``false``. With it, the server listens on a loopback
   interface for them and gives its clients the TCP address in the
   variables those releases read; without it the server has no TCP
   listener, and a client or tool of an earlier release cannot connect. Only a PMIx
   configured ``--enable-legacy-clients`` can take them (the default is
-  not to): in one without it, asking fails the init.
+  not to): in one without it, asking fails the init - by this attribute, or
+  by ``ptl_base_legacy_clients``; ``ptl_base_legacy_peers`` asks such a
+  build for nothing. A host that does not pass it leaves the decision to
+  the site's parameter.
 * ``PMIX_SERVER_REMOTE_CONNECTIONS`` (bool) |mdash| **deprecated**. A server
   takes connections from its own host only: ``true`` fails the init, and
   ``false`` changes nothing. A client or tool does not dial a server at an
@@ -225,7 +240,9 @@ Connection attributes
 * ``PMIX_LAUNCHER_RENDEZVOUS_FILE`` (char\*) |mdash| full pathname of an
   additional rendezvous file in which the server is to write its contact
   information |mdash| for example, so that a debugger can find a launcher.
-  Missing directories on the path are created.
+  Missing directories on the path are created. The file is written whether or
+  not ``PMIX_SERVER_TOOL_SUPPORT`` is given; a tool that reads it is accepted
+  only with that attribute.
 * ``PMIX_CONNECT_TO_SYSTEM``, ``PMIX_CONNECT_SYSTEM_FIRST``,
   ``PMIX_CONNECT_TO_SCHEDULER``, ``PMIX_CONNECT_TO_SYS_CONTROLLER`` (bool),
   ``PMIX_CONNECTION_ORDER`` (char\*), ``PMIX_SERVER_PIDINFO`` (pid_t),

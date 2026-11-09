@@ -151,10 +151,17 @@ Tool identity attributes
   a namespace is sent the same. A tool whose library does not have it is
   refused with ``PMIX_ERR_NOT_SUPPORTED``.
 * ``PMIX_TOOL_RANK`` (uint32_t) |mdash| rank of this tool within its namespace.
-* ``PMIX_LAUNCHER`` (bool) |mdash| the tool is a launcher and needs rendezvous
-  files created; causes the server-side infrastructure to be initialized.
+* ``PMIX_LAUNCHER`` (bool) |mdash| the tool is a launcher; causes the
+  server-side infrastructure to be initialized, including a listener. Which
+  rendezvous files it writes, and whether it accepts the tools that read them,
+  is decided as for a server, by the attributes in `Launcher attributes`_ and
+  those :ref:`PMIx_server_init(3) <man3-PMIx_server_init>` takes - among them
+  ``PMIX_SERVER_TOOL_SUPPORT``, without which the launcher refuses every tool
+  that connects to it. See :ref:`label-settings-matrix`.
 * ``PMIX_SERVER_SCHEDULER`` (bool) |mdash| the process is hosted by the system
-  scheduler and intends to act as the system-level server.
+  scheduler and intends to act as the system-level server. The runtimes that
+  find it connect as tools, so it implies ``PMIX_SERVER_TOOL_SUPPORT``;
+  passing that attribute false as well fails the init.
 
 Connection attributes
 ^^^^^^^^^^^^^^^^^^^^^^

@@ -51,12 +51,23 @@ Starting the server
 -------------------
 
 * **Ask for tool support** (``PMIX_SERVER_TOOL_SUPPORT``) if tools are
-  to connect. Without it, none can.
+  to connect. Without it, none can - and that includes the tools that
+  find a system or session server, and the debugger that reads a
+  ``PMIX_LAUNCHER_RENDEZVOUS_FILE``. A scheduler or system controller
+  (``PMIX_SERVER_SCHEDULER``, ``PMIX_SERVER_SYS_CONTROLLER``) is the
+  exception: it serves only tools, so the role implies tool support,
+  and passing ``PMIX_SERVER_TOOL_SUPPORT`` false with it fails the init.
+  A launcher passes it to ``PMIx_tool_init``. See
+  :ref:`label-host-env-starting`, and :ref:`label-settings-matrix` for
+  every combination.
 * **Decide on clients and tools of earlier releases.**
   ``PMIX_SERVER_LEGACY_PEERS`` takes them, if PMIx was built
   ``--enable-legacy-clients``; the site's ``ptl_base_legacy_clients`` does
   the same when the host does not say. Without either, they are
-  refused, and an older client runs as a singleton.
+  refused, and an older client runs as a singleton. Passing the
+  attribute false overrides the site, and passing it true in a build
+  without the support fails init, so a host that has no reason to
+  decide should not pass it.
 * **Remote connections are gone.** ``PMIX_SERVER_REMOTE_CONNECTIONS``
   set to true fails init.
 * **The local socket is owner-only.** To take tools of other users,

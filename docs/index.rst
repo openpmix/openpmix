@@ -48,6 +48,11 @@ kind of reader - installers, system administrators, application and
 tool developers, host environment developers, and PMIx developers - to
 the pages written for them.
 
+**Everyone who builds, runs, or hosts PMIx** should know
+:ref:`label-settings-matrix`: which ``configure`` options, MCA
+parameters, and host attributes a behavior needs, and what happens
+when one of them is missing.
+
 **System administrators** should read :ref:`label-sysadmin`: which
 release to install, how PMIx and PRRTE releases pair up, and how to
 control authentication.
@@ -65,6 +70,7 @@ Table of contents
    :numbered:
 
    where-to-start
+   settings-matrix
    transition-v7/index
    quickstart
    getting-help
