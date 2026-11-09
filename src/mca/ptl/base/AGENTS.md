@@ -187,7 +187,7 @@ TCP peer at one.
     (`--enable-legacy-clients`, off by default) fails the init
     (`legacy-clients-not-built`).
   - **Legacy servers** - a client or tool connecting to a server of an
-    earlier release (v3.2 on). Built unless `--disable-legacy-servers`
+    earlier release (v3.2 on). Built only with `--enable-legacy-servers`
     (`PMIX_ENABLE_LEGACY_SERVERS`), and then needs no run-time setting:
     a server of an earlier release the process is told of is connected
     to. `ptl_base_legacy_servers` (`legacy_servers_param`, or

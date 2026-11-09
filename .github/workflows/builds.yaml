@@ -60,8 +60,8 @@ jobs:
 
         # the vpath builds support peers of earlier releases in both
         # directions, so make check runs the TCP path; the others take
-        # the default - servers of earlier releases, but not their
-        # clients and tools
+        # the default - no support for earlier releases in either
+        # direction
         c=./configure
         if test "${{ matrix.path }}" = vpath; then
             mkdir build
@@ -132,8 +132,8 @@ jobs:
 
         # the vpath builds support peers of earlier releases in both
         # directions, so make check runs the TCP path; the others take
-        # the default - servers of earlier releases, but not their
-        # clients and tools
+        # the default - no support for earlier releases in either
+        # direction
         c=./configure
         if test "${{ matrix.path }}" = vpath; then
             mkdir build
@@ -163,8 +163,8 @@ jobs:
 
   no-legacy:
     # No support for peers of earlier releases in either direction
-    # (--disable-legacy-peers): the library leaves out the tcp transport
-    # and every bfrops component but v70, which no default build does.
+    # (--disable-legacy-peers, as the default now is): the library leaves
+    # out the tcp transport and every bfrops component but v70.
     # Everything that names one of them has to build and pass without it.
     runs-on: ubuntu-latest
     steps:
