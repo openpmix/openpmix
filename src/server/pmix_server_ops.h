@@ -838,6 +838,14 @@ PMIX_EXPORT pmix_status_t pmix_server_resolve_node(pmix_server_caddy_t *cd,
 
 PMIX_EXPORT void pmix_server_locally_resolve_node(int sd, short args, void *cbdata);
 
+/* Work out PMIX_ANL_MAP for a job whose host did not supply it, from the
+ * node list and per-node local peers this server holds, and store it as
+ * job-level data for the job. Returns PMIX_SUCCESS only when the value
+ * was stored. Fails, storing nothing, when the data held does not place
+ * every rank exactly once or the placement cannot be expressed within
+ * the PMI-2 value limit. Must be called on the progress thread. */
+pmix_status_t pmix_server_compute_anl_map(pmix_namespace_t *nptr);
+
 PMIX_EXPORT pmix_status_t pmix_server_process_grpinfo(size_t ctxid,
                                                       pmix_info_t *pinfo,
                                                       size_t npinfo);

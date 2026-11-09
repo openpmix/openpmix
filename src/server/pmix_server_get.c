@@ -595,6 +595,22 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
             PMIX_DESTRUCT(&pbkt);
             return rc;
         }
+        /* A host need not supply PMIX_ANL_MAP, and few do - but it follows
+         * entirely from the node list and local peers we hold, so work it
+         * out here, store it for the job's other procs, and answer from
+         * the store. When it cannot be worked out nothing was stored, and
+         * the request carries on below exactly as for any absent key */
+        if (NULL != key && PMIx_Check_key(key, PMIX_ANL_MAP) &&
+            PMIX_BUFFER_IS_EMPTY(&pbkt) &&
+            PMIX_SUCCESS == pmix_server_compute_anl_map(nptr)) {
+            PMIX_DESTRUCT(&pbkt);
+            PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+            rc = get_job_data(nptr, cd, key, false, &pbkt);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_DESTRUCT(&pbkt);
+                return rc;
+            }
+        }
         /* get_job_data reports success whether or not it found what was
          * asked for, so an empty buffer here means we do not hold this
          * reserved key. Do not answer with it: an empty payload is

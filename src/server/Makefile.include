@@ -35,6 +35,7 @@ sources += \
         server/pmix_server_op_replies.c \
         server/pmix_server_info_replies.c \
         server/pmix_server_get.c \
+        server/pmix_server_anlmap.c \
         server/pmix_server_group.c \
         server/pmix_server_grpmbr.c \
         server/pmix_server_fence.c \
