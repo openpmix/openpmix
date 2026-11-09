@@ -159,17 +159,18 @@ host that asks for connections from other hosts
    ``PMIX_SERVER_LEGACY_PEERS``), or update the clients along with their
    servers.
 
-The other direction needs no setting. A client or tool of this release
-started by a server of an earlier release (v3.2 on) - a container's
-application under an older resource manager - connects to it over TCP,
-at the address and in the wire format the server's environment or
-rendezvous file gives it. Only a PMIx configured
-``--disable-legacy-servers`` refuses such a server: before it connects,
-naming the server's release, and with ``PMIX_ERR_NOT_SUPPORTED``, which
-fails a client's ``PMIx_Init`` rather than making it a singleton. It
-refuses any server address over TCP the same way, since only a server of
-an earlier release is reached at one. With neither direction built
-(``--disable-legacy-peers``), the library has no TCP transport at all.
+The other direction needs only a build option. In a PMIx configured
+``--enable-legacy-servers``, a client or tool of this release started by
+a server of an earlier release (v3.2 on) - a container's application
+under an older resource manager - connects to it over TCP, at the
+address and in the wire format the server's environment or rendezvous
+file gives it. Without that option, the default, such a server is
+refused: before the process connects, naming the server's release, and
+with ``PMIX_ERR_NOT_SUPPORTED``, which fails a client's ``PMIx_Init``
+rather than making it a singleton. Any server address over TCP is
+refused the same way, since only a server of an earlier release is
+reached at one. With neither direction built - the default - the library
+has no TCP transport at all.
 
 The local socket
 ^^^^^^^^^^^^^^^^

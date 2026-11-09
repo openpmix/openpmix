@@ -14,6 +14,11 @@ and start with the pages listed for it.
      - Start with
    * - **Moving from PMIx v5** to v7, in any of the roles below
      - :ref:`label-transition-v7`, then the page there for your role.
+   * - **Working out why a behavior is missing** - no rendezvous
+       files, tools refused, older clients running as singletons - or
+       what a build option, MCA parameter, or host attribute needs
+       beside it
+     - :ref:`label-settings-matrix`.
    * - **Installing PMIx**, or packaging it for a distribution
      - :ref:`label-quickstart`, then
        :ref:`building-and-installing-section-label`.
