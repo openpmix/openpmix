@@ -330,6 +330,31 @@ static void test_legacy_procs(void)
            legacy_roundtrip("0,1,2;3,4,5;6", ';'));
 }
 
+/* A process map gives the ranks on each node in node-map order, so a node
+ * the job placed nothing on is an empty field - and it has to come back as
+ * one. Dropped, every later node is handed the next node's ranks and the
+ * map no longer lines up with the node map it belongs to. Checked both
+ * through the encoding and as a plain list a host may pass untagged. */
+static void test_legacy_procs_empty_node(void)
+{
+    char **procs = NULL;
+    pmix_status_t rc;
+    int ok = 0;
+
+    report("deprecated process map keeps an empty node",
+           legacy_roundtrip("0,1;;2,3", ';'));
+    report("deprecated process map keeps an empty first node",
+           legacy_roundtrip(";0,1;2,3", ';'));
+
+    rc = pmix_preg.parse_procs("0,1;;2,3", &procs);
+    if (PMIX_SUCCESS == rc && NULL != procs) {
+        ok = (3 == PMIx_Argv_count(procs) && 0 == strcmp(procs[0], "0,1") &&
+              '\0' == procs[1][0] && 0 == strcmp(procs[2], "2,3"));
+        PMIx_Argv_free(procs);
+    }
+    report("untagged process map keeps an empty node", ok);
+}
+
 /* A plain, unencoded list carries no framing at all - a host is entitled
  * to hand one straight to PMIX_NODE_MAP, and the parse side has to split
  * it rather than reject it. */
@@ -911,6 +936,7 @@ int main(int argc, char **argv)
      * regex2 operations above */
     test_legacy_nodes();
     test_legacy_procs();
+    test_legacy_procs_empty_node();
     test_legacy_untagged();
     test_legacy_copy();
     test_legacy_pack_unpack();

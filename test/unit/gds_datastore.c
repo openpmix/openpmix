@@ -817,6 +817,113 @@ static void test_map_forms(void)
     }
 }
 
+/* A process map gives each node's ranks in node-map order, so a node the
+ * job placed nothing on is an empty field. It used to be dropped by the
+ * parse, which left the proc map one entry short of the node map and the
+ * registration refused; read the other way, every later node would have
+ * been handed the next node's ranks. The empty node must also get no
+ * local leader - there is no rank on it to name. */
+static pmix_status_t fetch_node_key(const char *nspace, const char *host, const char *key,
+                                    pmix_list_t *kvs)
+{
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    pmix_info_t info[3];
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    size_t n;
+
+    PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[1], PMIX_NODE_INFO, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_HOSTNAME, host, PMIX_STRING);
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, nspace, PMIX_RANK_UNDEF);
+    cb.proc = &proc;
+    cb.key = (char *) key;
+    cb.scope = PMIX_INTERNAL;
+    cb.info = info;
+    cb.ninfo = 3;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(&cb.kvs))) {
+        pmix_list_append(kvs, &kv->super);
+    }
+    cb.key = NULL;
+    cb.proc = NULL;
+    cb.info = NULL;
+    cb.ninfo = 0;
+    PMIX_DESTRUCT(&cb);
+    for (n = 0; n < 3; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    return rc;
+}
+
+static void test_map_empty_node(void)
+{
+    const char *ns = "gds-map-empty-node";
+    char *noderegex = NULL, *ppnregex = NULL;
+    pmix_info_t info[3];
+    pmix_nspace_t nsp;
+    pmix_list_t kvs;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    uint32_t nprocs = 4;
+    size_t n;
+
+    fprintf(stdout, "\n-- a node in the map with no procs --\n");
+
+    PMIx_generate_regex("gdsut-a,gdsut-b,gdsut-c", &noderegex);
+    PMIx_generate_ppn("0,1;;2,3", &ppnregex);
+    PMIX_INFO_LOAD(&info[0], PMIX_NODE_MAP, noderegex, PMIX_REGEX);
+    PMIX_INFO_LOAD(&info[1], PMIX_PROC_MAP, ppnregex, PMIX_REGEX);
+    PMIX_INFO_LOAD(&info[2], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_LOAD_NSPACE(nsp, ns);
+    rc = PMIx_server_register_nspace(nsp, 0, info, 3, NULL, NULL);
+    for (n = 0; n < 3; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    free(noderegex);
+    free(ppnregex);
+    report("a map naming an empty node is accepted", registered(rc));
+    if (!registered(rc)) {
+        fprintf(stdout, "        (register_nspace: %s)\n", PMIx_Error_string(rc));
+        return;
+    }
+
+    /* the ranks after the empty node stay on the node they were given */
+    PMIX_CONSTRUCT(&kvs, pmix_list_t);
+    rc = fetch_key(ns, 2, PMIX_HOSTNAME, &kvs);
+    kv = (pmix_kval_t *) pmix_list_get_first(&kvs);
+    report("a rank after the empty node keeps its own node",
+           PMIX_SUCCESS == rc && NULL != kv && NULL != kv->value &&
+               PMIX_STRING == kv->value->type && NULL != kv->value->data.string &&
+               0 == strcmp(kv->value->data.string, "gdsut-c"));
+    PMIX_LIST_DESTRUCT(&kvs);
+
+    PMIX_CONSTRUCT(&kvs, pmix_list_t);
+    rc = fetch_node_key(ns, "gdsut-b", PMIX_LOCAL_PEERS, &kvs);
+    kv = (pmix_kval_t *) pmix_list_get_first(&kvs);
+    report("the empty node's local peers are an empty list",
+           PMIX_SUCCESS == rc && NULL != kv && NULL != kv->value &&
+               PMIX_STRING == kv->value->type && NULL != kv->value->data.string &&
+               '\0' == kv->value->data.string[0]);
+    PMIX_LIST_DESTRUCT(&kvs);
+
+    PMIX_CONSTRUCT(&kvs, pmix_list_t);
+    rc = fetch_node_key(ns, "gdsut-b", PMIX_LOCAL_SIZE, &kvs);
+    kv = (pmix_kval_t *) pmix_list_get_first(&kvs);
+    report("the empty node's local size is zero",
+           PMIX_SUCCESS == rc && NULL != kv && NULL != kv->value &&
+               PMIX_UINT32 == kv->value->type && 0 == kv->value->data.uint32);
+    PMIX_LIST_DESTRUCT(&kvs);
+
+    PMIX_CONSTRUCT(&kvs, pmix_list_t);
+    rc = fetch_node_key(ns, "gdsut-b", PMIX_LOCALLDR, &kvs);
+    report("the empty node has no local leader",
+           PMIX_SUCCESS != rc && 0 == pmix_list_get_size(&kvs));
+    PMIX_LIST_DESTRUCT(&kvs);
+}
+
 /* ------------------------------------------------------------------ */
 /* derivation of per-proc info the host did not supply                  */
 /* ------------------------------------------------------------------ */
@@ -3239,6 +3346,7 @@ int main(int argc, char **argv)
     test_store_modex_nspace_filter();
     test_store_modex_blob_info();
     test_map_forms();
+    test_map_empty_node();
     test_derived_proc_info();
     test_malformed_job_info();
     test_mislabeled_info_arrays();
