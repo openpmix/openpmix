@@ -224,7 +224,12 @@ Job-realm information
   each a comma-delimited list of the ranks on the corresponding node, provided
   as an alternative to the regular-expression form in ``PMIX_PROC_MAP``.
 * ``PMIX_ANL_MAP`` (char\*) |mdash| process mapping in ANL notation, as used by
-  PMI-1 and PMI-2.
+  PMI-1 and PMI-2. A host need not supply it: when a local process asks for
+  it and it was not registered, the server works it out from the job's node
+  list and per-node local peers, keeps it as job-level data, and answers
+  from it. No value is produced when that data does not place every rank or
+  when the mapping cannot be expressed within the 1024 bytes a PMI-2 value
+  may occupy.
 * ``PMIX_APP_MAP_TYPE`` (char\*) |mdash| type of mapping used to lay out the
   application (e.g., ``cyclic``).
 * ``PMIX_APP_MAP_REGEX`` (char\*) |mdash| regular expression describing the
