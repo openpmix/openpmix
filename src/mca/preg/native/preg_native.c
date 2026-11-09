@@ -331,8 +331,23 @@ static pmix_status_t generate_ppn(const char *input, char **regexp)
     /* setup the list of results */
     PMIX_CONSTRUCT(&nodes, pmix_list_t);
 
-    /* split the input by node */
-    ppn = PMIx_Argv_split(input, ';');
+    /* split the input by node, keeping any node that hosts no procs */
+    ppn = PMIx_Argv_split_with_empty(input, ';');
+    if (NULL == ppn) {
+        PMIX_LIST_DESTRUCT(&nodes);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    /* this encoding cannot say that a node hosts no procs - an empty
+     * node would be dropped from the regex, and the map would then come
+     * back one node short. Leave such a map to a component that carries
+     * the list as given */
+    for (i = 0; NULL != ppn[i]; i++) {
+        if ('\0' == ppn[i][0]) {
+            PMIx_Argv_free(ppn);
+            PMIX_LIST_DESTRUCT(&nodes);
+            return PMIX_ERR_TAKE_NEXT_OPTION;
+        }
+    }
 
     /* for each node, split the input by comma */
     for (i = 0; NULL != ppn[i]; i++) {

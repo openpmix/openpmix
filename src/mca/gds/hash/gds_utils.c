@@ -367,32 +367,36 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
         }
         pmix_list_append(&nd->info, &kp2->super);
 
-        /* save the local leader */
-        rank = strtoul(ppn[n], NULL, 10);
-        kp2 = PMIX_NEW(pmix_kval_t);
-        if (NULL == kp2) {
-            return PMIX_ERR_NOMEM;
-        }
-        kp2->key = strdup(PMIX_LOCALLDR);
-        kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-        if (NULL == kp2->value) {
-            PMIX_RELEASE(kp2);
-            return PMIX_ERR_NOMEM;
-        }
-        kp2->value->type = PMIX_PROC_RANK;
-        kp2->value->data.rank = rank;
-        pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                            "[%s:%d] gds:hash:store_map adding key %s to node %s info",
-                            pmix_globals.myid.nspace, pmix_globals.myid.rank, kp2->key, nodes[n]);
-        /* ensure this item only appears once on the list */
-        PMIX_LIST_FOREACH (kp1, &nd->info, pmix_kval_t) {
-            if (PMIX_CHECK_KEY(kp1, kp2->key)) {
-                pmix_list_remove_item(&nd->info, &kp1->super);
-                PMIX_RELEASE(kp1);
-                break;
+        /* save the local leader. A node in the map that hosts none of
+         * this job's procs has an empty list and no leader - reading one
+         * out of it would name rank 0 */
+        if ('\0' != ppn[n][0]) {
+            rank = strtoul(ppn[n], NULL, 10);
+            kp2 = PMIX_NEW(pmix_kval_t);
+            if (NULL == kp2) {
+                return PMIX_ERR_NOMEM;
             }
+            kp2->key = strdup(PMIX_LOCALLDR);
+            kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+            if (NULL == kp2->value) {
+                PMIX_RELEASE(kp2);
+                return PMIX_ERR_NOMEM;
+            }
+            kp2->value->type = PMIX_PROC_RANK;
+            kp2->value->data.rank = rank;
+            pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                                "[%s:%d] gds:hash:store_map adding key %s to node %s info",
+                                pmix_globals.myid.nspace, pmix_globals.myid.rank, kp2->key, nodes[n]);
+            /* ensure this item only appears once on the list */
+            PMIX_LIST_FOREACH (kp1, &nd->info, pmix_kval_t) {
+                if (PMIX_CHECK_KEY(kp1, kp2->key)) {
+                    pmix_list_remove_item(&nd->info, &kp1->super);
+                    PMIX_RELEASE(kp1);
+                    break;
+                }
+            }
+            pmix_list_append(&nd->info, &kp2->super);
         }
-        pmix_list_append(&nd->info, &kp2->super);
 
         /* split the list of procs so we can store their
          * individual location data */
@@ -428,7 +432,8 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
         /* track total procs in job in case they
          * didn't give it to us */
         totalprocs += PMIx_Argv_count(procs);
-        for (m = 0; NULL != procs[m]; m++) {
+        /* PMIx_Argv_split hands back NULL for that same empty list */
+        for (m = 0; NULL != procs && NULL != procs[m]; m++) {
             /* store the hostname for each proc */
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(PMIX_HOSTNAME);

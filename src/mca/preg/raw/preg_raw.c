@@ -95,7 +95,11 @@ static pmix_status_t parse_procs(const char *regexp, char ***procs)
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    *procs = PMIx_Argv_split(&regexp[4], ';');
+    /* keep empty fields: a process map names the ranks on each node in
+     * node-map order, and a node the job placed nothing on is an empty
+     * field. Collapsing it would hand every later node the ranks of the
+     * node after it */
+    *procs = PMIx_Argv_split_with_empty(&regexp[4], ';');
     return PMIX_SUCCESS;
 }
 
