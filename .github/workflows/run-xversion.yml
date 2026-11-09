@@ -8,6 +8,13 @@ permissions:
 jobs:
   xversion:
     runs-on: ubuntu-latest
+    env:
+      # Releases from v7.0 on take clients of earlier releases, and
+      # connect to servers of earlier releases, only when built
+      # --enable-legacy-peers and run with ptl_base_legacy_peers set.
+      # Both builds below ask for it; releases without the option or the
+      # parameter ignore both.
+      PMIX_MCA_ptl_base_legacy_peers: 1
     strategy:
       matrix:
         versions: ['master', 'v5.0', 'v4.2', 'v4.1', 'v3.2']
@@ -26,7 +33,7 @@ jobs:
       run: |
         cd pr
         ./autogen.pl
-        ./configure --prefix=$RUNNER_TEMP/prinstall --disable-debug --enable-static --disable-shared --disable-dlopen --disable-per-user-config-files
+        ./configure --prefix=$RUNNER_TEMP/prinstall --disable-debug --enable-static --disable-shared --disable-dlopen --disable-per-user-config-files --enable-legacy-peers
         make -j
         make install
         cd test
@@ -45,7 +52,7 @@ jobs:
       run: |
         cd checkbranch
         ./autogen.pl
-        ./configure --prefix=$RUNNER_TEMP/branchinstall --disable-debug --enable-static --disable-shared --disable-dlopen --disable-per-user-config-files
+        ./configure --prefix=$RUNNER_TEMP/branchinstall --disable-debug --enable-static --disable-shared --disable-dlopen --disable-per-user-config-files --enable-legacy-peers
         make -j
         make install
         cd test
