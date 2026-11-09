@@ -244,6 +244,13 @@ before v7.0. The connection has been refused.
 Run the process under a server of PMIx v7.0 or later, or rebuild PMIx
 configured --enable-legacy-servers.
 #
+[legacy-servers-param-not-built]
+A process on %s was asked, by ptl_base_legacy_servers, to
+look for PMIx servers of releases before v7.0, but this PMIx was built
+without support for them.
+
+Rebuild PMIx configured --enable-legacy-servers, or do not ask for them.
+#
 [legacy-servers-tcp]
 A process on %s was given a PMIx server's TCP address to
 connect to:

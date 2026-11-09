@@ -122,6 +122,20 @@ int pmix_ptl_base_select(void)
         return PMIX_ERR_SILENT;
     }
 
+#if !PMIX_ENABLE_LEGACY_SERVERS
+    /* ptl_base_legacy_servers asks a client or tool for servers of
+     * earlier releases by name, which this PMIx cannot reach - as
+     * ptl_base_legacy_clients asks a server for what it cannot take.
+     * ptl_base_legacy_peers asks only for what was built, so it asks
+     * this build for nothing here */
+    if (pmix_ptl_base.legacy_servers_param &&
+        (PMIX_PEER_IS_CLIENT(me) || PMIX_PEER_IS_TOOL(me))) {
+        pmix_show_help("help-ptl-base.txt", "legacy-servers-param-not-built", true,
+                       pmix_globals.hostname);
+        return PMIX_ERR_SILENT;
+    }
+#endif
+
     pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                         "mca:ptl:select: acting as %s", pmix_ptl.name);
     return PMIX_SUCCESS;
