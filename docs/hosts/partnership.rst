@@ -58,8 +58,8 @@ These are the host's decisions. A system administrator cannot change
 them through MCA parameters (see
 :ref:`label-sysadmin-authentication`). Whether the server takes clients
 and tools of earlier releases is the host's when it says, with
-``PMIX_SERVER_LEGACY_PEERS``, and the ``ptl_base_legacy_peers``
-parameter's when it does not. A host that wants tools
+``PMIX_SERVER_LEGACY_PEERS``, and the ``ptl_base_legacy_clients`` (or
+``ptl_base_legacy_peers``) parameter's when it does not. A host that wants tools
 of other users to connect must also give the server a directory those
 users can search; see :ref:`PMIx_server_init(3) <man3-PMIx_server_init>`
 and :doc:`/how-things-work/session_dirs`.
