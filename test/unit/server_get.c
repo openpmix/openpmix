@@ -87,6 +87,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/gds/gds.h"
 #include "src/server/pmix_server_ops.h"
 
 #include <stdint.h>
@@ -336,6 +337,115 @@ static pmix_status_t register_job(void)
     return PMIX_SUCCESS;
 }
 
+static bool nothing_parked(void);
+
+/* Register a job with no procs on this node, laid out over nodelist
+ * (comma-delimited) as ppn says (';' between nodes, ',' between ranks) -
+ * the form PMIx_generate_ppn takes. */
+static pmix_status_t register_map_job(const char *nspace, const char *nodelist,
+                                      const char *ppn, uint32_t nprocs)
+{
+    pmix_info_t info[3];
+    pmix_nspace_t ns;
+    pmix_status_t rc;
+    char *noderegex = NULL, *ppnregex = NULL;
+    size_t n;
+
+    rc = PMIx_generate_regex(nodelist, &noderegex);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    rc = PMIx_generate_ppn(ppn, &ppnregex);
+    if (PMIX_SUCCESS != rc) {
+        free(noderegex);
+        return rc;
+    }
+    PMIX_INFO_LOAD(&info[0], PMIX_NODE_MAP, noderegex, PMIX_REGEX);
+    PMIX_INFO_LOAD(&info[1], PMIX_PROC_MAP, ppnregex, PMIX_REGEX);
+    PMIX_INFO_LOAD(&info[2], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
+    PMIX_LOAD_NSPACE(ns, nspace);
+    rc = PMIx_server_register_nspace(ns, 0, info, 3, NULL, NULL);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    for (n = 0; n < 3; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
+    }
+    free(noderegex);
+    free(ppnregex);
+    return rc;
+}
+
+/* What this server now holds under PMIX_ANL_MAP for nspace - NULL when
+ * it holds nothing. Read straight from the store rather than out of the
+ * reply, so the case also shows the value was kept for later requests. */
+static char *stored_anl_map(const char *nspace)
+{
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    pmix_info_t opt;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    char *map = NULL;
+
+    PMIX_INFO_LOAD(&opt, PMIX_OPTIONAL, NULL, PMIX_BOOL);
+    PMIX_LOAD_PROCID(&proc, nspace, PMIX_RANK_WILDCARD);
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = &proc;
+    cb.key = PMIX_ANL_MAP;
+    cb.scope = PMIX_INTERNAL;
+    cb.info = &opt;
+    cb.ninfo = 1;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    cb.key = NULL;
+    cb.info = NULL;
+    cb.ninfo = 0;
+    if (PMIX_SUCCESS == rc && 1 == pmix_list_get_size(&cb.kvs)) {
+        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+        if (NULL != kv->value && PMIX_STRING == kv->value->type &&
+            NULL != kv->value->data.string) {
+            map = strdup(kv->value->data.string);
+        }
+    }
+    PMIX_DESTRUCT(&cb);
+    PMIX_INFO_DESTRUCT(&opt);
+    return map;
+}
+
+/* Ask for PMIX_ANL_MAP for a job registered with the given layout, and
+ * hold both the answer and what was stored against the expected string.
+ * A second request must be answered too - from the store this time. */
+static void check_anl_map(const char *name, const char *nspace, const char *nodelist,
+                          const char *ppn, uint32_t nprocs, const char *expected)
+{
+    char label[256];
+    char *map;
+    pmix_status_t rc;
+
+    rc = register_map_job(nspace, nodelist, ppn, nprocs);
+    if (PMIX_SUCCESS != rc) {
+        snprintf(label, sizeof(label), "%s: job registers (%s)", name, PMIx_Error_string(rc));
+        report(label, false);
+        return;
+    }
+
+    rc = do_get(nspace, PMIX_RANK_WILDCARD, PMIX_ANL_MAP, NULL, 0);
+    snprintf(label, sizeof(label), "%s: request answered", name);
+    report(label, PMIX_SUCCESS == rc && cb_fired && PMIX_SUCCESS == cb_status && 0 < cb_ndata);
+    snprintf(label, sizeof(label), "%s: request parks nothing", name);
+    report(label, nothing_parked());
+
+    map = stored_anl_map(nspace);
+    snprintf(label, sizeof(label), "%s: stored map is %s (got %s)", name, expected,
+             (NULL == map) ? "nothing" : map);
+    report(label, NULL != map && 0 == strcmp(map, expected));
+    free(map);
+
+    rc = do_get(nspace, PMIX_RANK_WILDCARD, PMIX_ANL_MAP, NULL, 0);
+    snprintf(label, sizeof(label), "%s: repeat request answered", name);
+    report(label, PMIX_SUCCESS == rc && cb_fired && PMIX_SUCCESS == cb_status && 0 < cb_ndata);
+}
+
 static bool nothing_parked(void)
 {
     return (0 == pmix_list_get_size(&pmix_server_globals.local_reqs));
@@ -490,6 +600,86 @@ int main(int argc, char **argv)
            cb_fired && PMIX_SUCCESS == cb_status);
     report("wildcard get of a missing non-reserved key parks nothing",
            nothing_parked());
+
+    /* --- PMIX_ANL_MAP worked out from the job's own map --------------- */
+    /* None of these jobs is given PMIX_ANL_MAP by its host, so each
+     * answer is computed by the server from the node list and per-node
+     * peers, and stored for the job's other procs. Each layout is one a
+     * PMI-2 reader expands back to the same placement: blocks are
+     * expanded in order and cycled when ranks remain. */
+    check_anl_map("ANL map by slot", "anl-ut-slot", "anlut-a,anlut-b", "0,1;2,3", 4,
+                  "(vector,(0,2,2))");
+    check_anl_map("ANL map by node", "anl-ut-node", "anlut-a,anlut-b", "0,2;1,3", 4,
+                  "(vector,(0,2,1))");
+    check_anl_map("ANL map uneven", "anl-ut-uneven", "anlut-a,anlut-b", "0,1,2;3", 4,
+                  "(vector,(0,1,3),(1,1,1))");
+    /* the last pass over the nodes is cut short, and is still one block */
+    check_anl_map("ANL map short last pass", "anl-ut-wrap", "anlut-a,anlut-b,anlut-c",
+                  "0,3,6;1,4;2,5", 7, "(vector,(0,3,1))");
+    /* node ids follow rank order, not the order the host listed nodes */
+    check_anl_map("ANL map renumbered", "anl-ut-renum", "anlut-a,anlut-b", "2,3;0,1", 4,
+                  "(vector,(0,2,2))");
+    /* a cycle of two different blocks */
+    check_anl_map("ANL map two-block cycle", "anl-ut-twoblk", "anlut-a,anlut-b,anlut-c",
+                  "0,1,4,5;2,6;3,7", 8, "(vector,(0,1,2),(1,2,1))");
+    /* a node in the map that hosts none of the job's ranks */
+    check_anl_map("ANL map with an empty node", "anl-ut-empty", "anlut-a,anlut-b,anlut-c",
+                  "0,1;;2,3", 4, "(vector,(0,2,2))");
+
+    /* A placement no shorter description fits: two hundred nodes taking
+     * one and two ranks in turn. Each node is a block of its own, which
+     * runs past the 1024 bytes a PMI-2 value may occupy - so nothing is
+     * offered, nothing is stored, and the request is treated like any
+     * other absent reserved key (here: not found, as there is no
+     * direct_modex to ask). */
+    {
+        char *nodes = NULL, *ppn = NULL, *tmp;
+        uint32_t rank = 0, nd;
+        bool ok = true;
+
+        for (nd = 0; ok && nd < 200; nd++) {
+            if (0 > asprintf(&tmp, "%s%sanlut-n%03u", (NULL == nodes) ? "" : nodes,
+                             (NULL == nodes) ? "" : ",", nd)) {
+                ok = false;
+                break;
+            }
+            free(nodes);
+            nodes = tmp;
+            if (0 == nd % 2) {
+                rc = asprintf(&tmp, "%s%s%u", (NULL == ppn) ? "" : ppn,
+                              (NULL == ppn) ? "" : ";", rank);
+                rank += 1;
+            } else {
+                rc = asprintf(&tmp, "%s%s%u,%u", (NULL == ppn) ? "" : ppn,
+                              (NULL == ppn) ? "" : ";", rank, rank + 1);
+                rank += 2;
+            }
+            if (0 > rc) {
+                ok = false;
+                break;
+            }
+            free(ppn);
+            ppn = tmp;
+        }
+        if (ok) {
+            rc = register_map_job("anl-ut-long", nodes, ppn, rank);
+            ok = (PMIX_SUCCESS == rc);
+        }
+        report("ANL map too long: job registers", ok);
+        if (ok) {
+            char *map;
+
+            rc = do_get("anl-ut-long", PMIX_RANK_WILDCARD, PMIX_ANL_MAP, NULL, 0);
+            report("ANL map too long: reports not-found", PMIX_ERR_NOT_FOUND == rc);
+            report("ANL map too long: answers nothing", !cb_fired);
+            report("ANL map too long: parks nothing", nothing_parked());
+            map = stored_anl_map("anl-ut-long");
+            report("ANL map too long: stores nothing", NULL == map);
+            free(map);
+        }
+        free(nodes);
+        free(ppn);
+    }
 
     /* --- a request still parked when the server finalizes ----------- */
     /* Same target as the IMMEDIATE case above, but willing to wait: rank 0
