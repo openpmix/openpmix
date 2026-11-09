@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -96,7 +96,11 @@ pmix_status_t pmix_preg_base_parse_procs(const char *regexp, char ***procs)
     }
 
     /* nobody could parse it, so just process it here */
-    *procs = PMIx_Argv_split(regexp, ';');
+    /* keep empty fields: a process map names the ranks on each node in
+     * node-map order, and a node the job placed nothing on is an empty
+     * field. Collapsing it would hand every later node the ranks of the
+     * node after it */
+    *procs = PMIx_Argv_split_with_empty(regexp, ';');
     return PMIX_SUCCESS;
 }
 

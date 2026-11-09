@@ -194,7 +194,11 @@ static pmix_status_t parse_procs(const char *regexp, char ***procs)
     }
 
     /* tmp now contains the semicolon-delimited list of procs */
-    argv = PMIx_Argv_split(tmp, ';');
+    /* keep empty fields: a process map names the ranks on each node in
+     * node-map order, and a node the job placed nothing on is an empty
+     * field. Collapsing it would hand every later node the ranks of the
+     * node after it */
+    argv = PMIx_Argv_split_with_empty(tmp, ';');
     free(tmp);
     *procs = argv;
     return PMIX_SUCCESS;
