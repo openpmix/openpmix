@@ -301,25 +301,34 @@ with its own option:
   clients does not fail: it comes up as a singleton (see
   :ref:`clients of earlier releases <label-conn-earlier-clients>`).
 
-* ``--disable-legacy-servers``: Build without support for a client or
-  tool connecting to a server of PMIx v3.2 through v6.x. By default it
-  is built, and such a server is connected to whenever a process is
-  started by one or told of one: a client in a container image has to
-  run under whatever release its host's resource manager runs. Without
-  it, a process refuses such a server - and any server address over
-  TCP, at which only such a server is reached - and says so; a client
-  fails its init rather than coming up as a singleton. The
+* ``--enable-legacy-servers``: Build with support for a client or tool
+  connecting to a server of PMIx v3.2 through v6.x. With it, such a
+  server is connected to whenever a process is started by one or told
+  of one - which a client in a container image needs if it may run
+  under an older resource manager. Without it - the default - a process
+  refuses such a server, and any server address over TCP, at which only
+  such a server is reached, and says so; a client fails its init rather
+  than coming up as a singleton. The
   ``ptl_base_legacy_servers`` MCA parameter, off by default, has a
   process that was told of no server look for one of an earlier release
   where those write their rendezvous files, anywhere below the system
-  temporary directory.
+  temporary directory. Set true in a build without legacy servers, it
+  makes every client and tool fail to initialize.
 
 * ``--enable-legacy-peers``: Both of the above. ``--disable-legacy-peers``
   disables both; either option given beside it decides its own
-  direction. With neither direction built, nothing in the library speaks
+  direction. With neither direction built - the default - nothing in
+  the library speaks
   an earlier release's wire format or transport, and the ``tcp`` PTL
   component and every ``bfrops`` component but ``v70`` are left out of
   the library.
+
+  A build without legacy clients - the default - refuses the run-time
+  settings that ask for them by name. Setting ``ptl_base_legacy_clients``
+  true there, or a host passing ``PMIX_SERVER_LEGACY_PEERS`` true, makes
+  every server, launcher and scheduler fail to start.
+  ``ptl_base_legacy_peers`` turns on only the directions the build has,
+  so it is safe in any build. See :ref:`label-settings-matrix-legacy`.
 
 * ``--disable-show-load-errors-by-default``:
   Set the default value of the ``mca_base_component_show_load_errors``

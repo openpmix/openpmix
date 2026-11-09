@@ -128,6 +128,12 @@ host's ``PMIX_SERVER_LEGACY_PEERS``). Even then it listens on loopback
 only. Without both, those clients and tools are refused. An older
 client then runs as a singleton: alone, and unaware of its job.
 
+**v7 clients and tools need a build option to reach an earlier
+server.** A v7 process connects to a server of v3.2 through v6.x - an
+older resource manager, under a newer container - only if its PMIx was
+configured ``--enable-legacy-servers``. Otherwise the server is refused
+and a client's ``PMIx_Init`` fails.
+
 **By default, only the job's owner sees the job.** Data, output,
 monitoring, and job control are limited to the job's user unless the
 host widens access (``PMIX_ACCESS_PERMISSIONS``).

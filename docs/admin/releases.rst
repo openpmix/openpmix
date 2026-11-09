@@ -46,8 +46,8 @@ Clients and servers of different PMIx releases work together:
 
 * a server accepts clients and tools from PMIx v2.1 on, **when it is
   set up to take them** (below);
-* a client or tool connects to servers from PMIx v3.2 on - unless PMIx
-  was configured ``--disable-legacy-servers``, when it connects only to
+* a client or tool connects to servers from PMIx v3.2 on when PMIx was
+  configured ``--enable-legacy-servers``. By default it connects only to
   servers of v7.0 or later, and refuses an earlier one with a message
   naming its release.
 
@@ -71,12 +71,12 @@ with an older PMIx release behaves this way under a default v7
 server. Either set the server up to take earlier releases, or update
 the PMIx library in the container.
 
-Leave legacy server support in (the default) wherever applications
-may carry a PMIx v7 client library to a system whose resource manager
-runs an earlier release - in a container image, for example. Configure
-``--disable-legacy-peers`` only where every client, tool and server on
-the system is of v7.0 or later: the library then leaves out the TCP
-transport and the wire formats of earlier releases altogether.
+Configure ``--enable-legacy-servers`` wherever applications may carry
+a PMIx v7 client library to a system whose resource manager runs an
+earlier release - in a container image, for example. Without it, the
+default, such an application's ``PMIx_Init`` fails there. With neither
+legacy option - the default - the library leaves out the TCP transport
+and the wire formats of earlier releases altogether.
 
 See :ref:`label-version-numbers` and
 :ref:`label-sysadmin-authentication`.

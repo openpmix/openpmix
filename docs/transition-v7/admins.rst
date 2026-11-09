@@ -68,6 +68,13 @@ when both of these hold:
 
 Even then, the server listens for them on loopback only.
 
+.. warning:: Do not set ``ptl_base_legacy_clients`` in a PMIx built
+   without ``--enable-legacy-clients``. Every server, and every
+   launcher or scheduler (``prte``, ``prun``), that reads it fails to
+   start. ``ptl_base_legacy_peers`` is safe to set in any build: it
+   turns on only the directions the build has. See
+   :ref:`label-settings-matrix-legacy`.
+
 **What users see without it.** Each process of an older application -
 a container with PMIx v5 inside, for example - prints one error line
 and runs as a singleton, unaware of its job. The job does not fail; it
@@ -78,13 +85,14 @@ applications with an older PMIx inside. If they do, build PMIx with
 ``--enable-legacy-clients`` and turn it on. If they do not, leave it off,
 and tell users to update the PMIx in their images.
 
-**The other direction needs nothing.** A v7 application runs under
-servers from PMIx v3.2 on - unless PMIx was configured
-``--disable-legacy-servers``, which refuses a server of an earlier
-release. Configure that only where no server of an earlier release can
-run a v7 application. ``--disable-legacy-peers`` disables both
-directions, and leaves the TCP transport and the earlier releases' wire
-formats out of the library.
+**The other direction is a build option too.** A v7 application runs
+under servers from PMIx v3.2 on only if the PMIx it uses was configured
+``--enable-legacy-servers``; by default it refuses a server of an
+earlier release, and its ``PMIx_Init`` fails. Configure it where v7
+applications - a container image, say - may run under an older resource
+manager. ``--enable-legacy-peers`` turns on both directions. With
+neither, the TCP transport and the earlier releases' wire formats are
+left out of the library.
 
 See :ref:`label-sysadmin-releases` and :ref:`clients of earlier releases <label-conn-earlier-clients>`.
 
@@ -236,11 +244,14 @@ New and changed parameters
    * - ``ptl_base_legacy_servers``
      - ``false``
      - With no server named, also look for servers of releases before
-       v7 where they write their files (needs legacy servers, built
-       unless ``--disable-legacy-servers``).
+       v7 where they write their files (needs
+       ``--enable-legacy-servers``; set true in a build without it, every
+       client and tool fails to start).
    * - ``ptl_base_legacy_peers``
      - ``false``
-     - Both of the above.
+     - Both of the above, for whichever directions the build has. Unlike
+       either of them, it makes nothing fail to start in a build that
+       lacks a direction: it asks for nothing the build does not have.
    * - ``ptl_base_server_access``
      - none
      - Servers besides one's own user's and root's that a client or
@@ -272,5 +283,7 @@ New and changed parameters
      - 1024
      - Distinct log messages remembered for duplicate suppression.
 
-See :ref:`label-sysadmin-authentication` for the full list, and
+See :ref:`label-settings-matrix` for how these combine with build
+options and host attributes, :ref:`label-sysadmin-authentication` for
+the full list, and
 ``pmix_info --param all all`` for every parameter and its value.

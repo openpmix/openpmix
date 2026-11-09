@@ -96,8 +96,8 @@ that can run is active, and each opens its own listening socket:
        only to reach a server of an earlier release.
 
 ``usock`` is always built, and ``tcp`` whenever either direction of
-legacy support is (``--enable-legacy-clients``, or legacy servers, on
-unless ``--disable-legacy-servers``): ``configure`` stops with an error if
+legacy support is (``--enable-legacy-clients``,
+``--enable-legacy-servers``): ``configure`` stops with an error if
 one it needs is excluded. With neither direction, ``tcp`` is not built -
 and neither is any ``bfrops`` wire format but ``v70``. Which transport a URI belongs to is the transport that
 recognizes its scheme. ``PMIX_MCA_ptl`` selects nothing - it is removed
@@ -372,7 +372,7 @@ most specific to least:
   host named, else ``/run/pmix`` and ``/var/run/pmix``, then root's and
   the tool's own ``pmix-user`` directories, its ``$XDG_RUNTIME_DIR/pmix``,
   and the ``pmix-user`` directories of the listed users. Only with legacy servers on (``ptl_base_legacy_servers``, in a
-  PMIx not configured ``--disable-legacy-servers``) does a
+  PMIx configured ``--enable-legacy-servers``) does a
   tool also walk the whole system tmpdir, ``ptl_base_search_depth``
   levels deep, and look at the system tmpdir itself for a system role -
   where a server of an earlier release writes its files. The same goes

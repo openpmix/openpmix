@@ -46,12 +46,23 @@ up-call it makes for a client or tool, using the identity it
 established when that process connected.
 
 
+What the host passes at start-up
+--------------------------------
+
+What a server does - whether it serves tools, which role it plays, who
+may reach its socket - is set by the attributes its host passes to
+``PMIx_server_init``, and some behaviors need a build option or a site
+setting as well. :ref:`label-host-env-starting` lists what to pass for
+each goal, and :ref:`label-settings-matrix` what each combination does.
+
+
 Pages in this section
 ---------------------
 
 .. toctree::
    :maxdepth: 2
 
+   starting
    partnership
    connections
    authorization
