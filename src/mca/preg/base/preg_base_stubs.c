@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -63,7 +63,12 @@ static pmix_status_t generate_legacy(const char *input, char **regex)
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t parse_legacy(const char *regexp, char ***result, int delimiter)
+/* keep_empty: an empty field is a value. A process map names, in node-map
+ * order, the ranks on each node - and a node the job placed nothing on is
+ * an empty field. Collapsing it would hand every later node the ranks of
+ * the node after it */
+static pmix_status_t parse_legacy(const char *regexp, char ***result, int delimiter,
+                                  bool keep_empty)
 {
     pmix_regex2_t r2 = PMIX_REGEX2_STATIC_INIT;
     pmix_status_t rc;
@@ -74,7 +79,8 @@ static pmix_status_t parse_legacy(const char *regexp, char ***result, int delimi
     if (PMIX_SUCCESS == rc) {
         rc = pmix_preg_base_parse_regex(&r2, NULL, 0, &decoded);
         if (PMIX_SUCCESS == rc) {
-            *result = PMIx_Argv_split(decoded, delimiter);
+            *result = keep_empty ? PMIx_Argv_split_with_empty(decoded, delimiter)
+                                 : PMIx_Argv_split(decoded, delimiter);
             free(decoded);
             return PMIX_SUCCESS;
         }
@@ -89,7 +95,8 @@ static pmix_status_t parse_legacy(const char *regexp, char ***result, int delimi
     }
 
     /* not an encoded regex at all, so it must be the plain list */
-    *result = PMIx_Argv_split(regexp, delimiter);
+    *result = keep_empty ? PMIx_Argv_split_with_empty(regexp, delimiter)
+                         : PMIx_Argv_split(regexp, delimiter);
     return PMIX_SUCCESS;
 }
 
@@ -105,12 +112,12 @@ pmix_status_t pmix_preg_base_generate_ppn(const char *input, char **ppn)
 
 pmix_status_t pmix_preg_base_parse_nodes(const char *regexp, char ***names)
 {
-    return parse_legacy(regexp, names, ',');
+    return parse_legacy(regexp, names, ',', false);
 }
 
 pmix_status_t pmix_preg_base_parse_procs(const char *regexp, char ***procs)
 {
-    return parse_legacy(regexp, procs, ';');
+    return parse_legacy(regexp, procs, ';', true);
 }
 
 pmix_status_t pmix_preg_base_copy(char **dest, size_t *len, const char *input)
