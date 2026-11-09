@@ -14,7 +14,10 @@
  * or the PMIX_SERVER_LEGACY_PEERS attribute, which overrides both, says so
  * - and only in a build configured --enable-legacy-clients. In a build
  * without it, asking for them fails the init. ptl_base_legacy_servers
- * alone is a client's or tool's question, and opens no listener.
+ * alone is a client's or tool's question, and opens no listener. A tool
+ * asking it in a build without legacy servers fails its init, as a server
+ * asking for legacy clients in a build without them does; asked by
+ * ptl_base_legacy_peers, it asks such a build for nothing.
  *
  * By default a server takes none, and has no TCP listener. Where it
  * reports where it is - the PMIX_SERVER_URIxx variables
@@ -30,6 +33,7 @@
 #include "src/include/pmix_config.h"
 
 #include "include/pmix_server.h"
+#include "include/pmix_tool.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_environ.h"
@@ -231,14 +235,46 @@ static int run_clients_param_on(void)
     return param_on("PMIX_MCA_ptl_base_legacy_clients", true);
 }
 
+/* ptl_base_legacy_peers asks for the directions this PMIx was built with:
+ * in a build without legacy clients it asks a server for nothing */
 static int run_peers_param_on(void)
 {
-    return param_on("PMIX_MCA_ptl_base_legacy_peers", true);
+    return param_on("PMIX_MCA_ptl_base_legacy_peers", PMIX_ENABLE_LEGACY_CLIENTS);
 }
 
 static int run_servers_param_on(void)
 {
     return param_on("PMIX_MCA_ptl_base_legacy_servers", false);
+}
+
+/* a tool that connects to nothing, with `param` set: its init succeeds
+ * when `ok` */
+static int tool_param(const char *param, bool ok)
+{
+    pmix_info_t info;
+    pmix_proc_t me;
+    bool flag = true;
+    pmix_status_t prc;
+
+    setenv(param, "1", 1);
+    PMIX_INFO_LOAD(&info, PMIX_TOOL_DO_NOT_CONNECT, &flag, PMIX_BOOL);
+    prc = PMIx_tool_init(&me, &info, 1);
+    PMIX_INFO_DESTRUCT(&info);
+    fprintf(stdout, "    PMIx_tool_init with %s: %s\n", param, PMIx_Error_string(prc));
+    if (PMIX_SUCCESS == prc) {
+        PMIx_tool_finalize();
+    }
+    return ((PMIX_SUCCESS == prc) == ok) ? CHILD_PASS : CHILD_FAIL;
+}
+
+static int run_tool_servers_param(void)
+{
+    return tool_param("PMIX_MCA_ptl_base_legacy_servers", PMIX_ENABLE_LEGACY_SERVERS);
+}
+
+static int run_tool_peers_param(void)
+{
+    return tool_param("PMIX_MCA_ptl_base_legacy_peers", true);
 }
 
 static int run_attr_overrides(void)
@@ -295,10 +331,21 @@ int main(void)
 #else
     run_case("asking with PMIX_SERVER_LEGACY_PEERS fails the init", run_attr_on);
     run_case("asking with ptl_base_legacy_clients fails the init", run_clients_param_on);
-    run_case("asking with ptl_base_legacy_peers fails the init", run_peers_param_on);
+    run_case("ptl_base_legacy_peers asks for nothing this build lacks: the server starts, "
+             "with no TCP listener",
+             run_peers_param_on);
 #endif
     run_case("ptl_base_legacy_servers alone opens no TCP listener", run_servers_param_on);
     run_case("PMIX_SERVER_LEGACY_PEERS false overrides the parameters", run_attr_overrides);
+    fprintf(stdout, "Legacy servers (this build %s them):\n",
+            PMIX_ENABLE_LEGACY_SERVERS ? "supports" : "does not support");
+#if PMIX_ENABLE_LEGACY_SERVERS
+    run_case("a tool asking with ptl_base_legacy_servers initializes", run_tool_servers_param);
+#else
+    run_case("a tool asking with ptl_base_legacy_servers fails the init",
+             run_tool_servers_param);
+#endif
+    run_case("a tool asking with ptl_base_legacy_peers initializes", run_tool_peers_param);
     rmdir(tmpdir);
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n", npass, nfail);

@@ -360,12 +360,15 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                       "tmpdir. A server of an earlier release it is told of is "
                                       "connected to whatever this says, in a PMIx built with "
                                       "--enable-legacy-servers, and refused in one built "
-                                      "without",
+                                      "without - where setting this fails a client's or "
+                                      "tool's init",
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                       &pmix_ptl_base.legacy_servers_param);
 
     (void) pmix_mca_base_var_register("pmix", "ptl", "base", "legacy_peers",
-                                      "Both ptl_base_legacy_clients and ptl_base_legacy_servers",
+                                      "Both ptl_base_legacy_clients and ptl_base_legacy_servers, "
+                                      "for whichever of the two this PMIx was built with: unlike "
+                                      "either of them, it asks nothing of a direction left out",
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                       &pmix_ptl_base.legacy_peers_param);
 
