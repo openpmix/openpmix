@@ -181,11 +181,14 @@ TCP peer at one.
     the handler refuses one with `PMIX_ERR_NOT_SUPPORTED`, on whichever
     transport it came. `legacy_clients` is settled at `setup_listener`
     from the `ptl_base_legacy_clients` parameter (`legacy_clients_param`)
-    or `ptl_base_legacy_peers` (`legacy_peers_param`, which sets both
-    directions), both default false, and then `PMIX_SERVER_LEGACY_PEERS`;
-    asking for it in a build without `PMIX_ENABLE_LEGACY_CLIENTS`
+    or `ptl_base_legacy_peers` (`legacy_peers_param`, which sets each
+    direction the build has), both default false, and then
+    `PMIX_SERVER_LEGACY_PEERS`. Asking for it by name - the parameter or
+    the attribute - in a build without `PMIX_ENABLE_LEGACY_CLIENTS`
     (`--enable-legacy-clients`, off by default) fails the init
-    (`legacy-clients-not-built`).
+    (`legacy-clients-not-built`); `ptl_base_legacy_peers` asks such a
+    build for nothing, so that "all the compatibility there is" is safe
+    to set anywhere.
   - **Legacy servers** - a client or tool connecting to a server of an
     earlier release (v3.2 on). Built only with `--enable-legacy-servers`
     (`PMIX_ENABLE_LEGACY_SERVERS`), and then needs no run-time setting:
@@ -193,7 +196,11 @@ TCP peer at one.
     to. `ptl_base_legacy_servers` (`legacy_servers_param`, or
     `ptl_base_legacy_peers`) only turns on the legacy walk - see
     `pmix_ptl_base_legacy_walk()`, which a server's own `legacy_clients`
-    does not affect. In a build without it, `refuse_outdated()`
+    does not affect. In a build without it, `ptl_base_legacy_servers`
+    set true fails a client's or tool's init in `pmix_ptl_base_select()`
+    (`legacy-servers-param-not-built`), as `ptl_base_legacy_clients`
+    fails a server's; `ptl_base_legacy_peers` asks it for nothing. And
+    `refuse_outdated()`
     refuses a server known to be of an earlier release
     (`legacy-servers-not-built`) and any TCP address
     (`legacy-servers-tcp`) - only such a server is reached at one -
@@ -1688,7 +1695,7 @@ Two regimes, described in the framework doc. What matters *here*:
 | `test/unit/ptl_send_timeout.c` | `pmix_ptl_base_send_blocking` ends a blocking socket's send at its timeout and still completes a late-read one with none; a tool connecting to a server that answers its offer and then stops reading fails its init with `PMIX_ERR_TIMEOUT` |
 | `test/unit/tool_nspace.c` | a real tool connection leaves exactly one namespace object, and the peer resolves through the one on the list |
 | `test/unit/ptl_transport.c` | the listener, the server's peer for a tool, and the tool's peer for its server - by a blocking connect and by an event-driven attach - each record the transport that carries them |
-| `test/unit/ptl_legacy.c` | by default a server has no TCP listener and reports its local socket in the rendezvous file and `PMIX_SERVER_URIxx`; legacy clients on (the attribute, `ptl_base_legacy_clients` or `ptl_base_legacy_peers`) make the TCP listener and report it, with the local socket beside it; `ptl_base_legacy_servers` alone does not; the attribute overrides the parameters; asking in a build without legacy clients fails the init |
+| `test/unit/ptl_legacy.c` | by default a server has no TCP listener and reports its local socket in the rendezvous file and `PMIX_SERVER_URIxx`; legacy clients on (the attribute, `ptl_base_legacy_clients` or `ptl_base_legacy_peers`) make the TCP listener and report it, with the local socket beside it; `ptl_base_legacy_servers` alone does not; the attribute overrides the parameters; asking by the attribute or `ptl_base_legacy_clients` in a build without legacy clients fails the init, and `ptl_base_legacy_peers` there starts a server with no TCP listener; a tool given `ptl_base_legacy_servers` fails its init in a build without legacy servers and initializes in one with them, and one given `ptl_base_legacy_peers` initializes in either |
 | `test/unit/ptl_tcp_server.c` | over TCP a tool checks a server on its host by the kernel's TCP table: a server on loopback the table does not show (Linux `TCP_DEFER_ACCEPT`) is refused before anything is sent; as root, a server of another user is refused before anything is sent, and one `ptl_base_server_access` names gets past it; a server of the tool's own user is taken |
 | `test/unit/ptl_pfexec_token.c` | a process a launcher starts itself (pfexec) gets no token, not even one in the launcher's environment, and connects back without one |
 | `test/unit/ptl_token.c` | setup_fork's token: hex after the making server's name in the environment, added to a connect-ack only for a server of that name, different per rank, replaced when the rank is prepared again; only the kept token is taken (another, none, short, long, non-hex, one digit off refused); a rank never prepared takes anything; a bound token is taken from its pid or with no pid, refused from another, not rebound, unbound by registering the rank again and by preparing it again; a rankless process gets none and loses an inherited one; deregistering the rank, then the job, forgets them |

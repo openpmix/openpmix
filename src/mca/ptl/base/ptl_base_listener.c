@@ -1390,8 +1390,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     int outpipe, rdfd;
     char *leftover, *uri, *rdir = NULL;
     size_t n;
-    const char *legacy_from = pmix_ptl_base.legacy_clients_param ? "ptl_base_legacy_clients"
-                                                                 : "ptl_base_legacy_peers";
+    const char *legacy_from = "ptl_base_legacy_clients";
     pmix_info_t *sessinfo = NULL;
     uint32_t idval;
     bool tool_support_given = false;
@@ -1399,8 +1398,12 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base:setup_listener");
 
+    /* ptl_base_legacy_peers asks for every direction this PMIx was built
+     * with, so in a build without legacy clients it asks a server for
+     * nothing. ptl_base_legacy_clients, or the host's attribute, asks for
+     * them by name - and in such a build fails the init below */
     pmix_ptl_base.legacy_clients = pmix_ptl_base.legacy_clients_param ||
-                                   pmix_ptl_base.legacy_peers_param;
+                                   (PMIX_ENABLE_LEGACY_CLIENTS && pmix_ptl_base.legacy_peers_param);
     for (n = 0; n < ninfo; n++) {
         if (0 == strcmp(info[n].key, PMIX_SERVER_SESSION_SUPPORT)) {
             pmix_ptl_base.session_tool = PMIX_INFO_TRUE(&info[n]);
