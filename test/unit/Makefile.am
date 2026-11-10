@@ -27,9 +27,9 @@ noinst_SCRIPTS = run_gds_fallback.pl
 
 EXTRA_DIST = run_gds_fallback.pl.in
 
-check_PROGRAMS = compress preg bfrops_regex2 gds_fallback pmix_log
+check_PROGRAMS = compress preg bfrops_regex2 gds_fallback pmix_log server_anlmap
 
-TESTS = compress preg bfrops_regex2 gds_fallback run_gds_fallback.pl pmix_log
+TESTS = compress preg bfrops_regex2 gds_fallback run_gds_fallback.pl pmix_log server_anlmap
 
 compress_SOURCES =  \
         compress.c
@@ -61,5 +61,11 @@ pmix_log_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 pmix_log_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+server_anlmap_SOURCES = \
+        server_anlmap.c
+server_anlmap_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+server_anlmap_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
 clean-local:
-	rm -f compress preg bfrops_regex2 gds_fallback pmix_log
+	rm -f compress preg bfrops_regex2 gds_fallback pmix_log server_anlmap
