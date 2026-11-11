@@ -733,6 +733,18 @@ PMIX_EXPORT void pmix_server_lock_opcbfunc(pmix_status_t status, void *cbdata);
 PMIX_EXPORT void pmix_server_message_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                                              pmix_buffer_t *buf, void *cbdata);
 
+/* Deliver output from source on the given channel, as
+ * PMIx_server_IOF_deliver does, but here and now: for code already on the
+ * progress thread, which must not go through that entry point - it
+ * thread-shifts, and refuses once PMIx_server_finalize has cleared
+ * pmix_globals.initialized, which happens before finalize drains the
+ * progress thread. Copies whatever it keeps, so the caller's bytes and
+ * directives are its own again on return. Progress thread only */
+PMIX_EXPORT pmix_status_t pmix_server_iof_deliver_local(const pmix_proc_t *source,
+                                                        pmix_iof_channel_t channel,
+                                                        const pmix_byte_object_t *bo,
+                                                        const pmix_info_t info[], size_t ninfo);
+
 /* Receive callback registered with the PTL for output forwarded to us
  * by our host or another server - see PMIx_server_init. */
 PMIX_EXPORT void pmix_server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,

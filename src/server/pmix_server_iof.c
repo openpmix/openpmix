@@ -168,12 +168,17 @@ cleanup:
     PMIX_BYTE_OBJECT_DESTRUCT(&bo);
 }
 
-/* the progress-thread half of PMIx_server_IOF_deliver: write the output
- * locally if we are meant to, hand it to every matching registration,
- * and cache it if nobody has registered for it yet */
-static void _iofdeliver(int sd, short args, void *cbdata)
+/* Deliver output, on the progress thread: write it locally if we are
+ * meant to, hand it to every matching registration, and cache it if
+ * nobody has registered for it yet. Everything it is handed is copied
+ * before it returns. This is the work PMIx_server_IOF_deliver
+ * thread-shifts to, and it is what code already on the progress thread
+ * calls instead of that entry point (see pmix_server_ops.h) */
+pmix_status_t pmix_server_iof_deliver_local(const pmix_proc_t *source,
+                                            pmix_iof_channel_t channel,
+                                            const pmix_byte_object_t *bo,
+                                            const pmix_info_t info[], size_t ninfo)
 {
-    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     pmix_iof_req_t *req;
     bool found = false;
     bool outputlocal;
@@ -193,14 +198,11 @@ static void _iofdeliver(int sd, short args, void *cbdata)
      * Record the first real failure and keep going */
     pmix_status_t ret = PMIX_SUCCESS;
 
-    PMIX_ACQUIRE_OBJECT(cd);
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
-
     pmix_output_verbose(2, pmix_server_globals.iof_output,
                         "PMIX:SERVER delivering IOF from %s on channel %s with %d bytes",
-                        PMIX_NAME_PRINT(cd->procs),
-                        PMIx_IOF_channel_string(cd->channels),
-                        (int)cd->bo->size);
+                        PMIX_NAME_PRINT(source),
+                        PMIx_IOF_channel_string(channel),
+                        (int)bo->size);
 
     /* The host may be handing us output that is not ours to emit - a runtime
      * relaying another node's output to us solely because a tool attached
@@ -210,9 +212,9 @@ static void _iofdeliver(int sd, short args, void *cbdata)
      * two servers writing the same file. So let the host say so per
      * delivery, using the same attribute that says it at registration. */
     outputlocal = true;
-    for (n = 0; n < cd->ninfo; n++) {
-        if (PMIX_CHECK_KEY(&cd->info[n], PMIX_IOF_LOCAL_OUTPUT)) {
-            outputlocal = PMIX_INFO_TRUE(&cd->info[n]);
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_LOCAL_OUTPUT)) {
+            outputlocal = PMIX_INFO_TRUE(&info[n]);
             break;
         }
     }
@@ -221,11 +223,11 @@ static void _iofdeliver(int sd, short args, void *cbdata)
      * channels has on our own stdout and stderr only the channels it
      * named true; its output files are written as always */
     if (outputlocal) {
-        named = named_channels(cd->procs->nspace);
-        if (NULL != named && 0 == (cd->channels & named->fwd)) {
-            rc = pmix_iof_write_output_files(cd->procs, cd->channels, cd->bo);
+        named = named_channels(source->nspace);
+        if (NULL != named && 0 == (channel & named->fwd)) {
+            rc = pmix_iof_write_output_files(source, channel, bo);
         } else {
-            rc = pmix_iof_write_output(cd->procs, cd->channels, cd->bo);
+            rc = pmix_iof_write_output(source, channel, bo);
         }
         if (0 > rc) {
             ret = rc;
@@ -240,7 +242,7 @@ static void _iofdeliver(int sd, short args, void *cbdata)
         if (NULL == req) {
             continue;
         }
-        rc = pmix_iof_process_iof(cd->channels, cd->procs, cd->bo, cd->info, cd->ninfo, req);
+        rc = pmix_iof_process_iof(channel, source, bo, info, ninfo, req);
         if (PMIX_OPERATION_SUCCEEDED == rc) {
             /* flag that we do have at least one registrant for this info,
              * so there is no need to cache it */
@@ -258,13 +260,13 @@ static void _iofdeliver(int sd, short args, void *cbdata)
      * A match leaves clones behind, so the walk above answers every
      * later chunk and this runs once per namespace rather than once per
      * chunk. */
-    if (!found && 0 < inherit_from_ancestry(cd->procs)) {
+    if (!found && 0 < inherit_from_ancestry(source)) {
         for (i = 0; i < pmix_globals.iof_requests.size; i++) {
             req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
             if (NULL == req) {
                 continue;
             }
-            rc = pmix_iof_process_iof(cd->channels, cd->procs, cd->bo, cd->info, cd->ninfo, req);
+            rc = pmix_iof_process_iof(channel, source, bo, info, ninfo, req);
             if (PMIX_OPERATION_SUCCEEDED == rc) {
                 found = true;
             } else if (PMIX_SUCCESS != rc && PMIX_SUCCESS == ret) {
@@ -277,7 +279,7 @@ static void _iofdeliver(int sd, short args, void *cbdata)
     if (!found) {
         pmix_output_verbose(2, pmix_server_globals.iof_output,
                             "PMIx:SERVER caching IOF %d",
-                            (int)cd->bo->size);
+                            (int)bo->size);
         /* a bound of zero means "do not cache", and the test below has to
          * be >= rather than == to honor it: with == the list is 0 and the
          * bound is 0, so the eviction finds nothing to remove and the
@@ -307,8 +309,8 @@ static void _iofdeliver(int sd, short args, void *cbdata)
             PMIX_ERROR_LOG(ret);
             goto done;
         }
-        memcpy(&iof->source, cd->procs, sizeof(pmix_proc_t));
-        iof->channel = cd->channels;
+        memcpy(&iof->source, source, sizeof(pmix_proc_t));
+        iof->channel = channel;
         /* copy the data */
         PMIX_BYTE_OBJECT_CREATE(iof->bo, 1);
         if (NULL == iof->bo) {
@@ -317,34 +319,48 @@ static void _iofdeliver(int sd, short args, void *cbdata)
             PMIX_ERROR_LOG(ret);
             goto done;
         }
-        if (0 < cd->bo->size) {
-            iof->bo->bytes = (char *) malloc(cd->bo->size);
+        if (0 < bo->size) {
+            iof->bo->bytes = (char *) malloc(bo->size);
             if (NULL == iof->bo->bytes) {
                 PMIX_RELEASE(iof);
                 ret = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(ret);
                 goto done;
             }
-            memcpy(iof->bo->bytes, cd->bo->bytes, cd->bo->size);
-            iof->bo->size = cd->bo->size;
+            memcpy(iof->bo->bytes, bo->bytes, bo->size);
+            iof->bo->size = bo->size;
         }
-        if (0 < cd->ninfo) {
-            PMIX_INFO_CREATE(iof->info, cd->ninfo);
+        if (0 < ninfo) {
+            PMIX_INFO_CREATE(iof->info, ninfo);
             if (NULL == iof->info) {
                 PMIX_RELEASE(iof);
                 ret = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(ret);
                 goto done;
             }
-            iof->ninfo = cd->ninfo;
+            iof->ninfo = ninfo;
             for (n = 0; n < iof->ninfo; n++) {
-                PMIX_INFO_XFER(&iof->info[n], &cd->info[n]);
+                PMIX_INFO_XFER(&iof->info[n], &info[n]);
             }
         }
         pmix_list_append(&pmix_server_globals.iof, &iof->super);
     }
 
 done:
+    return ret;
+}
+
+/* the progress-thread half of PMIx_server_IOF_deliver */
+static void _iofdeliver(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+    pmix_status_t ret;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    ret = pmix_server_iof_deliver_local(cd->procs, cd->channels, cd->bo, cd->info, cd->ninfo);
+
     if (NULL != cd->opcbfunc) {
         cd->opcbfunc(ret, cd->cbdata);
     }

@@ -30,6 +30,7 @@
 #include <stdarg.h>
 
 #include "src/common/pmix_iof.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
@@ -65,45 +66,12 @@ static void finalize(void)
     PMIx_Argv_free(pmix_plog_stdfd_module.channels);
 }
 
-typedef struct{
-    pmix_object_t super;
-    pmix_proc_t source;
-    pmix_byte_object_t bo;
-} pmix_iof_deliver_t;
-static void pdcon(pmix_iof_deliver_t *p)
-{
-    PMIX_LOAD_PROCID(&p->source, NULL, PMIX_RANK_UNDEF);
-    p->bo.bytes = NULL;
-    p->bo.size = 0;
-}
-static void pddes(pmix_iof_deliver_t *p)
-{
-    if (NULL != p->bo.bytes) {
-        free(p->bo.bytes);
-    }
-}
-static PMIX_CLASS_INSTANCE(pmix_iof_deliver_t,
-                           pmix_object_t,
-                           pdcon, pddes);
-
-static void lkcbfunc(pmix_status_t status, void *cbdata)
-{
-    pmix_iof_deliver_t *p = (pmix_iof_deliver_t*)cbdata;
-
-    /* nothing to do here - we use this solely to
-     * ensure that IOF_deliver doesn't block */
-    if (PMIX_SUCCESS != status) {
-        PMIX_ERROR_LOG(status);
-    }
-    PMIX_RELEASE(p);
-}
-
 static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
                            const pmix_info_t directives[], size_t ndirs)
 {
     size_t n, nhandled = 0;
     pmix_status_t rc;
-    pmix_iof_deliver_t *p;
+    pmix_byte_object_t out;
     pmix_iof_flags_t flags = PMIX_IOF_FLAGS_STATIC_INIT;
     pmix_iof_channel_t channel;
     pmix_byte_object_t raw;
@@ -219,38 +187,32 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
             PMIX_INFO_OP_COMPLETED(&dt[n]);
             ++nhandled;
         } else {
-            /* hand off to IOF for delivery to the source proc's stream */
-            p = PMIX_NEW(pmix_iof_deliver_t);
-            if (NULL == p) {
-                if (NULL != formatted) {
-                    free(formatted->bytes);
-                    free(formatted);
-                }
-                return PMIX_ERR_NOMEM;
-            }
-            PMIX_XFER_PROCID(&p->source, name);
+            /* hand off to IOF for delivery to the source proc's stream.
+             * We are on the progress thread, so deliver here rather than
+             * through PMIx_server_IOF_deliver, which would thread-shift
+             * back onto it - and which refuses once PMIx_server_finalize
+             * has cleared pmix_globals.initialized. Finalize does that
+             * before it drains the progress thread, so a message queued
+             * just before it (a show_help, say) arrived here then and was
+             * dropped. Delivery copies what it keeps, so the bytes are
+             * ours again when it returns */
             if (NULL != formatted) {
-                /* take ownership of the formatted bytes */
-                p->bo.bytes = formatted->bytes;
-                p->bo.size = formatted->size;
-                free(formatted);
+                out = *formatted;
             } else {
                 /* the terminating NULL is not part of the output - IOF
                  * writes exactly the bytes it is given, so including it
                  * would put a stray NUL in the stream (and, under xml
                  * output, a literal "&#000;") */
-                p->bo.size = strlen(data[n].value.data.string);
-                p->bo.bytes = (char *) malloc(p->bo.size + 1);
-                if (NULL == p->bo.bytes) {
-                    PMIX_RELEASE(p);
-                    return PMIX_ERR_NOMEM;
-                }
-                memcpy(p->bo.bytes, data[n].value.data.string, p->bo.size + 1);
+                out.bytes = data[n].value.data.string;
+                out.size = strlen(data[n].value.data.string);
             }
-            rc = PMIx_server_IOF_deliver(&p->source, channel, &p->bo, NULL, 0, lkcbfunc, (void *) p);
+            rc = pmix_server_iof_deliver_local(name, channel, &out, NULL, 0);
+            if (NULL != formatted) {
+                free(formatted->bytes);
+                free(formatted);
+            }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(p);
                 return rc;
             }
             PMIX_INFO_OP_COMPLETED(&dt[n]);
