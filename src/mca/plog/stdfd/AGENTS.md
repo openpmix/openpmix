@@ -64,36 +64,41 @@ For each not-yet-complete data item, `mylog` matches `PMIX_LOG_STDERR` or
   There is nowhere to forward to — this process *is* the endpoint.
 - **Server / daemon** (everything else): the output belongs to a process
   whose stdio the server is managing, so it is handed to the IOF
-  (I/O forwarding) subsystem via
-  `PMIx_server_IOF_deliver(&source, PMIX_FWD_STDOUT_CHANNEL |
-  PMIX_FWD_STDERR_CHANNEL, ...)` so it reaches the correct output stream.
+  (I/O forwarding) subsystem through `pmix_server_iof_deliver_local()`
+  (`src/server/pmix_server_ops.h`) so it reaches the correct output
+  stream.
 
-### The IOF hand-off and its scratch object
+### The IOF hand-off
 
-For the server path, `mylog` allocates a small
-`pmix_iof_deliver_t` object (defined locally) that carries a copy of the
-source `pmix_proc_t` and a `pmix_byte_object_t` holding the message
-bytes. The buffer is NUL-terminated but the terminator is **not** part of
-`bo.size`: IOF writes exactly the bytes it is handed, so counting it put
-a stray NUL into the stream — and under `PMIX_LOG_XML_OUTPUT` a literal
-`&#000;`, since the formatter escapes every non-printable byte. For the
-same reason an empty log string is never forwarded at all: a zero-length
-payload is how IOF is told that a source closed its stream, and
-`pmix_iof_write_handler` responds by closing the descriptor. This is
-passed to the **non-blocking**
-`PMIx_server_IOF_deliver`; the completion callback `lkcbfunc` simply
-`PMIX_RELEASE`s the object. This is deliberate:
+**The server path delivers inline, not through
+`PMIx_server_IOF_deliver`.** `mylog` runs on the progress thread, and
+`pmix_server_iof_deliver_local()` is the work that public entry point
+thread-shifts to - it writes the output locally, hands it to every
+matching registration and caches it if nobody has registered yet, and
+copies whatever it keeps before it returns. So `mylog` hands it the
+formatter's buffer, or the caller's string itself, and frees the
+formatter's buffer afterwards. There is no scratch object and no
+completion callback.
 
-- The module must not block the progress thread waiting on IOF, so it
-  uses the async form and lets the callback clean up.
-- This one *does* copy the payload into the scratch object rather than
-  aliasing the caller's `data`. That is a legitimate exception to the
-  framework's no-copy rule: `mylog` returns immediately while IOF
-  delivery completes later, so the caller's `data` array cannot be
-  assumed live by then. (Contrast the caddy no-copy rule in the top-level
-  guide, which relies on the caller keeping inputs valid until *their*
-  callback fires — a guarantee that does not extend across this internal
-  async boundary.)
+It used to go through the public entry point, with a locally defined
+`pmix_iof_deliver_t` carrying a copy of the bytes and a callback to
+release it. That was a progress-thread call into a public API that
+thread-shifts, and it lost output at finalize: `PMIx_server_finalize`
+clears `pmix_globals.initialized` and only then drains the progress
+thread, so a log queued just before it - a `show_help` message, most
+often - reached `mylog` with the flag down, and
+`PMIx_server_IOF_deliver` answered `PMIX_ERR_INIT`. The message was
+dropped and a `PMIX ERROR` line printed in its place.
+`test/unit/server_finalize_log.c` covers it. Do not route this back
+through the public API.
+
+The payload size excludes the terminating NUL: IOF writes exactly the
+bytes it is handed, so counting it put a stray NUL into the stream - and
+under `PMIX_LOG_XML_OUTPUT` a literal `&#000;`, since the formatter
+escapes every non-printable byte. For the same reason an empty log
+string is never forwarded at all: a zero-length payload is how IOF is
+told that a source closed its stream, and `pmix_iof_write_handler`
+responds by closing the descriptor.
 
 ### Return code
 
@@ -101,8 +106,7 @@ passed to the **non-blocking**
 `PMIX_SUCCESS` when that count is non-zero, `PMIX_ERR_TAKE_NEXT_OPTION`
 when it is zero — correctly telling the router "not mine, try the next
 module." If there is no data at all it returns `PMIX_ERR_NOT_AVAILABLE`,
-and a failed `PMIx_server_IOF_deliver` is returned as the hard error it
-is.
+and a failed delivery is returned as the hard error it is.
 
 The counter matters. This used to be a single `rc` initialized to
 `PMIX_ERR_TAKE_NEXT_OPTION` and assigned only on the IOF path, so a
@@ -159,10 +163,9 @@ often the last thing a failing process emits, and an abort discards
 whatever is still sitting in the stdio buffer.
 
 The formatted bytes are written directly on the client/tool path
-(`fwrite`) and handed to IOF on the server path (the `pmix_iof_deliver_t`
-takes ownership of the formatter's buffer). `pmix_iof_prep_output`
-returns a plain `malloc`'d `pmix_byte_object_t`, so `stdfd` frees it with
-`free()` (or steals its `bytes` pointer) rather than a public
+(`fwrite`) and handed to IOF on the server path, which copies them.
+`pmix_iof_prep_output` returns a plain `malloc`'d `pmix_byte_object_t`,
+so `stdfd` frees it with `free()` on both paths rather than a public
 byte-object API.
 
 ## Gotchas
@@ -174,6 +177,6 @@ byte-object API.
   request first.
 - The role split (client/tool vs. server) is the subtle part. A change
   that makes a server `fprintf` directly, or a client call
-  `PMIx_server_IOF_deliver` (which it has no server to service), will
+  `pmix_server_iof_deliver_local` (which it has no server to service), will
   misbehave. Preserve the `PMIX_PEER_IS_CLIENT || PMIX_PEER_IS_TOOL`
   branch.
