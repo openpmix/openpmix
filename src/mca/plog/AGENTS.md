@@ -261,7 +261,8 @@ next/prev links into the shared `pmix_plog_base_active_module_t`, and
 `pmix_plog_base_log` again would therefore relink the objects out from
 under the loop that is walking them. Nothing does today, and the two
 paths that look like they might do not: `stdfd` hands work to
-`PMIx_server_IOF_deliver`, which posts an event and returns, and
+`pmix_server_iof_deliver_local`, which writes, forwards or caches the
+output and never reaches plog, and
 `pmix_show_help` thread-shifts (`PMIX_THREADSHIFT(cd,
 pmix_log_local_op)`) rather than calling down inline. If you add a
 module, keep it that way.
@@ -366,11 +367,13 @@ debugging hook (`pmix_plog_base_framework.framework_output`).
 modules it invokes run **on the progress thread**, reached via the
 thread-shift performed by the public `PMIx_Log_nb` path. Do not call
 `pmix_plog.log` from an arbitrary user thread without thread-shifting
-first; follow the caddy pattern in the top-level guide. Individual
-modules may themselves thread-shift outward again when they hand work to
-another subsystem — `stdfd`, for example, calls the non-blocking
-`PMIx_server_IOF_deliver` and lets a callback release its scratch object
-rather than blocking the progress thread.
+first; follow the caddy pattern in the top-level guide. A module that
+hands work to another subsystem calls that subsystem's progress-thread
+function, not its public entry point - `stdfd` calls
+`pmix_server_iof_deliver_local`, not `PMIx_server_IOF_deliver`. A public
+entry point thread-shifts back onto the thread the module is already on,
+and gates on library state that finalize changes before it drains that
+thread; see [`stdfd/AGENTS.md`](stdfd/AGENTS.md).
 
 ## Building
 
