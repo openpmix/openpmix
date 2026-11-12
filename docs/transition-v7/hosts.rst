@@ -138,8 +138,8 @@ Accepting connections
 * **Handle** ``PMIX_ERR_LOST_CONNECTION``. It is raised for a process
   that leaves without finalizing, one accepted that never connected,
   and one that execs.
-* **Client clones are gone** (``PMIX_ALLOW_CLIENT_CLONES``): one
-  connection per rank.
+* **Client clones are gone**: one connection per rank.
+  ``PMIX_ALLOW_CLIENT_CLONES`` is deprecated and ignored.
 
 See :doc:`/hosts/connections`.
 
