@@ -66,9 +66,10 @@ server code (e.g. `pmix_pnet.allocate`, `pmix_pnet.setup_fork`).
 
 ### Read this before trusting the component code
 
-Two components, [`opa`](opa/AGENTS.md) and [`nvd`](nvd/AGENTS.md), are
-compiled in a default build, and each selects at runtime **only** when
-hwloc reports its fabric hardware. (`nvd` was hardwired off in its
+Four components, [`opa`](opa/AGENTS.md), [`nvd`](nvd/AGENTS.md),
+[`efa`](efa/AGENTS.md) and [`cxi`](cxi/AGENTS.md), are compiled in a
+default build, and each selects at runtime **only** when hwloc reports its
+fabric hardware. (`nvd` was hardwired off in its
 `configure.m4` until recently — see [Building](#building) — which meant a
 cluster with Mellanox NICs got no support unless somebody had thought to
 ask for a test build. Neither component links anything, so the build host
@@ -434,8 +435,8 @@ The framework core (`base/`) is always built into `libpmix`. The
 components are **conditionally compiled**, and their `configure.m4` files
 are unusually blunt about it:
 
-- **`opa` and `nvd`** ship **no `configure.m4` at all** and therefore
-  build unconditionally; the MCA machinery configures a component with no
+- **`opa`, `nvd`, `efa` and `cxi`** ship **no `configure.m4` at all** and
+  therefore build unconditionally; the MCA machinery configures a component with no
   `configure.m4` by itself. Keep it that way. Neither links anything or
   needs an SDK — they read info attributes hwloc already recorded and set
   environment variables — and whether a component has work to do is a
@@ -502,6 +503,15 @@ A plain `make` will not tell you; check `base/static-components.h`.
   `pmix_pnet_base_set_assigned_devices()` with the same PCI
   `(vendor, class)` pairs your `component_open` probed for, so a node
   carrying two fabrics does not have you naming somebody else's NIC.
+- **Know how the variable's reader matches, before writing it.** The
+  libraries do not agree. `NCCL_IB_HCA` and `FI_EFA_IFACE` match each
+  comma-separated name exactly. `UCX_NET_DEVICES` matches each entry as a
+  glob over `device:port`, so `nvd` writes `mlx5_0:*`.
+  `FI_VERBS_DEVICE_NAME` matches each entry as a *prefix*. `PSM3_NIC` is
+  one `fnmatch` pattern and not a list at all. `FI_CXI_DEVICE_NAME`
+  refuses the whole variable if any entry is not `cxiN`. Each component
+  writes only a value whose reader will select exactly the assigned
+  devices, and otherwise leaves the variable unset.
 - **Never invent a selector the topology did not supply.** A NIC's
   selector is the OS device name, which is always there. Where a
   variable takes a *unit ordinal* instead — PSM2's `HFI_UNIT`, OPX's
