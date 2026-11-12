@@ -497,7 +497,7 @@ typedef struct {
      * and have said so - see output_not_opened() in pmix_iof.c */
     bool files_unopened;
     /* opening one of this job's output files as its owner took longer
-     * than pmix_runas_timeout, so none of the rest is tried - each would
+     * than runas_timeout, so none of the rest is tried - each would
      * hold the progress thread that long again. See output_as_owner() */
     bool files_stalled;
     pmix_access_t access; // who may access this namespace - see pmix_access_t
