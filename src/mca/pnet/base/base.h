@@ -116,6 +116,17 @@ PMIX_EXPORT pmix_status_t pmix_pnet_base_get_assigned_devices(const pmix_proc_t 
                                                               const pmix_pnet_pcimatch_t *match,
                                                               size_t nmatch,
                                                               char **value);
+/* Does this node carry a device of one of the given families?  This is
+ * the question a component's component_open asks, answered by the same
+ * matching its setup_fork filters a process's assignment with, so what a
+ * component opens for and what it claims cannot drift apart.  An entry
+ * naming a class and no type is answered from the PCI ids alone, exactly
+ * as pmix_hwloc_check_vendor() answers it; any other entry needs a network
+ * or OpenFabrics device on a matching function.  Returns PMIX_SUCCESS, or
+ * PMIX_ERR_NOT_AVAILABLE - the MCA's cue to leave the component closed
+ * without saying so - when there is none. */
+PMIX_EXPORT pmix_status_t pmix_pnet_base_check_devices(const pmix_pnet_pcimatch_t *match,
+                                                       size_t nmatch);
 /* The same, written straight into the named variable of the child's
  * environment.  This is all most components need. */
 PMIX_EXPORT pmix_status_t pmix_pnet_base_set_assigned_devices(const pmix_proc_t *proc,
