@@ -243,6 +243,26 @@ static void test_roce(void)
     PMIx_Argv_free(env);
 }
 
+static void test_efa(void)
+{
+    char **env;
+
+    env = fork_env(8);
+    ok(is(envval(env, "FI_EFA_IFACE"), "rdmap49s0"), "efa: libfabric is told the EFA device");
+    PMIx_Argv_free(env);
+
+    /* ENA is Amazon's too, but a plain interface - the type is all that
+     * tells them apart */
+    env = fork_env(9);
+    ok(NULL == envval(env, "FI_EFA_IFACE"), "efa: an ENA interface is not named as an EFA device");
+    PMIx_Argv_free(env);
+
+    /* and nobody else's adapter is */
+    env = fork_env(2);
+    ok(NULL == envval(env, "FI_EFA_IFACE"), "efa: another vendor's RDMA adapter is not named");
+    PMIx_Argv_free(env);
+}
+
 int main(int argc, char **argv)
 {
     pnet_sysfs_t sysfs;
@@ -285,6 +305,7 @@ int main(int argc, char **argv)
     ok(PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc, "the namespace registers");
     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
         test_roce();
+        test_efa();
     }
 
     PMIx_server_finalize();
