@@ -351,7 +351,7 @@ Default component priorities (from each `component_query`):
 
 | Component | Priority | `component_open` gate (only if built) |
 |-----------|----------|----------------------------------------|
-| `amd`   | 20 | `pmix_hwloc_check_vendor_baseclass(topo, 0x1002, 0x03)` |
+| `amd`   | 20 | `pmix_hwloc_check_vendor_baseclass(topo, 0x1002, 0x03)`, or `0x12` (an MI350 is a processing accelerator) |
 | `intel` | 20 | `pmix_hwloc_check_vendor(topo, 0x8086, 0x0380)` |
 | `nvd`   | 10 | `pmix_hwloc_check_vendor_baseclass(topo, 0x10de, 0x03)` |
 | `test`  | 10 | server role **and** `pgpu=test` named in the MCA selection string |
@@ -359,10 +359,12 @@ Default component priorities (from each `component_query`):
 `pmix_hwloc_check_vendor_baseclass` (in `src/hwloc/pmix_hwloc.c`) walks
 the PCI devices in the node topology and returns `PMIX_SUCCESS` only if
 one of them is from the given vendor and in the given PCI **base** class
-— `0x03`, display controller, for every GPU. The subclass is deliberately
+— `0x03`, display controller, for most GPUs. The subclass is deliberately
 not part of the question: one vendor's GPUs report `0x0300`, `0x0302` and
 `0x0380` depending on the part, so matching one exactly means declining
-on hardware that is plainly there. (`intel` still uses the exact-class
+on hardware that is plainly there. Nor is the display class always the
+answer: AMD's MI350 reports `0x1200`, a processing accelerator, so `amd`
+asks about base class `0x12` as well. (`intel` still uses the exact-class
 `pmix_hwloc_check_vendor` because Intel's *integrated* graphics are
 `0x0300` and are not what this component is for.) Either form returns
 `PMIX_ERR_NOT_AVAILABLE` when no such device is present and

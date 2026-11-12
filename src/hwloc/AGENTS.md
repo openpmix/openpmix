@@ -274,7 +274,8 @@ and `PMIX_TOPO` (`pmix_topology_t`); see
 - **`src/mca/pgpu/{amd,intel,nvd}` and `pnet/{nvd,opa}`** — detect vendor
   PCI devices in the topology at component-open time, through
   `pmix_hwloc_check_vendor_baseclass(topo, vendorID, baseclass)` where a
-  whole class family is meant (any GPU of a vendor: base class `0x03`) and
+  whole class family is meant (any GPU of a vendor: base class `0x03`,
+  and for AMD also `0x12`, where an MI350 reports itself) and
   `pmix_hwloc_check_vendor(topo, vendorID, class)` where the subclass is
   itself the question (`pnet` telling `0x0207` from `0x0208`). Reaching
   for the exact form by default is how `pgpu/amd` came to check for a

@@ -57,7 +57,16 @@
 # arrives at PMIx as XML from wherever it was exported - another node, an
 # unpacked PMIX_TOPO off the wire - so the shape is caller-supplied data
 # that the enumerator has to survive rather than trust.
+#
+# mi350-bcm57608.xml is a real node read by hwloc 2.15 with the RSMI
+# backend: eight AMD MI350s, which report PCI class 0x1200 (processing
+# accelerator) rather than a display class, and eight dual-port Broadcom
+# BCM57608 RoCE adapters whose RDMA devices carry rdma-core's PCI-path
+# names (rocep6s0f0), one GPU and one adapter per host bridge. Its host
+# name, cgroup path, board and BIOS strings, MAC addresses and the GUIDs
+# and GIDs derived from them, GPU and disk serials, GPU uuids and XGMI
+# hive id were replaced with synthetic values; nothing else was changed.
 
 EXTRA_DIST = test-topo.xml test-topo2.xml nvml-4gpu.xml drm-4gpu.xml \
         intel-4gpu.xml intel-flat-4gpu.xml opa-hfi.xml unnamed-osdev.xml \
-        multi-rc.xml rdma-fabrics.xml slingshot.xml
+        multi-rc.xml rdma-fabrics.xml slingshot.xml mi350-bcm57608.xml

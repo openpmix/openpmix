@@ -99,9 +99,16 @@ static pmix_status_t component_open(void)
     /* AMD's GPUs carry PCI vendor id 0x1002 - the one ATI brought with it
      * - and not 0x1022, which is the id on this vendor's CPU and chipset
      * functions.  The subclass is deliberately not part of the question:
-     * an Instinct part reports 0x0380 while a Radeon reports 0x0300, and
-     * both are this vendor's GPUs. */
+     * an older Instinct part reports 0x0380 while a Radeon reports 0x0300,
+     * and both are this vendor's GPUs.  Nor is the display base class the
+     * whole answer: an MI350 reports 0x1200, a processing accelerator.
+     * Which functions are GPUs is decided by the device enumeration, and
+     * setup_fork names only devices it called AMD's, so the question here
+     * is only whether there is anything for this component to do. */
     rc = pmix_hwloc_check_vendor_baseclass(&pmix_globals.topology, 0x1002, 0x03);
+    if (PMIX_SUCCESS != rc) {
+        rc = pmix_hwloc_check_vendor_baseclass(&pmix_globals.topology, 0x1002, 0x12);
+    }
     /* PMIX_ERR_NOT_AVAILABLE is the MCA's "silently ignore me" cue.  Any
      * other status - and the vendor check also answers
      * PMIX_ERR_TAKE_NEXT_OPTION when the topology did not come from hwloc
