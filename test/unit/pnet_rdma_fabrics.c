@@ -263,6 +263,34 @@ static void test_efa(void)
     PMIx_Argv_free(env);
 }
 
+static void test_cxi(void)
+{
+    char **env;
+
+    /* named by the CXI device, which the enumerator prefers over hsn0 */
+    env = fork_env(10);
+    ok(is(envval(env, "FI_CXI_DEVICE_NAME"), "cxi0"), "cxi: libfabric is told the CXI device");
+    PMIx_Argv_free(env);
+
+    /* an hwloc older than 2.14 reports only the interface, and the
+     * provider refuses anything that is not cxiN - so nothing is set
+     * rather than a guess */
+    env = fork_env(11);
+    ok(NULL == envval(env, "FI_CXI_DEVICE_NAME"),
+       "cxi: a NIC known only by its interface name is not named");
+    PMIx_Argv_free(env);
+
+    /* the same when the process was mapped against the interface */
+    env = fork_env(12);
+    ok(NULL == envval(env, "FI_CXI_DEVICE_NAME"),
+       "cxi: an assignment naming the interface is not rewritten");
+    PMIx_Argv_free(env);
+
+    env = fork_env(6);
+    ok(NULL == envval(env, "FI_CXI_DEVICE_NAME"), "cxi: another vendor's adapter is not named");
+    PMIx_Argv_free(env);
+}
+
 int main(int argc, char **argv)
 {
     pnet_sysfs_t sysfs;
@@ -306,6 +334,7 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
         test_roce();
         test_efa();
+        test_cxi();
     }
 
     PMIx_server_finalize();
