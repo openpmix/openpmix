@@ -2155,6 +2155,26 @@ static bool is_compute_gpu(hwloc_obj_t osdev, hwloc_obj_t pci)
     return (has_render && 0x03 == (pci->attr->pcidev.class_id >> 8));
 }
 
+/* Is this the CXI device of a Slingshot NIC, rather than its interface?
+ *
+ * hwloc 2.14 and later report a Cassini NIC twice on one PCI function: the
+ * network interface ("hsn0") and the CXI device ("cxi0") from
+ * /sys/class/cxi, both as network OS devices and both with the subtype
+ * "Slingshot".  The CXI device is told apart by the attributes hwloc reads
+ * from that class and records on it alone - the Cassini version and the
+ * NID.  Decided by those rather than by the name, so a site that renames
+ * its interfaces cannot make one look like the other.  An hwloc older than
+ * 2.14 has no CXI device at all, and this is never true. */
+static bool osdev_is_cxi(hwloc_obj_t osdev)
+{
+    if (HWLOC_OBJ_OSDEV_NETWORK != osdev->attr->osdev.type
+        || NULL == osdev->subtype || 0 != strcasecmp(osdev->subtype, "Slingshot")) {
+        return false;
+    }
+    return (NULL != hwloc_obj_get_info_by_name(osdev, "CassiniVersion")
+            || NULL != hwloc_obj_get_info_by_name(osdev, "NID"));
+}
+
 /* Which of two OS devices on one function should name it.  A vendor compute
  * node is the most useful name and the one an application is most likely to
  * recognize; a render node beats a card node (which is what PMIx has always
@@ -2181,6 +2201,15 @@ static bool osdev_preferred(hwloc_obj_t candidate, hwloc_obj_t incumbent)
     if (HWLOC_OBJ_OSDEV_OPENFABRICS == candidate->attr->osdev.type
         && HWLOC_OBJ_OSDEV_NETWORK == incumbent->attr->osdev.type) {
         return true;
+    }
+    /* The same choice for a Slingshot NIC, between "hsn0" and "cxi0".  The
+     * CXI provider's device-selection variable, FI_CXI_DEVICE_NAME, takes
+     * only names of the form cxiN and refuses anything else, so here the
+     * wrong name is not a narrower selection but a provider that will not
+     * start.  Both are network devices, so without this the order hwloc
+     * listed them in decided it. */
+    if (osdev_is_cxi(candidate)) {
+        return !osdev_is_cxi(incumbent);
     }
     return false;
 }
