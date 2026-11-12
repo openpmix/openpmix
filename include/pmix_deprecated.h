@@ -255,6 +255,9 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_SERVER_REMOTE_CONNECTIONS      "pmix.srvr.remote"      // (bool) ***** DEPRECATED ***** Allow connections from tools on other
                                                                     //        hosts. A server takes connections from its own host only:
                                                                     //        true fails PMIx_server_init, false changes nothing
+#define PMIX_ALLOW_CLIENT_CLONES            "pmix.allow.clones"     // (bool) ***** DEPRECATED ***** Allow connections from forks of client
+                                                                    //        processes. A rank has one connection at a time, and a second
+                                                                    //        connection for it is refused whatever this says: it is ignored
 
 
 /* DUPLICATES */
