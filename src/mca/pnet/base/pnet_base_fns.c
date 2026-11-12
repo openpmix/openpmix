@@ -256,9 +256,15 @@ static bool device_matches(const pmix_hwloc_device_t *dev,
         if (dev->pci_vendor != match[m].vendor) {
             continue;
         }
-        if (0 == match[m].devclass || dev->pci_class == match[m].devclass) {
-            return true;
+        if (0 != match[m].devclass && dev->pci_class != match[m].devclass) {
+            continue;
         }
+        /* the type is what separates an RDMA function from a plain
+         * ethernet one that reports the same vendor and class */
+        if (0 != match[m].types && 0 == (dev->dev.type & match[m].types)) {
+            continue;
+        }
+        return true;
     }
     return false;
 }

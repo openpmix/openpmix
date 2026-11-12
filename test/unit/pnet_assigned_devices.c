@@ -53,10 +53,14 @@
 static const char *osnames[NPROCS] = {"mlx5_0", "enp67s0"};
 
 /* the PCI families the shipped components open for */
-static const pmix_pnet_pcimatch_t ib_match[] = {{0x15b3, 0x207}, {0x10de, 0x207}};
-static const pmix_pnet_pcimatch_t opa_match[] = {{0x8086, 0x208}};
-static const pmix_pnet_pcimatch_t eth_match[] = {{0x8086, 0x200}};
-static const pmix_pnet_pcimatch_t anyintel_match[] = {{0x8086, 0x0}};
+static const pmix_pnet_pcimatch_t ib_match[] = {{0x15b3, 0x207, 0}, {0x10de, 0x207, 0}};
+static const pmix_pnet_pcimatch_t opa_match[] = {{0x8086, 0x208, 0}};
+static const pmix_pnet_pcimatch_t eth_match[] = {{0x8086, 0x200, 0}};
+static const pmix_pnet_pcimatch_t anyintel_match[] = {{0x8086, 0x0, 0}};
+/* the same family, but only where hwloc found an RDMA device on it */
+static const pmix_pnet_pcimatch_t intel_rdma_match[] = {{0x8086, 0x200, PMIX_DEVTYPE_OPENFABRICS}};
+/* and an InfiniBand match that names the type it already implies */
+static const pmix_pnet_pcimatch_t ib_typed_match[] = {{0x15b3, 0x207, PMIX_DEVTYPE_OPENFABRICS}};
 
 static int failures = 0;
 static int checks = 0;
@@ -239,6 +243,26 @@ int main(int argc, char **argv)
     rc = pmix_pnet_base_get_assigned_devices(&proc, anyintel_match, 1, &val);
     ok(PMIX_SUCCESS == rc && NULL != val && 0 == strcmp(val, "enp67s0"),
        "a zero class matches any class from that vendor");
+    if (NULL != val) {
+        free(val);
+        val = NULL;
+    }
+
+    /* A type in the match is what tells an RDMA function from a plain
+     * ethernet one of the same vendor and class.  enp67s0 is a network
+     * interface with no OpenFabrics device beside it, so a match that asks
+     * for one must decline it even though vendor and class agree. */
+    rc = pmix_pnet_base_get_assigned_devices(&proc, intel_rdma_match, 1, &val);
+    ok(PMIX_ERR_TAKE_NEXT_OPTION == rc && NULL == val,
+       "a match requiring an RDMA device declines a plain ethernet port");
+    if (NULL != val) {
+        free(val);
+        val = NULL;
+    }
+    PMIX_LOAD_PROCID(&proc, TESTNS, 0);
+    rc = pmix_pnet_base_get_assigned_devices(&proc, ib_typed_match, 1, &val);
+    ok(PMIX_SUCCESS == rc && NULL != val && 0 == strcmp(val, "mlx5_0"),
+       "and accepts the HCA, which carries one");
     if (NULL != val) {
         free(val);
         val = NULL;
