@@ -259,10 +259,20 @@ PMIX_EXPORT extern pmix_pnet_API_module_t pmix_pnet;
  * discriminator there is.  Getting it wrong on a node with two fabrics
  * means writing another vendor's device into your variable, which is worse
  * than writing nothing.
+ *
+ * "types", when not zero, is a mask of pmix_device_type_t the device's own
+ * type must intersect.  The PCI ids cannot tell an RDMA-capable function
+ * from a plain ethernet one of the same vendor and class: a ConnectX port
+ * with RDMA turned off, or Amazon's ENA beside its EFA, both report a
+ * network-class function and differ only in whether hwloc found an
+ * OpenFabrics device on it.  The type is that difference.  Zero means any
+ * type, which is what a class that only RDMA devices report (InfiniBand,
+ * 0x207) needs.
  */
 typedef struct {
     uint16_t vendor;
     uint16_t devclass;
+    pmix_device_type_t types;
 } pmix_pnet_pcimatch_t;
 
 /*
@@ -276,7 +286,7 @@ typedef pmix_mca_base_component_t pmix_pnet_base_component_t;
  * the same three by pasting its name, so the two cannot drift apart.
  * Bump it on any change to the module interface that a component built
  * against the previous one would not survive. */
-#define PMIX_MCA_pnet_MAJOR_VERSION   3
+#define PMIX_MCA_pnet_MAJOR_VERSION   4
 #define PMIX_MCA_pnet_MINOR_VERSION   0
 #define PMIX_MCA_pnet_RELEASE_VERSION 0
 
