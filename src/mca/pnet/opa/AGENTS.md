@@ -127,6 +127,28 @@ for — `0x8086` / `0x208`, which matters because Intel also makes ethernet
 controllers and those report class `0x200` — and writes the result to
 **`PSM3_NIC`**, which selects by NIC name.
 
+**`PSM3_NIC` is one pattern, not a list.** PSM3 hands it to `fnmatch()`
+against each unit's device name (`psm3_is_nic_allowed()` in
+`psm3/psm_utils.c`), unless it parses whole as a decimal or hexadecimal
+number, in which case it is a unit number (`psmi_parse_nic_var()` in
+`psm3/psm.c`). A comma-joined `hfi1_0,hfi1_1` therefore matches *no*
+device and leaves the process with no NIC, so `setup_fork` writes the
+variable only for a single name PSM3 will read as that name — no `,`, no
+glob character, not a number — and leaves a process given several HFIs to
+PSM3's own selection. An extended glob (`@(hfi1_0|hfi1_1)`) would say it,
+but only to a PSM3 built with `FNM_EXTMATCH`, which nothing here can see.
+`test/unit/pnet_opa_seckey.c` covers the two-HFI rank.
+
+**Intel E810 is not in the table, deliberately.** PSM3's verbs HAL takes
+its units from `/sys/class/infiniband` and would accept an `irdma0` name
+in `PSM3_NIC`. Two things are unsettled: an `irdma` device may run iWARP,
+which PSM3's verbs HAL — built on UD queue pairs — is not known to drive
+(`nvd` drops such devices by their sysfs node type, and the same check
+would be needed here); and PSM3's sockets HAL takes its units from
+`/sys/class/net`, so if PSM3 falls back to it, an `irdma` name matches no
+unit. Add `{0x8086, 0x200, PMIX_DEVTYPE_OPENFABRICS}` only once both are
+confirmed against PSM3 on real E810 hardware.
+
 PSM2's `HFI_UNIT` and OPX's `FI_OPX_HFI_SELECT` are deliberately **not**
 set. Both take a unit *ordinal*, and an ordinal means something only
 against the enumeration it came from, which is the driver's rather than

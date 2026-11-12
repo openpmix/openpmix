@@ -53,13 +53,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NPROCS 2
+#define NPROCS 3
 #define TESTNS "pnet-opa"
 #define XPORT  "OMPI_MCA_orte_precondition_transports"
 
-/* rank 0 gets the HFI, rank 1 the ethernet controller from the same
- * vendor - which opa must not claim */
-static const char *osnames[NPROCS] = {"hfi1_0", "enp66s0"};
+/* rank 0 gets an HFI, rank 1 the ethernet controller from the same
+ * vendor - which opa must not claim - and rank 2 both HFIs */
+static const char *osnames[NPROCS][2] = {{"hfi1_0", NULL}, {"enp66s0", NULL},
+                                         {"hfi1_0", "hfi1_1"}};
 
 static int failures = 0;
 static int checks = 0;
@@ -197,8 +198,8 @@ static char *seckey_round_trip(char *nspace, pmix_info_t *directives, size_t ndi
 }
 
 /* Register a namespace whose ranks were mapped against devices, the way
- * pnet_assigned_devices.c does - rank 0 the HFI, rank 1 the ethernet
- * controller from the same vendor. */
+ * pnet_assigned_devices.c does - rank 0 an HFI, rank 1 the ethernet
+ * controller from the same vendor, rank 2 both HFIs. */
 static pmix_status_t register_nspace(void)
 {
     pmix_info_t *info, *pdata;
@@ -221,7 +222,7 @@ static pmix_status_t register_nspace(void)
     ++n;
 
     for (m = 0; m < nprocs; m++) {
-        size_t k = 0;
+        size_t k = 0, ndev, d;
 
         pmix_strncpy(info[n].key, PMIX_PROC_INFO_ARRAY, PMIX_MAX_KEYLEN);
         info[n].value.type = PMIX_DATA_ARRAY;
@@ -236,12 +237,15 @@ static pmix_status_t register_nspace(void)
         PMIX_INFO_LOAD(&pdata[k], PMIX_LOCAL_RANK, &lrank, PMIX_UINT16);
         ++k;
 
-        PMIX_DATA_ARRAY_CREATE(darray, 1, PMIX_DEVICE);
+        ndev = (NULL == osnames[m][1]) ? 1 : 2;
+        PMIX_DATA_ARRAY_CREATE(darray, ndev, PMIX_DEVICE);
         dev = (pmix_device_t *) darray->array;
-        PMIx_Device_construct(&dev[0]);
-        dev[0].osname = strdup(osnames[m]);
-        pmix_asprintf(&dev[0].uuid, "nic://%s::%s", pmix_globals.hostname, osnames[m]);
-        dev[0].type = (0 == m) ? PMIX_DEVTYPE_OPENFABRICS : PMIX_DEVTYPE_NETWORK;
+        for (d = 0; d < ndev; d++) {
+            PMIx_Device_construct(&dev[d]);
+            dev[d].osname = strdup(osnames[m][d]);
+            pmix_asprintf(&dev[d].uuid, "nic://%s::%s", pmix_globals.hostname, osnames[m][d]);
+            dev[d].type = (1 == m) ? PMIX_DEVTYPE_NETWORK : PMIX_DEVTYPE_OPENFABRICS;
+        }
         /* hand the array over rather than PMIX_INFO_LOAD-ing it: the info
          * now owns it */
         pmix_strncpy(pdata[k].key, PMIX_DEVICE_ID, PMIX_MAX_KEYLEN);
@@ -453,6 +457,18 @@ int main(int argc, char **argv)
         ok(PMIX_SUCCESS == rc, "setup_fork succeeds for a rank with no HFI");
         ok(NULL == envval(env, "PSM3_NIC"),
            "and says nothing about an ethernet controller from the same vendor");
+        PMIx_Argv_free(env);
+        env = NULL;
+
+        /* PSM3 reads PSM3_NIC as one fnmatch pattern, not a list, so
+         * "hfi1_0,hfi1_1" would match neither HFI and leave the process
+         * with no NIC at all.  A process given two is left unset. */
+        PMIX_LOAD_PROCID(&proc, TESTNS, 2);
+        env = NULL;
+        rc = pmix_pnet_base_setup_fork(&proc, &env);
+        ok(PMIX_SUCCESS == rc, "setup_fork succeeds for a rank with two HFIs");
+        ok(NULL == envval(env, "PSM3_NIC"),
+           "and does not write a list PSM3 would read as one pattern");
         PMIx_Argv_free(env);
         env = NULL;
     }
