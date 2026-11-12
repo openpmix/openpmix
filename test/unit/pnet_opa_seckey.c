@@ -29,11 +29,12 @@
  * code - a directive the component cannot use is legitimately ignored.
  *
  * It runs against opa-hfi.xml, handed to the server through the documented
- * topo_file hook.  That fixture carries an Intel Omni-Path HFI (PCI
- * 8086 class 0208), which is what puts opa into the active list on a
- * machine with no such card, and an Intel *ethernet* controller (class
- * 0200) beside it, because "same vendor, wrong class" is the mistake the
- * component's PCI filter exists to prevent.
+ * topo_file hook.  That fixture carries an Omni-Path HFI (PCI 8086
+ * class 0208: Cornelis makes it, under Intel's vendor id), which is what
+ * puts opa into the active list on a machine with no such card, and an
+ * Intel *ethernet* controller (class 0200) beside it, because "same
+ * vendor, wrong class" is the mistake the component's PCI filter exists
+ * to prevent.
  */
 
 #include "src/include/pmix_config.h"
