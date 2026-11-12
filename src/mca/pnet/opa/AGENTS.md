@@ -10,10 +10,11 @@
 
 # AGENTS.md: The PNET `opa` Component
 
-`opa` is the `pnet` component for Intel **Omni-Path** fabric support. It
-and [`nvd`](../nvd/AGENTS.md) are the two `pnet` components compiled into
-a default build; check `base/static-components.h` rather than trusting
-any prose about it. Read the framework [`AGENTS.md`](../AGENTS.md) first;
+`opa` is the `pnet` component for **Omni-Path** fabric support, a
+product of Cornelis Networks (formerly of Intel). It and
+[`nvd`](../nvd/AGENTS.md) are the two `pnet` components compiled into a
+default build; check `base/static-components.h` rather than trusting any
+prose about it. Read the framework [`AGENTS.md`](../AGENTS.md) first;
 this file covers only what is specific to `opa`. Compared with the other
 components it is the closest thing to a live reference — it compiles
 against the current module interface — but note it only becomes *active*
@@ -40,9 +41,11 @@ settled at run time by `component_open`.
 Selection is a two-step gate:
 
 1. **`component_open`** returns `pmix_hwloc_check_vendor(&pmix_globals.topology,
-   0x8086, 0x208)` — i.e. it only opens if hwloc finds an Intel
-   (`0x8086`) PCI device of class `0x208` (an Omni-Path HFI). On any host
-   without that device, `open` fails and the component is never queried.
+   0x8086, 0x208)` — i.e. it only opens if hwloc finds a PCI device
+   with Intel's vendor id (`0x8086`) and class `0x208`: an Omni-Path HFI,
+   which carries the vendor id Intel gave it although Cornelis now makes
+   it. On any host without that device, `open` fails and the component
+   is never queried.
 2. **`component_query`** (reached only if open succeeded) unconditionally
    hands back `pmix_pnet_opa_module` at priority **10**.
 
@@ -221,7 +224,7 @@ filter exists to prevent.
   the lead server and shipped as a string.
 - **Built ≠ active.** `opa` links into `libpmix` on every build, but the
   `component_open` hwloc probe means it only participates on hosts with an
-  Intel Omni-Path HFI — so on a developer's machine every entry point here
+  Omni-Path HFI — so on a developer's machine every entry point here
   is dead code unless something puts an HFI in the topology. That is what
   the fixture under [Testing it](#testing-it) is for; reach for it rather
   than for the hardware.
