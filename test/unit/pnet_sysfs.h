@@ -11,12 +11,15 @@
 /*
  * A captured sysfs tree for the pnet tests.
  *
- * The nvd component reads each RDMA device's node type from
+ * Two components read sysfs for what the topology does not record.  nvd
+ * reads each RDMA device's node type from
  * <root>/class/infiniband/<dev>/node_type, which is how it tells an
- * InfiniBand or RoCE adapter from an iWARP one - something the topology does
- * not record.  The machines these tests run on mostly have no such tree, and
- * none has the devices the fixtures describe, so a test builds the entries it
- * needs under a temporary directory and points pnet_nvd_sysfs_root at it.
+ * InfiniBand or RoCE adapter from an iWARP one.  cxi finds the CXI device
+ * of a Slingshot interface under <root>/class/net/<hsnN>/device/cxi/, which
+ * an hwloc older than 2.14 does not report.  The machines these tests run
+ * on mostly have no such tree, and none has the devices the fixtures
+ * describe, so a test builds the entries it needs under a temporary
+ * directory and points the component's sysfs_root parameter at it.
  */
 
 #ifndef PMIX_TEST_PNET_SYSFS_H
@@ -28,6 +31,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -37,7 +41,7 @@ typedef struct {
     char **made;
 } pnet_sysfs_t;
 
-static bool pnet_sysfs_mkdir(pnet_sysfs_t *s, const char *path)
+static inline bool pnet_sysfs_mkdir(pnet_sysfs_t *s, const char *path)
 {
     struct stat st;
 
@@ -51,7 +55,7 @@ static bool pnet_sysfs_mkdir(pnet_sysfs_t *s, const char *path)
     return true;
 }
 
-static bool pnet_sysfs_init(pnet_sysfs_t *s)
+static inline bool pnet_sysfs_init(pnet_sysfs_t *s)
 {
     const char *tmp = getenv("TMPDIR");
     char *base = NULL, *path = NULL;
@@ -80,7 +84,7 @@ static bool pnet_sysfs_init(pnet_sysfs_t *s)
 }
 
 /* record "dev" as a verbs device whose node_type file reads "type" */
-static bool pnet_sysfs_add(pnet_sysfs_t *s, const char *dev, const char *type)
+static inline bool pnet_sysfs_add(pnet_sysfs_t *s, const char *dev, const char *type)
 {
     char *dir = NULL, *file = NULL;
     FILE *fp;
@@ -105,7 +109,35 @@ out:
     return ret;
 }
 
-static void pnet_sysfs_remove(pnet_sysfs_t *s)
+/* create the directory "rel" under the root, and every directory above it */
+static inline bool pnet_sysfs_add_dir(pnet_sysfs_t *s, const char *rel)
+{
+    char **parts;
+    char *path = NULL, *next = NULL;
+    bool ret = true;
+    int n;
+
+    parts = PMIx_Argv_split(rel, '/');
+    if (NULL == parts) {
+        return false;
+    }
+    path = strdup(s->root);
+    for (n = 0; ret && NULL != path && NULL != parts[n]; n++) {
+        pmix_asprintf(&next, "%s/%s", path, parts[n]);
+        free(path);
+        path = next;
+        next = NULL;
+        ret = (NULL != path && pnet_sysfs_mkdir(s, path));
+    }
+    if (NULL == path) {
+        ret = false;
+    }
+    free(path);
+    PMIx_Argv_free(parts);
+    return ret;
+}
+
+static inline void pnet_sysfs_remove(pnet_sysfs_t *s)
 {
     int n;
 
