@@ -67,7 +67,7 @@ pmix_pnet_module_t pmix_pnet_opa_module = {
  * what this component is for, so the class is part of the question and not
  * just the vendor. */
 static const pmix_pnet_pcimatch_t mymatch[] = {
-    {0x8086, 0x208}         /* Intel fabric controller (Omni-Path HFI) */
+    {0x8086, 0x208, 0}      /* Intel fabric controller (Omni-Path HFI) */
 };
 
 /* some network transports require a little bit of information to
