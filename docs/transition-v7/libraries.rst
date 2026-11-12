@@ -165,3 +165,14 @@ Spawning
   ``ROCR_VISIBLE_DEVICES``, or ``ZE_AFFINITY_MASK`` in its environment
   at launch, naming those devices. A value already set is replaced. A
   process not mapped to a GPU is left alone.
+* **NIC selection is set for you too.** When a process is mapped to
+  network devices, PMIx names them to the libraries that use them, each in
+  the form that library matches, and only for the fabrics whose devices
+  the process was given: ``NCCL_IB_HCA`` and ``UCX_NET_DEVICES`` for
+  InfiniBand and RoCE adapters (NVIDIA, Broadcom, and Intel's in RoCE
+  mode), with ``FI_VERBS_DEVICE_NAME`` as well unless that name would also
+  match another device on the node; ``FI_EFA_IFACE`` for EFA;
+  ``FI_CXI_DEVICE_NAME`` for Slingshot; and ``PSM3_NIC`` for a single
+  Omni-Path adapter. A value already set is replaced. A variable is left
+  unset where the device cannot be named exactly in it, rather than
+  written with a name that would select a different device.
