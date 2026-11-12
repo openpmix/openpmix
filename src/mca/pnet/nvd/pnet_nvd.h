@@ -24,7 +24,7 @@ typedef struct {
     char *excparms;
     char **include;
     char **exclude;
-    /* root of the sysfs tree read for each device's node type */
+    /* root of the sysfs tree read for each Intel device's node type */
     char *sysfs_root;
 } pmix_pnet_nvd_component_t;
 

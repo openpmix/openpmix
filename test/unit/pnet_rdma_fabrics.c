@@ -25,8 +25,9 @@
  *    to require the OpenFabrics device hwloc found on the function;
  *  - an Intel irdma device may run iWARP, which the topology cannot see,
  *    so nvd reads its node type from a captured sysfs tree (see
- *    pnet_sysfs.h) - irdma0 is a channel adapter there, irdma1 is not, and
- *    mlx5_2 has no entry at all;
+ *    pnet_sysfs.h) - irdma0 is a channel adapter there and irdma1 is not.
+ *    Only Intel's devices are asked: mlx5_2 has no entry at all, and is
+ *    named anyway;
  *  - libfabric's verbs provider matches FI_VERBS_DEVICE_NAME by prefix, and
  *    the node carries bnxt_re1 and bnxt_re10.
  */
@@ -43,6 +44,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "pnet_sysfs.h"
 
@@ -179,6 +181,8 @@ static bool no_verbs(char **env)
 
 static void test_roce(void)
 {
+    char path[PMIX_PATH_MAX];
+    const char *root;
     char **env;
 
     /* Broadcom: the verbs libraries take bnxt_re1 as they take an
@@ -228,9 +232,11 @@ static void test_roce(void)
        "roce: a ConnectX in ethernet mode is named like an InfiniBand HCA");
     PMIx_Argv_free(env);
 
-    /* a device whose node type cannot be read is left out, not assumed */
+    /* only Intel's adapters can be iWARP, so only theirs are asked: a
+     * ConnectX with no node type to read is named all the same */
     env = fork_env(7);
-    ok(no_verbs(env), "roce: a device with no readable node type is not named");
+    ok(is(envval(env, "NCCL_IB_HCA"), "mlx5_2") && is(envval(env, "UCX_NET_DEVICES"), "mlx5_2:*"),
+       "roce: a non-Intel adapter is named without its node type");
     PMIx_Argv_free(env);
 
     /* EFA is an OpenFabrics device none of the verbs libraries drive, and
@@ -240,6 +246,16 @@ static void test_roce(void)
     PMIx_Argv_free(env);
     env = fork_env(9);
     ok(no_verbs(env), "roce: an ENA interface is not named to the verbs libraries");
+    PMIx_Argv_free(env);
+
+    /* an Intel adapter whose node type cannot be read is not named: it is
+     * not known to be RoCE.  Last, because it takes irdma0's entry away */
+    root = getenv("PMIX_MCA_pnet_nvd_sysfs_root");
+    snprintf(path, sizeof(path), "%s/class/infiniband/irdma0/node_type",
+             (NULL == root) ? "" : root);
+    ok(NULL != root && 0 == unlink(path), "roce: irdma0's node type removed");
+    env = fork_env(2);
+    ok(no_verbs(env), "roce: an Intel adapter with no readable node type is not named");
     PMIx_Argv_free(env);
 }
 
