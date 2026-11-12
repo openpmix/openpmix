@@ -18,6 +18,8 @@ BEGIN_C_DECLS
 
 typedef struct {
     pmix_pnet_base_component_t super;
+    /* root of the sysfs tree a Slingshot interface's CXI device is found in */
+    char *sysfs_root;
 } pmix_pnet_cxi_component_t;
 
 /* the component must be visible data for the linker to find it */
