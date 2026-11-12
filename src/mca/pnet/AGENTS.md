@@ -19,7 +19,7 @@ apply here and are not repeated. This file covers what is specific to
 active components, the two module structs, the fabric bookkeeping, and —
 importantly — how much of the shipped component code is dormant or stale
 scaffolding rather than live production code. Each component subdirectory
-(`nvd/`, `opa/`, `efa/`, `simptest/`, `tcp/`) carries its own `AGENTS.md`.
+(`nvd/`, `opa/`, `efa/`, `cxi/`, `simptest/`, `tcp/`) carries its own `AGENTS.md`.
 
 There is no `docs/how-things-work/` page for `pnet`.
 
@@ -300,6 +300,7 @@ Default priorities and runtime gates (from each component's
 | `nvd` | 10 | **Yes** | hwloc reports a Mellanox `0x15b3` / NVIDIA `0x10de` device of class `0x207`, or a class `0x200` function of those vendors, Broadcom `0x14e4` or Intel `0x8086` carrying an OpenFabrics device |
 | `opa` | 10 | **Yes** | hwloc reports an Intel `0x8086` device of class `0x208` |
 | `efa` | 10 | **Yes** | hwloc reports an Amazon `0x1d0f` function carrying an OpenFabrics device (EFA, not ENA) |
+| `cxi` | 10 | **Yes** | hwloc reports a network device on a Cray/HPE `0x17db` function (Slingshot; vendor id not yet confirmed on real hardware) |
 | `simptest` | 0 | Only with `--with-simptest` | server role **and** `pnet=simptest` MCA selection **and** a config file given |
 | `tcp` | 5 | **No** (`--with-tcp`) | always returns a module (no hardware gate); its entry points self-gate on `PMIX_PEER_IS_GATEWAY` / their own blob key, but `collect_inventory` runs on every server |
 
@@ -340,6 +341,7 @@ src/mca/pnet/
 ├── nvd/                    Mellanox/NVIDIA example (default-built; hwloc-gated at runtime)
 ├── opa/                    Omni-Path example (default-built; hwloc-gated at runtime)
 ├── efa/                    Amazon EFA: FI_EFA_IFACE (default-built; hwloc-gated at runtime)
+├── cxi/                    HPE Slingshot: FI_CXI_DEVICE_NAME (default-built; hwloc-gated at runtime)
 ├── simptest/               static-endpoint test example (working; --with-simptest / --enable-test-build)
 └── tcp/                    static TCP/UDP port example (--with-tcp; no hardware gate)
 ```
