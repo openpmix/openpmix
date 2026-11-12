@@ -273,17 +273,18 @@ static void test_cxi(void)
     PMIx_Argv_free(env);
 
     /* an hwloc older than 2.14 reports only the interface, and the
-     * provider refuses anything that is not cxiN - so nothing is set
-     * rather than a guess */
+     * provider refuses anything that is not cxiN.  The CXI device is
+     * looked up in sysfs, and this tree has no entry for it - so nothing
+     * is set rather than a guess.  pnet_cxi_sysfs.c covers the lookup. */
     env = fork_env(11);
     ok(NULL == envval(env, "FI_CXI_DEVICE_NAME"),
-       "cxi: a NIC known only by its interface name is not named");
+       "cxi: a NIC known only by its interface name, and not in sysfs, is not named");
     PMIx_Argv_free(env);
 
     /* the same when the process was mapped against the interface */
     env = fork_env(12);
     ok(NULL == envval(env, "FI_CXI_DEVICE_NAME"),
-       "cxi: an assignment naming the interface is not rewritten");
+       "cxi: an assignment naming the interface is not turned into a CXI name by guesswork");
     PMIx_Argv_free(env);
 
     env = fork_env(6);
@@ -321,6 +322,9 @@ int main(int argc, char **argv)
         return 77;
     }
     setenv("PMIX_MCA_pnet_nvd_sysfs_root", sysfs.root, 1);
+    /* and none of the class/net entries cxi would resolve an interface by,
+     * so these checks do not depend on the machine running them */
+    setenv("PMIX_MCA_pnet_cxi_sysfs_root", sysfs.root, 1);
 
     rc = PMIx_server_init(NULL, NULL, 0);
     if (PMIX_SUCCESS != rc) {
