@@ -54,8 +54,8 @@ pmix_pnet_module_t pmix_pnet_nvd_module = {
  * carry more than one fabric and naming somebody else's NIC in these
  * variables is worse than naming none. */
 static const pmix_pnet_pcimatch_t mymatch[] = {
-    {0x15b3, 0x207},        /* Mellanox InfiniBand controller */
-    {0x10de, 0x207}         /* the same under NVIDIA's vendor id */
+    {0x15b3, 0x207, 0},     /* Mellanox InfiniBand controller */
+    {0x10de, 0x207, 0}      /* the same under NVIDIA's vendor id */
 };
 #define NMYMATCH (sizeof(mymatch) / sizeof(mymatch[0]))
 
