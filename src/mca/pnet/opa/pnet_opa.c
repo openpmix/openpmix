@@ -12,6 +12,7 @@
 
 #include "src/include/pmix_config.h"
 
+#include <stdlib.h>
 #include <string.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
@@ -36,6 +37,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 
@@ -447,10 +449,43 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
     return rc;
 }
 
+/* Can PSM3_NIC say exactly this?
+ *
+ * PSM3 does not read PSM3_NIC as a list.  It is one pattern, handed to
+ * fnmatch() against each unit's device name (psm3_is_nic_allowed() in
+ * psm3/psm_utils.c), unless it parses whole as a decimal or hexadecimal
+ * number, in which case it is a unit number (psmi_parse_nic_var() in
+ * psm3/psm.c).  So "hfi1_0,hfi1_1" names no device at all, and the process
+ * is left with no NIC it may use.  The value is therefore written only when
+ * it is a single name that PSM3 will read as that name: no separator, no
+ * glob character, and not a number. */
+static bool psm3_names_exactly(const char *val)
+{
+    char *end = NULL;
+
+    if (NULL == val || '\0' == val[0] || NULL != strpbrk(val, ",*?[]")) {
+        return false;
+    }
+    (void) strtol(val, &end, 10);
+    if (NULL != end && '\0' == *end) {
+        return false;
+    }
+    (void) strtol(val, &end, 16);
+    if (NULL != end && '\0' == *end) {
+        return false;
+    }
+    return true;
+}
+
 /* Name this process's HFIs to the fabric software that will use them.
  *
  * PSM3 selects by NIC name, which is the selector the topology already
- * supplies, so that variable can be set from the assignment as it stands.
+ * supplies, so that variable can be set from the assignment as it stands -
+ * provided the assignment is one device; see psm3_names_exactly().  A
+ * process given several is left to PSM3's own selection, which is less
+ * than was asked for but not wrong: the alternative, an extended glob such
+ * as "@(hfi1_0|hfi1_1)", works only in a PSM3 built with FNM_EXTMATCH, and
+ * nothing here can tell how it was built.
  *
  * PSM2's HFI_UNIT and OPX's FI_OPX_HFI_SELECT are deliberately NOT set.
  * Both take a unit *ordinal* rather than a name, and an ordinal is
@@ -464,9 +499,29 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
  */
 static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
 {
-    return pmix_pnet_base_set_assigned_devices(proc, mymatch,
-                                               sizeof(mymatch) / sizeof(mymatch[0]),
-                                               "PSM3_NIC", env);
+    pmix_status_t rc;
+    char *val = NULL;
+
+    rc = pmix_pnet_base_get_assigned_devices(proc, mymatch, sizeof(mymatch) / sizeof(mymatch[0]),
+                                             &val);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    if (!psm3_names_exactly(val)) {
+        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                            "pnet:opa: not setting PSM3_NIC for %s - \"%s\" is not a "
+                            "single device name PSM3 can match", PMIX_NAME_PRINT(proc), val);
+        free(val);
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                        "pnet: PSM3_NIC=%s for %s", val, PMIX_NAME_PRINT(proc));
+    rc = PMIx_Setenv("PSM3_NIC", val, true, env);
+    free(val);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
