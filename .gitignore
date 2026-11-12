@@ -410,6 +410,7 @@ test/unit/update_attach_fail
 test/unit/job_data_update
 test/unit/job_data_hash
 test/unit/pgpu_visible_devices
+test/unit/pgpu_accelerator_class
 test/unit/pnet_assigned_devices
 test/unit/pnet_rdma_fabrics
 test/unit/pnet_cxi_sysfs
