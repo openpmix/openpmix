@@ -77,7 +77,7 @@ PMIX_EXPORT int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t
 PMIX_EXPORT size_t pmix_util_runas_groups(gid_t gid, const gid_t *gids, size_t ngids,
                                           gid_t *out, size_t max);
 
-/* Seconds pmix_util_run_as() waits for a child - MCA pmix_runas_timeout.
+/* Seconds pmix_util_run_as() waits for a child - MCA runas_timeout.
  * 0 waits without a bound */
 PMIX_EXPORT extern int pmix_util_runas_timeout;
 
