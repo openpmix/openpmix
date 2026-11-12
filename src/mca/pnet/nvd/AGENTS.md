@@ -10,13 +10,20 @@
 
 # AGENTS.md: The PNET `nvd` Component
 
-`nvd` is the `pnet` component for **Mellanox / NVIDIA** fabric and
-networking support. Read the framework [`AGENTS.md`](../AGENTS.md) first;
-this file covers only what is specific to `nvd`. It is a near-copy of
-[`opa`](../opa/AGENTS.md) retargeted at NVIDIA/Mellanox NICs. It builds
-in a stock configure and runs on any host whose topology shows a Mellanox
-or NVIDIA InfiniBand controller; it was hardwired **off** in its
-`configure.m4` until recently (see [Building](#building)).
+`nvd` is the `pnet` component for **InfiniBand and RoCE verbs adapters**
+— NVIDIA/Mellanox InfiniBand and ConnectX RoCE, Broadcom NetXtreme-E
+(`bnxt_re`) and Intel E810/X722 (`irdma`). Read the framework
+[`AGENTS.md`](../AGENTS.md) first; this file covers only what is specific
+to `nvd`. It started as a near-copy of [`opa`](../opa/AGENTS.md)
+retargeted at NVIDIA/Mellanox NICs, and its name still says so; what it
+actually owns is the variables of the libraries that drive *any* IB or
+RoCE verbs device — NCCL's IB transport, UCX and libfabric's verbs
+provider. That is why the other vendors are entries in its table rather
+than components of their own: two components writing `UCX_NET_DEVICES`
+for one process would overwrite each other. It builds in a stock
+configure and runs on any host whose topology shows one of those
+adapters; it was hardwired **off** in its `configure.m4` until recently
+(see [Building](#building)).
 
 ## Files
 
@@ -32,18 +39,29 @@ There is deliberately **no `configure.m4`** — see [Building](#building).
 
 Selection is a two-step gate mirroring `opa`:
 
-1. **`component_open`** probes hwloc twice via `pmix_hwloc_check_vendor` —
-   first for Mellanox vendor `0x15b3`, then (on failure) for NVIDIA vendor
-   `0x10de` — both against PCI class `0x207`. It opens only if a matching
-   device is found. The `mymatch[]` table in `pnet_nvd.c` holds the same
-   two pairs, and `setup_fork` and `collect_inventory` both work from it,
-   so what the component opens for and what it claims cannot drift apart.
+1. **`component_open`** asks `pmix_pnet_base_check_devices()` about the
+   `pmix_pnet_nvd_match[]` table in `pnet_nvd.c`, and `setup_fork` and
+   `collect_inventory` both work from the same table, so what the
+   component opens for and what it claims cannot drift apart:
+
+   | Vendor | Class | Type required | What it is |
+   |--------|-------|---------------|------------|
+   | `0x15b3`, `0x10de` | `0x207` | — | Mellanox/NVIDIA InfiniBand |
+   | `0x15b3`, `0x10de` | `0x200` | OpenFabrics | ConnectX in ethernet mode (RoCE) |
+   | `0x14e4` | `0x200` | OpenFabrics | Broadcom NetXtreme-E (`bnxt_re`) |
+   | `0x8086` | `0x200` | OpenFabrics | Intel E810 / X722 (`irdma`) |
+
+   Class `0x200` is what every plain ethernet port of those vendors
+   reports too, so those entries require the OpenFabrics device hwloc
+   found on the function; the InfiniBand entries are answered from the PCI
+   ids alone, exactly as `pmix_hwloc_check_vendor` always answered them.
+   Omni-Path (`0x8086`/`0x208`) belongs to `opa` and EFA to `efa`.
 2. **`component_query`** returns `pmix_pnet_nvd_module` at priority
    **10**.
 
-`component_open` returns whatever `pmix_hwloc_check_vendor` gave it, and
-only `PMIX_ERR_NOT_AVAILABLE` is the MCA's "silently ignore me" cue — the
-helper's other two failures (`PMIX_ERR_BAD_PARAM` for no topology,
+`component_open` returns whatever the check gave it, and only
+`PMIX_ERR_NOT_AVAILABLE` is the MCA's "silently ignore me" cue — the
+vendor check's other two failures (`PMIX_ERR_BAD_PARAM` for no topology,
 `PMIX_ERR_TAKE_NEXT_OPTION` for one that did not come from hwloc) would be
 reported as a component that failed to open. Neither is reachable as the
 server stands: `PMIx_server_init` runs `pmix_hwloc_setup_topology`, and
@@ -85,16 +103,29 @@ The signatures match the current framework interface (unlike `tcp` and
   yet add anything to the inventory list — the "add this to the inventory"
   step is a comment — and it answers `PMIX_SUCCESS` either way; see
   [Gotchas](#gotchas) for why it must.
-- **`setup_fork`** — names the NICs this one process was mapped against
-  to the libraries that will use them. It asks
+- **`setup_fork`** — names the adapters this one process was mapped
+  against to the libraries that will use them. It asks
   `pmix_pnet_base_get_assigned_devices()` for the process's devices
-  filtered by the same PCI `(vendor, class)` pairs `component_open`
-  probed for, then writes:
+  filtered by the table above, drops any that is not a channel adapter
+  (below), then writes:
 
   | Variable | Value | Why that form |
   |----------|-------|---------------|
   | `NCCL_IB_HCA` | `mlx5_0` | NCCL matches an HCA by name, so the selector goes in as it stands |
   | `UCX_NET_DEVICES` | `mlx5_0:*` | UCX names a device *port* and matches each entry as a glob, so this is "this card, whatever ports it has" without PMIx having to pick one. The `:` is load-bearing: `mlx5_1*` would also match `mlx5_10` on a node with enough cards |
+  | `FI_VERBS_DEVICE_NAME` | `mlx5_0` | libfabric's verbs provider — but it matches each entry as a **prefix** (`strncasecmp` over the entry's length), and no spelling anchors it. So it is written only when no other OpenFabrics device on the node begins with an assigned name; otherwise it is left unset, with a verbose message saying which device it would also have selected |
+
+  **iWARP is dropped by its node type.** Intel's `irdma` runs RoCE or
+  iWARP depending on how the driver was loaded, and X722 runs iWARP only;
+  neither NCCL nor UCX drives iWARP, and a `UCX_NET_DEVICES` naming only
+  an iWARP device leaves UCX no device for any transport. The topology
+  does not say which a device is — hwloc does not record it — but the
+  kernel does, in `/sys/class/infiniband/<dev>/node_type` (`1: CA` versus
+  `4: RNIC`), and `setup_fork` runs on the node it describes. A device
+  whose file cannot be read is dropped too. The root of that tree is the
+  `pnet_nvd_sysfs_root` parameter (default `/sys`), which exists so the
+  check can be run against a captured tree — `test/unit/pnet_sysfs.h`
+  builds one. If every assigned device is dropped, nothing is written.
 
   Both are overwritten if already set: a process mapped against a device
   made the more specific request, and the names come from the topology as
@@ -146,6 +177,12 @@ prints a `Transports / NVIDIA` line.
   anything, so when compression succeeds — and the `pmix_kval_t` therefore
   owns the *compressed* copy — the uncompressed block has to be freed by
   hand. `pgpu/{nvd,intel}` and `pnet/opa` all do this.
+- **A name in `FI_VERBS_DEVICE_NAME` is a prefix.** The libfabric verbs
+  provider compares each entry with `strncasecmp` over the entry's own
+  length, so `mlx5_1` selects `mlx5_10`. Writing it unconditionally is a
+  silent over-selection on any node with ten or more devices of one
+  driver; `verbs_prefix_collides()` is what stops that, and it assumes
+  the worst if the node's devices cannot be listed.
 - **`collect_inventory` reports presence but not contents.** It confirms a
   matching NIC exists but does not populate inventory; treat inventory
   support as unfinished.
@@ -156,8 +193,8 @@ prints a `Transports / NVIDIA` line.
   matching NIC" answers `PMIX_SUCCESS` here rather than
   `TAKE_NEXT_OPTION`. The `PMIX_ERR_NOT_SUPPORTED` guard on a
   non-hwloc topology is defensive only — `component_open` already ran
-  `pmix_hwloc_check_vendor`, which applies the same source check and must
-  have passed for this module to be active at all.
+  the same check, which applies the same source test and must have
+  passed for this module to be active at all.
 - **The envar-glob defaults are the interface to the comms stacks.**
   `UCX_*,HCOLL_*,UCC_*,SHARP_*,NCCL_*` are what get forwarded to compute
   nodes; changing them changes which runtime settings propagate.

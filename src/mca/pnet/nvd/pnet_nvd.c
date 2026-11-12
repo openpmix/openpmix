@@ -12,6 +12,9 @@
 
 #include "src/include/pmix_config.h"
 
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "pmix_common.h"
@@ -49,15 +52,33 @@ pmix_pnet_module_t pmix_pnet_nvd_module = {
     .deliver_inventory = deliver_inventory
 };
 
-/* The PCI families this component opened for - see component_open.  A
- * process's assignment is filtered by the same pair, because a node can
+/* The PCI families this component opens for - see component_open.  A
+ * process's assignment is filtered by the same table, because a node can
  * carry more than one fabric and naming somebody else's NIC in these
- * variables is worse than naming none. */
-static const pmix_pnet_pcimatch_t mymatch[] = {
-    {0x15b3, 0x207, 0},     /* Mellanox InfiniBand controller */
-    {0x10de, 0x207, 0}      /* the same under NVIDIA's vendor id */
+ * variables is worse than naming none.
+ *
+ * The variables this component writes belong to libraries - NCCL's IB
+ * transport, UCX, libfabric's verbs provider - that drive any InfiniBand
+ * or RoCE verbs device, not only NVIDIA's.  So every vendor whose RDMA
+ * adapters those libraries accept is an entry here, rather than a
+ * component of its own: two components writing UCX_NET_DEVICES for one
+ * process would overwrite each other, and whichever ran last would win.
+ *
+ * A RoCE adapter reports the ordinary ethernet class, 0x200, which every
+ * plain ethernet port from the same vendor reports too.  What makes it an
+ * RDMA device is the OpenFabrics device hwloc found on the function, so
+ * those entries require that type.  Omni-Path's class 0x208 stays with the
+ * opa component, and Amazon's EFA - an OpenFabrics device none of these
+ * libraries drive - with the efa component. */
+const pmix_pnet_pcimatch_t pmix_pnet_nvd_match[] = {
+    {0x15b3, 0x207, 0},                         /* Mellanox InfiniBand controller */
+    {0x10de, 0x207, 0},                         /* the same under NVIDIA's vendor id */
+    {0x15b3, 0x200, PMIX_DEVTYPE_OPENFABRICS},  /* Mellanox ConnectX in ethernet mode (RoCE) */
+    {0x10de, 0x200, PMIX_DEVTYPE_OPENFABRICS},  /* the same under NVIDIA's vendor id */
+    {0x14e4, 0x200, PMIX_DEVTYPE_OPENFABRICS},  /* Broadcom NetXtreme-E (bnxt_re) */
+    {0x8086, 0x200, PMIX_DEVTYPE_OPENFABRICS}   /* Intel E810 / X722 (irdma) */
 };
-#define NMYMATCH (sizeof(mymatch) / sizeof(mymatch[0]))
+const size_t pmix_pnet_nvd_nmatch = sizeof(pmix_pnet_nvd_match) / sizeof(pmix_pnet_nvd_match[0]);
 
 /* NOTE: if there is any binary data to be transferred, then
  * this function MUST pack it for transport as the host will
@@ -237,13 +258,121 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
     return rc;
 }
 
-/* Name this process's Mellanox NICs to the libraries that will use them.
+/* Can NCCL and UCX drive this verbs device?
  *
- * Both variables are overwritten if already set.  A process mapped against
- * a device has made the more specific request, and the names written here
- * come from the topology as this daemon sees it - so where a resource
- * manager has already narrowed what the node presents, they are a subset of
- * what is visible and naming a subset composes correctly.
+ * Both drive InfiniBand and RoCE, and neither drives iWARP.  Intel's irdma
+ * runs either, depending on how the driver was loaded, and an X722 runs
+ * iWARP only - and nothing in the topology says which, since hwloc does not
+ * record it.  The kernel does, in the device's node_type: "1: CA" for an
+ * InfiniBand or RoCE channel adapter, "4: RNIC" for iWARP.  An iWARP device
+ * named alone in UCX_NET_DEVICES leaves UCX no device for any transport, so
+ * it fails rather than falling back; it is therefore left out.
+ *
+ * This runs on the node that will fork the process, so the file read is
+ * the one describing the device the process will see.  A device whose
+ * file cannot be read is left out too: on Linux it always exists, and
+ * nowhere else does any of this hardware.  The root of the tree is a
+ * parameter only so the check can be run against a captured one. */
+static bool is_channel_adapter(const char *name)
+{
+    char path[PMIX_PATH_MAX], buf[32];
+    const char *root = pmix_mca_pnet_nvd_component.sysfs_root;
+    FILE *fp;
+    char *end;
+    long type;
+    int len;
+
+    /* the name becomes a path component, so it must be one */
+    if (NULL == name || '\0' == name[0] || NULL != strchr(name, '/')
+        || 0 == strcmp(name, ".") || 0 == strcmp(name, "..")) {
+        return false;
+    }
+    if (NULL == root || '\0' == root[0]) {
+        root = "/sys";
+    }
+    len = snprintf(path, sizeof(path), "%s/class/infiniband/%s/node_type", root, name);
+    if (0 > len || (size_t) len >= sizeof(path)) {
+        return false;
+    }
+    fp = fopen(path, "r");
+    if (NULL == fp) {
+        return false;
+    }
+    if (NULL == fgets(buf, sizeof(buf), fp)) {
+        fclose(fp);
+        return false;
+    }
+    fclose(fp);
+    errno = 0;
+    type = strtol(buf, &end, 10);
+    if (end == buf || 0 != errno) {
+        return false;
+    }
+    return (1 == type);
+}
+
+/* Would FI_VERBS_DEVICE_NAME select a device this process was not given?
+ *
+ * libfabric's verbs provider treats each entry of that variable as a
+ * *prefix*, comparing it with strncasecmp over the entry's own length, so
+ * "mlx5_1" also selects mlx5_10 through mlx5_19, and no spelling of the
+ * entry anchors it.  The variable can therefore be written exactly only
+ * when no other verbs device on this node begins with an assigned name.
+ * The devices the provider sees are the ones under /sys/class/infiniband,
+ * which is where hwloc's OpenFabrics devices come from.  If the node's
+ * devices cannot be listed, assume the worst. */
+static bool verbs_prefix_collides(char **names)
+{
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0, d;
+    const char *osname;
+    bool assigned, hit = false;
+    pmix_status_t rc;
+    int n;
+
+    rc = pmix_hwloc_get_devices(&pmix_globals.topology, pmix_globals.hostname,
+                                PMIX_DEVTYPE_OPENFABRICS, NULL, &devs, &ndevs);
+    if (PMIX_SUCCESS != rc) {
+        return true;
+    }
+    for (d = 0; d < ndevs && !hit; d++) {
+        osname = devs[d].dev.osname;
+        if (NULL == osname) {
+            continue;
+        }
+        /* a device the process was given is meant to be selected */
+        assigned = false;
+        for (n = 0; NULL != names[n]; n++) {
+            if (0 == strcasecmp(osname, names[n])) {
+                assigned = true;
+                break;
+            }
+        }
+        if (assigned) {
+            continue;
+        }
+        for (n = 0; NULL != names[n]; n++) {
+            if (0 == strncasecmp(osname, names[n], strlen(names[n]))) {
+                pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                                    "pnet:nvd: not setting FI_VERBS_DEVICE_NAME - "
+                                    "%s would also select %s", names[n], osname);
+                hit = true;
+                break;
+            }
+        }
+    }
+    pmix_hwloc_release_devices(devs, ndevs);
+    return hit;
+}
+
+/* Name this process's InfiniBand and RoCE adapters to the libraries that
+ * will use them.
+ *
+ * All three variables are overwritten if already set.  A process mapped
+ * against a device has made the more specific request, and the names
+ * written here come from the topology as this daemon sees it - so where a
+ * resource manager has already narrowed what the node presents, they are a
+ * subset of what is visible and naming a subset composes correctly.
  *
  * NCCL matches an HCA by name, so the selector - the OS device name - goes
  * in as it stands.
@@ -254,19 +383,49 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
  * makes that safe: "mlx5_0*" would also match "mlx5_01" and "mlx5_10" on a
  * node with enough cards, which is precisely the silent over-selection
  * these variables exist to prevent.
+ *
+ * libfabric's verbs provider takes the same names in FI_VERBS_DEVICE_NAME,
+ * but as prefixes - see verbs_prefix_collides().
  */
 static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
 {
     pmix_status_t rc;
     char *val = NULL, *ucx = NULL, *port = NULL;
-    char **devs = NULL, **globs = NULL;
+    char **all = NULL, **devs = NULL, **globs = NULL;
     int n;
 
-    rc = pmix_pnet_base_get_assigned_devices(proc, mymatch, NMYMATCH, &val);
+    rc = pmix_pnet_base_get_assigned_devices(proc, pmix_pnet_nvd_match,
+                                             pmix_pnet_nvd_nmatch, &val);
     if (PMIX_SUCCESS != rc) {
         /* this process was not mapped against a NIC of ours - the ordinary
          * case, and not something to report */
         return rc;
+    }
+    all = PMIx_Argv_split(val, ',');
+    free(val);
+    val = NULL;
+    if (NULL == all) {
+        return PMIX_ERR_NOMEM;
+    }
+    for (n = 0; NULL != all[n]; n++) {
+        if (is_channel_adapter(all[n])) {
+            PMIx_Argv_append_nosize(&devs, all[n]);
+        } else {
+            pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                                "pnet:nvd: leaving %s out for %s - not an InfiniBand "
+                                "or RoCE adapter (iWARP, or its node type unreadable)",
+                                all[n], PMIX_NAME_PRINT(proc));
+        }
+    }
+    PMIx_Argv_free(all);
+    if (NULL == devs) {
+        /* nothing left that these libraries can drive */
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    val = PMIx_Argv_join(devs, ',');
+    if (NULL == val) {
+        PMIx_Argv_free(devs);
+        return PMIX_ERR_NOMEM;
     }
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
@@ -277,46 +436,48 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
     rc = PMIx_Setenv("NCCL_IB_HCA", val, true, env);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        free(val);
-        return rc;
+        goto done;
     }
 
-    devs = PMIx_Argv_split(val, ',');
-    if (NULL == devs) {
-        free(val);
-        return PMIX_ERR_NOMEM;
+    if (!verbs_prefix_collides(devs)) {
+        rc = PMIx_Setenv("FI_VERBS_DEVICE_NAME", val, true, env);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto done;
+        }
     }
+
     for (n = 0; NULL != devs[n]; n++) {
         pmix_asprintf(&port, "%s:*", devs[n]);
         if (NULL == port) {
-            PMIx_Argv_free(devs);
-            PMIx_Argv_free(globs);
-            free(val);
-            return PMIX_ERR_NOMEM;
+            rc = PMIX_ERR_NOMEM;
+            goto done;
         }
         PMIx_Argv_append_nosize(&globs, port);
         free(port);
+        port = NULL;
     }
-    PMIx_Argv_free(devs);
     ucx = PMIx_Argv_join(globs, ',');
-    PMIx_Argv_free(globs);
-    free(val);
     if (NULL == ucx) {
-        return PMIX_ERR_NOMEM;
+        rc = PMIX_ERR_NOMEM;
+        goto done;
     }
     rc = PMIx_Setenv("UCX_NET_DEVICES", ucx, true, env);
-    free(ucx);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }
+
+done:
+    free(ucx);
+    free(val);
+    PMIx_Argv_free(globs);
+    PMIx_Argv_free(devs);
     return rc;
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        void *inventory)
 {
-    size_t n;
-
     PMIX_HIDE_UNUSED_PARAMS(directives, ndirs, inventory);
 
     /* Search the topology for one of our NICs, asking the same question
@@ -327,13 +488,9 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
      * and setup_fork, this call has no decline convention - the base logs
      * any error and abandons the fan-out - so a component with nothing to
      * say has to say it quietly. */
-    for (n = 0; n < NMYMATCH; n++) {
-        if (PMIX_SUCCESS == pmix_hwloc_check_vendor(&pmix_globals.topology,
-                                                    mymatch[n].vendor,
-                                                    mymatch[n].devclass)) {
-            /* add this to the inventory */
-            break;
-        }
+    if (PMIX_SUCCESS == pmix_pnet_base_check_devices(pmix_pnet_nvd_match,
+                                                     pmix_pnet_nvd_nmatch)) {
+        /* add this to the inventory */
     }
     return PMIX_SUCCESS;
 }
