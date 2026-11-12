@@ -31,6 +31,19 @@
           </object>
         </object>
       </object>
+      <object type="Bridge" gp_index="2018" bridge_type="0-1" depth="0" bridge_pci="0000:[19-19]">
+        <object type="PCIDev" gp_index="2019" pci_busid="0000:19:00.0" pci_type="0208 [8086:24f0] [8086:0000] 11" pci_link_speed="7.876923">
+          <info name="PCIVendor" value="Intel Corporation"/>
+          <info name="PCIDevice" value="Omni-Path HFI Silicon 100 Series"/>
+          <object type="OSDev" gp_index="2020" name="hfi1_1" osdev_type="3">
+            <info name="NodeGUID" value="0011:7501:0179:d0e3"/>
+            <info name="SysImageGUID" value="0011:7501:0179:d0e3"/>
+            <info name="Port1State" value="4"/>
+            <info name="Port1LID" value="0x6"/>
+            <info name="Port1LMC" value="0"/>
+          </object>
+        </object>
+      </object>
       <object type="Bridge" gp_index="2015" bridge_type="0-1" depth="0" bridge_pci="0000:[42-42]">
         <object type="PCIDev" gp_index="2016" pci_busid="0000:42:00.0" pci_type="0200 [8086:10d3] [8086:a01f] 00" pci_link_speed="0.250000">
           <info name="PCIVendor" value="Intel Corporation"/>
