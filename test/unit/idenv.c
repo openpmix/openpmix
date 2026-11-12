@@ -80,6 +80,9 @@ static void value_of(const char *name, char *buf, size_t len)
     }
 }
 
+/* the token's environment entry, in storage this test owns - see main() */
+static char tokenvar[] = "PMIX_CONNECT_TOKEN=" TOKEN;
+
 int main(void)
 {
     char buf[256], *token;
@@ -90,13 +93,25 @@ int main(void)
 
     fprintf(stdout, "\n=== the identity variables ===\n\n");
     for (n = 0; NULL != taken[n]; n++) {
+        if (0 == strcmp(taken[n], "PMIX_CONNECT_TOKEN")) {
+            /* The token goes in through storage this test owns, because
+             * the check below reads it after the entry has been taken out
+             * of the environment.  setenv() storage belongs to libc, and
+             * on macOS unsetenv() frees it, so reading back through the
+             * getenv() pointer read freed memory there - and passed or
+             * failed by whatever the allocator had done with it.  putenv()
+             * puts this buffer itself in the environment, and nothing
+             * frees it. */
+            putenv(tokenvar);
+            continue;
+        }
         value_of(taken[n], buf, sizeof(buf));
         setenv(taken[n], buf, 1);
     }
     for (n = 0; NULL != kept_in_env[n]; n++) {
         setenv(kept_in_env[n], "stays", 1);
     }
-    token = getenv("PMIX_CONNECT_TOKEN");
+    token = tokenvar + strlen("PMIX_CONNECT_TOKEN=");
 
     pmix_idenv_take();
 
