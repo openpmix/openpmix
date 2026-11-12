@@ -43,6 +43,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "pnet_sysfs.h"
+
 #define NPROCS 2
 /* the rank whose assignment is reported in a shape we cannot read */
 #define BADRANK (NPROCS + 1)
@@ -178,6 +180,7 @@ int main(int argc, char **argv)
     pmix_proc_t proc;
     pmix_status_t rc;
     char path[1024];
+    pnet_sysfs_t sysfs;
 
     (void) argc;
     (void) argv;
@@ -193,6 +196,15 @@ int main(int argc, char **argv)
      * documented testing hook, and it is what lets the nvd component's
      * open-time Mellanox check pass on a machine with no HCA in it. */
     setenv("PMIX_MCA_pmix_hwloc_topo_file", path, 1);
+    /* nvd reads each device's node type from sysfs, which tells an
+     * InfiniBand or RoCE adapter from an iWARP one; give it the one entry a
+     * node carrying this HCA would have */
+    if (!pnet_sysfs_init(&sysfs) || !pnet_sysfs_add(&sysfs, "mlx5_0", "1: CA")) {
+        fprintf(stderr, "SKIP: cannot build a sysfs tree\n");
+        pnet_sysfs_remove(&sysfs);
+        return 77;
+    }
+    setenv("PMIX_MCA_pnet_nvd_sysfs_root", sysfs.root, 1);
 
     rc = PMIx_server_init(NULL, NULL, 0);
     if (PMIX_SUCCESS != rc) {
@@ -341,6 +353,7 @@ int main(int argc, char **argv)
 
 done:
     PMIx_server_finalize();
+    pnet_sysfs_remove(&sysfs);
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);
     return (0 == failures) ? 0 : 1;

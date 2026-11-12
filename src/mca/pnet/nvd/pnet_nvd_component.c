@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -63,7 +63,8 @@ pmix_pnet_nvd_component_t pmix_mca_pnet_nvd_component = {
         .pmix_mca_query_component = component_query,
     },
     .include = NULL,
-    .exclude = NULL
+    .exclude = NULL,
+    .sysfs_root = NULL
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, pnet, nvd)
 
@@ -91,20 +92,23 @@ static pmix_status_t component_register(void)
         pmix_mca_pnet_nvd_component.exclude = PMIx_Argv_split(pmix_mca_pnet_nvd_component.excparms, ',');
     }
 
+    pmix_mca_pnet_nvd_component.sysfs_root = "/sys";
+    (void) pmix_mca_base_component_var_register(
+        component, "sysfs_root",
+        "Root of the sysfs tree read for each RDMA device's node type, which is "
+        "how an iWARP device is told from a RoCE one (default: /sys). Exists so "
+        "the check can be run against a captured tree",
+        PMIX_MCA_BASE_VAR_TYPE_STRING,
+        &pmix_mca_pnet_nvd_component.sysfs_root);
+
     return PMIX_SUCCESS;
 }
 
+/* Open only on a node carrying one of the adapters in our table, asked
+ * through the same matching setup_fork filters an assignment with. */
 static pmix_status_t component_open(void)
 {
-    pmix_status_t rc;
-
-    // currently under Mellanox
-    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x15b3, 0x207);
-    if (PMIX_SUCCESS != rc) {
-        // future could be under NVIDIA
-        rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x10de, 0x207);
-    }
-    return rc;
+    return pmix_pnet_base_check_devices(pmix_pnet_nvd_match, pmix_pnet_nvd_nmatch);
 }
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
