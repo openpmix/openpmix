@@ -70,7 +70,7 @@
  *                                      dropped, and what was held is
  *                                      written once the file answers
  *   as root only: opening a file as
- *   the owner never finishes        -> abandoned at pmix_runas_timeout,
+ *   the owner never finishes        -> abandoned at runas_timeout,
  *                                      and the job's other file is not
  *                                      tried at all
  */
@@ -812,7 +812,7 @@ static double now_s(void)
 
 /* A root server opens another user's output files in a child that has
  * become that user, and waits for that child for at most
- * pmix_runas_timeout.
+ * runas_timeout.
  *
  * pmix_util_runas_test_stall makes every such child wait for ever once it
  * has become the user. The first of the job's files then has to be given

@@ -434,7 +434,7 @@ changes nothing on it. So under a root server the kernel judges every
 path the user named as that user; there is no fallback that loosens a
 mode when the file cannot be given away. The child may not finish - a
 path on a filesystem that does not respond, say - so
-`pmix_util_run_as()` waits for it only `pmix_runas_timeout` seconds,
+`pmix_util_run_as()` waits for it only `runas_timeout` seconds,
 kills it, and answers `-1` with `ETIMEDOUT`. `output_as_owner()` then sets
 the job's `files_stalled` and declines every later file of the job
 without forking: `pmix_iof_setup()` is asked again on each chunk for a
@@ -456,7 +456,7 @@ check and copies the pipe to the file. The sink's `wev.relayed` caps what
 `pmix_iof_writer_backlog` chunks; past it the chunk is dropped and
 `iof-file-backlog` is shown once per sink, while the end-of-stream marker
 always goes through. `pmix_iof_finalize()` lets the thread drain and
-stop, waiting `pmix_runas_timeout` for it; one held by a file that never
+stop, waiting `runas_timeout` for it; one held by a file that never
 answers is left running and reused by a later init. A server that is the
 owner writes its files from the progress thread as before. `test_writer_stall()` in
 `test/unit/iof_file_perms.c` holds the thread with
