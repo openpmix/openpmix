@@ -115,14 +115,20 @@ The signatures match the current framework interface (unlike `tcp` and
   | `UCX_NET_DEVICES` | `mlx5_0:*` | UCX names a device *port* and matches each entry as a glob, so this is "this card, whatever ports it has" without PMIx having to pick one. The `:` is load-bearing: `mlx5_1*` would also match `mlx5_10` on a node with enough cards |
   | `FI_VERBS_DEVICE_NAME` | `mlx5_0` | libfabric's verbs provider — but it matches each entry as a **prefix** (`strncasecmp` over the entry's length), and no spelling anchors it. So it is written only when no other OpenFabrics device on the node begins with an assigned name; otherwise it is left unset, with a verbose message saying which device it would also have selected |
 
-  **iWARP is dropped by its node type.** Intel's `irdma` runs RoCE or
-  iWARP depending on how the driver was loaded, and X722 runs iWARP only;
-  neither NCCL nor UCX drives iWARP, and a `UCX_NET_DEVICES` naming only
-  an iWARP device leaves UCX no device for any transport. The topology
-  does not say which a device is — hwloc does not record it — but the
-  kernel does, in `/sys/class/infiniband/<dev>/node_type` (`1: CA` versus
-  `4: RNIC`), and `setup_fork` runs on the node it describes. A device
-  whose file cannot be read is dropped too. The root of that tree is the
+  **iWARP is dropped by its node type, and only Intel's adapters are
+  asked.** Intel's `irdma` runs RoCE or iWARP depending on how the driver
+  was loaded, and X722 runs iWARP only; neither NCCL nor UCX drives iWARP,
+  and a `UCX_NET_DEVICES` naming only an iWARP device leaves UCX no device
+  for any transport. The topology does not say which a device is — hwloc
+  does not record it — but the kernel does, in
+  `/sys/class/infiniband/<dev>/node_type` (`1: CA` versus `4: RNIC`), and
+  `setup_fork` runs on the node it describes. An Intel device whose file
+  cannot be read is dropped too. NVIDIA's and Broadcom's adapters cannot be
+  iWARP, so they are named without the file: asking them would drop them
+  wherever it is absent — a topology loaded on a machine without the
+  hardware, as every test of this path is — for an answer the file could
+  not change. The Intel names are picked out with a one-entry match table
+  (`maybe_iwarp`) through the same base helper. The root of that tree is the
   `pnet_nvd_sysfs_root` parameter (default `/sys`), which exists so the
   check can be run against a captured tree — `test/unit/pnet_sysfs.h`
   builds one. If every assigned device is dropped, nothing is written.

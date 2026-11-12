@@ -95,8 +95,8 @@ static pmix_status_t component_register(void)
     pmix_mca_pnet_nvd_component.sysfs_root = "/sys";
     (void) pmix_mca_base_component_var_register(
         component, "sysfs_root",
-        "Root of the sysfs tree read for each RDMA device's node type, which is "
-        "how an iWARP device is told from a RoCE one (default: /sys). Exists so "
+        "Root of the sysfs tree read for each Intel RDMA device's node type, which "
+        "is how an iWARP device is told from a RoCE one (default: /sys). Exists so "
         "the check can be run against a captured tree",
         PMIX_MCA_BASE_VAR_TYPE_STRING,
         &pmix_mca_pnet_nvd_component.sysfs_root);

@@ -80,6 +80,14 @@ const pmix_pnet_pcimatch_t pmix_pnet_nvd_match[] = {
 };
 const size_t pmix_pnet_nvd_nmatch = sizeof(pmix_pnet_nvd_match) / sizeof(pmix_pnet_nvd_match[0]);
 
+/* The adapters in that table that may be running iWARP - Intel's, whose
+ * irdma driver runs RoCE or iWARP, and whose X722 runs iWARP only.  NVIDIA's
+ * and Broadcom's verbs devices are InfiniBand or RoCE by construction, so
+ * only these are asked about; see is_channel_adapter(). */
+static const pmix_pnet_pcimatch_t maybe_iwarp[] = {
+    {0x8086, 0x200, PMIX_DEVTYPE_OPENFABRICS}
+};
+
 /* NOTE: if there is any binary data to be transferred, then
  * this function MUST pack it for transport as the host will
  * not know how to do so */
@@ -258,7 +266,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
     return rc;
 }
 
-/* Can NCCL and UCX drive this verbs device?
+/* Can NCCL and UCX drive this Intel verbs device?
  *
  * Both drive InfiniBand and RoCE, and neither drives iWARP.  Intel's irdma
  * runs either, depending on how the driver was loaded, and an X722 runs
@@ -268,11 +276,18 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
  * named alone in UCX_NET_DEVICES leaves UCX no device for any transport, so
  * it fails rather than falling back; it is therefore left out.
  *
+ * Asked only of Intel's adapters (maybe_iwarp above).  The others in the
+ * table cannot be iWARP, and making their naming depend on a sysfs file
+ * would drop them wherever the file is absent - a topology loaded on a
+ * machine that does not carry the hardware, as every test of this path
+ * does - for no answer the file could change.
+ *
  * This runs on the node that will fork the process, so the file read is
- * the one describing the device the process will see.  A device whose
- * file cannot be read is left out too: on Linux it always exists, and
- * nowhere else does any of this hardware.  The root of the tree is a
- * parameter only so the check can be run against a captured one. */
+ * the one describing the device the process will see.  An Intel device
+ * whose file cannot be read is left out: on Linux it always exists, and
+ * what is not known to be a channel adapter is not named as one.  The root
+ * of the tree is a parameter only so the check can be run against a
+ * captured one. */
 static bool is_channel_adapter(const char *name)
 {
     char path[PMIX_PATH_MAX], buf[32];
@@ -309,6 +324,19 @@ static bool is_channel_adapter(const char *name)
         return false;
     }
     return (1 == type);
+}
+
+/* Is name one of list's entries?  A NULL list holds nothing. */
+static bool in_list(char **list, const char *name)
+{
+    int n;
+
+    for (n = 0; NULL != list && NULL != list[n]; n++) {
+        if (0 == strcmp(list[n], name)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /* Would FI_VERBS_DEVICE_NAME select a device this process was not given?
@@ -391,7 +419,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
 {
     pmix_status_t rc;
     char *val = NULL, *ucx = NULL, *port = NULL;
-    char **all = NULL, **devs = NULL, **globs = NULL;
+    char **all = NULL, **intel = NULL, **devs = NULL, **globs = NULL;
     int n;
 
     rc = pmix_pnet_base_get_assigned_devices(proc, pmix_pnet_nvd_match,
@@ -407,17 +435,34 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
     if (NULL == all) {
         return PMIX_ERR_NOMEM;
     }
+    /* which of them are Intel's, and so may be iWARP */
+    rc = pmix_pnet_base_get_assigned_devices(proc, maybe_iwarp,
+                                             sizeof(maybe_iwarp) / sizeof(maybe_iwarp[0]),
+                                             &val);
+    if (PMIX_SUCCESS == rc) {
+        intel = PMIx_Argv_split(val, ',');
+        free(val);
+        val = NULL;
+        if (NULL == intel) {
+            PMIx_Argv_free(all);
+            return PMIX_ERR_NOMEM;
+        }
+    } else if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+        PMIx_Argv_free(all);
+        return rc;
+    }
     for (n = 0; NULL != all[n]; n++) {
-        if (is_channel_adapter(all[n])) {
+        if (!in_list(intel, all[n]) || is_channel_adapter(all[n])) {
             PMIx_Argv_append_nosize(&devs, all[n]);
         } else {
             pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                                "pnet:nvd: leaving %s out for %s - not an InfiniBand "
-                                "or RoCE adapter (iWARP, or its node type unreadable)",
+                                "pnet:nvd: leaving %s out for %s - an Intel adapter not "
+                                "known to be RoCE (iWARP, or its node type unreadable)",
                                 all[n], PMIX_NAME_PRINT(proc));
         }
     }
     PMIx_Argv_free(all);
+    PMIx_Argv_free(intel);
     if (NULL == devs) {
         /* nothing left that these libraries can drive */
         return PMIX_ERR_TAKE_NEXT_OPTION;
