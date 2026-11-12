@@ -429,7 +429,16 @@ Two consequences that are load-bearing:
   both an OpenFabrics device (`mlx5_0`) and a network interface (`ib0`)
   on one PCI function, and `osdev_preferred()` takes the OpenFabrics one
   because the interface name is accepted by none of those variables.
-  Left to hwloc's iteration order it was a coin flip.
+  Left to hwloc's iteration order it was a coin flip. A Slingshot NIC is
+  the same choice between two *network* devices: hwloc 2.14 and later
+  report the interface (`hsn0`) and the CXI device (`cxi0`) on one
+  function, both with subtype `Slingshot`, and `FI_CXI_DEVICE_NAME`
+  refuses anything but `cxiN`. `osdev_is_cxi()` tells them apart by the
+  `CassiniVersion` / `NID` infos hwloc records only on the CXI device,
+  not by name; an older hwloc has no CXI device and the interface still
+  names the function. Covered by `test_slingshot_names` against
+  `test/topologies/rdma-fabrics.xml`, a synthetic node carrying one
+  device of each RDMA fabric the `pnet` components handle.
   `pci_vendor` / `pci_class` come back alongside for the same reason: a
   NIC carries no vendor attribute and its name says nothing about who
   made it, so the PCI pair — the same one a component hands

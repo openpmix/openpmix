@@ -1182,6 +1182,69 @@ static void test_device_distances(const char *dir)
     free_topo(&topo);
 }
 
+/* A Slingshot NIC is named by its CXI device, not its interface.
+ *
+ * hwloc 2.14 reports a Cassini function twice, as "hsn0" and "cxi0", both
+ * network devices with the subtype "Slingshot".  rdma-fabrics.xml lists the
+ * interface first, so the iteration order alone would pick it - and the CXI
+ * provider refuses any name that is not cxiN.  Its second Cassini function
+ * has no CXI device, which is how an older hwloc reports one, and must
+ * still be named by what it has. */
+static void test_slingshot_names(const char *dir)
+{
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0, n;
+    const char *f41 = NULL, *f42 = NULL, *bnxt = NULL;
+    char path[1024];
+    pmix_status_t rc;
+
+    snprintf(path, sizeof(path), "%s/rdma-fabrics.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "slingshot: rdma-fabrics.xml loads");
+        return;
+    }
+
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST,
+                                PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_OPENFABRICS,
+                                NULL, &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 10 == ndevs, "slingshot: one device per network function");
+    for (n = 0; n < ndevs; n++) {
+        if (NULL == devs[n].busid) {
+            continue;
+        }
+        if (0 == strcmp(devs[n].busid, "0000:41:00.0")) {
+            f41 = devs[n].selector;
+        } else if (0 == strcmp(devs[n].busid, "0000:42:00.0")) {
+            f42 = devs[n].selector;
+        } else if (0 == strcmp(devs[n].busid, "0000:11:00.0")) {
+            bnxt = devs[n].selector;
+        }
+    }
+    ok(NULL != f41 && 0 == strcmp(f41, "cxi0"),
+       "slingshot: the CXI device names the function, not the interface");
+    ok(NULL != f42 && 0 == strcmp(f42, "hsn1"),
+       "slingshot: a function with no CXI device keeps its interface name");
+    /* and the OpenFabrics rule still holds beside it */
+    ok(NULL != bnxt && 0 == strcmp(bnxt, "bnxt_re1"),
+       "slingshot: a RoCE function is still named by its OpenFabrics device");
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+
+    /* the name the caller used still wins: asking for hsn0 is answered
+     * with hsn0, not silently with its sibling */
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_NETWORK,
+                                "hsn0", &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs && NULL != devs[0].dev.osname
+       && 0 == strcmp(devs[0].dev.osname, "hsn0"),
+       "slingshot: a device asked for by its interface name is reported by it");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+    }
+
+    free_topo(&topo);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -1213,6 +1276,7 @@ int main(int argc, char **argv)
     test_fabric_uuids(dir);
     test_named_devices(dir);
     test_device_distances(dir);
+    test_slingshot_names(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);
