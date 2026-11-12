@@ -40,11 +40,11 @@ BEGIN_C_DECLS
 PMIX_EXPORT int pmix_iof_writer_relay(int fd, uid_t owner, const char *what);
 
 /* Output queued for one such file, in chunks, past which more is dropped
- * rather than held - MCA pmix_iof_writer_backlog */
+ * rather than held - MCA iof_writer_backlog */
 PMIX_EXPORT extern size_t pmix_iof_writer_backlog;
 
 /* Let the writer thread finish what it has and stop, waiting no longer
- * than pmix_runas_timeout for it. One held by a file that does not answer
+ * than runas_timeout for it. One held by a file that does not answer
  * is left running, and is reused if the library is initialized again */
 PMIX_EXPORT void pmix_iof_writer_finalize(void);
 
