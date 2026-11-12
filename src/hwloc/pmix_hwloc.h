@@ -203,6 +203,13 @@ typedef struct {
  * takes the latter.  A caller that asked for only one of the two types
  * naturally gets that one, since the other was never a candidate.
  *
+ * A GPU can also have no OS device at all: a 3D controller (PCI class
+ * 0x0302) on a node whose hwloc lacks the vendor backend and whose driver
+ * makes no render node.  It is still reported as a GPU, named by its PCI
+ * bus id (osname and busid are the same string), with a uuid in the usual
+ * GPU form and with vendor_id, vendor and selector NULL - the topology
+ * gives nothing to fill them from.
+ *
  * Devices come back ordered by PCI bus id ascending, with any device having
  * no PCI ancestor last, ordered by name.  That ordering is deterministic,
  * identical on every node carrying the same hardware, and stable across

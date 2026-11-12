@@ -1245,6 +1245,131 @@ static void test_slingshot_names(const char *dir)
     free_topo(&topo);
 }
 
+/* A 3D controller is a GPU even when hwloc found no OS device on it.
+ *
+ * slingshot.xml is a real HPE Cray EX235n node taken by hwloc 2.10.0
+ * without the NVIDIA backend: its four A100s (PCI 10de:20b0, class 0x302)
+ * are PCI functions with no OS device at all - no cudaN, no nvmlN, no
+ * render node.  They are GPUs, and a placement against them has to be
+ * refused because they cannot be named to CUDA, not because there are
+ * none.  So they are reported, named by bus id, with no vendor identity.
+ *
+ * nvml-4gpu.xml carries the other half: a BMC display adapter, class 0x300
+ * with no OS device, which is still not a GPU. */
+static void test_3d_controllers(const char *dir)
+{
+    static const char *busids[] = {"0000:03:00.0", "0000:41:00.0", "0000:82:00.0", "0000:c1:00.0"};
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_cpuset_t cpuset = PMIX_CPUSET_STATIC_INIT;
+    pmix_device_distance_t *dist = NULL;
+    pmix_hwloc_device_t *devs = NULL;
+    pmix_device_type_t gtype = PMIX_DEVTYPE_GPU;
+    pmix_info_t info;
+    size_t ndevs = 0, ndist = 0, n, ngpu;
+    char path[1024], uuid[128];
+    pmix_status_t rc;
+    bool good;
+
+    snprintf(path, sizeof(path), "%s/slingshot.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "3d: slingshot.xml loads");
+        return;
+    }
+
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 4 == ndevs, "3d: four GPUs with no OS device are found");
+    good = (PMIX_SUCCESS == rc && 4 == ndevs);
+    for (n = 0; good && n < ndevs; n++) {
+        snprintf(uuid, sizeof(uuid), "gpu://%s::%s", TESTHOST, busids[n]);
+        good = (NULL != devs[n].busid && 0 == strcmp(devs[n].busid, busids[n])
+                && NULL != devs[n].dev.osname && 0 == strcmp(devs[n].dev.osname, busids[n])
+                && NULL != devs[n].dev.uuid && 0 == strcmp(devs[n].dev.uuid, uuid)
+                && PMIX_DEVTYPE_GPU == devs[n].dev.type
+                && NULL == devs[n].vendor_id && NULL == devs[n].vendor
+                && NULL == devs[n].selector
+                && 0x10de == devs[n].pci_vendor && 0x0302 == devs[n].pci_class
+                && NULL != devs[n].locality && NULL != devs[n].locality->cpuset
+                && NULL != devs[n].obj && HWLOC_OBJ_PCI_DEVICE == devs[n].obj->type);
+    }
+    ok(good, "3d: each is named by its bus id, in the GPU uuid grammar, in bus order");
+    good = (PMIX_SUCCESS == rc && 4 == ndevs);
+    for (n = 0; good && n < ndevs; n++) {
+        good = (NULL == devs[n].vendor_id && NULL == devs[n].selector);
+    }
+    ok(good, "3d: none carries a vendor identity or a selector");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+
+    /* named by bus id, and by the uuid reported for it */
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, "0000:41:00.0", &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs && 0 == strcmp(devs[0].busid, "0000:41:00.0"),
+       "3d: a GPU is found by its bus id");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+    snprintf(uuid, sizeof(uuid), "gpu://%s::0000:c1:00.0", TESTHOST);
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_UNKNOWN, uuid, &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs && 0 == strcmp(devs[0].busid, "0000:c1:00.0"),
+       "3d: a GPU is found by its uuid");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+
+    /* asking for network devices does not drag them in */
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_NETWORK, NULL, &devs, &ndevs);
+    good = (PMIX_SUCCESS == rc && 5 == ndevs);
+    for (n = 0; good && n < ndevs; n++) {
+        good = (PMIX_DEVTYPE_NETWORK == devs[n].dev.type);
+    }
+    ok(good, "3d: a network enumeration reports the five interfaces and no GPU");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+
+    /* PMIX_DEVICE_DISTANCES reports them too, under the same names: the
+     * enumeration and the distances are the same answer */
+    package0_cpuset(&topo, &cpuset);
+    PMIX_INFO_LOAD(&info, PMIX_DEVICE_TYPE, &gtype, PMIX_DEVTYPE);
+    rc = pmix_hwloc_compute_distances(&topo, &cpuset, &info, 1, &dist, &ndist);
+    for (n = 0, ngpu = 0; n < 4; n++) {
+        if (NULL != find_dist(dist, ndist, busids[n])) {
+            ++ngpu;
+        }
+    }
+    ok(PMIX_SUCCESS == rc && 4 == ndist && 4 == ngpu,
+       "3d: device distances report the same four GPUs by the same names");
+    if (NULL != dist) {
+        PMIx_Device_distance_free(dist, ndist);
+        dist = NULL;
+    }
+    PMIX_INFO_DESTRUCT(&info);
+    hwloc_bitmap_free(cpuset.bitmap);
+    free(cpuset.source);
+    free_topo(&topo);
+
+    /* the display decoy is still a decoy */
+    snprintf(path, sizeof(path), "%s/nvml-4gpu.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "3d: nvml-4gpu.xml loads");
+        return;
+    }
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+    good = (PMIX_SUCCESS == rc && 4 == ndevs);
+    for (n = 0; good && n < ndevs; n++) {
+        good = (NULL != devs[n].busid && 0 != strcmp(devs[n].busid, "0000:53:00.0"));
+    }
+    ok(good, "3d: a VGA adapter with no OS device is still not a GPU");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+    }
+    free_topo(&topo);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -1277,6 +1402,7 @@ int main(int argc, char **argv)
     test_named_devices(dir);
     test_device_distances(dir);
     test_slingshot_names(dir);
+    test_3d_controllers(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);
