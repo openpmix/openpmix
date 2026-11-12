@@ -412,6 +412,7 @@ test/unit/job_data_hash
 test/unit/pgpu_visible_devices
 test/unit/pnet_assigned_devices
 test/unit/pnet_rdma_fabrics
+test/unit/pnet_cxi_sysfs
 test/unit/pnet_envar_blob
 test/unit/pnet_opa_seckey
 test/unit/pnet_tcp_ports

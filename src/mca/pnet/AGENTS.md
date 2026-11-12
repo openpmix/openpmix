@@ -301,7 +301,7 @@ Default priorities and runtime gates (from each component's
 | `nvd` | 10 | **Yes** | hwloc reports a Mellanox `0x15b3` / NVIDIA `0x10de` device of class `0x207`, or a class `0x200` function of those vendors, Broadcom `0x14e4` or Intel `0x8086` carrying an OpenFabrics device |
 | `opa` | 10 | **Yes** | hwloc reports an Intel `0x8086` device of class `0x208` |
 | `efa` | 10 | **Yes** | hwloc reports an Amazon `0x1d0f` function carrying an OpenFabrics device (EFA, not ENA) |
-| `cxi` | 10 | **Yes** | hwloc reports a network device on a Cray/HPE `0x17db` function (Slingshot; vendor id not yet confirmed on real hardware) |
+| `cxi` | 10 | **Yes** | hwloc reports a network device on a Cray/HPE `0x17db` function (Slingshot Cassini, `17db:0501`) |
 | `simptest` | 0 | Only with `--with-simptest` | server role **and** `pnet=simptest` MCA selection **and** a config file given |
 | `tcp` | 5 | **No** (`--with-tcp`) | always returns a module (no hardware gate); its entry points self-gate on `PMIX_PEER_IS_GATEWAY` / their own blob key, but `collect_inventory` runs on every server |
 
