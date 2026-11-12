@@ -403,6 +403,30 @@ Two consequences that are load-bearing:
   `pmix_hwloc_compute_distances()` is the one caller entitled to pass
   `pmix_globals.hostname`, because it measures against a cpuset of *this*
   machine's PUs and so can only ever be reading the local topology.
+- **A GPU need not have an OS device.** PCI class `0x0302`, a 3D
+  controller, is a GPU with no display function — what NVIDIA's
+  data-center parts report. Without the NVIDIA backend, and on a driver
+  that makes no DRM render node, hwloc reports such a card as a PCI
+  function and nothing else: `test/topologies/slingshot.xml`, a real HPE
+  Cray EX235n from hwloc 2.10.0, has four A100s like that. The OS-device
+  walk in `pmix_hwloc_get_devices()` cannot find them, so a second pass
+  over the PCI functions adds any `0x0302` function no OS device claimed,
+  as a GPU. With no OS device to name it, it is named by its **bus id**
+  (`osname` = `busid`, e.g. `0000:c1:00.0`), which `osdev_named()` already
+  accepted for every device and which GPU runtimes accept when asked by
+  bus (`cudaDeviceGetByPCIBusId`); its uuid is the ordinary GPU form with
+  the bus id in the name's place (`gpu://<node>::0000:c1:00.0`), built by
+  `build_device_uuid()` so there is still one grammar. `vendor_id`,
+  `vendor` and `selector` are `NULL`: there is nothing to read them from,
+  so a caller that must name the device to a runtime — PRRTE's mapper,
+  `pgpu` — sees exactly that, and refuses or declines for the right
+  reason rather than finding "no GPU". The display decoy is untouched: a
+  VGA function (`0x0300`) with no render node or backend is still not a
+  GPU, and `0x0380` functions still need an OS device. Because
+  `pmix_hwloc_compute_distances()` enumerates through the same function,
+  `PMIX_DEVICE_DISTANCES` reports these GPUs too, under the same names —
+  deliberately, since the enumeration and the distances must agree.
+  Covered by `test_3d_controllers`.
 - **A device's vendor identity is usually absent, and that is not a
   failure.** `pmix_hwloc_device_t.vendor_id` carries the vendor's own name
   for the device — NVIDIA's `GPU-<uuid>` and its AMD and Level Zero
