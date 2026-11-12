@@ -2242,15 +2242,38 @@ static bool guid_is_set(const char *guid)
  * caller rather than read from pmix_globals: it names the node the device
  * lives on, not the node this code is running on, and those are the same
  * thing only when the topology is the local one.  See the note on
- * pmix_hwloc_get_devices() in the header. */
-static pmix_status_t build_device_uuid(hwloc_obj_t osdev, const char *hostname,
-                                       char **uuid)
+ * pmix_hwloc_get_devices() in the header.
+ *
+ * "osdev" is NULL for a GPU that hwloc reported as a PCI function with no
+ * OS device on it (see pmix_hwloc_get_devices()).  Such a device is named
+ * by its PCI bus id, so its uuid is the GPU form with the bus id where the
+ * OS name would be - the same grammar as every other GPU, so a consumer
+ * parsing "gpu://<node>::<name>" needs no second case. */
+static pmix_status_t gpu_uuid(const char *hostname, const char *name, char **uuid)
+{
+    pmix_asprintf(uuid, "gpu://%s::%s", hostname, name);
+    return (NULL == *uuid) ? PMIX_ERR_NOMEM : PMIX_SUCCESS;
+}
+
+static pmix_status_t build_device_uuid(hwloc_obj_t osdev, hwloc_obj_t pci,
+                                       const char *hostname, char **uuid)
 {
     unsigned i;
     char *addr = NULL, *ngid = NULL, *sgid = NULL;
+    char busid[32];
     int cnt;
 
     *uuid = NULL;
+
+    if (NULL == osdev) {
+        if (NULL == pci) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+        snprintf(busid, sizeof(busid), "%04x:%02x:%02x.%01x",
+                 pci->attr->pcidev.domain, pci->attr->pcidev.bus,
+                 pci->attr->pcidev.dev, pci->attr->pcidev.func);
+        return gpu_uuid(hostname, busid, uuid);
+    }
 
     switch (osdev->attr->osdev.type) {
         case HWLOC_OBJ_OSDEV_NETWORK:
@@ -2316,8 +2339,7 @@ static pmix_status_t build_device_uuid(hwloc_obj_t osdev, const char *hostname,
 
         case HWLOC_OBJ_OSDEV_GPU:
         case HWLOC_OBJ_OSDEV_COPROC:
-            pmix_asprintf(uuid, "gpu://%s::%s", hostname, osdev->name);
-            break;
+            return gpu_uuid(hostname, osdev->name, uuid);
 
         case HWLOC_OBJ_OSDEV_BLOCK:
             pmix_asprintf(uuid, "blk://%s::%s", hostname, osdev->name);
@@ -2339,7 +2361,10 @@ static pmix_status_t build_device_uuid(hwloc_obj_t osdev, const char *hostname,
  * hangs off.  The last two are how the software that will USE a device
  * knows it - a GPU runtime reports a vendor uuid and a PCI bus id, never a
  * PMIx uuid - so accepting them is what lets such a caller name a device
- * without first translating it through an enumeration of its own. */
+ * without first translating it through an enumeration of its own.
+ *
+ * "osdev" is NULL for a GPU reported only as its PCI function, which then
+ * answers to its bus id and its uuid. */
 static bool osdev_named(hwloc_obj_t osdev, hwloc_obj_t pci,
                         const char *hostname, const char *devid)
 {
@@ -2348,16 +2373,21 @@ static bool osdev_named(hwloc_obj_t osdev, hwloc_obj_t pci,
     unsigned k;
     bool found;
 
-    if (NULL == devid || NULL == osdev->name) {
+    if (NULL == devid) {
         return false;
     }
-    if (0 == strcasecmp(devid, osdev->name)) {
-        return true;
-    }
-    for (k = 0; NULL != vendor_id_keys[k].key; k++) {
-        val = hwloc_obj_get_info_by_name(osdev, vendor_id_keys[k].key);
-        if (NULL != val && 0 == strcasecmp(devid, val)) {
+    if (NULL != osdev) {
+        if (NULL == osdev->name) {
+            return false;
+        }
+        if (0 == strcasecmp(devid, osdev->name)) {
             return true;
+        }
+        for (k = 0; NULL != vendor_id_keys[k].key; k++) {
+            val = hwloc_obj_get_info_by_name(osdev, vendor_id_keys[k].key);
+            if (NULL != val && 0 == strcasecmp(devid, val)) {
+                return true;
+            }
         }
     }
     if (NULL != pci) {
@@ -2368,7 +2398,7 @@ static bool osdev_named(hwloc_obj_t osdev, hwloc_obj_t pci,
             return true;
         }
     }
-    if (PMIX_SUCCESS != build_device_uuid(osdev, hostname, &uuid)) {
+    if (PMIX_SUCCESS != build_device_uuid(osdev, pci, hostname, &uuid)) {
         return false;
     }
     found = (0 == strcasecmp(devid, uuid));
@@ -2379,7 +2409,8 @@ static bool osdev_named(hwloc_obj_t osdev, hwloc_obj_t pci,
 /* one candidate device while we are still collecting */
 typedef struct {
     pmix_list_item_t super;
-    hwloc_obj_t osdev;     /* the OS device that names the function */
+    hwloc_obj_t osdev;     /* the OS device that names the function, or NULL
+                            * for a GPU hwloc reported as a function alone */
     hwloc_obj_t pci;       /* the function, or NULL */
     pmix_device_type_t type;
     /* the caller asked for this device by name or uuid.  Recorded per
@@ -2539,10 +2570,60 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
         osdev = hwloc_get_next_osdev(topo->topology, osdev);
     }
 
+    /* A 3D controller is a GPU even when hwloc found no OS device on it.
+     *
+     * PCI class 0x0302 is a GPU with no display function - a compute card,
+     * which is what an NVIDIA data-center GPU reports.  The rules above
+     * find a GPU through its OS devices, and an hwloc gathered without the
+     * NVIDIA backend, on a node whose driver makes no DRM render node,
+     * reports such a card as a PCI function and nothing else.  Left out
+     * here, that node had "no GPU", and a request to place processes against
+     * its GPUs was refused for the wrong reason - or a caller counting them
+     * was told zero.  Reported, the device carries no vendor identity, so a
+     * caller that has to name it to a GPU runtime can see exactly that and
+     * say so.
+     *
+     * The display decoy is not affected: a VGA function (0x0300) - a BMC's
+     * display adapter - still has to earn its place through a render node
+     * or a vendor backend, and one with no OS device is not a GPU.  A 3D
+     * controller cannot be that decoy, having no display function at all.
+     *
+     * With no OS device to name it, it is named by its PCI bus id, which is
+     * also how GPU runtimes identify a device when asked by bus
+     * (cudaDeviceGetByPCIBusId, hipDeviceGetByPCIBusId).  A function some
+     * OS device already claimed above keeps that answer. */
+    if (0 != (type & (PMIX_DEVTYPE_GPU | PMIX_DEVTYPE_COPROC))) {
+        pci = hwloc_get_next_pcidev(topo->topology, NULL);
+        while (NULL != pci) {
+            if (0x0302 == pci->attr->pcidev.class_id) {
+                match = NULL;
+                PMIX_LIST_FOREACH (c, &cands, pmix_devcand_t) {
+                    if (c->pci == pci) {
+                        match = c;
+                        break;
+                    }
+                }
+                if (NULL == match) {
+                    c = PMIX_NEW(pmix_devcand_t);
+                    if (NULL == c) {
+                        rc = PMIX_ERR_NOMEM;
+                        goto cleanup;
+                    }
+                    c->osdev = NULL;
+                    c->pci = pci;
+                    c->type = PMIX_DEVTYPE_GPU;
+                    c->named = osdev_named(NULL, pci, hostname, devid);
+                    pmix_list_append(&cands, &c->super);
+                }
+            }
+            pci = hwloc_get_next_pcidev(topo->topology, pci);
+        }
+    }
+
     /* drop the ones we cannot name, or that the caller did not ask for by
      * name, then build the result */
     PMIX_LIST_FOREACH_SAFE (c, cnext, &cands, pmix_devcand_t) {
-        rc = build_device_uuid(c->osdev, hostname, &uuid);
+        rc = build_device_uuid(c->osdev, c->pci, hostname, &uuid);
         if (PMIX_SUCCESS != rc) {
             /* a device we cannot name is not one we can report */
             pmix_list_remove_item(&cands, &c->super);
@@ -2575,15 +2656,11 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
     n = 0;
     PMIX_LIST_FOREACH (c, &cands, pmix_devcand_t) {
         PMIx_Device_construct(&array[n].dev);
-        rc = build_device_uuid(c->osdev, hostname, &array[n].dev.uuid);
+        rc = build_device_uuid(c->osdev, c->pci, hostname, &array[n].dev.uuid);
         if (PMIX_SUCCESS != rc) {
             goto cleanup;
         }
-        array[n].dev.osname = strdup(c->osdev->name);
         array[n].dev.type = c->type;
-        vendor_id_of(c->osdev, c->pci, &array[n].vendor_id, &array[n].vendor);
-        array[n].selector = device_selector(c->osdev, c->pci, array[n].vendor,
-                                            array[n].vendor_id);
         if (NULL != c->pci) {
             pmix_asprintf(&array[n].busid, "%04x:%02x:%02x.%01x",
                           c->pci->attr->pcidev.domain, c->pci->attr->pcidev.bus,
@@ -2591,14 +2668,25 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
             array[n].pci_vendor = c->pci->attr->pcidev.vendor_id;
             array[n].pci_class = c->pci->attr->pcidev.class_id;
         }
+        if (NULL != c->osdev) {
+            array[n].dev.osname = strdup(c->osdev->name);
+            vendor_id_of(c->osdev, c->pci, &array[n].vendor_id, &array[n].vendor);
+            array[n].selector = device_selector(c->osdev, c->pci, array[n].vendor,
+                                                array[n].vendor_id);
+        } else if (NULL != array[n].busid) {
+            /* a GPU reported as a function alone: named by its bus id, and
+             * with no OS device there is no vendor identity to read and
+             * nothing to put in a runtime's selection variable */
+            array[n].dev.osname = strdup(array[n].busid);
+        }
+        if (NULL == array[n].dev.osname || (NULL != c->pci && NULL == array[n].busid)) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
         /* the device's locality is the nearest ancestor that has a cpuset */
-        if (NULL == c->osdev->cpuset) {
-            tgt = c->osdev->parent;
-            while (NULL != tgt && NULL == tgt->cpuset) {
-                tgt = tgt->parent;
-            }
-        } else {
-            tgt = c->osdev;
+        tgt = (NULL == c->osdev) ? c->pci : c->osdev;
+        while (NULL != tgt && NULL == tgt->cpuset) {
+            tgt = tgt->parent;
         }
         array[n].locality = tgt;
         array[n].obj = (NULL == c->pci) ? c->osdev : c->pci;
