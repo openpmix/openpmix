@@ -380,6 +380,60 @@ pmix_status_t pmix_pnet_base_get_assigned_devices(const pmix_proc_t *proc,
     return PMIX_SUCCESS;
 }
 
+pmix_status_t pmix_pnet_base_check_devices(const pmix_pnet_pcimatch_t *match,
+                                           size_t nmatch)
+{
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0, m, d;
+    pmix_status_t rc;
+    bool enumerate = false;
+
+    if (NULL == match || 0 == nmatch) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* An entry naming one class and no type is a question about PCI ids
+     * alone, which is what the vendor check has always answered - and it
+     * needs no OS device, so ask it that way.  The vendor check has no
+     * spelling for "any class", so an entry without a class is answered
+     * with the rest, from the enumeration. */
+    for (m = 0; m < nmatch; m++) {
+        if (0 != match[m].types || 0 == match[m].devclass) {
+            enumerate = true;
+            continue;
+        }
+        rc = pmix_hwloc_check_vendor(&pmix_globals.topology, match[m].vendor,
+                                     match[m].devclass);
+        if (PMIX_ERR_NOT_AVAILABLE != rc) {
+            return rc;
+        }
+    }
+    if (!enumerate) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    /* a typed entry is about the OS device hwloc found on the function,
+     * which only the enumeration knows */
+    rc = pmix_hwloc_get_devices(&pmix_globals.topology, pmix_globals.hostname,
+                                PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_OPENFABRICS,
+                                NULL, &devs, &ndevs);
+    if (PMIX_SUCCESS != rc) {
+        return rc;
+    }
+    rc = PMIX_ERR_NOT_AVAILABLE;
+    for (d = 0; d < ndevs && PMIX_ERR_NOT_AVAILABLE == rc; d++) {
+        for (m = 0; m < nmatch; m++) {
+            if ((0 != match[m].types || 0 == match[m].devclass)
+                && device_matches(&devs[d], &match[m], 1)) {
+                rc = PMIX_SUCCESS;
+                break;
+            }
+        }
+    }
+    pmix_hwloc_release_devices(devs, ndevs);
+    return rc;
+}
+
 pmix_status_t pmix_pnet_base_set_assigned_devices(const pmix_proc_t *proc,
                                                   const pmix_pnet_pcimatch_t *match,
                                                   size_t nmatch,

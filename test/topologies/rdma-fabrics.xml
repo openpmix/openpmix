@@ -149,6 +149,22 @@
           </object>
         </object>
       </object>
+      <object type="Bridge" gp_index="3047" bridge_type="0-1" depth="0" bridge_pci="0000:[52-52]">
+        <object type="PCIDev" gp_index="3048" pci_busid="0000:52:00.0" pci_type="0200 [15b3:101d] [15b3:0016] 00" pci_link_speed="15.753846">
+          <info name="PCIVendor" value="Mellanox Technologies"/>
+          <info name="PCIDevice" value="MT2892 Family [ConnectX-6 Dx]"/>
+          <object type="OSDev" gp_index="3049" name="ens52f0np0" osdev_type="2">
+            <info name="Address" value="b8:3f:d2:52:00:00"/>
+          </object>
+          <object type="OSDev" gp_index="3050" name="mlx5_2" osdev_type="3">
+            <info name="NodeGUID" value="ba3f:d2ff:fe52:0000"/>
+            <info name="SysImageGUID" value="ba3f:d2ff:fe52:0000"/>
+            <info name="Port1State" value="4"/>
+            <info name="Port1LID" value="0x0"/>
+            <info name="Port1LMC" value="0"/>
+          </object>
+        </object>
+      </object>
     </object>
   </object>
 </topology>

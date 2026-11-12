@@ -1208,7 +1208,7 @@ static void test_slingshot_names(const char *dir)
     rc = pmix_hwloc_get_devices(&topo, TESTHOST,
                                 PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_OPENFABRICS,
                                 NULL, &devs, &ndevs);
-    ok(PMIX_SUCCESS == rc && 10 == ndevs, "slingshot: one device per network function");
+    ok(PMIX_SUCCESS == rc && 11 == ndevs, "slingshot: one device per network function");
     for (n = 0; n < ndevs; n++) {
         if (NULL == devs[n].busid) {
             continue;
