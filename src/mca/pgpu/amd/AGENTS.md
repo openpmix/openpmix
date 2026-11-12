@@ -10,13 +10,13 @@
 
 # AGENTS.md: The PGPU `amd` Component
 
-`amd` is the `pgpu` component intended to provide AMD-GPU support:
-harvesting AMD-relevant environment variables for a job and (eventually)
-reporting AMD GPU inventory. Read the framework [`AGENTS.md`](../AGENTS.md)
-first; this file covers only what is specific to `amd`. **It is not built
-in a default configuration** (see Availability) and its inventory logic is
-stubbed, but its envar-harvesting path compiles cleanly and runs through
-the shared launch wiring when the component is enabled.
+`amd` is the `pgpu` component for AMD GPUs: it names a process's
+assigned GPUs in `ROCR_VISIBLE_DEVICES`, harvests AMD-relevant
+environment variables for a job, and (eventually) will report AMD GPU
+inventory. Read the framework [`AGENTS.md`](../AGENTS.md) first; this
+file covers only what is specific to `amd`. It is built in every
+configuration and opens only on a node with AMD GPUs (see
+Availability); its inventory logic is stubbed.
 
 ## Files
 
@@ -32,21 +32,31 @@ There is **no `configure.m4` and no build gate**: the component links
 nothing and needs no vendor SDK, so it builds everywhere and there is
 nothing for `configure` to look for.
 
-The question is settled at **run** time. `component_open` returns
-`pmix_hwloc_check_vendor_baseclass(&pmix_globals.topology, 0x1002, 0x03)`,
-which succeeds only if the node topology contains a PCI device with AMD's
-GPU vendor ID `0x1002` in the display base class `0x03`. Absent matching
-hardware (or a non-hwloc topology) the component declines to open and is
-never queried.
+The question is settled at **run** time. `component_open` asks
+`pmix_hwloc_check_vendor_baseclass()` whether the node topology contains a
+PCI device with AMD's GPU vendor ID `0x1002` in the display base class
+`0x03`, and failing that in the processing-accelerator base class `0x12`.
+Absent matching hardware (or a non-hwloc topology) the component declines
+to open and is never queried.
 
-Two details of that call each cost the component every node it should
-have opened on:
+Three details of that question each cost the component every node it
+should have opened on:
 
 - **`0x1002`, not `0x1022`.** The latter is this vendor's id on its CPU
   and chipset functions; the GPUs carry the id ATI brought with it.
-- **The base class, not an exact subclass.** An Instinct part reports
-  `0x0380` and a Radeon `0x0300`, and both are this vendor's GPUs, so
-  there is no one subclass to match.
+- **The base class, not an exact subclass.** An older Instinct part
+  reports `0x0380` and a Radeon `0x0300`, and both are this vendor's
+  GPUs, so there is no one subclass to match.
+- **Not only the display class.** An MI350 reports `0x1200`, a processing
+  accelerator, and has no display-class function at all.
+  `test/topologies/mi350-bcm57608.xml` is such a node, and
+  `test/unit/pgpu_accelerator_class.c` checks that its GPUs are named.
+
+Opening is all the class decides. Which PCI functions are GPUs is the
+device enumeration's call (`pmix_hwloc_get_devices()`, which counts a
+function by its vendor compute backend), and `setup_fork` names only
+devices whose vendor identity is AMD's, so a broad open names nothing
+that is not an AMD GPU.
 
 `component_query` sets priority **20** and hands back
 `pmix_pgpu_amd_module`; it does no checking of its own, because a
