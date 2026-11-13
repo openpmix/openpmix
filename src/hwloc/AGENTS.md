@@ -471,8 +471,12 @@ Two consequences that are load-bearing:
   pick its own hardware out of a process's assignment.
 - **`selector` is not `vendor_id`, and the difference is Intel.**
   `pmix_hwloc_device_t.selector` is what to write in the vendor's
-  device-selection variable, which for NVIDIA and AMD is the identity
-  again (their variables accept one) but for Intel is not: the mask
+  device-selection variable, which for NVIDIA is the identity again
+  (CUDA accepts NVML's `GPU-<uuid>` as hwloc records it), for AMD is the
+  identity re-spelled (ROCm wants `GPU-` and the 16-digit unique id, and
+  hwloc writes the id as bare hex or inside an AMD SMI UUID; a value in
+  neither form makes ROCm show no GPU at all, so `amd_selector()` decodes
+  both and declines what it cannot), and for Intel is not: the mask
   variable takes Level Zero device *ordinals*, so the selector is the
   ordinal the driver itself reported (`LevelZeroDriverDeviceIndex`).
   Three consequences. An ordinal says where a device sat in one

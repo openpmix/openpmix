@@ -141,8 +141,13 @@ typedef struct {
      * involved, so unlike a GPU's it is never NULL.
      *
      * Separate from vendor_id because the two coincide only for the vendors
-     * whose variable accepts an identity.  NVIDIA's and AMD's do, so their
-     * selector IS the identity.  Intel's does not: ZE_AFFINITY_MASK takes
+     * whose variable accepts the identity as hwloc records it.  NVIDIA's
+     * does, so its selector IS the identity.  AMD's accepts the same id but
+     * only spelled its own way - "GPU-" and the 64-bit unique id as 16
+     * upper-case hex digits - which neither form hwloc writes is, so the
+     * selector is the id re-spelled; it is NULL where the id cannot be
+     * recovered, or where the GPU is partitioned and the id names no one
+     * partition.  Intel's does not take an identity: ZE_AFFINITY_MASK takes
      * Level Zero device ordinals, so the selector is the ordinal the driver
      * itself reported for this device - a different string, in a grammar
      * that says nothing about which device it is, only where it sat in one

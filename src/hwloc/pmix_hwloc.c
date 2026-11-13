@@ -35,6 +35,7 @@
 #include <time.h>
 #include <assert.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -2066,9 +2067,135 @@ static char *levelzero_selector(hwloc_obj_t osdev, hwloc_obj_t pci)
     return val;
 }
 
+/* Parse exactly "len" hex digits at s into *val. */
+static bool amd_hex(const char *s, size_t len, uint64_t *val)
+{
+    size_t i;
+    int d;
+
+    *val = 0;
+    for (i = 0; i < len; i++) {
+        if (s[i] >= '0' && s[i] <= '9') {
+            d = s[i] - '0';
+        } else if (s[i] >= 'a' && s[i] <= 'f') {
+            d = s[i] - 'a' + 10;
+        } else if (s[i] >= 'A' && s[i] <= 'F') {
+            d = s[i] - 'A' + 10;
+        } else {
+            return false;
+        }
+        *val = (*val << 4) | (uint64_t) d;
+    }
+    return true;
+}
+
+/* The 64-bit unique id ROCm names an AMD GPU by, read back out of the
+ * identity hwloc recorded for it, or 0 if that identity is in no form
+ * known to carry it.  *partition is the partition index the identity
+ * records, or 0xff where it records none.
+ *
+ * The id itself is the one the kernel driver reports - amdgpu's
+ * unique_id, which KFD reports as the node's unique_id too - but hwloc
+ * writes it in whichever form the library it read it through returns:
+ *
+ *   - its RSMI path writes "%llx" of rsmi_dev_unique_id_get(): bare hex,
+ *     with no leading zeros;
+ *   - its AMD SMI path (hwloc 2.15 and later, where built with AMD SMI)
+ *     writes amdsmi_get_gpu_device_uuid(), a UUID of the form
+ *     "AAPPDDDD-0000-1000-80BB-CCCCEEEEEEEE": AA is byte 7 of the id, PP
+ *     the partition index, DDDD the PCI device id, BB byte 6, CCCC bytes
+ *     5-4 and EEEEEEEE bytes 3-0 (amdsmi_uuid_gen() in amd_smi_uuid.cc);
+ *   - "GPU-<hex>", the form rocminfo prints, is accepted as well.
+ *
+ * Anything else returns 0, and so does an id of 0, which ROCm reports for
+ * a device with no valid unique id and which no device can be selected
+ * by. */
+static uint64_t amd_unique_id(const char *id, unsigned *partition)
+{
+    uint64_t b7, part, b6, b54, b30;
+    size_t len;
+    uint64_t val;
+
+    *partition = 0xff;
+    if (NULL == id) {
+        return 0;
+    }
+    if (0 == strncasecmp(id, "GPU-", 4)) {
+        id += 4;
+    }
+    len = strlen(id);
+    if (0 < len && len <= 16) {
+        return amd_hex(id, len, &val) ? val : 0;
+    }
+    if (36 != len || '-' != id[8] || '-' != id[13] || '-' != id[18] || '-' != id[23]
+        || 0 != strncmp(&id[9], "0000", 4) || '1' != id[14]
+        || 0 != strncmp(&id[15], "000", 3) || 0 != strncmp(&id[19], "80", 2)) {
+        return 0;
+    }
+    if (!amd_hex(&id[0], 2, &b7) || !amd_hex(&id[2], 2, &part)
+        || !amd_hex(&id[4], 4, &val) || !amd_hex(&id[21], 2, &b6)
+        || !amd_hex(&id[24], 4, &b54) || !amd_hex(&id[28], 8, &b30)) {
+        return 0;
+    }
+    *partition = (unsigned) part;
+    return (b7 << 56) | (b6 << 48) | (b54 << 32) | b30;
+}
+
+/* What to write in ROCR_VISIBLE_DEVICES to name this AMD GPU, or NULL if
+ * it cannot be said.
+ *
+ * ROCm's filter (RvdFilter in ROCR's amd_filter_device.cpp) uppercases
+ * each entry, treats one beginning with 'G' as a prefix of
+ * "GPU-%016llX" of a device's unique id, and parses anything else as a
+ * device index; the first entry that matches nothing ENDS the list, and
+ * only the devices before it are visible.  So hwloc's identity cannot be
+ * written as it stands - in either of its forms it parses as neither, and
+ * a process given it sees no GPU at all.  Hence the id is re-spelled in
+ * the one form ROCm compares against.
+ *
+ * Two cases are declined rather than guessed at, because an unset
+ * variable leaves every GPU visible and a wrong one leaves none:
+ *
+ *   - an identity recording a partition other than the first.  A
+ *     partitioned GPU's partitions are KFD nodes of their own, each
+ *     reporting the unique id of its first XCD, while the id hwloc read
+ *     is the whole device's; nothing here can say which partition's id
+ *     ROCm will compare against.
+ *   - an id that more than one GPU on this node reports, which is how a
+ *     partitioned GPU appears when its identity records no partition (the
+ *     RSMI form) or the first one.  Selected by that id, ROCm would match
+ *     none of the partitions. */
+static char *amd_selector(hwloc_topology_t topology, const char *vendor_id)
+{
+    hwloc_obj_t od = NULL;
+    uint64_t uid, other;
+    unsigned part, opart, nsame = 0;
+    const char *val;
+    char *sel = NULL;
+
+    uid = amd_unique_id(vendor_id, &part);
+    if (0 == uid || (0 != part && 0xff != part)) {
+        return NULL;
+    }
+    while (NULL != (od = hwloc_get_next_osdev(topology, od))) {
+        val = hwloc_obj_get_info_by_name(od, "AMDUUID");
+        if (NULL == val) {
+            continue;
+        }
+        other = amd_unique_id(val, &opart);
+        if (other == uid && 1 < ++nsame) {
+            return NULL;
+        }
+    }
+    if (0 > pmix_asprintf(&sel, "GPU-%016" PRIX64, uid)) {
+        return NULL;
+    }
+    return sel;
+}
+
 /* The string that names this device to its vendor's device-selection
  * variable.  See the note on pmix_hwloc_device_t.selector. */
-static char *device_selector(hwloc_obj_t osdev, hwloc_obj_t pci,
+static char *device_selector(hwloc_topology_t topology, hwloc_obj_t osdev, hwloc_obj_t pci,
                              const char *vendor, const char *vendor_id)
 {
     /* A NIC is named by the name it already has.  UCX_NET_DEVICES,
@@ -2091,9 +2218,13 @@ static char *device_selector(hwloc_obj_t osdev, hwloc_obj_t pci,
     /* CUDA_VISIBLE_DEVICES and ROCR_VISIBLE_DEVICES both accept the
      * vendor's own identity, which is why it is preferred over the index
      * form they also take: an identity does not depend on an ordering PMIx
-     * would have to reproduce */
+     * would have to reproduce.  CUDA takes NVML's "GPU-<uuid>" as hwloc
+     * records it; ROCm takes its own spelling of the id, not hwloc's */
     if (NULL == vendor_id) {
         return NULL;
+    }
+    if (0 == strcasecmp(vendor, "AMD")) {
+        return amd_selector(topology, vendor_id);
     }
     return strdup(vendor_id);
 }
@@ -2671,8 +2802,8 @@ pmix_status_t pmix_hwloc_get_devices(pmix_topology_t *topo,
         if (NULL != c->osdev) {
             array[n].dev.osname = strdup(c->osdev->name);
             vendor_id_of(c->osdev, c->pci, &array[n].vendor_id, &array[n].vendor);
-            array[n].selector = device_selector(c->osdev, c->pci, array[n].vendor,
-                                                array[n].vendor_id);
+            array[n].selector = device_selector(topo->topology, c->osdev, c->pci,
+                                                array[n].vendor, array[n].vendor_id);
         } else if (NULL != array[n].busid) {
             /* a GPU reported as a function alone: named by its bus id, and
              * with no OS device there is no vendor identity to read and

@@ -7,6 +7,13 @@ series, in reverse chronological order.
 7.0.0 -- TBD
 ------------
 Detailed changes since v6.1.0:
+ - A process mapped against AMD GPUs is told which ones in the form ROCm
+   reads: ``ROCR_VISIBLE_DEVICES`` names each as ``GPU-`` and its 16-digit
+   unique id. It was given the identity as hwloc records it, which ROCm
+   reads as an invalid entry, so the process saw no GPU at all. Where a
+   GPU's id cannot be recovered from the topology, or the GPU is
+   partitioned, the variable is not set and the process sees every GPU,
+   as it does wherever any of its GPUs cannot be named.
  - A session-level server (``PMIX_SERVER_SESSION_SUPPORT``) is the server
    of a session, and must be given ``PMIX_SESSION_RNDZ_ID``, a new
    attribute naming its rendezvous file, or else ``PMIX_SESSION_ID``:

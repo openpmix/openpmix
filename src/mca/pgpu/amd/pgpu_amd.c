@@ -250,7 +250,9 @@ static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
 /* Name this process's AMD GPUs in ROCR_VISIBLE_DEVICES.
  *
  * ROCR_VISIBLE_DEVICES accepts the vendor's own device identifier, and
- * that is the only form used here.  The alternative it also accepts is an
+ * that is the only form used here - spelled as ROCm compares it, "GPU-"
+ * and the 16-digit unique id, which the topology layer derives from the
+ * identity hwloc recorded (see amd_selector() in pmix_hwloc.c).  The alternative it also accepts is an
  * index into the runtime's own device ordering, which PMIx has no way to
  * reproduce - and a value naming a device that is not there does not
  * error, it silently shrinks the visible set - so an index is never
