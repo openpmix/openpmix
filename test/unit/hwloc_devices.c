@@ -41,6 +41,8 @@
 
 #include <hwloc.h>
 
+#include <ctype.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -587,11 +589,246 @@ static void test_vendor_identity(const char *dir)
     }
 }
 
+/* Load a fixture with each from[i] - which must occur exactly once -
+ * replaced by to[i]. */
+static int load_topo_edited(const char *path, const char **from, const char **to,
+                            pmix_topology_t *topo)
+{
+    hwloc_topology_t t;
+    char *buf = NULL, *hit, *nbuf;
+    size_t flen, tlen, len;
+    long sz;
+    FILE *fp;
+    int i;
+
+    fp = fopen(path, "r");
+    if (NULL == fp) {
+        return -1;
+    }
+    if (0 != fseek(fp, 0, SEEK_END) || 0 > (sz = ftell(fp)) || 0 != fseek(fp, 0, SEEK_SET)) {
+        fclose(fp);
+        return -1;
+    }
+    buf = malloc((size_t) sz + 1);
+    if (NULL == buf || (size_t) sz != fread(buf, 1, (size_t) sz, fp)) {
+        fclose(fp);
+        free(buf);
+        return -1;
+    }
+    fclose(fp);
+    buf[sz] = '\0';
+    for (i = 0; NULL != from[i]; i++) {
+        hit = strstr(buf, from[i]);
+        if (NULL == hit || NULL != strstr(hit + 1, from[i])) {
+            free(buf);
+            return -1;
+        }
+        flen = strlen(from[i]);
+        tlen = strlen(to[i]);
+        len = strlen(buf) - flen + tlen;
+        nbuf = malloc(len + 1);
+        if (NULL == nbuf) {
+            free(buf);
+            return -1;
+        }
+        memcpy(nbuf, buf, (size_t) (hit - buf));
+        memcpy(nbuf + (hit - buf), to[i], tlen);
+        strcpy(nbuf + (hit - buf) + tlen, hit + flen);
+        free(buf);
+        buf = nbuf;
+    }
+    if (0 != hwloc_topology_init(&t)) {
+        free(buf);
+        return -1;
+    }
+    if (0 != hwloc_topology_set_xmlbuffer(t, buf, (int) strlen(buf) + 1)) {
+        hwloc_topology_destroy(t);
+        free(buf);
+        return -1;
+    }
+    (void) hwloc_topology_set_io_types_filter(t, HWLOC_TYPE_FILTER_KEEP_IMPORTANT);
+    (void) hwloc_topology_set_flags(t, HWLOC_TOPOLOGY_FLAG_INCLUDE_DISALLOWED);
+    if (0 != hwloc_topology_load(t)) {
+        hwloc_topology_destroy(t);
+        free(buf);
+        return -1;
+    }
+    free(buf);
+    topo->source = strdup("hwloc");
+    topo->topology = (void *) t;
+    return 0;
+}
+
+/* Which of a node's GPUs ROCm selects for one ROCR_VISIBLE_DEVICES entry,
+ * or -1 if the entry matches none and so ends the list - in which case the
+ * process sees only the devices before it, and with one entry, none.
+ *
+ * This is ROCR's RvdFilter (amd_filter_device.cpp) for a single entry:
+ * the entry is upper-cased; one beginning with 'G' must be 5 to 20
+ * characters and a prefix of exactly one device's "GPU-%016llX" of its
+ * unique id; anything else must parse whole with strtol(..., 0) as an
+ * index into the devices. */
+static int rocr_selects(const char *entry, const uint64_t *uids, int ngpus)
+{
+    char tok[64], dev[32], *end = NULL;
+    size_t len, i;
+    long idx;
+    int n, hit = -1;
+
+    len = strlen(entry);
+    if (len >= sizeof(tok)) {
+        return -1;
+    }
+    for (i = 0; i <= len; i++) {
+        tok[i] = (char) toupper((unsigned char) entry[i]);
+    }
+    if ('G' == tok[0]) {
+        if (len < 5 || len > 20) {
+            return -1;
+        }
+        for (n = 0; n < ngpus; n++) {
+            snprintf(dev, sizeof(dev), "GPU-%016" PRIX64, uids[n]);
+            if (len <= strlen(dev) && 0 == strncmp(tok, dev, len)) {
+                if (-1 != hit) {
+                    return -1;
+                }
+                hit = n;
+            }
+        }
+        return hit;
+    }
+    idx = strtol(tok, &end, 0);
+    if ('\0' != *end || idx < 0 || idx >= ngpus) {
+        return -1;
+    }
+    return (int) idx;
+}
+
+/* What names an AMD GPU to ROCm, and that it is not what hwloc records.
+ *
+ * hwloc writes an AMD GPU's unique id as bare hex through its RSMI path
+ * (test-topo2, hwloc 2.3) and inside an AMD SMI UUID through its AMD SMI
+ * path (mi350-bcm57608, hwloc 2.15).  ROCm selects by neither: each is
+ * checked here against ROCm's own rule and selects no GPU at all, which is
+ * what a process given it saw.  The selector is the id re-spelled, and
+ * selects exactly its own GPU.
+ *
+ * The edited copy of the MI350 node covers the forms the fixtures do not:
+ * an id with leading zeros, the "GPU-" spelling, an AMD SMI UUID with
+ * bytes 7 and 6 set and no partition, and the cases that must be declined
+ * - a partition other than the first, an id two GPUs share, a malformed
+ * UUID and an id of zero.  The identity itself is never rewritten. */
+static void test_amd_selector(const char *dir)
+{
+    static const char *from[] = {
+        "000075a0-0000-1000-8000-000000000001", "000075a0-0000-1000-8000-000000000002",
+        "000075a0-0000-1000-8000-000000000003", "000075a0-0000-1000-8000-000000000004",
+        "000075a0-0000-1000-8000-000000000006", "000075a0-0000-1000-8000-000000000007",
+        "000075a0-0000-1000-8000-000000000008", NULL};
+    static const char *to[] = {
+        "abc",                                  /* rsmi0: bare hex, leading zeros */
+        "GPU-def",                              /* rsmi1: ROCm's own spelling */
+        "25ff75a0-0000-1000-80d3-78d812345678", /* rsmi2: bytes 7, 6; no partition */
+        "000175a0-0000-1000-8000-000000000004", /* rsmi3: the second partition */
+        "000075a0-0000-1000-8000-000000000005", /* rsmi5: rsmi4's id */
+        "000075a0-0000-2000-8000-000000000007", /* rsmi6: not version 1 */
+        "000075a0-0000-1000-8000-000000000000", /* rsmi7: zero */
+        NULL};
+    static const char *want[8] = {"GPU-0000000000000ABC", "GPU-0000000000000DEF",
+                                  "GPU-25D378D812345678", NULL, NULL, NULL, NULL, NULL};
+    static const uint64_t edited[8] = {0xabc, 0xdef, 0x25d378d812345678ULL, 4, 5, 5, 7, 0};
+    uint64_t uids[8];
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0, i;
+    char path[1024], want_sel[32];
+    pmix_status_t rc;
+    bool good;
+
+    /* RSMI's form: the one AMD GPU of test-topo2 */
+    snprintf(path, sizeof(path), "%s/test-topo2.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "amd selector: test-topo2.xml loads");
+        return;
+    }
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs, "amd selector: test-topo2 has its one GPU");
+    if (PMIX_SUCCESS == rc && 1 == ndevs) {
+        uids[0] = 0xd364112172e626c1ULL;
+        ok(NULL != devs[0].vendor_id && 0 == strcmp(devs[0].vendor_id, "d364112172e626c1"),
+           "amd selector: the identity is hwloc's, unchanged");
+        ok(-1 == rocr_selects(devs[0].vendor_id, uids, 1),
+           "amd selector: ROCm selects no GPU by hwloc's RSMI form");
+        ok(NULL != devs[0].selector && 0 == strcmp(devs[0].selector, "GPU-D364112172E626C1"),
+           "amd selector: the RSMI form is re-spelled as ROCm's");
+        ok(NULL != devs[0].selector && 0 == rocr_selects(devs[0].selector, uids, 1),
+           "amd selector: and ROCm selects the GPU by it");
+    }
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+    free_topo(&topo);
+
+    /* AMD SMI's form: the eight MI350s, ids 1 to 8 */
+    snprintf(path, sizeof(path), "%s/mi350-bcm57608.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "amd selector: mi350-bcm57608.xml loads");
+        return;
+    }
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 8 == ndevs, "amd selector: the MI350 node has eight GPUs");
+    good = (PMIX_SUCCESS == rc && 8 == ndevs);
+    for (i = 0; good && i < 8; i++) {
+        uids[i] = i + 1;
+    }
+    for (i = 0; good && i < 8; i++) {
+        snprintf(want_sel, sizeof(want_sel), "GPU-%016" PRIX64, uids[i]);
+        good = (NULL != devs[i].vendor_id && -1 == rocr_selects(devs[i].vendor_id, uids, 8)
+                && NULL != devs[i].selector && 0 == strcmp(devs[i].selector, want_sel)
+                && (int) i == rocr_selects(devs[i].selector, uids, 8));
+        if (!good) {
+            fprintf(stderr, "      rsmi%d: identity %s, selector %s\n", (int) i,
+                    (NULL == devs[i].vendor_id) ? "NULL" : devs[i].vendor_id,
+                    (NULL == devs[i].selector) ? "NULL" : devs[i].selector);
+        }
+    }
+    ok(good, "amd selector: each AMD SMI UUID selects nothing, and its re-spelling its own GPU");
+    pmix_hwloc_release_devices(devs, ndevs);
+    devs = NULL;
+    free_topo(&topo);
+
+    /* the forms neither fixture has, and the ones to decline */
+    if (0 != load_topo_edited(path, from, to, &topo)) {
+        ok(false, "amd selector: the edited MI350 node loads");
+        return;
+    }
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 8 == ndevs, "amd selector: the edited node has eight GPUs");
+    for (i = 0; PMIX_SUCCESS == rc && i < ndevs && i < 8; i++) {
+        if (NULL == want[i]) {
+            good = (NULL == devs[i].selector);
+        } else {
+            good = (NULL != devs[i].selector && 0 == strcmp(devs[i].selector, want[i])
+                    && (int) i == rocr_selects(devs[i].selector, edited, 3));
+        }
+        if (!good) {
+            fprintf(stderr, "      edited rsmi%d: selector %s, wanted %s\n", (int) i,
+                    (NULL == devs[i].selector) ? "NULL" : devs[i].selector,
+                    (NULL == want[i]) ? "NULL" : want[i]);
+        }
+        ok(good, (NULL == want[i]) ? "amd selector: declined where the id names no one GPU"
+                                   : "amd selector: re-spelled, and selects its GPU");
+        ok(NULL != devs[i].vendor_id, "amd selector: the identity is still reported");
+    }
+    pmix_hwloc_release_devices(devs, ndevs);
+    free_topo(&topo);
+}
+
 /* What to write in the vendor's device-selection variable to name a
  * device to a process.
  *
- * For NVIDIA and AMD this is the identity again, because their variables
- * accept one.  Intel's does not - ZE_AFFINITY_MASK takes Level Zero
+ * For NVIDIA this is the identity again, because CUDA accepts it as hwloc
+ * records it; AMD's is the identity re-spelled, which test_amd_selector
+ * covers.  Intel's does not - ZE_AFFINITY_MASK takes Level Zero
  * ordinals - so the interesting cases are the two Intel fixtures, which
  * are the SAME four cards enumerated under the two device hierarchy
  * models:
@@ -1396,6 +1633,7 @@ int main(int argc, char **argv)
     test_uuid_names_the_node(dir);
     test_vendor_identity(dir);
     test_device_selector(dir);
+    test_amd_selector(dir);
     test_vendor_check(dir);
     test_unnamed_osdev(dir);
     test_fabric_uuids(dir);
