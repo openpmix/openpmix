@@ -234,6 +234,11 @@ pmix_status_t pmix_pgpu_base_setup_fork(const pmix_proc_t *proc, char ***env)
  * the vendors whose variable takes one, an ordinal for Intel's, which
  * takes nothing else.
  *
+ * If any of the process's devices from this vendor has no selector, it
+ * says nothing at all rather than naming the others: an unset variable
+ * leaves the unnamed device visible, and a list without it would hide a
+ * device the process was given.
+ *
  * Two things it deliberately does not do. It does not invent a selector
  * the topology did not supply - notably it never falls back to guessing an
  * index for a vendor whose variable would accept one, because the runtimes
@@ -259,6 +264,7 @@ pmix_status_t pmix_pgpu_base_get_visible_devices(const pmix_proc_t *proc,
     pmix_hwloc_device_t *devs;
     size_t ndevs, n, d;
     char **ids = NULL;
+    bool unnamed = false;
     pmix_status_t rc;
 
     if (NULL == proc || NULL == vendor || NULL == value) {
@@ -312,8 +318,14 @@ pmix_status_t pmix_pgpu_base_get_visible_devices(const pmix_proc_t *proc,
         for (d = 0; d < ndevs; d++) {
             /* a node may carry cards from more than one vendor, and each
              * wants its own variable, so take only our own */
-            if (NULL == devs[d].selector || NULL == devs[d].vendor
-                || 0 != strcasecmp(devs[d].vendor, vendor)) {
+            if (NULL == devs[d].vendor || 0 != strcasecmp(devs[d].vendor, vendor)) {
+                continue;
+            }
+            /* one of ours that cannot be named: naming the rest would hand
+             * the process a short list, which hides a device it was given
+             * where saying nothing leaves it visible */
+            if (NULL == devs[d].selector) {
+                unnamed = true;
                 continue;
             }
             /* dropping one silently would hand the process a short list,
@@ -330,7 +342,8 @@ pmix_status_t pmix_pgpu_base_get_visible_devices(const pmix_proc_t *proc,
     }
     PMIX_DESTRUCT(&cb);
 
-    if (NULL == ids) {
+    if (unnamed || NULL == ids) {
+        PMIx_Argv_free(ids);
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     *value = PMIx_Argv_join(ids, ',');

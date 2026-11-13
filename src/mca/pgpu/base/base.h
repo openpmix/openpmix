@@ -92,8 +92,8 @@ PMIX_EXPORT pmix_status_t pmix_pgpu_base_setup_fork(const pmix_proc_t *peer, cha
  *
  * Returns PMIX_ERR_TAKE_NEXT_OPTION when there is nothing to say - the
  * process was not mapped against a device, none of the devices it got
- * belong to this vendor, or the topology cannot name them in the vendor's
- * grammar - which is the ordinary case and not an error.  The caller frees
+ * belong to this vendor, or the topology cannot name one of them in the
+ * vendor's grammar - which is the ordinary case and not an error.  The caller frees
  * *value.
  *
  * Separate from the setter below because a component may have to check
