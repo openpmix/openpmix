@@ -115,6 +115,21 @@ With the default `NULL` include list, `allocate` harvests nothing —
 - Its device assignment (`setup_fork` → `ROCR_VISIBLE_DEVICES`) is live,
   but its default include list is empty and its inventory functions do
   nothing. Do not describe those as working.
+- **The value is not hwloc's `AMDUUID`.** ROCm's filter (`RvdFilter` in
+  ROCR's `amd_filter_device.cpp`) takes an entry beginning with `G` as a
+  prefix of `GPU-%016llX` of the device's unique id and parses anything
+  else as an index, and the first entry matching nothing ends the list.
+  hwloc writes the id as bare hex (its RSMI path) or inside an AMD SMI
+  UUID (its AMD SMI path, hwloc 2.15 and later), and either one as it
+  stands makes the process see no GPU. `amd_selector()` in
+  `src/hwloc/pmix_hwloc.c` re-spells the id; `test_amd_selector` in
+  `test/unit/hwloc_devices.c` checks each form against ROCm's rule.
+- **A partitioned GPU is not named.** Each partition is a KFD node with a
+  unique id of its own, taken from its first XCD, while the id hwloc read
+  is the whole device's. An identity recording a partition other than the
+  first, or an id more than one GPU on the node reports, is therefore
+  declined, which leaves every GPU visible rather than none. How rsmi and
+  AMD SMI report a partition has not been checked on hardware.
 - The blob key `PMIX_PGPU_AMD_BLOB` and inventory key
   `PMIX_PGPU_AMD_INVENTORY_KEY` (`pgpu_amd.h`) must stay unique across
   components — the `setup_local` search keys on the blob string to claim
