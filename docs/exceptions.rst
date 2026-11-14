@@ -1390,8 +1390,10 @@ Session Control Attributes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 Schedulers calling to create a session are required to provide:
 
-* the effective userID and groupID that the session should have
-  when instantiated.
+* the user and group the session belongs to, as ``PMIX_ALLOC_UID``
+  and ``PMIX_ALLOC_GID``. ``PMIX_USERID`` and ``PMIX_GRPID`` cannot
+  carry them: the library sets those to the calling process's own,
+  which is the scheduler's.
 
 * description of the resources that are to be included in the session
 
@@ -1409,6 +1411,14 @@ Attributes supported by this API when called by the scheduler include:
    * - Attribute
      - Type
      - Description
+
+   * - ``PMIX_ALLOC_UID`` ``pmix.alloc.uid``
+     - ``(uint32_t)``
+     - user id the session belongs to
+
+   * - ``PMIX_ALLOC_GID`` ``pmix.alloc.gid``
+     - ``(uint32_t)``
+     - group id the session belongs to
 
    * - ``PMIX_SESSION_APP`` ``pmix.ssn.app``
      - ``(pmix_data_array_t*)``
@@ -1573,7 +1583,7 @@ Allocation attributes
 A number of allocation related attributes have already been defined
 in the Standard. These can be used to describe the request (e.g., the
 number and type of resources being requested). The following
-attribute has been added to that list:
+attributes have been added to that list:
 
 .. list-table::
    :header-rows: 1
@@ -1588,6 +1598,18 @@ attribute has been added to that list:
        allocation are to be considered
        preemptible (can be overridden at
        per-job level)
+
+   * - ``PMIX_ALLOC_UID`` ``pmix.alloc.uid``
+     - ``(uint32_t)``
+     - user id the allocation is for;
+       returned with the answer to say
+       whom it was granted for
+
+   * - ``PMIX_ALLOC_GID`` ``pmix.alloc.gid``
+     - ``(uint32_t)``
+     - group id the allocation is for;
+       returned with the answer to say
+       whom it was granted for
 
 
 Allocation directive values
