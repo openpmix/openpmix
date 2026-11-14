@@ -281,6 +281,13 @@ Controlling ownership, sharing, and inheritance:
 * ``PMIX_ALLOC_INHERITANCE`` (pmix_alloc_inheritance_t) |mdash| inheritance
   rules to be applied to the allocated resources. If not provided, defaults to
   ``PMIX_ALLOC_INHERIT_DEFAULT``.
+* ``PMIX_ALLOC_UID`` (uint32_t) |mdash| the user id the allocation is for.
+* ``PMIX_ALLOC_GID`` (uint32_t) |mdash| the group id the allocation is for.
+  Which values a requester may give is the host's decision; a host would
+  typically accept its own user from any requester, and a group the
+  requester belongs to. ``PMIX_USERID`` and ``PMIX_GRPID`` cannot say whom an
+  allocation is for when a host passes a request on: the library sets them
+  to the calling process's own, which is the host's.
 
 Naming the resources to be activated (for the ``PMIX_ALLOC_ACTIVATE``
 directive):
@@ -295,7 +302,9 @@ does not already hold, since granting one would be an allocation.
 
 On successful completion of a request for additional resources, the returned
 data includes ``PMIX_ALLOC_ID`` (char*), a host-provided string identifier for
-the resulting allocation.
+the resulting allocation. Where the request named ``PMIX_ALLOC_UID`` and
+``PMIX_ALLOC_GID``, the returned data includes them too, naming the user and
+group the allocation was granted for.
 
 
 RETURN VALUE
