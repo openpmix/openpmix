@@ -1607,6 +1607,233 @@ static void test_3d_controllers(const char *dir)
     free_topo(&topo);
 }
 
+/* Is this a fabric uuid in the GUID form whose SysImageGUID is all zeros -
+ * "fab://<NodeGUID>::0000:0000:0000:0000" and nothing after it?  Returns
+ * the NodeGUID through "nguid". */
+static bool zero_sysimage_uuid(const char *uuid, char *nguid)
+{
+    char sguid[20], rest[8];
+
+    if (NULL == uuid) {
+        return false;
+    }
+    if (2 != sscanf(uuid, "fab://%19[0-9a-fA-F:]::%19[0-9a-fA-F:]%7s", nguid, sguid, rest)) {
+        return false;
+    }
+    return (0 == strcmp(sguid, "0000:0000:0000:0000"));
+}
+
+/* An AWS p5en.48xlarge, read by hwloc 2.7.0 with the OpenCL backend.
+ *
+ * Its eight H200s (10de:2335, class 0x302) carry one OS device each, the
+ * OpenCL device - no CUDA, no NVML, no render node - so each is named by
+ * it, and none has a vendor identity or anything to write in
+ * CUDA_VISIBLE_DEVICES.  Beside them sits Amazon's own display adapter
+ * (1d0f:1111, class 0x300, no OS device), which is not a GPU.
+ *
+ * Its sixteen EFA devices report a NodeGUID and an all-zero
+ * SysImageGUID, which is what EFA does on current kernels; an older one
+ * reports both as zeros, and that shape is multi-rc's.  The NodeGUID is
+ * unique to the device, so the uuid keeps the plain GUID form and stays
+ * unique without the node and name appended.  The sixteen ENA interfaces
+ * from the same vendor are plain network devices. */
+static void test_aws_p5en(const char *dir)
+{
+    static const char *gpus[] = {"0000:59:00.0", "0000:5a:00.0", "0000:72:00.0", "0000:73:00.0",
+                                 "0000:8b:00.0", "0000:8c:00.0", "0000:a4:00.0", "0000:a5:00.0"};
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0, n, m, nena = 0, nefa = 0;
+    char path[1024], name[32], uuid[128], nguid[16][20];
+    pmix_status_t rc;
+    bool good, distinct;
+
+    snprintf(path, sizeof(path), "%s/aws-p5en.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "p5en: aws-p5en.xml loads");
+        return;
+    }
+
+    /* what the components' open-time checks see */
+    ok(PMIX_SUCCESS == pmix_hwloc_check_vendor_baseclass(&topo, 0x10de, 0x03),
+       "p5en: pgpu/nvd has NVIDIA GPUs to open on");
+    ok(PMIX_ERR_NOT_AVAILABLE == pmix_hwloc_check_vendor_baseclass(&topo, 0x1002, 0x03),
+       "p5en: pgpu/amd does not");
+    ok(PMIX_ERR_NOT_AVAILABLE == pmix_hwloc_check_vendor(&topo, 0x15b3, 0x0207),
+       "p5en: there is no InfiniBand HCA for pnet/nvd");
+
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+    good = (PMIX_SUCCESS == rc && 8 == ndevs);
+    ok(good, "p5en: eight GPUs are found, and the display adapter is not one");
+    for (n = 0; good && n < ndevs; n++) {
+        snprintf(name, sizeof(name), "opencl0d%u", (unsigned) n);
+        snprintf(uuid, sizeof(uuid), "gpu://%s::%s", TESTHOST, name);
+        good = (NULL != devs[n].busid && 0 == strcmp(devs[n].busid, gpus[n])
+                && NULL != devs[n].dev.osname && 0 == strcmp(devs[n].dev.osname, name)
+                && NULL != devs[n].dev.uuid && 0 == strcmp(devs[n].dev.uuid, uuid)
+                && 0 != (devs[n].dev.type & (PMIX_DEVTYPE_GPU | PMIX_DEVTYPE_COPROC))
+                && 0x10de == devs[n].pci_vendor && 0x0302 == devs[n].pci_class
+                && NULL != devs[n].locality);
+        if (!good) {
+            fprintf(stderr, "      p5en gpu %u: %s %s %s\n", (unsigned) n,
+                    (NULL == devs[n].busid) ? "-" : devs[n].busid,
+                    (NULL == devs[n].dev.osname) ? "-" : devs[n].dev.osname,
+                    (NULL == devs[n].dev.uuid) ? "-" : devs[n].dev.uuid);
+        }
+    }
+    ok(good, "p5en: each GPU is named by its OpenCL device, in bus order");
+    good = (PMIX_SUCCESS == rc && 8 == ndevs);
+    for (n = 0; good && n < ndevs; n++) {
+        good = (NULL == devs[n].vendor_id && NULL == devs[n].vendor && NULL == devs[n].selector);
+    }
+    ok(good, "p5en: an OpenCL device carries no vendor identity and no selector");
+    good = (PMIX_SUCCESS == rc);
+    for (n = 0; good && n < ndevs; n++) {
+        good = (NULL != devs[n].busid && 0 != strcmp(devs[n].busid, "0000:00:03.0"));
+    }
+    ok(good, "p5en: Amazon's display adapter is not counted as a GPU");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+
+    /* a GPU known only to OpenCL still answers to its bus id */
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, "0000:73:00.0", &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs && 0 == strcmp(devs[0].dev.osname, "opencl0d3"),
+       "p5en: a GPU is found by its bus id");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_OPENFABRICS,
+                                NULL, &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 32 == ndevs, "p5en: one device per network function");
+    good = (PMIX_SUCCESS == rc);
+    distinct = true;
+    for (n = 0; good && n < ndevs; n++) {
+        good = (0x1d0f == devs[n].pci_vendor && 0x0200 == devs[n].pci_class
+                && NULL != devs[n].selector && NULL != devs[n].dev.osname
+                && 0 == strcmp(devs[n].selector, devs[n].dev.osname));
+        if (!good) {
+            break;
+        }
+        if (PMIX_DEVTYPE_NETWORK == devs[n].dev.type) {
+            ++nena;
+            good = (0 == strncmp(devs[n].dev.osname, "enp", 3));
+        } else if (PMIX_DEVTYPE_OPENFABRICS == devs[n].dev.type && nefa < 16) {
+            good = (0 == strncmp(devs[n].dev.osname, "rdmap", 5)
+                    && zero_sysimage_uuid(devs[n].dev.uuid, nguid[nefa]));
+            for (m = 0; good && m < nefa; m++) {
+                if (0 == strcmp(nguid[m], nguid[nefa])) {
+                    distinct = false;
+                }
+            }
+            ++nefa;
+        } else {
+            good = false;
+        }
+    }
+    ok(good && 16 == nena && 16 == nefa,
+       "p5en: sixteen ENA interfaces and sixteen EFA devices, each named by its own name");
+    ok(good && distinct,
+       "p5en: an EFA device with a NodeGUID keeps the plain GUID form, and it is unique");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+    }
+    free_topo(&topo);
+}
+
+/* An AWS p6-b200.48xlarge, read by hwloc 2.4.1 without the NVIDIA backend.
+ *
+ * It carries two fabrics from two vendors on one node: eight EFA devices,
+ * and two ConnectX-7 InfiniBand ports (15b3:1021, class 0x207) whose verbs
+ * devices have rdma-core's PCI-path names (ibp115s0f0).  So pnet/efa and
+ * pnet/nvd both open, and each must be able to pick its own NICs out of
+ * one enumeration by PCI vendor and class.  Its eight B200s (10de:2901,
+ * class 0x302) have no OS device at all and are named by bus id. */
+static void test_aws_p6_b200(const char *dir)
+{
+    static const char *ib[] = {"ibp115s0f0", "ibp116s0f0"};
+    pmix_topology_t topo = PMIX_TOPOLOGY_STATIC_INIT;
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0, n, nena = 0, nefa = 0, nib = 0;
+    char path[1024], nguid[20], sguid[2][20], lnguid[2][20];
+    pmix_status_t rc;
+    bool good;
+
+    snprintf(path, sizeof(path), "%s/aws-p6-b200.xml", dir);
+    if (0 != load_topo_file(path, &topo)) {
+        ok(false, "p6-b200: aws-p6-b200.xml loads");
+        return;
+    }
+
+    ok(PMIX_SUCCESS == pmix_hwloc_check_vendor(&topo, 0x15b3, 0x0207),
+       "p6-b200: pnet/nvd has an InfiniBand HCA to open on");
+    ok(PMIX_SUCCESS == pmix_hwloc_check_vendor_baseclass(&topo, 0x10de, 0x03),
+       "p6-b200: pgpu/nvd has NVIDIA GPUs to open on");
+
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_GPU, NULL, &devs, &ndevs);
+    good = (PMIX_SUCCESS == rc && 8 == ndevs);
+    for (n = 0; good && n < ndevs; n++) {
+        good = (NULL != devs[n].busid && NULL != devs[n].dev.osname
+                && 0 == strcmp(devs[n].dev.osname, devs[n].busid)
+                && 0x10de == devs[n].pci_vendor && 0x0302 == devs[n].pci_class
+                && NULL == devs[n].vendor_id && NULL == devs[n].selector);
+    }
+    ok(good, "p6-b200: eight GPUs with no OS device, each named by its bus id");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_OPENFABRICS,
+                                NULL, &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 18 == ndevs, "p6-b200: one device per network function");
+    good = (PMIX_SUCCESS == rc);
+    for (n = 0; good && n < ndevs; n++) {
+        good = (NULL != devs[n].selector && NULL != devs[n].dev.osname
+                && 0 == strcmp(devs[n].selector, devs[n].dev.osname));
+        if (!good) {
+            break;
+        }
+        if (0x1d0f == devs[n].pci_vendor && PMIX_DEVTYPE_NETWORK == devs[n].dev.type) {
+            ++nena;
+        } else if (0x1d0f == devs[n].pci_vendor && PMIX_DEVTYPE_OPENFABRICS == devs[n].dev.type) {
+            good = zero_sysimage_uuid(devs[n].dev.uuid, nguid);
+            ++nefa;
+        } else if (0x15b3 == devs[n].pci_vendor && 0x0207 == devs[n].pci_class
+                   && PMIX_DEVTYPE_OPENFABRICS == devs[n].dev.type && nib < 2) {
+            good = (0 == strcmp(devs[n].dev.osname, ib[nib])
+                    && 2 == sscanf(devs[n].dev.uuid, "fab://%19[0-9a-fA-F:]::%19[0-9a-fA-F:]",
+                                   lnguid[nib], sguid[nib]));
+            ++nib;
+        } else {
+            good = false;
+        }
+    }
+    ok(good && 8 == nena && 8 == nefa && 2 == nib,
+       "p6-b200: eight ENA interfaces, eight EFA devices and two InfiniBand ports");
+    /* the two ports of one adapter share a SysImageGUID and keep their own
+     * NodeGUIDs, so they are two devices under one system image */
+    ok(good && 2 == nib && 0 == strcmp(sguid[0], sguid[1]) && 0 != strcmp(lnguid[0], lnguid[1]),
+       "p6-b200: the InfiniBand ports are told apart by NodeGUID under one SysImageGUID");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+        devs = NULL;
+    }
+
+    /* the HCA is named by what NCCL and UCX call it */
+    rc = pmix_hwloc_get_devices(&topo, TESTHOST, PMIX_DEVTYPE_OPENFABRICS, "0000:74:00.0",
+                                &devs, &ndevs);
+    ok(PMIX_SUCCESS == rc && 1 == ndevs && 0 == strcmp(devs[0].selector, "ibp116s0f0"),
+       "p6-b200: an InfiniBand port found by bus id is named by its verbs device");
+    if (NULL != devs) {
+        pmix_hwloc_release_devices(devs, ndevs);
+    }
+    free_topo(&topo);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir;
@@ -1641,6 +1868,8 @@ int main(int argc, char **argv)
     test_device_distances(dir);
     test_slingshot_names(dir);
     test_3d_controllers(dir);
+    test_aws_p5en(dir);
+    test_aws_p6_b200(dir);
 
     fprintf(stderr, "%s: %d checks, %d failures\n",
             (0 == failures) ? "PASS" : "FAIL", checks, failures);
