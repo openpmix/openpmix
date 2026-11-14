@@ -100,6 +100,11 @@ Identifying the request:
 Instantiating a session (typically issued by a scheduler):
 
 * ``PMIX_SESSION_INSTANTIATE`` (bool) |mdash| instantiate the specified session.
+* ``PMIX_ALLOC_UID`` (uint32_t) |mdash| the user id the session belongs to.
+* ``PMIX_ALLOC_GID`` (uint32_t) |mdash| the group id the session belongs to.
+  A scheduler instantiates a session on behalf of a user, and these say which
+  one. ``PMIX_USERID`` and ``PMIX_GRPID`` cannot: the library sets them to the
+  calling process's own user and group, which are the scheduler's.
 * ``PMIX_SESSION_RESOURCES`` (pmix_data_array_t*) |mdash| array of
   :ref:`pmix_info_t(5) <man5-pmix_info_t>` structures describing the resources
   to be included in the session (e.g., a regular expression of node names, an

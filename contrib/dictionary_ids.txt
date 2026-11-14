@@ -712,3 +712,5 @@ pmix.monitor.bmiss     683   PMIX_MONITOR_HEARTBEAT_MISSED
 pmix.monitor.fmiss     684   PMIX_MONITOR_FILE_MISSED
 pmix.ssn.pvn           685   PMIX_SESSION_PROVISION
 pmix.iof.jobdirs       686   PMIX_IOF_JOB_DIRECTIVES
+pmix.alloc.uid         687   PMIX_ALLOC_UID
+pmix.alloc.gid         688   PMIX_ALLOC_GID
