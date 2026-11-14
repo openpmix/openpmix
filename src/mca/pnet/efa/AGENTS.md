@@ -63,14 +63,24 @@ comma-separated, through `pmix_pnet_base_set_assigned_devices()`.
   variables are: a process mapped against a device made the more specific
   request.
 
-EFA reports its GUIDs as all zeros. That matters to the uuid PMIx builds
-for it (see `build_device_uuid()` in `src/hwloc/pmix_hwloc.c`), not here:
-the selector is the OS device name.
+EFA's GUIDs vary by device generation. The first EFA (`1d0f:efa0`, on
+p3dn and p4d) reports both as zeros; later ones (`efa1`..`efa3`) report a
+NodeGUID unique to the device beside an all-zero SysImageGUID. That
+matters to the uuid PMIx builds for it (see `build_device_uuid()` in
+`src/hwloc/pmix_hwloc.c`), not here: the selector is the OS device name,
+which is `rdmapNsN` under rdma-core's PCI-path naming and `efa_N` without
+it. The match table names no device id, so every generation is matched.
 
 ## Testing
 
 `test/unit/pnet_rdma_fabrics.c` runs against `test/topologies/rdma-fabrics.xml`,
 which carries an EFA function beside an ENA one: the EFA device must be
 named in `FI_EFA_IFACE`, the ENA interface must not, and neither may reach
-the verbs libraries' variables. That fixture is synthetic; it should be
-checked against a real `lstopo --of xml` from an EFA instance.
+the verbs libraries' variables. That fixture is synthetic.
+
+`test/unit/pnet_aws_fabrics.c` runs the same checks against
+`test/topologies/aws-p6-b200.xml`, a real p6-b200.48xlarge carrying eight
+EFA devices beside two ConnectX-7 InfiniBand ports, so `efa` and `nvd` are
+both active and each must name only its own devices.
+`test_aws_p5en`/`test_aws_p6_b200` in `test/unit/hwloc_devices.c` check
+how those devices, and a p5en's, are enumerated and named.

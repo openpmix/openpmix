@@ -66,7 +66,22 @@
 # name, cgroup path, board and BIOS strings, MAC addresses and the GUIDs
 # and GIDs derived from them, GPU and disk serials, GPU uuids and XGMI
 # hive id were replaced with synthetic values; nothing else was changed.
+#
+# aws-p5en.xml and aws-p6-b200.xml are real AWS instances - a
+# p5en.48xlarge read by hwloc 2.7.0 with the OpenCL backend, and a
+# p6-b200.48xlarge read by hwloc 2.4.1 with none - kept whole. Together
+# they carry the device shapes AWS ships that no other fixture here does:
+# NVIDIA GPUs whose only OS device is OpenCL's (opencl0d0, no identity),
+# EFA devices reporting a real NodeGUID beside an all-zero SysImageGUID,
+# and EFA beside ConnectX-7 InfiniBand ports with rdma-core's PCI-path
+# names (ibp115s0f0) on one node. Both also carry Amazon's display
+# adapter (1d0f:1111, class 0x300, no OS device), which is not a GPU.
+# Their host names, instance ids, NVMe serials, MAC addresses, and the
+# EFA and InfiniBand GUIDs and GIDs were replaced with synthetic values,
+# each distinct real value by a distinct synthetic one and an all-zero
+# GUID left as it was; nothing else was changed.
 
 EXTRA_DIST = test-topo.xml test-topo2.xml nvml-4gpu.xml drm-4gpu.xml \
         intel-4gpu.xml intel-flat-4gpu.xml opa-hfi.xml unnamed-osdev.xml \
-        multi-rc.xml rdma-fabrics.xml slingshot.xml mi350-bcm57608.xml
+        multi-rc.xml rdma-fabrics.xml slingshot.xml mi350-bcm57608.xml \
+        aws-p5en.xml aws-p6-b200.xml
