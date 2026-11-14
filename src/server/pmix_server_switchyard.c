@@ -488,9 +488,16 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
          * state, and anything the tool was granted, for the rest of its own
          * lifetime. peer->info is set for a tool peer exactly as it is for
          * a client; server_object is simply NULL for one the host never
-         * registered, which the host must already tolerate. */
+         * registered, which the host must already tolerate.
+         *
+         * A scheduler counts too. It connects as a tool does, and the host
+         * is told of it the same way, but its peer is typed a server
+         * (PMIX_PROC_SCHEDULER), not a tool - so testing for a tool alone
+         * left the host believing a scheduler that had finalized was still
+         * attached, and passing it requests nobody would answer. */
         if (NULL != pmix_host_server.client_finalized &&
-            (PMIX_PEER_IS_CLIENT(peer) || PMIX_PEER_IS_TOOL(peer))) {
+            (PMIX_PEER_IS_CLIENT(peer) || PMIX_PEER_IS_TOOL(peer) ||
+             PMIX_PEER_IS_SCHEDULER(peer))) {
             pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
             proc.rank = peer->info->pname.rank;
             /* now tell the host server */
