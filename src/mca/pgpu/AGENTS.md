@@ -263,7 +263,13 @@ function pointer. Specifics that matter:
   vendor modules build on — it reads the proc's `PMIX_DEVICE_ID` out of
   the local datastore, resolves each device against the local topology,
   keeps the ones belonging to the caller's vendor, and joins their
-  **selectors** (`pmix_hwloc_device_t.selector`) with commas. It checks
+  **selectors** (`pmix_hwloc_device_t.selector`) with commas. Whose a
+  device is comes from its vendor identity when the topology recorded
+  one and from its PCI vendor id when it did not, because a GPU with no
+  identity - every GPU on a node whose hwloc lacks the vendor backend -
+  is still somebody's, and a process given one of ours beside a GPU that
+  can be named must be told nothing rather than a list that hides it
+  (`test/unit/pgpu_visible_devices.c`). It checks
   the data array's **element type**, not just that the value is one:
   `PMIX_DEVICE_ID` is a `char*` everywhere except in a process's own proc
   info, where it is an array of `pmix_device_t`, and the host stored it —

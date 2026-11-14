@@ -223,6 +223,43 @@ pmix_status_t pmix_pgpu_base_setup_fork(const pmix_proc_t *proc, char ***env)
     return PMIX_SUCCESS;
 }
 
+/* The PCI vendor id behind each vendor name the components pass below. */
+static const struct {
+    const char *name;
+    uint16_t pci_vendor;
+} gpu_vendors[] = {
+    {"NVIDIA", 0x10de},
+    {"AMD", 0x1002},
+    {"INTEL", 0x8086},
+    {NULL, 0}
+};
+
+/* Is this device one of the named vendor's?
+ *
+ * The vendor identity says so when the topology recorded one.  When it did
+ * not - every GPU on a node whose hwloc has no vendor backend, or one the
+ * backend did not report - the device still belongs to somebody, and its
+ * PCI function says who.  Reading "no identity" as "not ours" took such a
+ * GPU out of the list instead of marking it as one that cannot be named,
+ * so a process given it beside a GPU that could be named was told about
+ * the other alone - and the runtime then hid it. */
+static bool device_is_ours(const pmix_hwloc_device_t *dev, const char *vendor)
+{
+    size_t n;
+
+    if (NULL != dev->vendor) {
+        return (0 == strcasecmp(dev->vendor, vendor));
+    }
+    for (n = 0; NULL != gpu_vendors[n].name; n++) {
+        if (0 == strcasecmp(gpu_vendors[n].name, vendor)) {
+            /* a device with no PCI function reports vendor 0, which is
+             * nobody's */
+            return (0 != dev->pci_vendor && gpu_vendors[n].pci_vendor == dev->pci_vendor);
+        }
+    }
+    return false;
+}
+
 /* Build the value of a vendor's "visible devices" variable for one process
  * from the devices it was mapped against.
  *
@@ -318,7 +355,7 @@ pmix_status_t pmix_pgpu_base_get_visible_devices(const pmix_proc_t *proc,
         for (d = 0; d < ndevs; d++) {
             /* a node may carry cards from more than one vendor, and each
              * wants its own variable, so take only our own */
-            if (NULL == devs[d].vendor || 0 != strcasecmp(devs[d].vendor, vendor)) {
+            if (!device_is_ours(&devs[d], vendor)) {
                 continue;
             }
             /* one of ours that cannot be named: naming the rest would hand
