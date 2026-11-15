@@ -1162,9 +1162,11 @@ static bool output_file_ok(int fd, uid_t owner)
             owner == buf.st_uid);
 }
 
-/* Create the directories and open the file - run AS THE JOB'S OWNER,
- * in place when we are the owner and in a child that has dropped to the
- * owner otherwise (pmix_util_run_as). So the kernel applies the owner's
+/* Create the directories and open the file - run AS THE JOB'S OWNER, in
+ * a child (pmix_util_run_as_child): one that has dropped to the owner, or
+ * one that simply is us when we are the owner - a child either way, so
+ * that a path on a filesystem that does not answer holds us for no longer
+ * than runas_timeout whoever the job is. So the kernel applies the owner's
  * own permissions to every path the owner named: a privileged server
  * neither creates nor writes anything there the owner could not, nor
  * changes the owner or mode of anything.
@@ -1243,7 +1245,7 @@ static int output_as_owner(pmix_iof_output_t *out)
             return -1;
         }
     }
-    fd = pmix_util_run_as(op->owner, op->owner_gid, gids, ngids, true, open_output, out);
+    fd = pmix_util_run_as_child(op->owner, op->owner_gid, gids, ngids, true, open_output, out);
     err = errno;
     free(gids);
     if (0 > fd && ETIMEDOUT == err) {

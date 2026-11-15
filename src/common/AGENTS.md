@@ -423,10 +423,12 @@ Two rules to keep when touching it:
 its gid, the group to give read access to (the first one the access list
 names, else the owner's), and the directory mode (`0700`, `0750` with a
 listed group). `output_as_owner()` then runs `open_output()` through
-`pmix_util_run_as()` (`src/util/pmix_runas.c`): in place when we are the
-owner, else in a child that has dropped to the owner with the groups from
-the host's record (`pmix_server_user_groups()`), which passes the
-descriptor back with `SCM_RIGHTS`. `open_output()` creates the
+`pmix_util_run_as_child()` (`src/util/pmix_runas.c`): in a child that has
+dropped to the owner with the groups from the host's record
+(`pmix_server_user_groups()`), or, when we are the owner, in a child that
+simply is us - always a child, so the open is bounded by the timeout
+below whoever the job is. The child passes the descriptor back with
+`SCM_RIGHTS`. `open_output()` creates the
 directories, opens the file without `O_TRUNC`, checks it is a regular
 file with one link **owned by the owner**, and only then empties it and
 sets its group and mode. The parent checks the descriptor again and
@@ -441,7 +443,8 @@ without forking: `pmix_iof_setup()` is asked again on each chunk for a
 file that did not open, so without the latch one job would hold the
 progress thread one timeout per chunk. `test_stalled()` in
 `test/unit/iof_file_perms.c` covers it through
-`pmix_util_runas_test_stall`.
+`pmix_util_runas_test_stall` - `test_stalled()` as root for another
+user's job, `test_stalled_self()` without root for our own.
 
 `pmix_util_run_as_child()` is the same call without the in-place case:
 `fn` always runs in a forked child, and when we already are the user the
