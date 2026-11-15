@@ -349,6 +349,91 @@ attribute, which carries the completion status of the allocation request.
 .. include:: /man/no-blocking-in-progress-thread.rst
 
 
+ALLOCATION REQUESTS AND SESSION CONTROL
+---------------------------------------
+
+``PMIx_Allocation_request`` is how a user, through one of its processes or a
+tool, *asks* for resources to be assigned to it: a new allocation, or more
+time or more resources for one it already holds. The scheduler decides, and
+its answer goes back to the requester.
+
+A runtime that manages the resulting session |mdash| a distributed virtual
+machine (DVM), for example |mdash| is told what was decided by a separate
+call. The scheduler uses :ref:`PMIx_Session_control(3)
+<man3-PMIx_Session_control>` to direct it: to instantiate a session over the
+resources it granted, for the user it granted them to, or to extend an
+existing session in time or resources. A ``PMIX_SESSION_INSTANTIATE`` or
+``PMIX_SESSION_EXTEND`` directive is therefore not a request for resources:
+it carries out a decision that has already been made, and a runtime would
+typically accept it only from the scheduler (or, where there is none, from
+whoever acts with the scheduler's authority).
+
+The answer to an allocation request may carry much the same information as
+the directive the scheduler then sends, but the directive is still needed:
+
+* **The runtime may never see the answer.** The host environment that
+  passed the request on is not required to watch for the scheduler's reply,
+  and the scheduler cannot know whether it will intercept the answer and
+  act on it. A runtime that is told directly needs no such arrangement.
+* **The runtime may not know a request was made.** A request can come from a
+  tool connected to the scheduler, or to some other server, rather than from
+  one of the runtime's own processes. The runtime then has no record of the
+  request at all, and only a directive from the scheduler tells it what to
+  do.
+* **Not every change starts with a request.** A scheduler sometimes needs a
+  runtime to change a session for its own reasons |mdash| for example, to
+  modify a job's resources to keep the whole system within an overall energy
+  limit. There is no allocation request to answer in that case; there is
+  only the directive.
+
+
+EXAMPLES
+--------
+
+A process of a job running in an allocation the scheduler identified as
+``alloc-42`` asks for its allocation to run for 30 more minutes. Its local
+server, part of the runtime managing the session, passes the request to the
+scheduler:
+
+.. code-block:: c
+
+    pmix_info_t info[2];
+    pmix_info_t *results = NULL;
+    size_t nresults = 0;
+    pmix_status_t rc;
+
+    PMIx_Info_load(&info[0], PMIX_ALLOC_ID, "alloc-42", PMIX_STRING);
+    PMIx_Info_load(&info[1], PMIX_ALLOC_TIME, "30:00", PMIX_STRING);
+    rc = PMIx_Allocation_request(PMIX_ALLOC_EXTEND, info, 2,
+                                 &results, &nresults);
+    /* rc and results are the scheduler's answer, given to this process */
+    PMIx_Info_destruct(&info[0]);
+    PMIx_Info_destruct(&info[1]);
+    if (NULL != results) {
+        PMIx_Info_free(results, nresults);
+    }
+
+The scheduler grants the extension and answers the process. The runtime
+passed the request on, but the answer is addressed to the requester, and the
+runtime has not undertaken to read it. So the scheduler also tells the runtime,
+naming the session (here, session 7) that holds the allocation:
+
+.. code-block:: c
+
+    pmix_info_t dirs[2];
+    bool flag = true;
+    pmix_status_t rc;
+
+    PMIx_Info_load(&dirs[0], PMIX_SESSION_EXTEND, &flag, PMIX_BOOL);
+    PMIx_Info_load(&dirs[1], PMIX_ALLOC_TIME, "30:00", PMIX_STRING);
+    rc = PMIx_Session_control(7, dirs, 2, NULL, NULL);
+    /* PMIX_OPERATION_SUCCEEDED once the runtime has applied it */
+    PMIx_Info_destruct(&dirs[0]);
+    PMIx_Info_destruct(&dirs[1]);
+
+See :ref:`PMIx_Session_control(3) <man3-PMIx_Session_control>` for a request
+that arrives from a tool the runtime knows nothing of.
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Resource_block(3) <man3-PMIx_Resource_block>`,
