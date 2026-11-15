@@ -306,7 +306,8 @@ pmix_status_t pmix_register_params(void)
     pmix_util_runas_timeout = 10;
     (void) pmix_mca_base_var_register("pmix", "runas", NULL, "timeout",
                                       "Seconds to wait for work done as a job's owner - opening "
-                                      "its output files, its cleanup - before abandoning it. "
+                                      "its output files, its cleanup, the files a host reads or "
+                                      "writes for it - before abandoning it. "
                                       "0 waits indefinitely [default: 10]",
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_util_runas_timeout);

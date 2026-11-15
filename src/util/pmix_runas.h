@@ -65,6 +65,15 @@ BEGIN_C_DECLS
 PMIX_EXPORT int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids,
                                  bool want_fd, int (*fn)(void *arg), void *arg);
 
+/* pmix_util_run_as(), except that fn always runs in a forked child,
+ * even when this process already is uid and gid - and then the child
+ * does the work as this process is, groups and all, just as fn would in
+ * place. For work whose wait must be bounded whoever it is for: a path a
+ * user named, opened and read as ourselves, can stall the caller on a
+ * filesystem that does not answer as surely as one opened as the user */
+PMIX_EXPORT int pmix_util_run_as_child(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids,
+                                       bool want_fd, int (*fn)(void *arg), void *arg);
+
 /* The supplementary groups pmix_util_run_as() gives its child, written
  * to out, which has room for max: gid first, then each of gids that is
  * not gid, in order, until out is full. Returns how many were written.

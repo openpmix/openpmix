@@ -30,6 +30,16 @@
  *   ... more than fit                  -> as many as fit, the gid first
  *   PMIX_RUNAS_STRERROR() in the child -> "", and the message outside it
  *
+ *   pmix_util_run_as_child(), as ourselves:
+ *   the helper's process               -> a child, where pmix_util_run_as()
+ *                                         runs it in place
+ *   a helper that never finishes       -> -1, ETIMEDOUT, at the timeout;
+ *                                         with and without a descriptor -
+ *                                         and killed and reaped. In place
+ *                                         it was waited for with no bound
+ *   a helper that opens a file         -> the descriptor
+ *   the helper's groups                -> ours: nothing is dropped
+ *
  * and as root:
  *
  *   a user with more groups than
@@ -112,7 +122,11 @@ typedef struct {
     int what;
 } helper_t;
 
-enum { H_HANG, H_STOP, H_FAIL, H_OK, H_OPEN, H_GROUPS, H_ROOTFILE };
+enum { H_HANG, H_STOP, H_FAIL, H_OK, H_OPEN, H_GROUPS, H_ROOTFILE, H_OURGROUPS };
+
+/* for H_OURGROUPS: ours, read before the helper runs */
+static gid_t our_groups[1024];
+static int nour_groups = 0;
 
 /* for H_ROOTFILE: a file only root may read */
 static char rootfile[64];
@@ -165,6 +179,15 @@ static int helper(void *arg)
         return 0;
     case H_GROUPS:
         return has_groups();
+    case H_OURGROUPS: {
+        gid_t mine[1024];
+        int n = getgroups(1024, mine);
+
+        if (n != nour_groups) {
+            return -1;
+        }
+        return (0 == n || 0 == memcmp(mine, our_groups, n * sizeof(gid_t))) ? 0 : -1;
+    }
     case H_ROOTFILE: {
         /* success is being refused it */
         int fd = open(rootfile, O_RDONLY);
@@ -234,7 +257,7 @@ static int gone(pid_t pid)
     return 0;
 }
 
-static int stalled(int what, int want_fd)
+static int stalled_as(int what, int want_fd, int self)
 {
     helper_t h;
     int p[2], rc, err;
@@ -248,7 +271,11 @@ static int stalled(int what, int want_fd)
     h.what = what;
     pmix_util_runas_timeout = TIMEOUT;
     t0 = now_s();
-    rc = pmix_util_run_as(OTHER_UID, OTHER_GID, NULL, 0, want_fd, helper, &h);
+    if (self) {
+        rc = pmix_util_run_as_child(geteuid(), getegid(), NULL, 0, want_fd, helper, &h);
+    } else {
+        rc = pmix_util_run_as(OTHER_UID, OTHER_GID, NULL, 0, want_fd, helper, &h);
+    }
     err = errno;
     took = now_s() - t0;
     close(p[1]);
@@ -267,6 +294,93 @@ static int stalled(int what, int want_fd)
         return 1;
     }
     return 0;
+}
+
+static int stalled(int what, int want_fd)
+{
+    return stalled_as(what, want_fd, 0);
+}
+
+/* pmix_util_run_as_child() as ourselves */
+static int self_where(int child)
+{
+    helper_t h;
+    int p[2], rc;
+    pid_t pid;
+
+    if (0 != pipe(p)) {
+        return 1;
+    }
+    h.pidfd = p[1];
+    h.what = H_OK;
+    pmix_util_runas_timeout = TIMEOUT;
+    if (child) {
+        rc = pmix_util_run_as_child(geteuid(), getegid(), NULL, 0, 0, helper, &h);
+    } else {
+        rc = pmix_util_run_as(geteuid(), getegid(), NULL, 0, 0, helper, &h);
+    }
+    close(p[1]);
+    pid = helper_pid(p[0]);
+    close(p[0]);
+    if (0 != rc || 0 >= pid) {
+        fprintf(stdout, "        (returned %d, helper %ld)\n", rc, (long) pid);
+        return 1;
+    }
+    if (child ? (getpid() == pid) : (getpid() != pid)) {
+        fprintf(stdout, "        (helper ran in %ld, we are %ld)\n", (long) pid, (long) getpid());
+        return 1;
+    }
+    return 0;
+}
+
+static int self_in_place(void)
+{
+    return self_where(0);
+}
+
+static int self_child(void)
+{
+    return self_where(1);
+}
+
+static int self_hang_nofd(void)
+{
+    return stalled_as(H_HANG, 0, 1);
+}
+
+static int self_hang_fd(void)
+{
+    return stalled_as(H_HANG, 1, 1);
+}
+
+static int self_opens(void)
+{
+    helper_t h;
+    int fd;
+
+    h.pidfd = -1;
+    h.what = H_OPEN;
+    pmix_util_runas_timeout = TIMEOUT;
+    fd = pmix_util_run_as_child(geteuid(), getegid(), NULL, 0, 1, helper, &h);
+    if (0 > fd) {
+        return 1;
+    }
+    close(fd);
+    return 0;
+}
+
+static int self_groups(void)
+{
+    helper_t h;
+
+    nour_groups = getgroups(1024, our_groups);
+    if (0 > nour_groups) {
+        return 1;
+    }
+    h.pidfd = -1;
+    h.what = H_OURGROUPS;
+    pmix_util_runas_timeout = TIMEOUT;
+    return (0 == pmix_util_run_as_child(geteuid(), getegid(), NULL, 0, 0, helper, &h)) ? 0 : 1;
 }
 
 static int hang_nofd(void)
@@ -445,6 +559,12 @@ int main(int argc, char **argv)
     fprintf(stdout, "runas_bound: work done as another user is bounded by a timeout\n");
     test_group_list();
     test_strerror();
+    run_case("pmix_util_run_as() as ourselves runs the helper in place", self_in_place);
+    run_case("pmix_util_run_as_child() as ourselves runs it in a child", self_child);
+    run_case("...which is abandoned at the timeout if it never finishes", self_hang_nofd);
+    run_case("...and when it was to return a descriptor", self_hang_fd);
+    run_case("...whose descriptor comes back", self_opens);
+    run_case("...and which has our groups", self_groups);
     if (0 != geteuid()) {
         fprintf(stdout, "  SKIP: not running as root, so this process cannot become another user\n");
         fprintf(stdout, "runas_bound: %d passed, %d failed\n", npass, nfail);
