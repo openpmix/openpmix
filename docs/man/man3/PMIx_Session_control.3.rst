@@ -192,6 +192,108 @@ published PMIx Standard.
 .. include:: /man/no-blocking-in-progress-thread.rst
 
 
+SESSION CONTROL AND ALLOCATION REQUESTS
+---------------------------------------
+
+``PMIx_Session_control`` issues directives to a session. Most of them
+|mdash| pause, resume, signal, terminate |mdash| act on a session that
+already exists, and may come from the user the session belongs to as well as
+from the scheduler.
+
+``PMIX_SESSION_INSTANTIATE`` and ``PMIX_SESSION_EXTEND`` are different. They
+do not ask for resources: a user asks for resources with
+:ref:`PMIx_Allocation_request(3) <man3-PMIx_Allocation_request>`, and the
+scheduler decides. These two directives are how the scheduler then tells the
+runtime managing the session |mdash| a distributed virtual machine (DVM), for
+example |mdash| what it decided: start a session over these resources for
+this user, or give this session more time or more resources. A runtime would
+typically accept them only from the scheduler (or, where there is none, from
+whoever acts with the scheduler's authority) |mdash| not from the user the
+session is for, who asks with an allocation request instead.
+
+The scheduler's answer to an allocation request goes to the requester, and
+may carry much the same information as the directive, but the directive is
+still needed:
+
+* **The runtime may never see the answer.** The host environment that
+  passed the request on is not required to watch for the scheduler's reply,
+  and the scheduler cannot know whether it will intercept the answer and
+  act on it. A runtime that is told directly needs no such arrangement.
+* **The runtime may not know a request was made.** A request can come from a
+  tool connected to the scheduler, or to some other server, rather than from
+  one of the runtime's own processes. The runtime then has no record of the
+  request at all, and only a directive from the scheduler tells it what to
+  do.
+* **Not every change starts with a request.** A scheduler sometimes needs a
+  runtime to change a session for its own reasons |mdash| for example, to
+  modify a job's resources to keep the whole system within an overall energy
+  limit. There is no allocation request to answer in that case; there is
+  only the directive.
+
+
+EXAMPLES
+--------
+
+A workflow tool, connected to the scheduler rather than to any runtime, asks
+for four nodes for two hours on behalf of the user running it:
+
+.. code-block:: c
+
+    pmix_info_t info[2];
+    pmix_info_t *results = NULL;
+    size_t nresults = 0;
+    uint64_t nnodes = 4;
+    pmix_status_t rc;
+
+    PMIx_Info_load(&info[0], PMIX_ALLOC_NUM_NODES, &nnodes, PMIX_UINT64);
+    PMIx_Info_load(&info[1], PMIX_ALLOC_TIME, "2:00:00", PMIX_STRING);
+    rc = PMIx_Allocation_request(PMIX_ALLOC_NEW, info, 2, &results, &nresults);
+    /* on success, results include the PMIX_ALLOC_ID of the new allocation */
+    PMIx_Info_destruct(&info[0]);
+    PMIx_Info_destruct(&info[1]);
+    if (NULL != results) {
+        PMIx_Info_free(results, nresults);
+    }
+
+The runtime that will host the work saw none of this. The scheduler chooses
+the nodes, answers the tool with the allocation's identifier, and directs the
+runtime to instantiate a session over them for the user who asked |mdash|
+identified by the ``PMIX_USERID`` and ``PMIX_GRPID`` the library attached to
+the tool's request (here, 1001):
+
+.. code-block:: c
+
+    pmix_info_t dirs[4], *res;
+    pmix_data_array_t resources;
+    uint32_t uid = 1001, gid = 1001;
+    bool flag = true;
+    pmix_status_t rc;
+    size_t n;
+
+    PMIx_Data_array_construct(&resources, 3, PMIX_INFO);
+    res = (pmix_info_t *) resources.array;
+    PMIx_Info_load(&res[0], PMIX_ALLOC_NODE_LIST,
+                   "node01,node02,node03,node04", PMIX_STRING);
+    PMIx_Info_load(&res[1], PMIX_ALLOC_ID, "alloc-57", PMIX_STRING);
+    PMIx_Info_load(&res[2], PMIX_ALLOC_TIME, "2:00:00", PMIX_STRING);
+
+    PMIx_Info_load(&dirs[0], PMIX_SESSION_INSTANTIATE, &flag, PMIX_BOOL);
+    PMIx_Info_load(&dirs[1], PMIX_ALLOC_UID, &uid, PMIX_UINT32);
+    PMIx_Info_load(&dirs[2], PMIX_ALLOC_GID, &gid, PMIX_UINT32);
+    /* the info takes its own copy of the array */
+    PMIx_Info_load(&dirs[3], PMIX_SESSION_RESOURCES, &resources, PMIX_DATA_ARRAY);
+    rc = PMIx_Session_control(12, dirs, 4, NULL, NULL);
+    /* PMIX_OPERATION_SUCCEEDED once the runtime has created session 12 */
+    for (n = 0; n < 4; n++) {
+        PMIx_Info_destruct(&dirs[n]);
+    }
+    PMIx_Data_array_destruct(&resources);
+
+The tool can now refer to the allocation by its ``PMIX_ALLOC_ID`` |mdash|
+for example, to spawn a job into it. See :ref:`PMIx_Allocation_request(3)
+<man3-PMIx_Allocation_request>` for an extension requested by a process
+already running in a session.
+
 .. seealso::
    :ref:`PMIx_Init(3) <man3-PMIx_Init>`,
    :ref:`PMIx_Allocation_request(3) <man3-PMIx_Allocation_request>`,
