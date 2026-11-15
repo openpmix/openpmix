@@ -863,6 +863,48 @@ static void test_stalled(void)
     }
 }
 
+/* The same for a server that is the job's owner. It used to open its own
+ * user's files in place, so nothing bounded the open; it now opens them
+ * in a child as well, which needs no root */
+static void test_stalled_self(void)
+{
+    char dir[1024], file[1100];
+    double t0, first, second;
+    int saved = pmix_util_runas_timeout;
+
+    snprintf(dir, sizeof(dir), "%s/stallself", base);
+    if (0 != mkdir(dir, 0755)) {
+        report("stall-self: fixture", 0);
+        return;
+    }
+    if (PMIX_SUCCESS != reg("perms-stallself", PMIX_IOF_OUTPUT_TO_DIRECTORY, dir, geteuid(),
+                            getegid(), (gid_t) -1)) {
+        report("stall-self: fixture", 0);
+        return;
+    }
+    pmix_util_runas_timeout = 1;
+    pmix_util_runas_test_stall = true;
+
+    t0 = now_s();
+    deliver_on("perms-stallself", PMIX_FWD_STDOUT_CHANNEL, "out\n");
+    first = now_s() - t0;
+    t0 = now_s();
+    deliver_on("perms-stallself", PMIX_FWD_STDERR_CHANNEL, "err\n");
+    second = now_s() - t0;
+
+    pmix_util_runas_test_stall = false;
+    pmix_util_runas_timeout = saved;
+
+    snprintf(file, sizeof(file), "%s/perms-stallself/rank.0/stdout", dir);
+    report("a stalled open of our own job's file is abandoned at the timeout",
+           1.0 <= first && first < 4.0 && !exists(file));
+    snprintf(file, sizeof(file), "%s/perms-stallself/rank.0/stderr", dir);
+    report("...and its next file is not waited on again", second < 0.9 && !exists(file));
+    if (!(1.0 <= first && first < 4.0) || !(second < 0.9)) {
+        fprintf(stdout, "        (first %.2fs, second %.2fs)\n", first, second);
+    }
+}
+
 /* A root server writes another user's output files from the writer
  * thread, through a pipe, rather than from the progress thread.
  * pmix_iof_writer_test_stall
@@ -964,6 +1006,7 @@ int main(int argc, char **argv)
     test_unopened_once();
     test_refused_each_job();
     test_stalled();
+    test_stalled_self();
     test_writer_stall();
 
     PMIx_server_finalize();
