@@ -335,8 +335,23 @@ void pmix_util_runas_finalize(void)
 #endif
 }
 
+static int run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool want_fd,
+                  bool in_place, int (*fn)(void *arg), void *arg);
+
 int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool want_fd,
                      int (*fn)(void *arg), void *arg)
+{
+    return run_as(uid, gid, gids, ngids, want_fd, true, fn, arg);
+}
+
+int pmix_util_run_as_child(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool want_fd,
+                           int (*fn)(void *arg), void *arg)
+{
+    return run_as(uid, gid, gids, ngids, want_fd, false, fn, arg);
+}
+
+static int run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool want_fd,
+                  bool in_place, int (*fn)(void *arg), void *arg)
 {
 #if defined(HAVE_FORK) && defined(HAVE_WAITPID)
     int sv[2] = {-1, -1}, fd, status = 0, ready;
@@ -347,13 +362,14 @@ int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool
     ssize_t nb;
     gid_t *glist;
     size_t gmax, nglist;
+    bool same;
 #endif
     int rc;
 
     if (NULL == fn || (uid_t) -1 == uid || (gid_t) -1 == gid) {
         return -1;
     }
-    if (geteuid() == uid && getegid() == gid) {
+    if (in_place && geteuid() == uid && getegid() == gid) {
         /* we are that user already - the kernel is applying exactly the
          * check we want */
         rc = fn(arg);
@@ -367,6 +383,9 @@ int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool
     }
 
 #if defined(HAVE_FORK) && defined(HAVE_WAITPID)
+    /* already that user: the child works as we are, as fn would in place.
+     * Only the wait differs - it is bounded */
+    same = (geteuid() == uid && getegid() == gid);
     sweep_unreaped();
     /* the child's groups, made here: it may not allocate */
     gmax = groups_max();
@@ -418,6 +437,11 @@ int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool
          * library that is still very much alive in the parent. */
         pmix_util_runas_child = true;
         close(sv[0]);
+        if (same) {
+            /* nothing to drop, and an unprivileged process could not
+             * call setgroups() to drop it */
+            goto work;
+        }
 #    ifdef HAVE_SETGROUPS
         /* setuid() does not touch the supplementary groups, so without
          * this the child keeps *our* memberships and reaches what the user
@@ -444,6 +468,7 @@ int pmix_util_run_as(uid_t uid, gid_t gid, const gid_t *gids, size_t ngids, bool
             _exit(1);
         }
 #    endif
+    work:
         while (pmix_util_runas_test_stall) {
             /* testing only - a helper that never finishes, as one does
              * on a filesystem that never answers */

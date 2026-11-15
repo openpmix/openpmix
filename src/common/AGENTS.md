@@ -443,6 +443,16 @@ progress thread one timeout per chunk. `test_stalled()` in
 `test/unit/iof_file_perms.c` covers it through
 `pmix_util_runas_test_stall`.
 
+`pmix_util_run_as_child()` is the same call without the in-place case:
+`fn` always runs in a forked child, and when we already are the user the
+child simply does not drop anything (an unprivileged process could not
+call `setgroups()` to do so). It exists for a host whose work for a user
+must be bounded even when that user is itself - PRRTE reads a hostfile a
+job named, and writes its proctable, this way, since a path on a
+filesystem that does not answer stalls an open made as ourselves exactly
+as surely as one made as the user. `test/unit/runas_bound.c` covers it
+without root.
+
 **A file opened for another user is never touched from the progress
 thread.** A regular file ignores `O_NONBLOCK`, so once the server holds
 a descriptor on the owner's filesystem, even the `fstat()` that
