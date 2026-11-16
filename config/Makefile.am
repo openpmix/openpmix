@@ -44,6 +44,7 @@ EXTRA_DIST = \
     find_common_syms \
     getdate.sh \
     pmix_get_version.sh \
+    pmix_check_cython.py \
     mca_library_paths.txt \
     from-savannah/upstream-config.guess \
     from-savannah/upstream-config.sub
