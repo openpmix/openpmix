@@ -184,9 +184,24 @@ colon-delimited path of files to search for MCA parameters.  Files to
 the left have lower precedence; files to the right are higher
 precedence.
 
-A process running as root reads a parameter file only if root owns it
-and no group or other user can write it. Any other file is passed over
-with a message, as though it were not there.
+A parameter file can set any parameter, so a process reads one only if
+nobody but root, the user it runs as, and the members of its own groups
+could have written it:
+
+* it must be a regular file, owned by root or by the user the process
+  runs as;
+* no user outside the file's owner may write it, except the members of
+  a group the process itself belongs to;
+* the directory holding it is held to the same rule, unless that
+  directory has the sticky bit set (as ``/tmp`` does).
+
+A symbolic link is followed, and then the directory of the file it
+names must meet the same rule. A process running as root admits no
+group write at all, to the file or its directory, since the members of a
+group root belongs to can be ordinary users.
+
+Any other file is passed over with a message naming it and the reason,
+as though it were not there.
 
 .. note:: Keep in mind that, just like components, these parameter
           files are *only* relevant where they are "visible". Typically,
