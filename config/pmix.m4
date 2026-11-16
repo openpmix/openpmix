@@ -1404,17 +1404,17 @@ AS_IF([test "$pmix_want_python_bindings" = "yes" && test $pmix_have_good_python 
 
 # if we want the Python bindings, then we also require Cython
 if test "$pmix_want_python_bindings" = "yes"; then
-    pyvers=`python3 --version`
+    pyvers=`$PYTHON --version 2>&1`
     python_version=${pyvers#"Python "}
 
     PMIX_SUMMARY_ADD([Bindings], [Python], [], [yes ($python_version)])
 
     AC_MSG_CHECKING([if Cython package installed as Python package])
-    have_cython=`$srcdir/config/pmix_check_cython.py 2> /dev/null`
+    have_cython=`$PYTHON $srcdir/config/pmix_check_cython.py 2> /dev/null`
     if test "$have_cython" = "0"; then
         AC_MSG_RESULT([yes])
         AC_MSG_CHECKING([Cython version])
-        cython_version=`python -c "from Cython.Compiler.Version import version; print(version)"`
+        cython_version=`$PYTHON -c "from Cython.Compiler.Version import version; print(version)"`
         AC_MSG_RESULT([$cython_version])
         PMIX_SUMMARY_ADD([Required Packages], [Cython], [], [yes ($cython_version)])
     else
