@@ -811,6 +811,19 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     OAC_SETUP_SPHINX([$srcdir/docs/_build/html/index.html], [],
                      [$srcdir/docs/requirements.txt])
 
+    # The docs build runs its generator scripts with $(PYTHON).  The
+    # Python check in PMIX_DEFINE_ARGS runs before this one, and looks
+    # for an interpreter only in a git clone or when the bindings are
+    # wanted - but a tarball build renders the docs too whenever Sphinx
+    # is usable.  Find the interpreter here in that case, so that
+    # $(PYTHON) is never empty when the docs are built.
+    AS_IF([test -n "$SPHINX_BUILD" && test $pmix_have_good_python -eq 0],
+          [AM_PATH_PYTHON([$pmix_python_min_version],
+                          [pmix_have_good_python=1],
+                          [AC_MSG_ERROR([Building the docs requires Python >= $pmix_python_min_version. Install it, or configure with --disable-sphinx.])])
+           PMIX_SUMMARY_ADD([[Required Packages]], [Python], [], [yes ($[PYTHON_VERSION])])
+          ])
+
     AS_IF([test -n "$OAC_MAKEDIST_DISABLE"],
           [AS_IF([test -n "$PMIX_MAKEDIST_DISABLE"],
                  [PMIX_MAKEDIST_DISABLE="$PMIX_MAKEDIST_DISABLE $OAC_MAKEDIST_DISABLE"],
