@@ -18,6 +18,7 @@
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -612,6 +613,137 @@ static void test_root_trusts_only_root_files(void)
     reset_seen();
 }
 
+/*
+ * A parameter file sets any parameter, so it is read only if nobody but
+ * root, we and the members of our own groups could have written it - the
+ * file and the directory holding it, and the directory of a link's target.
+ * This used to be checked only for a process running as root, and only on
+ * the file, and the open blocked on a FIFO.
+ */
+static int parse_at(const char *path)
+{
+    reset_seen();
+    return pmix_util_keyval_parse(path, collect, NULL);
+}
+
+static void put(const char *path, mode_t mode)
+{
+    FILE *fp = fopen(path, "w");
+
+    if (NULL != fp) {
+        fputs("alpha = one\n", fp);
+        fclose(fp);
+    }
+    /* our own group, which a new file need not get: on the BSDs it takes
+     * its directory's, and /tmp's is wheel */
+    (void) !chown(path, (uid_t) -1, getegid());
+    (void) chmod(path, mode);
+}
+
+static void test_who_could_write(void)
+{
+    char base[] = "/tmp/pmix_keyval_who_XXXXXX";
+    char a[600], b[600], f[700], g[700], link[700], fifo[700];
+    int rc;
+    bool root = (0 == geteuid());
+
+    if (NULL == mkdtemp(base)) {
+        report("who could write: scratch directory", 0);
+        return;
+    }
+    snprintf(a, sizeof(a), "%s/a", base);
+    snprintf(b, sizeof(b), "%s/b", base);
+    (void) mkdir(a, 0700);
+    (void) mkdir(b, 0700);
+    (void) !chown(a, (uid_t) -1, getegid());
+    (void) !chown(b, (uid_t) -1, getegid());
+    snprintf(f, sizeof(f), "%s/params.conf", a);
+    snprintf(g, sizeof(g), "%s/params.conf", b);
+    snprintf(link, sizeof(link), "%s/linked.conf", a);
+    snprintf(fifo, sizeof(fifo), "%s/fifo.conf", a);
+
+    put(f, 0644);
+    rc = parse_at(f);
+    report("our own file, only we can write, is read", PMIX_SUCCESS == rc && 1 == nseen);
+
+    (void) chmod(f, 0646);
+    rc = parse_at(f);
+    report("a file anyone can write is passed over", PMIX_ERR_NOT_FOUND == rc && 0 == nseen);
+
+    /* our own primary group may write it - unless we are root */
+    (void) chmod(f, 0664);
+    rc = parse_at(f);
+    if (root) {
+        report("as root, a file its group can write is passed over",
+               PMIX_ERR_NOT_FOUND == rc && 0 == nseen);
+    } else {
+        report("a file a group we are in can write is read", PMIX_SUCCESS == rc && 1 == nseen);
+    }
+    (void) chmod(f, 0644);
+
+    /* the directory holding it */
+    (void) chmod(a, 0777);
+    rc = parse_at(f);
+    report("a file in a directory anyone can write is passed over",
+           PMIX_ERR_NOT_FOUND == rc && 0 == nseen);
+    (void) chmod(a, 01777);
+    rc = parse_at(f);
+    report("...unless that directory is sticky", PMIX_SUCCESS == rc && 1 == nseen);
+    (void) chmod(a, 0770);
+    rc = parse_at(f);
+    if (root) {
+        report("as root, a file in a directory its group can write is passed over",
+               PMIX_ERR_NOT_FOUND == rc && 0 == nseen);
+    } else {
+        report("a file in a directory a group we are in can write is read",
+               PMIX_SUCCESS == rc && 1 == nseen);
+    }
+    (void) chmod(a, 0700);
+
+    /* a link is followed, and its target's directory checked too */
+    put(g, 0644);
+    if (0 == symlink(g, link)) {
+        rc = parse_at(link);
+        report("a link to a sound file is followed", PMIX_SUCCESS == rc && 1 == nseen);
+        (void) chmod(b, 0777);
+        rc = parse_at(link);
+        report("a link into a directory anyone can write is passed over",
+               PMIX_ERR_NOT_FOUND == rc && 0 == nseen);
+        (void) chmod(b, 0700);
+        unlink(link);
+    } else {
+        report("who could write: symlink", 0);
+    }
+
+    /* a FIFO cannot hold up the open, and is no file to read */
+    if (0 == mkfifo(fifo, 0600)) {
+        alarm(10);
+        rc = parse_at(fifo);
+        alarm(0);
+        report("a FIFO is passed over, at once", PMIX_ERR_NOT_FOUND == rc && 0 == nseen);
+        unlink(fifo);
+    } else {
+        report("who could write: mkfifo", 0);
+    }
+
+    /* a group we are not in - only root can give a file one, and root
+     * takes no group write at all; as anyone else, a file only gets a
+     * group we are in */
+    if (root && 0 == chown(f, (uid_t) -1, 65534)) {
+        (void) chmod(f, 0664);
+        rc = parse_at(f);
+        report("as root, a file another group can write is passed over",
+               PMIX_ERR_NOT_FOUND == rc && 0 == nseen);
+    }
+
+    unlink(f);
+    unlink(g);
+    rmdir(a);
+    rmdir(b);
+    rmdir(base);
+    reset_seen();
+}
+
 /* parse the fixture as a stream the caller opened, reading at most
  * maxbytes */
 static int parse_stream_text(const char *contents, size_t maxbytes)
@@ -721,6 +853,7 @@ int main(int argc, char **argv)
     test_long_lines();
     test_finalize_drops_pending_envars();
     test_root_trusts_only_root_files();
+    test_who_could_write();
     test_stream_limits();
 
     pmix_util_keyval_parse_finalize();
