@@ -2034,6 +2034,22 @@ run `util_printf`.
 
 ### `pmix_keyval_parse` — the MCA parameter file
 
+**Who could have written it decides whether it is read.** A parameter
+file sets any parameter, so `pmix_util_keyval_parse()` opens it
+non-blocking (a FIFO at the name cannot hold up the open), checks the
+descriptor it opened and the directory holding it (`paramfile_unsound()`),
+and passes over - with a message, returning `PMIX_ERR_NOT_FOUND` as for a
+missing file - anything somebody else could have written: not a regular
+file, owned by neither root nor us, writable by others, or writable by a
+group we are not in (`our_group()` asks the kernel - `getegid()`,
+`getgroups()` - so it needs no NSS lookup and works however early it is
+called). A sticky directory leaves the file to its owner. A symlink is
+followed, and the directory of its target is checked too. **A process
+running as root admits no group write**, since root's groups can hold
+ordinary users. This used to be checked only for root, and only on the
+file. `pmix_util_keyval_parse_stream()` takes a stream its caller opened
+and checked (`pmdl/ompi`), and applies none of this.
+
 One `FILE*` read a line at a time, under `keyval_mutex`. A line is a
 `#`/`//`/block comment, a `name = value` pair, or one or more `-mca name
 value` / `-x NAME[=VALUE]` directives; only the first two forms are
