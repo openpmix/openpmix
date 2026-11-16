@@ -560,13 +560,13 @@ $(ALL_MAN_BUILT): $(CODE_OF_CONDUCT_RST) $(SECURITY_RST)
 
 $(CODE_OF_CONDUCT_RST): $(top_srcdir)/.github/CODE_OF_CONDUCT.md
 $(CODE_OF_CONDUCT_RST): generate-rst-from-md.py
-	$(PMIX_V_GEN) python3 $(srcdir)/generate-rst-from-md.py \
+	$(PMIX_V_GEN) $(PYTHON) $(srcdir)/generate-rst-from-md.py \
 		--input $(top_srcdir)/.github/CODE_OF_CONDUCT.md \
 		--label .github/CODE_OF_CONDUCT.md --output $@
 
 $(SECURITY_RST): $(top_srcdir)/SECURITY.md
 $(SECURITY_RST): generate-rst-from-md.py
-	$(PMIX_V_GEN) python3 $(srcdir)/generate-rst-from-md.py \
+	$(PMIX_V_GEN) $(PYTHON) $(srcdir)/generate-rst-from-md.py \
 		--input $(top_srcdir)/SECURITY.md \
 		--label SECURITY.md --output $@
 
