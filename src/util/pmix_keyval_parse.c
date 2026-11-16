@@ -52,6 +52,9 @@
 #include "src/include/pmix_config.h"
 
 #include <errno.h>
+#include <fcntl.h>
+#include <libgen.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -645,16 +648,142 @@ int pmix_util_keyval_parse_stream(FILE *fp, const char *filename, size_t maxbyte
     return ret;
 }
 
+/*
+ * Who could have written a parameter file. A file sets any parameter it
+ * names, so it is read only if nobody could have written it but root, the
+ * user we run as, and - for a process not running as root - the members of
+ * a group it belongs to. That is decided for the file, on the descriptor
+ * actually opened, and for the directory holding it, since whoever can
+ * write a directory can replace what is in it; a sticky directory leaves a
+ * file to its owner, which the file's own test decides. A symbolic link is
+ * followed - parameter files are commonly linked into place - and then the
+ * directory of the file it resolves to is tested as well as the
+ * directory holding the link.
+ *
+ * A process running as root takes no group's word: the members of a group
+ * root belongs to can be ordinary users.
+ */
+
+/* Is gid one of ours? The kernel holds our groups, so this needs no
+ * lookup and works however early it is asked. */
+static bool our_group(gid_t gid)
+{
+    gid_t *groups;
+    int n, i;
+    bool found = false;
+
+    if (gid == getegid()) {
+        return true;
+    }
+    n = getgroups(0, NULL);
+    if (0 >= n) {
+        return false;
+    }
+    groups = (gid_t *) malloc((size_t) n * sizeof(gid_t));
+    if (NULL == groups) {
+        return false;
+    }
+    n = getgroups(n, groups);
+    for (i = 0; i < n; i++) {
+        if (groups[i] == gid) {
+            found = true;
+            break;
+        }
+    }
+    free(groups);
+    return found;
+}
+
+/* NULL if only root, we and - unless we are root - our groups could have
+ * written what st describes, the file or (directory) the directory holding
+ * it; else what is wrong. */
+static const char *writers_unsound(const struct stat *st, bool directory)
+{
+    if (0 != st->st_uid && geteuid() != st->st_uid) {
+        return directory ? "its directory is owned by another user"
+                         : "it is owned by another user";
+    }
+    if (directory && 0 != (st->st_mode & S_ISVTX)) {
+        return NULL;
+    }
+    if (0 != (st->st_mode & S_IWOTH)) {
+        return directory ? "its directory can be written by anyone"
+                         : "it can be written by anyone";
+    }
+    if (0 != (st->st_mode & S_IWGRP) && (0 == geteuid() || !our_group(st->st_gid))) {
+        if (0 == geteuid()) {
+            return directory ? "its directory can be written by its group, and we run as root"
+                             : "it can be written by its group, and we run as root";
+        }
+        return directory ? "its directory can be written by a group we are not in"
+                         : "it can be written by a group we are not in";
+    }
+    return NULL;
+}
+
+static const char *directory_unsound(const char *path)
+{
+    struct stat st;
+    char *copy, *dir;
+    const char *why;
+
+    copy = strdup(path);
+    if (NULL == copy) {
+        return "its directory could not be checked";
+    }
+    dir = dirname(copy);
+    why = (0 != stat(dir, &st)) ? "its directory could not be checked"
+                                : writers_unsound(&st, true);
+    free(copy);
+    return why;
+}
+
+/* NULL if the file open on fd, at path, may be read */
+static const char *paramfile_unsound(int fd, const char *path)
+{
+    struct stat st;
+    char real[PATH_MAX];
+    const char *why;
+
+    if (0 != fstat(fd, &st)) {
+        return "it could not be checked";
+    }
+    if (!S_ISREG(st.st_mode)) {
+        return "it is not a regular file";
+    }
+    if (NULL != (why = writers_unsound(&st, false))) {
+        return why;
+    }
+    if (NULL != (why = directory_unsound(path))) {
+        return why;
+    }
+    /* reached through a link: the directory of what it names, too */
+    if (0 == lstat(path, &st) && S_ISLNK(st.st_mode)) {
+        if (NULL == realpath(path, real)) {
+            return "the file it links to could not be checked";
+        }
+        if (NULL != (why = directory_unsound(real))) {
+            return why;
+        }
+    }
+    return NULL;
+}
+
 int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback,
                            void *cbdata)
 {
     FILE *fp;
+    int fd, flags;
+    const char *why;
     int ret = PMIX_SUCCESS;
 
     pmix_mutex_lock(&keyval_mutex);
 
-    fp = pmix_fd_fopen_cloexec(filename, "r");
-    if (NULL == fp) {
+    /* O_NONBLOCK so that a FIFO at the name cannot hold up the open,
+     * O_NOCTTY so that a terminal there does not become our controlling
+     * terminal; a regular file is then read with blocking set again */
+    fd = open(filename, O_RDONLY | O_NONBLOCK | O_NOCTTY | PMIX_O_CLOEXEC);
+    if (0 > fd) {
         /* Our caller treats PMIX_ERR_NOT_FOUND as "there is no such file,
          * carry on", which is right for the default parameter files since
          * most systems have none of them.  It is not right for a file that
@@ -671,21 +800,21 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
         goto cleanup;
     }
 
-    /* A process running as root takes its settings only from a file root
-     * controls: one owned by root that no group or other user can write.
-     * Anything else is passed over, as a file that is not there would be,
-     * but said so. */
-    if (0 == geteuid()) {
-        struct stat st;
-
-        if (0 != fstat(fileno(fp), &st) || 0 != st.st_uid ||
-            0 != (st.st_mode & (S_IWGRP | S_IWOTH))) {
-            pmix_output(0, "keyval parser: ignoring file %s: running as root, and it is not "
-                           "a file only root can write", filename);
-            fclose(fp);
-            ret = PMIX_ERR_NOT_FOUND;
-            goto cleanup;
-        }
+    /* A file somebody else could have written is passed over, as a file
+     * that is not there would be, but said so - see writers_unsound() */
+    if (NULL != (why = paramfile_unsound(fd, filename))) {
+        pmix_output(0, "keyval parser: ignoring file %s: %s", filename, why);
+        close(fd);
+        ret = PMIX_ERR_NOT_FOUND;
+        goto cleanup;
+    }
+    flags = fcntl(fd, F_GETFL);
+    if (0 > flags || 0 > fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) ||
+        NULL == (fp = fdopen(fd, "r"))) {
+        pmix_output(0, "keyval parser: cannot read file %s: %s", filename, strerror(errno));
+        close(fd);
+        ret = PMIX_ERR_NOT_FOUND;
+        goto cleanup;
     }
 
     ret = parse_stream(fp, filename, 0, callback, cbdata);
