@@ -100,6 +100,19 @@ string is never forwarded at all: a zero-length payload is how IOF is
 told that a source closed its stream, and `pmix_iof_write_handler`
 responds by closing the descriptor.
 
+### Output for some tools only
+
+A server's own output reaches every tool registered for it, and every tool
+that connects is registered. `PMIX_LOG_TARGET` in the directives names the
+procs a message is for; `mylog` passes it and `PMIX_REQUESTOR` (shallow
+copies, nothing else) to `pmix_server_iof_deliver_local()`, whose
+`deliver_targeted()` serves only those procs' registrations, never caches,
+and writes the message to the server's own stream when none is registered.
+The target list itself is not forwarded; `PMIX_REQUESTOR` is, for a tool
+relaying on someone's behalf. `pmix_show_help_norender_dirs()` is the
+entry point a host uses to put it on a rendered show_help. The test is
+`test/unit/iof_log_target.c`.
+
 ### Return code
 
 `mylog` counts the entries it actually delivered and returns

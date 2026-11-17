@@ -206,6 +206,18 @@ The ``directives`` array qualifies how the request is handled. Commonly used dir
   of messages recorded is bounded by the ``plog_base_max_suppressed`` MCA parameter (see
   `MCA PARAMETERS`_).
 
+* ``PMIX_LOG_TARGET`` (pmix_data_array_t\* of pmix_proc_t) |mdash| the only processes a
+  ``PMIX_LOG_STDOUT`` or ``PMIX_LOG_STDERR`` message logged by a PMIx server is to reach. A
+  server's own output goes to every tool registered for it, and every tool that connects to the
+  server is registered for it; with this directive, only the registrations of the named
+  processes are served, a rank of ``PMIX_RANK_WILDCARD`` naming every process of that
+  namespace. A ``PMIX_REQUESTOR`` directive in the same request goes to them with the output,
+  so a tool relaying for another - a scheduler, say - knows on whose behalf it was sent; the
+  target list does not. The message is not cached for a later registration. When none of the
+  named processes is registered - a tool that has disconnected - or the value is not an array
+  of procs, the message is written to the server's own stream and to no tool. A client or tool
+  writes its own output to its own stream, and ignores the directive.
+
 The following directives request that the launcher log specific runtime events on the requestor's
 behalf using ``PMIx_Log``:
 
