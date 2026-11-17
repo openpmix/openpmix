@@ -356,6 +356,11 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
             goto cleanup;
         } else {
             trk->host_called = true;
+            if (PMIX_SUCCESS != pmix_server_trk_set_participants(trk)) {
+                /* the host is told less, not nothing - see
+                 * pmix_server_set_participants() */
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            }
             rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc,
                                              trk);
             if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
@@ -842,6 +847,11 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
             goto cleanup;
         } else {
             trk->host_called = true;
+            if (PMIX_SUCCESS != pmix_server_trk_set_participants(trk)) {
+                /* the host is told less, not nothing - see
+                 * pmix_server_set_participants() */
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+            }
             rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc, trk);
             if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
                 /* clear the caddy from this tracker so it can be

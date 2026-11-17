@@ -1945,6 +1945,11 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
          * reads the pointer later from another thread */
         cancel_collective_timer(trk);
         trk->host_called = true;
+        if (PMIX_SUCCESS != pmix_server_trk_set_participants(trk)) {
+            /* the host is told less, not nothing - see
+             * pmix_server_set_participants() */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        }
         rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info, trk->ninfo, data, sz,
                                        trk->modexcbfunc, trk);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
@@ -1964,6 +1969,11 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
         }
         cancel_collective_timer(trk);
         trk->host_called = true;
+        if (PMIX_SUCCESS != pmix_server_trk_set_participants(trk)) {
+            /* the host is told less, not nothing - see
+             * pmix_server_set_participants() */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        }
         rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info, trk->ninfo, trk->op_cbfunc,
                                       trk);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
@@ -1981,6 +1991,11 @@ void pmix_server_execute_collective(int sd, short args, void *cbdata)
         }
         cancel_collective_timer(trk);
         trk->host_called = true;
+        if (PMIX_SUCCESS != pmix_server_trk_set_participants(trk)) {
+            /* the host is told less, not nothing - see
+             * pmix_server_set_participants() */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        }
         rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info, trk->ninfo, trk->op_cbfunc,
                                          trk);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {

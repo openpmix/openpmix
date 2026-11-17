@@ -537,7 +537,17 @@ typedef uint32_t pmix_rank_t;
                                                                     //         reported to host by server library
 #define PMIX_SORTED_PROC_ARRAY              "pmix.sorted.parr"      // (bool) Proc array being passed has been sorted
 #define PMIX_LOCAL_PARTICIPANTS             "pmix.lcl.part"         // (pmix_data_array_t*) Array of pmix_proc_t identifiers of local procs
-                                                                    //         that participated in a collective operation (e.g., PMIx_Group_construct)
+                                                                    //         that participated in a collective operation (e.g., PMIx_Group_construct).
+                                                                    //         Supplied by the server library to the host on the fence_nb, connect,
+                                                                    //         disconnect and group upcalls, sorted and without repeats. A namespace
+                                                                    //         all of whose local procs participated is given once, with rank
+                                                                    //         PMIX_RANK_LOCAL_PEERS, meaning every proc of it on the server's node
+#define PMIX_COLLECTIVE_NONPARTICIPANTS     "pmix.coll.nonpart"     // (pmix_data_array_t*) Array of pmix_proc_t identifiers of procs that
+                                                                    //         were expected to participate in a collective operation and were
+                                                                    //         still alive, but did not participate - e.g., when the operation timed
+                                                                    //         out, or a fault-tolerant group construct completed without them.
+                                                                    //         Returned by the host in its results, and passed to the caller in
+                                                                    //         the results of PMIx_Group_construct
 
 
 /* event handler registration and notification info keys */

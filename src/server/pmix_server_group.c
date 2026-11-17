@@ -243,6 +243,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(grp_shifter_t,
 
 /* DEFINE LOCAL FUNCTIONS */
 static pmix_status_t aggregate_info(grp_block_t *blk);
+static void grp_set_participants(grp_block_t *blk, pmix_info_t **info, size_t *ninfo);
 static bool grp_notify_termination(grp_block_t *blk);
 static void forward_to_host(grp_block_t *blk);
 
@@ -797,8 +798,8 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
     pmix_server_caddy_t *cd;
     pmix_buffer_t *reply;
     pmix_status_t ret, rc;
-    size_t n, ctxid = SIZE_MAX, nmembers = 0;
-    pmix_proc_t *members = NULL;
+    size_t n, ctxid = SIZE_MAX, nmembers = 0, nnonpart = 0;
+    pmix_proc_t *members = NULL, *nonpart = NULL;
     bool ctxid_given = false;
     bool packed;
     pmix_info_t *iptr, *pinfo;
@@ -854,6 +855,16 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
             }
             members = (pmix_proc_t*)scd->info[n].value.data.darray->array;
             nmembers = scd->info[n].value.data.darray->size;
+
+        } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_COLLECTIVE_NONPARTICIPANTS)) {
+            /* the members the host says never took part - for the
+             * participants, whatever the outcome */
+            if (!pmix_server_valid_darray(&scd->info[n], PMIX_PROC, 1)) {
+                PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
+                continue;
+            }
+            nonpart = (pmix_proc_t *) scd->info[n].value.data.darray->array;
+            nnonpart = scd->info[n].value.data.darray->size;
 
         } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_INFO_ARRAY) ||
                    PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_INFO)) {
@@ -1060,6 +1071,23 @@ reply:
                         }
                     }
                     if (!packed) {
+                        continue;
+                    }
+                }
+                /* The members that never took part, when the host says.
+                 * Appended after everything else - after the status alone
+                 * when the construct failed - so a client that does not
+                 * look for it stops reading before it, and one that does
+                 * finds the end of the buffer when a server or host does
+                 * not send it. */
+                if (PMIX_GROUP_CONSTRUCT == op && 0 < nnonpart) {
+                    PMIX_BFROPS_PACK(ret, cd->peer, reply, &nnonpart, 1, PMIX_SIZE);
+                    if (PMIX_SUCCESS == ret) {
+                        PMIX_BFROPS_PACK(ret, cd->peer, reply, nonpart, nnonpart, PMIX_PROC);
+                    }
+                    if (PMIX_SUCCESS != ret) {
+                        PMIX_ERROR_LOG(ret);
+                        PMIX_RELEASE(reply);
                         continue;
                     }
                 }
@@ -1292,6 +1320,32 @@ static void group_timeout(int sd, short args, void *cbdata)
         return;
     }
     abort_construct(blk, PMIX_ERR_TIMEOUT);
+}
+
+/* Name this block's callers for the host - see pmix_server_set_participants().
+ * They are spread across the block's trackers, one per call. A failure only
+ * leaves the host without the list, which it has to cope with anyway: a server
+ * before v7.0 never sends one. */
+static void grp_set_participants(grp_block_t *blk, pmix_info_t **info, size_t *ninfo)
+{
+    grp_trk_t *trk;
+    pmix_list_t **cbs;
+    size_t n = 0;
+    pmix_status_t rc;
+
+    cbs = (pmix_list_t **) calloc(pmix_list_get_size(&blk->mbrs) + 1, sizeof(pmix_list_t *));
+    if (NULL == cbs) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return;
+    }
+    PMIX_LIST_FOREACH (trk, &blk->mbrs, grp_trk_t) {
+        cbs[n++] = &trk->local_cbs;
+    }
+    rc = pmix_server_set_participants(info, ninfo, cbs, n);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    free(cbs);
 }
 
 static pmix_status_t aggregate_info(grp_block_t *blk)
@@ -3094,6 +3148,7 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
          * same block to the host a second time. account_departed was
          * shielded from that only by its separate nlocal test. */
         blk->host_called = true;
+        grp_set_participants(blk, &trk->info, &trk->ninfo);
         rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, blk->id, trk->pcs, trk->npcs,
                                     trk->info, trk->ninfo, grpcbfunc, blk);
         if (PMIX_SUCCESS == rc) {
@@ -3185,6 +3240,7 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     }
     // the local phase is complete - freeze it and pass up to the host
     blk->host_called = true;
+    grp_set_participants(blk, &blk->info, &blk->ninfo);
     rc = pmix_host_server.group(op, blk->id, trk->pcs, trk->npcs,
                                 blk->info, blk->ninfo, grpcbfunc, blk);
     if (PMIX_SUCCESS == rc) {
@@ -3291,6 +3347,7 @@ static void forward_to_host(grp_block_t *blk)
         blk->event_active = false;
     }
     blk->host_called = true;
+    grp_set_participants(blk, &blk->info, &blk->ninfo);
     rc = pmix_host_server.group(blk->grpop, blk->id, trk->pcs, trk->npcs,
                                 blk->info, blk->ninfo, grpcbfunc, blk);
     if (PMIX_SUCCESS == rc) {
