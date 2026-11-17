@@ -1051,6 +1051,13 @@ static void fence_timeout(int sd, short args, void *cbdata)
         return;
     }
 
+    /* With a host, the fence goes up as it stands - its timeout status and
+     * the participants it has - and the host decides, knowing what every
+     * server had (pmix_server_trk_expire). Without one it fails here. */
+    if (PMIX_SUCCESS == pmix_server_trk_expire(trk)) {
+        return;
+    }
+
     /* execute the provided callback function with the error */
     if (NULL != trk->modexcbfunc) {
         trk->modexcbfunc(PMIX_ERR_TIMEOUT, NULL, 0, trk, NULL, NULL);
@@ -2065,6 +2072,14 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         }
     }
 
+    /* already handed to the host after it ran out of time: this caller
+     * missed the deadline - see pmix_server_trk_expire */
+    if (trk->expired) {
+        PMIX_INFO_FREE(info, ninfo);
+        rc = PMIX_ERR_TIMEOUT;
+        goto cleanup;
+    }
+
     /* we only save the info structs from the first caller
      * who provides them - it is a user error to provide
      * different values from different participants */
@@ -2395,6 +2410,192 @@ done:
         PMIX_PROC_FREE(out, nall);
     }
     return rc;
+}
+
+/*
+ * Expiry: handing a collective up before all of its local participants
+ * have called.
+ *
+ * A collective is collected locally and handed to the host once every local
+ * participant has called. When it runs out of time first - its own
+ * PMIX_TIMEOUT fires, or the host says so (PMIx_server_collective_expire) -
+ * it used to be failed here, and the host never heard: a host waiting on
+ * every server could say only that some had not reported, not which of
+ * their processes had not called. Now, when there is a host to hand it to,
+ * it goes up as it stands: PMIX_ERR_TIMEOUT as its local status, and the
+ * participants it has. The host completes it like any other, with the
+ * status it decides on. Each server's timer starts when its own first
+ * participant calls, so the servers' deadlines differ; a host that wants
+ * one deadline for all of them expires each server's collective itself.
+ *
+ * A process that calls the collective after it has gone up is answered
+ * PMIX_ERR_TIMEOUT rather than added: the host has the participant list
+ * already, and that process missed the deadline.
+ */
+pmix_status_t pmix_server_trk_expire(pmix_server_trkr_t *trk)
+{
+    pmix_trkr_caddy_t *tcd;
+    bool have_host;
+
+    if (trk->host_called || trk->completion_fired || trk->expired) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    if (trk->local) {
+        /* the host plays no part in a strictly local collective */
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    switch (trk->type) {
+    case PMIX_FENCENB_CMD:
+        have_host = (NULL != pmix_host_server.fence_nb);
+        break;
+    case PMIX_CONNECTNB_CMD:
+        have_host = (NULL != pmix_host_server.connect);
+        break;
+    case PMIX_DISCONNECTNB_CMD:
+        have_host = (NULL != pmix_host_server.disconnect);
+        break;
+    default:
+        have_host = false;
+        break;
+    }
+    if (!have_host) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    tcd = PMIX_NEW(pmix_trkr_caddy_t);
+    if (NULL == tcd) {
+        return PMIX_ERR_NOMEM;
+    }
+    trk->expired = true;
+    pmix_server_set_collective_status(trk->info, trk->ninfo, PMIX_ERR_TIMEOUT);
+    /* the caddy's destructor gives this reference back */
+    PMIX_RETAIN(trk);
+    tcd->trk = trk;
+    /* we are on the progress thread, as the handler expects */
+    pmix_server_execute_collective(0, 0, tcd);
+    return PMIX_SUCCESS;
+}
+
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_collective_op_t op;
+    const char *id;
+    const pmix_proc_t *procs;
+    size_t nprocs;
+    pmix_op_cbfunc_t cbfunc;
+    void *cbdata;
+} pmix_expire_caddy_t;
+static PMIX_CLASS_INSTANCE(pmix_expire_caddy_t, pmix_object_t, NULL, NULL);
+
+static void _expire(int sd, short args, void *cbdata)
+{
+    pmix_expire_caddy_t *cd = (pmix_expire_caddy_t *) cbdata;
+    pmix_server_trkr_t *trk = NULL;
+    pmix_cmd_t type;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(cd);
+    switch (cd->op) {
+    case PMIX_COLLECTIVE_GROUP_CONSTRUCT:
+        rc = pmix_server_grp_expire(PMIX_GROUP_CONSTRUCT, cd->id);
+        break;
+    case PMIX_COLLECTIVE_GROUP_DESTRUCT:
+        rc = pmix_server_grp_expire(PMIX_GROUP_DESTRUCT, cd->id);
+        break;
+    case PMIX_COLLECTIVE_FENCE:
+    case PMIX_COLLECTIVE_CONNECT:
+    case PMIX_COLLECTIVE_DISCONNECT:
+        type = (PMIX_COLLECTIVE_FENCE == cd->op)     ? PMIX_FENCENB_CMD
+               : (PMIX_COLLECTIVE_CONNECT == cd->op) ? PMIX_CONNECTNB_CMD
+                                                     : PMIX_DISCONNECTNB_CMD;
+        rc = PMIX_ERR_NOT_FOUND;
+        if (NULL != cd->procs && 0 < cd->nprocs) {
+            /* the lookup compares - it changes nothing when given no id */
+            trk = pmix_server_get_tracker(NULL, (pmix_proc_t *) cd->procs, cd->nprocs, type);
+        }
+        if (NULL != trk && trk->type == type) {
+            rc = pmix_server_trk_expire(trk);
+        }
+        break;
+    default:
+        rc = PMIX_ERR_BAD_PARAM;
+        break;
+    }
+    if (PMIX_ERR_NOT_SUPPORTED == rc) {
+        /* nothing the host can be handed - a collective it plays no
+         * part in is not one it can expire */
+        rc = PMIX_ERR_NOT_FOUND;
+    }
+    if (NULL != cd->cbfunc) {
+        cd->cbfunc(rc, cd->cbdata);
+    }
+    PMIX_RELEASE(cd);
+}
+
+pmix_status_t PMIx_server_collective_expire(pmix_collective_op_t op, const char *id,
+                                            const pmix_proc_t procs[], size_t nprocs,
+                                            const pmix_info_t info[], size_t ninfo,
+                                            pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_expire_caddy_t *cd;
+    pmix_lock_t mylock;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
+
+    pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:server collective expire");
+
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+    if (PMIX_COLLECTIVE_GROUP_CONSTRUCT == op || PMIX_COLLECTIVE_GROUP_DESTRUCT == op) {
+        if (NULL == id) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+    } else if (PMIX_COLLECTIVE_FENCE == op || PMIX_COLLECTIVE_CONNECT == op ||
+               PMIX_COLLECTIVE_DISCONNECT == op) {
+        if (NULL == procs || 0 == nprocs) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+    } else {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    cd = PMIX_NEW(pmix_expire_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->op = op;
+    cd->id = id;
+    cd->procs = procs;
+    cd->nprocs = nprocs;
+    cd->cbfunc = cbfunc;
+    cd->cbdata = cbdata;
+
+    if (NULL == cbfunc) {
+        if (pmix_progress_thread_check_blocking("PMIx_server_collective_expire")) {
+            /* waiting for the event we would post, on the thread that
+             * would run it */
+            PMIX_RELEASE(cd);
+            return PMIX_ERR_WOULD_BLOCK;
+        }
+        PMIX_CONSTRUCT_LOCK(&mylock);
+        cd->cbfunc = pmix_server_lock_opcbfunc;
+        cd->cbdata = &mylock;
+        PMIX_THREADSHIFT(cd, _expire);
+        PMIX_WAIT_THREAD(&mylock);
+        rc = mylock.status;
+        if (PMIX_SUCCESS == rc) {
+            rc = PMIX_OPERATION_SUCCEEDED;
+        }
+        PMIX_DESTRUCT_LOCK(&mylock);
+        return rc;
+    }
+    PMIX_THREADSHIFT(cd, _expire);
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_server_trk_set_participants(pmix_server_trkr_t *trk)

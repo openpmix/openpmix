@@ -1204,6 +1204,24 @@ reply - after the status alone when the construct failed - where
 `construct_cbfunc` reads it if it is there. See
 `docs/how-things-work/collectives/local_participants.rst`.
 
+**A collective that runs out of time goes up as it stands.** When a
+local timer fires (`fence_timeout`, connect's `collective_timeout`,
+`group_timeout`) or the host calls `PMIx_server_collective_expire`, a
+collective still collecting is handed to the host now -
+`pmix_server_trk_expire` for a tracker, `grp_expire_block` for a group
+block - with `PMIX_ERR_TIMEOUT` set as its local status and the
+participants it has. Only when there is no host entry point to call (or a
+strictly local fence) does it fail locally, as everything used to. The
+`expired` flag on the tracker and the block then refuses a later caller
+with `PMIX_ERR_TIMEOUT` (`pmix_server_fence`, both connect handlers,
+`get_tracker` in the group code) rather than adding it to a collective
+the host already has. The departed policy in `forward_to_host` is
+skipped for an expired block: the host decides. A host must not complete
+a `PMIX_ERR_TIMEOUT` collective as a success - `test/simple/simptest.c`'s
+group entry point ignored the local status and did exactly that - while
+`PMIX_ERR_LOST_CONNECTION` on a fault-tolerant construct is a degraded
+success, not a failure.
+
 **Finishing a tracker's definition is per-tracker, and adds to the
 count.** `_register_nspace` and `_register_client` walk every incomplete
 tracker when a registration lands, and both halves of that walk were

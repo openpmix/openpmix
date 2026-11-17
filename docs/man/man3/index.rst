@@ -268,6 +268,7 @@ APIs (section 3)
    PMIx_server_setup_application.3.rst
    PMIx_server_setup_local_support.3.rst
    PMIx_server_register_resources.3.rst
+   PMIx_server_collective_expire.3.rst
    PMIx_server_deregister_resources.3.rst
    PMIx_Register_attributes.3.rst
    PMIx_server_dmodex_request.3.rst

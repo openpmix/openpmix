@@ -91,6 +91,45 @@ children's lists without opening them; and only the controller expands
 the lists, through the job map, when it needs the non-participants or the
 membership check.
 
+When a collective runs out of time
+----------------------------------
+
+A server hands a collective up only once every local participant has called,
+so on its own the participant list says nothing about a collective that never
+completes: the servers holding its missing members never send anything. Two
+things change that.
+
+* **A server's own timeout hands up what it has.** When a participant gave a
+  ``PMIX_TIMEOUT`` and the server's timer fires before every local participant
+  has called, the server hands the collective to the host as it stands
+  |mdash| ``PMIX_ERR_TIMEOUT`` as the ``PMIX_LOCAL_COLLECTIVE_STATUS``, and the
+  participants so far |mdash| instead of failing it locally. With no host entry
+  point to call, it fails it locally as before. A host must not complete a
+  collective whose local status is ``PMIX_ERR_TIMEOUT`` as a success: one that
+  ignored the local status would now complete a timed-out collective without
+  the members that never called. (A fault-tolerant group construct that lost a
+  member reports ``PMIX_ERR_LOST_CONNECTION`` and still forms on the survivors;
+  that status is not a failure of the collective.)
+
+* **The host can impose one deadline.** Each server's timer starts when its own
+  first local participant calls, so the servers' deadlines differ, by as much as
+  the members' arrival times do. A host that judged by its own deadline would
+  count as missing the members on a server whose timer had not fired yet, though
+  they called in time. :ref:`PMIx_server_collective_expire(3)
+  <man3-PMIx_server_collective_expire>` hands a server's collective up at once,
+  exactly as its timer would: a host that expires the collective at every server
+  when its own deadline passes hears from every server what it had at that
+  moment, and every subtree of its own completes.
+
+A process that calls a collective after it has been handed up this way is
+answered ``PMIX_ERR_TIMEOUT``: it missed the deadline.
+
+PRRTE's controller owns the deadline. The first of its own timer and the first
+contribution reaching it with a timeout status latches the operation as timed
+out; it then broadcasts an expiry, each daemon expires the collective at its
+server or, holding none, contributes an empty list, and the ordinary rollup
+brings every list to the controller.
+
 Telling the participants who never took part
 --------------------------------------------
 

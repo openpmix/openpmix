@@ -856,6 +856,10 @@ typedef struct {
      * never sets that (and two error paths deliberately clear it), which is
      * exactly the common case. See the collectives directory guide. */
     bool completion_fired;
+    /* handed to the host early - its timer fired, or the host expired it
+     * (PMIx_server_collective_expire) - with PMIX_ERR_TIMEOUT: a process
+     * that calls it now is answered that, not added */
+    bool expired;
     bool local;       // operation is strictly local
     char *id;         // string identifier for the collective
     pmix_cmd_t type;
