@@ -259,6 +259,12 @@ locates or creates the block via ``get_tracker()``. A call with ``nprocs ==
 both keep independent trackers (the leader is unknown) and are forwarded to
 the host immediately, one call per participant, without local aggregation.
 
+Every group upcall names the local processes that took part
+(``PMIX_LOCAL_PARTICIPANTS``), and a host's completion may name the members
+that never did (``PMIX_COLLECTIVE_NONPARTICIPANTS``), which the server relays
+to each participant in the construct's results - see
+:ref:`collective-participants-label`.
+
 For the collective (fully-specified) method:
 
 * ``check_definition_complete()`` walks all trackers' member procs, verifies

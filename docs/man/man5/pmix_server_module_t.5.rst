@@ -359,13 +359,15 @@ The ``info`` array may include ``PMIX_LOCAL_COLLECTIVE_STATUS``
 of the local portion of the collective |mdash| for example, an error detected
 among the local participants. A host that receives a failing status should
 propagate it into the collective result rather than proceeding with the data
-exchange. The library may likewise supply ``PMIX_LOCAL_PARTICIPANTS``
+exchange. From v7.0 the library also supplies ``PMIX_LOCAL_PARTICIPANTS``
 (pmix_data_array_t*), an array of ``pmix_proc_t`` identifying the local processes
-that contributed to the collective, and ``PMIX_SORTED_PROC_ARRAY`` (bool) to
+that contributed to the collective: sorted, each process once, and a namespace
+all of whose processes on this node contributed given once with rank
+``PMIX_RANK_LOCAL_PEERS``. It may supply ``PMIX_SORTED_PROC_ARRAY`` (bool) to
 indicate that the array of participating processes has already been sorted into
 canonical order so the host need not sort it again. These attributes apply
 equally to the other collective module functions below (``connect``,
-``disconnect``, and ``group``).
+``disconnect``, and ``group``). See :ref:`collective-participants-label`.
 
 .. _man5-pmix_server_module_t-direct_modex:
 
@@ -674,6 +676,13 @@ may request, for example, assignment of a group context ID. Results are returned
 through a ``pmix_info_cbfunc_t``. As with ``fence_nb``, the ``info`` array may
 carry ``PMIX_LOCAL_COLLECTIVE_STATUS``, ``PMIX_LOCAL_PARTICIPANTS``, and
 ``PMIX_SORTED_PROC_ARRAY`` describing the local portion of the collective.
+
+A host that knows which members of a construct never took part |mdash| for
+example because it timed out, or completed a ``PMIX_GROUP_FT_COLLECTIVE``
+construct without them |mdash| may name them in the ``info`` of its completion
+as ``PMIX_COLLECTIVE_NONPARTICIPANTS`` (pmix_data_array_t*, of
+``pmix_proc_t``); the server passes the list to each participant in the
+construct's results, whatever the construct's status.
 
 The server may make more than one ``group`` call for the same group ID and
 ``op``: bootstrap leaders and added members each arrive on a call of their own.

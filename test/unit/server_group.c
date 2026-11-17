@@ -21,6 +21,11 @@
  *
  * Test cases:
  *
+ *   the host is told who
+ *      took part             -> PMIX_LOCAL_PARTICIPANTS names the caller; a
+ *                               caller's own list is replaced, not passed;
+ *                               every local proc of a namespace is given as
+ *                               PMIX_RANK_LOCAL_PEERS, some of them by rank
  *   empty group id           -> PMIX_ERR_BAD_PARAM (kills an unfixed
  *                               library rather than failing it - see the
  *                               case)
@@ -138,6 +143,11 @@ static void report(const char *name, int passed)
 /* what the host's group entry point was handed */
 static bool group_fired = false;
 static size_t group_ninfo = 0;
+/* the PMIX_LOCAL_PARTICIPANTS the host was given */
+#define GRPUT_MAXPART 8
+static bool group_part_seen = false;
+static size_t group_npart = 0;
+static pmix_proc_t group_part[GRPUT_MAXPART];
 static bool group_status_last = false;
 /* whether the host was handed a PMIX_USERID or PMIX_GRPID, and whether
  * drive_group puts both after its first directive */
@@ -174,8 +184,23 @@ static pmix_status_t stub_group(pmix_group_operation_t op, char grp[],
     group_status_last = false;
     group_contrib_seen = false;
     group_has_id = false;
+    group_part_seen = false;
+    group_npart = 0;
     for (size_t d = 0; NULL != directives && d < ndirs; d++) {
         const pmix_info_t *gi;
+
+        if (PMIX_CHECK_KEY(&directives[d], PMIX_LOCAL_PARTICIPANTS) &&
+            PMIX_DATA_ARRAY == directives[d].value.type &&
+            NULL != directives[d].value.data.darray &&
+            PMIX_PROC == directives[d].value.data.darray->type) {
+            group_part_seen = true;
+            group_npart = directives[d].value.data.darray->size;
+            if (GRPUT_MAXPART >= group_npart && 0 < group_npart) {
+                memcpy(group_part, directives[d].value.data.darray->array,
+                       group_npart * sizeof(pmix_proc_t));
+            }
+            continue;
+        }
 
         if (PMIX_CHECK_KEY(&directives[d], PMIX_USERID) ||
             PMIX_CHECK_KEY(&directives[d], PMIX_GRPID)) {
@@ -260,6 +285,9 @@ typedef struct {
     /* when set, the infos are a PMIX_GROUP_ADD_MEMBERS naming these */
     const pmix_proc_t *addmbrs;
     size_t naddmbrs;
+    /* when set, the first info is a PMIX_LOCAL_PARTICIPANTS of the
+     * caller's own, naming this proc */
+    const pmix_proc_t *fakepart;
     pmix_status_t status;
 } grp_req_t;
 
@@ -328,7 +356,14 @@ static void do_group(int sd, short args, void *cbdata)
             return;
         }
         for (n = 0; n < r->ninf_real; n++) {
-            if (0 == n && r->bare_contribution) {
+            if (0 == n && NULL != r->fakepart) {
+                pmix_data_array_t *fp;
+
+                PMIX_DATA_ARRAY_CREATE(fp, 1, PMIX_PROC);
+                memcpy(fp->array, r->fakepart, sizeof(pmix_proc_t));
+                PMIX_INFO_LOAD(&dirs[n], PMIX_LOCAL_PARTICIPANTS, fp, PMIX_DATA_ARRAY);
+                PMIX_DATA_ARRAY_FREE(fp);
+            } else if (0 == n && r->bare_contribution) {
                 pmix_data_array_t *gi;
                 uint32_t gv = 7;
 
@@ -733,6 +768,172 @@ static pmix_status_t register_nspace(const char *ns)
 /* grpcbfunc thread-shifts, so let anything queued behind us run before we
  * look at grp_collectives. PMIx_Store_internal blocks on the progress
  * thread, so anything queued ahead of it has run by the time it returns. */
+/* pmix_server_set_participants(), on the progress thread, where the
+ * namespace list it reads lives */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_peer_t *a, *b, *c;
+    int failures;
+} part_req_t;
+
+static pmix_server_caddy_t *caller(pmix_list_t *l, pmix_peer_t *p)
+{
+    pmix_server_caddy_t *cd = PMIX_NEW(pmix_server_caddy_t);
+
+    cd->peer = p;
+    PMIX_RETAIN(p);
+    pmix_list_append(l, &cd->super);
+    return cd;
+}
+
+static const pmix_data_array_t *parts_of(pmix_info_t *info, size_t ninfo, size_t *at)
+{
+    size_t n;
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_LOCAL_PARTICIPANTS) &&
+            PMIX_DATA_ARRAY == info[n].value.type) {
+            *at = n;
+            return info[n].value.data.darray;
+        }
+    }
+    return NULL;
+}
+
+static void do_set_participants(int sd, short args, void *cbdata)
+{
+    part_req_t *r = (part_req_t *) cbdata;
+    pmix_list_t l1, l2;
+    pmix_list_t *cbs[2];
+    pmix_info_t *info = NULL;
+    size_t ninfo = 0, at = 0;
+    const pmix_data_array_t *d;
+    const pmix_proc_t *p;
+    pmix_status_t rc, st = PMIX_SUCCESS;
+    pmix_proc_t other;
+    pmix_data_array_t fake;
+    int f = 0;
+
+    (void) sd;
+    (void) args;
+    PMIX_CONSTRUCT(&l1, pmix_list_t);
+    PMIX_CONSTRUCT(&l2, pmix_list_t);
+
+    /* one of GRPUT_TWO's two local procs - named itself */
+    caller(&l1, r->b);
+    cbs[0] = &l1;
+    rc = pmix_server_set_participants(&info, &ninfo, cbs, 1);
+    d = parts_of(info, ninfo, &at);
+    p = (NULL != d) ? (const pmix_proc_t *) d->array : NULL;
+    if (PMIX_SUCCESS != rc || NULL == d || 1 != d->size || PMIX_PROC != d->type ||
+        !PMIX_CHECK_NSPACE(p[0].nspace, GRPUT_TWO) || 1 != p[0].rank) {
+        fprintf(stdout, "  FAIL: one of a namespace's local procs is named by rank\n");
+        ++f;
+    } else {
+        fprintf(stdout, "  PASS: one of a namespace's local procs is named by rank\n");
+    }
+
+    /* both of them, one of them twice, over two lists - the namespace once */
+    caller(&l1, r->b);
+    caller(&l2, r->a);
+    cbs[1] = &l2;
+    rc = pmix_server_set_participants(&info, &ninfo, cbs, 2);
+    d = parts_of(info, ninfo, &at);
+    p = (NULL != d) ? (const pmix_proc_t *) d->array : NULL;
+    if (PMIX_SUCCESS != rc || NULL == d || 1 != d->size || 1 != ninfo ||
+        !PMIX_CHECK_NSPACE(p[0].nspace, GRPUT_TWO) || PMIX_RANK_LOCAL_PEERS != p[0].rank) {
+        fprintf(stdout, "  FAIL: all of a namespace's local procs, a repeat among them, "
+                        "are its PMIX_RANK_LOCAL_PEERS - and replace the earlier list\n");
+        ++f;
+    } else {
+        fprintf(stdout, "  PASS: all of a namespace's local procs, a repeat among them, "
+                        "are its PMIX_RANK_LOCAL_PEERS - and replace the earlier list\n");
+    }
+    PMIX_INFO_FREE(info, ninfo);
+    info = NULL;
+    ninfo = 0;
+
+    /* a proc of another namespace too, after a trailing status: sorted, by
+     * namespace, and the status stays last */
+    caller(&l2, r->c);
+    PMIX_INFO_CREATE(info, 2);
+    ninfo = 2;
+    PMIX_INFO_LOAD(&info[0], PMIX_TIMEOUT, &ninfo, PMIX_SIZE);
+    PMIX_INFO_LOAD(&info[1], PMIX_LOCAL_COLLECTIVE_STATUS, &st, PMIX_STATUS);
+    rc = pmix_server_set_participants(&info, &ninfo, cbs, 2);
+    d = parts_of(info, ninfo, &at);
+    p = (NULL != d) ? (const pmix_proc_t *) d->array : NULL;
+    if (PMIX_SUCCESS != rc || NULL == d || 2 != d->size || 3 != ninfo || 1 != at ||
+        !PMIX_CHECK_KEY(&info[2], PMIX_LOCAL_COLLECTIVE_STATUS) ||
+        !PMIX_CHECK_KEY(&info[0], PMIX_TIMEOUT) ||
+        0 <= pmix_util_compare_proc(&p[0], &p[1])) {
+        fprintf(stdout, "  FAIL: two namespaces are given sorted, ahead of a trailing status\n");
+        ++f;
+    } else {
+        fprintf(stdout, "  PASS: two namespaces are given sorted, ahead of a trailing status\n");
+    }
+    PMIX_INFO_FREE(info, ninfo);
+
+    /* one a caller supplied is replaced in place */
+    PMIX_LOAD_PROCID(&other, "grput.someone-else", 3);
+    fake.type = PMIX_PROC;
+    fake.array = &other;
+    fake.size = 1;
+    PMIX_INFO_CREATE(info, 1);
+    ninfo = 1;
+    PMIX_INFO_LOAD(&info[0], PMIX_LOCAL_PARTICIPANTS, &fake, PMIX_DATA_ARRAY);
+    PMIX_LIST_DESTRUCT(&l2);
+    PMIX_CONSTRUCT(&l2, pmix_list_t);
+    rc = pmix_server_set_participants(&info, &ninfo, cbs, 1);
+    d = parts_of(info, ninfo, &at);
+    p = (NULL != d) ? (const pmix_proc_t *) d->array : NULL;
+    if (PMIX_SUCCESS != rc || 1 != ninfo || NULL == d || 1 != d->size ||
+        !PMIX_CHECK_NSPACE(p[0].nspace, GRPUT_TWO)) {
+        fprintf(stdout, "  FAIL: a list already there is replaced in place\n");
+        ++f;
+    } else {
+        fprintf(stdout, "  PASS: a list already there is replaced in place\n");
+    }
+    PMIX_INFO_FREE(info, ninfo);
+    info = NULL;
+    ninfo = 0;
+
+    /* nobody - an empty list, which says no local proc took part */
+    cbs[0] = &l2;
+    rc = pmix_server_set_participants(&info, &ninfo, cbs, 1);
+    d = parts_of(info, ninfo, &at);
+    if (PMIX_SUCCESS != rc || 1 != ninfo || NULL == d || 0 != d->size) {
+        fprintf(stdout, "  FAIL: no callers is an empty list\n");
+        ++f;
+    } else {
+        fprintf(stdout, "  PASS: no callers is an empty list\n");
+    }
+    PMIX_INFO_FREE(info, ninfo);
+
+    PMIX_LIST_DESTRUCT(&l1);
+    PMIX_LIST_DESTRUCT(&l2);
+    r->failures = f;
+    PMIX_WAKEUP_THREAD(&r->lock);
+}
+
+static void test_set_participants(pmix_peer_t *a, pmix_peer_t *b)
+{
+    part_req_t r;
+
+    memset(&r, 0, sizeof(r));
+    PMIX_CONSTRUCT_LOCK(&r.lock);
+    r.a = a;
+    r.b = b;
+    r.c = other_peer(GRPUT_NSPACE, 0);
+    PMIX_THREADSHIFT(&r, do_set_participants);
+    PMIX_WAIT_THREAD(&r.lock);
+    PMIX_DESTRUCT_LOCK(&r.lock);
+    PMIX_RELEASE(r.c);
+    nfail += r.failures;
+    npass += 5 - r.failures;
+}
+
 static void progress_barrier(void)
 {
     pmix_value_t v;
@@ -1085,11 +1286,46 @@ int main(int argc, char **argv)
     report("well-formed construct reached the host", group_fired);
     report("the host was given the group id we sent",
            NULL != group_id && 0 == strcmp("grput.good", group_id));
+    /* the directive, the participants, then the status - see
+     * pmix_server_set_participants() */
     report("the host was given the seeded status slot last",
-           2 == group_ninfo && group_status_last);
+           3 == group_ninfo && group_status_last);
+    /* the one caller, by name: its namespace has local procs it is not */
+    report("the host was told who took part - the one caller",
+           group_part_seen && 1 == group_npart &&
+               PMIX_CHECK_PROCID(&group_part[0], &pmix_globals.myid));
     /* the host declined, so the handler answered every participant and
      * tore the block down - nothing may be left waiting */
     report("a refused construct parks nothing", nothing_parked());
+
+    /* --- a caller's own participant list --- *
+     * the list is the server's to give: one a caller sends naming someone
+     * else is replaced by the caller itself */
+    {
+        grp_req_t req;
+        pmix_proc_t other;
+
+        PMIX_LOAD_PROCID(&other, "grput.someone-else", 3);
+        memset(&req, 0, sizeof(req));
+        PMIX_CONSTRUCT_LOCK(&req.lock);
+        req.grpid = "grput.fakepart";
+        req.pns = GRPUT_NSPACE;
+        req.nprocs = 1;
+        req.nprocs_real = 1;
+        req.ninf = 1;
+        req.ninf_real = 1;
+        req.fakepart = &other;
+        group_fired = false;
+        PMIX_THREADSHIFT(&req, do_group);
+        PMIX_WAIT_THREAD(&req.lock);
+        rc = req.status;
+        PMIX_DESTRUCT_LOCK(&req.lock);
+    }
+    report("a construct carrying its own participant list is accepted", PMIX_SUCCESS == rc);
+    report("...and the host is given the server's list, not the caller's",
+           group_fired && group_part_seen && 1 == group_npart &&
+               PMIX_CHECK_PROCID(&group_part[0], &pmix_globals.myid));
+    report("...in place of the caller's, not beside it", 2 == group_ninfo && group_status_last);
 
     /* --- a group operation names no requester --- *
      * it is made for all of its members, so a PMIX_USERID or PMIX_GRPID
@@ -1102,7 +1338,7 @@ int main(int argc, char **argv)
            PMIX_SUCCESS == rc && group_fired);
     report("the member's PMIX_USERID and PMIX_GRPID are not passed up", !group_has_id);
     report("the rest of its directives and the status slot are",
-           2 == group_ninfo && group_status_last);
+           3 == group_ninfo && group_status_last);
     report("and it parks nothing", nothing_parked());
 
     /* --- group info is the sender's own --- *
@@ -1221,6 +1457,17 @@ int main(int argc, char **argv)
     progress_barrier();
     report("a repeated membership is counted once per proc", group_fired);
     report("and its block does not park forever", nothing_parked());
+    /* both of GRPUT_TWO's local procs took part, so the host is given the
+     * namespace once, rather than each of its ranks */
+    report("every local proc of a namespace is given as PMIX_RANK_LOCAL_PEERS",
+           group_part_seen && 1 == group_npart &&
+               PMIX_CHECK_NSPACE(group_part[0].nspace, GRPUT_TWO) &&
+               PMIX_RANK_LOCAL_PEERS == group_part[0].rank);
+
+    /* --- the participant list itself --- *
+     * pmix_server_set_participants() is what every family's upcall uses, so
+     * the cases a group block cannot be steered into are driven directly */
+    test_set_participants(two0, two1);
 
     /* --- one member calling twice --- *
      * A block is locally complete when its expected local members are
