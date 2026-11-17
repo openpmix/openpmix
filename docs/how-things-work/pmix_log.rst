@@ -244,17 +244,12 @@ of plain stdio.
   endpoint, so there is nowhere to forward.
 * When called on a *server*: the output belongs to a process whose stdio
   the server manages, so it is handed to the IOF (I/O forwarding)
-  subsystem via the non-blocking ``PMIx_server_IOF_deliver()`` (targeting
-  ``PMIX_FWD_STDOUT_CHANNEL`` / ``PMIX_FWD_STDERR_CHANNEL``) so it appears
-  on the originating process's stdio.
-
-The server path allocates a small ``pmix_iof_deliver_t`` scratch object
-that carries a *copy* of the message bytes and the source ``pmix_proc_t``;
-a completion callback (``lkcbfunc``) releases it once IOF delivery
-finishes.  This is a deliberate, local exception to the framework's
-no-copy rule: because ``mylog`` returns before the async delivery
-completes, the caller's ``data`` array cannot be assumed live by then, so
-the payload must be copied.
+  subsystem on ``PMIX_FWD_STDOUT_CHANNEL`` / ``PMIX_FWD_STDERR_CHANNEL``
+  so it appears on the originating process's stdio and reaches the tools
+  registered for that process's output.  ``mylog`` runs on the progress
+  thread, so it calls ``pmix_server_iof_deliver_local()`` directly rather
+  than the thread-shifting ``PMIx_server_IOF_deliver()``; delivery copies
+  what it keeps, so nothing outlives the call.
 
 The component also honors the output-formatting directives
 ``PMIX_LOG_TAG_OUTPUT`` (prefix each line with its channel tag),
