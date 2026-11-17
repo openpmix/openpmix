@@ -78,8 +78,16 @@ collective at every server learns, from every server, who had taken part by the
 moment it chose, and can name the members that had not.
 
 The host completes an expired collective like any other, with the status it
-decides on. A process that calls the collective after it has been expired at its
-server is answered ``PMIX_ERR_TIMEOUT``: it missed the deadline.
+decides on |mdash| but it **must not** complete it as a success: its local status
+is ``PMIX_ERR_TIMEOUT``, and a success completes it without the members that
+never called. The same holds for a collective whose server's own timer fired. Do
+not confuse it with ``PMIX_ERR_LOST_CONNECTION``, which a server reports when a
+local participant was lost before contributing: on a ``PMIX_GROUP_FT_COLLECTIVE``
+construct that is a degraded success, and the group is to form on the
+survivors. See :ref:`pmix_server_module_t(5) <man5-pmix_server_module_t>`.
+
+A process that calls the collective after it has been expired at its server is
+answered ``PMIX_ERR_TIMEOUT``: it missed the deadline.
 
 A server holding no such collective still collecting |mdash| none of its local
 participants has called, the collective is already with the host, or it has no
