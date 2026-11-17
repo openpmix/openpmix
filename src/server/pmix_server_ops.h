@@ -1026,6 +1026,20 @@ PMIX_EXPORT void pmix_server_set_collective_status(pmix_info_t *info, size_t nin
 
 PMIX_EXPORT pmix_status_t pmix_server_get_collective_status(pmix_info_t *info, size_t ninfo);
 
+/* Tell the host which local procs took part in a collective: set
+ * PMIX_LOCAL_PARTICIPANTS in *info to the callers on the ncbs lists of
+ * pmix_server_caddy_t, sorted and without repeats, a namespace all of whose
+ * local procs called given once as PMIX_RANK_LOCAL_PEERS. Any such entry
+ * already there is replaced; a new one goes ahead of the slots the
+ * handlers seed at the end (PMIX_SORTED_PROC_ARRAY,
+ * PMIX_LOCAL_COLLECTIVE_STATUS), so those keep their places. Exported for
+ * the unit test. */
+PMIX_EXPORT pmix_status_t pmix_server_set_participants(pmix_info_t **info, size_t *ninfo,
+                                                       pmix_list_t *const cbs[], size_t ncbs);
+
+/* the same, for a tracker about to be handed to the host */
+PMIX_EXPORT pmix_status_t pmix_server_trk_set_participants(pmix_server_trkr_t *trk);
+
 /* the two lost-connection entry points, one per tracker family - both
  * account only for an abnormal termination (a peer that called
  * PMIx_Finalize remains an expected participant and is ignored) */

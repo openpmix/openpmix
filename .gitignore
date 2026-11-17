@@ -256,6 +256,7 @@ test/simple/pmitest
 test/simple/simpcycle
 test/simple/simpgrpmember
 test/simple/simpgrpref
+test/simple/simpgrpnonpart
 test/simple/simpgrpdie
 test/simple/simpgrpddie
 test/simple/simpgrpleader
@@ -439,6 +440,7 @@ test/unit/run_toolcycle.pl
 test/unit/run_toolswitch.pl
 test/unit/run_grpmember.pl
 test/unit/run_grpref.pl
+test/unit/run_grpnonpart.pl
 test/unit/run_grpinvite.pl
 test/unit/run_grpinviteendpts.pl
 test/unit/run_grpbadinfo.pl

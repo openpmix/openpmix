@@ -85,9 +85,11 @@ The blocking form returns results directly:
 
 * ``results``: Address of a pointer that, upon successful return, is set to an
   array of :ref:`pmix_info_t(5) <man5-pmix_info_t>` structs containing any values
-  returned by the operation (e.g., an assigned context ID). May be ``NULL`` if
-  the caller does not want the returned values. The caller is responsible for
-  releasing the array with ``PMIX_INFO_FREE``.
+  returned by the operation (e.g., an assigned context ID). On a failed return it
+  is set only when the values name members that never took part
+  (``PMIX_COLLECTIVE_NONPARTICIPANTS``), and is ``NULL`` otherwise. May be
+  ``NULL`` if the caller does not want the returned values. The caller is
+  responsible for releasing the array with ``PMIX_INFO_FREE`` whenever it is set.
 * ``nresults``: Address of a ``size_t`` that is set to the number of elements in
   the returned ``results`` array.
 
@@ -137,6 +139,13 @@ specified processes have joined the group (or the operation fails). Returned
 values are delivered in the ``results`` array. ``PMIx_Group_construct_nb`` is the
 non-blocking form: it returns immediately, and the provided ``cbfunc`` is invoked
 with the final status and any returned values once the operation completes.
+
+Where the host knows that some members were alive but never took part, the
+returned values include ``PMIX_COLLECTIVE_NONPARTICIPANTS``, an array of
+``pmix_proc_t`` naming them. The non-blocking form delivers it whatever the
+final status. The blocking form returns ``results`` on success and, on failure,
+only when they include this list |mdash| so a caller that may receive one must
+free ``results`` whenever it is set. See :ref:`collective-participants-label`.
 
 As with all non-blocking PMIx APIs, callers of ``PMIx_Group_construct_nb`` **must**
 keep the ``grp``, ``procs``, and ``info`` arrays valid until ``cbfunc`` is invoked.
