@@ -1040,6 +1040,18 @@ PMIX_EXPORT pmix_status_t pmix_server_set_participants(pmix_info_t **info, size_
 /* the same, for a tracker about to be handed to the host */
 PMIX_EXPORT pmix_status_t pmix_server_trk_set_participants(pmix_server_trkr_t *trk);
 
+/* Hand a fence, connect or disconnect tracker still collecting to the host
+ * now, with PMIX_ERR_TIMEOUT as its local status and the participants it
+ * has: PMIX_SUCCESS if handed up, PMIX_ERR_NOT_FOUND if it is no longer
+ * collecting, PMIX_ERR_NOT_SUPPORTED if there is no host to hand it to - a
+ * strictly local collective, or a host without the entry point - in which
+ * case the caller fails it locally as before. */
+PMIX_EXPORT pmix_status_t pmix_server_trk_expire(pmix_server_trkr_t *trk);
+
+/* The same for a group construct or destruct still collecting under this
+ * ID; PMIX_ERR_NOT_FOUND if there is none. */
+PMIX_EXPORT pmix_status_t pmix_server_grp_expire(pmix_group_operation_t op, const char *id);
+
 /* the two lost-connection entry points, one per tracker family - both
  * account only for an abnormal termination (a peer that called
  * PMIx_Finalize remains an expected participant and is ignored) */
