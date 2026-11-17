@@ -369,6 +369,16 @@ canonical order so the host need not sort it again. These attributes apply
 equally to the other collective module functions below (``connect``,
 ``disconnect``, and ``group``). See :ref:`collective-participants-label`.
 
+From v7.0 a collective whose local phase times out |mdash| a participant gave
+``PMIX_TIMEOUT`` and not every local participant called in time |mdash| is
+handed to the host as it stands, with ``PMIX_ERR_TIMEOUT`` as its
+``PMIX_LOCAL_COLLECTIVE_STATUS`` and the participants it has, rather than
+failed locally; the host can also hand it up early, at a deadline of its own,
+with :ref:`PMIx_server_collective_expire(3) <man3-PMIx_server_collective_expire>`.
+A host must therefore not complete a collective whose local status is
+``PMIX_ERR_TIMEOUT`` as a success: that completes it without the members that
+never called.
+
 .. _man5-pmix_server_module_t-direct_modex:
 
 direct_modex

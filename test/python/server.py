@@ -314,6 +314,16 @@ def main():
     drive_opt("iof_flow_control",
               foo.iof_flow_control(None, PMIX_FWD_STDIN_CHANNEL, True, [], nbcb,
                                    {'label': "iof_flow_control"}))
+    # nothing is collecting, so there is nothing to expire - the callback
+    # reports that
+    drive_opt("collective_expire",
+              foo.collective_expire(PMIX_COLLECTIVE_GROUP_CONSTRUCT, "nogroup", None, [],
+                                    nbcb, {'label': "collective_expire"}))
+    rc = foo.collective_expire(PMIX_COLLECTIVE_FENCE, None, [src], [])
+    if PMIX_ERR_NOT_FOUND != rc:
+        print("collective_expire FOUND A FENCE NOBODY CALLED:", foo.error_string(rc))
+        exit(1)
+    print("  collective_expire: blocking form answered (%s)" % foo.error_string(rc))
     # session_control is the one member of this family that reports
     # results, so it takes the info-style callback - three arguments, not
     # two - and needs its own waiter.  A standalone server has no
@@ -363,7 +373,9 @@ def main():
             ("iof_flow_control", foo.iof_flow_control(None,
                                                       PMIX_FWD_STDIN_CHANNEL,
                                                       True, [], 42)),
-            ("session_control", foo.session_control(1, [], 42))]:
+            ("session_control", foo.session_control(1, [], 42)),
+            ("collective_expire", foo.collective_expire(PMIX_COLLECTIVE_GROUP_CONSTRUCT, "g",
+                                                        None, [], 42))]:
         if PMIX_ERR_BAD_PARAM != rc:
             print("%s ACCEPTED A NON-CALLABLE CALLBACK" % label)
             exit(1)

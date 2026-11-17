@@ -188,6 +188,8 @@ static size_t fence_ninfo = 0;
 /* the host was given a PMIX_LOCAL_PARTICIPANTS naming this server's own
  * proc - the caller every drive_fence() uses */
 static bool fence_part_self = false;
+/* the PMIX_LOCAL_COLLECTIVE_STATUS the host was given */
+static pmix_status_t fence_local_status = PMIX_SUCCESS;
 static bool fence_status_last = false;
 static bool fence_sorted_next_to_last = false;
 /* whether the host was handed a PMIX_USERID or PMIX_GRPID, and whether
@@ -228,7 +230,12 @@ static pmix_status_t stub_fence_nb(const pmix_proc_t procs[], size_t nprocs,
     }
     fence_has_id = false;
     fence_part_self = false;
+    fence_local_status = PMIX_SUCCESS;
     for (size_t k = 0; NULL != info && k < ninfo; k++) {
+        if (PMIX_CHECK_KEY(&info[k], PMIX_LOCAL_COLLECTIVE_STATUS) &&
+            PMIX_STATUS == info[k].value.type) {
+            fence_local_status = info[k].value.data.status;
+        }
         if (PMIX_CHECK_KEY(&info[k], PMIX_USERID) || PMIX_CHECK_KEY(&info[k], PMIX_GRPID)) {
             fence_has_id = true;
         }
@@ -428,6 +435,44 @@ static void build_tracker(int sd, short args, void *cbdata)
         pmix_list_append(&trk->local_cbs, &cd->super);
     }
     /* the completion unlinks it from here, so it has to be on the list */
+    pmix_list_append(&pmix_server_globals.collectives, &trk->super);
+    b->trk = trk;
+    PMIX_WAKEUP_THREAD(&b->lock);
+}
+
+/* A fence over fence.ut.ns ranks 0 and 1, both local, that only our own
+ * stand-in has called - still collecting, as one is while it waits for a
+ * slow member */
+static void build_partial_fence(int sd, short args, void *cbdata)
+{
+    trkbuild_t *b = (trkbuild_t *) cbdata;
+    pmix_server_trkr_t *trk;
+    pmix_server_caddy_t *cd;
+    pmix_status_t st = PMIX_SUCCESS;
+
+    (void) sd;
+    (void) args;
+
+    trk = PMIX_NEW(pmix_server_trkr_t);
+    trk->type = PMIX_FENCENB_CMD;
+    trk->collect_type = PMIX_COLLECT_NO;
+    trk->modexcbfunc = pmix_server_modex_cbfunc;
+    trk->local = false;
+    trk->nlocal = 2;
+    trk->def_complete = true;
+    PMIX_PROC_CREATE(trk->pcs, 2);
+    PMIX_LOAD_PROCID(&trk->pcs[0], "fence.ut.ns", 0);
+    PMIX_LOAD_PROCID(&trk->pcs[1], "fence.ut.ns", 1);
+    trk->npcs = 2;
+    PMIX_INFO_CREATE(trk->info, 2);
+    trk->ninfo = 2;
+    PMIX_INFO_LOAD(&trk->info[0], PMIX_SORTED_PROC_ARRAY, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&trk->info[1], PMIX_LOCAL_COLLECTIVE_STATUS, &st, PMIX_STATUS);
+    cd = PMIX_NEW(pmix_server_caddy_t);
+    cd->peer = standin();
+    PMIX_RETAIN(cd->peer);
+    cd->hdr.tag = 300;
+    pmix_list_append(&trk->local_cbs, &cd->super);
     pmix_list_append(&pmix_server_globals.collectives, &trk->super);
     b->trk = trk;
     PMIX_WAKEUP_THREAD(&b->lock);
@@ -1525,6 +1570,59 @@ int main(int argc, char **argv)
         while (NULL != (reply = take_queued_reply())) {
             PMIX_RELEASE(reply);
         }
+        fence_accept = false;
+    }
+
+    /* --- expiring a fence still collecting --- *
+     * PMIx_server_collective_expire hands a fence that is still waiting for
+     * a local member to the host now, as though it had timed out: the host
+     * gets PMIX_ERR_TIMEOUT as the local status and the members that had
+     * called. A member calling afterwards missed the deadline and is
+     * answered that, not added. */
+    {
+        trkbuild_t b;
+        pmix_proc_t fprocs[2];
+        pmix_buffer_t *reply;
+
+        fence_accept = true;
+        fence_calls = 0;
+        fence_cbdata = NULL;
+        memset(&b, 0, sizeof(b));
+        PMIX_CONSTRUCT_LOCK(&b.lock);
+        PMIX_THREADSHIFT(&b, build_partial_fence);
+        PMIX_WAIT_THREAD(&b.lock);
+        PMIX_DESTRUCT_LOCK(&b.lock);
+
+        PMIX_LOAD_PROCID(&fprocs[0], "fence.ut.ns", 0);
+        PMIX_LOAD_PROCID(&fprocs[1], "fence.ut.ns", 1);
+        rc = PMIx_server_collective_expire(PMIX_COLLECTIVE_FENCE, NULL, fprocs, 2, NULL, 0, NULL,
+                                           NULL);
+        progress_barrier();
+        report("expiring a fence still collecting hands it to the host",
+               PMIX_OPERATION_SUCCEEDED == rc && 1 == fence_calls);
+        report("...as timed out", PMIX_ERR_TIMEOUT == fence_local_status);
+        report("...naming the member that had called", fence_part_self);
+        report("...with the seeded slots still last", fence_status_last && fence_sorted_next_to_last);
+
+        rc = drive_fence(2, 2, 1, 1);
+        progress_barrier();
+        report("a member calling the fence after that is answered PMIX_ERR_TIMEOUT",
+               PMIX_ERR_TIMEOUT == rc && 1 == fence_calls);
+        rc = PMIx_server_collective_expire(PMIX_COLLECTIVE_FENCE, NULL, fprocs, 2, NULL, 0, NULL,
+                                           NULL);
+        report("a fence already with the host is not expired again", PMIX_ERR_NOT_FOUND == rc);
+
+        if (NULL != fence_cbdata) {
+            pmix_server_modex_cbfunc(PMIX_ERR_TIMEOUT, NULL, 0, fence_cbdata, NULL, NULL);
+            progress_barrier();
+        }
+        report("the host's completion answers the member that called",
+               PMIX_ERR_TIMEOUT == next_reply_status());
+        while (NULL != (reply = take_queued_reply())) {
+            PMIX_RELEASE(reply);
+        }
+        report("...and leaves no tracker behind",
+               0 == pmix_list_get_size(&pmix_server_globals.collectives));
         fence_accept = false;
     }
 

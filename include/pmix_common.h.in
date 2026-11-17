@@ -2234,6 +2234,17 @@ typedef enum {
     PMIX_GROUP_CANCEL
 } pmix_group_operation_t;
 
+/* The collective operations a server collects locally before handing them
+ * to its host, as PMIx_server_collective_expire names them. New values must
+ * be appended after the existing ones to preserve their numeric values. */
+typedef enum {
+    PMIX_COLLECTIVE_FENCE,
+    PMIX_COLLECTIVE_CONNECT,
+    PMIX_COLLECTIVE_DISCONNECT,
+    PMIX_COLLECTIVE_GROUP_CONSTRUCT,
+    PMIX_COLLECTIVE_GROUP_DESTRUCT
+} pmix_collective_op_t;
+
 /* define storage medium values
  * The pmix_storage_medium_t is a uint64_t type that defines
  * a set of bit-mask flags for specifying different types of

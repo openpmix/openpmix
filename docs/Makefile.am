@@ -369,6 +369,7 @@ PMIX_MAN3 = \
 	PMIx_server_setup_local_support.3 \
 	PMIx_server_register_resources.3 \
 	PMIx_server_deregister_resources.3 \
+	PMIx_server_collective_expire.3 \
 	PMIx_Register_attributes.3 \
 	PMIx_server_dmodex_request.3 \
 	PMIx_server_dmodex_request2.3 \

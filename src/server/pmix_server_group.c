@@ -103,6 +103,9 @@ typedef struct {
                             //    to the host with it - never joined by another
     bool addmembers;        // made by a PMIX_GROUP_ADD_MEMBERS call - joined
                             //    only by another such call
+    bool expired;           // handed to the host early, with PMIX_ERR_TIMEOUT -
+                            //    a call of its ID now is answered that (see
+                            //    pmix_server_trk_expire)
 } grp_block_t;
 static void gbcon(grp_block_t *p)
 {
@@ -132,6 +135,7 @@ static void gbcon(grp_block_t *p)
     p->nlisted = 0;
     p->addmembers = false;
     p->solo = false;
+    p->expired = false;
 }
 static void gbdes(grp_block_t *p)
 {
@@ -246,6 +250,7 @@ static pmix_status_t aggregate_info(grp_block_t *blk);
 static void grp_set_participants(grp_block_t *blk, pmix_info_t **info, size_t *ninfo);
 static bool grp_notify_termination(grp_block_t *blk);
 static void forward_to_host(grp_block_t *blk);
+static pmix_status_t grp_expire_block(grp_block_t *blk);
 
 static void check_definition_complete(grp_block_t *blk)
 {
@@ -574,6 +579,11 @@ static pmix_status_t get_tracker(char *grpid, int op, bool bootstrap, bool follo
      * call */
     PMIX_LIST_FOREACH(blk, &pmix_server_globals.grp_collectives, grp_block_t) {
         if (!blk->solo && 0 == strcmp(grpid, blk->id)) {
+            /* gone to the host after it ran out of time: this caller missed
+             * the deadline (pmix_server_trk_expire) */
+            if (blk->expired && (PMIX_GROUP_NONE == blk->grpop || op == blk->grpop)) {
+                return PMIX_ERR_TIMEOUT;
+            }
             // we do - may this call join it?
             if (PMIX_GROUP_NONE != blk->grpop && op != blk->grpop) {
                 return PMIX_ERR_BAD_PARAM;
@@ -1319,7 +1329,45 @@ static void group_timeout(int sd, short args, void *cbdata)
     if (blk->host_called) {
         return;
     }
+    /* with a host, the block goes up as it stands, for the host to decide
+     * (pmix_server_trk_expire); without one it fails here */
+    if (PMIX_SUCCESS == grp_expire_block(blk)) {
+        return;
+    }
     abort_construct(blk, PMIX_ERR_TIMEOUT);
+}
+
+/* Hand a block still collecting to the host now - see pmix_server_trk_expire.
+ * A follower's or bootstrap participant's block went up with its one call, so
+ * only a block that collects can be expired. */
+static pmix_status_t grp_expire_block(grp_block_t *blk)
+{
+    if (blk->host_called || blk->answered || blk->solo || blk->expired) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    if (NULL == pmix_host_server.group) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    if (blk->event_active) {
+        pmix_event_del(&blk->ev);
+        blk->event_active = false;
+    }
+    blk->expired = true;
+    forward_to_host(blk);
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_server_grp_expire(pmix_group_operation_t op, const char *id)
+{
+    grp_block_t *blk;
+
+    PMIX_LIST_FOREACH (blk, &pmix_server_globals.grp_collectives, grp_block_t) {
+        if (!blk->solo && NULL != blk->id && 0 == strcmp(id, blk->id) &&
+            ((int) op == blk->grpop || (int) PMIX_GROUP_NONE == blk->grpop)) {
+            return grp_expire_block(blk);
+        }
+    }
+    return PMIX_ERR_NOT_FOUND;
 }
 
 /* Name this block's callers for the host - see pmix_server_set_participants().
@@ -3321,6 +3369,13 @@ static void forward_to_host(grp_block_t *blk)
         grpcbfunc(rc, NULL, 0, blk, NULL, NULL);
         return;
     }
+    if (blk->expired) {
+        /* ran out of time: the host decides, from its status and the
+         * participants it has - which is why the departed policy below
+         * does not apply */
+        pmix_server_set_collective_status(blk->info, blk->ninfo, PMIX_ERR_TIMEOUT);
+        goto handup;
+    }
     /* if a member departed before contributing, the policy applies. For a
      * construct without PMIX_GROUP_FT_COLLECTIVE (the default), the group
      * cannot form as requested, so abort it rather than silently reduce the
@@ -3340,6 +3395,7 @@ static void forward_to_host(grp_block_t *blk)
                                               PMIX_ERR_LOST_CONNECTION);
         }
     }
+handup:
     /* delete the local-phase timer before handing the block to the host,
      * so a late internal timeout cannot race the host's completion */
     if (blk->event_active) {
