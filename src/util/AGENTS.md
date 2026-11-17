@@ -2040,8 +2040,8 @@ non-blocking (a FIFO at the name cannot hold up the open), checks the
 descriptor it opened and the directory holding it (`paramfile_unsound()`),
 and passes over - with a message, returning `PMIX_ERR_NOT_FOUND` as for a
 missing file - anything somebody else could have written: not a regular
-file, owned by neither root nor us, writable by others, or writable by a
-group we are not in (`our_group()` asks the kernel - `getegid()`,
+file, owned by neither root, nor us, nor a *code owner*, writable by
+others, or writable by a group we are not in (`our_group()` asks the kernel - `getegid()`,
 `getgroups()` - so it needs no NSS lookup and works however early it is
 called). A sticky directory leaves the file to its owner. A symlink is
 followed, and the directory of its target is checked too. **A process
@@ -2049,6 +2049,22 @@ running as root admits no group write**, since root's groups can hold
 ordinary users. This used to be checked only for root, and only on the
 file. `pmix_util_keyval_parse_stream()` takes a stream its caller opened
 and checked (`pmdl/ompi`), and applies none of this.
+
+**A code owner** (`code_owner()`) owns the file holding the libpmix this
+process has mapped - the executable, in a static build - or a directory
+above it. Each could have replaced the library before we started, so
+their files admit nobody new; this is what lets a shared install made by
+one account be used by others, and root run a build tree another account
+checked out (the `mlnx` CI job, `sudo make check`). It applies to root
+too. **The path must be the mapped file's, never one the environment can
+steer**: on Linux it comes from `/proc/self/maps` (glibc's `dladdr()`
+reports `argv[0]` for a symbol in the main program), elsewhere from an
+absolute `dladdr()` name and its `realpath()`, both walked. Never fall
+back to `pmix_pinstall_dirs` - its values follow the environment. If the
+path cannot be had the set is empty and the rule is root-or-us. Owners
+only: the mode and group of those directories add nobody. Worked out
+once, lazily, under `keyval_mutex`, and only when a file owned by
+somebody else needs it.
 
 One `FILE*` read a line at a time, under `keyval_mutex`. A line is a
 `#`/`//`/block comment, a `name = value` pair, or one or more `-mca name
