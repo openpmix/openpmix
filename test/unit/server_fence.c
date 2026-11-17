@@ -185,6 +185,9 @@ static void report(const char *name, int passed)
 static bool fence_fired = false;
 static size_t fence_nprocs = 0;
 static size_t fence_ninfo = 0;
+/* the host was given a PMIX_LOCAL_PARTICIPANTS naming this server's own
+ * proc - the caller every drive_fence() uses */
+static bool fence_part_self = false;
 static bool fence_status_last = false;
 static bool fence_sorted_next_to_last = false;
 /* whether the host was handed a PMIX_USERID or PMIX_GRPID, and whether
@@ -224,9 +227,17 @@ static pmix_status_t stub_fence_nb(const pmix_proc_t procs[], size_t nprocs,
         fence_sorted_next_to_last = PMIX_CHECK_KEY(&info[ninfo - 2], PMIX_SORTED_PROC_ARRAY);
     }
     fence_has_id = false;
+    fence_part_self = false;
     for (size_t k = 0; NULL != info && k < ninfo; k++) {
         if (PMIX_CHECK_KEY(&info[k], PMIX_USERID) || PMIX_CHECK_KEY(&info[k], PMIX_GRPID)) {
             fence_has_id = true;
+        }
+        if (PMIX_CHECK_KEY(&info[k], PMIX_LOCAL_PARTICIPANTS) &&
+            PMIX_DATA_ARRAY == info[k].value.type && NULL != info[k].value.data.darray &&
+            PMIX_PROC == info[k].value.data.darray->type &&
+            1 == info[k].value.data.darray->size) {
+            fence_part_self = PMIX_CHECK_PROCID((pmix_proc_t *) info[k].value.data.darray->array,
+                                                &pmix_globals.myid);
         }
     }
     ++fence_calls;
@@ -1272,7 +1283,11 @@ int main(int argc, char **argv)
     progress_barrier();
     report("well-formed fence reaches the host", fence_fired);
     report("host is handed the caller's procs", 1 == fence_nprocs);
-    report("host is handed the directives plus two seeded slots", 3 == fence_ninfo);
+    /* the directive, the participants (pmix_server_set_participants), then
+     * the two seeded slots */
+    report("host is handed the directives, the participants and two seeded slots",
+           4 == fence_ninfo);
+    report("...the participants naming the one caller", fence_part_self);
     report("PMIX_LOCAL_COLLECTIVE_STATUS is the last slot", fence_status_last);
     report("PMIX_SORTED_PROC_ARRAY sits just ahead of it", fence_sorted_next_to_last);
     /* the stub declined, so the handler must have handed the caddy back
@@ -1297,7 +1312,8 @@ int main(int argc, char **argv)
     progress_barrier();
     report("a fence carrying an identity reaches the host", fence_fired);
     report("the participant's PMIX_USERID and PMIX_GRPID are not passed up", !fence_has_id);
-    report("the rest of its directives and the two seeded slots are", 3 == fence_ninfo);
+    report("the rest of its directives, the participants and the two seeded slots are",
+           4 == fence_ninfo);
     report("PMIX_LOCAL_COLLECTIVE_STATUS is still the last slot",
            fence_status_last && fence_sorted_next_to_last);
     report("no tracker is left behind",

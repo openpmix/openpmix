@@ -158,6 +158,7 @@ static void wscon(watch_send_t *p)
 static PMIX_CLASS_INSTANCE(watch_send_t, pmix_object_t, wscon, NULL);
 
 /* callback for wait completion */
+static bool names_nonparticipants(const pmix_info_t *results, size_t nresults);
 static void construct_cbfunc(struct pmix_peer_t *pr,
                              pmix_ptl_hdr_t *hdr,
                              pmix_buffer_t *buf,
@@ -468,7 +469,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
     /* wait for the group construct to complete */
     PMIX_WAIT_THREAD(&cb->lock);
     rc = cb->status;
-    if (PMIX_SUCCESS == rc && NULL != results && NULL != nresults) {
+    /* Results come back on success - and on failure only when they name
+     * the members that never took part (PMIX_COLLECTIVE_NONPARTICIPANTS),
+     * which is what a caller most needs after a construct that timed out.
+     * A failure that carries no such list returns nothing, as it always
+     * has, so a caller that frees results only on success is unaffected
+     * unless its host reports non-participants. */
+    if (NULL != results && NULL != nresults &&
+        (PMIX_SUCCESS == rc || names_nonparticipants(cb->results, cb->nresults))) {
         /* user takes responsibility for releasing any results */
         *results = cb->results;
         *nresults = cb->nresults;
@@ -2084,6 +2092,62 @@ static void op_cbfunc_rel(pmix_status_t status, void *cbdata)
     }
 }
 
+/* The members that never took part (PMIX_COLLECTIVE_NONPARTICIPANTS), which a
+ * server appends after the rest of a construct's reply when its host names
+ * them - after the status alone, when the construct failed. A server or host
+ * that does not send it leaves us at the end of the buffer, which is not an
+ * error. */
+static void unpack_nonparticipants(pmix_buffer_t *buf, pmix_proc_t **procs, size_t *nprocs)
+{
+    pmix_status_t rc;
+    int32_t cnt;
+    size_t n = 0;
+    pmix_proc_t *p;
+
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &n, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+        return;
+    }
+    if (0 == n) {
+        return;
+    }
+    if (!pmix_bfrop_count_fits(buf, n, PMIX_PROC)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return;
+    }
+    PMIX_PROC_CREATE(p, n);
+    if (NULL == p) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return;
+    }
+    cnt = (int32_t) n;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, p, &cnt, PMIX_PROC);
+    if (PMIX_SUCCESS != rc || (size_t) cnt != n) {
+        PMIX_ERROR_LOG((PMIX_SUCCESS != rc) ? rc : PMIX_ERR_BAD_PARAM);
+        PMIX_PROC_FREE(p, n);
+        return;
+    }
+    *procs = p;
+    *nprocs = n;
+}
+
+/* do these results name the members that never took part? */
+static bool names_nonparticipants(const pmix_info_t *results, size_t nresults)
+{
+    size_t n;
+
+    for (n = 0; NULL != results && n < nresults; n++) {
+        if (PMIX_CHECK_KEY(&results[n], PMIX_COLLECTIVE_NONPARTICIPANTS)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void construct_cbfunc(struct pmix_peer_t *pr,
                              pmix_ptl_hdr_t *hdr,
                              pmix_buffer_t *buf,
@@ -2095,8 +2159,8 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     int32_t cnt;
     size_t ctxid = SIZE_MAX;
     bool gotctxid = false;
-    pmix_proc_t *members = NULL;
-    size_t nmembers = 0;
+    pmix_proc_t *members = NULL, *nonpart = NULL;
+    size_t nmembers = 0, nnonpart = 0;
     size_t ngrpinfo = 0;
     size_t n, m, ninfo, npinfo;
     pmix_info_t grpinfo, *iptr, *pinfo;
@@ -2131,6 +2195,9 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     }
 
     if (PMIX_UNLIKELY(PMIX_SUCCESS != ret)) {
+        if (PMIX_SUCCESS == rc) {
+            unpack_nonparticipants(buf, &nonpart, &nnonpart);
+        }
         goto report;
     }
 
@@ -2265,6 +2332,7 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
             PMIX_INFO_DESTRUCT(&grpinfo);
         }
     }
+    unpack_nonparticipants(buf, &nonpart, &nnonpart);
 
 report:
     /* Record the group locally before anything else, and before anything
@@ -2312,6 +2380,17 @@ report:
             goto done;
         }
     }
+    if (NULL != nonpart) {
+        darray.array = nonpart;
+        darray.size = nnonpart;
+        darray.type = PMIX_PROC;
+        rc = PMIx_Info_list_add(ilist, PMIX_COLLECTIVE_NONPARTICIPANTS, &darray, PMIX_DATA_ARRAY);
+        // data was copied into the info
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIx_Info_list_release(ilist);
+            goto done;
+        }
+    }
     /* on failure darray is left untouched, so adopting it unchecked handed
      * the tracker an uninitialized pointer that its destructor then freed */
     rc = PMIx_Info_list_convert(ilist, &darray);
@@ -2328,6 +2407,9 @@ report:
 done:
     if (NULL != members) {
         PMIX_PROC_FREE(members, nmembers);
+    }
+    if (NULL != nonpart) {
+        PMIX_PROC_FREE(nonpart, nnonpart);
     }
     if (NULL != cb->cbfunc) {
         cb->cbfunc(ret, cb->info, cb->ninfo, cb->cbdata, relfn, cb);

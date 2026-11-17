@@ -198,6 +198,10 @@ all-gather and returns the concatenation of every server's contribution
 — which is why the outermost layer of the envelope repeats once per
 server.
 
+``trk->info`` also names the local processes that took part
+(``PMIX_LOCAL_PARTICIPANTS``), so the host can tell which members it is
+still waiting for - see :ref:`collective-participants-label`.
+
 Several paths short-circuit this and invoke the callback directly with a
 ``NULL`` blob: a fence whose participants are all local, a host with no
 ``fence_nb`` entry point, a host that returns

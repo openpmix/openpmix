@@ -1226,6 +1226,7 @@ typedef struct {
     pmix_info_t *info;
     size_t ninfo;
     void *cbdata;
+    pmix_status_t status;
 } mylog_t;
 
 static void foobar(int sd, short args, void *cbdata)
@@ -1374,7 +1375,7 @@ static void grpbar(int sd, short args, void *cbdata)
 {
     mylog_t *lg = (mylog_t *) cbdata;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
-    lg->infocbfunc(PMIX_SUCCESS, (pmix_info_t*)lg->info, lg->ninfo, lg->cbdata, relcbfunc, lg);
+    lg->infocbfunc(lg->status, (pmix_info_t*)lg->info, lg->ninfo, lg->cbdata, relcbfunc, lg);
 }
 
 static pmix_status_t grp_fn(pmix_group_operation_t op, char *gpid,
@@ -1383,12 +1384,51 @@ static pmix_status_t grp_fn(pmix_group_operation_t op, char *gpid,
                             pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
     mylog_t *lg = (mylog_t *) malloc(sizeof(mylog_t));
-    size_t ctxid = 1;
+    size_t ctxid = 1, n;
     pmix_data_array_t darray;
+    const pmix_info_t *nonpart = NULL, *part = NULL;
+    bool fail = false;
     PMIX_HIDE_UNUSED_PARAMS(op, gpid, procs, nprocs, directives, ndirs);
 
     memset(lg, 0, sizeof(mylog_t));
-    if (PMIX_GROUP_CONSTRUCT == op) {
+    /* test/simple/simpgrpnonpart: answer with the members a client names
+     * as not having taken part - with the group, or, for the ".fail"
+     * form, with a timeout and no group - once the server has told us
+     * who did take part (PMIX_LOCAL_PARTICIPANTS): every proc of the job,
+     * all of them local here, so the job once, as PMIX_RANK_LOCAL_PEERS */
+    for (n = 0; PMIX_GROUP_CONSTRUCT == op && NULL != directives && n < ndirs; n++) {
+        if (PMIX_CHECK_KEY(&directives[n], "pmix.test.nonpart") ||
+            PMIX_CHECK_KEY(&directives[n], "pmix.test.nonpart.fail")) {
+            nonpart = &directives[n];
+            fail = PMIX_CHECK_KEY(&directives[n], "pmix.test.nonpart.fail");
+        } else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOCAL_PARTICIPANTS)) {
+            part = &directives[n];
+        }
+    }
+    if (NULL != nonpart) {
+        if (NULL == part || PMIX_DATA_ARRAY != part->value.type ||
+            NULL == part->value.data.darray || PMIX_PROC != part->value.data.darray->type ||
+            1 != part->value.data.darray->size || 0 == nprocs ||
+            PMIX_RANK_LOCAL_PEERS != ((pmix_proc_t *) part->value.data.darray->array)[0].rank ||
+            !PMIX_CHECK_NSPACE(((pmix_proc_t *) part->value.data.darray->array)[0].nspace,
+                               procs[0].nspace)) {
+            pmix_output(0, "SERVER: group upcall without the expected PMIX_LOCAL_PARTICIPANTS");
+            lg->status = PMIX_ERR_BAD_PARAM;
+        } else {
+            lg->status = fail ? PMIX_ERR_TIMEOUT : PMIX_SUCCESS;
+        }
+        lg->ninfo = fail ? 1 : 3;
+        PMIX_INFO_CREATE(lg->info, lg->ninfo);
+        PMIX_INFO_LOAD(&lg->info[0], PMIX_COLLECTIVE_NONPARTICIPANTS, nonpart->value.data.darray,
+                       PMIX_DATA_ARRAY);
+        if (!fail) {
+            PMIX_INFO_LOAD(&lg->info[1], PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);
+            darray.array = (pmix_proc_t *) procs;
+            darray.type = PMIX_PROC;
+            darray.size = nprocs;
+            PMIX_INFO_LOAD(&lg->info[2], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
+        }
+    } else if (PMIX_GROUP_CONSTRUCT == op) {
         lg->ninfo = 2;
         PMIX_INFO_CREATE(lg->info, lg->ninfo);
         PMIX_INFO_LOAD(&lg->info[0], PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);

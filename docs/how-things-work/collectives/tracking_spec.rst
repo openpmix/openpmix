@@ -1,3 +1,5 @@
+.. _collectives-tracking-spec:
+
 Specification: Tracking Local Collective Participation
 ======================================================
 

@@ -2188,6 +2188,11 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_UNLOAD_BUFFER(&bucket, data, sz);
         PMIX_DESTRUCT(&bucket);
         trk->host_called = true;
+        if (PMIX_SUCCESS != pmix_server_trk_set_participants(trk)) {
+            /* the host is told less, not nothing - see
+             * pmix_server_set_participants() */
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        }
         rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info, trk->ninfo, data, sz,
                                        trk->modexcbfunc, trk);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
@@ -2237,6 +2242,167 @@ bool pmix_server_trk_complete(pmix_server_trkr_t *trk)
         return false;
     }
     return pmix_server_trk_accounted(trk) >= trk->nlocal;
+}
+
+/*
+ * The local participants, for the host.
+ *
+ * A collective reaches the host as one call per server, carrying the procs
+ * the callers named - not the callers, who are this server's to know. A host
+ * that can only count the calls it receives cannot say, when an operation
+ * fails to complete, which procs it is still waiting for, nor check that the
+ * procs that took part are the ones the operation names. So each upcall
+ * carries PMIX_LOCAL_PARTICIPANTS: the procs whose calls are on the
+ * tracker's local_cbs - contributors, whatever has happened to their
+ * connection since; one lost before contributing is reported through the
+ * departed list instead - sorted, and one entry per proc however many calls
+ * it made.
+ *
+ * When every local proc of a namespace took part, that namespace is given
+ * once, as PMIX_RANK_LOCAL_PEERS, rather than rank by rank: a whole-job
+ * collective then costs the host one entry per job per node however many
+ * ranks a node holds. "Local" means this server's node, so a host that
+ * carries the list elsewhere carries the node with it.
+ *
+ * Anything a caller put under the key in its own directives is replaced:
+ * the list is the server's to give.
+ */
+static pmix_namespace_t *find_nspace(const char *nspace)
+{
+    pmix_namespace_t *ns;
+
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (NULL != ns->nspace && PMIX_CHECK_NSPACE(ns->nspace, nspace)) {
+            return ns;
+        }
+    }
+    return NULL;
+}
+
+pmix_status_t pmix_server_set_participants(pmix_info_t **info, size_t *ninfo,
+                                           pmix_list_t *const cbs[], size_t ncbs)
+{
+    pmix_server_caddy_t *cd;
+    pmix_proc_t *procs = NULL, *out = NULL;
+    size_t n = 0, nall = 0, nout = 0, i, k, m;
+    pmix_namespace_t *ns;
+    pmix_data_array_t darray;
+    pmix_info_t *iptr;
+    pmix_status_t rc;
+    size_t at;
+
+    if (NULL == info || NULL == ninfo) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    for (i = 0; i < ncbs; i++) {
+        if (NULL != cbs[i]) {
+            nall += pmix_list_get_size(cbs[i]);
+        }
+    }
+    if (0 < nall) {
+        PMIX_PROC_CREATE(procs, nall);
+        PMIX_PROC_CREATE(out, nall);
+        if (NULL == procs || NULL == out) {
+            rc = PMIX_ERR_NOMEM;
+            goto done;
+        }
+        for (i = 0; i < ncbs; i++) {
+            if (NULL == cbs[i]) {
+                continue;
+            }
+            PMIX_LIST_FOREACH (cd, cbs[i], pmix_server_caddy_t) {
+                if (NULL == cd->peer || NULL == cd->peer->info ||
+                    NULL == cd->peer->info->pname.nspace) {
+                    continue;
+                }
+                PMIX_LOAD_PROCID(&procs[n], cd->peer->info->pname.nspace,
+                                 cd->peer->info->pname.rank);
+                ++n;
+            }
+        }
+        qsort(procs, n, sizeof(pmix_proc_t), pmix_util_compare_proc);
+        /* one entry per proc, then one per namespace whose every local
+         * proc is here */
+        for (i = 0, k = 0; i < n; i++) {
+            if (0 == k || !PMIX_CHECK_PROCID(&procs[k - 1], &procs[i])) {
+                if (k != i) {
+                    memcpy(&procs[k], &procs[i], sizeof(pmix_proc_t));
+                }
+                ++k;
+            }
+        }
+        n = k;
+        for (i = 0; i < n; i = k) {
+            for (k = i; k < n && PMIX_CHECK_NSPACE(procs[k].nspace, procs[i].nspace); k++) {
+            }
+            ns = find_nspace(procs[i].nspace);
+            if (NULL != ns && 0 < ns->nlocalprocs && (k - i) == ns->nlocalprocs) {
+                PMIX_LOAD_PROCID(&out[nout], procs[i].nspace, PMIX_RANK_LOCAL_PEERS);
+                ++nout;
+            } else {
+                memcpy(&out[nout], &procs[i], (k - i) * sizeof(pmix_proc_t));
+                nout += k - i;
+            }
+        }
+    }
+    darray.type = PMIX_PROC;
+    darray.array = (0 < nout) ? out : NULL;
+    darray.size = nout;
+
+    /* already there - a caller's, or ours from an earlier upcall */
+    for (m = 0; NULL != *info && m < *ninfo; m++) {
+        if (PMIX_CHECK_KEY(&(*info)[m], PMIX_LOCAL_PARTICIPANTS)) {
+            PMIX_VALUE_DESTRUCT(&(*info)[m].value);
+            rc = PMIx_Value_load(&(*info)[m].value, &darray, PMIX_DATA_ARRAY);
+            goto done;
+        }
+    }
+    PMIX_INFO_CREATE(iptr, *ninfo + 1);
+    if (NULL == iptr) {
+        rc = PMIX_ERR_NOMEM;
+        goto done;
+    }
+    /* ahead of the slots the handlers seed at the end - the sorted-array
+     * flag and the status - so they keep the places they were given */
+    for (at = *ninfo; 0 < at; at--) {
+        if (!PMIX_CHECK_KEY(&(*info)[at - 1], PMIX_LOCAL_COLLECTIVE_STATUS) &&
+            !PMIX_CHECK_KEY(&(*info)[at - 1], PMIX_SORTED_PROC_ARRAY)) {
+            break;
+        }
+    }
+    for (m = 0, k = 0; m <= *ninfo; m++) {
+        if (m == at) {
+            PMIX_INFO_LOAD(&iptr[k], PMIX_LOCAL_PARTICIPANTS, &darray, PMIX_DATA_ARRAY);
+            ++k;
+        }
+        if (m < *ninfo) {
+            PMIX_INFO_XFER(&iptr[k], &(*info)[m]);
+            ++k;
+        }
+    }
+    if (NULL != *info) {
+        PMIX_INFO_FREE(*info, *ninfo);
+    }
+    *info = iptr;
+    *ninfo += 1;
+    rc = PMIX_SUCCESS;
+
+done:
+    if (NULL != procs) {
+        PMIX_PROC_FREE(procs, nall);
+    }
+    if (NULL != out) {
+        PMIX_PROC_FREE(out, nall);
+    }
+    return rc;
+}
+
+pmix_status_t pmix_server_trk_set_participants(pmix_server_trkr_t *trk)
+{
+    pmix_list_t *cbs[1];
+
+    cbs[0] = &trk->local_cbs;
+    return pmix_server_set_participants(&trk->info, &trk->ninfo, cbs, 1);
 }
 
 /* How many of the expected local participants are accounted for: one per
@@ -2537,6 +2703,11 @@ void pmix_server_trk_proc_lost(const pmix_proc_t *proc)
                     /* the blob transfers to the host on the call - see
                      * pmix_server_fence */
                     trk->host_called = true;
+                    if (PMIX_SUCCESS != pmix_server_trk_set_participants(trk)) {
+                        /* the host is told less, not nothing - see
+                         * pmix_server_set_participants() */
+                        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    }
                     rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info,
                                                    trk->ninfo, data, sz,
                                                    trk->modexcbfunc, trk);
@@ -2553,6 +2724,11 @@ void pmix_server_trk_proc_lost(const pmix_proc_t *proc)
                         continue;
                     }
                     trk->host_called = true;
+                    if (PMIX_SUCCESS != pmix_server_trk_set_participants(trk)) {
+                        /* the host is told less, not nothing - see
+                         * pmix_server_set_participants() */
+                        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    }
                     rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info,
                                                   trk->ninfo, trk->op_cbfunc, trk);
                     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
@@ -2568,6 +2744,11 @@ void pmix_server_trk_proc_lost(const pmix_proc_t *proc)
                         continue;
                     }
                     trk->host_called = true;
+                    if (PMIX_SUCCESS != pmix_server_trk_set_participants(trk)) {
+                        /* the host is told less, not nothing - see
+                         * pmix_server_set_participants() */
+                        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                    }
                     rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info,
                                                      trk->ninfo, trk->op_cbfunc, trk);
                     if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {

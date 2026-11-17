@@ -1186,6 +1186,24 @@ The completion status is recorded into the tracker's info array by
 connect appends per-participant endpoint info and job-level info *after*
 that slot, so a positional write would clobber it.
 
+**Every collective upcall names who took part.** Just before each
+`fence_nb`, `connect`, `disconnect` and `group` upcall (nine tracker sites
+across `pmix_server_fence.c`, `pmix_server_connect.c` and
+`pmix_server_registration.c`; three group sites through
+`grp_set_participants()`), `pmix_server_set_participants()` puts
+`PMIX_LOCAL_PARTICIPANTS` in the info array: the procs whose calls are on
+`local_cbs` (for a group block, on each per-call tracker's), sorted, each
+once, and a namespace all of whose local procs called given once as
+`PMIX_RANK_LOCAL_PEERS`. It replaces any copy a caller sent, and goes
+ahead of the trailing seeded slots (`PMIX_SORTED_PROC_ARRAY`,
+`PMIX_LOCAL_COLLECTIVE_STATUS`) so those keep their places. A new upcall
+site must call it too. The other direction is
+`PMIX_COLLECTIVE_NONPARTICIPANTS`, which `_grpcbfunc` takes from the
+host's group completion and appends to each participant's construct
+reply - after the status alone when the construct failed - where
+`construct_cbfunc` reads it if it is there. See
+`docs/how-things-work/collectives/local_participants.rst`.
+
 **Finishing a tracker's definition is per-tracker, and adds to the
 count.** `_register_nspace` and `_register_client` walk every incomplete
 tracker when a registration lands, and both halves of that walk were
@@ -3438,15 +3456,15 @@ misbehave by design).
   info objects at all, where the buffer is already exhausted; gate on
   the wire count, not on the array size that carries your extra slot.
 
-  While you are there, note the layout those two seeds establish, because
-  the completion arms depend on it: for the fence and disconnect families
-  `PMIX_LOCAL_COLLECTIVE_STATUS` is the **last** element, and
-  `pmix_server_fence` reads it positionally as `trk->info[trk->ninfo-1]`
-  on both its local-only and its `PMIX_OPERATION_SUCCEEDED` arms. That is
-  correct only because connect is the family that appends past the slot —
-  which is exactly why `pmix_server_set_collective_status` locates it by
-  key instead. Do not copy the positional read into a family that
-  appends.
+  While you are there, note the layout those two seeds establish: for the
+  fence and disconnect families `PMIX_LOCAL_COLLECTIVE_STATUS` is the
+  **last** element, with `PMIX_SORTED_PROC_ARRAY` just ahead of it, and
+  `pmix_server_set_participants` inserts the participant list ahead of
+  both so they keep those places. Nothing reads the status by position
+  any longer - the completion arms use
+  `pmix_server_get_collective_status`, which finds it by key - and
+  nothing should: connect appends past the slot. Keep the layout anyway;
+  `test/unit/server_fence.c` checks it.
 - **`PMIX_LIST_DESTRUCT` is not idempotent.** It drains the list and then
   calls `PMIX_DESTRUCT`, which under `--enable-debug` zeroes the object's
   magic id and asserts on it — so a second destruct of the same list
