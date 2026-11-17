@@ -174,6 +174,85 @@ cleanup:
  * before it returns. This is the work PMIx_server_IOF_deliver
  * thread-shifts to, and it is what code already on the progress thread
  * calls instead of that entry point (see pmix_server_ops.h) */
+/*
+ * Output meant for some of the tools, not all of them.
+ *
+ * A server's own output - its diagnostics, among them every show_help -
+ * reaches every tool registered for it, and every tool that connects is
+ * registered for it. Output that concerns one request belongs to the tool
+ * that made it: a parse error quoting a file one tool named is nothing to
+ * another tool's user. PMIX_LOG_TARGET names who is to get it, and only
+ * the registrations of those procs are served. It is not cached, since a
+ * later registration is somebody else; and when no target is registered -
+ * the tool has gone - it goes to the server's own stream, never to the
+ * others. The rest of the info, PMIX_REQUESTOR among it, goes to the
+ * target with the output, so a scheduler relaying for a tool knows whom
+ * it is for.
+ */
+static pmix_status_t deliver_targeted(const pmix_proc_t *source, pmix_iof_channel_t channel,
+                                      const pmix_byte_object_t *bo, const pmix_info_t info[],
+                                      size_t ninfo, const pmix_info_t *target)
+{
+    const pmix_proc_t *targets = NULL;
+    size_t ntargets = 0, n, k, npass = 0;
+    pmix_info_t *pass = NULL;
+    pmix_iof_req_t *req;
+    bool found = false, match;
+    pmix_status_t rc, ret = PMIX_SUCCESS;
+    int i;
+
+    /* checked, not assumed: an array of anything else is nobody, and
+     * output for nobody stays here rather than going to everybody */
+    if (PMIX_DATA_ARRAY == target->value.type && NULL != target->value.data.darray &&
+        PMIX_PROC == target->value.data.darray->type && NULL != target->value.data.darray->array) {
+        targets = (const pmix_proc_t *) target->value.data.darray->array;
+        ntargets = target->value.data.darray->size;
+    }
+    if (0 < ninfo) {
+        pass = (pmix_info_t *) calloc(ninfo, sizeof(pmix_info_t));
+        if (NULL == pass) {
+            return PMIX_ERR_NOMEM;
+        }
+        /* a shallow copy - the entries stay the caller's */
+        for (n = 0; n < ninfo; n++) {
+            if (!PMIX_CHECK_KEY(&info[n], PMIX_LOG_TARGET)) {
+                memcpy(&pass[npass++], &info[n], sizeof(pmix_info_t));
+            }
+        }
+    }
+    for (i = 0; 0 < ntargets && i < pmix_globals.iof_requests.size; i++) {
+        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL == req || NULL == req->requestor || NULL == req->requestor->info ||
+            req->requestor->finalized) {
+            continue;
+        }
+        match = false;
+        for (k = 0; k < ntargets; k++) {
+            if (PMIX_CHECK_NAMES(&targets[k], &req->requestor->info->pname)) {
+                match = true;
+                break;
+            }
+        }
+        if (!match) {
+            continue;
+        }
+        rc = pmix_iof_process_iof(channel, source, bo, pass, npass, req);
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            found = true;
+        } else if (PMIX_SUCCESS != rc && PMIX_SUCCESS == ret) {
+            ret = rc;
+        }
+    }
+    if (!found) {
+        rc = pmix_iof_write_output(source, channel, bo);
+        if (0 > rc && PMIX_SUCCESS == ret) {
+            ret = rc;
+        }
+    }
+    free(pass);
+    return ret;
+}
+
 pmix_status_t pmix_server_iof_deliver_local(const pmix_proc_t *source,
                                             pmix_iof_channel_t channel,
                                             const pmix_byte_object_t *bo,
@@ -203,6 +282,13 @@ pmix_status_t pmix_server_iof_deliver_local(const pmix_proc_t *source,
                         PMIX_NAME_PRINT(source),
                         PMIx_IOF_channel_string(channel),
                         (int)bo->size);
+
+    /* for some of the tools only - see deliver_targeted() */
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_LOG_TARGET)) {
+            return deliver_targeted(source, channel, bo, info, ninfo, &info[n]);
+        }
+    }
 
     /* The host may be handing us output that is not ours to emit - a runtime
      * relaying another node's output to us solely because a tool attached

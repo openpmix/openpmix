@@ -75,6 +75,8 @@ Directive constants (passed in the *directives* array) include:
 * ``PMIX_LOG_SYSLOG_PRI`` — ``(int)`` syslog priority level
 * ``PMIX_LOG_TAG_OUTPUT`` — ``(bool)`` prefix output with channel name
 * ``PMIX_LOG_XML_OUTPUT`` — ``(bool)`` emit output in XML format
+* ``PMIX_LOG_TARGET`` — ``(pmix_data_array_t*)`` the procs a server's
+  ``stdout``/``stderr`` message is for (see `stdfd (src/mca/plog/stdfd/)`_)
 
 
 Call Flow
@@ -250,6 +252,19 @@ of plain stdio.
   thread, so it calls ``pmix_server_iof_deliver_local()`` directly rather
   than the thread-shifting ``PMIx_server_IOF_deliver()``; delivery copies
   what it keeps, so nothing outlives the call.
+
+A server's *own* output - its diagnostics, every ``show_help`` among
+them - goes to every tool connected to it, because each tool that
+connects is registered for it.  Output that concerns one request belongs
+only to the tool that made it, so a ``PMIX_LOG_TARGET`` directive names
+the procs a message is for.  ``mylog`` passes it, and any
+``PMIX_REQUESTOR``, to ``pmix_server_iof_deliver_local()``, which then
+serves only the registrations of those procs, sends ``PMIX_REQUESTOR``
+with the output, and never caches it.  When no named proc is registered,
+or the value is not an array of procs, the message is written to the
+server's own stream: output for nobody stays here rather than going to
+everybody.  ``pmix_show_help_norender_dirs()`` is how an embedding
+runtime attaches the directive to a rendered ``show_help``.
 
 The component also honors the output-formatting directives
 ``PMIX_LOG_TAG_OUTPUT`` (prefix each line with its channel tag),

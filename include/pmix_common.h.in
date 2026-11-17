@@ -941,6 +941,12 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_LOG_KEY                        "pmix.log.key"          // (char*) key to a logging message
 #define PMIX_LOG_VAL                        "pmix.log.val"          // (char*) value to a logging message
 #define PMIX_LOG_AGG                        "pmix.log.agg"          // (bool) Whether to aggregate and prevent duplicate logging messages
+#define PMIX_LOG_TARGET                     "pmix.log.target"       // (pmix_data_array_t*) Array of pmix_proc_t naming the only processes a
+                                                                    //         PMIX_LOG_STDOUT or PMIX_LOG_STDERR message is to reach - the
+                                                                    //         tools among those registered for the server's own output.
+                                                                    //         The message is not cached for a later registration; when
+                                                                    //         no target is registered it goes to the server's own
+                                                                    //         stream instead
                                                                     //        based on key value pairs.
 
 #define PMIX_LOG_EMAIL                      "pmix.log.email"        // (pmix_data_array_t*) log via email based on array of pmix_info_t

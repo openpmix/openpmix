@@ -1096,6 +1096,13 @@ Attributes
      - ``(char*)``
      - value to a logging message
          
+   * - ``PMIX_LOG_TARGET`` ``pmix.log.target``
+     - ``(pmix_data_array_t*)``
+     - Array of ``pmix_proc_t`` naming
+       the only processes a server's
+       stdout/stderr log message is to
+       reach.
+         
    * - ``PMIX_MYSERVER_URI`` ``pmix.mysrvr.uri``
      - ``(char*)``
      - URI of this proc's listener socket
