@@ -52,7 +52,8 @@ static struct timeval show_help_interval = {5, 0};
 static void local_delivery(const char *nspace,
                            const char *file,
                            const char *topic,
-                           const char *msg)
+                           const char *msg,
+                           const pmix_info_t *dirs, size_t ndirs)
 {
     pmix_shift_caddy_t *cd;
 
@@ -99,10 +100,15 @@ static void local_delivery(const char *nspace,
     PMIX_INFO_CREATE(cd->info, cd->ninfo);
     PMIX_INFO_LOAD(&cd->info[0], PMIX_LOG_STDERR, msg, PMIX_STRING);
     cd->infocopy = true;
-    cd->ndirs = 3;
+    cd->ndirs = 3 + ndirs;
     PMIX_INFO_CREATE(cd->directives, cd->ndirs);
     PMIX_INFO_LOAD(&cd->directives[0], PMIX_LOG_KEY, file, PMIX_STRING);
     PMIX_INFO_LOAD(&cd->directives[1], PMIX_LOG_VAL, topic, PMIX_STRING);
+    /* the caller's own - who the message is for, say (PMIX_LOG_TARGET) -
+     * copied, since it goes across a thread-shift */
+    for (size_t k = 0; NULL != dirs && k < ndirs; k++) {
+        PMIX_INFO_XFER(&cd->directives[3 + k], &dirs[k]);
+    }
     /* NOT the source proc: plog's stdfd module routes by source, and
      * handing it the job the message is *about* would deliver a daemon's
      * diagnostic into that job's output stream */
@@ -300,7 +306,7 @@ static void show_tuple_duplicates(tuple_list_item_t *tli)
         buf = NULL;
     }
     local_delivery(tli->tli_nspace, (NULL == buf) ? tli->tli_filename : buf,
-                   tli->tli_topic, tmp);
+                   tli->tli_topic, tmp, NULL, 0);
     free(buf);
     /* local_delivery copies the message, so we own tmp */
     free(tmp);
@@ -308,7 +314,7 @@ static void show_tuple_duplicates(tuple_list_item_t *tli)
 
     if (first) {
         if (0 <= pmix_asprintf(&tmp, "%s", "Set the PMIX_AGGREGATE_HELP attribute to false when spawning the job to see all help / error messages\n")) {
-            local_delivery(tli->tli_nspace, tli->tli_filename, tli->tli_topic, tmp);
+            local_delivery(tli->tli_nspace, tli->tli_filename, tli->tli_topic, tmp, NULL, 0);
             free(tmp);
         }
         first = false;
@@ -747,7 +753,7 @@ char *pmix_show_help_vstring(const char *filename,
             return NULL;
         }
         /* a missing help reference is our own bug, not the job's */
-        local_delivery(pmix_globals.myid.nspace, filename, topic, msg);
+        local_delivery(pmix_globals.myid.nspace, filename, topic, msg, NULL, 0);
         free(msg);
         return NULL;
    }
@@ -806,7 +812,7 @@ pmix_status_t pmix_show_help(const char *filename,
     /* local_delivery copies the message, so we own the rendered string.
      * A message PMIx raises itself is about our own job - the host that
      * knows better says so through pmix_show_help_norender(). */
-    local_delivery(pmix_globals.myid.nspace, filename, topic, output);
+    local_delivery(pmix_globals.myid.nspace, filename, topic, output, NULL, 0);
     free(output);
     return PMIX_SUCCESS;
 }
@@ -858,6 +864,14 @@ pmix_status_t pmix_show_help_norender(const char *nspace,
                                       const char *topic,
                                       const char *output)
 {
-    local_delivery(nspace, filename, topic, output);
+    local_delivery(nspace, filename, topic, output, NULL, 0);
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_show_help_norender_dirs(const char *nspace, const char *filename,
+                                           const char *topic, const char *output,
+                                           const pmix_info_t *dirs, size_t ndirs)
+{
+    local_delivery(nspace, filename, topic, output, dirs, ndirs);
     return PMIX_SUCCESS;
 }

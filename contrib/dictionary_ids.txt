@@ -715,3 +715,4 @@ pmix.iof.jobdirs       686   PMIX_IOF_JOB_DIRECTIVES
 pmix.alloc.uid         687   PMIX_ALLOC_UID
 pmix.alloc.gid         688   PMIX_ALLOC_GID
 pmix.coll.nonpart      689   PMIX_COLLECTIVE_NONPARTICIPANTS
+pmix.log.target        690   PMIX_LOG_TARGET
