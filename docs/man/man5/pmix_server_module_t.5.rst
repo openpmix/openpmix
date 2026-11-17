@@ -359,7 +359,21 @@ The ``info`` array may include ``PMIX_LOCAL_COLLECTIVE_STATUS``
 of the local portion of the collective |mdash| for example, an error detected
 among the local participants. A host that receives a failing status should
 propagate it into the collective result rather than proceeding with the data
-exchange. From v7.0 the library also supplies ``PMIX_LOCAL_PARTICIPANTS``
+exchange, with two values to read with care:
+
+* ``PMIX_ERR_TIMEOUT`` |mdash| the local phase ran out of time and the server
+  handed the collective up with the participants it had (see below). A host
+  **must not** complete such a collective as a success. One that ignores the
+  local status, as a host could before v7.0 without harm, now completes a
+  timed-out collective without the members that never called.
+* ``PMIX_ERR_LOST_CONNECTION`` |mdash| a local participant was lost before it
+  contributed, and the local phase completed on the survivors. For a group
+  construct that asked for ``PMIX_GROUP_FT_COLLECTIVE`` this is a **degraded
+  success**, not a failure: the group is to form on the survivors, who are told
+  of the loss by a ``PMIX_GROUP_MEMBER_FAILED`` event, and a host that fails the
+  construct on this status defeats the fault tolerance the caller asked for.
+
+From v7.0 the library also supplies ``PMIX_LOCAL_PARTICIPANTS``
 (pmix_data_array_t*), an array of ``pmix_proc_t`` identifying the local processes
 that contributed to the collective: sorted, each process once, and a namespace
 all of whose processes on this node contributed given once with rank
@@ -685,7 +699,11 @@ destruct, or cancel of the named group across its member processes; directives
 may request, for example, assignment of a group context ID. Results are returned
 through a ``pmix_info_cbfunc_t``. As with ``fence_nb``, the ``info`` array may
 carry ``PMIX_LOCAL_COLLECTIVE_STATUS``, ``PMIX_LOCAL_PARTICIPANTS``, and
-``PMIX_SORTED_PROC_ARRAY`` describing the local portion of the collective.
+``PMIX_SORTED_PROC_ARRAY`` describing the local portion of the collective. Read
+the status as described for ``fence_nb``: a construct whose local status is
+``PMIX_ERR_TIMEOUT`` must not be completed as a success, while
+``PMIX_ERR_LOST_CONNECTION`` on a ``PMIX_GROUP_FT_COLLECTIVE`` construct means
+it is to form on the survivors.
 
 A host that knows which members of a construct never took part |mdash| for
 example because it timed out, or completed a ``PMIX_GROUP_FT_COLLECTIVE``
