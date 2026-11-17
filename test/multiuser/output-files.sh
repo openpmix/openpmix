@@ -106,9 +106,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# built as jobuser, who runs it: as root, pmixcc refuses a wrapper data
-# file another user can write, which is what an install made by a
-# non-root user has - as in CI
+# built as jobuser, who runs it. pmixcc reads its wrapper data file from
+# an install another user made; that is accepted because that user owns
+# the library pmixcc runs
 mkdir $W/cc
 cp "$(dirname "$0")/mu_spawn.c" $W/cc/
 chown -R $JOBUSER: $W/cc

@@ -18,7 +18,9 @@
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
 
+#include <limits.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +28,10 @@
 #include <unistd.h>
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
+#endif
+
+#ifdef HAVE_DLFCN_H
+#    include <dlfcn.h>
 #endif
 
 #include "pmix_common.h"
@@ -744,6 +750,116 @@ static void test_who_could_write(void)
     reset_seen();
 }
 
+/*
+ * The file holding the PMIx library this test runs, found the way the
+ * parser finds it; false if it cannot be.
+ */
+static bool library_path(char *path, size_t len)
+{
+#if defined(__linux__)
+    FILE *fp = fopen("/proc/self/maps", "r");
+    char line[PATH_MAX + 128];
+    unsigned long start, end, inode;
+    uintptr_t addr = (uintptr_t) &pmix_util_keyval_parse;
+    char *name, *nl;
+    int n;
+    bool found = false;
+
+    if (NULL == fp) {
+        return false;
+    }
+    while (!found && NULL != fgets(line, sizeof(line), fp)) {
+        n = 0;
+        if (3 != sscanf(line, "%lx-%lx %*s %*s %*s %lu %n", &start, &end, &inode, &n) ||
+            0 == n || addr < start || addr >= end) {
+            continue;
+        }
+        name = line + n;
+        if (NULL != (nl = strchr(name, '\n'))) {
+            *nl = '\0';
+        }
+        if (0 != inode && '/' == name[0] && len > strlen(name)) {
+            strcpy(path, name);
+            found = true;
+        }
+        break;
+    }
+    fclose(fp);
+    return found;
+#elif defined(HAVE_DLFCN_H) && defined(HAVE_DLADDR)
+    Dl_info info;
+
+    if (0 == dladdr((const void *) (uintptr_t) &pmix_util_keyval_parse, &info) ||
+        NULL == info.dli_fname || NULL == realpath(info.dli_fname, path)) {
+        return false;
+    }
+    (void) len;
+    return true;
+#else
+    (void) path;
+    (void) len;
+    return false;
+#endif
+}
+
+/*
+ * Whoever owns the library we run, or a directory above it, could have
+ * replaced that library, so a parameter file of theirs is read - even by
+ * root. That is an installation made by one user and used by others, or a
+ * build tree another user checked out and root runs. Only root can give a
+ * file to such an owner, so as anyone else the case is skipped, as it is
+ * when everything above the library is root's or ours.
+ */
+static void test_code_owner_files(void)
+{
+    char lib[PATH_MAX], base[] = "/tmp/pmix_keyval_owner_XXXXXX";
+    char dir[600], f[700];
+    struct stat st;
+    char *slash;
+    uid_t owner = 0;
+    int rc;
+
+    if (0 != geteuid()) {
+        fprintf(stdout, "  SKIP: the library owner's files (not running as root)\n");
+        return;
+    }
+    if (!library_path(lib, sizeof(lib))) {
+        fprintf(stdout, "  SKIP: the library owner's files (library not found)\n");
+        return;
+    }
+    /* the first owner, from the library up, who is not root */
+    while (0 == owner && 0 == lstat(lib, &st)) {
+        owner = st.st_uid;
+        if (NULL == (slash = strrchr(lib, '/')) || slash == lib) {
+            break;
+        }
+        *slash = '\0';
+    }
+    if (0 == owner) {
+        fprintf(stdout, "  SKIP: the library owner's files (everything above it is root's)\n");
+        return;
+    }
+    if (NULL == mkdtemp(base)) {
+        report("library owner: scratch directory", 0);
+        return;
+    }
+    snprintf(dir, sizeof(dir), "%s/d", base);
+    snprintf(f, sizeof(f), "%s/params.conf", dir);
+    (void) mkdir(dir, 0755);
+    put(f, 0644);
+    if (0 == chown(dir, owner, (gid_t) -1) && 0 == chown(f, owner, (gid_t) -1)) {
+        rc = parse_at(f);
+        report("as root, a file the library's owner owns, in a directory they own, is read",
+               PMIX_SUCCESS == rc && 1 == nseen);
+    } else {
+        report("library owner: chown", 0);
+    }
+    unlink(f);
+    rmdir(dir);
+    rmdir(base);
+    reset_seen();
+}
+
 /* parse the fixture as a stream the caller opened, reading at most
  * maxbytes */
 static int parse_stream_text(const char *contents, size_t maxbytes)
@@ -854,6 +970,7 @@ int main(int argc, char **argv)
     test_finalize_drops_pending_envars();
     test_root_trusts_only_root_files();
     test_who_could_write();
+    test_code_owner_files();
     test_stream_limits();
 
     pmix_util_keyval_parse_finalize();

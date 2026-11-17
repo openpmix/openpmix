@@ -53,6 +53,9 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#ifdef HAVE_DLFCN_H
+#    include <dlfcn.h>
+#endif
 #include <libgen.h>
 #include <limits.h>
 #include <stdint.h>
@@ -694,14 +697,180 @@ static bool our_group(gid_t gid)
     return found;
 }
 
-/* NULL if only root, we and - unless we are root - our groups could have
- * written what st describes, the file or (directory) the directory holding
- * it; else what is wrong. */
+/*
+ * The users who could have changed the code this process runs.
+ *
+ * A parameter file may be owned by root, by us, or by one of these: the
+ * owner of the file holding the PMIx library we have loaded - or of the
+ * executable, when the library is linked into it - and the owner of each
+ * directory above it, since the owner of a directory can replace what is
+ * in it. Each of them could have replaced that library before we started,
+ * so a parameter file one of them wrote changes nothing they could not
+ * already have changed. That admits the files of an installation made by
+ * one user and used by others, and a build tree run by root, without
+ * admitting anyone new.
+ *
+ * Only a path that names the file actually mapped is used. On Linux that
+ * is the kernel's own, from /proc/self/maps: dladdr() there reports
+ * argv[0] for a symbol in the main program, and argv[0] is whatever our
+ * caller chose. Elsewhere it is dladdr()'s, if absolute, and the path it
+ * resolves to as well. When neither can be had, the set is empty and only
+ * root and we may own a parameter file. Owners only: the group and mode of
+ * those directories add nobody.
+ *
+ * Found once, when a file owned by somebody else first needs it; called
+ * with keyval_mutex held.
+ */
+#define PMIX_KEYVAL_MAX_CODE_OWNERS 32
+static uid_t code_owners[PMIX_KEYVAL_MAX_CODE_OWNERS];
+static int ncode_owners = 0;
+static bool code_owners_found = false;
+/* an address inside this library: initialized read-only data, so it is
+ * mapped from the library's file and not anonymous memory */
+static const char code_owners_marker = 1;
+
+static void add_code_owner(uid_t uid)
+{
+    int i;
+
+    if (0 == uid || geteuid() == uid) {
+        return;
+    }
+    for (i = 0; i < ncode_owners; i++) {
+        if (code_owners[i] == uid) {
+            return;
+        }
+    }
+    /* past the limit, an owner is simply not admitted */
+    if (PMIX_KEYVAL_MAX_CODE_OWNERS > ncode_owners) {
+        code_owners[ncode_owners++] = uid;
+    }
+}
+
+/* the owners of path and of every directory above it */
+static void add_path_owners(const char *path)
+{
+    char buf[PATH_MAX];
+    struct stat st;
+    char *slash;
+
+    if ('/' != path[0] || sizeof(buf) <= strlen(path)) {
+        return;
+    }
+    strcpy(buf, path);
+    while (1) {
+        if (0 == lstat(buf, &st)) {
+            add_code_owner(st.st_uid);
+        }
+        slash = strrchr(buf, '/');
+        if (NULL == slash) {
+            break;
+        }
+        if (slash == buf) {
+            if ('\0' == buf[1]) {
+                break;
+            }
+            buf[1] = '\0';
+        } else {
+            *slash = '\0';
+        }
+    }
+}
+
+#if defined(__linux__)
+/* the file mapped at addr, as the kernel names it */
+static bool mapped_file(const void *addr, char *path, size_t len)
+{
+    FILE *fp;
+    char line[PATH_MAX + 128];
+    unsigned long start, end, inode;
+    int n;
+    char *name, *nl;
+    bool found = false;
+
+    fp = fopen("/proc/self/maps", "re");
+    if (NULL == fp) {
+        return false;
+    }
+    while (NULL != fgets(line, sizeof(line), fp)) {
+        n = 0;
+        if (3 != sscanf(line, "%lx-%lx %*s %*s %*s %lu %n", &start, &end, &inode, &n) ||
+            0 == n) {
+            continue;
+        }
+        if ((uintptr_t) addr < start || (uintptr_t) addr >= end) {
+            continue;
+        }
+        name = line + n;
+        if (NULL != (nl = strchr(name, '\n'))) {
+            *nl = '\0';
+        }
+        /* a file since removed or replaced names nothing we can check */
+        if (0 != inode && '/' == name[0] && NULL == strstr(name, " (deleted)") &&
+            len > strlen(name)) {
+            strcpy(path, name);
+            found = true;
+        }
+        break;
+    }
+    fclose(fp);
+    return found;
+}
+#endif
+
+static void find_code_owners(void)
+{
+    code_owners_found = true;
+#if defined(__linux__)
+    {
+        char path[PATH_MAX];
+
+        if (mapped_file((const void *) &code_owners_marker, path, sizeof(path))) {
+            add_path_owners(path);
+        }
+    }
+#elif defined(HAVE_DLFCN_H) && defined(HAVE_DLADDR)
+    {
+        Dl_info info;
+        char real[PATH_MAX];
+
+        if (0 != dladdr((const void *) &code_owners_marker, &info) &&
+            NULL != info.dli_fname && '/' == info.dli_fname[0]) {
+            add_path_owners(info.dli_fname);
+            if (NULL != realpath(info.dli_fname, real)) {
+                add_path_owners(real);
+            }
+        }
+    }
+#endif
+}
+
+static bool code_owner(uid_t uid)
+{
+    int i;
+
+    if (!code_owners_found) {
+        find_code_owners();
+    }
+    for (i = 0; i < ncode_owners; i++) {
+        if (code_owners[i] == uid) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* NULL if only root, we, those who could have changed the code we run (see
+ * code_owner()) and - unless we are root - our groups could have written
+ * what st describes, the file or (directory) the directory holding it;
+ * else what is wrong. */
 static const char *writers_unsound(const struct stat *st, bool directory)
 {
-    if (0 != st->st_uid && geteuid() != st->st_uid) {
-        return directory ? "its directory is owned by another user"
-                         : "it is owned by another user";
+    if (0 != st->st_uid && geteuid() != st->st_uid && !code_owner(st->st_uid)) {
+        return directory ? "its directory is owned by a user who owns neither the library "
+                           "we run nor a directory above it"
+                         : "it is owned by a user who owns neither the library we run nor "
+                           "a directory above it";
     }
     if (directory && 0 != (st->st_mode & S_ISVTX)) {
         return NULL;

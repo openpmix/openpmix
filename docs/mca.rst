@@ -185,18 +185,26 @@ the left have lower precedence; files to the right are higher
 precedence.
 
 A parameter file can set any parameter, so a process reads one only if
-nobody but root, the user it runs as, and the members of its own groups
-could have written it:
+nobody could have written it but root, the user it runs as, the members
+of its own groups, and those who could already have changed the PMIx
+library it runs:
 
-* it must be a regular file, owned by root or by the user the process
-  runs as;
+* it must be a regular file, owned by root, by the user the process runs
+  as, or by the owner of the PMIx library the process has loaded (or of
+  the executable, when PMIx is linked into it) or of a directory above
+  that library. The owner of an installation made by one user and used
+  by others is such a user, and so is the owner of a build tree that
+  root runs;
 * no user outside the file's owner may write it, except the members of
   a group the process itself belongs to;
 * the directory holding it is held to the same rule, unless that
   directory has the sticky bit set (as ``/tmp`` does).
 
 A symbolic link is followed, and then the directory of the file it
-names must meet the same rule. A process running as root admits no
+names must meet the same rule. The library's location is taken from the
+kernel's own record of what the process has mapped (on Linux) or from
+the dynamic loader; when it cannot be found, only root and the user the
+process runs as may own a parameter file. A process running as root admits no
 group write at all, to the file or its directory, since the members of a
 group root belongs to can be ordinary users.
 
