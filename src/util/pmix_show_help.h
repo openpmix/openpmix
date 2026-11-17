@@ -259,6 +259,15 @@ PMIX_EXPORT pmix_status_t pmix_show_help_norender(const char *nspace,
                                                   const char *topic,
                                                   const char *output);
 
+/**
+ * The same, with log directives of the caller's - PMIX_LOG_TARGET, to
+ * deliver it only to the processes the message is for, and PMIX_REQUESTOR
+ * to say on whose behalf. They are copied.
+ */
+PMIX_EXPORT pmix_status_t pmix_show_help_norender_dirs(const char *nspace, const char *filename,
+                                                       const char *topic, const char *output,
+                                                       const pmix_info_t *dirs, size_t ndirs);
+
 PMIX_EXPORT extern int pmix_show_help_enabled;
 
 /* The most entries pmix_help_check_dups() keeps. Set by the

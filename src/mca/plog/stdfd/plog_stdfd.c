@@ -78,6 +78,10 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     pmix_byte_object_t *formatted;
     const pmix_proc_t *name;
     FILE *stream;
+    /* the directives the delivery acts on - who the output is for, and on
+     * whose behalf (see pmix_server_iof_deliver_local) - as a shallow copy */
+    pmix_info_t pass[2];
+    size_t npass = 0;
     /* completion is tracked in the caller's array - the framework and
      * the other modules read those marks, so they are shared mutable
      * state by design (see the plog AGENTS.md) */
@@ -105,6 +109,9 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
                 flags.timestamp = PMIX_INFO_TRUE(&directives[n]);
             } else if (0 == strncmp(directives[n].key, PMIX_LOG_XML_OUTPUT, PMIX_MAX_KEYLEN)) {
                 flags.xml = PMIX_INFO_TRUE(&directives[n]);
+            } else if (2 > npass && (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_TARGET) ||
+                                     PMIX_CHECK_KEY(&directives[n], PMIX_REQUESTOR))) {
+                memcpy(&pass[npass++], &directives[n], sizeof(pmix_info_t));
             }
         }
     }
@@ -206,7 +213,8 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
                 out.bytes = data[n].value.data.string;
                 out.size = strlen(data[n].value.data.string);
             }
-            rc = pmix_server_iof_deliver_local(name, channel, &out, NULL, 0);
+            rc = pmix_server_iof_deliver_local(name, channel, &out,
+                                               (0 < npass) ? pass : NULL, npass);
             if (NULL != formatted) {
                 free(formatted->bytes);
                 free(formatted);
