@@ -21,6 +21,10 @@
  *
  * Test cases:
  *
+ *   a construct expired
+ *      while collecting      -> goes to the host as timed out, naming who had
+ *                               called; a later caller is answered
+ *                               PMIX_ERR_TIMEOUT; nothing else to expire
  *   the host is told who
  *      took part             -> PMIX_LOCAL_PARTICIPANTS names the caller; a
  *                               caller's own list is replaced, not passed;
@@ -146,6 +150,8 @@ static size_t group_ninfo = 0;
 /* the PMIX_LOCAL_PARTICIPANTS the host was given */
 #define GRPUT_MAXPART 8
 static bool group_part_seen = false;
+/* the PMIX_LOCAL_COLLECTIVE_STATUS the host was given */
+static pmix_status_t group_local_status = PMIX_SUCCESS;
 static size_t group_npart = 0;
 static pmix_proc_t group_part[GRPUT_MAXPART];
 static bool group_status_last = false;
@@ -186,8 +192,14 @@ static pmix_status_t stub_group(pmix_group_operation_t op, char grp[],
     group_has_id = false;
     group_part_seen = false;
     group_npart = 0;
+    group_local_status = PMIX_SUCCESS;
     for (size_t d = 0; NULL != directives && d < ndirs; d++) {
         const pmix_info_t *gi;
+
+        if (PMIX_CHECK_KEY(&directives[d], PMIX_LOCAL_COLLECTIVE_STATUS) &&
+            PMIX_STATUS == directives[d].value.type) {
+            group_local_status = directives[d].value.data.status;
+        }
 
         if (PMIX_CHECK_KEY(&directives[d], PMIX_LOCAL_PARTICIPANTS) &&
             PMIX_DATA_ARRAY == directives[d].value.type &&
@@ -1808,6 +1820,55 @@ int main(int argc, char **argv)
                baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
     }
     group_accept = false;
+
+    /* --- expiring a construct still collecting --- *
+     * PMIx_server_collective_expire hands a block to the host before every
+     * local member has called, as though it had timed out: the host gets
+     * PMIX_ERR_TIMEOUT as the local status and the members that had called.
+     * A member calling afterwards missed the deadline and is answered that,
+     * not added; the block can be expired once; and there is nothing to
+     * expire for an ID nobody has called. */
+    group_accept = true;
+    nheld = 0;
+    progress_barrier();
+    baseline = pmix_list_get_size(&pmix_server_globals.grp_collectives);
+    PMIX_LOAD_PROCID(&twoprocs[0], GRPUT_TWO, PMIX_RANK_WILDCARD);
+    rc = drive_group_procs_as("grput.expire", twoprocs, 1, false, two0);
+    report("one of two members' construct is accepted, and waits for the other",
+           PMIX_SUCCESS == rc && !group_fired);
+    rc = PMIx_server_collective_expire(PMIX_COLLECTIVE_GROUP_CONSTRUCT, "grput.expire", NULL, 0,
+                                       NULL, 0, NULL, NULL);
+    progress_barrier();
+    report("expiring it hands it to the host", PMIX_OPERATION_SUCCEEDED == rc && group_fired);
+    report("...as timed out", PMIX_ERR_TIMEOUT == group_local_status);
+    report("...naming the one member that had called",
+           group_part_seen && 1 == group_npart &&
+               PMIX_CHECK_NSPACE(group_part[0].nspace, GRPUT_TWO) && 0 == group_part[0].rank);
+    rc = drive_group_procs_as("grput.expire", twoprocs, 1, false, two1);
+    report("a member calling after that is answered PMIX_ERR_TIMEOUT", PMIX_ERR_TIMEOUT == rc);
+    rc = PMIx_server_collective_expire(PMIX_COLLECTIVE_GROUP_CONSTRUCT, "grput.expire", NULL, 0,
+                                       NULL, 0, NULL, NULL);
+    report("a construct already with the host is not expired again", PMIX_ERR_NOT_FOUND == rc);
+    if (1 == nheld) {
+        held_cbfunc[0](PMIX_ERR_TIMEOUT, NULL, 0, held_cbdata[0], NULL, NULL);
+        progress_barrier();
+        report("the host's completion clears it",
+               baseline == pmix_list_get_size(&pmix_server_globals.grp_collectives));
+    } else {
+        report("the host was handed the expired construct once", false);
+    }
+    group_accept = false;
+    rc = PMIx_server_collective_expire(PMIX_COLLECTIVE_GROUP_CONSTRUCT, "grput.nobody", NULL, 0,
+                                       NULL, 0, NULL, NULL);
+    report("there is nothing to expire for an ID nobody has called", PMIX_ERR_NOT_FOUND == rc);
+    rc = PMIx_server_collective_expire(PMIX_COLLECTIVE_FENCE, NULL, twoprocs, 1, NULL, 0, NULL,
+                                       NULL);
+    report("...nor for a fence nobody has called", PMIX_ERR_NOT_FOUND == rc);
+    rc = PMIx_server_collective_expire(PMIX_COLLECTIVE_FENCE, NULL, NULL, 0, NULL, 0, NULL, NULL);
+    report("a fence must be named by its procs", PMIX_ERR_BAD_PARAM == rc);
+    rc = PMIx_server_collective_expire(PMIX_COLLECTIVE_GROUP_DESTRUCT, NULL, NULL, 0, NULL, 0,
+                                       NULL, NULL);
+    report("...and a group by its ID", PMIX_ERR_BAD_PARAM == rc);
 
     /* --- a follower's block is its own --- *
      * A follower names no procs and a bootstrap participant names only

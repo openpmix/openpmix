@@ -1429,6 +1429,20 @@ static pmix_status_t grp_fn(pmix_group_operation_t op, char *gpid,
             PMIX_INFO_LOAD(&lg->info[2], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
         }
     } else if (PMIX_GROUP_CONSTRUCT == op) {
+        /* a local phase that timed out - the server handed up what it had -
+         * is the result. A fault-tolerant construct that lost a member
+         * carries PMIX_ERR_LOST_CONNECTION too, but still forms on the
+         * survivors, so that one is not */
+        for (n = 0; NULL != directives && n < ndirs; n++) {
+            if (PMIX_CHECK_KEY(&directives[n], PMIX_LOCAL_COLLECTIVE_STATUS) &&
+                PMIX_STATUS == directives[n].value.type &&
+                PMIX_ERR_TIMEOUT == directives[n].value.data.status) {
+                lg->status = directives[n].value.data.status;
+                break;
+            }
+        }
+    }
+    if (NULL == nonpart && PMIX_GROUP_CONSTRUCT == op && PMIX_SUCCESS == lg->status) {
         lg->ninfo = 2;
         PMIX_INFO_CREATE(lg->info, lg->ninfo);
         PMIX_INFO_LOAD(&lg->info[0], PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);

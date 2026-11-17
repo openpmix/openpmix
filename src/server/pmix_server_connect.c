@@ -96,6 +96,11 @@ static void collective_timeout(int sd, short args, void *cbdata)
         return;
     }
 
+    /* with a host, it goes up as it stands - see pmix_server_trk_expire */
+    if (PMIX_SUCCESS == pmix_server_trk_expire(trk)) {
+        return;
+    }
+
     /* execute the provided callback function with the error */
     if (NULL != trk->op_cbfunc) {
         trk->op_cbfunc(PMIX_ERR_TIMEOUT, trk);
@@ -281,6 +286,13 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
             goto cleanup;
         }
         trk->op_cbfunc = cbfunc;
+    }
+
+    /* already handed to the host after it ran out of time: this caller
+     * missed the deadline - see pmix_server_trk_expire */
+    if (trk->expired) {
+        rc = PMIX_ERR_TIMEOUT;
+        goto cleanup;
     }
 
     /* if the info keys have not been provided yet, pass
@@ -668,6 +680,13 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
             goto cleanup;
         }
         trk->op_cbfunc = cbfunc;
+    }
+
+    /* already handed to the host after it ran out of time: this caller
+     * missed the deadline - see pmix_server_trk_expire */
+    if (trk->expired) {
+        rc = PMIX_ERR_TIMEOUT;
+        goto cleanup;
     }
 
     /* if the info keys have not been provided yet, pass

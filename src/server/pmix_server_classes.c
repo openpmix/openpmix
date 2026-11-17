@@ -77,6 +77,7 @@ static void tcon(pmix_server_trkr_t *t)
     t->event_active = false;
     t->host_called = false;
     t->completion_fired = false;
+    t->expired = false;
     t->local = true;
     t->id = NULL;
     /* no command matches this, so a tracker whose type was never set

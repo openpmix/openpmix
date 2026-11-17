@@ -1043,6 +1043,40 @@ PMIX_EXPORT pmix_status_t PMIx_server_deregister_resources(pmix_info_t info[], s
                                                            pmix_op_cbfunc_t cbfunc,
                                                            void *cbdata);
 
+/* Hand a collective that is still collecting its local participants to the
+ * host now, as though it had timed out: the host's fence_nb, connect,
+ * disconnect or group entry point is called with PMIX_ERR_TIMEOUT as the
+ * PMIX_LOCAL_COLLECTIVE_STATUS and PMIX_LOCAL_PARTICIPANTS naming the local
+ * processes that had called by then. A process that calls the collective
+ * afterwards is answered PMIX_ERR_TIMEOUT.
+ *
+ * This lets a host decide when a collective has run out of time across all
+ * of its servers - each server's own PMIX_TIMEOUT starts when its first
+ * local participant calls, so the servers' deadlines differ - and learn
+ * from every server who had taken part by then.
+ *
+ * op       - the collective
+ * id       - the group ID, for PMIX_COLLECTIVE_GROUP_CONSTRUCT and
+ *            PMIX_COLLECTIVE_GROUP_DESTRUCT; ignored otherwise
+ * procs    - the processes the collective names, as the server gave them
+ *            to the host, for the fence, connect and disconnect; ignored
+ *            for a group
+ * info     - directives; none are defined yet
+ * cbfunc   - called with PMIX_SUCCESS once the collective has been handed
+ *            to the host, or PMIX_ERR_NOT_FOUND if this server holds no
+ *            such collective still collecting - none of its local
+ *            participants has called, or it is already with the host. With
+ *            no cbfunc the call blocks and returns PMIX_OPERATION_SUCCEEDED
+ *            or PMIX_ERR_NOT_FOUND; the blocking form returns
+ *            PMIX_ERR_WOULD_BLOCK when called from the progress thread, as
+ *            from within a host upcall.
+ *
+ * The id, procs and info must remain valid until cbfunc is called. */
+PMIX_EXPORT pmix_status_t PMIx_server_collective_expire(pmix_collective_op_t op, const char *id,
+                                                        const pmix_proc_t procs[], size_t nprocs,
+                                                        const pmix_info_t info[], size_t ninfo,
+                                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
+
 /* collect job-level info for an array of procs */
 PMIX_EXPORT pmix_status_t PMIx_server_collect_job_info(pmix_proc_t *procs, size_t nprocs,
                                                        pmix_data_buffer_t *dbuf);

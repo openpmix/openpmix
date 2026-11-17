@@ -4800,6 +4800,52 @@ cdef class PMIxServer(PMIxClient):
     # Deregister resources
     # cbfunc(status:int, cbdata) - the non-blocking form, which is the
     # only one usable from a server module upcall (see deregister_nspace)
+    # Hand a collective still collecting its local participants to the host
+    # now, as though it had timed out - see PMIx_server_collective_expire(3).
+    # 'group' names a group construct or destruct; 'peers' the procs of a
+    # fence, connect or disconnect
+    def collective_expire(self, op:int, group, peers, directives,
+                          cbfunc=None, cbdata=None):
+        cdef pypmix_nb_cbdata_t *cd
+        cdef pmix_status_t rc
+        cdef int prc
+        cdef pmix_collective_op_t cop = <pmix_collective_op_t> op
+
+        if cbfunc is not None and not callable(cbfunc):
+            return PMIX_ERR_BAD_PARAM
+        # the library holds the id, procs and info until it completes
+        cd = pypmix_nb_setup(directives, &prc)
+        if NULL == cd:
+            return prc
+        if group is not None:
+            pygrp = group.encode('ascii')
+            cd.grp = strdup(pygrp)
+            if NULL == cd.grp:
+                pypmix_nb_cbdata_free(cd)
+                return PMIX_ERR_NOMEM
+        if peers is not None and 0 < len(peers):
+            prc = pypmix_nb_add_procs(cd, peers, self.myproc.nspace)
+            if PMIX_SUCCESS != prc:
+                pypmix_nb_cbdata_free(cd)
+                return prc
+
+        if cbfunc is not None:
+            cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            with nogil:
+                rc = PMIx_server_collective_expire(cop, cd.grp,
+                         cd.procs, cd.nprocs, cd.info, cd.ninfo,
+                         pypmix_client_op_cbfunc, <void *> cd)
+            if PMIX_SUCCESS != rc:
+                if pypmix_nb_take(cd.idx) is not None:
+                    pypmix_nb_cbdata_free(cd)
+            return rc
+
+        with nogil:
+            rc = PMIx_server_collective_expire(cop, cd.grp,
+                     cd.procs, cd.nprocs, cd.info, cd.ninfo, NULL, NULL)
+        pypmix_nb_cbdata_free(cd)
+        return rc
+
     def deregister_resources(self, directives, cbfunc=None, cbdata=None):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
