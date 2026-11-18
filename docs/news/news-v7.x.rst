@@ -130,15 +130,37 @@ Highlights
 
 * **Expanded allocation support** through new ``PMIX_ALLOC_*``
   attributes; ``palloc`` can target an existing allocation, and a spawn
-  can carry the allocation request it needs.
+  can carry the allocation request it needs. ``PMIX_ALLOC_UID`` and
+  ``PMIX_ALLOC_GID`` name the user and group an allocation or session
+  belongs to, which ``PMIX_USERID`` and ``PMIX_GRPID`` cannot, since
+  they name the caller -- a scheduler or host acting for that user.
 
 * **New compression components.** ``zstd`` (preferred when available,
   roughly 6x faster than zlib) and ``lz4``. All nodes in a job must use
   the same component.
 
 * **GPU discovery repaired.** ``pgpu/amd`` and ``pgpu/nvd`` activate on
-  the right nodes, and Intel GPUs get a correct ``ZE_AFFINITY_MASK``.
-  ``PMIX_CAP_DEVICE_ENUM``.
+  the right nodes, including nodes whose AMD GPUs report themselves as
+  processing accelerators, and Intel GPUs get a correct
+  ``ZE_AFFINITY_MASK``. ``ROCR_VISIBLE_DEVICES`` names each AMD GPU as
+  ``GPU-`` and its 16-digit unique id, the form ROCm reads; it is left
+  unset for a partitioned GPU. A 3D-controller GPU that hwloc reports
+  with no OS device is counted as a GPU and named by its PCI bus id.
+  Where any of a process's GPUs cannot be named to its runtime, the
+  visible-devices variable is not set, so the process sees every GPU
+  rather than having one it was given hidden. ``PMIX_CAP_DEVICE_ENUM``.
+
+* **NICs are named to the libraries that use them.** A process mapped
+  against network devices is told which through the variable its fabric
+  library reads: ``NCCL_IB_HCA``, ``UCX_NET_DEVICES``, and
+  ``FI_VERBS_DEVICE_NAME`` for InfiniBand and RoCE adapters from NVIDIA,
+  Broadcom, and Intel (iWARP excluded); ``FI_EFA_IFACE`` for Amazon EFA
+  (new ``pnet/efa``); ``FI_CXI_DEVICE_NAME`` for HPE Slingshot (new
+  ``pnet/cxi``, which prefers the ``cxiN`` device and finds it in sysfs
+  under an hwloc older than 2.14); and ``PSM3_NIC`` for Omni-Path. A
+  value already set is replaced, and a variable that cannot name the
+  assigned devices exactly, as the library will read it, is left unset
+  rather than written to select another device.
 
 * **Distances can be measured from a device.**
   ``PMIX_DEVICE_DIST_ORIGIN`` answers questions such as which NICs are
@@ -158,6 +180,18 @@ Highlights
   named twice in a participant list, is counted once.
   ``PMIX_CAP_DEREG_DEPARTS``.
 
+* **The host learns who took part in a collective.** Every fence,
+  connect, disconnect, and group up-call carries
+  ``PMIX_LOCAL_PARTICIPANTS``, naming the local processes that called,
+  and a host names the members that never took part with the new
+  ``PMIX_COLLECTIVE_NONPARTICIPANTS``, which reaches each caller in the
+  results of ``PMIx_Group_construct`` -- now returned on a failure that
+  carries the list as well as on success. A collective whose local
+  ``PMIX_TIMEOUT`` fires is handed to the host as it stands, with
+  ``PMIX_ERR_TIMEOUT`` as its local status, rather than failed where the
+  host never hears of it, and the new ``PMIx_server_collective_expire``
+  lets a host hand up every server's collective at its own deadline.
+
 * **A group ID belongs to one group.** A group ID is held by one group
   until it is destructed, and may not name a job the server knows.
   Every caller of a construct or destruct must be a participant and
@@ -171,7 +205,15 @@ Highlights
   it, and writes them from a thread of its own. A server that cannot
   act as the owner leaves the files to a launcher that names itself
   with ``PMIX_IOF_FILE_WRITER``, or else tells the job once, when it is
-  registered, that its files are not written.
+  registered, that its files are not written. The open is bounded by
+  ``runas_timeout`` whether or not the server is itself the owner, so a
+  stalled filesystem no longer holds the server.
+
+* **Log output can be addressed.** The new ``PMIX_LOG_TARGET`` directive
+  names the only processes a server's log output is for, so a message
+  about one tool's request -- such as a hostfile that would not parse --
+  goes to that tool alone instead of to every tool connected, and is not
+  cached for tools that connect later.
 
 * **Spawned jobs' output follows the parent's.** A spawned job's output
   now arrives formatted as its parent's (``PMIX_IOF_JOB_DIRECTIVES``),
@@ -250,18 +292,25 @@ Highlights
 
 * **Build.** ``flex`` is no longer required, the Python bindings now
   receive the build's optimization and hardening flags, and the tree
-  builds warning-free with gcc 16.
+  builds warning-free with gcc 16. The Cython check, the documentation's
+  Markdown converter, and the unit tests' Python scripts all run with
+  the Python interpreter configure found rather than the first
+  ``python3`` on ``PATH``, and a tarball now finds Cython when it is
+  installed only as a Python package.
 
 * **Documentation.** 277 new man pages cover the public API,
   ``docs/how-things-work`` describes the major subsystems, and the
   security policy now lives in ``SECURITY.md``. New guides cover host
   environments, system administration, and moving from v5 to v7 for
-  each role, schedulers included.
+  each role, schedulers included. The transition guide lists the NIC
+  variables PMIx sets at launch, and the allocation-request and
+  session-control pages explain how the two calls work together.
 
 * **Testing.** New unit tests, multi-node Docker Swarm suites,
   multi-user output-file tests, AddressSanitizer CI, cross-version CI
-  with clients back to v2.1, and a CI build without support for
-  earlier releases.
+  with clients back to v2.1, a CI build without support for earlier
+  releases, and topologies from Slingshot, MI350, and AWS GPU nodes as
+  device-discovery fixtures.
 
 Compatibility notes
 ^^^^^^^^^^^^^^^^^^^
@@ -269,8 +318,8 @@ Compatibility notes
 .. rst-class:: open
 
 * **Out-of-tree MCA components must be rebuilt** against the v7
-  headers; framework versions are now checked at load time.
-  ``PMIX_CAP_MCA_FW_VERSION``.
+  headers; framework versions are now checked at load time, and the
+  ``pnet`` interface is at 4.0.0. ``PMIX_CAP_MCA_FW_VERSION``.
 
 * **Earlier releases are supported only when built for.** A default
   build speaks only this release's wire format and has no TCP
@@ -298,8 +347,9 @@ Compatibility notes
 
 * **One connection per rank.** A second connection for a connected
   rank is refused with ``PMIX_ERR_EXISTS``, and
-  ``PMIX_ALLOW_CLIENT_CLONES`` is retired. Every socket the library
-  makes is close-on-exec, so an exec ends the process's connection, and
+  ``PMIX_ALLOW_CLIENT_CLONES`` is deprecated and ignored. Every socket
+  the library makes is close-on-exec, so an exec ends the process's
+  connection, and
   ``PMIx_Init`` and ``PMIx_tool_init`` remove the variables that
   identify the process and its server from the environment, so a
   process it starts afterwards does not inherit them.
@@ -339,7 +389,16 @@ Compatibility notes
   ``PMIX_GRPID`` names one group.
 
 * A scheduler or system controller serves tools unless the host passes
-  ``PMIX_SERVER_TOOL_SUPPORT`` false, which now fails the init.
+  ``PMIX_SERVER_TOOL_SUPPORT`` false, which now fails the init. A host
+  is now told through ``client_finalized`` when a connected scheduler
+  finalizes.
+
+* A host must not complete a collective whose
+  ``PMIX_LOCAL_COLLECTIVE_STATUS`` is ``PMIX_ERR_TIMEOUT`` as a success:
+  it was handed up without the members that never called. On a group
+  construct that asked for ``PMIX_GROUP_FT_COLLECTIVE``,
+  ``PMIX_ERR_LOST_CONNECTION`` is a degraded success, and the group
+  forms on the survivors.
 
 * Group membership keeps the order the host provided, and group ranks
   follow it. ``PMIX_GROUP_FINAL_MEMBERSHIP_ORDER`` is deprecated and
@@ -414,9 +473,15 @@ Compatibility notes
   user; and ``pmix_tool_finalize_timeout`` (5 seconds) bounds a tool's
   wait at finalize.
 
-* As root, PMIx reads only parameter files that root controls, and the
-  MCA home-directory defaults are omitted when the user has no home
-  directory.
+* PMIx reads a parameter file only if nobody could have written it but
+  root, the user it runs as, the owner of the loaded PMIx library or of
+  a directory above it, and -- except when running as root -- the
+  members of a group it is in. The same holds for the directory holding
+  the file unless that directory is sticky, and for the directory of a
+  symbolic link's target. A file that fails is passed over with a
+  message saying why, and a FIFO at the file's name no longer blocks
+  startup. The MCA home-directory defaults are omitted when the user
+  has no home directory.
 
 * ``pstat`` takes an empty field list to mean every field, and answers
   a pid the requester does not own as one with no process.
