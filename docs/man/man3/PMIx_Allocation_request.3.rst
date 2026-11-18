@@ -260,6 +260,8 @@ Controlling scheduling, timing, and lifecycle:
 * ``PMIX_ALLOC_SEQUENCE`` (uint32_t) |mdash| index recording the order in which
   the host environment acquired this allocation relative to the others it holds;
   larger values were acquired later, and no other meaning is implied.
+* ``PMIX_ALLOC_GRANT_TIME`` (struct timeval) |mdash| time at which the
+  scheduler granted the allocation, for a request answered before its grant.
 * ``PMIX_ALLOC_NOSHELL`` (bool) |mdash| immediately exit after allocating
   resources, without running a command.
 * ``PMIX_ALLOC_NOT_WAITING`` (bool) |mdash| the requestor is not waiting for
