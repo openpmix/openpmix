@@ -462,8 +462,8 @@ Two consequences that are load-bearing:
   network or OpenFabrics device `pmix_hwloc_device_t.selector` is the OS
   device name, because that is what every fabric library's
   device-selection variable accepts — `UCX_NET_DEVICES`, `NCCL_IB_HCA`,
-  `PSM3_NIC`. There is no vendor backend to be absent and nothing to
-  translate, so unlike a GPU's it is always set. What *is* a decision is
+  `FI_VERBS_DEVICE_NAME`. There is no vendor backend to be absent and
+  nothing to translate, so unlike a GPU's it is always set. What *is* a decision is
   which of a function's OS devices supplies that name: one HCA presents
   both an OpenFabrics device (`mlx5_0`) and a network interface (`ib0`)
   on one PCI function, and `osdev_preferred()` takes the OpenFabrics one

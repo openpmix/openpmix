@@ -57,9 +57,12 @@ Where the name comes from depends on the hwloc that took the topology:
   identifies it by the `CassiniVersion` / `NID` infos hwloc records only
   on it (see [`src/hwloc/AGENTS.md`](../../../hwloc/AGENTS.md)). The
   selector is already `cxiN`.
+  A process mapped against the interface (`--map-by device=hsn0`) gets
+  the same name: `pmix_pnet_base_get_assigned_devices()` names a PCI
+  function by its preferred OS device whichever name it was assigned
+  under.
 - **An older hwloc** reports only `hsnN`; `slingshot.xml` (hwloc 2.10.0)
-  is that case. So is a process mapped against a device named by its
-  interface. `setup_fork` then looks the CXI device up where hwloc 2.14
+  is that case. `setup_fork` then looks the CXI device up where hwloc 2.14
   itself finds it: the interface's PCI device carries a `cxi` class
   directory, `<root>/class/net/<hsnN>/device/cxi/`, whose entry is the CXI
   device. This runs on the node that forks the process, so it reads that
@@ -90,5 +93,5 @@ lookup can be run against a captured tree, as `nvd`'s
   `test/topologies/rdma-fabrics.xml`, which carries one Cassini function
   with both OS devices (interface listed first) and one with only the
   interface, and a sysfs tree with no `class/net` entries. The first is
-  named `cxi0`; the second, and the first asked for as `hsn0`, are left
-  unset.
+  named `cxi0`, whether asked for as `cxi0` or as `hsn0`; the second is
+  left unset.
