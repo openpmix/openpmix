@@ -74,6 +74,10 @@ static char *topo_file = NULL;
 static char *testcpuset = NULL;
 static int pmix_hwloc_output = -1;
 static int pmix_hwloc_verbose = 0;
+/* the cached topology pmix_hwloc_finalize last released - see
+ * pmix_hwloc_topology_is_lent. Kept as an integer because it is only ever
+ * compared, never followed. */
+static uintptr_t released_topology = 0;
 
 #if HWLOC_API_VERSION >= 0x20000
 static size_t shmemsize = 0;
@@ -166,9 +170,14 @@ void pmix_hwloc_finalize(void)
      * process, and the next cycle tests that pointer to decide whether it
      * already has a topology - a stale one is then used, and destroyed a
      * second time by the next finalize. */
-    if (NULL != pmix_globals.topology.topology &&
-        !pmix_globals.external_topology) {
-        hwloc_topology_destroy(pmix_globals.topology.topology);
+    if (NULL != pmix_globals.topology.topology) {
+        /* a caller may still hold this pointer from PMIx_Load_topology
+         * and destruct its handle after we are gone - see
+         * pmix_hwloc_topology_is_lent */
+        released_topology = (uintptr_t) pmix_globals.topology.topology;
+        if (!pmix_globals.external_topology) {
+            hwloc_topology_destroy(pmix_globals.topology.topology);
+        }
     }
     pmix_globals.topology.topology = NULL;
     pmix_globals.external_topology = false;
@@ -183,6 +192,32 @@ void pmix_hwloc_finalize(void)
     passed_thru = false;
     setup_result = PMIX_SUCCESS;
     return;
+}
+
+/* PMIx_Load_topology hands the caller the cached topology itself, not a
+ * copy, and the caller is not expected to destruct it. Callers have done
+ * so anyway, and until the cache was destroyed at finalize that was
+ * harmless - so released binaries depend on it, and a destruct of such a
+ * handle has to clear the handle and leave the topology alone.
+ *
+ * The cached pointer alone cannot answer that, because the caller's
+ * destruct can come after PMIx_Finalize, when the cache is empty and the
+ * topology already destroyed (or, if it was the host's, still the host's).
+ * So finalize records the pointer it released, and that counts too. If
+ * hwloc later reuses that address for a topology someone owns, destructing
+ * that one leaks it rather than destroying it twice - the safe way round.
+ *
+ * This runs on the caller's thread, from PMIx_Topology_destruct. It only
+ * compares the pointers, and the cache changes only at init and finalize. */
+bool pmix_hwloc_topology_is_lent(const void *topology)
+{
+    if (NULL == topology) {
+        return false;
+    }
+    if (topology == pmix_globals.topology.topology) {
+        return true;
+    }
+    return ((uintptr_t) topology == released_topology);
 }
 
 /* Acquire the topology once per init/finalize cycle.
