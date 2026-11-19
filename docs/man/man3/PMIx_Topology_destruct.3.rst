@@ -42,6 +42,12 @@ the embedded ``hwloc`` topology object, frees the ``source`` string, and sets
 both pointers to ``NULL``. Structures with any other ``source`` (or none) are
 left untouched, since their ``topology`` payload is not owned by the library.
 
+A structure filled in by :ref:`PMIx_Load_topology(3) <man3-PMIx_Load_topology>`
+refers to the library's own topology rather than a copy. Destructing it,
+before or after the library finalizes, sets both pointers to ``NULL`` without
+destroying that topology; a ``source`` string the caller provided is still
+freed.
+
 ``PMIx_Topology_destruct`` releases only the *contents* of the structure; it
 does **not** free the storage of the ``pmix_topology_t`` structure itself. When
 the structure was allocated on the stack or embedded in another object, that

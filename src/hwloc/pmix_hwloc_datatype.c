@@ -491,12 +491,27 @@ void pmix_hwloc_destruct_topology(pmix_topology_t *src)
         return;
     }
 
+    /* A handle filled in by PMIx_Load_topology holds the library's own
+     * topology, which is not the caller's to destroy - see
+     * pmix_hwloc_topology_is_lent. Clear the handle and leave the topology
+     * alone. The library's own handle is the exception: that one does own
+     * what it holds, unless the host lent it to us. */
     if (NULL != src->topology) {
-        hwloc_topology_destroy(src->topology);
+        if (src == &pmix_globals.topology) {
+            if (!pmix_globals.external_topology) {
+                hwloc_topology_destroy(src->topology);
+            }
+        } else if (!pmix_hwloc_topology_is_lent(src->topology)) {
+            hwloc_topology_destroy(src->topology);
+        }
         src->topology = NULL;
     }
 
-    free(src->source);
+    /* the source PMIx_Load_topology reports when the caller named none is
+     * static storage */
+    if (src->source != pmix_hwloc_load_source) {
+        free(src->source);
+    }
     src->source = NULL;
 }
 

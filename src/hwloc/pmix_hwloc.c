@@ -84,6 +84,20 @@ static uint64_t amount_space_avail = 0;
 /* the acquisition latch - see pmix_hwloc_setup_topology */
 static bool setup_done = false;
 static pmix_status_t setup_result = PMIX_SUCCESS;
+/* the cached topology pmix_hwloc_finalize last released - see
+ * pmix_hwloc_topology_is_lent. Kept as an integer because it is only ever
+ * compared, never followed. */
+static uintptr_t released_topology = 0;
+
+/* Source string reported for a topology handed back by
+ * pmix_hwloc_load_topology when the caller did not request a specific
+ * source. It has static storage duration, so the caller must treat it as
+ * read-only and must NOT free it - and pmix_hwloc_destruct_topology
+ * recognizes it and does not either. A source the caller DID provide
+ * remains theirs to free. We never assign this to our own cached topology,
+ * whose source is heap-allocated and released when the library
+ * finalizes. */
+const char pmix_hwloc_load_source[] = "hwloc:" HWLOC_VERSION;
 
 static int enough_space(const char *filename, size_t space_req, uint64_t *space_avail,
                         bool *result);
@@ -181,6 +195,10 @@ void pmix_hwloc_finalize(void)
      * source is always ours: setup_topology strdup's it on both of the
      * external arms. */
     if (NULL != pmix_globals.topology.topology) {
+        /* a caller may still hold this pointer from PMIx_Load_topology
+         * and destruct its handle after we are gone - see
+         * pmix_hwloc_topology_is_lent */
+        released_topology = (uintptr_t) pmix_globals.topology.topology;
         if (!pmix_globals.external_topology) {
             hwloc_topology_destroy(pmix_globals.topology.topology);
         }
@@ -195,6 +213,32 @@ void pmix_hwloc_finalize(void)
     setup_done = false;
     setup_result = PMIX_SUCCESS;
     return;
+}
+
+/* PMIx_Load_topology hands the caller the cached topology itself, not a
+ * copy, and its man page tells the caller not to destruct it. Callers have
+ * done so anyway, and until the cache was destroyed at finalize that was
+ * harmless - so released binaries depend on it, and a destruct of such a
+ * handle has to clear the handle and leave the topology alone.
+ *
+ * The cached pointer alone cannot answer that, because the caller's
+ * destruct can come after PMIx_Finalize, when the cache is empty and the
+ * topology already destroyed (or, if it was the host's, still the host's).
+ * So finalize records the pointer it released, and that counts too. If
+ * hwloc later reuses that address for a topology someone owns, destructing
+ * that one leaks it rather than destroying it twice - the safe way round.
+ *
+ * This runs on the caller's thread, from PMIx_Topology_destruct. It only
+ * compares the pointers, and the cache changes only at init and finalize. */
+bool pmix_hwloc_topology_is_lent(const void *topology)
+{
+    if (NULL == topology) {
+        return false;
+    }
+    if (topology == pmix_globals.topology.topology) {
+        return true;
+    }
+    return ((uintptr_t) topology == released_topology);
 }
 
 static pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo);
@@ -769,14 +813,6 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
     pmix_proc_t wildcard;
     pmix_status_t rc;
     pmix_topology_t *t;
-    /* Source string reported for a caller-provided topology when the caller
-     * did not request a specific source. It has static storage duration, so
-     * the caller must treat it as read-only and must NOT free it - consistent
-     * with the returned topology being a library-managed, read-only object.
-     * A source the caller DID provide remains theirs to free. We never assign
-     * this to our own cached topology, whose source is heap-allocated and
-     * released when the library finalizes. */
-    static const char hwloc_source[] = "hwloc:" HWLOC_VERSION;
     bool source_given;
 
     /* reachable from the public PMIx_Load_topology with whatever the caller
@@ -820,7 +856,7 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
                                 "%s:%s no source stipulated - returning current version", __FILE__,
                                 __func__);
             /* read-only static source - caller must not free it */
-            topo->source = (char *) hwloc_source;
+            topo->source = (char *) pmix_hwloc_load_source;
             topo->topology = pmix_globals.topology.topology;
             return PMIX_SUCCESS;
         }
@@ -847,7 +883,7 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
              * read-only static source they must not free. */
             if (topo != &pmix_globals.topology) {
                 if (!source_given) {
-                    topo->source = (char *) hwloc_source;
+                    topo->source = (char *) pmix_hwloc_load_source;
                 }
                 topo->topology = t->topology;
             }
@@ -870,7 +906,7 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
         /* setup populated our cache; hand the caller the shared topology
          * plus a read-only static source (unless they provided their own) */
         if (!source_given) {
-            topo->source = (char *) hwloc_source;
+            topo->source = (char *) pmix_hwloc_load_source;
         }
         topo->topology = pmix_globals.topology.topology;
     }

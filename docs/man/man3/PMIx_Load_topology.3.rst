@@ -67,10 +67,14 @@ Ownership of the ``source`` field depends on who set it:
   of the returned topology. The caller must **not** modify or release this
   string; the library manages its lifetime.
 
-In neither case should the caller destruct or free the returned topology
-itself (for example with ``PMIx_Topology_destruct()``): the topology object is
-shared, library-managed state, and releasing it would corrupt the library's
-internal copy. The library performs the necessary cleanup at finalize.
+In neither case does the caller need to destruct the returned topology: the
+topology object is shared, library-managed state, and the library performs the
+necessary cleanup at finalize. A caller that does pass the structure to
+``PMIx_Topology_destruct()`` (or ``PMIX_TOPOLOGY_DESTRUCT``), before or after
+finalize, only clears it: the library recognizes its own topology and leaves
+it intact, and releases only a ``source`` string the caller provided. Do not
+free the returned topology by any other means (for example, by passing it to
+``hwloc_topology_destroy`` directly).
 
 
 RETURN VALUE
