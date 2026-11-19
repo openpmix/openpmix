@@ -81,6 +81,9 @@ static int shmemdirfd = -1;
 #define PMIX_HWLOC_SHMEM_NAME "hwloc.sm"
 static bool space_available = false;
 static uint64_t amount_space_avail = 0;
+/* the acquisition latch - see pmix_hwloc_setup_topology */
+static bool setup_done = false;
+static pmix_status_t setup_result = PMIX_SUCCESS;
 
 static int enough_space(const char *filename, size_t space_req, uint64_t *space_avail,
                         bool *result);
@@ -171,23 +174,32 @@ void pmix_hwloc_finalize(void)
         shmemdirfd = -1;
     }
 
-    if (NULL == pmix_globals.topology.topology ||
-        pmix_globals.external_topology) {
-        return;
+    /* A topology the host handed us is the host's to destroy, but the
+     * cache still has to be emptied. Left in place, the next cycle's
+     * acquisition finds a pointer it did not set and adopts it as though
+     * it were current - after the host has been free to destroy it. The
+     * source is always ours: setup_topology strdup's it on both of the
+     * external arms. */
+    if (NULL != pmix_globals.topology.topology) {
+        if (!pmix_globals.external_topology) {
+            hwloc_topology_destroy(pmix_globals.topology.topology);
+        }
+        pmix_globals.topology.topology = NULL;
     }
-
-    hwloc_topology_destroy(pmix_globals.topology.topology);
-    pmix_globals.topology.topology = NULL;
     if (NULL != pmix_globals.topology.source) {
         free(pmix_globals.topology.source);
         pmix_globals.topology.source = NULL;
     }
+
+    /* the cache is empty again, so the next cycle has to acquire it again */
+    setup_done = false;
+    setup_result = PMIX_SUCCESS;
     return;
 }
 
 static pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo);
 
-/* Acquire the topology, exactly once per process.
+/* Acquire the topology, exactly once per init/finalize cycle.
  *
  * The one-shot latch has to remember the ANSWER, not just the fact that we
  * ran: acquisition can fail without being fatal - a server whose setup fails
@@ -195,18 +207,20 @@ static pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo);
  * caller that gets PMIX_SUCCESS back believes there is a topology to read.
  * pmix_hwloc_load_topology() is exactly such a caller: it falls back to
  * setup and, on success, hands the cached topology to PMIx_Load_topology,
- * which would then be a NULL topology reported as success. */
+ * which would then be a NULL topology reported as success.
+ *
+ * The latch lives at file scope so pmix_hwloc_finalize can reset it. When
+ * it was local to this function it outlived the cache it described, and a
+ * second PMIx_Init in the same process got the first cycle's PMIX_SUCCESS
+ * back with nothing in the cache. */
 pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
 {
-    static bool passed_thru = false;
-    static pmix_status_t result = PMIX_SUCCESS;
-
-    if (passed_thru) {
-        return result;
+    if (setup_done) {
+        return setup_result;
     }
-    passed_thru = true;
-    result = setup_topology(info, ninfo);
-    return result;
+    setup_done = true;
+    setup_result = setup_topology(info, ninfo);
+    return setup_result;
 }
 
 static pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
