@@ -515,7 +515,39 @@ Two consequences that are load-bearing:
   for the owned cache and must be freed there; the static
   `"hwloc:" HWLOC_VERSION` string handed back by `pmix_hwloc_load_topology`
   to callers who did not specify a source is **read-only — callers must
-  not free it** (see the long comment on that function).
+  not free it** (`pmix_hwloc_load_source`).
+- **`PMIx_Load_topology` lends the cache; it does not copy it — and a
+  caller's destruct of the lent handle must be a no-op on the topology.**
+  The man page tells callers not to destruct the result, but released
+  applications do (MPICH's `MPI_Finalize` does in builds that predate
+  its own fix, through `PMIX_TOPOLOGY_DESTRUCT`), and that was harmless until
+  `pmix_hwloc_finalize()` started destroying the cache. After that the
+  hwloc object was destroyed twice — hwloc's `hwloc_components_fini`
+  assertion — and on master the destruct `free()`d the static source
+  first ([openpmix#4456](https://github.com/openpmix/openpmix/issues/4456)).
+  So `pmix_hwloc_destruct_topology` clears a handle whose topology
+  `pmix_hwloc_topology_is_lent()` recognizes without destroying it, and
+  never frees `pmix_hwloc_load_source`. "Lent" means the current cache
+  **or the one `pmix_hwloc_finalize()` last released**, because the
+  caller's destruct can come after `PMIx_Finalize`, when the cache is
+  empty. Three things follow:
+  - **A refcount does not fit here**, though it looks like it should. A
+    loan is never returned under the documented contract — Open MPI's
+    `common_ofi.c` loads on every call and never destructs — so a count
+    taken per loan never reaches zero, and finalize could never destroy
+    the cache.
+  - **A copy is still the caller's.** `hwloc_topology_dup` gives a
+    different pointer, which the check does not match, so
+    `PMIx_Data_copy`'d and unpacked topologies are destroyed as before.
+  - **Reuse of a released address leaks rather than double-destroys.** If
+    hwloc later hands that address to a topology somebody owns,
+    destructing it is skipped. That is the safe way round, and is why
+    the record is a `uintptr_t` that is only compared.
+
+  Covered by
+  [`test/unit/hwloc_lent_topology.c`](../../test/unit/hwloc_lent_topology.c),
+  which destructs lent handles before and after finalize and across a
+  second cycle.
 - **Freeing hwloc objects with hwloc, PMIx allocations with PMIx.** XML
   buffers from `hwloc_topology_export_xmlbuffer` must be released with
   `hwloc_free_xmlbuffer` (not `free`); bitmaps with `hwloc_bitmap_free`;
