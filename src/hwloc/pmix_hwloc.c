@@ -776,8 +776,14 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
         if (NULL != t) {
             pmix_output_verbose(2, pmix_hwloc_output,
                                 "%s:%s found in storage", __FILE__, __func__);
-            topo->source = strdup(t->source);
-            topo->topology = t->topology;
+            /* fill the caller's handle unless it IS the cache, and leave
+             * a source the caller named in place - it is theirs */
+            if (topo != &pmix_globals.topology) {
+                if (NULL == topo->source) {
+                    topo->source = strdup(t->source);
+                }
+                topo->topology = t->topology;
+            }
             pmix_globals.topology.source = strdup(t->source);
             pmix_globals.topology.topology = t->topology;
             /* the hwloc topology now belongs to the cache; the
@@ -792,8 +798,10 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
     pmix_output_verbose(2, pmix_hwloc_output,
                         "%s:%s nothing found - calling setup", __FILE__, __func__);
     rc = pmix_hwloc_setup_topology(NULL, 0);
-    if (PMIX_SUCCESS == rc) {
-        topo->source = strdup(pmix_globals.topology.source);
+    if (PMIX_SUCCESS == rc && topo != &pmix_globals.topology) {
+        if (NULL == topo->source) {
+            topo->source = strdup(pmix_globals.topology.source);
+        }
         topo->topology = pmix_globals.topology.topology;
     }
     return rc;
