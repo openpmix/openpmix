@@ -51,6 +51,23 @@
 # while passing on a machine whose hwloc has libxml2. So describe a
 # fixture here, in this file, and never inside the fixture itself.
 #
+# opa-hfi.xml is a synthetic Omni-Path node: three HFIs (PCI 8086 class
+# 0208) named hfi1_0, hfi1_1 and hfi1_10, and an Intel ethernet controller
+# (class 0200) beside them, which the opa component must not claim. The
+# gap in the HFI names is deliberate: OPX finds a unit's verbs device by
+# comparing "hfi1_<N>" over its own length, so hfi1_10 is what unit 1 can
+# be mistaken for, and test/unit/pnet_opa_seckey checks that the
+# component does not name a unit OPX could resolve to the wrong device.
+#
+# cn5k-hfi.xml is a real Cornelis CN5000 node read by hwloc 2.11.1: one
+# dual-port CN5000 HFI, whose PCI function carries Cornelis's own vendor
+# id (434e, where OPA100 carries Intel's 8086) and two IPoIB interfaces
+# (ibp161s0, ibp161s0d1) beside its OpenFabrics device hfi1_0, plus two
+# Mellanox InfiniBand ports and two AMD MI100s. Its host name, DMI
+# strings and serials, memory and disk serials, MAC and IPoIB addresses,
+# and the GUIDs and GIDs were replaced with synthetic values; nothing else
+# was changed. test/unit/pnet_opa_cn5k reads it.
+#
 # unnamed-osdev.xml is not a machine anyone has: it is opa-hfi.xml with
 # OS devices that carry no name at all, which hwloc's XML importer accepts
 # and hwloc's own discovery never produces. It is here because a topology
@@ -82,6 +99,6 @@
 # GUID left as it was; nothing else was changed.
 
 EXTRA_DIST = test-topo.xml test-topo2.xml nvml-4gpu.xml drm-4gpu.xml \
-        intel-4gpu.xml intel-flat-4gpu.xml opa-hfi.xml unnamed-osdev.xml \
+        intel-4gpu.xml intel-flat-4gpu.xml opa-hfi.xml cn5k-hfi.xml unnamed-osdev.xml \
         multi-rc.xml rdma-fabrics.xml slingshot.xml mi350-bcm57608.xml \
         aws-p5en.xml aws-p6-b200.xml

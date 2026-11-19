@@ -26,11 +26,16 @@
 #ifdef HAVE_FCNTL_H
 #    include <fcntl.h>
 #endif
+#include <ctype.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <limits.h>
 #include <time.h>
 
 #include "pmix_common.h"
 
 #include "src/class/pmix_list.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/pcompress/pcompress.h"
 #include "src/util/pmix_alfg.h"
@@ -51,26 +56,86 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
 static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
                                          pmix_info_t info[], size_t ninfo);
 static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env);
+static void deregister_nspace(pmix_namespace_t *nptr);
+static void finalize(void);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        void *inventory);
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                        pmix_info_t directives[], size_t ndirs);
 pmix_pnet_module_t pmix_pnet_opa_module = {
     .name = "opa",
+    .finalize = finalize,
     .allocate = allocate,
     .setup_local_network = setup_local_network,
     .setup_fork = setup_fork,
+    .deregister_nspace = deregister_nspace,
     .collect_inventory = collect_inventory,
     .deliver_inventory = deliver_inventory
 };
 
-/* The PCI family this component opened for - see component_open.  Intel
- * also makes ethernet controllers, which report class 0x200 and are not
- * what this component is for, so the class is part of the question and not
- * just the vendor. */
-static const pmix_pnet_pcimatch_t mymatch[] = {
-    {0x8086, 0x208, 0}      /* Cornelis Omni-Path HFI, Intel's vendor id */
+/* The HFIs this component is for - what component_open looks for and what
+ * setup_fork claims, from one table so the two cannot drift apart.  Both
+ * are Omni-Path HFIs, PCI class 0x208, and both are driven by hfi1 and OPX:
+ *
+ * - CN5000 and later carry Cornelis's own vendor id;
+ * - OPA100 carries the id Intel gave it, which is in the silicon, so the
+ *   cards in service still report it.
+ *
+ * The class is part of the question and not just the vendor: Intel's
+ * ethernet controllers report 0x200 and are not ours. */
+const pmix_pnet_pcimatch_t pmix_pnet_opa_match[] = {
+    {0x434e, 0x208, 0},     /* Cornelis CN5000 and later */
+    {0x8086, 0x208, 0}      /* Omni-Path 100 */
 };
+const size_t pmix_pnet_opa_nmatch = sizeof(pmix_pnet_opa_match) / sizeof(pmix_pnet_opa_match[0]);
+
+/* The variable OPX, the libfabric provider for every generation of
+ * Omni-Path HFI, reads its job key from.  OPX names its intra-node shared
+ * memory segments with the key and hands it to the hfi1 driver as the
+ * context's uuid, so processes reach each other through shared memory only
+ * when their keys agree.  With the variable unset OPX takes SLURM_JOB_ID,
+ * and with that unset too a fixed built-in default. */
+#define OPX_UUID_ENVAR "FI_OPX_UUID"
+
+/* One FI_OPX_UUID per namespace.  On the server that sets a job up,
+ * allocate records the key it gave the job, so a job spawned from it can
+ * be given the same one.  On a daemon, setup_local_network records the key
+ * it was sent, kept out of the namespace's envar cache because the base
+ * sets that cache with overwrite: a value the child's environment already
+ * carries - one the user gave the app - must win, so setup_fork writes
+ * this one without overwriting. */
+typedef struct {
+    pmix_list_item_t super;
+    char *nspace;
+    char *uuid;
+} pnet_opa_uuid_t;
+
+static void uucon(pnet_opa_uuid_t *p)
+{
+    p->nspace = NULL;
+    p->uuid = NULL;
+}
+
+static void uudes(pnet_opa_uuid_t *p)
+{
+    free(p->nspace);
+    free(p->uuid);
+}
+static PMIX_CLASS_INSTANCE(pnet_opa_uuid_t, pmix_list_item_t, uucon, uudes);
+
+static pmix_list_t uuids = PMIX_LIST_STATIC_INIT(uuids);
+
+static pnet_opa_uuid_t *find_uuid(const char *nspace)
+{
+    pnet_opa_uuid_t *u;
+
+    PMIX_LIST_FOREACH (u, &uuids, pnet_opa_uuid_t) {
+        if (0 == strcmp(u->nspace, nspace)) {
+            return u;
+        }
+    }
+    return NULL;
+}
 
 /* some network transports require a little bit of information to
  * "pre-condition" them - i.e., to setup their individual transport
@@ -185,6 +250,81 @@ static char *transports_print(uint64_t *unique_key)
     return string_key;
 }
 
+/* 128 bits from /dev/urandom, or from the fallback stream when that cannot
+ * be read */
+static void fill_key(uint64_t *unique_key)
+{
+    int fd_rand;
+    ssize_t bytes_read;
+
+    if (-1 == (fd_rand = open("/dev/urandom", O_RDONLY))) {
+        transports_use_rand(unique_key);
+    } else {
+        bytes_read = read(fd_rand, (char *) unique_key, 2 * sizeof(uint64_t));
+        if ((ssize_t) (2 * sizeof(uint64_t)) != bytes_read) {
+            transports_use_rand(unique_key);
+        }
+        close(fd_rand);
+    }
+}
+
+/* The FI_OPX_UUID for a job, recorded under its namespace.
+ *
+ * The key is a job's and the jobs it spawns: they have to share it to reach
+ * each other through shared memory, and nothing else should share it.  So a
+ * job whose request names the process that spawned it (PMIX_PARENT_ID)
+ * takes the key of that process's job, which this server gave out when it
+ * set that job up - a parent is running when it spawns, so its job has not
+ * been deregistered - and any other job gets a fresh one.  Asked again for
+ * the same job, it gives the same answer.
+ *
+ * Jobs launched apart do not share a key, even when they later connect: OPX
+ * takes one key per domain and uses it for every peer, so a key handed to a
+ * process after it opened its domain has nowhere to go.
+ *
+ * Printed as 32 hex digits - the most OPX accepts, and the form it parses.
+ * The caller frees the returned string. */
+static char *opx_job_uuid(const char *nspace, const pmix_proc_t *parent)
+{
+    pnet_opa_uuid_t *u, *p = NULL;
+    uint64_t key[2];
+    char *uuid = NULL;
+
+    u = find_uuid(nspace);
+    if (NULL != u) {
+        return strdup(u->uuid);
+    }
+    if (NULL != parent && !PMIx_Nspace_invalid(parent->nspace)) {
+        p = find_uuid(parent->nspace);
+    }
+    if (NULL != p) {
+        uuid = strdup(p->uuid);
+    } else {
+        fill_key(key);
+        if (0 > pmix_asprintf(&uuid, "%016" PRIx64 "%016" PRIx64, key[0], key[1])) {
+            uuid = NULL;
+        }
+    }
+    if (NULL == uuid) {
+        return NULL;
+    }
+    /* remembered, so a job this one spawns can find it */
+    u = PMIX_NEW(pnet_opa_uuid_t);
+    if (NULL == u) {
+        free(uuid);
+        return NULL;
+    }
+    u->nspace = strdup(nspace);
+    u->uuid = strdup(uuid);
+    if (NULL == u->nspace || NULL == u->uuid) {
+        PMIX_RELEASE(u);
+        free(uuid);
+        return NULL;
+    }
+    pmix_list_append(&uuids, &u->super);
+    return uuid;
+}
+
 /* NOTE: if there is any binary data to be transferred, then
  * this function MUST pack it for transport as the host will
  * not know how to do so */
@@ -193,14 +333,13 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
 {
     uint64_t unique_key[2];
     char *string_key;
-    int fd_rand;
-    ssize_t bytes_read;
     size_t n, m, p;
     pmix_buffer_t mydata; // Buffer used to store information to be transmitted (scratch storage)
     pmix_kval_t *kv;
     pmix_envar_t envar;
     pmix_byte_object_t bo;
     bool envars = false, seckeys = false;
+    const pmix_proc_t *parent = NULL;
     pmix_status_t rc;
     pmix_info_t *iptr;
     pmix_list_t cache;
@@ -222,6 +361,11 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             seckeys = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_NONENVARS)) {
             seckeys = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_PARENT_ID)) {
+            /* a parent we cannot read as a process is no parent */
+            if (PMIX_PROC == info[n].value.type && NULL != info[n].value.data.proc) {
+                parent = info[n].value.data.proc;
+            }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_NETWORK)) {
             /* This one is deprecated, which is precisely why its shape has
              * to be checked rather than assumed: nothing else in the
@@ -262,15 +406,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         /* put the number here - or else create an appropriate string. this just needs to
          * eventually be a string variable
          */
-        if (-1 == (fd_rand = open("/dev/urandom", O_RDONLY))) {
-            transports_use_rand(unique_key);
-        } else {
-            bytes_read = read(fd_rand, (char *) unique_key, 16);
-            if (16 != bytes_read) {
-                transports_use_rand(unique_key);
-            }
-            close(fd_rand);
-        }
+        fill_key(unique_key);
 
         if (NULL == (string_key = transports_print(unique_key))) {
             PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
@@ -286,6 +422,25 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             /* every process in the job has to agree on this key, so a job
              * that launches without it is not a job that runs slower - it
              * is one whose transports were never pre-conditioned */
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&mydata);
+            return rc;
+        }
+
+        /* and OPX's.  It goes after the key above, so a daemon that does
+         * not know it merely caches one more envar; and before anything
+         * harvested, so an FI_OPX_UUID the user set where the job was
+         * launched arrives later in the blob and is the one kept */
+        if (NULL == (string_key = opx_job_uuid(nptr->nspace, parent))) {
+            PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+            PMIX_DESTRUCT(&mydata);
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        PMIX_ENVAR_LOAD(&envar, OPX_UUID_ENVAR, string_key, ':');
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &envar, 1, PMIX_ENVAR);
+        free(string_key);
+        PMIX_ENVAR_DESTRUCT(&envar);
+        if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_DESTRUCT(&mydata);
             return rc;
@@ -384,6 +539,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
     size_t size = 0;
     bool release = false;
     pmix_envar_list_item_t *ev;
+    pnet_opa_uuid_t *u;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet:opa:setup_local with %lu info", (unsigned long) ninfo);
@@ -421,11 +577,29 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
             cnt = 1;
             PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &ev->envar, &cnt, PMIX_ENVAR);
             while (PMIX_SUCCESS == rc) {
-                /* the envars - the transport key among them - are kept
-                 * here, on the namespace's pnet cache, and set in each of
-                 * the job's children by setup_fork. They are not job
-                 * data: nothing but that child's environment needs them */
-                pmix_list_append(&ns->envars, &ev->super);
+                if (NULL != ev->envar.envar && NULL != ev->envar.value
+                    && 0 == strcmp(ev->envar.envar, OPX_UUID_ENVAR)) {
+                    /* OPX's job key is set by our own setup_fork, which
+                     * does not overwrite - see pnet_opa_uuid_t.  A later
+                     * one in the blob replaces an earlier: allocate packs
+                     * its own first and anything harvested after it */
+                    u = find_uuid(ns->ns->nspace);
+                    if (NULL == u) {
+                        u = PMIX_NEW(pnet_opa_uuid_t);
+                        u->nspace = strdup(ns->ns->nspace);
+                        pmix_list_append(&uuids, &u->super);
+                    }
+                    free(u->uuid);
+                    u->uuid = strdup(ev->envar.value);
+                    PMIX_RELEASE(ev);
+                } else {
+                    /* the other envars - the transport key among them - are
+                     * kept here, on the namespace's pnet cache, and set in
+                     * each of the job's children by setup_fork. They are not
+                     * job data: nothing but that child's environment needs
+                     * them */
+                    pmix_list_append(&ns->envars, &ev->super);
+                }
                 /* get the next envar */
                 ev = PMIX_NEW(pmix_envar_list_item_t);
                 cnt = 1;
@@ -449,79 +623,175 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
     return rc;
 }
 
-/* Can PSM3_NIC say exactly this?
+/* The OPX unit number of an HFI, or -1 if the name does not give one.
  *
- * PSM3 does not read PSM3_NIC as a list.  It is one pattern, handed to
- * fnmatch() against each unit's device name (psm3_is_nic_allowed() in
- * psm3/psm_utils.c), unless it parses whole as a decimal or hexadecimal
- * number, in which case it is a unit number (psmi_parse_nic_var() in
- * psm3/psm.c).  So "hfi1_0,hfi1_1" names no device at all, and the process
- * is left with no NIC it may use.  The value is therefore written only when
- * it is a single name that PSM3 will read as that name: no separator, no
- * glob character, and not a number. */
-static bool psm3_names_exactly(const char *val)
+ * OPX takes a unit number in FI_OPX_HFI_SELECT, and every path by which it
+ * opens a unit builds the device's name from that number: /dev/hfi1_<N>,
+ * /sys/class/infiniband/hfi1_<N>, and the verbs device "hfi1_<N>".  There is
+ * no enumeration of OPX's own behind it, so the number is the one in the
+ * name rather than an ordinal that usually agrees with it.  The name must
+ * be exactly that form - hfi1_, then decimal digits with no leading zero -
+ * since nothing else is what OPX would build back from the number. */
+static int opx_unit_of(const char *name)
 {
+    const char *digits;
     char *end = NULL;
+    long unit;
 
-    if (NULL == val || '\0' == val[0] || NULL != strpbrk(val, ",*?[]")) {
-        return false;
+    if (NULL == name || 0 != strncmp(name, "hfi1_", 5)) {
+        return -1;
     }
-    (void) strtol(val, &end, 10);
-    if (NULL != end && '\0' == *end) {
-        return false;
+    digits = name + 5;
+    if (!isdigit((unsigned char) digits[0]) || ('0' == digits[0] && '\0' != digits[1])) {
+        return -1;
     }
-    (void) strtol(val, &end, 16);
-    if (NULL != end && '\0' == *end) {
-        return false;
+    errno = 0;
+    unit = strtol(digits, &end, 10);
+    if (0 != errno || NULL == end || '\0' != *end || unit > INT_MAX) {
+        return -1;
     }
-    return true;
+    return (int) unit;
 }
 
-/* Name this process's HFIs to the fabric software that will use them.
+/* Would OPX open some other device for this unit?
  *
- * PSM3 selects by NIC name, which is the selector the topology already
- * supplies, so that variable can be set from the assignment as it stands -
- * provided the assignment is one device; see psm3_names_exactly().  A
- * process given several is left to PSM3's own selection, which is less
- * than was asked for but not wrong: the alternative, an extended glob such
- * as "@(hfi1_0|hfi1_1)", works only in a PSM3 built with FNM_EXTMATCH, and
- * nothing here can tell how it was built.
+ * OPX's verbs path finds the unit's device by comparing "hfi1_<N>" with
+ * each device name over the length of "hfi1_<N>" and taking the first that
+ * matches, so unit 1 is also matched by hfi1_10 through hfi1_15, and which
+ * one it opens depends on the order the device list comes back in.  The
+ * unit can therefore be written only when no other device on this node
+ * begins with the assigned name.  If the node's devices cannot be listed,
+ * assume the worst. */
+static bool opx_prefix_collides(const char *name)
+{
+    pmix_hwloc_device_t *devs = NULL;
+    size_t ndevs = 0, d, len = strlen(name);
+    const char *osname;
+    bool hit = false;
+    pmix_status_t rc;
+
+    rc = pmix_hwloc_get_devices(&pmix_globals.topology, pmix_globals.hostname,
+                                PMIX_DEVTYPE_OPENFABRICS, NULL, &devs, &ndevs);
+    if (PMIX_SUCCESS != rc) {
+        return true;
+    }
+    for (d = 0; d < ndevs; d++) {
+        osname = devs[d].dev.osname;
+        if (NULL == osname || 0 == strcmp(osname, name)) {
+            continue;
+        }
+        if (0 == strncmp(osname, name, len)) {
+            pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                                "pnet:opa: not setting FI_OPX_HFI_SELECT - "
+                                "OPX would also take %s for %s", osname, name);
+            hit = true;
+            break;
+        }
+    }
+    pmix_hwloc_release_devices(devs, ndevs);
+    return hit;
+}
+
+/* Hand this process its job key, and name its HFI to the fabric software
+ * that will use it.
  *
- * PSM2's HFI_UNIT and OPX's FI_OPX_HFI_SELECT are deliberately NOT set.
- * Both take a unit *ordinal* rather than a name, and an ordinal is
- * meaningful only against the enumeration it came from - which is the
- * driver's, not one PMIx performed.  The trailing digit of "hfi1_0" looks
- * like that ordinal and usually is, but "usually" is the wrong standard
- * here: a wrong value in these variables does not fail, it quietly puts the
- * process on somebody else's HFI.  If hwloc ever records the unit the
- * driver reported, as it does for Level Zero devices, this is where it
- * would be used.
+ * The key comes first, and goes to every process of the job whether or not
+ * it was mapped against an HFI: OPX needs it either way.  It is not
+ * written over a value the process's environment already carries, which
+ * can only be one somebody gave it on purpose.
+ *
+ * The HFI is named to OPX, the libfabric provider for every generation of
+ * the hardware, in FI_OPX_HFI_SELECT - and only when the process was given
+ * exactly one.  That variable takes a unit number, which is the number in
+ * the device's name - see opx_unit_of() - so the assignment can be said
+ * exactly, unless another device's name begins with this one's (see
+ * opx_prefix_collides()).  A list of units would not say "these", only
+ * "the first of these": OPX opens the first fixed unit it reads and stops,
+ * so a process given several is left to OPX's own selection, which is less
+ * than was asked for but not wrong.  The variable is written over any value
+ * already set: a process mapped against a device made the more specific
+ * request.
+ *
+ * PSM2's HFI_UNIT is deliberately NOT set.  PSM2 numbers its units by its
+ * own enumeration, which nothing here can see, and a wrong value there does
+ * not fail - it quietly puts the process on somebody else's HFI.
  */
 static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
 {
+    pnet_opa_uuid_t *u;
     pmix_status_t rc;
-    char *val = NULL;
+    char *val = NULL, *sel = NULL;
+    int unit;
 
-    rc = pmix_pnet_base_get_assigned_devices(proc, mymatch, sizeof(mymatch) / sizeof(mymatch[0]),
+    u = find_uuid(proc->nspace);
+    if (NULL != u) {
+        rc = PMIx_Setenv(OPX_UUID_ENVAR, u->uuid, false, env);
+        if (PMIX_ERR_EXISTS == rc) {
+            pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                                "pnet:opa: %s already has %s - leaving it",
+                                PMIX_NAME_PRINT(proc), OPX_UUID_ENVAR);
+        } else if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+
+    rc = pmix_pnet_base_get_assigned_devices(proc, pmix_pnet_opa_match, pmix_pnet_opa_nmatch,
                                              &val);
     if (PMIX_SUCCESS != rc) {
+        /* most processes are mapped against no HFI at all */
         return rc;
     }
-    if (!psm3_names_exactly(val)) {
+
+    unit = opx_unit_of(val);
+    if (0 <= unit && !opx_prefix_collides(val)) {
+        if (0 > pmix_asprintf(&sel, "%d", unit)) {
+            free(val);
+            return PMIX_ERR_NOMEM;
+        }
         pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                            "pnet:opa: not setting PSM3_NIC for %s - \"%s\" is not a "
-                            "single device name PSM3 can match", PMIX_NAME_PRINT(proc), val);
-        free(val);
-        return PMIX_ERR_TAKE_NEXT_OPTION;
+                            "pnet: FI_OPX_HFI_SELECT=%s for %s", sel, PMIX_NAME_PRINT(proc));
+        rc = PMIx_Setenv("FI_OPX_HFI_SELECT", sel, true, env);
+        free(sel);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            free(val);
+            return rc;
+        }
+    } else if (0 > unit) {
+        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
+                            "pnet:opa: not setting FI_OPX_HFI_SELECT for %s - \"%s\" is not "
+                            "the name of a single OPX unit", PMIX_NAME_PRINT(proc), val);
     }
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet: PSM3_NIC=%s for %s", val, PMIX_NAME_PRINT(proc));
-    rc = PMIx_Setenv("PSM3_NIC", val, true, env);
+
     free(val);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
+    return PMIX_SUCCESS;
+}
+
+/* the job is gone, and so is any reason to remember its key */
+static void deregister_nspace(pmix_namespace_t *nptr)
+{
+    pnet_opa_uuid_t *u;
+
+    if (NULL == nptr || NULL == nptr->nspace) {
+        return;
     }
-    return rc;
+    u = find_uuid(nptr->nspace);
+    if (NULL != u) {
+        pmix_list_remove_item(&uuids, &u->super);
+        PMIX_RELEASE(u);
+    }
+}
+
+/* emptied rather than destructed, so the list is ready for the next
+ * PMIx_server_init in this process */
+static void finalize(void)
+{
+    pnet_opa_uuid_t *u;
+
+    while (NULL != (u = (pnet_opa_uuid_t *) pmix_list_remove_first(&uuids))) {
+        PMIX_RELEASE(u);
+    }
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,

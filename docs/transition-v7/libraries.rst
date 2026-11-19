@@ -172,7 +172,20 @@ Spawning
   InfiniBand and RoCE adapters (NVIDIA, Broadcom, and Intel's in RoCE
   mode), with ``FI_VERBS_DEVICE_NAME`` as well unless that name would also
   match another device on the node; ``FI_EFA_IFACE`` for EFA;
-  ``FI_CXI_DEVICE_NAME`` for Slingshot; and ``PSM3_NIC`` for a single
-  Omni-Path adapter. A value already set is replaced. A variable is left
-  unset where the device cannot be named exactly in it, rather than
-  written with a name that would select a different device.
+  ``FI_CXI_DEVICE_NAME`` for Slingshot; and ``FI_OPX_HFI_SELECT`` for a
+  single Omni-Path adapter (OPA100, CN5000 and later), for libfabric's OPX
+  provider. A value already set is replaced. A variable is left unset
+  where the device cannot be named exactly in it, rather than written with
+  a name that would select a different device. A device is named by the
+  name these libraries accept even when the process was mapped against
+  another name for it - an adapter's network interface (``ib0``,
+  ``hsn0``) rather than its RDMA device.
+* **OPX gets a job key.** On an Omni-Path node, a launch that asks PMIx
+  for security keys also sets ``FI_OPX_UUID``, the key libfabric's OPX
+  provider uses for its shared-memory segments and hardware contexts.
+  A job and the jobs it spawns share one key, so they reach each other
+  through shared memory; jobs launched separately get different keys,
+  even when they later connect, since OPX reads its key only when it
+  opens its device. Give such jobs the same ``FI_OPX_UUID`` to share
+  memory between them: a value already in the process's environment is
+  kept.

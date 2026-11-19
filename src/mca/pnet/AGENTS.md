@@ -202,7 +202,7 @@ the framework — the components are leaf handlers.
 | `pmix_pnet_base_allocate` | resolves `nspace` → `pmix_namespace_t` (creating it if new), and **only if the local peer is a server** calls each active `module->allocate`, tolerating `NOT_AVAILABLE`/`TAKE_NEXT_OPTION` |
 | `pmix_pnet_base_setup_local_network` | resolves `nspace` → a `pmix_nspace_env_cache_t` on `pmix_pnet_globals.nspaces` (creating it), then calls each active `module->setup_local_network(ns, …)` |
 | `pmix_pnet_base_setup_fork` | looks up the namespace's envar cache and `PMIx_Setenv`s every cached `pmix_envar_list_item_t` into the child's `env`, **then** calls each active `module->setup_fork(proc, env)`, tolerating `NOT_AVAILABLE`/`TAKE_NEXT_OPTION` (the ordinary case: most processes are not mapped against a device). Any other error aborts the fork rather than launching a process that would use the wrong hardware. |
-| `pmix_pnet_base_get_assigned_devices` | reads the proc's `PMIX_DEVICE_ID` out of the local datastore, resolves each device against the **local** topology, keeps the ones whose PCI `(vendor, class)` — and, where the entry names one, device type — matches one of the caller's `pmix_pnet_pcimatch_t` entries, and joins their **selectors** with commas. Returns `PMIX_ERR_TAKE_NEXT_OPTION` when the process was given none of yours — and equally when the assignment is not an array of `pmix_device_t`, which it checks rather than assumes (see below) |
+| `pmix_pnet_base_get_assigned_devices` | reads the proc's `PMIX_DEVICE_ID` out of the local datastore, resolves each device against the **local** topology, keeps the ones whose PCI `(vendor, class)` — and, where the entry names one, device type — matches one of the caller's `pmix_pnet_pcimatch_t` entries, and joins their **selectors** with commas. A device is named by its PCI function's *preferred* OS device whichever name it was assigned under, so `--map-by device=ib0` reaches the components as `mlx5_0`, `hsn0` as `cxi0`, `ibp161s0` as `hfi1_0`: a host that resolved a user's choice by name records the name typed, and the interface name is accepted by none of the variables. Returns `PMIX_ERR_TAKE_NEXT_OPTION` when the process was given none of yours — and equally when the assignment is not an array of `pmix_device_t`, which it checks rather than assumes (see below) |
 | `pmix_pnet_base_set_assigned_devices` | the one-line wrapper that writes that value into a named environment variable; this is all most components need |
 | `pmix_pnet_base_check_devices` | the `component_open` question — does this node carry a device of one of these families? — answered with the same matching `get_assigned_devices` filters by. An entry with a class and no type is asked of `pmix_hwloc_check_vendor`; any other needs a network or OpenFabrics device on a matching function. Returns `PMIX_ERR_NOT_AVAILABLE` when there is none |
 | `pmix_pnet_base_child_finalized` | fans out to each `module->child_finalized` |
@@ -299,7 +299,7 @@ Default priorities and runtime gates (from each component's
 | Component | Priority | Built by default? | Becomes active when… |
 |-----------|----------|-------------------|----------------------|
 | `nvd` | 10 | **Yes** | hwloc reports a Mellanox `0x15b3` / NVIDIA `0x10de` device of class `0x207`, or a class `0x200` function of those vendors, Broadcom `0x14e4` or Intel `0x8086` carrying an OpenFabrics device |
-| `opa` | 10 | **Yes** | hwloc reports an Intel `0x8086` device of class `0x208` |
+| `opa` | 10 | **Yes** | hwloc reports an Omni-Path HFI, class `0x208`: Cornelis `0x434e` (CN5000 and later) or Intel `0x8086` (OPA100) |
 | `efa` | 10 | **Yes** | hwloc reports an Amazon `0x1d0f` function carrying an OpenFabrics device (EFA, not ENA) |
 | `cxi` | 10 | **Yes** | hwloc reports a network device on a Cray/HPE `0x17db` function (Slingshot Cassini, `17db:0501`) |
 | `simptest` | 0 | Only with `--with-simptest` | server role **and** `pnet=simptest` MCA selection **and** a config file given |
@@ -327,7 +327,7 @@ The framework registers none. Each component registers its own via
 | `simptest` | `config_file` | path to the fabric-topology description file |
 
 `opa` and `nvd` seed `include_envars` with fabric-specific defaults
-(`opa`: `"HFI_*,PSM2_*"`; `nvd`: `"UCX_*,HCOLL_*,UCC_*,SHARP_*,NCCL_*"`).
+(`opa`: `"HFI_*,PSM2_*,FI_OPX_*"`; `nvd`: `"UCX_*,HCOLL_*,UCC_*,SHARP_*,NCCL_*"`).
 
 ## Directory layout
 
@@ -507,18 +507,24 @@ A plain `make` will not tell you; check `base/static-components.h`.
   libraries do not agree. `NCCL_IB_HCA` and `FI_EFA_IFACE` match each
   comma-separated name exactly. `UCX_NET_DEVICES` matches each entry as a
   glob over `device:port`, so `nvd` writes `mlx5_0:*`.
-  `FI_VERBS_DEVICE_NAME` matches each entry as a *prefix*. `PSM3_NIC` is
-  one `fnmatch` pattern and not a list at all. `FI_CXI_DEVICE_NAME`
-  refuses the whole variable if any entry is not `cxiN`. Each component
+  `FI_VERBS_DEVICE_NAME` matches each entry as a *prefix*.
+  `FI_CXI_DEVICE_NAME` refuses the whole variable if any entry is not
+  `cxiN`.
+  `FI_OPX_HFI_SELECT` takes one unit number, and OPX looks the unit's
+  device up by name *prefix*, so `1` can open `hfi1_10`. Each component
   writes only a value whose reader will select exactly the assigned
   devices, and otherwise leaves the variable unset.
 - **Never invent a selector the topology did not supply.** A NIC's
   selector is the OS device name, which is always there. Where a
-  variable takes a *unit ordinal* instead — PSM2's `HFI_UNIT`, OPX's
-  `FI_OPX_HFI_SELECT` — leave it alone unless hwloc actually recorded
-  that ordinal: an ordinal means something only against the enumeration
-  it came from, and a wrong value in these variables does not fail, it
-  quietly puts the process on somebody else's hardware.
+  variable takes a *unit ordinal* instead — PSM2's `HFI_UNIT` — leave it
+  alone unless hwloc actually recorded that ordinal: an ordinal means
+  something only against the enumeration it came from, and a wrong value
+  in these variables does not fail, it quietly puts the process on
+  somebody else's hardware. The one exception is a number the library
+  itself turns back into the name: OPX opens unit `N` as `hfi1_N`
+  everywhere it opens one, so `opa` writes `FI_OPX_HFI_SELECT` from the
+  name's own digits. Check the library's source for that before claiming
+  it for another variable.
 - **Respect the decline convention.** A module that does not recognize a
   request must return `PMIX_ERR_TAKE_NEXT_OPTION` (or
   `PMIX_ERR_NOT_AVAILABLE`) so the base continues the fan-out — never a

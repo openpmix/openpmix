@@ -421,6 +421,7 @@ test/unit/pnet_aws_fabrics
 test/unit/pnet_cxi_sysfs
 test/unit/pnet_envar_blob
 test/unit/pnet_opa_seckey
+test/unit/pnet_opa_cn5k
 test/unit/pnet_tcp_ports
 test/unit/pnet_simptest_map
 test/unit/pgpu_affinity_mask

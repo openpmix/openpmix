@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,7 +30,6 @@
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 
-#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/util/pmix_argv.h"
 
@@ -71,7 +70,7 @@ static pmix_status_t component_register(void)
 {
     pmix_mca_base_component_t *component = &pmix_mca_pnet_opa_component.super;
 
-    pmix_mca_pnet_opa_component.incparms = "HFI_*,PSM2_*";
+    pmix_mca_pnet_opa_component.incparms = "HFI_*,PSM2_*,FI_OPX_*";
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
@@ -96,10 +95,9 @@ static pmix_status_t component_register(void)
 
 static pmix_status_t component_open(void)
 {
-    pmix_status_t rc;
-
-    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x8086, 0x208);
-    return rc;
+    /* PMIX_ERR_NOT_AVAILABLE when the node has no HFI of ours, which is
+     * the MCA's cue to leave us closed without saying so */
+    return pmix_pnet_base_check_devices(pmix_pnet_opa_match, pmix_pnet_opa_nmatch);
 }
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)

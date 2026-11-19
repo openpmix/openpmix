@@ -277,16 +277,26 @@ static bool device_matches(const pmix_hwloc_device_t *dev,
  * components differ only in which devices are theirs and what the variable
  * is called.  What goes in it is the device's "selector", which for a NIC
  * is the OS device name; that is what UCX_NET_DEVICES, NCCL_IB_HCA and
- * PSM3_NIC all accept, and unlike a GPU's vendor identity it is never
- * missing.
+ * FI_VERBS_DEVICE_NAME all accept, and unlike a GPU's vendor identity it is
+ * never missing.
+ *
+ * A device is named to the libraries by its PCI function's preferred OS
+ * device, whatever name the process was given it under.  One function
+ * carries several - an HCA is "mlx5_0" and "ib0", an Omni-Path HFI is
+ * "hfi1_0" and "ibp161s0", a Slingshot NIC "cxi0" and "hsn0" - and a host
+ * that resolved a user's choice by name records the name the user typed,
+ * which may be an interface name none of these variables accepts.  The
+ * preferred one is the name pmix_hwloc_get_devices() gives the function
+ * when nobody asked for it by name, chosen for exactly that reason.
  *
  * Two things it deliberately does not do.  It does not invent a selector
  * the topology did not supply - in particular it never derives a unit
- * ordinal from a device name for the variables that take one, because an
- * ordinal is meaningful only against an enumeration PMIx did not perform.
- * And it does not consult the mapper's decision - it reads what the process
- * was told, so a process that was not mapped against a device is left
- * alone.
+ * ordinal from a device name, because an ordinal is meaningful only
+ * against an enumeration PMIx did not perform; a component may do so only
+ * where its library builds the device's name from that very number, as
+ * opa does for OPX.  And it does not consult the mapper's decision - it
+ * reads what the process was told, so a process that was not mapped
+ * against a device is left alone.
  *
  * The selector is read from THIS node's topology, which is why this runs at
  * fork time on the daemon rather than anywhere on the head node: the head
@@ -301,10 +311,11 @@ pmix_status_t pmix_pnet_base_get_assigned_devices(const pmix_proc_t *proc,
     pmix_kval_t *kv;
     pmix_data_array_t *darray;
     pmix_device_t *dev;
-    pmix_hwloc_device_t *devs;
-    size_t ndevs, n, d;
+    pmix_hwloc_device_t *devs, *all = NULL, *fn;
+    size_t ndevs, nall = 0, n, d, a;
     char **ids = NULL;
     pmix_status_t rc;
+    bool have_all = false;
 
     if (NULL == proc || NULL == match || 0 == nmatch || NULL == value) {
         return PMIX_ERR_BAD_PARAM;
@@ -358,14 +369,39 @@ pmix_status_t pmix_pnet_base_get_assigned_devices(const pmix_proc_t *proc,
             continue;
         }
         for (d = 0; d < ndevs; d++) {
+            /* name the function as the libraries know it - see above.  A
+             * device with no PCI function has only the one name */
+            fn = &devs[d];
+            if (NULL != devs[d].busid) {
+                if (!have_all) {
+                    have_all = true;
+                    if (PMIX_SUCCESS
+                        != pmix_hwloc_get_devices(&pmix_globals.topology, pmix_globals.hostname,
+                                                  PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_OPENFABRICS,
+                                                  NULL, &all, &nall)) {
+                        all = NULL;
+                        nall = 0;
+                    }
+                }
+                for (a = 0; a < nall; a++) {
+                    if (NULL != all[a].busid && 0 == strcmp(all[a].busid, devs[d].busid)) {
+                        fn = &all[a];
+                        break;
+                    }
+                }
+            }
             /* a node may carry more than one fabric, and each wants its own
              * variable, so take only our own */
-            if (NULL == devs[d].selector || !device_matches(&devs[d], match, nmatch)) {
+            if (NULL == fn->selector || !device_matches(fn, match, nmatch)) {
                 continue;
             }
-            PMIx_Argv_append_nosize(&ids, devs[d].selector);
+            /* two names for one function are one device */
+            PMIx_Argv_append_unique_nosize(&ids, fn->selector);
         }
         pmix_hwloc_release_devices(devs, ndevs);
+    }
+    if (NULL != all) {
+        pmix_hwloc_release_devices(all, nall);
     }
     PMIX_DESTRUCT(&cb);
 

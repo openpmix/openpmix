@@ -218,10 +218,11 @@ static void test_topo2(const char *dir)
     if (2 == ndevs) {
         /* Which of the two OS devices names the shared function is not a
          * detail: "mlx5_0" is what UCX_NET_DEVICES, NCCL_IB_HCA and
-         * PSM3_NIC accept and "ib0" is what none of them accepts, so an
-         * assignment named the other way cannot be acted on.  hwloc lists
-         * ib0 first on this function, so the answer here is the preference
-         * rule doing its job rather than iteration order agreeing with it. */
+         * FI_VERBS_DEVICE_NAME accept and "ib0" is what none of them
+         * accepts, so an assignment named the other way cannot be acted
+         * on.  hwloc lists ib0 first on this function, so the answer here
+         * is the preference rule doing its job rather than iteration order
+         * agreeing with it. */
         for (i = 0; i < ndevs; i++) {
             if (NULL != devs[i].busid && 0 == strcmp(devs[i].busid, "0000:64:00.0")) {
                 break;
