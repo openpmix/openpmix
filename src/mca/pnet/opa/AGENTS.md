@@ -11,7 +11,13 @@
 # AGENTS.md: The PNET `opa` Component
 
 `opa` is the `pnet` component for **Omni-Path** fabric support, a
-product of Cornelis Networks (formerly of Intel). It and
+product of Cornelis Networks (formerly of Intel): OPA100, CN5000, and
+later generations. Every one of them is driven by the `hfi1` kernel driver
+and, in user space, by **OPX** — libfabric's `prov/opx` provider — which
+is what this component writes for. (PSM2 also drives OPA100, and the
+transport key Open MPI's PSM2 MTL reads is still provided; see below.
+PSM3 is **not** an Omni-Path library — it is Intel's, for Intel's
+ethernet adapters — and nothing here sets anything for it.) It and
 [`nvd`](../nvd/AGENTS.md) are the two `pnet` components compiled into a
 default build; check `base/static-components.h` rather than trusting any
 prose about it. Read the framework [`AGENTS.md`](../AGENTS.md) first;
@@ -26,9 +32,9 @@ worth looking for in the other.
 
 | File | Contents |
 |------|----------|
-| `pnet_opa.h` | Component struct type + blob/inventory key `#define`s. |
-| `pnet_opa_component.c` | Component struct, `component_register`, `component_open` (hwloc gate), `component_query` (priority **10**). |
-| `pnet_opa.c` | The module: `allocate` / `setup_local_network` / `setup_fork` / `collect_inventory` / `deliver_inventory`. |
+| `pnet_opa.h` | Component struct type, blob/inventory key `#define`s, the match table's declaration. |
+| `pnet_opa_component.c` | Component struct, `component_register`, `component_open` (topology gate), `component_query` (priority **10**). |
+| `pnet_opa.c` | The match table and the module: `allocate` / `setup_local_network` / `setup_fork` / `deregister_nspace` / `finalize` / `collect_inventory` / `deliver_inventory`. |
 
 There is deliberately **no `configure.m4`**: it used to hold
 `AS_IF([test "yes" = "yes"], …)` — always succeed, and add an `OmniPath`
@@ -40,12 +46,24 @@ settled at run time by `component_open`.
 
 Selection is a two-step gate:
 
-1. **`component_open`** returns `pmix_hwloc_check_vendor(&pmix_globals.topology,
-   0x8086, 0x208)` — i.e. it only opens if hwloc finds a PCI device
-   with Intel's vendor id (`0x8086`) and class `0x208`: an Omni-Path HFI,
-   which carries the vendor id Intel gave it although Cornelis now makes
-   it. On any host without that device, `open` fails and the component
-   is never queried.
+1. **`component_open`** asks `pmix_pnet_base_check_devices()` about
+   `pmix_pnet_opa_match[]`, the same table `setup_fork` filters a
+   process's assignment with:
+
+   | Vendor | Class | What it is |
+   |--------|-------|------------|
+   | `0x434e` | `0x208` | Cornelis CN5000 and later (`434e:0001` on CN5000) |
+   | `0x8086` | `0x208` | OPA100 (`8086:24f0`) |
+
+   **Both are needed.** CN5000 reports Cornelis's own vendor id —
+   `test/topologies/cn5k-hfi.xml`, a real CN5000 node, shows it — and the
+   component used to look for Intel's alone, so it never opened on one.
+   OPA100 carries the id Intel gave it; that is in the silicon, so the
+   cards in service still report it although Intel no longer has anything
+   to do with the product. Do not drop either entry. The class is part of
+   the question: Intel's ethernet controllers report `0x200` and are not
+   ours. On a host with neither HFI, `open` returns
+   `PMIX_ERR_NOT_AVAILABLE` and the component is silently left closed.
 2. **`component_query`** (reached only if open succeeded) unconditionally
    hands back `pmix_pnet_opa_module` at priority **10**.
 
@@ -58,15 +76,19 @@ does not exclude anyone.
 ```c
 pmix_pnet_module_t pmix_pnet_opa_module = {
     .name = "opa",
+    .finalize = finalize,
     .allocate = allocate,
     .setup_local_network = setup_local_network,
     .setup_fork = setup_fork,
+    .deregister_nspace = deregister_nspace,
     .collect_inventory = collect_inventory,
     .deliver_inventory = deliver_inventory
 };
 ```
 
-`init`, `finalize`, the cleanup hooks, and the fabric slots are `NULL`.
+`.finalize` and `.deregister_nspace` release the per-job OPX keys
+described below. `init`, the other cleanup hooks, and the fabric slots are
+`NULL`.
 The signatures match the current `pmix_pnet_module_t`
 (`setup_local_network` takes a `pmix_nspace_env_cache_t *`; the inventory
 functions take a list / plain args, not callbacks).
@@ -96,9 +118,37 @@ decide two booleans: **seckeys** and **envars**. Then:
   halves of each 64-bit word, because `pmix_rand` returns 32 bits at a
   time and the caller is asking for 128. `pnet/tcp`'s `generate_key` is
   the same code and carries the same fix.
+  The same request also packs **`FI_OPX_UUID`**, OPX's job key, right
+  after it. OPX names its intra-node shared-memory segments with that key
+  and hands it to the driver as the context uuid, so two processes reach
+  each other through shared memory only when their keys agree; unset, OPX
+  takes `SLURM_JOB_ID`, and failing that a fixed built-in default
+  (`OPX_DEFAULT_JOB_KEY_STR`). Open MPI's OFI path never sets it. The key belongs
+  to **a job and the jobs it spawns**, and to nothing else
+  (`opx_job_uuid()`): a job whose directives name the process that
+  spawned it (`PMIX_PARENT_ID`) takes the key this server recorded for
+  that process's job, and any other job gets 128 fresh random bits. The
+  key is recorded under the job's namespace on this server — the same
+  `pnet_opa_uuid_t` list the daemons use, below — so a job spawned from a
+  spawned job inherits it in turn; a parent is running when it spawns, so
+  its job is still registered. Setting a job up again gives it the same
+  key. Not session scope, deliberately: a PRRTE session is an allocation
+  that may run many unrelated jobs, and sharing the key shares OPX's
+  shared-memory namespace and the driver's context grouping. **Jobs
+  launched apart do not share a key even when they later connect.** OPX
+  takes one key per domain, reads it from the environment when the domain
+  opens, and uses it for every peer — it accepts nothing through
+  libfabric's `auth_key` interface and its peer address carries no key — so
+  a key delivered at connect time has nowhere to go. A user who needs
+  shared memory between such jobs gives both the same `FI_OPX_UUID`, which
+  `setup_fork` keeps. The key is printed as 32 hex digits, the most OPX
+  accepts. A daemon that predates this simply caches it as one more
+  envar.
 - **envars** → `pmix_util_harvest_envars` using the component's
-  `include`/`exclude` globs (default include `"HFI_*,PSM2_*"`), packing
-  each matched `PMIX_ENVAR` into the buffer.
+  `include`/`exclude` globs (default include `"HFI_*,PSM2_*,FI_OPX_*"`),
+  packing each matched `PMIX_ENVAR` into the buffer. These come after the
+  keys, so an `FI_OPX_UUID` the user set where the job was launched
+  arrives later in the blob than the generated one.
 
 If nothing was packed, it returns `PMIX_SUCCESS` with no blob. Otherwise
 it wraps the buffer in a `pmix_kval_t` keyed `PMIX_PNET_OPA_BLOB`,
@@ -111,9 +161,17 @@ compresses it with `pmix_compress.compress` (marking the type
 Runs on each daemon during `PMIx_server_setup_local_support`, after
 `register_nspace` so the node/proc maps are available. It searches the
 info array for `PMIX_PNET_OPA_BLOB`, decompresses it if needed, and
-unpacks a stream of `PMIX_ENVAR`s. Each envar is appended to the
+unpacks a stream of `PMIX_ENVAR`s. Each envar but one is appended to the
 namespace's `ns->envars` cache (so the base `setup_fork` will inject it
-into every child). That includes the transport key,
+into every child). The exception is `FI_OPX_UUID`: the base sets that
+cache **with overwrite**, and a key the child's environment already
+carries — one the user gave the app — must win, so it is kept instead on
+the component's own per-namespace list (`pnet_opa_uuid_t`), a later one
+replacing an earlier, and `setup_fork` sets it without overwriting. The
+list entry goes at `deregister_nspace` — on the server that set the job
+up as well, where `allocate` recorded it — and the whole list at
+`finalize`.
+The cache does carry the transport key,
 `OMPI_MCA_orte_precondition_transports`, and it goes nowhere else: it is
 **not** stored as job data (it once was, as a `PMIX_CREDENTIAL`
 job-level key). Open MPI's PSM2 MTL asks for that key first and falls
@@ -123,44 +181,47 @@ back to the environment variable, so it still finds the key.
 
 ### `setup_fork`
 
-Names this process's HFIs to the fabric software that will use them. It
-asks `pmix_pnet_base_set_assigned_devices()` for the process's devices
-filtered by the same PCI `(vendor, class)` pair `component_open` probed
-for — `0x8086` / `0x208`, which matters because Intel also makes ethernet
-controllers and those report class `0x200` — and writes the result to
-**`PSM3_NIC`**, which selects by NIC name.
+First, for every process of a job that has one, it sets `FI_OPX_UUID`
+without overwriting (`PMIX_ERR_EXISTS` is not an error). OPX needs the key
+whether or not the process was mapped against an HFI.
 
-**`PSM3_NIC` is one pattern, not a list.** PSM3 hands it to `fnmatch()`
-against each unit's device name (`psm3_is_nic_allowed()` in
-`psm3/psm_utils.c`), unless it parses whole as a decimal or hexadecimal
-number, in which case it is a unit number (`psmi_parse_nic_var()` in
-`psm3/psm.c`). A comma-joined `hfi1_0,hfi1_1` therefore matches *no*
-device and leaves the process with no NIC, so `setup_fork` writes the
-variable only for a single name PSM3 will read as that name — no `,`, no
-glob character, not a number — and leaves a process given several HFIs to
-PSM3's own selection. An extended glob (`@(hfi1_0|hfi1_1)`) would say it,
-but only to a PSM3 built with `FNM_EXTMATCH`, which nothing here can see.
-`test/unit/pnet_opa_seckey.c` covers the two-HFI rank.
+Then it names this process's HFI. It asks
+`pmix_pnet_base_get_assigned_devices()` for the process's devices filtered
+by `pmix_pnet_opa_match[]` — which matters because Intel also makes
+ethernet controllers, and they report class `0x200` — and, **for a process
+given exactly one**, writes **`FI_OPX_HFI_SELECT`** over any value already
+set.
 
-**Intel E810 is not in the table, deliberately.** PSM3's verbs HAL takes
-its units from `/sys/class/infiniband` and would accept an `irdma0` name
-in `PSM3_NIC`. Two things are unsettled: an `irdma` device may run iWARP,
-which PSM3's verbs HAL — built on UD queue pairs — is not known to drive
-(`nvd` drops such devices by their sysfs node type, and the same check
-would be needed here); and PSM3's sockets HAL takes its units from
-`/sys/class/net`, so if PSM3 falls back to it, an `irdma` name matches no
-unit. Add `{0x8086, 0x200, PMIX_DEVTYPE_OPENFABRICS}` only once both are
-confirmed against PSM3 on real E810 hardware.
+The variable takes a unit *number*, and that is not an ordinal here:
+every path by which OPX opens a unit builds the device's name from the
+number — `/dev/hfi1_<N>`, `/sys/class/infiniband/hfi1_<N>`, the verbs
+device `hfi1_<N>` (`fi_opx_service.c`, `fi_opx_sysfs.c`,
+`opx_hfi1_rdma_core.c`) — so the number in the name is the unit by
+construction, with no enumeration of OPX's own behind it. `opx_unit_of()`
+accepts exactly `hfi1_` followed by decimal digits with no leading zero.
+Two cases are left unset:
 
-PSM2's `HFI_UNIT` and OPX's `FI_OPX_HFI_SELECT` are deliberately **not**
-set. Both take a unit *ordinal*, and an ordinal means something only
-against the enumeration it came from, which is the driver's rather than
-one PMIx performed. The trailing digit of `hfi1_0` looks like that
-ordinal and usually is, but "usually" is the wrong standard: a wrong
-value in these variables does not fail, it quietly puts the process on
-somebody else's HFI. If hwloc ever records the unit the driver reported —
-as it does for Level Zero devices, see `pgpu/intel` — this is where it
-would be used.
+- **another device's name begins with this one's.** OPX's verbs path
+  finds the unit's device by `strncmp` over the length of `hfi1_<N>` and
+  takes the first in the device list, so unit 1 also matches
+  `hfi1_10`–`hfi1_15`, depending on list order. `opx_prefix_collides()`
+  refuses then — the same shape, and the same answer, as `nvd`'s
+  `verbs_prefix_collides()`.
+- **several HFIs.** OPX opens the first fixed unit it reads and stops, so
+  a list says "the first of these", not "these".
+
+On CN6000 OPX may open a second, send-only context on an HFI of the other
+plane, which it discovers itself whatever `FI_OPX_HFI_SELECT` says; that
+is OPX's choice and not one this variable can narrow.
+
+A device the process was mapped against under its **network interface**
+name — CN5000's HFI function carries `ibp161s0` and `ibp161s0d1` beside
+`hfi1_0` — reaches this code as `hfi1_0`: the base names a PCI function by
+its preferred OS device. `test/unit/pnet_opa_cn5k.c` covers it.
+
+PSM2's `HFI_UNIT` is deliberately **not** set. PSM2 numbers units by its
+own enumeration, which nothing here can see, and a wrong value there does
+not fail — it quietly puts the process on somebody else's HFI.
 
 ### `collect_inventory` / `deliver_inventory`
 
@@ -178,18 +239,31 @@ nothing to say has to say it quietly.
 
 ## Testing it
 
-`test/unit/pnet_opa_seckey.c` drives the seckey path end to end —
-`allocate` → `setup_local_network` → `setup_fork` — plus the PCI filter
-in `setup_fork` and the malformed-directive cases below. It gets `opa`
-selected on a machine with no HFI by handing the server
-`test/topologies/opa-hfi.xml` through the documented
-`pmix_hwloc_topo_file` hook. That fixture exists because `opa` had no
-coverage at all otherwise: the two general-purpose fixtures present no
-Omni-Path device, and they cannot simply be given one — `hwloc_devices`
-asserts exact device counts against both. It deliberately carries an
-Intel *ethernet* controller (class `0200`) beside the HFI (class
-`0208`), because "same vendor, wrong class" is the mistake the PCI
-filter exists to prevent.
+Two programs, one per fixture, because the topology is read once per
+process:
+
+- `test/unit/pnet_opa_seckey.c` drives the seckey path end to end —
+  `allocate` → `setup_local_network` → `setup_fork` — plus the OPX key's
+  scoping (inherited by a spawned job and by one that job spawns, not
+  shared by jobs launched apart or by one naming a parent the server set
+  up no job for, the same on a second setup, never written over a value
+  already set, a launcher's own value preferred, forgotten at
+  deregistration), the PCI filter in
+  `setup_fork`, both selection variables, and the malformed-directive
+  cases below. It gets `opa` selected on a machine with no HFI by handing
+  the server `test/topologies/opa-hfi.xml` through the documented
+  `pmix_hwloc_topo_file` hook. That fixture carries three OPA100 HFIs —
+  `hfi1_0`, `hfi1_1` and `hfi1_10`, the last so that unit 1 collides —
+  and an Intel *ethernet* controller (class `0200`), because "same
+  vendor, wrong class" is the mistake the PCI filter exists to prevent.
+  The general-purpose fixtures cannot simply be given an HFI:
+  `hwloc_devices` asserts exact device counts against both.
+- `test/unit/pnet_opa_cn5k.c` runs against `test/topologies/cn5k-hfi.xml`,
+  a real CN5000 node with its identifying values replaced: that `opa`
+  opens for Cornelis's vendor id at all (it fails, not skips, if not — the
+  fixture has the HFI), that the HFI is named to OPX whether the process
+  was given it as `hfi1_0` or as `ibp161s0`, that `PSM3_NIC` is not set,
+  and that the node's Mellanox ports are left to `nvd`.
 
 ## Gotchas
 
@@ -222,8 +296,15 @@ filter exists to prevent.
   `unsigned int` of any size; the resulting string is byte-order
   dependent, which does not matter because the key is generated once on
   the lead server and shipped as a string.
+- **`setup_fork` runs on the host's thread, and reads the OPX key list.**
+  That list is written by `setup_local_network` and `deregister_nspace` on
+  the progress thread. It is safe for the same reason the base's envar
+  cache is — the host forks a job's processes after that job's
+  `setup_local_support` completes and deregisters it after they exit —
+  and unsafe in the same way if a host does not; see the framework
+  `AGENTS.md`'s threading section.
 - **Built ≠ active.** `opa` links into `libpmix` on every build, but the
-  `component_open` hwloc probe means it only participates on hosts with an
+  `component_open` probe means it only participates on hosts with an
   Omni-Path HFI — so on a developer's machine every entry point here
   is dead code unless something puts an HFI in the topology. That is what
   the fixture under [Testing it](#testing-it) is for; reach for it rather

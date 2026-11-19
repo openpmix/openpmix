@@ -2249,9 +2249,9 @@ static char *device_selector(hwloc_topology_t topology, hwloc_obj_t osdev, hwloc
                              const char *vendor, const char *vendor_id)
 {
     /* A NIC is named by the name it already has.  UCX_NET_DEVICES,
-     * NCCL_IB_HCA and PSM3_NIC all take the OS device name, so there is
-     * nothing to translate and - unlike a GPU's - nothing that can be
-     * absent: the name is how hwloc reported the device in the first
+     * NCCL_IB_HCA and FI_VERBS_DEVICE_NAME all take the OS device name, so
+     * there is nothing to translate and - unlike a GPU's - nothing that can
+     * be absent: the name is how hwloc reported the device in the first
      * place.  Which name that is for a function presenting two of them is
      * settled by osdev_preferred() above, before this is ever reached. */
     if (HWLOC_OBJ_OS_DEVICE == osdev->type
@@ -2375,10 +2375,10 @@ static bool osdev_preferred(hwloc_obj_t candidate, hwloc_obj_t incumbent)
     /* One HCA function is both an OpenFabrics device ("mlx5_0") and a
      * network interface ("ib0").  The OpenFabrics name is the one the
      * fabric libraries' device-selection variables accept - UCX_NET_DEVICES,
-     * NCCL_IB_HCA, PSM3_NIC - and the interface name is accepted by none of
-     * them, so which of the two names the function decides whether an
-     * assignment against it can be acted on at all.  Left to hwloc's
-     * iteration order that was a coin flip. */
+     * NCCL_IB_HCA, FI_VERBS_DEVICE_NAME - and the interface name is accepted
+     * by none of them, so which of the two names the function decides
+     * whether an assignment against it can be acted on at all.  Left to
+     * hwloc's iteration order that was a coin flip. */
     if (HWLOC_OBJ_OSDEV_OPENFABRICS == candidate->attr->osdev.type
         && HWLOC_OBJ_OSDEV_NETWORK == incumbent->attr->osdev.type) {
         return true;

@@ -129,9 +129,9 @@ typedef struct {
     /* What to write in the device-selection variable of the software that
      * will use this device, to name it to a process - CUDA_VISIBLE_DEVICES,
      * ROCR_VISIBLE_DEVICES, ZE_AFFINITY_MASK for a GPU; UCX_NET_DEVICES,
-     * NCCL_IB_HCA, PSM3_NIC for a NIC - or NULL when the topology does not
-     * support saying it.  Several devices are named by joining their
-     * selectors with ','.
+     * NCCL_IB_HCA, FI_VERBS_DEVICE_NAME for a NIC - or NULL when the
+     * topology does not support saying it.  Several devices are named by
+     * joining their selectors with ','.
      *
      * For a network or OpenFabrics device it is the OS device name, which
      * is what every one of those variables accepts and what the enumerator

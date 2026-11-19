@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,6 +29,10 @@ typedef struct {
 /* the component must be visible data for the linker to find it */
 PMIX_EXPORT extern pmix_pnet_opa_component_t pmix_mca_pnet_opa_component;
 extern pmix_pnet_module_t pmix_pnet_opa_module;
+
+/* the HFIs this component is for - see pnet_opa.c */
+extern const pmix_pnet_pcimatch_t pmix_pnet_opa_match[];
+extern const size_t pmix_pnet_opa_nmatch;
 
 /* define a key for any blob we need to send in a launch msg */
 #define PMIX_PNET_OPA_BLOB "pmix.pnet.opa.blob"

@@ -971,6 +971,34 @@ static void test_writer_stall(void)
            0 == stat(file, &buf) && (size_t) buf.st_size > 8 * bo.size);
 }
 
+/* Can a user who is neither the owner nor in the group of any directory on
+ * the way reach "path"?  The cases that run as root have a helper create
+ * files as OTHER_UID under our base directory, so every directory above it
+ * has to let that uid through.  "mktemp -d" makes a 0700 directory, and
+ * TMPDIR=$(mktemp -d) is the documented way to run this suite clean - run
+ * as root, it leaves the helper unable to reach anything below it. */
+static bool searchable_by_others(const char *path)
+{
+    char walk[512], *slash;
+    struct stat sb;
+
+    if (NULL == path || '/' != path[0] || strlen(path) >= sizeof(walk)) {
+        return false;
+    }
+    pmix_strncpy(walk, path, sizeof(walk) - 1);
+    for (;;) {
+        if (0 != stat(walk, &sb) || !S_ISDIR(sb.st_mode) || 0 == (sb.st_mode & S_IXOTH)) {
+            return false;
+        }
+        slash = strrchr(walk, '/');
+        if (NULL == slash || slash == walk) {
+            break;
+        }
+        *slash = '\0';
+    }
+    return (0 == stat("/", &sb) && 0 != (sb.st_mode & S_IXOTH));
+}
+
 int main(int argc, char **argv)
 {
     static pmix_server_module_t mymodule = {0};
@@ -986,7 +1014,15 @@ int main(int argc, char **argv)
 
     /* what the modes below are measured against */
     umask(022);
-    snprintf(base, sizeof(base), "%s/iofperms.XXXXXX", (NULL == tmp) ? "/tmp" : tmp);
+    if (NULL == tmp) {
+        tmp = "/tmp";
+    }
+    if (0 == geteuid() && !searchable_by_others(tmp)) {
+        fprintf(stdout, "  NOTE: %s cannot be searched by uid %d, which the root cases create "
+                        "files as - using /tmp instead\n", tmp, OTHER_UID);
+        tmp = "/tmp";
+    }
+    snprintf(base, sizeof(base), "%s/iofperms.XXXXXX", tmp);
     if (NULL == mkdtemp(base)) {
         fprintf(stderr, "mkdtemp failed: %s\n", strerror(errno));
         return 1;

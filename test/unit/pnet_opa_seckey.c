@@ -28,13 +28,20 @@
  * pointer for a garbage count.  Those cases assert survival, not a return
  * code - a directive the component cannot use is legitimately ignored.
  *
+ * The same request carries OPX's job key, FI_OPX_UUID.  That one belongs
+ * to a job and the jobs it spawns - they have to share it to reach each
+ * other through shared memory, and nothing else should - and it is never
+ * written over a value the child's environment already has.
+ *
  * It runs against opa-hfi.xml, handed to the server through the documented
- * topo_file hook.  That fixture carries an Omni-Path HFI (PCI 8086
- * class 0208: Cornelis makes it, under Intel's vendor id), which is what
+ * topo_file hook.  That fixture carries Omni-Path HFIs (PCI 8086
+ * class 0208: Cornelis makes them, under Intel's vendor id), which is what
  * puts opa into the active list on a machine with no such card, and an
- * Intel *ethernet* controller (class 0200) beside it, because "same
+ * Intel *ethernet* controller (class 0200) beside them, because "same
  * vendor, wrong class" is the mistake the component's PCI filter exists
- * to prevent.
+ * to prevent.  Its HFIs are hfi1_0, hfi1_1 and hfi1_10: OPX finds unit 1's
+ * device by comparing "hfi1_1" over its own length, so on that node unit 1
+ * may not be named to it.
  */
 
 #include "src/include/pmix_config.h"
@@ -54,14 +61,18 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NPROCS 3
+#define NPROCS 5
 #define TESTNS "pnet-opa"
 #define XPORT  "OMPI_MCA_orte_precondition_transports"
+#define OPXKEY "FI_OPX_UUID"
+#define OPXSEL "FI_OPX_HFI_SELECT"
 
 /* rank 0 gets an HFI, rank 1 the ethernet controller from the same
- * vendor - which opa must not claim - and rank 2 both HFIs */
+ * vendor - which opa must not claim - rank 2 two HFIs, rank 3 the HFI
+ * whose name another one begins with, and rank 4 that other one */
 static const char *osnames[NPROCS][2] = {{"hfi1_0", NULL}, {"enp66s0", NULL},
-                                         {"hfi1_0", "hfi1_1"}};
+                                         {"hfi1_0", "hfi1_1"}, {"hfi1_1", NULL},
+                                         {"hfi1_10", NULL}};
 
 static int failures = 0;
 static int checks = 0;
@@ -105,6 +116,23 @@ static bool is_transport_key(const char *val)
     }
     for (n = 0; '\0' != val[n]; n++) {
         if ('-' != val[n] && !isxdigit((unsigned char) val[n])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* OPX reads its key as at most 32 hex digits, and falls back to its
+ * built-in default on anything else */
+static bool is_opx_key(const char *val)
+{
+    size_t n;
+
+    if (NULL == val || 32 != strlen(val)) {
+        return false;
+    }
+    for (n = 0; '\0' != val[n]; n++) {
+        if (!isxdigit((unsigned char) val[n])) {
             return false;
         }
     }
@@ -165,36 +193,79 @@ static bool has_key(pmix_info_t *info, size_t ninfo, const char *key)
     return false;
 }
 
-/* Ask allocate for a seckey, deliver the blob, and report the key the
- * child would be forked with.  The caller frees the returned string. */
-static char *seckey_round_trip(char *nspace, pmix_info_t *directives, size_t ndirs)
+/* The value of "var" in the environment rank 0 of nspace would be forked
+ * with, starting from "preset" (which may be NULL).  The caller frees the
+ * returned string. */
+static char *child_value(const char *nspace, const char *var, const char *preset)
 {
-    pmix_info_t *blob = NULL;
-    size_t nblob = 0;
     char **env = NULL;
     const char *ev;
     pmix_proc_t proc;
     pmix_status_t rc;
     char *answer = NULL;
 
-    if (PMIX_SUCCESS != make_blob(nspace, directives, ndirs, &blob, &nblob)) {
-        return NULL;
+    if (NULL != preset) {
+        PMIx_Argv_append_nosize(&env, preset);
     }
-    rc = pmix_pnet.setup_local_network(nspace, blob, nblob);
-    PMIX_INFO_FREE(blob, nblob);
-    if (PMIX_SUCCESS != rc) {
-        return NULL;
-    }
-
     PMIX_LOAD_PROCID(&proc, nspace, 0);
     rc = pmix_pnet_base_setup_fork(&proc, &env);
     if (PMIX_SUCCESS == rc) {
-        ev = envval(env, XPORT);
+        ev = envval(env, var);
         if (NULL != ev) {
             answer = strdup(ev);
         }
     }
     PMIx_Argv_free(env);
+    return answer;
+}
+
+/* Ask allocate for a seckey and deliver the blob */
+static bool deliver(char *nspace, pmix_info_t *directives, size_t ndirs)
+{
+    pmix_info_t *blob = NULL;
+    size_t nblob = 0;
+    pmix_status_t rc;
+
+    if (PMIX_SUCCESS != make_blob(nspace, directives, ndirs, &blob, &nblob)) {
+        return false;
+    }
+    rc = pmix_pnet.setup_local_network(nspace, blob, nblob);
+    PMIX_INFO_FREE(blob, nblob);
+    return (PMIX_SUCCESS == rc);
+}
+
+/* ...and report the transport key the child would be forked with */
+static char *seckey_round_trip(char *nspace, pmix_info_t *directives, size_t ndirs)
+{
+    if (!deliver(nspace, directives, ndirs)) {
+        return NULL;
+    }
+    return child_value(nspace, XPORT, NULL);
+}
+
+/* ...or the OPX key, for a job spawned by the given process (by nobody if
+ * pnspace is NULL) */
+static char *opx_key_for(char *nspace, const char *pnspace, pmix_rank_t prank)
+{
+    pmix_info_t dirs[2];
+    pmix_proc_t parent;
+    bool flag = true;
+    size_t ndirs = 1;
+    char *answer = NULL;
+
+    PMIX_INFO_LOAD(&dirs[0], PMIX_SETUP_APP_ALL, &flag, PMIX_BOOL);
+    if (NULL != pnspace) {
+        PMIX_LOAD_PROCID(&parent, pnspace, prank);
+        PMIX_INFO_LOAD(&dirs[1], PMIX_PARENT_ID, &parent, PMIX_PROC);
+        ++ndirs;
+    }
+    if (deliver(nspace, dirs, ndirs)) {
+        answer = child_value(nspace, OPXKEY, NULL);
+    }
+    PMIX_INFO_DESTRUCT(&dirs[0]);
+    if (NULL != pnspace) {
+        PMIX_INFO_DESTRUCT(&dirs[1]);
+    }
     return answer;
 }
 
@@ -315,7 +386,7 @@ int main(int argc, char **argv)
     size_t nblob = 0;
     char **env = NULL;
     const char *ev;
-    char *key1 = NULL, *key2 = NULL;
+    char *key1 = NULL, *key2 = NULL, *keya = NULL, *keyb = NULL;
     pmix_proc_t proc;
     pmix_status_t rc;
     bool flag = true;
@@ -399,6 +470,63 @@ int main(int argc, char **argv)
     free(key2);
     PMIX_INFO_DESTRUCT(&directive);
 
+    /* --- OPX's key: a job's and the jobs it spawns --- */
+
+    key1 = child_value(TESTNS "-net", OPXKEY, NULL);
+    key2 = child_value(TESTNS "-two", OPXKEY, NULL);
+    ok(is_opx_key(key1), "the child is forked with a key OPX will accept");
+    ok(NULL != key1 && NULL != key2 && 0 != strcmp(key1, key2),
+       "two jobs launched apart do not share one");
+    free(key2);
+
+    keya = opx_key_for(TESTNS "-par", NULL, 0);
+    ok(is_opx_key(keya), "a job with no parent gets a well-formed key");
+    key2 = opx_key_for(TESTNS "-par", NULL, 0);
+    ok(NULL != keya && NULL != key2 && 0 == strcmp(keya, key2),
+       "and the same one when it is set up again");
+    free(key2);
+    keyb = opx_key_for(TESTNS "-kid", TESTNS "-par", 0);
+    ok(NULL != keya && NULL != keyb && 0 == strcmp(keya, keyb),
+       "a job it spawns gets its key");
+    free(keyb);
+    keyb = opx_key_for(TESTNS "-grandkid", TESTNS "-kid", 3);
+    ok(NULL != keya && NULL != keyb && 0 == strcmp(keya, keyb),
+       "and so does a job that one spawns");
+    free(keyb);
+    key2 = opx_key_for(TESTNS "-other", NULL, 0);
+    ok(is_opx_key(key2) && NULL != keya && 0 != strcmp(key2, keya),
+       "a job launched apart gets another key");
+    free(key2);
+    /* a parent this server set up no job for gives nothing to inherit */
+    key2 = opx_key_for(TESTNS "-orphan", "pnet-opa-nosuch", 0);
+    ok(is_opx_key(key2) && NULL != keya && 0 != strcmp(key2, keya),
+       "a job naming a parent it knows nothing of gets a key of its own");
+    free(key2);
+    free(keya);
+
+    /* a key the child's environment already carries was put there on
+     * purpose - by the user, for the app - and is not replaced */
+    key2 = child_value(TESTNS "-net", OPXKEY, OPXKEY "=0123abcd");
+    ok(NULL != key2 && 0 == strcmp(key2, "0123abcd"),
+       "a key already in the child's environment is left alone");
+    free(key2);
+
+    /* and one the user set where the job was launched travels in the blob
+     * after ours, so it is the one the child gets */
+    setenv(OPXKEY, "feedface", 1);
+    key2 = opx_key_for(TESTNS "-user", NULL, 0);
+    unsetenv(OPXKEY);
+    ok(NULL != key2 && 0 == strcmp(key2, "feedface"),
+       "a key set where the job was launched is the one used");
+    free(key2);
+
+    /* nothing is kept for a job that is gone */
+    pmix_pnet.deregister_nspace(TESTNS "-two");
+    key2 = child_value(TESTNS "-two", OPXKEY, NULL);
+    ok(NULL == key2, "a deregistered job's key is forgotten");
+    free(key2);
+    free(key1);
+
     /* --- a network directive the component cannot read --- */
 
     /* The attribute is documented as a data array.  A host that hands over
@@ -443,9 +571,12 @@ int main(int argc, char **argv)
         env = NULL;
         rc = pmix_pnet_base_setup_fork(&proc, &env);
         ok(PMIX_SUCCESS == rc, "setup_fork succeeds for a rank with an HFI");
-        ev = envval(env, "PSM3_NIC");
-        ok(NULL != ev && 0 == strcmp(ev, "hfi1_0"),
-           "PSM3 is told the HFI by name");
+        ev = envval(env, OPXSEL);
+        ok(NULL != ev && 0 == strcmp(ev, "0"),
+           "OPX is told the HFI by the unit number its name carries");
+        /* PSM3 is Intel's library for its ethernet adapters, not an
+         * Omni-Path one */
+        ok(NULL == envval(env, "PSM3_NIC"), "and PSM3 is not told anything");
         PMIx_Argv_free(env);
         env = NULL;
 
@@ -456,20 +587,54 @@ int main(int argc, char **argv)
         env = NULL;
         rc = pmix_pnet_base_setup_fork(&proc, &env);
         ok(PMIX_SUCCESS == rc, "setup_fork succeeds for a rank with no HFI");
-        ok(NULL == envval(env, "PSM3_NIC"),
+        ok(NULL == envval(env, OPXSEL),
            "and says nothing about an ethernet controller from the same vendor");
+        ok(NULL != envval(env, OPXKEY),
+           "but still hands it the job's key, which OPX needs regardless");
         PMIx_Argv_free(env);
         env = NULL;
 
-        /* PSM3 reads PSM3_NIC as one fnmatch pattern, not a list, so
-         * "hfi1_0,hfi1_1" would match neither HFI and leave the process
-         * with no NIC at all.  A process given two is left unset. */
+        /* OPX opens the first fixed unit in a list and stops, so a list
+         * would say "the first of these" rather than "these".  A process
+         * given two is left unset. */
         PMIX_LOAD_PROCID(&proc, TESTNS, 2);
         env = NULL;
         rc = pmix_pnet_base_setup_fork(&proc, &env);
         ok(PMIX_SUCCESS == rc, "setup_fork succeeds for a rank with two HFIs");
-        ok(NULL == envval(env, "PSM3_NIC"),
-           "and does not write a list PSM3 would read as one pattern");
+        ok(NULL == envval(env, OPXSEL), "and does not write a list of units OPX would read as one");
+        PMIx_Argv_free(env);
+        env = NULL;
+
+        /* OPX would look for unit 1 as anything beginning "hfi1_1", and
+         * this node has an hfi1_10 */
+        PMIX_LOAD_PROCID(&proc, TESTNS, 3);
+        env = NULL;
+        rc = pmix_pnet_base_setup_fork(&proc, &env);
+        ok(PMIX_SUCCESS == rc, "setup_fork succeeds for a rank on hfi1_1");
+        ok(NULL == envval(env, OPXSEL),
+           "and does not name a unit OPX could take for another device");
+        PMIx_Argv_free(env);
+        env = NULL;
+
+        PMIX_LOAD_PROCID(&proc, TESTNS, 4);
+        env = NULL;
+        rc = pmix_pnet_base_setup_fork(&proc, &env);
+        ok(PMIX_SUCCESS == rc, "setup_fork succeeds for a rank on hfi1_10");
+        ev = envval(env, OPXSEL);
+        ok(NULL != ev && 0 == strcmp(ev, "10"),
+           "and names unit 10, which no other device's name begins with");
+        PMIx_Argv_free(env);
+        env = NULL;
+
+        /* a device assignment is the more specific request, so it is
+         * written over a selection the environment already carries */
+        PMIX_LOAD_PROCID(&proc, TESTNS, 0);
+        env = NULL;
+        PMIx_Argv_append_nosize(&env, OPXSEL "=1");
+        rc = pmix_pnet_base_setup_fork(&proc, &env);
+        ev = envval(env, OPXSEL);
+        ok(PMIX_SUCCESS == rc && NULL != ev && 0 == strcmp(ev, "0"),
+           "the assigned unit replaces one already in the environment");
         PMIx_Argv_free(env);
         env = NULL;
     }

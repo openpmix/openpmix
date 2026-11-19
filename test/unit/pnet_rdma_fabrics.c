@@ -297,10 +297,15 @@ static void test_cxi(void)
        "cxi: a NIC known only by its interface name, and not in sysfs, is not named");
     PMIx_Argv_free(env);
 
-    /* the same when the process was mapped against the interface */
+    /* A process mapped against the interface of a NIC whose CXI device the
+     * topology does record is named by that device: the two are OS devices
+     * of one PCI function, and the base names a function to the libraries
+     * by the device they accept, whichever name it was assigned under.
+     * Nothing is derived from the interface's number - hsn1 above, whose
+     * function carries no CXI device, is still left unset. */
     env = fork_env(12);
-    ok(NULL == envval(env, "FI_CXI_DEVICE_NAME"),
-       "cxi: an assignment naming the interface is not turned into a CXI name by guesswork");
+    ok(is(envval(env, "FI_CXI_DEVICE_NAME"), "cxi0"),
+       "cxi: an assignment naming the interface is told the CXI device on its function");
     PMIx_Argv_free(env);
 
     env = fork_env(6);
