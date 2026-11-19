@@ -329,6 +329,16 @@ PMIX_EXPORT void pmix_hwloc_destruct_topology(pmix_topology_t *ptr);
 
 PMIX_EXPORT void pmix_hwloc_release_topology(pmix_topology_t *ptr, size_t sz);
 
+/* The source string pmix_hwloc_load_topology reports when the caller did
+ * not name one. It is static storage, so the destructor must not free it. */
+extern const char pmix_hwloc_load_source[];
+
+/* Is this hwloc topology one the library lends through PMIx_Load_topology -
+ * the cached topology, or the one pmix_hwloc_finalize last released? A
+ * caller's handle holding such a pointer does not own it, so destructing
+ * the handle must not destroy it. */
+bool pmix_hwloc_topology_is_lent(const void *topology);
+
 PMIX_EXPORT pmix_status_t pmix_hwloc_get_topology_size(pmix_topology_t *ptr, size_t *sz);
 
 /****  PRESERVE ABI  ****/
