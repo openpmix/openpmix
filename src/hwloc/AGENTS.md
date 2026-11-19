@@ -168,14 +168,28 @@ order:
    `hwloc_topology_load`.
 
 `pmix_hwloc_setup_topology()` is a thin wrapper around the real
-`setup_topology()`, guarded by a `passed_thru` static so the work runs
-**exactly once** per process. The latch remembers the **answer**, not
-merely that it ran, and that distinction matters: acquisition is allowed
-to fail without being fatal (see below), so a latch that replayed
-`PMIX_SUCCESS` told every later caller there was a topology to read.
-`pmix_hwloc_load_topology()` is exactly such a caller — it falls back to
-setup and, on success, hands the cache to `PMIx_Load_topology`, which
-then reported success while returning a NULL topology. After acquiring the topology it
+`setup_topology()`, guarded by the file-scope `setup_done`/`setup_result`
+latch so the work runs **exactly once** per init/finalize cycle. The
+latch remembers the **answer**, not merely that it ran, and that
+distinction matters: acquisition is allowed to fail without being fatal
+(see below), so a latch that replayed `PMIX_SUCCESS` told every later
+caller there was a topology to read. `pmix_hwloc_load_topology()` is
+exactly such a caller — it falls back to setup and, on success, hands the
+cache to `PMIx_Load_topology`, which then reported success while
+returning a NULL topology.
+
+**`pmix_hwloc_finalize()` resets the latch, and empties the cache even
+when the topology is the host's.** The latch used to be a static local
+to the wrapper, so it outlived the cache it described: the second
+`PMIx_Init` in a process found it set, did not acquire, and
+`PMIx_Load_topology` handed back a NULL topology as success. And a
+host-provided topology's pointer used to be left in the cache at
+finalize (not destroyed, correctly, but not cleared either), where the
+next cycle's acquisition would find it and adopt it as current whether
+or not the host still had it. Both are covered by
+[`test/unit/hwloc_cycle.c`](../../test/unit/hwloc_cycle.c).
+
+After acquiring the topology it
 optionally *shares* it: exports v2 + v1 XML into
 `pmix_server_globals.gdata` (so clients can fetch it) and, unless
 `hole_kind == VMEM_HOLE_NONE`, writes it to a shmem segment in the
@@ -289,7 +303,7 @@ entry points — there is no caddy pattern here. They read and write
 directly, on the assumption that they are called from the setup/teardown
 path or from a progress-thread handler that already owns that state. Do
 **not** call the acquisition routines (`setup`/`load`) concurrently; the
-`passed_thru`/`external_topology` guards are plain booleans with no
+`setup_done`/`external_topology` guards are plain booleans with no
 locking. The pure computational helpers (`generate_locality_string`,
 `get_relative_locality`, `compute_distances`, the datatype handlers)
 operate only on their arguments and are safe to call from any thread that
