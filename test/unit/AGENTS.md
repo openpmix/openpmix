@@ -1032,6 +1032,18 @@ reasons.** If the whole `run_*.pl` family fails at once, rerun under
 `TMPDIR=$(mktemp -d) make check` before investigating; see the top-level
 guide's "Building and Testing".
 
+**A test that runs as root and hands its scratch directory to another
+user must not assume that user can reach `$TMPDIR`.** `mktemp -d` makes a
+0700 directory, so under the recipe above a job user, a server's user, or
+a helper running as some other uid cannot get past `$TMPDIR` at all, and
+the test fails with "Permission denied" for no reason of its own. Take
+the base from `pmix_test_scratch_base()` in
+[`scratch_base.h`](scratch_base.h): it returns `$TMPDIR` when others can
+search every directory on its path, falls back to `/tmp` (saying so)
+when they cannot, and returns NULL - skip the case - when they cannot
+reach `/tmp` either. `ptl_userns_server`, `ptl_userns_peer`, and
+`iof_file_perms` use it.
+
 **This directory was invisible to `make check` in any tree not
 configured `--disable-visibility`, and that has been fixed — know the
 shape of it.** `test/Makefile.am` wrapped its whole `SUBDIRS` line in

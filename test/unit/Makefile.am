@@ -699,13 +699,13 @@ ptl_local_connect_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 ptl_userns_server_SOURCES = \
-        ptl_userns_server.c
+        ptl_userns_server.c scratch_base.h
 ptl_userns_server_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 ptl_userns_server_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 ptl_userns_peer_SOURCES = \
-        ptl_userns_peer.c
+        ptl_userns_peer.c scratch_base.h
 ptl_userns_peer_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 ptl_userns_peer_LDADD = \
     $(top_builddir)/src/libpmix.la
@@ -988,7 +988,7 @@ server_finalize_log_LDADD = \
     $(top_builddir)/src/libpmix.la
 
 iof_file_perms_SOURCES = \
-        iof_file_perms.c
+        iof_file_perms.c scratch_base.h
 iof_file_perms_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 iof_file_perms_LDADD = \
     $(top_builddir)/src/libpmix.la
