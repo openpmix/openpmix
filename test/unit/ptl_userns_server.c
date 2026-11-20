@@ -27,6 +27,8 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_argv.h"
 
+#include "scratch_base.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -129,7 +131,7 @@ static int run_kid(int envfd, int resultfd)
 int main(void)
 {
     char dir[256], **env = NULL;
-    const char *base = getenv("TMPDIR");
+    const char *base;
     int envp[2], resp[2], status = 0, n;
     uint32_t uid = JOB_UID, gid = JOB_GID, one = 1;
     pmix_info_t info[3];
@@ -148,8 +150,13 @@ int main(void)
         fprintf(stdout, "not running as root - skipping\n");
         return SKIP;
     }
-    /* a directory the job user may enter, as Slurm's is */
-    snprintf(dir, sizeof(dir), "%s/pmix-userns-XXXXXX", (NULL == base) ? "/tmp" : base);
+    /* a directory the job user may enter, as Slurm's is - beneath a base
+     * it can reach, or the client cannot reach the server's socket */
+    if (NULL == (base = pmix_test_scratch_base())) {
+        fprintf(stdout, "no directory the job user can reach - skipping\n");
+        return SKIP;
+    }
+    snprintf(dir, sizeof(dir), "%s/pmix-userns-XXXXXX", base);
     if (NULL == mkdtemp(dir) || 0 != chmod(dir, 0755)) {
         fprintf(stdout, "no scratch directory - skipping\n");
         return SKIP;
