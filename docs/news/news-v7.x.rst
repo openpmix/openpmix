@@ -134,6 +134,9 @@ Highlights
   ``PMIX_ALLOC_GID`` name the user and group an allocation or session
   belongs to, which ``PMIX_USERID`` and ``PMIX_GRPID`` cannot, since
   they name the caller -- a scheduler or host acting for that user.
+  ``PMIX_ALLOC_GRANT_TIME`` gives the time the scheduler granted an
+  allocation that the host answered before the grant, so the time a
+  request spent queued can be told from the time the DVM took to grow.
 
 * **New compression components.** ``zstd`` (preferred when available,
   roughly 6x faster than zlib) and ``lz4``. All nodes in a job must use
@@ -157,10 +160,29 @@ Highlights
   Broadcom, and Intel (iWARP excluded); ``FI_EFA_IFACE`` for Amazon EFA
   (new ``pnet/efa``); ``FI_CXI_DEVICE_NAME`` for HPE Slingshot (new
   ``pnet/cxi``, which prefers the ``cxiN`` device and finds it in sysfs
-  under an hwloc older than 2.14); and ``PSM3_NIC`` for Omni-Path. A
-  value already set is replaced, and a variable that cannot name the
-  assigned devices exactly, as the library will read it, is left unset
-  rather than written to select another device.
+  under an hwloc older than 2.14); and ``FI_OPX_HFI_SELECT`` for a single
+  Omni-Path adapter, for libfabric's OPX provider, on OPA100 and on
+  CN5000, whose HFIs ``pnet/opa`` now recognizes. A value already set is
+  replaced, and a variable that cannot name the assigned devices
+  exactly, as the library will read it, is left unset rather than
+  written to select another device. A device is named as these
+  libraries accept it even when the host mapped the process against
+  another name for it, such as its network interface (``ib0``,
+  ``hsn0``).
+
+* **OPX gets a job key.** A launch that asks for security keys on an
+  Omni-Path node also sets ``FI_OPX_UUID``, the key OPX uses for its
+  shared-memory segments and hardware contexts. A job and the jobs it
+  spawns share one key, and a key already in the process's environment
+  is kept. ``FI_OPX_*`` variables are now forwarded by default.
+
+* **A loaded topology survives its caller.** The structure
+  ``PMIx_Load_topology`` fills in refers to the library's own topology.
+  A caller that destructs it -- as ``MPI_Finalize`` does in older MPICH
+  builds -- now only clears it, before or after ``PMIx_Finalize``, where
+  the library's topology was destroyed a second time. A process that
+  finalizes and initializes again loads its topology afresh rather than
+  being handed none.
 
 * **Distances can be measured from a device.**
   ``PMIX_DEVICE_DIST_ORIGIN`` answers questions such as which NICs are
@@ -309,8 +331,8 @@ Highlights
 * **Testing.** New unit tests, multi-node Docker Swarm suites,
   multi-user output-file tests, AddressSanitizer CI, cross-version CI
   with clients back to v2.1, a CI build without support for earlier
-  releases, and topologies from Slingshot, MI350, and AWS GPU nodes as
-  device-discovery fixtures.
+  releases, and topologies from Slingshot, CN5000, MI350, and AWS GPU
+  nodes as device-discovery fixtures.
 
 Compatibility notes
 ^^^^^^^^^^^^^^^^^^^
