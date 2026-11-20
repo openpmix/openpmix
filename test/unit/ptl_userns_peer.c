@@ -37,6 +37,8 @@
 #include "src/mca/ptl/base/ptl_base_handshake.h"
 #include "src/util/pmix_getid.h"
 
+#include "scratch_base.h"
+
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -368,13 +370,18 @@ static pmix_status_t peer_status(uid_t uid, gid_t gid, const server_info_t *si, 
 static pid_t start_server(uid_t uid, gid_t gid, uid_t inside, char *dir, size_t dirlen,
                           server_info_t *si, int *done)
 {
-    const char *base = getenv("TMPDIR");
+    const char *base;
     int infop[2], donep[2];
     pid_t pid;
 
     memset(si, 0, sizeof(*si));
     si->status = 1;
-    snprintf(dir, dirlen, "%s/pmix-uspeer-XXXXXX", (NULL == base) ? "/tmp" : base);
+    /* beneath a base the server's user and its peers can reach, or the
+     * server cannot make its socket and the peers cannot reach it */
+    if (NULL == (base = pmix_test_scratch_base())) {
+        return -1;
+    }
+    snprintf(dir, dirlen, "%s/pmix-uspeer-XXXXXX", base);
     if (NULL == mkdtemp(dir) || 0 != chown(dir, uid, gid) || 0 != chmod(dir, 0755)) {
         return -1;
     }
