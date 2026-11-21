@@ -41,6 +41,9 @@
  *   - two servers whose host names no namespace start side by side
  *   - a session-level server asked to connect to a scheduler, where there
  *     is none, does not take its own session file for the server to find
+ *   - a scheduler and a system controller write their role's file and the
+ *     tool files too, and a tool finds either by its pid; a system
+ *     controller that is also the system server writes both system files
  *
  * Each server and tool runs in a child of its own.
  */
@@ -155,6 +158,9 @@ static long next_sched = -1;
 /* the next server started is also asked, optionally, to connect to a
  * scheduler */
 static bool next_connect = false;
+/* the next server started also holds this role (PMIX_SERVER_SCHEDULER or
+ * PMIX_SERVER_SYS_CONTROLLER), or none when NULL */
+static const char *next_role = NULL;
 
 static pid_t start_server(const char *sys, bool name_sys, const char *sess, bool system,
                           int *readyfd, int *gofd)
@@ -168,7 +174,7 @@ static pid_t start_server(const char *sys, bool name_sys, const char *sess, bool
     }
     pid = fork();
     if (0 == pid) {
-        pmix_info_t info[10];
+        pmix_info_t info[12];
         bool flag = true;
         size_t n = 0;
         uint32_t sessid, schedid;
@@ -199,6 +205,9 @@ static pid_t start_server(const char *sys, bool name_sys, const char *sess, bool
         if (next_connect) {
             PMIX_INFO_LOAD(&info[n++], PMIX_CONNECT_TO_SCHEDULER, &flag, PMIX_BOOL);
             PMIX_INFO_LOAD(&info[n++], PMIX_TOOL_CONNECT_OPTIONAL, &flag, PMIX_BOOL);
+        }
+        if (NULL != next_role) {
+            PMIX_INFO_LOAD(&info[n++], next_role, &flag, PMIX_BOOL);
         }
         rc = PMIx_server_init(&mymodule, info, n);
         c = (PMIX_SUCCESS == rc) ? 'y' : 'n';
@@ -841,6 +850,58 @@ static void test_system_files(void)
            0 != access(sys, F_OK), "still present");
 }
 
+/* A server of `role` (`file` its role's file's prefix, `dtag` naming its
+ * directories), with the system
+ * server role too when `system`: the role's file goes in the system tmpdir
+ * the host names, and - as for any server that takes tools - the files by
+ * pid and by namespace in its pmix-user directory, by which a tool finds it */
+static void role_case(const char *dtag, const char *tag, const char *role, const char *file,
+                      bool system)
+{
+    char sys[700], sess[700], udir[800], path[1024], name[64], suffix[64], detail[1200];
+    pid_t spid;
+    int ready, go;
+
+    snprintf(name, sizeof(name), "sys-%s", dtag);
+    scratch(sys, sizeof(sys), name);
+    snprintf(name, sizeof(name), "sess-%s", dtag);
+    scratch(sess, sizeof(sess), name);
+    snprintf(udir, sizeof(udir), "%s/pmix-user.%lu", sys, (unsigned long) geteuid());
+    next_role = role;
+    spid = start_server(sys, true, sess, system, &ready, &go);
+    next_role = NULL;
+    if (0 > spid || !server_up(ready)) {
+        snprintf(detail, sizeof(detail), "%s: the server starts", tag);
+        report(detail, 0, "init failed");
+        return;
+    }
+
+    snprintf(detail, sizeof(detail), "a %s writes its file in the system tmpdir", tag);
+    report(detail, find_file(sys, file, "", path, sizeof(path)), sys);
+    if (system) {
+        snprintf(detail, sizeof(detail), "...and, as the system server too, pmix.sys");
+        report(detail, find_file(sys, "pmix.sys.", "", path, sizeof(path)), sys);
+    }
+    snprintf(suffix, sizeof(suffix), ".tool.%lu", (unsigned long) spid);
+    snprintf(detail, sizeof(detail), "...and its file by pid in its pmix-user directory");
+    report(detail, find_file(udir, "pmix.", suffix, path, sizeof(path)), udir);
+    /* its namespace, pmix-server-<host>-<pid>, ends in its pid */
+    snprintf(suffix, sizeof(suffix), "-%lu", (unsigned long) spid);
+    snprintf(detail, sizeof(detail), "...and its file by namespace there");
+    report(detail, find_file(udir, "pmix.", suffix, path, sizeof(path)), udir);
+    snprintf(detail, sizeof(detail), "a tool finds a %s by its pid", tag);
+    report(detail, PMIX_SUCCESS == tool_by_pid(sys, spid, false), "not found");
+    stop_server(spid, ready, go);
+}
+
+static void test_role_files(void)
+{
+    role_case("sched", "scheduler", PMIX_SERVER_SCHEDULER, "pmix.sched.", false);
+    role_case("ctrl", "system controller", PMIX_SERVER_SYS_CONTROLLER, "pmix.sysctrlr.", false);
+    role_case("ctrlsys", "system controller and system server", PMIX_SERVER_SYS_CONTROLLER,
+              "pmix.sysctrlr.", true);
+}
+
 static void test_legacy_walk(void)
 {
     char sys[700], sess[700], old[800], from[1100], to[1100], dir[800], suffix[64];
@@ -1064,6 +1125,7 @@ int main(void)
     test_not_ours();
     test_elsewhere();
     test_system_files();
+    test_role_files();
     test_legacy_walk();
     test_claims();
     test_singleton_system();

@@ -327,12 +327,16 @@ depends only on the attributes its host passes.
      - \-
      - The server fails to initialize.
    * - ``PMIX_SERVER_SCHEDULER``
-     - ``pmix.sched.<host>``, in the system directory, and no other
+     - ``pmix.sched.<host>``, in the system directory, and the files of
+       ``PMIX_SERVER_TOOL_SUPPORT`` (and of ``PMIX_SERVER_SYSTEM_SUPPORT``,
+       if given)
      - Accepted as for ``PMIX_SERVER_TOOL_SUPPORT``, which the role
        implies: the runtimes a scheduler serves connect as tools.
        ``PMIX_SERVER_TOOL_SUPPORT`` passed false fails the init.
    * - ``PMIX_SERVER_SYS_CONTROLLER``
-     - ``pmix.sysctrlr.<host>``, in the system directory, and no other
+     - ``pmix.sysctrlr.<host>``, in the system directory, and the files of
+       ``PMIX_SERVER_TOOL_SUPPORT`` (and of ``PMIX_SERVER_SYSTEM_SUPPORT``,
+       if given)
      - As for ``PMIX_SERVER_SCHEDULER``.
    * - ``PMIX_LAUNCHER_RENDEZVOUS_FILE``
      - the file named, at the path given

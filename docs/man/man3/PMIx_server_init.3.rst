@@ -418,8 +418,11 @@ directives:
      - ``pmix.<hostname>.tool.<pid>`` and ``pmix.<hostname>.tool.<nspace>``
      - ``<PMIX_SYSTEM_TMPDIR>/pmix-user.<uid>``
 
-A scheduler or system controller writes only its own file; the files under
-``PMIX_SERVER_TOOL_SUPPORT`` are written by any other server that gives it.
+The files are additive: a server writes every one its directives call for.
+A scheduler or system controller serves tools, so it writes the files under
+``PMIX_SERVER_TOOL_SUPPORT`` as well as its own - a tool can find it by its PID
+or namespace - and, given ``PMIX_SERVER_SYSTEM_SUPPORT``, ``pmix.sys.<hostname>``
+too.
 
 The tool files go in a directory of the server's user's own, whatever the
 server's session tmpdir: ``pmix-user.<uid>`` beneath the system tmpdir. The
