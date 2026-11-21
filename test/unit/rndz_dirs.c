@@ -18,7 +18,8 @@
  *     that is a directory of its user's nobody else can write, and a tool
  *     finds it there; not in one others can write
  *   - a non-root system server's file goes in its pmix-user directory, or
- *     in the system tmpdir when the host names one
+ *     in the system tmpdir when the host names one; a named one it had to
+ *     make is removed at finalize, its pmix-user directory in it included
  *   - a tool finds a server by its pid in the server's user's directory;
  *     a file elsewhere below the system tmpdir, where a server of an
  *     earlier release writes, is found only with legacy servers on (ptl_base_legacy_servers)
@@ -781,6 +782,24 @@ static void test_system_files(void)
     report("...and in the system tmpdir the host names, when it names one",
            find_file(sys, "pmix.sys.", "", path, sizeof(path)), sys);
     stop_server(spid, ready, go);
+
+    /* a named system tmpdir that is not there is made, and holds our
+     * pmix-user directory too - both go at finalize */
+    scratch(sess, sizeof(sess), "sessmk");
+    snprintf(sys, sizeof(sys), "%s/sysmk", base);
+    spid = start_server(sys, true, sess, true, &ready, &go);
+    if (0 > spid || !server_up(ready)) {
+        report("system file, tmpdir to make: the server starts", 0, "init failed");
+        return;
+    }
+    snprintf(dir, sizeof(dir), "%s/pmix-user.%lu", sys, (unsigned long) geteuid());
+    report("a named system tmpdir that is not there is made, with the tool files in it",
+           find_file(sys, "pmix.sys.", "", path, sizeof(path)) &&
+               find_file(dir, "pmix.", "", path, sizeof(path)),
+           sys);
+    stop_server(spid, ready, go);
+    report("...and removed at finalize, its pmix-user directory included",
+           0 != access(sys, F_OK), "still present");
 }
 
 static void test_legacy_walk(void)
