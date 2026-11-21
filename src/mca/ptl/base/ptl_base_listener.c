@@ -1297,12 +1297,14 @@ static pmix_status_t store_uri(const char *key, const char *uri)
  * If we are a server and are given a rendezvous file, then that is
  * is the name of the file we are to use to store our listener info.
  */
-/* the scheduler's, the system controller's, or the system server's file,
- * in `dir` - open on dirfd, or, with dirfd -1, the system tmpdir the host
- * named, made if need be and removed at finalize if we made it */
+/* the files of each system role we hold - the scheduler's, the system
+ * controller's, the system server's - in `dir`: open on dirfd, or, with
+ * dirfd -1, the system tmpdir the host named, made if need be and
+ * removed at finalize if we made it. The roles are independent: a system
+ * controller that is also the system server is found as either */
 static pmix_status_t write_system_files(const char *dir, int dirfd, char *uri)
 {
-    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_status_t rc;
     pmix_ptl_made_dir_t *made = (0 > dirfd) ? &pmix_ptl_base.system_dir : NULL;
 
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
@@ -1314,7 +1316,11 @@ static pmix_status_t write_system_files(const char *dir, int dirfd, char *uri)
         rc = write_rndz_file(pmix_ptl_base.scheduler_filename, uri, "scheduler", false, made,
                              &pmix_ptl_base.created_scheduler_filename,
                              &pmix_ptl_base.scheduler_dirfd, dirfd);
-    } else if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+    }
+    if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
         if (0 > pmix_asprintf(&pmix_ptl_base.sysctrlr_filename, "%s/pmix.sysctrlr.%s", dir,
                               pmix_globals.hostname)) {
             return PMIX_ERR_NOMEM;
@@ -1322,7 +1328,11 @@ static pmix_status_t write_system_files(const char *dir, int dirfd, char *uri)
         rc = write_rndz_file(pmix_ptl_base.sysctrlr_filename, uri, "system controller", false,
                              made, &pmix_ptl_base.created_sysctrlr_filename,
                              &pmix_ptl_base.sysctrlr_dirfd, dirfd);
-    } else {
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+    }
+    if (pmix_ptl_base.tool_support && pmix_ptl_base.system_tool) {
         if (0 > pmix_asprintf(&pmix_ptl_base.system_filename, "%s/pmix.sys.%s", dir,
                               pmix_globals.hostname)) {
             return PMIX_ERR_NOMEM;
@@ -1330,8 +1340,11 @@ static pmix_status_t write_system_files(const char *dir, int dirfd, char *uri)
         rc = write_rndz_file(pmix_ptl_base.system_filename, uri, "system tool", false, made,
                              &pmix_ptl_base.created_system_filename,
                              &pmix_ptl_base.system_dirfd, dirfd);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
     }
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 /* the files a tool finds a server of its user by - "<host>.session.<id>", by pid
@@ -1786,8 +1799,9 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         free(rdir);
         rdir = NULL;
     }
-    if (pmix_ptl_base.tool_support && !PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer) &&
-        !PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+    /* ...and any server that takes tools - a system role among them -
+     * can be found by its pid and its namespace too */
+    if (pmix_ptl_base.tool_support) {
         rdfd = pmix_ptl_base_open_user_dir(&rdir);
         if (0 <= rdfd) {
             rc = write_tool_files(rdir, rdfd, uri);

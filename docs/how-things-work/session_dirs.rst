@@ -100,10 +100,11 @@ The following rendezvous files are provided:
   created in the ``PMIX_SYSTEM_TMPDIR`` location.
  
    .. note:: The above rendezvous files are additive - i.e., generating any one of the files has
-             no bearing on whether another file will be output. The one exception is that a
-             scheduler or system controller writes only its own file, and none of the tool files. Thus, a single server could
-             generate anywhere from one to five (or more) rendezvous files spanning several
-             directory levels.
+             no bearing on whether another file will be output. A scheduler or system
+             controller, which serves tools, writes its role's file and the PID and namespace
+             files as well; one that is also the system server writes the system file too. Thus,
+             a single server could generate anywhere from one to five (or more) rendezvous files
+             spanning several directory levels.
 
    .. warning:: There is a potential conflict in rendezvous file names - e.g., if multiple processes
                 declare themselves to be a "session" server on the same node. The format of the

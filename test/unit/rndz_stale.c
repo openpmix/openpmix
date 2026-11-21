@@ -704,11 +704,23 @@ int main(void)
         snprintf(moved, sizeof(moved), "%s/%s", moveddir, strrchr(path, '/') + 1);
         unlink(moved);
         /* and nothing else the server made is left there either - its
-         * socket's directory included */
+         * socket's directory included. Its pmix-user directory, where its
+         * tool files went, is shared by every server of its user in a
+         * tmpdir it did not make, and stays: emptied of those files */
         {
-            char *left = leftovers(moveddir, NULL);
+            char udir[64], upath[PMIX_PATH_MAX * 2];
+            const char *keep_user[] = {udir, NULL};
+            char *left;
 
+            snprintf(udir, sizeof(udir), "pmix-user.%lu", (unsigned long) geteuid());
+            left = leftovers(moveddir, keep_user);
             report("nothing the server made is left in the moved directory", NULL == left,
+                   (NULL == left) ? "" : left);
+            free(left);
+            snprintf(upath, sizeof(upath), "%s/%s", moveddir, udir);
+            left = leftovers(upath, NULL);
+            report("...its tool files removed from its pmix-user directory there",
+                   NULL == left || 0 == strcmp(left, "(the directory is gone)"),
                    (NULL == left) ? "" : left);
             free(left);
         }
