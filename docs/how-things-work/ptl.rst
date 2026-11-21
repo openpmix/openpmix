@@ -225,7 +225,9 @@ socket - the first two steps below are the ``tcp`` transport's, in
    the server made - for a rendezvous file, or as the system tmpdir - is
    removed only if it is empty once the server's own files are gone:
    anything else in it is another process's, and another server may
-   share it.
+   share it. A system tmpdir the server made holds its ``pmix-user``
+   directory when it wrote its tool files there; that directory is
+   removed first, on the same terms, so the tmpdir can go too.
 
 The tmpdirs
 ~~~~~~~~~~~
