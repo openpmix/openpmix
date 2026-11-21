@@ -814,7 +814,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 {
     pmix_ptl_posted_recv_t *req;
     pmix_status_t rc;
-    size_t n;
+    size_t n, m;
     bool nspace_given = false, rank_given = false;
     bool share_topo = false;
     pmix_info_t ginfo, *iptr, evinfo[3];
@@ -1541,15 +1541,25 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         }
         /* connect to the server the directives name, on a peer of its
          * own, and make it our server - as for a launcher's rendezvous
-         * URI above */
+         * URI above. Our directives go with it, but not
+         * PMIX_SESSION_RNDZ_ID: here it names our own session file, and
+         * to the connect it names the session server to look for, which
+         * would be us - a connection we cannot answer until this init is
+         * done, so it waits out the handshake. The connect passes over our
+         * own PMIX_SERVER_NSPACE the same way */
         PMIX_INFO_CREATE(iptr, ninfo + 1);
         if (NULL == iptr) {
             rc = PMIX_ERR_NOMEM;
             goto errout;
         }
         PMIX_INFO_LOAD(&iptr[0], PMIX_PRIMARY_SERVER, NULL, PMIX_BOOL);
+        m = 1;
         for (n = 0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&iptr[n + 1], &info[n]);
+            if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_RNDZ_ID)) {
+                continue;
+            }
+            PMIX_INFO_XFER(&iptr[m], &info[n]);
+            ++m;
         }
         cbptr = PMIX_NEW(pmix_cb_t);
         if (NULL == cbptr) {
@@ -1558,7 +1568,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             goto errout;
         }
         cbptr->info = iptr;
-        cbptr->ninfo = ninfo + 1;
+        cbptr->ninfo = m;
         cbptr->infocopy = true;
         PMIX_THREADSHIFT(cbptr, pmix_tool_retry_attach);
         PMIX_WAIT_THREAD(&cbptr->lock);

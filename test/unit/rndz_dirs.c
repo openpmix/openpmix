@@ -39,6 +39,8 @@
  *     does not start; a tool finds the one whose session it names, the only
  *     one when it names none, and none when there are several
  *   - two servers whose host names no namespace start side by side
+ *   - a session-level server asked to connect to a scheduler, where there
+ *     is none, does not take its own session file for the server to find
  *
  * Each server and tool runs in a child of its own.
  */
@@ -60,6 +62,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define SKIP 77
@@ -149,6 +152,9 @@ static mode_t mode_of(const char *path)
 #define NO_ID -2
 static long next_session = NOT_SESSION;
 static long next_sched = -1;
+/* the next server started is also asked, optionally, to connect to a
+ * scheduler */
+static bool next_connect = false;
 
 static pid_t start_server(const char *sys, bool name_sys, const char *sess, bool system,
                           int *readyfd, int *gofd)
@@ -162,7 +168,7 @@ static pid_t start_server(const char *sys, bool name_sys, const char *sess, bool
     }
     pid = fork();
     if (0 == pid) {
-        pmix_info_t info[8];
+        pmix_info_t info[10];
         bool flag = true;
         size_t n = 0;
         uint32_t sessid, schedid;
@@ -189,6 +195,10 @@ static pid_t start_server(const char *sys, bool name_sys, const char *sess, bool
         }
         if (system) {
             PMIX_INFO_LOAD(&info[n++], PMIX_SERVER_SYSTEM_SUPPORT, &flag, PMIX_BOOL);
+        }
+        if (next_connect) {
+            PMIX_INFO_LOAD(&info[n++], PMIX_CONNECT_TO_SCHEDULER, &flag, PMIX_BOOL);
+            PMIX_INFO_LOAD(&info[n++], PMIX_TOOL_CONNECT_OPTIONAL, &flag, PMIX_BOOL);
         }
         rc = PMIx_server_init(&mymodule, info, n);
         c = (PMIX_SUCCESS == rc) ? 'y' : 'n';
@@ -509,6 +519,35 @@ static void test_sessions(void)
     }
     if (0 < a) {
         stop_server(a, ra, ga);
+    }
+}
+
+/* A session-level server that is to connect to a scheduler if there is
+ * one: there is none, and its own session file - which names its session
+ * as the host's PMIX_SESSION_RNDZ_ID does - is not the server it is to
+ * find. Taking it, the server dialled itself and waited out the handshake
+ * for an answer it could not give until its init was done */
+static void test_session_connect(void)
+{
+    char sys[700], sess[700];
+    pid_t spid;
+    int ready, go;
+    time_t start;
+    bool up;
+
+    scratch(sys, sizeof(sys), "sysconn");
+    scratch(sess, sizeof(sess), "sessconn");
+    next_session = 31;
+    next_connect = true;
+    start = time(NULL);
+    spid = start_server(sys, true, sess, false, &ready, &go);
+    next_connect = false;
+    next_session = NOT_SESSION;
+    up = (0 <= spid && server_up(ready));
+    report("a session server whose scheduler connect finds none starts",
+           up && 15 > time(NULL) - start, up ? "it took the handshake's wait" : "init failed");
+    if (0 <= spid) {
+        stop_server(spid, ready, go);
     }
 }
 
@@ -1021,6 +1060,7 @@ int main(void)
 
     test_tool_files();
     test_sessions();
+    test_session_connect();
     test_not_ours();
     test_elsewhere();
     test_system_files();
