@@ -37,6 +37,8 @@
 #ifdef HAVE_SYS_STAT_H
 #    include <sys/stat.h>
 #endif
+#include <stdio.h>
+#include <unistd.h>
 
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
@@ -451,6 +453,29 @@ static void remove_made_dir(pmix_ptl_made_dir_t *made)
     made->created = false;
 }
 
+/* A system tmpdir we made holds our pmix-user directory when we wrote our
+ * tool files there. That directory is never removed where it is shared -
+ * see ptl_base_rndz.c - but in a tmpdir we made it is ours, and the
+ * tmpdir cannot go while it is there. So it goes first: through the
+ * descriptor on the tmpdir, and only while it is an empty directory of
+ * our own. One that holds another server's files is left, and the tmpdir
+ * with it */
+static void remove_made_user_dir(pmix_ptl_made_dir_t *made)
+{
+    char name[64];
+    struct stat there;
+
+    if (0 > made->parentfd || 0 > made->fd) {
+        return;
+    }
+    snprintf(name, sizeof(name), "%s%lu", PMIX_PTL_USER_DIR_PREFIX, (unsigned long) geteuid());
+    if (0 == fstatat(made->fd, name, &there, AT_SYMLINK_NOFOLLOW) && S_ISDIR(there.st_mode) &&
+        geteuid() == there.st_uid) {
+        /* fails, and leaves it, when it is not empty */
+        (void) unlinkat(made->fd, name, AT_REMOVEDIR);
+    }
+}
+
 /* Remove a rendezvous file we created, relative to the descriptor on
  * the directory we created it in, and release everything held for it */
 static void remove_rndz_file(char **filename, bool *created, int *dirfd)
@@ -674,6 +699,7 @@ static pmix_status_t pmix_ptl_close(void)
     /* and the system tmpdir, if we made it, now our files are out of it */
     free(pmix_ptl_base.session_tmpdir);
     pmix_ptl_base.session_tmpdir = NULL;
+    remove_made_user_dir(&pmix_ptl_base.system_dir);
     remove_made_dir(&pmix_ptl_base.system_dir);
     free(pmix_ptl_base.system_tmpdir);
     pmix_ptl_base.system_tmpdir = NULL;

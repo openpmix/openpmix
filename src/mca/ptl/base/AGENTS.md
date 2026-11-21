@@ -1082,7 +1082,10 @@ Things to keep straight:
   `pmix_ptl_base_open_system_dir()`. A host-named system tmpdir still
   goes through `open_dir` - made if missing, and held in `system_dir`
   for removal - as before; `/run/pmix`, `pmix-user` directories and
-  `$XDG_RUNTIME_DIR/pmix` are never removed.
+  `$XDG_RUNTIME_DIR/pmix` are never removed, except our own `pmix-user`
+  directory in a system tmpdir we made (`remove_made_user_dir`): ours,
+  as the tmpdir is, which cannot go while it is there. It goes only
+  while it is an empty directory of our euid.
 
 - **Every branch must produce a URI before jumping to `complete:`.**
   Falling through with a NULL `suri` reaches `setup_connection`, which
@@ -1242,7 +1245,8 @@ was once broken:
     which says nothing either way. A directory the server made - the
     rendezvous file's, or the system tmpdir - goes only if it is empty
     after that (`remove_made_dir`): another server may have put its files
-    there.
+    there. Our `pmix-user` directory in a system tmpdir we made goes
+    first, on the same terms (`remove_made_user_dir`).
   A search keeps a file whose lock is not GONE. Files larger than any
   server writes (`PMIX_PTL_MAX_CONN_FILE`) are not read, and every read
   of one (`pmix_ptl_base_getline`) comes out of a budget of that many
