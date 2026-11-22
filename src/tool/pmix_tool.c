@@ -524,7 +524,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     pmix_info_t ginfo, *iptr, evinfo[3];
     size_t n;
     pmix_ptl_posted_recv_t *rcv;
-    pmix_proc_t wildcard, myserver;
+    pmix_proc_t wildcard, myserver, given;
     int fd;
     pmix_proc_type_t ptype = PMIX_PROC_TYPE_STATIC_INIT;
     pmix_cb_t cb, *cbptr;
@@ -934,6 +934,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
+        /* keep the name we were given, should the attempt fail */
+        PMIX_LOAD_PROCID(&given, pmix_globals.myid.nspace, pmix_globals.myid.rank);
         /* connect to the server */
         rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver, info,
                                       ninfo, &suri);
@@ -962,14 +964,19 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             if (!connect_optional) {
                 return rc;
             }
-            /* if connection was optional, then we need to self-assign
-             * a namespace and rank for ourselves. Use our hostname:pid
+            /* if connection was optional, then we go on without a
+             * server. A namespace and rank the caller gave us are still
+             * ours, as they are when told not to connect - put them back,
+             * whatever the attempt left in their place. Without them,
+             * self-assign a namespace and rank: use our hostname:pid
              * for the nspace, and rank clearly is 0 */
-            pmix_snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN - 1, "%s:%lu", pmix_globals.hostname,
-                     (unsigned long) pmix_globals.pid);
-            pmix_globals.myid.rank = 0;
-            nspace_given = false;
-            rank_given = false;
+            if (nspace_given) {
+                PMIX_LOAD_PROCID(&pmix_globals.myid, given.nspace, given.rank);
+            } else {
+                pmix_snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN - 1, "%s:%lu",
+                              pmix_globals.hostname, (unsigned long) pmix_globals.pid);
+                pmix_globals.myid.rank = 0;
+            }
             /* also setup the client myserver to point to ourselves. Fill in
              * the rank_info object we already allocated above rather than
              * allocating a second one - a fresh PMIX_NEW here would orphan

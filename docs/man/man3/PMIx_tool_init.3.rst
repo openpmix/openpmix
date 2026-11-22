@@ -70,10 +70,13 @@ unless the caller has requested that the connection be treated as optional (see
 at all (see ``PMIX_TOOL_DO_NOT_CONNECT``).
 
 If successful, the function will return ``PMIX_SUCCESS`` and will fill the
-provided structure with the server-assigned namespace and rank of the tool. If
-the tool self-assigns its identity (because it is not connecting to a server, or
-because connection was optional and failed), the returned namespace is
-synthesized from the tool's hostname and process ID and the rank is set to zero.
+provided structure with the namespace and rank of the tool: the ones it was
+given with ``PMIX_TOOL_NSPACE`` and ``PMIX_TOOL_RANK``, or else the ones its
+server assigned. A tool that does not connect to a server (because it was asked
+not to, or because connection was optional and failed) keeps a namespace and
+rank it was given; without them it self-assigns its identity, and the returned
+namespace is synthesized from the tool's hostname and process ID and the rank
+is set to zero.
 
 A process may declare itself to be a *launcher* (via ``PMIX_LAUNCHER``) or the
 system *scheduler* (via ``PMIX_SERVER_SCHEDULER``), in which case the tool
@@ -170,11 +173,12 @@ These attributes govern whether and how the tool rendezvous with a PMIx server
 during initialization.
 
 * ``PMIX_TOOL_DO_NOT_CONNECT`` (bool) |mdash| the tool wants to use internal PMIx
-  support but does not want to connect to a server. The tool self-assigns its
-  identity.
+  support but does not want to connect to a server. The tool takes the
+  namespace and rank it was given, or else self-assigns its identity.
 * ``PMIX_TOOL_CONNECT_OPTIONAL`` (bool) |mdash| the tool shall connect to a
-  server if one is available, but otherwise shall continue (self-assigning its
-  identity) rather than returning an error. This covers a connection that is
+  server if one is available, but otherwise shall continue (with the namespace
+  and rank it was given, or else self-assigning its identity) rather than
+  returning an error. This covers a connection that is
   attempted and fails; it does not cover a malformed connection directive,
   which is reported as ``PMIX_ERR_BAD_PARAM`` whether or not the connection is
   optional.
