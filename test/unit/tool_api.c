@@ -221,6 +221,107 @@ static void check_optional_int(const char *name, const char *key, int ival, int 
     run_optional(name, key, NULL, &ival, expect);
 }
 
+/* A tool that goes on without a server keeps the namespace and rank its
+ * caller gave it (PMIX_TOOL_NSPACE, PMIX_TOOL_RANK), and self-assigns
+ * "<hostname>:<pid>" rank 0 only when it was given none. Both ways of
+ * going on without one - asked not to connect, and an optional connection
+ * that found no server - have to agree. The failed optional connection
+ * used to self-assign over a given name, so a tool that asked to be
+ * "name" was told it was "<hostname>:<pid>" instead. Same child
+ * arrangement as above, and for the same reason; the child reports in
+ * exit codes of its own. */
+#define NAME_KEPT   50
+#define NAME_WRONG  51
+#define NAME_FAILED 52
+#define NAME_SETUP  53
+#define GIVEN_NSPACE "tool-api-given"
+#define GIVEN_RANK   3
+
+static int name_child(bool optional, bool given)
+{
+    pmix_proc_t myproc, want;
+    pmix_info_t info[5];
+    pmix_status_t rc;
+    pmix_rank_t rank = GIVEN_RANK;
+    bool flag = true;
+    size_t n = 0;
+    char tmpl[] = "/tmp/pmix-toolapi-XXXXXX";
+    char *dir = NULL;
+    int ret;
+
+    if (optional) {
+        dir = mkdtemp(tmpl);
+        if (NULL == dir) {
+            return NAME_SETUP;
+        }
+        PMIX_INFO_LOAD(&info[n++], PMIX_TOOL_CONNECT_OPTIONAL, &flag, PMIX_BOOL);
+        PMIX_INFO_LOAD(&info[n++], PMIX_SYSTEM_TMPDIR, dir, PMIX_STRING);
+        PMIX_INFO_LOAD(&info[n++], PMIX_SERVER_TMPDIR, dir, PMIX_STRING);
+    } else {
+        PMIX_INFO_LOAD(&info[n++], PMIX_TOOL_DO_NOT_CONNECT, &flag, PMIX_BOOL);
+    }
+    if (given) {
+        PMIX_INFO_LOAD(&info[n++], PMIX_TOOL_NSPACE, GIVEN_NSPACE, PMIX_STRING);
+        PMIX_INFO_LOAD(&info[n++], PMIX_TOOL_RANK, &rank, PMIX_PROC_RANK);
+    }
+    rc = PMIx_tool_init(&myproc, info, n);
+    if (NULL != dir) {
+        rmdir(dir);
+    }
+    if (PMIX_SUCCESS != rc) {
+        return NAME_FAILED;
+    }
+    if (given) {
+        PMIX_LOAD_PROCID(&want, GIVEN_NSPACE, GIVEN_RANK);
+    } else {
+        char ns[PMIX_MAX_NSLEN + 1];
+
+        snprintf(ns, sizeof(ns), "%s:%lu", pmix_globals.hostname, (unsigned long) getpid());
+        PMIX_LOAD_PROCID(&want, ns, 0);
+    }
+    /* what init returned, and who the library thinks it is */
+    ret = (PMIX_CHECK_PROCID(&myproc, &want) && myproc.rank == want.rank &&
+           PMIX_CHECK_PROCID(&pmix_globals.myid, &want) && pmix_globals.myid.rank == want.rank)
+              ? NAME_KEPT
+              : NAME_WRONG;
+    if (NAME_WRONG == ret) {
+        fprintf(stderr, "  tool: wanted %s:%u, init returned %s:%u, the library holds %s:%u\n",
+                want.nspace, want.rank, myproc.nspace, myproc.rank, pmix_globals.myid.nspace,
+                pmix_globals.myid.rank);
+    }
+    PMIx_tool_finalize();
+    return ret;
+}
+
+static void check_name(const char *name, bool optional, bool given)
+{
+    static const char *outcome[] = {"it was named as expected", "it took the wrong name",
+                                    "init failed", "the child could not set up"};
+    pid_t child;
+    int status = 0;
+    char detail[128];
+
+    child = fork();
+    if (0 > child) {
+        report(name, 0, "fork failed");
+        return;
+    }
+    if (0 == child) {
+        _exit(name_child(optional, given));
+    }
+    waitpid(child, &status, 0);
+    if (!WIFEXITED(status)) {
+        report(name, 0, "the tool died on a signal");
+    } else if (NAME_KEPT <= WEXITSTATUS(status) && NAME_SETUP >= WEXITSTATUS(status)) {
+        snprintf(detail, sizeof(detail), "%s", outcome[WEXITSTATUS(status) - NAME_KEPT]);
+        report(name, NAME_KEPT == WEXITSTATUS(status), detail);
+    } else {
+        snprintf(detail, sizeof(detail), "the tool exited %d without reporting",
+                 WEXITSTATUS(status));
+        report(name, 0, detail);
+    }
+}
+
 /* An empty PMIX_CONNECTION_ORDER names no preference - it must not take
  * the tool down. The list is split on ',', and PMIx_Argv_split hands back
  * NULL for "" or ",", which connect_to_peer then indexed. Same child
@@ -432,6 +533,10 @@ int main(int argc, char **argv)
     check_optional("optional init accepts a valid order by string value",
                    PMIX_CONNECTION_ORDER, PMIX_CONNECT_TO_SYSTEM, 1);
     /* ...but a well-formed one that fails to connect is still optional */
+    check_name("a tool told not to connect keeps the name it was given", false, true);
+    check_name("a tool told not to connect, and given no name, self-assigns one", false, false);
+    check_name("a failed optional connection keeps the name the tool was given", true, true);
+    check_name("a failed optional connection, given no name, self-assigns one", true, false);
     check_optional("optional init survives a well-formed URI nobody answers",
                    PMIX_SERVER_URI, "probe.0;tcp4://127.0.0.1:1", 1);
 
