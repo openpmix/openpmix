@@ -2216,6 +2216,154 @@ static void test_session_registration(void)
     PMIX_INFO_DESTRUCT(&sinfo[1]);
 }
 
+/* A blocking PMIx_server_register_session made from the progress thread.
+ *
+ * A host's up-call runs there, so this is the ordinary way to reach it,
+ * and the call cannot wait for an event posted to the loop it is standing
+ * in: it queues the registration and returns PMIX_SUCCESS. A blocking
+ * call's inputs are the caller's again the moment it returns, though -
+ * and the queued request used to keep a pointer to the caller's info
+ * array, read only when the event ran. A caller that reused or released
+ * its array in between had the session registered from whatever the
+ * memory then held. The request takes a copy now.
+ *
+ * The caller's array is overwritten before the queued event can run (we
+ * are still on the progress thread), so the session reading back the
+ * ORIGINAL value is the proof that the request did not borrow it. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_info_t *info;
+    pmix_status_t rc;
+    uint32_t sid;
+} sess_shift_t;
+
+static void register_session_on_progress(int sd, short args, void *cbdata)
+{
+    sess_shift_t *s = (sess_shift_t *) cbdata;
+    uint32_t univ = 8;
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+    PMIX_INFO_CREATE(s->info, 2);
+    PMIX_INFO_LOAD(&s->info[0], PMIX_UNIV_SIZE, &univ, PMIX_UINT32);
+    /* a persistent entry: the caller keeps ownership of its string, so
+     * a copy that merely pointed at it would read whatever the caller
+     * later put there */
+    PMIX_INFO_LOAD(&s->info[1], "pmix.test.ssnname", "original", PMIX_STRING);
+    s->info[1].flags |= PMIX_INFO_PERSISTENT;
+    s->rc = PMIx_server_register_session(s->sid, s->info, 2, NULL, NULL);
+    /* the call has returned, so the array is ours to reuse */
+    s->info[0].value.data.uint32 = 999;
+    memcpy(s->info[1].value.data.string, "REUSED!!", 8);
+    PMIX_WAKEUP_THREAD(&s->lock);
+}
+
+static void on_progress_nothing(int sd, short args, void *cbdata)
+{
+    sess_shift_t *s = (sess_shift_t *) cbdata;
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+    PMIX_WAKEUP_THREAD(&s->lock);
+}
+
+static void test_session_registration_from_progress_thread(void)
+{
+    pmix_gds_base_module_t *mod;
+    sess_shift_t s, barrier;
+    pmix_peer_t *peer;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+    pmix_cb_t cb;
+    pmix_proc_t proc;
+    pmix_kval_t *kv;
+    uint32_t got = 0;
+    char gotname[16] = "";
+
+    fprintf(stdout, "\n-- session registration from the progress thread --\n");
+
+    mod = pmix_gds_base_assign_module(NULL, 0);
+    if (NULL == mod) {
+        fprintf(stdout, "    SKIP  no gds module available\n");
+        return;
+    }
+
+    memset(&s, 0, sizeof(s));
+    s.sid = 4343;
+    PMIX_CONSTRUCT_LOCK(&s.lock);
+    PMIX_THREADSHIFT(&s, register_session_on_progress);
+    PMIX_WAIT_THREAD(&s.lock);
+    PMIX_DESTRUCT_LOCK(&s.lock);
+    report("a blocking session registration from the progress thread is accepted",
+           PMIX_SUCCESS == s.rc);
+
+    /* anything queued ahead of this has run when it returns */
+    memset(&barrier, 0, sizeof(barrier));
+    PMIX_CONSTRUCT_LOCK(&barrier.lock);
+    PMIX_THREADSHIFT(&barrier, on_progress_nothing);
+    PMIX_WAIT_THREAD(&barrier.lock);
+    PMIX_DESTRUCT_LOCK(&barrier.lock);
+    /* the persistent entry's string is the caller's, so release it here */
+    s.info[1].flags &= ~PMIX_INFO_PERSISTENT;
+    PMIX_INFO_FREE(s.info, 2);
+
+    peer = register_session_job("gds-sesreg-prog", s.sid, mod, &reply, &rc);
+    if (NULL == peer || PMIX_SUCCESS != rc) {
+        report("the session holds what was registered, not what the caller reused", false);
+        if (NULL != peer) {
+            PMIX_RELEASE(reply);
+            PMIX_RELEASE(peer);
+        }
+        PMIx_server_deregister_session(s.sid, NULL, NULL);
+        return;
+    }
+    PMIX_RELEASE(reply);
+
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&proc, "gds-sesreg-prog", PMIX_RANK_WILDCARD);
+    cb.proc = &proc;
+    cb.key = NULL;
+    cb.copy = true;
+    cb.scope = PMIX_SCOPE_UNDEF;
+    PMIX_GDS_FETCH_KV(rc, peer, &cb);
+    /* the session's data comes back as the job's session array */
+    PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
+        pmix_info_t *sarr;
+        size_t n;
+        if (!PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY) || NULL == kv->value ||
+            PMIX_DATA_ARRAY != kv->value->type || NULL == kv->value->data.darray ||
+            PMIX_INFO != kv->value->data.darray->type) {
+            continue;
+        }
+        sarr = (pmix_info_t *) kv->value->data.darray->array;
+        for (n = 0; n < kv->value->data.darray->size; n++) {
+            if (PMIX_CHECK_KEY(&sarr[n], PMIX_UNIV_SIZE) &&
+                PMIX_UINT32 == sarr[n].value.type) {
+                got = sarr[n].value.data.uint32;
+            }
+            if (PMIX_CHECK_KEY(&sarr[n], "pmix.test.ssnname") &&
+                PMIX_STRING == sarr[n].value.type && NULL != sarr[n].value.data.string) {
+                snprintf(gotname, sizeof(gotname), "%s", sarr[n].value.data.string);
+            }
+        }
+    }
+    cb.proc = NULL;
+    PMIX_DESTRUCT(&cb);
+    report("the session holds what was registered, not what the caller reused",
+           8 == got);
+    if (8 != got) {
+        fprintf(stdout, "        (universe size read back as %u)\n", (unsigned) got);
+    }
+    report("a persistent entry is copied too, not borrowed",
+           0 == strcmp("original", gotname));
+    if (0 != strcmp("original", gotname)) {
+        fprintf(stdout, "        (name read back as \"%s\")\n", gotname);
+    }
+
+    PMIX_GDS_DEL_NSPACE(rc, "gds-sesreg-prog");
+    PMIX_RELEASE(peer);
+    PMIx_server_deregister_session(s.sid, NULL, NULL);
+}
+
 /* shmem3's modex generations, in one process.
  *
  * Each modex gets a segment of its own, and whether the previous one can
@@ -3357,6 +3505,7 @@ int main(int argc, char **argv)
     test_shmem3_modex_generations();
     test_shmem3_modex_outgrows_estimate();
     test_session_registration();
+    test_session_registration_from_progress_thread();
     test_session_update();
     test_session_update_via_job();
     test_session_qualified_get();
