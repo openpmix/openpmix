@@ -14,13 +14,15 @@ rebuilt**, and builds against v7 unchanged. See
 
 There are two exceptions.
 
-**The provisional resource-usage structures are gone.** In v5.0,
+**The provisional resource-usage structures do nothing.** In v5.0,
 ``pmix_proc_stats_t``, ``pmix_node_stats_t``, ``pmix_disk_stats_t``,
 ``pmix_net_stats_t``, their ``PMIx_*_stats_*`` functions, and their
 macros were provisional, in the PMIx Standard's sense: open to change
 until the Standard's committee decided. The committee chose arrays of
-attributes instead, and v7 replaces the provisional definitions with
-that final one.
+attributes instead, and v7 implements that final definition. The v5.0
+definitions remain, in ``pmix_deprecated.h``, so a program that uses
+them still builds and runs - but each ``PMIx_*_stats_create`` returns
+``NULL`` and the other functions do nothing.
 No v5.0 API returned them, so only a program that built them itself is
 affected. For resource usage, call ``PMIx_Process_monitor`` with
 ``PMIX_MONITOR_PROC_RESOURCE_USAGE`` (or the ``NODE``, ``DISK``, or

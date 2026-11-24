@@ -2086,6 +2086,9 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_LOCTYPE                    58
 #define PMIX_COMPRESSED_BYTE_OBJECT     59
 #define PMIX_PROC_NSPACE                60
+// Hole left by deprecation of PMIX_PROC_STATS, PMIX_DISK_STATS,
+// PMIX_NET_STATS and PMIX_NODE_STATS (61-64; resource usage is carried
+// as arrays of pmix_info_t)
 #define PMIX_DATA_BUFFER                65
 #define PMIX_STOR_MEDIUM                66
 #define PMIX_STOR_ACCESS                67
