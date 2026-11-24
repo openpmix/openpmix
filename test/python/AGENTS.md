@@ -70,6 +70,19 @@ the build tree by design; these must too.
 
 If you add another wrapper script here, copy that arrangement.
 
+**On macOS, every process in the chain has to be started by naming the
+interpreter.** The extension finds the uninstalled `libpmix` only through
+`DYLD_LIBRARY_PATH`, and System Integrity Protection strips that variable
+whenever it executes a protected binary — `/bin/bash`, and
+`/usr/bin/env`, which every `#!/usr/bin/env python3` line goes through.
+So the wrappers set the variable inside the shell and `exec` the Python
+they found by its path, and `server.py` and `sched.py` start `client.py`
+as `[sys.executable, client.py]`. A child started through its own shebang
+imports nothing, and the test fails with `Library not loaded` in a tree
+that has never been installed — while passing on any machine where an
+older `libpmix` happens to be installed at the prefix, which is why it
+went unnoticed.
+
 ---
 
 ## 4. What can be tested where

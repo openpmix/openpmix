@@ -4,6 +4,7 @@ from pmix import *
 import signal, time
 import os
 import select
+import sys
 import subprocess
 import threading
 
@@ -479,7 +480,14 @@ def main():
     # setup the client argv.  Locate the client beside this script
     # rather than in cwd: under a VPATH build we are run from the build
     # directory, which holds no .py files.
-    args = [os.path.join(os.path.dirname(os.path.abspath(__file__)), "client.py")]
+    # Start it with this interpreter rather than through its
+    # "#!/usr/bin/env python3" line. On macOS /usr/bin/env is a
+    # protected binary, and System Integrity Protection strips
+    # DYLD_LIBRARY_PATH when it runs one - so a client started that way
+    # cannot find the libpmix in an uninstalled build tree, and fails
+    # at import. run_server.sh names the interpreter for the same reason.
+    args = [sys.executable,
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "client.py")]
     # open a subprocess with stdout and stderr
     # as distinct pipes so we can capture their
     # output as the process runs
