@@ -245,13 +245,19 @@ pmix_status_t PMIx_Session_control(uint32_t sessionID,
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-    /* what would release us runs on the progress thread, so waiting
-     * for it from that thread waits for ourselves */
-    if (PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Session_control"))) {
+    /* what would release a blocking caller runs on the progress
+     * thread, so waiting for it from that thread waits for ourselves.
+     * Only the blocking form waits: with a callback this is meant to
+     * be callable from a host up-call, which runs on that thread */
+    if (NULL == cbfunc &&
+        PMIX_UNLIKELY(pmix_progress_thread_check_blocking("PMIx_Session_control"))) {
         return PMIX_ERR_WOULD_BLOCK;
     }
 
     cd = PMIX_NEW(pmix_shift_caddy_t);
+    if (PMIX_UNLIKELY(NULL == cd)) {
+        return PMIX_ERR_NOMEM;
+    }
     cd->sessionid = sessionID;
     cd->directives = (pmix_info_t*)directives;
     cd->ndirs = ndirs;

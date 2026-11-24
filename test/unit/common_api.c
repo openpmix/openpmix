@@ -739,6 +739,73 @@ static void test_attribute_lookups(pmix_proc_t *myproc)
     check(!lookups_wrong, "lookups stay right while new keys are registered");
 }
 
+/* ------------------------------------------------------------------ */
+/* PMIx_Session_control from the progress thread                       */
+/* ------------------------------------------------------------------ */
+
+/* A host up-call runs on the progress thread, and a host that wants to
+ * act on a session from inside one has to be able to: that is what the
+ * callback form is for. PMIx_Session_control used to screen for "would
+ * this block the progress thread?" before it looked at cbfunc, so even
+ * the non-blocking form was refused there with PMIX_ERR_WOULD_BLOCK.
+ * Only the blocking form waits, and only it must be refused. */
+typedef struct {
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_status_t nbrc;
+    pmix_status_t blockrc;
+} sc_shift_t;
+
+static volatile int sccbcount = 0;
+static volatile pmix_status_t sccbstatus = PMIX_SUCCESS;
+
+static void sccb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                 pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    (void) info;
+    (void) ninfo;
+    (void) cbdata;
+    sccbstatus = status;
+    sccbcount++;
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+}
+
+static void sc_on_progress(int sd, short args, void *cbdata)
+{
+    sc_shift_t *s = (sc_shift_t *) cbdata;
+
+    (void) sd;
+    (void) args;
+    s->nbrc = PMIx_Session_control(1, NULL, 0, sccb, NULL);
+    s->blockrc = PMIx_Session_control(1, NULL, 0, NULL, NULL);
+    PMIX_WAKEUP_THREAD(&s->lock);
+}
+
+static void test_session_control_on_progress_thread(void)
+{
+    sc_shift_t s;
+    int spins;
+
+    memset(&s, 0, sizeof(s));
+    PMIX_CONSTRUCT_LOCK(&s.lock);
+    PMIX_THREADSHIFT(&s, sc_on_progress);
+    PMIX_WAIT_THREAD(&s.lock);
+    PMIX_DESTRUCT_LOCK(&s.lock);
+
+    check(PMIX_SUCCESS == s.nbrc,
+          "PMIx_Session_control with a callback is accepted on the progress thread");
+    check(PMIX_ERR_WOULD_BLOCK == s.blockrc,
+          "PMIx_Session_control without one is refused there");
+    for (spins = 0; spins < 5000 && 0 == sccbcount; spins++) {
+        usleep(1000);
+    }
+    /* a singleton has no server to relay the request to */
+    check(1 == sccbcount && PMIX_ERR_UNREACH == sccbstatus,
+          "the accepted request completes through its callback");
+}
+
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
@@ -779,6 +846,7 @@ int main(int argc, char **argv)
     test_credential_ownership();
     test_register_attributes();
     test_attribute_lookups(&myproc);
+    test_session_control_on_progress_thread();
 
     rc = PMIx_Finalize(NULL, 0);
     if (PMIX_SUCCESS != rc) {
