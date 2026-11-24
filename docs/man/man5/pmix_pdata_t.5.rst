@@ -24,6 +24,26 @@ C Syntax
    } pmix_pdata_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   pdata = {'proc': {'nspace': "myjob", 'rank': 0}, 'key': "mykey",
+            'value': 42, 'val_type': PMIX_INT}
+
+where ``proc`` is the :ref:`pmix_proc_t(5) <man5-pmix_proc_t>` dict of the
+publisher, ``key`` the published key, and the ``value``/``val_type`` pair
+the Python version of a :ref:`pmix_value_t(5) <man5-pmix_value_t>`,
+carried directly in the dict. ``lookup()`` takes a list of dicts naming
+only the ``key`` of each and returns a list of full pdata dicts; a key it
+did not find comes back with ``val_type`` ``PMIX_UNDEF`` and a ``value``
+of ``None``. A server's ``lookup`` handler answers with full dicts, and
+there every member must be present.
+
+
 DESCRIPTION
 -----------
 

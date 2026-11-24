@@ -27,6 +27,18 @@ C Syntax
    #define PMIX_STORAGE_PERSISTENCE_ARCHIVE    0x0000000000000040
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   persist = PMIX_STORAGE_PERSISTENCE_JOB
+
+where the value is one of the ``pmix_storage_persistence_t`` constants listed on this page, a plain Python ``int``.
+
+
 DESCRIPTION
 -----------
 

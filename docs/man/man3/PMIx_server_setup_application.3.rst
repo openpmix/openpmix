@@ -39,6 +39,10 @@ Python Syntax
   rc, dataout = foo.setup_application("myapp", dicts)
   # dataout is a list of pmix_info_t dictionaries to be distributed
   # with the application
+  # the method waits for the answer, so it cannot be called on the PMIx
+  # progress thread - from a server-module upcall, an event handler or a
+  # non-blocking callback. There it returns PMIX_ERR_WOULD_BLOCK at once;
+  # call it from a thread of your own instead
 
 
 INPUT PARAMETERS

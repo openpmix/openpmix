@@ -147,6 +147,19 @@ server. See
   up in one call. Several classes carry a
   `test_repeated_calls_are_stable` for this; add to one rather than
   inventing a new pattern.
+- **In `client.py`, record a check with `check(ok, what)`** rather than
+  printing a status. It prints `CHECK PASS`/`CHECK FAIL`, and any failure
+  fails the client after it has finalized. Most of the older cases there
+  only print what came back, which no run has ever failed on.
+- **`client.py` knows which host started it** from `PYTEST_PMIX_HOST`
+  (`server` or `scheduler`), which `server.py` and `sched.py` set. A check
+  that depends on a handler only one of them provides gates on it.
+- **A watchdog for a deadlock cannot be a Python thread.** In the
+  deadlock the GIL is held by the stuck thread, so no Python timer can
+  run to notice. Use `faulthandler.dump_traceback_later(n, exit=True)`,
+  whose watchdog is a C thread: it prints every thread's stack and exits.
+  `PYTHONUNBUFFERED` is set for the client so a killed one keeps its
+  output.
 - **A new script must go in `TESTS` and `noinst_SCRIPTS`** in
   `Makefile.am`, and be executable. Adding it to only one of those is the
   usual way a test ends up never running.

@@ -19,6 +19,18 @@ SYNOPSIS
    const char* PMIx_Data_type_string(pmix_data_type_t type);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # type is an integer ``pmix_data_type_t`` value
+  string = foo.data_type_string(PMIX_STRING)
+
+
 INPUT PARAMETERS
 ----------------
 

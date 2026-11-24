@@ -33,6 +33,10 @@ Python Syntax
   pydirs = []
   rc, results = foo.collect_inventory(pydirs)
   # results is a list of Python ``pmix_info_t`` dictionaries describing the inventory
+  # the method waits for the answer, so it cannot be called on the PMIx
+  # progress thread - from a server-module upcall, an event handler or a
+  # non-blocking callback. There it returns PMIX_ERR_WOULD_BLOCK at once;
+  # call it from a thread of your own instead
 
 
 INPUT PARAMETERS

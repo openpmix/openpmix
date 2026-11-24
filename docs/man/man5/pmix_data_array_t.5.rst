@@ -24,6 +24,29 @@ C Syntax
    } pmix_data_array_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   array = {'type': PMIX_UINT32, 'array': [1, 2, 3]}
+
+where ``type`` is the :ref:`pmix_data_type_t(5) <man5-pmix_data_type_t>`
+of the elements and ``array`` the list of them. Both must be present.
+Each element is in the form the ``value`` of a :ref:`pmix_value_t(5)
+<man5-pmix_value_t>` of that type takes |mdash| a plain integer for
+``PMIX_UINT32``, a proc dict for ``PMIX_PROC`` |mdash| except that an
+array of ``PMIX_VALUE``, ``PMIX_INFO`` or ``PMIX_APP`` holds value, info or
+app dicts. A type converts as an element exactly when it converts as a
+value, with three exceptions: ``PMIX_TOPO`` and ``PMIX_PROC_CPUSET``
+elements cannot be loaded (``PMIX_ERR_NOT_SUPPORTED``; they come back as
+``None``), and an element of a struct type cannot be ``None``
+(``PMIX_ERR_BAD_PARAM``), since the array holds the struct itself. A
+``None`` list is an empty array.
+
+
 DESCRIPTION
 -----------
 

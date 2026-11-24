@@ -23,6 +23,22 @@ C Syntax
    } pmix_proc_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   proc = {'nspace': "myjob", 'rank': 0}
+
+where ``nspace`` is the namespace (see :ref:`pmix_nspace_t(5)
+<man5-pmix_nspace_t>`) and ``rank`` is an integer from 0 to 4294967295,
+or one of the reserved values such as ``PMIX_RANK_WILDCARD``. Both members
+must be present; a missing one is ``PMIX_ERR_BAD_PARAM``. A ``bool`` is not
+accepted as a rank. A proc handed back by the library has the same shape.
+
+
 DESCRIPTION
 -----------
 

@@ -29,7 +29,16 @@ Python Syntax
 
   foo = PMIxServer()
   # ... after registering the client ...
-  foo.deregister_client({'nspace': "myjob", 'rank': 0})
+  rc = foo.deregister_client({'nspace': "myjob", 'rank': 0})
+
+  # the non-blocking form returns as soon as the request has been accepted,
+  # and cbfunc(status, cbdata) runs on the PMIx progress thread if and only
+  # if the call returned PMIX_SUCCESS. It is the form to use on that
+  # thread - in a server-module upcall, an event handler or another
+  # callback - where a blocking PMIx call must not be made
+  def donecb(status, cbdata):
+      print("deregister_client completed:", foo.error_string(status))
+  rc = foo.deregister_client({'nspace': "myjob", 'rank': 0}, donecb, "mycbdata")
 
 
 INPUT PARAMETERS

@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2022      Nanook Consulting. All rights reserved
 
-import os, os.path, sys, shutil, signal
+import os, os.path, re, sys, shutil, signal
 from optparse import OptionParser, OptionGroup
 
 takeconst = False
@@ -55,10 +55,16 @@ def harvest_constants(options, src, constants, definitions):
         # remove white space at front and back
         myline = line.strip()
         # remove comment lines
-        if "/*" in myline or "*/" in myline or myline.startswith("*"):
+        if myline.startswith("/*") or myline.startswith("*") or \
+           myline.startswith("//") or ("*/" in myline and "/*" not in myline):
             if "DUPLICATES" in myline:
                 break
             continue
+        # a line of code with a comment after it is still code: skipping
+        # the whole line lost every constant written that way, all of
+        # the PMIX_PROC_STATE_* values among them
+        if "/*" in myline:
+            myline = myline[:myline.index("/*")].rstrip()
         # if the line starts with #define, then we want it
         if takeconst and myline.startswith("#define"):
             value = myline[8:]
@@ -81,6 +87,15 @@ def harvest_constants(options, src, constants, definitions):
                     errconsts.append(tokens[0])
                     if len(tokens[0]) > strconstlen:
                         strconstlen = len(tokens[0])
+                elif re.match(r'^\(\s*PMIX_\w+\s*\+\s*\d+\s*\)$', " ".join(tokens[1:])):
+                    # an offset from a constant already seen, as in
+                    # (PMIX_PROC_STATE_ERROR + 1)
+                    m = re.match(r'^\(\s*(PMIX_\w+)\s*\+\s*(\d+)\s*\)$', " ".join(tokens[1:]))
+                    base = [c[1] for c in nconsts if c[0] == m.group(1)]
+                    if 1 == len(base):
+                        nconsts.append([tokens[0], str(int(base[0], 0) + int(m.group(2)))])
+                        if len(tokens[0]) > nconstlen:
+                            nconstlen = len(tokens[0])
                 elif tokens[1].isdigit() or tokens[1].startswith("UINT") or tokens[1].startswith("0x"):
                     # values that were defined as UINT32_MAX need to be converted
                     # to hex values as Python otherwise gets confused

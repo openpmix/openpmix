@@ -28,6 +28,26 @@ C Syntax
    } pmix_proc_info_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   pinfo = {'proc': {'nspace': "myjob", 'rank': 0}, 'hostname': "node01",
+            'executable': "/bin/hostname", 'pid': 12345, 'exitcode': 0,
+            'state': PMIX_PROC_STATE_RUNNING}
+
+where ``proc`` is a :ref:`pmix_proc_t(5) <man5-pmix_proc_t>` dict,
+``hostname`` and ``executable`` are strings (``None`` for NULL), ``pid``
+is a non-negative process id, ``exitcode`` an ``int`` and ``state`` a
+:ref:`pmix_proc_state_t(5) <man5-pmix_proc_state_t>` value. Note the names
+``executable`` and ``exitcode``, which differ from the C members. All six
+must be present. A proc info handed back by the library has the same
+shape.
+
+
 DESCRIPTION
 -----------
 

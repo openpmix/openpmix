@@ -24,6 +24,21 @@ C Syntax
    } pmix_device_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   dev = {'uuid': "dev-uuid", 'osname': "mlx5_0", 'type': PMIX_DEVTYPE_NETWORK}
+
+where ``uuid`` and ``osname`` are strings (``None`` for NULL) and ``type``
+is a :ref:`pmix_device_type_t(5) <man5-pmix_device_type_t>` value. All
+three must be present. A device handed back by the library has the same
+shape.
+
+
 DESCRIPTION
 -----------
 

@@ -27,6 +27,18 @@ C Syntax
    #define PMIX_STORAGE_MEDIUM_RAM         0x0000000000000040
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   medium = PMIX_STORAGE_MEDIUM_SSD
+
+where the value is one of the ``pmix_storage_medium_t`` constants listed on this page, a plain Python ``int``.
+
+
 DESCRIPTION
 -----------
 

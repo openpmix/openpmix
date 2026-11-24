@@ -34,6 +34,15 @@ Python Syntax
   # earlier setup_application call and distributed by the host
   rc = foo.setup_local_support("myapp", ilist)
 
+  # the non-blocking form returns as soon as the request has been accepted,
+  # and cbfunc(status, cbdata) runs on the PMIx progress thread if and only
+  # if the call returned PMIX_SUCCESS. It is the form to use on that
+  # thread - in a server-module upcall, an event handler or another
+  # callback - where a blocking PMIx call must not be made
+  def donecb(status, cbdata):
+      print("setup_local_support completed:", foo.error_string(status))
+  rc = foo.setup_local_support("myapp", ilist, donecb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

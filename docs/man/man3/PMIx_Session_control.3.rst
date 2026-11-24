@@ -37,6 +37,16 @@ Python Syntax
              'value': "myapp", 'val_type': PMIX_STRING}]
   rc = foo.session_control(1, pydirs)
 
+  # the non-blocking form returns as soon as the request has been accepted,
+  # and cbfunc(status, results, cbdata) runs on the PMIx progress thread
+  # if and only if the call returned PMIX_SUCCESS. It is the form to use
+  # on that thread - in a server-module upcall, an event handler or another
+  # callback - where a blocking PMIx call must not be made
+  def donecb(status, results, cbdata):
+      # results is a list of Python ``pmix_info_t`` dictionaries
+      print("session_control completed:", foo.error_string(status), results)
+  rc = foo.session_control(1, pydirs, donecb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

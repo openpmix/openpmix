@@ -27,6 +27,23 @@ C Syntax
    } pmix_device_distance_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   dist = {'uuid': "dev-uuid", 'osname': "mlx5_0", 'type': PMIX_DEVTYPE_NETWORK,
+           'mindist': 10, 'maxdist': 20}
+
+where ``uuid`` and ``osname`` are strings (``None`` for NULL), ``type`` is
+a :ref:`pmix_device_type_t(5) <man5-pmix_device_type_t>` value, and
+``mindist`` and ``maxdist`` are integers from 0 to 65535. ``type`` may be
+left out (it defaults to 0); the others must be present.
+``compute_distances()`` returns a list of these.
+
+
 DESCRIPTION
 -----------
 

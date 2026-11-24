@@ -48,7 +48,17 @@ def normalize_key(ky):
 
 def clientpublish(args, cbfunc, cbdata):
     print("PUBLISH", args['proc'], args['directives'])
+    noreturn = False
     for d in args['directives']:
+        if normalize_key(d['key']).startswith('pytest.noreturn'):
+            noreturn = True
+        if normalize_key(d['key']).startswith('pytest.badstatus'):
+            # a completion given something that is not a status still
+            # answers the requester - as a failure. It is made from a
+            # timer, after the handler has returned: an exception there
+            # would end the thread and leave the request unanswered
+            threading.Timer(0.01, cbfunc, ["not a status", cbdata]).start()
+            return PMIX_SUCCESS
         if 'pmix' in d['key']:
             # a directive qualifying the request, not data to publish
             continue
@@ -56,13 +66,32 @@ def clientpublish(args, cbfunc, cbdata):
                                               'value': d['value'],
                                               'val_type': d['val_type']}
     cbfunc(PMIX_SUCCESS, cbdata)
+    if noreturn:
+        # A handler that completes and then forgets to return a status.
+        # The library has already acted on the completion and released
+        # the request, so the binding must tell it PMIX_SUCCESS - an error
+        # here would have it release the request a second time
+        return
     return PMIX_SUCCESS
 
 def clientlookup(args, cbfunc, cbdata):
     print("LOOKUP", args['proc'], args['keys'])
+    keys = [normalize_key(k) for k in args['keys']]
+    # A handler answering with something the bindings cannot convert.
+    # The requester must still be answered - with an error - rather than
+    # left waiting for a completion that never comes
+    if 'pytest.generator' in keys:
+        # an answer with no length, given after the helper has already
+        # taken the completion: the requester must still be answered
+        cbfunc(PMIX_SUCCESS, (d for d in []), cbdata)
+        return PMIX_SUCCESS
+    if 'pytest.badvalue' in keys:
+        cbfunc(PMIX_SUCCESS, [{'proc': args['proc'], 'key': 'pytest.badvalue',
+                               'value': object(), 'val_type': PMIX_STRING}],
+               cbdata)
+        return PMIX_SUCCESS
     pdata = []
-    for ky in args['keys']:
-        ky = normalize_key(ky)
+    for ky in keys:
         if ky in published:
             d = published[ky]
             pdata.append({'proc': d['proc'], 'key': ky,
@@ -71,6 +100,10 @@ def clientlookup(args, cbfunc, cbdata):
         cbfunc(PMIX_ERR_NOT_FOUND, None, cbdata)
     else:
         cbfunc(PMIX_SUCCESS, pdata, cbdata)
+    # a handler that completes and then raises: the requester has its
+    # answer, and must keep it
+    if 'pytest.raiseafter' in keys:
+        raise RuntimeError("raised after completing - expected by the test")
     return PMIX_SUCCESS
 
 def clientunpublish(args, cbfunc, cbdata):
@@ -98,8 +131,10 @@ def clientfence(args, cbfunc, cbdata):
                         pass
     except:
         pass
-    # no data to return from this (empty) fence
-    cbfunc(PMIX_SUCCESS, bytearray(0), cbdata)
+    # no data to return from this (empty) fence - and None is how a
+    # handler says so (sched.py passes an empty bytearray instead, so
+    # both spellings stay covered)
+    cbfunc(PMIX_SUCCESS, None, cbdata)
     return PMIX_SUCCESS
 
 # The PMIx constants are bytes while the keys handed to a handler are
@@ -194,6 +229,11 @@ def main():
 
     # get our environment as a base
     env = os.environ.copy()
+    # tell client.py which host it is running under: some of its checks
+    # depend on the handlers this script provides
+    # and keep its output if it dies or is killed
+    env['PYTHONUNBUFFERED'] = '1'
+    env['PYTEST_PMIX_HOST'] = 'server'
     # register an nspace for the client app
     (rc, regex) = foo.generate_regex(["test000","test001","test002"])
     (rc, ppn) = foo.generate_ppn(["0,1,2", "3,4,5", "6,7"])
@@ -276,6 +316,56 @@ def main():
                                                      nbcb, {'label': "deregister_client"}))
     drive("deregister_nspace", foo.deregister_nspace("nbnspace", nbcb,
                                                      {'label': "deregister_nspace"}))
+    # The methods that wait in Python for a completion the progress
+    # thread delivers cannot be called on that thread: nothing could
+    # deliver it. They used to wait there, and stopped the server for
+    # good; they have to refuse, as the library's own blocking calls do
+    wbgot = {}
+
+    def wbcb(status, cbdata):
+        # runs on the PMIx progress thread
+        wbgot['setup_application'] = foo.setup_application("wbnspace", [])[0]
+        wbgot['dmodex_request'] = foo.dmodex_request({'nspace': "wbnspace", 'rank': 0}, {})[0]
+        wbgot['dmodex_request2'] = foo.dmodex_request2({'nspace': "wbnspace", 'rank': 0}, [])[0]
+        wbgot['collect_inventory'] = foo.collect_inventory([])[0]
+        nbcb(status, cbdata)
+
+    rc = foo.register_nspace("wbnspace", 1, kvals, wbcb, {'label': "register_nspace"})
+    drive("register_nspace", rc)
+    for (method, got) in sorted(wbgot.items()):
+        if PMIX_ERR_WOULD_BLOCK != got:
+            print("%s FROM THE PROGRESS THREAD ANSWERED %s" % (method, foo.error_string(got)))
+            exit(1)
+    if 4 != len(wbgot):
+        print("NOT EVERY WAITING METHOD WAS TRIED:", wbgot)
+        exit(1)
+    drive("deregister_nspace", foo.deregister_nspace("wbnspace", nbcb,
+                                                     {'label': "deregister_nspace"}))
+    print("  the waiting methods refuse on the progress thread")
+    # a session is registered and deregistered explicitly, in either form
+    sinfo = [{'key': PMIX_UNIV_SIZE, 'value': 4, 'val_type': PMIX_UINT32}]
+    drive("register_session", foo.register_session(77, sinfo, nbcb,
+                                                   {'label': "register_session"}))
+    drive("deregister_session", foo.deregister_session(77, nbcb,
+                                                       {'label': "deregister_session"}))
+    rc = foo.register_session(78, sinfo)
+    if PMIX_SUCCESS != rc:
+        print("BLOCKING register_session FAILED:", foo.error_string(rc))
+        exit(1)
+    if PMIX_SUCCESS != foo.deregister_session(78):
+        print("BLOCKING deregister_session FAILED")
+        exit(1)
+    # UINT32_MAX is the library's "no session", so it is refused
+    rc = foo.register_session(4294967295, sinfo)
+    if PMIX_ERR_BAD_PARAM != rc:
+        print("register_session ACCEPTED UINT32_MAX:", foo.error_string(rc))
+        exit(1)
+    print("  register_session/deregister_session: both forms OK")
+    # a None source means "this process", as a NULL does in C
+    rc = foo.notify_event(PMIX_ERR_JOB_TERMINATED, None, PMIX_RANGE_LOCAL, [])
+    if PMIX_SUCCESS != rc:
+        print("notify_event WITH NO SOURCE FAILED:", foo.error_string(rc))
+        exit(1)
     # the rest of the optional-callback family, against a live library.
     # Several of these legitimately answer NOT_SUPPORTED here - there is
     # no host above us to service them - and what matters is the contract:
@@ -375,6 +465,8 @@ def main():
                                                       PMIX_FWD_STDIN_CHANNEL,
                                                       True, [], 42)),
             ("session_control", foo.session_control(1, [], 42)),
+            ("register_session", foo.register_session(1, [], 42)),
+            ("deregister_session", foo.deregister_session(1, 42)),
             ("collective_expire", foo.collective_expire(PMIX_COLLECTIVE_GROUP_CONSTRUCT, "g",
                                                         None, [], 42))]:
         if PMIX_ERR_BAD_PARAM != rc:
@@ -441,6 +533,24 @@ def main():
     if PMIX_SUCCESS == rc:
         print("DATA UNPACK RETURNED DATA PAST THE END")
         exit(1)
+
+    # A regex is a C string to everything in the library that reads it,
+    # so it has to be stored with its NUL: one loaded without it was read
+    # past the end of its allocation when packed, and came back with a NUL
+    # that had never been part of it. And a value with no topology or
+    # cpuset is how a caller says "none"; it packs as exactly that
+    for v in ({'value': b'pmix[n1,n2]', 'val_type': PMIX_REGEX},
+              {'value': None, 'val_type': PMIX_TOPO},
+              {'value': None, 'val_type': PMIX_PROC_CPUSET}):
+        (rc, rbuf) = foo.data_pack(None, v)
+        if PMIX_SUCCESS != rc:
+            print("DATA PACK OF %s FAILED: %s" % (v, foo.error_string(rc)))
+            exit(1)
+        (rc, back) = foo.data_unpack(rbuf, PMIX_VALUE)
+        if PMIX_SUCCESS != rc or back != v:
+            print("DATA ROUND TRIP OF %s CAME BACK AS %s (%s)" % (v, back, foo.error_string(rc)))
+            exit(1)
+    print("DataPack: regex, topology and cpuset values round trip")
 
     # unload the payload out of a buffer and load it into another
     (rc, buf2) = foo.data_pack(None, aval)

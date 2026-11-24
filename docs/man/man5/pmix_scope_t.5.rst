@@ -33,7 +33,13 @@ C Syntax
 Python Syntax
 ^^^^^^^^^^^^^
 
-None
+.. code-block:: python3
+
+   from pmix import *
+
+   scope = PMIX_GLOBAL
+
+where the value is one of the ``pmix_scope_t`` constants listed on this page, a plain Python ``int``.
 
 
 DESCRIPTION

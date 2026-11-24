@@ -42,13 +42,17 @@ Python Syntax
 
   # the non-blocking form returns as soon as the request has been accepted
   # and reports the result by executing a callback on the PMIx progress
-  # thread. The callback is run if and only if the call returned
-  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
-  def donecb(status, cbdata):
-      # the fabric information is read back through the class once this
-      # reports success
-      print("fabric registered:", foo.error_string(status))
+  # thread, handing it the same fabric information fabric_register()
+  # returns. The callback is run if and only if the call returned
+  # PMIX_SUCCESS, and must not itself make a blocking PMIx call. A
+  # scheduler registers the fabric itself and answers
+  # PMIX_OPERATION_SUCCEEDED, in which case the callback is not run and
+  # foo.fabric_info() reads the fabric information instead
+  def donecb(status, fabricinfo, cbdata):
+      print("fabric registered:", foo.error_string(status), fabricinfo)
   rc = foo.fabric_register_nb(pydirs, donecb, "mycbdata")
+  if PMIX_OPERATION_SUCCEEDED == rc:
+      rc, fabricinfo = foo.fabric_info()
 
 
 INPUT PARAMETERS

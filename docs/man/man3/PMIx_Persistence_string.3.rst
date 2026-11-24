@@ -19,6 +19,18 @@ SYNOPSIS
    const char* PMIx_Persistence_string(pmix_persistence_t persist);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # persist is an integer ``pmix_persistence_t`` value
+  string = foo.persistence_string(PMIX_PERSIST_SESSION)
+
+
 INPUT PARAMETERS
 ----------------
 
