@@ -51,10 +51,10 @@ holds the real bodies — `pmix_bfrops_base_value_xfer()` in
 `pmix_bfrops_base_tma_value_xfer()`. When you go looking for what a
 value operation *does*, look in the TMA header.
 
-## Six operations that have to agree, per data type
+## The operations that have to agree, per data type
 
-For any `pmix_data_type_t`, the tree has to answer six questions
-consistently. They are answered in six different places, and every
+For any `pmix_data_type_t`, the tree has to answer these questions
+consistently. They are answered in different places, and every
 defect the August 2026 review of this directory found was two of them
 disagreeing:
 
@@ -66,6 +66,9 @@ disagreeing:
 | How big is one **element of an array** of them? | `pmix_bfrops_base_tma_data_array_construct()` |
 | How do I copy an **array** of them? | the `case` for it in `pmix_bfrops_base_tma_copy_darray()` |
 | How do I release an **array** of them? | the `case` for it in `pmix_bfrops_base_tma_data_array_destruct()` |
+| How do I transfer and release **one value** of them? | the `case` for it in `pmix_bfrops_base_tma_value_xfer()` and `pmix_bfrops_base_tma_value_destruct()` |
+| How do I pack **one value** of them? | `pack_val()` in `bfrop_base_pack.c`, which must agree with `pmix_bfrops_base_unpack_val()` on whether the union holds the object or a pointer to it |
+| How do I print one? | `pmix_bfrops_base_print_<t>`, which answers a **status** - not `pmix_asprintf`'s length - and frees what it built |
 
 The last three are the ones that get forgotten, because nothing forces
 them to be written. A type registered in `v70` with pack, unpack and
@@ -81,7 +84,58 @@ The width mismatch is worse than the omission, because it does not fail:
 `data_array_construct()` and copied `sizeof(char*)` bytes per element by
 `copy_darray()`, so copying such an array read eight times its length.
 
-**If you add a data type, add all six.**
+The scalar rows are the ones the array sweeps never reached, and they
+were wrong for real: `PMIX_NODE_PID` had no `value_xfer` or
+`value_destruct` arm, `PMIX_DATA_BUFFER` was packed from the union where
+unpack reads a pointer, and the node/pid printer answered a length. The
+scalar sweep in `test_scalar_xfer_every_type` now holds those rows too:
+every type with a scalar form is loaded, transferred, printed (alone and
+in an array), packed, unpacked and compared. "Printed" means rendered:
+the printers fall back to `Value: UNPRINTABLE` for a type they have no
+`case` for, which is a string like any other, and seven types reached it
+(the compressed byte objects, the data buffer, the resource unit and the
+regex as values; regex2, value and app as array elements).
+
+A registered type can also be missing from the value layer altogether.
+`PMIX_INFO_DIRECTIVES`, `PMIX_DATA_TYPE` and `PMIX_IOF_CHANNEL` had a
+packer, an unpacker, a copier and a printer, and `pack_val()` and
+`unpack_val()` carried a value of one through their `default:` arms - but
+the union had no member for any of them, so a value that arrived intact
+could not be loaded, transferred (and so not stored), unloaded,
+compared or printed, and `PMIx_Value_get_size()` left its payload out.
+The union now has `infodirs`, `dtype` and `channel`, which leave its
+size unchanged. A new scalar type needs an arm in each of
+`pmix_bfrops_base_value_load()`, `pmix_bfrops_base_value_unload()` (and
+its `simple[]` list), `pmix_bfrops_base_tma_value_xfer()`,
+`pmix_bfrops_base_value_cmp()` and `cmp_darray()`, `print_val()` and
+`pmix_bfrops_base_print_darray()`, `PMIx_Value_get_size()` and
+`get_darray_size()`, and - if it is a number - `plain_integer_type()` in
+`bfrop_base_get_number.c`. `test_named_values_keep_their_contents` in
+`test/unit/bfrops_darray.c` checks each of those with non-zero contents.
+
+That sweep loads **empty** elements, so it cannot see a defect that
+shows only in a field that is not zero. Two are known:
+
+- `PMIX_DATA_TYPE` - the `type` of a registered attribute - was packed as
+  `PMIX_UINT16` and unpacked as `PMIX_INT16`. In the fixed-width
+  components those are the same bytes; where integers are encoded by size
+  (`v4` onwards), a signed and an unsigned value are encoded differently,
+  and every attribute type but zero came back wrong (3 as 65534). Unpack
+  now reads what every release has always packed.
+  `test_regattr_type_survives_pack` holds it with non-zero types.
+- `PMIX_PROC_INFO.exit_code` is not on the wire at all - `pack_pinfo()`
+  never carried it, and changing that would change the wire format - but
+  `cmp_pinfo()` compares it. A proc info with a non-zero exit code
+  therefore does not compare equal to itself after a pack and unpack.
+
+`pack_val()` refuses a value of a pointer-backed type that carries no
+object, because the packers dereference what they are given and the wire
+has no "absent" for a proc or a device. The types whose packers already
+put an absence on the wire are excepted: a data array, an nspace, and the
+topology and cpuset, which go out as a NULL string ("no topology", "not
+bound") and had always packed that way.
+
+**If you add a data type, add all of them.**
 [`test/unit/bfrops_darray.c`](../../../../test/unit/bfrops_darray.c)
 walks the whole registered type table holding construct, pack/unpack and
 copy against each other; add your type to `all_types[]` there and it is
