@@ -236,6 +236,34 @@ class TestDefines(_Harvest):
         self.assertIn("PMIX_ERR_BAD", constants)
         self.assertIn("cdef int _PMIX_ERR_BAD", defs)
 
+    def test_a_trailing_comment_does_not_hide_a_constant(self):
+        # every line with a comment on it used to be skipped whole, which
+        # dropped all of the PMIX_PROC_STATE_* values. A line that is only
+        # a comment is still skipped
+        _rc, constants, _defs = self.harvest("""
+#define PMIX_STATE_ONE      1  /* the first */
+#define PMIX_STATE_NAME     "pmix.st"  /* a string */
+/* #define PMIX_IN_A_COMMENT 7 */
+ * #define PMIX_IN_A_BLOCK 8
+""")
+        self.assertConstant(constants, "PMIX_STATE_ONE", "1")
+        self.assertIn("PMIX_STATE_NAME", constants)
+        self.assertNoConstant(constants, "PMIX_IN_A_COMMENT")
+        self.assertNoConstant(constants, "PMIX_IN_A_BLOCK")
+
+    def test_an_offset_from_a_constant(self):
+        # the error states are written as offsets from the first of them
+        _rc, constants, _defs = self.harvest("""
+#define PMIX_STATE_ERROR    50
+#define PMIX_STATE_KILLED   (PMIX_STATE_ERROR +  1)  /* killed */
+#define PMIX_STATE_LOST     (PMIX_STATE_ERROR + 14)
+#define PMIX_STATE_UNKNOWN  (PMIX_NOT_DEFINED + 1)
+""")
+        self.assertConstant(constants, "PMIX_STATE_KILLED", "51")
+        self.assertConstant(constants, "PMIX_STATE_LOST", "64")
+        # an offset from something never seen has no value to give
+        self.assertNoConstant(constants, "PMIX_STATE_UNKNOWN")
+
     def test_function_like_macros_are_skipped(self):
         # these are not constants, and there is nothing to bind
         _rc, constants, _defs = self.harvest("""

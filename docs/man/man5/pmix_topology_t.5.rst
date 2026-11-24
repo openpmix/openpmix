@@ -23,6 +23,17 @@ C Syntax
    } pmix_topology_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+A topology has no Python form. A ``PMIxClient`` object holds its own,
+which ``load_topology()`` loads and ``compute_distances()`` uses. A
+*value* of type ``PMIX_TOPO`` can only be ``None``, which stands for "no
+topology"; any other value is ``PMIX_ERR_NOT_SUPPORTED``, and a topology
+value handed back by the library is always ``None`` (see
+:ref:`pmix_value_t(5) <man5-pmix_value_t>`).
+
+
 DESCRIPTION
 -----------
 

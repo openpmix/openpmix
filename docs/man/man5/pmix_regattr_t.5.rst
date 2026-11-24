@@ -25,6 +25,23 @@ C Syntax
    } pmix_regattr_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   attr = {'name': "PMIX_JOB_SIZE", 'key': PMIX_JOB_SIZE,
+           'type': PMIX_UINT32, 'description': ["Number of processes in the job"]}
+
+where ``name`` is the attribute's name (``None`` for NULL), ``key`` its
+string key (see :ref:`pmix_key_t(5) <man5-pmix_key_t>`), ``type`` its
+:ref:`pmix_data_type_t(5) <man5-pmix_data_type_t>` and ``description`` a
+list of strings. All four must be present. ``key`` may be ``None`` on
+input, which leaves it empty; it then comes back as ``''``.
+
+
 DESCRIPTION
 -----------
 

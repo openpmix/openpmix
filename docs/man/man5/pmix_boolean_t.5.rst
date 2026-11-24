@@ -24,6 +24,18 @@ C Syntax
    } pmix_boolean_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   b = PMIX_BOOL_TRUE
+
+where ``b`` is one of the ``pmix_boolean_t`` enumerated values. This is not how a ``PMIX_BOOL`` value is written: that takes a Python ``bool`` (see :ref:`pmix_value_t(5) <man5-pmix_value_t>`).
+
+
 DESCRIPTION
 -----------
 

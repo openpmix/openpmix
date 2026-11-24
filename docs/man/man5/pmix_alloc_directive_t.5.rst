@@ -31,6 +31,18 @@ C Syntax
    #define PMIX_ALLOC_EXTERNAL     128
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   directive = PMIX_ALLOC_NEW
+
+where the value is one of the ``pmix_alloc_directive_t`` constants listed on this page, a plain Python ``int``.
+
+
 DESCRIPTION
 -----------
 

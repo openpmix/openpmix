@@ -34,6 +34,18 @@ C Syntax
    #define PMIX_DEVTYPE_NODE           0x0000000000000400
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   devtype = PMIX_DEVTYPE_GPU
+
+where the value is one of the ``pmix_device_type_t`` constants listed on this page, a plain Python ``int``.
+
+
 DESCRIPTION
 -----------
 

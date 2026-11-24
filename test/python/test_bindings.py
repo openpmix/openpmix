@@ -26,6 +26,7 @@
 import os
 import sys
 import glob
+import threading
 import unittest
 
 
@@ -470,7 +471,12 @@ class TestNewlyBoundAPIs(unittest.TestCase):
     def test_resource_block_rejects_bad_units(self):
         for bad in ([{'type': "gpu", 'count': 1}],
                     [{'type': pmix.PMIX_DEVTYPE_GPU, 'count': "many"}],
-                    ["not-a-dict"]):
+                    ["not-a-dict"],
+                    # a unit must name both members, as it must as a
+                    # value: these asked for zero GPUs, or for an
+                    # unknown device, and succeeded
+                    [{'type': pmix.PMIX_DEVTYPE_GPU, 'cnt': 2}],
+                    [{'count': 2}]):
             rc = self.c.resource_block(pmix.PMIX_RESOURCE_BLOCK_DEFINE,
                                        "myblock", bad, [])
             self.assertIn(rc, (pmix.PMIX_ERR_BAD_PARAM,
@@ -1743,6 +1749,613 @@ class TestHandlerRegistry(unittest.TestCase):
                      '_pending_evreg', '_pending_iofreg', '_reglock'):
             self.assertNotIn(name, pmix.__all__)
 
+
+
+class TestConversionCompleteness(unittest.TestCase):
+    """Every type the library can hold in a value, in both directions.
+
+    The conversion layer used to handle a subset of the types, and its
+    data-array arms a smaller subset again, written separately and drifted
+    from the scalar ones: unsigned elements went through signed pointers,
+    an array of values could not be loaded at all, and a string member
+    left NULL by the library came back as None and could not go back in.
+    The array arms are now built on the scalar ones, so every case here
+    is checked both on its own and as an element of an array.
+    """
+
+    #: name, value dict - each must come back exactly as it went in
+    VALUES = (
+        ("undef", {'value': None, 'val_type': pmix.PMIX_UNDEF}),
+        ("uint8-max", {'value': 255, 'val_type': pmix.PMIX_UINT8}),
+        ("uint16-max", {'value': 65535, 'val_type': pmix.PMIX_UINT16}),
+        ("uint32-max", {'value': 4294967295, 'val_type': pmix.PMIX_UINT32}),
+        ("uint64-max", {'value': 2 ** 64 - 1, 'val_type': pmix.PMIX_UINT64}),
+        ("int8-min", {'value': -128, 'val_type': pmix.PMIX_INT8}),
+        ("int64-min", {'value': -2 ** 63, 'val_type': pmix.PMIX_INT64}),
+        ("stor-medium", {'value': 2 ** 64 - 1, 'val_type': pmix.PMIX_STOR_MEDIUM}),
+        ("stor-access", {'value': 3, 'val_type': pmix.PMIX_STOR_ACCESS}),
+        ("stor-persist", {'value': 4, 'val_type': pmix.PMIX_STOR_PERSIST}),
+        ("stor-access-type", {'value': 65535,
+                              'val_type': pmix.PMIX_STOR_ACCESS_TYPE}),
+        ("alloc-inherit", {'value': pmix.PMIX_ALLOC_INHERIT_CHILD,
+                           'val_type': pmix.PMIX_ALLOC_INHERIT}),
+        ("resblock-directive", {'value': pmix.PMIX_RESOURCE_BLOCK_DELETE,
+                                'val_type': pmix.PMIX_RESBLOCK_DIRECTIVE}),
+        # the library had no member of the value union for these three,
+        # so no value of one could be loaded, here or in C
+        ("info-directives", {'value': pmix.PMIX_INFO_REQD | pmix.PMIX_INFO_ARRAY_END,
+                             'val_type': pmix.PMIX_INFO_DIRECTIVES}),
+        ("data-type", {'value': pmix.PMIX_STRING, 'val_type': pmix.PMIX_DATA_TYPE}),
+        ("iof-channel", {'value': pmix.PMIX_FWD_STDOUT_CHANNEL | pmix.PMIX_FWD_STDERR_CHANNEL,
+                         'val_type': pmix.PMIX_IOF_CHANNEL}),
+        ("compressed-bo", {'value': {'bytes': b"\x00\xff\x10", 'size': 3},
+                           'val_type': pmix.PMIX_COMPRESSED_BYTE_OBJECT}),
+        ("regex2", {'value': {'type': "raw", 'bytes': b"n1,n2", 'len': 5},
+                    'val_type': pmix.PMIX_REGEX2}),
+        ("data-buffer", {'value': {'bytes': b"\x01\x02\x03", 'bytes_used': 3,
+                                   'bytes_unpacked': 1},
+                         'val_type': pmix.PMIX_DATA_BUFFER}),
+        ("nspace", {'value': "anspace", 'val_type': pmix.PMIX_PROC_NSPACE}),
+        ("string-utf8", {'value': "café", 'val_type': pmix.PMIX_STRING}),
+        ("node-pid", {'value': {'hostname': "h1", 'nodeid': 4294967295,
+                                'pid': 2147483647},
+                      'val_type': pmix.PMIX_NODE_PID}),
+        ("node-pid-nohost", {'value': {'hostname': None, 'nodeid': 0, 'pid': 0},
+                             'val_type': pmix.PMIX_NODE_PID}),
+        ("resource-unit", {'value': {'type': pmix.PMIX_DEVTYPE_GPU,
+                                     'count': 2 ** 64 - 1},
+                           'val_type': pmix.PMIX_RESOURCE_UNIT}),
+        ("device", {'value': {'uuid': "u1", 'osname': None, 'type': 2 ** 63},
+                    'val_type': pmix.PMIX_DEVICE}),
+        # the device type was dropped on the way in and never reported
+        ("device-distance", {'value': {'uuid': "u1", 'osname': "eth0",
+                                       'type': pmix.PMIX_DEVTYPE_NETWORK,
+                                       'mindist': 0, 'maxdist': 65535},
+                             'val_type': pmix.PMIX_DEVICE_DIST}),
+        ("endpoint", {'value': {'uuid': None, 'osname': "ib0",
+                                'endpt': {'bytes': b"\x00\x01", 'size': 2}},
+                      'val_type': pmix.PMIX_ENDPOINT}),
+        ("coord", {'value': {'view': pmix.PMIX_COORD_LOGICAL_VIEW,
+                             'coord': b"\x01\x00\x00\x00\x02\x00\x00\x00",
+                             'dims': 2},
+                   'val_type': pmix.PMIX_COORD}),
+        ("geometry", {'value': {'fabric': 1, 'uuid': "g", 'osname': None,
+                                'ncoords': 1,
+                                'coords': [{'view': pmix.PMIX_COORD_LOGICAL_VIEW,
+                                            'coord': b"\x05\x00\x00\x00",
+                                            'dims': 1}]},
+                      'val_type': pmix.PMIX_GEOMETRY}),
+        # a string member the library left NULL
+        ("envar-none", {'value': {'envar': "E", 'value': None, 'separator': ':'},
+                        'val_type': pmix.PMIX_ENVAR}),
+        ("proc-info-none", {'value': {'proc': {'nspace': "n", 'rank': 1},
+                                      'hostname': None, 'executable': None,
+                                      'pid': 7, 'exitcode': -1, 'state': 3},
+                            'val_type': pmix.PMIX_PROC_INFO}),
+    )
+
+    #: the types whose value is a pointer the library allows to be NULL
+    BOXED = ("PMIX_PROC_NSPACE", "PMIX_PROC", "PMIX_PROC_INFO",
+             "PMIX_DATA_ARRAY", "PMIX_COORD", "PMIX_GEOMETRY", "PMIX_DEVICE",
+             "PMIX_DEVICE_DIST", "PMIX_ENDPOINT", "PMIX_DATA_BUFFER",
+             "PMIX_RESOURCE_UNIT", "PMIX_NODE_PID", "PMIX_REGEX2",
+             "PMIX_REGATTR")
+
+    #: type name, lowest and highest value it holds
+    INTEGERS = (
+        ("PMIX_BYTE", 0, 255), ("PMIX_UINT8", 0, 255),
+        ("PMIX_UINT16", 0, 65535), ("PMIX_UINT32", 0, 2 ** 32 - 1),
+        ("PMIX_UINT64", 0, 2 ** 64 - 1), ("PMIX_INT8", -128, 127),
+        ("PMIX_INT16", -32768, 32767), ("PMIX_INT32", -2 ** 31, 2 ** 31 - 1),
+        ("PMIX_INT64", -2 ** 63, 2 ** 63 - 1), ("PMIX_PROC_RANK", 0, 2 ** 32 - 1),
+        ("PMIX_LOCTYPE", 0, 65535), ("PMIX_DEVTYPE", 0, 2 ** 64 - 1),
+        ("PMIX_ALLOC_INHERIT", 0, 255), ("PMIX_STOR_ACCESS_TYPE", 0, 65535),
+        ("PMIX_STOR_MEDIUM", 0, 2 ** 64 - 1), ("PMIX_SCOPE", 0, 255),
+        ("PMIX_INFO_DIRECTIVES", 0, 2 ** 32 - 1), ("PMIX_DATA_TYPE", 0, 65535),
+        ("PMIX_IOF_CHANNEL", 0, 65535),
+    )
+
+    def _roundtrip(self, name, val):
+        rc, got = pmix.pmix_value_roundtrip(val)
+        self.assertEqual(rc, pmix.PMIX_SUCCESS, "%s failed to convert: %s" % (name, rc))
+        return got
+
+    def test_every_value_round_trips(self):
+        for name, val in self.VALUES:
+            self.assertEqual(self._roundtrip(name, val), val,
+                             "%s came back changed" % name)
+
+    def test_every_value_round_trips_as_an_array_element(self):
+        for name, val in self.VALUES:
+            if pmix.PMIX_UNDEF == val['val_type']:
+                # an array of nothing has no elements to hold
+                continue
+            arr = {'value': {'type': val['val_type'],
+                             'array': [val['value'], val['value']]},
+                   'val_type': pmix.PMIX_DATA_ARRAY}
+            self.assertEqual(self._roundtrip(name, arr), arr,
+                             "%s array came back changed" % name)
+
+    def test_a_null_object_is_none(self):
+        # the library allows each of these to carry no object at all
+        for tname in self.BOXED:
+            val = {'value': None, 'val_type': getattr(pmix, tname)}
+            self.assertEqual(self._roundtrip(tname, val), val,
+                             "%s with no object came back changed" % tname)
+
+    def test_integer_bounds_are_checked_at_both_ends(self):
+        for tname, lo, hi in self.INTEGERS:
+            t = getattr(pmix, tname)
+            for v in (lo, hi):
+                self.assertEqual(self._roundtrip(tname, {'value': v, 'val_type': t}),
+                                 {'value': v, 'val_type': t})
+            for v in (lo - 1, hi + 1):
+                rc, got = pmix.pmix_value_roundtrip({'value': v, 'val_type': t})
+                self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM,
+                                 "%s accepted %d" % (tname, v))
+            rc, got = pmix.pmix_value_roundtrip({'value': "7", 'val_type': t})
+            self.assertEqual(rc, pmix.PMIX_ERR_TYPE_MISMATCH,
+                             "%s accepted a string" % tname)
+
+    def test_unsigned_arrays_hold_what_the_library_reads(self):
+        # a round trip cannot catch a mistake the loader and the unloader
+        # make alike - the element width, a signed pointer - so ask the
+        # library itself what the array it was handed holds
+        c = pmix.PMIxClient()
+        for tname, v in (("PMIX_UINT8", 200), ("PMIX_UINT16", 40000),
+                         ("PMIX_UINT32", 4000000000), ("PMIX_UINT64", 2 ** 64 - 1),
+                         ("PMIX_UINT", 4000000000)):
+            arr = {'value': {'type': getattr(pmix, tname), 'array': [v]},
+                   'val_type': pmix.PMIX_DATA_ARRAY}
+            rc, txt = c.value_string(arr)
+            self.assertEqual(rc, pmix.PMIX_SUCCESS, "%s array did not print" % tname)
+            self.assertIn("Value: %d" % v, txt, "%s array printed %r" % (tname, txt))
+
+    def test_an_array_of_values(self):
+        arr = {'value': {'type': pmix.PMIX_VALUE,
+                         'array': [{'value': 1, 'val_type': pmix.PMIX_UINT8},
+                                   {'value': "two", 'val_type': pmix.PMIX_STRING}]},
+               'val_type': pmix.PMIX_DATA_ARRAY}
+        self.assertEqual(self._roundtrip("value array", arr), arr)
+
+    def test_an_array_of_apps(self):
+        app = {'cmd': "/bin/true", 'argv': ["true", "-x"], 'env': ["A=B"],
+               'cwd': "/tmp", 'maxprocs': 3,
+               'info': [{'key': "pmix.test", 'flags': 0, 'value': 1,
+                         'val_type': pmix.PMIX_INT32}]}
+        arr = {'value': {'type': pmix.PMIX_APP, 'array': [app]},
+               'val_type': pmix.PMIX_DATA_ARRAY}
+        self.assertEqual(self._roundtrip("app array", arr), arr)
+
+    def test_malformed_dicts_are_refused_not_raised(self):
+        for bad in ({'value': {'nspace': "n"}, 'val_type': pmix.PMIX_PROC},
+                    {'value': {'type': pmix.PMIX_INT32}, 'val_type': pmix.PMIX_DATA_ARRAY},
+                    {'value': [1, 2], 'val_type': pmix.PMIX_TIMEVAL},
+                    {'value': {'uuid': 5, 'osname': None, 'type': 0},
+                     'val_type': pmix.PMIX_DEVICE},
+                    {'value': "a\x00b", 'val_type': pmix.PMIX_STRING},
+                    {'value': {'type': pmix.PMIX_UINT16, 'array': [70000]},
+                     'val_type': pmix.PMIX_DATA_ARRAY}):
+            rc, got = pmix.pmix_value_roundtrip(bad)
+            self.assertNotEqual(rc, pmix.PMIX_SUCCESS, "accepted %r" % (bad,))
+            self.assertIsNone(got)
+
+    def test_none_cannot_be_an_array_element_of_a_struct_type(self):
+        # an array slot holds its struct inline, so it has no NULL to be
+        for tname, elem in (("PMIX_PROC_NSPACE", "a"),
+                            ("PMIX_PROC", {'nspace': "n", 'rank': 0})):
+            arr = {'value': {'type': getattr(pmix, tname), 'array': [elem, None]},
+                   'val_type': pmix.PMIX_DATA_ARRAY}
+            rc, got = pmix.pmix_value_roundtrip(arr)
+            self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM, tname)
+
+    def test_attributes_must_be_a_list(self):
+        # anything else used to raise out of the loader with the array it
+        # had allocated for the result still held
+        c = pmix.PMIxClient()
+        for bad in (5, "a string", {'key': "k"}):
+            self.assertEqual(c.publish(bad), pmix.PMIX_ERR_BAD_PARAM,
+                             "accepted %r" % (bad,))
+        # a tuple is a sequence like any other
+        self.assertEqual(c.publish(({'key': "k", 'value': 1,
+                                     'val_type': pmix.PMIX_INT32},)),
+                         pmix.PMIX_ERR_INIT)
+
+    def test_registered_attributes(self):
+        # what an attribute-support query answers with
+        ra = {'name': "PMIX_JOB_SIZE", 'key': "pmix.job.size",
+              'type': pmix.PMIX_UINT32, 'description': ["the size", "of a job"]}
+        val = {'value': ra, 'val_type': pmix.PMIX_REGATTR}
+        self.assertEqual(self._roundtrip("regattr", val), val)
+        arr = {'value': {'type': pmix.PMIX_REGATTR, 'array': [ra, ra]},
+               'val_type': pmix.PMIX_DATA_ARRAY}
+        self.assertEqual(self._roundtrip("regattr array", arr), arr)
+
+    def test_numeric_strings_and_float_seconds_still_load(self):
+        # both loaded before the conversion layer was rebuilt
+        rc, got = pmix.pmix_value_roundtrip({'value': "1.5", 'val_type': pmix.PMIX_DOUBLE})
+        self.assertEqual((rc, got['value']), (pmix.PMIX_SUCCESS, 1.5))
+        rc, got = pmix.pmix_value_roundtrip({'value': {'sec': 2.7, 'usec': 3},
+                                             'val_type': pmix.PMIX_TIMEVAL})
+        self.assertEqual((rc, got['value']), (pmix.PMIX_SUCCESS, {'sec': 2, 'usec': 3}))
+
+    def test_a_missing_member_is_refused(self):
+        # a misspelt member used to load as an empty one and succeed
+        for bad in ({'value': {'envr': "E", 'value': "v", 'separator': ':'},
+                     'val_type': pmix.PMIX_ENVAR},
+                    {'value': {}, 'val_type': pmix.PMIX_ENDPOINT},
+                    {'value': {'hostname': "h", 'pid': 1}, 'val_type': pmix.PMIX_NODE_PID},
+                    {'value': {'nspace': "n"}, 'val_type': pmix.PMIX_PROC},
+                    {'value': {'sec': 1}, 'val_type': pmix.PMIX_TIMEVAL}):
+            rc, got = pmix.pmix_value_roundtrip(bad)
+            self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM, "accepted %r" % (bad,))
+
+    def test_a_proc_nspace_need_not_be_ascii(self):
+        val = {'value': {'nspace': "j\u00f6b", 'rank': 1}, 'val_type': pmix.PMIX_PROC}
+        self.assertEqual(self._roundtrip("utf-8 nspace", val), val)
+
+    def test_pointers_and_opaque_objects_stay_unsupported(self):
+        for tname in ("PMIX_POINTER", "PMIX_TOPO", "PMIX_PROC_CPUSET"):
+            rc, got = pmix.pmix_value_roundtrip({'value': 1,
+                                                 'val_type': getattr(pmix, tname)})
+            self.assertEqual(rc, pmix.PMIX_ERR_NOT_SUPPORTED, tname)
+
+    def test_an_absent_topology_or_cpuset_is_none(self):
+        # they unload as None, so None has to load: it is the library's
+        # "no topology" and "not bound"
+        for tname in ("PMIX_TOPO", "PMIX_PROC_CPUSET"):
+            val = {'value': None, 'val_type': getattr(pmix, tname)}
+            self.assertEqual(self._roundtrip(tname, val), val)
+
+    def test_what_comes_out_goes_back_in(self):
+        # each of these unloaded in a shape the loader then refused
+        for name, val in (
+                # a NULL separator came back as '\x00'
+                ("envar", {'value': {'envar': "PATH", 'value': "/bin",
+                                     'separator': None},
+                           'val_type': pmix.PMIX_ENVAR}),
+                # a NULL encoding name came back as None
+                ("regex2", {'value': {'type': None, 'bytes': b'n1', 'len': 2},
+                            'val_type': pmix.PMIX_REGEX2}),
+                # the library has this type; the bindings did not
+                ("compressed string", {'value': {'bytes': b'\x01\x02', 'size': 2},
+                                       'val_type': pmix.PMIX_COMPRESSED_STRING}),
+                # the NUL the library keeps a regex with is not part of it
+                ("regex", {'value': b'pmix[n1,n2]', 'val_type': pmix.PMIX_REGEX})):
+            self.assertEqual(self._roundtrip(name, val), val, name)
+
+
+class TestConversionInputChecks(unittest.TestCase):
+    """What the loaders are handed is checked, not trusted.
+
+    Each case here was accepted, and either silently changed what was
+    loaded or wrote past the end of what the loader had allocated.
+    """
+
+    def _rt(self, val):
+        return pmix.pmix_value_roundtrip(val)[0]
+
+    def test_a_list_that_misreports_its_length(self):
+        # each loader sized its array by len() and filled it by iterating,
+        # so a list that yields more than its len() wrote past the end.
+        # Now everything it yields is loaded, into an array sized for it
+        class Short(list):
+            def __len__(self):
+                return 1
+        cases = (
+            ({'value': {'type': pmix.PMIX_UINT64, 'array': Short([1, 2, 3, 4])},
+              'val_type': pmix.PMIX_DATA_ARRAY},
+             lambda v: v['array']),
+            ({'value': {'type': pmix.PMIX_INFO,
+                        'array': Short([{'key': "k%d" % n, 'value': n,
+                                         'val_type': pmix.PMIX_INT}
+                                        for n in range(4)])},
+              'val_type': pmix.PMIX_DATA_ARRAY},
+             lambda v: v['array']),
+            ({'value': {'fabric': 0, 'uuid': None, 'osname': None,
+                        'coords': Short([{'view': 0, 'coord': b'\0' * 4, 'dims': 1}] * 4)},
+              'val_type': pmix.PMIX_GEOMETRY},
+             lambda v: v['coords']),
+            ({'value': {'name': "n", 'key': "k", 'type': pmix.PMIX_INT,
+                        'description': Short(["a", "b", "c", "d"])},
+              'val_type': pmix.PMIX_REGATTR},
+             lambda v: v['description']),
+        )
+        for val, members in cases:
+            rc, got = pmix.pmix_value_roundtrip(val)
+            self.assertEqual(rc, pmix.PMIX_SUCCESS, val['val_type'])
+            self.assertEqual(len(members(got['value'])), 4, val['val_type'])
+
+    def test_a_list_that_grows_while_it_is_converted(self):
+        # the loop runs Python code - here an element's comparison - that
+        # can reach the list being walked
+        victim = []
+        class Grows(int):
+            def __lt__(self, other):
+                victim.extend([1] * 1000)
+                return int.__lt__(self, other)
+        victim.extend([Grows(1), 2])
+        rc, got = pmix.pmix_value_roundtrip(
+            {'value': {'type': pmix.PMIX_INT64, 'array': victim},
+             'val_type': pmix.PMIX_DATA_ARRAY})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(got['value']['array'], [1, 2])
+
+    def test_an_integer_is_not_a_payload(self):
+        # bytes(5) is five NUL bytes
+        for val in ({'value': {'bytes': 5}, 'val_type': pmix.PMIX_BYTE_OBJECT},
+                    {'value': {'bytes': 5}, 'val_type': pmix.PMIX_DATA_BUFFER},
+                    {'value': 5, 'val_type': pmix.PMIX_REGEX},
+                    {'value': {'view': 0, 'coord': 8, 'dims': 2},
+                     'val_type': pmix.PMIX_COORD},
+                    {'value': {'type': "raw", 'bytes': 5},
+                     'val_type': pmix.PMIX_REGEX2}):
+            self.assertEqual(self._rt(val), pmix.PMIX_ERR_TYPE_MISMATCH, val)
+
+    def test_an_unpack_cursor_must_be_in_the_payload(self):
+        for cur in (-1, "2", 99, True):
+            val = {'value': {'bytes': b'abc', 'bytes_used': 3, 'bytes_unpacked': cur},
+                   'val_type': pmix.PMIX_DATA_BUFFER}
+            self.assertNotEqual(self._rt(val), pmix.PMIX_SUCCESS, cur)
+
+    def test_a_bool_is_not_a_number(self):
+        for tname in ("PMIX_INT", "PMIX_UINT32", "PMIX_PROC_RANK", "PMIX_SIZE",
+                      "PMIX_DOUBLE", "PMIX_FLOAT"):
+            val = {'value': True, 'val_type': getattr(pmix, tname)}
+            self.assertNotEqual(self._rt(val), pmix.PMIX_SUCCESS, tname)
+        self.assertNotEqual(self._rt({'value': 1, 'val_type': True}), pmix.PMIX_SUCCESS)
+
+    def test_a_boolean_string_says_which(self):
+        for word in ("tomato", "flag", "", "yes"):
+            val = {'value': word, 'val_type': pmix.PMIX_BOOL}
+            self.assertNotEqual(self._rt(val), pmix.PMIX_SUCCESS, word)
+        for word, want in (("True", True), ("t", True), ("FALSE", False), ("f", False)):
+            rc, got = pmix.pmix_value_roundtrip({'value': word, 'val_type': pmix.PMIX_BOOL})
+            self.assertEqual((rc, got['value']), (pmix.PMIX_SUCCESS, want), word)
+
+    def test_a_name_is_never_cut_short(self):
+        # a cut name is a different name: two long keys that differ only
+        # past the limit became the same key
+        for ns in ("ab\0cd", "n" * 256, "\udc80"):
+            for val in ({'value': ns, 'val_type': pmix.PMIX_PROC_NSPACE},
+                        {'value': {'nspace': ns, 'rank': 0}, 'val_type': pmix.PMIX_PROC}):
+                self.assertEqual(self._rt(val), pmix.PMIX_ERR_BAD_PARAM, repr(ns))
+        self.assertEqual(self._rt({'value': "n" * 255, 'val_type': pmix.PMIX_PROC_NSPACE}),
+                         pmix.PMIX_SUCCESS)
+        for key in ("k" * 600, "a\0b"):
+            val = {'value': {'type': pmix.PMIX_INFO,
+                             'array': [{'key': key, 'value': 1, 'val_type': pmix.PMIX_INT}]},
+                   'val_type': pmix.PMIX_DATA_ARRAY}
+            self.assertEqual(self._rt(val), pmix.PMIX_ERR_BAD_PARAM, repr(key))
+
+
+class TestAppLoading(unittest.TestCase):
+    """The app loader reports what it cannot convert.
+
+    It used to drop it: a bad argv entry truncated the argv, an
+    unconvertible environment was skipped, and a bad maxprocs became 1 -
+    a spawn of something other than what was asked for.
+    """
+
+    def setUp(self):
+        self.client = pmix.PMIxClient()
+
+    def test_bad_members_are_errors(self):
+        for bad in ({'cmd': "/bin/true", 'argv': ["true", 5]},
+                    {'cmd': "/bin/true", 'env': ["A=B", None]},
+                    {'cmd': "/bin/true", 'maxprocs': "two"},
+                    {'cmd': "/bin/true", 'maxprocs': -1},
+                    {'cmd': "/bin/true", 'info': [{'key': "k"}]},
+                    {'argv': []}):
+            rc, txt = self.client.app_string(bad)
+            self.assertNotEqual(rc, pmix.PMIX_SUCCESS, "accepted %r" % (bad,))
+
+    def test_an_argv_alone_is_enough(self):
+        rc, txt = self.client.app_string({'argv': ["/bin/true", "-x"]})
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertIn("/bin/true", txt)
+
+
+class TestCompletionHelpers(unittest.TestCase):
+    """The one-shot token a server-module upcall completes through.
+
+    Each upcall hands its handler a helper and a cbdata dict carrying the
+    library's callback. The library releases the request when it is
+    completed, so a second completion is a double release, and an upcall
+    that reports an error after its handler completed is one too. These
+    exercise the token with a NULL callback (0), which every helper treats
+    as nothing to call.
+    """
+
+    def test_a_helper_consumes_the_token(self):
+        d = {'cbfunc': 0, 'cbdata': 0}
+        pmix.pypmix_op_cbfunc(pmix.PMIX_SUCCESS, d)
+        self.assertNotIn('cbfunc', d)
+        # and a second call is harmless
+        pmix.pypmix_op_cbfunc(pmix.PMIX_SUCCESS, d)
+
+    def test_settle_after_completion_reports_success(self):
+        d = {'cbdata': 0}          # a helper already took the token
+        for rc in (pmix.PMIX_ERROR, None, "nonsense", pmix.PMIX_OPERATION_SUCCEEDED):
+            self.assertEqual(pmix.pypmix_settle(rc, d), pmix.PMIX_SUCCESS)
+
+    def test_settle_before_completion_disarms_the_helper(self):
+        d = {'cbfunc': 0, 'cbdata': 0}
+        self.assertEqual(pmix.pypmix_settle(pmix.PMIX_ERR_NOT_SUPPORTED, d),
+                         pmix.PMIX_ERR_NOT_SUPPORTED)
+        self.assertNotIn('cbfunc', d)
+
+    def test_settle_success_leaves_the_token(self):
+        d = {'cbfunc': 0, 'cbdata': 0}
+        self.assertEqual(pmix.pypmix_settle(pmix.PMIX_SUCCESS, d), pmix.PMIX_SUCCESS)
+        self.assertIn('cbfunc', d)
+
+    def test_settle_a_non_status(self):
+        for rc in (None, "x", 1.5, True):
+            d = {'cbfunc': 0, 'cbdata': 0}
+            self.assertEqual(pmix.pypmix_settle(rc, d), pmix.PMIX_ERROR)
+
+    def test_settle_a_status_out_of_range(self):
+        # it used to take the token and hand the number back, whose
+        # conversion to a C int then failed - and the trampoline, finding
+        # the token gone, told the library a completion was coming
+        for rc in (2 ** 40, -2 ** 40, 2 ** 31):
+            d = {'cbfunc': 0, 'cbdata': 0}
+            self.assertEqual(pmix.pypmix_settle(rc, d), pmix.PMIX_ERROR, rc)
+            self.assertNotIn('cbfunc', d)
+            self.assertEqual(pmix.pypmix_settle(rc, None), pmix.PMIX_ERROR, rc)
+
+    def test_modex_helper_takes_any_payload_spelling(self):
+        for payload in (None, b"", b"\x00\x01", bytearray(b"ab"), [1, 2]):
+            d = {'cbfunc': 0, 'cbdata': 0}
+            pmix.pypmix_modex_cbfunc(pmix.PMIX_SUCCESS, payload, d)
+            self.assertNotIn('cbfunc', d)
+
+    def test_validation_helper_takes_both_arities(self):
+        d = {'cbfunc': 0, 'cbdata': 0}
+        pmix.pypmix_validation_cbfunc(pmix.PMIX_SUCCESS, [], d)
+        d = {'cbfunc': 0, 'cbdata': 0}
+        pmix.pypmix_validation_cbfunc(pmix.PMIX_SUCCESS, {}, [], d)
+        with self.assertRaises(TypeError):
+            pmix.pypmix_validation_cbfunc(pmix.PMIX_SUCCESS)
+
+
+class TestRefusals(unittest.TestCase):
+    """Requests the bindings refuse, and say why, rather than misbehave."""
+
+    @staticmethod
+    def _handler(request, cbfunc, cbdata):
+        return pmix.PMIX_SUCCESS
+
+    def test_listener_cannot_be_provided(self):
+        # the slot is the host's own socket listener; a Python handler
+        # registered for it was accepted and never called
+        self.assertEqual(pmix.setmodulefn('listener', self._handler),
+                         pmix.PMIX_ERR_NOT_SUPPORTED)
+
+    def test_fabric_info_needs_a_registered_fabric(self):
+        c = pmix.PMIxClient()
+        self.assertEqual(c.fabric_info(), (pmix.PMIX_ERR_INIT, []))
+
+    def test_get_pointer_values_is_not_supported(self):
+        c = pmix.PMIxClient()
+        # every spelling the C side reads as the same key
+        for key in (pmix.PMIX_GET_POINTER_VALUES,
+                    pmix.PMIX_GET_POINTER_VALUES.encode('ascii')):
+            rc, val = c.get({'nspace': "n", 'rank': 0}, "k",
+                            [{'key': key, 'value': True,
+                              'val_type': pmix.PMIX_BOOL}])
+            self.assertEqual(rc, pmix.PMIX_ERR_NOT_SUPPORTED, repr(key))
+            self.assertIsNone(val)
+        # a key with a NUL in it used to be cut short at the NUL, which
+        # made this one PMIX_GET_POINTER_VALUES by the time the C side
+        # read it. A key that cannot go into a pmix_key_t whole is now
+        # refused before anything else, so it never becomes that key
+        key = pmix.PMIX_GET_POINTER_VALUES + "\x00trailing"
+        rc, val = c.get({'nspace': "n", 'rank': 0}, "k",
+                        [{'key': key, 'value': True,
+                          'val_type': pmix.PMIX_BOOL}])
+        self.assertEqual(rc, pmix.PMIX_ERR_BAD_PARAM, repr(key))
+        self.assertIsNone(val)
+        # the non-blocking form too: its callback releases the value it is
+        # handed, and a pointer answer is the library's own storage. The
+        # refusal comes before the request is made, so no callback runs
+        seen = []
+        for key in (pmix.PMIX_GET_POINTER_VALUES,
+                    pmix.PMIX_GET_POINTER_VALUES.encode('ascii')):
+            rc = c.get_nb({'nspace': "n", 'rank': 0}, "k",
+                          [{'key': key, 'value': True,
+                            'val_type': pmix.PMIX_BOOL}],
+                          lambda st, v, cbd: seen.append(st))
+            self.assertEqual(rc, pmix.PMIX_ERR_NOT_SUPPORTED, repr(key))
+        self.assertEqual(seen, [])
+
+    def test_get_takes_a_bad_proc_as_a_status(self):
+        # the blocking form converted the proc by hand and raised; it now
+        # goes through the same loader as get_nb
+        c = pmix.PMIxClient()
+        for proc in ({'nspace': "n"}, {'nspace': "n" * 600, 'rank': 0},
+                     {'nspace': "n", 'rank': -1}, "notadict"):
+            rc, val = c.get(proc, "k", [])
+            self.assertNotEqual(rc, pmix.PMIX_SUCCESS, repr(proc))
+            self.assertIsNone(val)
+
+    def test_session_calls_before_init(self):
+        s = pmix.PMIxServer()
+        self.assertEqual(s.register_session(1, []), pmix.PMIX_ERR_INIT)
+        for bad in (-1, 2 ** 32):
+            self.assertEqual(s.register_session(bad, []), pmix.PMIX_ERR_BAD_PARAM)
+            self.assertEqual(s.deregister_session(bad), pmix.PMIX_ERR_BAD_PARAM)
+        # the callback form of the deregistration reports through the
+        # callback, even when it is refused at once
+        seen = []
+        rc = s.deregister_session(1, lambda st, cbd: seen.append((st, cbd)), "x")
+        self.assertEqual(rc, pmix.PMIX_SUCCESS)
+        self.assertEqual(seen, [(pmix.PMIX_ERR_INIT, "x")])
+
+    def test_a_thread_python_did_not_start_is_not_the_library(self):
+        # the test was "is this a threading._DummyThread", which is true
+        # of every thread the threading module did not start
+        import _thread
+        got = []
+        done = threading.Event()
+        def probe():
+            got.append(pmix._on_library_thread())
+            done.set()
+        _thread.start_new_thread(probe, ())
+        self.assertTrue(done.wait(10))
+        self.assertEqual(got, [False])
+        self.assertFalse(pmix._on_library_thread())
+
+    def test_a_bad_argument_to_a_non_blocking_call_is_a_status(self):
+        # these raised after the operation's state had been built, and
+        # leaked it
+        c = pmix.PMIxClient()
+        s = pmix.PMIxServer()
+        cb = lambda *args: None
+        self.assertEqual(c.get_nb({'nspace': "n"}, "k", None, cb), pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(c.get_nb({'nspace': "n", 'rank': -1}, "k", None, cb),
+                         pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(c.group_join_nb("g", {'nspace': "n"}, 0, None, cb),
+                         pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(c.resource_block_nb(0, "b", [{'type': 2 ** 70, 'count': 1}],
+                                             None, cb), pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(c.validate_credential_nb({'bytes': 5}, None, cb),
+                         pmix.PMIX_ERR_TYPE_MISMATCH)
+        self.assertEqual(c.query_nb(["notadict"], cb), pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(c.resource_unit_string({'type': 2 ** 70, 'count': 1}),
+                         (pmix.PMIX_ERR_BAD_PARAM, None))
+        self.assertEqual(c.register_event_handler(["x"], None, cb),
+                         (pmix.PMIX_ERR_BAD_PARAM, -1))
+        self.assertEqual(s.collective_expire(0, "g" * 300, None, None),
+                         pmix.PMIX_ERR_BAD_PARAM)
+
+    def test_a_bad_argument_to_a_blocking_call_is_a_status(self):
+        # each of these raised after an array had been allocated, and
+        # leaked it - or, for a list that misreports its length, wrote
+        # past its end
+        class Short(list):
+            def __len__(self):
+                return 1
+        c = pmix.PMIxClient()
+        info = [{'key': "pmix.x", 'value': 1, 'val_type': pmix.PMIX_INT}]
+        self.assertEqual(c.get({'nspace': "n", 'rank': 0}, "k" * 600, info),
+                         (pmix.PMIX_ERR_BAD_PARAM, None))
+        self.assertEqual(c.lookup([{'key': "k" * 600}], info)[0], pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(c.lookup(["notadict"], info)[0], pmix.PMIX_ERR_BAD_PARAM)
+        self.assertEqual(c.query(["notadict"])[0], pmix.PMIX_ERR_BAD_PARAM)
+        q = {'keys': Short(["a", "b", "c", "d"]), 'qualifiers': []}
+        rc, _ = c.query([q])
+        self.assertNotEqual(rc, pmix.PMIX_ERR_BAD_PARAM)
+        # and the caller's query is left as it was given
+        self.assertIsInstance(q['keys'], Short)
+
+    def test_notify_event_takes_no_source(self):
+        # None is this process, as NULL is in C
+        c = pmix.PMIxClient()
+        self.assertEqual(c.notify_event(pmix.PMIX_ERR_JOB_TERMINATED, None,
+                                        pmix.PMIX_RANGE_LOCAL, []),
+                         pmix.PMIX_ERR_INIT)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

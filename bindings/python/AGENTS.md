@@ -86,14 +86,15 @@ from there waits on the event loop it is standing in; the library now
 reports that rather than deadlocking (see §4b). So a handler that wants
 to register or delete a namespace *must* pass a callback.
 
-All fifteen of that family now take one: `register_nspace`,
-`deregister_nspace`, `register_client`, `deregister_client`,
-`notify_event`, `register_resources`, `deregister_resources`,
-`setup_local_support`, `deliver_inventory`, `iof_deliver`,
-`iof_flow_control`, `session_control`, `deregister_event_handler`,
+All eighteen of that family now take one: `register_nspace`,
+`deregister_nspace`, `register_session`, `deregister_session`,
+`register_client`, `deregister_client`, `notify_event`,
+`register_resources`, `deregister_resources`, `setup_local_support`,
+`deliver_inventory`, `iof_deliver`, `iof_flow_control`,
+`collective_expire`, `session_control`, `deregister_event_handler`,
 `iof_deregister` and `iof_push`.
 
-Fourteen take the op-style callback, `cbfunc(status, cbdata)`.
+Seventeen take the op-style callback, `cbfunc(status, cbdata)`.
 `session_control` is the exception: it reports results, so it takes the
 info-style `cbfunc(status, results, cbdata)` and routes through
 `pypmix_client_info_cbfunc`.
@@ -135,6 +136,15 @@ are bound: the struct pretty-printers and the serialization calls.
 **One deprecated API is skipped on purpose:**
 `PMIx_tool_connect_to_server`, superseded by `PMIx_tool_attach_to_server`
 (which is bound). Leave it unbound.
+
+**How to check completeness.** Diff the `PMIx_*` names declared in
+`include/pmix.h`, `pmix_server.h` and `pmix_tool.h` against the ones
+`pmix.pyx`/`pmix.pxi` call, and drop the helper families above; what is
+left is unbound. Do the same for the slots of `pmix_server_module_t`
+against `setmodulefn`'s `permitted` list, and for the `PMIX_*` data types
+in `pmix_common.h.in` against the arms of `pmix_load_value_arm`. The
+session calls, added after the last such pass, were missing until one was
+run.
 
 ---
 
@@ -199,11 +209,73 @@ status). Methods that also produce data return a **tuple**, e.g.
 ### The conversion helpers (`pmix.pxi`)
 
 - `pmix_load_value` / `pmix_unload_value` — one value dict ↔ `pmix_value_t`.
-  A big `if/elif` over `val_type`, one arm per PMIx data type.
+  One arm per data type, in `pmix_load_value_arm` /
+  `pmix_unload_value_arm`; the outer functions catch anything the arm
+  raises. A load that fails returns a status - `PMIX_ERR_TYPE_MISMATCH`
+  for the wrong Python type, `PMIX_ERR_BAD_PARAM` for an out-of-range
+  value or a malformed dict - and never raises. An unload that fails
+  returns `None`, which is **not** a `PMIX_UNDEF` dict: an undefined value
+  is a legitimate thing to be handed (a lookup reports a key it did not
+  find that way), so the two must not be confused.
+- `pmix_check_int(v, lo, hi, what)` — every integer arm, against both ends
+  of its C type. `pmix_umax`/`pmix_smax`/`pmix_smin` give the ends for a
+  width; they compute in Python ints on purpose, because as C arithmetic
+  `1 << 64` overflows. A `bool` is not an integer here (`pmix_is_int`):
+  Python says it is one, but `True` handed over as a rank or a count is a
+  mistake, not a 1. A `PMIX_BOOL` string must say which it is -
+  `"true"`/`"false"` or `"t"`/`"f"`, in any case; matching on the first
+  letter read `"tomato"` as true.
+- `pmix_load_cstr` — every string member: `str` (UTF-8) or `bytes` in,
+  `None` as NULL, an embedded NUL refused.
+- `pmix_need(v, keys)` — a struct's dict must name every member: an
+  absent member is `PMIX_ERR_BAD_PARAM`, and only an explicit `None` is a
+  NULL. A misspelt key used to load as an empty member and succeed. This
+  holds for a struct in a method's list as well as for one given as a
+  value: `pmix_load_units` defaulted a missing `count` to 0 and a missing
+  `type` to unknown until it was made to ask too.
+- **Every loader that walks a Python list takes a list or a tuple** and
+  answers anything else with `PMIX_ERR_BAD_PARAM` rather than raising
+  through a `:list`-typed parameter - which left the caller holding the
+  array it had allocated, past the failure path that would free it.
+- **A loader walks its own copy of the list, checked against the count
+  the array was sized for.** Sizing a C array by `len()` and filling it by
+  iterating asks a Python object two separate questions: a list subclass
+  can answer them differently, and a list can grow while it is walked,
+  since the loop runs Python code (a comparison, a dict lookup, an
+  encode) that may reach it. Either wrote past the end of the block. So
+  each array loader takes the capacity it is filling (`pmix_load_info(array,
+  n, dicts)`, and likewise `_procs`, `_pdata`, `_apps`, `_units`, `_argv`)
+  and walks `pmix_snapshot(x, n)`, a private `list` that must hold exactly
+  `n`; a loader that allocates for itself takes `pmix_listcopy(x)` before
+  it measures anything. Pass the count you allocated with, never a fresh
+  `len()`.
+- **A payload is bytes, a `bytearray`, a `memoryview` or a `str`**
+  (`pmix_payload`). `bytes()`, which this replaced, also takes an integer
+  and answers that many NUL bytes, so `{'bytes': 5}` loaded five NULs.
+- **A name is copied whole or refused.** `pmix_copy_nspace` /
+  `pmix_copy_key` raise `ValueError` for a name that does not fit its
+  fixed-size array, carries a NUL, or is not UTF-8; the loaders check
+  with `pmix_name_ok` first, so for them it is a status. They used to cut
+  the name short in silence, and a cut name is a different name: two long
+  keys that differed past the limit became one, and a key with a NUL in
+  it became whatever preceded the NUL.
+- `pmix_load_info` clears `PMIX_INFO_PERSISTENT` from the flags it is
+  given: a value the bindings built is always their own copy, and a
+  persistent one would be leaked wherever the library takes the array.
 - `pmix_load_info` / `pmix_unload_info` / `pmix_alloc_info` / `pmix_free_info`
   — info dict lists ↔ `pmix_info_t[]`. `pmix_alloc_info` is the standard
   "malloc + load" entry point used by nearly every method.
 - `pmix_load_darray` / `pmix_unload_darray` — nested `PMIX_DATA_ARRAY`.
+  These are built **on the scalar arms**, not beside them: an element is
+  loaded as a value and moved into its slot, and unloaded by lending the
+  slot to a value that is never destructed. `pmix_darray_esize` gives the
+  element width (it must match the library's `data_array_construct`), and
+  `pmix_type_is_boxed` names the types whose value holds a pointer to the
+  struct the slot holds inline. So a type converts in an array exactly
+  when it converts on its own. Info, value and app arrays have dedicated
+  arms, since those have no scalar form. The separately written array
+  arms this replaced had drifted: unsigned elements went through signed
+  pointers, and an array of `PMIX_VALUE` could not be loaded at all.
 - `pmix_load_units` / `pmix_unload_units` / `pmix_alloc_units` /
   `pmix_free_units` — resource unit dict lists ↔ `pmix_resource_unit_t[]`.
   The struct has no allocated members and the APIs that take one do not
@@ -214,12 +286,22 @@ status). Methods that also produce data return a **tuple**, e.g.
 - `pmix_load_bo` / `pmix_unload_bo` — byte-object dict ↔
   `pmix_byte_object_t`. **This is the only correct way to move a payload
   across**: it takes its length from the bytes it was actually handed, not
-  from the dict's `size`. Every arm that copies a blob goes through it.
+  from the dict's `size`. Every arm that copies a blob goes through it,
+  except the regex.
+- `pmix_load_regex` — a `PMIX_REGEX` is kept in a byte object but read as
+  a C string by everything in the library that touches it (pack, copy,
+  parse), so it is stored **with its NUL**, as the library's own loader
+  stores it; the unloader takes the NUL off again. Loaded without one, the
+  first pack read past the end of the allocation, and the value came back
+  with a NUL it never had.
 - `pmix_load_coord` / `pmix_unload_coord` — coordinate dict ↔
   `pmix_coord_t`, likewise refusing a `dims` larger than the vector.
 - `pmix_decode_str` — a `char *` the library is allowed to leave NULL,
-  answered as `str` or `None`. Casting a NULL `char *` to `<bytes>` walks
-  address zero; several unload arms used to.
+  answered as `str` or `None` (or `bytes`, for one that is not UTF-8).
+  Casting a NULL `char *` to `<bytes>` walks address zero; several unload
+  arms used to. `None` goes back in as NULL through `pmix_load_cstr`, and
+  likewise for every type whose value is a pointer - the library allows
+  that pointer to be NULL, so a value of `None` round-trips.
 - `pmix_darray_alloc` / `pmix_darray_nomem` — the block behind a data
   array, zeroed, with an empty array answered as NULL rather than as a
   `malloc(0)` whose return value is not portable.
@@ -262,6 +344,21 @@ The C callback (`setupapp_cbfunc`, `dmodx_cbfunc`, `collectinventory_cbfunc`)
 caches its results into `active` and calls `active.set(status)`. Because
 `active` is a single global, these blocking calls are **not reentrant / not
 thread-safe** across concurrent operations — a known limitation.
+
+**None of them can be called on the progress thread** - from an upcall,
+an event handler or an `_nb` callback. The callback that would set
+`active` runs on that thread, which is the one waiting, so the wait never
+ends and nothing else the server does runs again. The library cannot
+see this coming - to it the request is non-blocking - so each method
+asks `_on_library_thread()` first and answers `PMIX_ERR_WOULD_BLOCK`, as
+the library's own blocking calls do.
+
+`active.clear()` drops what the previous request left, and each callback
+caches a result on every path - an empty list when it failed - before it
+calls `active.set()`. A failed `setup_application` used to hand back the
+previous call's results, and a `dmodex_request` that the library answered
+with an error reported success: the call only *accepts* the request, so
+the method reads `active.get_status()` after the wait.
 
 ### 4b. Upcalls: C server-module and event/IOF handlers → Python
 
@@ -320,6 +417,58 @@ check it. They used to guard the call with `except KeyError`, which it
 cannot raise, so an unrecognized key was accepted silently, never wired
 in, and the caller's handler was simply never invoked.
 
+### Completing an upcall, exactly once
+
+The library's contract with a host is that each upcall's request is
+completed **exactly once**: the host returns `PMIX_SUCCESS` and calls the
+callback (now or later, from any thread), or returns anything else and
+never calls it, and the library completes the request itself. Both halves
+matter, because the library releases the request on completion. A second
+completion is a use-after-free and a double release; a missing one leaves
+the requester waiting forever.
+
+A Python handler can break that in ways a C host rarely does - complete
+and then forget to `return` a status, complete and then raise, complete
+from a `Timer` it left behind after returning an error - so the bindings
+enforce it rather than trust the handler:
+
+- **The `'cbfunc'` entry of `cbdata_dict` is a one-shot token.** Every
+  completion helper (`pypmix_op_cbfunc`, `pypmix_info_cbfunc`, ...) pops
+  it before calling the C callback, so only the first call does anything.
+  `pypmix_take_cbfunc` answers `None` when it is gone, which is not the
+  same as a NULL callback.
+- **The trampoline settles its return value against the token**
+  (`pypmix_settle`, `pypmix_settle_raise`). If the handler has completed,
+  the library is told `PMIX_SUCCESS`, whatever the handler returned or
+  raised. If it has not and is returning anything else - an error,
+  `PMIX_OPERATION_SUCCEEDED`, a non-int, an exception - the trampoline
+  takes the token itself, so a late completion is a no-op. `dict.pop` is
+  atomic under the GIL, which is what lets the two race safely.
+- **A helper always completes, given the cbdata it was handed.** When
+  what the handler passed cannot be converted - a value of an unsupported
+  type, a modex that is not bytes, a status that is not a status
+  (`pypmix_status_of`) - the helper still calls the C callback, with the
+  error and no data. It used to print and return, and the requester
+  waited forever. **Nothing between taking the token and calling may
+  raise**: from a `Timer` thread an exception just ends the thread, and
+  the token is already gone. (A helper called with something other than
+  that cbdata dict has no request to complete, and raises `TypeError`.)
+- **A status has to fit in a C int.** `pypmix_settle` treats one that
+  does not as no status at all. It used to take the token and return the
+  number, whose conversion then raised inside the trampoline - which,
+  finding the token gone, told the library a completion was coming. An
+  event handler's status is checked the same way, before the conversion:
+  one out of range stalled the rest of the event's chain.
+- **The two `void` upcalls** (`toolconnected`, `log`) have no status to
+  settle, so every path that does not reach the handler - a missing
+  handler, a conversion that fails, a handler that raises before
+  completing - completes through the helper with an error.
+
+`test/python/server.py`'s publish and lookup handlers include a handler
+that completes and returns nothing, one that completes and raises, and one
+that answers with something unconvertible; against the old bindings the
+first of these crashed the server.
+
 ### The upcall trampolines must not let an exception escape
 
 Every `cdef int` trampoline is stored in `pmix_server_module_t` and called
@@ -370,10 +519,22 @@ Three pieces, all in `pmix.pyx`:
   (`pypmix_client_op_cbfunc`, `_info_`, `_value_`, `_lookup_`, `_spawn_`,
   `_credential_`, `_validation_`, `_devdist_`). All are `noexcept with
   gil`, per the rules below, with the user's callback wrapped in
-  `try`/`except`. **Everything the library hands a callback belongs to
-  the library**, and only the info and device-distance forms carry a
+  `try`/`except`. **What the library hands a callback belongs to the
+  library**, and only the info and device-distance forms carry a
   `release_fn` — the rest reclaim their data as soon as the callback
-  returns, so convert to Python before doing anything else.
+  returns, so convert to Python before doing anything else. There are
+  two exceptions, both transfers the C man pages document: the
+  `pmix_value_t` a `get_nb` callback is handed, which the value
+  trampoline releases with `PMIx_Value_free` once converted (taking it
+  for the library's leaked one value per call), and a credential's
+  payload, which the credential trampoline and the blocking
+  `get_credential` free once copied. The one value the library keeps is
+  a `PMIX_GET_POINTER_VALUES` answer, so `get_nb` refuses that directive
+  as `get` does (`pmix_asks_pointer_values`). Read the callback type's C
+  man page for ownership before writing a trampoline. A conversion that
+  raises is caught and becomes an error
+  status for the callback; the release, the caddy reclaim and the
+  callback all still happen (`pypmix_client_finish`).
 
 Two invariants are easy to miss:
 
@@ -400,6 +561,40 @@ Full write-up, including how to add a further `_nb` binding:
 ### Rules when touching callback code
 
 - Trampolines that call back into Python **must** be `cdef ... with gil`.
+- **Every library call that can wait on the progress thread runs in
+  `with nogil:`** - the blocking forms as much as the `_nb` ones. While one
+  waits, the progress thread may need to run Python (an event handler, an
+  `_nb` callback, an upcall), and it cannot while the caller holds the
+  GIL: the request the caller is waiting for is queued behind it. Most of
+  the blocking methods used to hold it. Arguments to a call made without
+  the GIL must be C-typed, so convert into C locals first; Cython refuses
+  to compile anything else. The pure helpers that never wait (string
+  converters, `generate_regex`, `Get_cpuset`, ...) need not bother.
+- **A blocking registration from the progress thread is refused before
+  it takes `_reglock`.** `register_event_handler` and `iof_pull` hold that
+  lock across the library call, which waits for the progress thread; a
+  handler there trying the same would wait for the lock, and the lock's
+  holder for the handler. The library would refuse the call anyway
+  (`PMIX_ERR_WOULD_BLOCK`), so `_on_library_thread()` answers that first.
+  It asks the library (`pmix_progress_thread_is_current()`, exported but
+  not public): the test it replaced, "is this a `threading._DummyThread`",
+  is true of every thread the `threading` module did not start, and
+  refused those for nothing.
+- **A non-blocking method converts its arguments before it builds the
+  caddy, or catches what they raise.** An exception after
+  `pypmix_nb_setup` leaves the method without freeing the caddy and the
+  info array it already copied. The `pypmix_nb_add_*` helpers return a
+  status for that reason, and the methods that convert a proc, a key, a
+  block name or a credential of their own do it first.
+- **Copy the request's registry id before the call** (`nbidx = cd.idx`).
+  The error path takes the entry by that id; reading `cd.idx` there reads
+  a caddy the callback will already have freed if the library ever
+  completed the request and then also reported an error.
+- **What a non-blocking call is handed must outlive the method.** The
+  library reads it after the method has returned, so it goes in the
+  caddy - never a local. `notify_event` passed `&proc`, a local, and the
+  handler read a dead stack frame; `test/python/client.py` caught it as a
+  garbage source.
 - Trampolines that only touch C state and release into `libpmix` use
   `with nogil` around the actual C callback invocation (see
   `pypmix_op_cbfunc`).
@@ -436,6 +631,13 @@ value* rather than a build error:
   skipped rather than taken for enumerators, and an explicit `= <value>`
   is honored, with counting continuing from it. An unparsable value stops
   the build rather than emitting a wrong one.
+- **A constant with a comment after it.** A line holding `/*` used to be
+  skipped whole, as if it were all comment, which dropped every
+  `#define` written with a trailing comment - all of the
+  `PMIX_PROC_STATE_*` values among them. Only a line that *starts* as a
+  comment is skipped now; a trailing one is cut off. A value written as
+  an offset from a constant already harvested, `(PMIX_PROC_STATE_ERROR +
+  1)`, is computed.
 - **A header that fails to parse stops the build.** The return of every
   `harvest_constants` call is checked; it used to be ignored for every
   file but the first, quietly producing bindings with that header's
@@ -540,11 +742,12 @@ from Python** — so `pmix.pyx` exposes one module-level hook,
 `pmix_value_t`, converts it back, releases the value, and returns
 `(rc, dict)`. That is what makes the load/unload arms — above all the
 `PMIX_DATA_ARRAY` ones, where a struct-member typo compiles cleanly (§3) —
-coverable with no server at all; see `TestValueConversion` and
-`TestDataArrayConversion` in `test_bindings.py`. The hook needs no
-initialized library, with one exception: a `PMIX_REGEX` value's storage
-belongs to the `preg` framework, so it is refused rather than released
-against an unbuilt module list.
+coverable with no server at all; see `TestValueConversion`,
+`TestDataArrayConversion` and `TestConversionCompleteness` in
+`test_bindings.py`. The hook needs no initialized library - a
+`PMIX_REGEX` value included: its release goes through the `preg`
+framework, but that is a plain `free()` on a statically initialized
+module.
 
 A round trip through the hook is *necessary but not sufficient*: it
 exercises the loader and the unloader against each other, so a mistake
@@ -555,7 +758,11 @@ authority for a layout is the C side that will read it
 Anything the library itself must interpret still wants a connected
 round trip (put→get, publish→lookup) in the integration scripts, and
 `swarm_datatypes.py` sends every supported type to a peer for exactly
-that reason.
+that reason. Short of that, the library's own printer reads what the
+bindings built: `value_string()` works before init, and
+`TestConversionCompleteness` uses it to check that unsigned array elements
+hold the values given, which a round trip through signed pointers could
+not show.
 
 **Two things only a multi-node run can reach**, which is why the swarm
 tests exist rather than being duplicated in-tree:
@@ -573,6 +780,27 @@ this code has produced cluster at the largest representable value, the
 empty list, a declared size larger than the payload, an optional string
 the C side left NULL, and a payload full of NUL and high bytes.
 `TestConversionBoundaries` is that set.
+
+### Documenting a binding
+
+The user documentation for the bindings is the **Python Syntax** section
+of the C man pages under [`docs/man/`](../../docs/man/): every man3 page
+for a bound API shows the method, and every man5 page for a converted
+type shows its dict (`pmix_value_t(5)` holds the table of the Python
+form of each data type). A change here that a caller can see is not done
+until those pages say so:
+
+- a new method, or a new form of one (a callback, a return shape) - the
+  API's man3 page, including the non-blocking form where there is one;
+- a change to what a conversion accepts or answers - the type's man5
+  page, and the `pmix_value_t(5)` table;
+- a new refusal (a directive, a thread it cannot be called on) - a
+  comment in the man3 example.
+
+To find gaps, list the methods of the four classes and look for each
+in the man pages' Python blocks; a method whose man page has no Python
+section, or shows only the blocking form of a method that takes a
+`cbfunc`, is a gap.
 
 ---
 
@@ -697,6 +925,31 @@ produced a defect more than once:
   `PMIx_Register_attributes` and then returned `PMIX_SUCCESS` regardless.
 - **A library must not touch the caller's namespace** — see the `__all__`
   note in §6.
+- **A Cython expression on a C-typed operand is C arithmetic.** With
+  `nbytes` declared `size_t`, `1 << (8 * nbytes)` is computed in C and
+  overflows for an eight-byte type; every bound computed that way was
+  wrong. Convert to a Python object first (`<object> nbytes`) when the
+  result is meant to be a Python int.
+- **A partial success carries data.** `PMIX_ERR_PARTIAL_SUCCESS` comes
+  with the part that could be answered, and some calls return a results
+  array alongside an error too. `pmix_take_results` converts on success
+  or partial success and releases the array on every status; testing for
+  `PMIX_SUCCESS` alone dropped the results and leaked them.
+- **Mirror the library's "done, no callback".** When a C `_nb` call
+  answers `PMIX_OPERATION_SUCCEEDED` it has completed the operation and
+  will not call back, so a method that updates class state on completion
+  has to do it before returning that (the fabric calls), and the caller
+  needs another way to the result (`fabric_info()`).
+- **One fabric request at a time.** The library writes the class's
+  fabric object from the progress thread when a request completes, so a
+  `fabric_busy` flag refuses another request, or a read of the result,
+  while one is outstanding - blocking forms included. The flag is claimed
+  in the statement after the test, before anything that can run Python:
+  converting the info, or taking the registry lock, lets another thread
+  in, and both used to pass the test.
+- **A slot the bindings cannot fill is refused, not accepted.**
+  `setmodulefn('listener', ...)` used to succeed and never wire the
+  handler in; it now answers `PMIX_ERR_NOT_SUPPORTED`.
 
 Do **not** work around a defect by weakening a test — fix the code (see the
 top-level guidance on never bending a test to a bug).
@@ -794,9 +1047,19 @@ respect:
   vector actually provided reads off the end of the Python object;
   `pmix_load_coord` refuses it.
 
-Note that `PMIX_TOPO` and `PMIX_PROC_CPUSET` values remain unconvertible
-(`PMIX_ERR_NOT_SUPPORTED` on load, `None` on unload) — both are opaque
-provider objects. The cpuset has a string form the bindings use instead
+Note that `PMIX_TOPO` and `PMIX_PROC_CPUSET` values have no Python form —
+both are opaque provider objects. They unload as `None` (an array of them
+as a list of `None`), and only `None` loads: it is the library's "no
+topology" and "not bound", which it packs as exactly that. An array of
+either cannot be loaded. So does `PMIX_POINTER`, which means nothing outside the
+process that made it. `PMIX_REGATTR` - what an attribute-support query
+answers with - converts as `{'name', 'key', 'type', 'description'}`. `PMIX_COMMAND` (the
+library's private wire command) and `PMIX_QUERY` have no scalar form in
+the library itself - no member of the value union - so they have none
+here either. `PMIX_INFO_DIRECTIVES`, `PMIX_DATA_TYPE` and
+`PMIX_IOF_CHANNEL` were in the same state until the union gained
+`infodirs`, `dtype` and `channel`; they now convert as range-checked
+ints like the other named integer types. The cpuset has a string form the bindings use instead
 (§8a); the topology does not.
 
 ### Style / conventions specific to these bindings
@@ -806,10 +1069,10 @@ provider objects. The cpuset has a string form the bindings use instead
 - Every new public method takes the attribute list parameter
   (`dicts`/`pyinfo`) even if it ignores it today — attributes are how PMIx
   APIs grow. See the top-level *Role of Attributes* section.
-- Strings cross to C as ASCII (`.encode('ascii')`); guard with
-  `isinstance(x, str)` since callers may pass `bytes`. Use `pmix_copy_nspace`
-  / `pmix_copy_key` for the fixed-size `nspace`/`key` arrays (they guarantee
-  NUL-termination and length clamping).
+- Strings cross to C as UTF-8; guard with `isinstance(x, str)` since
+  callers may pass `bytes`. Use `pmix_copy_nspace` / `pmix_copy_key` for
+  the fixed-size `nspace`/`key` arrays - they NUL-terminate, and refuse a
+  name that does not fit rather than shortening it.
 - Accessors that return C strings decode to `str` (e.g. `get_version()` now
   returns `str`). A few round-trip payloads (byte objects, IOF data) are
   `bytes`; decode defensively when a value could be either.

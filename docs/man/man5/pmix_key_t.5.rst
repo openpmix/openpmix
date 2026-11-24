@@ -20,6 +20,23 @@ C Syntax
    typedef char pmix_key_t[PMIX_MAX_KEYLEN+1];
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   key = PMIX_JOB_SIZE      # or any string, e.g. "mykey"
+
+where ``key`` is a ``str`` (or ``bytes``) of at most ``PMIX_MAX_KEYLEN``
+(511) bytes once encoded as UTF-8, with no NUL in it. A key that does not
+fit, or that carries a NUL, is refused with ``PMIX_ERR_BAD_PARAM`` rather
+than shortened. The ``PMIX_*`` attribute names are provided as ``str``
+constants. A key handed back by the library is a ``str``, or ``bytes`` if
+it is not valid UTF-8.
+
+
 DESCRIPTION
 -----------
 

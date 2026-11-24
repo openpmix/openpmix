@@ -32,8 +32,13 @@ Python Syntax
 
    foo = {'bytes': bts, 'size': sz}
 
-where ``bts`` is a Python byte array and ``sz`` is the integer
-number of bytes in that array.
+where ``bts`` is the payload and ``sz`` the number of bytes in it. The
+payload may be ``bytes``, a ``bytearray``, a ``memoryview`` or a ``str``
+(encoded as UTF-8); anything else, an integer included, is
+``PMIX_ERR_TYPE_MISMATCH``. The length is taken from the payload actually
+given, so ``size`` is ignored on input and may be left out. A missing or
+``None`` payload is an empty byte object. A byte object handed back by the
+library gives ``bytes`` as a ``bytes`` object and ``size`` as its length.
 
 
 DESCRIPTION

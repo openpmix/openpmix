@@ -23,6 +23,18 @@ C Syntax
    #define PMIX_STORAGE_ACCESS_RDWR    0x0003
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   access = PMIX_STORAGE_ACCESS_RD
+
+where the value is one of the ``pmix_storage_access_type_t`` constants listed on this page, a plain Python ``int``.
+
+
 DESCRIPTION
 -----------
 

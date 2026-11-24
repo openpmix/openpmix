@@ -21,6 +21,28 @@ SYNOPSIS
                                               pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxServer()
+  # ... after a successful foo.init(pydirs, map) ...
+  # the session's description is a list of Python ``pmix_info_t``
+  # dictionaries
+  sinfo = [{'key': PMIX_UNIV_SIZE, 'value': 64, 'val_type': PMIX_UINT32},
+           {'key': PMIX_MAX_PROCS, 'value': 64, 'val_type': PMIX_UINT32}]
+  rc = foo.register_session(42, sinfo)
+
+  # the non-blocking form, which is the one to use from inside a server
+  # module upcall - cbfunc(status, cbdata) runs on the progress thread
+  def donecb(status, cbdata):
+      print("session registered:", foo.error_string(status))
+  rc = foo.register_session(42, sinfo, donecb, "mycbdata")
+
+
 INPUT PARAMETERS
 ----------------
 
@@ -131,7 +153,9 @@ of the host's up-calls - it does not return ``PMIX_ERR_WOULD_BLOCK``.
 It completes the registration *asynchronously* on that same loop and
 returns ``PMIX_SUCCESS``. Every other PMIx operation is serialized
 through that loop, so each sees the session registered exactly as it
-would have.
+would have. The library takes its own copy of ``info`` for this, so the
+caller may release or reuse the array as soon as the call returns, as
+for any blocking call.
 
 
 .. seealso::

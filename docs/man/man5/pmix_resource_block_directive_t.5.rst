@@ -29,6 +29,18 @@ C Syntax
    #define PMIX_RESOURCE_BLOCK_EXTERNAL     128
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   directive = PMIX_RESOURCE_BLOCK_DEFINE
+
+where the value is one of the ``pmix_resource_block_directive_t`` constants listed on this page, a plain Python ``int``.
+
+
 DESCRIPTION
 -----------
 

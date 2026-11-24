@@ -28,6 +28,29 @@ C Syntax
    } pmix_app_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   app = {'cmd': "/bin/hostname", 'argv': ["hostname", "-s"],
+          'env': ["FOO=bar"], 'cwd': "/tmp", 'maxprocs': 2,
+          'info': [{'key': PMIX_MAPBY, 'value': "slot", 'val_type': PMIX_STRING}]}
+
+where ``cmd`` is the executable, ``argv`` and ``env`` are lists of
+strings, ``cwd`` is the working directory, ``maxprocs`` is the number of
+processes, and ``info`` is a list of :ref:`pmix_info_t(5)
+<man5-pmix_info_t>` dicts. Only ``cmd`` or a non-empty ``argv`` is
+required: a missing ``argv`` is ``[cmd]``, a missing ``cwd`` is the
+calling process's current directory, and a missing ``maxprocs`` is 1. An
+entry that is given but cannot be converted |mdash| including a ``None``
+inside ``argv`` or ``env`` |mdash| is ``PMIX_ERR_BAD_PARAM``, never
+dropped. An app handed to a server's ``spawn`` handler has the same shape,
+with ``cmd`` and ``cwd`` ``None`` where the library left them NULL.
+
+
 DESCRIPTION
 -----------
 

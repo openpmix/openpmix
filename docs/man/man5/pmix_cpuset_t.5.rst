@@ -23,6 +23,33 @@ C Syntax
    } pmix_cpuset_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   cpus = {'source': "hwloc", 'cpus': [0, 1, 2, 3, 8]}
+
+where ``source`` names the provider that produced the bitmap (the library
+supports ``"hwloc"``, which is also the default when ``source`` is left
+out) and ``cpus`` lists the CPU indices in the set. On input ``cpus`` may
+also be a list of range strings (``['0-3', '8']``) or one range-list string
+(``"0-3,8"``). The bitmap itself has no Python form: the set crosses as the
+library's string form, ``"<source>:<range-list>"``, which
+:ref:`PMIx_Parse_cpuset_string(3) <man3-PMIx_Parse_cpuset_string>` and
+:ref:`PMIx_server_generate_cpuset_string(3)
+<man3-PMIx_server_generate_cpuset_string>` convert. A cpuset handed back
+by the library always lists individual indices, and an unbound process
+comes back as ``{'source': '', 'cpus': []}``.
+
+This dict is what the methods that take or return a cpuset use
+(``get_cpuset``, ``compute_distances``, ``parse_cpuset_string``). A
+*value* of type ``PMIX_PROC_CPUSET`` is different: it can only be ``None``
+(see :ref:`pmix_value_t(5) <man5-pmix_value_t>`).
+
+
 DESCRIPTION
 -----------
 

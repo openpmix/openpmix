@@ -37,6 +37,15 @@ Python Syntax
              'value': 4, 'val_type': PMIX_UINT32}]
   rc = foo.register_nspace("myjob", 4, pydirs)
 
+  # the non-blocking form returns as soon as the request has been accepted,
+  # and cbfunc(status, cbdata) runs on the PMIx progress thread if and only
+  # if the call returned PMIX_SUCCESS. It is the form to use on that
+  # thread - in a server-module upcall, an event handler or another
+  # callback - where a blocking PMIx call must not be made
+  def donecb(status, cbdata):
+      print("register_nspace completed:", foo.error_string(status))
+  rc = foo.register_nspace("myjob", 4, pydirs, donecb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

@@ -24,6 +24,18 @@ C Syntax
    #define PMIX_LINK_UP                2
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   state = PMIX_LINK_UP
+
+where the value is one of the ``pmix_link_state_t`` constants listed on this page, a plain Python ``int``.
+
+
 DESCRIPTION
 -----------
 

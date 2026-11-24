@@ -22,6 +22,18 @@ C Syntax
    #define PMIX_CPUBIND_THREAD     1
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   rc, cpus = foo.get_cpuset(PMIX_CPUBIND_PROCESS)
+
+where the envelope is ``PMIX_CPUBIND_PROCESS`` or ``PMIX_CPUBIND_THREAD``.
+
+
 DESCRIPTION
 -----------
 

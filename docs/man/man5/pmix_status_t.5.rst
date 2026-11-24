@@ -27,9 +27,12 @@ Python Syntax
 
    from pmix import *
 
-   foo = PMIxStatus.status
+   status = PMIX_ERR_NOT_FOUND
+   print(foo.error_string(status))   # foo is any PMIxClient object
 
-where ``status`` is a PMIx-defined status code (e.g., ``PMIX_SUCCESS``)
+where ``status`` is a plain Python ``int`` holding one of the ``PMIX_*``
+status codes. Every method that reports a status returns one, either alone
+or as the first element of a tuple.
 
 
 DESCRIPTION

@@ -33,6 +33,18 @@ C Syntax
    #define PMIX_JOB_STATE_TERMINATED_WITH_ERROR    50
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   state = PMIX_JOB_STATE_UNDEF
+
+where the value is one of the ``pmix_job_state_t`` constants listed on this page, a plain Python ``int``.
+
+
 DESCRIPTION
 -----------
 

@@ -25,6 +25,22 @@ C Syntax
    } pmix_endpoint_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   endpt = {'uuid': "dev-uuid", 'osname': "eth0",
+            'endpt': {'bytes': b'\x0a\x00\x00\x01', 'size': 4}}
+
+where ``uuid`` and ``osname`` are strings (``None`` for NULL) and
+``endpt`` is a :ref:`pmix_byte_object_t(5) <man5-pmix_byte_object_t>` dict
+holding the endpoint (``None`` for an empty one). All three must be
+present. An endpoint handed back by the library has the same shape.
+
+
 DESCRIPTION
 -----------
 

@@ -20,6 +20,24 @@ SYNOPSIS
                                        pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxServer()
+  # ... after a successful foo.init(pydirs, map) and register_session ...
+  # the C call reports no status, so the blocking form returns PMIX_SUCCESS
+  rc = foo.deregister_session(42)
+
+  # with a callback, the outcome - including a refusal - arrives there:
+  # cbfunc(status, cbdata), on the progress thread
+  def donecb(status, cbdata):
+      print("session deregistered:", foo.error_string(status))
+  rc = foo.deregister_session(42, donecb, "mycbdata")
+
 INPUT PARAMETERS
 ----------------
 

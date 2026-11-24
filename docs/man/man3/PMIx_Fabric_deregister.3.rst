@@ -33,10 +33,10 @@ Python Syntax
   # ... after a successful foo.init() and foo.fabric_register() ...
   rc = foo.fabric_deregister()
 
-  # the non-blocking form returns as soon as the request has been accepted
-  # and reports the result by executing a callback on the PMIx progress
-  # thread. The callback is run if and only if the call returned
-  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
+  # the library completes a deregistration itself, so the non-blocking
+  # form normally answers PMIX_OPERATION_SUCCEEDED at once and the
+  # callback is not run. The callback is run if and only if the call
+  # returned PMIX_SUCCESS, and must not itself make a blocking PMIx call.
   def donecb(status, cbdata):
       print("fabric deregistered:", foo.error_string(status))
   rc = foo.fabric_deregister_nb(donecb, "mycbdata")

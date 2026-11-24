@@ -20,6 +20,18 @@ C Syntax
    typedef uint32_t pmix_rank_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   rank = PMIX_RANK_WILDCARD
+
+where ``rank`` is an ``int`` from 0 to 4294967295 or one of the reserved values listed below. A ``bool`` is not accepted.
+
+
 DESCRIPTION
 -----------
 

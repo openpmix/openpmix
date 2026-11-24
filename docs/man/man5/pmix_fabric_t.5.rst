@@ -27,6 +27,17 @@ C Syntax
    } pmix_fabric_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+A fabric has no dict of its own. A ``PMIxClient`` object holds one fabric
+object: ``fabric_register()`` fills it in and returns its information as a
+list of :ref:`pmix_info_t(5) <man5-pmix_info_t>` dicts, ``fabric_info()``
+reads that list again, and ``fabric_update()`` and
+``fabric_deregister()`` act on it. See
+:ref:`PMIx_Fabric_register(3) <man3-PMIx_Fabric_register>`.
+
+
 DESCRIPTION
 -----------
 

@@ -37,7 +37,22 @@ Python Syntax
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pydirs = [{'key': PMIX_EVENT_HDLR_NAME,
              'value': "MY-HANDLER", 'val_type': PMIX_STRING}]
-  # myhdlr is a Python event-handler function
+  # myhdlr is a Python event-handler function. It runs on the PMIx
+  # progress thread, so it must not make a blocking PMIx call. It is
+  # handed the registration id, the event's status, its source (a
+  # ``pmix_proc_t`` dictionary, or None), the event's information and
+  # the results of the handlers that ran before it (lists of
+  # ``pmix_info_t`` dictionaries). It returns a tuple: a status telling
+  # the library what to do next - PMIX_EVENT_ACTION_COMPLETE ends the
+  # chain, PMIX_EVENT_NO_ACTION_TAKEN or PMIX_SUCCESS passes the event
+  # on - and a list of ``pmix_info_t`` dictionaries (or None) for the
+  # handlers after it. A handler that raises, or returns anything but
+  # an integer status that fits a C int, is reported and treated as
+  # PMIX_EVENT_NO_ACTION_TAKEN, so the chain still goes on
+  def myhdlr(refid, status, source, info, results):
+      print("event:", foo.error_string(status), source)
+      return PMIX_EVENT_ACTION_COMPLETE, None
+  # codes may be None to register a default handler for every event
   rc, refid = foo.register_event_handler(codes, pydirs, myhdlr)
 
 
