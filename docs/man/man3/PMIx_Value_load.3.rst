@@ -70,7 +70,12 @@ of the data back out of a value.
 RETURN VALUE
 ------------
 
-Returns ``PMIX_SUCCESS`` on completion.
+Returns ``PMIX_SUCCESS`` on completion, the error status of a copy that
+failed (``PMIX_ERR_NOMEM``, for example), or ``PMIX_ERR_NOT_SUPPORTED`` for
+a type a value cannot hold. Those are the types that are only ever the elements of a data array
+(``PMIX_VALUE``, ``PMIX_INFO``, ``PMIX_APP``, ``PMIX_PDATA``,
+``PMIX_KVAL``, ``PMIX_QUERY``, ``PMIX_BUFFER``) and the library's own
+``PMIX_COMMAND``.
 
 
 NOTES

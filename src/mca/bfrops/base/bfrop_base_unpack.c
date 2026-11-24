@@ -348,7 +348,12 @@ pmix_status_t pmix_bfrops_base_unpack_datatype(pmix_pointer_array_t *regtypes,
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_INT16, regtypes);
+    /* as pmix_bfrops_base_pack_datatype() packed it. The two only agree
+     * by accident in the fixed-width components; where integers are
+     * encoded by size, a signed and an unsigned 16-bit value are
+     * encoded differently, and reading the unsigned one as signed
+     * turned PMIX_STRING (3) into 65534 */
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_UINT16, regtypes);
     return ret;
 }
 

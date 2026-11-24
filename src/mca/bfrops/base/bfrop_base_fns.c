@@ -315,6 +315,15 @@ pmix_status_t pmix_bfrops_base_value_load(pmix_value_t *v,
         case PMIX_JOB_STATE:
             memcpy(&(v->data.jstate), data, sizeof(pmix_job_state_t));
             break;
+        case PMIX_INFO_DIRECTIVES:
+            memcpy(&(v->data.infodirs), data, sizeof(pmix_info_directives_t));
+            break;
+        case PMIX_DATA_TYPE:
+            memcpy(&(v->data.dtype), data, sizeof(pmix_data_type_t));
+            break;
+        case PMIX_IOF_CHANNEL:
+            memcpy(&(v->data.channel), data, sizeof(pmix_iof_channel_t));
+            break;
         case PMIX_TOPO:
             topo = (pmix_topology_t *) data;
             rc = pmix_bfrops_base_copy_topology(&v->data.topo, topo, PMIX_TOPO);
@@ -472,6 +481,9 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
         PMIX_JOB_STATE,
         PMIX_LOCTYPE,
         PMIX_DEVTYPE,
+        PMIX_INFO_DIRECTIVES,
+        PMIX_DATA_TYPE,
+        PMIX_IOF_CHANNEL,
 
         PMIX_UNDEF
     };
@@ -674,6 +686,18 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
         case PMIX_JOB_STATE:
             memcpy(*data, &(kv->data.jstate), sizeof(pmix_job_state_t));
             *sz = sizeof(pmix_job_state_t);
+            break;
+        case PMIX_INFO_DIRECTIVES:
+            memcpy(*data, &(kv->data.infodirs), sizeof(pmix_info_directives_t));
+            *sz = sizeof(pmix_info_directives_t);
+            break;
+        case PMIX_DATA_TYPE:
+            memcpy(*data, &(kv->data.dtype), sizeof(pmix_data_type_t));
+            *sz = sizeof(pmix_data_type_t);
+            break;
+        case PMIX_IOF_CHANNEL:
+            memcpy(*data, &(kv->data.channel), sizeof(pmix_iof_channel_t));
+            *sz = sizeof(pmix_iof_channel_t);
             break;
         case PMIX_TOPO:
             rc = pmix_bfrops_base_copy_topology((pmix_topology_t **) data, kv->data.topo,
@@ -1566,6 +1590,15 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
         case PMIX_JOB_STATE:
             *sz = array->size * sizeof(pmix_job_state_t);
             break;
+        case PMIX_INFO_DIRECTIVES:
+            *sz = array->size * sizeof(pmix_info_directives_t);
+            break;
+        case PMIX_DATA_TYPE:
+            *sz = array->size * sizeof(pmix_data_type_t);
+            break;
+        case PMIX_IOF_CHANNEL:
+            *sz = array->size * sizeof(pmix_iof_channel_t);
+            break;
         case PMIX_TOPO:
             *sz = array->size * sizeof(pmix_topology_t);
             topo = (pmix_topology_t*)array->array;
@@ -1879,6 +1912,15 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             break;
         case PMIX_JOB_STATE:
             *sz = sizeof(pmix_job_state_t);
+            break;
+        case PMIX_INFO_DIRECTIVES:
+            *sz = sizeof(pmix_info_directives_t);
+            break;
+        case PMIX_DATA_TYPE:
+            *sz = sizeof(pmix_data_type_t);
+            break;
+        case PMIX_IOF_CHANNEL:
+            *sz = sizeof(pmix_iof_channel_t);
             break;
         case PMIX_TOPO:
             rc = pmix_hwloc_get_topology_size(v->data.topo, sz);

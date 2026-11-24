@@ -538,9 +538,10 @@ static pmix_value_cmp_t cmp_regattr(pmix_regattr_t *r1,
 {
     int ret, c1, c2, n;
 
-    if (NULL == r1->name && NULL == r2->name) {
-        return PMIX_VALUE_COMPARISON_NOT_AVAIL;
-    }
+    /* two absent names are equal names, as two absent strings are in
+     * every other comparison here - the rest of the struct still decides.
+     * Answering "not available" meant no unnamed attribute ever compared
+     * equal to itself */
     if (NULL != r1->name) {
         if (NULL == r2->name) {
             return PMIX_VALUE1_GREATER;
@@ -555,7 +556,7 @@ static pmix_value_cmp_t cmp_regattr(pmix_regattr_t *r1,
         /* we know r1->name had to be NULL */
         return PMIX_VALUE2_GREATER;
     }
-    /* both are non-NULL and equal */
+    /* both are NULL, or both are non-NULL and equal */
 
     ret = strcmp(r1->string, r2->string);
     if (ret < 0) {
@@ -929,6 +930,18 @@ static pmix_value_cmp_t cmp_darray(pmix_data_array_t *d1,
             ret = memcmp(d1->array, d2->array, d1->size * sizeof(pmix_job_state_t));
             PMIX_CHECK_SIMPLE(ret);
             break;
+        case PMIX_INFO_DIRECTIVES:
+            ret = memcmp(d1->array, d2->array, d1->size * sizeof(pmix_info_directives_t));
+            PMIX_CHECK_SIMPLE(ret);
+            break;
+        case PMIX_DATA_TYPE:
+            ret = memcmp(d1->array, d2->array, d1->size * sizeof(pmix_data_type_t));
+            PMIX_CHECK_SIMPLE(ret);
+            break;
+        case PMIX_IOF_CHANNEL:
+            ret = memcmp(d1->array, d2->array, d1->size * sizeof(pmix_iof_channel_t));
+            PMIX_CHECK_SIMPLE(ret);
+            break;
         case PMIX_TOPO:
             t1 = (pmix_topology_t *)d1->array;
             t2 = (pmix_topology_t *)d1->array;
@@ -1253,6 +1266,18 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p1,
         break;
     case PMIX_JOB_STATE:
         ret = memcmp(&p1->data.jstate, &p2->data.jstate, sizeof(pmix_job_state_t));
+        PMIX_CHECK_SIMPLE(ret);
+        break;
+    case PMIX_INFO_DIRECTIVES:
+        ret = memcmp(&p1->data.infodirs, &p2->data.infodirs, sizeof(pmix_info_directives_t));
+        PMIX_CHECK_SIMPLE(ret);
+        break;
+    case PMIX_DATA_TYPE:
+        ret = memcmp(&p1->data.dtype, &p2->data.dtype, sizeof(pmix_data_type_t));
+        PMIX_CHECK_SIMPLE(ret);
+        break;
+    case PMIX_IOF_CHANNEL:
+        ret = memcmp(&p1->data.channel, &p2->data.channel, sizeof(pmix_iof_channel_t));
         PMIX_CHECK_SIMPLE(ret);
         break;
     case PMIX_TOPO:

@@ -83,7 +83,8 @@ function. The latter are:
 ``PMIX_ALLOC_DIRECTIVE``, ``PMIX_RESBLOCK_DIRECTIVE``,
 ``PMIX_ALLOC_INHERIT``, ``PMIX_JOB_STATE``, ``PMIX_LINK_STATE``,
 ``PMIX_LOCTYPE``, ``PMIX_DEVTYPE``, ``PMIX_STOR_MEDIUM``,
-``PMIX_STOR_ACCESS``, ``PMIX_STOR_PERSIST`` and ``PMIX_STOR_ACCESS_TYPE``.
+``PMIX_STOR_ACCESS``, ``PMIX_STOR_PERSIST``, ``PMIX_STOR_ACCESS_TYPE``,
+``PMIX_INFO_DIRECTIVES``, ``PMIX_DATA_TYPE`` and ``PMIX_IOF_CHANNEL``.
 
 Any of these may appear as the datatype of `val`, as the datatype named by
 the caller, or as both. The range and sign rules above apply to them

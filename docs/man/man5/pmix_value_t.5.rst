@@ -70,6 +70,9 @@ C Syntax
            pmix_resource_unit_t *resunit;
            pmix_node_pid_t *nodepid;
            pmix_regex2_t *regex2;
+           pmix_info_directives_t infodirs;
+           pmix_data_type_t dtype;
+           pmix_iof_channel_t channel;
        } data;
    } pmix_value_t;
 

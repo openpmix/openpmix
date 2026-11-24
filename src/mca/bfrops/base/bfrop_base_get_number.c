@@ -2579,7 +2579,12 @@ static pmix_data_type_t plain_integer_type(pmix_data_type_t type)
 
     case PMIX_LOCTYPE:
     case PMIX_STOR_ACCESS_TYPE:
+    case PMIX_DATA_TYPE:
+    case PMIX_IOF_CHANNEL:
         return PMIX_UINT16;
+
+    case PMIX_INFO_DIRECTIVES:
+        return PMIX_UINT32;
 
     case PMIX_DEVTYPE:
     case PMIX_STOR_MEDIUM:
