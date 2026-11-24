@@ -77,11 +77,11 @@ What has not changed
   (:ref:`label-version-numbers`):
 
   * the resource-usage structures (``pmix_proc_stats_t`` and its
-    relatives) and their functions are gone. In v5.0 they were
-    provisional, in the PMIx Standard's sense. The Standard's
-    committee then chose arrays of attributes for these quantities,
-    and v7 implements that final definition. No v5.0 API returned the
-    structures.
+    relatives) and their functions are still defined, but do nothing.
+    In v5.0 they were provisional, in the PMIx Standard's sense. The
+    Standard's committee then chose arrays of attributes for these
+    quantities, and v7 implements that final definition. No v5.0 API
+    returned the structures.
   * three attributes that shared a string with another attribute now
     have their own - a bug fix.
 
