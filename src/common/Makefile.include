@@ -27,7 +27,8 @@ sources += \
         common/pmix_session.c \
         common/pmix_pfexec.c \
         common/pmix_monitor.c \
-        common/pmix_idenv.c
+        common/pmix_idenv.c \
+        common/pmix_deprecated.c
 
 headers += \
         common/pmix_control.h \

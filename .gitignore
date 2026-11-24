@@ -288,6 +288,7 @@ test/unit/bfrops_get_number
 test/unit/bfrops_helpers
 test/unit/bfrops_null_object
 test/unit/bfrops_print_timeval
+test/unit/deprecated_stats
 test/unit/bfrops_malformed
 test/unit/bfrops_versions
 test/unit/nested_darray

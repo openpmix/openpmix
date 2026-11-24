@@ -85,6 +85,272 @@ extern "C" {
  * reading it". */
 #define PMIX_COMPRESSED_STRING          42
 
+/* RESOURCE USAGE STATISTICS
+ * v5 defined these four structures, their data types and their helper
+ * functions provisionally, in the PMIx Standard's sense. The Standard
+ * then settled on arrays of pmix_info_t for the same quantities, which
+ * is what PMIx_Process_monitor returns for
+ * PMIX_MONITOR_PROC_RESOURCE_USAGE and its NODE, DISK and NET forms -
+ * use those.
+ *
+ * The definitions remain so that a program built against v5 still
+ * loads and one written for v5 still compiles. Nothing behind them
+ * works: no PMIx API produces or accepts these structures and no
+ * bfrops component packs the four data types. Each *_create function
+ * returns NULL, and the *_construct, *_destruct and *_free functions
+ * do nothing. */
+
+/* DATATYPES */
+#define PMIX_PROC_STATS                 61
+#define PMIX_DISK_STATS                 62
+#define PMIX_NET_STATS                  63
+#define PMIX_NODE_STATS                 64
+
+/* STRUCTURES */
+typedef struct pmix_proc_stats {
+    /* process ident info */
+    char *node;
+    pmix_proc_t proc;
+    pid_t pid;
+    char *cmd;
+    /* process stats */
+    char state;
+    struct timeval time;
+    float percent_cpu;
+    int32_t priority;
+    uint16_t num_threads;
+    float pss;   /* in MBytes */
+    float vsize;  /* in MBytes */
+    float rss;  /* in MBytes */
+    float peak_vsize;  /* in MBytes */
+    uint16_t processor;
+    /* time at which sample was taken */
+    struct timeval sample_time;
+} pmix_proc_stats_t;
+
+#define PMIX_PROC_STATS_STATIC_INIT     \
+{                                       \
+    .node = NULL,                       \
+    .proc = PMIX_PROC_STATIC_INIT,      \
+    .pid = 0,                           \
+    .cmd = NULL,                        \
+    .state = '\0',                      \
+    .time = {0, 0},                     \
+    .percent_cpu = 0.0,                 \
+    .priority = 0,                      \
+    .num_threads = 0,                   \
+    .pss = 0.0,                         \
+    .vsize = 0.0,                       \
+    .rss = 0.0,                         \
+    .peak_vsize = 0.0,                  \
+    .processor = 0,                     \
+    .sample_time = {0, 0}               \
+}
+
+typedef struct {
+    char *disk;
+    uint64_t num_reads_completed;
+    uint64_t num_reads_merged;
+    uint64_t num_sectors_read;
+    uint64_t milliseconds_reading;
+    uint64_t num_writes_completed;
+    uint64_t num_writes_merged;
+    uint64_t num_sectors_written;
+    uint64_t milliseconds_writing;
+    uint64_t num_ios_in_progress;
+    uint64_t milliseconds_io;
+    uint64_t weighted_milliseconds_io;
+} pmix_disk_stats_t;
+
+#define PMIX_DISK_STATS_STATIC_INIT     \
+{                                       \
+    .disk = NULL,                       \
+    .num_reads_completed = 0,           \
+    .num_reads_merged = 0,              \
+    .num_sectors_read = 0,              \
+    .milliseconds_reading = 0,          \
+    .num_writes_completed = 0,          \
+    .num_writes_merged = 0,             \
+    .num_sectors_written = 0,           \
+    .milliseconds_writing = 0,          \
+    .num_ios_in_progress = 0,           \
+    .milliseconds_io = 0,               \
+    .weighted_milliseconds_io = 0       \
+}
+
+typedef struct {
+    char *net_interface;
+    uint64_t num_bytes_recvd;
+    uint64_t num_packets_recvd;
+    uint64_t num_recv_errs;
+    uint64_t num_bytes_sent;
+    uint64_t num_packets_sent;
+    uint64_t num_send_errs;
+} pmix_net_stats_t;
+
+#define PMIX_NET_STATS_STATIC_INIT  \
+{                                   \
+    .net_interface = NULL,          \
+    .num_bytes_recvd = 0,           \
+    .num_packets_recvd = 0,         \
+    .num_recv_errs = 0,             \
+    .num_bytes_sent = 0,            \
+    .num_packets_sent = 0,          \
+    .num_send_errs = 0              \
+}
+
+typedef struct {
+    char *node;
+    /* node-level load averages */
+    float la;
+    float la5;
+    float la15;
+    /* memory usage */
+    float total_mem;  /* in MBytes */
+    float free_mem;  /* in MBytes */
+    float buffers;  /* in MBytes */
+    float cached;   /* in MBytes */
+    float swap_cached;  /* in MBytes */
+    float swap_total;   /* in MBytes */
+    float swap_free;    /* in MBytes */
+    float mapped;       /* in MBytes */
+    /* time at which sample was taken */
+    struct timeval sample_time;
+    /* array of disk stats, one per disk */
+    pmix_disk_stats_t *diskstats;
+    size_t ndiskstats;
+    /* array of net stats, one per interface */
+    pmix_net_stats_t *netstats;
+    size_t nnetstats;
+} pmix_node_stats_t;
+
+#define PMIX_NODE_STATS_STATIC_INIT     \
+{                                       \
+    .node = NULL,                       \
+    .la = 0,                            \
+    .la5 = 0,                           \
+    .la15 = 0,                          \
+    .total_mem = 0.0,                   \
+    .free_mem = 0.0,                    \
+    .buffers = 0.0,                     \
+    .cached = 0.0,                      \
+    .swap_cached = 0.0,                 \
+    .swap_total = 0.0,                  \
+    .swap_free = 0.0,                   \
+    .mapped = 0.0,                      \
+    .sample_time = {0, 0},              \
+    .diskstats = NULL,                  \
+    .ndiskstats = 0,                    \
+    .netstats = NULL,                   \
+    .nnetstats = 0                      \
+}
+
+/* APIs */
+PMIX_EXPORT void PMIx_Proc_stats_construct(pmix_proc_stats_t *p);
+PMIX_EXPORT void PMIx_Proc_stats_destruct(pmix_proc_stats_t *p);
+PMIX_EXPORT pmix_proc_stats_t* PMIx_Proc_stats_create(size_t n);
+PMIX_EXPORT void PMIx_Proc_stats_free(pmix_proc_stats_t *p, size_t n);
+
+PMIX_EXPORT void PMIx_Disk_stats_construct(pmix_disk_stats_t *p);
+PMIX_EXPORT void PMIx_Disk_stats_destruct(pmix_disk_stats_t *p);
+PMIX_EXPORT pmix_disk_stats_t* PMIx_Disk_stats_create(size_t n);
+PMIX_EXPORT void PMIx_Disk_stats_free(pmix_disk_stats_t *p, size_t n);
+
+PMIX_EXPORT void PMIx_Net_stats_construct(pmix_net_stats_t *p);
+PMIX_EXPORT void PMIx_Net_stats_destruct(pmix_net_stats_t *p);
+PMIX_EXPORT pmix_net_stats_t* PMIx_Net_stats_create(size_t n);
+PMIX_EXPORT void PMIx_Net_stats_free(pmix_net_stats_t *p, size_t n);
+
+PMIX_EXPORT void PMIx_Node_stats_construct(pmix_node_stats_t *p);
+PMIX_EXPORT void PMIx_Node_stats_destruct(pmix_node_stats_t *p);
+PMIX_EXPORT pmix_node_stats_t* PMIx_Node_stats_create(size_t n);
+PMIX_EXPORT void PMIx_Node_stats_free(pmix_node_stats_t *p, size_t n);
+
+/* MACROS */
+#define PMIX_PROC_STATS_CONSTRUCT(m) \
+    PMIx_Proc_stats_construct(m)
+
+#define PMIX_PROC_STATS_DESTRUCT(m) \
+    PMIx_Proc_stats_destruct(m)
+
+#define PMIX_PROC_STATS_CREATE(m, n) \
+    (m) = PMIx_Proc_stats_create(n)
+
+#define PMIX_PROC_STATS_FREE(m, n)  \
+do {                                \
+    PMIx_Proc_stats_free(m, n);     \
+    (m) = NULL;                     \
+} while(0)
+
+#define PMIX_PROC_STATS_RELEASE(m)  \
+do {                                \
+    PMIx_Proc_stats_free(m, 1);     \
+    (m) = NULL;                     \
+} while(0)
+
+#define PMIX_DISK_STATS_CONSTRUCT(m) \
+    PMIx_Disk_stats_construct(m)
+
+#define PMIX_DISK_STATS_DESTRUCT(m) \
+    PMIx_Disk_stats_destruct(m)
+
+#define PMIX_DISK_STATS_CREATE(m, n) \
+    (m) = PMIx_Disk_stats_create(n)
+
+#define PMIX_DISK_STATS_FREE(m, n)  \
+do {                                \
+    PMIx_Disk_stats_free(m, n);     \
+    (m) = NULL;                     \
+} while(0)
+
+#define PMIX_DISK_STATS_RELEASE(m)  \
+do {                                \
+    PMIx_Disk_stats_free(m, 1);     \
+    (m) = NULL;                     \
+} while(0)
+
+#define PMIX_NET_STATS_CONSTRUCT(m) \
+    PMIx_Net_stats_construct(m)
+
+#define PMIX_NET_STATS_DESTRUCT(m) \
+    PMIx_Net_stats_destruct(m)
+
+#define PMIX_NET_STATS_CREATE(m, n) \
+    (m) = PMIx_Net_stats_create(n)
+
+#define PMIX_NET_STATS_FREE(m, n)   \
+do {                                \
+    PMIx_Net_stats_free(m, n);      \
+    (m) = NULL;                     \
+} while(0)
+
+#define PMIX_NET_STATS_RELEASE(m)   \
+do {                                \
+    PMIx_Net_stats_free(m, 1);      \
+    (m) = NULL;                     \
+} while(0)
+
+#define PMIX_NODE_STATS_CONSTRUCT(m) \
+    PMIx_Node_stats_construct(m)
+
+#define PMIX_NODE_STATS_DESTRUCT(m) \
+    PMIx_Node_stats_destruct(m)
+
+#define PMIX_NODE_STATS_CREATE(m, n) \
+    (m) = PMIx_Node_stats_create(n)
+
+#define PMIX_NODE_STATS_FREE(m, n)  \
+do {                                \
+    PMIx_Node_stats_free(m, n);     \
+    (m) = NULL;                     \
+} while(0)
+
+#define PMIX_NODE_STATS_RELEASE(m)  \
+do {                                \
+    PMIx_Node_stats_free(m, 1);     \
+    (m) = NULL;                     \
+} while(0)
+
 /***** v5 DEPRECATIONS/REMOVALS *****/
 /* APIs */
 

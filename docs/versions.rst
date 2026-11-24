@@ -144,35 +144,38 @@ Two kinds of program are exceptions:
   the main such program, which is why each PRRTE series works only
   with particular PMIx series (see :doc:`/admin/prrte`).
 
-The promise was broken in two places between v5.0 and v7.0.
+Two things changed between v5.0 and v7.0 that a program built against
+v5.0 can notice.
 
 **Provisional resource-usage structures, replaced by the final
 definitions.** v5.0 defined four structures for resource-usage
 statistics, with functions to manage them. They were *provisional*,
 as the PMIx Standard defines the term: proposed, but not yet decided
 by the Standard's committee, and open to change. The committee has
-since decided to represent these quantities as arrays of attributes.
-v7.0 implements that final definition and drops the provisional one.
-Removed:
+since decided to represent these quantities as arrays of attributes,
+and v7.0 implements that final definition. The v5.0 definitions are
+kept, in ``pmix_deprecated.h``:
 
 * the types ``pmix_proc_stats_t``, ``pmix_node_stats_t``,
   ``pmix_disk_stats_t``, and ``pmix_net_stats_t``, and their data type
   codes ``PMIX_PROC_STATS``, ``PMIX_NODE_STATS``, ``PMIX_DISK_STATS``,
-  and ``PMIX_NET_STATS``;
+  and ``PMIX_NET_STATS``, with their v5.0 values;
 * the functions ``PMIx_Proc_stats_construct``, ``_destruct``,
   ``_create``, and ``_free``, and the same four for ``Node``, ``Disk``,
   and ``Net``;
 * the ``PMIX_PROC_STATS_*``, ``PMIX_NODE_STATS_*``,
   ``PMIX_DISK_STATS_*``, and ``PMIX_NET_STATS_*`` macros.
 
-No v5.0 API returned these structures; a program could only build them
-itself. A program that uses them does not build against v7.0, and one
-built against v5.0 cannot run against it. To get resource usage in
-v7.0, call ``PMIx_Process_monitor`` with
-``PMIX_MONITOR_PROC_RESOURCE_USAGE`` (or the ``NODE``, ``DISK``, or
-``NET`` form). The results are arrays of attributes such as
-``PMIX_PROC_RSS`` and ``PMIX_NODE_LOAD_AVG``, one for each field of the
-old structures.
+So a program that uses them builds against v7.0, and one built against
+v5.0 runs against it. Nothing behind them works: each
+``PMIx_*_stats_create`` returns ``NULL``, the ``_construct``,
+``_destruct``, and ``_free`` functions do nothing, and no PMIx API
+produces or accepts the structures. No v5.0 API returned them either; a
+program could only build them itself. To get resource usage in v7.0,
+call ``PMIx_Process_monitor`` with ``PMIX_MONITOR_PROC_RESOURCE_USAGE``
+(or the ``NODE``, ``DISK``, or ``NET`` form). The results are arrays of
+attributes such as ``PMIX_PROC_RSS`` and ``PMIX_NODE_LOAD_AVG``, one for
+each field of the old structures.
 
 **Three attribute strings, changed to fix a bug.** In v5.0, three
 attributes had the same string as another attribute, so the library
