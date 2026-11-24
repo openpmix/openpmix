@@ -358,6 +358,27 @@ typedef struct {
         self.assertIn("char name[256]", defs)
         self.assertIn("int rank", defs)
 
+    def test_a_trailing_comment_does_not_hide_a_member(self):
+        # a member line holding "/*" used to be skipped whole, as if it
+        # were all comment, which dropped the member from the struct -
+        # pmix_proc_stats_t lost pss, vsize, rss and peak_vsize that way
+        _rc, _constants, defs = self.harvest("""
+typedef struct {
+    /* a comment line */
+    int before;
+    float pss;   /* in MBytes */
+    // another comment line
+    float vsize;  // in MBytes; with a semicolon
+    int after;
+} pmix_thing_t;
+""")
+        self.assertIn("ctypedef struct pmix_thing_t:", defs)
+        for member in ("int before", "float pss", "float vsize", "int after"):
+            self.assertIn(member, defs)
+        # the comments themselves are not members
+        self.assertNotIn("MBytes", defs)
+        self.assertNotIn("comment line", defs)
+
     def test_missing_file_is_reported(self):
         with tempfile.TemporaryDirectory() as d:
             import io
