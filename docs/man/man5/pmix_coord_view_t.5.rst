@@ -23,6 +23,18 @@ C Syntax
    #define PMIX_COORD_PHYSICAL_VIEW    0x02
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   view = PMIX_COORD_LOGICAL_VIEW
+
+where ``view`` is one of the ``PMIX_COORD_*_VIEW`` values (an integer from 0 to 255).
+
+
 DESCRIPTION
 -----------
 

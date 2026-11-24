@@ -45,6 +45,32 @@ myiofhdlrs = []
 _pending_evreg = None
 _pending_iofreg = None
 _reglock = threading.Lock()
+
+# The library's own answer to "is the calling thread the one running its
+# event loop?" - the progress thread, or whoever is inside PMIx_Progress()
+# when the host drives progress itself. It is not part of the public API,
+# but it is exported, and these bindings are built with the library
+cdef extern from *:
+    """
+    #include <stdbool.h>
+    extern bool pmix_progress_thread_is_current(void);
+    """
+    bint pmix_progress_thread_is_current() nogil
+
+# Is this the thread that runs the library's event loop - the one every
+# upcall, event handler and _nb callback runs on? A blocking operation
+# started there cannot complete: it waits for an event the loop can only
+# service once the current one - the caller - returns. For the library's
+# own blocking calls the library answers PMIX_ERR_WOULD_BLOCK; the
+# methods that wait in Python (on 'active', or for _reglock, which a
+# registration on another thread may be holding while it waits for this
+# very thread) have to ask first.
+#
+# The test used to be "is this a threading._DummyThread?", which is true
+# of any thread Python did not start - one from _thread, or from another
+# extension - and refused those for nothing
+def _on_library_thread():
+    return pmix_progress_thread_is_current()
 myname = {}
 
 # PMIx_Init and PMIx_tool_init take the variables that say who this
@@ -191,7 +217,15 @@ cdef void pypmix_nb_cbdata_free(pypmix_nb_cbdata_t *cd):
 #
 # Trampoline for non-blocking APIs that take a pmix_op_cbfunc_t. This
 # fires on the library's progress thread, which is not a Python thread,
-# so the GIL must be acquired
+# so the GIL must be acquired.
+#
+# Every trampoline converts what the library handed it before anything
+# else, because all of it is reclaimed the moment the trampoline returns.
+# A conversion that raises must not end the trampoline there: the
+# caller's callback would never run, the caddy would leak, and for the
+# forms with a release function the library's data would never be given
+# back. So each conversion is caught and turned into an error status for
+# the callback, and everything after it always runs.
 cdef void pypmix_client_op_cbfunc(pmix_status_t status,
                                   void *cbdata) noexcept with gil:
     cdef pypmix_nb_cbdata_t *cd
@@ -208,139 +242,144 @@ cdef void pypmix_client_op_cbfunc(pmix_status_t status,
     except:
         traceback.print_exc()
 
+# Finish a non-blocking operation: reclaim the caddy and hand the results
+# to the caller's callback
+cdef void pypmix_client_finish(void *cbdata, args) noexcept with gil:
+    cdef pypmix_nb_cbdata_t *cd
+    if NULL == cbdata:
+        return
+    cd = <pypmix_nb_cbdata_t *> cbdata
+    entry = pypmix_nb_take(cd.idx)
+    if entry is None:
+        return
+    pypmix_nb_cbdata_free(cd)
+    # a callback that raises must not unwind into the library
+    try:
+        entry['cbfunc'](*args, entry['cbdata'])
+    except:
+        traceback.print_exc()
+
 # Trampoline for non-blocking APIs that take a pmix_info_cbfunc_t
 cdef void pypmix_client_info_cbfunc(pmix_status_t status,
                                     pmix_info_t *info, size_t ninfo,
                                     void *cbdata,
                                     pmix_release_cbfunc_t release_fn,
                                     void *release_cbdata) noexcept with gil:
-    cdef pypmix_nb_cbdata_t *cd
     # the results belong to the library, so convert them to Python before
     # telling it that we are done with them
     pyresults = []
     prc = PMIX_SUCCESS
-    if NULL != info and 0 < ninfo:
-        prc = pmix_unload_info(info, ninfo, pyresults)
+    try:
+        if NULL != info and 0 < ninfo:
+            prc = pmix_unload_info(info, ninfo, pyresults)
+    except:
+        traceback.print_exc()
+        prc = PMIX_ERROR
     if NULL != release_fn:
         release_fn(release_cbdata)
     if PMIX_SUCCESS != prc and PMIX_SUCCESS == status:
         status = prc
-    if NULL == cbdata:
-        return
-    cd = <pypmix_nb_cbdata_t *> cbdata
-    entry = pypmix_nb_take(cd.idx)
-    if entry is None:
-        return
-    pypmix_nb_cbdata_free(cd)
-    # a callback that raises must not unwind into the library
-    try:
-        entry['cbfunc'](status, pyresults, entry['cbdata'])
-    except:
-        traceback.print_exc()
+    pypmix_client_finish(cbdata, (status, pyresults))
+
+# True when an info array asks PMIx_Get for a pointer into the library's
+# own storage. A Python caller always gets a copy, and the copy is all it
+# can keep, so both forms of get refuse the directive rather than release
+# - or leak - what the library answered with. Checked on the C array the
+# library will read: a bytes key, or one with something after a NUL, is
+# the same key there
+cdef bint pmix_asks_pointer_values(pmix_info_t *info, size_t ninfo):
+    cdef size_t n = 0
+    while n < ninfo:
+        if PMIx_Check_key(info[n].key, _PMIX_GET_POINTER_VALUES) and \
+           (PMIX_BOOL != info[n].value.type or info[n].value.data.flag):
+            return True
+        n += 1
+    return False
 
 # Trampoline for non-blocking APIs that take a pmix_value_cbfunc_t. The
-# value belongs to the library and is released as soon as we return, so
-# convert it here rather than handing the pointer onward
+# library hands the value over to its receiver - see PMIx_Get(3) - so it
+# is converted here and then released. Only a PMIX_GET_POINTER_VALUES
+# answer stays the library's, and get_nb refuses that directive
 cdef void pypmix_client_value_cbfunc(pmix_status_t status,
                                      pmix_value_t *kv,
                                      void *cbdata) noexcept with gil:
-    cdef pypmix_nb_cbdata_t *cd
     pyval = None
-    if NULL != kv:
-        pyval = pmix_unload_value(kv)
-    if NULL == cbdata:
-        return
-    cd = <pypmix_nb_cbdata_t *> cbdata
-    entry = pypmix_nb_take(cd.idx)
-    if entry is None:
-        return
-    pypmix_nb_cbdata_free(cd)
-    # a callback that raises must not unwind into the library
     try:
-        entry['cbfunc'](status, pyval, entry['cbdata'])
+        if NULL != kv:
+            pyval = pmix_unload_value(kv)
+            if pyval is None and PMIX_SUCCESS == status:
+                status = PMIX_ERR_NOT_SUPPORTED
     except:
         traceback.print_exc()
+        pyval = None
+        if PMIX_SUCCESS == status:
+            status = PMIX_ERROR
+    if NULL != kv:
+        PMIx_Value_free(kv, 1)
+    pypmix_client_finish(cbdata, (status, pyval))
 
 # Trampoline for non-blocking APIs that take a pmix_lookup_cbfunc_t. As
 # above, the returned pdata array is the library's
 cdef void pypmix_client_lookup_cbfunc(pmix_status_t status,
                                       pmix_pdata_t data[], size_t ndata,
                                       void *cbdata) noexcept with gil:
-    cdef pypmix_nb_cbdata_t *cd
     pyresults = []
     prc = PMIX_SUCCESS
-    if NULL != data and 0 < ndata:
-        prc = pmix_unload_pdata(data, ndata, pyresults)
-    if PMIX_SUCCESS != prc and PMIX_SUCCESS == status:
-        status = prc
-    if NULL == cbdata:
-        return
-    cd = <pypmix_nb_cbdata_t *> cbdata
-    entry = pypmix_nb_take(cd.idx)
-    if entry is None:
-        return
-    pypmix_nb_cbdata_free(cd)
-    # a callback that raises must not unwind into the library
     try:
-        entry['cbfunc'](status, pyresults, entry['cbdata'])
+        if NULL != data and 0 < ndata:
+            prc = pmix_unload_pdata(data, ndata, pyresults)
     except:
         traceback.print_exc()
+        prc = PMIX_ERROR
+    if PMIX_SUCCESS != prc and PMIX_SUCCESS == status:
+        status = prc
+    pypmix_client_finish(cbdata, (status, pyresults))
 
 # Trampoline for non-blocking APIs that take a pmix_spawn_cbfunc_t
 cdef void pypmix_client_spawn_cbfunc(pmix_status_t status,
                                      pmix_nspace_t nspace,
                                      void *cbdata) noexcept with gil:
-    cdef pypmix_nb_cbdata_t *cd
     # the nspace is released by the library upon our return, so decode it
     # into a Python string now. A failed spawn has no namespace to report,
     # and the parameter is a bare array pointer that may be NULL
     pyns = None
-    if PMIX_SUCCESS == status and NULL != nspace:
-        pyns = nspace.decode('ascii')
-    if NULL == cbdata:
-        return
-    cd = <pypmix_nb_cbdata_t *> cbdata
-    entry = pypmix_nb_take(cd.idx)
-    if entry is None:
-        return
-    pypmix_nb_cbdata_free(cd)
-    # a callback that raises must not unwind into the library
     try:
-        entry['cbfunc'](status, pyns, entry['cbdata'])
+        if PMIX_SUCCESS == status and NULL != nspace:
+            pyns = pmix_decode_str(nspace)
     except:
         traceback.print_exc()
+        status = PMIX_ERROR
+    pypmix_client_finish(cbdata, (status, pyns))
 
-# Trampoline for non-blocking APIs that take a pmix_credential_cbfunc_t
+# Trampoline for non-blocking APIs that take a pmix_credential_cbfunc_t.
+# The credential's payload is handed to us - its receiver - to keep, so
+# it is copied out and freed here. The byte object carrying it, and the
+# info array, stay the library's
 cdef void pypmix_client_credential_cbfunc(pmix_status_t status,
                                           pmix_byte_object_t *credential,
                                           pmix_info_t info[], size_t ninfo,
                                           void *cbdata) noexcept with gil:
-    cdef pypmix_nb_cbdata_t *cd
-    # both the credential and the info array belong to the library
     cred = {}
-    if NULL != credential and NULL != credential.bytes and 0 < credential.size:
-        blist = []
-        pmix_unload_bytes(credential.bytes, credential.size, blist)
-        cred['bytes'] = bytearray(blist)
-        cred['size'] = credential.size
     pyresults = []
     prc = PMIX_SUCCESS
-    if NULL != info and 0 < ninfo:
-        prc = pmix_unload_info(info, ninfo, pyresults)
-    if PMIX_SUCCESS != prc and PMIX_SUCCESS == status:
-        status = prc
-    if NULL == cbdata:
-        return
-    cd = <pypmix_nb_cbdata_t *> cbdata
-    entry = pypmix_nb_take(cd.idx)
-    if entry is None:
-        return
-    pypmix_nb_cbdata_free(cd)
-    # a callback that raises must not unwind into the library
     try:
-        entry['cbfunc'](status, cred, pyresults, entry['cbdata'])
+        if NULL != credential and NULL != credential.bytes and 0 < credential.size:
+            blist = []
+            pmix_unload_bytes(credential.bytes, credential.size, blist)
+            cred['bytes'] = bytearray(blist)
+            cred['size'] = credential.size
+        if NULL != info and 0 < ninfo:
+            prc = pmix_unload_info(info, ninfo, pyresults)
     except:
         traceback.print_exc()
+        prc = PMIX_ERROR
+    if NULL != credential and NULL != credential.bytes:
+        free(credential.bytes)
+        credential.bytes = NULL
+        credential.size = 0
+    if PMIX_SUCCESS != prc and PMIX_SUCCESS == status:
+        status = prc
+    pypmix_client_finish(cbdata, (status, cred, pyresults))
 
 # Trampoline for non-blocking APIs that take a pmix_validation_cbfunc_t.
 # Same shape as the info trampoline, but without a release function -
@@ -348,25 +387,17 @@ cdef void pypmix_client_credential_cbfunc(pmix_status_t status,
 cdef void pypmix_client_validation_cbfunc(pmix_status_t status,
                                           pmix_info_t info[], size_t ninfo,
                                           void *cbdata) noexcept with gil:
-    cdef pypmix_nb_cbdata_t *cd
     pyresults = []
     prc = PMIX_SUCCESS
-    if NULL != info and 0 < ninfo:
-        prc = pmix_unload_info(info, ninfo, pyresults)
-    if PMIX_SUCCESS != prc and PMIX_SUCCESS == status:
-        status = prc
-    if NULL == cbdata:
-        return
-    cd = <pypmix_nb_cbdata_t *> cbdata
-    entry = pypmix_nb_take(cd.idx)
-    if entry is None:
-        return
-    pypmix_nb_cbdata_free(cd)
-    # a callback that raises must not unwind into the library
     try:
-        entry['cbfunc'](status, pyresults, entry['cbdata'])
+        if NULL != info and 0 < ninfo:
+            prc = pmix_unload_info(info, ninfo, pyresults)
     except:
         traceback.print_exc()
+        prc = PMIX_ERROR
+    if PMIX_SUCCESS != prc and PMIX_SUCCESS == status:
+        status = prc
+    pypmix_client_finish(cbdata, (status, pyresults))
 
 # Trampoline for non-blocking APIs that take a pmix_device_dist_cbfunc_t
 cdef void pypmix_client_devdist_cbfunc(pmix_status_t status,
@@ -375,40 +406,19 @@ cdef void pypmix_client_devdist_cbfunc(pmix_status_t status,
                                        void *cbdata,
                                        pmix_release_cbfunc_t release_fn,
                                        void *release_cbdata) noexcept with gil:
-    cdef pypmix_nb_cbdata_t *cd
-    cdef size_t n
     # convert the distances before telling the library we are done with them
     pyresults = []
-    n = 0
-    while n < ndist:
-        pydist = {}
-        if NULL == dist[n].uuid:
-            pydist['uuid'] = None
-        else:
-            pydist['uuid'] = dist[n].uuid.decode('ascii')
-        if NULL == dist[n].osname:
-            pydist['osname'] = None
-        else:
-            pydist['osname'] = dist[n].osname.decode('ascii')
-        pydist['type'] = dist[n].type
-        pydist['mindist'] = dist[n].mindist
-        pydist['maxdist'] = dist[n].maxdist
-        pyresults.append(pydist)
-        n += 1
-    if NULL != release_fn:
-        release_fn(release_cbdata)
-    if NULL == cbdata:
-        return
-    cd = <pypmix_nb_cbdata_t *> cbdata
-    entry = pypmix_nb_take(cd.idx)
-    if entry is None:
-        return
-    pypmix_nb_cbdata_free(cd)
-    # a callback that raises must not unwind into the library
     try:
-        entry['cbfunc'](status, pyresults, entry['cbdata'])
+        if NULL != dist:
+            pmix_unload_devdists(dist, ndist, pyresults)
     except:
         traceback.print_exc()
+        pyresults = []
+        if PMIX_SUCCESS == status:
+            status = PMIX_ERROR
+    if NULL != release_fn:
+        release_fn(release_cbdata)
+    pypmix_client_finish(cbdata, (status, pyresults))
 
 # Build the caddy for a non-blocking operation, taking ownership of the
 # info array. Returns NULL on failure, with the reason stored in rcptr
@@ -432,21 +442,33 @@ cdef pypmix_nb_cbdata_t* pypmix_nb_setup(pyinfo, int *rcptr):
 # Add the second info array carried by the operations that take one -
 # the directives that accompany the data being logged, the targets being
 # controlled, or the monitor being requested
+#
+# These helpers run after the caddy exists, so none of them may raise: an
+# exception would leave the method without freeing it. Each reports a
+# failure as a status, and the method releases the caddy
 cdef int pypmix_nb_add_dirs(pypmix_nb_cbdata_t *cd, pydirs):
     cdef pmix_info_t **dirs_ptr
     dirs_ptr = &cd.dirs
-    return pmix_alloc_info(dirs_ptr, &cd.ndirs, pydirs)
+    try:
+        return pmix_alloc_info(dirs_ptr, &cd.ndirs, pydirs)
+    except Exception:
+        traceback.print_exc()
+        return PMIX_ERR_BAD_PARAM
 
 # Park the operation's target procs in the caddy. As in the blocking
 # forms, an absent or empty list means "this proc's entire job"
 cdef int pypmix_nb_add_procs(pypmix_nb_cbdata_t *cd, peers, nspace):
+    if peers is not None:
+        peers = pmix_listcopy(peers)
+        if peers is None:
+            return PMIX_ERR_BAD_PARAM
     if peers is not None and 0 < len(peers):
         cd.nprocs = len(peers)
         cd.procs = <pmix_proc_t*> PyMem_Malloc(cd.nprocs * sizeof(pmix_proc_t))
         if not cd.procs:
             cd.nprocs = 0
             return PMIX_ERR_NOMEM
-        return pmix_load_procs(cd.procs, peers)
+        return pmix_load_procs(cd.procs, cd.nprocs, peers)
     cd.nprocs = 1
     cd.procs = <pmix_proc_t*> PyMem_Malloc(sizeof(pmix_proc_t))
     if not cd.procs:
@@ -471,10 +493,9 @@ cdef int pypmix_nb_add_bo(pypmix_nb_cbdata_t *cd, pybo):
     pybytes = pybo.get('bytes') if isinstance(pybo, dict) else pybo
     if pybytes is None:
         return PMIX_SUCCESS
-    if isinstance(pybytes, str):
-        pybytes = pybytes.encode('ascii')
-    else:
-        pybytes = bytes(pybytes)
+    pybytes = pmix_payload(pybytes)
+    if pybytes is None:
+        return PMIX_ERR_TYPE_MISMATCH
     if 0 == len(pybytes):
         return PMIX_SUCCESS
     cd.bo.size = len(pybytes)
@@ -490,14 +511,19 @@ cdef int pypmix_nb_add_bo(pypmix_nb_cbdata_t *cd, pybo):
 # left as NULL, which the APIs that take one read as "all keys"
 cdef int pypmix_nb_add_keys(pypmix_nb_cbdata_t *cd, pykeys):
     cdef size_t nstrings
-    if pykeys is None or 0 == len(pykeys):
+    if pykeys is None:
+        return PMIX_SUCCESS
+    pykeys = pmix_listcopy(pykeys)
+    if pykeys is None:
+        return PMIX_ERR_BAD_PARAM
+    if 0 == len(pykeys):
         return PMIX_SUCCESS
     nstrings = len(pykeys)
     cd.keys = <char **> malloc((nstrings + 1) * sizeof(char*))
     if NULL == cd.keys:
         return PMIX_ERR_NOMEM
     memset(cd.keys, 0, (nstrings + 1) * sizeof(char*))
-    return pmix_load_argv(cd.keys, pykeys)
+    return pmix_load_argv(cd.keys, nstrings, pykeys)
 
 # Build the caddy for a non-blocking group operation, taking ownership of
 # the group identifier and the info array. Returns NULL on failure, with
@@ -554,214 +580,397 @@ pypmix_lookup_cbfunc_t          =   Callable[[int, list, dict], int]
 pypmix_spawn_cbfunc_t           =   Callable[[int, str, dict], int]
 pypmix_tool_connection_cbfunc_t =   Callable[[int, dict, dict], None]
 pypmix_credential_cbfunc_t      =   Callable[[int, dict, list, dict], None]
-pypmix_validation_cbfunc_t      =   Callable[[int, list], None]
+pypmix_validation_cbfunc_t      =   Callable[[int, list, dict], None]
 
+# Completing an upcall, exactly once
+#
+# Every server upcall hands its Python handler one of the helpers below
+# plus a 'cbdata_dict' holding the library's C callback and its cbdata as
+# integers. The library's contract is that the request is completed
+# exactly once: either the host returns PMIX_SUCCESS and calls the
+# callback (now, or later from any thread), or it returns anything else
+# and never calls it, in which case the library completes the request
+# itself. Both halves have to hold, because the library releases the
+# request on completion - a second completion is a use-after-free, and a
+# missing one leaves the requester waiting forever.
+#
+# The 'cbfunc' entry of the dict is the token for that. A helper pops it
+# before calling the C callback, so only the first call does anything.
+# The trampoline settles its own return value against the same token
+# (pypmix_settle): if the handler has already completed, the library is
+# told PMIX_SUCCESS whatever the handler returned; if the handler is
+# returning anything else, the trampoline pops the token itself so a
+# late call from a Timer the handler left behind is a no-op. dict.pop is
+# atomic under the GIL, which is what lets the two race safely.
+#
+# pypmix_take_cbfunc answers the callback as an integer, or None when the
+# token has already been taken - which is not the same as a NULL callback
+def pypmix_take_cbfunc(dict cbdata_dict):
+    return cbdata_dict.pop('cbfunc', None)
 
-def pypmix_op_cbfunc(int rc, dict cbdata_dict):
+# The callback a helper is to call, as a C pointer value: 0 when there is
+# none, whether because it was NULL or because it was already taken
+def pypmix_take_cbptr(dict cbdata_dict):
+    cbf = pypmix_take_cbfunc(cbdata_dict)
+    if cbf is None:
+        return 0
+    return cbf
+
+# The status a trampoline returns to the library for its handler
+def pypmix_settle(rc, cbdata_dict):
+    if cbdata_dict is None:
+        # nothing was handed out, so nothing can have completed
+        if isinstance(rc, int) and not isinstance(rc, bool) and \
+           -2147483648 <= rc <= 2147483647:
+            return rc
+        return PMIX_ERROR
+    # a status the library cannot be given is no status: it would only
+    # fail its conversion to a C int after the token was taken, and the
+    # trampoline would then report the completion it had just disarmed
+    if not isinstance(rc, int) or isinstance(rc, bool) or \
+       not (-2147483648 <= rc <= 2147483647):
+        print("server module handler returned", repr(rc),
+              "rather than a PMIx status")
+        rc = PMIX_ERROR
+    if PMIX_SUCCESS == rc:
+        return rc
+    if pypmix_take_cbfunc(cbdata_dict) is None:
+        # the handler completed the request and then reported something
+        # else: the completion is what the library has acted on
+        return PMIX_SUCCESS
+    return rc
+
+# The same, for a handler that raised
+def pypmix_settle_raise(cbdata_dict):
+    traceback.print_exc()
+    return pypmix_settle(PMIX_ERROR, cbdata_dict)
+
+# The status a handler passed a helper, as a C status. A handler that
+# passes something else has still asked for the request to be completed,
+# and it is - as a failure - rather than raising out of the helper, which
+# from a Timer thread would simply end the thread and leave the request
+# unanswered
+cdef pmix_status_t pypmix_status_of(rc):
+    if isinstance(rc, int) and not isinstance(rc, bool):
+        if -2147483648 <= rc <= 2147483647:
+            return rc
+    print("server module completion given", repr(rc), "rather than a PMIx status")
+    return PMIX_ERROR
+
+def pypmix_op_cbfunc(rc, dict cbdata_dict):
     cdef pmix_op_cbfunc_t cbfunc
     cdef void* cbdata
-    cbfunc = <pmix_op_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+    cbfunc = <pmix_op_cbfunc_t> <uintptr_t> pypmix_take_cbptr(cbdata_dict)
     cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
+
+    cdef pmix_status_t crc = pypmix_status_of(rc)
 
     if NULL == cbfunc:
         return
 
     with nogil:
-        cbfunc(rc, cbdata)
+        cbfunc(crc, cbdata)
 
-def pypmix_info_cbfunc(int rc, list refarginfo, dict cbdata_dict):
-    cdef pmix_info_cbfunc_t cbfunc = <pmix_info_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+# Every helper that carries data has to complete the request even when
+# the data cannot be converted - the library's callback is the only thing
+# that will ever answer the requester. So a conversion failure is reported
+# through the callback, with no data, rather than by returning early
+def pypmix_info_cbfunc(rc, refarginfo, dict cbdata_dict):
+    cdef pmix_info_cbfunc_t cbfunc = <pmix_info_cbfunc_t> <uintptr_t> pypmix_take_cbptr(cbdata_dict)
     cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
     cdef pmix_info_t *info
     cdef pmix_info_t **info_ptr
     cdef pypmix_info_cbdata_t *icbd
     cdef size_t ninfo = 0
+    cdef pmix_status_t crc
     info              = NULL
     info_ptr          = &info
+    icbd              = NULL
 
     if NULL == cbfunc:
         return
 
-    prc = pmix_alloc_info(info_ptr, &ninfo, refarginfo)
+    try:
+        prc = pmix_alloc_info(info_ptr, &ninfo, refarginfo)
+    except:
+        traceback.print_exc()
+        prc = PMIX_ERR_BAD_PARAM
+    if PMIX_SUCCESS == prc and 0 < ninfo:
+        icbd = <pypmix_info_cbdata_t *> malloc(sizeof(pypmix_info_cbdata_t))
+        if NULL == icbd:
+            pmix_free_info(info, ninfo)
+            prc = PMIX_ERR_NOMEM
+        else:
+            icbd.info = info
+            icbd.ninfo = ninfo
     if PMIX_SUCCESS != prc:
         print("Error transferring info to C:", prc)
+        crc = prc
+        with nogil:
+            cbfunc(crc, NULL, 0, cbdata, NULL, NULL)
         return
 
-    icbd = <pypmix_info_cbdata_t *> malloc(sizeof(pypmix_info_cbdata_t))
-    if icbd == NULL:
-        print("Error allocating pypmix_info_cbdata_t")
-        return
-    icbd.info = info
-    icbd.ninfo = ninfo
+    crc = pypmix_status_of(rc)
+    if NULL == icbd:
+        with nogil:
+            cbfunc(crc, NULL, 0, cbdata, NULL, NULL)
+    else:
+        with nogil:
+            cbfunc(crc, info, ninfo, cbdata, info_release, <void*> icbd)
 
-    with nogil:
-        cbfunc(rc, info, ninfo, cbdata, info_release, <void*> icbd)
-
-def pypmix_modex_cbfunc(int status, bytearray ret_data, dict cbdata_dict):
+# A modex payload is packed binary. It may be handed over as a bytearray,
+# bytes, a list of ints, or None for "no data" - a handler reporting that
+# it found nothing has no payload to pass
+def pypmix_modex_cbfunc(status, ret_data, dict cbdata_dict):
     cdef char *data
     cdef const char *src
     cdef size_t size
-    cdef pmix_modex_cbfunc_t cbfunc = <pmix_modex_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+    cdef pmix_modex_cbfunc_t cbfunc = <pmix_modex_cbfunc_t> <uintptr_t> pypmix_take_cbptr(cbdata_dict)
     cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
     cdef pypmix_modex_cbdata_t *mcbd
+    cdef pmix_status_t crc
 
     if NULL == cbfunc:
         return
 
-    # a modex payload is packed binary, not a string. strdup stopped at the
-    # first NUL byte, which for anything but an all-ASCII blob silently
-    # handed the peer a truncated - usually empty - modex
-    pybytes = bytes(ret_data)
+    # strdup would stop at the first NUL byte, which for anything but an
+    # all-ASCII blob hands the peer a truncated - usually empty - modex
+    prc = PMIX_SUCCESS
+    pybytes = b''
+    if ret_data is not None:
+        try:
+            pybytes = bytes(ret_data)
+        except:
+            traceback.print_exc()
+            prc = PMIX_ERR_BAD_PARAM
     size = len(pybytes)
     data = NULL
-    if 0 < size:
+    mcbd = NULL
+    if PMIX_SUCCESS == prc and 0 < size:
         data = <char *> malloc(size)
-        if NULL == data:
-            print("Error allocating modex payload")
-            return
-        src = <const char*>pybytes
-        memcpy(data, src, size)
-    mcbd = <pypmix_modex_cbdata_t *> malloc(sizeof(pypmix_modex_cbdata_t))
-    if mcbd == NULL:
-        print("Error allocating pypmix_modex_cbdata_t")
-        free(data)
+        mcbd = <pypmix_modex_cbdata_t *> malloc(sizeof(pypmix_modex_cbdata_t))
+        if NULL == data or NULL == mcbd:
+            free(data)
+            free(mcbd)
+            data = NULL
+            mcbd = NULL
+            prc = PMIX_ERR_NOMEM
+        else:
+            src = <const char*>pybytes
+            memcpy(data, src, size)
+            mcbd.data = data
+            mcbd.size = size
+    if PMIX_SUCCESS != prc:
+        print("Error transferring modex payload to C:", prc)
+        crc = prc
+        with nogil:
+            cbfunc(crc, NULL, 0, cbdata, NULL, NULL)
         return
-    mcbd.data = data
-    mcbd.size = size
 
-    with nogil:
-        cbfunc(status, data, size, cbdata, modex_release, mcbd)
+    crc = pypmix_status_of(status)
+    if NULL == mcbd:
+        with nogil:
+            cbfunc(crc, NULL, 0, cbdata, NULL, NULL)
+    else:
+        with nogil:
+            cbfunc(crc, data, size, cbdata, modex_release, mcbd)
 
-def pypmix_lookup_cbfunc(int rc, list pdata, dict cbdata_dict):
-    cdef pmix_lookup_cbfunc_t cbfunc = <pmix_lookup_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+def pypmix_lookup_cbfunc(rc, pdata, dict cbdata_dict):
+    cdef pmix_lookup_cbfunc_t cbfunc = <pmix_lookup_cbfunc_t> <uintptr_t> pypmix_take_cbptr(cbdata_dict)
     cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
     cdef pmix_pdata_t *pd;
     cdef size_t ndata = 0;
+    cdef pmix_status_t crc
 
     if NULL == cbfunc:
         return
 
     pd = NULL
-    if pdata is not None and 0 < len(pdata):
-        ndata = len(pdata)
-        # pmix_free_pdata releases this with the Python allocator, so it
-        # has to come from there. The test that guarded the allocation
-        # also checked the wrong variable ("pdata", the caller's list,
-        # which is never NULL) and so never caught a failure
-        pd = <pmix_pdata_t*> PyMem_Malloc(ndata * sizeof(pmix_pdata_t))
-        if NULL == pd:
-            return
-        prc = pmix_load_pdata(pd, pdata)
-        if PMIX_SUCCESS != prc:
+    prc = PMIX_SUCCESS
+    # the token is taken, so nothing below may raise before the callback
+    # has been called - an exception here would leave the requester
+    # waiting for an answer nobody can now give
+    try:
+        if pdata is not None and not isinstance(pdata, (list, tuple)):
+            prc = PMIX_ERR_BAD_PARAM
+        elif pdata is not None and 0 < len(pdata):
+            ndata = len(pdata)
+            # pmix_free_pdata releases this with the Python allocator, so
+            # it has to come from there
+            pd = <pmix_pdata_t*> PyMem_Malloc(ndata * sizeof(pmix_pdata_t))
+            if NULL == pd:
+                prc = PMIX_ERR_NOMEM
+            else:
+                memset(pd, 0, ndata * sizeof(pmix_pdata_t))
+                prc = pmix_load_pdata(pd, ndata, pdata)
+    except:
+        traceback.print_exc()
+        prc = PMIX_ERR_BAD_PARAM
+    if PMIX_SUCCESS != prc:
+        print("Error transferring lookup results to C:", prc)
+        if NULL != pd:
             pmix_free_pdata(pd, ndata)
-            return
+        crc = prc
+        with nogil:
+            cbfunc(crc, NULL, 0, cbdata)
+        return
 
+    crc = pypmix_status_of(rc)
     with nogil:
-        cbfunc(rc, pd, ndata, cbdata)
+        cbfunc(crc, pd, ndata, cbdata)
 
     # the pdata carry loaded values, so release them rather than just
-    # freeing the block
+    # freeing the block. The library copies what it needs before the
+    # callback returns
     if NULL != pd:
         pmix_free_pdata(pd, ndata)
 
-def pypmix_spawn_cbfunc(int rc, nspace, dict cbdata_dict):
-    cdef pmix_spawn_cbfunc_t cbfunc = <pmix_spawn_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+def pypmix_spawn_cbfunc(rc, nspace, dict cbdata_dict):
+    cdef pmix_spawn_cbfunc_t cbfunc = <pmix_spawn_cbfunc_t> <uintptr_t> pypmix_take_cbptr(cbdata_dict)
     cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
     cdef pmix_nspace_t c_nspace
+    cdef pmix_status_t crc = pypmix_status_of(rc)
 
     if NULL == cbfunc:
         return
 
     # always start from an empty namespace: a failed spawn has none to
     # report, and the array is passed to the library either way, so it
-    # must never be left holding stack garbage. pmix_copy_nspace also
-    # accepts a str (strcpy did not) and clamps to the field width
+    # must never be left holding stack garbage. pmix_copy_nspace takes a
+    # str or bytes, and raises for a name that does not fit the field
     memset(c_nspace, 0, sizeof(pmix_nspace_t))
     if PMIX_SUCCESS == rc and nspace is not None:
-        pmix_copy_nspace(c_nspace, nspace)
+        try:
+            pmix_copy_nspace(c_nspace, nspace)
+        except:
+            traceback.print_exc()
+            memset(c_nspace, 0, sizeof(pmix_nspace_t))
+            crc = PMIX_ERR_BAD_PARAM
 
     with nogil:
-        cbfunc(rc, c_nspace, cbdata)
+        cbfunc(crc, c_nspace, cbdata)
 
 
-def pypmix_tool_connection_cbfunc(int rc, dict proc, dict cbdata_dict):
-    cdef pmix_tool_connection_cbfunc_t cbfunc = <pmix_tool_connection_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+def pypmix_tool_connection_cbfunc(rc, proc, dict cbdata_dict):
+    cdef pmix_tool_connection_cbfunc_t cbfunc = <pmix_tool_connection_cbfunc_t> <uintptr_t> pypmix_take_cbptr(cbdata_dict)
     cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
     cdef pmix_proc_t c_proc
+    cdef pmix_proc_t *pptr = NULL
+    cdef pmix_status_t crc = pypmix_status_of(rc)
 
     if NULL == cbfunc:
         return
 
+    # a refusal assigns nobody, and the library accepts a NULL proc for it
     if PMIX_SUCCESS == rc:
-        pmix_copy_nspace(c_proc.nspace, proc['nspace'])
-        c_proc.rank = proc['rank']
+        memset(&c_proc, 0, sizeof(pmix_proc_t))
+        try:
+            pmix_copy_nspace(c_proc.nspace, proc['nspace'])
+            c_proc.rank = proc['rank']
+            pptr = &c_proc
+        except:
+            traceback.print_exc()
+            crc = PMIX_ERR_BAD_PARAM
 
     with nogil:
-        cbfunc(rc, &c_proc, cbdata)
+        cbfunc(crc, pptr, cbdata)
 
-def pypmix_credential_cbfunc(int rc, dict byteobject, list info, dict cbdata_dict):
-    cdef pmix_credential_cbfunc_t cbfunc = <pmix_credential_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+def pypmix_credential_cbfunc(rc, byteobject, info, dict cbdata_dict):
+    cdef pmix_credential_cbfunc_t cbfunc = <pmix_credential_cbfunc_t> <uintptr_t> pypmix_take_cbptr(cbdata_dict)
     cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
     cdef size_t ninfo = 0
     cdef pmix_byte_object_t c_byteobject
     cdef pmix_info_t *c_info = NULL
+    cdef pmix_status_t crc = pypmix_status_of(rc)
 
     if NULL == cbfunc:
         return
 
     # construct unconditionally - a failed request has no credential to
-    # report, and the struct is passed to the library on that path too
+    # report, and the struct is passed to the library on that path too.
+    # What a host hands up through this callback is only lent: the
+    # library copies the payload before it returns (cred_relay), so it is
+    # released here afterwards
     c_byteobject.bytes = NULL
     c_byteobject.size = 0
     if PMIX_SUCCESS == rc:
-        # pmix_load_bo reads the payload out of the Python object. The
-        # code this replaces cast the object itself to void* and memcpy'd
-        # from there, so what reached the peer was the first 'size' bytes
-        # of the PyObject header rather than the credential
-        prc = pmix_load_bo(&c_byteobject, byteobject)
+        try:
+            prc = pmix_load_bo(&c_byteobject, byteobject)
+            if PMIX_SUCCESS == prc:
+                prc = pmix_alloc_info(&c_info, &ninfo, info)
+        except:
+            traceback.print_exc()
+            prc = PMIX_ERR_BAD_PARAM
         if PMIX_SUCCESS != prc:
             print("Error transferring credential to C:", prc)
-            return prc
-
-        prc = pmix_alloc_info(&c_info, &ninfo, info)
-        if PMIX_SUCCESS != prc:
-            print("Error transferring info to C:", prc)
             if NULL != c_byteobject.bytes:
                 free(c_byteobject.bytes)
-            return prc
+            c_byteobject.bytes = NULL
+            c_byteobject.size = 0
+            crc = prc
 
     with nogil:
-        cbfunc(rc, &c_byteobject, c_info, ninfo, cbdata)
+        cbfunc(crc, &c_byteobject, c_info, ninfo, cbdata)
 
     if NULL != c_byteobject.bytes:
         free(c_byteobject.bytes)
     if 0 < ninfo:
         pmix_free_info(c_info, ninfo)
 
-
-def pypmix_validation_cbfunc(int rc, dict byteobject, list info, dict cbdata_dict):
-    cdef pmix_validation_cbfunc_t cbfunc = <pmix_validation_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
-    cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
+# The C callback is (status, info, ninfo, cbdata), and so is this:
+# cbfunc(status, info, cbdata). An older form of this helper also took an
+# unused credential ahead of the info - cbfunc(status, cred, info,
+# cbdata) - and handlers written against it are still accepted
+def pypmix_validation_cbfunc(rc, *args):
+    cdef pmix_validation_cbfunc_t cbfunc
+    cdef void* cbdata
     cdef size_t ninfo = 0
     cdef pmix_info_t *c_info = NULL
+    cdef pmix_status_t crc = pypmix_status_of(rc)
+
+    if 2 == len(args):
+        info, cbdata_dict = args
+    elif 3 == len(args):
+        info, cbdata_dict = args[1], args[2]
+    else:
+        # still complete the request, as a failure, if we can find it
+        print("pypmix_validation_cbfunc(status, info, cbdata) given",
+              len(args) + 1, "arguments")
+        info = None
+        cbdata_dict = args[-1] if 0 < len(args) else None
+        crc = PMIX_ERR_BAD_PARAM
+        rc = crc
+    if not isinstance(cbdata_dict, dict):
+        raise TypeError("pypmix_validation_cbfunc: cbdata must be the dict the handler was given")
+    cbfunc = <pmix_validation_cbfunc_t> <uintptr_t> pypmix_take_cbptr(cbdata_dict)
+    cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
 
     if NULL == cbfunc:
         return
 
     if PMIX_SUCCESS == rc:
-
-        prc = pmix_alloc_info(&c_info, &ninfo, info)
+        try:
+            prc = pmix_alloc_info(&c_info, &ninfo, info)
+        except:
+            traceback.print_exc()
+            prc = PMIX_ERR_BAD_PARAM
         if PMIX_SUCCESS != prc:
             print("Error transferring info to C:", prc)
-            return prc
+            crc = prc
 
     with nogil:
-        cbfunc(rc, c_info, ninfo, cbdata)
+        cbfunc(crc, c_info, ninfo, cbdata)
 
     if 0 < ninfo:
         pmix_free_info(c_info, ninfo)
 
 
+# The three callbacks below complete the blocking bridge in section 4a of
+# the bindings guide: the method that started the request is waiting on
+# 'active', so active.set() must run on every path or it waits forever.
+# Each therefore records a result before anything that can raise, and the
+# info-carrying ones always record one - an empty list on failure - so a
+# failed call can never return the previous call's results.
 cdef void dmodx_cbfunc(pmix_status_t status,
                        char *data, size_t sz,
                        void *cbdata) noexcept with gil:
@@ -769,10 +978,16 @@ cdef void dmodx_cbfunc(pmix_status_t status,
     # the blob is packed binary and the library frees it on our return, so
     # slice it to its recorded length and copy it now. Letting Cython
     # convert the bare char* would run strlen over it
-    if PMIX_SUCCESS == status and NULL != data and 0 < sz:
-        active.cache_data(data[:sz], sz)
-    else:
+    try:
+        if PMIX_SUCCESS == status and NULL != data and 0 < sz:
+            active.cache_data(data[:sz], sz)
+        else:
+            active.cache_data(None, 0)
+    except:
+        traceback.print_exc()
         active.cache_data(None, 0)
+        if PMIX_SUCCESS == status:
+            status = PMIX_ERROR
     active.set(status)
     return
 
@@ -781,11 +996,18 @@ cdef void setupapp_cbfunc(pmix_status_t status,
                           void *provided_cbdata,
                           pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
     global active
-    if PMIX_SUCCESS == status:
+    ilist = []
+    try:
+        if PMIX_SUCCESS == status:
+            rc = pmix_unload_info(info, ninfo, ilist)
+            if PMIX_SUCCESS != rc:
+                ilist = []
+                status = rc
+    except:
+        traceback.print_exc()
         ilist = []
-        rc = pmix_unload_info(info, ninfo, ilist)
-        active.cache_info(ilist)
-        status = rc
+        status = PMIX_ERROR
+    active.cache_info(ilist)
     active.set(status)
     if (NULL != cbfunc):
         cbfunc(PMIX_SUCCESS, cbdata)
@@ -796,11 +1018,18 @@ cdef void collectinventory_cbfunc(pmix_status_t status, pmix_info_t info[],
                                   pmix_release_cbfunc_t release_fn,
                                   void *release_cbdata) noexcept with gil:
     global active
-    if PMIX_SUCCESS == status:
+    ilist = []
+    try:
+        if PMIX_SUCCESS == status:
+            rc = pmix_unload_info(info, ninfo, ilist)
+            if PMIX_SUCCESS != rc:
+                ilist = []
+                status = rc
+    except:
+        traceback.print_exc()
         ilist = []
-        rc = pmix_unload_info(info, ninfo, ilist)
-        active.cache_info(ilist)
-        status = rc
+        status = PMIX_ERROR
+    active.cache_info(ilist)
     active.set(status)
     if (NULL != release_fn):
         release_fn(release_cbdata)
@@ -809,40 +1038,84 @@ cdef void collectinventory_cbfunc(pmix_status_t status, pmix_info_t info[],
 cdef void pyiofhandler(size_t iofhdlr_id, pmix_iof_channel_t channel,
                        pmix_proc_t *source, pmix_byte_object_t *payload,
                        pmix_info_t info[], size_t ninfo) noexcept with gil:
-    cdef char* kystr
-    pychannel = int(channel)
-    pyiof_id  = int(iofhdlr_id)
-
-    # convert the source to python
-    pysource = {}
-    kystr = strdup(source[0].nspace)
-    myns = kystr.decode('ascii')
-    free(kystr)
-    pysource = {'nspace': myns, 'rank': source[0].rank}
-
-    # convert the inbound info to python
-    pyinfo = []
-    pmix_unload_info(info, ninfo, pyinfo)
-
-    # convert payload to python byteobject. IOF data is a raw stream, not
-    # a string: letting Cython convert the bare char* runs strlen over it,
-    # which truncates any payload carrying a NUL and reads past the end of
-    # one that carries none
-    pybytes = {'bytes': b'', 'size': 0}
-    if NULL != payload:
-        pmix_unload_bo(payload, pybytes)
-
-    # find the handler being called. One we hold no record of was
-    # deregistered while this output was on its way - there is nobody to
-    # give it to.
-    hdlr = _hdlr_find(myiofhdlrs, _pending_iofreg, pyiof_id)
-    if hdlr is None:
-        return
+    # IOF delivery has no completion to owe, so a delivery that cannot be
+    # converted is reported and dropped - but never allowed to unwind
+    # into the library
     try:
+        pychannel = int(channel)
+        pyiof_id  = int(iofhdlr_id)
+
+        # convert the source to python
+        pysource = None
+        if NULL != source:
+            pysource = {'nspace': pmix_decode_str(source[0].nspace), 'rank': source[0].rank}
+
+        # convert the inbound info to python
+        pyinfo = []
+        if NULL != info and 0 < ninfo:
+            rc = pmix_unload_info(info, ninfo, pyinfo)
+            if PMIX_SUCCESS != rc:
+                print("Unable to unload IOF info structs")
+                return
+
+        # convert payload to python byteobject. IOF data is a raw stream,
+        # not a string: letting Cython convert the bare char* runs strlen
+        # over it, which truncates any payload carrying a NUL and reads
+        # past the end of one that carries none
+        pybytes = {'bytes': b'', 'size': 0}
+        if NULL != payload:
+            pmix_unload_bo(payload, pybytes)
+
+        # find the handler being called. One we hold no record of was
+        # deregistered while this output was on its way - there is nobody
+        # to give it to.
+        hdlr = _hdlr_find(myiofhdlrs, _pending_iofreg, pyiof_id)
+        if hdlr is None:
+            return
         hdlr(pyiof_id, pychannel, pysource, pybytes, pyinfo)
     except:
         traceback.print_exc()
     return
+
+# Complete an event for a Python handler. The chain does not move on until
+# this is called, so it is called exactly once on every path
+cdef void pyevent_complete(pmix_event_notification_cbfunc_fn_t cbfunc,
+                           void *cbdata, pmix_status_t ret_status,
+                           pymyresults) noexcept with gil:
+    cdef pmix_info_t *myresults = NULL
+    cdef pmix_info_t **myresults_ptr
+    cdef size_t nmyresults = 0
+    cdef pypmix_info_cbdata_t *icbd
+
+    if NULL == cbfunc:
+        return
+    # allocate and load pmix info structs from python list of dictionaries
+    myresults_ptr = &myresults
+    try:
+        prc = pmix_alloc_info(myresults_ptr, &nmyresults, pymyresults)
+    except:
+        traceback.print_exc()
+        prc = PMIX_ERR_BAD_PARAM
+    if PMIX_SUCCESS != prc:
+        print("Unable to load new results")
+        myresults = NULL
+        nmyresults = 0
+    icbd = NULL
+    if NULL != myresults:
+        icbd = <pypmix_info_cbdata_t *> malloc(sizeof(pypmix_info_cbdata_t))
+        if icbd == NULL:
+            # complete the event without the results rather than lose it
+            pmix_free_info(myresults, nmyresults)
+            myresults = NULL
+            nmyresults = 0
+    if NULL == icbd:
+        with nogil:
+            cbfunc(ret_status, NULL, 0, NULL, NULL, cbdata)
+        return
+    icbd.info = myresults
+    icbd.ninfo = nmyresults
+    with nogil:
+        cbfunc(ret_status, myresults, nmyresults, op_release, <void *>icbd, cbdata)
 
 cdef void pyeventhandler(size_t evhdlr_registration_id,
                          pmix_status_t status,
@@ -851,93 +1124,68 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
                          pmix_info_t *results, size_t nresults,
                          pmix_event_notification_cbfunc_fn_t cbfunc,
                          void *cbdata) noexcept with gil:
-    cdef pmix_info_t *myresults
-    cdef pmix_info_t **myresults_ptr
-    cdef size_t nmyresults
-    cdef char* kystr
     cdef pmix_nspace_t srcnspace
-    cdef pmix_status_t ret_status
-    cdef pmix_status_t noaction
-    cdef pypmix_info_cbdata_t *icbd
 
-    # convert the source to python
-    pysource = {}
-    memset(srcnspace, 0, PMIX_MAX_NSLEN+1)
-    memcpy(srcnspace, source[0].nspace, PMIX_MAX_NSLEN)
-    kystr = strdup(srcnspace)
-    myns = kystr.decode('ascii')
-    free(kystr)
-    srcrank = int(source[0].rank)
-    pysource = {'nspace': myns, 'rank': srcrank}
-    pyev_id  = int(evhdlr_registration_id)
-
-    # convert the inbound info to python
-    pyinfo = []
-    if 0 < ninfo:
-        rc = pmix_unload_info(info, ninfo, pyinfo)
-        if PMIX_SUCCESS != rc:
-            print("Unable to unload info structs")
-            if NULL != cbfunc:
-                noaction = PMIX_EVENT_NO_ACTION_TAKEN
-                with nogil:
-                    cbfunc(noaction, NULL, 0, NULL, NULL, cbdata)
-            return
-
-    # convert the inbound results from prior handlers
-    # that serviced this event to python
-    pyresults = []
-    if 0 < nresults:
-        rc = pmix_unload_info(results, nresults, pyresults)
-        if PMIX_SUCCESS != rc:
-            print("Unable to unload prior results")
-            if NULL != cbfunc:
-                noaction = PMIX_EVENT_NO_ACTION_TAKEN
-                with nogil:
-                    cbfunc(noaction, NULL, 0, NULL, NULL, cbdata)
-            return
-
-    # find the handler being called. One we hold no record of was
-    # deregistered while this event was on its way; the event still has
-    # to be completed, or the rest of its chain never runs.
-    hdlr = _hdlr_find(myhdlrs, _pending_evreg, pyev_id, int(status))
-    if hdlr is None:
-        if NULL != cbfunc:
-            noaction = PMIX_EVENT_NO_ACTION_TAKEN
-            with nogil:
-                cbfunc(noaction, NULL, 0, NULL, NULL, cbdata)
-        return
-
-    # execute their handler. One that raises has still been called, and
-    # the chain must still go on - it just reports no action
+    # Everything up to the handler is conversion, and any of it can raise.
+    # The event still has to be completed if it does, or the rest of its
+    # chain never runs - so it is caught and reported as no action taken
     try:
-        ret_status, pymyresults = hdlr(pyev_id, status, pysource, pyinfo, pyresults)
+        # convert the source to python
+        pysource = None
+        if NULL != source:
+            memset(srcnspace, 0, PMIX_MAX_NSLEN+1)
+            memcpy(srcnspace, source[0].nspace, PMIX_MAX_NSLEN)
+            pysource = {'nspace': pmix_decode_str(srcnspace), 'rank': int(source[0].rank)}
+        pyev_id  = int(evhdlr_registration_id)
+
+        # convert the inbound info to python
+        pyinfo = []
+        if NULL != info and 0 < ninfo:
+            rc = pmix_unload_info(info, ninfo, pyinfo)
+            if PMIX_SUCCESS != rc:
+                print("Unable to unload info structs")
+                pyevent_complete(cbfunc, cbdata, PMIX_EVENT_NO_ACTION_TAKEN, None)
+                return
+
+        # convert the inbound results from prior handlers
+        # that serviced this event to python
+        pyresults = []
+        if NULL != results and 0 < nresults:
+            rc = pmix_unload_info(results, nresults, pyresults)
+            if PMIX_SUCCESS != rc:
+                print("Unable to unload prior results")
+                pyevent_complete(cbfunc, cbdata, PMIX_EVENT_NO_ACTION_TAKEN, None)
+                return
+
+        # find the handler being called. One we hold no record of was
+        # deregistered while this event was on its way; the event still
+        # has to be completed, or the rest of its chain never runs.
+        hdlr = _hdlr_find(myhdlrs, _pending_evreg, pyev_id, int(status))
     except:
         traceback.print_exc()
-        ret_status = PMIX_EVENT_NO_ACTION_TAKEN
-        pymyresults = None
+        pyevent_complete(cbfunc, cbdata, PMIX_EVENT_NO_ACTION_TAKEN, None)
+        return
+    if hdlr is None:
+        pyevent_complete(cbfunc, cbdata, PMIX_EVENT_NO_ACTION_TAKEN, None)
+        return
 
-    # allocate and load pmix info structs from python list of dictionaries
-    myresults_ptr = &myresults
-    prc = pmix_alloc_info(myresults_ptr, &nmyresults, pymyresults)
-    if PMIX_SUCCESS != prc:
-        print("Unable to load new results")
-    if NULL == cbfunc:
-        if NULL != myresults:
-            pmix_free_info(myresults, nmyresults)
-        return
-    icbd = <pypmix_info_cbdata_t *> malloc(sizeof(pypmix_info_cbdata_t))
-    if icbd == NULL:
-        # complete the event without the results rather than lose it
-        if NULL != myresults:
-            pmix_free_info(myresults, nmyresults)
-        with nogil:
-            cbfunc(ret_status, NULL, 0, NULL, NULL, cbdata)
-        return
-    icbd.info = myresults
-    icbd.ninfo = nmyresults
-    with nogil:
-        cbfunc(ret_status, myresults, nmyresults, op_release, <void *>icbd, cbdata)
-    return
+    # execute their handler. One that raises, or answers in a shape we
+    # cannot use, has still been called, and the chain must still go on
+    # - it just reports no action
+    cdef pmix_status_t cret = PMIX_EVENT_NO_ACTION_TAKEN
+    try:
+        ret_status, pymyresults = hdlr(pyev_id, status, pysource, pyinfo, pyresults)
+        if not isinstance(ret_status, int) or isinstance(ret_status, bool) or \
+           not (-2147483648 <= ret_status <= 2147483647):
+            raise TypeError("event handler status must be a PMIx status, not %r" % (ret_status,))
+        if pymyresults is not None and not isinstance(pymyresults, list):
+            pymyresults = list(pymyresults)
+        cret = ret_status
+    except:
+        traceback.print_exc()
+        cret = PMIX_EVENT_NO_ACTION_TAKEN
+        pymyresults = None
+    pyevent_complete(cbfunc, cbdata, cret, pymyresults)
 
 # Round-trip a value dict through the C conversion layer and back.
 #
@@ -952,10 +1200,9 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
 #
 # Returns (rc, value dict); the dict is None if the load failed.
 #
-# Note that this needs no initialized library, with one exception: the
-# storage behind a PMIX_REGEX value belongs to the preg framework, so
-# releasing one before PMIx_Init would walk an unbuilt module list. Such a
-# value is refused rather than leaked or crashed on.
+# This needs no initialized library. (A PMIX_REGEX value is released
+# through the preg framework, but its release is a plain free() on a
+# statically initialized module, so that holds for it too.)
 def pmix_value_roundtrip(pyval):
     cdef pmix_value_t value
 
@@ -963,8 +1210,6 @@ def pmix_value_roundtrip(pyval):
         return (PMIX_ERR_BAD_PARAM, None)
     if 'value' not in pyval or 'val_type' not in pyval:
         return (PMIX_ERR_BAD_PARAM, None)
-    if PMIX_REGEX == pyval['val_type']:
-        return (PMIX_ERR_NOT_SUPPORTED, None)
 
     # zero it first so a loader that fails partway leaves something safe
     # to destruct
@@ -975,13 +1220,34 @@ def pmix_value_roundtrip(pyval):
         return (rc, None)
     pyout = pmix_unload_value(&value)
     pmix_destruct_value(&value)
+    if pyout is None:
+        return (PMIX_ERR_NOT_SUPPORTED, None)
     return (PMIX_SUCCESS, pyout)
 
+
+# Take the results array a blocking call handed back. It is the caller's
+# whatever the status - the library answers PMIX_ERR_PARTIAL_SUCCESS with
+# the part it could answer, and some calls return an array alongside an
+# error too - so it is converted on success or partial success and
+# released in every case. Returns the status to report
+cdef int pmix_take_results(int rc, pmix_info_t *results, size_t nresults, pyres):
+    if NULL == results:
+        return rc
+    if (PMIX_SUCCESS == rc or PMIX_ERR_PARTIAL_SUCCESS == rc) and 0 < nresults:
+        prc = pmix_unload_info(results, nresults, pyres)
+        if PMIX_SUCCESS != prc:
+            rc = prc
+    PMIx_Info_free(results, nresults)
+    return rc
 
 cdef class PMIxClient:
     cdef pmix_proc_t myproc;
     cdef pmix_fabric_t myfabric;
     cdef int fabric_set;
+    # a fabric request is outstanding: the library writes the fabric
+    # object from the progress thread when it completes, so nothing else
+    # may read or start one until then
+    cdef int fabric_busy;
     cdef pmix_topology_t topo
 
     def __cinit__(self):
@@ -989,6 +1255,7 @@ cdef class PMIxClient:
         self.myproc.rank = PMIX_RANK_UNDEF
         memset(&self.myfabric, 0, sizeof(self.myfabric))
         self.fabric_set = 0
+        self.fabric_busy = 0
         self.topo.source = NULL
         self.topo.topology = NULL
 
@@ -1019,6 +1286,7 @@ cdef class PMIxClient:
     #            [{key:y, value:val, val_type:ty}, … ]
     #
     def init(self, dicts):
+        cdef pmix_status_t _gilrc
         cdef size_t klen
         global myname
         cdef pmix_info_t *info
@@ -1030,7 +1298,9 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &klen, dicts)
         if PMIX_SUCCESS != rc:
             return rc, myname
-        rc = PMIx_Init(&self.myproc, info, klen)
+        with nogil:
+            _gilrc = PMIx_Init(&self.myproc, info, klen)
+        rc = _gilrc
         _pmix_sync_environ()
         if 0 < klen:
             pmix_free_info(info, klen)
@@ -1041,6 +1311,7 @@ cdef class PMIxClient:
 
     # Finalize the client library
     def finalize(self, dicts):
+        cdef pmix_status_t _gilrc
         cdef size_t klen
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -1050,7 +1321,9 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &klen, dicts)
         if PMIX_SUCCESS != rc:
             return rc
-        rc = PMIx_Finalize(info, klen)
+        with nogil:
+            _gilrc = PMIx_Finalize(info, klen)
+        rc = _gilrc
         if 0 < klen:
             pmix_free_info(info, klen)
         return rc
@@ -1067,6 +1340,9 @@ cdef class PMIxClient:
     # @procs [INPUT]
     #        - list of proc nspace,rank dicts
     def abort(self, status, msg, peers):
+        cdef pmix_status_t _gilrc
+        cdef pmix_status_t cstatus
+        cdef const char *cmsg
         cdef pmix_proc_t *procs
         cdef size_t sz
         # convert list of procs to array of pmix_proc_t's
@@ -1076,7 +1352,7 @@ cdef class PMIxClient:
                 procs = <pmix_proc_t*> PyMem_Malloc(sz * sizeof(pmix_proc_t))
                 if not procs:
                     return PMIX_ERR_NOMEM
-                rc = pmix_load_procs(procs, peers)
+                rc = pmix_load_procs(procs, sz, peers)
                 if PMIX_SUCCESS != rc:
                     pmix_free_procs(procs, sz)
                     return rc
@@ -1098,12 +1374,23 @@ cdef class PMIxClient:
                 return PMIX_ERR_NOMEM
             pmix_copy_nspace(procs[0].nspace, self.myproc.nspace)
             procs[0].rank = PMIX_RANK_WILDCARD
+        # an immutable copy: the buffer is lent to the library while the
+        # GIL is released, and another thread resizing a bytearray would
+        # free it underneath the call
         if isinstance(msg, str):
-            pymsg = msg.encode('ascii')
+            pymsg = msg.encode('UTF-8')
+        elif msg is None:
+            pymsg = None
         else:
-            pymsg = msg
-        # pass into PMIx_Abort
-        rc = PMIx_Abort(status, pymsg, procs, sz)
+            pymsg = bytes(msg)
+        # pass into PMIx_Abort. None is a NULL message
+        cmsg = NULL
+        if pymsg is not None:
+            cmsg = pymsg
+        cstatus = status
+        with nogil:
+            _gilrc = PMIx_Abort(cstatus, cmsg, procs, sz)
+        rc = _gilrc
         if 0 < sz:
             pmix_free_procs(procs, sz)
         return rc
@@ -1121,6 +1408,7 @@ cdef class PMIxClient:
     # @value [INPUT]
     #        - a dict to be stored with keys (value, val_type)
     def store_internal(self, pyproc, pykey:str, pyval:dict):
+        cdef pmix_status_t _gilrc
         cdef pmix_key_t key
         cdef pmix_proc_t proc
         cdef pmix_value_t value
@@ -1147,7 +1435,9 @@ cdef class PMIxClient:
         # call API - the library copies the value, so release our copy on
         # every path. Note that "value" lives on the stack: it must be
         # destructed, never freed
-        rc = PMIx_Store_internal(&proc, key, &value)
+        with nogil:
+            _gilrc = PMIx_Store_internal(&proc, key, &value)
+        rc = _gilrc
         pmix_destruct_value(&value)
         return rc
 
@@ -1162,6 +1452,8 @@ cdef class PMIxClient:
     # @value [INPUT]
     #        - a dict to be stored with keys (value, val_type)
     def put(self, scope, ky, val):
+        cdef pmix_status_t _gilrc
+        cdef pmix_scope_t cscope
         cdef pmix_key_t key
         cdef pmix_value_t value
         # convert the keyval tuple to a pmix_info_t. Zero it first so a
@@ -1173,12 +1465,18 @@ cdef class PMIxClient:
             pmix_destruct_value(&value)
             return rc
         # pass it into the PMIx_Put function
-        rc = PMIx_Put(scope, key, &value)
+        cscope = scope
+        with nogil:
+            _gilrc = PMIx_Put(cscope, key, &value)
+        rc = _gilrc
         pmix_destruct_value(&value)
         return rc
 
     def commit(self):
-        rc = PMIx_Commit()
+        cdef pmix_status_t _gilrc
+        with nogil:
+            _gilrc = PMIx_Commit()
+        rc = _gilrc
         return rc
 
     def fence(self, peers, dicts):
@@ -1196,7 +1494,7 @@ cdef class PMIxClient:
                 procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
                 if not procs:
                     return PMIX_ERR_NOMEM
-                rc = pmix_load_procs(procs, peers)
+                rc = pmix_load_procs(procs, nprocs, peers)
                 if PMIX_SUCCESS != rc:
                     pmix_free_procs(procs, nprocs)
                     return rc
@@ -1250,6 +1548,7 @@ cdef class PMIxClient:
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
     def get(self, proc, ky, dicts):
+        cdef pmix_status_t getrc
         cdef pmix_info_t *info;
         cdef pmix_info_t **info_ptr;
         cdef size_t ninfo;
@@ -1260,33 +1559,48 @@ cdef class PMIxClient:
         ninfo   = 0
         val_ptr = NULL
 
-        # convert proc to pmix_proc_t
+        # convert proc to pmix_proc_t - through the loader, so that a
+        # malformed proc dict is a status rather than an exception
         if proc is None:
-            pmix_copy_nspace(p.nspace, self.myproc.nspace)
-            p.rank = self.myproc.rank
+            memcpy(&p, &self.myproc, sizeof(pmix_proc_t))
         else:
-            pmix_copy_nspace(p.nspace, proc['nspace'])
-            p.rank = proc['rank']
+            rc = pmix_load_proc(&p, proc)
+            if PMIX_SUCCESS != rc:
+                return rc, None
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
         if PMIX_SUCCESS != rc:
             return rc, None
+        # see pmix_asks_pointer_values: the release below would free
+        # library memory
+        if pmix_asks_pointer_values(info, ninfo):
+            pmix_free_info(info, ninfo)
+            return PMIX_ERR_NOT_SUPPORTED, None
 
         val = None
 
         # None key - pass NULL to return all data
         if ky is None:
             with nogil:
-                rc = PMIx_Get(&p, NULL, info, ninfo, &val_ptr)
+                getrc = PMIx_Get(&p, NULL, info, ninfo, &val_ptr)
         else:
-            # convert key,val to pmix_value_t and pmix_key_t
+            # convert key,val to pmix_value_t and pmix_key_t. A key that
+            # does not fit is refused here, where the info array can still
+            # be released, rather than raised past it
+            if PMIX_SUCCESS != pmix_name_ok(ky, PMIX_MAX_KEYLEN, "key"):
+                if 0 < ninfo:
+                    pmix_free_info(info, ninfo)
+                return PMIX_ERR_BAD_PARAM, None
             pmix_copy_key(key, ky)
             with nogil:
-                rc = PMIx_Get(&p, key, info, ninfo, &val_ptr)
+                getrc = PMIx_Get(&p, key, info, ninfo, &val_ptr)
+        rc = getrc
         if PMIX_SUCCESS == rc:
             val = pmix_unload_value(val_ptr)
+            if val is None:
+                rc = PMIX_ERR_NOT_SUPPORTED
             # val_ptr was allocated by the PMIx library (PMIX_VALUE_CREATE),
             # so it must be released with the library's own allocator rather
             # than PyMem_Free.
@@ -1354,7 +1668,7 @@ cdef class PMIxClient:
                 if not keys:
                     return PMIX_ERR_NOMEM
                 memset(keys, 0, (nstrings + 1) * sizeof(char*))
-                rc = pmix_load_argv(keys, pykeys)
+                rc = pmix_load_argv(keys, nstrings, pykeys)
                 if PMIX_SUCCESS != rc:
                     pmix_free_argv(keys)
                     return rc
@@ -1419,6 +1733,20 @@ cdef class PMIxClient:
         # convert the list of dictionaries to array of
         # pmix_pdata_t structs
         if data is not None:
+            # a private copy, its keys checked before anything is built
+            # from it - see pmix_snapshot
+            data = pmix_listcopy(data)
+            ok = data is not None
+            if ok:
+                for d in data:
+                    if not isinstance(d, dict) or \
+                       PMIX_SUCCESS != pmix_name_ok(d.get('key'), PMIX_MAX_KEYLEN, "key"):
+                        ok = False
+                        break
+            if not ok:
+                if 0 < ninfo:
+                    pmix_free_info(info, ninfo)
+                return PMIX_ERR_BAD_PARAM, []
             npdata = len(data)
             if 0 < npdata:
                 pdata = <pmix_pdata_t*> PyMem_Malloc(npdata * sizeof(pmix_pdata_t))
@@ -1429,8 +1757,7 @@ cdef class PMIxClient:
                 memset(pdata, 0, npdata * sizeof(pmix_pdata_t))
                 n = 0
                 for d in data:
-                    pykey = d['key']
-                    pmix_copy_key(pdata[n].key, pykey)
+                    pmix_copy_key(pdata[n].key, d['key'])
                     n += 1
             else:
                 pdata = NULL
@@ -1449,8 +1776,13 @@ cdef class PMIxClient:
         with nogil:
             _rc = PMIx_Lookup(pdata, npdata, info, ninfo)
         rc = _rc
-        if PMIX_SUCCESS == rc:
-            rc = pmix_unload_pdata(pdata, npdata, results)
+        # a lookup that found only some of the keys answers
+        # PMIX_ERR_PARTIAL_SUCCESS, with the keys it did not find left
+        # PMIX_UNDEF - report what was found either way
+        if PMIX_SUCCESS == rc or PMIX_ERR_PARTIAL_SUCCESS == rc:
+            prc = pmix_unload_pdata(pdata, npdata, results)
+            if PMIX_SUCCESS != prc:
+                rc = prc
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         if 0 < npdata:
@@ -1488,7 +1820,7 @@ cdef class PMIxClient:
             pmix_free_info(jinfo, ninfo)
             return PMIX_ERR_NOMEM, None
 
-        rc = pmix_load_apps(apps, pyapps)
+        rc = pmix_load_apps(apps, napps, pyapps)
         if PMIX_SUCCESS != rc:
             pmix_free_apps(apps, napps)
             if 0 < ninfo:
@@ -1504,7 +1836,7 @@ cdef class PMIxClient:
         if PMIX_SUCCESS != rc:
             pyns = None
         else:
-            pyns = nspace.decode('ascii')
+            pyns = pmix_decode_str(nspace)
         return rc, pyns
 
     def connect(self, peers, pyinfo):
@@ -1524,7 +1856,7 @@ cdef class PMIxClient:
                 procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
                 if not procs:
                     return PMIX_ERR_NOMEM
-                rc = pmix_load_procs(procs, peers)
+                rc = pmix_load_procs(procs, nprocs, peers)
                 if PMIX_SUCCESS != rc:
                     pmix_free_procs(procs, nprocs)
                     return rc
@@ -1581,7 +1913,7 @@ cdef class PMIxClient:
                 procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
                 if not procs:
                     return PMIX_ERR_NOMEM
-                rc = pmix_load_procs(procs, peers)
+                rc = pmix_load_procs(procs, nprocs, peers)
                 if PMIX_SUCCESS != rc:
                     pmix_free_procs(procs, nprocs)
                     return rc
@@ -1627,6 +1959,7 @@ cdef class PMIxClient:
     # node" and a NULL nspace means "every namespace this server knows".
     # The body's own checks depend on being reachable with None.
     def resolve_peers(self, pynode, pyns):
+        cdef pmix_status_t _gilrc
         cdef pmix_nspace_t nspace
         cdef char *nodename
         cdef pmix_proc_t *procs
@@ -1637,17 +1970,21 @@ cdef class PMIxClient:
         memset(nspace, 0, sizeof(nspace))
         procs = NULL
         nprocs = 0
+        # the nspace first: a name that does not fit raises, and must not
+        # leave the node name behind
+        if pyns is not None:
+            pmix_copy_nspace(nspace, pyns)
         if pynode is not None:
             if isinstance(pynode, str):
-                pyn = pynode.encode('ascii')
+                pyn = pynode.encode('UTF-8')
             else:
                 pyn = pynode
             nodename = strdup(pyn)
             if NULL == nodename:
                 return PMIX_ERR_NOMEM, peers
-        if pyns is not None:
-            pmix_copy_nspace(nspace, pyns)
-        rc = PMIx_Resolve_peers(nodename, nspace, &procs, &nprocs)
+        with nogil:
+            _gilrc = PMIx_Resolve_peers(nodename, nspace, &procs, &nprocs)
+        rc = _gilrc
         # the node name was ours, not the library's, and it did not retain it
         if NULL != nodename:
             free(nodename)
@@ -1661,6 +1998,7 @@ cdef class PMIxClient:
     # NOTE: pyns is deliberately left unannotated - see resolve_peers above.
     # None means "every namespace this server knows about"
     def resolve_nodes(self, pyns):
+        cdef pmix_status_t _gilrc
         cdef pmix_nspace_t nspace
         cdef char *nodelist
 
@@ -1670,10 +2008,11 @@ cdef class PMIxClient:
         memset(nspace, 0, sizeof(nspace))
         if pyns is not None:
             pmix_copy_nspace(nspace, pyns)
-        rc = PMIx_Resolve_nodes(nspace, &nodelist)
+        with nogil:
+            _gilrc = PMIx_Resolve_nodes(nspace, &nodelist)
+        rc = _gilrc
         if PMIX_SUCCESS == rc and NULL != nodelist:
-            pyn = nodelist
-            pynodes = pyn.decode('ascii')
+            pynodes = pmix_decode_str(nodelist)
             # the library allocated this string with the C allocator, so
             # it goes back to free() - not to Python's allocator
             free(nodelist)
@@ -1687,12 +2026,32 @@ cdef class PMIxClient:
         cdef size_t nresults
         cdef pmix_info_t **qual_ptr
         cdef pmix_status_t _rc;
+        results = NULL
+        nresults = 0
         nqueries   = 0
         nresults   = 0
         queries    = NULL
         qual_ptr   = NULL
 
         pyresults = []
+        # a private copy, of query dicts whose key lists are lists - checked
+        # before anything is allocated from it (see pmix_snapshot)
+        if pyq is not None:
+            pyq = pmix_listcopy(pyq)
+            if pyq is None:
+                return PMIX_ERR_BAD_PARAM, pyresults
+            mine = []
+            for q in pyq:
+                if not isinstance(q, dict):
+                    return PMIX_ERR_BAD_PARAM, pyresults
+                qkeys = q.get('keys')
+                if qkeys is not None:
+                    qkeys = pmix_listcopy(qkeys)
+                    if qkeys is None:
+                        return PMIX_ERR_BAD_PARAM, pyresults
+                # the caller's dicts are left as they were
+                mine.append({'keys': qkeys, 'qualifiers': q.get('qualifiers')})
+            pyq = mine
         if pyq is not None:
             nqueries = len(pyq)
             if 0 < nqueries:
@@ -1716,7 +2075,7 @@ cdef class PMIxClient:
                             pmix_free_queries(queries, nqueries)
                             return PMIX_ERR_NOMEM,pyresults
                         memset(queries[n].keys, 0, (nstrings+1) * sizeof(char*))
-                        rc = pmix_load_argv(queries[n].keys, qkeys)
+                        rc = pmix_load_argv(queries[n].keys, nstrings, qkeys)
                         if PMIX_SUCCESS != rc:
                             pmix_free_queries(queries, nqueries)
                             return rc,pyresults
@@ -1737,15 +2096,13 @@ cdef class PMIxClient:
         with nogil:
             _rc = PMIx_Query_info(queries, nqueries, &results, &nresults)
         rc = _rc
-        if PMIX_SUCCESS == rc:
-            rc = pmix_unload_info(results, nresults,  pyresults)
-            # free results info structs
-            pmix_free_info(results, nresults)
+        rc = pmix_take_results(rc, results, nresults, pyresults)
         # free memory for query structs
         pmix_free_queries(queries, nqueries)
         return rc, pyresults
 
     def log(self, pydata, pydirs):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *data
         cdef pmix_info_t **data_ptr
         cdef pmix_info_t *directives
@@ -1766,7 +2123,9 @@ cdef class PMIxClient:
             return rc
 
         # call the API
-        rc = PMIx_Log(data, ndata, directives, ndirs)
+        with nogil:
+            _gilrc = PMIx_Log(data, ndata, directives, ndirs)
+        rc = _gilrc
         if 0 < ndata:
             pmix_free_info(data, ndata)
         if 0 < ndirs:
@@ -1803,10 +2162,7 @@ cdef class PMIxClient:
         rc = _rc
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
-        if PMIX_SUCCESS == rc and 0 < nresults:
-            # convert the results
-            rc = pmix_unload_info(results, nresults, pyres)
-            pmix_free_info(results, nresults)
+        rc = pmix_take_results(rc, results, nresults, pyres)
         return rc, pyres
 
     # Define, extend, reduce or delete a block of resources. The request is
@@ -1841,10 +2197,11 @@ cdef class PMIxClient:
 
         if block is None:
             return PMIX_ERR_BAD_PARAM
+        # an immutable copy - see abort()
         if isinstance(block, str):
-            pyblock = block.encode('ascii')
+            pyblock = block.encode('UTF-8')
         else:
-            pyblock = block
+            pyblock = bytes(block)
         blk = <char*>pyblock
         drctv = directive
 
@@ -1891,7 +2248,7 @@ cdef class PMIxClient:
                 targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
                 if not targets:
                     return PMIX_ERR_NOMEM, pyres
-                rc = pmix_load_procs(targets, pytargets)
+                rc = pmix_load_procs(targets, ntargets, pytargets)
                 if PMIX_SUCCESS != rc:
                     pmix_free_procs(targets, ntargets)
                     return rc, pyres
@@ -1930,10 +2287,7 @@ cdef class PMIxClient:
             pmix_free_info(directives, ndirs)
         if 0 < ntargets:
             pmix_free_procs(targets, ntargets)
-        if PMIX_SUCCESS == rc and 0 < nresults:
-            # convert the results
-            rc = pmix_unload_info(results, nresults, pyres)
-            pmix_free_info(results, nresults)
+        rc = pmix_take_results(rc, results, nresults, pyres)
         return rc, pyres
 
     def monitor(self, pymonitor_info, code:int, pydirs):
@@ -1979,10 +2333,7 @@ cdef class PMIxClient:
             pmix_free_info(directives, ndirs)
         if 0 < nmonitor:
             pmix_free_info(monitor_info, nmonitor)
-        if PMIX_SUCCESS == rc and 0 < nresults:
-            # convert the results
-            rc = pmix_unload_info(results, nresults, pyres)
-            pmix_free_info(results, nresults)
+        rc = pmix_take_results(rc, results, nresults, pyres)
         return rc, pyres
 
     # Send a heartbeat to our server, feeding whatever process health
@@ -1995,10 +2346,12 @@ cdef class PMIxClient:
     #        - accepted for future directives; the C API defines none
     #          today, so anything provided here is ignored
     def heartbeat(self, dicts=None):
-        PMIx_Heartbeat()
+        with nogil:
+            PMIx_Heartbeat()
         return PMIX_SUCCESS
 
     def get_credential(self, pyinfo):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef pmix_byte_object_t bo
@@ -2011,9 +2364,14 @@ cdef class PMIxClient:
         if PMIX_SUCCESS != rc:
             return rc, {}
 
-        # call the API
+        # call the API. The library leaves the credential untouched on an
+        # early error, so it must start out empty
+        bo.bytes = NULL
+        bo.size = 0
         boptr = &bo
-        rc = PMIx_Get_credential(info, ninfo, boptr)
+        with nogil:
+            _gilrc = PMIx_Get_credential(info, ninfo, boptr)
+        rc = _gilrc
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         blist = []
@@ -2024,11 +2382,16 @@ cdef class PMIxClient:
             barray = bytearray(blist)
             cred['bytes'] = barray
             cred['size'] = bo.size
+        # the credential's payload is handed to its receiver to keep - and
+        # once copied into Python, this is done with it
+        if NULL != bo.bytes:
+            free(bo.bytes)
         return rc, cred
 
     # NOTE: pycred is deliberately left unannotated so the body can report
     # PMIX_ERR_BAD_PARAM on None rather than having Cython reject it
     def validate_credential(self, pycred, pyinfo):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef pmix_byte_object_t bo
@@ -2059,15 +2422,14 @@ cdef class PMIxClient:
             return rc, pyres
 
         # call the API
-        rc = PMIx_Validate_credential(&bo, info, ninfo, &results, &nresults)
+        with nogil:
+            _gilrc = PMIx_Validate_credential(&bo, info, ninfo, &results, &nresults)
+        rc = _gilrc
         if NULL != bo.bytes:
             free(bo.bytes)
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
-        if PMIX_SUCCESS == rc and 0 < nresults:
-            # convert the results
-            rc = pmix_unload_info(results, nresults, pyres)
-            pmix_free_info(results, nresults)
+        rc = pmix_take_results(rc, results, nresults, pyres)
         return rc, pyres
 
     # Note: 'peers' and 'pyinfo' are deliberately left unannotated. Cython
@@ -2084,6 +2446,8 @@ cdef class PMIxClient:
         cdef size_t ninfo
         cdef size_t nprocs
         cdef size_t nresults
+        results = NULL
+        nresults = 0
         nprocs = 0
         ninfo = 0
 
@@ -2098,7 +2462,7 @@ cdef class PMIxClient:
             procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
             if not procs:
                 return PMIX_ERR_NOMEM, []
-            rc = pmix_load_procs(procs, peers)
+            rc = pmix_load_procs(procs, nprocs, peers)
             if PMIX_SUCCESS != rc:
                 pmix_free_procs(procs, nprocs)
                 return rc, []
@@ -2136,10 +2500,7 @@ cdef class PMIxClient:
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         pyres = []
-        if PMIX_SUCCESS == rc and NULL != results and 0 < nresults:
-            # convert results
-            pmix_unload_info(results, nresults, pyres)
-            pmix_free_info(results, nresults)
+        rc = pmix_take_results(rc, results, nresults, pyres)
         return rc, pyres
 
     def group_invite(self, group:str, peers, pyinfo):
@@ -2152,6 +2513,8 @@ cdef class PMIxClient:
         cdef size_t ninfo
         cdef size_t nprocs
         cdef size_t nresults
+        results = NULL
+        nresults = 0
         nprocs = 0
         ninfo = 0
 
@@ -2166,7 +2529,7 @@ cdef class PMIxClient:
             procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
             if not procs:
                 return PMIX_ERR_NOMEM, []
-            rc = pmix_load_procs(procs, peers)
+            rc = pmix_load_procs(procs, nprocs, peers)
             if PMIX_SUCCESS != rc:
                 pmix_free_procs(procs, nprocs)
                 return rc, []
@@ -2204,10 +2567,7 @@ cdef class PMIxClient:
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         pyres = []
-        if PMIX_SUCCESS == rc and NULL != results and 0 < nresults:
-            # convert results
-            pmix_unload_info(results, nresults, pyres)
-            pmix_free_info(results, nresults)
+        rc = pmix_take_results(rc, results, nresults, pyres)
         return rc, pyres
 
     def group_join(self, group:str, leader, opt:int, pyinfo):
@@ -2257,10 +2617,7 @@ cdef class PMIxClient:
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         pyres = []
-        if PMIX_SUCCESS == rc and NULL != results and 0 < nresults:
-            # convert results
-            pmix_unload_info(results, nresults, pyres)
-            pmix_free_info(results, nresults)
+        rc = pmix_take_results(rc, results, nresults, pyres)
         return rc, pyres
 
     def group_leave(self, group:str, pyinfo):
@@ -2361,13 +2718,14 @@ cdef class PMIxClient:
 
         # record the callback so it stays alive, then call the library
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Group_construct_nb(cd.grp, cd.procs, cd.nprocs,
                                          cd.info, cd.ninfo,
                                          pypmix_client_info_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
             # no callback will be executed, so reclaim the operation here
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2395,13 +2753,14 @@ cdef class PMIxClient:
 
         # record the callback so it stays alive, then call the library
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Group_invite_nb(cd.grp, cd.procs, cd.nprocs,
                                       cd.info, cd.ninfo,
                                       pypmix_client_info_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
             # no callback will be executed, so reclaim the operation here
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2411,10 +2770,20 @@ cdef class PMIxClient:
         cdef pmix_status_t rc
         cdef int prc
         cdef pmix_group_opt_t copt
+        cdef pmix_proc_t ldr
 
         if not callable(cbfunc):
             return PMIX_ERR_BAD_PARAM
         copt = opt
+
+        # convert the leader before the caddy exists, so that a leader
+        # that cannot be converted has nothing to leak
+        if leader is not None:
+            prc = pmix_load_proc(&ldr, leader)
+            if PMIX_SUCCESS != prc:
+                return prc
+        else:
+            memcpy(&ldr, &self.myproc, sizeof(pmix_proc_t))
 
         # convert group name and the info array into a caddy that will
         # outlive this call
@@ -2431,22 +2800,18 @@ cdef class PMIxClient:
             cd.nprocs = 0
             pypmix_nb_cbdata_free(cd)
             return PMIX_ERR_NOMEM
-        if leader is not None:
-            pmix_copy_nspace(cd.procs[0].nspace, leader['nspace'])
-            cd.procs[0].rank = leader['rank']
-        else:
-            pmix_copy_nspace(cd.procs[0].nspace, self.myproc.nspace)
-            cd.procs[0].rank = self.myproc.rank
+        memcpy(&cd.procs[0], &ldr, sizeof(pmix_proc_t))
 
         # record the callback so it stays alive, then call the library
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Group_join_nb(cd.grp, &cd.procs[0], copt,
                                     cd.info, cd.ninfo,
                                     pypmix_client_info_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
             # no callback will be executed, so reclaim the operation here
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2467,12 +2832,13 @@ cdef class PMIxClient:
 
         # record the callback so it stays alive, then call the library
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Group_leave_nb(cd.grp, cd.info, cd.ninfo,
                                      pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
             # no callback will be executed, so reclaim the operation here
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2493,12 +2859,13 @@ cdef class PMIxClient:
 
         # record the callback so it stays alive, then call the library
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Group_destruct_nb(cd.grp, cd.info, cd.ninfo,
                                         pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
             # no callback will be executed, so reclaim the operation here
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2533,12 +2900,13 @@ cdef class PMIxClient:
 
         # record the callback so it stays alive, then call the library
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Fence_nb(cd.procs, cd.nprocs, cd.info, cd.ninfo,
                                pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
             # no callback will be executed, so reclaim the operation here
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2549,12 +2917,33 @@ cdef class PMIxClient:
         cdef pmix_status_t rc
         cdef int prc
 
+        cdef pmix_proc_t target
+
         if not callable(cbfunc):
             return PMIX_ERR_BAD_PARAM
+
+        # convert the proc and the key before the caddy exists, so that
+        # one that cannot be converted has nothing to leak
+        if proc is None:
+            memcpy(&target, &self.myproc, sizeof(pmix_proc_t))
+        else:
+            prc = pmix_load_proc(&target, proc)
+            if PMIX_SUCCESS != prc:
+                return prc
+        pyky = None
+        if ky is not None:
+            pyky = pmix_name_bytes(ky, PMIX_MAX_KEYLEN)
+            if pyky is None:
+                return PMIX_ERR_BAD_PARAM
 
         cd = pypmix_nb_setup(dicts, &prc)
         if NULL == cd:
             return prc
+        # see pmix_asks_pointer_values: the callback releases the value
+        # it is handed, which such an answer is not
+        if pmix_asks_pointer_values(cd.info, cd.ninfo):
+            pypmix_nb_cbdata_free(cd)
+            return PMIX_ERR_NOT_SUPPORTED
 
         # the proc and the key must outlive this call as well - a
         # single-element proc array covers the former
@@ -2564,28 +2953,20 @@ cdef class PMIxClient:
             cd.nprocs = 0
             pypmix_nb_cbdata_free(cd)
             return PMIX_ERR_NOMEM
-        if proc is None:
-            pmix_copy_nspace(cd.procs[0].nspace, self.myproc.nspace)
-            cd.procs[0].rank = self.myproc.rank
-        else:
-            pmix_copy_nspace(cd.procs[0].nspace, proc['nspace'])
-            cd.procs[0].rank = proc['rank']
-        if ky is not None:
-            if isinstance(ky, str):
-                pyky = ky.encode('ascii')
-            else:
-                pyky = ky
+        memcpy(&cd.procs[0], &target, sizeof(pmix_proc_t))
+        if pyky is not None:
             cd.ky = strdup(pyky)
             if NULL == cd.ky:
                 pypmix_nb_cbdata_free(cd)
                 return PMIX_ERR_NOMEM
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Get_nb(&cd.procs[0], cd.ky, cd.info, cd.ninfo,
                              pypmix_client_value_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2603,11 +2984,12 @@ cdef class PMIxClient:
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Publish_nb(cd.info, cd.ninfo,
                                  pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2632,11 +3014,12 @@ cdef class PMIxClient:
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Lookup_nb(cd.keys, cd.info, cd.ninfo,
                                 pypmix_client_lookup_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2659,11 +3042,12 @@ cdef class PMIxClient:
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Unpublish_nb(cd.keys, cd.info, cd.ninfo,
                                    pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2691,17 +3075,18 @@ cdef class PMIxClient:
             cd.napps = 0
             pypmix_nb_cbdata_free(cd)
             return PMIX_ERR_NOMEM
-        prc = pmix_load_apps(cd.apps, pyapps)
+        prc = pmix_load_apps(cd.apps, cd.napps, pyapps)
         if PMIX_SUCCESS != prc:
             pypmix_nb_cbdata_free(cd)
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Spawn_nb(cd.info, cd.ninfo, cd.apps, cd.napps,
                                pypmix_client_spawn_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2723,11 +3108,12 @@ cdef class PMIxClient:
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Connect_nb(cd.procs, cd.nprocs, cd.info, cd.ninfo,
                                  pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2749,11 +3135,12 @@ cdef class PMIxClient:
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Disconnect_nb(cd.procs, cd.nprocs, cd.info, cd.ninfo,
                                     pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2768,6 +3155,15 @@ cdef class PMIxClient:
 
         if not callable(cbfunc):
             return PMIX_ERR_BAD_PARAM
+
+        # walk a private copy (see pmix_snapshot), of query dicts
+        if pyq is not None:
+            pyq = pmix_listcopy(pyq)
+            if pyq is None:
+                return PMIX_ERR_BAD_PARAM
+            for q in pyq:
+                if not isinstance(q, dict):
+                    return PMIX_ERR_BAD_PARAM
 
         # this operation carries no info array of its own - the
         # qualifiers ride along inside each query
@@ -2788,14 +3184,18 @@ cdef class PMIxClient:
             n = 0
             for q in pyq:
                 qkeys = q.get('keys')
+                if qkeys is not None:
+                    qkeys = pmix_listcopy(qkeys)
+                    if qkeys is None:
+                        pypmix_nb_cbdata_free(cd)
+                        return PMIX_ERR_BAD_PARAM
                 if qkeys is not None and 0 < len(qkeys):
                     nstrings = len(qkeys)
                     cd.queries[n].keys = <char **> malloc((nstrings+1) * sizeof(char*))
                     if not cd.queries[n].keys:
                         pypmix_nb_cbdata_free(cd)
                         return PMIX_ERR_NOMEM
-                    memset(cd.queries[n].keys, 0, (nstrings+1) * sizeof(char*))
-                    prc = pmix_load_argv(cd.queries[n].keys, qkeys)
+                    prc = pmix_load_argv(cd.queries[n].keys, nstrings, qkeys)
                     if PMIX_SUCCESS != prc:
                         pypmix_nb_cbdata_free(cd)
                         return prc
@@ -2808,11 +3208,12 @@ cdef class PMIxClient:
                 n += 1
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Query_info_nb(cd.queries, cd.nqueries,
                                     pypmix_client_info_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2834,11 +3235,12 @@ cdef class PMIxClient:
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Log_nb(cd.info, cd.ninfo, cd.dirs, cd.ndirs,
                              pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2858,12 +3260,13 @@ cdef class PMIxClient:
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Allocation_request_nb(drctv, cd.info, cd.ninfo,
                                             pypmix_client_info_cbfunc,
                                             <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2886,11 +3289,12 @@ cdef class PMIxClient:
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Job_control_nb(cd.procs, cd.nprocs, cd.info, cd.ninfo,
                                      pypmix_client_info_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2916,11 +3320,12 @@ cdef class PMIxClient:
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Process_monitor_nb(cd.info, ccode, cd.dirs, cd.ndirs,
                                          pypmix_client_info_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2939,12 +3344,13 @@ cdef class PMIxClient:
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Get_credential_nb(cd.info, cd.ninfo,
                                         pypmix_client_credential_cbfunc,
                                         <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -2958,8 +3364,15 @@ cdef class PMIxClient:
 
         if not callable(cbfunc):
             return PMIX_ERR_BAD_PARAM
-        if pycred is None:
+        if not isinstance(pycred, dict):
             return PMIX_ERR_BAD_PARAM
+        # the payload, converted before the caddy exists
+        pybytes = pycred.get('bytes')
+        if pybytes is None:
+            return PMIX_ERR_BAD_PARAM
+        pybytes = pmix_payload(pybytes)
+        if pybytes is None:
+            return PMIX_ERR_TYPE_MISMATCH
 
         cd = pypmix_nb_setup(pyinfo, &prc)
         if NULL == cd:
@@ -2972,14 +3385,6 @@ cdef class PMIxClient:
             return PMIX_ERR_NOMEM
         cd.cred.bytes = NULL
         cd.cred.size = 0
-        pybytes = pycred.get('bytes')
-        if pybytes is None:
-            pypmix_nb_cbdata_free(cd)
-            return PMIX_ERR_BAD_PARAM
-        if isinstance(pybytes, str):
-            pybytes = pybytes.encode('ascii')
-        else:
-            pybytes = bytes(pybytes)
         if 0 < len(pybytes):
             cd.cred.size = len(pybytes)
             cd.cred.bytes = <char*> PyMem_Malloc(cd.cred.size)
@@ -2991,18 +3396,56 @@ cdef class PMIxClient:
             memcpy(cd.cred.bytes, credptr, cd.cred.size)
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Validate_credential_nb(cd.cred, cd.info, cd.ninfo,
                                              pypmix_client_validation_cbfunc,
                                              <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
-    # cbfunc(status:int, cbdata). The fabric object lives in this class,
-    # so the registry holds a reference to us until the callback fires,
-    # and the "registered" flag is only set once the library says so
+    # The fabric information the library holds for the registered fabric,
+    # as fabric_register() and fabric_update() return it. This is how to
+    # read it after a non-blocking registration the library completed on
+    # the spot (PMIX_OPERATION_SUCCEEDED, no callback).
+    #
+    # Returns (rc, fabricinfo)
+    def fabric_info(self):
+        # busy first: during a first registration nothing is set yet,
+        # but the answer that matters is that one is in flight
+        if 1 == self.fabric_busy:
+            return (PMIX_ERR_RESOURCE_BUSY, [])
+        if 0 == self.fabric_set:
+            return (PMIX_ERR_INIT, [])
+        finfo = self._fabric_info()
+        if finfo is None:
+            return (PMIX_ERR_NOT_SUPPORTED, [])
+        return (PMIX_SUCCESS, finfo)
+
+    # The fabric information in this class's fabric object, as a list of
+    # info dicts - None if it cannot be converted
+    def _fabric_info(self):
+        finfo = []
+        if NULL != self.myfabric.info and 0 < self.myfabric.ninfo:
+            rc = pmix_unload_info(self.myfabric.info, self.myfabric.ninfo, finfo)
+            if PMIX_SUCCESS != rc:
+                return None
+        return finfo
+
+    # The fabric object lives in this class, so the registry holds a
+    # reference to us until the callback fires, and the "registered" flag
+    # is only changed once the library says the operation succeeded.
+    #
+    # Each of these may also be completed by the library on the spot - a
+    # scheduler registers a fabric itself, and a deregistration never
+    # leaves the process - in which case it answers
+    # PMIX_OPERATION_SUCCEEDED and the callback is not called, exactly as
+    # for the C API. The flag is updated before that is returned.
+
+    # cbfunc(status:int, fabricinfo:list, cbdata) - fabricinfo is what
+    # fabric_register() returns, and is empty unless status is success
     def fabric_register_nb(self, dicts, cbfunc, cbdata=None):
         cdef pypmix_nb_cbdata_t *cd
         cdef pmix_status_t rc
@@ -3011,31 +3454,45 @@ cdef class PMIxClient:
 
         if not callable(cbfunc):
             return PMIX_ERR_BAD_PARAM
-        if 1 == self.fabric_set:
+        if 1 == self.fabric_set or 1 == self.fabric_busy:
             return PMIX_ERR_RESOURCE_BUSY
+        # claim the fabric before anything that can run Python code - the
+        # conversion below, or the registry lock - lets another thread in
+        # past the test above
+        self.fabric_busy = 1
 
         cd = pypmix_nb_setup(dicts, &prc)
         if NULL == cd:
+            self.fabric_busy = 0
             return prc
 
         def regdone(status, ud):
+            finfo = []
+            self.fabric_busy = 0
             if PMIX_SUCCESS == status:
                 self.fabric_set = 1
-            cbfunc(status, ud)
+                finfo = self._fabric_info()
+                if finfo is None:
+                    status = PMIX_ERR_NOT_SUPPORTED
+                    finfo = []
+            cbfunc(status, finfo, ud)
 
         fab = &self.myfabric
         cd.idx = pypmix_nb_register(regdone, cbdata, self)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Fabric_register_nb(fab, cd.info, cd.ninfo,
                                          pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
+            self.fabric_busy = 0
+            if PMIX_OPERATION_SUCCEEDED == rc:
+                self.fabric_set = 1
         return rc
 
-    # cbfunc(status:int, cbdata) - the updated fabric information is read
-    # back through fabric_update()'s companion accessors once the
-    # callback reports success
+    # cbfunc(status:int, fabricinfo:list, cbdata) - the refreshed fabric
+    # information, as fabric_update() returns it
     def fabric_update_nb(self, cbfunc, cbdata=None):
         cdef pypmix_nb_cbdata_t *cd
         cdef pmix_status_t rc
@@ -3046,22 +3503,41 @@ cdef class PMIxClient:
             return PMIX_ERR_BAD_PARAM
         if 0 == self.fabric_set:
             return PMIX_ERR_INIT
+        if 1 == self.fabric_busy:
+            return PMIX_ERR_RESOURCE_BUSY
+        # claimed at once - see fabric_register_nb
+        self.fabric_busy = 1
 
         cd = pypmix_nb_setup(None, &prc)
         if NULL == cd:
+            self.fabric_busy = 0
             return prc
 
+        def upddone(status, ud):
+            finfo = []
+            self.fabric_busy = 0
+            if PMIX_SUCCESS == status:
+                finfo = self._fabric_info()
+                if finfo is None:
+                    status = PMIX_ERR_NOT_SUPPORTED
+                    finfo = []
+            cbfunc(status, finfo, ud)
+
         fab = &self.myfabric
-        cd.idx = pypmix_nb_register(cbfunc, cbdata, self)
+        cd.idx = pypmix_nb_register(upddone, cbdata, self)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Fabric_update_nb(fab, pypmix_client_op_cbfunc,
                                        <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
+            self.fabric_busy = 0
         return rc
 
-    # cbfunc(status:int, cbdata)
+    # cbfunc(status:int, cbdata). The library completes a deregistration
+    # itself, so this normally answers PMIX_OPERATION_SUCCEEDED and the
+    # callback is not called
     def fabric_deregister_nb(self, cbfunc, cbdata=None):
         cdef pypmix_nb_cbdata_t *cd
         cdef pmix_status_t rc
@@ -3072,24 +3548,34 @@ cdef class PMIxClient:
             return PMIX_ERR_BAD_PARAM
         if 0 == self.fabric_set:
             return PMIX_ERR_INIT
+        if 1 == self.fabric_busy:
+            return PMIX_ERR_RESOURCE_BUSY
+        # claimed at once - see fabric_register_nb
+        self.fabric_busy = 1
 
         cd = pypmix_nb_setup(None, &prc)
         if NULL == cd:
+            self.fabric_busy = 0
             return prc
 
         def deregdone(status, ud):
+            self.fabric_busy = 0
             if PMIX_SUCCESS == status:
                 self.fabric_set = 0
             cbfunc(status, ud)
 
         fab = &self.myfabric
         cd.idx = pypmix_nb_register(deregdone, cbdata, self)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Fabric_deregister_nb(fab, pypmix_client_op_cbfunc,
                                            <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
+            self.fabric_busy = 0
+            if PMIX_OPERATION_SUCCEEDED == rc:
+                self.fabric_set = 0
         return rc
 
     # cbfunc(status:int, distances:list, cbdata) - each entry is a dict of
@@ -3123,13 +3609,14 @@ cdef class PMIxClient:
 
         topo = &self.topo
         cd.idx = pypmix_nb_register(cbfunc, cbdata, self)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Compute_distances_nb(topo, &cd.cpuset,
                                            cd.info, cd.ninfo,
                                            pypmix_client_devdist_cbfunc,
                                            <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -3147,16 +3634,25 @@ cdef class PMIxClient:
         if block is None:
             return PMIX_ERR_BAD_PARAM
         drctv = directive
+        # the block name as resource_block() takes it, converted before
+        # the caddy exists so a name that cannot be has nothing to leak
+        if isinstance(block, str):
+            try:
+                pyblock = block.encode('UTF-8')
+            except UnicodeError:
+                return PMIX_ERR_BAD_PARAM
+        elif isinstance(block, (bytes, bytearray)):
+            pyblock = bytes(block)
+        else:
+            return PMIX_ERR_TYPE_MISMATCH
+        if b'\0' in pyblock:
+            return PMIX_ERR_BAD_PARAM
 
         cd = pypmix_nb_setup(pyinfo, &prc)
         if NULL == cd:
             return prc
 
         # the block name and the units must outlive this call
-        if isinstance(block, str):
-            pyblock = block.encode('ascii')
-        else:
-            pyblock = block
         cd.blk = strdup(pyblock)
         if NULL == cd.blk:
             pypmix_nb_cbdata_free(cd)
@@ -3167,12 +3663,13 @@ cdef class PMIxClient:
             return prc
 
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Resource_block_nb(drctv, cd.blk, cd.units, cd.nunits,
                                         cd.info, cd.ninfo,
                                         pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
@@ -3187,11 +3684,25 @@ cdef class PMIxClient:
         cdef size_t ninfo
         cdef pmix_status_t regrc = PMIX_ERR_EVENT_REGISTRATION
 
+        # see _on_library_thread: refuse before taking _reglock
+        if _on_library_thread():
+            return PMIX_ERR_WOULD_BLOCK, -1
+
         # convert the codes to an array of ints
         codes = NULL
         ncodes = 0
         info = NULL
         ninfo = 0
+        # the codes are checked before anything is allocated, from a
+        # private copy (see pmix_snapshot)
+        if pycodes is not None:
+            pycodes = pmix_listcopy(pycodes)
+            if pycodes is None:
+                return PMIX_ERR_BAD_PARAM, -1
+            for c in pycodes:
+                if not isinstance(c, int) or isinstance(c, bool) or \
+                   not (-2147483648 <= c <= 2147483647):
+                    return PMIX_ERR_BAD_PARAM, -1
         if pycodes is not None and 0 < len(pycodes):
             ncodes = len(pycodes)
             codes = <int*> PyMem_Malloc(ncodes * sizeof(int))
@@ -3259,12 +3770,13 @@ cdef class PMIxClient:
             if NULL == cd:
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_Deregister_event_handler(cref,
                                                     pypmix_client_op_cbfunc,
                                                     <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
                 return crc
             # the local record goes with it, as in the blocking form - the
@@ -3285,9 +3797,21 @@ cdef class PMIxClient:
     # cbfunc(status:int, cbdata) - reporting an event from inside an
     # event handler or a server module upcall needs the non-blocking
     # form, as both run on the progress thread
-    def notify_event(self, status:int, pysrc:dict, range, pyinfo,
+    # Generate an event
+    #
+    # @pysrc [INPUT]
+    #        - the proc dict the event is reported as coming from, or
+    #          None for this process
+    #
+    # With a callback this is the non-blocking form: the library holds
+    # the source and the info array until the event has been delivered,
+    # so both live in the caddy rather than on this method's stack - the
+    # form exists to be called from an event handler, and the queued
+    # event always runs after the handler has returned.
+    def notify_event(self, status:int, pysrc, range, pyinfo,
                      cbfunc=None, cbdata=None):
         cdef pmix_proc_t proc
+        cdef pmix_proc_t *srcptr = NULL
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t ninfo
@@ -3297,27 +3821,43 @@ cdef class PMIxClient:
         cdef pmix_status_t crc
         cdef int prc
 
-        # convert the proc
-        pmix_copy_nspace(proc.nspace, pysrc['nspace'])
-        proc.rank = pysrc['rank']
+        if pysrc is not None and not isinstance(pysrc, dict):
+            return PMIX_ERR_BAD_PARAM
 
         if cbfunc is not None:
             if not callable(cbfunc):
                 return PMIX_ERR_BAD_PARAM
-            # the library holds the info array until the event has been
-            # delivered, so it goes in the caddy
             cd = pypmix_nb_setup(pyinfo, &prc)
             if NULL == cd:
                 return prc
+            if pysrc is not None:
+                cd.procs = <pmix_proc_t*> PyMem_Malloc(sizeof(pmix_proc_t))
+                if NULL == cd.procs:
+                    pypmix_nb_cbdata_free(cd)
+                    return PMIX_ERR_NOMEM
+                cd.nprocs = 1
+                prc = pmix_load_proc(cd.procs, pysrc)
+                if PMIX_SUCCESS != prc:
+                    pypmix_nb_cbdata_free(cd)
+                    return prc
+                srcptr = cd.procs
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
-                crc = PMIx_Notify_event(cstatus, &proc, crange,
+                crc = PMIx_Notify_event(cstatus, srcptr, crange,
                                         cd.info, cd.ninfo,
                                         pypmix_client_op_cbfunc, <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return crc
+
+        # the blocking form waits for delivery, so the stack is fine
+        if pysrc is not None:
+            prc = pmix_load_proc(&proc, pysrc)
+            if PMIX_SUCCESS != prc:
+                return prc
+            srcptr = &proc
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
@@ -3327,10 +3867,10 @@ cdef class PMIxClient:
 
         # call the library
         with nogil:
-            rc = PMIx_Notify_event(cstatus, &proc, crange, info, ninfo, NULL, NULL)
+            crc = PMIx_Notify_event(cstatus, srcptr, crange, info, ninfo, NULL, NULL)
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
-        return rc
+        return crc
 
     def error_string(self, pystat:int):
         cdef char *string
@@ -3564,7 +4104,7 @@ cdef class PMIxClient:
             if 'key' not in pysrc:
                 return (PMIX_ERR_BAD_PARAM, None)
             memset(&info, 0, sizeof(pmix_info_t))
-            rc = pmix_load_info(&info, [pysrc])
+            rc = pmix_load_info(&info, 1, [pysrc])
             if PMIX_SUCCESS != rc:
                 pmix_destruct_info(&info)
                 return (rc, None)
@@ -3597,7 +4137,7 @@ cdef class PMIxClient:
         if not isinstance(pyinfo, dict) or 'key' not in pyinfo:
             return (PMIX_ERR_BAD_PARAM, None)
         memset(&info, 0, sizeof(pmix_info_t))
-        rc = pmix_load_info(&info, [pyinfo])
+        rc = pmix_load_info(&info, 1, [pyinfo])
         if PMIX_SUCCESS != rc:
             pmix_destruct_info(&info)
             return (rc, None)
@@ -3638,7 +4178,7 @@ cdef class PMIxClient:
         if not isinstance(pyproc, dict):
             return (PMIX_ERR_BAD_PARAM, None)
         memset(&proc, 0, sizeof(pmix_proc_t))
-        rc = pmix_load_procs(&proc, [pyproc])
+        rc = pmix_load_procs(&proc, 1, [pyproc])
         if PMIX_SUCCESS != rc:
             return (rc, None)
         output = PMIx_Proc_string(&proc)
@@ -3656,7 +4196,7 @@ cdef class PMIxClient:
         if not isinstance(pyapp, dict):
             return (PMIX_ERR_BAD_PARAM, None)
         memset(&app, 0, sizeof(pmix_app_t))
-        rc = pmix_load_apps(&app, [pyapp])
+        rc = pmix_load_apps(&app, 1, [pyapp])
         if PMIX_SUCCESS != rc:
             pmix_destruct_app(&app)
             return (rc, None)
@@ -3676,7 +4216,7 @@ cdef class PMIxClient:
         if not isinstance(pyunit, dict):
             return (PMIX_ERR_BAD_PARAM, None)
         memset(&unit, 0, sizeof(pmix_resource_unit_t))
-        rc = pmix_load_units(&unit, [pyunit])
+        rc = pmix_load_units(&unit, 1, [pyunit])
         if PMIX_SUCCESS != rc:
             return (rc, None)
         output = PMIx_Resource_unit_string(&unit)
@@ -3719,6 +4259,8 @@ cdef class PMIxClient:
     #
     # Returns (rc, buffer dict) - the same dict, updated in place
     def data_pack(self, pybuf, pysrc, data_type=None, target=None):
+        cdef pmix_data_type_t ctype
+        cdef pmix_status_t _gilrc
         cdef pmix_data_buffer_t buf
         cdef pmix_value_t value
         cdef pmix_info_t info
@@ -3742,7 +4284,7 @@ cdef class PMIxClient:
         tgt = NULL
         if target is not None:
             memset(&proc, 0, sizeof(pmix_proc_t))
-            rc = pmix_load_procs(&proc, [target])
+            rc = pmix_load_procs(&proc, 1, [target])
             if PMIX_SUCCESS != rc:
                 return (rc, pybuf)
             tgt = &proc
@@ -3757,16 +4299,22 @@ cdef class PMIxClient:
             memset(&value, 0, sizeof(pmix_value_t))
             rc = pmix_load_value(&value, pysrc)
             if PMIX_SUCCESS == rc:
-                rc = PMIx_Data_pack(tgt, &buf, <void*>&value, 1, PMIX_VALUE)
+                ctype = PMIX_VALUE
+                with nogil:
+                    _gilrc = PMIx_Data_pack(tgt, &buf, <void*>&value, 1, ctype)
+                rc = _gilrc
             pmix_destruct_value(&value)
         else:
             if 'key' not in pysrc:
                 pmix_destruct_dbuf(&buf)
                 return (PMIX_ERR_BAD_PARAM, pybuf)
             memset(&info, 0, sizeof(pmix_info_t))
-            rc = pmix_load_info(&info, [pysrc])
+            rc = pmix_load_info(&info, 1, [pysrc])
             if PMIX_SUCCESS == rc:
-                rc = PMIx_Data_pack(tgt, &buf, <void*>&info, 1, PMIX_INFO)
+                ctype = PMIX_INFO
+                with nogil:
+                    _gilrc = PMIx_Data_pack(tgt, &buf, <void*>&info, 1, ctype)
+                rc = _gilrc
             pmix_destruct_info(&info)
 
         if PMIX_SUCCESS == rc:
@@ -3788,6 +4336,8 @@ cdef class PMIxClient:
     #
     # Returns (rc, value or info dict)
     def data_unpack(self, pybuf, data_type=None, target=None):
+        cdef pmix_data_type_t ctype
+        cdef pmix_status_t _gilrc
         cdef pmix_data_buffer_t buf
         cdef pmix_value_t value
         cdef pmix_info_t info
@@ -3805,7 +4355,7 @@ cdef class PMIxClient:
         tgt = NULL
         if target is not None:
             memset(&proc, 0, sizeof(pmix_proc_t))
-            rc = pmix_load_procs(&proc, [target])
+            rc = pmix_load_procs(&proc, 1, [target])
             if PMIX_SUCCESS != rc:
                 return (rc, None)
             tgt = &proc
@@ -3819,13 +4369,21 @@ cdef class PMIxClient:
         pyout = None
         if PMIX_VALUE == data_type:
             memset(&value, 0, sizeof(pmix_value_t))
-            rc = PMIx_Data_unpack(tgt, &buf, <void*>&value, &cnt, PMIX_VALUE)
+            ctype = PMIX_VALUE
+            with nogil:
+                _gilrc = PMIx_Data_unpack(tgt, &buf, <void*>&value, &cnt, ctype)
+            rc = _gilrc
             if PMIX_SUCCESS == rc:
                 pyout = pmix_unload_value(&value)
+                if pyout is None:
+                    rc = PMIX_ERR_NOT_SUPPORTED
             pmix_destruct_value(&value)
         else:
             memset(&info, 0, sizeof(pmix_info_t))
-            rc = PMIx_Data_unpack(tgt, &buf, <void*>&info, &cnt, PMIX_INFO)
+            ctype = PMIX_INFO
+            with nogil:
+                _gilrc = PMIx_Data_unpack(tgt, &buf, <void*>&info, &cnt, ctype)
+            rc = _gilrc
             if PMIX_SUCCESS == rc:
                 ilist = []
                 rc = pmix_unload_info(&info, 1, ilist)
@@ -3871,6 +4429,8 @@ cdef class PMIxClient:
             if PMIX_SUCCESS != rc or NULL == valdest:
                 return (rc, None)
             pyout = pmix_unload_value(valdest)
+            if pyout is None:
+                rc = PMIX_ERR_NOT_SUPPORTED
             # the copy came from the library, so it goes back to it
             PMIx_Value_free(valdest, 1)
             return (rc, pyout)
@@ -3878,7 +4438,7 @@ cdef class PMIxClient:
             if 'key' not in pysrc:
                 return (PMIX_ERR_BAD_PARAM, None)
             memset(&info, 0, sizeof(pmix_info_t))
-            rc = pmix_load_info(&info, [pysrc])
+            rc = pmix_load_info(&info, 1, [pysrc])
             if PMIX_SUCCESS != rc:
                 pmix_destruct_info(&info)
                 return (rc, None)
@@ -4076,52 +4636,78 @@ cdef class PMIxClient:
         return (PMIX_SUCCESS, bytes(bytearray(blist)))
 
     def fabric_register(self, dicts):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
         fabricinfo = []
-        if 1 == self.fabric_set:
+        if 1 == self.fabric_set or 1 == self.fabric_busy:
             return (PMIX_ERR_RESOURCE_BUSY, None)
+        # claimed at once - see fabric_register_nb
+        self.fabric_busy = 1
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &sz, dicts)
         if PMIX_SUCCESS != rc:
+            self.fabric_busy = 0
             return (rc, None)
 
-        if sz > 0:
-            rc = PMIx_Fabric_register(&self.myfabric, info, sz)
+        with nogil:
+            _gilrc = PMIx_Fabric_register(&self.myfabric, info, sz)
+        self.fabric_busy = 0
+        rc = _gilrc
+        if 0 < sz:
             pmix_free_info(info, sz)
-        else:
-            rc = PMIx_Fabric_register(&self.myfabric, NULL, 0)
         if PMIX_SUCCESS == rc:
             self.fabric_set = 1
             # convert the fabric info array for return
-            if 0 < self.myfabric.ninfo:
-                pmix_unload_info(self.myfabric.info, self.myfabric.ninfo, fabricinfo)
+            fabricinfo = self._fabric_info()
+            if fabricinfo is None:
+                return (PMIX_ERR_NOT_SUPPORTED, [])
         return (rc, fabricinfo)
 
     def fabric_update(self):
+        cdef pmix_status_t _gilrc
         fabricinfo = []
         if 0 == self.fabric_set:
             return (PMIX_ERR_INIT, None)
-        rc = PMIx_Fabric_update(&self.myfabric)
+        if 1 == self.fabric_busy:
+            return (PMIX_ERR_RESOURCE_BUSY, None)
+        self.fabric_busy = 1
+        with nogil:
+            _gilrc = PMIx_Fabric_update(&self.myfabric)
+        self.fabric_busy = 0
+        rc = _gilrc
         if PMIX_SUCCESS != rc:
             return (rc, fabricinfo)
         # convert the fabric info array for return
-        if 0 < self.myfabric.ninfo:
-            pmix_unload_info(self.myfabric.info, self.myfabric.ninfo, fabricinfo)
+        fabricinfo = self._fabric_info()
+        if fabricinfo is None:
+            return (PMIX_ERR_NOT_SUPPORTED, [])
         return (rc, fabricinfo)
 
     def fabric_deregister(self):
+        cdef pmix_status_t _gilrc
         if 0 == self.fabric_set:
             return PMIX_ERR_INIT
-        rc = PMIx_Fabric_deregister(&self.myfabric)
-        self.fabric_set = 0
-        return rc;
+        if 1 == self.fabric_busy:
+            return PMIX_ERR_RESOURCE_BUSY
+        self.fabric_busy = 1
+        with nogil:
+            _gilrc = PMIx_Fabric_deregister(&self.myfabric)
+        self.fabric_busy = 0
+        rc = _gilrc
+        # a deregistration that failed left the fabric registered
+        if PMIX_SUCCESS == rc:
+            self.fabric_set = 0
+        return rc
 
     def load_topology(self):
-        rc = PMIx_Load_topology(&self.topo)
+        cdef pmix_status_t _gilrc
+        with nogil:
+            _gilrc = PMIx_Load_topology(&self.topo)
+        rc = _gilrc
         return rc
 
     def get_relative_locality(self, loc1:str, loc2:str):
@@ -4168,6 +4754,7 @@ cdef class PMIxClient:
         return (rc, pycpus)
 
     def get_cpuset(self, ref:int):
+        cdef pmix_status_t _gilrc
         cdef pmix_cpuset_t cpuset
 
         pycpus = {}
@@ -4179,6 +4766,7 @@ cdef class PMIxClient:
         return (rc, pycpus)
 
     def compute_distances(self, pycpus, dicts):
+        cdef pmix_status_t _gilrc
         cdef pmix_cpuset_t cpuset
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -4209,7 +4797,9 @@ cdef class PMIxClient:
             return (rc, results)
 
         # compute distances
-        rc = PMIx_Compute_distances(&self.topo, &cpuset, info, sz, &distances, &ndist)
+        with nogil:
+            _gilrc = PMIx_Compute_distances(&self.topo, &cpuset, info, sz, &distances, &ndist)
+        rc = _gilrc
 
         # the library is done with our inputs
         pmix_destruct_cpuset(&cpuset)
@@ -4245,7 +4835,8 @@ cdef class PMIxClient:
         return (rc, results)
 
     def progress(self):
-        PMIx_Progress()
+        with nogil:
+            PMIx_Progress()
         return
 
     # Stop the library's internal progress thread. Once stopped, the
@@ -4297,6 +4888,13 @@ def setmodulefn(k, f):
                  'abort2']
     if k not in permitted:
         return PMIX_ERR_BAD_PARAM
+    # the listener slot is the host's own socket listener thread, which a
+    # Python server cannot provide. It is in the list so the name is
+    # recognized, and refused here rather than accepted and never wired
+    # in - a handler registered for it would simply never run
+    if 'listener' == k:
+        print("SERVER MODULE FUNCTION 'listener' CANNOT BE PROVIDED BY A PYTHON SERVER")
+        return PMIX_ERR_NOT_SUPPORTED
     if not callable(f):
         return PMIX_ERR_BAD_PARAM
     # last registration wins: a server that re-inits with a different
@@ -4325,6 +4923,7 @@ cdef class PMIxServer(PMIxClient):
     #            server module callback functions to provided
     #            implementations
     def init(self, dicts, map):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -4335,8 +4934,10 @@ cdef class PMIxServer(PMIxClient):
             return PMIX_ERR_INIT
         kvkeys = list(map.keys())
         for key in kvkeys:
-            if PMIX_SUCCESS != setmodulefn(key, map[key]):
-                print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
+            mrc = setmodulefn(key, map[key])
+            if PMIX_SUCCESS != mrc:
+                if PMIX_ERR_BAD_PARAM == mrc:
+                    print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
                 return PMIX_ERR_INIT
 
         # setup server module functions
@@ -4348,10 +4949,14 @@ cdef class PMIxServer(PMIxClient):
         if PMIX_SUCCESS != rc:
             return rc
         if sz > 0:
-            rc = PMIx_server_init(&self.myserver, info, sz)
+            with nogil:
+                _gilrc = PMIx_server_init(&self.myserver, info, sz)
+            rc = _gilrc
             pmix_free_info(info, sz)
         else:
-            rc = PMIx_server_init(&self.myserver, NULL, 0)
+            with nogil:
+                _gilrc = PMIx_server_init(&self.myserver, NULL, 0)
+            rc = _gilrc
         return rc
 
     def server_module_init(self, kvkeys:list):
@@ -4431,10 +5036,15 @@ cdef class PMIxServer(PMIxClient):
             self.myserver.abort2 = <pmix_server_abort2_fn_t>clientaborted2
 
     def finalize(self):
-        # finalize
-        return PMIx_server_finalize()
+        cdef pmix_status_t crc
+        # an upcall still being delivered needs the GIL to finish, and
+        # finalize waits for it
+        with nogil:
+            crc = PMIx_server_finalize()
+        return crc
 
     def generate_regex(self, hosts:list):
+        cdef pmix_status_t _gilrc
         cdef char *regex = NULL
         mycomma = ","
         myhosts = mycomma.join(hosts)
@@ -4551,6 +5161,7 @@ cdef class PMIxServer(PMIxClient):
         return (rc, names)
 
     def generate_ppn(self, procs:list):
+        cdef pmix_status_t _gilrc
         cdef char *ppn = NULL
         mysemi = ";"
         myprocs = mysemi.join(procs)
@@ -4601,6 +5212,7 @@ cdef class PMIxServer(PMIxClient):
     #
     # Returns (rc, {'source': str, 'cpus': [int, ...]})
     def generate_cpuset(self, csetstr):
+        cdef pmix_status_t _gilrc
         cdef pmix_cpuset_t cpuset
 
         pycpus = {}
@@ -4667,6 +5279,8 @@ cdef class PMIxServer(PMIxClient):
     #
     def register_nspace(self, ns:str, nlocalprocs:int, dicts,
                         cbfunc=None, cbdata=None):
+        cdef pmix_status_t _gilrc
+        cdef int cnlocal = nlocalprocs
         cdef pmix_nspace_t nspace
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -4674,7 +5288,6 @@ cdef class PMIxServer(PMIxClient):
         cdef pypmix_nb_cbdata_t *cd
         cdef pmix_status_t crc
         cdef int prc
-        cdef int cnlocal
         global active
         # convert the args into the necessary C-arguments
         pmix_copy_nspace(nspace, ns)
@@ -4697,6 +5310,7 @@ cdef class PMIxServer(PMIxClient):
             if NULL == cd:
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_server_register_nspace(nspace, cnlocal,
                                                   cd.info, cd.ninfo,
@@ -4704,7 +5318,7 @@ cdef class PMIxServer(PMIxClient):
                                                   <void *> cd)
             if PMIX_SUCCESS != crc:
                 # no callback will be executed, so reclaim it here
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return crc
 
@@ -4718,10 +5332,14 @@ cdef class PMIxServer(PMIxClient):
         # the array is ours to release - it used to be leaked on every
         # namespace registration
         if sz > 0:
-            rc = PMIx_server_register_nspace(nspace, nlocalprocs, info, sz, NULL, NULL)
+            with nogil:
+                _gilrc = PMIx_server_register_nspace(nspace, cnlocal, info, sz, NULL, NULL)
+            rc = _gilrc
             pmix_free_info(info, sz)
         else:
-            rc = PMIx_server_register_nspace(nspace, nlocalprocs, NULL, 0, NULL, NULL)
+            with nogil:
+                _gilrc = PMIx_server_register_nspace(nspace, cnlocal, NULL, 0, NULL, NULL)
+            rc = _gilrc
         return rc
 
     # Deregister a namespace
@@ -4756,13 +5374,107 @@ cdef class PMIxServer(PMIxClient):
                                               <void *> cd)
             return PMIX_SUCCESS
 
-        PMIx_server_deregister_nspace(nspace, NULL, NULL)
+        with nogil:
+            PMIx_server_deregister_nspace(nspace, NULL, NULL)
+        return PMIX_SUCCESS
+
+    # Register a session
+    #
+    # @sessionID [INPUT]
+    #     - the session's numerical identifier (int). UINT32_MAX is the
+    #       library's own spelling of "no session" and is refused
+    #
+    # @dicts [INPUT]
+    #     - a list of info dicts describing the session. Registering a
+    #       session that is already known updates it
+    #
+    # A session can be registered before any job is launched into it,
+    # and outlives its jobs until it is deregistered. With a callback
+    # this is the non-blocking form, and the library holds the info array
+    # until it completes, so it lives in the caddy.
+    #
+    # cbfunc(status:int, cbdata)
+    def register_session(self, sessionID:int, dicts, cbfunc=None, cbdata=None):
+        cdef pmix_status_t crc
+        cdef uint32_t csid
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef size_t sz
+        cdef pypmix_nb_cbdata_t *cd
+        cdef int prc
+
+        prc = pmix_check_int(sessionID, 0, 4294967295, "session ID")
+        if PMIX_SUCCESS != prc:
+            return prc
+        csid = sessionID
+
+        if cbfunc is not None:
+            if not callable(cbfunc):
+                return PMIX_ERR_BAD_PARAM
+            cd = pypmix_nb_setup(dicts, &prc)
+            if NULL == cd:
+                return prc
+            cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
+            with nogil:
+                crc = PMIx_server_register_session(csid, cd.info, cd.ninfo,
+                                                   pypmix_client_op_cbfunc,
+                                                   <void *> cd)
+            if PMIX_SUCCESS != crc:
+                # no callback will be executed, so reclaim it here
+                if pypmix_nb_take(nbidx) is not None:
+                    pypmix_nb_cbdata_free(cd)
+            return crc
+
+        info_ptr = &info
+        prc = pmix_alloc_info(info_ptr, &sz, dicts)
+        if PMIX_SUCCESS != prc:
+            return prc
+        with nogil:
+            crc = PMIx_server_register_session(csid, info, sz, NULL, NULL)
+        if 0 < sz:
+            pmix_free_info(info, sz)
+        return crc
+
+    # Deregister a session, releasing what the library holds for it. The
+    # jobs in it are not deregistered by this; a host deregisters them
+    # itself. The C API reports no status, so the blocking form returns
+    # PMIX_SUCCESS, and the callback form reports through the callback
+    #
+    # cbfunc(status:int, cbdata)
+    def deregister_session(self, sessionID:int, cbfunc=None, cbdata=None):
+        cdef uint32_t csid
+        cdef pypmix_nb_cbdata_t *cd
+        cdef int prc
+
+        prc = pmix_check_int(sessionID, 0, 4294967295, "session ID")
+        if PMIX_SUCCESS != prc:
+            return prc
+        csid = sessionID
+
+        if cbfunc is not None:
+            if not callable(cbfunc):
+                return PMIX_ERR_BAD_PARAM
+            cd = pypmix_nb_setup(None, &prc)
+            if NULL == cd:
+                return prc
+            cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            # every path through the C call completes through the
+            # callback, including its early refusals
+            with nogil:
+                PMIx_server_deregister_session(csid, pypmix_client_op_cbfunc,
+                                               <void *> cd)
+            return PMIX_SUCCESS
+
+        with nogil:
+            PMIx_server_deregister_session(csid, NULL, NULL)
         return PMIX_SUCCESS
 
     # Register resources
     # cbfunc(status:int, cbdata) - the non-blocking form, which is the
     # only one usable from a server module upcall (see deregister_nspace)
     def register_resources(self, directives, cbfunc=None, cbdata=None):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -4778,11 +5490,12 @@ cdef class PMIxServer(PMIxClient):
             if NULL == cd:
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_server_register_resources(cd.info, cd.ninfo,
                          pypmix_client_op_cbfunc, <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return crc
 
@@ -4792,7 +5505,9 @@ cdef class PMIxServer(PMIxClient):
         if PMIX_SUCCESS != rc:
             return rc
 
-        rc = PMIx_server_register_resources(info, sz, NULL, NULL)
+        with nogil:
+            _gilrc = PMIx_server_register_resources(info, sz, NULL, NULL)
+        rc = _gilrc
         if 0 < sz:
             pmix_free_info(info, sz)
         return rc
@@ -4813,16 +5528,28 @@ cdef class PMIxServer(PMIxClient):
 
         if cbfunc is not None and not callable(cbfunc):
             return PMIX_ERR_BAD_PARAM
+        # the group id, converted before the caddy exists so an id that
+        # cannot be has nothing to leak
+        pygrp = None
+        if group is not None:
+            pygrp = pmix_name_bytes(group, PMIX_MAX_NSLEN)
+            if pygrp is None:
+                return PMIX_ERR_BAD_PARAM
         # the library holds the id, procs and info until it completes
         cd = pypmix_nb_setup(directives, &prc)
         if NULL == cd:
             return prc
-        if group is not None:
-            pygrp = group.encode('ascii')
+        if pygrp is not None:
             cd.grp = strdup(pygrp)
             if NULL == cd.grp:
                 pypmix_nb_cbdata_free(cd)
                 return PMIX_ERR_NOMEM
+        # no procs means "not by membership" here, not "my job"
+        if peers is not None:
+            peers = pmix_listcopy(peers)
+            if peers is None:
+                pypmix_nb_cbdata_free(cd)
+                return PMIX_ERR_BAD_PARAM
         if peers is not None and 0 < len(peers):
             prc = pypmix_nb_add_procs(cd, peers, self.myproc.nspace)
             if PMIX_SUCCESS != prc:
@@ -4831,12 +5558,13 @@ cdef class PMIxServer(PMIxClient):
 
         if cbfunc is not None:
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 rc = PMIx_server_collective_expire(cop, cd.grp,
                          cd.procs, cd.nprocs, cd.info, cd.ninfo,
                          pypmix_client_op_cbfunc, <void *> cd)
             if PMIX_SUCCESS != rc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return rc
 
@@ -4847,6 +5575,7 @@ cdef class PMIxServer(PMIxClient):
         return rc
 
     def deregister_resources(self, directives, cbfunc=None, cbdata=None):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -4862,11 +5591,12 @@ cdef class PMIxServer(PMIxClient):
             if NULL == cd:
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_server_deregister_resources(cd.info, cd.ninfo,
                          pypmix_client_op_cbfunc, <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return crc
 
@@ -4876,7 +5606,9 @@ cdef class PMIxServer(PMIxClient):
         if PMIX_SUCCESS != rc:
             return rc
 
-        rc = PMIx_server_deregister_resources(info, sz, NULL, NULL)
+        with nogil:
+            _gilrc = PMIx_server_deregister_resources(info, sz, NULL, NULL)
+        rc = _gilrc
         if 0 < sz:
             pmix_free_info(info, sz)
         return rc
@@ -4898,13 +5630,14 @@ cdef class PMIxServer(PMIxClient):
     # spawn request, and that upcall runs on the progress thread.
     def register_client(self, proc:dict, uid:int, gid:int,
                         cbfunc=None, cbdata=None):
+        cdef pmix_status_t _gilrc
+        cdef uid_t cuid = uid
+        cdef gid_t cgid = gid
         global active
         cdef pmix_proc_t p;
         cdef pypmix_nb_cbdata_t *cd
         cdef pmix_status_t crc
         cdef int prc
-        cdef uid_t cuid
-        cdef gid_t cgid
         pmix_copy_nspace(p.nspace, proc['nspace'])
         p.rank = proc['rank']
         cuid = uid
@@ -4919,16 +5652,19 @@ cdef class PMIxServer(PMIxClient):
             if NULL == cd:
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_server_register_client(&p, cuid, cgid, NULL,
                                                   pypmix_client_op_cbfunc,
                                                   <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return crc
 
-        rc = PMIx_server_register_client(&p, uid, gid, NULL, NULL, NULL)
+        with nogil:
+            _gilrc = PMIx_server_register_client(&p, cuid, cgid, NULL, NULL, NULL)
+        rc = _gilrc
         return rc
 
     # Deregister a client process
@@ -4957,7 +5693,8 @@ cdef class PMIxServer(PMIxClient):
                                               <void *> cd)
             return PMIX_SUCCESS
 
-        PMIx_server_deregister_client(&p, NULL, NULL)
+        with nogil:
+            PMIx_server_deregister_client(&p, NULL, NULL)
         return PMIX_SUCCESS
 
     # Setup the environment of a child process that is to be forked
@@ -4971,6 +5708,7 @@ cdef class PMIxServer(PMIxClient):
     #          with PMIx envars (dict)
     #
     def setup_fork(self, proc:dict, envin:dict):
+        cdef pmix_status_t _gilrc
         cdef pmix_proc_t p;
         cdef char **penv = NULL;
         cdef unicode pstring
@@ -4978,7 +5716,9 @@ cdef class PMIxServer(PMIxClient):
         p.rank = proc['rank']
         # convert the incoming dictionary to an array
         # of strings
-        rc = PMIx_server_setup_fork(&p, &penv)
+        with nogil:
+            _gilrc = PMIx_server_setup_fork(&p, &penv)
+        rc = _gilrc
         if PMIX_SUCCESS == rc:
             # update the incoming dictionary
             n = 0
@@ -4997,26 +5737,41 @@ cdef class PMIxServer(PMIxClient):
         return rc
 
     def dmodex_request(self, proc, dataout:dict):
+        cdef pmix_status_t _gilrc
         global active
         cdef pmix_proc_t p;
+        # this waits on 'active' for a callback the progress thread runs:
+        # see _on_library_thread
+        if _on_library_thread():
+            return PMIX_ERR_WOULD_BLOCK, (None, 0)
         pmix_copy_nspace(p.nspace, proc['nspace'])
         p.rank = proc['rank']
         active.clear()
         pybo = (None, 0)
-        rc = PMIx_server_dmodex_request(&p, dmodx_cbfunc, NULL);
+        with nogil:
+            _gilrc = PMIx_server_dmodex_request(&p, dmodx_cbfunc, NULL)
+        rc = _gilrc
         if PMIX_SUCCESS == rc:
             active.wait()
+            # the call only accepted the request; its outcome - not
+            # found, say - is what the callback reported
+            rc = active.get_status()
             # transfer the data to the dictionary
             (data, sz) = active.fetch_data()
             pybo = (data, sz)
         return rc, pybo
 
     def dmodex_request2(self, proc, dicts:list):
+        cdef pmix_status_t _gilrc
         global active
         cdef pmix_proc_t p;
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
+        # this waits on 'active' for a callback the progress thread runs:
+        # see _on_library_thread
+        if _on_library_thread():
+            return PMIX_ERR_WOULD_BLOCK, (None, 0)
         pmix_copy_nspace(p.nspace, proc['nspace'])
         p.rank = proc['rank']
         pybo = (None, 0)
@@ -5027,7 +5782,9 @@ cdef class PMIxServer(PMIxClient):
         if PMIX_SUCCESS != rc:
             return rc, pybo
         active.clear()
-        rc = PMIx_server_dmodex_request2(&p, info, sz, dmodx_cbfunc, NULL);
+        with nogil:
+            _gilrc = PMIx_server_dmodex_request2(&p, info, sz, dmodx_cbfunc, NULL)
+        rc = _gilrc
         if PMIX_SUCCESS == rc:
             active.wait()
             rc = active.get_status()
@@ -5039,12 +5796,17 @@ cdef class PMIxServer(PMIxClient):
         return rc, pybo
 
     def setup_application(self, ns:str, dicts):
+        cdef pmix_status_t _gilrc
         global active
         cdef pmix_nspace_t nspace;
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
         dataout = []
+        # this waits on 'active' for a callback the progress thread runs:
+        # see _on_library_thread
+        if _on_library_thread():
+            return (PMIX_ERR_WOULD_BLOCK, dataout)
         pmix_copy_nspace(nspace, ns)
 
         # allocate and load pmix info structs from python list of dictionaries
@@ -5054,7 +5816,9 @@ cdef class PMIxServer(PMIxClient):
             return (rc, dataout)
 
         active.clear()
-        rc = PMIx_server_setup_application(nspace, info, sz, setupapp_cbfunc, NULL);
+        with nogil:
+            _gilrc = PMIx_server_setup_application(nspace, info, sz, setupapp_cbfunc, NULL)
+        rc = _gilrc
         if PMIX_SUCCESS == rc:
             active.wait()
             # transfer the data to the dictionary
@@ -5065,6 +5829,7 @@ cdef class PMIxServer(PMIxClient):
         return (rc, dataout)
 
     def register_attributes(self, function, attrs):
+        cdef pmix_status_t _gilrc
         cdef size_t nattrs
         cdef char *func
         cdef char **attarray
@@ -5093,14 +5858,16 @@ cdef class PMIxServer(PMIxClient):
             free(func)
             return PMIX_ERR_NOMEM
         memset(attarray, 0, (nattrs+1) * sizeof(char*))
-        rc = pmix_load_argv(attarray, attrs)
+        rc = pmix_load_argv(attarray, nattrs, attrs)
         if PMIX_SUCCESS != rc:
             pmix_free_argv(attarray)
             free(func)
             return rc
 
         # call Server API
-        rc = PMIx_Register_attributes(func, attarray)
+        with nogil:
+            _gilrc = PMIx_Register_attributes(func, attarray)
+        rc = _gilrc
 
         pmix_free_argv(attarray)
         free(func)
@@ -5108,11 +5875,16 @@ cdef class PMIxServer(PMIxClient):
         return rc
 
     def collect_inventory(self, pydirs):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
         cdef size_t ndirs
         ndirs   = 0
         dataout = []
+        # this waits on 'active' for a callback the progress thread runs:
+        # see _on_library_thread
+        if _on_library_thread():
+            return (PMIX_ERR_WOULD_BLOCK, dataout)
 
         # allocate and load pmix info structs from python list of dictionaries
         directives_ptr = &directives
@@ -5122,8 +5894,10 @@ cdef class PMIxServer(PMIxClient):
 
         # call the API
         active.clear()
-        rc = PMIx_server_collect_inventory(directives, ndirs,
-                                           collectinventory_cbfunc, NULL)
+        with nogil:
+            _gilrc = PMIx_server_collect_inventory(directives, ndirs,
+                                               collectinventory_cbfunc, NULL)
+        rc = _gilrc
         if PMIX_SUCCESS == rc:
             active.wait()
             # transfer the data to the dictionary
@@ -5135,6 +5909,7 @@ cdef class PMIxServer(PMIxClient):
 
     # cbfunc(status:int, cbdata) - see deregister_nspace
     def deliver_inventory(self, pyinfo, pydirs, cbfunc=None, cbdata=None):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
         cdef pmix_info_t *info
@@ -5159,13 +5934,14 @@ cdef class PMIxServer(PMIxClient):
                 pypmix_nb_cbdata_free(cd)
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_server_deliver_inventory(cd.info, cd.ninfo,
                                                     cd.dirs, cd.ndirs,
                                                     pypmix_client_op_cbfunc,
                                                     <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return crc
 
@@ -5182,8 +5958,10 @@ cdef class PMIxServer(PMIxClient):
             return rc
 
         # call the API
-        rc = PMIx_server_deliver_inventory(info, ninfo, directives, ndirs,
-                                           NULL, NULL)
+        with nogil:
+            _gilrc = PMIx_server_deliver_inventory(info, ninfo, directives, ndirs,
+                                               NULL, NULL)
+        rc = _gilrc
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         if 0 < ndirs:
@@ -5192,6 +5970,7 @@ cdef class PMIxServer(PMIxClient):
 
     # cbfunc(status:int, cbdata) - see deregister_nspace
     def setup_local_support(self, ns:str, ilist, cbfunc=None, cbdata=None):
+        cdef pmix_status_t _gilrc
         global active
         cdef pmix_nspace_t nspace;
         cdef pmix_info_t *info
@@ -5210,12 +5989,13 @@ cdef class PMIxServer(PMIxClient):
             if NULL == cd:
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_server_setup_local_support(nspace, cd.info, cd.ninfo,
                                                       pypmix_client_op_cbfunc,
                                                       <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return crc
         # convert the info list
@@ -5227,16 +6007,21 @@ cdef class PMIxServer(PMIxClient):
         # callback to wait on - the wait that used to be here was on the
         # module-global lock nothing on this path ever sets
         if sz > 0:
-            rc = PMIx_server_setup_local_support(nspace, info, sz, NULL, NULL);
+            with nogil:
+                _gilrc = PMIx_server_setup_local_support(nspace, info, sz, NULL, NULL)
+            rc = _gilrc
             pmix_free_info(info, sz)
         else:
-            rc = PMIx_server_setup_local_support(nspace, NULL, 0, NULL, NULL);
+            with nogil:
+                _gilrc = PMIx_server_setup_local_support(nspace, NULL, 0, NULL, NULL)
+            rc = _gilrc
         return rc
 
     # cbfunc(status:int, cbdata) - see deregister_nspace. Delivering
     # output from inside an IOF or server upcall needs this form
     def iof_deliver(self, pysrc:dict, pychannel:int, pydata:dict, pydirs,
                     cbfunc=None, cbdata=None):
+        cdef pmix_status_t _gilrc
         cdef pmix_proc_t source
         cdef pmix_iof_channel_t channel
         cdef pypmix_nb_cbdata_t *cd
@@ -5266,13 +6051,14 @@ cdef class PMIxServer(PMIxClient):
                 pypmix_nb_cbdata_free(cd)
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_server_IOF_deliver(&cd.procs[0], cchannel, cd.bo,
                                               cd.dirs, cd.ndirs,
                                               pypmix_client_op_cbfunc,
                                               <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return crc
         cdef pmix_byte_object_t bo
@@ -5300,8 +6086,10 @@ cdef class PMIxServer(PMIxClient):
             return rc
 
         # call API
-        rc = PMIx_server_IOF_deliver(&source, channel, &bo, directives, ndirs,
-                                     NULL, NULL)
+        with nogil:
+            _gilrc = PMIx_server_IOF_deliver(&source, channel, &bo, directives, ndirs,
+                                         NULL, NULL)
+        rc = _gilrc
         if NULL != bo.bytes:
             free(bo.bytes)
         if 0 < ndirs:
@@ -5311,6 +6099,7 @@ cdef class PMIxServer(PMIxClient):
     # cbfunc(status:int, cbdata) - see deregister_nspace
     def iof_flow_control(self, pysrc, pychannel:int, pyxoff:bool, pydirs,
                          cbfunc=None, cbdata=None):
+        cdef pmix_status_t _gilrc
         # Suspend (pyxoff True) or resume (pyxoff False) the processes
         # feeding stdin to us. A pysrc of None means every one of them,
         # so it is deliberately not annotated "dict" - Cython would
@@ -5352,13 +6141,14 @@ cdef class PMIxServer(PMIxClient):
                 pypmix_nb_cbdata_free(cd)
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_server_IOF_flow_control(cbsrc, channel, xoff,
                                                    cd.dirs, cd.ndirs,
                                                    pypmix_client_op_cbfunc,
                                                    <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return crc
 
@@ -5375,13 +6165,17 @@ cdef class PMIxServer(PMIxClient):
             return rc
 
         # call API - blocking form, so no callback
-        rc = PMIx_server_IOF_flow_control(srcptr, channel, xoff,
-                                          directives, ndirs, NULL, NULL)
+        with nogil:
+            _gilrc = PMIx_server_IOF_flow_control(srcptr, channel, xoff,
+                                              directives, ndirs, NULL, NULL)
+        rc = _gilrc
         if 0 < ndirs:
             pmix_free_info(directives, ndirs)
         return rc
 
     def define_process_set(self, members, name:str):
+        cdef pmix_status_t _gilrc
+        cdef const char *cset
         cdef pmix_proc_t *procs
         cdef size_t nprocs
         nprocs = 0
@@ -5395,21 +6189,28 @@ cdef class PMIxServer(PMIxClient):
         procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
         if not procs:
             return PMIX_ERR_NOMEM
-        rc = pmix_load_procs(procs, members)
+        rc = pmix_load_procs(procs, nprocs, members)
         if PMIX_SUCCESS != rc:
             pmix_free_procs(procs, nprocs)
             return rc
         # define the set
-        rc = PMIx_server_define_process_set(procs, nprocs, pyset)
+        cset = pyset
+        with nogil:
+            _gilrc = PMIx_server_define_process_set(procs, nprocs, cset)
+        rc = _gilrc
         pmix_free_procs(procs, nprocs)
         return rc
 
     def delete_process_set(self, name:str):
-
+        cdef pmix_status_t _gilrc
+        cdef char *cset
         # convert set name
         pyset = name.encode('ascii')
         # delete the set
-        rc = PMIx_server_delete_process_set(pyset)
+        cset = pyset
+        with nogil:
+            _gilrc = PMIx_server_delete_process_set(cset)
+        rc = _gilrc
         return rc
 
     # Collect the job-level information this server holds for the jobs
@@ -5440,7 +6241,7 @@ cdef class PMIxServer(PMIxClient):
         procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
         if not procs:
             return (PMIX_ERR_NOMEM, pyblob)
-        rc = pmix_load_procs(procs, peers)
+        rc = pmix_load_procs(procs, nprocs, peers)
         if PMIX_SUCCESS != rc:
             pmix_free_procs(procs, nprocs)
             return (rc, pyblob)
@@ -5468,6 +6269,8 @@ cdef class PMIxServer(PMIxClient):
     # reports results, so it takes the info-style callback rather than
     # the plain op-style one the other server calls use
     def session_control(self, sessionID:int, ilist, cbfunc=None, cbdata=None):
+        cdef pmix_status_t _gilrc
+        cdef uint32_t csid = sessionID
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -5484,12 +6287,13 @@ cdef class PMIxServer(PMIxClient):
             if NULL == cd:
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_Session_control(csession, cd.info, cd.ninfo,
                                            pypmix_client_info_cbfunc,
                                            <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return crc
 
@@ -5501,10 +6305,14 @@ cdef class PMIxServer(PMIxClient):
 
          # call the API
         if 0 < sz:
-            rc = PMIx_Session_control(sessionID, info, sz, NULL, NULL)
+            with nogil:
+                _gilrc = PMIx_Session_control(csid, info, sz, NULL, NULL)
+            rc = _gilrc
             pmix_free_info(info, sz)
         else:
-            rc = PMIx_Session_control(sessionID, NULL, 0, NULL, NULL)
+            with nogil:
+                _gilrc = PMIx_Session_control(csid, NULL, 0, NULL, NULL)
+            rc = _gilrc
         return rc
 
 cdef int clientconnected(pmix_proc_t *proc, void *server_object,
@@ -5514,20 +6322,22 @@ cdef int clientconnected(pmix_proc_t *proc, void *server_object,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'clientconnected' in keys:
             if not proc:
                 return PMIX_ERR_BAD_PARAM
             myproc = []
-            pmix_unload_procs(proc, 1, myproc)
+            rc = pmix_unload_procs(proc, 1, myproc)
+            if PMIX_SUCCESS != rc:
+                return rc
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['clientconnected'](myproc[0], pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['clientconnected'](myproc[0], pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_FOUND
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int clientconnected2(pmix_proc_t *proc, void *server_object,
                           pmix_info_t info[], size_t ninfo,
@@ -5537,6 +6347,7 @@ cdef int clientconnected2(pmix_proc_t *proc, void *server_object,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'clientconnected2' in keys:
@@ -5544,7 +6355,9 @@ cdef int clientconnected2(pmix_proc_t *proc, void *server_object,
                 return PMIX_ERR_BAD_PARAM
             args = {}
             myproc = []
-            pmix_unload_procs(proc, 1, myproc)
+            rc = pmix_unload_procs(proc, 1, myproc)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['proc'] = myproc[0]
             ilist = []
             if NULL != info:
@@ -5553,12 +6366,11 @@ cdef int clientconnected2(pmix_proc_t *proc, void *server_object,
                     return rc
                 args['directives'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['clientconnected2'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['clientconnected2'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_FOUND
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int clientfinalized(pmix_proc_t *proc, void *server_object,
                          pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
@@ -5567,20 +6379,22 @@ cdef int clientfinalized(pmix_proc_t *proc, void *server_object,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'clientfinalized' in keys:
             if not proc:
                 return PMIX_ERR_BAD_PARAM
             myproc = []
-            pmix_unload_procs(proc, 1, myproc)
+            rc = pmix_unload_procs(proc, 1, myproc)
+            if PMIX_SUCCESS != rc:
+                return rc
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['clientfinalized'](myproc[0], pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['clientfinalized'](myproc[0], pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int clientaborted(const pmix_proc_t *proc, void *server_object,
                        int status, const char msg[],
@@ -5591,6 +6405,7 @@ cdef int clientaborted(const pmix_proc_t *proc, void *server_object,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'abort' in keys:
@@ -5598,7 +6413,9 @@ cdef int clientaborted(const pmix_proc_t *proc, void *server_object,
             myproc = []
             myprocs = []
             # convert the caller's name
-            pmix_unload_procs(proc, 1, myproc)
+            rc = pmix_unload_procs(proc, 1, myproc)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['caller'] = myproc[0]
             # record the status
             args['status'] = status
@@ -5607,16 +6424,17 @@ cdef int clientaborted(const pmix_proc_t *proc, void *server_object,
                 args['msg'] = pmix_decode_str(msg)
             # convert any provided array of procs to be aborted
             if NULL != procs:
-                pmix_unload_procs(procs, nprocs, myprocs)
+                rc = pmix_unload_procs(procs, nprocs, myprocs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['targets'] = myprocs
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
             # upcall it
-            return pmixservermodule['abort'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['abort'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int clientaborted2(const pmix_proc_t *proc, void *server_object,
                         int status, const char msg[],
@@ -5628,6 +6446,7 @@ cdef int clientaborted2(const pmix_proc_t *proc, void *server_object,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'abort2' in keys:
@@ -5636,7 +6455,9 @@ cdef int clientaborted2(const pmix_proc_t *proc, void *server_object,
             myprocs = []
             ilist = []
             # convert the caller's name
-            pmix_unload_procs(proc, 1, myproc)
+            rc = pmix_unload_procs(proc, 1, myproc)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['caller'] = myproc[0]
             # record the status
             args['status'] = status
@@ -5645,20 +6466,23 @@ cdef int clientaborted2(const pmix_proc_t *proc, void *server_object,
                 args['msg'] = pmix_decode_str(msg)
             # convert any provided array of procs to be aborted
             if NULL != procs:
-                pmix_unload_procs(procs, nprocs, myprocs)
+                rc = pmix_unload_procs(procs, nprocs, myprocs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['targets'] = myprocs
             # the requester's identity, among anything else provided
             if NULL != info:
-                pmix_unload_info(info, ninfo, ilist)
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['info'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
             # upcall it
-            return pmixservermodule['abort2'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['abort2'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
                  const pmix_info_t info[], size_t ninfo,
@@ -5669,6 +6493,7 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'fencenb' in keys:
@@ -5681,7 +6506,9 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
             if NULL == procs:
                 myprocs.append({'nspace': myname.get('nspace', ''), 'rank': PMIX_RANK_WILDCARD})
             else:
-                pmix_unload_procs(procs, nprocs, myprocs)
+                rc = pmix_unload_procs(procs, nprocs, myprocs)
+                if PMIX_SUCCESS != rc:
+                    return rc
             args['procs'] = myprocs
             if NULL != info:
                 rc = pmix_unload_info(info, ninfo, ilist)
@@ -5693,12 +6520,11 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
                 barray = bytearray(blist)
                 args['data'] = barray
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['fencenb'](args, pypmix_modex_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['fencenb'](args, pypmix_modex_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 
 
@@ -5710,24 +6536,28 @@ cdef int directmodex(const pmix_proc_t *proc,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'directmodex' in keys:
             args = {}
             myprocs = []
             ilist = []
-            pmix_unload_procs(proc, 1, myprocs)
+            rc = pmix_unload_procs(proc, 1, myprocs)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['proc'] = myprocs[0]
             if NULL != info:
-                pmix_unload_info(info, ninfo, ilist)
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['directmodex'](args, pypmix_modex_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['directmodex'](args, pypmix_modex_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int publish(const pmix_proc_t *proc,
                  const pmix_info_t info[], size_t ninfo,
@@ -5737,24 +6567,28 @@ cdef int publish(const pmix_proc_t *proc,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'publish' in keys:
             args = {}
             myprocs = []
             ilist = []
-            pmix_unload_procs(proc, 1, myprocs)
+            rc = pmix_unload_procs(proc, 1, myprocs)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['proc'] = myprocs[0]
             if NULL != info:
-                pmix_unload_info(info, ninfo, ilist)
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
             args['directives'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['publish'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['publish'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int lookup(const pmix_proc_t *proc, char **keys,
                 const pmix_info_t info[], size_t ninfo,
@@ -5764,6 +6598,7 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         srvkeys = pmixservermodule.keys()
         if 'lookup' in srvkeys:
@@ -5772,7 +6607,9 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
             myprocs = []
             ilist = []
             pykeys = []
-            pmix_unload_procs(proc, 1, myprocs)
+            rc = pmix_unload_procs(proc, 1, myprocs)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['proc'] = myprocs[0]
             # decode, as the unpublish upcall and the query builder do - a
             # handler must not have to guess whether its keys are str or bytes
@@ -5780,15 +6617,16 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
                 pmix_unload_argv(keys, pykeys)
             args['keys'] = pykeys
             if NULL != info:
-                pmix_unload_info(info, ninfo, ilist)
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['lookup'](args, pypmix_lookup_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['lookup'](args, pypmix_lookup_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int unpublish(const pmix_proc_t *proc, char **keys,
                    const pmix_info_t info[], size_t ninfo,
@@ -5798,6 +6636,7 @@ cdef int unpublish(const pmix_proc_t *proc, char **keys,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         srvkeys = pmixservermodule.keys()
         if 'unpublish' in srvkeys:
@@ -5805,21 +6644,24 @@ cdef int unpublish(const pmix_proc_t *proc, char **keys,
             myprocs = []
             ilist = []
             pykeys = []
-            pmix_unload_procs(proc, 1, myprocs)
+            rc = pmix_unload_procs(proc, 1, myprocs)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['proc'] = myprocs[0]
             if NULL != keys:
                 pmix_unload_argv(keys, pykeys)
                 args['keys'] = pykeys
             if NULL != info:
-                pmix_unload_info(info, ninfo, ilist)
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['unpublish'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['unpublish'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int spawn(const pmix_proc_t *proc,
                const pmix_info_t job_info[], size_t ninfo,
@@ -5830,6 +6672,7 @@ cdef int spawn(const pmix_proc_t *proc,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'spawn' in keys:
@@ -5837,20 +6680,23 @@ cdef int spawn(const pmix_proc_t *proc,
             myprocs = []
             ilist = []
             pyapps = []
-            pmix_unload_procs(proc, 1, myprocs)
+            rc = pmix_unload_procs(proc, 1, myprocs)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['proc'] = myprocs[0]
             if NULL != job_info:
-                pmix_unload_info(job_info, ninfo, ilist)
+                rc = pmix_unload_info(job_info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['jobinfo'] = ilist
             pmix_unload_apps(apps, napps, pyapps)
             args['apps'] = pyapps
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['spawn'](args, pypmix_spawn_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['spawn'](args, pypmix_spawn_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 
 cdef int connect(const pmix_proc_t procs[], size_t nprocs,
@@ -5861,6 +6707,7 @@ cdef int connect(const pmix_proc_t procs[], size_t nprocs,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'connect' in keys:
@@ -5868,18 +6715,21 @@ cdef int connect(const pmix_proc_t procs[], size_t nprocs,
             myprocs = []
             ilist = []
             if NULL != procs:
-                pmix_unload_procs(procs, nprocs, myprocs)
+                rc = pmix_unload_procs(procs, nprocs, myprocs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['procs'] = myprocs
             if NULL != info:
-                pmix_unload_info(info, ninfo, ilist)
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['connect'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['connect'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int disconnect(const pmix_proc_t procs[], size_t nprocs,
                     const pmix_info_t info[], size_t ninfo,
@@ -5889,6 +6739,7 @@ cdef int disconnect(const pmix_proc_t procs[], size_t nprocs,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'disconnect' in keys:
@@ -5896,18 +6747,21 @@ cdef int disconnect(const pmix_proc_t procs[], size_t nprocs,
             myprocs = []
             ilist = []
             if NULL != procs:
-                pmix_unload_procs(procs, nprocs, myprocs)
+                rc = pmix_unload_procs(procs, nprocs, myprocs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['procs'] = myprocs
             if NULL != info:
-                pmix_unload_info(info, ninfo, ilist)
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['disconnect'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['disconnect'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int registerevents(pmix_status_t *codes, size_t ncodes,
                         const pmix_info_t info[], size_t ninfo,
@@ -5917,6 +6771,7 @@ cdef int registerevents(pmix_status_t *codes, size_t ncodes,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'registerevents' in keys:
@@ -5930,15 +6785,16 @@ cdef int registerevents(pmix_status_t *codes, size_t ncodes,
                     n += 1
                 args['codes'] = mycodes
             if NULL != info:
-                pmix_unload_info(info, ninfo, ilist)
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['registerevents'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['registerevents'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int deregisterevents(pmix_status_t *codes, size_t ncodes,
                           pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
@@ -5947,6 +6803,7 @@ cdef int deregisterevents(pmix_status_t *codes, size_t ncodes,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'deregisterevents' in keys:
@@ -5959,12 +6816,11 @@ cdef int deregisterevents(pmix_status_t *codes, size_t ncodes,
                     n += 1
                 args['codes'] = mycodes
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['deregisterevents'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['deregisterevents'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 
 cdef int notifyevent(pmix_status_t code,
@@ -5977,6 +6833,7 @@ cdef int notifyevent(pmix_status_t code,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'notifyevent' in keys:
@@ -5984,19 +6841,22 @@ cdef int notifyevent(pmix_status_t code,
             ilist = []
             myproc = []
             args['code'] = code
-            pmix_unload_procs(source, 1, myproc)
+            rc = pmix_unload_procs(source, 1, myproc)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['source'] = myproc[0]
             args['range'] = drange
             if NULL != info:
-                pmix_unload_info(info, ninfo, ilist)
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['notifyevent'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['notifyevent'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 
 cdef int query(pmix_proc_t *source,
@@ -6008,6 +6868,7 @@ cdef int query(pmix_proc_t *source,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         pyqueries = []
         keys = pmixservermodule.keys()
@@ -6016,42 +6877,58 @@ cdef int query(pmix_proc_t *source,
             myproc = []
             if NULL == queries or NULL == source:
                 return PMIX_ERR_BAD_PARAM
-            pmix_unload_queries(queries, nqueries, pyqueries)
+            rc = pmix_unload_queries(queries, nqueries, pyqueries)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['queries'] = pyqueries
-            pmix_unload_procs(source, 1, myproc)
+            rc = pmix_unload_procs(source, 1, myproc)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['source'] = myproc[0]
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['query'](args, pypmix_info_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['query'](args, pypmix_info_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
+# The two up-calls below return nothing, so the library has no status to
+# act on: the callback is the only way the request is ever answered. So
+# every path that does not reach the handler - a missing handler, a
+# conversion that fails, a handler that raises before completing -
+# completes it with an error, through the same one-shot token the
+# helpers use.
 cdef void toolconnected(pmix_info_t *info, size_t ninfo,
                         pmix_tool_connection_cbfunc_t cbfunc,
                         void *cbdata) noexcept with gil:
-    # as in the cdef int trampolines: libpmix calls this across a C frame,
-    # so report a handler that raises rather than letting the exception
-    # surface later as an unattributed "Exception ignored in"
+    cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
     try:
         keys = pmixservermodule.keys()
         if 'toolconnected' in keys:
             args = {}
             ilist = []
             if NULL != info:
-                pmix_unload_info(info, ninfo, ilist)
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    pypmix_tool_connection_cbfunc(rc, None, cbdata_dict)
+                    return
                 args['directives'] = ilist
-            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
             pmixservermodule['toolconnected'](args, pypmix_tool_connection_cbfunc, cbdata_dict)
+            return
+        pypmix_tool_connection_cbfunc(PMIX_ERR_NOT_SUPPORTED, None, cbdata_dict)
     except:
         traceback.print_exc()
+        try:
+            pypmix_tool_connection_cbfunc(PMIX_ERROR, None, cbdata_dict)
+        except:
+            traceback.print_exc()
 
 cdef void log(const pmix_proc_t *client,
               const pmix_info_t data[], size_t ndata,
               const pmix_info_t directives[], size_t ndirs,
               pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
     # see toolconnected above
+    cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
     try:
         keys = pmixservermodule.keys()
         if 'log' in keys:
@@ -6060,19 +6937,28 @@ cdef void log(const pmix_proc_t *client,
             myproc = []
             mydirs = []
             if NULL == client:
+                pypmix_op_cbfunc(PMIX_ERR_BAD_PARAM, cbdata_dict)
                 return
-            pmix_unload_procs(client, 1, myproc)
-            args['source'] = myproc[0]
-            if NULL != data:
-                pmix_unload_info(data, ndata, ilist)
+            rc = pmix_unload_procs(client, 1, myproc)
+            if PMIX_SUCCESS == rc and NULL != data:
+                rc = pmix_unload_info(data, ndata, ilist)
                 args['data'] = ilist
-            if NULL != directives:
-                pmix_unload_info(directives, ndirs, mydirs)
+            if PMIX_SUCCESS == rc and NULL != directives:
+                rc = pmix_unload_info(directives, ndirs, mydirs)
                 args['directives'] = mydirs
-            cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+            if PMIX_SUCCESS != rc:
+                pypmix_op_cbfunc(rc, cbdata_dict)
+                return
+            args['source'] = myproc[0]
             pmixservermodule['log'](args, pypmix_op_cbfunc, cbdata_dict)
+            return
+        pypmix_op_cbfunc(PMIX_ERR_NOT_SUPPORTED, cbdata_dict)
     except:
         traceback.print_exc()
+        try:
+            pypmix_op_cbfunc(PMIX_ERROR, cbdata_dict)
+        except:
+            traceback.print_exc()
 
 cdef int allocate(const pmix_proc_t *client,
                   pmix_alloc_directive_t action,
@@ -6083,6 +6969,7 @@ cdef int allocate(const pmix_proc_t *client,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'allocate' in keys:
@@ -6091,19 +6978,22 @@ cdef int allocate(const pmix_proc_t *client,
             keyvals = []
             if NULL == client:
                 return PMIX_ERR_BAD_PARAM
-            pmix_unload_procs(client, 1, myproc)
+            rc = pmix_unload_procs(client, 1, myproc)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['source'] = myproc[0]
             args['action'] = action
             if NULL != directives:
-                pmix_unload_info(directives, ndirs, keyvals)
+                rc = pmix_unload_info(directives, ndirs, keyvals)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = keyvals
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['allocate'](args, pypmix_info_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['allocate'](args, pypmix_info_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 
 cdef int jobcontrol(const pmix_proc_t *requestor,
@@ -6115,6 +7005,7 @@ cdef int jobcontrol(const pmix_proc_t *requestor,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'jobcontrol' in keys:
@@ -6123,21 +7014,26 @@ cdef int jobcontrol(const pmix_proc_t *requestor,
             mytargets = []
             mydirs = []
             if NULL != requestor:
-                pmix_unload_procs(requestor, 1, myproc)
+                rc = pmix_unload_procs(requestor, 1, myproc)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['source'] = myproc[0]
             if NULL != targets:
-                pmix_unload_procs(targets, ntargets, mytargets)
+                rc = pmix_unload_procs(targets, ntargets, mytargets)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['targets'] = mytargets
             if NULL != directives:
-                pmix_unload_info(directives, ndirs, mydirs)
+                rc = pmix_unload_info(directives, ndirs, mydirs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = mydirs
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['jobcontrol'](args, pypmix_info_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['jobcontrol'](args, pypmix_info_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int monitor(const pmix_proc_t *requestor,
                  const pmix_info_t *monitor, pmix_status_t error,
@@ -6148,6 +7044,7 @@ cdef int monitor(const pmix_proc_t *requestor,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'monitor' in keys:
@@ -6159,21 +7056,26 @@ cdef int monitor(const pmix_proc_t *requestor,
             if NULL == monitor:
                 return PMIX_ERR_BAD_PARAM
             if NULL != requestor:
-                pmix_unload_procs(requestor, 1, myproc)
+                rc = pmix_unload_procs(requestor, 1, myproc)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['source'] = myproc[0]
-            pmix_unload_info(monitor, 1, mymon)
+            rc = pmix_unload_info(monitor, 1, mymon)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['monitor'] = mymon[0]
             args['error'] = error
             if NULL != directives:
-                pmix_unload_info(directives, ndirs, mydirs)
+                rc = pmix_unload_info(directives, ndirs, mydirs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = mydirs
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['monitor'](args, pypmix_info_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['monitor'](args, pypmix_info_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int getcredential(const pmix_proc_t *proc,
                        const pmix_info_t directives[], size_t ndirs,
@@ -6183,6 +7085,7 @@ cdef int getcredential(const pmix_proc_t *proc,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'getcredential' in keys:
@@ -6190,18 +7093,21 @@ cdef int getcredential(const pmix_proc_t *proc,
             myproc = []
             mydirs = []
             if NULL != proc:
-                pmix_unload_procs(proc, 1, myproc)
+                rc = pmix_unload_procs(proc, 1, myproc)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['source'] = myproc[0]
             if NULL != directives:
-                pmix_unload_info(directives, ndirs, mydirs)
+                rc = pmix_unload_info(directives, ndirs, mydirs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = mydirs
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['getcredential'](args, pypmix_credential_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['getcredential'](args, pypmix_credential_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int validatecredential(const pmix_proc_t *proc,
                             const pmix_byte_object_t *cred,
@@ -6212,6 +7118,7 @@ cdef int validatecredential(const pmix_proc_t *proc,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'validatecredential' in keys:
@@ -6222,7 +7129,9 @@ cdef int validatecredential(const pmix_proc_t *proc,
             blist = []
             pycred = {}
             if NULL != proc:
-                pmix_unload_procs(proc, 1, myproc)
+                rc = pmix_unload_procs(proc, 1, myproc)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['source'] = myproc[0]
             if NULL != cred:
                 pmix_unload_bytes(cred[0].bytes, cred[0].size, blist)
@@ -6231,15 +7140,16 @@ cdef int validatecredential(const pmix_proc_t *proc,
                 pycred['size'] = cred[0].size
                 args['credential'] = pycred
             if NULL != directives:
-                pmix_unload_info(directives, ndirs, mydirs)
+                rc = pmix_unload_info(directives, ndirs, mydirs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = mydirs
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['validatecredential'](args, pypmix_validation_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['validatecredential'](args, pypmix_validation_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int iofpull(const pmix_proc_t procs[], size_t nprocs,
                  const pmix_info_t directives[], size_t ndirs,
@@ -6250,6 +7160,7 @@ cdef int iofpull(const pmix_proc_t procs[], size_t nprocs,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'iofpull' in keys:
@@ -6260,18 +7171,21 @@ cdef int iofpull(const pmix_proc_t procs[], size_t nprocs,
             pychannels = int(channels)
             args['channels'] = channels
             if NULL != procs:
-                pmix_unload_procs(procs, nprocs, myprocs)
+                rc = pmix_unload_procs(procs, nprocs, myprocs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['sources'] = myprocs
             if NULL != directives:
-                pmix_unload_info(directives, ndirs, mydirs)
+                rc = pmix_unload_info(directives, ndirs, mydirs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = mydirs
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['iofpull'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['iofpull'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int pushstdin(const pmix_proc_t *source,
                    const pmix_proc_t targets[], size_t ntargets,
@@ -6283,6 +7197,7 @@ cdef int pushstdin(const pmix_proc_t *source,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'pushstdin' in keys:
@@ -6294,13 +7209,19 @@ cdef int pushstdin(const pmix_proc_t *source,
             blist = []
             pyload = {}
             if NULL != source:
-                pmix_unload_procs(source, 1, myproc)
+                rc = pmix_unload_procs(source, 1, myproc)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['source'] = myproc[0]
             if NULL != targets:
-                pmix_unload_procs(targets, ntargets, mytargets)
+                rc = pmix_unload_procs(targets, ntargets, mytargets)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['targets'] = mytargets
             if NULL != directives:
-                pmix_unload_info(directives, ndirs, mydirs)
+                rc = pmix_unload_info(directives, ndirs, mydirs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = mydirs
             if NULL != bo:
                 pmix_unload_bytes(bo[0].bytes, bo[0].size, blist)
@@ -6309,12 +7230,11 @@ cdef int pushstdin(const pmix_proc_t *source,
                 pyload['size'] = bo[0].size
                 args['payload'] = pyload
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['pushstdin'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['pushstdin'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 
 # The server library requires that the host complete a group operation by
@@ -6338,6 +7258,7 @@ cdef int group(pmix_group_operation_t op, char grp[],
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'group' in keys:
@@ -6347,20 +7268,23 @@ cdef int group(pmix_group_operation_t op, char grp[],
             args['op'] = op
             if NULL == grp:
                 return PMIX_ERR_BAD_PARAM
-            args['group'] = grp.decode('ascii')
+            args['group'] = pmix_decode_str(grp)
             if NULL != procs:
-                pmix_unload_procs(procs, nprocs, myprocs)
+                rc = pmix_unload_procs(procs, nprocs, myprocs)
+                if PMIX_SUCCESS != rc:
+                    return rc
             args['procs'] = myprocs
             if NULL != directives:
-                pmix_unload_info(directives, ndirs, mydirs)
+                rc = pmix_unload_info(directives, ndirs, mydirs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = mydirs
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['group'](args, pypmix_info_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['group'](args, pypmix_info_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int fabric(const pmix_proc_t *requestor,
                 pmix_fabric_operation_t op,
@@ -6373,6 +7297,7 @@ cdef int fabric(const pmix_proc_t *requestor,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'fabric' in keys:
@@ -6382,15 +7307,16 @@ cdef int fabric(const pmix_proc_t *requestor,
             mydirs = []
             args['op'] = op
             if NULL != directives:
-                pmix_unload_info(directives, ndirs, mydirs)
+                rc = pmix_unload_info(directives, ndirs, mydirs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = mydirs
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['fabric'](args, pypmix_info_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['fabric'](args, pypmix_info_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int toolconnected2(pmix_info_t *info, size_t ninfo,
                         pmix_tool_connection_cbfunc_t cbfunc,
@@ -6400,6 +7326,7 @@ cdef int toolconnected2(pmix_info_t *info, size_t ninfo,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         ret_proc = {'nspace': "UNDEF", 'rank': PMIX_RANK_UNDEF}
@@ -6407,15 +7334,16 @@ cdef int toolconnected2(pmix_info_t *info, size_t ninfo,
             args = {}
             ilist = []
             if NULL != info:
-                pmix_unload_info(info, ninfo, ilist)
+                rc = pmix_unload_info(info, ninfo, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['toolconnected2'](args, pypmix_tool_connection_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['toolconnected2'](args, pypmix_tool_connection_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int log2(const pmix_proc_t *client,
               const pmix_info_t data[], size_t ndata,
@@ -6426,6 +7354,7 @@ cdef int log2(const pmix_proc_t *client,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'log2' in keys:
@@ -6435,21 +7364,26 @@ cdef int log2(const pmix_proc_t *client,
             mydirs = []
             if NULL == client:
                 return PMIX_ERR_BAD_PARAM
-            pmix_unload_procs(client, 1, myproc)
+            rc = pmix_unload_procs(client, 1, myproc)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['source'] = myproc[0]
             if NULL != data:
-                pmix_unload_info(data, ndata, ilist)
+                rc = pmix_unload_info(data, ndata, ilist)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['data'] = ilist
             if NULL != directives:
-                pmix_unload_info(directives, ndirs, mydirs)
+                rc = pmix_unload_info(directives, ndirs, mydirs)
+                if PMIX_SUCCESS != rc:
+                    return rc
                 args['directives'] = mydirs
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['log2'](args, pypmix_op_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['log2'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int sessioncontrol(const pmix_proc_t *requestor,
                         uint32_t sessionID,
@@ -6460,6 +7394,7 @@ cdef int sessioncontrol(const pmix_proc_t *requestor,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'sessioncontrol' in keys:
@@ -6471,7 +7406,9 @@ cdef int sessioncontrol(const pmix_proc_t *requestor,
 
             if NULL == requestor:
                 return PMIX_ERR_BAD_PARAM
-            pmix_unload_procs(requestor, 1, myproc)
+            rc = pmix_unload_procs(requestor, 1, myproc)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['requestor'] = myproc[0]
             args['sessionID'] = sessionID
             if NULL != directives:
@@ -6480,12 +7417,11 @@ cdef int sessioncontrol(const pmix_proc_t *requestor,
                     return rc
                 args['directives'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['sessioncontrol'](args, pypmix_info_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['sessioncontrol'](args, pypmix_info_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 cdef int resourceblock(const pmix_proc_t *requestor,
                        pmix_resource_block_directive_t directive,
@@ -6498,6 +7434,7 @@ cdef int resourceblock(const pmix_proc_t *requestor,
     # Without this, Cython returned -1 and left the error
     # indicator set for whatever Python code ran next in
     # this process to trip over.
+    cbdata_dict = None
     try:
         keys = pmixservermodule.keys()
         if 'resourceblock' in keys:
@@ -6510,9 +7447,11 @@ cdef int resourceblock(const pmix_proc_t *requestor,
 
             if NULL == requestor:
                 return PMIX_ERR_BAD_PARAM
-            if NULL == units:
-                return PMIX_ERR_BAD_PARAM
-            pmix_unload_procs(requestor, 1, myproc)
+            # a block delete carries no units, and the server passes NULL
+            # for an empty list
+            rc = pmix_unload_procs(requestor, 1, myproc)
+            if PMIX_SUCCESS != rc:
+                return rc
             args['requestor'] = myproc[0]
             args['directive'] = directive
             args['block'] = pmix_decode_str(block)
@@ -6526,12 +7465,11 @@ cdef int resourceblock(const pmix_proc_t *requestor,
                     return rc
                 args['info'] = ilist
             cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
-            return pmixservermodule['resourceblock'](args, pypmix_info_cbfunc, cbdata_dict)
+            return pypmix_settle(pmixservermodule['resourceblock'](args, pypmix_op_cbfunc, cbdata_dict), cbdata_dict)
 
         return PMIX_ERR_NOT_SUPPORTED
     except:
-        traceback.print_exc()
-        return PMIX_ERROR
+        return pypmix_settle_raise(cbdata_dict)
 
 
 cdef class PMIxTool(PMIxServer):
@@ -6547,6 +7485,7 @@ cdef class PMIxTool(PMIxServer):
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
     def init(self, dicts):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -6562,10 +7501,14 @@ cdef class PMIxTool(PMIxServer):
             return rc, myname
 
         if sz > 0:
-            rc = PMIx_tool_init(&self.myproc, info, sz)
+            with nogil:
+                _gilrc = PMIx_tool_init(&self.myproc, info, sz)
+            rc = _gilrc
             pmix_free_info(info, sz)
         else:
-            rc = PMIx_tool_init(&self.myproc, NULL, 0)
+            with nogil:
+                _gilrc = PMIx_tool_init(&self.myproc, NULL, 0)
+            rc = _gilrc
         _pmix_sync_environ()
         if PMIX_SUCCESS == rc:
             # convert the returned name
@@ -6574,8 +7517,11 @@ cdef class PMIxTool(PMIxServer):
 
     # Finalize the tool library
     def finalize(self):
+        cdef pmix_status_t _gilrc
         # finalize
-        rc = PMIx_tool_finalize()
+        with nogil:
+            _gilrc = PMIx_tool_finalize()
+        rc = _gilrc
         return rc
 
     # see if the tool is connected
@@ -6584,6 +7530,7 @@ cdef class PMIxTool(PMIxServer):
 
     # Disconnect from a server
     def disconnect(self, server:dict):
+        cdef pmix_status_t _gilrc
         cdef pmix_proc_t srvr
 
         # convert the server name
@@ -6591,7 +7538,9 @@ cdef class PMIxTool(PMIxServer):
         srvr.rank = server['rank']
 
         # perform disconnect
-        rc = PMIx_tool_disconnect(&srvr);
+        with nogil:
+            _gilrc = PMIx_tool_disconnect(&srvr)
+        rc = _gilrc
         return rc
 
     # Connect to a server
@@ -6602,6 +7551,7 @@ cdef class PMIxTool(PMIxServer):
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
     def attach_to_server(self, dicts):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -6615,10 +7565,14 @@ cdef class PMIxTool(PMIxServer):
             return rc, None, None
 
         if sz > 0:
-            rc = PMIx_tool_attach_to_server(&self.myproc, &srvr, info, sz)
+            with nogil:
+                _gilrc = PMIx_tool_attach_to_server(&self.myproc, &srvr, info, sz)
+            rc = _gilrc
             pmix_free_info(info, sz)
         else:
-            rc = PMIx_tool_attach_to_server(&self.myproc, &srvr, NULL, 0)
+            with nogil:
+                _gilrc = PMIx_tool_attach_to_server(&self.myproc, &srvr, NULL, 0)
+            rc = _gilrc
         if PMIX_SUCCESS == rc:
             # convert the returned name
             myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}
@@ -6628,13 +7582,16 @@ cdef class PMIxTool(PMIxServer):
             return rc, None, None
 
     def get_servers(self):
+        cdef pmix_status_t _gilrc
         cdef pmix_proc_t *servers
         cdef size_t nservers
 
         pysrvrs = []
         servers = NULL
         nservers = 0
-        rc = PMIx_tool_get_servers(&servers, &nservers)
+        with nogil:
+            _gilrc = PMIx_tool_get_servers(&servers, &nservers)
+        rc = _gilrc
         if PMIX_SUCCESS != rc or NULL == servers:
             return rc, pysrvrs
         rc = pmix_unload_procs(servers, nservers, pysrvrs)
@@ -6645,6 +7602,7 @@ cdef class PMIxTool(PMIxServer):
         return rc, pysrvrs
 
     def set_server(self, server:dict, pyinfo):
+        cdef pmix_status_t _gilrc
         cdef pmix_proc_t srvr
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
@@ -6663,7 +7621,9 @@ cdef class PMIxTool(PMIxServer):
             return rc
 
         # perform op
-        rc = PMIx_tool_set_server(&srvr, info, ninfo);
+        with nogil:
+            _gilrc = PMIx_tool_set_server(&srvr, info, ninfo)
+        rc = _gilrc
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         return rc
@@ -6677,20 +7637,25 @@ cdef class PMIxTool(PMIxServer):
     #      - a dictionary of server-module key to Python handler, as
     #        PMIxServer.init takes
     def set_server_module(self, map):
+        cdef pmix_status_t _gilrc
         # setup server module
         if map is None or 0 == len(map):
             print("SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE")
             return PMIX_ERR_INIT
         kvkeys = list(map.keys())
         for key in kvkeys:
-            if PMIX_SUCCESS != setmodulefn(key, map[key]):
-                print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
+            mrc = setmodulefn(key, map[key])
+            if PMIX_SUCCESS != mrc:
+                if PMIX_ERR_BAD_PARAM == mrc:
+                    print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
                 return PMIX_ERR_INIT
         self.server_module_init(kvkeys)
         # wiring the trampolines into our own struct only prepares the
         # module - the library has to be given it, or none of the
         # handlers registered above is ever called
-        rc = PMIx_tool_set_server_module(&self.myserver)
+        with nogil:
+            _gilrc = PMIx_tool_set_server_module(&self.myserver)
+        rc = _gilrc
         return rc
 
 
@@ -6701,6 +7666,10 @@ cdef class PMIxTool(PMIxServer):
         cdef pmix_iof_channel_t channel
         cdef size_t ndirs
         cdef size_t nprocs
+
+        # see _on_library_thread: refuse before taking _reglock
+        if _on_library_thread():
+            return PMIX_ERR_WOULD_BLOCK, -1
         nprocs      = 0
         ndirs       = 0
         channel     = iof_channel
@@ -6712,7 +7681,7 @@ cdef class PMIxTool(PMIxServer):
             procs = <pmix_proc_t*> PyMem_Malloc(nprocs * sizeof(pmix_proc_t))
             if not procs:
                 return PMIX_ERR_NOMEM, -1
-            rc = pmix_load_procs(procs, pyprocs)
+            rc = pmix_load_procs(procs, nprocs, pyprocs)
             if PMIX_SUCCESS != rc:
                 pmix_free_procs(procs, nprocs)
                 return rc, -1
@@ -6780,11 +7749,12 @@ cdef class PMIxTool(PMIxServer):
             if NULL == cd:
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_IOF_deregister(iofhdlr, cd.info, cd.ninfo,
                                           pypmix_client_op_cbfunc, <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
                 return crc
             # the local record goes with it, exactly as in the blocking
@@ -6810,6 +7780,8 @@ cdef class PMIxTool(PMIxServer):
 
     # cbfunc(status:int, cbdata) - see deregister_nspace
     def iof_push(self, pytargets, data:dict, pydirs, cbfunc=None, cbdata=None):
+        cdef pmix_status_t _gilrc
+        cdef size_t cntargets
         cdef pmix_info_t *directives
         cdef pmix_info_t **directives_ptr
         cdef pmix_byte_object_t *bo
@@ -6843,12 +7815,13 @@ cdef class PMIxTool(PMIxServer):
                 pypmix_nb_cbdata_free(cd)
                 return prc
             cd.idx = pypmix_nb_register(cbfunc, cbdata)
+            nbidx = cd.idx
             with nogil:
                 crc = PMIx_IOF_push(cd.procs, cd.nprocs, cd.bo,
                                     cd.dirs, cd.ndirs,
                                     pypmix_client_op_cbfunc, <void *> cd)
             if PMIX_SUCCESS != crc:
-                if pypmix_nb_take(cd.idx) is not None:
+                if pypmix_nb_take(nbidx) is not None:
                     pypmix_nb_cbdata_free(cd)
             return crc
 
@@ -6871,7 +7844,7 @@ cdef class PMIxTool(PMIxServer):
                 if NULL != bo:
                     free(bo.bytes)
                 return PMIX_ERR_NOMEM
-            rc = pmix_load_procs(targets, pytargets)
+            rc = pmix_load_procs(targets, ntargets, pytargets)
             if PMIX_SUCCESS != rc:
                 pmix_free_procs(targets, ntargets)
                 if NULL != bo:
@@ -6897,7 +7870,10 @@ cdef class PMIxTool(PMIxServer):
             return rc
 
         # Call the library
-        rc = PMIx_IOF_push(targets, ntargets, bo, directives, ndirs, NULL, NULL)
+        cntargets = ntargets
+        with nogil:
+            _gilrc = PMIx_IOF_push(targets, cntargets, bo, directives, ndirs, NULL, NULL)
+        rc = _gilrc
         if NULL != bo and NULL != bo.bytes:
             free(bo.bytes)
         if 0 < ntargets:
@@ -6934,6 +7910,7 @@ cdef class PMIxScheduler(PMIxTool):
     #            defined as such:
     #            [{key:y, value:val, val_type:ty}, … ]
     def init(self, dicts):
+        cdef pmix_status_t _gilrc
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
@@ -6953,10 +7930,14 @@ cdef class PMIxScheduler(PMIxTool):
             return rc, myname
 
         if sz > 0:
-            rc = PMIx_tool_init(&self.myproc, info, sz)
+            with nogil:
+                _gilrc = PMIx_tool_init(&self.myproc, info, sz)
+            rc = _gilrc
             pmix_free_info(info, sz)
         else:
-            rc = PMIx_tool_init(&self.myproc, NULL, 0)
+            with nogil:
+                _gilrc = PMIx_tool_init(&self.myproc, NULL, 0)
+            rc = _gilrc
         _pmix_sync_environ()
         if PMIX_SUCCESS == rc:
             # convert the returned name
@@ -6965,8 +7946,11 @@ cdef class PMIxScheduler(PMIxTool):
 
     # Finalize the tool library
     def finalize(self):
+        cdef pmix_status_t _gilrc
         # finalize
-        rc = PMIx_tool_finalize()
+        with nogil:
+            _gilrc = PMIx_tool_finalize()
+        rc = _gilrc
         return rc
 
 

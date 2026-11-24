@@ -25,6 +25,21 @@ C Syntax
    } pmix_node_pid_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   np = {'hostname': "node01", 'nodeid': 3, 'pid': 12345}
+
+where ``hostname`` is a string (``None`` for NULL), ``nodeid`` an integer
+from 0 to 4294967295 and ``pid`` a non-negative process id. All three
+must be present. A node/pid handed back by the library has the same
+shape.
+
+
 DESCRIPTION
 -----------
 

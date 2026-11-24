@@ -19,6 +19,18 @@ SYNOPSIS
    const char* PMIx_Proc_state_string(pmix_proc_state_t state);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # state is an integer ``pmix_proc_state_t`` value
+  string = foo.proc_state_string(PMIX_PROC_STATE_RUNNING)
+
+
 INPUT PARAMETERS
 ----------------
 

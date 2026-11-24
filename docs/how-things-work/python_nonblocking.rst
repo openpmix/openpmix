@@ -217,15 +217,44 @@ type:
      - ``pypmix_client_devdist_cbfunc``
      - ``cbfunc(status, distances, cbdata)``
 
-All six follow the same shape, and all six share one rule that is easy
-to get wrong: **everything the library hands a callback belongs to the
-library**. Only ``pmix_info_cbfunc_t`` and ``pmix_device_dist_cbfunc_t``
+All six follow the same shape, and nearly all of what they are handed
+follows one rule that is easy to get wrong: **what the library hands a
+callback belongs to the library**, with the two exceptions below. Only ``pmix_info_cbfunc_t`` and ``pmix_device_dist_cbfunc_t``
 carry an explicit ``release_fn``; for the rest the library reclaims the
 data the moment the callback returns. So each trampoline converts to
 Python *first* - a ``pmix_value_t`` through ``pmix_unload_value``, a
 ``pmix_nspace_t`` through ``decode``, a credential through
-``pmix_unload_bytes`` - and never stores or frees the C pointer it was
-given.
+``pmix_unload_bytes`` - and never stores the C pointer it was given.
+
+There are two exceptions, and each is a transfer the C API documents:
+
+- **The value a** ``pmix_value_cbfunc_t`` **is handed.** ``PMIx_Get_nb``
+  gives the ``pmix_value_t`` to its receiver, which must release it (see
+  :ref:`PMIx_Get(3) <man3-PMIx_Get>`). So ``pypmix_client_value_cbfunc``
+  releases it with ``PMIx_Value_free`` once it is converted; taking it for
+  the library's, as the trampoline once did, leaked one value per
+  ``get_nb``. The only value the library keeps is the one it answers a
+  ``PMIX_GET_POINTER_VALUES`` request with, a pointer into its own store,
+  and ``get_nb`` refuses that directive with ``PMIX_ERR_NOT_SUPPORTED``
+  exactly as ``get`` does.
+- **The credential's payload.** A ``pmix_credential_cbfunc_t`` transfers
+  the bytes to whoever receives the callback, so
+  ``pypmix_client_credential_cbfunc`` frees them once it has copied them;
+  the byte object carrying them, and the info array, stay the library's.
+  The blocking ``get_credential`` does the same.
+
+Check the C man page of the callback type before writing a trampoline:
+the ownership of what it is handed is stated there, and it is not the
+same for every type.
+
+The conversion can fail - a value of a type the bindings cannot convert,
+a string that does not decode - and when it does it must not end the
+trampoline: the caller's callback would never run, the caddy would leak,
+and for the two forms with a ``release_fn`` the library's data would
+never be given back. Every trampoline therefore catches its conversion,
+turns a failure into an error status for the callback, and goes on to
+release, reclaim and call as usual. ``pypmix_client_finish`` is the tail
+they share.
 
 
 Putting it together
@@ -241,15 +270,21 @@ A binding then reads::
         if NULL == cd:
             return prc
         cd.idx = pypmix_nb_register(cbfunc, cbdata)
+        nbidx = cd.idx
         with nogil:
             rc = PMIx_Group_leave_nb(cd.grp, cd.info, cd.ninfo,
                                      pypmix_client_op_cbfunc, <void *> cd)
         if PMIX_SUCCESS != rc:
-            if pypmix_nb_take(cd.idx) is not None:
+            if pypmix_nb_take(nbidx) is not None:
                 pypmix_nb_cbdata_free(cd)
         return rc
 
-Four details in that are load-bearing.
+Five details in that are load-bearing.
+
+*Every argument is converted before the caddy is built, or by a helper
+that reports failure as a status.* An exception raised after
+``pypmix_nb_setup`` leaves the method without freeing the caddy, or the
+info array already copied into it.
 
 *The callback is validated first.* A callback that cannot be executed
 would leave the caddy and the registry entry stranded for the life of
@@ -265,7 +300,8 @@ after.
 other than ``PMIX_SUCCESS`` it has not accepted the request and will
 never execute the callback, so nothing else will ever free the caddy.
 The method must do it, and it does so through the registry, honoring the
-ownership rule above.
+ownership rule above - by the id it copied before the call, since if the
+callback did run, ``cd`` is already gone.
 
 *The method returns a bare status.* Results arrive through the callback,
 so unlike the blocking forms these return ``rc`` alone rather than a
@@ -280,32 +316,70 @@ PMIx operation - that is the same deadlock a C program would hit, and
 the reason ``PMIx_Group_join_nb`` exists at all: an invitation is
 delivered in an event handler, where the blocking ``PMIx_Group_join``
 cannot be used. Record the result and wake another thread, as
-``test/python/client.py`` does with a ``threading.Event``.
+``test/python/client.py`` does with a ``threading.Event``. A blocking
+method called there answers ``PMIX_ERR_WOULD_BLOCK`` - including the
+server methods that wait in Python rather than in the library
+(``setup_application``, ``dmodex_request``, ``dmodex_request2``,
+``collect_inventory``), which used to wait there for good.
 
 A callback is executed if and only if the method returned
-``PMIX_SUCCESS``.
+``PMIX_SUCCESS``. A method that answers ``PMIX_OPERATION_SUCCEEDED`` has
+completed the operation on the spot - the fabric calls do, see below - and
+runs no callback, exactly as the C API does.
+
+The *blocking* forms release the GIL as well, for the same reason the
+``_nb`` forms do: while one waits for the progress thread, that thread
+may need to run Python - an event handler, an ``_nb`` callback, a
+server-module upcall - and it cannot while the caller holds the GIL. A
+blocking method that kept it deadlocked against anything of the kind
+that became due during the wait. ``test/python/client.py`` checks this
+with an event handler that takes the GIL and then gives it up while it
+sleeps, during which the main thread makes a blocking ``put()``.
 
 
 State that lives in the class
 -----------------------------
 
-``fabric_register_nb`` and ``fabric_deregister_nb`` have a wrinkle the
-others do not: the class tracks whether a fabric is currently
-registered, and that flag must flip when the *library* says the
-operation finished - not when the request was accepted. The trampoline
-knows nothing about the class, so these methods register a small closure
-in place of the caller's callback::
+The fabric calls have a wrinkle the others do not: the class tracks
+whether a fabric is currently registered, and that flag must flip when
+the *library* says the operation finished - not when the request was
+accepted. The trampoline knows nothing about the class, so these methods
+register a small closure in place of the caller's callback, which also
+reads the fabric information the library filled into the class's fabric
+object and hands it to the caller::
 
     def regdone(status, ud):
+        finfo = []
+        self.fabric_busy = 0
         if PMIX_SUCCESS == status:
             self.fabric_set = 1
-        cbfunc(status, ud)
+            finfo = self._fabric_info()
+            if finfo is None:
+                # the fabric information could not be converted
+                status = PMIX_ERR_NOT_SUPPORTED
+                finfo = []
+        cbfunc(status, finfo, ud)
 
 The closure captures ``self`` and the caller's callback, runs on the
-progress thread like any other, and invokes the caller's function
-unchanged. Anything else that has to update class state from a
-completion should do the same rather than teach the trampolines about
-it.
+progress thread like any other, and invokes the caller's function.
+Anything else that has to update class state from a completion should
+do the same rather than teach the trampolines about it.
+
+The library may also complete a fabric operation on the spot: a
+scheduler registers a fabric itself, and a deregistration never leaves
+the process. It then answers ``PMIX_OPERATION_SUCCEEDED`` and runs no
+callback, so the method updates the flag itself before returning that -
+otherwise the class would go on believing a deregistered fabric was still
+registered, and refuse every later registration as busy. The fabric
+information a registration completed that way produced is read with
+``fabric_info()``.
+
+Only one fabric request is outstanding at a time. The library writes the
+class's fabric object from the progress thread when a request completes,
+so another request - or ``fabric_info()`` - while one is in flight answers
+``PMIX_ERR_RESOURCE_BUSY``. The method claims the fabric in the statement
+after it tests it, before converting anything: a conversion runs Python
+code, and another thread that ran then would pass the same test.
 
 
 The bound non-blocking APIs
@@ -369,10 +443,10 @@ argument is optional and is handed back to the callback unmodified.
      - ``(status, results, cbdata)``
    * - ``PMIx_Fabric_register_nb``
      - ``fabric_register_nb(dicts, cbfunc, cbdata=None)``
-     - ``(status, cbdata)``
+     - ``(status, fabricinfo, cbdata)``
    * - ``PMIx_Fabric_update_nb``
      - ``fabric_update_nb(cbfunc, cbdata=None)``
-     - ``(status, cbdata)``
+     - ``(status, fabricinfo, cbdata)``
    * - ``PMIx_Fabric_deregister_nb``
      - ``fabric_deregister_nb(cbfunc, cbdata=None)``
      - ``(status, cbdata)``

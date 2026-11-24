@@ -40,6 +40,8 @@ Python Syntax
   pydirs = [{'key': PMIX_TIMEOUT,
              'value': 10, 'val_type': PMIX_INT}]
   rc, value = foo.get(proc, "mykey", pydirs)
+  # the Python form always answers a copy, so PMIX_GET_POINTER_VALUES
+  # is refused with PMIX_ERR_NOT_SUPPORTED by both get() and get_nb()
 
   # the non-blocking form returns as soon as the request has been accepted
   # and reports the result by executing a callback on the PMIx progress

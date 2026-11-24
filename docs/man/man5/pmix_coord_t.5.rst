@@ -24,6 +24,29 @@ C Syntax
    } pmix_coord_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   import struct
+   coord = {'view': PMIX_COORD_LOGICAL_VIEW,
+            'coord': struct.pack('=3I', 1, 4, 2),
+            'dims': 3}
+
+where ``view`` is a :ref:`pmix_coord_view_t(5) <man5-pmix_coord_view_t>`
+value (default ``PMIX_COORD_VIEW_UNDEF``), ``coord`` is the coordinate
+vector as raw bytes |mdash| one ``uint32_t`` per dimension in this host's
+byte order |mdash| and ``dims`` is the number of coordinates, not of
+bytes. ``dims`` defaults to the payload's length divided by four; a
+``dims`` larger than the payload holds is ``PMIX_ERR_BAD_PARAM``. A missing
+or ``None`` ``coord`` is a coordinate with no dimensions. A coordinate
+handed back by the library has the same shape, with ``coord`` as
+``bytes``.
+
+
 DESCRIPTION
 -----------
 

@@ -19,6 +19,18 @@ SYNOPSIS
    const char* PMIx_Data_range_string(pmix_data_range_t range);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # range is an integer ``pmix_data_range_t`` value
+  string = foo.data_range_string(PMIX_RANGE_NAMESPACE)
+
+
 INPUT PARAMETERS
 ----------------
 

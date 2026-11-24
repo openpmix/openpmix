@@ -2,6 +2,7 @@
 
 from pmix import *
 import pmix
+import faulthandler
 import os
 import time
 import threading
@@ -79,8 +80,85 @@ def model_evhandler(evhdlr:int, status:int,
     termEvent.set()
     return PMIX_EVENT_ACTION_COMPLETE,None
 
+# Checks whose failure fails this client, collected so that it still
+# finalizes cleanly first
+failures = []
+
+def check(ok, what):
+    if ok:
+        print("CHECK PASS:", what)
+    else:
+        print("CHECK FAIL:", what)
+        failures.append(what)
+
+# The progress thread must be able to run Python while this process's
+# main thread waits in a blocking call. This handler takes the GIL on the
+# progress thread and then gives it up while it sleeps, so the main
+# thread is free to enter put() - and the handler cannot finish until it
+# has the GIL back. A blocking call that held the GIL while it waited for
+# the progress thread would deadlock against it here.
+gilStarted = threading.Event()
+gilDone = threading.Event()
+GIL_EVENT = PMIX_EXTERNAL_ERR_BASE - 11
+
+gilTimes = {}
+
+def gil_evhandler(evhdlr:int, status:int,
+                  source:dict, info:list, results:list):
+    gilStarted.set()
+    time.sleep(0.5)
+    gilTimes['done'] = time.monotonic()
+    gilDone.set()
+    return PMIX_EVENT_ACTION_COMPLETE, None
+
+# A blocking registration made from a handler, on the progress thread,
+# cannot complete. It has to say so at once - not wait on the lock a
+# registration on another thread may be holding while it waits for this
+# very thread
+REG_EVENT = PMIX_EXTERNAL_ERR_BASE - 13
+regSeen = threading.Event()
+regGot = {}
+
+def reg_evhandler(evhdlr:int, status:int,
+                  source:dict, info:list, results:list):
+    regGot['rc'] = regclient.register_event_handler([REG_EVENT - 1], None,
+                                                    default_evhandler)
+    regSeen.set()
+    return PMIX_EVENT_ACTION_COMPLETE, None
+
+regclient = None
+
+# The source a non-blocking notification names has to survive the call:
+# the event is delivered after notify_event has returned
+SRC_EVENT = PMIX_EXTERNAL_ERR_BASE - 12
+srcSeen = threading.Event()
+srcGot = {}
+
+def src_evhandler(evhdlr:int, status:int,
+                  source:dict, info:list, results:list):
+    srcGot['source'] = source
+    srcSeen.set()
+    return PMIX_EVENT_ACTION_COMPLETE, None
+
+# A handler's status goes back to the library as a C status. One that does
+# not fit in one used to raise there, outside the handler's protection,
+# and the event was never completed: the handlers after it in the chain
+# never ran
+CHAIN_EVENT = PMIX_EXTERNAL_ERR_BASE - 14
+chainSeen = threading.Event()
+
+def chain_bad_evhandler(evhdlr:int, status:int,
+                        source:dict, info:list, results:list):
+    return 2 ** 40, None
+
+def chain_next_evhandler(evhdlr:int, status:int,
+                         source:dict, info:list, results:list):
+    chainSeen.set()
+    return PMIX_EVENT_ACTION_COMPLETE, None
+
 def main():
     global termEvent
+    host = os.environ.get('PYTEST_PMIX_HOST')
     
     foo = PMIxClient()
     print("Testing PMIx ", foo.get_version())
@@ -121,6 +199,78 @@ def main():
     print("COMMIT")
     rc = foo.commit()
     print ("Commit result ", foo.error_string(rc))
+    # a blocking call made while a Python event handler is mid-flight on
+    # the progress thread. A watchdog turns a deadlock into a failure
+    print("GIL")
+    rc, gilhdlr = foo.register_event_handler([GIL_EVENT], None, gil_evhandler)
+    check(0 <= rc or PMIX_SUCCESS == rc, "registered the GIL handler")
+    # The watchdog cannot be a Python timer: a deadlock here is one in
+    # which the main thread holds the GIL, so no Python thread could run
+    # to notice it. faulthandler's watchdog is a C thread that never
+    # takes the GIL; it prints every thread's stack and exits
+    print("If this hangs, a blocking call is holding the GIL while it "
+          "waits for the progress thread", flush=True)
+    faulthandler.dump_traceback_later(20, exit=True)
+    w = nbwaiter("GIL NOTIFY")
+    rc = foo.notify_event(GIL_EVENT, my_result[1], PMIX_RANGE_PROC_LOCAL, [],
+                          w.op_cb, "gil")
+    check(PMIX_SUCCESS == rc, "the notification is accepted")
+    check(gilStarted.wait(timeout=10), "the handler started")
+    gilTimes['put'] = time.monotonic()
+    rc = foo.put(PMIX_GLOBAL, "gilkey", {'value': 2, 'val_type': PMIX_INT32})
+    check(PMIX_SUCCESS == rc, "put while a handler waits for the GIL")
+    rc = foo.commit()
+    check(PMIX_SUCCESS == rc, "commit while a handler waits for the GIL")
+    check(gilDone.wait(timeout=10), "the handler finished")
+    # the case is only a case if the two overlapped
+    check(gilTimes.get('put', 0) < gilTimes.get('done', 0),
+          "put() began while the handler still held its event")
+    faulthandler.cancel_dump_traceback_later()
+    foo.deregister_event_handler(gilhdlr)
+
+    print("REGISTER FROM A HANDLER")
+    global regclient
+    regclient = foo
+    rc, reghdlr = foo.register_event_handler([REG_EVENT], None, reg_evhandler)
+    w = nbwaiter("REG NOTIFY")
+    # hold the registration lock, as a registration on another thread
+    # would while it waits for the progress thread: the handler's own
+    # attempt must not wait for it
+    with pmix._reglock:
+        rc = foo.notify_event(REG_EVENT, my_result[1], PMIX_RANGE_PROC_LOCAL, [],
+                              w.op_cb, "reg")
+        seen = regSeen.wait(timeout=10)
+    check(seen and (PMIX_ERR_WOULD_BLOCK, -1) == regGot.get('rc'),
+          "a blocking registration from a handler is refused at once: %r"
+          % (regGot.get('rc'),))
+    foo.deregister_event_handler(reghdlr)
+
+    print("NOTIFY SOURCE")
+    rc, srchdlr = foo.register_event_handler([SRC_EVENT], None, src_evhandler)
+    w = nbwaiter("NOTIFY SOURCE")
+    rc = foo.notify_event(SRC_EVENT, {'nspace': "pytest-source", 'rank': 7},
+                          PMIX_RANGE_PROC_LOCAL, [], w.op_cb, "src")
+    check(PMIX_SUCCESS == rc, "a non-blocking notification naming a source is accepted")
+    check(srcSeen.wait(timeout=10) and
+          {'nspace': "pytest-source", 'rank': 7} == srcGot.get('source'),
+          "the handler sees the source the notification named: %r"
+          % (srcGot.get('source'),))
+    foo.deregister_event_handler(srchdlr)
+
+    print("EVENT CHAIN")
+    rc, nexthdlr = foo.register_event_handler([CHAIN_EVENT], None, chain_next_evhandler)
+    rc, badhdlr = foo.register_event_handler([CHAIN_EVENT],
+                                             [{'key': PMIX_EVENT_HDLR_PREPEND,
+                                               'value': True, 'val_type': PMIX_BOOL}],
+                                             chain_bad_evhandler)
+    w = nbwaiter("EVENT CHAIN")
+    rc = foo.notify_event(CHAIN_EVENT, my_result[1], PMIX_RANGE_PROC_LOCAL, [],
+                          w.op_cb, "chain")
+    check(PMIX_SUCCESS == rc and chainSeen.wait(timeout=10),
+          "a handler answering a status out of range does not stop the chain")
+    foo.deregister_event_handler(badhdlr)
+    foo.deregister_event_handler(nexthdlr)
+
     # execute fence
     print("FENCE")
     procs = []
@@ -145,6 +295,13 @@ def main():
     units = [{'type': PMIX_DEVTYPE_GPU, 'count': 2}]
     rc = foo.resource_block(PMIX_RESOURCE_BLOCK_DEFINE, "myblock", units, [])
     print("Resource block result ", foo.error_string(rc))
+    if 'scheduler' == host:
+        # our server is the scheduler, and its handler checks what arrives
+        check(PMIX_SUCCESS == rc, "the scheduler defines a resource block")
+        rc = foo.resource_block(PMIX_RESOURCE_BLOCK_DELETE, "myblock", [], [])
+        check(PMIX_SUCCESS == rc,
+              "the scheduler deletes a resource block, which carries no units: %s"
+              % foo.error_string(rc))
     # ask for a process that does not exist to be aborted - our server
     # checks that the request names us, and refuses it otherwise
     print("ABORT")
@@ -176,6 +333,52 @@ def main():
     if w.wait(foo, rc):
         print("Get_nb value returned: ", w.results)
 
+    # the value a get_nb callback is handed is the receiver's to release.
+    # The bindings converted it and dropped it, so every call leaked a
+    # copy of the value: 2000 gets of 64 KiB grew the process by about
+    # 128 MiB. A peak-RSS check with a wide margin catches that
+    import resource, sys
+    def peak_mib():
+        r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return r / (1024 * 1024) if sys.platform == 'darwin' else r / 1024
+    big = "x" * 65536
+    rc = foo.put(PMIX_GLOBAL, "pybigkey", {'value': big, 'val_type': PMIX_STRING})
+    if PMIX_SUCCESS == rc:
+        rc = foo.commit()
+    leakev = threading.Event()
+    leakseen = []
+    def leakcb(status, value, cbdata):
+        leakseen.append(PMIX_SUCCESS == status and value is not None and
+                        len(value['value']) == len(big))
+        leakev.set()
+    me = my_result[1]
+    before = None
+    for n in range(2200):
+        if 200 == n:
+            before = peak_mib()
+        leakev.clear()
+        rc = foo.get_nb(me, "pybigkey", [], leakcb, None)
+        if PMIX_SUCCESS != rc or not leakev.wait(30):
+            break
+    grown = peak_mib() - before if before is not None else None
+    check(2200 == len(leakseen) and all(leakseen),
+          "get_nb answers a large value every time")
+    # AddressSanitizer holds freed memory in a quarantine (256 MiB by
+    # default) rather than reusing it, so under it the peak grows whether
+    # or not the value is released - and ASan's own leak checker is the
+    # better test there anyway
+    def asan_loaded():
+        try:
+            with open("/proc/self/maps") as f:
+                return "libasan" in f.read()
+        except OSError:
+            return "asan" in os.environ.get("DYLD_INSERT_LIBRARIES", "")
+    if asan_loaded():
+        print("SKIP: peak-RSS check under AddressSanitizer (%s MiB)" % grown)
+    else:
+        check(grown is not None and grown < 32,
+              "repeated get_nb does not grow the process (%s MiB)" % grown)
+
     print("PUBLISH NB")
     w = nbwaiter("PUBLISH NB")
     pdata = [{'key':'pykey', 'value':'pyvalue', 'val_type':PMIX_STRING}]
@@ -190,6 +393,51 @@ def main():
         w = nbwaiter("UNPUBLISH NB")
         rc = foo.unpublish_nb(['pykey'], [], w.op_cb, "unpublish")
         w.wait(foo, rc)
+
+    if 'server' == host:
+        # a lookup that finds only some of its keys reports the ones it
+        # found, and the rest as undefined
+        rc = foo.publish([{'key': 'pyfound', 'value': 'here', 'val_type': PMIX_STRING}])
+        check(PMIX_SUCCESS == rc, "publish pyfound")
+        rc, res = foo.lookup([{'key': 'pyfound'}, {'key': 'pymissing'}], None)
+        found = [r for r in res if 'pyfound' == r['key']]
+        missing = [r for r in res if 'pymissing' == r['key']]
+        check(rc in (PMIX_SUCCESS, PMIX_ERR_PARTIAL_SUCCESS) and
+              1 == len(found) and 'here' == found[0]['value'] and
+              (0 == len(missing) or PMIX_UNDEF == missing[0]['val_type']),
+              "a partial lookup reports what it found: %s %r"
+              % (foo.error_string(rc), res))
+        # a handler that completes and then returns no status
+        rc = foo.publish([{'key': 'pytest.noreturn', 'value': 1, 'val_type': PMIX_INT32}])
+        check(PMIX_SUCCESS == rc,
+              "a handler that completed and returned nothing is taken at its word: %s"
+              % foo.error_string(rc))
+        # a handler that completes and then raises
+        rc, res = foo.lookup([{'key': 'pyfound'}, {'key': 'pytest.raiseafter'}], None)
+        check(rc in (PMIX_SUCCESS, PMIX_ERR_PARTIAL_SUCCESS) and
+              any('pyfound' == r['key'] and 'here' == r['value'] for r in res),
+              "a handler that completed and then raised is taken at its word: %s"
+              % foo.error_string(rc))
+        # a helper handed an answer it cannot even measure
+        w = nbwaiter("LOOKUP GENERATOR")
+        rc = foo.lookup_nb(['pytest.generator'], [], w.data_cb, "generator")
+        check(PMIX_SUCCESS == rc and w.event.wait(timeout=30) and
+              PMIX_SUCCESS != w.status,
+              "an answer the helper cannot measure completes with an error")
+        # a completion given something that is not a status
+        w = nbwaiter("PUBLISH BADSTATUS")
+        rc = foo.publish_nb([{'key': 'pytest.badstatus', 'value': 1,
+                              'val_type': PMIX_INT32}], w.op_cb, "badstatus")
+        check(PMIX_SUCCESS == rc and w.event.wait(timeout=30) and
+              PMIX_SUCCESS != w.status,
+              "a completion given a non-status completes with an error")
+        # a handler whose answer the bindings cannot convert: the request
+        # is still completed, with an error
+        w = nbwaiter("LOOKUP BADVALUE")
+        rc = foo.lookup_nb(['pytest.badvalue'], [], w.data_cb, "badvalue")
+        check(PMIX_SUCCESS == rc and w.event.wait(timeout=30) and
+              PMIX_SUCCESS != w.status,
+              "an answer that cannot be converted completes with an error")
 
     print("QUERY NB")
     w = nbwaiter("QUERY NB")
@@ -234,7 +482,9 @@ def main():
     units = [{'type': PMIX_DEVTYPE_GPU, 'count': 2}]
     rc = foo.resource_block_nb(PMIX_RESOURCE_BLOCK_DEFINE, "myblock",
                                units, [], w.op_cb, "resblock")
-    w.wait(foo, rc)
+    done = w.wait(foo, rc)
+    if 'scheduler' == host:
+        check(done, "the scheduler completes a non-blocking resource block")
 
     print("SPAWN NB")
     w = nbwaiter("SPAWN NB")
@@ -317,7 +567,9 @@ def main():
     info = []
     foo.finalize(info)
     print("Client finalize complete")
-    if timedout or not replayed or not dropped:
+    if failures:
+        print("FAILED CHECKS:", failures)
+    if timedout or not replayed or not dropped or failures:
         exit(1)
 if __name__ == '__main__':
     main()

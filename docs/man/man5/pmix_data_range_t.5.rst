@@ -34,7 +34,13 @@ C Syntax
 Python Syntax
 ^^^^^^^^^^^^^
 
-None
+.. code-block:: python3
+
+   from pmix import *
+
+   range = PMIX_RANGE_NAMESPACE
+
+where the value is one of the ``pmix_data_range_t`` constants listed on this page, a plain Python ``int``.
 
 
 DESCRIPTION

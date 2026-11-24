@@ -34,6 +34,26 @@ C Syntax
    } pmix_data_buffer_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   buf = {'bytes': packed, 'bytes_used': len(packed), 'bytes_unpacked': 0}
+
+where ``bytes`` is the packed payload, ``bytes_used`` its length, and
+``bytes_unpacked`` how far unpacking has advanced through it. The payload
+may be ``bytes``, a ``bytearray``, a ``memoryview`` or a ``str`` (encoded
+as UTF-8); a missing or ``None`` payload is an empty buffer. Its length is
+taken from the payload itself, so ``bytes_used`` is ignored on input.
+``bytes_unpacked`` defaults to 0 and must lie between 0 and the payload's
+length, else ``PMIX_ERR_BAD_PARAM``. The ``data_pack``/``data_unpack``
+family of methods take this dict and update it in place, so successive
+unpacks resume where the last one stopped.
+
+
 DESCRIPTION
 -----------
 

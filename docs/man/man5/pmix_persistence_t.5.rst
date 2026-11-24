@@ -32,7 +32,13 @@ C Syntax
 Python Syntax
 ^^^^^^^^^^^^^
 
-None
+.. code-block:: python3
+
+   from pmix import *
+
+   persist = PMIX_PERSIST_SESSION
+
+where the value is one of the ``pmix_persistence_t`` constants listed on this page, a plain Python ``int``.
 
 
 DESCRIPTION

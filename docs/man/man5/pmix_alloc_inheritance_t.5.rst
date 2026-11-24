@@ -25,6 +25,18 @@ C Syntax
    #define PMIX_ALLOC_INHERIT_CHILD_DEFAULT 4
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   inherit = PMIX_ALLOC_INHERIT_NONE
+
+where the value is one of the ``pmix_alloc_inheritance_t`` constants listed on this page, a plain Python ``int``.
+
+
 DESCRIPTION
 -----------
 

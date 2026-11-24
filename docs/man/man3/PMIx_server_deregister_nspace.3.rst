@@ -29,7 +29,16 @@ Python Syntax
 
   foo = PMIxServer()
   # ... after registering the namespace ...
-  foo.deregister_nspace("myjob")
+  rc = foo.deregister_nspace("myjob")
+
+  # the non-blocking form returns as soon as the request has been accepted,
+  # and cbfunc(status, cbdata) runs on the PMIx progress thread if and only
+  # if the call returned PMIX_SUCCESS. It is the form to use on that
+  # thread - in a server-module upcall, an event handler or another
+  # callback - where a blocking PMIx call must not be made
+  def donecb(status, cbdata):
+      print("deregister_nspace completed:", foo.error_string(status))
+  rc = foo.deregister_nspace("myjob", donecb, "mycbdata")
 
 
 INPUT PARAMETERS

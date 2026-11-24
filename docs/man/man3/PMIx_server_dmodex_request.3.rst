@@ -34,6 +34,10 @@ Python Syntax
   proc = {'nspace': "myapp", 'rank': 3}
   rc, (data, sz) = foo.dmodex_request(proc, {})
   # data/sz carry the returned blob when rc is PMIX_SUCCESS
+  # the method waits for the answer, so it cannot be called on the PMIx
+  # progress thread - from a server-module upcall, an event handler or a
+  # non-blocking callback. There it returns PMIX_ERR_WOULD_BLOCK at once;
+  # call it from a thread of your own instead
 
 
 INPUT PARAMETERS
