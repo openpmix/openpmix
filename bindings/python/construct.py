@@ -277,8 +277,18 @@ def harvest_constants(options, src, constants, definitions):
                     value = lines[n].strip()
                     nbrk = 1
                     while nbrk > 0:
+                        # a member with a comment after it is still a
+                        # member: drop the comment and keep the code.
+                        # Skipping the whole line, as the test below
+                        # does for a comment, lost the member from the
+                        # generated struct
+                        for marker in ("/*", "//"):
+                            idx = value.find(marker)
+                            if idx > 0:
+                                value = value[:idx].strip()
                         # avoid comments
-                        if "/*" in value or "*/" in value or value.startswith("*"):
+                        if "/*" in value or "*/" in value or value.startswith("*") or \
+                           value.startswith("//"):
                             n += 1
                             value = lines[n].strip()
                             continue
