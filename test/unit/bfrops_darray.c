@@ -146,6 +146,8 @@ static void test_pack_unpack_every_type(void)
                         (unsigned long) out.size);
                 ok = 0;
             }
+            /* what the unpack built is ours to release */
+            PMIX_DATA_ARRAY_DESTRUCT(&out);
         }
         PMIX_DATA_BUFFER_DESTRUCT(&buf);
         PMIx_Data_array_free(da);
@@ -195,6 +197,253 @@ static void test_copy_every_type(void)
         PMIx_Data_array_free(da);
     }
     report("every registered type copies as a data array", ok);
+}
+
+/* The same question for a single value rather than an array: every
+ * type a pmix_value_t can carry must be transferable and releasable as
+ * a scalar too. That is answered by two more switches -
+ * value_xfer() and value_destruct() in bfrop_base_tma.h - which are not
+ * the ones the array sweeps above exercise, and PMIX_NODE_PID was once
+ * missing from both: an xfer failed with "UNSUPPORTED TYPE" and a
+ * destruct leaked the struct and its hostname.
+ *
+ * Each value is loaded from element 0 of a constructed array, so the
+ * loader, the transfer and the comparison all see the same object. */
+static pmix_data_type_t no_scalar_form[] = {
+    /* no member of the value union holds one - they are array element
+     * types only (see the fifth cluster in bfrops/base/AGENTS.md) */
+    PMIX_VALUE, PMIX_INFO, PMIX_PDATA, PMIX_APP, PMIX_KVAL, PMIX_BUFFER,
+    /* a pmix_cmd_t is the library's own wire command, not a public
+     * type, so the union has no member for it. A query value is
+     * packable, but only as the payload of a query request */
+    PMIX_COMMAND, PMIX_QUERY,
+    /* an empty hwloc object is not a valid one; see test_copy_every_type */
+    PMIX_PROC_CPUSET, PMIX_TOPO,
+    /* a scalar data array is test_copy_every_type's subject */
+    PMIX_DATA_ARRAY,
+    /* a pointer is handed over, not copied */
+    PMIX_POINTER
+};
+
+static int has_scalar_form(pmix_data_type_t t)
+{
+    size_t n;
+
+    for (n = 0; n < sizeof(no_scalar_form) / sizeof(no_scalar_form[0]); n++) {
+        if (t == no_scalar_form[n]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void test_scalar_xfer_every_type(void)
+{
+    size_t i;
+    int ok = 1;
+
+    for (i = 0; i < sizeof(all_types) / sizeof(all_types[0]); i++) {
+        pmix_value_t src, dst;
+        pmix_data_array_t *da;
+        pmix_status_t rc;
+
+        if (!has_scalar_form(all_types[i])) {
+            continue;
+        }
+        da = PMIx_Data_array_create(1, all_types[i]);
+        if (NULL == da) {
+            fprintf(stdout, "    %s: could not construct an element\n",
+                    PMIx_Data_type_string(all_types[i]));
+            ok = 0;
+            continue;
+        }
+        PMIX_VALUE_CONSTRUCT(&src);
+        PMIX_VALUE_CONSTRUCT(&dst);
+        rc = PMIx_Value_load(&src, da->array, all_types[i]);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stdout, "    %s: value load failed: %s\n",
+                    PMIx_Data_type_string(all_types[i]), PMIx_Error_string(rc));
+            ok = 0;
+        } else if (PMIX_SUCCESS != (rc = PMIx_Value_xfer(&dst, &src))) {
+            fprintf(stdout, "    %s: value xfer failed: %s\n",
+                    PMIx_Data_type_string(all_types[i]), PMIx_Error_string(rc));
+            ok = 0;
+        } else if (all_types[i] != dst.type) {
+            fprintf(stdout, "    %s: value xfer changed the type to %s\n",
+                    PMIx_Data_type_string(all_types[i]),
+                    PMIx_Data_type_string(dst.type));
+            ok = 0;
+        } else {
+            /* and it prints - as a value, and as an element of an array.
+             * Every printer answers a status, and one that answered
+             * pmix_asprintf's length instead failed every caller */
+            char *txt = PMIx_Value_string(&dst);
+            pmix_value_t arr;
+            /* "printed" means rendered: the printers' fallback for a
+             * type they have no case for also answers a string */
+            if (NULL == txt || NULL != strstr(txt, "UNPRINTABLE")) {
+                fprintf(stdout, "    %s: value does not print\n",
+                        PMIx_Data_type_string(all_types[i]));
+                ok = 0;
+            }
+            free(txt);
+            PMIX_VALUE_CONSTRUCT(&arr);
+            arr.type = PMIX_DATA_ARRAY;
+            arr.data.darray = da;
+            txt = PMIx_Value_string(&arr);
+            if (NULL == txt || NULL != strstr(txt, "UNPRINTABLE")) {
+                fprintf(stdout, "    %s: array does not print\n",
+                        PMIx_Data_type_string(all_types[i]));
+                ok = 0;
+            }
+            free(txt);
+            /* and it packs and unpacks as a value. pack_val() and
+             * unpack_val() have their own switch, and PMIX_DATA_BUFFER
+             * was packed from the union itself where unpack reads a
+             * pointer to it. (A PMIX_COMPRESSED_STRING is expanded into
+             * a PMIX_STRING on the way in - see bfrops/base/AGENTS.md -
+             * and an empty element is not compressed data at all.) */
+            if (PMIX_COMPRESSED_STRING != all_types[i]) {
+                pmix_data_buffer_t buf;
+                pmix_value_t back;
+                int32_t cnt = 1;
+
+                PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+                PMIX_VALUE_CONSTRUCT(&back);
+                rc = PMIx_Data_pack(NULL, &buf, &dst, 1, PMIX_VALUE);
+                if (PMIX_SUCCESS == rc) {
+                    rc = PMIx_Data_unpack(NULL, &buf, &back, &cnt, PMIX_VALUE);
+                }
+                if (PMIX_SUCCESS != rc || all_types[i] != back.type ||
+                    PMIX_EQUAL != PMIx_Value_compare(&dst, &back)) {
+                    fprintf(stdout, "    %s: value does not pack and unpack (%s)\n",
+                            PMIx_Data_type_string(all_types[i]), PMIx_Error_string(rc));
+                    ok = 0;
+                }
+                PMIX_VALUE_DESTRUCT(&back);
+                PMIX_DATA_BUFFER_DESTRUCT(&buf);
+            }
+        }
+        PMIX_VALUE_DESTRUCT(&dst);
+        PMIX_VALUE_DESTRUCT(&src);
+        PMIx_Data_array_free(da);
+    }
+    report("every type with a scalar form transfers, prints and packs as a value", ok);
+}
+
+/* A node/pid value carries an allocated hostname, so a destruct that
+ * does not know the type leaks it (visible under LeakSanitizer), and a
+ * transfer that does not know it fails outright. */
+static void test_node_pid_value_xfer(void)
+{
+    pmix_node_pid_t np;
+    pmix_value_t src, dst;
+    pmix_status_t rc;
+    int ok;
+
+    memset(&np, 0, sizeof(np));
+    np.hostname = "node-a";
+    np.nodeid = 7;
+    np.pid = 4242;
+    PMIX_VALUE_CONSTRUCT(&src);
+    PMIX_VALUE_CONSTRUCT(&dst);
+    rc = PMIx_Value_load(&src, &np, PMIX_NODE_PID);
+    ok = (PMIX_SUCCESS == rc);
+    if (ok) {
+        rc = PMIx_Value_xfer(&dst, &src);
+        ok = (PMIX_SUCCESS == rc) && (PMIX_NODE_PID == dst.type) &&
+             (NULL != dst.data.nodepid) && (NULL != dst.data.nodepid->hostname) &&
+             (0 == strcmp("node-a", dst.data.nodepid->hostname)) &&
+             (dst.data.nodepid->hostname != src.data.nodepid->hostname) &&
+             (7 == dst.data.nodepid->nodeid) && (4242 == dst.data.nodepid->pid);
+    }
+    PMIX_VALUE_DESTRUCT(&dst);
+    PMIX_VALUE_DESTRUCT(&src);
+    ok = ok && (PMIX_UNDEF == src.type) && (NULL == src.data.nodepid);
+    report("a node/pid value transfers and destructs", ok);
+}
+
+/* The sweep above loads empty elements, so it cannot see a defect that
+ * shows only in a non-zero field. A registered attribute's type is one:
+ * it is packed unsigned, and was unpacked signed, which the size-based
+ * integer encoding writes differently - 3 came back as 65534. Zero
+ * survives that, so the sweep passed. */
+static void test_regattr_type_survives_pack(void)
+{
+    pmix_regattr_t ra, *ras;
+    pmix_data_array_t *da;
+    pmix_value_t v, back;
+    pmix_data_buffer_t buf;
+    pmix_status_t rc;
+    int32_t cnt;
+    int ok = 1;
+    size_t n;
+    char *desc[] = {"a description", NULL};
+
+    memset(&ra, 0, sizeof(ra));
+    ra.name = "PMIX_EXAMPLE";
+    PMIx_Load_key(ra.string, "pmix.example");
+    ra.type = PMIX_UINT32;
+    ra.description = desc;
+
+    /* as a value */
+    PMIX_VALUE_CONSTRUCT(&v);
+    PMIX_VALUE_CONSTRUCT(&back);
+    PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+    rc = PMIx_Value_load(&v, &ra, PMIX_REGATTR);
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_Data_pack(NULL, &buf, &v, 1, PMIX_VALUE);
+    }
+    cnt = 1;
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_Data_unpack(NULL, &buf, &back, &cnt, PMIX_VALUE);
+    }
+    if (PMIX_SUCCESS != rc || PMIX_REGATTR != back.type || NULL == back.data.ptr ||
+        PMIX_UINT32 != ((pmix_regattr_t *) back.data.ptr)->type) {
+        fprintf(stdout, "    regattr value: type did not survive (%s)\n",
+                PMIx_Error_string(rc));
+        ok = 0;
+    }
+    PMIX_VALUE_DESTRUCT(&back);
+    PMIX_VALUE_DESTRUCT(&v);
+    PMIX_DATA_BUFFER_DESTRUCT(&buf);
+
+    /* and as the elements of an array, which is how a query answers */
+    da = PMIx_Data_array_create(3, PMIX_REGATTR);
+    ras = (pmix_regattr_t *) da->array;
+    for (n = 0; n < 3; n++) {
+        ras[n].name = strdup("PMIX_EXAMPLE");
+        PMIx_Load_key(ras[n].string, "pmix.example");
+        ras[n].type = (pmix_data_type_t) (PMIX_BOOL + n * 10);
+    }
+    PMIX_VALUE_CONSTRUCT(&v);
+    PMIX_VALUE_CONSTRUCT(&back);
+    PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+    v.type = PMIX_DATA_ARRAY;
+    v.data.darray = da;
+    rc = PMIx_Data_pack(NULL, &buf, &v, 1, PMIX_VALUE);
+    cnt = 1;
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_Data_unpack(NULL, &buf, &back, &cnt, PMIX_VALUE);
+    }
+    if (PMIX_SUCCESS != rc || PMIX_DATA_ARRAY != back.type || NULL == back.data.darray ||
+        3 != back.data.darray->size) {
+        fprintf(stdout, "    regattr array: did not survive (%s)\n", PMIx_Error_string(rc));
+        ok = 0;
+    } else {
+        ras = (pmix_regattr_t *) back.data.darray->array;
+        for (n = 0; n < 3; n++) {
+            if ((pmix_data_type_t) (PMIX_BOOL + n * 10) != ras[n].type) {
+                fprintf(stdout, "    regattr array: element %d type %u came back as %u\n",
+                        (int) n, (unsigned) (PMIX_BOOL + n * 10), (unsigned) ras[n].type);
+                ok = 0;
+            }
+        }
+    }
+    PMIX_VALUE_DESTRUCT(&back);
+    PMIX_VALUE_DESTRUCT(&v);
+    PMIX_DATA_BUFFER_DESTRUCT(&buf);
+    report("a registered attribute's type survives pack and unpack", ok);
 }
 
 /* An empty hwloc cpuset cannot be copied - the interesting part is that
@@ -385,6 +634,9 @@ static void test_kval_array_with_empty_elements(void)
     cnt = 1;
     rc = PMIx_Data_unpack(NULL, &buf, &out, &cnt, PMIX_DATA_ARRAY);
     ok = ok && (PMIX_SUCCESS == rc) && (NELEMENTS == out.size);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_DATA_ARRAY_DESTRUCT(&out);
+    }
 
     PMIX_DATA_BUFFER_DESTRUCT(&buf);
     PMIx_Data_array_free(da);
@@ -437,6 +689,142 @@ static void test_populated_array_contents_survive(void)
     report("a populated int32 array round-trips its contents", ok);
 }
 
+/* PMIX_INFO_DIRECTIVES, PMIX_DATA_TYPE and PMIX_IOF_CHANNEL were
+ * registered types - packable, unpackable, copyable as array elements -
+ * with no member of the value union, so a value of one of them crossed
+ * the wire intact and then could not be loaded, transferred (hence not
+ * stored), unloaded, compared or printed, and PMIx_Value_get_size()
+ * left its payload out. The sweep above loads empty elements, so this
+ * one uses non-zero contents and checks they survive each step. */
+static int check_named_value(pmix_data_type_t t, const void *a, const void *b,
+                             size_t width, const char *aname, uint32_t anum)
+{
+    pmix_value_t va, vb, dst, back, arr, arr2;
+    pmix_data_array_t *da, *db;
+    pmix_data_buffer_t buf;
+    pmix_status_t rc;
+    uint64_t store = 0;
+    void *out = &store;
+    size_t sz = 0;
+    uint32_t num = 0;
+    int32_t cnt = 1;
+    char *txt;
+    int ok = 1;
+    const char *tn = PMIx_Data_type_string(t);
+
+#define NV_FAIL(what)                                          \
+    do {                                                       \
+        fprintf(stdout, "    %s: %s\n", tn, what);             \
+        ok = 0;                                                \
+    } while (0)
+
+    PMIX_VALUE_CONSTRUCT(&va);
+    PMIX_VALUE_CONSTRUCT(&vb);
+    PMIX_VALUE_CONSTRUCT(&dst);
+    PMIX_VALUE_CONSTRUCT(&back);
+    if (PMIX_SUCCESS != PMIx_Value_load(&va, a, t) ||
+        PMIX_SUCCESS != PMIx_Value_load(&vb, b, t)) {
+        NV_FAIL("value load failed");
+        goto done;
+    }
+    if (0 != memcmp(&va.data, a, width)) {
+        NV_FAIL("value load did not store the contents");
+    }
+    if (PMIX_SUCCESS != PMIx_Value_xfer(&dst, &va) || t != dst.type ||
+        PMIX_EQUAL != PMIx_Value_compare(&dst, &va)) {
+        NV_FAIL("value xfer did not reproduce the value");
+    }
+    if (PMIX_EQUAL == PMIx_Value_compare(&va, &vb)) {
+        NV_FAIL("two different values compare equal");
+    }
+    rc = PMIx_Value_unload(&va, &out, &sz);
+    if (PMIX_SUCCESS != rc || width != sz || 0 != memcmp(out, a, width)) {
+        NV_FAIL("value unload did not return the contents");
+    }
+    if (PMIX_SUCCESS != PMIx_Value_get_size(&va, &sz) ||
+        sizeof(pmix_value_t) + width != sz) {
+        NV_FAIL("value size leaves out the payload");
+    }
+    if (PMIX_SUCCESS != PMIx_Value_get_number(&va, &num, PMIX_UINT32) || anum != num) {
+        NV_FAIL("value does not read back as a number");
+    }
+    txt = PMIx_Value_string(&va);
+    if (NULL == txt || NULL == strstr(txt, aname)) {
+        NV_FAIL("value does not print its contents");
+    }
+    free(txt);
+    PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+    rc = PMIx_Data_pack(NULL, &buf, &va, 1, PMIX_VALUE);
+    if (PMIX_SUCCESS == rc) {
+        rc = PMIx_Data_unpack(NULL, &buf, &back, &cnt, PMIX_VALUE);
+    }
+    if (PMIX_SUCCESS != rc || t != back.type || 0 != memcmp(&back.data, a, width)) {
+        NV_FAIL("value contents do not survive pack and unpack");
+    }
+    PMIX_DATA_BUFFER_DESTRUCT(&buf);
+
+    /* and as the elements of an array */
+    da = PMIx_Data_array_create(2, t);
+    db = PMIx_Data_array_create(2, t);
+    if (NULL == da || NULL == db) {
+        NV_FAIL("could not construct an array");
+        PMIx_Data_array_free(da);
+        PMIx_Data_array_free(db);
+        goto done;
+    }
+    memcpy(da->array, a, width);
+    memcpy((char *) da->array + width, b, width);
+    memcpy(db->array, a, width);
+    memcpy((char *) db->array + width, a, width);
+    PMIX_VALUE_CONSTRUCT(&arr);
+    PMIX_VALUE_CONSTRUCT(&arr2);
+    arr.type = PMIX_DATA_ARRAY;
+    arr.data.darray = da;
+    arr2.type = PMIX_DATA_ARRAY;
+    arr2.data.darray = db;
+    if (PMIX_EQUAL != PMIx_Value_compare(&arr, &arr)) {
+        NV_FAIL("array does not compare equal to itself");
+    }
+    if (PMIX_EQUAL == PMIx_Value_compare(&arr, &arr2)) {
+        NV_FAIL("two different arrays compare equal");
+    }
+    if (PMIX_SUCCESS != PMIx_Value_get_size(&arr, &sz) ||
+        sizeof(pmix_value_t) + sizeof(pmix_data_array_t) + 2 * width != sz) {
+        NV_FAIL("array size leaves out the elements");
+    }
+    txt = PMIx_Value_string(&arr);
+    if (NULL == txt || NULL == strstr(txt, aname) || NULL != strstr(txt, "UNPRINTABLE")) {
+        NV_FAIL("array does not print its elements");
+    }
+    free(txt);
+    PMIx_Data_array_free(da);
+    PMIx_Data_array_free(db);
+
+done:
+#undef NV_FAIL
+    PMIX_VALUE_DESTRUCT(&back);
+    PMIX_VALUE_DESTRUCT(&dst);
+    PMIX_VALUE_DESTRUCT(&vb);
+    PMIX_VALUE_DESTRUCT(&va);
+    return ok;
+}
+
+static void test_named_values_keep_their_contents(void)
+{
+    pmix_info_directives_t d1 = PMIX_INFO_REQD, d2 = PMIX_INFO_ARRAY_END;
+    pmix_data_type_t t1 = PMIX_STRING, t2 = PMIX_PROC;
+    pmix_iof_channel_t c1 = PMIX_FWD_STDOUT_CHANNEL, c2 = PMIX_FWD_STDERR_CHANNEL;
+    int ok = 1;
+
+    ok &= check_named_value(PMIX_INFO_DIRECTIVES, &d1, &d2, sizeof(d1),
+                            "REQUIRED", (uint32_t) d1);
+    ok &= check_named_value(PMIX_DATA_TYPE, &t1, &t2, sizeof(t1),
+                            "PMIX_STRING", (uint32_t) t1);
+    ok &= check_named_value(PMIX_IOF_CHANNEL, &c1, &c2, sizeof(c1),
+                            "STDOUT", (uint32_t) c1);
+    report("directive, data-type and channel values keep their contents", ok);
+}
+
 /* ------------------------------------------------------------------ */
 
 int main(int argc, char **argv)
@@ -462,6 +850,10 @@ int main(int argc, char **argv)
     test_data_buffer_roundtrip_is_readable();
     test_kval_array_with_empty_elements();
     test_populated_array_contents_survive();
+    test_scalar_xfer_every_type();
+    test_named_values_keep_their_contents();
+    test_node_pid_value_xfer();
+    test_regattr_type_survives_pack();
 
     fprintf(stdout, "\nResults: %d passed, %d failed\n\n", npass, nfail);
 

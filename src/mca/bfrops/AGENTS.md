@@ -25,7 +25,7 @@ breaking cross-version communication. Each component subdirectory
 (`v21/`, `v3/`, `v4/`, `v41/`, `v51/`, `v61/`, `v70/`) carries
 its own `AGENTS.md` describing that version's deltas, and
 [`base/AGENTS.md`](base/AGENTS.md) covers the shared implementation —
-including the six per-type operations that have to agree with each
+including the per-type operations that have to agree with each
 other, the "never read outside the buffer" contract, and the defects
 found in the August 2026 review of that directory. **Read
 [`base/AGENTS.md`](base/AGENTS.md) before editing anything under
