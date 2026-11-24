@@ -1041,6 +1041,20 @@ static pmix_status_t pack_val(pmix_pointer_array_t *regtypes, pmix_buffer_t *buf
     case PMIX_RESOURCE_UNIT:
     case PMIX_NODE_PID:
     case PMIX_REGEX2:
+    case PMIX_DATA_BUFFER:
+        /* A value of one of these may carry no object at all - every
+         * other value-level operation accepts that (see
+         * pmix_bfrops_base_value_is_null_object()) - but the wire has no
+         * way to say "no proc" or "no device", and the packers below
+         * dereference what they are given. The exceptions are the types
+         * whose packers already encode the absence: a data array, an
+         * nspace, and the topology and cpuset, which go on the wire as
+         * a NULL string ("no topology", "not bound") */
+        if (PMIX_DATA_ARRAY != p->type && PMIX_PROC_NSPACE != p->type &&
+            PMIX_TOPO != p->type && PMIX_PROC_CPUSET != p->type &&
+            pmix_bfrops_base_value_is_null_object(p)) {
+            return PMIX_ERR_BAD_PARAM;
+        }
         PMIX_BFROPS_PACK_TYPE(ret, buffer, p->data.ptr, 1, p->type, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;

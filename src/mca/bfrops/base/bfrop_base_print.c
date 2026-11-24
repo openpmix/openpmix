@@ -735,7 +735,12 @@ static int print_val(char **output, pmix_value_t *src)
             rc = pmix_bfrops_base_print_proc(&tp, NULL, src->data.proc, PMIX_PROC);
             break;
         case PMIX_BYTE_OBJECT:
-            rc = pmix_bfrops_base_print_bo(&tp, NULL, &src->data.bo, PMIX_BYTE_OBJECT);
+        case PMIX_COMPRESSED_STRING:
+        case PMIX_COMPRESSED_BYTE_OBJECT:
+            rc = pmix_bfrops_base_print_bo(&tp, NULL, &src->data.bo, src->type);
+            break;
+        case PMIX_REGEX:
+            rc = pmix_bfrops_base_print_regex(&tp, NULL, src->data.bo.bytes, PMIX_REGEX);
             break;
         case PMIX_PERSIST:
             rc = pmix_bfrops_base_print_persist(&tp, NULL, &src->data.persist, PMIX_PERSIST);
@@ -779,6 +784,16 @@ static int print_val(char **output, pmix_value_t *src)
         case PMIX_JOB_STATE:
             rc = pmix_bfrops_base_print_jobstate(&tp, NULL, &src->data.jstate, PMIX_JOB_STATE);
             break;
+        case PMIX_INFO_DIRECTIVES:
+            rc = pmix_bfrops_base_print_info_directives(&tp, NULL, &src->data.infodirs,
+                                                        PMIX_INFO_DIRECTIVES);
+            break;
+        case PMIX_DATA_TYPE:
+            rc = pmix_bfrops_base_print_datatype(&tp, NULL, &src->data.dtype, PMIX_DATA_TYPE);
+            break;
+        case PMIX_IOF_CHANNEL:
+            rc = pmix_bfrops_base_print_iof_channel(&tp, NULL, &src->data.channel, PMIX_IOF_CHANNEL);
+            break;
         case PMIX_TOPO:
             rc = pmix_bfrops_base_print_topology(&tp, NULL, src->data.topo, PMIX_TOPO);
             break;
@@ -820,6 +835,12 @@ static int print_val(char **output, pmix_value_t *src)
             break;
         case PMIX_REGEX2:
             rc = pmix_bfrops_base_print_regex2(&tp, NULL, src->data.regex2, PMIX_REGEX2);
+            break;
+        case PMIX_RESOURCE_UNIT:
+            rc = pmix_bfrops_base_print_resunit(&tp, NULL, src->data.resunit, PMIX_RESOURCE_UNIT);
+            break;
+        case PMIX_DATA_BUFFER:
+            rc = pmix_bfrops_base_print_dbuf(&tp, NULL, src->data.dbuf, PMIX_DATA_BUFFER);
             break;
         default:
             pmix_asprintf(&tp, " Data type: %s(%d)\tValue: UNPRINTABLE",
@@ -1097,8 +1118,7 @@ int pmix_bfrops_base_print_bo(char **output, char *prefix,
     if (NULL == src) {
         ret = pmix_asprintf(output, "%sData type: %s\tValue: NULL pointer",
                        (NULL == prefix) ? " " : prefix,
-                       (PMIX_COMPRESSED_BYTE_OBJECT == type) ? "PMIX_COMPRESSED_BYTE_OBJECT"
-                                                             : "PMIX_BYTE_OBJECT");
+                       PMIx_Data_type_string(type));
         if (0 > ret) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         } else {
@@ -1106,10 +1126,11 @@ int pmix_bfrops_base_print_bo(char **output, char *prefix,
         }
     }
 
+    /* named by the type it was handed: the compressed forms are byte
+     * objects too, and printed through here */
     ret = pmix_asprintf(output, "%sData type: %s\tSize: %ld",
                    (NULL == prefix) ? " " : prefix,
-                   (PMIX_COMPRESSED_BYTE_OBJECT == type) ? "PMIX_COMPRESSED_BYTE_OBJECT"
-                                                         : "PMIX_BYTE_OBJECT",
+                   PMIx_Data_type_string(type),
                    (long) src->size);
 
     if (0 > ret) {
@@ -1183,9 +1204,11 @@ pmix_status_t pmix_bfrops_base_print_pinfo(char **output, char *prefix,
                      p2,
                      (unsigned long) src->pid, src->exit_code,
                      PMIx_Proc_state_string(src->state))) {
-        free(p2);
         rc = PMIX_ERR_NOMEM;
     }
+    /* both pieces are copied into the output, or were never used */
+    free(tmp);
+    free(p2);
 
 done:
 
@@ -1237,6 +1260,9 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
     pmix_coord_t *coptr;
     pmix_link_state_t *lkptr;
     pmix_job_state_t *jsptr;
+    pmix_info_directives_t *idptr;
+    pmix_data_type_t *dtptr;
+    pmix_iof_channel_t *chptr;
     pmix_topology_t *tptr;
     pmix_cpuset_t *cpsptr;
     pmix_locality_t *lcptr;
@@ -1251,6 +1277,10 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
     pmix_storage_persistence_t *spptr;
     pmix_storage_access_type_t *satptr;
     pmix_node_pid_t *ndpidptr;
+    pmix_regex2_t *rx2ptr;
+    pmix_data_buffer_t *dbptr;
+    pmix_value_t *valptr;
+    pmix_app_t *appptr;
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
@@ -1354,8 +1384,10 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
                 rc = pmix_bfrops_base_print_info(&tp, prefix, &iptr[n], PMIX_INFO);
                 break;
             case PMIX_BYTE_OBJECT:
+            case PMIX_COMPRESSED_STRING:
+            case PMIX_COMPRESSED_BYTE_OBJECT:
                 boptr = (pmix_byte_object_t*)src->array;
-                rc = pmix_bfrops_base_print_bo(&tp, prefix, &boptr[n], PMIX_BYTE_OBJECT);
+                rc = pmix_bfrops_base_print_bo(&tp, prefix, &boptr[n], src->type);
                 break;
             case PMIX_PERSIST:
                 prstptr = (pmix_persistence_t*)src->array;
@@ -1413,6 +1445,19 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
                 jsptr = (pmix_job_state_t*)src->array;
                 rc = pmix_bfrops_base_print_jobstate(&tp, prefix, &jsptr[n], PMIX_JOB_STATE);
                 break;
+            case PMIX_INFO_DIRECTIVES:
+                idptr = (pmix_info_directives_t*)src->array;
+                rc = pmix_bfrops_base_print_info_directives(&tp, prefix, &idptr[n],
+                                                            PMIX_INFO_DIRECTIVES);
+                break;
+            case PMIX_DATA_TYPE:
+                dtptr = (pmix_data_type_t*)src->array;
+                rc = pmix_bfrops_base_print_datatype(&tp, prefix, &dtptr[n], PMIX_DATA_TYPE);
+                break;
+            case PMIX_IOF_CHANNEL:
+                chptr = (pmix_iof_channel_t*)src->array;
+                rc = pmix_bfrops_base_print_iof_channel(&tp, prefix, &chptr[n], PMIX_IOF_CHANNEL);
+                break;
             case PMIX_TOPO:
                 tptr = (pmix_topology_t*)src->array;
                 rc = pmix_bfrops_base_print_topology(&tp, prefix, &tptr[n], PMIX_TOPO);
@@ -1468,6 +1513,22 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
             case PMIX_NODE_PID:
                 ndpidptr = (pmix_node_pid_t*)src->array;
                 rc = pmix_bfrops_base_print_nodepid(&tp, prefix, &ndpidptr[n], PMIX_NODE_PID);
+                break;
+            case PMIX_REGEX2:
+                rx2ptr = (pmix_regex2_t*)src->array;
+                rc = pmix_bfrops_base_print_regex2(&tp, prefix, &rx2ptr[n], PMIX_REGEX2);
+                break;
+            case PMIX_DATA_BUFFER:
+                dbptr = (pmix_data_buffer_t*)src->array;
+                rc = pmix_bfrops_base_print_dbuf(&tp, prefix, &dbptr[n], PMIX_DATA_BUFFER);
+                break;
+            case PMIX_VALUE:
+                valptr = (pmix_value_t*)src->array;
+                rc = pmix_bfrops_base_print_value(&tp, prefix, &valptr[n], PMIX_VALUE);
+                break;
+            case PMIX_APP:
+                appptr = (pmix_app_t*)src->array;
+                rc = pmix_bfrops_base_print_app(&tp, prefix, &appptr[n], PMIX_APP);
                 break;
             default:
                 pmix_asprintf(&tp, " Data type: %s(%d)\tValue: UNPRINTABLE",
@@ -1741,8 +1802,10 @@ pmix_status_t pmix_bfrops_base_print_regex(char **output, char *prefix, char *sr
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
+    /* a value's regex may be empty, and "%s" of NULL is undefined */
     ret = pmix_asprintf(output, "%sData type: PMIX_REGEX\tName: %s",
-                   (NULL == prefix) ? " " : prefix, src);
+                   (NULL == prefix) ? " " : prefix,
+                   (NULL == src) ? "NULL" : src);
 
     if (0 > ret) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -2243,5 +2306,9 @@ pmix_status_t pmix_bfrops_base_print_nodepid(char **output, char *prefix,
                    (NULL == prefix) ? " " : prefix,
                    (NULL == src->hostname) ? "NULL" : src->hostname,
                    src->nodeid, src->pid);
-    return ret;
+    /* pmix_asprintf answers the length it wrote, not a status */
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    return PMIX_SUCCESS;
 }

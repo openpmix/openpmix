@@ -196,6 +196,75 @@ static void test_unload(void)
     report("unloading a value with no object", 1);
 }
 
+/* Packing is the one operation that cannot express the absence: the
+ * wire has no "no proc" or "no device". So it refuses - it used to hand
+ * the NULL to the type's packer, which dereferenced it. A data array and
+ * an nspace are the exceptions, since both packers already encode it;
+ * those may succeed, and everything else must report an error. */
+static void test_pack(void)
+{
+    size_t i;
+    int ok = 1;
+
+    for (i = 0; i < NTYPES; i++) {
+        pmix_value_t v;
+        pmix_data_buffer_t buf;
+        pmix_status_t rc;
+
+        empty_value(&v, types[i]);
+        PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+        rc = PMIx_Data_pack(NULL, &buf, &v, 1, PMIX_VALUE);
+        PMIX_DATA_BUFFER_DESTRUCT(&buf);
+        if (PMIX_SUCCESS == rc && PMIX_DATA_ARRAY != types[i] &&
+            PMIX_PROC_NSPACE != types[i] && PMIX_STRING != types[i] &&
+            PMIX_BYTE_OBJECT != types[i] && PMIX_COMPRESSED_BYTE_OBJECT != types[i] &&
+            PMIX_COMPRESSED_STRING != types[i] && PMIX_REGEX != types[i] &&
+            PMIX_ENVAR != types[i] && PMIX_JOB_STATE != types[i] &&
+            PMIX_LINK_STATE != types[i] && PMIX_DEVTYPE != types[i] &&
+            PMIX_LOCTYPE != types[i] &&
+            /* a query is held in the union itself, so an "empty" one is
+             * an empty query, not a missing one */
+            PMIX_QUERY != types[i] &&
+            /* the wire can say "no topology" and "not bound" - see below */
+            PMIX_TOPO != types[i] && PMIX_PROC_CPUSET != types[i]) {
+            fprintf(stdout, "    %s: packed a value with no object\n",
+                    PMIx_Data_type_string(types[i]));
+            ok = 0;
+        }
+    }
+    report("packing a value with no object", ok);
+
+    /* ... except where the wire has a way to say "none". A topology and
+     * a cpuset go out as a NULL string - "no topology", "not bound" -
+     * and refusing those refused something that had always packed */
+    ok = 1;
+    for (i = 0; i < NTYPES; i++) {
+        pmix_value_t v, back;
+        pmix_data_buffer_t buf;
+        pmix_status_t rc;
+        int32_t cnt = 1;
+
+        if (PMIX_TOPO != types[i] && PMIX_PROC_CPUSET != types[i]) {
+            continue;
+        }
+        empty_value(&v, types[i]);
+        PMIX_VALUE_CONSTRUCT(&back);
+        PMIX_DATA_BUFFER_CONSTRUCT(&buf);
+        rc = PMIx_Data_pack(NULL, &buf, &v, 1, PMIX_VALUE);
+        if (PMIX_SUCCESS == rc) {
+            rc = PMIx_Data_unpack(NULL, &buf, &back, &cnt, PMIX_VALUE);
+        }
+        if (PMIX_SUCCESS != rc || types[i] != back.type) {
+            fprintf(stdout, "    %s: an absent object does not pack and unpack (%s)\n",
+                    PMIx_Data_type_string(types[i]), PMIx_Error_string(rc));
+            ok = 0;
+        }
+        PMIX_VALUE_DESTRUCT(&back);
+        PMIX_DATA_BUFFER_DESTRUCT(&buf);
+    }
+    report("an absent topology or cpuset packs as none", ok);
+}
+
 static void test_info_list(void)
 {
     size_t i;
@@ -259,6 +328,7 @@ int main(int argc, char **argv)
     test_get_size();
     test_xfer();
     test_unload();
+    test_pack();
     test_info_list();
     test_null_darray_copies_to_an_empty_array();
 

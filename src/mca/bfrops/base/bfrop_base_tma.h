@@ -1451,10 +1451,14 @@ pmix_status_t pmix_bfrops_base_tma_copy_nodepid(pmix_node_pid_t **dest,
     if (PMIX_UNLIKELY(NULL == p)) {
         return PMIX_ERR_NOMEM;
     }
-    *dest = p;
     if (NULL != src->hostname) {
         p->hostname = pmix_tma_strdup(tma, src->hostname);
+        if (PMIX_UNLIKELY(NULL == p->hostname)) {
+            pmix_tma_free(tma, p);
+            return PMIX_ERR_NOMEM;
+        }
     }
+    *dest = p;
     p->nodeid = src->nodeid;
     p->pid = src->pid;
     return PMIX_SUCCESS;
@@ -3748,6 +3752,15 @@ pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
     case PMIX_JOB_STATE:
         memcpy(&p->data.jstate, &src->data.jstate, sizeof(pmix_job_state_t));
         break;
+    case PMIX_INFO_DIRECTIVES:
+        memcpy(&p->data.infodirs, &src->data.infodirs, sizeof(pmix_info_directives_t));
+        break;
+    case PMIX_DATA_TYPE:
+        memcpy(&p->data.dtype, &src->data.dtype, sizeof(pmix_data_type_t));
+        break;
+    case PMIX_IOF_CHANNEL:
+        memcpy(&p->data.channel, &src->data.channel, sizeof(pmix_iof_channel_t));
+        break;
     case PMIX_TOPO:
         rc = pmix_bfrops_base_tma_copy_topology(&p->data.topo, src->data.topo, PMIX_TOPO, tma);
         if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
@@ -3782,6 +3795,8 @@ pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
         return pmix_bfrops_base_tma_copy_endpoint(&p->data.endpoint, src->data.endpoint, PMIX_ENDPOINT, tma);
     case PMIX_REGEX2:
         return pmix_bfrops_base_tma_copy_regex2(&p->data.regex2, src->data.regex2, PMIX_REGEX2, tma);
+    case PMIX_NODE_PID:
+        return pmix_bfrops_base_tma_copy_nodepid(&p->data.nodepid, src->data.nodepid, PMIX_NODE_PID, tma);
     case PMIX_REGATTR:
         return pmix_bfrops_base_tma_copy_regattr((pmix_regattr_t **) &p->data.ptr, src->data.ptr,
                                                  PMIX_REGATTR, tma);
@@ -4309,6 +4324,11 @@ void pmix_bfrops_base_tma_value_destruct(pmix_value_t *v,
         case PMIX_REGEX2:
             if (NULL != v->data.regex2) {
                 pmix_bfrops_base_tma_regex2_free(v->data.regex2, 1, tma);
+            }
+            break;
+        case PMIX_NODE_PID:
+            if (NULL != v->data.nodepid) {
+                pmix_bfrops_base_tma_node_pid_free(v->data.nodepid, 1, tma);
             }
             break;
         case PMIX_REGEX:
