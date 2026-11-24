@@ -24,6 +24,25 @@ C Syntax
    } pmix_query_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   query = {'keys': [PMIX_QUERY_NAMESPACES],
+            'qualifiers': [{'key': PMIX_NSPACE, 'value': "myjob",
+                            'val_type': PMIX_STRING}]}
+
+where ``keys`` is a list of strings naming what is asked for and
+``qualifiers`` is a list of :ref:`pmix_info_t(5) <man5-pmix_info_t>` dicts
+(``None`` or an empty list for none). ``query()`` and ``query_nb()`` take a
+list of these and leave the caller's dicts unchanged; a ``keys`` that is
+not a list or tuple, or holds ``None``, is ``PMIX_ERR_BAD_PARAM``. A
+server's ``query`` handler receives the same shape.
+
+
 DESCRIPTION
 -----------
 

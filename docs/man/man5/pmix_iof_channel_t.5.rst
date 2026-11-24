@@ -27,6 +27,18 @@ C Syntax
    #define PMIX_FWD_ALL_CHANNELS       0x00ff
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   channels = PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL
+
+where the value is one of the ``pmix_iof_channel_t`` constants listed on this page, a plain Python ``int``.
+
+
 DESCRIPTION
 -----------
 

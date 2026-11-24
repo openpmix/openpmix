@@ -89,6 +89,83 @@ Python Syntax
 where ``type`` is the PMIx datatype of ``value``, and
 ``value`` is the associated value expressed in the appropriate Python form
 for the specified datatype
+(see `Python forms`_ below).
+
+Python forms
+^^^^^^^^^^^^
+
+A value handed back by the library has the form shown for its type, and can
+be passed straight back in. A value that cannot be loaded is reported as a
+status, never as an exception: ``PMIX_ERR_TYPE_MISMATCH`` for the wrong
+Python type, ``PMIX_ERR_BAD_PARAM`` for a value out of range for its C type,
+a struct dict missing a member, or a ``val_type`` that is not an integer from
+0 to 65535, and ``PMIX_ERR_NOT_SUPPORTED`` for a type that has no Python
+form.
+
+.. list-table::
+   :header-rows: 1
+
+   * - **val_type**
+     - **value**
+   * - ``PMIX_UNDEF``
+     - ``None`` (anything given is ignored)
+   * - ``PMIX_BOOL``
+     - ``True`` or ``False``. On input also 0 or 1, or the strings
+       ``"true"``, ``"false"``, ``"t"`` or ``"f"`` in any case; any other
+       string or number is ``PMIX_ERR_BAD_PARAM``.
+   * - ``PMIX_BYTE``, ``PMIX_INT8`` ... ``PMIX_INT64``, ``PMIX_UINT8`` ...
+       ``PMIX_UINT64``, ``PMIX_INT``, ``PMIX_UINT``, ``PMIX_SIZE``,
+       ``PMIX_PID``, ``PMIX_TIME``, ``PMIX_STATUS``, ``PMIX_PROC_RANK``
+     - ``int``, checked against both ends of the C type. A ``bool`` is
+       not accepted.
+   * - ``PMIX_PERSIST``, ``PMIX_SCOPE``, ``PMIX_DATA_RANGE``,
+       ``PMIX_PROC_STATE``, ``PMIX_ALLOC_DIRECTIVE``,
+       ``PMIX_RESBLOCK_DIRECTIVE``, ``PMIX_ALLOC_INHERIT``,
+       ``PMIX_LINK_STATE``, ``PMIX_JOB_STATE``, ``PMIX_LOCTYPE``,
+       ``PMIX_DEVTYPE``, ``PMIX_STOR_MEDIUM``, ``PMIX_STOR_ACCESS``,
+       ``PMIX_STOR_PERSIST``, ``PMIX_STOR_ACCESS_TYPE``,
+       ``PMIX_INFO_DIRECTIVES``, ``PMIX_DATA_TYPE``, ``PMIX_IOF_CHANNEL``
+     - ``int``, one of the type's ``PMIX_*`` constants (or, for the
+       directives and the channels, an OR of them), checked against the
+       width of the type
+   * - ``PMIX_FLOAT``, ``PMIX_DOUBLE``
+     - ``float``. On input anything ``float()`` takes (a number or a numeric
+       string) except a ``bool``.
+   * - ``PMIX_TIMEVAL``
+     - ``{'sec': int, 'usec': int}``; both required, ``usec`` from 0 to
+       999999, a ``float`` truncated
+   * - ``PMIX_STRING``
+     - ``str`` (UTF-8) or ``bytes``, with no NUL in it; ``None`` is a NULL
+       string. Handed back as ``str``, or ``bytes`` if it is not UTF-8.
+   * - ``PMIX_PROC_NSPACE``
+     - a namespace string; see :ref:`pmix_nspace_t(5) <man5-pmix_nspace_t>`
+   * - ``PMIX_BYTE_OBJECT``, ``PMIX_COMPRESSED_BYTE_OBJECT``,
+       ``PMIX_COMPRESSED_STRING``
+     - a byte-object dict; see :ref:`pmix_byte_object_t(5)
+       <man5-pmix_byte_object_t>`
+   * - ``PMIX_REGEX``
+     - the regex as ``bytes``. On input also a ``bytearray``,
+       ``memoryview`` or ``str``, or a byte-object dict.
+   * - ``PMIX_PROC``, ``PMIX_PROC_INFO``, ``PMIX_ENVAR``, ``PMIX_COORD``,
+       ``PMIX_GEOMETRY``, ``PMIX_DEVICE``, ``PMIX_DEVICE_DIST``,
+       ``PMIX_ENDPOINT``, ``PMIX_DATA_BUFFER``, ``PMIX_RESOURCE_UNIT``,
+       ``PMIX_NODE_PID``, ``PMIX_REGEX2``, ``PMIX_REGATTR``,
+       ``PMIX_DATA_ARRAY``
+     - the dict on the type's own page (for example
+       :ref:`pmix_proc_t(5) <man5-pmix_proc_t>`,
+       :ref:`pmix_data_array_t(5) <man5-pmix_data_array_t>`). Except for
+       ``PMIX_ENVAR``, ``None`` is the NULL the library allows there.
+   * - ``PMIX_TOPO``, ``PMIX_PROC_CPUSET``
+     - ``None`` only: "no topology" or "not bound". Any other value is
+       ``PMIX_ERR_NOT_SUPPORTED``, and the library's value always comes back
+       as ``None``. A cpuset is passed to and from the methods that take one
+       as a :ref:`pmix_cpuset_t(5) <man5-pmix_cpuset_t>` dict instead.
+   * - ``PMIX_POINTER``
+     - not supported: a C pointer has no Python form
+   * - ``PMIX_VALUE``, ``PMIX_INFO``, ``PMIX_APP``, ``PMIX_PDATA``,
+       ``PMIX_QUERY``, ``PMIX_KVAL``, ``PMIX_COMMAND``
+     - not supported as a value. Values, infos and apps are carried as the
+       elements of a ``PMIX_DATA_ARRAY``.
 
 
 DESCRIPTION

@@ -23,6 +23,23 @@ C Syntax
    } pmix_resource_unit_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   unit = {'type': PMIX_DEVTYPE_GPU, 'count': 4}
+
+where ``type`` is a :ref:`pmix_device_type_t(5) <man5-pmix_device_type_t>`
+value and ``count`` a non-negative integer. Both members must be present,
+whether the unit is the value of a ``PMIX_RESOURCE_UNIT`` or one of the list
+a method such as ``resource_block`` takes; a unit that leaves one out is
+refused with ``PMIX_ERR_BAD_PARAM``. A unit handed back by the library has
+the same shape.
+
+
 DESCRIPTION
 -----------
 

@@ -30,6 +30,19 @@ C Syntax
    #define PMIX_LOCALITY_SHARE_NODE        0x4000
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   rc, locality = foo.get_relative_locality(loc1, loc2)
+   # e.g. locality == [PMIX_LOCALITY_SHARE_CORE, PMIX_LOCALITY_SHARE_NODE]
+
+where ``locality`` is a list of the ``PMIX_LOCALITY_*`` flags set in the bitmask, ``[PMIX_LOCALITY_NONLOCAL]`` if none is. As a value, ``PMIX_LOCTYPE``, it is the integer bitmask (0 to 65535).
+
+
 DESCRIPTION
 -----------
 

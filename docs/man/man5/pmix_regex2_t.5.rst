@@ -26,6 +26,27 @@ C Syntax
    } pmix_regex2_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   regex = {'type': "raw", 'bytes': b'node[1-4]', 'len': 9}
+
+where ``type`` names the encoding (the ``preg`` component that produced
+it), ``bytes`` is the encoded form and ``len`` is its length. ``type``
+must be present; ``None`` stands for a regex no component produced. The
+payload may be ``bytes``, a ``bytearray``, a ``memoryview`` or a ``str``
+(encoded as UTF-8), and must be present. It is not necessarily
+NUL-terminated, so treat it as bytes, never as a string. ``len`` may be
+left out; a ``len`` that is not an integer, is negative, or is longer than
+the payload is replaced by the payload's length. A regex handed back by
+the library has ``bytes`` as a ``bytes`` object of exactly ``len``
+bytes.
+
+
 DESCRIPTION
 -----------
 

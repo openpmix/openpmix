@@ -32,7 +32,13 @@ C Syntax
 Python Syntax
 ^^^^^^^^^^^^^
 
-None
+.. code-block:: python3
+
+   from pmix import *
+
+   flags = PMIX_INFO_REQD
+
+where the value is one of the ``pmix_info_directives_t`` constants listed on this page, a plain Python ``int``.
 
 
 DESCRIPTION

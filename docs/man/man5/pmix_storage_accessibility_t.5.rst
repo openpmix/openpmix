@@ -26,6 +26,18 @@ C Syntax
    #define PMIX_STORAGE_ACCESSIBILITY_REMOTE   0x0000000000000020
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   access = PMIX_STORAGE_ACCESSIBILITY_NODE
+
+where the value is one of the ``pmix_storage_accessibility_t`` constants listed on this page, a plain Python ``int``.
+
+
 DESCRIPTION
 -----------
 

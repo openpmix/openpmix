@@ -35,6 +35,15 @@ Python Syntax
                  'value': "cluster-a", 'val_type': PMIX_STRING}]
   rc = foo.deregister_resources(directives)
 
+  # the non-blocking form returns as soon as the request has been accepted,
+  # and cbfunc(status, cbdata) runs on the PMIx progress thread if and only
+  # if the call returned PMIX_SUCCESS. It is the form to use on that
+  # thread - in a server-module upcall, an event handler or another
+  # callback - where a blocking PMIx call must not be made
+  def donecb(status, cbdata):
+      print("deregister_resources completed:", foo.error_string(status))
+  rc = foo.deregister_resources(directives, donecb, "mycbdata")
+
 
 INPUT PARAMETERS
 ----------------

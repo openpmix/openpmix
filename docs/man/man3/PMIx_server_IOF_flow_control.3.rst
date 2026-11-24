@@ -44,6 +44,16 @@ Python Syntax
   source = {'nspace': "mytool", 'rank': 0}
   rc = foo.iof_flow_control(source, PMIX_FWD_STDIN_CHANNEL, True, pydirs)
 
+  # the non-blocking form returns as soon as the request has been accepted,
+  # and cbfunc(status, cbdata) runs on the PMIx progress thread if and only
+  # if the call returned PMIX_SUCCESS. It is the form to use on that
+  # thread - in a server-module upcall, an event handler or another
+  # callback - where a blocking PMIx call must not be made
+  def donecb(status, cbdata):
+      print("iof_flow_control completed:", foo.error_string(status))
+  rc = foo.iof_flow_control(source, PMIX_FWD_STDIN_CHANNEL, True, pydirs,
+                            donecb, "mycbdata")
+
 The Python binding is the **blocking** form |mdash| it passes no callback,
 and returns the status directly. A ``source`` of ``None`` is the Python
 spelling of a ``NULL`` ``source``, and means every process feeding this

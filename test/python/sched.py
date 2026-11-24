@@ -55,6 +55,23 @@ def clientabort2(args, cbfunc, cbdata):
         cbfunc(PMIX_ERR_BAD_PARAM, cbdata)
     return PMIX_SUCCESS
 
+# The scheduler services resource-block requests. A delete names a block
+# and carries no units, and the server hands it an empty list for them;
+# the define client.py sends carries one GPU unit. Anything else is
+# refused, which fails the client.
+def clientresourceblock(args, cbfunc, cbdata):
+    print("RESOURCE BLOCK", args['directive'], args['block'], args['units'])
+    ok = isinstance(args['units'], list) and 'myblock' == args['block']
+    if PMIX_RESOURCE_BLOCK_DEFINE == args['directive']:
+        ok = ok and [{'type': PMIX_DEVTYPE_GPU, 'count': 2}] == args['units']
+    elif PMIX_RESOURCE_BLOCK_DELETE == args['directive']:
+        ok = ok and [] == args['units']
+    else:
+        ok = False
+    # an op-style completion: (status, cbdata)
+    cbfunc(PMIX_SUCCESS if ok else PMIX_ERR_BAD_PARAM, cbdata)
+    return PMIX_SUCCESS
+
 def main():
     try:
         foo = PMIxServer()
@@ -66,7 +83,8 @@ def main():
     map = {'clientconnected': clientconnected,
            'clientfinalized': clientfinalized,
            'fencenb': clientfence,
-           'abort2': clientabort2}
+           'abort2': clientabort2,
+           'resourceblock': clientresourceblock}
     my_result = foo.init(args, map)
     print("Testing PMIx_Initialized")
     rc = foo.initialized()
@@ -102,6 +120,11 @@ def main():
 
     # get our environment as a base
     env = os.environ.copy()
+    # tell client.py which host it is running under: some of its checks
+    # depend on the handlers this script provides
+    # and keep its output if it dies or is killed
+    env['PYTHONUNBUFFERED'] = '1'
+    env['PYTEST_PMIX_HOST'] = 'scheduler'
 
     # register an nspace for the client app
     kvals = [{'key':PMIX_NODE_MAP, 'value':regex, 'val_type':PMIX_STRING},

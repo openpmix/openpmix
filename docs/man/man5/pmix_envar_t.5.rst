@@ -24,6 +24,24 @@ C Syntax
    } pmix_envar_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   ev = {'envar': "PATH", 'value': "/opt/bin", 'separator': ':'}
+
+where ``envar`` names the variable, ``value`` is the value to apply, and
+``separator`` is the character placed between it and any existing value.
+All three must be present. ``envar`` and ``value`` are strings, or
+``None`` for NULL. ``separator`` is a one-character string, an integer from
+0 to 255, or ``None`` for no separator. An envar handed back by the
+library gives ``separator`` as a one-character string, or ``None`` when it
+is not set.
+
+
 DESCRIPTION
 -----------
 

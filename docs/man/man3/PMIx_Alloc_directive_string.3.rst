@@ -19,6 +19,18 @@ SYNOPSIS
    const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # directive is an integer ``pmix_alloc_directive_t`` value
+  string = foo.alloc_directive_string(PMIX_ALLOC_NEW)
+
+
 INPUT PARAMETERS
 ----------------
 

@@ -35,10 +35,11 @@ Python Syntax
 
   # the non-blocking form returns as soon as the request has been accepted
   # and reports the result by executing a callback on the PMIx progress
-  # thread. The callback is run if and only if the call returned
-  # PMIX_SUCCESS, and must not itself make a blocking PMIx call.
-  def donecb(status, cbdata):
-      print("fabric updated:", foo.error_string(status))
+  # thread, handing it the refreshed fabric information. The callback is
+  # run if and only if the call returned PMIX_SUCCESS, and must not itself
+  # make a blocking PMIx call.
+  def donecb(status, fabricinfo, cbdata):
+      print("fabric updated:", foo.error_string(status), fabricinfo)
   rc = foo.fabric_update_nb(donecb, "mycbdata")
 
 

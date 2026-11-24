@@ -58,7 +58,13 @@ C Syntax
 Python Syntax
 ^^^^^^^^^^^^^
 
-None
+.. code-block:: python3
+
+   from pmix import *
+
+   state = PMIX_PROC_STATE_RUNNING
+
+where the value is one of the ``pmix_proc_state_t`` constants listed on this page, a plain Python ``int``.
 
 
 DESCRIPTION

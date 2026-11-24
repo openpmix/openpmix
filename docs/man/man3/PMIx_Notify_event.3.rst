@@ -32,12 +32,23 @@ Python Syntax
 
   foo = PMIxClient()
   # ... after a successful foo.init() ...
-  # the source is a Python ``pmix_proc_t`` dictionary
+  # the source is a Python ``pmix_proc_t`` dictionary, or None for this
+  # process (a NULL source in C)
   src = {'nspace': "testnspace", 'rank': 0}
   # the directives is a list of Python ``pmix_info_t`` dictionaries
   pyinfo = [{'key': PMIX_EVENT_NON_DEFAULT,
              'value': True, 'val_type': PMIX_BOOL}]
   rc = foo.notify_event(PMIX_ERR_PROC_ABORTED, src, PMIX_RANGE_NAMESPACE, pyinfo)
+
+  # the non-blocking form returns as soon as the request has been accepted,
+  # and cbfunc(status, cbdata) runs on the PMIx progress thread if and only
+  # if the call returned PMIX_SUCCESS. It is the form to use on that
+  # thread - in a server-module upcall, an event handler or another
+  # callback - where a blocking PMIx call must not be made
+  def donecb(status, cbdata):
+      print("notify_event completed:", foo.error_string(status))
+  rc = foo.notify_event(PMIX_ERR_PROC_ABORTED, src, PMIX_RANGE_NAMESPACE,
+                        pyinfo, donecb, "mycbdata")
 
 
 INPUT PARAMETERS

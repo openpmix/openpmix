@@ -19,6 +19,18 @@ SYNOPSIS
    const char* PMIx_Scope_string(pmix_scope_t scope);
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+  from pmix import *
+
+  foo = PMIxClient()
+  # scope is an integer ``pmix_scope_t`` value
+  string = foo.scope_string(PMIX_GLOBAL)
+
+
 INPUT PARAMETERS
 ----------------
 

@@ -26,6 +26,25 @@ C Syntax
    } pmix_geometry_t;
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   geo = {'fabric': 0, 'uuid': "fab-uuid", 'osname': "ib0",
+          'coords': [{'view': PMIX_COORD_LOGICAL_VIEW,
+                      'coord': b'\x01\x00\x00\x00', 'dims': 1}]}
+
+where ``fabric`` is the fabric index, ``uuid`` and ``osname`` are strings
+(``None`` for NULL), and ``coords`` is a list of :ref:`pmix_coord_t(5)
+<man5-pmix_coord_t>` dicts. ``fabric``, ``uuid`` and ``osname`` must be
+present; ``coords`` may be left out. A geometry handed back by the library
+also carries ``ncoords``, the length of ``coords``; it is ignored on
+input.
+
+
 DESCRIPTION
 -----------
 

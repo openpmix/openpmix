@@ -20,6 +20,23 @@ C Syntax
    typedef char pmix_nspace_t[PMIX_MAX_NSLEN+1];
 
 
+Python Syntax
+^^^^^^^^^^^^^
+
+.. code-block:: python3
+
+   from pmix import *
+
+   nspace = "myjob"
+
+where ``nspace`` is a ``str`` (or ``bytes``) of at most ``PMIX_MAX_NSLEN``
+(255) bytes once encoded as UTF-8, with no NUL in it. A name that does not
+fit, or that carries a NUL, is refused with ``PMIX_ERR_BAD_PARAM`` rather
+than shortened; a value that is not a string is
+``PMIX_ERR_TYPE_MISMATCH``. A namespace handed back by the library is a
+``str``, or ``bytes`` if it is not valid UTF-8.
+
+
 DESCRIPTION
 -----------
 
