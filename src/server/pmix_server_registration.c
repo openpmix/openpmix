@@ -1623,14 +1623,46 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_session(uint32_t sessionID,
     /* if the provided callback is NULL, then substitute
      * our own internal cbfunc and block here */
     if (NULL == cbfunc) {
-        if (pmix_progress_thread_check_blocking("PMIx_server_register_session")) {
+        /* asked silently: this case is not an error, and the generic
+         * "blocking call from the progress thread" notice describes a
+         * call that was refused or lost its status - this one is neither */
+        if (pmix_progress_thread_is_current()) {
             /* We are ON the progress thread - the host called us from
              * inside one of its own upcalls, so the loop that would run
              * the event we are about to post is the one we are standing
              * in. Complete asynchronously and report success: the
              * session will be established exactly as it would have been,
              * and every other PMIx operation is serialized through the
-             * same loop, so nothing can observe the difference. */
+             * same loop, so nothing can observe the difference.
+             *
+             * Except the info array. The caller made a blocking call, and
+             * a blocking call's inputs are the caller's again the moment
+             * it returns - so the request cannot borrow them the way a
+             * non-blocking one does. It takes a copy, which the caddy's
+             * destructor releases. */
+            if (0 < ninfo && NULL != info) {
+                PMIX_INFO_CREATE(cd->info, ninfo);
+                if (NULL == cd->info) {
+                    PMIX_RELEASE(cd);
+                    return PMIX_ERR_NOMEM;
+                }
+                cd->ninfo = ninfo;
+                cd->copied = true;
+                /* A deep copy of every entry. PMIx_Info_xfer would keep a
+                 * pointer into the caller's value for an entry flagged
+                 * PMIX_INFO_PERSISTENT, which is exactly what must not
+                 * outlive this call - and the copy is ours to release, so
+                 * it is not persistent */
+                for (size_t n = 0; n < ninfo; n++) {
+                    PMIX_LOAD_KEY(cd->info[n].key, info[n].key);
+                    cd->info[n].flags = info[n].flags & ~PMIX_INFO_PERSISTENT;
+                    rc = PMIx_Value_xfer(&cd->info[n].value, &info[n].value);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_RELEASE(cd);
+                        return rc;
+                    }
+                }
+            }
             cd->opcbfunc = NULL;
             PMIX_THREADSHIFT(cd, _register_session);
             return PMIX_SUCCESS;
