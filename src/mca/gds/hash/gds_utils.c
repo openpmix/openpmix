@@ -459,6 +459,8 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
             pmix_set_aliases(&nd->aliases, nd->hostname);
             nd->nodeid = n;
             pmix_list_append(&trk->nodeinfo, &nd->super);
+        } else if (UINT32_MAX == nd->nodeid) {
+            nd->nodeid = n;
         }
         /* store the proc list as-is */
         kp2 = PMIX_NEW(pmix_kval_t);
@@ -561,7 +563,9 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
                 PMIx_Argv_free(procs);
                 return rc;
             }
-            nodeid = n;
+            /* the node's own ID, which the host may have given it, so
+             * that a rank and the node it is on always agree */
+            nodeid = nd->nodeid;
             rc = store_derived(trk, rank, PMIX_NODEID, &nodeid, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 PMIx_Argv_free(procs);
