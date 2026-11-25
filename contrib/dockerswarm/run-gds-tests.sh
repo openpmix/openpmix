@@ -142,7 +142,7 @@ GEOMETRIES="${GEOMETRIES:-node1:1,node2:1|2 node1:1,node2:1,node3:1,node4:1|4 no
 #   rather than on the exit status, which proves nothing here.
 
 run_across_nodes() {
-    local prog="$1" hosts="$2" np="$3" envs="${4:-}" label="${5:-}"
+    local prog="$1" hosts="$2" np="$3" envs="${4:-}" label="${5:-}" pargs="${6:-}"
     local out rc nok xargs exports v trace
 
     xargs=""; exports=""
@@ -168,7 +168,7 @@ run_across_nodes() {
 
     cleanup_swarm
     out="$(RUN "$exports prterun --host $hosts -np $np --map-by node $xargs \
-                $trace --timeout 120 /opt/prte/tests-gds/$prog 2>&1")"
+                $trace --timeout 120 /opt/prte/tests-gds/$prog $pargs 2>&1")"
     rc=$?
 
     if echo "$out" | grep -qiE 'time limit for job|timed out|DVM timeout'; then
@@ -189,6 +189,20 @@ run_across_nodes() {
         fi
         if [ "$rc" != 0 ]; then
             bad "$prog $label, $np servers: every rank passed but exit was $rc"
+            return 1
+        fi
+    elif [ "$prog" = get_scope ]; then
+        # every rank asks every peer for each key under each scope and
+        # prints one PASS line when every answer was the one the peer's
+        # location allows; a FAIL line names the wrong answer
+        nok=$(echo "$out" | grep -c 'getscope: rank .* gets: PASS' || true)
+        if [ "$nok" != "$np" ]; then
+            bad "$prog $label, $np ranks: only $nok/$np ranks got the expected answer for every scope"
+            echo "$out" | grep -E 'getscope: .*FAIL' | head -4 | sed 's/^/       /'
+            return 1
+        fi
+        if [ "$rc" != 0 ]; then
+            bad "$prog $label, $np ranks: every rank passed but exit was $rc"
             return 1
         fi
     elif [ "$prog" = delete_key ]; then
@@ -486,7 +500,7 @@ test_linux() {
         "$IMAGE" bash -euo pipefail -c '
             mkdir -p /opt/prte/tests-gds
             for p in datatypes dmodex client modex_twice delete_key \
-                     modex_attach_fail get_timing fence_timing; do
+                     modex_attach_fail get_scope get_timing fence_timing; do
                 gcc -O0 -g -o /opt/prte/tests-gds/$p /pmix-src/examples/$p.c \
                     -I"$PFX/include" -I/pmix-src/examples \
                     -L"$PFX/lib" -lpmix -Wl,-rpath,"$PFX/lib"
@@ -585,6 +599,47 @@ test_linux() {
         hosts="${geom%|*}"; np="${geom#*|}"
         run_across_nodes client "$hosts" "$np" "" "" \
             && ok "$np servers: local and remote scope values read back correctly"
+    done
+
+    banner "which copy of a peer's value each scope returns (openmpi#14873)"
+    # examples/get_scope puts one key at PMIX_LOCAL and PMIX_REMOTE with
+    # different values, one key at each of those alone, and one at
+    # PMIX_GLOBAL, and every rank asks every peer for each under every
+    # scope. Unlike the stages above this needs TWO ranks per node: the
+    # subject is what a peer on the SAME node is shown - its PMIX_LOCAL
+    # copy, never its PMIX_REMOTE one - against what a peer on another
+    # node is shown. Under gds/shmem3 a same-node peer used to be handed
+    # the PMIX_REMOTE copy out of the modex segment, which is what sent
+    # Open MPI's pml/ucx over the network between ranks on one node.
+    #
+    # Run once with every combination in turn (cached answers included),
+    # then once per combination so each peer is asked once and the answer
+    # cannot have come from a cache - and both again with every client on
+    # gds/hash, which has to give the same answers.
+    #
+    # And every one of those again with GETSCOPE_COLLECT=0, a fence that
+    # collects nothing: then no peer on another node is answered out of a
+    # modex already here, and each such get goes to the target's server
+    # through the host (direct modex). PRRTE's daemon checks for the key
+    # with a PMIx_Get of its own on the target, on the requester's behalf,
+    # so that get has to be answered as the requester - on another node -
+    # would be. The fresh runs are what show it: run in turn, the first
+    # answer from a peer fills the cache and hides the rest.
+    for collect in 1 0; do
+        clabel=""; [ "$collect" = 0 ] && clabel=", direct modex"
+        for gds in "" "PMIX_MCA_gds=hash"; do
+            glabel="${gds:+(hash}"; glabel="${glabel:-(default}$clabel)"
+            envs="GETSCOPE_COLLECT=$collect $gds"
+            run_across_nodes get_scope "node1:2,node2:2" 4 "$envs" "$glabel" \
+                && ok "2 nodes x 2 ranks $glabel: every scope returned what the peer's location allows"
+            nfresh=0
+            for c in $(seq 0 19); do
+                run_across_nodes get_scope "node1:2,node2:2" 4 "$envs" "$glabel combination $c" "$c" \
+                    && nfresh=$((nfresh+1))
+            done
+            [ "$nfresh" = 20 ] \
+                && ok "2 nodes x 2 ranks $glabel: each combination asked fresh of every peer"
+        done
     done
 
     banner "direct modex (assemb_kvs_req / accept_kvs_resp)"
