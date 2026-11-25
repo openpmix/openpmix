@@ -1658,11 +1658,19 @@ pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
         return PMIX_ERR_NOT_FOUND;
     }
 
-    /* retrieve the data for the specific rank they are asking about */
+    /* Retrieve the data for the specific rank they are asking about -
+     * exactly what a PMIx_Get by this requester may see of it (see the
+     * note on pmix_cb_t.get_visibility). The client caches the reply with
+     * no scope attached, so this must not send more. It used to fetch at
+     * PMIX_REMOTE whatever the target's location, so a refresh of a peer
+     * on the requester's own node brought back that peer's PMIX_REMOTE
+     * copy - which a same-node reader must never be shown - and never its
+     * PMIX_LOCAL data, the very data a same-node refresh is for. */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.proc = &p;
-    cb.scope = PMIX_REMOTE;
+    cb.scope = PMIX_SCOPE_UNDEF;
     cb.copy = false;
+    cb.get_visibility = true;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     /* the fetch reports its result through the macro's status argument -
      * cb.status is left at its constructed default, so packing that told
