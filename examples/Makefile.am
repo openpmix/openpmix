@@ -101,7 +101,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   group_invite_endpts group_invite_wildcard topology \
                   spawn_reuse spawn_iof iof_watcher group_badinfo datatypes toolswitch \
                   modex_twice delete_key modex_attach_fail dmdx_departed \
-                  xnspace_modex get_concurrent
+                  xnspace_modex get_concurrent get_scope
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -212,6 +212,10 @@ group_badinfo_LDADD = $(top_builddir)/src/libpmix.la
 get_concurrent_SOURCES = get_concurrent.c examples.h
 get_concurrent_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
 get_concurrent_LDADD = $(top_builddir)/src/libpmix.la
+
+get_scope_SOURCES = get_scope.c examples.h
+get_scope_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
+get_scope_LDADD = $(top_builddir)/src/libpmix.la
 
 spawn_reuse_SOURCES = spawn_reuse.c examples.h
 spawn_reuse_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-fast-install
